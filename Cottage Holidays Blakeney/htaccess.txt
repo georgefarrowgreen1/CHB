@@ -1,0 +1,68 @@
+# ============================================================
+#  .htaccess — security & HTTPS for IONOS (Apache) hosting.
+#  Upload this into the same folder as index.html.
+# ============================================================
+
+# ---- Force HTTPS (encrypts all traffic between browser and server) ----
+# IONOS terminates SSL at a proxy: on an HTTPS request the backend often sees
+# HTTPS != on but X-Forwarded-Proto: https. Redirect ONLY when BOTH say the
+# request is not HTTPS (AND logic) — OR logic here causes a redirect loop.
+RewriteEngine On
+RewriteCond %{HTTPS} !=on
+RewriteCond %{HTTP:X-Forwarded-Proto} !https
+RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
+
+# ---- Protect sensitive files from being downloaded as text ----
+# config.php holds your DB password; schema.sql and the .md guide shouldn't be public.
+<FilesMatch "(^config\.php$|\.sql$|\.md$)">
+    Require all denied
+</FilesMatch>
+
+# Fallback for older Apache (2.2) where "Require" isn't available
+<FilesMatch "(^config\.php$|\.sql$|\.md$)">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# ---- Serve WebP automatically when the browser supports it ----
+# For any .jpg/.jpeg/.png request, if the browser accepts WebP AND a matching
+# "<image>.webp" file exists next to it, serve that smaller file instead.
+# 100% safe: when no .webp is present the original image is served unchanged,
+# so nothing breaks. To enable an image, upload a WebP copy whose name is the
+# original filename + ".webp"  —  e.g.  hero.jpg  ->  hero.jpg.webp
+<IfModule mod_rewrite.c>
+    RewriteCond %{HTTP_ACCEPT} image/webp
+    RewriteCond %{REQUEST_FILENAME} (?i)\.(jpe?g|png)$
+    RewriteCond %{REQUEST_FILENAME}.webp -f
+    RewriteRule (?i)^(.+)\.(jpe?g|png)$ $1.$2.webp [T=image/webp,L]
+</IfModule>
+
+# ---- Image caching + correct negotiation ----
+<IfModule mod_headers.c>
+    # Same URL can return JPEG or WebP, so caches must key on the Accept header.
+    <FilesMatch "(?i)\.(jpe?g|png)$">
+        Header append Vary Accept
+    </FilesMatch>
+    # Long-cache static images so repeat visits load instantly.
+    <FilesMatch "(?i)\.(jpe?g|png|webp|svg|ico|gif)$">
+        Header set Cache-Control "max-age=2592000, public"
+    </FilesMatch>
+</IfModule>
+
+# ---- Don't list directory contents ----
+Options -Indexes
+
+# ---- Send the right charset ----
+AddDefaultCharset UTF-8
+
+# ---- Security headers ----
+<IfModule mod_headers.c>
+    # Tell browsers to always use HTTPS for this site (6 months)
+    Header set Strict-Transport-Security "max-age=15552000"
+    # Don't let browsers guess content types (blocks some injection tricks)
+    Header set X-Content-Type-Options "nosniff"
+    # This site never needs to be embedded in someone else's frame
+    Header set X-Frame-Options "SAMEORIGIN"
+    # Don't leak full URLs to other sites
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+</IfModule>

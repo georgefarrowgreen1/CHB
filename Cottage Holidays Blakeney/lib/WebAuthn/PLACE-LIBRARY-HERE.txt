@@ -1,0 +1,5 @@
+Upload the lbuchs/WebAuthn library files into THIS folder.
+After uploading, this folder must contain WebAuthn.php (and its
+Attestation/, Binary/, CBOR/ subfolders).
+Download: https://github.com/lbuchs/WebAuthn  (Code -> Download ZIP)
+See SETUP-PASSKEYS.md for full instructions. You can delete this note.

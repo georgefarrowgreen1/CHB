@@ -1,0 +1,326 @@
+<?php
+// ============================================================
+//  api/bookings.php
+//  GET                          -> admin: all bookings (calendar/back office)
+//  POST {action:'add', ...}     -> admin: create booking (snapshots price)
+//  POST {action:'update', ...}  -> admin: edit booking
+//  POST {action:'delete', id}   -> admin: delete booking
+//  POST {action:'set_payment', id, payment, deposit, method, date}
+//                                -> admin: reconcile deposit/status (date required if money)
+// ============================================================
+require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/pricing.php';
+
+// ---- helpers ----
+function booking_by_id($id) {
+    $s = db()->prepare('SELECT * FROM bookings WHERE id = ?');
+    $s->execute([$id]);
+    return $s->fetch();
+}
+function has_clash($propKey, $checkIn, $checkOut, $ignoreId = null) {
+    $sql = 'SELECT COUNT(*) c FROM bookings WHERE prop_key = ? AND check_in < ? AND check_out > ?';
+    $args = [$propKey, $checkOut, $checkIn];
+    if ($ignoreId) { $sql .= ' AND id <> ?'; $args[] = $ignoreId; }
+    $s = db()->prepare($sql); $s->execute($args);
+    return (int)$s->fetch()['c'] > 0;
+}
+// Returns a human-readable clash message if the dates overlap an existing booking
+// or an imported platform (Airbnb/Vrbo) block; empty string if the dates are free.
+function clash_message($propKey, $checkIn, $checkOut, $ignoreId = null) {
+    // Existing bookings on this site
+    $sql = 'SELECT name, check_in, check_out FROM bookings WHERE prop_key = ? AND check_in < ? AND check_out > ?';
+    $args = [$propKey, $checkOut, $checkIn];
+    if ($ignoreId) { $sql .= ' AND id <> ?'; $args[] = $ignoreId; }
+    $s = db()->prepare($sql); $s->execute($args);
+    $rows = $s->fetchAll();
+    if ($rows) {
+        $r = $rows[0];
+        $who = $r['name'] !== '' ? $r['name'] : 'another guest';
+        return 'These dates overlap an existing booking (' . $who . ', ' . $r['check_in'] . ' to ' . $r['check_out'] . ').';
+    }
+    // Imported iCal blocks (Airbnb/Vrbo) — table may not exist on older installs.
+    try {
+        $s2 = db()->prepare('SELECT source, check_in, check_out FROM ical_blocks WHERE prop_key = ? AND check_in < ? AND check_out > ?');
+        $s2->execute([$propKey, $checkOut, $checkIn]);
+        $b = $s2->fetch();
+        if ($b) {
+            return 'These dates are blocked by a ' . ucfirst($b['source']) . ' booking (' . $b['check_in'] . ' to ' . $b['check_out'] . ').';
+        }
+    } catch (\Throwable $e) { /* table not migrated yet */ }
+    return '';
+}
+// Reconcile a deposit amount against a chosen status + total. Returns float or null(invalid).
+function reconcile_deposit($status, $total, $currentDep, $proposedDep) {
+    if ($status === 'paid')   return round($total, 2);
+    if ($status === 'unpaid') return 0.0;
+    // 'deposit' — needs a partial amount strictly between 0 and total
+    $dep = ($proposedDep !== null) ? (float)$proposedDep : (float)$currentDep;
+    if ($dep <= 0 || $dep >= $total) return null;
+    return round($dep, 2);
+}
+function snapshot_fields($rate, $b, $depositOverride = null) {
+    $p = price_breakdown($rate, $b['adults'], $b['children'], $b['check_in'], $b['check_out'], $depositOverride);
+    return [
+        'agreed_total' => $p['total'], 'agreed_per_night' => $p['perNight'],
+        'agreed_nights' => $p['nights'], 'agreed_nightly' => $p['nightly'],
+        // booking_fee column is repurposed to store the refundable damages deposit
+        'agreed_booking_fee' => $p['damagesDeposit'], 'agreed_txn_pct' => $p['transactionPct'],
+        'agreed_txn_fee' => $p['txFee'], 'agreed_on' => date('Y-m-d'),
+    ];
+}
+
+// Build the email payload from a saved booking row and send the confirmation +
+// owner notification. Uses the booking's locked (agreed) figures so the email
+// always matches what's on the booking. Never throws — returns the mailer result
+// array (or an ['error'=>...] note) so callers can surface it without failing.
+function send_booking_confirmation($bookingId) {
+    try {
+        $b = booking_by_id((int)$bookingId);
+        if (!$b) return ['error' => 'Booking not found'];
+        $rate = get_rate($b['prop_key']);
+        require_once __DIR__ . '/mailer.php';
+
+        // Prefer the locked agreed figures; fall back to a live calc if missing.
+        if ($b['agreed_total'] !== null) {
+            $nights   = (int)$b['agreed_nights'];
+            $perNight = (float)$b['agreed_per_night'];
+            $nightly  = (float)$b['agreed_nightly'];
+            $txPct    = (float)$b['agreed_txn_pct'];
+            $txFee    = (float)$b['agreed_txn_fee'];
+            $deposit  = (float)$b['agreed_booking_fee'];
+            $total    = ($b['price_override'] !== null) ? (float)$b['price_override'] : (float)$b['agreed_total'];
+        } else {
+            $p = price_breakdown($rate, $b['adults'], $b['children'], $b['check_in'], $b['check_out']);
+            $nights=$p['nights']; $perNight=$p['perNight']; $nightly=$p['nightly'];
+            $txPct=$p['transactionPct']; $txFee=$p['txFee']; $deposit=$p['damagesDeposit']; $total=$p['total'];
+        }
+        $ref = 'CHB-' . str_pad(substr(preg_replace('/\D/', '', (string)$bookingId), -6), 6, '0', STR_PAD_LEFT);
+
+        return send_booking_emails([
+            'name'           => $b['name'],
+            'email'          => $b['email'],
+            'phone'          => $b['phone'] ?? '',
+            'prop_key'       => $b['prop_key'],
+            'prop_name'      => $rate['name'] ?? $b['prop_key'],
+            'address'        => $rate['address'] ?? '',
+            'check_in'       => $b['check_in'],
+            'check_out'      => $b['check_out'],
+            'check_in_time'  => $b['check_in_time'] ?? '15:00',
+            'check_out_time' => $b['check_out_time'] ?? '10:00',
+            'nights'         => $nights,
+            'per_night'      => $perNight,
+            'nightly'        => $nightly,
+            'tx_pct'         => $txPct,
+            'tx_fee'         => $txFee,
+            'adults'         => $b['adults'],
+            'children'       => $b['children'],
+            'total'          => $total,
+            'damages_deposit'=> $deposit,
+            'payment'        => $b['payment'],
+            'ref'            => $ref,
+        ]);
+    } catch (\Throwable $ex) {
+        return ['error' => 'Mail step skipped: ' . $ex->getMessage()];
+    }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    require_admin();
+    $rows = db()->query('SELECT * FROM bookings ORDER BY check_in ASC')->fetchAll();
+    json_out(['bookings' => $rows]);
+}
+
+require_admin();
+$in = body();
+$action = $in['action'] ?? '';
+
+if ($action === 'delete') {
+    db()->prepare('DELETE FROM bookings WHERE id = ?')->execute([(int)($in['id'] ?? 0)]);
+    json_out(['ok' => true]);
+}
+
+if ($action === 'add') {
+    $propKey = clean($in['prop_key'] ?? '');
+    $rate = get_rate($propKey);
+    if (!$rate) json_out(['error' => 'Unknown property'], 400);
+    $name = clean($in['name'] ?? '');
+    $checkIn = clean($in['check_in'] ?? ''); $checkOut = clean($in['check_out'] ?? '');
+    if ($name === '' || !$checkIn || !$checkOut) json_out(['error' => 'Name and dates required'], 400);
+    if ($checkOut <= $checkIn) json_out(['error' => 'Check-out must be after check-in'], 400);
+
+    // Date-clash warning (soft): if these dates overlap an existing booking or an
+    // imported platform (Airbnb/Vrbo) block, return a clash notice so the owner
+    // can confirm. Sending override_clash:true proceeds anyway.
+    if (empty($in['override_clash'])) {
+        $clashMsg = clash_message($propKey, $checkIn, $checkOut, null);
+        if ($clashMsg) json_out(['clash' => true, 'message' => $clashMsg]);
+    }
+
+    $adults = max(1, (int)($in['adults'] ?? 2));
+    $children = max(0, (int)($in['children'] ?? 0));
+    $status = in_array($in['payment'] ?? 'unpaid', ['unpaid','deposit','paid']) ? $in['payment'] : 'unpaid';
+    $damagesOverride = array_key_exists('damages_deposit', $in) ? $in['damages_deposit'] : null;
+
+    $snap = snapshot_fields($rate, ['adults'=>$adults,'children'=>$children,'check_in'=>$checkIn,'check_out'=>$checkOut], $damagesOverride);
+    // Manual total override (back office): if set, it becomes the agreed total.
+    $priceOverride = (array_key_exists('price_override', $in) && $in['price_override'] !== null && $in['price_override'] !== '')
+        ? round((float)$in['price_override'], 2) : null;
+    if ($priceOverride !== null) $snap['agreed_total'] = $priceOverride;
+    $dep = reconcile_deposit($status, $snap['agreed_total'], 0, $in['deposit'] ?? null);
+    if ($dep === null) json_out(['error' => 'A deposit must be more than £0 and less than the total'], 400);
+
+    $method = ''; $date = null;
+    if ($dep > 0.001) {
+        $date = clean($in['payment_date'] ?? '');
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) json_out(['error' => 'A valid payment date is required'], 400);
+        $method = clean($in['payment_method'] ?? '');
+    }
+
+    db()->prepare('INSERT INTO bookings
+        (prop_key,name,email,phone,address,postcode,check_in,check_out,check_in_time,check_out_time,adults,children,notes,payment,
+         deposit_paid,payment_method,payment_date,
+         agreed_total,agreed_per_night,agreed_nights,agreed_nightly,agreed_booking_fee,agreed_txn_pct,agreed_txn_fee,agreed_on,price_override)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+        ->execute([
+            $propKey, $name, clean($in['email'] ?? ''), clean($in['phone'] ?? ''), clean($in['address'] ?? ''), clean($in['postcode'] ?? ''), $checkIn, $checkOut,
+            clean($in['check_in_time'] ?? '15:00'), clean($in['check_out_time'] ?? '10:00'),
+            $adults, $children, clean($in['notes'] ?? ''), $status,
+            $dep, $method, ($date ?: null),
+            $snap['agreed_total'],$snap['agreed_per_night'],$snap['agreed_nights'],$snap['agreed_nightly'],
+            $snap['agreed_booking_fee'],$snap['agreed_txn_pct'],$snap['agreed_txn_fee'],$snap['agreed_on'],$priceOverride
+        ]);
+    $newId = (int)db()->lastInsertId();
+    // Auto-send the confirmation email for the newly created booking (if it has
+    // a guest email). Email failure never blocks the booking.
+    $emailResult = null;
+    $guestEmail = clean($in['email'] ?? '');
+    if ($guestEmail !== '') {
+        $emailResult = send_booking_confirmation($newId);
+    }
+    json_out(['ok' => true, 'id' => $newId, 'email' => $emailResult]);
+}
+
+if ($action === 'update') {
+    $id = (int)($in['id'] ?? 0);
+    $b = booking_by_id($id);
+    if (!$b) json_out(['error' => 'Booking not found'], 404);
+    $propKey = clean($in['prop_key'] ?? $b['prop_key']);
+    $rate = get_rate($propKey);
+    if (!$rate) json_out(['error' => 'Unknown property'], 400);
+
+    $checkIn = clean($in['check_in'] ?? $b['check_in']);
+    $checkOut = clean($in['check_out'] ?? $b['check_out']);
+    if ($checkOut <= $checkIn) json_out(['error' => 'Check-out must be after check-in'], 400);
+
+    // Date-clash warning (soft) — ignore this booking's own dates. Confirm with
+    // override_clash:true to proceed.
+    if (empty($in['override_clash'])) {
+        $clashMsg = clash_message($propKey, $checkIn, $checkOut, $id);
+        if ($clashMsg) json_out(['clash' => true, 'message' => $clashMsg]);
+    }
+
+    $adults = max(1, (int)($in['adults'] ?? $b['adults']));
+    $children = max(0, (int)($in['children'] ?? $b['children']));
+
+    // Re-snapshot price if the stay changed OR a new damages deposit was supplied
+    $damagesOverride = array_key_exists('damages_deposit', $in) ? $in['damages_deposit'] : null;
+    $currentDeposit = ($b['agreed_booking_fee'] !== null) ? (float)$b['agreed_booking_fee'] : null;
+    $depositChanged = ($damagesOverride !== null && (float)$damagesOverride !== $currentDeposit);
+    $stayChanged = ($propKey !== $b['prop_key']) || $checkIn !== $b['check_in'] ||
+                   $checkOut !== $b['check_out'] || $adults != $b['adults'] || $children != $b['children'] ||
+                   $b['agreed_total'] === null || $depositChanged;
+    // When re-snapshotting, use the supplied deposit if given, else preserve the existing one
+    $depForSnap = ($damagesOverride !== null) ? $damagesOverride : $currentDeposit;
+    $snap = $stayChanged
+        ? snapshot_fields($rate, ['adults'=>$adults,'children'=>$children,'check_in'=>$checkIn,'check_out'=>$checkOut], $depForSnap)
+        : null;
+
+    // Manual total override. If the field is sent: a value sets/keeps it, an empty
+    // string clears it (revert to calculated). If not sent at all, keep existing.
+    $overrideSent = array_key_exists('price_override', $in);
+    if ($overrideSent) {
+        $priceOverride = ($in['price_override'] !== null && $in['price_override'] !== '')
+            ? round((float)$in['price_override'], 2) : null;
+    } else {
+        $priceOverride = ($b['price_override'] !== null) ? (float)$b['price_override'] : null;
+    }
+    // The effective total: override wins; else the (re)snapshot; else existing.
+    $calcTotal = $snap ? $snap['agreed_total'] : (float)$b['agreed_total'];
+    $total = ($priceOverride !== null) ? $priceOverride : $calcTotal;
+
+    $status = in_array($in['payment'] ?? $b['payment'], ['unpaid','deposit','paid']) ? ($in['payment'] ?? $b['payment']) : $b['payment'];
+    $dep = reconcile_deposit($status, $total, $b['deposit_paid'], $in['deposit'] ?? null);
+    if ($dep === null) json_out(['error' => 'A deposit must be more than £0 and less than the total'], 400);
+
+    $method = $b['payment_method']; $date = $b['payment_date'];
+    if ($dep > 0.001) {
+        $date = clean($in['payment_date'] ?? $b['payment_date'] ?? '');
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$date)) json_out(['error' => 'A valid payment date is required'], 400);
+        $method = clean($in['payment_method'] ?? $b['payment_method'] ?? '');
+    } else { $method = ''; $date = null; }
+
+    $sql = 'UPDATE bookings SET prop_key=?,name=?,email=?,phone=?,address=?,postcode=?,check_in=?,check_out=?,check_in_time=?,check_out_time=?,
+            adults=?,children=?,notes=?,payment=?,deposit_paid=?,payment_method=?,payment_date=?,price_override=?';
+    $args = [$propKey, clean($in['name'] ?? $b['name']), clean($in['email'] ?? $b['email']), clean($in['phone'] ?? $b['phone']),
+             clean($in['address'] ?? $b['address']), clean($in['postcode'] ?? $b['postcode']),
+             $checkIn, $checkOut, clean($in['check_in_time'] ?? $b['check_in_time']), clean($in['check_out_time'] ?? $b['check_out_time']),
+             $adults, $children, clean($in['notes'] ?? $b['notes']), $status, $dep, $method, ($date ?: null), $priceOverride];
+    if ($snap) {
+        $sql .= ',agreed_total=?,agreed_per_night=?,agreed_nights=?,agreed_nightly=?,agreed_booking_fee=?,agreed_txn_pct=?,agreed_txn_fee=?,agreed_on=?';
+        array_push($args, $snap['agreed_total'],$snap['agreed_per_night'],$snap['agreed_nights'],$snap['agreed_nightly'],
+                   $snap['agreed_booking_fee'],$snap['agreed_txn_pct'],$snap['agreed_txn_fee'],$snap['agreed_on']);
+    }
+    $sql .= ' WHERE id = ?'; $args[] = $id;
+    db()->prepare($sql)->execute($args);
+    json_out(['ok' => true]);
+}
+
+if ($action === 'set_payment') {
+    $id = (int)($in['id'] ?? 0);
+    $b = booking_by_id($id);
+    if (!$b) json_out(['error' => 'Booking not found'], 404);
+    $total = (float)($b['agreed_total'] ?? 0);
+    $status = in_array($in['payment'] ?? '', ['unpaid','deposit','paid']) ? $in['payment'] : $b['payment'];
+    $dep = reconcile_deposit($status, $total, $b['deposit_paid'], $in['deposit'] ?? null);
+    if ($dep === null) json_out(['error' => "Deposit must be more than £0 and less than the total. Use 'Paid' or 'Unpaid' otherwise."], 400);
+
+    $method = $b['payment_method']; $date = $b['payment_date'];
+    if ($dep > 0.001) {
+        $date = clean($in['payment_date'] ?? $b['payment_date'] ?? '');
+        if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$date)) json_out(['error' => 'A valid payment date is required'], 400);
+        $method = clean($in['payment_method'] ?? $b['payment_method'] ?? '');
+    } else { $method = ''; $date = null; }
+
+    db()->prepare('UPDATE bookings SET payment=?, deposit_paid=?, payment_method=?, payment_date=? WHERE id=?')
+        ->execute([$status, $dep, $method, ($date ?: null), $id]);
+    json_out(['ok' => true]);
+}
+
+// Manually (re)send the confirmation email for an existing booking.
+if ($action === 'send_arrival') {
+    require_admin();
+    $id = (int)($in['id'] ?? 0);
+    $b = booking_by_id($id);
+    if (!$b) json_out(['error' => 'Booking not found'], 404);
+    if (empty($b['email'])) json_out(['error' => 'This booking has no guest email on file.'], 400);
+    require_once __DIR__ . '/mailer.php';   // the arrival-email helpers live here
+    $res = send_arrival_for_booking($b);
+    if (!empty($res['ok'])) json_out(['ok' => true]);
+    json_out(['error' => $res['error'] ?? 'Email failed to send'], 500);
+}
+
+if ($action === 'send_confirmation') {
+    require_admin();
+    $id = (int)($in['id'] ?? 0);
+    $b = booking_by_id($id);
+    if (!$b) json_out(['error' => 'Booking not found'], 404);
+    if (empty($b['email'])) json_out(['error' => 'This booking has no guest email on file.'], 400);
+    $result = send_booking_confirmation($id);
+    if (is_array($result) && isset($result['guest']) && !empty($result['guest']['ok'])) {
+        json_out(['ok' => true, 'email' => $result]);
+    }
+    $reason = $result['error'] ?? ($result['guest']['error'] ?? 'Unknown mail error');
+    json_out(['error' => 'Email not sent: ' . $reason, 'email' => $result], 200);
+}
+
+json_out(['error' => 'Unknown action'], 400);

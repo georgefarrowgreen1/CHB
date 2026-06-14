@@ -1,0 +1,16 @@
+User-agent: *
+Allow: /
+
+# Keep back-office / data endpoints out of search results
+Disallow: /auth.php
+Disallow: /bookings.php
+Disallow: /enquiries.php
+Disallow: /accounts.php
+Disallow: /content.php
+Disallow: /my-bookings.php
+Disallow: /passkeys.php
+Disallow: /ical-import.php
+Disallow: /mailer.php
+Disallow: /pre-arrival.php
+
+Sitemap: https://cottageholidaysblakeney.co.uk/sitemap.xml
