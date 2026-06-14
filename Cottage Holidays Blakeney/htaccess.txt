@@ -12,6 +12,13 @@ RewriteCond %{HTTPS} !=on
 RewriteCond %{HTTP:X-Forwarded-Proto} !https
 RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 
+# ---- Never run scripts out of the uploads/ folder ----
+# Only images are ever stored in uploads/. Even though upload.php validates file
+# content and uses random names, this blocks any request to execute a script there
+# as a second line of defence. (Belt-and-braces alongside uploads/.htaccess, in case
+# that per-folder file is missed when uploading via File Manager.)
+RewriteRule (?i)^uploads/.*\.(php|php[0-9]?|phtml|phps|pht|pl|py|cgi|sh|lua|asp|aspx|jsp)$ - [F,L]
+
 # ---- Protect sensitive files from being downloaded as text ----
 # config.php holds your DB password; schema.sql and the .md guide shouldn't be public.
 <FilesMatch "(^config\.php$|\.sql$|\.md$)">

@@ -6,6 +6,16 @@
 // ============================================================
 require_once __DIR__ . '/db.php';
 
+// Keep this one-time tool out of search engines even if it's left on the server.
+header('X-Robots-Tag: noindex, nofollow');
+
+// The admin password is passed in the URL, so it would be logged/visible in clear
+// text over plain HTTP. Refuse unless the request is HTTPS (proxy-aware — see
+// request_is_https() in db.php). Enable Force HTTPS (deploy step 4) before this step.
+if (!request_is_https()) {
+    json_out(['error' => 'Load this over https:// (not http://) so your password stays encrypted. Enable Force HTTPS in IONOS first.'], 400);
+}
+
 $username = clean($_GET['username'] ?? '');
 $password = $_GET['password'] ?? '';
 

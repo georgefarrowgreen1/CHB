@@ -1,0 +1,21 @@
+# ============================================================
+#  uploads/.htaccess — only images are ever stored in this folder.
+#  This stops anything here from being run as a script, so even if a
+#  disguised file somehow landed here it could not execute. Leave it in place.
+#  (Uses handler/access rules only — safe whether PHP runs as an Apache
+#  module or via FastCGI/FPM, unlike `php_flag engine off` which 500s on FPM.)
+# ============================================================
+
+# Block any executable/script file type from being served or run here.
+<FilesMatch "(?i)\.(php|php[0-9]?|phtml|phps|pht|pl|py|cgi|sh|lua|asp|aspx|jsp)$">
+    Require all denied
+</FilesMatch>
+
+# Fallback for older Apache (2.2) where "Require" isn't available.
+<FilesMatch "(?i)\.(php|php[0-9]?|phtml|phps|pht|pl|py|cgi|sh|lua|asp|aspx|jsp)$">
+    Order allow,deny
+    Deny from all
+</FilesMatch>
+
+# Never let the contents be listed, never run CGI from here.
+Options -Indexes -ExecCGI
