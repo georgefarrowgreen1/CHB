@@ -118,7 +118,7 @@
             --prop-pimpernel-bg: rgba(156, 39, 176, 0.3);
             --prop-pimpernel-border: rgba(156, 39, 176, 0.7);
             --text-light: #F4F5F7;
-            --text-muted: #A1A5B5;
+            --text-muted: #B4B8C6;
             /* Ambient background blobs (themeable) */
             --blob-1: #2A2D3A;
             --blob-2: #1B1E28;
@@ -403,7 +403,19 @@
             display: inline-block;
         }
         .btn-glass:hover { background: var(--text-light); color: var(--dark-grey); }
-        
+        /* Busy/disabled state — used while an async action (e.g. sending an enquiry) is in flight. */
+        .btn-glass:disabled, .btn-glass.is-busy { opacity: 0.6; cursor: progress; pointer-events: none; }
+        /* Clear keyboard focus ring (only for keyboard users, via :focus-visible) so the
+           glass UI stays clean for mouse/touch but is fully navigable from the keyboard. */
+        .btn-glass:focus-visible, .btn-sm:focus-visible, .account-btn:focus-visible,
+        .reviews-modal-close:focus-visible, .gallery-nav:focus-visible,
+        .lightbox-nav:focus-visible, .lightbox-close:focus-visible {
+            outline: 2px solid var(--prop-21a); outline-offset: 3px;
+        }
+        .input-glass:focus-visible, .date-range-trigger:focus-visible, .terms-accept input:focus-visible {
+            outline: 2px solid var(--prop-21a); outline-offset: 2px; border-color: var(--text-light);
+        }
+
         select.input-glass { appearance: none; -webkit-appearance: none; cursor: pointer; }
         /* Glass chevron on ALL glass selects (replaces the native dropdown arrow) */
         select.input-glass {
@@ -646,6 +658,8 @@
             font-family: var(--font-sans); font-size: 1rem; transition: border 0.3s;
         }
         .input-glass:focus { outline: none; border-color: var(--text-light); }
+        /* Inline date-rule warning shown live under the date picker (overrides the inline muted colour). */
+        .hint-warn { color: #F0A33A !important; font-weight: 500; }
         .input-glass option { background: var(--dark-grey); color: var(--text-light); }
         /* Read-only fields (e.g. a logged-in guest's account email) — clearly not editable. */
         .input-glass.input-locked { opacity: 0.7; cursor: not-allowed; background: rgba(0,0,0,0.32); }
@@ -679,6 +693,43 @@
         .gallery-nav:hover { background: rgba(18, 19, 22, 0.8); border-color: var(--text-light); transform: translateY(-50%) scale(1.05); }
         .gallery-nav.prev { left: 20px; }
         .gallery-nav.next { right: 20px; }
+        /* Photos open full-screen on click (except in edit mode, which has its own controls). */
+        .gallery-slide { cursor: zoom-in; }
+        body.edit-mode .gallery-slide { cursor: default; }
+
+        /* --- FULL-SCREEN PHOTO LIGHTBOX --- */
+        .lightbox {
+            position: fixed; inset: 0; z-index: 5000;
+            background: rgba(8,9,11,0.92);
+            backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+            display: none; align-items: center; justify-content: center;
+        }
+        .lightbox.open { display: flex; animation: fluidFadeIn 0.3s var(--fluid-bezier); }
+        .lightbox-stage { max-width: 92vw; max-height: 86vh; display: flex; align-items: center; justify-content: center; }
+        .lightbox-stage img { max-width: 92vw; max-height: 86vh; border-radius: 14px; box-shadow: 0 24px 70px rgba(0,0,0,0.6); object-fit: contain; }
+        .lightbox-nav {
+            position: absolute; top: 50%; transform: translateY(-50%);
+            width: 54px; height: 54px; border-radius: 50%;
+            background: rgba(255,255,255,0.08); border: 1px solid var(--glass-border);
+            color: var(--text-light); font-size: 1.7rem; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; transition: all 0.25s;
+        }
+        .lightbox-nav:hover { background: rgba(255,255,255,0.2); }
+        .lightbox-nav.prev { left: 18px; }
+        .lightbox-nav.next { right: 18px; }
+        .lightbox-close {
+            position: absolute; top: 18px; right: 18px;
+            width: 46px; height: 46px; border-radius: 50%;
+            background: rgba(255,255,255,0.08); border: 1px solid var(--glass-border);
+            color: var(--text-light); font-size: 1.4rem; cursor: pointer; line-height: 1;
+        }
+        .lightbox-close:hover { background: rgba(255,255,255,0.2); }
+        .lightbox-counter { position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%); color: var(--text-muted); font-size: 0.85rem; letter-spacing: 1px; }
+        @media (max-width: 600px) {
+            .lightbox-nav { width: 46px; height: 46px; }
+            .lightbox-nav.prev { left: 8px; }
+            .lightbox-nav.next { right: 8px; }
+        }
 
         /* --- DASHBOARD UI --- */
         .dashboard-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 40px; border-bottom: 1px solid var(--glass-border); padding-bottom: 20px; }
@@ -1528,15 +1579,15 @@
             <div class="glass-panel booking-glass" style="border-radius: 24px;">
                 <h3 style="font-family: var(--font-serif); font-size: 1.8rem; margin-bottom: 4px;" id="prop-price-heading"></h3>
                 <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 18px;" id="prop-price-tagline">per couple — book your stay below</p>
-                <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;">Your Name</label>
+                <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-name">Your Name</label>
                 <input type="text" class="input-glass" id="enq-name" placeholder="Full name">
-                <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;">Email</label>
+                <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-email">Email</label>
                 <input type="email" class="input-glass" id="enq-email" placeholder="you@email.com">
-                <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;">Phone</label>
+                <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-phone">Phone</label>
                 <input type="tel" class="input-glass" id="enq-phone" placeholder="Contact number">
-                <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;">UK Address</label>
+                <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-address">UK Address</label>
                 <textarea class="input-glass" id="enq-address" rows="2" placeholder="House name/number, street, town, county" style="resize: vertical;"></textarea>
-                <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;">Postcode</label>
+                <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-postcode">Postcode</label>
                 <input type="text" class="input-glass" id="enq-postcode" placeholder="e.g. NR25 7AB" autocomplete="postal-code" style="margin-bottom: 6px;">
                 <p style="font-size: 0.72rem; color: var(--text-muted); margin: 0 0 18px;">Used only to manage your booking and contact you. See our <a onclick="nav('view-privacy')" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy Policy</a>.</p>
                 <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" data-edit-text="prop1-label-in">Your Dates</label>
@@ -1550,11 +1601,11 @@
                 <p id="enq-rules-hint" style="font-size: 0.78rem; color: var(--text-muted); margin: -12px 0 16px;"></p>
                 <div style="display: flex; gap: 15px;">
                     <div style="flex: 1;">
-                        <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;">Adults</label>
+                        <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-adults">Adults</label>
                         <input type="number" class="input-glass" id="enq-adults" min="1" value="2" oninput="onOccupancyInput(); updateEnquiryPrice();">
                     </div>
                     <div style="flex: 1;">
-                        <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;">Children</label>
+                        <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-children">Children</label>
                         <input type="number" class="input-glass" id="enq-children" min="0" value="0" oninput="onOccupancyInput(); updateEnquiryPrice();">
                     </div>
                 </div>
@@ -1562,7 +1613,7 @@
                 <div class="price-box" id="enq-price-box">
                     <p style="color: var(--text-muted); font-size: 0.85rem; text-align: center; margin: 0;">Select dates to see your price.</p>
                 </div>
-                <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;">Message (optional)</label>
+                <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-message">Message (optional)</label>
                 <textarea class="input-glass" id="enq-message" rows="2" placeholder="Any special requests?" style="resize: vertical;"></textarea>
                 <label class="terms-accept">
                     <input type="checkbox" id="enq-terms">
@@ -1995,6 +2046,15 @@
     </div>
 
     <!-- GLASS DIALOG (replaces native alert/confirm/prompt) -->
+    <!-- Full-screen photo lightbox (opened by clicking any gallery image) -->
+    <div id="lightbox" class="lightbox" onclick="if(event.target===this||event.target.classList.contains('lightbox-stage')) closeLightbox()">
+        <button class="lightbox-close" onclick="closeLightbox()" aria-label="Close photo viewer">&times;</button>
+        <button class="lightbox-nav prev" onclick="event.stopPropagation(); lightboxNav(-1)" aria-label="Previous photo">&#10094;</button>
+        <div class="lightbox-stage"><img id="lightbox-img" alt="Cottage photo"></div>
+        <button class="lightbox-nav next" onclick="event.stopPropagation(); lightboxNav(1)" aria-label="Next photo">&#10095;</button>
+        <div class="lightbox-counter" id="lightbox-counter"></div>
+    </div>
+
     <div id="glass-dialog">
         <div class="glass-dialog-box glass-panel">
             <div class="glass-dialog-msg" id="glass-dialog-msg"></div>
@@ -2682,6 +2742,43 @@
             if (trackId === 'gallery-21a') updateGalleryHint();
         }
 
+        // ---- Full-screen photo lightbox ----
+        let lightboxIndex = 0;
+        function openLightbox(i) {
+            // Edit mode has its own photo controls (swap/replace), so don't hijack clicks there.
+            if (document.body.classList.contains('edit-mode')) return;
+            const imgs = window.__galleryImages || [];
+            if (!imgs.length || !imgs[i]) return;   // ignore empty placeholder slides
+            lightboxIndex = i;
+            renderLightbox();
+            document.getElementById('lightbox').classList.add('open');
+        }
+        function renderLightbox() {
+            const imgs = window.__galleryImages || [];
+            if (!imgs.length) return;
+            if (lightboxIndex < 0) lightboxIndex = imgs.length - 1;
+            if (lightboxIndex >= imgs.length) lightboxIndex = 0;
+            document.getElementById('lightbox-img').src = imgs[lightboxIndex];
+            document.getElementById('lightbox-counter').textContent = `${lightboxIndex + 1} / ${imgs.length}`;
+        }
+        function lightboxNav(dir) { lightboxIndex += dir; renderLightbox(); }
+        function closeLightbox() { document.getElementById('lightbox').classList.remove('open'); }
+        // Swipe left/right on touch devices.
+        (function () {
+            let x0 = null;
+            const lb = () => document.getElementById('lightbox');
+            document.addEventListener('touchstart', (e) => {
+                const el = lb();
+                if (el && el.classList.contains('open')) x0 = e.touches[0].clientX;
+            }, { passive: true });
+            document.addEventListener('touchend', (e) => {
+                if (x0 === null) return;
+                const dx = e.changedTouches[0].clientX - x0;
+                if (Math.abs(dx) > 50) lightboxNav(dx < 0 ? 1 : -1);
+                x0 = null;
+            }, { passive: true });
+        })();
+
         // Build the gallery slides dynamically from an array of image URLs, so a
         // property can have any number of photos (1, 3, 20…). Clamps the current
         // slide index and updates the edit-bar hint.
@@ -2692,8 +2789,9 @@
             // Lazy: hold the URL in data-bg and only paint the visible slide + its
             // neighbours (see loadGallerySlides). Off-screen photos download just in
             // time as the visitor navigates, so opening a cottage is much lighter.
+            window.__galleryImages = list;
             track.innerHTML = list.map((src, i) =>
-                `<div class="gallery-slide" id="prop-img-${i}" data-bg="${src}"></div>`
+                `<div class="gallery-slide" id="prop-img-${i}" data-bg="${src}" onclick="openLightbox(${i})"></div>`
             ).join('');
             // Clamp index in case photos were removed
             let idx = galleryState['gallery-21a'] || 0;
@@ -6154,6 +6252,55 @@
             if (e.target && e.target.id === 'details-modal') closeDetailsModal();
         });
 
+        // ---- Global keyboard handling for the glass modals, the date picker and the
+        //      lightbox: Escape closes the top-most one, Tab is trapped inside it, and
+        //      the arrow keys page through the lightbox. (The glass dialog above handles
+        //      its own keys, and the reviews/faq/details modals are handled above.)
+        const MODAL_CLOSERS = {
+            'guest-auth-modal': closeGuestAuthModal,
+            'guest-details-modal': closeGuestDetailsModal,
+            'guest-security-modal': closeGuestSecurityModal,
+            'admin-login-modal': closeAdminLogin,
+            'terms-modal': closeTermsModal,
+            'edit-modal': closeModal,
+            'arrival-modal': closeArrivalModal,
+            'map-modal': closeMapModal,
+        };
+        function topOpenDialog() {
+            const lb = document.getElementById('lightbox');
+            if (lb && lb.classList.contains('open')) return lb;
+            const open = Array.from(document.querySelectorAll('.modal-overlay.open'));
+            if (open.length) return open[open.length - 1];
+            const dp = document.getElementById('date-picker');
+            if (dp && dp.classList.contains('open')) return dp;
+            return null;
+        }
+        document.addEventListener('keydown', (e) => {
+            // While the glass dialog is open, let its own handler manage the keys.
+            const gd = document.getElementById('glass-dialog');
+            if (gd && gd.classList.contains('open')) return;
+            const m = topOpenDialog();
+            if (!m) return;
+            if (e.key === 'Escape') {
+                e.preventDefault();
+                if (m.id === 'lightbox') return closeLightbox();
+                if (m.id === 'date-picker') return closeDatePicker();
+                const closer = MODAL_CLOSERS[m.id];
+                if (closer) closer(); else m.classList.remove('open');
+            } else if (m.id === 'lightbox' && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+                e.preventDefault();
+                lightboxNav(e.key === 'ArrowLeft' ? -1 : 1);
+            } else if (e.key === 'Tab') {
+                // Keep keyboard focus inside the open dialog.
+                const focusable = m.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])');
+                const items = Array.from(focusable).filter(el => el.offsetParent !== null);
+                if (!items.length) return;
+                const first = items[0], last = items[items.length - 1];
+                if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+                else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+            }
+        });
+
         // Phone number for the "Call to Discuss" buttons. The live value is set in
         // Back Office → Settings & Fees and stored with site content; these are just
         // fallbacks used before content loads or if it was never set.
@@ -6844,6 +6991,24 @@
             const adults = Math.max(1, parseInt(document.getElementById('enq-adults').value, 10) || 0);
             const children = Math.max(0, parseInt(document.getElementById('enq-children').value, 10) || 0);
 
+            // Real-time feedback on the chosen dates, so the visitor sees a problem
+            // (e.g. below the minimum stay, or a non-arrival day) before they submit.
+            const rulesHint = document.getElementById('enq-rules-hint');
+            if (rulesHint) {
+                let warn = '';
+                if (checkIn && checkOut) {
+                    if (checkOut <= checkIn) warn = 'Your check-out date must be after your check-in date.';
+                    else warn = checkBookingRules(activeFrontProperty, checkIn, checkOut) || '';
+                }
+                if (warn) {
+                    rulesHint.textContent = '⚠ ' + warn;
+                    rulesHint.classList.add('hint-warn');
+                } else {
+                    rulesHint.textContent = bookingRulesHint(activeFrontProperty);
+                    rulesHint.classList.remove('hint-warn');
+                }
+            }
+
             if (!checkIn || !checkOut || checkOut <= checkIn) {
                 const r = propertyRates[activeFrontProperty] || defaultRates[activeFrontProperty];
                 box.innerHTML = `<p style="color: var(--text-light); font-size: 0.95rem; text-align: center; margin: 0;">From <strong>${gbp(r.coupleRate)}</strong> <span style="color: var(--text-muted);">/ night for a couple</span><br><span style="color: var(--text-muted); font-size: 0.8rem;">Refundable damages deposit ${gbp(r.damagesDeposit)} · select dates to see your full price.</span></p>`;
@@ -6956,6 +7121,11 @@
                 return;
             }
 
+            // Disable the button + show progress so a slow connection can't be
+            // double-submitted into duplicate enquiries.
+            const submitBtn = document.getElementById('enq-submit-btn');
+            const origSubmitLabel = submitBtn ? submitBtn.textContent : '';
+            if (submitBtn) { submitBtn.disabled = true; submitBtn.classList.add('is-busy'); submitBtn.textContent = 'Sending…'; }
             try {
                 const rr = propertyRates[propKey] || defaultRates[propKey] || {};
                 await apiPost('enquiries.php', {
@@ -6969,6 +7139,8 @@
             } catch (e) {
                 glassAlert("Sorry, your enquiry couldn't be sent: " + e.message);
                 return;
+            } finally {
+                if (submitBtn) { submitBtn.disabled = false; submitBtn.classList.remove('is-busy'); submitBtn.textContent = origSubmitLabel; }
             }
 
             // Reset the form
@@ -7365,7 +7537,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'ci9fz2bh';
+            const BUILD = 'uk8p3v6n';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
