@@ -127,6 +127,7 @@
             --font-serif: 'Playfair Display', serif;
             --font-sans: 'Montserrat', sans-serif;
             --fluid-bezier: cubic-bezier(0.25, 1, 0.25, 1);
+            --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
         }
 
         /* ---- LIGHT MODE: swap the theme tokens; the rest of the CSS follows ---- */
@@ -257,16 +258,31 @@
             }
         }
         /* Touch feedback: a gentle press instead of a sticky hover */
-        .card:active { transform: scale(0.985); }
+        .card:active { transform: scale(0.97); }
 
         /* --- ROUTING SYSTEM --- */
-        .page-view { display: none; opacity: 0; transform: translateY(20px); flex: 1; }
+        .page-view { display: none; opacity: 0; transform: translateY(22px) scale(0.992); flex: 1; }
         .page-view.active {
             display: block;
-            animation: fluidFadeIn 0.8s var(--fluid-bezier) forwards;
+            animation: fluidFadeIn 0.7s var(--fluid-bezier) forwards;
         }
         @keyframes fluidFadeIn {
-            to { opacity: 1; transform: translateY(0); }
+            from { opacity: 0; transform: translateY(22px) scale(0.992); }
+            to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        /* Staggered "rise" for the cottage cards on entry. Added by initCardRise and
+           cleared on animationend so the hover lift still works afterwards. */
+        @keyframes cardRise {
+            from { opacity: 0; transform: translateY(28px) scale(0.97); }
+            to   { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .grid > .card.rise { opacity: 0; animation: cardRise 0.7s var(--spring) forwards; }
+        .grid > .card.rise:nth-child(1) { animation-delay: 0.04s; }
+        .grid > .card.rise:nth-child(2) { animation-delay: 0.12s; }
+        .grid > .card.rise:nth-child(3) { animation-delay: 0.20s; }
+        @media (prefers-reduced-motion: reduce) {
+            .page-view.active { animation-duration: 0.001s; }
+            .grid > .card.rise { animation: none; opacity: 1; }
         }
 
         /* --- RESPONSIVE HEADER --- */
@@ -347,12 +363,24 @@
         nav { display: flex; flex-shrink: 0; }
         nav a { white-space: nowrap; }
         
-        nav ul { display: flex; gap: 30px; list-style: none; align-items: center; flex-wrap: nowrap; flex-shrink: 0; }
+        nav ul { position: relative; display: flex; gap: 6px; list-style: none; align-items: center; flex-wrap: nowrap; flex-shrink: 0; }
         nav a {
             font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1.5px;
             color: var(--text-muted); cursor: pointer; transition: color 0.4s;
         }
+        /* Text tabs get padding so the sliding glass pill can wrap them. */
+        nav ul li a:not(.btn-glass) { position: relative; z-index: 1; display: inline-block; padding: 9px 16px; border-radius: 999px; }
         nav a:hover { color: var(--text-light); }
+        /* Hover-following glass pill behind the nav tabs (positioned by initNavIndicator). */
+        .nav-indicator {
+            position: absolute; top: 50%; left: 0; transform: translateY(-50%);
+            width: 0; height: 38px; border-radius: 999px;
+            background: var(--glass-hover); border: 1px solid var(--glass-border);
+            opacity: 0; pointer-events: none; z-index: 0;
+            transition: left 0.45s var(--spring), width 0.45s var(--spring), opacity 0.3s ease;
+        }
+        .nav-indicator.show { opacity: 1; }
+        @media (prefers-reduced-motion: reduce) { .nav-indicator { transition: opacity 0.2s ease; } }
         
         .menu-toggle {
             display: none;
@@ -399,10 +427,13 @@
             color: var(--text-light); cursor: pointer;
             text-transform: uppercase; font-size: 0.8rem; letter-spacing: 1px;
             white-space: nowrap;
-            transition: all 0.4s var(--fluid-bezier);
+            transition: background 0.4s var(--fluid-bezier), color 0.4s var(--fluid-bezier), transform 0.4s var(--spring), box-shadow 0.4s var(--fluid-bezier);
             display: inline-block;
         }
         .btn-glass:hover { background: var(--text-light); color: var(--dark-grey); }
+        /* Springy press + a hint of lift on hover for a tactile feel. */
+        @media (hover: hover) { .btn-glass:hover { transform: translateY(-1px); } }
+        .btn-glass:active { transform: scale(0.95); }
         /* Busy/disabled state — used while an async action (e.g. sending an enquiry) is in flight. */
         .btn-glass:disabled, .btn-glass.is-busy { opacity: 0.6; cursor: progress; pointer-events: none; }
         /* Clear keyboard focus ring (only for keyboard users, via :focus-visible) so the
@@ -555,7 +586,10 @@
 
         /* --- GRID CARDS --- */
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; margin-top: 60px; }
-        .card { padding: 15px; display: flex; flex-direction: column; cursor: pointer; }
+        .card { padding: 15px; display: flex; flex-direction: column; cursor: pointer;
+            transition: background 0.5s var(--fluid-bezier), border-color 0.5s var(--fluid-bezier), transform 0.55s var(--spring), box-shadow 0.5s var(--fluid-bezier); }
+        /* A touch more lift + scale than the generic glass panel, with springy easing. */
+        @media (hover: hover) { .card:hover { transform: translateY(-7px) scale(1.012); } }
         .card-img { height: clamp(180px, 30vw, 250px); border-radius: 16px; background-size: cover; background-position: center; margin-bottom: 20px; }
         .card-title { font-family: var(--font-serif); font-size: clamp(1.4rem, 4vw, 1.8rem); margin-bottom: 5px; }
         .card-meta { font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: 1px; margin-bottom: 15px; }
@@ -1430,6 +1464,7 @@
         </div>
         <nav>
             <ul>
+                <span class="nav-indicator" aria-hidden="true"></span>
                 <li><a onclick="nav('view-main')" data-edit-text="nav-home">Home</a></li>
                 <li><a onclick="nav('view-main', 'cottages')" data-edit-text="nav-cottages">Cottages</a></li>
                 <li><a class="btn-glass" onclick="nav('view-main', 'cottages')" data-edit-text="nav-book">Enquire Now</a></li>
@@ -2820,6 +2855,34 @@
         }
         // Re-align after a resize (button sizes change at the dock's breakpoints).
         window.addEventListener('resize', () => { clearTimeout(window.__dockT); window.__dockT = setTimeout(moveDockIndicator, 120); });
+
+        // ---- Public top-nav: hover-following glass pill ----
+        (function initNavIndicator() {
+            const ul = document.querySelector('header nav ul');
+            if (!ul) return;
+            const ind = ul.querySelector('.nav-indicator');
+            if (!ind) return;
+            const tabs = ul.querySelectorAll('li a:not(.btn-glass)');
+            function moveTo(el) {
+                ind.style.left = el.offsetLeft + 'px';
+                ind.style.width = el.offsetWidth + 'px';
+                ind.style.height = el.offsetHeight + 'px';
+                ind.classList.add('show');
+            }
+            tabs.forEach(t => t.addEventListener('mouseenter', () => moveTo(t)));
+            ul.addEventListener('mouseleave', () => ind.classList.remove('show'));
+        })();
+
+        // ---- Staggered entrance for the cottage cards ----
+        // Plays once on load, then clears the class so the hover lift works afterwards.
+        (function initCardRise() {
+            document.querySelectorAll('#cottages .grid > .card').forEach(c => {
+                c.classList.add('rise');
+                c.addEventListener('animationend', function done(e) {
+                    if (e.animationName === 'cardRise') { c.classList.remove('rise'); c.removeEventListener('animationend', done); }
+                });
+            });
+        })();
 
         // Build the gallery slides dynamically from an array of image URLs, so a
         // property can have any number of photos (1, 3, 20…). Clamps the current
@@ -7579,7 +7642,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'dk5w9q2r';
+            const BUILD = 'fq7m4x8t';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
