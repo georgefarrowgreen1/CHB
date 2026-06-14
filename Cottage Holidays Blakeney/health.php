@@ -7,6 +7,9 @@
 // ============================================================
 require_once __DIR__ . '/db.php';
 
+// Keep this diagnostic out of search engines even if it's left on the server.
+header('X-Robots-Tag: noindex, nofollow');
+
 // Privacy: full diagnostics (table presence, counts, setup hints) are only shown
 // to a logged-in admin OR when no admin exists yet (the genuine first-time setup
 // case). Once the site is set up, anonymous visitors get a minimal status only,

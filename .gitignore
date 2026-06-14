@@ -1,0 +1,16 @@
+# Stale timestamped backups of the front end — these were committed by accident
+# and bloat the repo. The live file is index.html; recover old versions from git.
+Cottage Holidays Blakeney/index.backup-*.html
+
+# Photos uploaded at runtime via the Live Editor's file finder. Keep the folder
+# and its guards (README + .htaccess) tracked, but not the user-uploaded content.
+Cottage Holidays Blakeney/uploads/*
+!Cottage Holidays Blakeney/uploads/README.txt
+!Cottage Holidays Blakeney/uploads/.htaccess
+
+# Optimised WebP copies generated next to source images at upload time.
+Cottage Holidays Blakeney/*.webp
+
+# Common local cruft
+.DS_Store
+Thumbs.db
