@@ -289,16 +289,17 @@ function send_arrival_email($b) {
     $inDate  = date('D j M Y', strtotime($b['check_in']));
     $time = $b['check_in_time'] ?: '15:00';
     $addr = trim($b['address'] ?? '');
-    $info = trim($b['info'] ?? '');
+    // The actual entry/key code is NOT emailed (see send_arrival_for_booking);
+    // guests reveal it in-app once they're at the cottage. We just point them there.
+    $reveal = 'When you arrive, log in to your account on our website and open "My Bookings" to reveal your entry details for the cottage.';
 
     $subject = "Your stay at {$prop} — arrival information";
     $text = "Hello {$name},\n\n"
           . "Your stay at {$prop} begins on {$inDate}. Check-in is from {$time}.\n\n"
           . ($addr !== '' ? "Address:\n{$addr}\n\n" : '')
-          . ($info !== '' ? "Arrival information:\n{$info}\n\n" : '')
+          . $reveal . "\n\n"
           . "We look forward to welcoming you.\n\nCottage Holidays Blakeney";
 
-    $infoHtml = $info !== '' ? nl2br(htmlspecialchars($info, ENT_QUOTES, 'UTF-8')) : '';
     $addrHtml = $addr !== '' ? nl2br(htmlspecialchars($addr, ENT_QUOTES, 'UTF-8')) : '';
     $html = '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f4f4f6;">'
       . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f6;padding:24px 0;"><tr><td align="center">'
@@ -312,7 +313,7 @@ function send_arrival_email($b) {
       . '<p style="font-size:14px;color:#333;line-height:1.6;margin:18px 0 0;">Hello ' . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . ',</p>'
       . '<p style="font-size:14px;color:#333;line-height:1.6;margin:10px 0 0;">Your stay begins on <strong>' . $inDate . '</strong>. Check-in is from <strong>' . htmlspecialchars($time, ENT_QUOTES, 'UTF-8') . '</strong>.</p>'
       . ($addrHtml !== '' ? '<p style="font-size:13px;color:#555;line-height:1.6;margin:16px 0 0;"><strong style="color:#333;">Address</strong><br>' . $addrHtml . '</p>' : '')
-      . ($infoHtml !== '' ? '<div style="margin:18px 0 0;padding:16px 18px;background:#f8f8fa;border-left:4px solid ' . $accent . ';border-radius:8px;font-size:13px;color:#444;line-height:1.7;">' . $infoHtml . '</div>' : '')
+      . '<div style="margin:18px 0 0;padding:16px 18px;background:#f8f8fa;border-left:4px solid ' . $accent . ';border-radius:8px;font-size:13px;color:#444;line-height:1.7;">When you arrive, log in to your account on our website and open <strong>My Bookings</strong> to reveal your entry details for the cottage.</div>'
       . '<p style="font-size:13px;color:#777;line-height:1.6;margin:22px 0 4px;">We look forward to welcoming you.</p>'
       . '<p style="font-size:13px;color:#777;margin:0 0 6px;">Cottage Holidays Blakeney</p>'
       . '</td></tr></table></td></tr></table></body></html>';
@@ -327,19 +328,15 @@ function send_arrival_for_booking($bk) {
         $p = db()->prepare('SELECT name, address FROM properties WHERE prop_key = ?');
         $p->execute([$bk['prop_key']]);
         $prop = $p->fetch() ?: ['name' => $bk['prop_key'], 'address' => ''];
-        $info = '';
-        try {
-            $c = db()->prepare('SELECT item_value FROM content WHERE item_key = ?');
-            $c->execute(['arrival-' . $bk['prop_key']]);
-            $row = $c->fetch();
-            if ($row) { $d = json_decode(decrypt_value($row['item_value']), true); $info = is_string($d) ? $d : ''; }
-        } catch (\Throwable $e) {}
+        // The door/key code (arrival-<prop>) is deliberately NOT emailed; guests
+        // reveal it in-app via the geofenced "My Bookings" flow (arrival-access.php),
+        // so this path never even decrypts it.
         $res = send_arrival_email([
             'prop_key' => $bk['prop_key'], 'prop_name' => $prop['name'],
             'name' => $bk['name'], 'email' => $bk['email'],
             'check_in' => $bk['check_in'], 'check_out' => $bk['check_out'],
             'check_in_time' => $bk['check_in_time'] ?? '15:00',
-            'address' => $prop['address'], 'info' => $info,
+            'address' => $prop['address'],
         ]);
         if (!empty($res['ok'])) {
             try { db()->prepare('UPDATE bookings SET pre_arrival_sent = NOW() WHERE id = ?')->execute([(int)$bk['id']]); }
