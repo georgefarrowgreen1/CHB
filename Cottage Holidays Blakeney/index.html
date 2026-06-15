@@ -4041,12 +4041,25 @@
                     <span class="settings-row-main"><span class="settings-row-label">${escapeHtml(propertyMeta[k].name)}</span></span><span class="settings-row-chev">›</span>
                 </button>`).join('');
         }
-        function renderAccomList() {
+        async function renderAccomList() {
             const list = document.getElementById('accom-list'); const detail = document.getElementById('accom-detail');
             if (detail) { detail.style.display = 'none'; detail.innerHTML = ''; }
-            if (list) { list.style.display = ''; list.innerHTML = `<div class="settings-group">${cottageRowsHtml('settingsOpenAccom')}</div>`; }
             settingsBackTarget = () => settingsShowIndex();
             const title = document.getElementById('settings-panel-title'); if (title) title.textContent = SETTINGS_TITLES.accom;
+            if (!list) return;
+            list.style.display = '';
+            list.innerHTML = `<div class="settings-group">${cottageRowsHtml('settingsOpenAccom')}</div>`;
+            // Add a current-month occupancy donut to each cottage (load bookings if needed).
+            try {
+                if (!Object.keys(dbBookings).some(k => (dbBookings[k] || []).length)) await loadData();
+                const occ = cottageMonthOccupancy();
+                list.innerHTML = `<div class="settings-group">${Object.keys(propertyMeta).map(k => `
+                    <button class="settings-row" onclick="settingsOpenAccom('${k}')">
+                        <span class="settings-row-ic"><span class="legend-swatch swatch-${k}" style="width:16px;height:16px;border-radius:5px;"></span></span>
+                        <span class="settings-row-main"><span class="settings-row-label">${escapeHtml(propertyMeta[k].name)}</span><span class="settings-row-sub">${occ[k].pct}% booked this month · ${occ[k].nights}/${occ[k].total} nights</span></span>
+                        ${osMiniDonut(occ[k].pct, 'var(--prop-' + k + ')')}<span class="settings-row-chev" style="margin-left:10px;">›</span>
+                    </button>`).join('')}</div>`;
+            } catch (e) { /* keep the plain list if booking data isn't available */ }
         }
         // Each cottage's Preferences open as a sub-index of subfolders; each row drills
         // into just that part (rates, house rules, safety, …) — see settingsOpenAccomSec.
@@ -4636,6 +4649,8 @@
             });
             const owed = rows.filter(r => !r.ps.fullyPaid);
             const owedTotal = owed.reduce((s, r) => s + (r.ps.balance || 0), 0);
+            const receivedTotal = rows.reduce((s, r) => s + (r.ps.deposit || 0), 0);
+            const collectedPct = (receivedTotal + owedTotal) > 0 ? Math.round(receivedTotal / (receivedTotal + owedTotal) * 100) : (receivedTotal > 0 ? 100 : 0);
             const intro = squareAdminEnabled
                 ? 'Email the guest a secure card link with <strong>Request deposit</strong> / <strong>Request full balance</strong>, or record a manual payment (bank transfer, cash) with the controls on each row.'
                 : 'Square card payments are off — set them up in Settings to email pay links. You can still record manual payments (bank transfer, cash) below.';
@@ -4643,9 +4658,15 @@
                 el.innerHTML = `<h3 class="accounts-section-title">Payments &amp; balances</h3><div class="accounts-empty">No upcoming or current bookings.</div>`;
                 return;
             }
-            const owedBanner = owed.length
+            const owedText = owed.length
                 ? `<div class="money-owed">You're owed <strong>${gbp(owedTotal)}</strong> across ${owed.length} booking${owed.length === 1 ? '' : 's'}.</div>`
                 : `<div class="money-owed all-paid">All upcoming bookings are paid in full.</div>`;
+            // Collected-vs-owed at a glance: a donut beside the headline figure.
+            const owedBanner = `<div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;">
+                ${osDonut(collectedPct, 'var(--accent)')}
+                <div style="min-width:0;">${owedText}
+                    <div class="os-sub" style="margin-top:4px;">${gbp(receivedTotal)} collected of ${gbp(receivedTotal + owedTotal)} due on upcoming stays</div>
+                </div></div>`;
             const cards = rows.map(({ propKey, b, ps }) => {
                 const meta = paymentMeta[b.payment] || { label: '—', dot: '#888' };
                 const ci = dpParse(b.checkIn), t0 = dpParse(today);
@@ -4791,7 +4812,12 @@
                 </tr>`;
             }).join('');
             const projTotal = months.reduce((s, m) => s + m.revenue, 0);
+            const chart = osVBars(months.map(m => ({ short: m.label.split(' ')[0].slice(0, 3), label: m.label, value: m.revenue })), moneyShort);
             el.innerHTML = `<h3 class="accounts-section-title">Income forecast (next 6 months)</h3>
+                <div class="accounts-stat" style="max-width:720px;margin-bottom:16px;">
+                    <div class="label">Projected revenue by month</div>
+                    ${chart}
+                </div>
                 <table class="accounts-table">
                     <thead><tr><th>Month</th><th class="num">Projected revenue</th><th class="num">Bookings</th><th class="num">Occupancy</th></tr></thead>
                     <tbody>${body}<tr style="font-weight:600;"><td>Total projected</td><td class="num">${gbp(projTotal)}</td><td class="num"></td><td class="num"></td></tr></tbody>
@@ -7811,11 +7837,20 @@
                     <div class="today-card-list">${items.length ? items.slice(0, 4).map(i => `<div>${i}</div>`).join('') + (items.length > 4 ? `<div style="color:var(--text-muted);">+${items.length - 4} more</div>` : '') : '<span style="color:var(--text-muted);">Nothing</span>'}</div>
                 </div>`;
             const anything = arrivals.length || departures.length || dueSoon.length || toReturn.length;
+            const occ = cottageMonthOccupancy();
+            const occBars = osHBars(Object.keys(propertyMeta).map(k => ({
+                label: propertyMeta[k].name, value: occ[k].nights, max: occ[k].total,
+                valLabel: occ[k].pct + '%', color: `var(--prop-${k})`
+            })));
             el.innerHTML = `<div class="today-grid">
                 ${card('Arrivals today', arrivals)}
                 ${card('Departures today', departures)}
                 ${card('Balances due (7 days)', dueSoon, dueSoon.length ? 'color:#FFA726;' : '')}
                 ${card('Deposits to return', toReturn, toReturn.length ? 'color:#FFA726;' : '')}
+                <div class="today-card" style="grid-column:1/-1;">
+                    <div class="today-card-label">Occupancy this month · by cottage</div>
+                    <div style="margin-top:12px;">${occBars}</div>
+                </div>
             </div>${anything ? '' : '<p style="font-size:0.82rem;color:var(--text-muted);margin:2px 0 0;">All clear — nothing needs doing today.</p>'}`;
         }
         // Quick find: filter bookings by guest name/email; click a result to open it.
@@ -9758,6 +9793,58 @@
             }
         }
 
+        // ---- Reusable mini-chart helpers (inline SVG/CSS, no library) ----
+        function osMiniDonut(pct, color) {
+            pct = Math.max(0, Math.min(100, Math.round(pct || 0)));
+            const R = 15, C = 2 * Math.PI * R, dash = (C * pct / 100).toFixed(1);
+            return `<svg viewBox="0 0 40 40" style="width:42px;height:42px;flex-shrink:0;" role="img" aria-label="${pct}%">
+                <circle cx="20" cy="20" r="${R}" fill="none" stroke="rgba(255,255,255,0.10)" stroke-width="5"/>
+                <circle cx="20" cy="20" r="${R}" fill="none" stroke="${color}" stroke-width="5" stroke-linecap="round" stroke-dasharray="${dash} ${C.toFixed(1)}" transform="rotate(-90 20 20)"/>
+                <text x="20" y="24" text-anchor="middle" font-size="10" fill="var(--text-light)">${pct}</text></svg>`;
+        }
+        function moneyShort(v) { v = +v || 0; return v >= 1000 ? '£' + (v / 1000).toFixed(v >= 10000 ? 0 : 1) + 'k' : '£' + Math.round(v); }
+        // Vertical bars: items = [{label, short, value}].
+        function osVBars(items, fmt) {
+            if (!items || !items.length) return '';
+            const peak = Math.max(1, ...items.map(i => i.value || 0));
+            return `<div style="display:flex;align-items:flex-end;gap:8px;height:140px;margin:12px 0 2px;">` + items.map(i => {
+                const h = Math.max(3, Math.round((i.value || 0) / peak * 100));
+                return `<div title="${escapeHtml(i.label)}: ${fmt ? fmt(i.value) : i.value}" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:5px;min-width:0;">
+                    <span style="font-size:0.62rem;color:var(--text-muted);white-space:nowrap;">${fmt ? fmt(i.value) : i.value}</span>
+                    <div style="width:100%;max-width:36px;background:linear-gradient(180deg,var(--accent),rgba(214,167,133,0.30));border-radius:6px 6px 0 0;height:${h}%;"></div>
+                    <span style="font-size:0.6rem;color:var(--text-muted);white-space:nowrap;">${escapeHtml(i.short || i.label)}</span>
+                </div>`;
+            }).join('') + `</div>`;
+        }
+        // Horizontal bars: items = [{label, value, max, valLabel, color}].
+        function osHBars(items) {
+            return (items || []).map(i => {
+                const pct = Math.max(2, Math.round((i.value || 0) / (i.max || 1) * 100));
+                return `<div style="margin-bottom:9px;">
+                    <div style="display:flex;justify-content:space-between;gap:10px;font-size:0.8rem;margin-bottom:4px;"><span style="color:var(--text-light);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(i.label)}</span><span style="color:var(--text-muted);">${escapeHtml(i.valLabel != null ? i.valLabel : String(i.value))}</span></div>
+                    <div style="height:8px;border-radius:5px;background:rgba(255,255,255,0.08);overflow:hidden;"><div style="height:100%;width:${pct}%;background:${i.color || 'var(--accent)'};border-radius:5px;transition:width 0.5s var(--fluid-bezier);"></div></div>
+                </div>`;
+            }).join('');
+        }
+        // Booked cottage-nights this calendar month, per cottage (direct + iCal blocks).
+        function cottageMonthOccupancy() {
+            const now = new Date();
+            const mStart = formatDashed(new Date(now.getFullYear(), now.getMonth(), 1));
+            const mEnd = formatDashed(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+            const days = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+            const sets = {}; const out = {};
+            Object.keys(propertyMeta).forEach(k => { sets[k] = new Set(); out[k] = { nights: 0, total: days, pct: 0 }; });
+            const add = (k, ci, co) => {
+                if (!sets[k]) return;
+                let d = dpParse(ci), e = dpParse(co); if (!d || !e) return;
+                for (; d < e; d.setDate(d.getDate() + 1)) { const ds = formatDashed(d); if (ds >= mStart && ds <= mEnd) sets[k].add(ds); }
+            };
+            Object.keys(dbBookings).forEach(k => (dbBookings[k] || []).forEach(b => add(k, b.checkIn, b.checkOut)));
+            Object.keys(dbBlocks || {}).forEach(k => (dbBlocks[k] || []).forEach(bl => add(k, bl.checkIn, bl.checkOut)));
+            Object.keys(out).forEach(k => { out[k].nights = sets[k].size; out[k].pct = Math.round(sets[k].size / days * 100); });
+            return out;
+        }
+
         function renderCalendar() {
             renderOwnerSummary();
             renderCalUpdated();
@@ -10759,7 +10846,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'dj5k6m8q';
+            const BUILD = 'ek6l7n9r';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
