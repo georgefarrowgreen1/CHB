@@ -5931,6 +5931,33 @@
             }
             try { return await navigator.serviceWorker.register('sw.js'); } catch (e) { return null; }
         }
+        // Reliable auto-update: while signed in as admin, poll the deployed build id
+        // and silently reload the open page when a new release lands — no click, no
+        // re-login (the session cookie survives a reload). Independent of web-push,
+        // so it works even where push isn't delivered. Admin-only so a guest is never
+        // interrupted mid-booking.
+        let __verTimer = null, __verReloading = false;
+        function startVersionWatch() {
+            if (__verTimer) return;
+            const check = async () => {
+                if (__verReloading) return;
+                if (document.visibilityState !== 'visible') return;
+                if (!document.body.classList.contains('owner-mode')) return;
+                try {
+                    const r = await fetchWithTimeout(API_BASE + 'version.php', { cache: 'no-store' }, 8000);
+                    if (!r.ok) return;
+                    const d = await r.json();
+                    if (d && d.build && window.__BUILD && d.build !== window.__BUILD) {
+                        __verReloading = true;
+                        try { toast('Updating to the new version…'); } catch (_) {}
+                        setTimeout(() => { try { location.reload(); } catch (_) {} }, 1200);
+                    }
+                } catch (e) { /* transient — try again next tick */ }
+            };
+            __verTimer = setInterval(check, 90000);          // every 90s
+            document.addEventListener('visibilitychange', check);
+            window.addEventListener('focus', check);
+        }
         async function enableArrivalPush() {
             try {
                 if (!currentGuest) return;
@@ -6836,6 +6863,7 @@
             // Count this initial landing (whatever view is active after boot).
             try { const av = document.querySelector('.page-view.active'); trackView(av ? av.id : 'view-main', activeFrontProperty); } catch (e) {}
             try { startLiveUpdates(); } catch (e) { console.error(e); }
+            try { startVersionWatch(); } catch (e) { console.error(e); }
             try { maybeOpenPayLink(); } catch (e) { console.error(e); }   // ?pay=… → payment view
             try { maybeOpenReviewLink(); } catch (e) { console.error(e); } // ?review=… → My Bookings
             setTimeout(() => { try { maybeShowInstallHint(); } catch (e) {} }, 2500);
@@ -10878,7 +10906,8 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'gm8n9p1t';
+            const BUILD = 'hn9o0q2u';
+            window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
