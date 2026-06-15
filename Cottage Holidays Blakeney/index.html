@@ -1577,6 +1577,9 @@
         .leaflet-control-zoom-in { border-bottom: none !important; border-radius: 12px 12px 0 0 !important; }
         .leaflet-control-zoom-out { border-radius: 0 0 12px 12px !important; }
         .leaflet-control-zoom a.leaflet-disabled { color: rgba(255,255,255,0.35) !important; background: rgba(26,25,27,0.4) !important; }
+        /* Shrink the map attribution so it isn't oversized */
+        .leaflet-control-attribution, .leaflet-control-attribution a { font-size: 9px !important; line-height: 1.5 !important; }
+        .leaflet-control-attribution { padding: 0 5px !important; background: rgba(255,255,255,0.75) !important; }
         @media (max-width: 560px) {
             .admin-dock { padding: 7px 9px; gap: 2px; }
             .admin-dock-btn { width: 44px; height: 44px; }
@@ -8681,7 +8684,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'tv8z4w6k';
+            const BUILD = 'uw9a5x7k';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
