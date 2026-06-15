@@ -21,6 +21,14 @@ $stmt = db()->prepare(
 $stmt->execute([$guest['email']]);
 $bookings = $stmt->fetchAll();
 
+// Attach a login-free pay token to each booking so the guest can pay an
+// outstanding balance straight from My Bookings (only their own bookings).
+$sqOn = square_enabled();
+foreach ($bookings as &$bk) {
+    $bk['pay_token'] = $sqOn ? pay_token((int)$bk['id']) : null;
+}
+unset($bk);
+
 // Also return this guest's PENDING enquiries (submitted, not yet confirmed by
 // the owner) so the account can show them as cards in the same layout.
 $eq = db()->prepare(

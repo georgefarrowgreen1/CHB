@@ -23,7 +23,7 @@ function email_crown_header($bg) {
 /**
  * Low-level: send one email via SMTP. Returns [ok=>bool, error=>string].
  */
-function smtp_send($toEmail, $toName, $subject, $bodyText, $bodyHtml = null) {
+function smtp_send($toEmail, $toName, $subject, $bodyText, $bodyHtml = null, $attachments = []) {
     if (!defined('MAIL_ENABLED') || !MAIL_ENABLED) {
         return ['ok' => false, 'error' => 'Mail disabled'];
     }
@@ -124,24 +124,36 @@ function smtp_send($toEmail, $toName, $subject, $bodyText, $bodyHtml = null) {
     // safely carries UTF-8. chunk_split adds CRLF every 76 chars.
     $b64 = function($s) { return rtrim(chunk_split(base64_encode($s), 76, "\r\n"), "\r\n"); };
 
+    // Build the body (multipart/alternative for text+html). If attachments are
+    // present, wrap the whole thing in a multipart/mixed envelope.
+    $altBoundary = 'chbalt_' . bin2hex(random_bytes(8));
     if ($bodyHtml !== null && $bodyHtml !== '') {
-        // multipart/alternative: plain-text fallback + HTML
-        $boundary = 'chb_' . bin2hex(random_bytes(8));
-        $headers .= "Content-Type: multipart/alternative; boundary=\"{$boundary}\"\r\n";
-        $msg  = "--{$boundary}\r\n";
-        $msg .= "Content-Type: text/plain; charset=UTF-8\r\n";
-        $msg .= "Content-Transfer-Encoding: base64\r\n\r\n";
-        $msg .= $b64($bodyText) . "\r\n\r\n";
-        $msg .= "--{$boundary}\r\n";
-        $msg .= "Content-Type: text/html; charset=UTF-8\r\n";
-        $msg .= "Content-Transfer-Encoding: base64\r\n\r\n";
-        $msg .= $b64($bodyHtml) . "\r\n\r\n";
-        $msg .= "--{$boundary}--";
+        $body  = "--{$altBoundary}\r\nContent-Type: text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n" . $b64($bodyText) . "\r\n\r\n";
+        $body .= "--{$altBoundary}\r\nContent-Type: text/html; charset=UTF-8\r\nContent-Transfer-Encoding: base64\r\n\r\n" . $b64($bodyHtml) . "\r\n\r\n";
+        $body .= "--{$altBoundary}--";
+        $bodyType = "multipart/alternative; boundary=\"{$altBoundary}\"";
+    } else {
+        $body = $b64($bodyText);
+        $bodyType = "text/plain; charset=UTF-8\r\nContent-Transfer-Encoding: base64";
+    }
+
+    if (is_array($attachments) && count($attachments)) {
+        $mix = 'chbmix_' . bin2hex(random_bytes(8));
+        $headers .= "Content-Type: multipart/mixed; boundary=\"{$mix}\"\r\n";
+        $msg  = "--{$mix}\r\nContent-Type: {$bodyType}\r\n\r\n{$body}\r\n\r\n";
+        foreach ($attachments as $att) {
+            $fn = preg_replace('/[^A-Za-z0-9._-]/', '_', (string)($att['filename'] ?? 'attachment'));
+            $mime = $att['mime'] ?? 'application/octet-stream';
+            $msg .= "--{$mix}\r\nContent-Type: {$mime}; name=\"{$fn}\"\r\n";
+            $msg .= "Content-Transfer-Encoding: base64\r\n";
+            $msg .= "Content-Disposition: attachment; filename=\"{$fn}\"\r\n\r\n";
+            $msg .= $b64((string)($att['content'] ?? '')) . "\r\n\r\n";
+        }
+        $msg .= "--{$mix}--";
         $payload = $headers . "\r\n" . $msg . "\r\n.";
     } else {
-        $headers .= "Content-Type: text/plain; charset=UTF-8\r\n";
-        $headers .= "Content-Transfer-Encoding: base64\r\n";
-        $payload = $headers . "\r\n" . $b64($bodyText) . "\r\n.";
+        $headers .= "Content-Type: {$bodyType}\r\n";
+        $payload = $headers . "\r\n" . $body . "\r\n.";
     }
 
     $cmd($payload);
@@ -166,6 +178,82 @@ function mb_encode_safe($name) {
  * check_out, check_in_time, check_out_time, adults, children, total,
  * damages_deposit, ref. Returns [guest=>result, owner=>result].
  */
+// Build an iCalendar (.ics) VEVENT for a booking so the guest can add it to
+// their phone calendar. All-day-ish: uses the check-in/out dates with times.
+function build_booking_ics($b) {
+    if (empty($b['check_in']) || empty($b['check_out'])) return '';
+    $ci = $b['check_in'] . ' ' . ($b['check_in_time'] ?? '15:00');
+    $co = $b['check_out'] . ' ' . ($b['check_out_time'] ?? '10:00');
+    $fmt = function ($s) { $t = strtotime($s); return $t ? gmdate('Ymd\THis\Z', $t) : ''; };
+    $dtStart = $fmt($ci); $dtEnd = $fmt($co);
+    if (!$dtStart || !$dtEnd) return '';
+    $uid = 'chb-' . ($b['ref'] ?? bin2hex(random_bytes(6))) . '@cottageholidaysblakeney';
+    $esc = function ($s) { return preg_replace('/([,;\\\\])/', '\\\\$1', str_replace("\n", '\\n', (string)$s)); };
+    $summary = $esc('Stay at ' . ($b['prop_name'] ?? 'your cottage'));
+    $loc = $esc($b['address'] ?? '');
+    $desc = $esc('Booking ref ' . ($b['ref'] ?? '') . '. Check-in from ' . ($b['check_in_time'] ?? '15:00') . ', check-out by ' . ($b['check_out_time'] ?? '10:00') . '.');
+    $lines = [
+        'BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Cottage Holidays Blakeney//EN',
+        'CALSCALE:GREGORIAN', 'METHOD:PUBLISH', 'BEGIN:VEVENT',
+        'UID:' . $uid, 'DTSTAMP:' . gmdate('Ymd\THis\Z'),
+        'DTSTART:' . $dtStart, 'DTEND:' . $dtEnd,
+        'SUMMARY:' . $summary, ($loc ? 'LOCATION:' . $loc : ''), 'DESCRIPTION:' . $desc,
+        'END:VEVENT', 'END:VCALENDAR',
+    ];
+    return implode("\r\n", array_filter($lines, fn($l) => $l !== ''));
+}
+
+// Let the owner know money has landed. $b: name, prop_name, kind, amount, status.
+function send_owner_payment_notice($b) {
+    if (!defined('OWNER_NOTIFY_EMAIL') || !OWNER_NOTIFY_EMAIL) return ['ok' => false, 'error' => 'No owner email'];
+    $money = fn($n) => '£' . number_format((float)$n, 2);
+    $what = ($b['kind'] ?? '') === 'balance' ? 'balance' : 'deposit';
+    $statusTxt = ($b['status'] ?? '') === 'paid' ? ' — now paid in full' : '';
+    $prop = $b['prop_name'] ?? $b['prop_key'] ?? 'a cottage';
+    $subject = "Payment received: " . $money($b['amount']) . " — {$prop}";
+    $text = "Good news — a payment has come in.\n\n"
+          . "Guest: " . ($b['name'] ?? '—') . "\n"
+          . "Property: {$prop}\n"
+          . "Type: {$what}\n"
+          . "Amount: " . $money($b['amount']) . $statusTxt . "\n\n"
+          . "See Money & income for the full picture.\nCottage Holidays Blakeney";
+    return smtp_send(OWNER_NOTIFY_EMAIL, 'Owner', $subject, $text);
+}
+
+// Ask a past guest to leave a review. $b: name, email, prop_key, prop_name, reviewUrl.
+function send_review_request_email($b) {
+    if (empty($b['email'])) return ['ok' => false, 'error' => 'No guest email on file'];
+    $colors = ['21a' => '#42A5F5', 'jollyboat' => '#43A047', 'pimpernel' => '#9C27B0'];
+    $accent = $colors[$b['prop_key'] ?? ''] ?? '#42A5F5';
+    $esc = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+    $name = $b['name'] ?: 'there';
+    $prop = $b['prop_name'] ?: 'your cottage';
+    $url = $b['reviewUrl'] ?? '';
+
+    $subject = "How was {$prop}? Leave a review";
+    $text = "Hi {$name},\n\n"
+          . "Thank you for staying at {$prop}. We'd love to hear how it went — a short review "
+          . "really helps other guests (and us).\n\n"
+          . "Leave a review: {$url}\n\n"
+          . "Just log in with this email and open My Bookings to add a few words.\n\n"
+          . "Hope to welcome you back.\nCottage Holidays Blakeney";
+
+    $html = '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f4f4f6;">'
+      . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f6;padding:24px 0;"><tr><td align="center">'
+      . '<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">'
+      . email_crown_header('#ffffff')
+      . '<tr><td style="padding:26px 30px 8px;">'
+      . '<p style="font-size:14px;color:#333;line-height:1.6;margin:0;">Hi ' . $esc($name) . ',</p>'
+      . '<p style="font-size:14px;color:#333;line-height:1.6;margin:10px 0 0;">Thank you for staying at <strong>' . $esc($prop) . '</strong>. We\'d love to hear how it went — a short review really helps other guests (and us).</p>'
+      . ($url ? '<table role="presentation" cellpadding="0" cellspacing="0" width="100%"><tr><td align="center" style="padding:18px 0 6px;">'
+            . '<a href="' . $esc($url) . '" style="display:inline-block;background:' . $accent . ';color:#ffffff;text-decoration:none;font-size:16px;font-weight:700;padding:14px 38px;border-radius:12px;">Leave a review</a></td></tr></table>' : '')
+      . '<p style="font-size:12px;color:#999;line-height:1.6;margin:10px 0 0;text-align:center;">Log in with this email and open My Bookings.</p>'
+      . '<p style="font-size:13px;color:#777;margin:22px 0 6px;">Hope to welcome you back.<br>Cottage Holidays Blakeney</p>'
+      . '</td></tr></table></td></tr></table></body></html>';
+
+    return smtp_send($b['email'], $name, $subject, $text, $html);
+}
+
 function send_booking_emails($b) {
     $out = ['guest' => ['ok' => false, 'error' => 'not attempted'],
             'owner' => ['ok' => false, 'error' => 'not attempted']];
@@ -249,7 +337,10 @@ function send_booking_emails($b) {
           . '<tr><td style="padding:18px 40px 36px;text-align:center;font-family:'.$sans.';font-size:13px;color:#8a8e9c;line-height:1.6;">Any questions? Just reply to this email.<br>We look forward to welcoming you.<br><strong style="color:#1c1e26;">Cottage Holidays Blakeney</strong></td></tr>'
           . '</table></td></tr></table></body></html>';
 
-        $out['guest'] = smtp_send($b['email'], $b['name'], $subject, $body, $html);
+        // Attach a calendar invite (.ics) so the guest can add the stay in one tap.
+        $ics = build_booking_ics($b);
+        $atts = $ics ? [['filename' => 'booking-' . ($b['ref'] ?? 'CHB') . '.ics', 'mime' => 'text/calendar', 'content' => $ics]] : [];
+        $out['guest'] = smtp_send($b['email'], $b['name'], $subject, $body, $html, $atts);
     } else {
         $out['guest']['error'] = 'No guest email on file';
     }
