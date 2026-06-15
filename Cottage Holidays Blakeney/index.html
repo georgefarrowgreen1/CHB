@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en-GB">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
@@ -9,8 +9,12 @@
     <meta name="description" content="Self-catering holiday cottages in Blakeney on the North Norfolk coast. Cosy, characterful cottages near the quay, coastal path and beaches — book your Norfolk getaway directly with the owner.">
     <meta name="keywords" content="Blakeney cottages, holiday cottages Blakeney, North Norfolk holiday cottages, self catering Blakeney, Norfolk coast cottages, Blakeney accommodation, dog friendly cottages Norfolk">
     <meta name="author" content="Cottage Holidays Blakeney">
-    <meta name="robots" content="index, follow">
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1">
     <link rel="canonical" href="https://cottageholidaysblakeney.co.uk/">
+
+    <!-- Preload the hero image: it's the page's largest paint, so fetching it early
+         improves the Largest Contentful Paint (a Core Web Vital Google ranks on). -->
+    <link rel="preload" as="image" href="hero.jpg" fetchpriority="high">
 
     <!-- Local / geo signals for "near me" and map searches -->
     <meta name="geo.region" content="GB-NFK">
@@ -37,19 +41,37 @@
     <meta name="twitter:image" content="https://cottageholidaysblakeney.co.uk/hero.jpg">
     <meta name="twitter:image:alt" content="Holiday cottages in Blakeney, North Norfolk">
 
-    <!-- Structured data: tells search engines this is a lodging business in Blakeney -->
+    <!-- Structured data: a full schema.org graph describing the lodging business,
+         each cottage, the website and breadcrumbs. Guest reviews (aggregateRating),
+         the contact number and FAQs are injected at runtime from live data by
+         injectSeoSchema() so the rich results always reflect real, current content. -->
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
       "@graph": [
         {
-          "@type": "LodgingBusiness",
+          "@type": "Organization",
+          "@id": "https://cottageholidaysblakeney.co.uk/#org",
+          "name": "Cottage Holidays Blakeney",
+          "url": "https://cottageholidaysblakeney.co.uk/",
+          "logo": "https://cottageholidaysblakeney.co.uk/logo.png",
+          "image": "https://cottageholidaysblakeney.co.uk/hero.jpg",
+          "areaServed": { "@type": "Place", "name": "Blakeney, North Norfolk" }
+        },
+        {
+          "@type": ["LodgingBusiness", "LocalBusiness"],
           "@id": "https://cottageholidaysblakeney.co.uk/#business",
           "name": "Cottage Holidays Blakeney",
-          "description": "Self-catering holiday cottages in Blakeney on the North Norfolk coast.",
+          "description": "Self-catering holiday cottages in Blakeney on the North Norfolk coast — near the quay, the coastal path, the beaches and Blakeney Point. Book directly with the owner.",
           "url": "https://cottageholidaysblakeney.co.uk/",
-          "image": "https://cottageholidaysblakeney.co.uk/hero.jpg",
+          "image": ["https://cottageholidaysblakeney.co.uk/hero.jpg"],
+          "logo": "https://cottageholidaysblakeney.co.uk/logo.png",
+          "parentOrganization": { "@id": "https://cottageholidaysblakeney.co.uk/#org" },
           "priceRange": "££",
+          "currenciesAccepted": "GBP",
+          "paymentAccepted": "Credit Card, Debit Card",
+          "numberOfRooms": 3,
+          "petsAllowed": true,
           "address": {
             "@type": "PostalAddress",
             "addressLocality": "Blakeney",
@@ -57,21 +79,58 @@
             "postalCode": "NR25",
             "addressCountry": "GB"
           },
-          "geo": {
-            "@type": "GeoCoordinates",
-            "latitude": 52.9536,
-            "longitude": 1.0206
-          },
-          "areaServed": "North Norfolk",
+          "geo": { "@type": "GeoCoordinates", "latitude": 52.9536, "longitude": 1.0206 },
+          "hasMap": "https://www.google.com/maps?q=52.9536,1.0206",
+          "areaServed": [
+            { "@type": "Place", "name": "Blakeney" },
+            { "@type": "Place", "name": "Cley next the Sea" },
+            { "@type": "Place", "name": "Morston" },
+            { "@type": "Place", "name": "Wells-next-the-Sea" },
+            { "@type": "Place", "name": "North Norfolk" }
+          ],
+          "knowsAbout": ["Blakeney holiday cottages", "North Norfolk coast", "self-catering accommodation", "Blakeney Point seal trips", "Norfolk Coast Path"],
           "amenityFeature": [
             { "@type": "LocationFeatureSpecification", "name": "Self-catering", "value": true },
-            { "@type": "LocationFeatureSpecification", "name": "Near coastal path", "value": true }
+            { "@type": "LocationFeatureSpecification", "name": "Near Blakeney Quay", "value": true },
+            { "@type": "LocationFeatureSpecification", "name": "Close to the Norfolk Coast Path", "value": true },
+            { "@type": "LocationFeatureSpecification", "name": "Dog-friendly cottage available", "value": true }
           ],
           "containsPlace": [
-            { "@type": "Accommodation", "name": "21A Westgate", "occupancy": { "@type": "QuantitativeValue", "maxValue": 2 } },
-            { "@type": "Accommodation", "name": "Jollyboat", "occupancy": { "@type": "QuantitativeValue", "maxValue": 2 } },
-            { "@type": "Accommodation", "name": "Pimpernel", "occupancy": { "@type": "QuantitativeValue", "maxValue": 3 } }
+            { "@id": "https://cottageholidaysblakeney.co.uk/#cottage-21a" },
+            { "@id": "https://cottageholidaysblakeney.co.uk/#cottage-jollyboat" },
+            { "@id": "https://cottageholidaysblakeney.co.uk/#cottage-pimpernel" }
           ]
+        },
+        {
+          "@type": ["Accommodation", "VacationRental"],
+          "@id": "https://cottageholidaysblakeney.co.uk/#cottage-21a",
+          "name": "21A Westgate",
+          "description": "A premium townhouse in Blakeney blending heritage character with modern comfort — open-plan living, a Smeg chef's kitchen, a private walled garden and dog-friendly accommodation.",
+          "url": "https://cottageholidaysblakeney.co.uk/",
+          "image": "https://cottageholidaysblakeney.co.uk/hero.jpg",
+          "petsAllowed": true,
+          "occupancy": { "@type": "QuantitativeValue", "maxValue": 2 },
+          "containedInPlace": { "@type": "Place", "name": "Blakeney, Norfolk" }
+        },
+        {
+          "@type": ["Accommodation", "VacationRental"],
+          "@id": "https://cottageholidaysblakeney.co.uk/#cottage-jollyboat",
+          "name": "Jollyboat",
+          "description": "An intimate coastal bolthole for two in Blakeney — a snug double bedroom, wood-burning stove and a quayside location with the saltmarshes steps from the door.",
+          "url": "https://cottageholidaysblakeney.co.uk/",
+          "image": "https://cottageholidaysblakeney.co.uk/hero.jpg",
+          "occupancy": { "@type": "QuantitativeValue", "maxValue": 2 },
+          "containedInPlace": { "@type": "Place", "name": "Blakeney, Norfolk" }
+        },
+        {
+          "@type": ["Accommodation", "VacationRental"],
+          "@id": "https://cottageholidaysblakeney.co.uk/#cottage-pimpernel",
+          "name": "Pimpernel",
+          "description": "A contemporary self-catering retreat in Blakeney — light-filled open-plan living, a designer kitchen and a sun terrace, ideal for small families exploring North Norfolk.",
+          "url": "https://cottageholidaysblakeney.co.uk/",
+          "image": "https://cottageholidaysblakeney.co.uk/hero.jpg",
+          "occupancy": { "@type": "QuantitativeValue", "maxValue": 3 },
+          "containedInPlace": { "@type": "Place", "name": "Blakeney, Norfolk" }
         },
         {
           "@type": "WebSite",
@@ -79,7 +138,15 @@
           "name": "Cottage Holidays Blakeney",
           "url": "https://cottageholidaysblakeney.co.uk/",
           "inLanguage": "en-GB",
-          "publisher": { "@id": "https://cottageholidaysblakeney.co.uk/#business" }
+          "publisher": { "@id": "https://cottageholidaysblakeney.co.uk/#org" }
+        },
+        {
+          "@type": "BreadcrumbList",
+          "@id": "https://cottageholidaysblakeney.co.uk/#breadcrumb",
+          "itemListElement": [
+            { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://cottageholidaysblakeney.co.uk/" },
+            { "@type": "ListItem", "position": 2, "name": "Holiday Cottages in Blakeney", "item": "https://cottageholidaysblakeney.co.uk/" }
+          ]
         }
       ]
     }
@@ -3140,6 +3207,7 @@
 
     <!-- FOOTER -->
     <footer class="site-footer">
+        <p class="footer-nap" style="font-size:0.8rem;color:var(--text-muted);margin-bottom:6px;">Self-catering holiday cottages in <strong>Blakeney, North Norfolk</strong> · NR25 — near the quay, coastal path and beaches.</p>
         <p>&copy; <span id="footer-year">2026</span> Cottage Holidays Blakeney. &nbsp;·&nbsp; <a onclick="nav('view-privacy')" style="cursor:pointer;color:var(--text-muted);text-decoration:underline;">Privacy Policy</a></p>
         <div class="footer-controls">
             <button id="theme-toggle" class="toggle-btn" onclick="toggleTheme()" title="Switch to light mode" aria-label="Switch to light mode"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.8 4.8l1.8 1.8M17.4 17.4l1.8 1.8M19.2 4.8l-1.8 1.8M6.6 17.4l-1.8 1.8"/></svg></button>
@@ -6889,6 +6957,7 @@
             try { renderCardPrices(); } catch (e) { console.error(e); }
             try { loadPropContentOverrides(); } catch (e) { console.error(e); }
             try { renderReviews(); } catch (e) { console.error(e); }
+            try { injectSeoSchema(); } catch (e) { console.error(e); }   // live review stars / FAQs / phone into structured data
             try { updatePropPriceHeading(); } catch (e) { console.error(e); }
             try { if (document.getElementById('enq-price-box')) updateEnquiryPrice(); } catch (e) { console.error(e); }
             // Restore admin + guest sessions — also independent, also concurrent.
@@ -10273,6 +10342,57 @@
             if (html.trim()) wrap.innerHTML = html;
         }
 
+        // Inject live structured data (guest review stars, contact number, FAQs) so
+        // Google's rich results reflect real, current content. These nodes share
+        // @ids with the static graph in <head>, so Google merges them — e.g. the
+        // aggregateRating + reviews attach to the #business LodgingBusiness node.
+        function injectSeoSchema() {
+            try {
+                const BASE = 'https://cottageholidaysblakeney.co.uk/';
+                const graph = [];
+                const clamp = s => Math.max(1, Math.min(5, parseInt(s) || 5));
+
+                const biz = { '@type': 'LodgingBusiness', '@id': BASE + '#business' };
+                const cp = (typeof siteContent !== 'undefined' && siteContent['contact-phone']) || {};
+                if (cp.dial) biz.telephone = cp.dial;
+
+                const reviews = Array.isArray(publicGuestReviews)
+                    ? publicGuestReviews.filter(r => r && (r.text || '').trim()) : [];
+                if (reviews.length) {
+                    const ratings = reviews.map(r => clamp(r.stars));
+                    const avg = ratings.reduce((s, n) => s + n, 0) / ratings.length;
+                    biz.aggregateRating = {
+                        '@type': 'AggregateRating', 'ratingValue': avg.toFixed(1),
+                        'reviewCount': String(reviews.length), 'bestRating': '5', 'worstRating': '1'
+                    };
+                    biz.review = reviews.slice(0, 12).map(r => ({
+                        '@type': 'Review',
+                        'author': { '@type': 'Person', 'name': (r.name || 'A guest') },
+                        'reviewRating': { '@type': 'Rating', 'ratingValue': String(clamp(r.stars)), 'bestRating': '5', 'worstRating': '1' },
+                        'reviewBody': (r.text || '')
+                    }));
+                }
+                if (biz.telephone || biz.aggregateRating) graph.push(biz);
+
+                const seen = {}; const faqEntities = [];
+                ['21a', 'jollyboat', 'pimpernel'].forEach(k => {
+                    const list = Array.isArray(siteContent['faqs-' + k]) ? siteContent['faqs-' + k] : [];
+                    list.forEach(f => {
+                        const q = (f && f.q || '').trim(), a = (f && f.a || '').trim();
+                        if (!q || !a || seen[q.toLowerCase()]) return;
+                        seen[q.toLowerCase()] = 1;
+                        faqEntities.push({ '@type': 'Question', 'name': q, 'acceptedAnswer': { '@type': 'Answer', 'text': a } });
+                    });
+                });
+                if (faqEntities.length) graph.push({ '@type': 'FAQPage', '@id': BASE + '#faq', 'mainEntity': faqEntities });
+
+                if (!graph.length) return;
+                let el = document.getElementById('seo-dynamic');
+                if (!el) { el = document.createElement('script'); el.type = 'application/ld+json'; el.id = 'seo-dynamic'; document.head.appendChild(el); }
+                el.textContent = JSON.stringify({ '@context': 'https://schema.org', '@graph': graph });
+            } catch (e) { /* SEO enrichment must never break the page */ }
+        }
+
         // Open a cottage's dedicated page, populating it from that property's content + rates
         function openProperty(propKey) {
             if (!propertyContent[propKey]) propKey = '21a';
@@ -10955,7 +11075,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'ms4t5v7z';
+            const BUILD = 'nt5u6w8a';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;

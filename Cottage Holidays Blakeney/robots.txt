@@ -14,5 +14,25 @@ Disallow: /mailer.php
 Disallow: /pre-arrival.php
 Disallow: /track.php
 Disallow: /upload.php
+Disallow: /availability.php
+Disallow: /rates.php
+Disallow: /pricing.php
+Disallow: /payments-due.php
+Disallow: /waitlist.php
+Disallow: /messages.php
+Disallow: /push.php
+Disallow: /version.php
+Disallow: /health.php
+Disallow: /arrival-access.php
+Disallow: /ical-export.php
+Disallow: /square-config.php
+Disallow: /square-webhook.php
+Disallow: /setup.php
+Disallow: /migrate.php
+Disallow: /vapid-keygen.php
+
+# Let crawlers fetch the JSON-LD review/FAQ data sources implicitly via the page;
+# reviews.php is a thin JSON feed, so keep it out of the index too.
+Disallow: /reviews.php
 
 Sitemap: https://cottageholidaysblakeney.co.uk/sitemap.xml
