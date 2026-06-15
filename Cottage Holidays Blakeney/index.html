@@ -2312,11 +2312,6 @@
 
         <div class="owner-summary" id="owner-summary"><!-- JS injects summary stats --></div>
 
-        <div class="bo-search">
-            <input type="search" class="input-glass" id="booking-search" placeholder="Search bookings by guest name or email…" oninput="bookingSearch(this.value)" style="margin:0;">
-            <div id="booking-search-results"></div>
-        </div>
-
         <!-- CALENDAR (left) + PENDING ENQUIRIES (right) -->
         <div class="bo-layout">
             <!-- CALENDAR -->
@@ -2331,18 +2326,6 @@
                         <button class="btn-glass cal-add-btn" onclick="openAddBooking()" data-edit-text="cal-add-btn">+ Add Booking</button>
                         <button class="btn-glass cal-add-btn" style="background:rgba(255,255,255,0.06);" onclick="openBlockDates()">Block dates</button>
                     </div>
-                </div>
-
-                <div class="cal-legend">
-                    <div class="legend-item"><span class="legend-swatch swatch-21a"></span> <span data-edit-text="cal-legend-21a">21A Westgate</span></div>
-                    <div class="legend-item"><span class="legend-swatch swatch-jollyboat"></span> <span data-edit-text="cal-legend-jolly">Jollyboat</span></div>
-                    <div class="legend-item"><span class="legend-swatch swatch-pimpernel"></span> <span data-edit-text="cal-legend-pimp">Pimpernel</span></div>
-                </div>
-                <div class="cal-legend" style="margin-top: -10px;">
-                    <span style="font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted);" data-edit-text="cal-legend-pay">Payment:</span>
-                    <div class="legend-item"><span class="legend-swatch" style="border-radius:50%; background:#4CAF50;"></span> <span data-edit-text="cal-legend-paid">Paid</span></div>
-                    <div class="legend-item"><span class="legend-swatch" style="border-radius:50%; background:#FFA726;"></span> <span data-edit-text="cal-legend-deposit">Deposit</span></div>
-                    <div class="legend-item"><span class="legend-swatch" style="border-radius:50%; background:#E53935;"></span> <span data-edit-text="cal-legend-unpaid">Unpaid</span></div>
                 </div>
 
                 <div class="cal-updated">
@@ -7872,7 +7855,6 @@
                     <div class="today-card-value" style="${accent || ''}">${items.length}</div>
                     <div class="today-card-list">${items.length ? items.slice(0, 4).map(i => `<div>${i}</div>`).join('') + (items.length > 4 ? `<div style="color:var(--text-muted);">+${items.length - 4} more</div>` : '') : '<span style="color:var(--text-muted);">Nothing</span>'}</div>
                 </div>`;
-            const anything = arrivals.length || departures.length || dueSoon.length || toReturn.length;
             const occ = cottageMonthOccupancy();
             const occBars = osHBars(Object.keys(propertyMeta).map(k => ({
                 label: propertyMeta[k].name, value: occ[k].nights, max: occ[k].total,
@@ -7887,7 +7869,7 @@
                     <div class="today-card-label">Occupancy this month · by cottage</div>
                     <div style="margin-top:12px;">${occBars}</div>
                 </div>
-            </div>${anything ? '' : '<p style="font-size:0.82rem;color:var(--text-muted);margin:2px 0 0;">All clear — nothing needs doing today.</p>'}`;
+            </div>`;
         }
         // Quick find: filter bookings by guest name/email; click a result to open it.
         function bookingSearch(q) {
@@ -10894,7 +10876,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'io0p1r3v';
+            const BUILD = 'jp1q2s4w';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
