@@ -1060,6 +1060,19 @@
         .bo-search-empty { font-size: 0.85rem; color: var(--text-muted); padding: 10px 2px; }
         .bo-search-hit { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 12px; padding: 10px 12px; margin-top: 8px; color: var(--text-light); cursor: pointer; }
         .bo-search-hit:hover, .bo-search-hit:focus-visible { background: var(--glass-hover); }
+        /* Apple-style grouped Settings index */
+        .settings-index { max-width: 640px; }
+        .settings-group { background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 16px; overflow: hidden; margin-bottom: 22px; }
+        .settings-row { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; background: none; border: none; border-top: 1px solid var(--glass-border); color: var(--text-light); padding: 15px 18px; cursor: pointer; transition: background 0.2s; }
+        .settings-row:first-child { border-top: none; }
+        .settings-row:hover, .settings-row:focus-visible { background: var(--glass-hover); }
+        .settings-row-ic { width: 30px; height: 30px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: var(--text-light); }
+        .settings-row-ic .ic { width: 22px; height: 22px; }
+        .settings-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+        .settings-row-label { font-size: 1rem; }
+        .settings-row-sub { font-size: 0.78rem; color: var(--text-muted); margin-top: 1px; }
+        .settings-row-chev { color: var(--text-muted); font-size: 1.3rem; line-height: 1; flex-shrink: 0; }
+        #settings-panel .accounts-stat { margin-bottom: 0; }
         .owner-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 26px; }
         /* Money & income — per-booking payments manager */
         .money-row { padding: 16px 18px; border-radius: 16px; margin-bottom: 12px; }
@@ -1799,10 +1812,7 @@
             <button class="admin-dock-btn" data-view="view-accounts" data-label="Money &amp; income" aria-label="Money &amp; income" title="Money &amp; income" onclick="openAccounts()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><text x="12" y="16.2" font-size="11" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="Georgia, serif">&#163;</text></svg>
             </button>
-            <button class="admin-dock-btn" data-view="view-host" data-label="Host profile" aria-label="Host profile" title="Host profile" onclick="openHostEditor()">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg>
-            </button>
-            <button class="admin-dock-btn" data-view="view-settings" data-label="Settings &amp; fees" aria-label="Settings &amp; fees" title="Settings &amp; fees" onclick="openSettings()">
+            <button class="admin-dock-btn" data-view="view-settings" data-label="Settings" aria-label="Settings" title="Settings" onclick="openSettings()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             </button>
             <span class="admin-dock-sep" aria-hidden="true"></span>
@@ -2317,70 +2327,149 @@
         </div>
     </main>
 
-    <!-- ================= SETTINGS & FEES PAGE ================= -->
+    <!-- ================= SETTINGS (Apple-style grouped index + drill-down) ================= -->
     <main id="view-settings" class="page-view container">
         <span class="back-link" onclick="nav('view-backoffice'); initBackOffice();">← Back to Dashboard</span>
         <div class="dashboard-header">
             <div>
-                <h1 class="section-title" style="margin-bottom: 5px;" data-edit-text="settings-title">Settings &amp; Fees</h1>
-                <p class="lead" style="text-align: left; margin: 0;" data-edit-text="settings-sub">Set the nightly rates and fees for each property. Changes apply immediately across the site.</p>
-            </div>
-        </div>
-        <div class="accounts-stat" style="max-width:720px;margin-bottom:24px;">
-            <div class="label">Contact phone — "Call to Discuss" buttons</div>
-            <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 14px;">Shown on the booking form and guest dashboard. The dial number is what actually gets called (use full form like +441263740512 for mobiles); the display number is how it reads in the tooltip.</p>
-            <div style="display:flex;gap:10px;flex-wrap:wrap;">
-                <input type="tel" class="input-glass field-sm" id="contact-phone-dial" placeholder="Dial number (e.g. +441263740512)" style="flex:1 1 220px;">
-                <input type="text" class="input-glass field-sm" id="contact-phone-display" placeholder="Display (e.g. 01263 740512)" style="flex:1 1 180px;">
-                <button class="btn-sm btn-edit" onclick="saveContactPhone()">Save number</button>
+                <h1 class="section-title" style="margin-bottom: 5px;">Settings</h1>
+                <p class="lead" style="text-align: left; margin: 0;">Manage your host profile, cottages, payments and account.</p>
             </div>
         </div>
 
-        <div class="rates-grid" id="rates-list">
-            <!-- JS injects rate editors here -->
-        </div>
-
-        <h3 class="accounts-section-title">Online payments (Square)</h3>
-        <div class="accounts-stat" style="max-width:560px;">
-            <div class="label">Card payments status</div>
-            <p id="sq-settings-status" style="font-size:0.9rem;margin:8px 0 4px;">Checking…</p>
-            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:14px;">
-                <label style="font-size:0.85rem;color:var(--text-muted);">Deposit to request</label>
-                <input type="number" id="sq-deposit-pct" class="input-glass field-sm" min="1" max="100" step="1" style="width:90px;margin:0;">
-                <span style="color:var(--text-muted);">% of the total</span>
-                <button class="btn-sm btn-edit" onclick="saveDepositPct()">Save</button>
+        <!-- INDEX -->
+        <div id="settings-index" class="settings-index">
+            <div class="settings-group">
+                <button class="settings-row" onclick="settingsOpen('host')">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Host profile</span><span class="settings-row-sub">"Meet your host" details</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" onclick="settingsOpen('security')">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Security</span><span class="settings-row-sub">Password &amp; passkeys</span></span><span class="settings-row-chev">›</span>
+                </button>
             </div>
-            <p style="font-size:0.82rem;color:var(--text-light);margin-top:14px;line-height:1.6;"><strong>Automatic schedule:</strong> when you approve an enquiry the guest is emailed a request for the deposit above. The balance is then auto-requested <strong>30 days before check-in</strong>. If a booking is approved when check-in is already inside 30 days, the guest is asked for the <strong>full amount upfront</strong>.</p>
-            <p style="font-size:0.8rem;color:var(--text-muted);margin-top:10px;">The balance chaser runs from a daily cron on <code>payments-due.php</code> — see <strong>SETUP-SQUARE.md</strong>. Your Square keys live in <code>config.php</code> (kept private, like your database and email passwords); set <code>SQUARE_PAYMENTS_ENABLED</code> to <code>true</code> once filled in. You can still send a request manually anytime from a booking's details.</p>
+            <div class="settings-group">
+                <button class="settings-row" onclick="settingsOpen('accom')">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Accommodation preferences</span><span class="settings-row-sub">Rates, rules &amp; details per cottage</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" onclick="settingsOpen('calendar')">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Calendar sync</span><span class="settings-row-sub">Airbnb / Vrbo per cottage</span></span><span class="settings-row-chev">›</span>
+                </button>
+            </div>
+            <div class="settings-group">
+                <button class="settings-row" onclick="settingsOpen('payments')">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Payments</span><span class="settings-row-sub">Square &amp; deposit policy</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" onclick="settingsOpen('guests')">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 5.5a3 3 0 0 1 0 5.8M21 19a5.5 5.5 0 0 0-4-5.3"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Guest accounts</span><span class="settings-row-sub">Reset a guest's password</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" onclick="settingsOpen('contact')">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.6 3.5l2.1.4 1 3-1.5 1.4a12 12 0 0 0 5 5l1.4-1.5 3 1 .4 2.1a2 2 0 0 1-2 2.3A15.5 15.5 0 0 1 4.3 5.5a2 2 0 0 1 2.3-2z"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Contact number</span><span class="settings-row-sub">"Call to Discuss" buttons</span></span><span class="settings-row-chev">›</span>
+                </button>
+            </div>
         </div>
 
-        <h3 class="accounts-section-title">Security</h3>
-        <div class="accounts-stat" style="max-width:420px;">
-            <div class="label">Admin Password</div>
-            <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 16px;">This password protects the Back Office, Settings, Accounts and Live Editor.</p>
-            <button class="btn-sm btn-edit" onclick="changeAdminPassword()">Change Password</button>
-        </div>
+        <!-- DRILL-DOWN PANEL -->
+        <div id="settings-panel" style="display:none;">
+            <span class="back-link" id="settings-back" onclick="settingsBack()">‹ Back</span>
+            <h2 class="section-title" id="settings-panel-title" style="text-align:left;font-size:1.6rem;margin:6px 0 18px;"></h2>
 
-        <div class="accounts-stat" style="max-width:560px;">
-            <div class="label">Passkeys (Face ID / Touch ID)</div>
-            <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 16px;">Sign in to the Back Office faster with a passkey. Your password still works as a backup. <strong>Tip:</strong> add a passkey on two devices (e.g. phone and laptop) so you're never locked out.</p>
-            <button class="btn-sm btn-edit" onclick="addAdminPasskey()">＋ Add a passkey</button>
-            <div id="admin-passkey-list" style="margin-top:14px;"></div>
-        </div>
+            <!-- Host profile -->
+            <div class="settings-sec" id="sec-host" style="display:none;">
+                <div class="glass-panel" style="max-width: 640px; padding: 30px; border-radius: 20px;">
+                    <div style="display:flex;align-items:center;gap:18px;margin-bottom:8px;">
+                        <div id="host-edit-photo" style="width:84px;height:84px;border-radius:50%;background-size:cover;background-position:center;background:var(--dark-grey);flex-shrink:0;border:1px solid var(--glass-border);"></div>
+                        <button type="button" class="btn-sm btn-edit" onclick="uploadHostPhoto()">Change photo</button>
+                    </div>
+                    <label class="host-edit-label" for="host-f-name">Name</label>
+                    <input class="input-glass" id="host-f-name" onchange="saveHostText('host-name', this.value)">
+                    <label class="host-edit-label" for="host-f-badge">Role / badge</label>
+                    <input class="input-glass" id="host-f-badge" onchange="saveHostText('host-badge', this.value)">
+                    <label class="host-edit-label" for="host-f-years">Years hosting</label>
+                    <input class="input-glass" id="host-f-years" onchange="saveHostText('host-years', this.value)">
+                    <p style="font-size:0.78rem;color:var(--text-muted);margin:6px 0 0;">Reviews total &amp; rating are calculated automatically from your published guest reviews.</p>
+                    <label class="host-edit-label" for="host-f-school">"Where I studied" line</label>
+                    <input class="input-glass" id="host-f-school" onchange="saveHostText('host-school', this.value)">
+                    <label class="host-edit-label" for="host-f-work">"My work" line</label>
+                    <input class="input-glass" id="host-f-work" onchange="saveHostText('host-work', this.value)">
+                    <label class="host-edit-label" for="host-f-bio">Bio</label>
+                    <textarea class="input-glass" id="host-f-bio" rows="4" style="resize:vertical;" onchange="saveHostText('host-bio', this.value)"></textarea>
+                    <p id="host-save-msg" style="font-size:0.82rem;color:#4CAF50;min-height:1em;margin:4px 0 0;"></p>
+                </div>
+            </div>
 
-        <h3 class="accounts-section-title">Guest Accounts</h3>
-        <div class="accounts-stat" style="max-width:560px;">
-            <div class="label">Reset a guest's password</div>
-            <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 16px;">If a guest is locked out, set a new password for them here, then tell them the new password so they can log in and change it.</p>
-            <button class="btn-sm btn-edit" onclick="loadGuestList()">Show Guest Accounts</button>
-            <div id="guest-admin-list" style="margin-top:16px;"></div>
-        </div>
+            <!-- Security -->
+            <div class="settings-sec" id="sec-security" style="display:none;">
+                <div class="accounts-stat" style="max-width:420px;">
+                    <div class="label">Admin Password</div>
+                    <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 16px;">This password protects the Back Office, Settings, Money and Live Editor.</p>
+                    <button class="btn-sm btn-edit" onclick="changeAdminPassword()">Change Password</button>
+                </div>
+                <div class="accounts-stat" style="max-width:560px;margin-top:16px;">
+                    <div class="label">Passkeys (Face ID / Touch ID)</div>
+                    <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 16px;">Sign in to the Back Office faster with a passkey. Your password still works as a backup. <strong>Tip:</strong> add a passkey on two devices (e.g. phone and laptop) so you're never locked out.</p>
+                    <button class="btn-sm btn-edit" onclick="addAdminPasskey()">＋ Add a passkey</button>
+                    <div id="admin-passkey-list" style="margin-top:14px;"></div>
+                </div>
+            </div>
 
-        <h3 class="accounts-section-title">Calendar Sync (Airbnb / Vrbo)</h3>
-        <div class="accounts-stat" style="max-width:680px;">
-            <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 16px;">Two-way iCal sync. <strong>Export:</strong> paste your site's link into Airbnb/Vrbo so bookings here block those dates there. <strong>Import:</strong> paste the platforms' links here so their bookings block dates on your site. Note: iCal updates can lag up to a few hours, so a small double-booking risk remains in busy periods.</p>
-            <button class="btn-sm btn-edit" onclick="loadCalendarSync()">Open Calendar Sync</button>
-            <div id="calendar-sync-box" style="margin-top:16px;"></div>
+            <!-- Accommodation preferences (cottage list → per-cottage detail) -->
+            <div class="settings-sec" id="sec-accom" style="display:none;">
+                <div id="accom-list" class="settings-index"></div>
+                <div id="accom-detail" style="display:none;"></div>
+            </div>
+
+            <!-- Calendar sync (cottage list → per-cottage detail) -->
+            <div class="settings-sec" id="sec-calendar" style="display:none;">
+                <p style="font-size:0.85rem;color:var(--text-muted);max-width:680px;margin:0 0 14px;">Two-way iCal sync per cottage. <strong>Export:</strong> paste your link into Airbnb/Vrbo. <strong>Import:</strong> paste their links here. Updates can lag a few hours, so a small double-booking risk remains in busy periods.</p>
+                <div id="calendar-list" class="settings-index"></div>
+                <div id="calendar-detail" style="display:none;"></div>
+            </div>
+
+            <!-- Payments -->
+            <div class="settings-sec" id="sec-payments" style="display:none;">
+                <div class="accounts-stat" style="max-width:560px;">
+                    <div class="label">Card payments status</div>
+                    <p id="sq-settings-status" style="font-size:0.9rem;margin:8px 0 4px;">Checking…</p>
+                    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:14px;">
+                        <label style="font-size:0.85rem;color:var(--text-muted);">Deposit to request</label>
+                        <input type="number" id="sq-deposit-pct" class="input-glass field-sm" min="1" max="100" step="1" style="width:90px;margin:0;">
+                        <span style="color:var(--text-muted);">% of the total</span>
+                        <button class="btn-sm btn-edit" onclick="saveDepositPct()">Save</button>
+                    </div>
+                    <p style="font-size:0.82rem;color:var(--text-light);margin-top:14px;line-height:1.6;"><strong>Automatic schedule:</strong> when you approve an enquiry the guest is emailed a request for the deposit above. The balance is then auto-requested <strong>30 days before check-in</strong>. If a booking is approved when check-in is already inside 30 days, the guest is asked for the <strong>full amount upfront</strong>.</p>
+                    <p style="font-size:0.8rem;color:var(--text-muted);margin-top:10px;">The balance chaser runs from a daily cron on <code>payments-due.php</code> — see <strong>SETUP-SQUARE.md</strong>. Your Square keys live in <code>config.php</code> (kept private, like your database and email passwords); set <code>SQUARE_PAYMENTS_ENABLED</code> to <code>true</code> once filled in. You can still send a request manually anytime from a booking's details.</p>
+                </div>
+            </div>
+
+            <!-- Guest accounts -->
+            <div class="settings-sec" id="sec-guests" style="display:none;">
+                <div class="accounts-stat" style="max-width:560px;">
+                    <div class="label">Reset a guest's password</div>
+                    <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 16px;">If a guest is locked out, set a new password for them here, then tell them the new password so they can log in and change it.</p>
+                    <button class="btn-sm btn-edit" onclick="loadGuestList()">Show Guest Accounts</button>
+                    <div id="guest-admin-list" style="margin-top:16px;"></div>
+                </div>
+            </div>
+
+            <!-- Contact number -->
+            <div class="settings-sec" id="sec-contact" style="display:none;">
+                <div class="accounts-stat" style="max-width:720px;">
+                    <div class="label">Contact phone — "Call to Discuss" buttons</div>
+                    <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 14px;">Shown on the booking form and guest dashboard. The dial number is what actually gets called (use full form like +441263740512 for mobiles); the display number is how it reads in the tooltip.</p>
+                    <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                        <input type="tel" class="input-glass field-sm" id="contact-phone-dial" placeholder="Dial number (e.g. +441263740512)" style="flex:1 1 220px;">
+                        <input type="text" class="input-glass field-sm" id="contact-phone-display" placeholder="Display (e.g. 01263 740512)" style="flex:1 1 180px;">
+                        <button class="btn-sm btn-edit" onclick="saveContactPhone()">Save number</button>
+                    </div>
+                </div>
+            </div>
         </div>
     </main>
 
@@ -2398,37 +2487,6 @@
         <div class="accounts-stat" style="max-width:720px;">
             <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 12px;">Guests can write a review from their account once a stay is complete. Nothing appears on the site until you approve it here.</p>
             <div id="guest-review-moderation"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
-        </div>
-    </main>
-
-    <!-- ================= HOST PROFILE EDITOR (admin) ================= -->
-    <main id="view-host" class="page-view container">
-        <span class="back-link" onclick="nav('view-owner-home')">← Back</span>
-        <div class="dashboard-header">
-            <div>
-                <h1 class="section-title" style="margin-bottom: 5px;">Host profile</h1>
-                <p class="lead" style="text-align: left; margin: 0;">Edit the "Meet your host" details shown on every cottage page.</p>
-            </div>
-        </div>
-        <div class="glass-panel" style="max-width: 640px; padding: 30px; border-radius: 20px;">
-            <div style="display:flex;align-items:center;gap:18px;margin-bottom:8px;">
-                <div id="host-edit-photo" style="width:84px;height:84px;border-radius:50%;background-size:cover;background-position:center;background:var(--dark-grey);flex-shrink:0;border:1px solid var(--glass-border);"></div>
-                <button type="button" class="btn-sm btn-edit" onclick="uploadHostPhoto()">Change photo</button>
-            </div>
-            <label class="host-edit-label" for="host-f-name">Name</label>
-            <input class="input-glass" id="host-f-name" onchange="saveHostText('host-name', this.value)">
-            <label class="host-edit-label" for="host-f-badge">Role / badge</label>
-            <input class="input-glass" id="host-f-badge" onchange="saveHostText('host-badge', this.value)">
-            <label class="host-edit-label" for="host-f-years">Years hosting</label>
-            <input class="input-glass" id="host-f-years" onchange="saveHostText('host-years', this.value)">
-            <p style="font-size:0.78rem;color:var(--text-muted);margin:6px 0 0;">Reviews total &amp; rating are calculated automatically from your published guest reviews.</p>
-            <label class="host-edit-label" for="host-f-school">"Where I studied" line</label>
-            <input class="input-glass" id="host-f-school" onchange="saveHostText('host-school', this.value)">
-            <label class="host-edit-label" for="host-f-work">"My work" line</label>
-            <input class="input-glass" id="host-f-work" onchange="saveHostText('host-work', this.value)">
-            <label class="host-edit-label" for="host-f-bio">Bio</label>
-            <textarea class="input-glass" id="host-f-bio" rows="4" style="resize:vertical;" onchange="saveHostText('host-bio', this.value)"></textarea>
-            <p id="host-save-msg" style="font-size:0.82rem;color:#4CAF50;min-height:1em;margin:4px 0 0;"></p>
         </div>
     </main>
 
@@ -3122,7 +3180,7 @@
         }
 
         /* --- 1. ROUTING --- */
-        const EDITABLE_VIEWS = ['view-main', 'view-cottages', 'view-21a', 'view-backoffice', 'view-settings', 'view-accounts', 'view-host'];
+        const EDITABLE_VIEWS = ['view-main', 'view-cottages', 'view-21a', 'view-backoffice', 'view-settings', 'view-accounts'];
 
         function nav(viewId, anchorId = null) {
             const target = document.getElementById(viewId);
@@ -3701,19 +3759,94 @@
 
         // Open the Settings & Fees page (admin only)
         let adminPrivateContent = {};   // includes arrival-* keys (admin-only)
-        async function openSettings() {
+        async function openSettings(section) {
             if (!isAuthenticated) { tryAccessBackOffice(); return; }
             nav('view-settings');
+            // Load admin-only content (arrival-*, geo-*) so the per-cottage editors and
+            // the host fields have their data ready when a row is opened.
             try { const r = await apiPost('content.php', { action: 'get_all' }); adminPrivateContent = r.content || {}; }
             catch (e) { adminPrivateContent = {}; }
-            renderRatesEditor();
-            loadAdminPasskeys();
-            // Pre-fill the contact phone fields from saved content
-            const cp = siteContent['contact-phone'] || {};
-            const dEl = document.getElementById('contact-phone-dial');
-            const sEl = document.getElementById('contact-phone-display');
-            if (dEl) dEl.value = cp.dial || '';
-            if (sEl) sEl.value = cp.display || '';
+            if (section) settingsOpen(section); else settingsShowIndex();
+        }
+
+        // ---- Settings router: Apple-style index → drill-down sub-pages ----
+        const SETTINGS_TITLES = { host: 'Host profile', security: 'Security', accom: 'Accommodation preferences', calendar: 'Calendar sync', payments: 'Payments', guests: 'Guest accounts', contact: 'Contact number' };
+        let settingsBackTarget = null;
+        function settingsShowIndex() {
+            const idx = document.getElementById('settings-index'); const panel = document.getElementById('settings-panel');
+            if (panel) panel.style.display = 'none';
+            if (idx) idx.style.display = '';
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+        function settingsOpen(section) {
+            const idx = document.getElementById('settings-index'); const panel = document.getElementById('settings-panel');
+            if (!panel) return;
+            if (idx) idx.style.display = 'none';
+            panel.style.display = '';
+            panel.querySelectorAll('.settings-sec').forEach(s => s.style.display = 'none');
+            const sec = document.getElementById('sec-' + section);
+            if (sec) sec.style.display = '';
+            const title = document.getElementById('settings-panel-title');
+            if (title) title.textContent = SETTINGS_TITLES[section] || 'Settings';
+            settingsBackTarget = () => settingsShowIndex();
+            if (section === 'host') fillHostFields();
+            else if (section === 'security') loadAdminPasskeys();
+            else if (section === 'payments') renderSquareSettings();
+            else if (section === 'contact') {
+                const cp = siteContent['contact-phone'] || {};
+                const dEl = document.getElementById('contact-phone-dial'); const sEl = document.getElementById('contact-phone-display');
+                if (dEl) dEl.value = cp.dial || ''; if (sEl) sEl.value = cp.display || '';
+            }
+            else if (section === 'accom') renderAccomList();
+            else if (section === 'calendar') renderCalendarList();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+        function settingsBack() { if (settingsBackTarget) settingsBackTarget(); else settingsShowIndex(); }
+        function fillHostFields() {
+            const setv = (id, key) => { const e = document.getElementById(id); if (e) e.value = hostVal(key); };
+            setv('host-f-name', 'host-name'); setv('host-f-badge', 'host-badge'); setv('host-f-years', 'host-years');
+            setv('host-f-school', 'host-school'); setv('host-f-work', 'host-work'); setv('host-f-bio', 'host-bio');
+            const photo = document.getElementById('host-edit-photo');
+            if (photo) photo.style.backgroundImage = hostVal('host-photo') ? `url('${hostVal('host-photo')}')` : '';
+        }
+        // A small "row that drills into a cottage" list for accom + calendar sections.
+        function cottageRowsHtml(onclickFn) {
+            return Object.keys(propertyMeta).map(k =>
+                `<button class="settings-row" onclick="${onclickFn}('${k}')">
+                    <span class="settings-row-ic"><span class="legend-swatch swatch-${k}" style="width:16px;height:16px;border-radius:5px;"></span></span>
+                    <span class="settings-row-main"><span class="settings-row-label">${escapeHtml(propertyMeta[k].name)}</span></span><span class="settings-row-chev">›</span>
+                </button>`).join('');
+        }
+        function renderAccomList() {
+            const list = document.getElementById('accom-list'); const detail = document.getElementById('accom-detail');
+            if (detail) { detail.style.display = 'none'; detail.innerHTML = ''; }
+            if (list) { list.style.display = ''; list.innerHTML = `<div class="settings-group">${cottageRowsHtml('settingsOpenAccom')}</div>`; }
+            settingsBackTarget = () => settingsShowIndex();
+            const title = document.getElementById('settings-panel-title'); if (title) title.textContent = SETTINGS_TITLES.accom;
+        }
+        function settingsOpenAccom(k) {
+            const list = document.getElementById('accom-list'); const detail = document.getElementById('accom-detail');
+            if (list) list.style.display = 'none';
+            if (detail) { detail.style.display = ''; detail.innerHTML = ratePropHtml(k); }
+            const title = document.getElementById('settings-panel-title'); if (title) title.textContent = (propertyMeta[k] ? propertyMeta[k].name : k);
+            settingsBackTarget = () => settingsOpen('accom');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+        function renderCalendarList() {
+            const list = document.getElementById('calendar-list'); const detail = document.getElementById('calendar-detail');
+            if (detail) { detail.style.display = 'none'; detail.innerHTML = ''; }
+            if (list) { list.style.display = ''; list.innerHTML = `<div class="settings-group">${cottageRowsHtml('settingsOpenCalendar')}</div>`; }
+            settingsBackTarget = () => settingsShowIndex();
+            const title = document.getElementById('settings-panel-title'); if (title) title.textContent = SETTINGS_TITLES.calendar;
+        }
+        async function settingsOpenCalendar(k) {
+            const list = document.getElementById('calendar-list'); const detail = document.getElementById('calendar-detail');
+            if (list) list.style.display = 'none';
+            if (detail) { detail.style.display = ''; detail.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">Loading…</p>'; }
+            const title = document.getElementById('settings-panel-title'); if (title) title.textContent = (propertyMeta[k] ? propertyMeta[k].name : k);
+            settingsBackTarget = () => settingsOpen('calendar');
+            await loadCalendarSyncProp(k);
+            window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
         // Open the Reviews page (admin only) — moderation + featured home-page reviews
@@ -3732,20 +3865,12 @@
         // password, then requires the new one entered twice.
         // ---- Owner tool: Calendar Sync (iCal import/export) ----
         const SYNC_PROPS = [['21a','21A Westgate'],['jollyboat','Jollyboat'],['pimpernel','Pimpernel']];
-        async function loadCalendarSync() {
-            if (!isAuthenticated) { tryAccessBackOffice(); return; }
-            const box = document.getElementById('calendar-sync-box');
-            box.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">Loading…</p>';
-            let html = '';
-            for (const [key, label] of SYNC_PROPS) {
-                let data;
-                try { data = await apiPost('ical-import.php', { action: 'list', prop: key }); }
-                catch (e) { html += `<p style="color:#E53935;">${label}: ${escapeHtml(e.message)}</p>`; continue; }
-                const feeds = data.feeds || [];
-                const airbnb = feeds.find(f => f.source === 'airbnb');
-                const vrbo = feeds.find(f => f.source === 'vrbo');
-                html += `<div style="border:1px solid var(--glass-border);border-radius:12px;padding:16px;margin-bottom:14px;">
-                    <div style="font-family:var(--font-serif);font-size:1.1rem;margin-bottom:10px;">${label}</div>
+        // The Airbnb/Vrbo sync box markup for ONE cottage.
+        function calendarPropBoxHtml(key, label, data) {
+            const feeds = data.feeds || [];
+            const airbnb = feeds.find(f => f.source === 'airbnb');
+            const vrbo = feeds.find(f => f.source === 'vrbo');
+            return `<div style="border:1px solid var(--glass-border);border-radius:12px;padding:16px;">
                     <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px;">Export — paste this into Airbnb &amp; Vrbo</div>
                     <input class="input-glass" readonly onclick="this.select()" value="${escapeHtml(data.export_url || '')}" style="font-size:0.8rem;margin-bottom:14px;">
                     <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px;">Import — paste the platform calendar links here</div>
@@ -3756,6 +3881,29 @@
                     <span style="font-size:0.8rem;color:var(--text-muted);margin-left:8px;">${data.blocks || 0} imported blocked range${(data.blocks===1)?'':'s'}</span>
                     <div style="font-size:0.72rem;color:var(--text-muted);margin-top:8px;">Links save automatically as you type, and are kept on the server — they stay put across devices and logins.</div>
                 </div>`;
+        }
+        // Load + render one cottage's sync box into #calendar-detail (Settings).
+        async function loadCalendarSyncProp(key) {
+            const box = document.getElementById('calendar-detail');
+            if (!box) return;
+            const label = (propertyMeta[key] || {}).name || key;
+            let data;
+            try { data = await apiPost('ical-import.php', { action: 'list', prop: key }); }
+            catch (e) { box.innerHTML = `<p style="color:#E53935;">${escapeHtml(e.message)}</p>`; return; }
+            box.innerHTML = calendarPropBoxHtml(key, label, data);
+        }
+        // Legacy: render all cottages stacked into #calendar-sync-box (if present).
+        async function loadCalendarSync() {
+            if (!isAuthenticated) { tryAccessBackOffice(); return; }
+            const box = document.getElementById('calendar-sync-box');
+            if (!box) return;
+            box.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">Loading…</p>';
+            let html = '';
+            for (const [key, label] of SYNC_PROPS) {
+                let data;
+                try { data = await apiPost('ical-import.php', { action: 'list', prop: key }); }
+                catch (e) { html += `<p style="color:#E53935;">${label}: ${escapeHtml(e.message)}</p>`; continue; }
+                html += `<div style="margin-bottom:14px;"><div style="font-family:var(--font-serif);font-size:1.1rem;margin-bottom:10px;">${label}</div>${calendarPropBoxHtml(key, label, data)}</div>`;
             }
             box.innerHTML = html;
         }
@@ -3787,7 +3935,9 @@
                         : `${r.source}: failed (${r.error})`).join('\n');
                 }
                 toast(msg);
-                loadCalendarSync();
+                // Refresh whichever calendar view is showing.
+                if (document.getElementById('calendar-detail') && document.getElementById('calendar-detail').style.display !== 'none') loadCalendarSyncProp(key);
+                else loadCalendarSync();
             } catch (e) { glassAlert("Sync failed: " + e.message); }
         }
 
@@ -6543,15 +6693,6 @@
             if (photo) photo.style.backgroundImage = hostVal('host-photo') ? `url('${hostVal('host-photo')}')` : '';
         }
         // Admin: open the Host profile editor and load the current values.
-        function openHostEditor() {
-            if (!isAuthenticated) { tryAccessBackOffice(); return; }
-            nav('view-host');
-            const setv = (id, key) => { const e = document.getElementById(id); if (e) e.value = hostVal(key); };
-            setv('host-f-name', 'host-name'); setv('host-f-badge', 'host-badge'); setv('host-f-years', 'host-years');
-            setv('host-f-school', 'host-school'); setv('host-f-work', 'host-work'); setv('host-f-bio', 'host-bio');
-            const photo = document.getElementById('host-edit-photo');
-            if (photo) photo.style.backgroundImage = hostVal('host-photo') ? `url('${hostVal('host-photo')}')` : '';
-        }
         function saveHostText(key, value) {
             const v = (value || '').trim();
             siteContent[key] = v;
@@ -6568,6 +6709,8 @@
                 renderHost();
             });
         }
+        // Host profile now lives inside Settings; this shim keeps any old callers working.
+        function openHostEditor() { openSettings('host'); }
 
         // ---- House rules: derived from each cottage's own settings ----
         function renderHouseRules(propKey) {
@@ -7418,10 +7561,8 @@
         }
 
         // --- Rates & fees editor (per property) ---
-        function renderRatesEditor() {
-            const wrap = document.getElementById('rates-list');
-            if (!wrap) return;
-            wrap.innerHTML = Object.keys(propertyMeta).map(k => {
+        // One cottage's full rate/rules/seasons/arrival/geo/FAQ editor block.
+        function ratePropHtml(k) {
                 const r = propertyRates[k];
                 const m = propertyMeta[k];
                 return `
@@ -7473,7 +7614,12 @@
                         <button class="btn-sm btn-edit" onclick="saveFaqs('${k}')">Save FAQ</button>
                     </div>
                 </div>`;
-            }).join('');
+        }
+        // Legacy: render all properties stacked (kept for any other caller).
+        function renderRatesEditor() {
+            const wrap = document.getElementById('rates-list');
+            if (!wrap) return;
+            wrap.innerHTML = Object.keys(propertyMeta).map(ratePropHtml).join('');
         }
 
         // ---- Guest reviews: public renderer + Settings editor ----
@@ -9728,7 +9874,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'tz6a7x9b';
+            const BUILD = 'ua7b8y2c';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
