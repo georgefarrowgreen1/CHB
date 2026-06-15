@@ -2350,6 +2350,10 @@
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Security</span><span class="settings-row-sub">Password &amp; passkeys</span></span><span class="settings-row-chev">›</span>
                 </button>
+                <button class="settings-row" onclick="settingsOpen('analytics')">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16"/><rect x="6" y="11" width="3" height="6" rx="0.5"/><rect x="10.5" y="6" width="3" height="11" rx="0.5"/><rect x="15" y="13" width="3" height="4" rx="0.5"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Analytics</span><span class="settings-row-sub">Website visits &amp; referrers</span></span><span class="settings-row-chev">›</span>
+                </button>
             </div>
             <div class="settings-group">
                 <button class="settings-row" onclick="openTermsModal(event)">
@@ -2410,6 +2414,12 @@
                     <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 12px;">Guests can write a review from their account once a stay is complete. Nothing appears on the site until you approve it here.</p>
                     <div id="guest-review-moderation"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
                 </div>
+            </div>
+
+            <!-- Analytics (first-party, cookie-free) -->
+            <div class="settings-sec" id="sec-analytics" style="display:none;">
+                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 16px;">Private, cookie-free visit counts for your site. Your own visits aren't counted, and no personal data is stored.</p>
+                <div id="analytics-body"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
             </div>
 
             <!-- Security -->
@@ -3206,6 +3216,12 @@
         // "Edit text & photos" button. The button is hidden on the admin tools (Home,
         // Reviews, Money, Settings) so it only appears where there's site content to edit.
         const CUSTOMER_FACING_VIEWS = ['view-main', 'view-cottages', 'view-21a'];
+        // First-party, cookie-free page-view ping (see track.php). Fire-and-forget;
+        // never blocks the UI and never counts the owner's own browsing.
+        function trackView(viewId, prop) {
+            if (document.body.classList.contains('owner-mode')) return;
+            try { apiPost('track.php', { path: viewId || 'view-main', prop: prop || '' }).catch(() => {}); } catch (e) {}
+        }
         // Show/hide the dock Edit button for the given view (customer-facing only).
         function updateDockEditVisibility(viewId) {
             const btn = document.getElementById('dock-edit-btn');
@@ -3256,6 +3272,11 @@
                 clearChangeoverToasts();   // toasts are a back-office aid only
             }
             if (viewId === 'view-settings') { try { renderSquareSettings(); } catch (e) {} }
+
+            // First-party analytics: count customer-facing page views (skips owner).
+            if (CUSTOMER_FACING_VIEWS.includes(viewId)) {
+                try { trackView(viewId, viewId === 'view-21a' ? activeFrontProperty : ''); } catch (e) {}
+            }
 
             if (anchorId) {
                 setTimeout(() => {
@@ -3792,7 +3813,7 @@
         }
 
         // ---- Settings router: Apple-style index → drill-down sub-pages ----
-        const SETTINGS_TITLES = { host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Preferences', calendar: 'Calendar', cancel: 'Cancellation policy', payments: 'Payments', guests: 'Guest accounts' };
+        const SETTINGS_TITLES = { host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Preferences', calendar: 'Calendar', cancel: 'Cancellation policy', payments: 'Payments', guests: 'Guest accounts', analytics: 'Analytics' };
         let settingsBackTarget = null;
         function settingsShowIndex() {
             const idx = document.getElementById('settings-index'); const panel = document.getElementById('settings-panel');
@@ -3813,6 +3834,7 @@
             settingsBackTarget = () => settingsShowIndex();
             if (section === 'host') fillHostFields();
             else if (section === 'reviews') loadGuestReviewModeration();
+            else if (section === 'analytics') loadAnalytics();
             else if (section === 'security') loadAdminPasskeys();
             else if (section === 'payments') renderSquareSettings();
             else if (section === 'accom') renderAccomList();
@@ -6459,6 +6481,8 @@
           } finally {
             // Everything is loaded (or safely failed) — always reveal the page.
             hideLoadingOverlay();
+            // Count this initial landing (whatever view is active after boot).
+            try { const av = document.querySelector('.page-view.active'); trackView(av ? av.id : 'view-main', activeFrontProperty); } catch (e) {}
             try { startLiveUpdates(); } catch (e) { console.error(e); }
             try { maybeOpenPayLink(); } catch (e) { console.error(e); }   // ?pay=… → payment view
             try { maybeOpenReviewLink(); } catch (e) { console.error(e); } // ?review=… → My Bookings
@@ -8166,6 +8190,57 @@
         }
 
         // ---- Moderation of guest-submitted reviews (Settings) ----
+        // ---- Analytics panel (Settings → Analytics) ----
+        async function loadAnalytics() {
+            const wrap = document.getElementById('analytics-body');
+            if (!wrap) return;
+            wrap.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p>`;
+            let d;
+            try { d = await apiGet('track.php?action=summary&days=30'); }
+            catch (e) { wrap.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">Couldn't load analytics${e && e.message ? ' (' + escapeHtml(e.message) + ')' : ''}.</p>`; return; }
+
+            const daily = Array.isArray(d.daily) ? d.daily : [];
+            const last14 = daily.slice(-14);
+            const peak = last14.reduce((m, r) => Math.max(m, r.views), 0) || 1;
+            const fmtDay = s => { const [y, m, dd] = (s || '').split('-'); return dd ? `${dd}/${m}` : s; };
+            const bars = last14.length
+                ? `<div style="display:flex;align-items:flex-end;gap:6px;height:120px;margin:10px 0 4px;">${last14.map(r => {
+                    const h = Math.round((r.views / peak) * 100);
+                    return `<div title="${fmtDay(r.date)}: ${r.views}" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px;">
+                        <div style="width:100%;background:var(--glass-highlight);border-radius:6px 6px 0 0;height:${Math.max(3, h)}%;"></div>
+                        <span style="font-size:0.6rem;color:var(--text-muted);">${fmtDay(r.date)}</span>
+                    </div>`; }).join('')}</div>`
+                : `<p style="font-size:0.85rem;color:var(--text-muted);">No visits recorded yet — check back once guests have browsed the site.</p>`;
+
+            const refs = Array.isArray(d.topReferrers) ? d.topReferrers : [];
+            const refsHtml = refs.length
+                ? refs.map(r => `<div class="feed-row" style="grid-template-columns:1fr auto;"><span class="feed-who">${escapeHtml(r.host)}</span><span class="feed-amt">${r.count}</span></div>`).join('')
+                : `<p style="font-size:0.82rem;color:var(--text-muted);margin:0;">Mostly direct visits (no referrer) so far.</p>`;
+
+            const cottages = Array.isArray(d.byCottage) ? d.byCottage : [];
+            const cottageHtml = cottages.length
+                ? cottages.map(c => `<div class="feed-row" style="grid-template-columns:1fr auto;"><span class="feed-who">${escapeHtml((propertyMeta[c.prop_key] || {}).name || c.prop_key)}</span><span class="feed-amt">${c.views}</span></div>`).join('')
+                : '';
+
+            wrap.innerHTML = `
+                <div class="owner-summary" style="margin-bottom:18px;">
+                    <div class="os-card"><div class="os-label">Visits (30 days)</div><div class="os-value">${d.totalViews || 0}</div><div class="os-sub">page views</div></div>
+                    <div class="os-card"><div class="os-label">Unique visitors</div><div class="os-value">${d.uniqueVisitors || 0}</div><div class="os-sub">approx, last 30 days</div></div>
+                </div>
+                <div class="accounts-stat" style="max-width:720px;margin-bottom:16px;">
+                    <div class="label">Last 14 days</div>
+                    ${bars}
+                </div>
+                <div class="accounts-stat" style="max-width:720px;margin-bottom:16px;">
+                    <div class="label">Top referrers</div>
+                    <div class="feed-list" style="padding:4px 0;">${refsHtml}</div>
+                </div>
+                ${cottageHtml ? `<div class="accounts-stat" style="max-width:720px;">
+                    <div class="label">Most-viewed cottages</div>
+                    <div class="feed-list" style="padding:4px 0;">${cottageHtml}</div>
+                </div>` : ''}`;
+        }
+
         async function loadGuestReviewModeration() {
             const wrap = document.getElementById('guest-review-moderation');
             if (!wrap) return;
@@ -10070,7 +10145,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'pv1w2y4c';
+            const BUILD = 'qw2x3z5d';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
