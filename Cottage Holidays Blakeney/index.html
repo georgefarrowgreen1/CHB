@@ -1811,10 +1811,7 @@
             <button class="admin-dock-btn" id="dock-edit-btn" data-label="Edit text &amp; photos" aria-label="Edit text &amp; photos" title="Edit text &amp; photos" onclick="handleEditToggle()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h4L18.5 9.5a2.5 2.5 0 0 0-3.5-3.5L4.5 16.5 4 20z"/><path d="M13.5 7.5l3 3"/></svg>
             </button>
-            <button class="admin-dock-btn" data-view="view-reviews" data-label="Reviews" aria-label="Reviews" title="Reviews" onclick="openReviews()">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 17.77 6.8 19.5l.99-5.78-4.21-4.1 5.82-.85z"/></svg>
-            </button>
-            <button class="admin-dock-btn" data-view="view-accounts" data-label="Money &amp; income" aria-label="Money &amp; income" title="Money &amp; income" onclick="openAccounts()">
+            <button class="admin-dock-btn" data-view="view-accounts" data-label="Money" aria-label="Money" title="Money" onclick="openAccounts()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><text x="12" y="16.2" font-size="11" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="Georgia, serif">&#163;</text></svg>
             </button>
             <button class="admin-dock-btn" data-view="view-settings" data-label="Settings" aria-label="Settings" title="Settings" onclick="openSettings()">
@@ -2289,6 +2286,10 @@
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Host profile</span><span class="settings-row-sub">"Meet your host" details</span></span><span class="settings-row-chev">›</span>
                 </button>
+                <button class="settings-row" onclick="settingsOpen('reviews')">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 17.77 6.8 19.5l.99-5.78-4.21-4.1 5.82-.85z"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Reviews</span><span class="settings-row-sub">Approve guest reviews for your site</span></span><span class="settings-row-chev">›</span>
+                </button>
                 <button class="settings-row" onclick="settingsOpen('security')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Security</span><span class="settings-row-sub">Password &amp; passkeys</span></span><span class="settings-row-chev">›</span>
@@ -2346,6 +2347,14 @@
                     <label class="host-edit-label" for="host-f-bio">Bio</label>
                     <textarea class="input-glass" id="host-f-bio" rows="4" style="resize:vertical;" onchange="saveHostText('host-bio', this.value)"></textarea>
                     <p id="host-save-msg" style="font-size:0.82rem;color:#4CAF50;min-height:1em;margin:4px 0 0;"></p>
+                </div>
+            </div>
+
+            <!-- Reviews (moderation) -->
+            <div class="settings-sec" id="sec-reviews" style="display:none;">
+                <div class="accounts-stat" style="max-width:720px;">
+                    <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 12px;">Guests can write a review from their account once a stay is complete. Nothing appears on the site until you approve it here.</p>
+                    <div id="guest-review-moderation"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
                 </div>
             </div>
 
@@ -2418,45 +2427,62 @@
         </div>
     </main>
 
-    <!-- ================= REVIEWS (moderation + home-page picks) ================= -->
-    <main id="view-reviews" class="page-view container">
-        <span class="back-link" onclick="nav('view-backoffice'); initBackOffice();">← Back to Dashboard</span>
-        <div class="dashboard-header">
-            <div>
-                <h1 class="section-title" style="margin-bottom: 5px;">Reviews</h1>
-                <p class="lead" style="text-align: left; margin: 0;">Approve guest reviews before they appear on your site.</p>
-            </div>
-        </div>
-
-        <h3 class="accounts-section-title">Guest-submitted reviews</h3>
-        <div class="accounts-stat" style="max-width:720px;">
-            <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 12px;">Guests can write a review from their account once a stay is complete. Nothing appears on the site until you approve it here.</p>
-            <div id="guest-review-moderation"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
-        </div>
-    </main>
-
-    <!-- ================= ACCOUNTS / FINANCIAL REPORTING ================= -->
+    <!-- ================= MONEY (Apple-style grouped index + drill-down) ================= -->
     <main id="view-accounts" class="page-view container">
         <span class="back-link" onclick="nav('view-backoffice'); initBackOffice();">← Back to Dashboard</span>
         <div class="dashboard-header">
             <div>
-                <h1 class="section-title" style="margin-bottom: 5px;">Money &amp; income</h1>
-                <p class="lead" style="text-align: left; margin: 0;">Request deposits and balances, reconcile payments, and review income per UK tax year (6 April – 5 April). The tax-year selector applies to the income report below.</p>
-            </div>
-            <div>
-                <label style="font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);display:block;margin-bottom:6px;">Tax Year</label>
-                <select class="input-glass" id="accounts-year" style="margin:0;min-width:160px;" onchange="renderAccounts()"></select>
+                <h1 class="section-title" style="margin-bottom: 5px;">Money</h1>
+                <p class="lead" style="text-align: left; margin: 0;">Request deposits and balances, reconcile payments, and review your income.</p>
             </div>
         </div>
-        <div id="deposits-due"><!-- damage deposits awaiting return (past stays) --></div>
-        <div id="money-panel">
-            <!-- JS injects the per-booking payments & balances manager here -->
+
+        <!-- INDEX -->
+        <div id="accounts-index" class="settings-index">
+            <div class="settings-group">
+                <button class="settings-row" onclick="accountsOpen('payments')">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9v6M18 9v6"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Payments &amp; balances</span><span class="settings-row-sub">Request deposits &amp; balances, return damage deposits</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" onclick="accountsOpen('recent')">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 1.8"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Recent payments</span><span class="settings-row-sub">A log of card payments received</span></span><span class="settings-row-chev">›</span>
+                </button>
+            </div>
+            <div class="settings-group">
+                <button class="settings-row" onclick="accountsOpen('income')">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16"/><rect x="6" y="11" width="3" height="6" rx="0.5"/><rect x="10.5" y="7" width="3" height="10" rx="0.5"/><rect x="15" y="13" width="3" height="4" rx="0.5"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Income &amp; tax</span><span class="settings-row-sub">Forecast &amp; report per UK tax year, CSV export</span></span><span class="settings-row-chev">›</span>
+                </button>
+            </div>
         </div>
-        <div id="money-feed" style="margin-top:34px;"><!-- recent payments feed --></div>
-        <div id="money-forecast" style="margin-top:34px;"><!-- income forecast by month --></div>
-        <h3 class="accounts-section-title" style="margin-top:34px;">Income &amp; tax</h3>
-        <div id="accounts-content">
-            <!-- JS injects the slim income line + CSV export here -->
+
+        <!-- DRILL-DOWN PANEL -->
+        <div id="accounts-panel" style="display:none;">
+            <span class="back-link" id="accounts-back" onclick="accountsBack()">‹ Back</span>
+            <h2 class="section-title" id="accounts-panel-title" style="text-align:left;font-size:1.6rem;margin:6px 0 18px;"></h2>
+
+            <!-- Payments & balances -->
+            <div class="accounts-sec" id="asec-payments" style="display:none;">
+                <div id="deposits-due"><!-- damage deposits awaiting return (past stays) --></div>
+                <div id="money-panel"><!-- JS injects the per-booking payments & balances manager here --></div>
+            </div>
+
+            <!-- Recent payments -->
+            <div class="accounts-sec" id="asec-recent" style="display:none;">
+                <div id="money-feed"><!-- recent payments feed --></div>
+            </div>
+
+            <!-- Income & tax -->
+            <div class="accounts-sec" id="asec-income" style="display:none;">
+                <div style="margin-bottom:8px;">
+                    <label style="font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);display:block;margin-bottom:6px;">Tax Year (6 April – 5 April)</label>
+                    <select class="input-glass" id="accounts-year" style="margin:0;min-width:200px;" onchange="renderAccounts()"></select>
+                </div>
+                <div id="money-forecast" style="margin-top:24px;"><!-- income forecast by month --></div>
+                <h3 class="accounts-section-title" style="margin-top:34px;">Income &amp; tax</h3>
+                <div id="accounts-content"><!-- JS injects the slim income line + CSV export here --></div>
+            </div>
         </div>
     </main>
 
@@ -3713,7 +3739,7 @@
         }
 
         // ---- Settings router: Apple-style index → drill-down sub-pages ----
-        const SETTINGS_TITLES = { host: 'Host profile', security: 'Security', accom: 'Accommodation preferences', calendar: 'Calendar sync', payments: 'Payments', guests: 'Guest accounts', contact: 'Contact number' };
+        const SETTINGS_TITLES = { host: 'Host profile', reviews: 'Reviews', security: 'Security', accom: 'Accommodation preferences', calendar: 'Calendar sync', payments: 'Payments', guests: 'Guest accounts', contact: 'Contact number' };
         let settingsBackTarget = null;
         function settingsShowIndex() {
             const idx = document.getElementById('settings-index'); const panel = document.getElementById('settings-panel');
@@ -3733,6 +3759,7 @@
             if (title) title.textContent = SETTINGS_TITLES[section] || 'Settings';
             settingsBackTarget = () => settingsShowIndex();
             if (section === 'host') fillHostFields();
+            else if (section === 'reviews') loadGuestReviewModeration();
             else if (section === 'security') loadAdminPasskeys();
             else if (section === 'payments') renderSquareSettings();
             else if (section === 'contact') {
@@ -3792,17 +3819,8 @@
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
 
-        // Open the Reviews page (admin only) — moderation + featured home-page reviews
-        async function openReviews() {
-            if (!isAuthenticated) { tryAccessBackOffice(); return; }
-            nav('view-reviews');
-            // Fill the quick-add cottage dropdown
-            const qp = document.getElementById('qa-prop');
-            if (qp) qp.innerHTML = ['<option value="">(no cottage)</option>']
-                .concat(Object.keys(propertyMeta).map(k => `<option value="${k}">${propertyMeta[k].name}</option>`)).join('');
-            renderReviewsEditor();
-            loadGuestReviewModeration();
-        }
+        // Reviews moderation now lives as a folder inside Settings.
+        async function openReviews() { openSettings('reviews'); }
 
         // Change the admin password (must be logged in). Verifies the current
         // password, then requires the new one entered twice.
@@ -4006,7 +4024,36 @@
             try { renderMoneyForecast(); } catch (e) {}
             try { renderMoneyFeed(); } catch (e) {}
             await renderAccounts();
+            accountsShowIndex();
         }
+
+        // ---- Money router: Apple-style index → drill-down sub-pages (mirrors Settings) ----
+        const ACCOUNTS_TITLES = { payments: 'Payments & balances', recent: 'Recent payments', income: 'Income & tax' };
+        function accountsShowIndex() {
+            const idx = document.getElementById('accounts-index'); const panel = document.getElementById('accounts-panel');
+            if (panel) panel.style.display = 'none';
+            if (idx) idx.style.display = '';
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+        function accountsOpen(section) {
+            const idx = document.getElementById('accounts-index'); const panel = document.getElementById('accounts-panel');
+            if (!panel) return;
+            if (idx) idx.style.display = 'none';
+            panel.style.display = '';
+            panel.querySelectorAll('.accounts-sec').forEach(s => s.style.display = 'none');
+            const sec = document.getElementById('asec-' + section);
+            if (sec) sec.style.display = '';
+            const title = document.getElementById('accounts-panel-title');
+            if (title) title.textContent = ACCOUNTS_TITLES[section] || 'Money';
+            // Refresh the section's data so it's current each time it's opened.
+            try {
+                if (section === 'payments') { renderDepositsDue(); renderMoneyPanel(); }
+                else if (section === 'recent') { renderMoneyFeed(); }
+                else if (section === 'income') { renderMoneyForecast(); renderAccounts(); }
+            } catch (e) {}
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+        function accountsBack() { accountsShowIndex(); }
 
         async function renderAccounts() {
             const sel = document.getElementById('accounts-year');
@@ -9817,7 +9864,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'ci7j8l0n';
+            const BUILD = 'dj8k9m1p';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
