@@ -2285,7 +2285,7 @@
             <div class="settings-group">
                 <button class="settings-row" onclick="settingsOpen('host')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Host profile</span><span class="settings-row-sub">"Meet your host" details</span></span><span class="settings-row-chev">›</span>
+                    <span class="settings-row-main"><span class="settings-row-label">Profile</span><span class="settings-row-sub">"Meet your host" details</span></span><span class="settings-row-chev">›</span>
                 </button>
                 <button class="settings-row" onclick="settingsOpen('reviews')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 17.77 6.8 19.5l.99-5.78-4.21-4.1 5.82-.85z"/></svg></span>
@@ -3743,7 +3743,7 @@
         }
 
         // ---- Settings router: Apple-style index → drill-down sub-pages ----
-        const SETTINGS_TITLES = { host: 'Host profile', reviews: 'Reviews', security: 'Security', accom: 'Accommodation preferences', calendar: 'Calendar sync', payments: 'Payments', guests: 'Guest accounts', contact: 'Contact number' };
+        const SETTINGS_TITLES = { host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Accommodation preferences', calendar: 'Calendar sync', payments: 'Payments', guests: 'Guest accounts', contact: 'Contact number' };
         let settingsBackTarget = null;
         function settingsShowIndex() {
             const idx = document.getElementById('settings-index'); const panel = document.getElementById('settings-panel');
@@ -9868,7 +9868,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'ek9l0n2q';
+            const BUILD = 'fl0m1o3r';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
