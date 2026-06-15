@@ -45,3 +45,22 @@ define('SMTP_PASS', 'CHANGE_ME');                    // that mailbox's password 
 define('MAIL_FROM', 'bookings@yourdomain.co.uk');    // usually the same as SMTP_USER
 define('MAIL_FROM_NAME', 'Cottage Holidays Blakeney');
 define('OWNER_NOTIFY_EMAIL', 'sophia@yourdomain.co.uk'); // where YOUR owner copy is sent
+
+// ============================================================
+//  Square online payments (optional). Leave SQUARE_PAYMENTS_ENABLED false
+//  until every value below is filled in — guests then pay a deposit (and later
+//  the balance) by card on our own site. Get these from the Square Developer
+//  Dashboard (https://developer.squareup.com): create an application, then read
+//  its credentials for the chosen environment. See SETUP-SQUARE.md.
+//
+//   * APPLICATION_ID + LOCATION_ID are PUBLIC (handed to the browser SDK).
+//   * ACCESS_TOKEN + WEBHOOK_SIGNATURE_KEY are SECRET — keep this file private.
+// ============================================================
+define('SQUARE_PAYMENTS_ENABLED', false);            // master on/off switch
+define('SQUARE_ENVIRONMENT', 'sandbox');             // 'sandbox' while testing, 'production' when live
+define('SQUARE_APPLICATION_ID', '');                 // e.g. sandbox-sq0idb-xxxx (public)
+define('SQUARE_LOCATION_ID', '');                    // e.g. L1234567890AB (public)
+define('SQUARE_ACCESS_TOKEN', '');                   // SECRET access token for the environment above
+define('SQUARE_WEBHOOK_SIGNATURE_KEY', '');          // SECRET — from the webhook subscription
+define('SQUARE_WEBHOOK_URL', '');                    // the EXACT URL you register, e.g. https://yourdomain.co.uk/square-webhook.php
+define('SQUARE_API_VERSION', '2024-01-18');          // Square-Version header (bump when you adopt newer features)
