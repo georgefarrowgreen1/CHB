@@ -31,7 +31,18 @@ function wp_der_to_raw($der) {
 
 function wp_vapid_configured() {
     return defined('VAPID_PUBLIC_KEY') && VAPID_PUBLIC_KEY !== ''
-        && defined('VAPID_PRIVATE_KEY') && strpos((string)VAPID_PRIVATE_KEY, 'BEGIN') !== false;
+        && defined('VAPID_PRIVATE_KEY') && wp_private_pem() !== '';
+}
+
+// The private key may be stored as a raw PEM or (preferred, paste-safe) as a
+// single base64 line of that PEM. Return the PEM either way, or '' if unset.
+function wp_private_pem() {
+    if (!defined('VAPID_PRIVATE_KEY')) return '';
+    $k = trim((string)VAPID_PRIVATE_KEY);
+    if ($k === '') return '';
+    if (strpos($k, 'BEGIN') !== false) return $k;            // already a PEM
+    $dec = base64_decode($k, true);                          // else base64-of-PEM
+    return ($dec !== false && strpos($dec, 'BEGIN') !== false) ? $dec : '';
 }
 
 // Build a VAPID JWT for a push service origin (e.g. https://fcm.googleapis.com).
@@ -43,7 +54,7 @@ function wp_vapid_jwt($audience) {
         'sub' => defined('VAPID_SUBJECT') && VAPID_SUBJECT !== '' ? VAPID_SUBJECT : 'mailto:admin@localhost',
     ]));
     $input = $header . '.' . $claims;
-    $pkey = openssl_pkey_get_private(VAPID_PRIVATE_KEY);
+    $pkey = openssl_pkey_get_private(wp_private_pem());
     if (!$pkey) return false;
     $der = '';
     if (!openssl_sign($input, $der, $pkey, OPENSSL_ALGO_SHA256)) return false;
