@@ -6707,8 +6707,10 @@
         // All reviews, newest first (guest-submitted are appended after curated, so
         // reverse the combined list to surface the most recent at the top).
         function allReviews() {
-            const curated = Array.isArray(siteContent.reviews) ? siteContent.reviews : [];
-            return curated.concat(publicGuestReviews).slice().reverse();
+            // Genuine guest-submitted reviews ONLY — approved, from guests who actually
+            // completed a stay (served by reviews.php). Never owner-entered/curated data,
+            // so all review counts and star ratings self-populate from real customers.
+            return Array.isArray(publicGuestReviews) ? publicGuestReviews.slice().reverse() : [];
         }
         function renderReviews() {
             const sec = document.getElementById('reviews-section');
@@ -8771,7 +8773,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'wy7c8z9k';
+            const BUILD = 'xz8d9a2k';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
