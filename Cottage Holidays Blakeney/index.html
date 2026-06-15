@@ -743,7 +743,7 @@
         .prop-pin-dot svg { width: 20px; height: 20px; }
         /* Desktop Airbnb-style photo grid + sticky reserve card (mobile keeps the carousel + bottom bar) */
         .gallery-grid { display: none; gap: 8px; height: 460px; border-radius: 24px; overflow: hidden; position: relative; margin-bottom: 30px; }
-        .gg-cell { background-size: cover; background-position: center; cursor: pointer; background-color: var(--dark-grey); transition: filter 0.25s; }
+        .gg-cell { background-size: cover; background-position: center; cursor: pointer; transition: filter 0.25s; }
         .gg-cell:hover { filter: brightness(0.88); }
         .gg-big { grid-row: 1 / span 2; }
         .gg-showall { position: absolute; right: 14px; bottom: 14px; background: rgba(255,255,255,0.92); color: #1a191b; border: 1px solid rgba(0,0,0,0.1); border-radius: 10px; padding: 9px 14px; font-size: 0.85rem; font-weight: 600; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.35); }
@@ -785,6 +785,9 @@
         .enq-field-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin: 18px 0 6px; }
         .enq-cancel-note { display: flex; align-items: flex-start; gap: 10px; margin-top: 18px; padding: 12px 14px; border-radius: 14px; background: rgba(76,175,80,0.12); border: 1px solid rgba(76,175,80,0.3); font-size: 0.83rem; color: var(--text-light); line-height: 1.4; }
         .enq-cancel-note .ic { width: 18px; height: 18px; color: #4CAF50; flex-shrink: 0; margin-top: 1px; }
+        /* Inline validation message inside the two-step enquiry popup (replaces blocking pop-ups) */
+        .enq-modal-msg { display: none; margin: 14px 0 0; padding: 11px 14px; border-radius: 12px; background: rgba(255,176,32,0.12); border: 1px solid rgba(255,176,32,0.35); color: #ffce7a; font-size: 0.85rem; line-height: 1.4; }
+        .enq-modal-msg.show { display: block; }
         /* Owner dock sits above the booking bar when logged in */
         body.owner-mode .prop-book-bar { bottom: 86px; }
         .input-glass {
@@ -816,6 +819,14 @@
 
         /* --- SLIDING IMAGE GALLERY --- */
         .gallery-container { height: 80vh; border-radius: 30px; margin-bottom: 30px; position: relative; overflow: hidden; background: var(--dark-grey); border: 1px solid var(--glass-border); }
+        /* Shimmer skeletons (loading states) */
+        @keyframes shimmerBg { to { background-position: -200% 0; } }
+        .gallery-container, .gallery-grid { background: linear-gradient(100deg, var(--dark-grey) 30%, rgba(255,255,255,0.06) 50%, var(--dark-grey) 70%) 0 0 / 200% 100%; animation: shimmerBg 1.6s linear infinite; }
+        .skeleton { background: linear-gradient(100deg, rgba(255,255,255,0.04) 30%, rgba(255,255,255,0.10) 50%, rgba(255,255,255,0.04) 70%) 0 0 / 200% 100%; animation: shimmerBg 1.4s linear infinite; border-radius: 10px; }
+        .sk-card { padding: 15px; border-radius: 18px; }
+        .sk-img { height: clamp(180px, 30vw, 250px); border-radius: 16px; margin-bottom: 18px; }
+        .sk-line { height: 14px; margin: 10px 0; }
+        .sk-line.w60 { width: 60%; } .sk-line.w40 { width: 40%; }
         .gallery-track { display: flex; height: 100%; width: 100%; transition: transform 0.6s var(--fluid-bezier); }
         .gallery-slide { min-width: 100%; height: 100%; background-size: cover; background-position: center; }
         .gallery-nav {
@@ -1148,6 +1159,26 @@
         .toast-date { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 1px; margin-top: 6px; }
         .toast-dismiss { margin-top: 12px; width: 100%; padding: 9px; font-size: 0.75rem; }
         @media (max-width: 520px) { .toast-stack { bottom: 12px; right: 12px; } }
+        /* General-purpose auto-dismiss toast (success/info confirmations) */
+        #app-toasts { z-index: 2600; }
+        .toast.toast-mini { border-left-color: #4CAF50; padding: 13px 16px; cursor: pointer; }
+        .toast.toast-mini.toast-err { border-left-color: #E57373; }
+        .toast.toast-mini .toast-body { color: var(--text-light); display: flex; align-items: center; gap: 10px; }
+        .toast.toast-mini .ic { width: 18px; height: 18px; flex-shrink: 0; }
+        .toast.toast-mini.toast-err .ic { color: #E57373; }
+        .toast.toast-mini .ic { color: #4CAF50; }
+        /* iOS 'Add to Home Screen' hint (shown once to non-installed Safari users) */
+        .a2hs-hint { position: fixed; left: 12px; right: 12px; bottom: 14px; z-index: 1600; display: flex; align-items: center; gap: 12px;
+            max-width: 540px; margin: 0 auto; padding: 13px 14px calc(13px + env(safe-area-inset-bottom));
+            background: rgba(26,25,27,0.95); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border); border-radius: 16px; box-shadow: 0 16px 44px rgba(0,0,0,0.55);
+            font-size: 0.84rem; color: var(--text-light); line-height: 1.4;
+            transform: translateY(160%); transition: transform 0.45s var(--fluid-bezier); }
+        .a2hs-hint.show { transform: translateY(0); }
+        .a2hs-hint .ic { width: 22px; height: 22px; flex-shrink: 0; color: var(--text-light); }
+        .a2hs-hint strong { color: #fff; }
+        .a2hs-x { background: none; border: none; color: var(--text-muted); font-size: 1.5rem; line-height: 1; cursor: pointer; flex-shrink: 0; padding: 0 2px; }
+        .a2hs-x:hover { color: var(--text-light); }
         
         .toggle-btn {
             background: transparent; color: var(--text-muted); padding: 8px 18px; border-radius: 20px; font-weight: 500; cursor: pointer;
@@ -1534,6 +1565,11 @@
         .hs-step { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--glass-border); background: rgba(255,255,255,0.07); color: var(--text-light); font-size: 1.15rem; line-height: 1; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; transition: background 0.2s; }
         .hs-step:hover { background: rgba(255,255,255,0.18); }
         .hs-count { min-width: 18px; text-align: center; font-variant-numeric: tabular-nums; }
+        .enq-guests { display: flex; flex-direction: column; }
+        .enq-guest-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--glass-border); }
+        .enq-guest-row:last-child { border-bottom: none; }
+        .enq-guest-row > span { color: var(--text-light); font-size: 0.95rem; }
+        .enq-step-group { display: flex; align-items: center; gap: 14px; }
         .hs-msg { font-size: 0.82rem; color: #FFB74D; min-height: 1em; text-align: center; }
         .hs-select-wrap { position: relative; }
         .hs-select-btn { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; background: transparent; border: none; color: var(--text-light); font-family: inherit; font-size: 0.98rem; padding: 0; margin: 0; cursor: pointer; outline: none; }
@@ -1784,7 +1820,7 @@
         </section>
 
         <!-- ALL REVIEWS MODAL (per-cottage "read all reviews") -->
-        <div id="reviews-modal" class="reviews-modal">
+        <div id="reviews-modal" class="reviews-modal" role="dialog" aria-modal="true" aria-label="Guest reviews">
             <div class="reviews-modal-box glass-panel">
                 <div class="reviews-modal-head">
                     <h2 class="section-title" style="margin:0;font-size:1.6rem;">Guest Words</h2>
@@ -1936,7 +1972,7 @@
         </div>
 
         <!-- ===== Airbnb-style two-step enquiry: Review your stay → Your details ===== -->
-        <div id="enquire-modal" class="modal-overlay pop-modal" onclick="if(event.target===this) closeEnquireModal()">
+        <div id="enquire-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Enquire about your stay" onclick="if(event.target===this) closeEnquireModal()">
             <div class="modal-box enquire-box glass-panel">
                 <button class="reviews-modal-close" onclick="closeEnquireModal()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
 
@@ -1961,14 +1997,24 @@
                     <p id="enq-rules-hint" style="font-size: 0.78rem; color: var(--text-muted); margin: -8px 0 14px;"></p>
 
                     <div class="enq-field-label">Guests</div>
-                    <div style="display: flex; gap: 15px;">
-                        <div style="flex: 1;">
-                            <label style="font-size: 0.72rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-adults">Adults</label>
-                            <input type="number" class="input-glass" id="enq-adults" min="1" value="2" oninput="onOccupancyInput(); updateEnquiryPrice();">
+                    <input type="hidden" id="enq-adults" value="2">
+                    <input type="hidden" id="enq-children" value="0">
+                    <div class="enq-guests">
+                        <div class="enq-guest-row">
+                            <span>Adults</span>
+                            <div class="enq-step-group">
+                                <button type="button" class="hs-step" onclick="enqAdjust('adults',-1)" aria-label="Fewer adults">&minus;</button>
+                                <span class="hs-count" id="enq-adults-count">2</span>
+                                <button type="button" class="hs-step" onclick="enqAdjust('adults',1)" aria-label="More adults">+</button>
+                            </div>
                         </div>
-                        <div style="flex: 1;" id="enq-children-field">
-                            <label style="font-size: 0.72rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-children">Children</label>
-                            <input type="number" class="input-glass" id="enq-children" min="0" value="0" oninput="onOccupancyInput(); updateEnquiryPrice();">
+                        <div class="enq-guest-row" id="enq-children-field">
+                            <span>Children</span>
+                            <div class="enq-step-group">
+                                <button type="button" class="hs-step" onclick="enqAdjust('children',-1)" aria-label="Fewer children">&minus;</button>
+                                <span class="hs-count" id="enq-children-count">0</span>
+                                <button type="button" class="hs-step" onclick="enqAdjust('children',1)" aria-label="More children">+</button>
+                            </div>
                         </div>
                     </div>
                     <p id="enq-occupancy-hint" style="font-size: 0.78rem; color: var(--text-muted); margin: 4px 0 14px;"></p>
@@ -1978,6 +2024,7 @@
                         <p style="color: var(--text-muted); font-size: 0.85rem; text-align: center; margin: 0;">Select dates to see your price.</p>
                     </div>
                     <div class="enq-cancel-note"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg> <span>No payment now — we'll confirm your dates &amp; price by email.</span></div>
+                    <p class="enq-modal-msg" id="enq-msg-review" role="alert"></p>
                     <button type="button" class="btn-glass" style="width:100%;padding:16px;margin-top:18px;" onclick="enquireContinue()">Continue</button>
                 </div>
 
@@ -2002,6 +2049,7 @@
                         <input type="checkbox" id="enq-terms">
                         <span>I have read and accept the <a onclick="openTermsModal(event)">Booking Terms &amp; Conditions</a>.</span>
                     </label>
+                    <p class="enq-modal-msg" id="enq-msg-details" role="alert"></p>
                     <button class="btn-glass" style="width: 100%; padding: 18px;" id="enq-submit-btn">Send enquiry</button>
                     <a class="btn-glass" id="enq-call-btn" style="width: 100%; padding: 16px; margin-top: 12px; text-align: center; display: block; box-sizing: border-box; text-decoration: none;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.6 3.5l2.1.4 1 3-1.5 1.4a12 12 0 0 0 5 5l1.4-1.5 3 1 .4 2.1a2 2 0 0 1-2 2.3A15.5 15.5 0 0 1 4.3 5.5a2 2 0 0 1 2.3-2z"/></svg> Call to Discuss</a>
                 </div>
@@ -2417,7 +2465,7 @@
     <!-- ================= EDIT / MOVE MODAL ================= -->
     <!-- TERMS & CONDITIONS MODAL -->
     <!-- CUSTOM DATE-RANGE PICKER (customer booking) -->
-    <div id="date-picker" class="datepicker-pop" onclick="if(event.target===this)closeDatePicker()">
+    <div id="date-picker" class="datepicker-pop" role="dialog" aria-modal="true" aria-label="Choose your dates" onclick="if(event.target===this)closeDatePicker()">
         <div class="glass-panel datepicker-card">
             <div class="dp-head">
                 <button class="dp-nav-btn" onclick="dpChangeMonth(-1)" aria-label="Previous month">‹</button>
@@ -2470,7 +2518,7 @@
         <div class="lightbox-counter" id="lightbox-counter"></div>
     </div>
 
-    <div id="glass-dialog">
+    <div id="glass-dialog" role="dialog" aria-modal="true">
         <div class="glass-dialog-box glass-panel">
             <div class="glass-dialog-msg" id="glass-dialog-msg"></div>
             <input type="text" class="input-glass glass-dialog-input" id="glass-dialog-input" style="display:none;">
@@ -2626,7 +2674,7 @@
     </div>
 
     <!-- ARRIVAL DETAILS (auto-opens when a guest reaches their cottage) -->
-    <div id="arrival-modal" class="modal-overlay pop-modal" onclick="if(event.target===this) closeArrivalModal()">
+    <div id="arrival-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Arrival information" onclick="if(event.target===this) closeArrivalModal()">
         <div class="modal-box glass-panel" style="max-width:480px;">
             <div style="display:flex;justify-content:flex-end;margin:-6px -6px 0 0;">
                 <button class="reviews-modal-close" onclick="closeArrivalModal()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
@@ -2641,7 +2689,7 @@
     </div>
 
     <!-- LIVE MAP WINDOW (directions to the cottage; tap outside to close) -->
-    <div id="map-modal" class="modal-overlay pop-modal" onclick="if(event.target===this) closeMapModal()">
+    <div id="map-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Map" onclick="if(event.target===this) closeMapModal()">
         <div class="modal-box glass-panel" style="max-width:580px;width:100%;padding:16px;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;gap:10px;">
                 <h2 class="section-title" style="font-size:1.25rem;margin:0;">Directions to your cottage</h2>
@@ -3006,7 +3054,7 @@
                 await saveContent('contact-phone', value);
                 siteContent['contact-phone'] = value;
                 wireCallButtons();
-                glassAlert('Contact number saved.');
+                toast('Contact number saved.');
             } catch (e) { glassAlert("Couldn't save the number: " + e.message); }
         }
 
@@ -3557,7 +3605,7 @@
             ];
             try {
                 await apiPost('ical-import.php', { action: 'save_feeds', prop: key, feeds });
-                if (!quiet) glassAlert('Calendar links saved. Click "Sync now" to pull in the latest blocked dates.');
+                if (!quiet) toast('Calendar links saved.');
             } catch (e) { if (!quiet) glassAlert("Couldn't save: " + e.message); }
         }
         async function runSync(key) {
@@ -3571,7 +3619,7 @@
                         ? `${r.source}: ${r.events} blocked range(s) imported`
                         : `${r.source}: failed (${r.error})`).join('\n');
                 }
-                glassAlert(msg);
+                toast(msg);
                 loadCalendarSync();
             } catch (e) { glassAlert("Sync failed: " + e.message); }
         }
@@ -3632,7 +3680,7 @@
             if (confirmNext !== next) { glassAlert("The new passwords don't match. Nothing was changed."); return; }
             try {
                 await apiPost('auth.php', { action: 'admin_change_password', current, next });
-                glassAlert("Admin password updated. Use the new password next time you log in.");
+                toast("Admin password updated.");
             } catch (e) {
                 glassAlert("Couldn't change password: " + e.message);
             }
@@ -3902,7 +3950,7 @@
                 currentGuest = null;
                 setGuestUI();
                 nav('view-main');
-                glassAlert('Your account has been deleted.');
+                toast('Your account has been deleted.');
             } catch (e) {
                 glassAlert("Couldn't delete your account: " + e.message);
             }
@@ -4060,7 +4108,7 @@
                     clientDataJSON: bufToB64url(cred.response.clientDataJSON),
                     attestationObject: bufToB64url(cred.response.attestationObject)
                 });
-                glassAlert('Passkey added. You can now sign in with Face ID / Touch ID next time.');
+                toast('Passkey added — sign in with Face ID / Touch ID next time.');
                 loadPasskeys();
             } catch (e) {
                 if (e && e.name === 'NotAllowedError') return; // user cancelled
@@ -4134,7 +4182,7 @@
                     clientDataJSON: bufToB64url(cred.response.clientDataJSON),
                     attestationObject: bufToB64url(cred.response.attestationObject)
                 });
-                glassAlert('Passkey added. You can now sign in to the Back Office with it.\n\nTip: add one on another device too, as a backup.');
+                toast('Passkey added. Tip: add one on another device as a backup.');
                 loadAdminPasskeys();
             } catch (e) {
                 if (e && e.name === 'NotAllowedError') return;
@@ -4883,7 +4931,7 @@
             if (text.length < 10) { glassAlert('Please write at least a sentence or two.'); return; }
             try {
                 await apiPost('reviews.php', { action: 'submit', prop_key: propKey, stars, text });
-                glassAlert('Thank you for staying with us!');
+                toast('Thanks! Your review has been submitted for approval.');
                 await renderGuestBookings();   // repaint with the new pending state
             } catch (e) { glassAlert("Couldn't submit your review: " + e.message); }
         }
@@ -4962,7 +5010,7 @@
                 const res = await apiPost('bookings.php', { action: 'send_arrival', id: b.dbId });
                 if (res && res.error) glassAlert(res.error);
                 else {
-                    glassAlert(`Arrival info sent to ${b.email}.`);
+                    toast(`Arrival info sent to ${b.email}.`);
                     await loadData(); renderCalendar();
                     // Refresh the open details panel so the "(sent ✓)" state shows
                     const loc = findBookingLocation(bookingId);
@@ -4981,7 +5029,7 @@
                 if (res && res.error) {
                     glassAlert(res.error);
                 } else {
-                    glassAlert(`Confirmation email sent to ${b.email}.`);
+                    toast(`Confirmation email sent to ${b.email}.`);
                 }
             } catch (e) {
                 glassAlert("Couldn't send the email: " + e.message);
@@ -5547,6 +5595,7 @@
             // Everything is loaded (or safely failed) — always reveal the page.
             hideLoadingOverlay();
             try { startLiveUpdates(); } catch (e) { console.error(e); }
+            setTimeout(() => { try { maybeShowInstallHint(); } catch (e) {} }, 2500);
           }
         });
 
@@ -6875,6 +6924,7 @@
                 rateEl.innerText = cnt ? `★ ${avg.toFixed(2)} · ${cnt} review${cnt === 1 ? '' : 's'}` : 'New · no reviews yet';
             }
             enquireBack();                 // always start on the Review step
+            applyOccupancyToForm(key);     // ensure steppers/children reflect this cottage's limits
             refreshDateTrigger();
             updateEnquiryPrice();
             const m = document.getElementById('enquire-modal');
@@ -6889,19 +6939,29 @@
             const d = document.getElementById('enquire-step-details');
             if (r) r.style.display = '';
             if (d) d.style.display = 'none';
+            setEnqMsg('review', ''); setEnqMsg('details', '');
+        }
+        // Inline validation message inside the enquiry popup (replaces blocking
+        // glassAlert for the two-step form). step = 'review' | 'details'.
+        function setEnqMsg(step, text) {
+            const el = document.getElementById(step === 'details' ? 'enq-msg-details' : 'enq-msg-review');
+            if (!el) return;
+            el.textContent = text || '';
+            el.classList.toggle('show', !!text);
         }
         // Review → Details: validate dates/rules/occupancy up front (same checks as submit).
         function enquireContinue() {
+            setEnqMsg('review', '');
             const ci = (document.getElementById('enq-checkin') || {}).value;
             const co = (document.getElementById('enq-checkout') || {}).value;
-            if (!ci || !co) { glassAlert('Please choose your stay dates.'); return; }
-            if (co <= ci) { glassAlert('Your check-out date must be after your check-in date.'); return; }
+            if (!ci || !co) { setEnqMsg('review', 'Please choose your stay dates.'); return; }
+            if (co <= ci) { setEnqMsg('review', 'Your check-out date must be after your check-in date.'); return; }
             const ruleErr = checkBookingRules(activeFrontProperty, ci, co);
-            if (ruleErr) { glassAlert(ruleErr); return; }
+            if (ruleErr) { setEnqMsg('review', ruleErr); return; }
             const adults = Math.max(1, parseInt((document.getElementById('enq-adults') || {}).value, 10) || 0);
             const children = Math.max(0, parseInt((document.getElementById('enq-children') || {}).value, 10) || 0);
             const occErr = checkOccupancy(activeFrontProperty, adults, children);
-            if (occErr) { glassAlert(occErr); return; }
+            if (occErr) { setEnqMsg('review', occErr); return; }
             const r = document.getElementById('enquire-step-review');
             const d = document.getElementById('enquire-step-details');
             if (r) r.style.display = 'none';
@@ -6963,7 +7023,7 @@
             try {
                 await saveContent('faqs-' + propKey, faqs);
                 siteContent['faqs-' + propKey] = faqs;
-                glassAlert(faqs.length ? 'Good to Know saved for ' + (propertyMeta[propKey] ? propertyMeta[propKey].name : propKey) + '.' : 'Saved — this cottage has no FAQ entries now.');
+                toast(faqs.length ? 'Good to Know saved.' : 'Saved — no FAQ entries now.');
             } catch (e) { glassAlert("Couldn't save: " + e.message); }
         }
 
@@ -7056,7 +7116,7 @@
                 await saveContent('reviews', reviews);
                 siteContent.reviews = reviews;
                 renderReviews();
-                glassAlert(reviews.length ? 'Reviews saved.' : 'Reviews saved — the section is hidden while the list is empty.');
+                toast('Reviews saved.');
             } catch (e) { glassAlert("Couldn't save reviews: " + e.message); }
         }
 
@@ -7092,7 +7152,7 @@
                 // Refresh local copy so prices use the new seasons immediately
                 propertySeasons[k] = seasons.map(s => ({ label: s.label, start_date: s.start, end_date: s.end, couple_rate: s.rate }));
                 renderCardPrices(); updatePropPriceHeading();
-                glassAlert('Seasonal rates saved.');
+                toast('Seasonal rates saved.');
             } catch (e) { glassAlert("Couldn't save seasons: " + e.message); }
         }
 
@@ -7234,6 +7294,46 @@
         function glassAlert(message) { return glassDialog({ type: 'alert', message }); }
         function glassConfirm(message) { return glassDialog({ type: 'confirm', message }); }
         function glassPrompt(message, def, opts) { return glassDialog({ type: 'prompt', message, def, password: !!(opts && opts.password) }); }
+        // Lightweight non-blocking toast for success/info confirmations (vs. glassAlert,
+        // which blocks with an OK button — kept for errors & destructive confirms).
+        function toast(message, type) {
+            let stack = document.getElementById('app-toasts');
+            if (!stack) { stack = document.createElement('div'); stack.id = 'app-toasts'; stack.className = 'toast-stack'; document.body.appendChild(stack); }
+            const ok = type !== 'error';
+            const icon = ok
+                ? '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg>'
+                : '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>';
+            const el = document.createElement('div');
+            el.className = 'toast toast-mini' + (ok ? '' : ' toast-err');
+            el.setAttribute('role', 'status');
+            el.innerHTML = `<div class="toast-body">${icon}<span>${escapeHtml(message)}</span></div>`;
+            stack.appendChild(el);
+            let gone = false;
+            const remove = () => { if (gone) return; gone = true; el.classList.add('toast-out'); setTimeout(() => el.remove(), 360); };
+            el.addEventListener('click', remove);
+            setTimeout(remove, 3600);
+        }
+        // One-time hint for iPhone/iPad Safari users to install the PWA (also the only
+        // way Apple allows the check-in push notifications). Hidden once installed/dismissed.
+        function maybeShowInstallHint() {
+            try {
+                if (!isAppleDevice()) return;
+                const standalone = navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+                if (standalone) return;
+                if (localStorage.getItem('chb-a2hs-dismissed')) return;
+            } catch (e) { return; }
+            if (document.getElementById('a2hs-hint')) return;
+            const el = document.createElement('div');
+            el.id = 'a2hs-hint'; el.className = 'a2hs-hint';
+            el.innerHTML = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M8 8l4-4 4 4"/><path d="M5 12v7a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-7"/></svg>'
+                + '<span>Add to your Home Screen for the best experience &amp; arrival alerts — tap <strong>Share</strong>, then <strong>Add to Home Screen</strong>.</span>'
+                + '<button class="a2hs-x" aria-label="Dismiss">&times;</button>';
+            document.body.appendChild(el);
+            const close = () => { try { localStorage.setItem('chb-a2hs-dismissed', '1'); } catch (e) {} el.classList.remove('show'); setTimeout(() => el.remove(), 460); };
+            el.querySelector('.a2hs-x').addEventListener('click', close);
+            requestAnimationFrame(() => el.classList.add('show'));
+            setTimeout(() => { if (document.body.contains(el)) { el.classList.remove('show'); setTimeout(() => el.remove(), 460); } }, 13000);
+        }
         // Keyboard: Enter = OK, Escape = Cancel (matches native dialog habits)
         document.addEventListener('keydown', (e) => {
             const o = document.getElementById('glass-dialog');
@@ -7600,7 +7700,11 @@
             // Pull the live calendar (bookings + Airbnb/Vrbo blocks) for every cottage
             // BEFORE deciding what's available, so we never offer a booked stay.
             const keys = Object.keys(propertyMeta);
-            setMsg('Checking the calendar…', true);
+            setMsg('', true);
+            // Show shimmer skeleton cards while the live calendar is fetched.
+            const grid0 = document.getElementById('hs-results-grid');
+            if (grid0) { grid0.innerHTML = '<div class="card glass-panel sk-card"><div class="skeleton sk-img"></div><div class="skeleton sk-line w60"></div><div class="skeleton sk-line w40"></div></div>'.repeat(3); }
+            try { showHeroResults(); } catch (e) {}
             try { await Promise.all(keys.map(k => loadAvailability(k))); }
             catch (e) { /* loadAvailability keeps prior data; server still enforces */ }
             setMsg('');
@@ -8302,6 +8406,21 @@
         }
 
         // Set the enquiry form's adult/child max attributes + hint for a property.
+        // Enquiry popup guest steppers (bound to the hidden #enq-adults/#enq-children
+        // inputs the rest of the form reads). Mirrors the hero search's hsAdjust.
+        function enqAdjust(field, delta) {
+            const input = document.getElementById('enq-' + field);
+            if (!input) return;
+            const lim = occupancyLimits[activeFrontProperty] || {};
+            const min = field === 'adults' ? 1 : 0;
+            const max = field === 'adults' ? (lim.maxAdults != null ? lim.maxAdults : 99) : (lim.maxChildren != null ? lim.maxChildren : 99);
+            let v = (parseInt(input.value, 10) || 0) + delta;
+            v = Math.max(min, Math.min(max, v));
+            input.value = v;
+            const cnt = document.getElementById('enq-' + field + '-count'); if (cnt) cnt.textContent = v;
+            try { onOccupancyInput(); } catch (e) {}
+            try { updateEnquiryPrice(); } catch (e) {}
+        }
         function applyOccupancyToForm(propKey) {
             const lim = occupancyLimits[propKey];
             const aEl = document.getElementById('enq-adults');
@@ -8319,6 +8438,10 @@
             const allowChildren = !lim || lim.maxChildren > 0;
             if (cField) cField.style.display = allowChildren ? '' : 'none';
             if (!allowChildren && cEl) cEl.value = 0;
+            if (aEl && (parseInt(aEl.value, 10) || 0) < 1) aEl.value = 1;
+            // Reflect the (clamped) hidden-input values on the visible steppers.
+            const ac = document.getElementById('enq-adults-count'); if (ac && aEl) ac.textContent = aEl.value;
+            const cc = document.getElementById('enq-children-count'); if (cc && cEl) cc.textContent = cEl.value;
             if (hint) hint.innerText = occupancyHint(propKey);
             const rHint = document.getElementById('enq-rules-hint');
             if (rHint) rHint.innerText = bookingRulesHint(propKey);
@@ -8375,29 +8498,30 @@
             const children = Math.max(0, parseInt(document.getElementById('enq-children').value, 10) || 0);
             const message = document.getElementById('enq-message').value.trim();
 
+            setEnqMsg('details', '');
             if (!name || !checkIn || !checkOut) {
-                glassAlert("Please fill in your name and both dates.");
+                setEnqMsg('details', "Please fill in your name and both dates.");
                 return;
             }
             if (!address) {
-                glassAlert("Please enter your UK address.");
+                setEnqMsg('details', "Please enter your UK address.");
                 return;
             }
             if (!isUkPostcode(postcode)) {
-                glassAlert("Please enter a valid UK postcode.");
+                setEnqMsg('details', "Please enter a valid UK postcode.");
                 return;
             }
             if (checkOut <= checkIn) {
-                glassAlert("Your check-out date must be after your check-in date.");
+                setEnqMsg('details', "Your check-out date must be after your check-in date.");
                 return;
             }
             const ruleErr = checkBookingRules(propKey, checkIn, checkOut);
-            if (ruleErr) { glassAlert(ruleErr); return; }
+            if (ruleErr) { setEnqMsg('details', ruleErr); return; }
             const occErr = checkOccupancy(propKey, adults, children);
-            if (occErr) { glassAlert(occErr); return; }
+            if (occErr) { setEnqMsg('details', occErr); return; }
             const termsBox = document.getElementById('enq-terms');
             if (!termsBox || !termsBox.checked) {
-                glassAlert("Please read and accept the Booking Terms & Conditions before sending your enquiry.");
+                setEnqMsg('details', "Please read and accept the Booking Terms & Conditions before sending your enquiry.");
                 return;
             }
 
@@ -8417,7 +8541,7 @@
                     terms_accepted: true, terms_version: TERMS_VERSION
                 });
             } catch (e) {
-                glassAlert("Sorry, your enquiry couldn't be sent: " + e.message);
+                setEnqMsg('details', "Sorry, your enquiry couldn't be sent: " + e.message);
                 return;
             } finally {
                 if (submitBtn) { submitBtn.disabled = false; submitBtn.classList.remove('is-busy'); submitBtn.textContent = origSubmitLabel; }
@@ -8435,7 +8559,7 @@
             autofillGuestEnquiry();   // re-fill + re-lock email/address for a logged-in guest
             try { closeEnquireModal(); } catch (e) {}
 
-            glassAlert("Thank you! Your enquiry has been sent. Our team will be in touch to confirm availability.");
+            toast("Enquiry sent — we will be in touch to confirm availability.");
         }
 
         // ===================================================================
@@ -8776,7 +8900,7 @@
                     }
                     // Offer to email the guest the updated details (e.g. after a date change)
                     if (payload.email && await glassConfirm(`Booking updated. Email ${payload.email} an updated confirmation?`)) {
-                        try { await apiPost('bookings.php', { action: 'send_confirmation', id: payload.id }); glassAlert('Updated confirmation sent.'); }
+                        try { await apiPost('bookings.php', { action: 'send_confirmation', id: payload.id }); toast('Updated confirmation sent.'); }
                         catch (e) { glassAlert("Saved, but the email didn't send: " + e.message); }
                     }
                 }
@@ -8818,7 +8942,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'ae3g4d6k';
+            const BUILD = 'gm9n2k4p';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
