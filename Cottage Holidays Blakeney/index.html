@@ -6945,6 +6945,13 @@
         // Offsets to try, nearest-to-exact first: 0, -1, +1, -2, +2, ...
         function flexOffsets(F) { const o = [0]; for (let i = 1; i <= F; i++) { o.push(-i, i); } return o; }
         // Find the nearest available window (within ±flex days) for one cottage.
+        // Authoritative clash check against the SAME public source the cottage calendar
+        // uses (availability.php -> propertyAvailability): confirmed bookings + imported
+        // Airbnb/Vrbo iCal blocks. Overlap if a range starts before our checkout and
+        // ends after our check-in (checkout day itself is free, hotel-style).
+        function rangeClashes(key, ci, co) {
+            return (propertyAvailability[key] || []).some(r => r.start < co && r.end > ci);
+        }
         function findAvailability(key, ci, co, adults, children, flex) {
             const lim = occupancyLimits[key] || { maxAdults: 99, maxChildren: 99, maxTotal: 99 };
             if (adults > lim.maxAdults || children > lim.maxChildren || (adults + children) > lim.maxTotal) return { fits: false };
@@ -6957,22 +6964,28 @@
                 const sco = shiftDate(sci, nights);              // keep the same length of stay
                 const ruleErr = checkBookingRules(key, sci, sco);
                 if (ruleErr) { if (off === 0) reason = ruleErr; continue; }
-                if (hasDateClash(key, sci, sco)) continue;
+                if (rangeClashes(key, sci, sco)) continue;       // authoritative: bookings + iCal blocks
                 return { fits: true, available: true, ci: sci, co: sco, offset: off, price: priceBreakdown(key, adults, children, sci, sco) };
             }
             return { fits: true, available: false, reason };
         }
-        function runHeroSearch() {
+        async function runHeroSearch() {
             const msg = document.getElementById('hs-msg');
-            const setMsg = (t) => { if (msg) msg.innerText = t || ''; };
+            const setMsg = (t, ok) => { if (msg) { msg.innerText = t || ''; msg.style.color = ok ? 'var(--text-muted)' : '#FFB74D'; } };
             const ci = heroSearch.checkin, co = heroSearch.checkout;
             if (!ci || !co) { setMsg('Please choose your check-in and check-out dates.'); return; }
             if (co <= ci) { setMsg('Your check-out date must be after check-in.'); return; }
+            // Pull the live calendar (bookings + Airbnb/Vrbo blocks) for every cottage
+            // BEFORE deciding what's available, so we never offer a booked stay.
+            const keys = Object.keys(propertyMeta);
+            setMsg('Checking the calendar…', true);
+            try { await Promise.all(keys.map(k => loadAvailability(k))); }
+            catch (e) { /* loadAvailability keeps prior data; server still enforces */ }
             setMsg('');
             const { adults, children, flex } = heroSearch;
             const results = {};         // key -> {fits, available, ci, co, offset, price, reason}
             let tooSmall = 0;
-            for (const key of Object.keys(propertyMeta)) {
+            for (const key of keys) {
                 const r = findAvailability(key, ci, co, adults, children, flex);
                 if (!r.fits) { tooSmall++; continue; }
                 results[key] = r;
@@ -8125,7 +8138,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'xk3m7v5p';
+            const BUILD = 'yp4n8k2c';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
