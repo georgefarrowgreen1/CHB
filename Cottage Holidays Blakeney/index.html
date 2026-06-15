@@ -1300,6 +1300,10 @@
         .os-value.os-warn { color: #FFA726; }
         /* Infographic dashboard cards */
         .os-card { display: flex; flex-direction: column; }
+        /* Dashboard cards that act as shortcuts (tap to open the related tool). */
+        .os-card.clickable, .today-card.clickable { cursor: pointer; transition: transform 0.2s var(--fluid-bezier), border-color 0.2s var(--fluid-bezier), background 0.2s var(--fluid-bezier); }
+        .os-card.clickable:hover, .today-card.clickable:hover,
+        .os-card.clickable:focus-visible, .today-card.clickable:focus-visible { transform: translateY(-2px); border-color: var(--glass-highlight); background: var(--glass-hover); }
         .os-card .os-value { margin-top: 2px; }
         .os-donut-row { display: flex; align-items: center; gap: 14px; margin-top: 6px; }
         .os-donut { width: 62px; height: 62px; flex-shrink: 0; }
@@ -7999,22 +8003,25 @@
                     if (dh.held > 0 && (b.checkOut || '') < today) toReturn.push(`${tag} ${escapeHtml(name)} · ${gbp(dh.held)}`);
                 });
             });
-            const card = (label, items, accent) => `
-                <div class="today-card">
+            const card = (label, items, accent, target) => {
+                const click = target ? ` clickable" role="button" tabindex="0" onclick="dashGo('${target}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();dashGo('${target}')}"` : '"';
+                return `
+                <div class="today-card${click}>
                     <div class="today-card-label">${label}</div>
                     <div class="today-card-value" style="${accent || ''}">${items.length}</div>
                     <div class="today-card-list">${items.length ? items.slice(0, 4).map(i => `<div>${i}</div>`).join('') + (items.length > 4 ? `<div style="color:var(--text-muted);">+${items.length - 4} more</div>` : '') : '<span style="color:var(--text-muted);">Nothing</span>'}</div>
                 </div>`;
+            };
             const occ = cottageMonthOccupancy();
             const occBars = osHBars(Object.keys(propertyMeta).map(k => ({
                 label: propertyMeta[k].name, value: occ[k].nights, max: occ[k].total,
                 valLabel: occ[k].pct + '%', color: `var(--prop-${k})`
             })));
             el.innerHTML = `<div class="today-grid">
-                ${card('Arrivals today', arrivals)}
-                ${card('Departures today', departures)}
-                ${card('Balances due (7 days)', dueSoon, dueSoon.length ? 'color:#FFA726;' : '')}
-                ${card('Deposits to return', toReturn, toReturn.length ? 'color:#FFA726;' : '')}
+                ${card('Arrivals today', arrivals, '', 'calendar')}
+                ${card('Departures today', departures, '', 'calendar')}
+                ${card('Balances due (7 days)', dueSoon, dueSoon.length ? 'color:#FFA726;' : '', 'money')}
+                ${card('Deposits to return', toReturn, toReturn.length ? 'color:#FFA726;' : '', 'money')}
                 <div class="today-card occ-by-cottage" style="grid-column:1/-1;">
                     <div class="today-card-label">Occupancy this month · by cottage</div>
                     <div class="occ-bars" style="margin-top:12px;">${occBars}</div>
@@ -9849,6 +9856,17 @@
             return { status: 'none' };
         }
 
+        // Dashboard cards are shortcuts: jump to the relevant tool when tapped.
+        function dashGo(target) {
+            try {
+                if (target === 'analytics') { openSettings('analytics'); }
+                else if (target === 'money') { Promise.resolve(openAccounts()).then(() => { try { accountsOpen('payments'); } catch (e) {} }); }
+                else if (target === 'calendar') {
+                    const el = document.querySelector('#view-backoffice .cal-panel') || document.getElementById('cal-body');
+                    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            } catch (e) {}
+        }
         function renderOwnerSummary() {
             const el = document.getElementById('owner-summary');
             if (!el) return;
@@ -9904,19 +9922,19 @@
 
             const paidFrac = (received + outstanding) > 0 ? received / (received + outstanding) : (received > 0 ? 1 : 0);
             el.innerHTML = `
-                <div class="os-card"><div class="os-label">Visits this week</div>
+                <div class="os-card clickable" role="button" tabindex="0" onclick="dashGo('analytics')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();dashGo('analytics')}" title="View visitor analytics"><div class="os-label">Visits this week</div>
                     <div class="os-value" id="os-visits">—</div>
                     <svg class="os-spark" id="os-visits-spark" viewBox="0 0 100 36" preserveAspectRatio="none" aria-hidden="true"></svg>
                     <div class="os-sub" id="os-visits-sub">last 7 days</div></div>
-                <div class="os-card"><div class="os-label">Occupancy (${monthName})</div>
+                <div class="os-card clickable" role="button" tabindex="0" onclick="dashGo('calendar')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();dashGo('calendar')}" title="See the calendar"><div class="os-label">Occupancy (${monthName})</div>
                     <div class="os-donut-row">${osDonut(occ, 'var(--accent)')}
                         <div class="os-donut-meta"><div class="os-sub" style="margin-top:0;">${nightsThisMonth} of ${totalRoomNights}<br>cottage-nights</div></div>
                     </div></div>
-                <div class="os-card"><div class="os-label">Received</div>
+                <div class="os-card clickable" role="button" tabindex="0" onclick="dashGo('money')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();dashGo('money')}" title="Open Money — payments & balances"><div class="os-label">Received</div>
                     <div class="os-value os-good">${gbp(received)}</div>
                     <div class="os-bar"><span style="width:${Math.round(paidFrac * 100)}%;"></span></div>
                     <div class="os-sub">${outstanding > 0.001 ? gbp(outstanding) + ' outstanding · ' + unpaidUpcoming + ' unpaid' : 'All upcoming stays paid'}</div></div>
-                <div class="os-card"><div class="os-label">Arrivals (next 30 days)</div>
+                <div class="os-card clickable" role="button" tabindex="0" onclick="dashGo('calendar')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();dashGo('calendar')}" title="See upcoming arrivals on the calendar"><div class="os-label">Arrivals (next 30 days)</div>
                     <div class="os-value">${arrivals30}</div><div class="os-sub">guests checking in</div></div>`;
             refreshHomeVisits();
         }
@@ -11084,7 +11102,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'ou6v7x9b';
+            const BUILD = 'pv7w8y0c';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
