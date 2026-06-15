@@ -199,7 +199,10 @@ $in = body();
 $action = $in['action'] ?? '';
 
 if ($action === 'delete') {
-    db()->prepare('DELETE FROM bookings WHERE id = ?')->execute([(int)($in['id'] ?? 0)]);
+    $id = (int)($in['id'] ?? 0);
+    $b = booking_by_id($id);
+    db()->prepare('DELETE FROM bookings WHERE id = ?')->execute([$id]);
+    if ($b) { try { require_once __DIR__ . '/waitlist.php'; waitlist_notify_freed($b['prop_key'] ?? '', $b['check_in'] ?? '', $b['check_out'] ?? ''); } catch (\Throwable $e) {} }
     json_out(['ok' => true]);
 }
 
@@ -525,6 +528,7 @@ if ($action === 'cancel') {
         } catch (\Throwable $e) { $emailResult = ['ok' => false, 'error' => $e->getMessage()]; }
     }
     db()->prepare('DELETE FROM bookings WHERE id = ?')->execute([$id]);
+    try { require_once __DIR__ . '/waitlist.php'; waitlist_notify_freed($b['prop_key'] ?? '', $b['check_in'] ?? '', $b['check_out'] ?? ''); } catch (\Throwable $e) {}
     json_out(['ok' => true, 'refunded' => $refundedByCard, 'manual_refund' => ($refundAmount > $refundedByCard + 0.001), 'email' => $emailResult]);
 }
 
