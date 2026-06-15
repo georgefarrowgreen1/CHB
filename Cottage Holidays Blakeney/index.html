@@ -6799,13 +6799,20 @@
                 <div class="review-who">${escapeHtml(r.name || 'A guest')}${propName ? ` <span>— ${escapeHtml(propName)}</span>` : ''}${src}</div>
             </div>`;
         }
-        // All reviews, newest first (guest-submitted are appended after curated, so
-        // reverse the combined list to surface the most recent at the top).
+        // All genuine guest reviews, newest first. Two real sources are combined:
+        //  1. On-site submissions — approved, from guests who actually completed a
+        //     stay (served by reviews.php). These are real and come newest-first.
+        //  2. Owner-curated reviews entered in Settings → Guest Reviews — genuine
+        //     reviews imported from other platforms (Airbnb/Vrbo/Google etc.),
+        //     each tagged with its source so visitors see where it came from.
+        // Both feed the per-cottage and host counts/ratings.
         function allReviews() {
-            // Genuine guest-submitted reviews ONLY — approved, from guests who actually
-            // completed a stay (served by reviews.php). Never owner-entered/curated data,
-            // so all review counts and star ratings self-populate from real customers.
-            return Array.isArray(publicGuestReviews) ? publicGuestReviews.slice().reverse() : [];
+            const guest = Array.isArray(publicGuestReviews) ? publicGuestReviews : [];
+            const curated = (Array.isArray(siteContent.reviews) ? siteContent.reviews : [])
+                .filter(r => r && (r.text || '').toString().trim());
+            // On-site submissions first (freshest, already newest-first), then the
+            // owner-imported reviews in editor order.
+            return guest.concat(curated);
         }
         function renderReviews() {
             const sec = document.getElementById('reviews-section');
@@ -8942,7 +8949,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'gm9n2k4p';
+            const BUILD = 'hn3p4m5q';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
