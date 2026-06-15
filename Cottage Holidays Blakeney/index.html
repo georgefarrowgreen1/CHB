@@ -832,8 +832,9 @@
         .pay-msg.show { display: block; }
         .pay-done, .pay-error { text-align: center; padding: 16px 0; }
         .pay-done-tick .ic { width: 64px; height: 64px; color: #4CAF50; }
-        /* Owner dock sits above the booking bar when logged in */
-        body.owner-mode .prop-book-bar { bottom: 86px; }
+        /* Enquiry CTAs are for customers; hide them while the owner is signed in. */
+        body.owner-mode .prop-book-bar { display: none !important; }
+        body.owner-mode #reserve-enquire-btn { display: none; }
         .input-glass {
             width: 100%; background: rgba(0,0,0,0.14); border: 1px solid var(--glass-border);
             color: var(--text-light); padding: 15px; border-radius: 12px; margin-bottom: 20px;
@@ -2032,7 +2033,6 @@
                     <div class="things-col">
                         <div class="things-title">House rules</div>
                         <div id="prop-house-rules" class="things-list"></div>
-                        <p class="things-note" id="prop-houserules-note">Please treat the cottage as your own home and let us know of any special requests.</p>
                     </div>
                     <div class="things-col">
                         <div class="things-title">Safety &amp; property</div>
@@ -2081,7 +2081,7 @@
             <aside class="prop-reserve" id="prop-reserve">
                 <div class="pr-price" id="pr-price"></div>
                 <div class="pr-sub">No payment now — enquire to check your dates &amp; price.</div>
-                <button type="button" class="btn-glass" style="width:100%;padding:15px;margin-top:16px;" onclick="openEnquireModal()">Enquire now</button>
+                <button type="button" id="reserve-enquire-btn" class="btn-glass" style="width:100%;padding:15px;margin-top:16px;" onclick="openEnquireModal()">Enquire now</button>
             </aside>
             <!-- The enquiry now lives in the two-step #enquire-modal (opened by "Enquire now"). -->
         </div>
@@ -3839,12 +3839,40 @@
             settingsBackTarget = () => settingsShowIndex();
             const title = document.getElementById('settings-panel-title'); if (title) title.textContent = SETTINGS_TITLES.accom;
         }
+        // Each cottage's Preferences open as a sub-index of subfolders; each row drills
+        // into just that part (rates, house rules, safety, …) — see settingsOpenAccomSec.
+        const ACCOM_SECTIONS = [
+            { id: 'rates',    label: 'Rates & fees',      sub: 'Nightly prices, deposit &amp; fee', ic: '<path d="M2 6h20v12H2z"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9v6M18 9v6"/>' },
+            { id: 'house',    label: 'House rules',       sub: 'Check-in/out, nights, arrival days &amp; note', ic: '<path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/>' },
+            { id: 'safety',   label: 'Safety &amp; property', sub: 'Safety items shown to guests', ic: '<path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/>' },
+            { id: 'seasons',  label: 'Seasonal rates',    sub: 'Different prices by date range', ic: '<rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/>' },
+            { id: 'arrival',  label: 'Arrival info',      sub: 'Private pre-arrival email', ic: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/>' },
+            { id: 'location', label: 'Location',          sub: 'Address &amp; key-code unlock spot', ic: '<path d="M12 21s-7-5.2-7-11a7 7 0 0 1 14 0c0 5.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/>' },
+            { id: 'faq',      label: 'Good to Know',      sub: 'FAQ shown in this cottage\'s bookings', ic: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.8" r="0.7" fill="currentColor" stroke="none"/>' },
+        ];
         function settingsOpenAccom(k) {
             const list = document.getElementById('accom-list'); const detail = document.getElementById('accom-detail');
             if (list) list.style.display = 'none';
-            if (detail) { detail.style.display = ''; detail.innerHTML = ratePropHtml(k); }
+            if (detail) {
+                detail.style.display = '';
+                detail.innerHTML = `<div class="settings-group">${ACCOM_SECTIONS.map(s =>
+                    `<button class="settings-row" onclick="settingsOpenAccomSec('${k}','${s.id}')">
+                        <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${s.ic}</svg></span>
+                        <span class="settings-row-main"><span class="settings-row-label">${s.label}</span><span class="settings-row-sub">${s.sub}</span></span><span class="settings-row-chev">›</span>
+                    </button>`).join('')}</div>`;
+            }
             const title = document.getElementById('settings-panel-title'); if (title) title.textContent = (propertyMeta[k] ? propertyMeta[k].name : k);
             settingsBackTarget = () => settingsOpen('accom');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+        function settingsOpenAccomSec(k, sec) {
+            const detail = document.getElementById('accom-detail');
+            if (detail) { detail.style.display = ''; detail.innerHTML = `<div class="rate-prop">${accomSectionHtml(k, sec)}</div>`; }
+            const meta = ACCOM_SECTIONS.find(s => s.id === sec);
+            const name = propertyMeta[k] ? propertyMeta[k].name : k;
+            const title = document.getElementById('settings-panel-title');
+            if (title) title.innerHTML = `${escapeHtml(name)} <span style="color:var(--text-muted);">·</span> ${meta ? meta.label : ''}`;
+            settingsBackTarget = () => settingsOpenAccom(k);
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
         function renderCalendarList() {
@@ -6726,37 +6754,16 @@
         const DEFAULT_SAFETY = ['Smoke alarm', 'Carbon monoxide detector', 'First-aid kit available'];
         let activePropSafety = [];
         const IC_SHIELD = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/></svg>';
+        // Display-only on the cottage page; the list is edited in
+        // Settings → Preferences → cottage → Safety & property.
         function renderSafety(propKey) {
             const wrap = document.getElementById('prop-safety');
             if (!wrap) return;
-            let html = activePropSafety.map((s, i) => `
-                <div class="things-item" data-sf-index="${i}">${IC_SHIELD}
-                    <span class="amenity-text safety-text" ${isEditMode ? 'contenteditable="true"' : ''} onblur="editSafety(${i}, this.innerText)">${escapeHtml(s)}</span>
-                    ${isEditMode ? `<button class="amenity-remove" title="Remove" onclick="removeSafety(${i})">×</button>` : ''}
+            wrap.innerHTML = activePropSafety.map(s => `
+                <div class="things-item">${IC_SHIELD}
+                    <span>${escapeHtml(s)}</span>
                 </div>`).join('');
-            if (isEditMode) html += `<button class="amenity-add" onclick="addSafety()">＋ Add item</button>`;
-            wrap.innerHTML = html;
-            if (isEditMode) wrap.querySelectorAll('.safety-text').forEach(el => el.addEventListener('paste', plainTextPaste));
         }
-        function addSafety() {
-            activePropSafety.push('New item');
-            renderSafety(activeFrontProperty);
-            persistSafety();
-            if (isEditMode) {
-                const s = document.querySelectorAll('#prop-safety .safety-text'); const last = s[s.length - 1];
-                if (last) { const r = document.createRange(); r.selectNodeContents(last); const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r); last.focus(); }
-            }
-        }
-        function removeSafety(i) { activePropSafety.splice(i, 1); renderSafety(activeFrontProperty); persistSafety(); }
-        function editSafety(i, text) { const c = (text || '').replace(/\s+/g, ' ').trim(); if (c === '') { removeSafety(i); return; } activePropSafety[i] = c; persistSafety(); }
-        function persistSafety() {
-            const key = 'safety-' + activeFrontProperty;
-            if (propertyContent[activeFrontProperty]) propertyContent[activeFrontProperty].safety = activePropSafety.slice();
-            siteContent[key] = activePropSafety.slice();
-            try { localStorage.setItem(key, JSON.stringify(activePropSafety)); } catch (e) {}
-            saveContent(key, activePropSafety.slice());
-        }
-
         // ---- Meet your host (one shared profile, edited on the admin Host page) ----
         const HOST_DEFAULTS = {
             'host-name': 'Sophia', 'host-badge': 'Owner', 'host-reviews': '56',
@@ -6811,11 +6818,14 @@
             const co = r.checkOutTime || '10:00';
             const maxG = lim.maxTotal || 0;
             const item = (text) => `<div class="things-item">${IC_CHECK} <span>${escapeHtml(text)}</span></div>`;
+            // Auto lines from the functional booking rules, then the owner's custom
+            // house-rules list (managed in Settings → Preferences → cottage → House rules).
+            const custom = Array.isArray(siteContent['houserules-' + propKey]) ? siteContent['houserules-' + propKey] : DEFAULT_HOUSE_RULES;
             wrap.innerHTML = [
                 item(`Check-in after ${ci}`),
                 item(`Checkout before ${co}`),
                 maxG ? item(`${maxG} guest${maxG === 1 ? '' : 's'} maximum`) : ''
-            ].join('');
+            ].concat(custom.map(item)).join('');
         }
 
         // ---- "Where you'll be": exact-pin map from the cottage's saved coordinates ----
@@ -7651,18 +7661,70 @@
 
         // --- Rates & fees editor (per property) ---
         // One cottage's full rate/rules/seasons/arrival/geo/FAQ editor block.
-        function ratePropHtml(k) {
-                const r = propertyRates[k];
-                const m = propertyMeta[k];
-                return `
-                <div class="rate-prop">
-                    <h4><span class="legend-swatch swatch-${k}"></span> ${m.name}</h4>
+        // ---- Per-cottage Preferences, split into subfolder sections ----
+        // A reusable add/remove list editor (a "−" per row, a "＋" to add) used by the
+        // Safety and House-rules subfolders. `attr` is the data-attribute marking inputs.
+        function listRowHtml(attr, value, placeholder) {
+            return `<div class="list-edit-row" style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+                <input type="text" class="input-glass field-sm" data-${attr}="1" value="${escapeHtml(value || '')}" placeholder="${escapeHtml(placeholder || '')}" style="flex:1 1 auto;margin:0;">
+                <button class="btn-sm btn-delete list-edit-del" onclick="this.closest('.list-edit-row').remove()" title="Remove" aria-label="Remove"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 12h12"/></svg></button>
+            </div>`;
+        }
+        function collectListRows(wrap, attr) {
+            const items = [];
+            if (wrap) wrap.querySelectorAll(`[data-${attr}]`).forEach(el => { const v = (el.value || '').replace(/\s+/g, ' ').trim(); if (v) items.push(v); });
+            return items;
+        }
+
+        // ---- Safety & property list (per cottage) ----
+        function accomSafetyList(k) {
+            return Array.isArray(siteContent['safety-' + k]) ? siteContent['safety-' + k].slice() : DEFAULT_SAFETY.slice();
+        }
+        function accomAddSafety(k) {
+            const wrap = document.getElementById('accom-safety-rows-' + k);
+            if (wrap) wrap.insertAdjacentHTML('beforeend', listRowHtml('sf', '', 'e.g. Smoke alarm'));
+        }
+        async function accomSaveSafety(k) {
+            const items = collectListRows(document.getElementById('accom-safety-rows-' + k), 'sf');
+            try {
+                await saveContent('safety-' + k, items);
+                siteContent['safety-' + k] = items;
+                if (propertyContent[k]) propertyContent[k].safety = items.slice();
+                if (activeFrontProperty === k) { activePropSafety = items.slice(); renderSafety(k); }
+                toast('Safety & property saved.');
+            } catch (e) { glassAlert("Couldn't save: " + e.message); }
+        }
+
+        // ---- House rules list (per cottage, guest-facing bullets) ----
+        const DEFAULT_HOUSE_RULES = ['Please treat the cottage as your own home', 'Let us know of any special requests'];
+        function houseRulesList(k) {
+            return Array.isArray(siteContent['houserules-' + k]) ? siteContent['houserules-' + k].slice() : DEFAULT_HOUSE_RULES.slice();
+        }
+        function accomAddHouseRule(k) {
+            const wrap = document.getElementById('accom-houserules-rows-' + k);
+            if (wrap) wrap.insertAdjacentHTML('beforeend', listRowHtml('hr', '', 'e.g. No smoking indoors'));
+        }
+        async function accomSaveHouseRules(k) {
+            const items = collectListRows(document.getElementById('accom-houserules-rows-' + k), 'hr');
+            try {
+                await saveContent('houserules-' + k, items);
+                siteContent['houserules-' + k] = items;
+                if (activeFrontProperty === k) renderHouseRules(k);
+                toast('House rules saved.');
+            } catch (e) { glassAlert("Couldn't save: " + e.message); }
+        }
+
+        // ---- Per-cottage section builders (one subfolder each) ----
+        function accomSectionHtml(k, sec) {
+            const r = propertyRates[k] || {};
+            switch (sec) {
+                case 'rates': return `
                     <div class="rate-field"><label>Couple / night — 2 adults (£)</label><input type="number" min="0" step="1" value="${r.coupleRate}" onchange="updateRate('${k}','coupleRate',this.value)"></div>
                     <div class="rate-field"><label>Extra adult / night (£)</label><input type="number" min="0" step="1" value="${r.extraAdultRate}" onchange="updateRate('${k}','extraAdultRate',this.value)"></div>
                     <div class="rate-field"><label>Child / night (£)</label><input type="number" min="0" step="1" value="${r.childRate}" onchange="updateRate('${k}','childRate',this.value)"></div>
                     <div class="rate-field"><label>Standard damages deposit (£)</label><input type="number" min="0" step="5" value="${r.damagesDeposit}" onchange="updateRate('${k}','damagesDeposit',this.value)"></div>
-                    <div class="rate-field"><label>Transaction fee (%)</label><input type="number" min="0" step="0.1" value="${r.transactionPct}" onchange="updateRate('${k}','transactionPct',this.value)"></div>
-                    <div class="rule-divider">Booking rules</div>
+                    <div class="rate-field"><label>Transaction fee (%)</label><input type="number" min="0" step="0.1" value="${r.transactionPct}" onchange="updateRate('${k}','transactionPct',this.value)"></div>`;
+                case 'house': return `
                     <div class="rate-field"><label>Check-in time</label><input type="time" value="${r.checkInTime || '15:00'}" onchange="updateRuleField('${k}','checkInTime',this.value)" style="text-align:left;width:130px;"></div>
                     <div class="rate-field"><label>Check-out time</label><input type="time" value="${r.checkOutTime || '10:00'}" onchange="updateRuleField('${k}','checkOutTime',this.value)" style="text-align:left;width:130px;"></div>
                     <div class="rate-field"><label>Minimum nights</label><input type="number" min="1" step="1" value="${r.minNights || 1}" onchange="updateRuleField('${k}','minNights',this.value)"></div>
@@ -7672,18 +7734,34 @@
                             `<label class="day-check"><input type="checkbox" ${(r.arrivalDays||[]).includes(di) ? 'checked' : ''} onchange="toggleArrivalDay('${k}',${di},this.checked)"> ${d}</label>`
                         ).join('')}</div>
                     </div>
-                    <div style="margin-top:10px;"><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Address (shown to guests)</label><textarea rows="2" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" onchange="updateRateText('${k}','address',this.value)">${r.address || ''}</textarea></div>
-                    <div class="rule-divider">Seasonal rates <span style="opacity:0.6;text-transform:none;letter-spacing:0;">(couple / night for a date range)</span></div>
+                    <div class="rule-divider">House rules <span style="opacity:0.6;text-transform:none;letter-spacing:0;">(extra bullets shown to guests)</span></div>
+                    <label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:10px;">Shown under "House rules" on the cottage page, after the check-in/out and guest lines. Add or remove rules with the ＋ / − buttons.</label>
+                    <div id="accom-houserules-rows-${k}">${houseRulesList(k).map(s => listRowHtml('hr', s, 'e.g. No smoking indoors')).join('')}</div>
+                    <div style="display:flex;gap:10px;margin-top:8px;">
+                        <button class="btn-sm btn-edit" onclick="accomAddHouseRule('${k}')">＋ Add rule</button>
+                        <button class="btn-sm btn-edit" onclick="accomSaveHouseRules('${k}')">Save</button>
+                    </div>`;
+                case 'safety': return `
+                    <label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:10px;">These appear under "Safety &amp; property" on the cottage page. Add or remove items with the ＋ / − buttons.</label>
+                    <div id="accom-safety-rows-${k}">${accomSafetyList(k).map(s => listRowHtml('sf', s, 'e.g. Smoke alarm')).join('')}</div>
+                    <div style="display:flex;gap:10px;margin-top:8px;">
+                        <button class="btn-sm btn-edit" onclick="accomAddSafety('${k}')">＋ Add item</button>
+                        <button class="btn-sm btn-edit" onclick="accomSaveSafety('${k}')">Save</button>
+                    </div>`;
+                case 'seasons': return `
+                    <label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:10px;">Couple / night for a date range (overrides the standard couple rate while active).</label>
                     <div id="seasons-${k}">${((propertySeasons[k]||[]).map((s,si) => seasonRowHtml(k, s)).join('')) || ''}</div>
                     <div style="display:flex;gap:10px;margin-top:8px;">
                         <button class="btn-sm btn-edit" onclick="addSeasonRow('${k}')">＋ Add season</button>
                         <button class="btn-sm btn-edit" onclick="saveSeasons('${k}')">Save seasons</button>
-                    </div>
-                    <div class="rule-divider">Arrival info email</div>
-                    <div><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Sent to guests a few days before check-in (directions, key collection, wifi…). Kept private — never shown on the site. Also revealed on a guest's account when they're at the cottage (see below).</label><textarea rows="4" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" onchange="saveContent('arrival-${k}', this.value)">${escapeHtml(adminPrivateContent['arrival-'+k] || '')}</textarea></div>
+                    </div>`;
+                case 'arrival': return `
+                    <div><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Sent to guests a few days before check-in (directions, key collection, wifi…). Kept private — never shown on the site. Also revealed on a guest's account when they're at the cottage (see Location).</label><textarea rows="5" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" onchange="saveContent('arrival-${k}', this.value)">${escapeHtml(adminPrivateContent['arrival-'+k] || '')}</textarea></div>`;
+                case 'location': return `
+                    <div style="margin-bottom:14px;"><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Address (shown to guests)</label><textarea rows="2" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" onchange="updateRateText('${k}','address',this.value)">${r.address || ''}</textarea></div>
                     <div class="rule-divider">Key-code unlock location</div>
                     <div>
-                        <label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">The cottage's GPS spot. When a guest with a current booking is within 25m of here, the arrival info above unlocks on their account page. Stand at the cottage and tap the button.</label>
+                        <label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">The cottage's GPS spot. When a guest with a current booking is within 25m of here, the arrival info unlocks on their account page. Stand at the cottage and tap the button.</label>
                         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
                             <button class="btn-sm btn-edit" onclick="captureGeo('${k}')">${IC_PIN} Use my current location</button>
                             <span id="geo-status-${k}" style="font-size:0.8rem;color:var(--text-muted);">${geoStatusText(k)}</span>
@@ -7695,20 +7773,16 @@
                             <button class="btn-sm btn-edit" onclick="saveGeoManual('${k}')">Save coordinates</button>
                         </div>
                         <p style="font-size:0.72rem;color:var(--text-muted);margin:6px 0 0;">Tip: in Google Maps, right-click the exact spot and click the latitude/longitude at the top of the menu to copy it, then paste here.</p>
-                    </div>
-                    <div class="rule-divider">Good to Know <span style="opacity:0.6;text-transform:none;letter-spacing:0;">(FAQ shown in this cottage's bookings)</span></div>
+                    </div>`;
+                case 'faq': return `
+                    <label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:10px;">FAQ shown in this cottage's bookings (the "Good to Know" button).</label>
                     <div id="faq-editor-${k}">${((Array.isArray(siteContent['faqs-'+k]) ? siteContent['faqs-'+k] : []).map(f => faqRowHtml(k, f)).join(''))}</div>
                     <div style="display:flex;gap:10px;margin-top:8px;">
                         <button class="btn-sm btn-edit" onclick="addFaqRow('${k}')">＋ Add question</button>
                         <button class="btn-sm btn-edit" onclick="saveFaqs('${k}')">Save FAQ</button>
-                    </div>
-                </div>`;
-        }
-        // Legacy: render all properties stacked (kept for any other caller).
-        function renderRatesEditor() {
-            const wrap = document.getElementById('rates-list');
-            if (!wrap) return;
-            wrap.innerHTML = Object.keys(propertyMeta).map(ratePropHtml).join('');
+                    </div>`;
+                default: return '';
+            }
         }
 
         // ---- Guest reviews: public renderer + Settings editor ----
@@ -9323,7 +9397,6 @@
             document.getElementById('prop-price-tagline').setAttribute('data-edit-text', `${propKey}-tagline`);
             // Things-to-know + location: per-cottage editable text
             const setEdit = (id, key) => { const el = document.getElementById(id); if (el) el.setAttribute('data-edit-text', key); };
-            setEdit('prop-houserules-note', `${propKey}-houserules`);
             setEdit('prop-location', `${propKey}-location`);
             // Cancellation policy text is chosen in Settings (not free-text edited here),
             // so make sure it's never contentEditable, then fill it from the saved policy.
@@ -9968,7 +10041,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'nt9u0w2a';
+            const BUILD = 'ou0v1x3b';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
