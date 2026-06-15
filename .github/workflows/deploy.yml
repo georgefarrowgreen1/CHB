@@ -80,7 +80,7 @@ jobs:
         env:
           HOST: ${{ secrets.IONOS_SFTP_HOST }}
           USERNAME: ${{ secrets.IONOS_SFTP_USER }}
-          PASSWORD: ${{ secrets.IONOS_SFTP_PASS }}
+          LFTP_PASSWORD: ${{ secrets.IONOS_SFTP_PASS }}
           PORT: ${{ secrets.IONOS_SFTP_PORT }}
           REMOTE: ${{ secrets.IONOS_REMOTE_PATH }}
         run: |
@@ -88,13 +88,9 @@ jobs:
           sudo apt-get update -qq && sudo apt-get install -y lftp
           PORT="${PORT:-22}"
           REMOTE="${REMOTE:-/}"
-          # mirror -R = push local→remote, recursively (includes dotfiles like .htaccess).
+          # mirror -R = push local->remote, recursively (includes dotfiles like .htaccess).
           # No --delete, so remote-only files (uploaded photos, config.php) are kept.
-          lftp -c "
-            set sftp:auto-confirm yes;
-            set net:max-retries 3;
-            set net:reconnect-interval-base 5;
-            open -u \"\$USERNAME\",\"\$PASSWORD\" sftp://\$HOST:\$PORT;
-            mirror -R --verbose --no-perms --parallel=2 ./deploy/ \"\$REMOTE\";
-          "
+          # The password is read from LFTP_PASSWORD via --env-password, so it never
+          # appears on the command line and special characters can't mangle it.
+          lftp -u "$USERNAME" --env-password "sftp://$HOST:$PORT" -e "set sftp:auto-confirm yes; set net:max-retries 3; set net:reconnect-interval-base 5; mirror -R --verbose --no-perms --parallel=2 ./deploy/ \"$REMOTE\"; bye"
           echo "Deploy complete."
