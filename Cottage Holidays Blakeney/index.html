@@ -1005,7 +1005,13 @@
         .btn-sm { padding: 8px 14px; border-radius: 18px; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.5px; cursor: pointer; border: 1px solid var(--glass-border); background: transparent; color: var(--text-light); transition: all 0.3s; white-space: nowrap; }
         .btn-sm:hover { transform: translateY(-2px); }
         /* Read-only availability calendar on cottage pages */
-        .avail-cal-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+        .avail-cal { margin-top: 28px; padding: 20px 22px; border-radius: 20px; }
+        /* On desktop the calendar is moved inside the reserve card (just above
+           "Enquire now"); strip its own panel styling so it blends into the card. */
+        @media (min-width: 900px) {
+            #prop-avail-cal.in-reserve { margin: 0 0 20px; padding: 0; background: none; border: none; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; border-radius: 0; }
+            #prop-avail-cal.in-reserve .avail-cal-grid { gap: 3px; }
+        }
         .avail-nav { background: var(--glass-bg); border: 1px solid var(--glass-border); color: var(--text-light); width: 34px; height: 34px; border-radius: 50%; cursor: pointer; font-size: 1.1rem; line-height: 1; transition: background 0.2s; }
         .avail-nav:hover { background: var(--glass-hover); }
         .avail-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
@@ -1896,14 +1902,20 @@
                 <div class="prop-divider"></div>
                 <div class="prop-features" id="prop-features"></div>
                 <div class="prop-divider"></div>
-                <p class="lead" style="margin: 0; text-align: left;" id="prop-desc"></p>
-                <button type="button" class="prop-desc-toggle" id="prop-desc-toggle" onclick="togglePropDesc()" style="display:none;">Show more</button>
-                <div class="prop-divider"></div>
+                <!-- What this place offers (above the long description) -->
                 <h3 class="section-title prop-section-h" data-edit-text="amenities-title">What this place offers</h3>
                 <div class="amenities" id="prop-amenities">
                     <!-- amenity pills injected per property -->
                 </div>
-                <div class="avail-cal glass-panel" id="prop-avail-cal" style="margin-top:28px;padding:20px 22px;border-radius:20px;">
+                <div class="prop-divider"></div>
+                <!-- About this cottage (long, collapsible description) -->
+                <p class="lead" style="margin: 0; text-align: left;" id="prop-desc"></p>
+                <button type="button" class="prop-desc-toggle" id="prop-desc-toggle" onclick="togglePropDesc()" style="display:none;">Show more</button>
+                <!-- Availability calendar. On desktop, placeAvailCalendar() relocates
+                     #prop-avail-cal into the reserve card, just above "Enquire now".
+                     On mobile it stays here in the content flow, right after this anchor. -->
+                <div id="cal-mobile-anchor"></div>
+                <div class="avail-cal glass-panel" id="prop-avail-cal">
                     <div class="avail-cal-head">
                         <button class="avail-nav" onclick="availCalMove(-1)" aria-label="Previous month">‹</button>
                         <span id="avail-cal-title" style="font-family:var(--font-serif);font-size:1.1rem;"></span>
@@ -1915,10 +1927,8 @@
                         <span><span class="avail-dot avail-taken"></span> Booked</span>
                     </div>
                 </div>
-                <div id="prop-reviews" class="prop-reviews" style="margin-top:32px;"></div>
-
                 <div class="prop-divider"></div>
-                <!-- Things to know (per cottage) -->
+                <!-- Things to know (per cottage) — above guest reviews -->
                 <h3 class="section-title prop-section-h">Things to know</h3>
                 <div class="things-grid">
                     <div class="things-col">
@@ -1935,6 +1945,11 @@
                         <p class="things-note" id="prop-cancellation">Enquiries are free — we'll confirm your dates and any deposit by email before anything is due.</p>
                     </div>
                 </div>
+
+                <!-- Guest reviews (below Things to know). The leading divider is hidden
+                     together with the section when this cottage has no reviews yet. -->
+                <div class="prop-divider" id="reviews-divider"></div>
+                <div id="prop-reviews" class="prop-reviews"></div>
 
                 <div class="prop-divider"></div>
                 <!-- Where you'll be (exact pin) -->
@@ -6850,8 +6865,14 @@
         function renderPropReviews(propKey) {
             const wrap = document.getElementById('prop-reviews');
             if (!wrap) return;
+            const divider = document.getElementById('reviews-divider');
             const list = allReviews().filter(r => r.prop === propKey);
-            if (!list.length) { wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
+            if (!list.length) {
+                wrap.style.display = 'none'; wrap.innerHTML = '';
+                if (divider) divider.style.display = 'none';   // avoid a double rule above "Where you'll be"
+                return;
+            }
+            if (divider) divider.style.display = '';
             const count = list.length;
             const avg = list.reduce((s, r) => s + Math.max(1, Math.min(5, parseInt(r.stars) || 5)), 0) / count;
             const show = list.slice(0, 4);
@@ -6939,6 +6960,25 @@
             btn.classList.toggle('open', !nowClamped);
             btn.textContent = nowClamped ? 'Show more' : 'Show less';
         }
+        // Desktop: tuck the availability calendar into the reserve card, just above
+        // "Enquire now". Mobile: keep it in the content flow (after #cal-mobile-anchor).
+        const calDesktopMq = window.matchMedia('(min-width: 900px)');
+        function placeAvailCalendar() {
+            const cal = document.getElementById('prop-avail-cal');
+            const reserve = document.getElementById('prop-reserve');
+            const anchor = document.getElementById('cal-mobile-anchor');
+            if (!cal || !reserve || !anchor) return;
+            if (calDesktopMq.matches) {
+                if (reserve.firstChild !== cal) reserve.insertBefore(cal, reserve.firstChild);
+                cal.classList.add('in-reserve');
+            } else {
+                if (anchor.nextSibling !== cal) anchor.parentNode.insertBefore(cal, anchor.nextSibling);
+                cal.classList.remove('in-reserve');
+            }
+        }
+        // Re-place the calendar whenever we cross the desktop/mobile breakpoint.
+        try { calDesktopMq.addEventListener('change', placeAvailCalendar); }
+        catch (e) { try { calDesktopMq.addListener(placeAvailCalendar); } catch (e2) {} }
         // Keep the sticky booking bar's price in sync with the form (total when dates
         // are chosen, otherwise the nightly "from" price).
         function updateBookBar() {
@@ -8393,6 +8433,7 @@
 
             nav('view-21a');
             try { setupPropDescClamp(); } catch (e) {}   // clamp long descriptions once the view is visible
+            try { placeAvailCalendar(); } catch (e) {}    // desktop: tuck calendar above "Enquire now"
         }
 
         // Re-apply saved data-edit values (used after we swap namespaced keys in)
@@ -8991,7 +9032,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'jp5q6n7r';
+            const BUILD = 'kq6r7p8s';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
