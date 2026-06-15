@@ -706,6 +706,34 @@
         .prop-stat-sub { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
         .prop-stat .ic { width: 20px; height: 20px; }
         .prop-divider { height: 1px; background: var(--glass-border); margin: 22px 0; }
+        .prop-section-h { text-align: left; font-size: 1.5rem; margin: 0 0 16px; }
+        /* Meet your host */
+        .host-card { padding: 22px; border-radius: 20px; }
+        .host-top { display: flex; align-items: center; gap: 16px; }
+        .host-photo { width: 72px; height: 72px; border-radius: 50%; background-size: cover; background-position: center; background-color: var(--dark-grey); flex-shrink: 0; }
+        .host-name { font-family: var(--font-serif); font-size: 1.4rem; color: var(--text-light); }
+        .host-badge { font-size: 0.82rem; color: var(--text-muted); }
+        .host-stats { display: flex; margin: 18px 0; }
+        .host-stats > div { flex: 1; text-align: center; padding: 4px; }
+        .host-stats > div + div { border-left: 1px solid var(--glass-border); }
+        .host-stats strong { display: block; font-family: var(--font-serif); font-size: 1.15rem; color: var(--text-light); }
+        .host-stats span { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+        .host-lines { display: flex; flex-direction: column; gap: 10px; margin: 16px 0; }
+        .host-line { display: flex; gap: 10px; align-items: center; font-size: 0.9rem; color: var(--text-light); }
+        .host-line .ic { width: 20px; height: 20px; color: var(--text-muted); flex-shrink: 0; }
+        .host-bio { font-size: 0.92rem; color: var(--text-muted); line-height: 1.6; margin: 0; }
+        /* Things to know */
+        .things-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 26px; }
+        .things-title { font-family: var(--font-serif); font-size: 1.15rem; color: var(--text-light); margin-bottom: 10px; }
+        .things-list { display: flex; flex-direction: column; gap: 8px; }
+        .things-item { display: flex; gap: 8px; align-items: center; font-size: 0.9rem; color: var(--text-muted); }
+        .things-item .ic { width: 16px; height: 16px; flex-shrink: 0; color: var(--text-muted); }
+        .things-item .amenity-remove { margin-left: auto; }
+        .things-note { font-size: 0.9rem; color: var(--text-muted); line-height: 1.5; margin: 10px 0 0; }
+        /* Where you'll be */
+        .prop-location-text { color: var(--text-muted); margin: 0 0 14px; }
+        .prop-map { width: 100%; height: 320px; border-radius: 18px; overflow: hidden; border: 1px solid var(--glass-border); background: var(--dark-grey); }
+        .prop-map.is-empty { display: none; }
         .prop-features { display: flex; flex-direction: column; gap: 16px; }
         .prop-feature { display: flex; gap: 14px; align-items: flex-start; }
         .prop-feature .ic { width: 24px; height: 24px; flex-shrink: 0; color: var(--text-light); margin-top: 2px; }
@@ -1794,6 +1822,8 @@
                 <div class="prop-features" id="prop-features"></div>
                 <div class="prop-divider"></div>
                 <p class="lead" style="margin: 0; text-align: left;" id="prop-desc"></p>
+                <div class="prop-divider"></div>
+                <h3 class="section-title prop-section-h" data-edit-text="amenities-title">What this place offers</h3>
                 <div class="amenities" id="prop-amenities">
                     <!-- amenity pills injected per property -->
                 </div>
@@ -1810,6 +1840,54 @@
                     </div>
                 </div>
                 <div id="prop-reviews" class="prop-reviews" style="margin-top:32px;"></div>
+
+                <div class="prop-divider"></div>
+                <!-- Meet your host (one shared profile across all cottages) -->
+                <h3 class="section-title prop-section-h">Meet your host</h3>
+                <div class="host-card glass-panel">
+                    <div class="host-top">
+                        <div class="host-photo" data-edit-img="host-photo" style="background-image:url('host.jpg');"></div>
+                        <div>
+                            <div class="host-name" data-edit-text="host-name">Sophia</div>
+                            <div class="host-badge" data-edit-text="host-badge">Superhost</div>
+                        </div>
+                    </div>
+                    <div class="host-stats">
+                        <div><strong data-edit-text="host-reviews">56</strong><span>Reviews</span></div>
+                        <div><strong data-edit-text="host-rating">4.95 ★</strong><span>Rating</span></div>
+                        <div><strong data-edit-text="host-years">10 years</strong><span>Hosting</span></div>
+                    </div>
+                    <div class="host-lines">
+                        <div class="host-line"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9l9-5 9 5-9 5z"/><path d="M21 9v6M7 11.5V16c0 1 2.2 2.5 5 2.5s5-1.5 5-2.5v-4.5"/></svg> <span data-edit-text="host-school">Where I studied: North Norfolk</span></div>
+                        <div class="host-line"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> <span data-edit-text="host-work">My work: holiday accommodation</span></div>
+                    </div>
+                    <p class="host-bio" data-edit-text="host-bio">Hi — you can take the girl out of Norfolk, but you can't take Norfolk out of the girl. I love helping guests discover this beautiful stretch of coast.</p>
+                </div>
+
+                <div class="prop-divider"></div>
+                <!-- Things to know (per cottage) -->
+                <h3 class="section-title prop-section-h">Things to know</h3>
+                <div class="things-grid">
+                    <div class="things-col">
+                        <div class="things-title">House rules</div>
+                        <div id="prop-house-rules" class="things-list"></div>
+                        <p class="things-note" id="prop-houserules-note">Please treat the cottage as your own home and let us know of any special requests.</p>
+                    </div>
+                    <div class="things-col">
+                        <div class="things-title">Safety &amp; property</div>
+                        <div id="prop-safety" class="things-list"></div>
+                    </div>
+                    <div class="things-col">
+                        <div class="things-title">Cancellation policy</div>
+                        <p class="things-note" id="prop-cancellation">Enquiries are free — we'll confirm your dates and any deposit by email before anything is due.</p>
+                    </div>
+                </div>
+
+                <div class="prop-divider"></div>
+                <!-- Where you'll be (exact pin) -->
+                <h3 class="section-title prop-section-h">Where you'll be</h3>
+                <p class="prop-location-text" id="prop-location">Blakeney, North Norfolk</p>
+                <div id="prop-map" class="prop-map"></div>
             </div>
             <!-- The enquiry now lives in the two-step #enquire-modal (opened by "Enquire now"). -->
         </div>
@@ -5246,6 +5324,10 @@
                 if (Array.isArray(ams)) {
                     propertyContent[propKey].amenities = ams.slice();
                 }
+                const saf = siteContent['safety-' + propKey];
+                if (Array.isArray(saf)) {
+                    propertyContent[propKey].safety = saf.slice();
+                }
             });
 
             // Merge per-property booking rules (times, min nights, arrival days)
@@ -5674,6 +5756,80 @@
             }
             try { localStorage.setItem(key, JSON.stringify(activePropAmenities)); } catch (e) {}
             saveContent(key, activePropAmenities.slice());
+        }
+
+        // ---- Editable "Safety & property" list (per cottage) — mirrors the amenities pattern ----
+        const DEFAULT_SAFETY = ['Smoke alarm', 'Carbon monoxide detector', 'First-aid kit available'];
+        let activePropSafety = [];
+        const IC_SHIELD = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/></svg>';
+        function renderSafety(propKey) {
+            const wrap = document.getElementById('prop-safety');
+            if (!wrap) return;
+            let html = activePropSafety.map((s, i) => `
+                <div class="things-item" data-sf-index="${i}">${IC_SHIELD}
+                    <span class="amenity-text safety-text" ${isEditMode ? 'contenteditable="true"' : ''} onblur="editSafety(${i}, this.innerText)">${escapeHtml(s)}</span>
+                    ${isEditMode ? `<button class="amenity-remove" title="Remove" onclick="removeSafety(${i})">×</button>` : ''}
+                </div>`).join('');
+            if (isEditMode) html += `<button class="amenity-add" onclick="addSafety()">＋ Add item</button>`;
+            wrap.innerHTML = html;
+            if (isEditMode) wrap.querySelectorAll('.safety-text').forEach(el => el.addEventListener('paste', plainTextPaste));
+        }
+        function addSafety() {
+            activePropSafety.push('New item');
+            renderSafety(activeFrontProperty);
+            persistSafety();
+            if (isEditMode) {
+                const s = document.querySelectorAll('#prop-safety .safety-text'); const last = s[s.length - 1];
+                if (last) { const r = document.createRange(); r.selectNodeContents(last); const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r); last.focus(); }
+            }
+        }
+        function removeSafety(i) { activePropSafety.splice(i, 1); renderSafety(activeFrontProperty); persistSafety(); }
+        function editSafety(i, text) { const c = (text || '').replace(/\s+/g, ' ').trim(); if (c === '') { removeSafety(i); return; } activePropSafety[i] = c; persistSafety(); }
+        function persistSafety() {
+            const key = 'safety-' + activeFrontProperty;
+            if (propertyContent[activeFrontProperty]) propertyContent[activeFrontProperty].safety = activePropSafety.slice();
+            siteContent[key] = activePropSafety.slice();
+            try { localStorage.setItem(key, JSON.stringify(activePropSafety)); } catch (e) {}
+            saveContent(key, activePropSafety.slice());
+        }
+
+        // ---- House rules: derived from each cottage's own settings ----
+        function renderHouseRules(propKey) {
+            const wrap = document.getElementById('prop-house-rules');
+            if (!wrap) return;
+            const r = propertyRates[propKey] || defaultRates[propKey] || {};
+            const lim = occupancyLimits[propKey] || {};
+            const ci = r.checkInTime || '15:00';
+            const co = r.checkOutTime || '10:00';
+            const maxG = lim.maxTotal || 0;
+            const item = (text) => `<div class="things-item">${IC_CHECK} <span>${escapeHtml(text)}</span></div>`;
+            wrap.innerHTML = [
+                item(`Check-in after ${ci}`),
+                item(`Checkout before ${co}`),
+                maxG ? item(`${maxG} guest${maxG === 1 ? '' : 's'} maximum`) : ''
+            ].join('');
+        }
+
+        // ---- "Where you'll be": exact-pin map from the cottage's saved coordinates ----
+        let __propMap = null;
+        async function renderLocationMap(propKey) {
+            const el = document.getElementById('prop-map');
+            if (!el) return;
+            const geo = siteContent['geo-' + propKey];
+            if (!geo || typeof geo.lat === 'undefined' || typeof geo.lng === 'undefined') {
+                el.classList.add('is-empty'); return;   // no coordinates set -> show the address text only
+            }
+            el.classList.remove('is-empty');
+            try { await loadLeaflet(); } catch (e) { el.classList.add('is-empty'); return; }
+            if (__propMap) { try { __propMap.remove(); } catch (e) {} __propMap = null; }
+            el.innerHTML = '';
+            const map = L.map(el, { zoomControl: true, attributionControl: true, scrollWheelZoom: false });
+            map.attributionControl.setPrefix('');
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OSM' }).addTo(map);
+            map.setView([geo.lat, geo.lng], 15);
+            L.marker([geo.lat, geo.lng]).addTo(map);
+            __propMap = map;
+            setTimeout(() => { try { map.invalidateSize(); } catch (e) {} }, 220);
         }
 
 
@@ -7891,11 +8047,20 @@
             activePropAmenities = Array.isArray(c.amenities) ? c.amenities.slice() : [];
             renderAmenities(propKey);
 
+            // Safety & property list (editable per cottage)
+            activePropSafety = Array.isArray(c.safety) ? c.safety.slice() : DEFAULT_SAFETY.slice();
+            renderSafety(propKey);
+
             // Make per-property content edit-mode aware (namespaced keys)
             document.getElementById('prop-title').setAttribute('data-edit-text', `${propKey}-title`);
             document.getElementById('prop-desc').setAttribute('data-edit-text', `${propKey}-desc`);
             if (subEl) subEl.setAttribute('data-edit-text', `${propKey}-subtitle`);
             document.getElementById('prop-price-tagline').setAttribute('data-edit-text', `${propKey}-tagline`);
+            // Things-to-know + location: per-cottage editable text
+            const setEdit = (id, key) => { const el = document.getElementById(id); if (el) el.setAttribute('data-edit-text', key); };
+            setEdit('prop-houserules-note', `${propKey}-houserules`);
+            setEdit('prop-cancellation', `${propKey}-cancellation`);
+            setEdit('prop-location', `${propKey}-location`);
             // Gallery photos are edited via the gallery edit bar (add/replace/remove),
             // not per-slide click, so no data-edit-img wiring is needed here.
             // Restore any saved edits for these namespaced keys
@@ -7926,6 +8091,8 @@
             // This cottage's guest reviews + Airbnb-style stats/features/booking bar
             try { renderPropReviews(propKey); } catch (e) {}
             try { renderPropStats(propKey); } catch (e) {}
+            try { renderHouseRules(propKey); } catch (e) {}
+            try { renderLocationMap(propKey); } catch (e) {}
             try { renderPropFeatures(propKey); } catch (e) {}
             try { updateBookBar(); } catch (e) {}
 
@@ -8508,7 +8675,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'qs8y6t4k';
+            const BUILD = 'rt9x6u4k';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
