@@ -145,6 +145,7 @@ if ($action === 'add') {
     // Date-clash warning (soft): if these dates overlap an existing booking or an
     // imported platform (Airbnb/Vrbo) block, return a clash notice so the owner
     // can confirm. Sending override_clash:true proceeds anyway.
+    book_lock($propKey);   // serialise this property's writes (auto-frees at request end)
     if (empty($in['override_clash'])) {
         $clashMsg = clash_message($propKey, $checkIn, $checkOut, null);
         if ($clashMsg) json_out(['clash' => true, 'message' => $clashMsg]);
@@ -184,6 +185,7 @@ if ($action === 'add') {
             $snap['agreed_booking_fee'],$snap['agreed_txn_pct'],$snap['agreed_txn_fee'],$snap['agreed_on'],$priceOverride
         ]);
     $newId = (int)db()->lastInsertId();
+    book_unlock($propKey);   // free the lock before the (slower) email send
     // Auto-send the confirmation email for the newly created booking (if it has
     // a guest email). Email failure never blocks the booking.
     $emailResult = null;
@@ -208,6 +210,7 @@ if ($action === 'update') {
 
     // Date-clash warning (soft) — ignore this booking's own dates. Confirm with
     // override_clash:true to proceed.
+    book_lock($propKey);   // serialise this property's writes (auto-frees at request end)
     if (empty($in['override_clash'])) {
         $clashMsg = clash_message($propKey, $checkIn, $checkOut, $id);
         if ($clashMsg) json_out(['clash' => true, 'message' => $clashMsg]);
@@ -266,6 +269,7 @@ if ($action === 'update') {
     }
     $sql .= ' WHERE id = ?'; $args[] = $id;
     db()->prepare($sql)->execute($args);
+    book_unlock($propKey);
     json_out(['ok' => true]);
 }
 
