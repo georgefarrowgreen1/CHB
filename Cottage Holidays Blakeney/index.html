@@ -2418,7 +2418,6 @@
 
             <!-- Analytics (first-party, cookie-free) -->
             <div class="settings-sec" id="sec-analytics" style="display:none;">
-                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 16px;">Private, cookie-free visit counts for your site. Your own visits aren't counted, and no personal data is stored.</p>
                 <div id="analytics-body"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
             </div>
 
@@ -8200,26 +8199,54 @@
             catch (e) { wrap.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">Couldn't load analytics${e && e.message ? ' (' + escapeHtml(e.message) + ')' : ''}.</p>`; return; }
 
             const daily = Array.isArray(d.daily) ? d.daily : [];
-            const last14 = daily.slice(-14);
-            const peak = last14.reduce((m, r) => Math.max(m, r.views), 0) || 1;
+            const series = daily.slice(-30);
             const fmtDay = s => { const [y, m, dd] = (s || '').split('-'); return dd ? `${dd}/${m}` : s; };
-            const bars = last14.length
-                ? `<div style="display:flex;align-items:flex-end;gap:6px;height:120px;margin:10px 0 4px;">${last14.map(r => {
-                    const h = Math.round((r.views / peak) * 100);
-                    return `<div title="${fmtDay(r.date)}: ${r.views}" style="flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px;">
-                        <div style="width:100%;background:var(--glass-highlight);border-radius:6px 6px 0 0;height:${Math.max(3, h)}%;"></div>
-                        <span style="font-size:0.6rem;color:var(--text-muted);">${fmtDay(r.date)}</span>
-                    </div>`; }).join('')}</div>`
-                : `<p style="font-size:0.85rem;color:var(--text-muted);">No visits recorded yet — check back once guests have browsed the site.</p>`;
+
+            // ---- Smooth area + line chart for the daily visit series (inline SVG) ----
+            function areaChart(points) {
+                if (!points.length) return `<p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 0;">No visits recorded yet — check back once guests have browsed the site.</p>`;
+                const W = 680, H = 150, pad = 6;
+                const peak = points.reduce((m, r) => Math.max(m, r.views), 0) || 1;
+                const n = points.length;
+                const x = i => pad + (n === 1 ? (W - 2 * pad) / 2 : (i * (W - 2 * pad)) / (n - 1));
+                const y = v => pad + (H - 2 * pad) * (1 - v / peak);
+                const line = points.map((r, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)} ${y(r.views).toFixed(1)}`).join(' ');
+                const area = `M${x(0).toFixed(1)} ${(H - pad).toFixed(1)} ` +
+                    points.map((r, i) => `L${x(i).toFixed(1)} ${y(r.views).toFixed(1)}`).join(' ') +
+                    ` L${x(n - 1).toFixed(1)} ${(H - pad).toFixed(1)} Z`;
+                const dots = points.map((r, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(r.views).toFixed(1)}" r="2.4" fill="var(--glass-highlight)"><title>${fmtDay(r.date)}: ${r.views}</title></circle>`).join('');
+                const firstLbl = fmtDay(points[0].date), lastLbl = fmtDay(points[n - 1].date);
+                return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:160px;display:block;margin-top:8px;" role="img" aria-label="Daily visits">
+                        <defs><linearGradient id="anaFill" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stop-color="var(--glass-highlight)" stop-opacity="0.35"/>
+                            <stop offset="100%" stop-color="var(--glass-highlight)" stop-opacity="0"/>
+                        </linearGradient></defs>
+                        <path d="${area}" fill="url(#anaFill)"/>
+                        <path d="${line}" fill="none" stroke="var(--glass-highlight)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+                        ${dots}
+                    </svg>
+                    <div style="display:flex;justify-content:space-between;font-size:0.68rem;color:var(--text-muted);margin-top:2px;"><span>${firstLbl}</span><span>peak ${peak}/day</span><span>${lastLbl}</span></div>`;
+            }
+
+            // ---- Horizontal bar (label + proportional fill + value) ----
+            function hbar(label, value, max, color) {
+                const pct = Math.max(2, Math.round((value / (max || 1)) * 100));
+                return `<div style="margin-bottom:11px;">
+                    <div style="display:flex;justify-content:space-between;gap:10px;font-size:0.84rem;margin-bottom:5px;"><span style="color:var(--text-light);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${label}</span><span style="color:var(--text-muted);font-variant-numeric:tabular-nums;">${value}</span></div>
+                    <div style="height:9px;border-radius:6px;background:rgba(255,255,255,0.08);overflow:hidden;"><div style="height:100%;width:${pct}%;background:${color};border-radius:6px;transition:width 0.5s var(--fluid-bezier);"></div></div>
+                </div>`;
+            }
 
             const refs = Array.isArray(d.topReferrers) ? d.topReferrers : [];
+            const refMax = refs.reduce((m, r) => Math.max(m, r.count), 0);
             const refsHtml = refs.length
-                ? refs.map(r => `<div class="feed-row" style="grid-template-columns:1fr auto;"><span class="feed-who">${escapeHtml(r.host)}</span><span class="feed-amt">${r.count}</span></div>`).join('')
+                ? refs.map(r => hbar(escapeHtml(r.host), r.count, refMax, 'var(--glass-highlight)')).join('')
                 : `<p style="font-size:0.82rem;color:var(--text-muted);margin:0;">Mostly direct visits (no referrer) so far.</p>`;
 
             const cottages = Array.isArray(d.byCottage) ? d.byCottage : [];
+            const cotMax = cottages.reduce((m, c) => Math.max(m, c.views), 0);
             const cottageHtml = cottages.length
-                ? cottages.map(c => `<div class="feed-row" style="grid-template-columns:1fr auto;"><span class="feed-who">${escapeHtml((propertyMeta[c.prop_key] || {}).name || c.prop_key)}</span><span class="feed-amt">${c.views}</span></div>`).join('')
+                ? cottages.map(c => hbar(escapeHtml((propertyMeta[c.prop_key] || {}).name || c.prop_key), c.views, cotMax, `var(--prop-${c.prop_key}, var(--glass-highlight))`)).join('')
                 : '';
 
             wrap.innerHTML = `
@@ -8229,16 +8256,16 @@
                     <div class="os-card"><div class="os-label">Unique visitors</div><div class="os-value">${d.uniqueVisitors || 0}</div><div class="os-sub">approx, last 30 days</div></div>
                 </div>
                 <div class="accounts-stat" style="max-width:720px;margin-bottom:16px;">
-                    <div class="label">Last 14 days</div>
-                    ${bars}
+                    <div class="label">Visits over time <span style="opacity:0.6;text-transform:none;letter-spacing:0;">(last ${series.length} days)</span></div>
+                    ${areaChart(series)}
                 </div>
                 <div class="accounts-stat" style="max-width:720px;margin-bottom:16px;">
-                    <div class="label">Top referrers</div>
-                    <div class="feed-list" style="padding:4px 0;">${refsHtml}</div>
+                    <div class="label" style="margin-bottom:12px;">Top referrers</div>
+                    ${refsHtml}
                 </div>
                 ${cottageHtml ? `<div class="accounts-stat" style="max-width:720px;">
-                    <div class="label">Most-viewed cottages</div>
-                    <div class="feed-list" style="padding:4px 0;">${cottageHtml}</div>
+                    <div class="label" style="margin-bottom:12px;">Most-viewed cottages</div>
+                    ${cottageHtml}
                 </div>` : ''}`;
         }
 
@@ -10146,7 +10173,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'rx3y4a6e';
+            const BUILD = 'sy4z5b7f';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
