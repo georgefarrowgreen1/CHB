@@ -1301,6 +1301,14 @@
         }
         /* Editable body paragraphs keep the owner's line breaks / paragraph spacing */
         #prop-desc, p.lead[data-edit-text] { white-space: pre-wrap; }
+        /* Airbnb-style collapsed description: clamp to a few lines with a "Show more" toggle.
+           Disabled in edit mode (body.edit-mode) so the owner sees/edits the whole text. */
+        #prop-desc.clamped { display: -webkit-box; -webkit-line-clamp: 6; -webkit-box-orient: vertical; overflow: hidden; }
+        body.edit-mode #prop-desc.clamped { display: block; -webkit-line-clamp: none; overflow: visible; }
+        .prop-desc-toggle { display: inline-flex; align-items: center; gap: 6px; margin-top: 12px; padding: 0; background: none; border: none; color: var(--text-light); font-family: var(--font-sans); font-size: 0.95rem; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+        .prop-desc-toggle::after { content: '›'; display: inline-block; font-weight: 400; text-decoration: none; transition: transform 0.2s; }
+        .prop-desc-toggle.open::after { transform: rotate(90deg); }
+        body.edit-mode .prop-desc-toggle { display: none !important; }
         [data-edit-text] * {
             font-family: inherit !important; font-size: inherit !important;
             font-weight: inherit !important; font-style: inherit !important;
@@ -1889,6 +1897,7 @@
                 <div class="prop-features" id="prop-features"></div>
                 <div class="prop-divider"></div>
                 <p class="lead" style="margin: 0; text-align: left;" id="prop-desc"></p>
+                <button type="button" class="prop-desc-toggle" id="prop-desc-toggle" onclick="togglePropDesc()" style="display:none;">Show more</button>
                 <div class="prop-divider"></div>
                 <h3 class="section-title prop-section-h" data-edit-text="amenities-title">What this place offers</h3>
                 <div class="amenities" id="prop-amenities">
@@ -5371,6 +5380,8 @@
             }
             // Keep the hidden SEO text in sync with any description/title edits
             try { renderSeoText(); } catch (e) {}
+            // Re-apply (or release) the description clamp as edit mode changes.
+            try { setupPropDescClamp(); } catch (e) {}
         }
 
         async function logoutStaff() {
@@ -6898,6 +6909,36 @@
                 row(IC_PIN, 'On the North Norfolk coast', 'Moments from Blakeney quay, the coastal path and the saltmarshes.')
             ].join('');
         }
+        // Airbnb-style "Show more" for the cottage description: clamp to a few lines
+        // and only reveal the toggle when the text actually overflows. Never clamps
+        // in edit mode (the owner needs to see and edit the whole thing).
+        function setupPropDescClamp() {
+            const p = document.getElementById('prop-desc');
+            const btn = document.getElementById('prop-desc-toggle');
+            if (!p || !btn) return;
+            if (isEditMode) { p.classList.remove('clamped'); btn.style.display = 'none'; return; }
+            p.classList.add('clamped');
+            btn.classList.remove('open');
+            btn.textContent = 'Show more';
+            // Measure next frame so layout has settled after the view becomes visible.
+            requestAnimationFrame(() => {
+                const overflowing = p.scrollHeight > p.clientHeight + 2;
+                if (overflowing) {
+                    btn.style.display = '';
+                } else {
+                    p.classList.remove('clamped');
+                    btn.style.display = 'none';
+                }
+            });
+        }
+        function togglePropDesc() {
+            const p = document.getElementById('prop-desc');
+            const btn = document.getElementById('prop-desc-toggle');
+            if (!p || !btn) return;
+            const nowClamped = p.classList.toggle('clamped');
+            btn.classList.toggle('open', !nowClamped);
+            btn.textContent = nowClamped ? 'Show more' : 'Show less';
+        }
         // Keep the sticky booking bar's price in sync with the form (total when dates
         // are chosen, otherwise the nightly "from" price).
         function updateBookBar() {
@@ -8351,6 +8392,7 @@
             try { updateBookBar(); } catch (e) {}
 
             nav('view-21a');
+            try { setupPropDescClamp(); } catch (e) {}   // clamp long descriptions once the view is visible
         }
 
         // Re-apply saved data-edit values (used after we swap namespaced keys in)
@@ -8949,7 +8991,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'hn3p4m5q';
+            const BUILD = 'jp5q6n7r';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
