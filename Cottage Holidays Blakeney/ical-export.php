@@ -14,11 +14,7 @@
 //  guest names or details are exposed in the public feed.
 // ============================================================
 require_once __DIR__ . '/db.php';
-
-// Derive the expected token for a property (no secrets leak; one-way hash).
-function ical_token($propKey) {
-    return substr(hash_hmac('sha256', 'ical:' . $propKey, APP_SECRET), 0, 24);
-}
+// ical_token() lives in db.php (shared with ical-import.php).
 
 $prop  = isset($_GET['prop']) ? preg_replace('/[^a-z0-9_]/i', '', $_GET['prop']) : '';
 $token = isset($_GET['token']) ? $_GET['token'] : '';

@@ -77,19 +77,8 @@ if ($action === 'submit') {
     }
 
     // Availability: reject if these dates clash with a confirmed booking or an
-    // imported iCal block (Airbnb/Vrbo). Overlap test: existing.start < new.end
-    // AND existing.end > new.start.
-    $clash = db()->prepare('SELECT COUNT(*) c FROM bookings WHERE prop_key = ? AND check_in < ? AND check_out > ?');
-    $clash->execute([$propKey, $checkOut, $checkIn]);
-    $hasClash = (int)$clash->fetch()['c'] > 0;
-    if (!$hasClash) {
-        try {
-            $clash2 = db()->prepare('SELECT COUNT(*) c FROM ical_blocks WHERE prop_key = ? AND check_in < ? AND check_out > ?');
-            $clash2->execute([$propKey, $checkOut, $checkIn]);
-            $hasClash = (int)$clash2->fetch()['c'] > 0;
-        } catch (\Throwable $e) { /* table not migrated yet */ }
-    }
-    if ($hasClash) {
+    // imported iCal block (Airbnb/Vrbo). Shared helper in db.php.
+    if (dates_clash($propKey, $checkIn, $checkOut)) {
         json_out(['error' => 'Sorry, those dates are no longer available. Please choose different dates.'], 409);
     }
 

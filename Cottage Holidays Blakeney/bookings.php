@@ -17,13 +17,7 @@ function booking_by_id($id) {
     $s->execute([$id]);
     return $s->fetch();
 }
-function has_clash($propKey, $checkIn, $checkOut, $ignoreId = null) {
-    $sql = 'SELECT COUNT(*) c FROM bookings WHERE prop_key = ? AND check_in < ? AND check_out > ?';
-    $args = [$propKey, $checkOut, $checkIn];
-    if ($ignoreId) { $sql .= ' AND id <> ?'; $args[] = $ignoreId; }
-    $s = db()->prepare($sql); $s->execute($args);
-    return (int)$s->fetch()['c'] > 0;
-}
+// (A boolean dates_clash() lives in db.php; this file uses the message form below.)
 // Returns a human-readable clash message if the dates overlap an existing booking
 // or an imported platform (Airbnb/Vrbo) block; empty string if the dates are free.
 function clash_message($propKey, $checkIn, $checkOut, $ignoreId = null) {
