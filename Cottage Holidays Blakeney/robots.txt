@@ -12,5 +12,7 @@ Disallow: /passkeys.php
 Disallow: /ical-import.php
 Disallow: /mailer.php
 Disallow: /pre-arrival.php
+Disallow: /track.php
+Disallow: /upload.php
 
 Sitemap: https://cottageholidaysblakeney.co.uk/sitemap.xml

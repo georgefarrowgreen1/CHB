@@ -48,7 +48,7 @@
           "name": "Cottage Holidays Blakeney",
           "description": "Self-catering holiday cottages in Blakeney on the North Norfolk coast.",
           "url": "https://cottageholidaysblakeney.co.uk/",
-          "image": "https://cottageholidaysblakeney.co.uk/apple-touch-icon.png",
+          "image": "https://cottageholidaysblakeney.co.uk/hero.jpg",
           "priceRange": "££",
           "address": {
             "@type": "PostalAddress",
@@ -1793,8 +1793,13 @@
             .owner-bar-btn { padding: 9px 12px; }
         }
     </style>
+    <!-- Speed up the font fetch (and the jsPDF CDN) by opening the connections early. -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500&family=Playfair+Display:wght@400;600&display=swap" rel="stylesheet">
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- jsPDF is only used for invoices/receipts — defer it so it never blocks first paint. -->
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 </head>
 <body>
 
@@ -10173,7 +10178,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'sy4z5b7f';
+            const BUILD = 'tz5a6c8g';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
