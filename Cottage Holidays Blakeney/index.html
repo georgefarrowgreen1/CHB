@@ -1817,7 +1817,6 @@
         <div class="prop-book-bar" id="prop-book-bar">
             <div class="pbb-info">
                 <div class="pbb-price" id="pbb-price"></div>
-                <div class="pbb-sub" id="pbb-sub"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 12.5l2.5 2.5 4.5-5"/><circle cx="12" cy="12" r="9"/></svg> Free cancellation</div>
             </div>
             <button type="button" class="btn-glass pbb-btn" onclick="openEnquireModal()">Enquire now</button>
         </div>
@@ -1865,7 +1864,7 @@
                     <div class="price-box" id="enq-price-box">
                         <p style="color: var(--text-muted); font-size: 0.85rem; text-align: center; margin: 0;">Select dates to see your price.</p>
                     </div>
-                    <div class="enq-cancel-note"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg> <span><strong>Free cancellation.</strong> No payment now — we'll confirm your dates &amp; price by email.</span></div>
+                    <div class="enq-cancel-note"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg> <span>No payment now — we'll confirm your dates &amp; price by email.</span></div>
                     <button type="button" class="btn-glass" style="width:100%;padding:16px;margin-top:18px;" onclick="enquireContinue()">Continue</button>
                 </div>
 
@@ -6541,7 +6540,7 @@
             const row = (icon, title, sub) => `<div class="prop-feature">${icon}<div><div class="prop-feature-title">${title}</div><div class="prop-feature-sub">${escapeHtml(sub)}</div></div></div>`;
             el.innerHTML = [
                 row(IC_LOCK, 'Self check-in', 'Your private door code unlocks automatically when you reach the cottage.'),
-                row(IC_CHECK, 'Free cancellation', 'Flexible plans — just let us know if your dates change.'),
+                row(IC_CHECK, 'Direct with the owner', 'No platform fees — book and chat straight with us.'),
                 row(IC_PIN, 'On the North Norfolk coast', 'Moments from Blakeney quay, the coastal path and the saltmarshes.')
             ].join('');
         }
@@ -8505,7 +8504,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'mp9v5q3k';
+            const BUILD = 'nq8w4r2k';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
