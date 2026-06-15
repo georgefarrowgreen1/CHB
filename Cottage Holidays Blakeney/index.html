@@ -1094,6 +1094,27 @@
         .settings-row-sub { font-size: 0.78rem; color: var(--text-muted); margin-top: 1px; }
         .settings-row-chev { color: var(--text-muted); font-size: 1.3rem; line-height: 1; flex-shrink: 0; }
         #settings-panel .accounts-stat { margin-bottom: 0; }
+        /* Cancellation-policy picker: selectable cards (one per cottage) */
+        .cancel-cards { display: flex; flex-direction: column; gap: 14px; max-width: 560px; }
+        .cancel-card {
+            position: relative; text-align: left; cursor: pointer; width: 100%;
+            background: var(--glass-bg); border: 1.5px solid var(--glass-border); border-radius: 18px;
+            padding: 18px 20px; color: var(--text-light);
+            transition: border-color 0.25s var(--fluid-bezier), background 0.25s var(--fluid-bezier), transform 0.2s var(--fluid-bezier);
+        }
+        .cancel-card:hover { background: var(--glass-hover); border-color: var(--text-muted); }
+        .cancel-card.selected { border-color: var(--glass-highlight); background: var(--glass-hover); }
+        .cancel-card-name { font-family: var(--font-serif); font-size: 1.25rem; display: block; margin-bottom: 10px; }
+        .cancel-card-points { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+        .cancel-card-points li { position: relative; padding-left: 16px; font-size: 0.86rem; color: var(--text-muted); line-height: 1.5; }
+        .cancel-card-points li::before { content: '·'; position: absolute; left: 4px; color: var(--text-muted); }
+        .cancel-card-check {
+            position: absolute; top: 16px; right: 16px; width: 26px; height: 26px; border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            border: 1.5px solid var(--glass-border); color: transparent; transition: all 0.25s var(--fluid-bezier);
+        }
+        .cancel-card-check .ic { width: 16px; height: 16px; }
+        .cancel-card.selected .cancel-card-check { background: var(--glass-highlight); border-color: var(--glass-highlight); color: #1a191b; }
         .owner-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 26px; }
         /* Money & income — per-booking payments manager */
         .money-row { padding: 16px 18px; border-radius: 16px; margin-bottom: 12px; }
@@ -2305,6 +2326,10 @@
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Calendar</span><span class="settings-row-sub">Sync settings</span></span><span class="settings-row-chev">›</span>
                 </button>
+                <button class="settings-row" onclick="settingsOpen('cancel')">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 7.5l15 9M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Cancellation policy</span><span class="settings-row-sub">Refund terms per cottage</span></span><span class="settings-row-chev">›</span>
+                </button>
             </div>
             <div class="settings-group">
                 <button class="settings-row" onclick="settingsOpen('payments')">
@@ -2385,6 +2410,12 @@
                 <p style="font-size:0.85rem;color:var(--text-muted);max-width:680px;margin:0 0 14px;">Two-way iCal sync per cottage. <strong>Export:</strong> paste your link into Airbnb/Vrbo. <strong>Import:</strong> paste their links here. Updates can lag a few hours, so a small double-booking risk remains in busy periods.</p>
                 <div id="calendar-list" class="settings-index"></div>
                 <div id="calendar-detail" style="display:none;"></div>
+            </div>
+
+            <!-- Cancellation policy (cottage list → per-cottage policy picker) -->
+            <div class="settings-sec" id="sec-cancel" style="display:none;">
+                <div id="cancel-list" class="settings-index"></div>
+                <div id="cancel-detail" style="display:none;"></div>
             </div>
 
             <!-- Payments -->
@@ -3743,7 +3774,7 @@
         }
 
         // ---- Settings router: Apple-style index → drill-down sub-pages ----
-        const SETTINGS_TITLES = { host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Preferences', calendar: 'Calendar', payments: 'Payments', guests: 'Guest accounts', contact: 'Contact number' };
+        const SETTINGS_TITLES = { host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Preferences', calendar: 'Calendar', cancel: 'Cancellation policy', payments: 'Payments', guests: 'Guest accounts', contact: 'Contact number' };
         let settingsBackTarget = null;
         function settingsShowIndex() {
             const idx = document.getElementById('settings-index'); const panel = document.getElementById('settings-panel');
@@ -3773,6 +3804,7 @@
             }
             else if (section === 'accom') renderAccomList();
             else if (section === 'calendar') renderCalendarList();
+            else if (section === 'cancel') renderCancelList();
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
         function settingsBack() { if (settingsBackTarget) settingsBackTarget(); else settingsShowIndex(); }
@@ -3821,6 +3853,79 @@
             settingsBackTarget = () => settingsOpen('calendar');
             await loadCalendarSyncProp(k);
             window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        // ---- Cancellation policy (Settings folder → per-cottage picker) ----
+        // The three guest-facing policies. The chosen one per cottage drives the
+        // "Cancellation policy" text on that cottage's page.
+        const CANCELLATION_POLICIES = {
+            flexible: { name: 'Flexible', points: ['Full refund at least 1 day before check-in', 'Partial refund within 1 day of check-in'] },
+            moderate: { name: 'Moderate', points: ['Full refund at least 5 days before check-in', 'Partial refund within 5 days of check-in'] },
+            limited:  { name: 'Limited',  points: ['Full refund at least 14 days before check-in', 'Partial refund 7–14 days before check-in'] },
+        };
+        const DEFAULT_CANCEL_POLICY = 'flexible';
+        // The policy key chosen for a cottage (falls back to the default).
+        function cancelPolicyOf(propKey) {
+            const v = siteContent[`${propKey}-cancellation-policy`];
+            return CANCELLATION_POLICIES[v] ? v : DEFAULT_CANCEL_POLICY;
+        }
+        // Render the cottage page's cancellation text from the chosen policy.
+        function applyCancellationText(propKey) {
+            const el = document.getElementById('prop-cancellation');
+            if (!el) return;
+            const pol = CANCELLATION_POLICIES[cancelPolicyOf(propKey)];
+            el.innerHTML = `<strong>${pol.name}.</strong> ${pol.points.map(p => escapeHtml(p)).join('. ')}.`;
+        }
+        // Settings: list of cottages → each drills into its policy picker.
+        function cancelRowsHtml() {
+            return Object.keys(propertyMeta).map(k => {
+                const pol = CANCELLATION_POLICIES[cancelPolicyOf(k)];
+                return `<button class="settings-row" onclick="settingsOpenCancel('${k}')">
+                    <span class="settings-row-ic"><span class="legend-swatch swatch-${k}" style="width:16px;height:16px;border-radius:5px;"></span></span>
+                    <span class="settings-row-main"><span class="settings-row-label">${escapeHtml(propertyMeta[k].name)}</span><span class="settings-row-sub">${pol.name}</span></span><span class="settings-row-chev">›</span>
+                </button>`;
+            }).join('');
+        }
+        function renderCancelList() {
+            const list = document.getElementById('cancel-list'); const detail = document.getElementById('cancel-detail');
+            if (detail) { detail.style.display = 'none'; detail.innerHTML = ''; }
+            if (list) { list.style.display = ''; list.innerHTML = `<div class="settings-group">${cancelRowsHtml()}</div>`; }
+            settingsBackTarget = () => settingsShowIndex();
+            const title = document.getElementById('settings-panel-title'); if (title) title.textContent = SETTINGS_TITLES.cancel;
+        }
+        // The three selectable policy cards for one cottage (selected one highlighted).
+        function cancelPickerHtml(propKey) {
+            const cur = cancelPolicyOf(propKey);
+            const cards = Object.keys(CANCELLATION_POLICIES).map(pk => {
+                const p = CANCELLATION_POLICIES[pk];
+                const sel = pk === cur;
+                return `<button type="button" class="cancel-card${sel ? ' selected' : ''}" role="radio" aria-checked="${sel}" onclick="setCancelPolicy('${propKey}','${pk}')">
+                    <span class="cancel-card-check" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg></span>
+                    <span class="cancel-card-name">${p.name}</span>
+                    <ul class="cancel-card-points">${p.points.map(pt => `<li>${escapeHtml(pt)}</li>`).join('')}</ul>
+                </button>`;
+            }).join('');
+            return `<p style="font-size:0.85rem;color:var(--text-muted);max-width:560px;margin:0 0 16px;">Choose the cancellation policy guests see on the <strong>${escapeHtml(propertyMeta[propKey].name)}</strong> page.</p><div class="cancel-cards" role="radiogroup" aria-label="Cancellation policy">${cards}</div>`;
+        }
+        function settingsOpenCancel(propKey) {
+            const list = document.getElementById('cancel-list'); const detail = document.getElementById('cancel-detail');
+            if (list) list.style.display = 'none';
+            if (detail) { detail.style.display = ''; detail.innerHTML = cancelPickerHtml(propKey); }
+            const title = document.getElementById('settings-panel-title'); if (title) title.textContent = (propertyMeta[propKey] ? propertyMeta[propKey].name : propKey);
+            settingsBackTarget = () => settingsOpen('cancel');
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+        // Save a cottage's chosen policy, refresh the picker highlight + live cottage text.
+        function setCancelPolicy(propKey, polKey) {
+            if (!CANCELLATION_POLICIES[polKey]) return;
+            siteContent[`${propKey}-cancellation-policy`] = polKey;
+            try { localStorage.setItem(`${propKey}-cancellation-policy`, polKey); } catch (e) {}
+            saveContent(`${propKey}-cancellation-policy`, polKey);
+            const detail = document.getElementById('cancel-detail');
+            if (detail) detail.innerHTML = cancelPickerHtml(propKey);
+            // If that cottage page is currently shown, update its text live.
+            if (activeFrontProperty === propKey) applyCancellationText(propKey);
+            toast(`${propertyMeta[propKey].name}: ${CANCELLATION_POLICIES[polKey].name} policy saved.`);
         }
 
         // Reviews moderation now lives as a folder inside Settings.
@@ -9229,12 +9334,17 @@
             // Things-to-know + location: per-cottage editable text
             const setEdit = (id, key) => { const el = document.getElementById(id); if (el) el.setAttribute('data-edit-text', key); };
             setEdit('prop-houserules-note', `${propKey}-houserules`);
-            setEdit('prop-cancellation', `${propKey}-cancellation`);
             setEdit('prop-location', `${propKey}-location`);
+            // Cancellation policy text is chosen in Settings (not free-text edited here),
+            // so make sure it's never contentEditable, then fill it from the saved policy.
+            const cancEl = document.getElementById('prop-cancellation');
+            if (cancEl) { cancEl.removeAttribute('data-edit-text'); cancEl.contentEditable = 'false'; }
             // Gallery photos are edited via the gallery edit bar (add/replace/remove),
             // not per-slide click, so no data-edit-img wiring is needed here.
             // Restore any saved edits for these namespaced keys
             applySavedEdits();
+            // Cancellation policy text comes from the per-cottage choice in Settings.
+            applyCancellationText(propKey);
             // Re-enable contentEditable if currently editing
             if (isEditMode) {
                 document.querySelectorAll('#view-21a [data-edit-text]').forEach(el => {
@@ -9868,7 +9978,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'hn2o3q5t';
+            const BUILD = 'io3p4r6u';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
