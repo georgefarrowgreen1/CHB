@@ -9171,10 +9171,32 @@
             const monthName = now.toLocaleDateString('en-GB', { month: 'long' });
 
             el.innerHTML = `
+                <div class="os-card"><div class="os-label">Visits this week</div><div class="os-value" id="os-visits">—</div><div class="os-sub" id="os-visits-sub">last 7 days</div></div>
                 <div class="os-card"><div class="os-label">Arrivals (next 30 days)</div><div class="os-value">${arrivals30}</div><div class="os-sub">guests checking in</div></div>
                 <div class="os-card"><div class="os-label">Received</div><div class="os-value os-good">${gbp(received)}</div><div class="os-sub">payments collected</div></div>
                 <div class="os-card"><div class="os-label">Outstanding</div><div class="os-value ${outstanding > 0.001 ? 'os-warn' : ''}">${gbp(outstanding)}</div><div class="os-sub">${unpaidUpcoming} upcoming not fully paid</div></div>
                 <div class="os-card"><div class="os-label">Occupancy (${monthName})</div><div class="os-value">${occ}%</div><div class="os-sub">${nightsThisMonth} of ${totalRoomNights} cottage-nights</div></div>`;
+            refreshHomeVisits();
+        }
+        // Fill the dashboard "Visits this week" card from the analytics endpoint
+        // (cached ~60s so flipping calendar months doesn't refetch each time).
+        let __homeVisits = null, __homeVisitsAt = 0;
+        async function refreshHomeVisits() {
+            const v = document.getElementById('os-visits');
+            if (!v) return;
+            if (!(__homeVisits && (Date.now() - __homeVisitsAt < 60000))) {
+                try { __homeVisits = await apiGet('track.php?action=summary&days=7'); __homeVisitsAt = Date.now(); }
+                catch (e) { __homeVisits = null; }
+            }
+            const cur = document.getElementById('os-visits');   // may have re-rendered
+            if (!cur) return;
+            if (__homeVisits) {
+                cur.textContent = __homeVisits.weekViews || 0;
+                const s = document.getElementById('os-visits-sub');
+                if (s) s.textContent = `${__homeVisits.weekUnique || 0} unique · last 7 days`;
+            } else {
+                cur.textContent = '–';
+            }
         }
 
         function renderCalendar() {
@@ -10178,7 +10200,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'tz5a6c8g';
+            const BUILD = 'ua6b7d9h';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
