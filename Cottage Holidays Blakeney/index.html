@@ -1050,6 +1050,21 @@
         }
         .inbox-strip.collapsed .inbox-strip-body { display: none; }
 
+        /* --- Messaging (owner ↔ guest chat) --- */
+        .chat-thread { display: flex; flex-direction: column; gap: 8px; max-height: 360px; overflow-y: auto; padding: 4px; }
+        .chat-msg { max-width: 82%; padding: 9px 13px; border-radius: 16px; font-size: 0.88rem; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; }
+        .chat-msg.them { align-self: flex-start; background: var(--glass-hover); border: 1px solid var(--glass-border); border-bottom-left-radius: 5px; }
+        .chat-msg.me { align-self: flex-end; background: rgba(214,167,133,0.92); color: #1a191b; border-bottom-right-radius: 5px; }
+        .chat-meta { font-size: 0.64rem; opacity: 0.7; margin-top: 4px; }
+        .chat-empty { font-size: 0.85rem; color: var(--text-muted); text-align: center; padding: 18px 6px; }
+        .chat-composer { display: flex; gap: 8px; margin-top: 12px; align-items: flex-end; }
+        .chat-composer textarea { flex: 1; resize: vertical; min-height: 44px; margin: 0; }
+        .msg-thread-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; background: rgba(255,255,255,0.02); border: 1px solid var(--glass-border); border-radius: 14px; padding: 12px 14px; color: var(--text-light); cursor: pointer; transition: background 0.2s; }
+        .msg-thread-row:hover, .msg-thread-row:focus-visible { background: var(--glass-hover); }
+        .msg-thread-row .mtr-main { flex: 1; min-width: 0; }
+        .msg-thread-row .mtr-name { font-size: 0.95rem; }
+        .msg-thread-row .mtr-last { font-size: 0.8rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
         /* Enquiry cards stacked in the sidebar */
         .enquiry-card {
             background: rgba(255,255,255,0.02); border: 1px solid var(--glass-border);
@@ -2310,6 +2325,19 @@
                         <!-- JS injects enquiry cards here -->
                     </div>
                 </section>
+                <!-- GUEST MESSAGES -->
+                <section class="glass-panel inbox-strip" id="messages-strip">
+                    <div class="inbox-strip-head" onclick="toggleMessagesStrip()">
+                        <h3>
+                            <span>Guest messages</span>
+                            <span class="inbox-badge zero" id="messages-badge">0</span>
+                        </h3>
+                        <span class="inbox-strip-chevron" id="messages-chevron">▾</span>
+                    </div>
+                    <div class="inbox-strip-body" id="messages-list">
+                        <!-- JS injects guest message threads here -->
+                    </div>
+                </section>
             </div>
         </div>
     </main>
@@ -2652,10 +2680,26 @@
                 </div>
             </div>
         </div>
+        <div id="guest-messages"><!-- JS injects the "message your host" thread here --></div>
         <div id="guest-bookings-list">
             <!-- JS injects the guest's bookings here -->
         </div>
     </main>
+
+    <!-- ================= GUEST MESSAGE THREAD (admin reply window) ================= -->
+    <div id="messages-modal" class="modal-overlay pop-modal" onclick="if(event.target===this) closeMessagesModal()">
+        <div class="modal-box glass-panel" style="max-width:520px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px;">
+                <h3 id="messages-modal-title" style="font-family:var(--font-serif);font-size:1.4rem;">Messages</h3>
+                <button class="reviews-modal-close" onclick="closeMessagesModal()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+            </div>
+            <div class="chat-thread" id="messages-modal-thread"></div>
+            <div class="chat-composer">
+                <textarea id="messages-modal-input" class="input-glass" rows="2" placeholder="Write a reply…"></textarea>
+                <button class="btn-glass" onclick="adminSendMessage()">Send</button>
+            </div>
+        </div>
+    </div>
 
     <!-- ================= YOUR DETAILS (floating window) ================= -->
     <div id="guest-details-modal" class="modal-overlay pop-modal" onclick="if(event.target===this) closeGuestDetailsModal()">
@@ -5071,6 +5115,7 @@
             if (welcome) welcome.innerText = `Welcome back, ${currentGuest.name.split(' ')[0]} — here are your stays.`;
             loadPasskeys();
             fillGuestProfile();
+            try { renderGuestMessages(); } catch (e) {}
 
             // Fetch this guest's own bookings + pending enquiries (incl. property address)
             let rows = [], enqRows = [];
@@ -7579,6 +7624,7 @@
             await loadData();
             renderCalendar();
             renderInbox();
+            try { loadAdminMessages(); } catch (e) {}
             try { await loadDepositReturns(); } catch (e) {}   // for the deposits-to-return line
             try { renderTodayPanel(); } catch (e) {}
             const sb = document.getElementById('booking-search'); if (sb) { sb.value = ''; bookingSearch(''); }
@@ -7801,6 +7847,98 @@
 
         function toggleInboxStrip() {
             document.getElementById('inbox-strip').classList.toggle('collapsed');
+        }
+
+        // ===================================================================
+        //  MESSAGING (owner ↔ guest)
+        // ===================================================================
+        function fmtMsgTime(at) {
+            try { const d = new Date(String(at).replace(' ', 'T')); if (isNaN(d)) return ''; return d.toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); }
+            catch (e) { return ''; }
+        }
+        function chatBubbles(msgs, meRole) {
+            if (!msgs.length) return `<p class="chat-empty">No messages yet.</p>`;
+            return msgs.map(m => `<div class="chat-msg ${m.role === meRole ? 'me' : 'them'}">${escapeHtml(m.body)}<div class="chat-meta">${m.role === 'guest' ? (meRole === 'guest' ? 'You' : 'Guest') : (meRole === 'admin' ? 'You' : 'Host')} · ${fmtMsgTime(m.at)}</div></div>`).join('');
+        }
+
+        // ---- Guest side: "Message your host" panel in the account ----
+        async function renderGuestMessages() {
+            const wrap = document.getElementById('guest-messages');
+            if (!wrap) return;
+            let msgs = [];
+            try { const r = await apiPost('messages.php', { action: 'thread' }); msgs = r.messages || []; }
+            catch (e) { wrap.innerHTML = ''; return; }
+            wrap.innerHTML = `<section class="glass-panel" style="padding:24px;margin-bottom:28px;">
+                <h3 style="font-family:var(--font-serif);font-size:1.3rem;margin-bottom:14px;">Message your host</h3>
+                <div class="chat-thread" id="guest-chat-thread">${msgs.length ? chatBubbles(msgs, 'guest') : `<p class="chat-empty">Questions about your stay, arrival, or anything at all — send your host a message.</p>`}</div>
+                <div class="chat-composer">
+                    <textarea id="guest-chat-input" class="input-glass" rows="2" placeholder="Write a message…"></textarea>
+                    <button class="btn-glass" onclick="guestSendMessage()">Send</button>
+                </div>
+            </section>`;
+            const t = document.getElementById('guest-chat-thread'); if (t) t.scrollTop = t.scrollHeight;
+        }
+        async function guestSendMessage() {
+            const input = document.getElementById('guest-chat-input');
+            const body = (input && input.value || '').trim();
+            if (!body) return;
+            try {
+                await apiPost('messages.php', { action: 'send', body });
+                if (input) input.value = '';
+                await renderGuestMessages();
+            } catch (e) { glassAlert("Couldn't send: " + e.message); }
+        }
+
+        // ---- Admin side: threads strip + reply modal ----
+        function toggleMessagesStrip() {
+            document.getElementById('messages-strip').classList.toggle('collapsed');
+        }
+        async function loadAdminMessages() {
+            const list = document.getElementById('messages-list');
+            const badge = document.getElementById('messages-badge');
+            let threads = [];
+            try { const r = await apiPost('messages.php', { action: 'threads' }); threads = r.threads || []; }
+            catch (e) { if (list) list.innerHTML = `<p style="font-size:0.82rem;color:var(--text-muted);">Couldn't load messages.</p>`; return; }
+            const unread = threads.reduce((s, t) => s + (t.unread || 0), 0);
+            if (badge) { badge.textContent = unread; badge.classList.toggle('zero', unread === 0); }
+            if (!list) return;
+            list.innerHTML = threads.length ? threads.map(t => `
+                <button class="msg-thread-row" onclick="openMessageThread(${t.guest_id}, '${escapeHtml((t.name || '').replace(/'/g, "\\'"))}')">
+                    <span class="mtr-main"><span class="mtr-name">${escapeHtml(t.name || t.email || 'Guest')}${t.unread ? ` <span class="inbox-badge" style="min-width:18px;height:18px;font-size:0.66rem;">${t.unread}</span>` : ''}</span><span class="mtr-last">${escapeHtml(t.last_body || '')}</span></span>
+                    <span class="settings-row-chev" aria-hidden="true">›</span>
+                </button>`).join('') : `<p style="font-size:0.82rem;color:var(--text-muted);">No guest messages yet.</p>`;
+        }
+        let __msgThreadGuest = null;
+        async function openMessageThread(guestId, name) {
+            __msgThreadGuest = guestId;
+            const modal = document.getElementById('messages-modal');
+            const title = document.getElementById('messages-modal-title');
+            const thread = document.getElementById('messages-modal-thread');
+            if (title) title.textContent = name ? `Messages — ${name}` : 'Messages';
+            if (thread) thread.innerHTML = `<p class="chat-empty">Loading…</p>`;
+            if (modal) modal.classList.add('open');
+            try {
+                const r = await apiPost('messages.php', { action: 'thread', guest_id: guestId });
+                if (thread) { thread.innerHTML = chatBubbles(r.messages || [], 'admin'); thread.scrollTop = thread.scrollHeight; }
+            } catch (e) { if (thread) thread.innerHTML = `<p class="chat-empty">Couldn't load this thread.</p>`; }
+            loadAdminMessages();   // clear the unread badge now it's been read
+        }
+        function closeMessagesModal() {
+            const m = document.getElementById('messages-modal'); if (m) m.classList.remove('open');
+            __msgThreadGuest = null;
+        }
+        async function adminSendMessage() {
+            const input = document.getElementById('messages-modal-input');
+            const body = (input && input.value || '').trim();
+            if (!body || !__msgThreadGuest) return;
+            try {
+                await apiPost('messages.php', { action: 'send', guest_id: __msgThreadGuest, body });
+                if (input) input.value = '';
+                const r = await apiPost('messages.php', { action: 'thread', guest_id: __msgThreadGuest });
+                const thread = document.getElementById('messages-modal-thread');
+                if (thread) { thread.innerHTML = chatBubbles(r.messages || [], 'admin'); thread.scrollTop = thread.scrollHeight; }
+                loadAdminMessages();
+            } catch (e) { glassAlert("Couldn't send: " + e.message); }
         }
 
         // --- Rates & fees editor (per property) ---
@@ -10308,7 +10446,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'wc8d9f1j';
+            const BUILD = 'xd9e0g2k';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
