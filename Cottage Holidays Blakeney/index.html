@@ -2309,22 +2309,9 @@
             </div>
         </div>
 
-        <!-- INDEX -->
+        <!-- INDEX — ordered by importance: your cottages first, then money & guests,
+             then your listing & account, with the legal reference last. -->
         <div id="settings-index" class="settings-index">
-            <div class="settings-group">
-                <button class="settings-row" onclick="settingsOpen('host')">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Profile</span><span class="settings-row-sub">"Meet your host" details</span></span><span class="settings-row-chev">›</span>
-                </button>
-                <button class="settings-row" onclick="settingsOpen('reviews')">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 17.77 6.8 19.5l.99-5.78-4.21-4.1 5.82-.85z"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Reviews</span><span class="settings-row-sub">Approve guest reviews for your site</span></span><span class="settings-row-chev">›</span>
-                </button>
-                <button class="settings-row" onclick="settingsOpen('security')">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Security</span><span class="settings-row-sub">Password &amp; passkeys</span></span><span class="settings-row-chev">›</span>
-                </button>
-            </div>
             <div class="settings-group">
                 <button class="settings-row" onclick="settingsOpen('accom')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/></svg></span>
@@ -2348,9 +2335,19 @@
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 5.5a3 3 0 0 1 0 5.8M21 19a5.5 5.5 0 0 0-4-5.3"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Guest accounts</span><span class="settings-row-sub">Reset a guest's password</span></span><span class="settings-row-chev">›</span>
                 </button>
-                <button class="settings-row" onclick="settingsOpen('contact')">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.6 3.5l2.1.4 1 3-1.5 1.4a12 12 0 0 0 5 5l1.4-1.5 3 1 .4 2.1a2 2 0 0 1-2 2.3A15.5 15.5 0 0 1 4.3 5.5a2 2 0 0 1 2.3-2z"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Contact number</span><span class="settings-row-sub">"Call to Discuss" buttons</span></span><span class="settings-row-chev">›</span>
+            </div>
+            <div class="settings-group">
+                <button class="settings-row" onclick="settingsOpen('host')">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Profile</span><span class="settings-row-sub">Host details &amp; contact number</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" onclick="settingsOpen('reviews')">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 17.77 6.8 19.5l.99-5.78-4.21-4.1 5.82-.85z"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Reviews</span><span class="settings-row-sub">Approve guest reviews for your site</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" onclick="settingsOpen('security')">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Security</span><span class="settings-row-sub">Password &amp; passkeys</span></span><span class="settings-row-chev">›</span>
                 </button>
             </div>
             <div class="settings-group">
@@ -2387,6 +2384,15 @@
                     <label class="host-edit-label" for="host-f-bio">Bio</label>
                     <textarea class="input-glass" id="host-f-bio" rows="4" style="resize:vertical;" onchange="saveHostText('host-bio', this.value)"></textarea>
                     <p id="host-save-msg" style="font-size:0.82rem;color:#4CAF50;min-height:1em;margin:4px 0 0;"></p>
+                    <div style="margin-top:22px;padding-top:20px;border-top:1px solid var(--glass-border);">
+                        <label class="host-edit-label" for="contact-phone-dial" style="margin-top:0;">Contact number — "Call to Discuss" buttons</label>
+                        <p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 10px;">Shown on the booking form and guest dashboard. The dial number is what actually gets called (use full form like +441263740512 for mobiles); the display number is how it reads in the tooltip.</p>
+                        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                            <input type="tel" class="input-glass field-sm" id="contact-phone-dial" placeholder="Dial number (e.g. +441263740512)" style="flex:1 1 220px;">
+                            <input type="text" class="input-glass field-sm" id="contact-phone-display" placeholder="Display (e.g. 01263 740512)" style="flex:1 1 180px;">
+                            <button class="btn-sm btn-edit" onclick="saveContactPhone()">Save number</button>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -2458,18 +2464,6 @@
                 </div>
             </div>
 
-            <!-- Contact number -->
-            <div class="settings-sec" id="sec-contact" style="display:none;">
-                <div class="accounts-stat" style="max-width:720px;">
-                    <div class="label">Contact phone — "Call to Discuss" buttons</div>
-                    <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 14px;">Shown on the booking form and guest dashboard. The dial number is what actually gets called (use full form like +441263740512 for mobiles); the display number is how it reads in the tooltip.</p>
-                    <div style="display:flex;gap:10px;flex-wrap:wrap;">
-                        <input type="tel" class="input-glass field-sm" id="contact-phone-dial" placeholder="Dial number (e.g. +441263740512)" style="flex:1 1 220px;">
-                        <input type="text" class="input-glass field-sm" id="contact-phone-display" placeholder="Display (e.g. 01263 740512)" style="flex:1 1 180px;">
-                        <button class="btn-sm btn-edit" onclick="saveContactPhone()">Save number</button>
-                    </div>
-                </div>
-            </div>
         </div>
     </main>
 
@@ -3790,7 +3784,7 @@
         }
 
         // ---- Settings router: Apple-style index → drill-down sub-pages ----
-        const SETTINGS_TITLES = { host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Preferences', calendar: 'Calendar', cancel: 'Cancellation policy', payments: 'Payments', guests: 'Guest accounts', contact: 'Contact number' };
+        const SETTINGS_TITLES = { host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Preferences', calendar: 'Calendar', cancel: 'Cancellation policy', payments: 'Payments', guests: 'Guest accounts' };
         let settingsBackTarget = null;
         function settingsShowIndex() {
             const idx = document.getElementById('settings-index'); const panel = document.getElementById('settings-panel');
@@ -3813,11 +3807,6 @@
             else if (section === 'reviews') loadGuestReviewModeration();
             else if (section === 'security') loadAdminPasskeys();
             else if (section === 'payments') renderSquareSettings();
-            else if (section === 'contact') {
-                const cp = siteContent['contact-phone'] || {};
-                const dEl = document.getElementById('contact-phone-dial'); const sEl = document.getElementById('contact-phone-display');
-                if (dEl) dEl.value = cp.dial || ''; if (sEl) sEl.value = cp.display || '';
-            }
             else if (section === 'accom') renderAccomList();
             else if (section === 'calendar') renderCalendarList();
             else if (section === 'cancel') renderCancelList();
@@ -3830,6 +3819,10 @@
             setv('host-f-school', 'host-school'); setv('host-f-work', 'host-work'); setv('host-f-bio', 'host-bio');
             const photo = document.getElementById('host-edit-photo');
             if (photo) photo.style.backgroundImage = hostVal('host-photo') ? `url('${hostVal('host-photo')}')` : '';
+            // Contact number now lives inside the Profile folder.
+            const cp = siteContent['contact-phone'] || {};
+            const dEl = document.getElementById('contact-phone-dial'); const sEl = document.getElementById('contact-phone-display');
+            if (dEl) dEl.value = cp.dial || ''; if (sEl) sEl.value = cp.display || '';
         }
         // A small "row that drills into a cottage" list for accom + calendar sections.
         function cottageRowsHtml(onclickFn) {
@@ -9975,7 +9968,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'ms8t9v1z';
+            const BUILD = 'nt9u0w2a';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
