@@ -21,6 +21,11 @@ if (!$isCron && empty($_SESSION['admin_id'])) {
     json_out(['error' => 'Not authorised'], 401);
 }
 $baseline = isset($_GET['baseline']) && $_GET['baseline'] == '1';
+// force=1 re-runs EVERY migration regardless of the ledger. Safe because the
+// migrations are idempotent (CREATE TABLE IF NOT EXISTS, guarded ADD COLUMN).
+// Use this to repair a database that was wrongly baselined (migrations marked
+// "applied" without their tables actually being created).
+$force = isset($_GET['force']) && $_GET['force'] == '1';
 
 // Ledger of applied migrations.
 db()->exec('CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -29,8 +34,10 @@ db()->exec('CREATE TABLE IF NOT EXISTS schema_migrations (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4');
 
 $applied = [];
-$st = db()->query('SELECT filename FROM schema_migrations');
-foreach ($st->fetchAll() as $r) { $applied[$r['filename']] = true; }
+if (!$force) {
+    $st = db()->query('SELECT filename FROM schema_migrations');
+    foreach ($st->fetchAll() as $r) { $applied[$r['filename']] = true; }
+}
 
 $files = glob(__DIR__ . '/migration-*.sql');
 sort($files);
@@ -85,14 +92,15 @@ foreach ($files as $path) {
         $report[] = ['file' => $name, 'status' => 'ERROR', 'ran' => $ran, 'error' => $hardError];
         continue;
     }
-    db()->prepare('INSERT INTO schema_migrations (filename, applied_at) VALUES (?, NOW())')
+    db()->prepare('INSERT INTO schema_migrations (filename, applied_at) VALUES (?, NOW())
+                   ON DUPLICATE KEY UPDATE applied_at = NOW()')
         ->execute([$name]);
-    $report[] = ['file' => $name, 'status' => 'applied', 'statements_run' => $ran, 'already_present' => $skipped];
+    $report[] = ['file' => $name, 'status' => $force ? 're-applied' : 'applied', 'statements_run' => $ran, 'already_present' => $skipped];
 }
 
 $failed = array_filter($report, fn($r) => ($r['status'] ?? '') === 'ERROR');
 json_out([
     'ok' => empty($failed),
-    'mode' => $baseline ? 'baseline' : 'apply',
+    'mode' => $baseline ? 'baseline' : ($force ? 'force' : 'apply'),
     'migrations' => $report,
 ], empty($failed) ? 200 : 500);
