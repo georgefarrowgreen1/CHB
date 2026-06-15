@@ -94,11 +94,11 @@ function send_webpush($endpoint) {
 // Because pushes are payload-less, we stash the latest owner notification in the
 // content table; the service worker fetches it (push.php?action=sw_notify) when a
 // ping arrives and shows it once. Best-effort throughout — never throws.
-function owner_ping_set($title, $body) {
+function owner_ping_set($title, $body, $reload = false) {
     try {
         db()->prepare("INSERT INTO content (item_key, item_value) VALUES ('owner-ping', ?)
                        ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = CURRENT_TIMESTAMP")
-            ->execute([json_encode(['title' => (string)$title, 'body' => (string)$body, 'at' => time()], JSON_UNESCAPED_UNICODE)]);
+            ->execute([json_encode(['title' => (string)$title, 'body' => (string)$body, 'reload' => (bool)$reload, 'at' => time()], JSON_UNESCAPED_UNICODE)]);
     } catch (\Throwable $e) {}
 }
 function owner_ping_take() {
@@ -130,4 +130,4 @@ function ping_admin_devices() {
     return $sent;
 }
 // Convenience: set the owner alert text AND wake their devices.
-function alert_owner($title, $body) { owner_ping_set($title, $body); return ping_admin_devices(); }
+function alert_owner($title, $body, $reload = false) { owner_ping_set($title, $body, $reload); return ping_admin_devices(); }

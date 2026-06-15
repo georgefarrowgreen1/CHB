@@ -5918,6 +5918,17 @@
         }
         async function registerServiceWorker() {
             if (!('serviceWorker' in navigator)) return null;
+            // When a new release is deployed, the service worker pings open pages to
+            // refresh so they pick up the new build (only the owner's devices get this).
+            if (!window.__chbReloadWired) {
+                window.__chbReloadWired = true;
+                navigator.serviceWorker.addEventListener('message', (e) => {
+                    if (e.data && e.data.type === 'chb-reload') {
+                        try { toast('Updating to the new version…'); } catch (_) {}
+                        setTimeout(() => { try { location.reload(); } catch (_) {} }, 1200);
+                    }
+                });
+            }
             try { return await navigator.serviceWorker.register('sw.js'); } catch (e) { return null; }
         }
         async function enableArrivalPush() {
@@ -10867,7 +10878,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'fl7m8o0s';
+            const BUILD = 'gm8n9p1t';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
