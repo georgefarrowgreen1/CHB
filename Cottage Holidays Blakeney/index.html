@@ -721,6 +721,15 @@
         .pbb-sub { font-size: 0.78rem; color: var(--text-muted); display: flex; align-items: center; gap: 5px; margin-top: 2px; }
         .pbb-sub .ic { width: 14px; height: 14px; color: #4CAF50; }
         .pbb-btn { width: auto; padding: 14px 30px; white-space: nowrap; flex-shrink: 0; }
+        /* Two-step enquiry modal */
+        .enquire-box { position: relative; max-width: 520px; }
+        .enq-summary { display: flex; gap: 14px; align-items: center; padding-bottom: 18px; border-bottom: 1px solid var(--glass-border); }
+        .enq-summary-img { width: 76px; height: 76px; border-radius: 14px; background-size: cover; background-position: center; background-color: var(--dark-grey); flex-shrink: 0; }
+        .enq-summary-name { font-family: var(--font-serif); font-size: 1.2rem; color: var(--text-light); }
+        .enq-summary-rating { font-size: 0.85rem; color: var(--text-muted); margin-top: 4px; }
+        .enq-field-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin: 18px 0 6px; }
+        .enq-cancel-note { display: flex; align-items: flex-start; gap: 10px; margin-top: 18px; padding: 12px 14px; border-radius: 14px; background: rgba(76,175,80,0.12); border: 1px solid rgba(76,175,80,0.3); font-size: 0.83rem; color: var(--text-light); line-height: 1.4; }
+        .enq-cancel-note .ic { width: 18px; height: 18px; color: #4CAF50; flex-shrink: 0; margin-top: 1px; }
         /* Owner dock sits above the booking bar when logged in */
         body.owner-mode .prop-book-bar { bottom: 86px; }
         .input-glass {
@@ -1802,52 +1811,7 @@
                 </div>
                 <div id="prop-reviews" class="prop-reviews" style="margin-top:32px;"></div>
             </div>
-            <div class="glass-panel booking-glass" id="enquire-section" style="border-radius: 24px;">
-                <h3 style="font-family: var(--font-serif); font-size: 1.8rem; margin-bottom: 4px;" id="prop-price-heading"></h3>
-                <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 18px;" id="prop-price-tagline">per couple — book your stay below</p>
-                <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-name">Your Name</label>
-                <input type="text" class="input-glass" id="enq-name" placeholder="Full name">
-                <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-email">Email</label>
-                <input type="email" class="input-glass" id="enq-email" placeholder="you@email.com">
-                <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-phone">Phone</label>
-                <input type="tel" class="input-glass" id="enq-phone" placeholder="Contact number">
-                <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-address">UK Address</label>
-                <textarea class="input-glass" id="enq-address" rows="2" placeholder="House name/number, street, town, county" style="resize: vertical;"></textarea>
-                <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-postcode">Postcode</label>
-                <input type="text" class="input-glass" id="enq-postcode" placeholder="e.g. NR25 7AB" autocomplete="postal-code" style="margin-bottom: 6px;">
-                <p style="font-size: 0.72rem; color: var(--text-muted); margin: 0 0 18px;">Used only to manage your booking and contact you. See our <a onclick="nav('view-privacy')" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy Policy</a>.</p>
-                <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" data-edit-text="prop1-label-in">Your Dates</label>
-                <button type="button" class="date-range-trigger" id="enq-date-trigger" onclick="openDatePicker()">
-                    <span class="date-range-text" id="enq-date-display">Select your stay dates</span>
-                    <span class="date-range-icon"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></span>
-                </button>
-                <!-- Hidden fields preserve the existing YYYY-MM-DD values the rest of the form reads -->
-                <input type="hidden" id="enq-checkin">
-                <input type="hidden" id="enq-checkout">
-                <p id="enq-rules-hint" style="font-size: 0.78rem; color: var(--text-muted); margin: -12px 0 16px;"></p>
-                <div style="display: flex; gap: 15px;">
-                    <div style="flex: 1;">
-                        <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-adults">Adults</label>
-                        <input type="number" class="input-glass" id="enq-adults" min="1" value="2" oninput="onOccupancyInput(); updateEnquiryPrice();">
-                    </div>
-                    <div style="flex: 1;">
-                        <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-children">Children</label>
-                        <input type="number" class="input-glass" id="enq-children" min="0" value="0" oninput="onOccupancyInput(); updateEnquiryPrice();">
-                    </div>
-                </div>
-                <p id="enq-occupancy-hint" style="font-size: 0.78rem; color: var(--text-muted); margin: -10px 0 14px;"></p>
-                <div class="price-box" id="enq-price-box">
-                    <p style="color: var(--text-muted); font-size: 0.85rem; text-align: center; margin: 0;">Select dates to see your price.</p>
-                </div>
-                <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-message">Message (optional)</label>
-                <textarea class="input-glass" id="enq-message" rows="2" placeholder="Any special requests?" style="resize: vertical;"></textarea>
-                <label class="terms-accept">
-                    <input type="checkbox" id="enq-terms">
-                    <span>I have read and accept the <a onclick="openTermsModal(event)">Booking Terms &amp; Conditions</a>.</span>
-                </label>
-                <button class="btn-glass" style="width: 100%; padding: 18px;" id="enq-submit-btn">Send Enquiry</button>
-                <a class="btn-glass" id="enq-call-btn" style="width: 100%; padding: 16px; margin-top: 12px; text-align: center; display: block; box-sizing: border-box; text-decoration: none;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.6 3.5l2.1.4 1 3-1.5 1.4a12 12 0 0 0 5 5l1.4-1.5 3 1 .4 2.1a2 2 0 0 1-2 2.3A15.5 15.5 0 0 1 4.3 5.5a2 2 0 0 1 2.3-2z"/></svg> Call to Discuss</a>
-            </div>
+            <!-- The enquiry now lives in the two-step #enquire-modal (opened by "Enquire now"). -->
         </div>
         <!-- Sticky booking bar (Airbnb-style): price + dates + Enquire now -->
         <div class="prop-book-bar" id="prop-book-bar">
@@ -1855,7 +1819,81 @@
                 <div class="pbb-price" id="pbb-price"></div>
                 <div class="pbb-sub" id="pbb-sub"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 12.5l2.5 2.5 4.5-5"/><circle cx="12" cy="12" r="9"/></svg> Free cancellation</div>
             </div>
-            <button type="button" class="btn-glass pbb-btn" onclick="enquireNow()">Enquire now</button>
+            <button type="button" class="btn-glass pbb-btn" onclick="openEnquireModal()">Enquire now</button>
+        </div>
+
+        <!-- ===== Airbnb-style two-step enquiry: Review your stay → Your details ===== -->
+        <div id="enquire-modal" class="modal-overlay pop-modal" onclick="if(event.target===this) closeEnquireModal()">
+            <div class="modal-box enquire-box glass-panel">
+                <button class="reviews-modal-close" onclick="closeEnquireModal()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+
+                <!-- STEP 1: REVIEW -->
+                <div id="enquire-step-review">
+                    <h2 class="section-title" style="font-size:1.6rem;margin:0 0 18px;text-align:left;">Review your stay</h2>
+                    <div class="enq-summary">
+                        <div class="enq-summary-img" id="enq-sum-img"></div>
+                        <div>
+                            <div class="enq-summary-name" id="enq-sum-name"></div>
+                            <div class="enq-summary-rating" id="enq-sum-rating"></div>
+                        </div>
+                    </div>
+                    <h3 style="font-family: var(--font-serif); font-size: 1.4rem; margin: 18px 0 2px;" id="prop-price-heading"></h3>
+                    <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0 0 16px;" id="prop-price-tagline">per couple</p>
+
+                    <div class="enq-field-label">Dates</div>
+                    <button type="button" class="date-range-trigger" id="enq-date-trigger" onclick="openDatePicker()">
+                        <span class="date-range-text" id="enq-date-display">Select your stay dates</span>
+                        <span class="date-range-icon"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></span>
+                    </button>
+                    <input type="hidden" id="enq-checkin"><input type="hidden" id="enq-checkout">
+                    <p id="enq-rules-hint" style="font-size: 0.78rem; color: var(--text-muted); margin: -8px 0 14px;"></p>
+
+                    <div class="enq-field-label">Guests</div>
+                    <div style="display: flex; gap: 15px;">
+                        <div style="flex: 1;">
+                            <label style="font-size: 0.72rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-adults">Adults</label>
+                            <input type="number" class="input-glass" id="enq-adults" min="1" value="2" oninput="onOccupancyInput(); updateEnquiryPrice();">
+                        </div>
+                        <div style="flex: 1;">
+                            <label style="font-size: 0.72rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-children">Children</label>
+                            <input type="number" class="input-glass" id="enq-children" min="0" value="0" oninput="onOccupancyInput(); updateEnquiryPrice();">
+                        </div>
+                    </div>
+                    <p id="enq-occupancy-hint" style="font-size: 0.78rem; color: var(--text-muted); margin: 4px 0 14px;"></p>
+
+                    <div class="enq-field-label">Total price</div>
+                    <div class="price-box" id="enq-price-box">
+                        <p style="color: var(--text-muted); font-size: 0.85rem; text-align: center; margin: 0;">Select dates to see your price.</p>
+                    </div>
+                    <div class="enq-cancel-note"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg> <span><strong>Free cancellation.</strong> No payment now — we'll confirm your dates &amp; price by email.</span></div>
+                    <button type="button" class="btn-glass" style="width:100%;padding:16px;margin-top:18px;" onclick="enquireContinue()">Continue</button>
+                </div>
+
+                <!-- STEP 2: YOUR DETAILS -->
+                <div id="enquire-step-details" style="display:none;">
+                    <span class="back-link" style="margin-bottom:12px;" onclick="enquireBack()">← Back</span>
+                    <h2 class="section-title" style="font-size:1.6rem;margin:0 0 18px;text-align:left;">Your details</h2>
+                    <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-name">Your Name</label>
+                    <input type="text" class="input-glass" id="enq-name" placeholder="Full name">
+                    <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-email">Email</label>
+                    <input type="email" class="input-glass" id="enq-email" placeholder="you@email.com">
+                    <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-phone">Phone</label>
+                    <input type="tel" class="input-glass" id="enq-phone" placeholder="Contact number">
+                    <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-address">UK Address</label>
+                    <textarea class="input-glass" id="enq-address" rows="2" placeholder="House name/number, street, town, county" style="resize: vertical;"></textarea>
+                    <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-postcode">Postcode</label>
+                    <input type="text" class="input-glass" id="enq-postcode" placeholder="e.g. NR25 7AB" autocomplete="postal-code" style="margin-bottom: 6px;">
+                    <p style="font-size: 0.72rem; color: var(--text-muted); margin: 0 0 18px;">Used only to manage your booking and contact you. See our <a onclick="nav('view-privacy')" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy Policy</a>.</p>
+                    <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-message">Message (optional)</label>
+                    <textarea class="input-glass" id="enq-message" rows="2" placeholder="Any special requests?" style="resize: vertical;"></textarea>
+                    <label class="terms-accept">
+                        <input type="checkbox" id="enq-terms">
+                        <span>I have read and accept the <a onclick="openTermsModal(event)">Booking Terms &amp; Conditions</a>.</span>
+                    </label>
+                    <button class="btn-glass" style="width: 100%; padding: 18px;" id="enq-submit-btn">Send enquiry</button>
+                    <a class="btn-glass" id="enq-call-btn" style="width: 100%; padding: 16px; margin-top: 12px; text-align: center; display: block; box-sizing: border-box; text-decoration: none;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.6 3.5l2.1.4 1 3-1.5 1.4a12 12 0 0 0 5 5l1.4-1.5 3 1 .4 2.1a2 2 0 0 1-2 2.3A15.5 15.5 0 0 1 4.3 5.5a2 2 0 0 1 2.3-2z"/></svg> Call to Discuss</a>
+                </div>
+            </div>
         </div>
     </main>
 
@@ -5284,6 +5322,10 @@
         window.addEventListener('DOMContentLoaded', async () => {
           try {
             applySavedTheme();
+            // The enquiry modal must be a direct child of <body>: its overlay is
+            // position:fixed, and a transformed page-view ancestor would otherwise trap
+            // it (off-screen). Move it out once, on boot.
+            try { const em = document.getElementById('enquire-modal'); if (em && em.parentElement !== document.body) document.body.appendChild(em); } catch (e) {}
             // Show the passkey sign-in option only if the device/browser supports it
             if (window.PublicKeyCredential && navigator.credentials && navigator.credentials.get) {
                 const w = document.getElementById('passkey-login-wrap');
@@ -6517,11 +6559,53 @@
                     : `Select your dates`;
             }
         }
-        // "Enquire now" from the sticky bar — glide to the enquiry form and focus it.
-        function enquireNow() {
-            const sec = document.getElementById('enquire-section');
-            if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            setTimeout(() => { const n = document.getElementById('enq-name'); if (n) { try { n.focus({ preventScroll: true }); } catch (e) {} } }, 480);
+        // ---- Two-step enquiry modal (Airbnb "Review your stay" → "Your details") ----
+        function openEnquireModal() {
+            const key = activeFrontProperty;
+            if (!key) return;
+            const img = (propertyContent[key] && propertyContent[key].images && propertyContent[key].images[0]) || '';
+            const imgEl = document.getElementById('enq-sum-img'); if (imgEl) imgEl.style.backgroundImage = img ? `url('${img}')` : '';
+            const nameEl = document.getElementById('enq-sum-name'); if (nameEl) nameEl.innerText = (propertyMeta[key] && propertyMeta[key].name) || key;
+            const rateEl = document.getElementById('enq-sum-rating');
+            if (rateEl) {
+                const list = allReviews().filter(r => r.prop === key);
+                const cnt = list.length;
+                const avg = cnt ? list.reduce((s, r) => s + Math.max(1, Math.min(5, parseInt(r.stars) || 5)), 0) / cnt : 0;
+                rateEl.innerText = cnt ? `★ ${avg.toFixed(2)} · ${cnt} review${cnt === 1 ? '' : 's'}` : 'New · no reviews yet';
+            }
+            enquireBack();                 // always start on the Review step
+            refreshDateTrigger();
+            updateEnquiryPrice();
+            const m = document.getElementById('enquire-modal');
+            if (m) m.classList.add('open');
+        }
+        function closeEnquireModal() {
+            const m = document.getElementById('enquire-modal');
+            if (m) m.classList.remove('open');
+        }
+        function enquireBack() {
+            const r = document.getElementById('enquire-step-review');
+            const d = document.getElementById('enquire-step-details');
+            if (r) r.style.display = '';
+            if (d) d.style.display = 'none';
+        }
+        // Review → Details: validate dates/rules/occupancy up front (same checks as submit).
+        function enquireContinue() {
+            const ci = (document.getElementById('enq-checkin') || {}).value;
+            const co = (document.getElementById('enq-checkout') || {}).value;
+            if (!ci || !co) { glassAlert('Please choose your stay dates.'); return; }
+            if (co <= ci) { glassAlert('Your check-out date must be after your check-in date.'); return; }
+            const ruleErr = checkBookingRules(activeFrontProperty, ci, co);
+            if (ruleErr) { glassAlert(ruleErr); return; }
+            const adults = Math.max(1, parseInt((document.getElementById('enq-adults') || {}).value, 10) || 0);
+            const children = Math.max(0, parseInt((document.getElementById('enq-children') || {}).value, 10) || 0);
+            const occErr = checkOccupancy(activeFrontProperty, adults, children);
+            if (occErr) { glassAlert(occErr); return; }
+            const r = document.getElementById('enquire-step-review');
+            const d = document.getElementById('enquire-step-details');
+            if (r) r.style.display = 'none';
+            if (d) d.style.display = '';
+            const box = document.querySelector('.enquire-box'); if (box) box.scrollTop = 0;
         }
         function reviewRowHtml(r) {
             r = r || { name: '', stars: 5, text: '', prop: '', source: '' };
@@ -8031,6 +8115,7 @@
             refreshDateTrigger();
             updateEnquiryPrice();
             autofillGuestEnquiry();   // re-fill + re-lock email/address for a logged-in guest
+            try { closeEnquireModal(); } catch (e) {}
 
             glassAlert("Thank you! Your enquiry has been sent. Our team will be in touch to confirm availability.");
         }
@@ -8415,7 +8500,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'jm6s2k8w';
+            const BUILD = 'ln8u4p2k';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
