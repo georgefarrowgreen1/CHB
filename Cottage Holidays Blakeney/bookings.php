@@ -367,13 +367,23 @@ if ($action === 'refund') {
     }
 
     $bookingId = (int)$row['booking_id'];
-    book_lock(booking_by_id($bookingId)['prop_key'] ?? '');
-    db()->prepare('INSERT IGNORE INTO payments (booking_id, square_payment_id, kind, amount, status, created_at)
-                   VALUES (?,?,?,?,?,NOW())')
-        ->execute([$bookingId, (string)$refund['id'], 'refund', $amount, $refund['status']]);
+    $b = booking_by_id($bookingId);   // may be null if the booking was already deleted
+    book_lock($b['prop_key'] ?? '');
+    // Snapshot the guest + cottage so the refund stays meaningful even if the
+    // booking is later deleted (falls back to the original charge row's snapshot).
+    $gName = $b['name'] ?? ($row['guest_name'] ?? null);
+    $gProp = $b['prop_key'] ?? ($row['prop_key'] ?? null);
+    try {
+        db()->prepare('INSERT IGNORE INTO payments (booking_id, square_payment_id, kind, amount, status, guest_name, prop_key, created_at)
+                       VALUES (?,?,?,?,?,?,?,NOW())')
+            ->execute([$bookingId, (string)$refund['id'], 'refund', $amount, $refund['status'], $gName, $gProp]);
+    } catch (\Throwable $e) {
+        // Fallback if the snapshot columns aren't migrated yet.
+        try { db()->prepare('INSERT IGNORE INTO payments (booking_id, square_payment_id, kind, amount, status, created_at) VALUES (?,?,?,?,?,NOW())')
+            ->execute([$bookingId, (string)$refund['id'], 'refund', $amount, $refund['status']]); } catch (\Throwable $e2) {}
+    }
     // Re-derive deposit_paid from the ledger (completed charges minus refunds).
-    $b = booking_by_id($bookingId);
-    $total = ($b['agreed_total'] !== null) ? (($b['price_override'] !== null) ? (float)$b['price_override'] : (float)$b['agreed_total']) : 0.0;
+    $total = ($b && $b['agreed_total'] !== null) ? (($b['price_override'] !== null) ? (float)$b['price_override'] : (float)$b['agreed_total']) : 0.0;
     $sum = db()->prepare("SELECT
             COALESCE(SUM(CASE WHEN kind IN ('deposit','balance') AND status IN ('COMPLETED','APPROVED') THEN amount ELSE 0 END),0)
           - COALESCE(SUM(CASE WHEN kind = 'refund' THEN amount ELSE 0 END),0) AS net
@@ -385,7 +395,21 @@ if ($action === 'refund') {
     db()->prepare('UPDATE bookings SET payment=?, deposit_paid=?, payment_date=? WHERE id=?')
         ->execute([$newStatus, $paid, ($paid > 0 ? date('Y-m-d') : null), $bookingId]);
     book_unlock($b['prop_key'] ?? '');
-    json_out(['ok' => true, 'refunded' => $amount, 'status' => $newStatus]);
+
+    // Tell the guest a refund is on its way (best-effort — never fails the refund).
+    $emailResult = null;
+    if ($b && !empty($b['email'])) {
+        try {
+            require_once __DIR__ . '/mailer.php';
+            $rate = get_rate($b['prop_key']);
+            $emailResult = send_refund_email([
+                'name' => $b['name'], 'email' => $b['email'], 'prop_key' => $b['prop_key'],
+                'prop_name' => $rate['name'] ?? $b['prop_key'],
+                'check_in' => $b['check_in'], 'check_out' => $b['check_out'], 'amount' => $amount,
+            ]);
+        } catch (\Throwable $e) { $emailResult = ['ok' => false, 'error' => $e->getMessage()]; }
+    }
+    json_out(['ok' => true, 'refunded' => $amount, 'status' => $newStatus, 'email' => $emailResult]);
 }
 
 // List the Square payment ledger for a booking (admin detail panel).
@@ -399,15 +423,29 @@ if ($action === 'payments') {
 }
 
 // Recent Square transactions across all bookings (Money & income feed).
+// LEFT JOIN + snapshot fallback so payments/refunds from DELETED bookings stay
+// visible (the ledger rows are deliberately kept when a booking is removed).
 if ($action === 'recent_payments') {
     try {
         $rows = db()->query(
-            'SELECT p.square_payment_id, p.kind, p.amount, p.status, p.created_at, b.name, b.prop_key
-             FROM payments p JOIN bookings b ON b.id = p.booking_id
-             ORDER BY p.id DESC LIMIT 25'
+            'SELECT p.square_payment_id, p.kind, p.amount, p.status, p.created_at,
+                    COALESCE(b.name, p.guest_name) AS name,
+                    COALESCE(b.prop_key, p.prop_key) AS prop_key,
+                    (b.id IS NULL) AS booking_deleted
+             FROM payments p LEFT JOIN bookings b ON b.id = p.booking_id
+             ORDER BY p.id DESC LIMIT 50'
         )->fetchAll();
         json_out(['payments' => $rows]);
-    } catch (\Throwable $e) { json_out(['payments' => []]); }
+    } catch (\Throwable $e) {
+        // Pre-snapshot schema: fall back to the inner join (no deleted-booking rows).
+        try {
+            $rows = db()->query(
+                'SELECT p.square_payment_id, p.kind, p.amount, p.status, p.created_at, b.name, b.prop_key
+                 FROM payments p JOIN bookings b ON b.id = p.booking_id ORDER BY p.id DESC LIMIT 50'
+            )->fetchAll();
+            json_out(['payments' => $rows]);
+        } catch (\Throwable $e2) { json_out(['payments' => []]); }
+    }
 }
 
 json_out(['error' => 'Unknown action'], 400);

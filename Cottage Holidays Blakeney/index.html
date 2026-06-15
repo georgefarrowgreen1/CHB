@@ -3999,10 +3999,12 @@
                 const amt = (refund ? '−' : '') + gbp(Math.abs(parseFloat(p.amount) || 0));
                 const date = (p.created_at || '').slice(0, 10) || '—';
                 const propName = propertyMeta[p.prop_key] ? propertyMeta[p.prop_key].name : (p.prop_key || '');
+                const deleted = (p.booking_deleted == 1 || p.booking_deleted === true);
+                const who = (p.name || 'Guest') + (deleted ? ' · deleted booking' : '');
                 return `<div class="feed-row">
                     <span class="feed-date">${escapeHtml(date)}</span>
                     <span class="prop-tag tag-${p.prop_key}">${escapeHtml(propName)}</span>
-                    <span class="feed-who">${escapeHtml(p.name || 'Guest')}</span>
+                    <span class="feed-who"${deleted ? ' style="color:var(--text-muted);"' : ''}>${escapeHtml(who)}</span>
                     <span class="feed-kind">${label}</span>
                     <span class="feed-amt" style="${refund ? 'color:#E57373;' : 'color:#4CAF50;'}">${amt}</span>
                     <span class="feed-status">${escapeHtml(p.status || '')}</span>
@@ -9470,7 +9472,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'pu2v3t5w';
+            const BUILD = 'qv3w4u6x';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');

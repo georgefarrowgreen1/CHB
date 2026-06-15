@@ -113,9 +113,9 @@ if ($action === 'charge') {
     // the booking's headline payment state forward.
     $sqId = (string)$payment['id'];
     try {
-        db()->prepare('INSERT IGNORE INTO payments (booking_id, square_payment_id, kind, amount, status, created_at)
-                       VALUES (?,?,?,?,?,NOW())')
-            ->execute([$bookingId, $sqId, $kind, $amountDue, $payment['status']]);
+        db()->prepare('INSERT IGNORE INTO payments (booking_id, square_payment_id, kind, amount, status, guest_name, prop_key, created_at)
+                       VALUES (?,?,?,?,?,?,?,NOW())')
+            ->execute([$bookingId, $sqId, $kind, $amountDue, $payment['status'], $b['name'], $b['prop_key']]);
     } catch (\Throwable $e) { /* table missing — booking update below still applies */ }
 
     $newPaid = round(min($total, $nowPaid + $amountDue), 2);
