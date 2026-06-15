@@ -37,6 +37,10 @@ if ($method === 'GET' && ($_GET['action'] ?? '') === 'summary') {
         $total = (int)db()->query("SELECT COUNT(*) FROM pageviews WHERE created_at >= $since")->fetchColumn();
         $uniq  = (int)db()->query("SELECT COUNT(DISTINCT ip_hash) FROM pageviews WHERE created_at >= $since")->fetchColumn();
 
+        // Last 7 days ("this week") — counted independently of the $days window.
+        $weekViews  = (int)db()->query("SELECT COUNT(*) FROM pageviews WHERE created_at >= (NOW() - INTERVAL 7 DAY)")->fetchColumn();
+        $weekUnique = (int)db()->query("SELECT COUNT(DISTINCT ip_hash) FROM pageviews WHERE created_at >= (NOW() - INTERVAL 7 DAY)")->fetchColumn();
+
         $daily = db()->query("SELECT DATE(created_at) d, COUNT(*) c FROM pageviews
                               WHERE created_at >= $since GROUP BY DATE(created_at) ORDER BY d ASC")->fetchAll();
         $refs = db()->query("SELECT referrer_host h, COUNT(*) c FROM pageviews
@@ -51,6 +55,8 @@ if ($method === 'GET' && ($_GET['action'] ?? '') === 'summary') {
             'days' => $days,
             'totalViews' => $total,
             'uniqueVisitors' => $uniq,
+            'weekViews' => $weekViews,
+            'weekUnique' => $weekUnique,
             'daily' => array_map(fn($r) => ['date' => $r['d'], 'views' => (int)$r['c']], $daily),
             'topReferrers' => array_map(fn($r) => ['host' => $r['h'], 'count' => (int)$r['c']], $refs),
             'byCottage' => array_map(fn($r) => ['prop_key' => $r['p'], 'views' => (int)$r['c']], $byProp),

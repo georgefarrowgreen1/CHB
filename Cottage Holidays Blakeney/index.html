@@ -8224,6 +8224,7 @@
 
             wrap.innerHTML = `
                 <div class="owner-summary" style="margin-bottom:18px;">
+                    <div class="os-card"><div class="os-label">Visits this week</div><div class="os-value">${d.weekViews || 0}</div><div class="os-sub">${d.weekUnique || 0} unique · last 7 days</div></div>
                     <div class="os-card"><div class="os-label">Visits (30 days)</div><div class="os-value">${d.totalViews || 0}</div><div class="os-sub">page views</div></div>
                     <div class="os-card"><div class="os-label">Unique visitors</div><div class="os-value">${d.uniqueVisitors || 0}</div><div class="os-sub">approx, last 30 days</div></div>
                 </div>
@@ -10145,7 +10146,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'qw2x3z5d';
+            const BUILD = 'rx3y4a6e';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
