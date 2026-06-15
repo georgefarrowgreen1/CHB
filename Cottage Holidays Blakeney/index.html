@@ -971,26 +971,31 @@
         .swatch-pimpernel { background: var(--prop-pimpernel-bg); border: 1px solid var(--prop-pimpernel-border); }
         
         .cal-panel { padding: 25px; }
-        .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 10px; }
-        .cal-day-header { text-align: center; font-size: 0.85rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: 1px; padding-bottom: 12px; }
+        /* iOS-Calendar-style month grid: borderless cells, thin week separators,
+           dimmed weekend numbers, a filled "today" circle, clean event pills. */
+        .cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 0; }
+        .cal-day-header { text-align: center; font-size: 0.72rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: 1.4px; font-weight: 500; padding-bottom: 12px; }
         .cal-day {
-            background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 14px;
-            min-height: 130px; padding: 12px; cursor: default; position: relative;
-            transition: all 0.3s ease; display: flex; flex-direction: column;
+            background: transparent; border: none; border-top: 1px solid var(--glass-border);
+            min-height: 112px; padding: 8px 6px 6px; cursor: default; position: relative;
+            display: flex; flex-direction: column; transition: background 0.2s var(--fluid-bezier);
         }
-        .cal-day:hover { border-color: var(--text-muted); }
-        .cal-day.empty { background: transparent; border: none; cursor: default; }
-        .cal-day.today .day-num { font-weight: bold; color: var(--text-light); background: var(--glass-highlight); border-radius: 50%; padding: 3px 8px; }
-        .day-num { font-size: 1rem; align-self: flex-end; z-index: 2; margin-bottom: 6px; }
+        .cal-day:not(.empty):hover { background: rgba(255,255,255,0.03); }
+        .cal-day.weekend .day-num { color: var(--text-muted); }
+        .cal-day.today .day-num { font-weight: 700; color: #1a191b; background: var(--accent); border-radius: 50%; width: 26px; height: 26px; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+        .day-num { font-size: 0.98rem; align-self: flex-start; font-weight: 600; z-index: 2; margin-bottom: 6px; color: var(--text-light); }
 
-        /* Stacked booking bars inside each day */
-        .day-bookings { display: flex; flex-direction: column; gap: 4px; margin-top: auto; }
+        /* Stacked booking pills inside each day */
+        .day-bookings { display: flex; flex-direction: column; gap: 3px; margin-top: 2px; }
         .booking-bar {
-            font-size: 0.65rem; padding: 3px 6px; border-radius: 6px; cursor: pointer;
-            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            font-size: 0.66rem; padding: 3px 8px; border-radius: 999px; cursor: pointer; font-weight: 500;
+            color: var(--text-light); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
             border-left: 3px solid; transition: transform 0.2s ease, filter 0.2s ease;
         }
-        .booking-bar:hover { filter: brightness(1.3); transform: translateX(2px); }
+        .booking-bar:hover { filter: brightness(1.25); transform: translateX(1px); }
+        .booking-bar .bb-code { font-weight: 600; }
+        .cal-more { font-size: 0.64rem; color: var(--text-muted); padding: 2px 6px; margin-top: 1px; }
+        @media (max-width: 480px) { .booking-bar .bb-name { display: none; } .booking-bar { border-radius: 7px; } }
         .booking-bar.bar-21a { background: var(--prop-21a-bg); border-left-color: var(--prop-21a); }
         .booking-bar.bar-jollyboat { background: var(--prop-jollyboat-bg); border-left-color: var(--prop-jollyboat); }
         .booking-bar.bar-pimpernel { background: var(--prop-pimpernel-bg); border-left-color: var(--prop-pimpernel); }
@@ -1607,7 +1612,8 @@
             .cal-day { height: 78px; min-height: 78px; padding: 4px 3px; border-radius: 8px; overflow: hidden; }
             .cal-day-header { font-size: 0.6rem; letter-spacing: 0; padding-bottom: 6px; }
             .day-num { font-size: 0.72rem; margin-bottom: 1px; }
-            .booking-bar { font-size: 0.55rem; padding: 1px 3px; border-radius: 4px; }
+            .cal-day.today .day-num { width: 20px; height: 20px; font-size: 0.68rem; }
+            .booking-bar { font-size: 0.55rem; padding: 2px 4px; border-radius: 5px; }
             /* Back-office at-a-glance cards: a touch tighter still */
             .today-grid { gap: 8px; }
             .today-card { padding: 11px 11px; }
@@ -9876,15 +9882,18 @@
                 const cell = document.createElement('div');
                 cell.className = 'cal-day';
                 if(dateStr === todayStr) cell.classList.add('today');
-                
+                const dow = cellDate.getDay();
+                if (dow === 0 || dow === 6) cell.classList.add('weekend');
+
                 const numSpan = document.createElement('span');
                 numSpan.className = 'day-num';
                 numSpan.innerText = d;
                 cell.appendChild(numSpan);
 
-                // Container for all property booking bars on this day
+                // Collect this day's pills (bookings + external blocks), then cap with "+N more".
                 const barsWrap = document.createElement('div');
                 barsWrap.className = 'day-bookings';
+                const dayBars = [];
 
                 // Loop over ALL properties so they appear together on one calendar
                 Object.keys(dbBookings).forEach(propKey => {
@@ -9901,23 +9910,25 @@
                         ? paymentMeta[dayData.booking.payment].dot : '#888';
                     const dot = `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${payColor};margin-right:5px;vertical-align:middle;"></span>`;
                     const firstName = dayData.booking.name.split(' ')[0];
+                    const _pm = paymentMeta[dayData.booking.payment] || {};
+                    bar.title = `${propertyMeta[propKey].name} — ${dayData.booking.name} · ${dayData.booking.checkIn} → ${dayData.booking.checkOut}${_pm.label ? ' · ' + _pm.label : ''}`;
 
                     if (dayData.status === 'check-in') {
-                        bar.innerHTML = `${dot}${short} ▶ ${firstName}`;
+                        bar.innerHTML = `${dot}<span class="bb-code">${short}</span><span class="bb-name"> ▶ ${escapeHtml(firstName)}</span>`;
                         bar.onclick = (e) => { e.stopPropagation(); showDetails(propKey, dayData.booking); };
                     } else if (dayData.status === 'check-out') {
-                        bar.innerHTML = `${dot}${short} ◀ ${firstName}`;
+                        bar.innerHTML = `${dot}<span class="bb-code">${short}</span><span class="bb-name"> ◀ ${escapeHtml(firstName)}</span>`;
                         bar.onclick = (e) => { e.stopPropagation(); showDetails(propKey, dayData.booking); };
                     } else if (dayData.status === 'changeover') {
                         bar.classList.add('changeover-bar');
-                        bar.innerHTML = `${dot}${short} ⟷ Changeover`;
+                        bar.innerHTML = `${dot}<span class="bb-code">${short}</span><span class="bb-name"> ⟷ Changeover</span>`;
                         bar.onclick = (e) => { e.stopPropagation(); showDetails(propKey, dayData.booking, dayData.nextBooking); };
                     } else { // booked (mid-stay)
-                        bar.innerHTML = `${dot}${short} · ${firstName}`;
+                        bar.innerHTML = `${dot}<span class="bb-code">${short}</span><span class="bb-name"> · ${escapeHtml(firstName)}</span>`;
                         bar.onclick = (e) => { e.stopPropagation(); showDetails(propKey, dayData.booking); };
                     }
 
-                    barsWrap.appendChild(bar);
+                    dayBars.push(bar);
                 });
 
                 // External (Airbnb/Vrbo) blocks — show the dates as taken, colour-coded
@@ -9928,13 +9939,23 @@
                         const bar = document.createElement('div');
                         bar.className = `booking-bar bar-${propKey} ext-block`;
                         const arrow = (dateStr === bl.checkIn) ? '▶' : '·';
-                        bar.innerHTML = `${IC_LOCK} ${meta.short} ${arrow} EXTERNAL`;
+                        bar.innerHTML = `${IC_LOCK}<span class="bb-code">${meta.short}</span><span class="bb-name"> ${arrow} EXTERNAL</span>`;
                         bar.title = `${meta.name} — external booking (${bl.checkIn} to ${bl.checkOut}). Click for details.`;
                         bar.onclick = (e) => { e.stopPropagation(); showBlockDetails(propKey, bl); };
-                        barsWrap.appendChild(bar);
+                        dayBars.push(bar);
                     });
                 });
 
+                // Show up to N pills, then a "+N more" line (iOS-style), so busy days
+                // never make the row tall. Tapping "more" opens the first booking.
+                const maxBars = window.innerWidth <= 480 ? 2 : 4;
+                dayBars.slice(0, maxBars).forEach(el => barsWrap.appendChild(el));
+                if (dayBars.length > maxBars) {
+                    const more = document.createElement('div');
+                    more.className = 'cal-more';
+                    more.textContent = `+${dayBars.length - maxBars} more`;
+                    barsWrap.appendChild(more);
+                }
                 cell.appendChild(barsWrap);
                 calBody.appendChild(cell);
             }
@@ -10846,7 +10867,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'ek6l7n9r';
+            const BUILD = 'fl7m8o0s';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
