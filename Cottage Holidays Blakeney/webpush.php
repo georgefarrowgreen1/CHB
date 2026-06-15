@@ -89,3 +89,45 @@ function send_webpush($endpoint) {
     curl_close($ch);
     return ['ok' => $status >= 200 && $status < 300, 'status' => $status];
 }
+
+// ---- Owner (admin) alerts -------------------------------------------------
+// Because pushes are payload-less, we stash the latest owner notification in the
+// content table; the service worker fetches it (push.php?action=sw_notify) when a
+// ping arrives and shows it once. Best-effort throughout — never throws.
+function owner_ping_set($title, $body) {
+    try {
+        db()->prepare("INSERT INTO content (item_key, item_value) VALUES ('owner-ping', ?)
+                       ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = CURRENT_TIMESTAMP")
+            ->execute([json_encode(['title' => (string)$title, 'body' => (string)$body, 'at' => time()], JSON_UNESCAPED_UNICODE)]);
+    } catch (\Throwable $e) {}
+}
+function owner_ping_take() {
+    try {
+        $s = db()->prepare("SELECT item_value FROM content WHERE item_key = 'owner-ping'");
+        $s->execute();
+        $v = $s->fetchColumn();
+        if ($v === false) return null;
+        db()->prepare("DELETE FROM content WHERE item_key = 'owner-ping'")->execute();
+        $d = json_decode((string)$v, true);
+        return is_array($d) ? $d : null;
+    } catch (\Throwable $e) { return null; }
+}
+
+// Wake every admin device. Dead subscriptions (404/410) are pruned. Returns count.
+function ping_admin_devices() {
+    if (!wp_vapid_configured()) return 0;
+    try {
+        $rows = db()->query("SELECT id, endpoint FROM push_subscriptions WHERE role = 'admin'")->fetchAll();
+    } catch (\Throwable $e) { return 0; }
+    $sent = 0;
+    foreach ($rows as $sub) {
+        $r = send_webpush($sub['endpoint']);
+        if (!empty($r['ok'])) $sent++;
+        elseif (in_array($r['status'] ?? 0, [404, 410], true)) {
+            try { db()->prepare('DELETE FROM push_subscriptions WHERE id = ?')->execute([(int)$sub['id']]); } catch (\Throwable $e) {}
+        }
+    }
+    return $sent;
+}
+// Convenience: set the owner alert text AND wake their devices.
+function alert_owner($title, $body) { owner_ping_set($title, $body); return ping_admin_devices(); }

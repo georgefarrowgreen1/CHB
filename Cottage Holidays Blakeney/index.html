@@ -2385,6 +2385,10 @@
                     <span class="settings-row-main"><span class="settings-row-label">Guest messages</span><span class="settings-row-sub">Chats from your website</span></span>
                     <span class="inbox-badge zero" id="messages-badge" style="margin-right:8px;">0</span><span class="settings-row-chev">›</span>
                 </button>
+                <button class="settings-row" onclick="settingsOpen('notify')">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Notifications</span><span class="settings-row-sub">Owner alerts on your devices</span></span><span class="settings-row-chev">›</span>
+                </button>
             </div>
             <div class="settings-group">
                 <button class="settings-row" onclick="settingsOpen('accom')">
@@ -2456,6 +2460,11 @@
             <div class="settings-sec" id="sec-messages" style="display:none;">
                 <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 16px;">Conversations from your website chat — registered guests and anonymous visitors. Click one to read and reply.</p>
                 <div id="messages-list"><!-- JS injects message threads here --></div>
+            </div>
+
+            <!-- Notifications (owner push) -->
+            <div class="settings-sec" id="sec-notify" style="display:none;">
+                <div id="notify-body"></div>
             </div>
 
             <!-- Host profile -->
@@ -3970,7 +3979,7 @@
         }
 
         // ---- Settings router: Apple-style index → drill-down sub-pages ----
-        const SETTINGS_TITLES = { messages: 'Guest messages', host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Preferences', calendar: 'Calendar', cancel: 'Cancellation policy', payments: 'Payments', guests: 'Guest accounts', analytics: 'Analytics', waitlist: 'Waitlist' };
+        const SETTINGS_TITLES = { messages: 'Guest messages', notify: 'Notifications', host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Preferences', calendar: 'Calendar', cancel: 'Cancellation policy', payments: 'Payments', guests: 'Guest accounts', analytics: 'Analytics', waitlist: 'Waitlist' };
         let settingsBackTarget = null;
         function settingsShowIndex() {
             const idx = document.getElementById('settings-index'); const panel = document.getElementById('settings-panel');
@@ -3990,6 +3999,7 @@
             if (title) title.textContent = SETTINGS_TITLES[section] || 'Settings';
             settingsBackTarget = () => settingsShowIndex();
             if (section === 'messages') loadAdminMessages();
+            else if (section === 'notify') renderNotifySettings();
             else if (section === 'host') fillHostFields();
             else if (section === 'reviews') loadGuestReviewModeration();
             else if (section === 'analytics') loadAnalytics();
@@ -5886,6 +5896,46 @@
                 }
                 await apiPost('push.php', { action: 'subscribe', subscription: sub.toJSON() });
             } catch (e) { /* push is best-effort; never break the page */ }
+        }
+        // ---- Owner (admin) push alerts: enable per device + test ----
+        async function enableOwnerPush() {
+            try {
+                if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) { glassAlert('This device or browser doesn’t support notifications.'); return; }
+                const perm = await Notification.requestPermission();
+                if (perm !== 'granted') { glassAlert('Notifications are blocked. Enable them for this site in your browser settings, then try again.'); renderNotifySettings(); return; }
+                const key = await getVapidKey();
+                if (!key) { glassAlert('Push isn’t configured on the server yet (VAPID keys in config.php).'); return; }
+                const reg = await registerServiceWorker();
+                if (!reg) { glassAlert('Could not register the notification worker.'); return; }
+                let sub = await reg.pushManager.getSubscription();
+                if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8(key) });
+                await apiPost('push.php', { action: 'subscribe_admin', subscription: sub.toJSON() });
+                toast('This device will now receive owner alerts.');
+                renderNotifySettings();
+            } catch (e) { glassAlert("Couldn't enable notifications: " + (e.message || e)); }
+        }
+        async function testOwnerPush() {
+            try { await apiGet('push.php?action=test_admin'); toast('Test alert sent — check your notifications.'); }
+            catch (e) { glassAlert("Couldn't send test: " + (e.message || e)); }
+        }
+        function renderNotifySettings() {
+            const wrap = document.getElementById('notify-body');
+            if (!wrap) return;
+            const supported = ('serviceWorker' in navigator) && ('PushManager' in window) && ('Notification' in window);
+            const perm = (window.Notification && Notification.permission) || 'default';
+            const status = !supported ? 'Not supported on this device or browser.'
+                : perm === 'granted' ? 'Notifications are allowed on this browser.'
+                : perm === 'denied' ? 'Notifications are blocked — enable them for this site in your browser settings.'
+                : 'Not enabled yet on this device.';
+            wrap.innerHTML = `<div class="accounts-stat" style="max-width:560px;">
+                <div class="label">Owner alerts on this device</div>
+                <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 12px;">Get a notification on this device for new enquiries, guest messages, payments, and when a new version of your site goes live. Enable it once on each device (phone, laptop) you want alerts on.</p>
+                <p style="font-size:0.82rem;color:var(--text-light);margin:0 0 14px;">${status}</p>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                    <button class="btn-sm btn-edit" onclick="enableOwnerPush()">Enable on this device</button>
+                    <button class="btn-sm btn-edit" onclick="testOwnerPush()">Send test</button>
+                </div>
+            </div>`;
         }
         function notifyArrival(tag, title, body) {
             try {
@@ -10665,7 +10715,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'bh3i4k6o';
+            const BUILD = 'ci4j5l7p';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
