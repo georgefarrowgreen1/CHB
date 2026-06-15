@@ -5773,10 +5773,31 @@
 
         // ---- Booking Terms & Conditions ----
         // Render the terms into the modal body (uses any Live Editor title override).
-        function renderTerms() {
+        // Clause 7's refund terms come from the cottage's chosen cancellation policy
+        // (set in Settings → Cancellation policy), so the Terms always match what the
+        // guest is shown on the cottage page.
+        function cancellationClauseParagraphs(propKey) {
+            const pol = CANCELLATION_POLICIES[cancelPolicyOf(propKey)] || CANCELLATION_POLICIES[DEFAULT_CANCEL_POLICY];
+            const terms = pol.points.map(p => p.charAt(0).toLowerCase() + p.slice(1)).join('; ');
+            return [
+                'We strongly recommend you take out appropriate travel insurance before placing your Booking Reservation.',
+                'You may cancel before the Arrival Date by contacting us in writing. Your cancellation takes effect when we receive your written notice, and we will confirm any refund in writing.',
+                `This property's cancellation policy is "${pol.name}": ${terms}.`,
+                'Cancelling due to illness (including Covid-19 or self-isolation) is treated as a cancellation by you.',
+                'Voluntary early departure or failure to show is treated as a non-refundable cancellation on the Arrival Date.'
+            ];
+        }
+        // termsSections with clause 7 swapped for the selected policy's terms.
+        function effectiveTermsSections(propKey) {
+            return termsSections.map(s => s.h.startsWith('7.')
+                ? { h: s.h, p: cancellationClauseParagraphs(propKey) }
+                : s);
+        }
+        function renderTerms(propKey) {
+            if (propKey === undefined) propKey = activeFrontProperty;
             const body = document.getElementById('terms-modal-body');
             if (!body) return;
-            body.innerHTML = termsSections.map(s =>
+            body.innerHTML = effectiveTermsSections(propKey).map(s =>
                 `<h3>${escapeHtml(s.h)}</h3>` + s.p.map(par => `<p>${escapeHtml(par)}</p>`).join('')
             ).join('');
         }
@@ -5816,7 +5837,7 @@
             doc.text('Version ' + TERMS_VERSION + '  ·  ' + TERMS_BUSINESS, margin, y); y += 20;
             doc.setTextColor(0);
 
-            termsSections.forEach(s => {
+            effectiveTermsSections(activeFrontProperty).forEach(s => {
                 ensureSpace(28);
                 doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
                 const hLines = doc.splitTextToSize(s.h, maxW);
@@ -6554,7 +6575,6 @@
                 'Booking Price: as set out on our Website and confirmed in the Booking Confirmation.',
                 'Booking Reservation: your request to book a Property.',
                 'Business Day: a day other than a Saturday, Sunday or public holiday in England when banks in London are open for business.',
-                'Cancellation Fee: a fee of £30 charged in accordance with clause 7.',
                 'Security Deposit: a fee of £50–100 taken prior to the Arrival Date and held throughout the Booking in case damage is caused to the Property.',
                 'Permitted Pets: any animal attending the Property (other than assistance animals) that we have agreed to.',
                 'House Rules: a separate document provided at the time of the Booking Confirmation and forming part of our contract.',
@@ -6603,12 +6623,13 @@
                 'The Property is for domestic and private use only; we have no liability for loss of profit, business, business interruption or business opportunity.',
                 'Other than as set out above, we have no liability for loss of or damage to your items, belongings, pets or vehicles, however caused.'
             ]},
+            // NOTE: clause 7's paragraphs are generated at render time from the
+            // cottage's chosen cancellation policy — see effectiveTermsSections().
+            // The text below is only a fallback and is normally replaced.
             { h: '7. Your rights to cancel and applicable refund', p: [
                 'We strongly recommend you take out appropriate travel insurance before placing your Booking Reservation.',
-                'You may cancel before the Arrival Date by contacting us in writing. A Cancellation Fee of £30 will be charged if you cancel.',
-                'Your liability for the Booking Price depends on the notice given; the cancellation takes effect when we receive written notice from you. We will confirm any payment or refund in writing.',
-                'If you cancel, we will try to re-let the Property; if we can, we will refund money paid less our administrative costs and subject to any difference between the Booking Price and the re-let price.',
-                'Cancellation table: 21 days or less notice — no refund; 22–35 days — we keep the deposit; 36–49 days — we keep the deposit; 50 or more days — we keep the booking fee.',
+                'You may cancel before the Arrival Date by contacting us in writing. Your cancellation takes effect when we receive your written notice, and we will confirm any refund in writing.',
+                'The applicable refund depends on this property’s cancellation policy, shown on the cottage page and in your Booking Confirmation.',
                 'Cancelling due to illness (including Covid-19 or self-isolation) is treated as a cancellation by you.',
                 'Voluntary early departure or failure to show is treated as a non-refundable cancellation on the Arrival Date.'
             ]},
@@ -9981,7 +10002,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'jp4q5s7v';
+            const BUILD = 'kq5r6t8w';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
