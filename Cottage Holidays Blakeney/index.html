@@ -3970,13 +3970,16 @@
         // ---- Settings router: Apple-style index → drill-down sub-pages ----
         const SETTINGS_TITLES = { enquiries: 'Enquiries', messages: 'Guest messages', notify: 'Notifications', host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Preferences', calendar: 'Calendar', cancel: 'Cancellation policy', payments: 'Payments', guests: 'Guest accounts', analytics: 'Analytics', waitlist: 'Waitlist' };
         let settingsBackTarget = null;
+        let __settingsSection = null;   // which Settings sub-page is open (for auto-update restore)
         function settingsShowIndex() {
+            __settingsSection = null;
             const idx = document.getElementById('settings-index'); const panel = document.getElementById('settings-panel');
             if (panel) panel.style.display = 'none';
             if (idx) idx.style.display = '';
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
         function settingsOpen(section) {
+            __settingsSection = section || null;
             const idx = document.getElementById('settings-index'); const panel = document.getElementById('settings-panel');
             if (!panel) return;
             if (idx) idx.style.display = 'none';
@@ -4386,13 +4389,16 @@
         function expensesForYear(startYear) {
             return allExpenses.filter(x => taxYearStartOf(x.date) === startYear);
         }
+        let __accountsSection = null;   // which Money sub-page is open (for auto-update restore)
         function accountsShowIndex() {
+            __accountsSection = null;
             const idx = document.getElementById('accounts-index'); const panel = document.getElementById('accounts-panel');
             if (panel) panel.style.display = 'none';
             if (idx) idx.style.display = '';
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
         function accountsOpen(section) {
+            __accountsSection = section || null;
             const idx = document.getElementById('accounts-index'); const panel = document.getElementById('accounts-panel');
             if (!panel) return;
             if (idx) idx.style.display = 'none';
@@ -5899,12 +5905,49 @@
                 navigator.serviceWorker.addEventListener('message', (e) => {
                     if (e.data && e.data.type === 'chb-reload') {
                         try { toast('Updating to the new version…'); } catch (_) {}
-                        setTimeout(() => { try { location.reload(); } catch (_) {} }, 1200);
+                        setTimeout(reloadForUpdate, 1200);
                     }
                 });
             }
             try { return await navigator.serviceWorker.register('sw.js'); } catch (e) { return null; }
         }
+        // ---- Auto-update: remember where the owner was, so a release reload returns
+        // them to the same screen (and scroll) instead of the public home page. The
+        // snapshot lives in sessionStorage (survives a reload, dies with the tab) and
+        // is only honoured if it's fresh (< 2 min) and an admin is still signed in.
+        function captureAdminState() {
+            try {
+                if (!document.body.classList.contains('owner-mode')) return;
+                const av = document.querySelector('.page-view.active');
+                sessionStorage.setItem('chb-admin-state', JSON.stringify({
+                    view: av ? av.id : '',
+                    scrollY: window.scrollY || window.pageYOffset || 0,
+                    settingsSection: __settingsSection || null,
+                    accountsSection: __accountsSection || null,
+                    at: Date.now()
+                }));
+            } catch (_) {}
+        }
+        async function restoreAdminState() {
+            let s = null;
+            try { s = JSON.parse(sessionStorage.getItem('chb-admin-state') || 'null'); } catch (_) {}
+            try { sessionStorage.removeItem('chb-admin-state'); } catch (_) {}
+            if (!s || !s.view || !isAuthenticated) return;
+            if (Date.now() - (s.at || 0) > 120000) return;            // only a fresh snapshot
+            if (s.view === 'view-main' || !/^view-/.test(s.view)) return;
+            try {
+                if (s.view === 'view-settings') {
+                    await openSettings(s.settingsSection || undefined);
+                } else if (s.view === 'view-accounts') {
+                    await openAccounts();
+                    if (s.accountsSection) accountsOpen(s.accountsSection);
+                } else {
+                    nav(s.view);
+                }
+                if (s.scrollY) setTimeout(() => { try { window.scrollTo({ top: s.scrollY, behavior: 'auto' }); } catch (_) {} }, 350);
+            } catch (_) {}
+        }
+        function reloadForUpdate() { captureAdminState(); try { location.reload(); } catch (_) {} }
         // Reliable auto-update: while signed in as admin, poll the deployed build id
         // and silently reload the open page when a new release lands — no click, no
         // re-login (the session cookie survives a reload). Independent of web-push,
@@ -5924,7 +5967,7 @@
                     if (d && d.build && window.__BUILD && d.build !== window.__BUILD) {
                         __verReloading = true;
                         try { toast('Updating to the new version…'); } catch (_) {}
-                        setTimeout(() => { try { location.reload(); } catch (_) {} }, 1200);
+                        setTimeout(reloadForUpdate, 1200);
                     }
                 } catch (e) { /* transient — try again next tick */ }
             };
@@ -6838,6 +6881,8 @@
             try { const av = document.querySelector('.page-view.active'); trackView(av ? av.id : 'view-main', activeFrontProperty); } catch (e) {}
             try { startLiveUpdates(); } catch (e) { console.error(e); }
             try { startVersionWatch(); } catch (e) { console.error(e); }
+            // After an auto-update reload, return the owner to the screen they were on.
+            try { restoreAdminState(); } catch (e) { console.error(e); }
             try { maybeOpenPayLink(); } catch (e) { console.error(e); }   // ?pay=… → payment view
             try { maybeOpenReviewLink(); } catch (e) { console.error(e); } // ?review=… → My Bookings
             setTimeout(() => { try { maybeShowInstallHint(); } catch (e) {} }, 2500);
@@ -10876,7 +10921,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'jp1q2s4w';
+            const BUILD = 'kq2r3t5x';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
