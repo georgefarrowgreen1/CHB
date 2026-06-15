@@ -31,6 +31,19 @@ RewriteRule (?i)^uploads/.*\.(php|php[0-9]?|phtml|phps|pht|pl|py|cgi|sh|lua|asp|
     Deny from all
 </FilesMatch>
 
+# ---- Apple Pay domain verification (Square) ----
+# The extension-less association file under /.well-known/ must be publicly served
+# as plain text — Apple/Square fetch it to verify the domain for Apple Pay.
+<Files "apple-developer-merchantid-domain-association">
+    ForceType text/plain
+    Require all granted
+</Files>
+# Fallback for older Apache (2.2)
+<Files "apple-developer-merchantid-domain-association">
+    Order allow,deny
+    Allow from all
+</Files>
+
 # ---- Serve WebP automatically when the browser supports it ----
 # For any .jpg/.jpeg/.png request, if the browser accepts WebP AND a matching
 # "<image>.webp" file exists next to it, serve that smaller file instead.
