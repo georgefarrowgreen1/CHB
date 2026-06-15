@@ -561,8 +561,9 @@
 
         /* --- HERO & LAYOUT --- */
         /* The home view is a flex column so the hero can grow to fill the space down
-           to the footer — no big empty gap, no scroll, footer always in view. */
-        #view-main { display: flex; flex-direction: column; }
+           to the footer — no big empty gap, no scroll, footer always in view.
+           Scoped to .active so it still hides (display:none) when on another page. */
+        #view-main.active { display: flex; flex-direction: column; }
         .hero {
             min-height: clamp(420px, 78vh, 760px); flex: 1 1 auto; display: flex; align-items: center; justify-content: center;
             text-align: center; border-radius: 0 0 40px 40px; overflow: hidden;
@@ -9866,7 +9867,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'ye3f4c6g';
+            const BUILD = 'zf4g5d7h';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
