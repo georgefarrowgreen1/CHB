@@ -22,12 +22,12 @@ $x = str_pad($d['ec']['x'], 32, "\x00", STR_PAD_LEFT);
 $y = str_pad($d['ec']['y'], 32, "\x00", STR_PAD_LEFT);
 $pub = "\x04" . $x . $y;                                   // uncompressed P-256 point
 $pubB64 = rtrim(strtr(base64_encode($pub), '+/', '-_'), '=');
-$pemEsc = str_replace(["\r\n", "\n"], '\n', trim($pem));   // newlines escaped for a PHP "string"
+$privB64 = base64_encode($pem);                            // single line, nothing to escape
 
-json_out([
-    'instructions' => 'Paste these three lines into config.php (replacing any existing VAPID_* lines), set VAPID_SUBJECT to your email, then DELETE vapid-keygen.php.',
-    'config' =>
-        "define('VAPID_PUBLIC_KEY', '" . $pubB64 . "');\n" .
-        "define('VAPID_PRIVATE_KEY', \"" . $pemEsc . "\");\n" .
-        "define('VAPID_SUBJECT', 'mailto:you@yourdomain.co.uk');",
-]);
+// Plain text (not JSON) so the lines copy-paste exactly into config.php.
+header('Content-Type: text/plain; charset=utf-8');
+echo "Paste these three lines into config.php (replacing the blank VAPID_* lines),\n";
+echo "set VAPID_SUBJECT to your email, save — then DELETE this file (vapid-keygen.php).\n\n";
+echo "define('VAPID_PUBLIC_KEY', '" . $pubB64 . "');\n";
+echo "define('VAPID_PRIVATE_KEY', '" . $privB64 . "');\n";
+echo "define('VAPID_SUBJECT', 'mailto:you@yourdomain.co.uk');\n";
