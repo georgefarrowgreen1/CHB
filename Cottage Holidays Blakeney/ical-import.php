@@ -18,9 +18,7 @@
 require_once __DIR__ . '/db.php';
 
 // ---- helpers ----
-function ical_token($propKey) {
-    return substr(hash_hmac('sha256', 'ical:' . $propKey, APP_SECRET), 0, 24);
-}
+// ical_token() lives in db.php (shared with ical-export.php).
 function feeds_key($prop) { return 'ical-feeds-' . $prop; }
 
 function get_feeds($prop) {

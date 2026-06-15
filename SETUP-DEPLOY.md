@@ -59,6 +59,23 @@ From then on: **deploying = merging to `main`.**
 
 ---
 
+## Database migrations (migrate.php)
+
+The deploy uploads files, but it can't change your **database** schema. When a
+change needs new tables/columns, run the migration tool once after deploying:
+
+- **Visit** `https://<yoursite>/migrate.php` while logged in as admin, **or** set up
+  a cron job at `https://<yoursite>/migrate.php?cron=APP_SECRET`.
+- It applies any `migration-*.sql` not yet run, records them in a
+  `schema_migrations` table, and is safe to re-run (already-applied changes are
+  skipped).
+- **First time only**, if you've already imported those migrations by hand in
+  phpMyAdmin, visit `https://<yoursite>/migrate.php?baseline=1` (as admin) once to
+  mark them all as applied without re-running them.
+
+The `.sql` files are shipped to the server for this tool, but they can't be
+downloaded — `.htaccess` denies serving `*.sql`.
+
 ## Notes & troubleshooting
 
 - **First-ever deploy to a brand-new server:** upload `config.php` once by hand

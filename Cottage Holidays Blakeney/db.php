@@ -153,3 +153,27 @@ function decrypt_value($stored) {
 function is_private_content_key($key) {
     return strpos($key, 'ical-feeds-') === 0 || strpos($key, 'arrival-') === 0;
 }
+
+// Token for a property's iCal export feed: unguessable, needs no login, derived
+// one-way from APP_SECRET so nothing secret leaks. Shared by ical-export.php
+// (validates it) and ical-import.php (builds the ready-made feed URL).
+function ical_token($propKey) {
+    return substr(hash_hmac('sha256', 'ical:' . $propKey, APP_SECRET), 0, 24);
+}
+
+// True if [checkIn, checkOut) overlaps a confirmed booking OR an imported
+// platform (Airbnb/Vrbo) block for this property. Overlap test:
+// existing.start < new.end AND existing.end > new.start. The ical_blocks table
+// may not exist on older installs, so that check degrades gracefully.
+function dates_clash($propKey, $checkIn, $checkOut, $ignoreId = null) {
+    $sql = 'SELECT COUNT(*) c FROM bookings WHERE prop_key = ? AND check_in < ? AND check_out > ?';
+    $args = [$propKey, $checkOut, $checkIn];
+    if ($ignoreId) { $sql .= ' AND id <> ?'; $args[] = $ignoreId; }
+    $s = db()->prepare($sql); $s->execute($args);
+    if ((int)$s->fetch()['c'] > 0) return true;
+    try {
+        $s2 = db()->prepare('SELECT COUNT(*) c FROM ical_blocks WHERE prop_key = ? AND check_in < ? AND check_out > ?');
+        $s2->execute([$propKey, $checkOut, $checkIn]);
+        return (int)$s2->fetch()['c'] > 0;
+    } catch (\Throwable $e) { return false; }
+}
