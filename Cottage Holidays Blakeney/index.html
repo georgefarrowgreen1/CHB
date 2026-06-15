@@ -1563,6 +1563,9 @@
            the old top owner bar has been removed. Once logged in, the footer
            back-office (🔩) button is redundant, so hide it (returns when logged out). */
         body.owner-mode #footer-backoffice { display: none; }
+        /* The header account button is for guest sign-in; hide it while the owner
+           is signed in (their tools live in the floating admin dock). */
+        body.owner-mode .account-btn { display: none; }
         /* Leave room at the bottom so the floating dock never covers page content. */
         body.owner-mode .container { padding-bottom: 110px; }
 
@@ -9978,7 +9981,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'io3p4r6u';
+            const BUILD = 'jp4q5s7v';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
