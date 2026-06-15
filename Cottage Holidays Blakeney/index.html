@@ -2396,6 +2396,10 @@
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16"/><rect x="6" y="11" width="3" height="6" rx="0.5"/><rect x="10.5" y="6" width="3" height="11" rx="0.5"/><rect x="15" y="13" width="3" height="4" rx="0.5"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Analytics</span><span class="settings-row-sub">Website visits &amp; referrers</span></span><span class="settings-row-chev">›</span>
                 </button>
+                <button class="settings-row" onclick="settingsOpen('waitlist')">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M18 8v6M21 11h-6"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Waitlist</span><span class="settings-row-sub">Guests waiting on sold-out dates</span></span><span class="settings-row-chev">›</span>
+                </button>
             </div>
             <div class="settings-group">
                 <button class="settings-row" onclick="openTermsModal(event)">
@@ -2461,6 +2465,12 @@
             <!-- Analytics (first-party, cookie-free) -->
             <div class="settings-sec" id="sec-analytics" style="display:none;">
                 <div id="analytics-body"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
+            </div>
+
+            <!-- Waitlist / notify-me -->
+            <div class="settings-sec" id="sec-waitlist" style="display:none;">
+                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 16px;">Guests who asked to be told if dates free up. They're emailed automatically when a booking for matching dates is cancelled — or notify them manually below.</p>
+                <div id="waitlist-body"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
             </div>
 
             <!-- Security -->
@@ -2698,6 +2708,29 @@
                 <textarea id="messages-modal-input" class="input-glass" rows="2" placeholder="Write a reply…"></textarea>
                 <button class="btn-glass" onclick="adminSendMessage()">Send</button>
             </div>
+        </div>
+    </div>
+
+    <!-- ================= WAITLIST / NOTIFY ME (guest) ================= -->
+    <div id="waitlist-modal" class="modal-overlay pop-modal" onclick="if(event.target===this) closeWaitlistModal()">
+        <div class="modal-box glass-panel" style="max-width:460px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:6px;">
+                <h3 style="font-family:var(--font-serif);font-size:1.5rem;">Notify me</h3>
+                <button class="reviews-modal-close" onclick="closeWaitlistModal()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+            </div>
+            <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:14px;">Leave your details and we'll email you if these dates free up.</p>
+            <label class="modal-label">Cottage</label>
+            <select class="input-glass" id="wl-prop" style="margin-bottom:12px;"></select>
+            <div style="display:flex;gap:10px;">
+                <div style="flex:1;"><label class="modal-label">Check-in (optional)</label><input type="date" class="input-glass" id="wl-checkin"></div>
+                <div style="flex:1;"><label class="modal-label">Check-out (optional)</label><input type="date" class="input-glass" id="wl-checkout"></div>
+            </div>
+            <label class="modal-label">Your name</label>
+            <input type="text" class="input-glass" id="wl-name" style="margin-bottom:12px;">
+            <label class="modal-label">Email</label>
+            <input type="email" class="input-glass" id="wl-email" name="email" autocomplete="email">
+            <div class="enq-modal-msg" id="wl-msg"></div>
+            <button class="btn-glass" style="width:100%;padding:15px;margin-top:14px;" onclick="submitWaitlist()">Join the waitlist</button>
         </div>
     </div>
 
@@ -3879,7 +3912,7 @@
         }
 
         // ---- Settings router: Apple-style index → drill-down sub-pages ----
-        const SETTINGS_TITLES = { host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Preferences', calendar: 'Calendar', cancel: 'Cancellation policy', payments: 'Payments', guests: 'Guest accounts', analytics: 'Analytics' };
+        const SETTINGS_TITLES = { host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Preferences', calendar: 'Calendar', cancel: 'Cancellation policy', payments: 'Payments', guests: 'Guest accounts', analytics: 'Analytics', waitlist: 'Waitlist' };
         let settingsBackTarget = null;
         function settingsShowIndex() {
             const idx = document.getElementById('settings-index'); const panel = document.getElementById('settings-panel');
@@ -3901,6 +3934,7 @@
             if (section === 'host') fillHostFields();
             else if (section === 'reviews') loadGuestReviewModeration();
             else if (section === 'analytics') loadAnalytics();
+            else if (section === 'waitlist') loadWaitlist();
             else if (section === 'security') loadAdminPasskeys();
             else if (section === 'payments') renderSquareSettings();
             else if (section === 'accom') renderAccomList();
@@ -7889,6 +7923,37 @@
             } catch (e) { glassAlert("Couldn't send: " + e.message); }
         }
 
+        // ===================================================================
+        //  WAITLIST / "notify me" (guest)
+        // ===================================================================
+        function openWaitlistModal(prefill) {
+            prefill = prefill || {};
+            const sel = document.getElementById('wl-prop');
+            if (sel) {
+                sel.innerHTML = Object.keys(propertyMeta).map(k => `<option value="${k}">${escapeHtml(propertyMeta[k].name)}</option>`).join('');
+                if (prefill.prop && propertyMeta[prefill.prop]) sel.value = prefill.prop;
+            }
+            const set = (id, v) => { const e = document.getElementById(id); if (e) e.value = v || ''; };
+            set('wl-checkin', prefill.checkIn); set('wl-checkout', prefill.checkOut);
+            set('wl-name', currentGuest ? currentGuest.name : '');
+            set('wl-email', currentGuest ? currentGuest.email : '');
+            const msg = document.getElementById('wl-msg'); if (msg) { msg.textContent = ''; msg.classList.remove('show'); }
+            document.getElementById('waitlist-modal').classList.add('open');
+        }
+        function closeWaitlistModal() { const m = document.getElementById('waitlist-modal'); if (m) m.classList.remove('open'); }
+        async function submitWaitlist() {
+            const v = id => (document.getElementById(id) || {}).value;
+            const msg = document.getElementById('wl-msg');
+            const show = t => { if (msg) { msg.textContent = t; msg.classList.add('show'); } };
+            const email = (v('wl-email') || '').trim();
+            if (!email || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { show('Please enter a valid email address.'); return; }
+            try {
+                await apiPost('waitlist.php', { action: 'join', prop: v('wl-prop'), name: v('wl-name'), email, check_in: v('wl-checkin'), check_out: v('wl-checkout') });
+                closeWaitlistModal();
+                toast("You're on the waitlist — we'll email you if those dates free up.");
+            } catch (e) { show(e.message || 'Could not join the waitlist.'); }
+        }
+
         // ---- Admin side: threads strip + reply modal ----
         function toggleMessagesStrip() {
             document.getElementById('messages-strip').classList.toggle('collapsed');
@@ -8518,6 +8583,43 @@
                     <div class="label" style="margin-bottom:12px;">Most-viewed cottages</div>
                     ${cottageHtml}
                 </div>` : ''}`;
+        }
+
+        // ---- Waitlist manager (Settings → Waitlist) ----
+        async function loadWaitlist() {
+            const wrap = document.getElementById('waitlist-body');
+            if (!wrap) return;
+            wrap.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p>`;
+            let rows = [];
+            try { const r = await apiGet('waitlist.php'); rows = r.waitlist || []; }
+            catch (e) { wrap.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">Couldn't load the waitlist${e && e.message ? ' (' + escapeHtml(e.message) + ')' : ''}.</p>`; return; }
+            if (!rows.length) { wrap.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">No one on the waitlist yet.</p>`; return; }
+            wrap.innerHTML = rows.map(w => {
+                const name = (propertyMeta[w.prop_key] || {}).name || w.prop_key;
+                const dates = (w.check_in && w.check_out) ? `${w.check_in} → ${w.check_out}` : 'Any dates';
+                const notified = w.notified_at ? `<span style="color:#4CAF50;">Notified ${escapeHtml(String(w.notified_at).slice(0,10))}</span>` : '<span style="color:var(--text-muted);">Waiting</span>';
+                return `<div class="accounts-stat" style="max-width:680px;margin-bottom:12px;">
+                    <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:baseline;">
+                        <div><span class="prop-tag tag-${w.prop_key}">${escapeHtml((propertyMeta[w.prop_key]||{}).short || w.prop_key)}</span> <strong>${escapeHtml(name)}</strong> · ${escapeHtml(dates)}</div>
+                        <div style="font-size:0.78rem;">${notified}</div>
+                    </div>
+                    <div style="font-size:0.86rem;color:var(--text-muted);margin-top:6px;">${escapeHtml(w.name || '—')} · ${escapeHtml(w.email || '')}${w.note ? ' · ' + escapeHtml(w.note) : ''}</div>
+                    <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
+                        <button class="btn-sm btn-edit" onclick="notifyWaitlist(${w.id})">Email "dates available"</button>
+                        <button class="btn-sm btn-delete" onclick="deleteWaitlist(${w.id})">Remove</button>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+        async function notifyWaitlist(id) {
+            if (!await glassConfirm('Email this guest that dates may now be available?')) return;
+            try { await apiPost('waitlist.php', { action: 'notify', id }); toast('Guest emailed.'); loadWaitlist(); }
+            catch (e) { glassAlert("Couldn't send: " + e.message); }
+        }
+        async function deleteWaitlist(id) {
+            if (!await glassConfirm('Remove this waitlist entry?')) return;
+            try { await apiPost('waitlist.php', { action: 'delete', id }); loadWaitlist(); }
+            catch (e) { glassAlert("Couldn't remove: " + e.message); }
         }
 
         async function loadGuestReviewModeration() {
@@ -9279,9 +9381,13 @@
                     }
                 }
             }
+            const wlProp = (filter !== 'any') ? filter : '';
             html += `<div class="hs-back-cta" style="grid-column:1/-1;text-align:center;margin-top:22px;">
                 <p style="color:var(--text-muted);font-size:0.88rem;margin-bottom:12px;">Can't see what you're looking for?</p>
-                <button type="button" class="btn-glass btn-glass-ghost" onclick="backToSearch()">Change your search</button>
+                <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
+                    <button type="button" class="btn-glass btn-glass-ghost" onclick="backToSearch()">Change your search</button>
+                    <button type="button" class="btn-glass" onclick="openWaitlistModal({prop:'${wlProp}',checkIn:'${heroSearch.checkin || ''}',checkOut:'${heroSearch.checkout || ''}'})">Notify me if dates free up</button>
+                </div>
             </div>`;
             grid.innerHTML = html;
             showHeroResults();
@@ -10446,7 +10552,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'xd9e0g2k';
+            const BUILD = 'ye0f1h3l';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
