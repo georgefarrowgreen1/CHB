@@ -321,4 +321,123 @@ if ($action === 'send_confirmation') {
     json_out(['error' => 'Email not sent: ' . $reason, 'email' => $result], 200);
 }
 
+// ---- Square online payments (admin side) ----------------------------------
+// Global deposit policy (percentage of the total), stored in content. Default 30%.
+function square_deposit_pct() {
+    try {
+        $s = db()->prepare('SELECT item_value FROM content WHERE item_key = ?');
+        $s->execute(['square-deposit-pct']);
+        $r = $s->fetch();
+        if ($r) { $v = (float)json_decode($r['item_value'], true); if ($v > 0 && $v <= 100) return $v; }
+    } catch (\Throwable $e) {}
+    return 30.0;
+}
+// Public site root (scheme + host + folder this script lives in), used to build
+// the guest pay link. Proxy-aware HTTPS via request_is_https() (db.php).
+function site_base_url() {
+    $scheme = request_is_https() ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    $dir = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/')), '/');
+    return $scheme . '://' . $host . $dir . '/';
+}
+// Effective total + amount due for a given kind (mirrors pay.php, server-authoritative).
+function booking_amount_due($b, $kind) {
+    $total = ($b['agreed_total'] !== null)
+        ? (($b['price_override'] !== null) ? (float)$b['price_override'] : (float)$b['agreed_total'])
+        : 0.0;
+    if ($total <= 0) {
+        $rate = get_rate($b['prop_key']);
+        if ($rate) { $p = price_breakdown($rate, $b['adults'], $b['children'], $b['check_in'], $b['check_out']); $total = $p['total']; }
+    }
+    $total = round($total, 2);
+    $alreadyPaid = round((float)($b['deposit_paid'] ?? 0), 2);
+    $depositAmount = round($total * (square_deposit_pct() / 100), 2);
+    $due = ($kind === 'balance') ? max(0, $total - $alreadyPaid) : max(0, $depositAmount - $alreadyPaid);
+    return ['total' => $total, 'alreadyPaid' => $alreadyPaid, 'due' => round($due, 2)];
+}
+
+// Email the guest a secure link to pay the deposit (or balance) on our site.
+if ($action === 'request_payment') {
+    if (!square_enabled()) json_out(['error' => 'Square payments are not switched on yet (see config.php / Settings).'], 400);
+    $id = (int)($in['id'] ?? 0);
+    $kind = (($in['kind'] ?? 'deposit') === 'balance') ? 'balance' : 'deposit';
+    $b = booking_by_id($id);
+    if (!$b) json_out(['error' => 'Booking not found'], 404);
+    if (empty($b['email'])) json_out(['error' => 'This booking has no guest email on file.'], 400);
+
+    $amt = booking_amount_due($b, $kind);
+    if ($amt['due'] <= 0) json_out(['error' => ($kind === 'balance' ? 'The balance is already settled.' : 'The deposit is already covered.')], 409);
+
+    $payUrl = site_base_url() . 'index.html?pay=' . pay_token($id) . '&b=' . $id . '&k=' . $kind;
+    require_once __DIR__ . '/mailer.php';
+    $rate = get_rate($b['prop_key']);
+    $res = send_payment_request([
+        'name' => $b['name'], 'email' => $b['email'], 'prop_key' => $b['prop_key'],
+        'prop_name' => $rate['name'] ?? $b['prop_key'], 'check_in' => $b['check_in'],
+        'check_out' => $b['check_out'], 'kind' => $kind, 'amount' => $amt['due'],
+        'total' => $amt['total'],
+    ], $payUrl);
+    if (!empty($res['ok'])) json_out(['ok' => true, 'amount' => $amt['due']]);
+    json_out(['error' => $res['error'] ?? 'Email failed to send', 'pay_url' => $payUrl], 200);
+}
+
+// Refund a Square payment (full or partial) and re-reconcile the booking.
+if ($action === 'refund') {
+    if (!square_enabled()) json_out(['error' => 'Square payments are not switched on yet.'], 400);
+    $sqId = clean($in['square_payment_id'] ?? '');
+    if ($sqId === '') json_out(['error' => 'Missing payment id'], 400);
+    $row = (function ($sq) { $s = db()->prepare('SELECT * FROM payments WHERE square_payment_id = ?'); $s->execute([$sq]); return $s->fetch(); })($sqId);
+    if (!$row) json_out(['error' => 'Payment not found'], 404);
+    if ($row['kind'] === 'refund') json_out(['error' => 'That row is itself a refund.'], 400);
+
+    $amount = (array_key_exists('amount', $in) && $in['amount'] !== null && $in['amount'] !== '')
+        ? round((float)$in['amount'], 2) : (float)$row['amount'];
+    if ($amount <= 0 || $amount > (float)$row['amount'] + 0.001) json_out(['error' => 'Refund amount must be between £0 and the original charge.'], 400);
+
+    $res = square_api('POST', '/v2/refunds', [
+        'idempotency_key' => bin2hex(random_bytes(16)),
+        'payment_id'      => $sqId,
+        'amount_money'    => ['amount' => (int)round($amount * 100), 'currency' => 'GBP'],
+        'reason'          => 'Booking refund',
+    ]);
+    $refund = $res['body']['refund'] ?? null;
+    $ok = in_array($res['status'], [200, 201], true) && $refund
+        && in_array(($refund['status'] ?? ''), ['PENDING', 'COMPLETED', 'APPROVED'], true);
+    if (!$ok) {
+        $detail = $res['body']['errors'][0]['detail'] ?? 'Refund failed at Square.';
+        json_out(['error' => $detail], 402);
+    }
+
+    $bookingId = (int)$row['booking_id'];
+    book_lock(booking_by_id($bookingId)['prop_key'] ?? '');
+    db()->prepare('INSERT IGNORE INTO payments (booking_id, square_payment_id, kind, amount, status, created_at)
+                   VALUES (?,?,?,?,?,NOW())')
+        ->execute([$bookingId, (string)$refund['id'], 'refund', $amount, $refund['status']]);
+    // Re-derive deposit_paid from the ledger (completed charges minus refunds).
+    $b = booking_by_id($bookingId);
+    $total = ($b['agreed_total'] !== null) ? (($b['price_override'] !== null) ? (float)$b['price_override'] : (float)$b['agreed_total']) : 0.0;
+    $sum = db()->prepare("SELECT
+            COALESCE(SUM(CASE WHEN kind IN ('deposit','balance') AND status IN ('COMPLETED','APPROVED') THEN amount ELSE 0 END),0)
+          - COALESCE(SUM(CASE WHEN kind = 'refund' THEN amount ELSE 0 END),0) AS net
+        FROM payments WHERE booking_id = ?");
+    $sum->execute([$bookingId]);
+    $paid = round(max(0, (float)$sum->fetchColumn()), 2);
+    if ($total > 0) $paid = min($total, $paid);
+    $newStatus = ($total > 0 && $paid >= $total - 0.001) ? 'paid' : ($paid > 0 ? 'deposit' : 'unpaid');
+    db()->prepare('UPDATE bookings SET payment=?, deposit_paid=?, payment_date=? WHERE id=?')
+        ->execute([$newStatus, $paid, ($paid > 0 ? date('Y-m-d') : null), $bookingId]);
+    book_unlock($b['prop_key'] ?? '');
+    json_out(['ok' => true, 'refunded' => $amount, 'status' => $newStatus]);
+}
+
+// List the Square payment ledger for a booking (admin detail panel).
+if ($action === 'payments') {
+    $id = (int)($in['id'] ?? 0);
+    try {
+        $s = db()->prepare('SELECT square_payment_id, kind, amount, status, created_at FROM payments WHERE booking_id = ? ORDER BY id ASC');
+        $s->execute([$id]);
+        json_out(['payments' => $s->fetchAll()]);
+    } catch (\Throwable $e) { json_out(['payments' => []]); }
+}
+
 json_out(['error' => 'Unknown action'], 400);

@@ -182,6 +182,57 @@ function ical_token($propKey) {
     return substr(hash_hmac('sha256', 'ical:' . $propKey, APP_SECRET), 0, 24);
 }
 
+// ---- Square online payments helpers ----
+// True only when the owner has switched payments on AND filled in the keys.
+function square_enabled() {
+    return defined('SQUARE_PAYMENTS_ENABLED') && SQUARE_PAYMENTS_ENABLED
+        && defined('SQUARE_ACCESS_TOKEN') && SQUARE_ACCESS_TOKEN !== ''
+        && defined('SQUARE_LOCATION_ID') && SQUARE_LOCATION_ID !== '';
+}
+// Square REST host for the configured environment.
+function square_api_base() {
+    return (defined('SQUARE_ENVIRONMENT') && SQUARE_ENVIRONMENT === 'production')
+        ? 'https://connect.squareup.com'
+        : 'https://connect.squareupsandbox.com';
+}
+// Unguessable, login-free token that authorises PAYING a specific booking.
+// One-way from APP_SECRET (same idea as ical_token) — leaks nothing if seen.
+function pay_token($bookingId) {
+    return substr(hash_hmac('sha256', 'pay:' . (int)$bookingId, APP_SECRET), 0, 32);
+}
+// Minimal Square REST call over cURL (no Composer/SDK needed on shared hosting,
+// matching the raw SMTP/webpush approach). Returns ['status'=>int,'body'=>array].
+// Never throws; a transport failure comes back as status 0 with an 'error' body.
+function square_api($method, $path, $payload = null) {
+    $url = square_api_base() . $path;
+    $headers = [
+        'Authorization: Bearer ' . SQUARE_ACCESS_TOKEN,
+        'Square-Version: ' . (defined('SQUARE_API_VERSION') ? SQUARE_API_VERSION : '2024-01-18'),
+        'Content-Type: application/json',
+        'Accept: application/json',
+    ];
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_CUSTOMREQUEST  => $method,
+        CURLOPT_HTTPHEADER     => $headers,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => 20,
+        CURLOPT_CONNECTTIMEOUT => 10,
+    ]);
+    if ($payload !== null) {
+        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    }
+    $raw = curl_exec($ch);
+    if ($raw === false) {
+        $err = curl_error($ch); curl_close($ch);
+        return ['status' => 0, 'body' => ['error' => 'Square unreachable: ' . $err]];
+    }
+    $status = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+    $body = json_decode($raw, true);
+    return ['status' => $status, 'body' => is_array($body) ? $body : []];
+}
+
 // True if [checkIn, checkOut) overlaps a confirmed booking OR an imported
 // platform (Airbnb/Vrbo) block for this property. Overlap test:
 // existing.start < new.end AND existing.end > new.start. The ical_blocks table

@@ -321,6 +321,90 @@ function send_arrival_email($b) {
     return smtp_send($b['email'], $name, $subject, $text, $html);
 }
 
+// ------------------------------------------------------------------
+//  Square payments — request + receipt emails. Both reuse smtp_send and the
+//  crown header. $b: name, email, prop_key, prop_name, check_in, check_out,
+//  kind ('deposit'|'balance'), amount, total. $payUrl: the secure pay link.
+// ------------------------------------------------------------------
+function send_payment_request($b, $payUrl) {
+    if (empty($b['email'])) return ['ok' => false, 'error' => 'No guest email on file'];
+    $colors = ['21a' => '#42A5F5', 'jollyboat' => '#43A047', 'pimpernel' => '#9C27B0'];
+    $accent = $colors[$b['prop_key'] ?? ''] ?? '#42A5F5';
+    $money = fn($n) => '£' . number_format((float)$n, 2);
+    $esc = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+    $name = $b['name'] ?: 'Guest';
+    $prop = $b['prop_name'] ?: 'your cottage';
+    $what = ($b['kind'] === 'balance') ? 'remaining balance' : 'deposit';
+
+    $subject = "Pay your {$what} — {$prop}";
+    $text = "Hello {$name},\n\n"
+          . "Thank you for booking {$prop} ({$b['check_in']} to {$b['check_out']}).\n\n"
+          . "To secure your stay, please pay your {$what} of " . $money($b['amount']) . " securely by card here:\n"
+          . $payUrl . "\n\n"
+          . "The full stay total is " . $money($b['total']) . ". You can reply to this email with any questions.\n\n"
+          . "Cottage Holidays Blakeney";
+
+    $html = '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f4f4f6;">'
+      . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f6;padding:24px 0;"><tr><td align="center">'
+      . '<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">'
+      . email_crown_header('#ffffff')
+      . '<tr><td style="padding:26px 30px 8px;">'
+      . '<table role="presentation" cellpadding="0" cellspacing="0"><tr>'
+      . '<td style="width:12px;height:12px;background:' . $accent . ';border-radius:3px;"></td>'
+      . '<td style="padding-left:10px;font-size:18px;font-weight:bold;color:#1a1a1a;">' . $esc($prop) . '</td>'
+      . '</tr></table>'
+      . '<p style="font-size:14px;color:#333;line-height:1.6;margin:18px 0 0;">Hello ' . $esc($name) . ',</p>'
+      . '<p style="font-size:14px;color:#333;line-height:1.6;margin:10px 0 0;">Thank you for booking <strong>' . $esc($prop) . '</strong> (' . $esc($b['check_in']) . ' to ' . $esc($b['check_out']) . ').</p>'
+      . '<div style="margin:20px 0;padding:18px;background:#f3f4f8;border:1px solid #e6e8f0;border-radius:12px;text-align:center;">'
+      . '<div style="font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#8a8e9c;">' . ucfirst($what) . ' due</div>'
+      . '<div style="font-size:30px;font-weight:700;color:#1c1e26;padding:6px 0 2px;">' . $money($b['amount']) . '</div>'
+      . '<div style="font-size:12px;color:#8a8e9c;">of ' . $money($b['total']) . ' total</div></div>'
+      . '<table role="presentation" cellpadding="0" cellspacing="0" width="100%"><tr><td align="center">'
+      . '<a href="' . $esc($payUrl) . '" style="display:inline-block;background:' . $accent . ';color:#ffffff;text-decoration:none;font-size:16px;font-weight:700;padding:14px 38px;border-radius:12px;">Pay securely by card</a>'
+      . '</td></tr></table>'
+      . '<p style="font-size:12px;color:#999;line-height:1.6;margin:18px 0 0;text-align:center;">Powered by Square. We never see or store your card number.</p>'
+      . '<p style="font-size:13px;color:#777;line-height:1.6;margin:22px 0 4px;">Any questions? Just reply to this email.</p>'
+      . '<p style="font-size:13px;color:#777;margin:0 0 6px;">Cottage Holidays Blakeney</p>'
+      . '</td></tr></table></td></tr></table></body></html>';
+
+    return smtp_send($b['email'], $name, $subject, $text, $html);
+}
+
+function send_payment_receipt($b) {
+    if (empty($b['email'])) return ['ok' => false, 'error' => 'No guest email on file'];
+    $money = fn($n) => '£' . number_format((float)$n, 2);
+    $esc = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+    $name = $b['name'] ?: 'Guest';
+    $prop = $b['prop_name'] ?: 'your cottage';
+    $what = ($b['kind'] === 'balance') ? 'balance' : 'deposit';
+
+    $subject = "Payment received — {$prop}";
+    $statusLine = !empty($b['fully_paid'])
+        ? "Your booking is now paid in full. We can't wait to welcome you."
+        : "Remaining balance: " . $money($b['balance']) . ". We'll be in touch about settling it before your stay.";
+    $text = "Hello {$name},\n\n"
+          . "Thank you — we've received your {$what} payment of " . $money($b['amount']) . " for {$prop}.\n"
+          . "Reference: {$b['ref']}\n"
+          . "Paid so far: " . $money($b['paid_so_far']) . " of " . $money($b['total']) . ".\n"
+          . $statusLine . "\n\n"
+          . "Cottage Holidays Blakeney";
+    $html = '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f4f4f6;">'
+      . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f6;padding:24px 0;"><tr><td align="center">'
+      . '<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">'
+      . email_crown_header('#ffffff')
+      . '<tr><td style="padding:26px 30px 18px;">'
+      . '<p style="font-size:14px;color:#333;line-height:1.6;margin:0;">Hello ' . $esc($name) . ',</p>'
+      . '<p style="font-size:14px;color:#333;line-height:1.6;margin:10px 0 0;">Thank you — we\'ve received your ' . $what . ' payment of <strong>' . $money($b['amount']) . '</strong> for <strong>' . $esc($prop) . '</strong>.</p>'
+      . '<div style="margin:16px 0;padding:14px 18px;background:#f3f4f8;border-radius:10px;font-size:13px;color:#444;line-height:1.8;">'
+      . 'Reference: <strong>' . $esc($b['ref']) . '</strong><br>'
+      . 'Paid so far: <strong>' . $money($b['paid_so_far']) . '</strong> of ' . $money($b['total']) . '</div>'
+      . '<p style="font-size:13px;color:#555;line-height:1.6;margin:0;">' . $esc($statusLine) . '</p>'
+      . '<p style="font-size:13px;color:#777;margin:22px 0 0;">Cottage Holidays Blakeney</p>'
+      . '</td></tr></table></td></tr></table></body></html>';
+
+    return smtp_send($b['email'], $name, $subject, $text, $html);
+}
+
 // Build + send the arrival email for a saved booking row, then mark it sent.
 // Returns the smtp_send result. Never throws. Requires db() (always loaded).
 function send_arrival_for_booking($bk) {

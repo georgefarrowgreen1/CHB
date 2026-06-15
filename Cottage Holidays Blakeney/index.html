@@ -788,6 +788,21 @@
         /* Inline validation message inside the two-step enquiry popup (replaces blocking pop-ups) */
         .enq-modal-msg { display: none; margin: 14px 0 0; padding: 11px 14px; border-radius: 12px; background: rgba(255,176,32,0.12); border: 1px solid rgba(255,176,32,0.35); color: #ffce7a; font-size: 0.85rem; line-height: 1.4; }
         .enq-modal-msg.show { display: block; }
+        /* Guest online-payment view (Square) */
+        .pay-wrap { max-width: 480px; margin: 40px auto 60px; }
+        .pay-card { padding: 28px; border-radius: 22px; }
+        .pay-head { margin-bottom: 18px; }
+        .pay-sub { font-size: 0.9rem; color: var(--text-muted); margin: 6px 0 0; }
+        .pay-loading { display: flex; flex-direction: column; gap: 12px; padding: 10px 0; }
+        .pay-amount-box { text-align: center; padding: 18px; margin-bottom: 20px; border-radius: 16px; background: var(--glass-bg); border: 1px solid var(--glass-border); }
+        .pay-amount-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); }
+        .pay-amount { font-family: var(--font-serif); font-size: 2.2rem; color: var(--text-light); padding: 4px 0 2px; }
+        .pay-amount-sub { font-size: 0.8rem; color: var(--text-muted); }
+        .sq-card { min-height: 56px; padding: 4px 0; }
+        .pay-msg { display: none; margin: 14px 0 0; padding: 11px 14px; border-radius: 12px; background: rgba(229,57,53,0.12); border: 1px solid rgba(229,57,53,0.35); color: #ff9b95; font-size: 0.85rem; line-height: 1.4; }
+        .pay-msg.show { display: block; }
+        .pay-done, .pay-error { text-align: center; padding: 16px 0; }
+        .pay-done-tick .ic { width: 64px; height: 64px; color: #4CAF50; }
         /* Owner dock sits above the booking bar when logged in */
         body.owner-mode .prop-book-bar { bottom: 86px; }
         .input-glass {
@@ -2081,6 +2096,45 @@
         </div>
     </main>
 
+    <!-- ================= GUEST ONLINE PAYMENT (Square, token-gated) ================= -->
+    <main id="view-pay" class="page-view container">
+        <div class="pay-wrap">
+            <div class="pay-card glass-panel">
+                <div class="pay-head">
+                    <h1 class="section-title" style="font-size:1.6rem;margin:0;">Pay for your stay</h1>
+                    <p class="pay-sub" id="pay-prop"></p>
+                </div>
+                <div id="pay-loading" class="pay-loading">
+                    <div class="sk-line" style="width:60%;"></div>
+                    <div class="sk-line" style="width:40%;"></div>
+                    <div class="sk-line" style="width:100%;height:46px;border-radius:12px;margin-top:14px;"></div>
+                </div>
+                <div id="pay-body" style="display:none;">
+                    <div class="pay-amount-box">
+                        <div class="pay-amount-label" id="pay-kind-label">Deposit due</div>
+                        <div class="pay-amount" id="pay-amount">£0.00</div>
+                        <div class="pay-amount-sub" id="pay-amount-sub"></div>
+                    </div>
+                    <div class="enq-field-label">Card details</div>
+                    <div id="sq-card" class="sq-card"></div>
+                    <p class="pay-msg" id="pay-msg" role="alert"></p>
+                    <button type="button" class="btn-glass" id="pay-btn" style="width:100%;padding:16px;margin-top:14px;" onclick="submitPayment()">Pay now</button>
+                    <div class="enq-cancel-note" style="margin-top:16px;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="10" width="18" height="11" rx="2"/><path d="M7 10V7a5 5 0 0 1 10 0v3"/></svg> <span>Secured by Square. We never see or store your card number.</span></div>
+                </div>
+                <div id="pay-done" class="pay-done" style="display:none;">
+                    <div class="pay-done-tick"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9"/></svg></div>
+                    <h2 style="font-family:var(--font-serif);margin:14px 0 4px;" id="pay-done-title">Payment received</h2>
+                    <p style="color:var(--text-muted);margin:0;" id="pay-done-sub"></p>
+                    <button type="button" class="btn-glass" style="margin-top:22px;padding:13px 30px;" onclick="nav('view-main')">Back to the site</button>
+                </div>
+                <div id="pay-error" class="pay-error" style="display:none;">
+                    <p id="pay-error-msg" style="color:var(--text-muted);"></p>
+                    <button type="button" class="btn-glass" style="margin-top:14px;padding:12px 26px;" onclick="nav('view-main')">Back to the site</button>
+                </div>
+            </div>
+        </div>
+    </main>
+
     <!-- ================= OWNER HOME (friendly landing after login) ================= -->
     <main id="view-owner-home" class="page-view container">
         <div class="dashboard-header">
@@ -2217,6 +2271,19 @@
 
         <div class="rates-grid" id="rates-list">
             <!-- JS injects rate editors here -->
+        </div>
+
+        <h3 class="accounts-section-title">Online payments (Square)</h3>
+        <div class="accounts-stat" style="max-width:560px;">
+            <div class="label">Card payments status</div>
+            <p id="sq-settings-status" style="font-size:0.9rem;margin:8px 0 4px;">Checking…</p>
+            <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:14px;">
+                <label style="font-size:0.85rem;color:var(--text-muted);">Deposit to request</label>
+                <input type="number" id="sq-deposit-pct" class="input-glass field-sm" min="1" max="100" step="1" style="width:90px;margin:0;">
+                <span style="color:var(--text-muted);">% of the total</span>
+                <button class="btn-sm btn-edit" onclick="saveDepositPct()">Save</button>
+            </div>
+            <p style="font-size:0.8rem;color:var(--text-muted);margin-top:14px;">Your Square keys live in <code>config.php</code> on the server (kept private, like your database and email passwords); set <code>SQUARE_PAYMENTS_ENABLED</code> to <code>true</code> once they're filled in — see <strong>SETUP-SQUARE.md</strong>. Guests pay the deposit now and the balance later: open any booking's details and use <em>Request deposit</em> / <em>Request balance</em>.</p>
         </div>
 
         <h3 class="accounts-section-title">Security</h3>
@@ -3022,6 +3089,7 @@
             } else {
                 clearChangeoverToasts();   // toasts are a back-office aid only
             }
+            if (viewId === 'view-settings') { try { renderSquareSettings(); } catch (e) {} }
 
             if (anchorId) {
                 setTimeout(() => {
@@ -4461,6 +4529,110 @@
             });
             return __leafletLoader;
         }
+
+        // ===================================================================
+        //  GUEST ONLINE PAYMENT (Square Web Payments SDK, token-gated)
+        // ===================================================================
+        let __squareSdkLoader = null;
+        function loadSquareSdk(env) {
+            if (window.Square) return Promise.resolve();
+            if (__squareSdkLoader) return __squareSdkLoader;
+            const host = env === 'production' ? 'https://web.squarecdn.com' : 'https://sandbox.web.squarecdn.com';
+            __squareSdkLoader = new Promise((resolve, reject) => {
+                const js = document.createElement('script');
+                js.src = host + '/v1/square.js';
+                js.onload = () => resolve();
+                js.onerror = () => { __squareSdkLoader = null; reject(new Error('Square could not be reached. Please try again.')); };
+                document.head.appendChild(js);
+            });
+            return __squareSdkLoader;
+        }
+        const payState = { token: '', bookingId: 0, kind: 'deposit', amountDue: 0 };
+        let squarePayments = null, squareCard = null;
+        function setPayMsg(text) {
+            const el = document.getElementById('pay-msg');
+            if (!el) return;
+            el.textContent = text || '';
+            el.classList.toggle('show', !!text);
+        }
+        function showPayError(text) {
+            ['pay-loading', 'pay-body', 'pay-done'].forEach(id => { const e = document.getElementById(id); if (e) e.style.display = 'none'; });
+            const err = document.getElementById('pay-error'), msg = document.getElementById('pay-error-msg');
+            if (msg) msg.textContent = text || 'Something went wrong.';
+            if (err) err.style.display = '';
+        }
+        // Opened from a secure pay link (?pay=<token>&b=<id>&k=<kind>) parsed at boot.
+        async function openPayView(token, bookingId, kind) {
+            payState.token = token; payState.bookingId = bookingId;
+            payState.kind = (kind === 'balance') ? 'balance' : 'deposit';
+            squareCard = null;
+            ['pay-body', 'pay-done', 'pay-error'].forEach(id => { const e = document.getElementById(id); if (e) e.style.display = 'none'; });
+            const ld = document.getElementById('pay-loading'); if (ld) ld.style.display = '';
+            const cardEl = document.getElementById('sq-card'); if (cardEl) cardEl.innerHTML = '';
+            setPayMsg('');
+            nav('view-pay');
+            try {
+                const cfg = await apiGet('square-config.php');
+                if (!cfg.enabled || !cfg.applicationId || !cfg.locationId) throw new Error('Online payment is not available right now.');
+                const s = await apiPost('pay.php', { action: 'summary', booking_id: payState.bookingId, token: payState.token, kind: payState.kind });
+                payState.amountDue = s.amountDue;
+                const propEl = document.getElementById('pay-prop');
+                if (propEl) propEl.textContent = `${s.propName} · ${s.checkIn} → ${s.checkOut}`;
+                document.getElementById('pay-kind-label').textContent = s.kind === 'balance' ? 'Balance due' : 'Deposit due';
+                document.getElementById('pay-amount').textContent = gbp(s.amountDue);
+                document.getElementById('pay-amount-sub').textContent = s.kind === 'balance'
+                    ? `of ${gbp(s.total)} total`
+                    : `${s.depositPct}% deposit · ${gbp(s.total)} total`;
+                if (!(s.amountDue > 0)) { showPayError("This booking is already settled — there's nothing left to pay."); return; }
+                await loadSquareSdk(cfg.environment);
+                squarePayments = window.Square.payments(cfg.applicationId, cfg.locationId);
+                squareCard = await squarePayments.card();
+                await squareCard.attach('#sq-card');
+                if (ld) ld.style.display = 'none';
+                document.getElementById('pay-body').style.display = '';
+            } catch (e) {
+                showPayError(e.message || 'Could not load the payment form.');
+            }
+        }
+        async function submitPayment() {
+            if (!squareCard) return;
+            setPayMsg('');
+            const btn = document.getElementById('pay-btn');
+            const orig = btn ? btn.textContent : '';
+            if (btn) { btn.disabled = true; btn.classList.add('is-busy'); btn.textContent = 'Processing…'; }
+            try {
+                const result = await squareCard.tokenize();
+                if (result.status !== 'OK') {
+                    const m = (result.errors && result.errors[0] && result.errors[0].message) || 'Please check your card details and try again.';
+                    throw new Error(m);
+                }
+                const res = await apiPost('pay.php', {
+                    action: 'charge', booking_id: payState.bookingId, token: payState.token,
+                    kind: payState.kind, source_id: result.token
+                });
+                document.getElementById('pay-body').style.display = 'none';
+                document.getElementById('pay-done-sub').textContent = res.fullyPaid
+                    ? 'Your booking is now paid in full. We look forward to welcoming you.'
+                    : `Thank you — ${gbp(res.paid)} received. We'll be in touch about the remaining balance before your stay.`;
+                document.getElementById('pay-done').style.display = '';
+                try { toast('Payment received — thank you!'); } catch (e) {}
+            } catch (e) {
+                setPayMsg(e.message || 'Payment failed. Please try again.');
+            } finally {
+                if (btn) { btn.disabled = false; btn.classList.remove('is-busy'); btn.textContent = orig; }
+            }
+        }
+        // If the page was opened from a pay link, jump straight to the payment view.
+        function maybeOpenPayLink() {
+            try {
+                const usp = new URLSearchParams(window.location.search);
+                const t = usp.get('pay'); const b = parseInt(usp.get('b'), 10);
+                const k = usp.get('k') === 'balance' ? 'balance' : 'deposit';
+                if (t && b) { openPayView(t, b, k); return true; }
+            } catch (e) {}
+            return false;
+        }
+
         // ---- Directions provider: native maps app by device, with a manual override ----
         // Embedded map stays OpenStreetMap; only the "Get directions" hand-off changes.
         function isAppleDevice() {
@@ -5593,7 +5765,8 @@
             await Promise.all([
                 loadRates().catch(e => console.error('loadRates', e)),
                 loadContent().catch(e => console.error('loadContent', e)),
-                loadPublicReviews().catch(e => console.error('loadPublicReviews', e))
+                loadPublicReviews().catch(e => console.error('loadPublicReviews', e)),
+                loadSquareAdminConfig().catch(e => console.error('loadSquareAdminConfig', e))
             ]);
             try { renderCardPrices(); } catch (e) { console.error(e); }
             try { loadPropContentOverrides(); } catch (e) { console.error(e); }
@@ -5621,6 +5794,7 @@
             // Everything is loaded (or safely failed) — always reveal the page.
             hideLoadingOverlay();
             try { startLiveUpdates(); } catch (e) { console.error(e); }
+            try { maybeOpenPayLink(); } catch (e) { console.error(e); }   // ?pay=… → payment view
             setTimeout(() => { try { maybeShowInstallHint(); } catch (e) {} }, 2500);
           }
         });
@@ -6545,6 +6719,78 @@
                 const fresh = findBookingById(bookingId);
                 if (fresh) showDetails(propKey, fresh);
             } catch (e) { glassAlert("Couldn't update: " + e.message); showDetails(propKey, booking); }
+        }
+
+        // ---- Square online payments (admin) ----
+        let squareAdminEnabled = false;
+        async function loadSquareAdminConfig() {
+            try { const c = await apiGet('square-config.php'); squareAdminEnabled = !!c.enabled; }
+            catch (e) { squareAdminEnabled = false; }
+            try { renderSquareSettings(); } catch (e) {}
+        }
+        function renderSquareSettings() {
+            const st = document.getElementById('sq-settings-status');
+            if (st) st.innerHTML = squareAdminEnabled
+                ? '<span style="color:#4CAF50;">●</span> Connected — guests can pay by card. Send a request from any booking\'s details.'
+                : '<span style="color:#FFA726;">●</span> Not set up — add your Square keys in <code>config.php</code> and set <code>SQUARE_PAYMENTS_ENABLED</code> to true.';
+            const inp = document.getElementById('sq-deposit-pct');
+            if (inp) { const v = parseFloat(siteContent['square-deposit-pct']); inp.value = (v > 0 && v <= 100) ? v : 30; }
+        }
+        async function saveDepositPct() {
+            const v = Math.round(parseFloat((document.getElementById('sq-deposit-pct') || {}).value) || 0);
+            if (!(v >= 1 && v <= 100)) { glassAlert('Enter a deposit percentage between 1 and 100.'); return; }
+            try { await saveContent('square-deposit-pct', v); siteContent['square-deposit-pct'] = v; toast('Deposit policy saved.'); }
+            catch (e) { glassAlert("Couldn't save: " + e.message); }
+        }
+        // Email the guest a secure pay link (deposit or balance).
+        async function requestPayment(bookingId, kind) {
+            const booking = findBookingById(bookingId);
+            if (!booking) return;
+            try {
+                const res = await apiPost('bookings.php', { action: 'request_payment', id: booking.dbId, kind });
+                toast(`${kind === 'balance' ? 'Balance' : 'Deposit'} request sent — ${gbp(res.amount)}.`);
+            } catch (e) { glassAlert("Couldn't send the payment request: " + e.message); }
+        }
+        // Show the Square payment ledger for a booking inside the details modal.
+        async function loadBookingPayments(bookingId) {
+            const el = document.getElementById('sq-pay-' + bookingId);
+            if (!el) return;
+            const booking = findBookingById(bookingId);
+            if (!booking) { el.textContent = ''; return; }
+            try {
+                const res = await apiPost('bookings.php', { action: 'payments', id: booking.dbId });
+                const list = res.payments || [];
+                if (!list.length) { el.textContent = 'No online payments yet.'; return; }
+                el.innerHTML = list.map(p => {
+                    const isCharge = (p.kind === 'deposit' || p.kind === 'balance');
+                    const live = (p.status === 'COMPLETED' || p.status === 'APPROVED');
+                    const refundBtn = (isCharge && live)
+                        ? `<button class="btn-sm btn-decline" style="padding:4px 10px;font-size:0.72rem;" onclick="refundPayment('${bookingId}','${p.square_payment_id}',${parseFloat(p.amount)})">Refund</button>` : '';
+                    const label = p.kind === 'refund' ? 'Refund' : (p.kind.charAt(0).toUpperCase() + p.kind.slice(1));
+                    const sign = p.kind === 'refund' ? '−' : '';
+                    return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid var(--glass-border);">
+                        <span>${label} · ${sign}${gbp(p.amount)} <span style="opacity:.7;">(${escapeHtml(p.status)})</span></span>${refundBtn}</div>`;
+                }).join('');
+            } catch (e) { el.textContent = 'Could not load payments.'; }
+        }
+        async function refundPayment(bookingId, squareId, maxAmount) {
+            const booking = findBookingById(bookingId);
+            if (!booking) return;
+            const loc = findBookingLocation(bookingId);
+            const propKey = loc ? loc.propKey : '21a';
+            const entered = await glassPrompt(`Refund amount (£). Up to ${gbp(maxAmount)}:`, String(maxAmount));
+            if (entered === null) return;
+            const amount = Math.round((parseFloat(entered) || 0) * 100) / 100;
+            if (!(amount > 0 && amount <= maxAmount + 0.001)) { glassAlert(`Enter an amount between £0 and ${gbp(maxAmount)}.`); return; }
+            if (!await glassConfirm(`Refund ${gbp(amount)} to the guest's card via Square?`)) return;
+            try {
+                await apiPost('bookings.php', { action: 'refund', square_payment_id: squareId, amount });
+                toast('Refund issued.');
+                await loadData();
+                renderCalendar();
+                const fresh = findBookingById(bookingId);
+                if (fresh) showDetails(propKey, fresh);
+            } catch (e) { glassAlert("Refund failed: " + e.message); }
         }
 
         function initCalendar() {
@@ -8123,6 +8369,10 @@
                 html += buildDetailHtml(propKey, booking2, "Arriving Guest");
             }
             panel.innerHTML = html;
+            if (squareAdminEnabled) {
+                try { if (booking1 && booking1.email) loadBookingPayments(booking1.id); } catch (e) {}
+                try { if (booking2 && booking2.email) loadBookingPayments(booking2.id); } catch (e) {}
+            }
             const t = document.getElementById('details-modal-title');
             if (t) t.innerText = 'Guest Details';
             const m = document.getElementById('details-modal');
@@ -8287,6 +8537,15 @@
                     </div>
                 </div>
                 ${priceBlock}
+                ${squareAdminEnabled && b.email ? `
+                <div class="sq-admin" style="margin-top:20px;max-width:380px;">
+                    <span class="booking-detail-label" style="margin-bottom:8px;">Take payment online (Square)</span>
+                    <div style="display:flex;gap:10px;">
+                        <button class="btn-sm btn-edit" style="flex:1;" onclick="requestPayment('${b.id}','deposit')">Request deposit</button>
+                        <button class="btn-sm btn-edit" style="flex:1;" onclick="requestPayment('${b.id}','balance')">Request balance</button>
+                    </div>
+                    <div id="sq-pay-${b.id}" class="sq-pay-history" style="margin-top:10px;font-size:0.82rem;color:var(--text-muted);">Loading payments…</div>
+                </div>` : ''}
                 <div style="display: flex; gap: 10px; margin-top: 20px; max-width: 320px;">
                     <button class="btn-sm btn-edit" style="flex:1;" onclick="openEditBooking('${b.id}')">Edit / Move</button>
                     <button class="btn-sm btn-decline" style="flex:1;" onclick="deleteBooking('${b.id}')">Delete</button>
@@ -9032,7 +9291,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'kq6r7p8s';
+            const BUILD = 'lr7s8q9t';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
