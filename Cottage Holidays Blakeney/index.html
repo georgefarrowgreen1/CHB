@@ -1026,7 +1026,7 @@
 
         /* --- INBOX STRIP (top of unified back office) --- */
         /* Back-office layout: calendar (left) + enquiries sidebar (right) */
-        .bo-layout { display: grid; grid-template-columns: 1fr 360px; gap: 30px; align-items: start; }
+        .bo-layout { display: grid; grid-template-columns: 1fr; gap: 30px; align-items: start; }
 
         .bo-sidebar { position: sticky; top: 110px; display: flex; flex-direction: column; gap: 25px; }
         .inbox-strip { padding: 0; overflow: hidden; }
@@ -2362,23 +2362,6 @@
 
                 <!-- Guest details now open in a pop-up when a booking is clicked -->
             </div>
-
-            <!-- RIGHT SIDEBAR -->
-            <div class="bo-sidebar">
-                <!-- PENDING ENQUIRIES -->
-                <section class="glass-panel inbox-strip" id="inbox-strip">
-                    <div class="inbox-strip-head" onclick="toggleInboxStrip()">
-                        <h3>
-                            <span data-edit-text="bo-inbox-title">Pending Enquiries</span>
-                            <span class="inbox-badge" id="inbox-badge">0</span>
-                        </h3>
-                        <span class="inbox-strip-chevron" id="inbox-chevron">▾</span>
-                    </div>
-                    <div class="inbox-strip-body" id="inbox-list">
-                        <!-- JS injects enquiry cards here -->
-                    </div>
-                </section>
-            </div>
         </div>
     </main>
 
@@ -2396,6 +2379,11 @@
              then your listing & account, with the legal reference last. -->
         <div id="settings-index" class="settings-index">
             <div class="settings-group">
+                <button class="settings-row" onclick="settingsOpen('enquiries')">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Enquiries</span><span class="settings-row-sub">Pending booking requests</span></span>
+                    <span class="inbox-badge" id="inbox-badge" style="margin-right:8px;">0</span><span class="settings-row-chev">›</span>
+                </button>
                 <button class="settings-row" onclick="settingsOpen('messages')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.6-.8L3 21l1.9-5.7A8.38 8.38 0 0 1 4 11.5 8.5 8.5 0 0 1 12.5 3 8.38 8.38 0 0 1 21 11.5z"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Guest messages</span><span class="settings-row-sub">Chats from your website</span></span>
@@ -2471,6 +2459,12 @@
         <div id="settings-panel" style="display:none;">
             <span class="back-link" id="settings-back" onclick="settingsBack()">‹ Back</span>
             <h2 class="section-title" id="settings-panel-title" style="text-align:left;font-size:1.6rem;margin:6px 0 18px;"></h2>
+
+            <!-- Enquiries -->
+            <div class="settings-sec" id="sec-enquiries" style="display:none;">
+                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 16px;">Pending booking requests from the website. Approve to turn one into a booking, edit the dates, or decline.</p>
+                <div id="inbox-list"><!-- JS injects enquiry cards here --></div>
+            </div>
 
             <!-- Guest messages -->
             <div class="settings-sec" id="sec-messages" style="display:none;">
@@ -3961,16 +3955,8 @@
         }
 
         // ---- Owner navigation helpers ----
-        // "Enquiries" — go to the back office and bring the Pending Enquiries panel into view.
-        async function openEnquiriesView() {
-            if (!isAuthenticated) { tryAccessBackOffice(); return; }
-            nav('view-backoffice');
-            await initBackOffice();
-            setTimeout(() => {
-                const el = document.getElementById('inbox-strip');
-                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }, 300);
-        }
+        // Enquiries now live in Settings → Enquiries.
+        async function openEnquiriesView() { openSettings('enquiries'); }
         // Keep the dock's pending-enquiries count badge live.
         async function refreshOwnerHomeBadges() {
             try {
@@ -3990,12 +3976,16 @@
             // the host fields have their data ready when a row is opened.
             try { const r = await apiPost('content.php', { action: 'get_all' }); adminPrivateContent = r.content || {}; }
             catch (e) { adminPrivateContent = {}; }
-            try { loadAdminMessages(); } catch (e) {}   // keep the Guest messages badge live
+            // Load bookings/enquiries so the Enquiries + Guest-messages badges (and the
+            // Preferences occupancy donuts) are accurate even if the back office wasn't opened.
+            try { await loadData(); } catch (e) {}
+            try { refreshInboxBadge(); } catch (e) {}     // Enquiries badge
+            try { loadAdminMessages(); } catch (e) {}     // Guest messages badge
             if (section) settingsOpen(section); else settingsShowIndex();
         }
 
         // ---- Settings router: Apple-style index → drill-down sub-pages ----
-        const SETTINGS_TITLES = { messages: 'Guest messages', notify: 'Notifications', host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Preferences', calendar: 'Calendar', cancel: 'Cancellation policy', payments: 'Payments', guests: 'Guest accounts', analytics: 'Analytics', waitlist: 'Waitlist' };
+        const SETTINGS_TITLES = { enquiries: 'Enquiries', messages: 'Guest messages', notify: 'Notifications', host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Preferences', calendar: 'Calendar', cancel: 'Cancellation policy', payments: 'Payments', guests: 'Guest accounts', analytics: 'Analytics', waitlist: 'Waitlist' };
         let settingsBackTarget = null;
         function settingsShowIndex() {
             const idx = document.getElementById('settings-index'); const panel = document.getElementById('settings-panel');
@@ -4014,7 +4004,8 @@
             const title = document.getElementById('settings-panel-title');
             if (title) title.textContent = SETTINGS_TITLES[section] || 'Settings';
             settingsBackTarget = () => settingsShowIndex();
-            if (section === 'messages') loadAdminMessages();
+            if (section === 'enquiries') renderInbox();
+            else if (section === 'messages') loadAdminMessages();
             else if (section === 'notify') renderNotifySettings();
             else if (section === 'host') fillHostFields();
             else if (section === 'reviews') loadGuestReviewModeration();
@@ -8076,9 +8067,6 @@
             if (wrap) wrap.innerHTML = '';
         }
 
-        function toggleInboxStrip() {
-            document.getElementById('inbox-strip').classList.toggle('collapsed');
-        }
 
         // ===================================================================
         //  MESSAGING (owner ↔ guest)
@@ -10906,7 +10894,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'hn9o0q2u';
+            const BUILD = 'io0p1r3v';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
