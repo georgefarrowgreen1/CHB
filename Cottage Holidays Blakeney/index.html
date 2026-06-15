@@ -1441,6 +1441,12 @@
         .hs-step:hover { background: rgba(255,255,255,0.18); }
         .hs-count { min-width: 18px; text-align: center; font-variant-numeric: tabular-nums; }
         .hs-msg { font-size: 0.82rem; color: #FFB74D; min-height: 1em; text-align: center; }
+        .hs-select { width: 100%; background: transparent; border: none; color: var(--text-light); font-family: inherit; font-size: 0.98rem; padding: 0; margin: 0; cursor: pointer; outline: none; -webkit-appearance: none; appearance: none; }
+        .hs-select option { color: #111; }
+        .hs-flex { display: flex; gap: 8px; flex-wrap: wrap; }
+        .hs-chip { flex: 1 1 auto; padding: 9px 8px; border-radius: 12px; border: 1px solid var(--glass-border); background: rgba(255,255,255,0.05); color: var(--text-muted); font-family: inherit; font-size: 0.78rem; cursor: pointer; transition: background 0.2s, color 0.2s, border-color 0.2s; white-space: nowrap; }
+        .hs-chip:hover { background: rgba(255,255,255,0.12); }
+        .hs-chip.is-on { background: rgba(255,255,255,0.18); color: var(--text-light); border-color: rgba(255,255,255,0.32); }
         .btn-glass-ghost { background: transparent; opacity: 0.85; }
         #hero-results { scroll-margin-top: 110px; }
         .hs-unavail { opacity: 0.55; }
@@ -1597,10 +1603,25 @@
                 <h1 data-edit-text="hero-title">Liquid Coastal Luxury</h1>
                 <p data-edit-text="hero-sub">Boutique holiday escapes in Blakeney, Norfolk</p>
                 <div class="hero-search">
+                    <div class="hs-field hs-guests">
+                        <span class="hs-label">Cottage</span>
+                        <select class="hs-select" id="hs-cottage" onchange="hsSetCottage(this.value)" aria-label="Choose a cottage">
+                            <option value="any">Any cottage</option>
+                            <option value="21a">21A Westgate</option>
+                            <option value="jollyboat">Jollyboat</option>
+                            <option value="pimpernel">Pimpernel</option>
+                        </select>
+                    </div>
                     <button type="button" class="hs-field" onclick="openHeroDatePicker()">
                         <span class="hs-label">Dates</span>
                         <span class="hs-value" id="hs-dates">Add your dates</span>
                     </button>
+                    <div class="hs-flex" role="group" aria-label="Date flexibility">
+                        <button type="button" class="hs-chip is-on" data-flex="0" onclick="hsSetFlex(0)">Exact dates</button>
+                        <button type="button" class="hs-chip" data-flex="1" onclick="hsSetFlex(1)">± 1 day</button>
+                        <button type="button" class="hs-chip" data-flex="2" onclick="hsSetFlex(2)">± 2 days</button>
+                        <button type="button" class="hs-chip" data-flex="3" onclick="hsSetFlex(3)">± 3 days</button>
+                    </div>
                     <div class="hs-field hs-guests">
                         <span class="hs-label">Guests</span>
                         <div class="hs-guest-rows">
@@ -6660,7 +6681,7 @@
         // its booked nights) and 'search' (the homepage hero — no per-cottage shading,
         // since availability is shown per cottage in the results).
         let dpMode = 'enquiry';
-        const heroSearch = { checkin: null, checkout: null, adults: 2, children: 0 };
+        const heroSearch = { checkin: null, checkout: null, adults: 2, children: 0, cottage: 'any', flex: 0 };
 
         // ---- Availability for the public date picker ----
         // { propKey: [{start,end}] } — end is EXCLUSIVE (checkout day is free).
@@ -6866,6 +6887,38 @@
             renderDatePicker();
             document.getElementById('date-picker').classList.add('open');
         }
+        function hsSetCottage(v) { heroSearch.cottage = v; hsMaybeRerun(); }
+        function hsSetFlex(n) {
+            heroSearch.flex = n;
+            document.querySelectorAll('.hs-chip').forEach(c => c.classList.toggle('is-on', String(n) === c.getAttribute('data-flex')));
+            hsMaybeRerun();
+        }
+        // If results are already on screen, re-run when a filter changes so it stays live.
+        function hsMaybeRerun() {
+            const sec = document.getElementById('hero-results');
+            if (sec && sec.style.display !== 'none' && heroSearch.checkin && heroSearch.checkout) runHeroSearch();
+        }
+        function shiftDate(ds, days) { const d = dpParse(ds); d.setDate(d.getDate() + days); return formatDashed(d); }
+        // Offsets to try, nearest-to-exact first: 0, -1, +1, -2, +2, ...
+        function flexOffsets(F) { const o = [0]; for (let i = 1; i <= F; i++) { o.push(-i, i); } return o; }
+        // Find the nearest available window (within ±flex days) for one cottage.
+        function findAvailability(key, ci, co, adults, children, flex) {
+            const lim = occupancyLimits[key] || { maxAdults: 99, maxChildren: 99, maxTotal: 99 };
+            if (adults > lim.maxAdults || children > lim.maxChildren || (adults + children) > lim.maxTotal) return { fits: false };
+            const nights = nightsBetween(ci, co);
+            const today = formatDashed(dpToday0());
+            let reason = 'Not available for these dates';
+            for (const off of flexOffsets(flex)) {
+                const sci = shiftDate(ci, off);
+                if (sci < today) continue;                       // never suggest a past check-in
+                const sco = shiftDate(sci, nights);              // keep the same length of stay
+                const ruleErr = checkBookingRules(key, sci, sco);
+                if (ruleErr) { if (off === 0) reason = ruleErr; continue; }
+                if (hasDateClash(key, sci, sco)) continue;
+                return { fits: true, available: true, ci: sci, co: sco, offset: off, price: priceBreakdown(key, adults, children, sci, sco) };
+            }
+            return { fits: true, available: false, reason };
+        }
         function runHeroSearch() {
             const msg = document.getElementById('hs-msg');
             const setMsg = (t) => { if (msg) msg.innerText = t || ''; };
@@ -6873,61 +6926,90 @@
             if (!ci || !co) { setMsg('Please choose your check-in and check-out dates.'); return; }
             if (co <= ci) { setMsg('Your check-out date must be after check-in.'); return; }
             setMsg('');
-            const { adults, children } = heroSearch;
-            const nights = nightsBetween(ci, co);
-            const avail = [], unavail = [];
+            const { adults, children, flex } = heroSearch;
+            const results = {};         // key -> {fits, available, ci, co, offset, price, reason}
             let tooSmall = 0;
             for (const key of Object.keys(propertyMeta)) {
-                const lim = occupancyLimits[key] || { maxAdults: 99, maxChildren: 99, maxTotal: 99 };
-                if (adults > lim.maxAdults || children > lim.maxChildren || (adults + children) > lim.maxTotal) { tooSmall++; continue; }
-                const ruleErr = checkBookingRules(key, ci, co);
-                if (ruleErr || hasDateClash(key, ci, co)) { unavail.push({ key, reason: ruleErr || 'Not available for these dates' }); continue; }
-                avail.push({ key, price: priceBreakdown(key, adults, children, ci, co) });
+                const r = findAvailability(key, ci, co, adults, children, flex);
+                if (!r.fits) { tooSmall++; continue; }
+                results[key] = r;
             }
-            renderHeroResults(avail, unavail, tooSmall, nights);
+            renderHeroResults(results, tooSmall);
         }
-        function renderHeroResults(avail, unavail, tooSmall, nights) {
+        function renderHeroResults(results, tooSmall) {
             const sec = document.getElementById('hero-results');
             const grid = document.getElementById('hs-results-grid');
             const title = document.getElementById('hs-results-title');
             if (!sec || !grid) return;
             const propImg = (key) => (propertyContent[key] && propertyContent[key].images && propertyContent[key].images[0]) || '';
-            const dateLabel = `${dpPretty(heroSearch.checkin)} → ${dpPretty(heroSearch.checkout)} · ${nights} night${nights === 1 ? '' : 's'}`;
-            title.innerText = avail.length ? 'Available for your dates' : 'No cottages free for those dates';
-            let html = avail.map(a => `
-                <div class="card glass-panel">
-                    <div class="card-img" style="background-image:url('${propImg(a.key)}');"></div>
-                    <div class="card-title">${escapeHtml(propertyMeta[a.key].name)}</div>
-                    <div class="card-meta">${dateLabel}</div>
-                    <div class="card-price">${gbp(a.price.total)} total</div>
-                    <button class="btn-glass" style="width:100%;margin-top:10px;" onclick="startBooking('${a.key}')">Book / Enquire</button>
-                </div>`).join('');
-            html += unavail.map(u => `
-                <div class="card glass-panel hs-unavail">
-                    <div class="card-img" style="background-image:url('${propImg(u.key)}');"></div>
-                    <div class="card-title">${escapeHtml(propertyMeta[u.key].name)}</div>
-                    <div class="card-meta">${escapeHtml(u.reason)}</div>
-                    <button class="btn-glass" style="width:100%;margin-top:10px;" onclick="startBooking('${u.key}')">Enquire anyway</button>
-                </div>`).join('');
-            if (!avail.length && !unavail.length) {
-                const party = heroSearch.adults + heroSearch.children;
-                html = `<div class="glass-panel" style="grid-column:1/-1;text-align:center;padding:28px;">
-                    <p style="margin-bottom:14px;">Sorry, none of our cottages can host ${party} guest${party === 1 ? '' : 's'} on those dates.</p>
+            const party = heroSearch.adults + heroSearch.children;
+            const flexNote = heroSearch.flex ? ` (±${heroSearch.flex} day${heroSearch.flex === 1 ? '' : 's'})` : '';
+            const sub = (t) => `<h3 style="grid-column:1/-1;text-align:center;font-family:var(--font-serif);font-weight:400;margin:22px 0 2px;font-size:1.25rem;">${escapeHtml(t)}</h3>`;
+            const card = (key, r) => {
+                const nights = nightsBetween(r.ci, r.co);
+                const moved = r.offset ? ` <span style="color:var(--text-muted);">· moved ${Math.abs(r.offset)} day${Math.abs(r.offset) === 1 ? '' : 's'}</span>` : '';
+                return `<div class="card glass-panel">
+                    <div class="card-img" style="background-image:url('${propImg(key)}');"></div>
+                    <div class="card-title">${escapeHtml(propertyMeta[key].name)}</div>
+                    <div class="card-meta">${dpPretty(r.ci)} → ${dpPretty(r.co)} · ${nights} night${nights === 1 ? '' : 's'}${moved}</div>
+                    <div class="card-price">${gbp(r.price.total)} total</div>
+                    <button class="btn-glass" style="width:100%;margin-top:10px;" onclick="startBooking('${key}','${r.ci}','${r.co}')">Book / Enquire</button>
+                </div>`;
+            };
+            const unavailCard = (key, reason) => `<div class="card glass-panel hs-unavail">
+                    <div class="card-img" style="background-image:url('${propImg(key)}');"></div>
+                    <div class="card-title">${escapeHtml(propertyMeta[key].name)}</div>
+                    <div class="card-meta">${escapeHtml(reason || 'Not available for these dates')}</div>
+                    <button class="btn-glass" style="width:100%;margin-top:10px;" onclick="startBooking('${key}','${heroSearch.checkin}','${heroSearch.checkout}')">Enquire anyway</button>
+                </div>`;
+            const noneMsg = (txt) => `<div class="glass-panel" style="grid-column:1/-1;text-align:center;padding:28px;">
+                    <p style="margin-bottom:14px;">${escapeHtml(txt)}</p>
                     <button class="btn-glass" onclick="nav('view-main','cottages')">Browse all cottages</button>
                 </div>`;
-            } else if (tooSmall > 0) {
-                html += `<p style="grid-column:1/-1;text-align:center;font-size:0.8rem;color:var(--text-muted);margin-top:6px;">${tooSmall} cottage${tooSmall === 1 ? ' was' : 's were'} hidden — too small for ${heroSearch.adults + heroSearch.children} guests.</p>`;
+
+            const fitKeys = Object.keys(results);
+            const availKeys = fitKeys.filter(k => results[k].available);
+            const filter = heroSearch.cottage || 'any';
+            let html = '';
+
+            if (filter === 'any') {
+                title.innerText = availKeys.length ? `Available for your dates${flexNote}` : `No cottages free for those dates${flexNote}`;
+                html += availKeys.map(k => card(k, results[k])).join('');
+                html += fitKeys.filter(k => !results[k].available).map(k => unavailCard(k, results[k].reason)).join('');
+                if (!fitKeys.length) html = noneMsg(`Sorry, none of our cottages can host ${party} guest${party === 1 ? '' : 's'}.`);
+                else if (tooSmall > 0) html += `<p style="grid-column:1/-1;text-align:center;font-size:0.8rem;color:var(--text-muted);margin-top:6px;">${tooSmall} cottage${tooSmall === 1 ? ' was' : 's were'} hidden — too small for ${party} guests.</p>`;
+            } else {
+                const X = filter, xName = propertyMeta[X] ? propertyMeta[X].name : X;
+                const xr = results[X];
+                const others = availKeys.filter(k => k !== X);
+                if (xr && xr.available) {
+                    title.innerText = `${xName} is available${flexNote}`;
+                    html += card(X, xr);
+                    if (others.length) { html += sub('Other cottages free for your dates'); html += others.map(k => card(k, results[k])).join(''); }
+                } else {
+                    title.innerText = `${xName} isn't free for those dates`;
+                    html += xr ? unavailCard(X, xr.reason)
+                               : `<div class="card glass-panel hs-unavail"><div class="card-img" style="background-image:url('${propImg(X)}');"></div><div class="card-title">${escapeHtml(xName)}</div><div class="card-meta">Too small for ${party} guest${party === 1 ? '' : 's'}</div></div>`;
+                    if (others.length) {
+                        html += sub(others.length > 1 ? 'But these are free for your dates' : 'But this one is free for your dates');
+                        html += others.map(k => card(k, results[k])).join('');
+                    } else {
+                        html += noneMsg('No other cottage is free for those dates either — try different dates or widen the flexibility.');
+                    }
+                }
             }
             grid.innerHTML = html;
             sec.style.display = '';
             sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
-        // Open the cottage with the searched dates + party pre-filled, ready to send.
-        function startBooking(key) {
+        // Open the cottage with the chosen dates + party pre-filled, ready to send.
+        function startBooking(key, ci, co) {
+            ci = ci || heroSearch.checkin || '';
+            co = co || heroSearch.checkout || '';
             openProperty(key);
             const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
-            set('enq-checkin', heroSearch.checkin || '');
-            set('enq-checkout', heroSearch.checkout || '');
+            set('enq-checkin', ci);
+            set('enq-checkout', co);
             set('enq-adults', heroSearch.adults);
             set('enq-children', heroSearch.children);
             try { onOccupancyInput(); } catch (e) {}
@@ -7990,7 +8072,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'bk6s3v8q';
+            const BUILD = 'fx2n7c5d';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
