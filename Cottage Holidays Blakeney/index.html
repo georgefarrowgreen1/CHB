@@ -1442,8 +1442,17 @@
         .hs-step:hover { background: rgba(255,255,255,0.18); }
         .hs-count { min-width: 18px; text-align: center; font-variant-numeric: tabular-nums; }
         .hs-msg { font-size: 0.82rem; color: #FFB74D; min-height: 1em; text-align: center; }
-        .hs-select { width: 100%; background: transparent; border: none; color: var(--text-light); font-family: inherit; font-size: 0.98rem; padding: 0; margin: 0; cursor: pointer; outline: none; -webkit-appearance: none; appearance: none; }
-        .hs-select option { color: #111; }
+        .hs-select-wrap { position: relative; }
+        .hs-select-btn { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px; background: transparent; border: none; color: var(--text-light); font-family: inherit; font-size: 0.98rem; padding: 0; margin: 0; cursor: pointer; outline: none; }
+        .hs-select-btn svg { width: 16px; height: 16px; opacity: 0.65; transition: transform 0.25s var(--fluid-bezier); flex-shrink: 0; }
+        .hs-select-wrap.open .hs-select-btn svg { transform: rotate(180deg); }
+        .hs-select-menu { position: absolute; left: 0; right: 0; top: calc(100% + 10px); z-index: 60; display: none; padding: 6px;
+            background: rgba(26,25,27,0.97); backdrop-filter: blur(22px); -webkit-backdrop-filter: blur(22px);
+            border: 1px solid var(--glass-border); border-radius: 16px; box-shadow: 0 22px 55px rgba(0,0,0,0.55); }
+        .hs-select-wrap.open .hs-select-menu { display: block; animation: fluidFadeIn 0.28s var(--fluid-bezier); }
+        .hs-opt { display: block; width: 100%; text-align: left; background: transparent; border: none; color: var(--text-light); font-family: inherit; font-size: 0.95rem; padding: 12px 14px; border-radius: 11px; cursor: pointer; transition: background 0.18s; }
+        .hs-opt:hover { background: rgba(255,255,255,0.10); }
+        .hs-opt.is-sel { background: rgba(255,255,255,0.16); }
         .hs-flex { display: flex; gap: 8px; flex-wrap: wrap; }
         .hs-chip { flex: 1 1 auto; padding: 9px 8px; border-radius: 12px; border: 1px solid var(--glass-border); background: rgba(255,255,255,0.05); color: var(--text-muted); font-family: inherit; font-size: 0.78rem; cursor: pointer; transition: background 0.2s, color 0.2s, border-color 0.2s; white-space: nowrap; }
         .hs-chip:hover { background: rgba(255,255,255,0.12); }
@@ -1606,14 +1615,18 @@
                 <h1 data-edit-text="hero-title">Liquid Coastal Luxury</h1>
                 <p data-edit-text="hero-sub">Boutique holiday escapes in Blakeney, Norfolk</p>
                 <div class="hero-search">
-                    <div class="hs-field hs-guests">
+                    <div class="hs-field hs-guests hs-select-wrap" id="hs-cottage-wrap">
                         <span class="hs-label">Cottage</span>
-                        <select class="hs-select" id="hs-cottage" onchange="hsSetCottage(this.value)" aria-label="Choose a cottage">
-                            <option value="any">Any cottage</option>
-                            <option value="21a">21A Westgate</option>
-                            <option value="jollyboat">Jollyboat</option>
-                            <option value="pimpernel">Pimpernel</option>
-                        </select>
+                        <button type="button" class="hs-select-btn" id="hs-cottage-btn" onclick="toggleCottageMenu(event)" aria-haspopup="listbox" aria-expanded="false">
+                            <span id="hs-cottage-label">Any cottage</span>
+                            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+                        </button>
+                        <div class="hs-select-menu" id="hs-cottage-menu" role="listbox">
+                            <button type="button" class="hs-opt is-sel" data-key="any" role="option" onclick="chooseCottage('any','Any cottage')">Any cottage</button>
+                            <button type="button" class="hs-opt" data-key="21a" role="option" onclick="chooseCottage('21a','21A Westgate')">21A Westgate</button>
+                            <button type="button" class="hs-opt" data-key="jollyboat" role="option" onclick="chooseCottage('jollyboat','Jollyboat')">Jollyboat</button>
+                            <button type="button" class="hs-opt" data-key="pimpernel" role="option" onclick="chooseCottage('pimpernel','Pimpernel')">Pimpernel</button>
+                        </div>
                     </div>
                     <button type="button" class="hs-field" onclick="openHeroDatePicker()">
                         <span class="hs-label">Dates</span>
@@ -6890,6 +6903,34 @@
             document.getElementById('date-picker').classList.add('open');
         }
         function hsSetCottage(v) { heroSearch.cottage = v; hsMaybeRerun(); }
+        // Custom (on-brand) cottage dropdown — replaces the native <select> menu.
+        function toggleCottageMenu(e) {
+            if (e) e.stopPropagation();
+            const wrap = document.getElementById('hs-cottage-wrap');
+            if (!wrap) return;
+            const open = wrap.classList.toggle('open');
+            const btn = document.getElementById('hs-cottage-btn');
+            if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+            if (open) setTimeout(() => document.addEventListener('click', closeCottageMenu), 0);
+            else document.removeEventListener('click', closeCottageMenu);
+        }
+        function closeCottageMenu(e) {
+            const wrap = document.getElementById('hs-cottage-wrap');
+            if (!wrap) return;
+            if (e && wrap.contains(e.target)) return;   // clicks inside are handled by the options
+            wrap.classList.remove('open');
+            const btn = document.getElementById('hs-cottage-btn');
+            if (btn) btn.setAttribute('aria-expanded', 'false');
+            document.removeEventListener('click', closeCottageMenu);
+        }
+        function chooseCottage(key, label) {
+            heroSearch.cottage = key;
+            const lbl = document.getElementById('hs-cottage-label');
+            if (lbl) lbl.innerText = label;
+            document.querySelectorAll('#hs-cottage-menu .hs-opt').forEach(o => o.classList.toggle('is-sel', o.getAttribute('data-key') === key));
+            closeCottageMenu();
+            hsMaybeRerun();
+        }
         function hsSetFlex(n) {
             heroSearch.flex = n;
             document.querySelectorAll('.hs-chip').forEach(c => c.classList.toggle('is-on', String(n) === c.getAttribute('data-flex')));
@@ -8084,7 +8125,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'wd6r4k8n';
+            const BUILD = 'xk3m7v5p';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
