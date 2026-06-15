@@ -3970,16 +3970,18 @@
         // ---- Settings router: Apple-style index → drill-down sub-pages ----
         const SETTINGS_TITLES = { enquiries: 'Enquiries', messages: 'Guest messages', notify: 'Notifications', host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Preferences', calendar: 'Calendar', cancel: 'Cancellation policy', payments: 'Payments', guests: 'Guest accounts', analytics: 'Analytics', waitlist: 'Waitlist' };
         let settingsBackTarget = null;
-        let __settingsSection = null;   // which Settings sub-page is open (for auto-update restore)
+        // The full Settings drill-down path, so the auto-update reload can restore the
+        // exact folder/sub-folder the owner was in: { section, prop, accomSec }.
+        let __settingsPath = null;
         function settingsShowIndex() {
-            __settingsSection = null;
+            __settingsPath = null;
             const idx = document.getElementById('settings-index'); const panel = document.getElementById('settings-panel');
             if (panel) panel.style.display = 'none';
             if (idx) idx.style.display = '';
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
         function settingsOpen(section) {
-            __settingsSection = section || null;
+            __settingsPath = section ? { section } : null;
             const idx = document.getElementById('settings-index'); const panel = document.getElementById('settings-panel');
             if (!panel) return;
             if (idx) idx.style.display = 'none';
@@ -4068,6 +4070,7 @@
             }
             const title = document.getElementById('settings-panel-title'); if (title) title.textContent = (propertyMeta[k] ? propertyMeta[k].name : k);
             settingsBackTarget = () => settingsOpen('accom');
+            __settingsPath = { section: 'accom', prop: k };
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
         function settingsOpenAccomSec(k, sec) {
@@ -4078,6 +4081,7 @@
             const title = document.getElementById('settings-panel-title');
             if (title) title.innerHTML = `${escapeHtml(name)} <span style="color:var(--text-muted);">·</span> ${meta ? meta.label : ''}`;
             settingsBackTarget = () => settingsOpenAccom(k);
+            __settingsPath = { section: 'accom', prop: k, accomSec: sec };
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
         function renderCalendarList() {
@@ -4093,6 +4097,7 @@
             if (detail) { detail.style.display = ''; detail.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">Loading…</p>'; }
             const title = document.getElementById('settings-panel-title'); if (title) title.textContent = (propertyMeta[k] ? propertyMeta[k].name : k);
             settingsBackTarget = () => settingsOpen('calendar');
+            __settingsPath = { section: 'calendar', prop: k };
             await loadCalendarSyncProp(k);
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
@@ -4155,6 +4160,7 @@
             if (detail) { detail.style.display = ''; detail.innerHTML = cancelPickerHtml(propKey); }
             const title = document.getElementById('settings-panel-title'); if (title) title.textContent = (propertyMeta[propKey] ? propertyMeta[propKey].name : propKey);
             settingsBackTarget = () => settingsOpen('cancel');
+            __settingsPath = { section: 'cancel', prop: propKey };
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
         // Save a cottage's chosen policy, refresh the picker highlight + live cottage text.
@@ -5922,7 +5928,7 @@
                 sessionStorage.setItem('chb-admin-state', JSON.stringify({
                     view: av ? av.id : '',
                     scrollY: window.scrollY || window.pageYOffset || 0,
-                    settingsSection: __settingsSection || null,
+                    settingsPath: __settingsPath || null,
                     accountsSection: __accountsSection || null,
                     at: Date.now()
                 }));
@@ -5937,7 +5943,19 @@
             if (s.view === 'view-main' || !/^view-/.test(s.view)) return;
             try {
                 if (s.view === 'view-settings') {
-                    await openSettings(s.settingsSection || undefined);
+                    const p = s.settingsPath;
+                    await openSettings(p && p.section ? p.section : undefined);
+                    // Replay the drill-down into the exact folder / sub-folder.
+                    if (p && p.prop) {
+                        if (p.section === 'accom') {
+                            settingsOpenAccom(p.prop);
+                            if (p.accomSec) settingsOpenAccomSec(p.prop, p.accomSec);
+                        } else if (p.section === 'calendar') {
+                            await settingsOpenCalendar(p.prop);
+                        } else if (p.section === 'cancel') {
+                            settingsOpenCancel(p.prop);
+                        }
+                    }
                 } else if (s.view === 'view-accounts') {
                     await openAccounts();
                     if (s.accountsSection) accountsOpen(s.accountsSection);
@@ -10921,7 +10939,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'kq2r3t5x';
+            const BUILD = 'lr3s4u6y';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
