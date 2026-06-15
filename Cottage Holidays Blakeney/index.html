@@ -739,6 +739,26 @@
         .prop-pin { background: transparent; border: none; }
         .prop-pin-dot { width: 42px; height: 42px; border-radius: 50%; background: #1a191b; border: 3px solid #fff; box-shadow: 0 6px 18px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; }
         .prop-pin-dot svg { width: 20px; height: 20px; }
+        /* Desktop Airbnb-style photo grid + sticky reserve card (mobile keeps the carousel + bottom bar) */
+        .gallery-grid { display: none; gap: 8px; height: 460px; border-radius: 24px; overflow: hidden; position: relative; margin-bottom: 30px; }
+        .gg-cell { background-size: cover; background-position: center; cursor: pointer; background-color: var(--dark-grey); transition: filter 0.25s; }
+        .gg-cell:hover { filter: brightness(0.88); }
+        .gg-big { grid-row: 1 / span 2; }
+        .gg-showall { position: absolute; right: 14px; bottom: 14px; background: rgba(255,255,255,0.92); color: #1a191b; border: 1px solid rgba(0,0,0,0.1); border-radius: 10px; padding: 9px 14px; font-size: 0.85rem; font-weight: 600; cursor: pointer; box-shadow: 0 4px 14px rgba(0,0,0,0.35); }
+        .prop-reserve { display: none; background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 20px; padding: 24px; }
+        .pr-price { font-family: var(--font-serif); font-size: 1.5rem; color: var(--text-light); line-height: 1.2; }
+        .pr-price small { font-family: var(--font-sans); font-size: 0.85rem; color: var(--text-muted); }
+        .pr-sub { font-size: 0.82rem; color: var(--text-muted); margin-top: 8px; }
+        @media (min-width: 900px) {
+            .prop-layout { grid-template-columns: minmax(0, 1.7fr) minmax(300px, 360px); gap: 48px; max-width: 1120px; }
+            .prop-reserve { display: block; position: sticky; top: 100px; }
+            #prop-book-bar { display: none !important; }   /* desktop uses the reserve card instead */
+            #view-21a { padding-bottom: 60px; }
+            .gallery-container { display: none; }          /* desktop shows the grid… */
+            .gallery-grid { display: grid; }
+            body.edit-mode .gallery-container { display: block; }  /* …except while editing photos */
+            body.edit-mode .gallery-grid { display: none; }
+        }
         .prop-features { display: flex; flex-direction: column; gap: 16px; }
         .prop-feature { display: flex; gap: 14px; align-items: flex-start; }
         .prop-feature .ic { width: 24px; height: 24px; flex-shrink: 0; color: var(--text-light); margin-top: 2px; }
@@ -1823,6 +1843,8 @@
             <button class="btn-sm btn-delete" onclick="removeGalleryPhoto()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/></svg> Remove current</button>
             <span class="gallery-edit-hint" id="gallery-edit-hint"></span>
         </div>
+        <!-- Desktop photo grid (Airbnb-style 1+4); built by renderGallery, hidden on mobile -->
+        <div class="gallery-grid" id="gallery-grid-21a"></div>
 
         <div class="prop-layout">
             <div>
@@ -1900,6 +1922,11 @@
                     <p class="host-bio" id="host-bio">Hi — you can take the girl out of Norfolk, but you can't take Norfolk out of the girl. I love helping guests discover this beautiful stretch of coast.</p>
                 </div>
             </div>
+            <aside class="prop-reserve" id="prop-reserve">
+                <div class="pr-price" id="pr-price"></div>
+                <div class="pr-sub">No payment now — enquire to check your dates &amp; price.</div>
+                <button type="button" class="btn-glass" style="width:100%;padding:15px;margin-top:16px;" onclick="openEnquireModal()">Enquire now</button>
+            </aside>
             <!-- The enquiry now lives in the two-step #enquire-modal (opened by "Enquire now"). -->
         </div>
         <!-- Sticky booking bar (Airbnb-style): price + dates + Enquire now -->
@@ -3251,6 +3278,27 @@
             track.style.transform = `translateX(${-(idx * 100)}%)`;
             loadGallerySlides('gallery-21a');
             updateGalleryHint();
+            renderGalleryGrid(list);
+        }
+        // Desktop-only Airbnb-style photo grid (1 big + up to 4 small) built from the
+        // same image list; tapping a cell opens the lightbox.
+        function renderGalleryGrid(list) {
+            const grid = document.getElementById('gallery-grid-21a');
+            if (!grid) return;
+            const imgs = (Array.isArray(list) ? list : []).filter(Boolean).slice(0, 5);
+            const n = imgs.length;
+            // Adapt the layout to how many photos there are so there are no empty gaps.
+            if (n >= 4) { grid.style.gridTemplateColumns = '2fr 1fr 1fr'; grid.style.gridTemplateRows = '1fr 1fr'; }
+            else if (n === 3) { grid.style.gridTemplateColumns = '1.7fr 1fr'; grid.style.gridTemplateRows = '1fr 1fr'; }
+            else if (n === 2) { grid.style.gridTemplateColumns = '1fr 1fr'; grid.style.gridTemplateRows = '1fr'; }
+            else { grid.style.gridTemplateColumns = '1fr'; grid.style.gridTemplateRows = '1fr'; }
+            const big = n >= 3 ? ' gg-big' : '';
+            let html = imgs.map((src, i) =>
+                `<div class="gg-cell${i === 0 ? big : ''}" style="background-image:url('${src}')" onclick="openLightbox(${i})"></div>`
+            ).join('');
+            const total = (Array.isArray(list) ? list.filter(Boolean).length : 0);
+            if (total > 5) html += `<button type="button" class="gg-showall" onclick="openLightbox(0)">Show all ${total} photos</button>`;
+            grid.innerHTML = html;
         }
 
         // Paint the current slide and its immediate neighbours; leave the rest
@@ -6799,21 +6847,20 @@
         // Keep the sticky booking bar's price in sync with the form (total when dates
         // are chosen, otherwise the nightly "from" price).
         function updateBookBar() {
-            const priceEl = document.getElementById('pbb-price');
-            if (!priceEl || !activeFrontProperty) return;
+            if (!activeFrontProperty) return;
             const ci = (document.getElementById('enq-checkin') || {}).value;
             const co = (document.getElementById('enq-checkout') || {}).value;
             const adults = Math.max(1, parseInt((document.getElementById('enq-adults') || {}).value, 10) || 2);
             const children = Math.max(0, parseInt((document.getElementById('enq-children') || {}).value, 10) || 0);
+            let html;
             if (ci && co && co > ci) {
                 const p = priceBreakdown(activeFrontProperty, adults, children, ci, co);
-                priceEl.innerHTML = `${gbp(p.total)} <small>total · ${p.nights} night${p.nights === 1 ? '' : 's'}</small>`;
+                html = `${gbp(p.total)} <small>total · ${p.nights} night${p.nights === 1 ? '' : 's'}</small>`;
             } else {
                 const r = propertyRates[activeFrontProperty] || defaultRates[activeFrontProperty] || {};
-                priceEl.innerHTML = r.coupleRate != null
-                    ? `From ${gbp(r.coupleRate)} <small>/ night · select dates</small>`
-                    : `Select your dates`;
+                html = r.coupleRate != null ? `From ${gbp(r.coupleRate)} <small>/ night · select dates</small>` : `Select your dates`;
             }
+            ['pbb-price', 'pr-price'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = html; });
         }
         // ---- Two-step enquiry modal (Airbnb "Review your stay" → "Your details") ----
         function openEnquireModal() {
@@ -8773,7 +8820,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'xz8d9a2k';
+            const BUILD = 'yc9e2b4k';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
