@@ -660,7 +660,7 @@
         .reviews-modal-body { overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; padding-right: 4px; }
 
         /* --- RESPONSIVE PROPERTY VIEW LAYOUT --- */
-        .prop-layout { display: grid; grid-template-columns: 1.6fr 1fr; gap: 40px; margin-top: 40px; align-items: start; }
+        .prop-layout { display: grid; grid-template-columns: 1fr; gap: 28px; margin: 32px auto 0; max-width: 760px; align-items: start; }
         /* Wider calendar layout: give calendar much more room */
         .cal-layout { display: grid; grid-template-columns: 2.6fr 1fr; gap: 40px; margin-top: 40px; align-items: start; }
         .back-link { color: var(--text-muted); font-size: 0.9rem; text-transform: uppercase; letter-spacing: 1px; cursor: pointer; display: inline-block; margin-bottom: 20px; }
@@ -693,7 +693,36 @@
         .amenity-add:hover { color: var(--text-light); border-color: var(--text-light); background: var(--glass-hover); }
         body.edit-mode .amenity-add { display: inline-block; }
         
-        .booking-glass { padding: 40px; position: sticky; top: 120px; }
+        .booking-glass { padding: 40px; scroll-margin-top: 90px; }
+        /* ---- Airbnb-style cottage page ---- */
+        #view-21a { padding-bottom: calc(112px + env(safe-area-inset-bottom)); }
+        .prop-h1 { text-align: left; }
+        .prop-subtitle { color: var(--text-muted); font-size: 1rem; margin: 6px 0 20px; }
+        .prop-stats { display: flex; text-align: center; }
+        .prop-stat { flex: 1; padding: 4px 6px; }
+        .prop-stat + .prop-stat { border-left: 1px solid var(--glass-border); }
+        .prop-stat-top { font-family: var(--font-serif); font-size: 1.3rem; color: var(--text-light); display: flex; align-items: center; justify-content: center; gap: 6px; line-height: 1.1; }
+        .prop-stat-stars { color: #FFB74D; font-size: 0.78rem; letter-spacing: 1px; margin-top: 3px; }
+        .prop-stat-sub { font-size: 0.72rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-top: 4px; }
+        .prop-stat .ic { width: 20px; height: 20px; }
+        .prop-divider { height: 1px; background: var(--glass-border); margin: 22px 0; }
+        .prop-features { display: flex; flex-direction: column; gap: 16px; }
+        .prop-feature { display: flex; gap: 14px; align-items: flex-start; }
+        .prop-feature .ic { width: 24px; height: 24px; flex-shrink: 0; color: var(--text-light); margin-top: 2px; }
+        .prop-feature-title { color: var(--text-light); font-size: 0.98rem; }
+        .prop-feature-sub { color: var(--text-muted); font-size: 0.83rem; line-height: 1.4; }
+        .prop-book-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1300; display: flex;
+            align-items: center; justify-content: space-between; gap: 16px;
+            padding: 12px max(16px, env(safe-area-inset-left)) calc(12px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-right));
+            background: rgba(26,25,27,0.94); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            border-top: 1px solid var(--glass-border); box-shadow: 0 -10px 40px rgba(0,0,0,0.45); }
+        .pbb-price { font-family: var(--font-serif); font-size: 1.25rem; color: var(--text-light); }
+        .pbb-price small { font-family: var(--font-sans); font-size: 0.8rem; color: var(--text-muted); }
+        .pbb-sub { font-size: 0.78rem; color: var(--text-muted); display: flex; align-items: center; gap: 5px; margin-top: 2px; }
+        .pbb-sub .ic { width: 14px; height: 14px; color: #4CAF50; }
+        .pbb-btn { width: auto; padding: 14px 30px; white-space: nowrap; flex-shrink: 0; }
+        /* Owner dock sits above the booking bar when logged in */
+        body.owner-mode .prop-book-bar { bottom: 86px; }
         .input-glass {
             width: 100%; background: rgba(0,0,0,0.14); border: 1px solid var(--glass-border);
             color: var(--text-light); padding: 15px; border-radius: 12px; margin-bottom: 20px;
@@ -1728,7 +1757,7 @@
 
     <!-- ================= PROPERTY DETAIL VIEW (template, populated per cottage) ================= -->
     <main id="view-21a" class="page-view container">
-        <span class="back-link" onclick="nav('view-main')">← Back to Collection</span>
+        <span class="back-link" onclick="nav('view-cottages')">← Back to Cottages</span>
         
         <div class="gallery-container">
             <div class="gallery-track" id="gallery-21a">
@@ -1749,7 +1778,12 @@
 
         <div class="prop-layout">
             <div>
-                <h1 class="section-title" id="prop-title"></h1>
+                <h1 class="section-title prop-h1" id="prop-title"></h1>
+                <p class="prop-subtitle" id="prop-subtitle"></p>
+                <div class="prop-stats" id="prop-stats"></div>
+                <div class="prop-divider"></div>
+                <div class="prop-features" id="prop-features"></div>
+                <div class="prop-divider"></div>
                 <p class="lead" style="margin: 0; text-align: left;" id="prop-desc"></p>
                 <div class="amenities" id="prop-amenities">
                     <!-- amenity pills injected per property -->
@@ -1768,7 +1802,7 @@
                 </div>
                 <div id="prop-reviews" class="prop-reviews" style="margin-top:32px;"></div>
             </div>
-            <div class="glass-panel booking-glass" style="border-radius: 24px;">
+            <div class="glass-panel booking-glass" id="enquire-section" style="border-radius: 24px;">
                 <h3 style="font-family: var(--font-serif); font-size: 1.8rem; margin-bottom: 4px;" id="prop-price-heading"></h3>
                 <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 18px;" id="prop-price-tagline">per couple — book your stay below</p>
                 <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-name">Your Name</label>
@@ -1814,6 +1848,14 @@
                 <button class="btn-glass" style="width: 100%; padding: 18px;" id="enq-submit-btn">Send Enquiry</button>
                 <a class="btn-glass" id="enq-call-btn" style="width: 100%; padding: 16px; margin-top: 12px; text-align: center; display: block; box-sizing: border-box; text-decoration: none;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.6 3.5l2.1.4 1 3-1.5 1.4a12 12 0 0 0 5 5l1.4-1.5 3 1 .4 2.1a2 2 0 0 1-2 2.3A15.5 15.5 0 0 1 4.3 5.5a2 2 0 0 1 2.3-2z"/></svg> Call to Discuss</a>
             </div>
+        </div>
+        <!-- Sticky booking bar (Airbnb-style): price + dates + Enquire now -->
+        <div class="prop-book-bar" id="prop-book-bar">
+            <div class="pbb-info">
+                <div class="pbb-price" id="pbb-price"></div>
+                <div class="pbb-sub" id="pbb-sub"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8.5 12.5l2.5 2.5 4.5-5"/><circle cx="12" cy="12" r="9"/></svg> Free cancellation</div>
+            </div>
+            <button type="button" class="btn-glass pbb-btn" onclick="enquireNow()">Enquire now</button>
         </div>
     </main>
 
@@ -6418,6 +6460,69 @@
             const m = document.getElementById('reviews-modal');
             if (m) m.classList.remove('open');
         }
+
+        // ---- Airbnb-style cottage page: subtitle, stat row, feature rows, booking bar ----
+        // Editable per-cottage subtitle (guests · bedrooms · beds · baths). Owners can
+        // correct the counts in the live editor; these are the starting defaults.
+        const propSubtitleDefault = {
+            '21a':       'Townhouse in Blakeney · Sleeps 6 · 3 bedrooms · 2 bathrooms',
+            'jollyboat': 'Cottage for two in Blakeney · Sleeps 2 · 1 bedroom · 1 bathroom',
+            'pimpernel': 'Contemporary cottage in Blakeney · Sleeps 4 · 2 bedrooms · 1 bathroom'
+        };
+        const IC_MEDAL = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="9" r="5"/><path d="M9 13.5L8 21l4-2 4 2-1-7.5"/></svg>';
+        function renderPropStats(propKey) {
+            const el = document.getElementById('prop-stats');
+            if (!el) return;
+            const list = allReviews().filter(r => r.prop === propKey);
+            const count = list.length;
+            const avg = count ? list.reduce((s, r) => s + Math.max(1, Math.min(5, parseInt(r.stars) || 5)), 0) / count : 0;
+            const fav = count >= 5 && avg >= 4.8;   // "Guest favourite" only when genuinely well-rated
+            const ratingCell = count
+                ? `<div class="prop-stat"><div class="prop-stat-top">${avg.toFixed(2)}</div><div class="prop-stat-stars">${'★'.repeat(Math.round(avg))}</div></div>`
+                : `<div class="prop-stat"><div class="prop-stat-top">New</div><div class="prop-stat-sub">no reviews yet</div></div>`;
+            const favCell = fav
+                ? `<div class="prop-stat"><div class="prop-stat-top">${IC_MEDAL}</div><div class="prop-stat-sub" style="text-transform:none;color:var(--text-light);font-size:0.82rem;letter-spacing:0;">Guest favourite</div></div>`
+                : '';
+            const reviewsCell = count
+                ? `<div class="prop-stat"><div class="prop-stat-top">${count}</div><div class="prop-stat-sub">review${count === 1 ? '' : 's'}</div></div>`
+                : '';
+            el.innerHTML = ratingCell + favCell + reviewsCell;
+        }
+        function renderPropFeatures(propKey) {
+            const el = document.getElementById('prop-features');
+            if (!el) return;
+            const row = (icon, title, sub) => `<div class="prop-feature">${icon}<div><div class="prop-feature-title">${title}</div><div class="prop-feature-sub">${escapeHtml(sub)}</div></div></div>`;
+            el.innerHTML = [
+                row(IC_LOCK, 'Self check-in', 'Your private door code unlocks automatically when you reach the cottage.'),
+                row(IC_CHECK, 'Free cancellation', 'Flexible plans — just let us know if your dates change.'),
+                row(IC_PIN, 'On the North Norfolk coast', 'Moments from Blakeney quay, the coastal path and the saltmarshes.')
+            ].join('');
+        }
+        // Keep the sticky booking bar's price in sync with the form (total when dates
+        // are chosen, otherwise the nightly "from" price).
+        function updateBookBar() {
+            const priceEl = document.getElementById('pbb-price');
+            if (!priceEl || !activeFrontProperty) return;
+            const ci = (document.getElementById('enq-checkin') || {}).value;
+            const co = (document.getElementById('enq-checkout') || {}).value;
+            const adults = Math.max(1, parseInt((document.getElementById('enq-adults') || {}).value, 10) || 2);
+            const children = Math.max(0, parseInt((document.getElementById('enq-children') || {}).value, 10) || 0);
+            if (ci && co && co > ci) {
+                const p = priceBreakdown(activeFrontProperty, adults, children, ci, co);
+                priceEl.innerHTML = `${gbp(p.total)} <small>total · ${p.nights} night${p.nights === 1 ? '' : 's'}</small>`;
+            } else {
+                const r = propertyRates[activeFrontProperty] || defaultRates[activeFrontProperty] || {};
+                priceEl.innerHTML = r.coupleRate != null
+                    ? `From ${gbp(r.coupleRate)} <small>/ night · select dates</small>`
+                    : `Select your dates`;
+            }
+        }
+        // "Enquire now" from the sticky bar — glide to the enquiry form and focus it.
+        function enquireNow() {
+            const sec = document.getElementById('enquire-section');
+            if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            setTimeout(() => { const n = document.getElementById('enq-name'); if (n) { try { n.focus({ preventScroll: true }); } catch (e) {} } }, 480);
+        }
         function reviewRowHtml(r) {
             r = r || { name: '', stars: 5, text: '', prop: '', source: '' };
             const propOpts = ['<option value="">(no cottage)</option>'].concat(
@@ -7682,9 +7787,11 @@
             loadPropContentOverrides();
             const c = propertyContent[propKey];
 
-            // Title + description
+            // Title + description + subtitle (guests/beds/baths — editable per cottage)
             document.getElementById('prop-title').innerText = c.title;
             document.getElementById('prop-desc').innerText = c.desc;
+            const subEl = document.getElementById('prop-subtitle');
+            if (subEl) subEl.innerText = propSubtitleDefault[propKey] || '';
 
             // Dynamic price heading (couple rate from Settings & Fees)
             updatePropPriceHeading();
@@ -7700,6 +7807,7 @@
             // Make per-property content edit-mode aware (namespaced keys)
             document.getElementById('prop-title').setAttribute('data-edit-text', `${propKey}-title`);
             document.getElementById('prop-desc').setAttribute('data-edit-text', `${propKey}-desc`);
+            if (subEl) subEl.setAttribute('data-edit-text', `${propKey}-subtitle`);
             document.getElementById('prop-price-tagline').setAttribute('data-edit-text', `${propKey}-tagline`);
             // Gallery photos are edited via the gallery edit bar (add/replace/remove),
             // not per-slide click, so no data-edit-img wiring is needed here.
@@ -7728,8 +7836,11 @@
             // Reset / refresh price box
             updateEnquiryPrice();
 
-            // This cottage's guest reviews (Airbnb-style score + cards)
+            // This cottage's guest reviews + Airbnb-style stats/features/booking bar
             try { renderPropReviews(propKey); } catch (e) {}
+            try { renderPropStats(propKey); } catch (e) {}
+            try { renderPropFeatures(propKey); } catch (e) {}
+            try { updateBookBar(); } catch (e) {}
 
             nav('view-21a');
         }
@@ -7777,6 +7888,7 @@
             if (!checkIn || !checkOut || checkOut <= checkIn) {
                 const r = propertyRates[activeFrontProperty] || defaultRates[activeFrontProperty];
                 box.innerHTML = `<p style="color: var(--text-light); font-size: 0.95rem; text-align: center; margin: 0;">From <strong>${gbp(r.coupleRate)}</strong> <span style="color: var(--text-muted);">/ night for a couple</span><br><span style="color: var(--text-muted); font-size: 0.8rem;">Refundable damages deposit ${gbp(r.damagesDeposit)} · select dates to see your full price.</span></p>`;
+                try { updateBookBar(); } catch (e) {}
                 return;
             }
             const p = priceBreakdown(activeFrontProperty, adults, children, checkIn, checkOut);
@@ -7789,6 +7901,7 @@
                 <div class="price-row" style="margin-top:12px;"><span>Refundable damages deposit</span><span>${gbp(p.damagesDeposit)}</span></div>
                 <p style="color: var(--text-muted); font-size: 0.78rem; text-align: center; margin: 10px 0 0; line-height: 1.45;">Subject to change before booking has been confirmed — we will contact you to give an accurate price.</p>
             `;
+            try { updateBookBar(); } catch (e) {}
         }
 
         // Set the enquiry form's adult/child max attributes + hint for a property.
@@ -8302,7 +8415,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'hk5r9m4w';
+            const BUILD = 'jm6s2k8w';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
