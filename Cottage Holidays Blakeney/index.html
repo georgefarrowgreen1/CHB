@@ -2187,11 +2187,9 @@
             <input class="input-glass" id="host-f-name" onchange="saveHostText('host-name', this.value)">
             <label class="host-edit-label" for="host-f-badge">Role / badge</label>
             <input class="input-glass" id="host-f-badge" onchange="saveHostText('host-badge', this.value)">
-            <div style="display:flex;gap:14px;">
-                <div style="flex:1;"><label class="host-edit-label" for="host-f-reviews">Reviews</label><input class="input-glass" id="host-f-reviews" onchange="saveHostText('host-reviews', this.value)"></div>
-                <div style="flex:1;"><label class="host-edit-label" for="host-f-rating">Rating</label><input class="input-glass" id="host-f-rating" onchange="saveHostText('host-rating', this.value)"></div>
-                <div style="flex:1;"><label class="host-edit-label" for="host-f-years">Years hosting</label><input class="input-glass" id="host-f-years" onchange="saveHostText('host-years', this.value)"></div>
-            </div>
+            <label class="host-edit-label" for="host-f-years">Years hosting</label>
+            <input class="input-glass" id="host-f-years" onchange="saveHostText('host-years', this.value)">
+            <p style="font-size:0.78rem;color:var(--text-muted);margin:6px 0 0;">Reviews total &amp; rating are calculated automatically from your published guest reviews.</p>
             <label class="host-edit-label" for="host-f-school">"Where I studied" line</label>
             <input class="input-glass" id="host-f-school" onchange="saveHostText('host-school', this.value)">
             <label class="host-edit-label" for="host-f-work">"My work" line</label>
@@ -5850,7 +5848,14 @@
         // Fill the cottage-page host card from saved content (no longer inline-editable).
         function renderHost() {
             const set = (id) => { const e = document.getElementById(id); if (e) e.textContent = hostVal(id); };
-            ['host-name', 'host-badge', 'host-reviews', 'host-rating', 'host-years', 'host-school', 'host-work', 'host-bio'].forEach(set);
+            ['host-name', 'host-badge', 'host-years', 'host-school', 'host-work', 'host-bio'].forEach(set);
+            // Reviews total + rating % are pulled live from the posted reviews (all cottages).
+            const reviews = allReviews();
+            const cnt = reviews.length;
+            const avg = cnt ? reviews.reduce((s, r) => s + Math.max(1, Math.min(5, parseInt(r.stars) || 5)), 0) / cnt : 0;
+            const setText = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val; };
+            setText('host-reviews', cnt ? String(cnt) : 'New');
+            setText('host-rating', cnt ? Math.round(avg / 5 * 100) + '%' : '—');
             const photo = document.getElementById('host-photo');
             if (photo) photo.style.backgroundImage = hostVal('host-photo') ? `url('${hostVal('host-photo')}')` : '';
         }
@@ -5859,8 +5864,7 @@
             if (!isAuthenticated) { tryAccessBackOffice(); return; }
             nav('view-host');
             const setv = (id, key) => { const e = document.getElementById(id); if (e) e.value = hostVal(key); };
-            setv('host-f-name', 'host-name'); setv('host-f-badge', 'host-badge');
-            setv('host-f-reviews', 'host-reviews'); setv('host-f-rating', 'host-rating'); setv('host-f-years', 'host-years');
+            setv('host-f-name', 'host-name'); setv('host-f-badge', 'host-badge'); setv('host-f-years', 'host-years');
             setv('host-f-school', 'host-school'); setv('host-f-work', 'host-work'); setv('host-f-bio', 'host-bio');
             const photo = document.getElementById('host-edit-photo');
             if (photo) photo.style.backgroundImage = hostVal('host-photo') ? `url('${hostVal('host-photo')}')` : '';
@@ -8767,7 +8771,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'vx9b6y8k';
+            const BUILD = 'wy7c8z9k';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
