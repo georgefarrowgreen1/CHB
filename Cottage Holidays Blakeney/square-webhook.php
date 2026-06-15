@@ -23,6 +23,18 @@ if ($sig === '' || !hash_equals($expected, $sig)) { json_out(['error' => 'Invali
 
 $event = json_decode($raw, true);
 $type = $event['type'] ?? '';
+
+// Refund events: keep the ledger row's status current (e.g. PENDING -> COMPLETED).
+// Refund/damages-return rows store the Square refund id as square_payment_id.
+if (strpos($type, 'refund.') === 0) {
+    $refund = $event['data']['object']['refund'] ?? null;
+    if ($refund && !empty($refund['id'])) {
+        try { db()->prepare('UPDATE payments SET status = ? WHERE square_payment_id = ?')
+            ->execute([(string)($refund['status'] ?? ''), (string)$refund['id']]); } catch (\Throwable $e) {}
+    }
+    json_out(['ok' => true]);
+}
+
 $payment = $event['data']['object']['payment'] ?? null;
 
 // Only payment events carry what we need; acknowledge anything else so Square

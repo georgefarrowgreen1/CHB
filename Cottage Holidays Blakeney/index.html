@@ -1058,6 +1058,8 @@
         .money-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
         .money-actions .field-sm { width: auto; min-width: 120px; margin: 0; }
         .money-actions .money-dep { width: 130px; }
+        .money-deposit { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin: 4px 0 12px; padding: 9px 12px; border-radius: 12px; background: rgba(255,255,255,0.04); border: 1px solid var(--glass-border); font-size: 0.85rem; color: var(--text-muted); }
+        .money-deposit strong { color: var(--text-light); }
         .money-owed { font-size: 0.95rem; color: var(--text-light); margin: 4px 0 4px; }
         .money-owed strong { color: #FFA726; }
         .money-owed.all-paid strong, .money-owed.all-paid { color: #4CAF50; }
@@ -2413,6 +2415,7 @@
                 <select class="input-glass" id="accounts-year" style="margin:0;min-width:160px;" onchange="renderAccounts()"></select>
             </div>
         </div>
+        <div id="deposits-due"><!-- damage deposits awaiting return (past stays) --></div>
         <div id="money-panel">
             <!-- JS injects the per-booking payments & balances manager here -->
         </div>
@@ -3874,6 +3877,8 @@
             // Ensure booking data is loaded (the owner may land here without opening the
             // back office first), then render the payments manager + income report.
             try { if (!Object.keys(dbBookings).some(k => (dbBookings[k] || []).length)) await loadData(); } catch (e) {}
+            try { await loadDepositReturns(); } catch (e) {}
+            try { renderDepositsDue(); } catch (e) {}
             try { renderMoneyPanel(); } catch (e) {}
             try { renderMoneyForecast(); } catch (e) {}
             try { renderMoneyFeed(); } catch (e) {}
@@ -3912,6 +3917,100 @@
                 </div>`;
         }
 
+        // Damage-deposit lifecycle: how much of the refundable deposit has been
+        // collected vs returned for a booking. Keyed by the DB id (booking.dbId).
+        let damagesReturnedMap = {};
+        async function loadDepositReturns() {
+            try { const r = await apiPost('bookings.php', { action: 'deposit_returns' }); damagesReturnedMap = r.returns || {}; }
+            catch (e) { damagesReturnedMap = {}; }
+        }
+        function damageHeld(propKey, b) {
+            const p = b.agreedPrice || priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
+            const dep = Math.max(0, p.damagesDeposit || 0);
+            if (dep <= 0) return { collected: 0, returned: 0, held: 0 };
+            const rental = Math.max(0, p.total - dep);
+            const paid = Math.max(0, Number(b.depositPaid) || 0);
+            const collected = (b.payment === 'paid') ? dep : Math.round(Math.max(0, Math.min(dep, paid - rental)) * 100) / 100;
+            const returned = Math.round((Number(damagesReturnedMap[b.dbId]) || 0) * 100) / 100;
+            const held = Math.round(Math.max(0, collected - returned) * 100) / 100;
+            return { collected, returned, held, deposit: dep };
+        }
+        // Past stays still holding a damage deposit — an action queue at the top.
+        function renderDepositsDue() {
+            const el = document.getElementById('deposits-due');
+            if (!el) return;
+            const today = todayDashed();
+            const rows = [];
+            Object.keys(dbBookings).forEach(propKey => {
+                (dbBookings[propKey] || []).forEach(b => {
+                    const dh = damageHeld(propKey, b);
+                    if (dh.held > 0 && (b.checkOut || '') < today) rows.push({ propKey, b, dh });
+                });
+            });
+            if (!rows.length) { el.innerHTML = ''; return; }
+            rows.sort((a, b) => (a.b.checkOut || '').localeCompare(b.b.checkOut || ''));
+            const total = rows.reduce((s, r) => s + r.dh.held, 0);
+            const items = rows.map(({ propKey, b, dh }) => `
+                <div class="money-row glass-panel due-soon">
+                    <div class="money-row-head">
+                        <div><span class="prop-tag tag-${propKey}">${propertyMeta[propKey] ? propertyMeta[propKey].name : propKey}</span>
+                            <strong style="margin-left:8px;">${escapeHtml(b.name)}</strong>
+                            <span style="color:var(--text-muted);margin-left:8px;font-size:0.85rem;">left ${b.checkOut}</span></div>
+                        <span class="money-status">${gbp(dh.held)} held</span>
+                    </div>
+                    <div class="money-actions"><button class="btn-sm btn-edit" onclick="returnDeposit('${b.id}')">Return deposit</button></div>
+                </div>`).join('');
+            el.innerHTML = `<h3 class="accounts-section-title">Deposits to return</h3>
+                <div class="money-owed"><strong>${gbp(total)}</strong> in damage deposits to return across ${rows.length} past stay${rows.length === 1 ? '' : 's'}.</div>
+                ${items}`;
+        }
+        // Return a held damage deposit (full or partial, with a retention reason).
+        async function returnDeposit(bookingId) {
+            const booking = findBookingById(bookingId);
+            if (!booking) return;
+            const loc = findBookingLocation(bookingId);
+            const propKey = loc ? loc.propKey : '21a';
+            const dh = damageHeld(propKey, booking);
+            if (dh.held <= 0) { glassAlert('No damage deposit is being held for this booking.'); return; }
+            const entered = await glassPrompt(`Amount to return (£). Held: ${gbp(dh.held)}. Enter less to retain some for damage:`, String(dh.held));
+            if (entered === null) return;
+            const amount = Math.round((parseFloat(entered) || 0) * 100) / 100;
+            if (!(amount > 0 && amount <= dh.held + 0.001)) { glassAlert(`Enter an amount between £0 and ${gbp(dh.held)}.`); return; }
+            let note = '';
+            if (amount < dh.held - 0.001) {
+                const r = await glassPrompt('Reason for retaining the rest (shown to the guest), e.g. "broken lamp":', '');
+                if (r === null) return;
+                note = r.trim();
+            }
+            if (!await glassConfirm(`Return ${gbp(amount)} of the damage deposit to ${booking.name}?`)) return;
+            try {
+                await apiPost('bookings.php', { action: 'return_deposit', id: booking.dbId, amount, note });
+                toast('Deposit return issued.');
+                afterPaymentChange(bookingId);
+            } catch (e) { glassAlert("Couldn't return the deposit: " + e.message); }
+        }
+        // Cancel a booking: optional refund + reason, frees the dates, emails the guest.
+        async function cancelBooking(bookingId) {
+            const booking = findBookingById(bookingId);
+            if (!booking) return;
+            const loc = findBookingLocation(bookingId);
+            const propKey = loc ? loc.propKey : '21a';
+            const ps = paymentSummary(propKey, booking);
+            const entered = await glassPrompt(`Cancel this booking. Refund amount (£) to the guest — 0 for none. Received so far: ${gbp(ps.deposit)}:`, String(ps.deposit || 0));
+            if (entered === null) return;
+            const refund = Math.round((parseFloat(entered) || 0) * 100) / 100;
+            if (refund < 0) { glassAlert('Refund cannot be negative.'); return; }
+            const reason = await glassPrompt('Reason for cancellation (optional, shown to the guest):', '');
+            if (reason === null) return;
+            if (!await glassConfirm(`Cancel ${booking.name}'s booking${refund > 0 ? ` and refund ${gbp(refund)}` : ''}? This frees the dates and emails the guest.`)) return;
+            try {
+                const r = await apiPost('bookings.php', { action: 'cancel', id: booking.dbId, refund_amount: refund, reason: reason.trim() });
+                toast('Booking cancelled.' + (r.manual_refund ? " Couldn't auto-refund — please refund manually." : ''));
+                try { closeDetailsModal(); } catch (e) {}
+                await loadData(); renderCalendar();
+                if (document.getElementById('view-accounts') && document.getElementById('view-accounts').classList.contains('active')) afterPaymentChange(bookingId);
+            } catch (e) { glassAlert("Couldn't cancel: " + e.message); }
+        }
         // Per-booking payments & balances manager (top of the Money & income view).
         // Upcoming + current stays, with manual reconcile + Square request/refund.
         function renderMoneyPanel() {
@@ -3955,6 +4054,13 @@
                         <button class="btn-sm btn-edit" onclick="requestPayment('${b.id}','balance')">Request full balance</button>` : '';
                 const history = (squareAdminEnabled && b.email)
                     ? `<div id="sq-pay-${b.id}" class="sq-pay-history" style="margin-top:10px;font-size:0.82rem;color:var(--text-muted);">Loading payments…</div>` : '';
+                const dh = damageHeld(propKey, b);
+                const depLine = dh.collected > 0 ? `<div class="money-deposit">
+                        <span>Refundable damage deposit: ${dh.held > 0
+                            ? `<strong>${gbp(dh.held)} held</strong>${dh.returned > 0 ? ` · ${gbp(dh.returned)} returned` : ''}`
+                            : `<span style="color:#4CAF50;">returned${dh.returned < dh.collected - 0.001 ? ` (${gbp(dh.collected - dh.returned)} retained)` : ''}</span>`}</span>
+                        ${dh.held > 0 ? `<button class="btn-sm btn-edit" onclick="returnDeposit('${b.id}')">Return deposit</button>` : ''}
+                    </div>` : '';
                 return `
                 <div class="money-row glass-panel${dueSoon ? ' due-soon' : ''}">
                     <div class="money-row-head">
@@ -3968,6 +4074,7 @@
                         <span>Received<strong style="color:#4CAF50;">${gbp(ps.deposit)}</strong></span>
                         <span>${ps.fullyPaid ? 'Settled' : 'Balance due'}<strong>${gbp(ps.fullyPaid ? 0 : ps.balance)}</strong></span>
                     </div>
+                    ${depLine}
                     <div class="money-actions">
                         ${sqBtns}
                         <select class="input-glass field-sm" onchange="updatePaymentStatus('${b.id}', this.value)" title="Payment status">
@@ -3996,19 +4103,21 @@
                 return;
             }
             const rows = list.map(p => {
-                const refund = p.kind === 'refund';
-                const label = refund ? 'Refund' : (p.kind.charAt(0).toUpperCase() + p.kind.slice(1));
-                const amt = (refund ? '−' : '') + gbp(Math.abs(parseFloat(p.amount) || 0));
+                const isReturn = (p.kind === 'refund' || p.kind === 'damages_return');
+                const label = p.kind === 'refund' ? 'Refund'
+                    : (p.kind === 'damages_return' ? 'Deposit return' : (p.kind.charAt(0).toUpperCase() + p.kind.slice(1)));
+                const amt = (isReturn ? '−' : '') + gbp(Math.abs(parseFloat(p.amount) || 0));
                 const date = (p.created_at || '').slice(0, 10) || '—';
                 const propName = propertyMeta[p.prop_key] ? propertyMeta[p.prop_key].name : (p.prop_key || '');
                 const deleted = (p.booking_deleted == 1 || p.booking_deleted === true);
-                const who = (p.name || 'Guest') + (deleted ? ' · deleted booking' : '');
-                return `<div class="feed-row">
+                const note = (p.note || '').trim();
+                const who = (p.name || 'Guest') + (deleted ? ' · deleted booking' : '') + (note ? ' · ' + note : '');
+                return `<div class="feed-row"${note ? ` title="${escapeHtml(note)}"` : ''}>
                     <span class="feed-date">${escapeHtml(date)}</span>
                     <span class="prop-tag tag-${p.prop_key}">${escapeHtml(propName)}</span>
                     <span class="feed-who"${deleted ? ' style="color:var(--text-muted);"' : ''}>${escapeHtml(who)}</span>
                     <span class="feed-kind">${label}</span>
-                    <span class="feed-amt" style="${refund ? 'color:#E57373;' : 'color:#4CAF50;'}">${amt}</span>
+                    <span class="feed-amt" style="${isReturn ? 'color:#E57373;' : 'color:#4CAF50;'}">${amt}</span>
                     <span class="feed-status">${escapeHtml(p.status || '')}</span>
                     <button class="feed-del" title="Remove this record from the log" aria-label="Remove this payment record" onclick="deleteRecentPayment('${escapeHtml(p.square_payment_id)}')">&times;</button>
                 </div>`;
@@ -4089,7 +4198,15 @@
         // Money & income view, otherwise re-open the booking detail pop-up (calendar).
         function afterPaymentChange(bookingId) {
             const acc = document.getElementById('view-accounts');
-            if (acc && acc.classList.contains('active')) { try { renderMoneyPanel(); } catch (e) {} return; }
+            if (acc && acc.classList.contains('active')) {
+                // Re-fetch deposit returns, then re-render the whole money view.
+                loadDepositReturns().then(() => {
+                    try { renderDepositsDue(); } catch (e) {}
+                    try { renderMoneyPanel(); } catch (e) {}
+                    try { renderMoneyFeed(); } catch (e) {}
+                });
+                return;
+            }
             const fresh = findBookingById(bookingId);
             const loc = findBookingLocation(bookingId);
             if (fresh && loc) showDetails(loc.propKey, fresh);
@@ -6993,10 +7110,12 @@
                     const live = (p.status === 'COMPLETED' || p.status === 'APPROVED');
                     const refundBtn = (isCharge && live)
                         ? `<button class="btn-sm btn-decline" style="padding:4px 10px;font-size:0.72rem;" onclick="refundPayment('${bookingId}','${p.square_payment_id}',${parseFloat(p.amount)})">Refund</button>` : '';
-                    const label = p.kind === 'refund' ? 'Refund' : (p.kind.charAt(0).toUpperCase() + p.kind.slice(1));
-                    const sign = p.kind === 'refund' ? '−' : '';
+                    const isReturn = (p.kind === 'refund' || p.kind === 'damages_return');
+                    const label = p.kind === 'refund' ? 'Refund' : (p.kind === 'damages_return' ? 'Deposit return' : (p.kind.charAt(0).toUpperCase() + p.kind.slice(1)));
+                    const sign = isReturn ? '−' : '';
+                    const note = (p.note || '').trim();
                     return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid var(--glass-border);">
-                        <span>${label} · ${sign}${gbp(p.amount)} <span style="opacity:.7;">(${escapeHtml(p.status)})</span></span>${refundBtn}</div>`;
+                        <span>${label} · ${sign}${gbp(p.amount)} <span style="opacity:.7;">(${escapeHtml(p.status)})</span>${note ? ` <span style="opacity:.7;">— ${escapeHtml(note)}</span>` : ''}</span>${refundBtn}</div>`;
                 }).join('');
             } catch (e) { el.textContent = 'Could not load payments.'; }
         }
@@ -8743,7 +8862,10 @@
                 ${priceBlock}
                 <div style="display: flex; gap: 10px; margin-top: 20px; max-width: 320px;">
                     <button class="btn-sm btn-edit" style="flex:1;" onclick="openEditBooking('${b.id}')">Edit / Move</button>
-                    <button class="btn-sm btn-decline" style="flex:1;" onclick="deleteBooking('${b.id}')">Delete</button>
+                    <button class="btn-sm btn-decline" style="flex:1;" onclick="cancelBooking('${b.id}')">Cancel &amp; refund</button>
+                </div>
+                <div style="margin-top: 8px; max-width: 320px;">
+                    <button class="btn-sm btn-decline" style="width:100%;opacity:.85;" onclick="deleteBooking('${b.id}')">Delete (no refund / mistaken entry)</button>
                 </div>
                 ${b.email ? `<div style="margin-top: 12px; max-width: 320px;">
                     <button class="btn-sm btn-edit" style="width:100%;" onclick="sendConfirmationEmail('${b.id}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/></svg> Send confirmation email</button>
@@ -9486,7 +9608,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'rw4x5v7y';
+            const BUILD = 'sx5y6w8z';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
