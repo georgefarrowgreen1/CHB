@@ -2,6 +2,10 @@
 <html lang="en-GB">
 <head>
     <meta charset="UTF-8">
+    <!-- App lives at the domain root. With clean per-cottage URLs (/cottages/…) the
+         page can be served from a deeper path, so anchor relative URLs (images,
+         uploads, icons) to the root here. -->
+    <base href="/">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Cottage Holidays Blakeney | Self-Catering Holiday Cottages in Blakeney, Norfolk</title>
 
@@ -106,7 +110,7 @@
           "@id": "https://cottageholidaysblakeney.co.uk/#cottage-21a",
           "name": "21A Westgate",
           "description": "A premium townhouse in Blakeney blending heritage character with modern comfort — open-plan living, a Smeg chef's kitchen, a private walled garden and dog-friendly accommodation.",
-          "url": "https://cottageholidaysblakeney.co.uk/",
+          "url": "https://cottageholidaysblakeney.co.uk/cottages/21a-westgate",
           "image": "https://cottageholidaysblakeney.co.uk/hero.jpg",
           "petsAllowed": true,
           "occupancy": { "@type": "QuantitativeValue", "maxValue": 2 },
@@ -117,7 +121,7 @@
           "@id": "https://cottageholidaysblakeney.co.uk/#cottage-jollyboat",
           "name": "Jollyboat",
           "description": "An intimate coastal bolthole for two in Blakeney — a snug double bedroom, wood-burning stove and a quayside location with the saltmarshes steps from the door.",
-          "url": "https://cottageholidaysblakeney.co.uk/",
+          "url": "https://cottageholidaysblakeney.co.uk/cottages/jollyboat",
           "image": "https://cottageholidaysblakeney.co.uk/hero.jpg",
           "occupancy": { "@type": "QuantitativeValue", "maxValue": 2 },
           "containedInPlace": { "@type": "Place", "name": "Blakeney, Norfolk" }
@@ -127,7 +131,7 @@
           "@id": "https://cottageholidaysblakeney.co.uk/#cottage-pimpernel",
           "name": "Pimpernel",
           "description": "A contemporary self-catering retreat in Blakeney — light-filled open-plan living, a designer kitchen and a sun terrace, ideal for small families exploring North Norfolk.",
-          "url": "https://cottageholidaysblakeney.co.uk/",
+          "url": "https://cottageholidaysblakeney.co.uk/cottages/pimpernel",
           "image": "https://cottageholidaysblakeney.co.uk/hero.jpg",
           "occupancy": { "@type": "QuantitativeValue", "maxValue": 3 },
           "containedInPlace": { "@type": "Place", "name": "Blakeney, Norfolk" }
@@ -3213,7 +3217,7 @@
 
     <!-- FOOTER -->
     <footer class="site-footer">
-        <p class="footer-nap" style="font-size:0.8rem;color:var(--text-muted);margin-bottom:6px;">Self-catering holiday cottages in <strong>Blakeney, North Norfolk</strong> · NR25 — near the quay, coastal path and beaches.</p>
+        <p class="footer-nap" style="font-size:0.7rem;color:var(--text-muted);opacity:0.55;margin-bottom:4px;letter-spacing:0.2px;">Self-catering holiday cottages in Blakeney, North Norfolk · NR25</p>
         <p>&copy; <span id="footer-year">2026</span> Cottage Holidays Blakeney. &nbsp;·&nbsp; <a onclick="nav('view-privacy')" style="cursor:pointer;color:var(--text-muted);text-decoration:underline;">Privacy Policy</a></p>
         <div class="footer-controls">
             <button id="theme-toggle" class="toggle-btn" onclick="toggleTheme()" title="Switch to light mode" aria-label="Switch to light mode"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.8 4.8l1.8 1.8M17.4 17.4l1.8 1.8M19.2 4.8l-1.8 1.8M6.6 17.4l-1.8 1.8"/></svg></button>
@@ -3243,6 +3247,11 @@
                 path = path + '/';                       // directory without trailing slash
             }
             if (!path.endsWith('/')) path += '/';
+            // Clean per-cottage URLs (/cottages/<slug>) are served from index.html via
+            // an .htaccess rewrite, so the PHP files actually live one level up — at the
+            // app root. Strip the virtual "cottages/…" segment so the API calls hit them.
+            const ci = path.indexOf('/cottages/');
+            if (ci !== -1) path = path.slice(0, ci + 1);
             return path;                                 // e.g. "/something/" — PHP files live here
         })();
         // Fetch with a timeout so a stuck request never hangs the page forever.
@@ -3494,6 +3503,9 @@
             }
             document.querySelectorAll('.page-view').forEach(v => v.classList.remove('active'));
             target.classList.add('active');
+
+            // Keep the address bar in sync: leaving a cottage page restores the root URL.
+            if (viewId !== 'view-21a') { try { clearCottageUrl(); } catch (e) {} }
 
             // Accentuate which admin section the dock is currently showing (clears
             // when on a non-admin view such as the public site or the dashboard).
@@ -6994,6 +7006,7 @@
             try { restoreAdminState(); } catch (e) { console.error(e); }
             try { maybeOpenPayLink(); } catch (e) { console.error(e); }   // ?pay=… → payment view
             try { maybeOpenReviewLink(); } catch (e) { console.error(e); } // ?review=… → My Bookings
+            try { maybeOpenCottageRoute(); } catch (e) { console.error(e); } // /cottages/<slug> → that cottage
             setTimeout(() => { try { maybeShowInstallHint(); } catch (e) {} }, 2500);
           }
         });
@@ -10420,6 +10433,68 @@
             } catch (e) { /* SEO enrichment must never break the page */ }
         }
 
+        // ---- Clean per-cottage URLs (/cottages/<slug>) for shareable, indexable links ----
+        const COTTAGE_SLUGS = { '21a': '21a-westgate', 'jollyboat': 'jollyboat', 'pimpernel': 'pimpernel' };
+        const SLUG_TO_KEY = { '21a-westgate': '21a', 'jollyboat': 'jollyboat', 'pimpernel': 'pimpernel' };
+        const SITE_ORIGIN = 'https://cottageholidaysblakeney.co.uk';
+        const DEFAULT_DOC_TITLE = document.title;
+        let __suppressRouteSync = false;   // set while reacting to back/forward so we don't re-push
+
+        // Update <title> + canonical + og:url so each cottage URL has its own SEO snippet.
+        function updateRouteSeo(propKey) {
+            const canonical = document.querySelector('link[rel="canonical"]');
+            const ogUrl = document.querySelector('meta[property="og:url"]');
+            const ogTitle = document.querySelector('meta[property="og:title"]');
+            if (!propKey) {
+                document.title = DEFAULT_DOC_TITLE;
+                if (canonical) canonical.setAttribute('href', SITE_ORIGIN + '/');
+                if (ogUrl) ogUrl.setAttribute('content', SITE_ORIGIN + '/');
+                return;
+            }
+            const meta = propertyMeta[propKey] || {};
+            const url = SITE_ORIGIN + '/cottages/' + COTTAGE_SLUGS[propKey];
+            const title = (meta.name || 'Cottage') + ' — Holiday Cottage in Blakeney, Norfolk | Cottage Holidays Blakeney';
+            document.title = title;
+            if (canonical) canonical.setAttribute('href', url);
+            if (ogUrl) ogUrl.setAttribute('content', url);
+            if (ogTitle) ogTitle.setAttribute('content', title);
+        }
+        // Reflect the open cottage in the address bar (push, or replace if already there).
+        function syncCottageUrl(propKey) {
+            const slug = COTTAGE_SLUGS[propKey];
+            if (!slug) return;
+            const url = '/cottages/' + slug;
+            if (!__suppressRouteSync) {
+                try { (location.pathname === url ? history.replaceState : history.pushState).call(history, { cottage: propKey }, '', url); } catch (e) {}
+            }
+            updateRouteSeo(propKey);
+        }
+        // Leaving a cottage page: restore the root URL + default SEO (only if we're on one).
+        function clearCottageUrl() {
+            const onCottage = /\/cottages\//.test(location.pathname || '');
+            if (onCottage && !__suppressRouteSync) { try { history.pushState({}, '', '/'); } catch (e) {} }
+            if (onCottage) updateRouteSeo(null);
+        }
+        // On first load (or back/forward), open the cottage named in the URL, if any.
+        function maybeOpenCottageRoute() {
+            const m = (location.pathname || '').match(/\/cottages\/([^\/?#]+)/);
+            if (!m) return false;
+            const key = SLUG_TO_KEY[(m[1] || '').toLowerCase()];
+            if (!key) return false;
+            __suppressRouteSync = true;
+            try { openProperty(key); } finally { __suppressRouteSync = false; }
+            return true;
+        }
+        window.addEventListener('popstate', () => {
+            __suppressRouteSync = true;
+            try {
+                const m = (location.pathname || '').match(/\/cottages\/([^\/?#]+)/);
+                const key = m && SLUG_TO_KEY[(m[1] || '').toLowerCase()];
+                if (key) openProperty(key);
+                else { updateRouteSeo(null); nav('view-main'); }
+            } finally { __suppressRouteSync = false; }
+        });
+
         // Open a cottage's dedicated page, populating it from that property's content + rates
         function openProperty(propKey) {
             if (!propertyContent[propKey]) propKey = '21a';
@@ -10502,6 +10577,7 @@
             try { updateBookBar(); } catch (e) {}
 
             nav('view-21a');
+            try { syncCottageUrl(propKey); } catch (e) {}   // clean URL + per-cottage SEO snippet
             try { setupPropDescClamp(); } catch (e) {}   // clamp long descriptions once the view is visible
             try { placeAvailCalendar(); } catch (e) {}    // desktop: tuck calendar above "Enquire now"
         }
@@ -11102,7 +11178,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'pv7w8y0c';
+            const BUILD = 'qw8x9z1d';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;

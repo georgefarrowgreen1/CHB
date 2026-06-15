@@ -12,6 +12,16 @@ RewriteCond %{HTTPS} !=on
 RewriteCond %{HTTP:X-Forwarded-Proto} !https
 RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 
+# ---- Clean per-cottage URLs (SEO) ----
+# Pretty links like /cottages/jollyboat are served by the single-page app
+# (index.html), which reads the path on load and opens that cottage. Only rewrite
+# when the request isn't a real file or folder, and only under /cottages/, so PHP
+# endpoints and static assets are never affected. The app uses <base href="/"> so
+# its relative assets/API calls still resolve to the site root from these URLs.
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteRule ^cottages(/.*)?$ index.html [L]
+
 # ---- Never run scripts out of the uploads/ folder ----
 # Only images are ever stored in uploads/. Even though upload.php validates file
 # content and uses random names, this blocks any request to execute a script there
