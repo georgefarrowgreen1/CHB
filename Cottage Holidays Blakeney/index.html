@@ -2348,6 +2348,12 @@
                     <span class="settings-row-main"><span class="settings-row-label">Contact number</span><span class="settings-row-sub">"Call to Discuss" buttons</span></span><span class="settings-row-chev">›</span>
                 </button>
             </div>
+            <div class="settings-group">
+                <button class="settings-row" onclick="openTermsModal(event)">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/><path d="M10 13h6M10 17h6"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Booking Terms &amp; Conditions</span><span class="settings-row-sub">View the terms guests accept</span></span><span class="settings-row-chev">›</span>
+                </button>
+            </div>
         </div>
 
         <!-- DRILL-DOWN PANEL -->
@@ -2803,7 +2809,6 @@
                 <!-- terms rendered here by renderTerms() -->
             </div>
             <div class="terms-modal-foot">
-                <button class="btn-sm btn-edit" onclick="downloadTermsPDF()">⤓ Download PDF</button>
                 <button class="btn-sm" onclick="closeTermsModal()">Close</button>
             </div>
         </div>
@@ -5780,11 +5785,11 @@
             const pol = CANCELLATION_POLICIES[cancelPolicyOf(propKey)] || CANCELLATION_POLICIES[DEFAULT_CANCEL_POLICY];
             const terms = pol.points.map(p => p.charAt(0).toLowerCase() + p.slice(1)).join('; ');
             return [
-                'We strongly recommend you take out appropriate travel insurance before placing your Booking Reservation.',
-                'You may cancel before the Arrival Date by contacting us in writing. Your cancellation takes effect when we receive your written notice, and we will confirm any refund in writing.',
-                `This property's cancellation policy is "${pol.name}": ${terms}.`,
-                'Cancelling due to illness (including Covid-19 or self-isolation) is treated as a cancellation by you.',
-                'Voluntary early departure or failure to show is treated as a non-refundable cancellation on the Arrival Date.'
+                'We strongly recommend taking out travel insurance before you book.',
+                'You can cancel before your arrival date by telling us in writing; it takes effect when we receive your notice, and we’ll confirm any refund in writing.',
+                `This cottage’s cancellation policy is “${pol.name}”: ${terms}.`,
+                'Cancelling because of illness (including Covid-19 or self-isolation) counts as a cancellation by you.',
+                'Leaving early or not turning up counts as a cancellation with no refund.'
             ];
         }
         // termsSections with clause 7 swapped for the selected policy's terms.
@@ -6563,100 +6568,96 @@
         // intro/title) and rendered both in the on-screen modal and the PDF.
         // Update TERMS_VERSION whenever the wording materially changes, so the
         // acceptance recorded against each booking reflects which version was agreed.
-        const TERMS_VERSION = '2026-06';
+        const TERMS_VERSION = '2026-06b';
         const TERMS_BUSINESS = 'Sophia Farrow, Forest Edge, Mill Road, Edingthorpe, Norfolk, NR28 9SJ';
         const termsSections = [
             { h: '1. Definitions', p: [
-                'Arrival Date: the date and time on which your Booking will begin and the Property will be made available to you.',
-                'Balance Due Date: 4 weeks before your Arrival Date.',
-                'Booking: the confirmed reservation of the Property to commence on the Arrival Date and end on the Departure Date.',
-                'Booking Confirmation: the written acceptance from us of the Booking Reservation, which may include further information such as arrival and departure details, directions, House Rules and EV Policy.',
-                'Booking Deposit: 25% of the Booking Price required when making your Booking Reservation.',
-                'Booking Price: as set out on our Website and confirmed in the Booking Confirmation.',
-                'Booking Reservation: your request to book a Property.',
-                'Business Day: a day other than a Saturday, Sunday or public holiday in England when banks in London are open for business.',
-                'Security Deposit: a fee of £50–100 taken prior to the Arrival Date and held throughout the Booking in case damage is caused to the Property.',
-                'Permitted Pets: any animal attending the Property (other than assistance animals) that we have agreed to.',
-                'House Rules: a separate document provided at the time of the Booking Confirmation and forming part of our contract.',
-                'We/our/us: ' + TERMS_BUSINESS + '.',
-                'You/your: the individual who makes the Booking Reservation, who must be over the age of 18.',
-                'Website: cottageholidaysblakeney.co.uk together with other websites we may use from time to time.'
+                'Arrival/Departure Date: when your stay starts and ends, as shown in our confirmation.',
+                'Booking: your confirmed stay at the property.',
+                'Booking request: your request to book — it becomes a Booking only once we confirm it in writing.',
+                'Confirmation: our written acceptance of your booking request, with arrival/departure details, directions and the House Rules.',
+                'Price: the total cost of your stay, shown on the website and in our confirmation.',
+                'Deposit: 25% of the Price, payable when you book.',
+                'Balance due date: 4 weeks before your arrival date.',
+                'Security deposit: £50–100 held before arrival in case of damage, and returned afterwards.',
+                'House Rules: a short separate document we send with your confirmation; it forms part of these terms.',
+                'Permitted pets: any animal we’ve agreed you can bring (registered assistance animals are always welcome).',
+                'Group: you and everyone — and any animals — staying or visiting under your booking.',
+                'We/us: ' + TERMS_BUSINESS + '.',
+                'You: the person making the booking, who must be 18 or over and is responsible for the whole Group.',
+                'Website: cottageholidaysblakeney.co.uk.'
             ]},
             { h: '2. Our contract with you', p: [
-                'Please read these Terms carefully and check that the details on the Booking (Arrival Date and time, number of guests etc.) are complete and accurate before you submit the Booking Reservation.',
-                'These Terms become binding once we issue you with the Booking Confirmation, and your Booking is accepted only once we issue that confirmation.',
-                'The maximum number of people who can stay at the Property will be confirmed in the Booking Confirmation.',
-                'You agree not to arrive before the Arrival Date and to depart no later than the Departure Date; you may be charged if you do not leave by the agreed time.',
-                'Illustrations and photographs are for illustrative purposes only; décor and layout are subject to change.',
-                'As lead for the Group, you are liable for the acts and omissions of all individuals or animals attending the Property.',
-                'The Property is provided for holiday letting purposes only and these Terms do not create a landlord and tenant relationship, a tenancy, a right to sub-let, an assured shorthold tenancy, or any statutory security of tenure.'
+                'Please check your booking details — dates, times and number of guests — are correct before you book.',
+                'Your booking is confirmed only once we send our written confirmation; at that point these terms apply.',
+                'You’re booking a holiday stay, not renting a home — this doesn’t create a tenancy or any right to stay on after your booking ends.',
+                'Please don’t arrive before your arrival time or leave after your departure time; we may charge you if you overstay.',
+                'Photos are for illustration only; décor and layout may change.'
             ]},
-            { h: '3. Enjoying the Property', p: [
-                'Access is subject to these Terms and the House Rules, which form part of these Terms.',
-                'Use and enjoyment of the Property must be in accordance with these Terms, the House Rules and any safety or operational instructions; enjoyment of the Property and grounds is at your own risk.',
-                'You shall take proper care of the Property and its contents. You may lose your Security Deposit and/or be invoiced for damage or loss if the Property is not left as found. Report any damage or disrepair to us as soon as it comes to your attention.',
-                'Internet access is for recreational use only; no minimum speed or uninterrupted access is guaranteed and we are not liable for connectivity.',
-                'Any recommendations for third-party services are personal recommendations only and guarantee no level of service or quality.',
-                'It is your responsibility to ensure the Property is suitable for your Group’s needs before booking.',
-                'We reserve the right to request immediate departure without refund where you have, in our sole discretion, acted unreasonably, illegally, immorally, or in a manner that may impair the enjoyment, comfort or health of others or cause damage.',
-                'We or our representatives may enter the Property at any time for inspection or necessary repairs.',
-                'All belongings and vehicles are left at your own risk. Remove all belongings by the Departure Date; return of lost property cannot be guaranteed and will incur postage charges.',
-                'There is no electric vehicle charging facility at the Property, and portable domestic chargers (“granny”/“trickle” chargers) may not be used anywhere on the Property.',
-                'Third-party providers (e.g. caterers, private chefs, entertainers) are not permitted without our prior written permission.'
+            { h: '3. Looking after the property', p: [
+                'Please treat the property and everything in it with care, and leave it as you found it. If something is damaged or not working, tell us as soon as you notice.',
+                'You may lose your security deposit, or be charged, for any damage or loss.',
+                'Use of the property and grounds is at your own risk; please follow the House Rules and any safety instructions.',
+                'We, or our representatives, may need to enter the property to inspect it or carry out repairs.',
+                'We can ask you to leave without a refund if you or your Group behave unreasonably or illegally, or in a way that endangers or seriously disturbs others or the property.',
+                'Wifi is for casual use only — we can’t guarantee the speed or that it’s always available.',
+                'Any local recommendations we make are personal suggestions, not a guarantee of service.',
+                'Please check the property suits your Group’s needs before you book.',
+                'Belongings and vehicles are left at your own risk. Take everything with you when you leave; we can’t guarantee to return lost property and will charge for postage.',
+                'There’s no electric-vehicle charging at the property, and portable car chargers can’t be used anywhere on site.',
+                'Caterers, chefs, entertainers and other outside providers need our written permission first.'
             ]},
             { h: '4. Pets', p: [
-                'Only Permitted Pets or registered assistance animals are permitted in the Property.',
-                'Where pets that are not permitted are brought with you, we reserve the right to request immediate departure.',
-                'We reserve the right to refuse admission or request immediate departure where a Permitted Pet is, in our sole discretion, a nuisance or danger to others. No refund will be due.',
-                'You are liable for any damage caused by animals or parasites introduced by your Permitted Pets.',
-                'We are not liable for any allergies affected as a result of pets present in a previous occupancy.'
+                'Only pets we’ve agreed to, or registered assistance animals, may stay.',
+                'If pets we haven’t agreed to are brought along, we can ask you to leave.',
+                'We can refuse, or ask you to leave with no refund, if a pet is a nuisance or danger to others.',
+                'You’re responsible for any damage or parasites caused by your pets.',
+                'We can’t be held responsible for allergies caused by pets from a previous stay.'
             ]},
             { h: '5. Price and payment', p: [
-                'The Booking Price is based on your Booking Reservation and confirmed in your Booking Confirmation.',
-                'Where your Booking Reservation is before the Balance Due Date, you must pay a minimum Booking Deposit when submitting the Reservation; the remaining balance must be paid by the Balance Due Date.',
-                'Where your Booking Reservation is made after the Balance Due Date, you must pay the full Booking Price at the time of making the Reservation.',
-                'No entry to the Property will be permitted where the full Booking Price has not been paid.'
+                'The price is confirmed in your confirmation.',
+                'Booking more than 4 weeks ahead: pay the 25% deposit now, with the balance due by the balance due date.',
+                'Booking within 4 weeks of arrival: pay in full when you book.',
+                'We can’t let you in until the full price is paid.'
             ]},
-            { h: '6. Our liability to you', p: [
-                'Neither party excludes or limits liability where it would be illegal to do so.',
-                'If we fail to comply with these Terms, we are responsible for foreseeable loss or damage resulting from our breach or negligence, but not for unforeseeable loss, nor for transport or alternative accommodation costs.',
-                'The Property is for domestic and private use only; we have no liability for loss of profit, business, business interruption or business opportunity.',
-                'Other than as set out above, we have no liability for loss of or damage to your items, belongings, pets or vehicles, however caused.'
+            { h: '6. Our responsibility to you', p: [
+                'We don’t exclude any liability that can’t legally be excluded.',
+                'If we break these terms, we’re responsible for loss that’s a foreseeable result of our breach or negligence — but not for unforeseeable loss, or for travel or alternative accommodation costs.',
+                'The property is for private holiday use, so we’re not responsible for any business losses.',
+                'Otherwise, your belongings, pets and vehicles are left at your own risk.'
             ]},
             // NOTE: clause 7's paragraphs are generated at render time from the
             // cottage's chosen cancellation policy — see effectiveTermsSections().
             // The text below is only a fallback and is normally replaced.
-            { h: '7. Your rights to cancel and applicable refund', p: [
-                'We strongly recommend you take out appropriate travel insurance before placing your Booking Reservation.',
-                'You may cancel before the Arrival Date by contacting us in writing. Your cancellation takes effect when we receive your written notice, and we will confirm any refund in writing.',
-                'The applicable refund depends on this property’s cancellation policy, shown on the cottage page and in your Booking Confirmation.',
-                'Cancelling due to illness (including Covid-19 or self-isolation) is treated as a cancellation by you.',
-                'Voluntary early departure or failure to show is treated as a non-refundable cancellation on the Arrival Date.'
+            { h: '7. Cancelling — your rights', p: [
+                'We strongly recommend taking out travel insurance before you book.',
+                'You can cancel before your arrival date by telling us in writing; it takes effect when we receive your notice, and we’ll confirm any refund in writing.',
+                'Your refund depends on this cottage’s cancellation policy, shown on the cottage page and in your confirmation.',
+                'Cancelling because of illness (including Covid-19 or self-isolation) counts as a cancellation by you.',
+                'Leaving early or not turning up counts as a cancellation with no refund.'
             ]},
-            { h: '8. Our rights to cancel and applicable refund', p: [
-                'We may cancel before the Arrival Date due to an Event Outside of the Parties’ Control, and will contact you promptly.',
-                'If we cancel under such an Event and you have paid in advance for what has not been provided, we will refund those amounts in full.',
-                'We may cancel at any time with immediate effect by written notice if you do not pay when due, or breach the contract materially (including clause 3 or the House Rules); no refund is due in the latter case.'
+            { h: '8. Cancelling — our rights', p: [
+                'We may cancel before arrival because of events outside our control, and will tell you as soon as we can.',
+                'If we do, we’ll refund anything you’ve paid for what we can’t provide.',
+                'We can also cancel immediately if you don’t pay on time, or seriously break these terms or the House Rules — in that case no refund is due.'
             ]},
-            { h: '9. Events outside of the parties’ control', p: [
-                'Neither party is in breach or liable for delay or failure to perform resulting from events beyond its reasonable control.',
-                'Such Events include (without limitation) strike, civil unrest, civil emergencies, government restriction or local lockdowns, pandemic, epidemic, environmental disaster, domestic appliance failure, pests, utilities failure, and extreme weather (snow, ice, high winds, flooding).',
-                'In a pandemic or restriction of movement, we may issue specific terms via the Website and communicate them to you.',
-                'If such an Event means the Property cannot be provided, we will let you know as soon as possible and arrange a refund.'
+            { h: '9. Events outside anyone’s control', p: [
+                'Neither of us is responsible for delays or failures caused by events beyond our reasonable control — such as strikes, civil emergencies, government restrictions, pandemics, natural disasters, utility or appliance failures, pests, or extreme weather.',
+                'If such an event means we can’t provide the property, we’ll let you know as soon as possible and arrange a refund.'
             ]},
-            { h: '10. How we may use your personal information', p: [
-                'We will use the personal information you provide in accordance with our Privacy Policy.'
+            { h: '10. Your personal information', p: [
+                'We use the information you give us in line with our Privacy Policy.'
             ]},
-            { h: '11. Changes to booking or terms', p: [
-                'We may revise these Terms from time to time, giving at least fourteen (14) days’ written notice before changes take effect (or as much notice as possible where your Arrival Date is sooner).',
-                'To change or amend your Booking, contact us; we cannot guarantee requests will be accommodated and reserve the right to charge for differences in price.'
+            { h: '11. Changes to your booking or these terms', p: [
+                'To change your booking, just ask — we’ll do our best, but can’t always say yes, and a price difference may apply.',
+                'We may update these terms from time to time, giving at least 14 days’ notice before changes take effect (or as much notice as we can if your stay is sooner).'
             ]},
-            { h: '12. Other important terms', p: [
-                'We may transfer our rights and obligations under these Terms to another person or entity without affecting your rights.',
-                'Except for you and us, no other person has rights to enforce these Terms.',
-                'Each paragraph operates separately; if any is found unlawful, the remainder remain in full force.',
-                'If we do not enforce our rights against you, that is not a waiver of them.',
-                'These Terms are governed by the law of England and Wales, with the non-exclusive jurisdiction of the English courts (residents of Scotland and Northern Ireland may also bring proceedings locally).'
+            { h: '12. Other terms', p: [
+                'We may transfer our rights and obligations under these terms to someone else without affecting your rights.',
+                'Only you and we can enforce these terms.',
+                'If any part is found to be invalid, the rest still applies.',
+                'If we don’t enforce a right straight away, we can still enforce it later.',
+                'These terms are governed by the law of England and Wales and the English courts. If you live in Scotland or Northern Ireland, you can also bring proceedings there.'
             ]}
         ];
 
@@ -10002,7 +10003,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'kq5r6t8w';
+            const BUILD = 'lr6s7u9x';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
