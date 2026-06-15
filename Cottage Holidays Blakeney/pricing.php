@@ -76,3 +76,37 @@ function get_rate($propKey) {
     $stmt->execute([$propKey]);
     return $stmt->fetch();
 }
+
+// ---- Payment-schedule helpers (Square deposit + balance) ----
+// Days-before-check-in window: deposit on approval, balance this many days out,
+// and full-amount-upfront if a booking is approved inside the window.
+function payment_balance_days() {
+    return (defined('PAYMENT_BALANCE_DAYS') && (int)PAYMENT_BALANCE_DAYS > 0) ? (int)PAYMENT_BALANCE_DAYS : 30;
+}
+// Global deposit policy (percentage of the total). Owner-editable in Settings
+// (content key 'square-deposit-pct'); defaults to 25%.
+function square_deposit_pct() {
+    try {
+        $s = db()->prepare('SELECT item_value FROM content WHERE item_key = ?');
+        $s->execute(['square-deposit-pct']);
+        $r = $s->fetch();
+        if ($r) { $v = (float)json_decode($r['item_value'], true); if ($v > 0 && $v <= 100) return $v; }
+    } catch (\Throwable $e) {}
+    return 25.0;
+}
+// Effective total + amount due for a kind ('deposit'|'balance'), server-authoritative.
+// 'balance' = everything still outstanding; 'deposit' = the deposit % minus anything paid.
+function booking_amount_due($b, $kind) {
+    $total = ($b['agreed_total'] !== null)
+        ? (($b['price_override'] !== null) ? (float)$b['price_override'] : (float)$b['agreed_total'])
+        : 0.0;
+    if ($total <= 0) {
+        $rate = get_rate($b['prop_key']);
+        if ($rate) { $p = price_breakdown($rate, $b['adults'], $b['children'], $b['check_in'], $b['check_out']); $total = $p['total']; }
+    }
+    $total = round($total, 2);
+    $alreadyPaid = round((float)($b['deposit_paid'] ?? 0), 2);
+    $depositAmount = round($total * (square_deposit_pct() / 100), 2);
+    $due = ($kind === 'balance') ? max(0, $total - $alreadyPaid) : max(0, $depositAmount - $alreadyPaid);
+    return ['total' => $total, 'alreadyPaid' => $alreadyPaid, 'due' => round($due, 2)];
+}

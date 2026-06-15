@@ -175,7 +175,33 @@ if ($action === 'approve') {
         $emailResult = ['error' => 'Mail step skipped: ' . $ex->getMessage()];
     }
 
-    json_out(['ok' => true, 'email' => $emailResult]);
+    // Auto payment request (Square): on approval ask the guest for the 25% deposit —
+    // or, if check-in is already inside the balance window (default 30 days), ask for
+    // the full amount upfront. The scheduled job (payments-due.php) chases the balance
+    // ~a month before check-in for the staged bookings. Never blocks the approval.
+    $paymentRequest = null;
+    if (square_enabled() && !empty($e['email'])) {
+        try {
+            require_once __DIR__ . '/mailer.php';
+            $nb = db()->prepare('SELECT * FROM bookings WHERE id = ?');
+            $nb->execute([(int)$bookingId]);
+            $bk = $nb->fetch();
+            if ($bk) {
+                $daysToCheckIn = (int)floor((strtotime($bk['check_in']) - strtotime(date('Y-m-d'))) / 86400);
+                $withinWindow = $daysToCheckIn < payment_balance_days();
+                $kind = $withinWindow ? 'balance' : 'deposit';
+                $paymentRequest = request_booking_payment($bk, $kind);
+                // If we asked for everything now, mark the balance as already requested
+                // so the scheduled job never double-asks.
+                if (!empty($paymentRequest['ok']) && $withinWindow) {
+                    try { db()->prepare('UPDATE bookings SET balance_requested_at = NOW() WHERE id = ?')->execute([(int)$bookingId]); }
+                    catch (\Throwable $e2) {}
+                }
+            }
+        } catch (\Throwable $ex) { $paymentRequest = ['ok' => false, 'error' => $ex->getMessage()]; }
+    }
+
+    json_out(['ok' => true, 'email' => $emailResult, 'payment_request' => $paymentRequest]);
 }
 
 json_out(['error' => 'Unknown action'], 400);

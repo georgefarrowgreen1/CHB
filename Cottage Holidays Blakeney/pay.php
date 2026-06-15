@@ -43,14 +43,8 @@ if ($b['agreed_total'] !== null) {
 }
 $total = round($total, 2);
 
-// Deposit policy: a global percentage in the content table (default 30%).
-$depPct = 30.0;
-try {
-    $s = db()->prepare('SELECT item_value FROM content WHERE item_key = ?');
-    $s->execute(['square-deposit-pct']);
-    $r = $s->fetch();
-    if ($r) { $v = (float)json_decode($r['item_value'], true); if ($v > 0 && $v <= 100) $depPct = $v; }
-} catch (\Throwable $e) {}
+// Deposit policy: a global percentage in the content table (default 25%).
+$depPct = square_deposit_pct();
 $depositAmount = round($total * ($depPct / 100), 2);
 $alreadyPaid   = round((float)($b['deposit_paid'] ?? 0), 2);
 
