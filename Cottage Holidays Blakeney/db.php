@@ -126,11 +126,31 @@ function clean($v) { return is_string($v) ? trim($v) : $v; }
 // Per-property occupancy caps. Used by the public enquiry validation (enquiries.php)
 // AND served to the front end via rates.php, so the two can never disagree.
 function occupancy_limits() {
-    return [
+    // Sensible defaults; the owner can override these per cottage in the admin
+    // (Settings → Preferences → cottage → House rules), saved to the content table
+    // under 'occupancy-<key>'. We merge any saved overrides on top of the defaults so
+    // the enquiry validation and rates.php both reflect the owner's chosen limits.
+    $limits = [
         '21a'       => ['maxAdults' => 2, 'maxChildren' => 0, 'maxTotal' => 2],
         'jollyboat' => ['maxAdults' => 2, 'maxChildren' => 0, 'maxTotal' => 2],
         'pimpernel' => ['maxAdults' => 3, 'maxChildren' => 1, 'maxTotal' => 3],
     ];
+    try {
+        $rows = db()->query("SELECT item_key, item_value FROM content WHERE item_key LIKE 'occupancy-%'")->fetchAll();
+        foreach ($rows as $row) {
+            $key = substr($row['item_key'], strlen('occupancy-'));
+            if (!isset($limits[$key])) continue;
+            $v = json_decode($row['item_value'], true);
+            if (is_array($v) && isset($v['maxAdults'], $v['maxChildren'], $v['maxTotal'])) {
+                $limits[$key] = [
+                    'maxAdults'   => max(1, (int)$v['maxAdults']),
+                    'maxChildren' => max(0, (int)$v['maxChildren']),
+                    'maxTotal'    => max(1, (int)$v['maxTotal']),
+                ];
+            }
+        }
+    } catch (\Throwable $e) { /* content table unavailable — fall back to defaults */ }
+    return $limits;
 }
 
 // True if the text contains a UK postcode (used where a postcode sits inside a
