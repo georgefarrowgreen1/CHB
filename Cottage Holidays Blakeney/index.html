@@ -605,6 +605,14 @@
         .card-meta { font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: 1px; margin-bottom: 15px; }
         .card-price { font-family: var(--font-serif); font-size: 1.15rem; color: var(--text-light); }
         .card-price span { font-size: 0.8rem; color: var(--text-muted); font-family: var(--font-sans); }
+        /* Cottages page: the 3 cottages flex to fill the viewport (same stacked layout
+           on mobile AND desktop), so the whole collection is visible without scrolling. */
+        #view-cottages { min-height: 100svh; display: flex; flex-direction: column; box-sizing: border-box; }
+        #cottages { flex: 1 1 auto; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
+        #cottages .card { flex: 1 1 0; min-height: 0; margin: 0; padding: 14px; }
+        #cottages .card-img { flex: 1 1 auto; min-height: 90px; height: auto; margin-bottom: 10px; }
+        #cottages .card-title { font-size: clamp(1.2rem, 3.2vw, 1.55rem); margin-bottom: 2px; }
+        #cottages .card-meta { margin-bottom: 6px; }
 
         /* --- GUEST REVIEWS --- */
         .reviews-grid {
@@ -1786,7 +1794,6 @@
                 <span class="nav-indicator" aria-hidden="true"></span>
                 <li><a onclick="nav('view-main')" data-edit-text="nav-home">Home</a></li>
                 <li><a onclick="nav('view-cottages')" data-edit-text="nav-cottages">Cottages</a></li>
-                <li><a class="btn-glass" onclick="nav('view-cottages')" data-edit-text="nav-book">Enquire Now</a></li>
             </ul>
         </nav>
         <button class="account-btn" id="account-btn" onclick="openGuestArea()" title="Sign in" aria-label="Sign in / my account">
@@ -1828,7 +1835,6 @@
     <div class="mobile-nav-overlay" id="mobileMenu">
         <a onclick="toggleMobileMenu(); nav('view-main')" data-edit-text="mnav-home">Home</a>
         <a onclick="toggleMobileMenu(); nav('view-cottages')" data-edit-text="mnav-cottages">Cottages</a>
-        <a class="btn-glass" onclick="toggleMobileMenu(); nav('view-cottages')" data-edit-text="mnav-book">Enquire Now</a>
     </div>
 
     <!-- ================= MAIN VIEW ================= -->
@@ -1862,19 +1868,6 @@
                 <h1 data-edit-text="hero-title">Liquid Coastal Luxury</h1>
                 <p data-edit-text="hero-sub">Boutique holiday escapes in Blakeney, Norfolk</p>
                 <div class="hero-search">
-                    <div class="hs-field hs-guests hs-select-wrap" id="hs-cottage-wrap">
-                        <span class="hs-label">Cottage</span>
-                        <button type="button" class="hs-select-btn" id="hs-cottage-btn" onclick="toggleCottageMenu(event)" aria-haspopup="listbox" aria-expanded="false">
-                            <span id="hs-cottage-label">Any cottage</span>
-                            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
-                        </button>
-                        <div class="hs-select-menu" id="hs-cottage-menu" role="listbox">
-                            <button type="button" class="hs-opt is-sel" data-key="any" role="option" onclick="chooseCottage('any','Any cottage')">Any cottage</button>
-                            <button type="button" class="hs-opt" data-key="21a" role="option" onclick="chooseCottage('21a','21A Westgate')">21A Westgate</button>
-                            <button type="button" class="hs-opt" data-key="jollyboat" role="option" onclick="chooseCottage('jollyboat','Jollyboat')">Jollyboat</button>
-                            <button type="button" class="hs-opt" data-key="pimpernel" role="option" onclick="chooseCottage('pimpernel','Pimpernel')">Pimpernel</button>
-                        </div>
-                    </div>
                     <button type="button" class="hs-field" onclick="openHeroDatePicker()">
                         <span class="hs-label">Dates</span>
                         <span class="hs-value" id="hs-dates">Add your dates</span>
@@ -9874,7 +9867,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'ua7b8y2c';
+            const BUILD = 'vb8c9z3d';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
