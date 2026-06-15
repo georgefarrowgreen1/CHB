@@ -565,10 +565,16 @@
            Scoped to .active so it still hides (display:none) when on another page. */
         #view-main.active { display: flex; flex-direction: column; }
         .hero {
-            min-height: clamp(420px, 78vh, 760px); flex: 1 1 auto; display: flex; align-items: center; justify-content: center;
+            min-height: clamp(420px, 78vh, 760px); flex: 1 1 auto; display: flex; justify-content: center;
+            align-items: center;
+            /* "safe center": centre vertically when there's room, but anchor to the
+               top (never overflow upward under the floating header) when the content
+               is taller than the hero — fixes the header clipping the search panel on
+               short desktop windows. Falls back to plain centring where unsupported. */
+            align-items: safe center;
             text-align: center; border-radius: 0 0 40px 40px; overflow: hidden;
             position: relative; margin-bottom: 0;
-            padding: calc(96px + env(safe-area-inset-top)) 0 40px;   /* clear the floating header (+ notch) */
+            padding: calc(116px + env(safe-area-inset-top)) 0 40px;   /* clear the floating header (+ notch) */
         }
         .hero-bg {
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
@@ -1231,7 +1237,9 @@
         .modal-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); display: block; margin-bottom: 5px; }
 
         /* --- FOOTER & EDITOR UI --- */
-        .site-footer { margin-top: auto; padding: 22px 20px; text-align: center; border-top: 1px solid var(--glass-border); }
+        .site-footer { margin-top: auto; padding: 14px 20px; text-align: center; border-top: 1px solid var(--glass-border); }
+        .site-footer > p:first-child { font-size: 0.8rem; line-height: 1.45; margin: 0; color: var(--text-muted); }
+        .site-footer .footer-controls { margin-top: 8px; }
         .footer-controls { display: flex; justify-content: center; gap: 15px; margin-top: 15px; }
 
         /* Same-day changeover toasts (lower-right) */
@@ -2938,7 +2946,7 @@
         <div class="footer-controls">
             <button id="theme-toggle" class="toggle-btn" onclick="toggleTheme()" title="Switch to light mode" aria-label="Switch to light mode"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.8 4.8l1.8 1.8M17.4 17.4l1.8 1.8M19.2 4.8l-1.8 1.8M6.6 17.4l-1.8 1.8"/></svg></button>
         </div>
-        <p style="margin-top: 18px; font-size: 0.8rem; color: var(--text-muted);">Made by George with <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:#E57373;"><path d="M12 20s-7-4.6-7-9.5A3.7 3.7 0 0 1 12 7a3.7 3.7 0 0 1 7 3.5C19 15.4 12 20 12 20z" fill="currentColor" stroke="none"/></svg></p>
+        <p style="margin-top: 8px; font-size: 0.74rem; color: var(--text-muted);">Made by George with <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:#E57373;"><path d="M12 20s-7-4.6-7-9.5A3.7 3.7 0 0 1 12 7a3.7 3.7 0 0 1 7 3.5C19 15.4 12 20 12 20z" fill="currentColor" stroke="none"/></svg></p>
         <p style="margin-top: 4px; font-size: 0.68rem; color: var(--text-muted); opacity: 0.6;">Build <span id="build-stamp">—</span></p>
     </footer>
 
@@ -9873,7 +9881,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'ag5h6e8j';
+            const BUILD = 'bh6i7k9m';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
