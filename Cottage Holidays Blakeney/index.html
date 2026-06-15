@@ -1309,18 +1309,20 @@
         .os-bar { height: 8px; border-radius: 5px; background: rgba(255,255,255,0.10); overflow: hidden; margin-top: 10px; }
         .os-bar > span { display: block; height: 100%; border-radius: 5px; background: #4CAF50; transition: width 0.6s var(--fluid-bezier); }
         /* Desktop polish: on the wide (1500px) back office the dashboard stat cards
-           stretch edge-to-edge, leaving the charts thin and lost. Give them roomier
-           proportions, keep the per-cottage occupancy bars in a readable centred
-           column (not 1400px-long lines), and make the calendar a touch more legible. */
+           stretch edge-to-edge, leaving the charts thin and lost. Lay both KPI rows
+           out as four equal columns that fill the width, give the cards roomier
+           proportions, and spread the per-cottage occupancy bars across three columns
+           (so the card fills the row instead of floating in the middle). */
         @media (min-width: 1024px) {
             .owner-summary, .today-grid { gap: 18px; }
             .owner-summary { grid-template-columns: repeat(4, 1fr); }
+            .today-grid { grid-template-columns: repeat(4, 1fr); }
             .os-card { padding: 22px 24px; }
             .os-donut { width: 72px; height: 72px; }
             .os-bar { height: 9px; }
             .os-spark { height: 46px; }
-            .occ-by-cottage { max-width: 860px; margin-left: auto; margin-right: auto; }
-            .occ-by-cottage .occ-bars > div { margin-bottom: 12px; }
+            .occ-by-cottage .occ-bars { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px 32px; }
+            .occ-by-cottage .occ-bars > div { margin-bottom: 0; }
             .cal-day { min-height: 128px; }
             .booking-bar { font-size: 0.7rem; padding: 4px 9px; }
         }
@@ -9883,9 +9885,16 @@
                     addNights(propKey, b.checkIn, b.checkOut);
                 });
             });
-            // Include imported Airbnb / Vrbo blocks in occupancy.
+            // Include imported Airbnb / Vrbo blocks in occupancy AND in the next-30-day
+            // arrivals count — a guest checking in via an external platform is still an
+            // arrival to prepare for. Compared on a normalised dashed date so it works
+            // whatever format the import stored.
             Object.keys(dbBlocks).forEach(propKey => {
-                (dbBlocks[propKey] || []).forEach(bl => addNights(propKey, bl.checkIn, bl.checkOut));
+                (dbBlocks[propKey] || []).forEach(bl => {
+                    addNights(propKey, bl.checkIn, bl.checkOut);
+                    const ci = dpParse(bl.checkIn);
+                    if (ci) { const ds = formatDashed(ci); if (ds >= todayStr && ds <= in30) arrivals30++; }
+                });
             });
             const nightsThisMonth = occupiedNights.size;
             const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
@@ -11075,7 +11084,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'nt5u6w8a';
+            const BUILD = 'ou6v7x9b';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
