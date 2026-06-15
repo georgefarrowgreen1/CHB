@@ -1852,7 +1852,7 @@
                             <label style="font-size: 0.72rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-adults">Adults</label>
                             <input type="number" class="input-glass" id="enq-adults" min="1" value="2" oninput="onOccupancyInput(); updateEnquiryPrice();">
                         </div>
-                        <div style="flex: 1;">
+                        <div style="flex: 1;" id="enq-children-field">
                             <label style="font-size: 0.72rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-children">Children</label>
                             <input type="number" class="input-glass" id="enq-children" min="0" value="0" oninput="onOccupancyInput(); updateEnquiryPrice();">
                         </div>
@@ -8004,6 +8004,11 @@
                 if (aEl && parseInt(aEl.value, 10) > lim.maxAdults) aEl.value = lim.maxAdults;
                 if (cEl && parseInt(cEl.value, 10) > lim.maxChildren) cEl.value = lim.maxChildren;
             }
+            // Hide the Children field entirely when this cottage allows no children.
+            const cField = document.getElementById('enq-children-field');
+            const allowChildren = !lim || lim.maxChildren > 0;
+            if (cField) cField.style.display = allowChildren ? '' : 'none';
+            if (!allowChildren && cEl) cEl.value = 0;
             if (hint) hint.innerText = occupancyHint(propKey);
             const rHint = document.getElementById('enq-rules-hint');
             if (rHint) rHint.innerText = bookingRulesHint(propKey);
@@ -8503,7 +8508,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'pr9x5s3k';
+            const BUILD = 'qs8y6t4k';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
