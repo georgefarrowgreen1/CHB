@@ -732,8 +732,12 @@
         .things-note { font-size: 0.9rem; color: var(--text-muted); line-height: 1.5; margin: 10px 0 0; }
         /* Where you'll be */
         .prop-location-text { color: var(--text-muted); margin: 0 0 14px; }
-        .prop-map { width: 100%; height: 320px; border-radius: 18px; overflow: hidden; border: 1px solid var(--glass-border); background: var(--dark-grey); }
+        .prop-map { width: 100%; height: 340px; border-radius: 18px; overflow: hidden; border: 1px solid var(--glass-border); background: var(--dark-grey); box-shadow: 0 10px 30px rgba(0,0,0,0.35); }
         .prop-map.is-empty { display: none; }
+        /* Modern map pin (Google-style dark circle) */
+        .prop-pin { background: transparent; border: none; }
+        .prop-pin-dot { width: 42px; height: 42px; border-radius: 50%; background: #1a191b; border: 3px solid #fff; box-shadow: 0 6px 18px rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; }
+        .prop-pin-dot svg { width: 20px; height: 20px; }
         .prop-features { display: flex; flex-direction: column; gap: 16px; }
         .prop-feature { display: flex; gap: 14px; align-items: flex-start; }
         .prop-feature .ic { width: 24px; height: 24px; flex-shrink: 0; color: var(--text-light); margin-top: 2px; }
@@ -4353,7 +4357,7 @@
             try { await loadLeaflet(); } catch (e) { return; }
             const map = L.map(el, { zoomControl: true, attributionControl: true });
             map.attributionControl.setPrefix('');
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OSM' }).addTo(map);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 20, subdomains: 'abcd', attribution: '© OpenStreetMap, © CARTO' }).addTo(map);
             mapModal.map = map;
             mapModal.propMarker = L.marker([0, 0]).addTo(map).bindPopup('Your cottage');
             mapModal.guestMarker = L.circleMarker([0, 0], { radius: 8, color: '#fff', weight: 2, fillColor: '#2A7DE1', fillOpacity: 1 }).addTo(map).bindPopup('You');
@@ -5825,9 +5829,11 @@
             el.innerHTML = '';
             const map = L.map(el, { zoomControl: true, attributionControl: true, scrollWheelZoom: false });
             map.attributionControl.setPrefix('');
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OSM' }).addTo(map);
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 20, subdomains: 'abcd', attribution: '© OpenStreetMap, © CARTO' }).addTo(map);
             map.setView([geo.lat, geo.lng], 15);
-            L.marker([geo.lat, geo.lng]).addTo(map);
+            const pin = L.divIcon({ className: 'prop-pin', iconSize: [42, 42], iconAnchor: [21, 21],
+                html: '<div class="prop-pin-dot"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-8 9 8"/><path d="M5 10v9h5v-5h4v5h5v-9"/></svg></div>' });
+            L.marker([geo.lat, geo.lng], { icon: pin }).addTo(map);
             __propMap = map;
             setTimeout(() => { try { map.invalidateSize(); } catch (e) {} }, 220);
         }
@@ -8675,7 +8681,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'su7y3v5k';
+            const BUILD = 'tv8z4w6k';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
