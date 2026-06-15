@@ -7106,6 +7106,10 @@
                     }
                 }
             }
+            html += `<div class="hs-back-cta" style="grid-column:1/-1;text-align:center;margin-top:22px;">
+                <p style="color:var(--text-muted);font-size:0.88rem;margin-bottom:12px;">Can't see what you're looking for?</p>
+                <button type="button" class="btn-glass btn-glass-ghost" onclick="backToSearch()">Change your search</button>
+            </div>`;
             grid.innerHTML = html;
             showCottageResults();
         }
@@ -7136,6 +7140,13 @@
             if (res) res.style.display = 'none';
             if (intro) { intro.style.display = ''; fluidSwap(intro); }
             if (def) { def.style.display = ''; fluidSwap(def); }
+        }
+        // Anti-stuck escape: clear the results and glide back up to the search so the
+        // guest can tweak dates / party / cottage and try again.
+        function backToSearch() {
+            resetCottagesView();
+            const hs = document.querySelector('.hero-search');
+            if (hs) { hs.scrollIntoView({ behavior: 'smooth', block: 'center' }); fluidSwap(hs); }
         }
         // Open the cottage with the chosen dates + party pre-filled, ready to send.
         function startBooking(key, ci, co) {
@@ -8209,7 +8220,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'ah7m3k9v';
+            const BUILD = 'bm4t8w2k';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
