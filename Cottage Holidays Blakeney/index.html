@@ -4185,9 +4185,11 @@
                         arrivalInfoCache[s.propKey] = res.info || '';
                         markArrivalUnlocked(s.bookingId, s.propKey);
                         openArrivalModal(s.propKey, res.info);
+                        notifyArrival('arr-here-' + s.bookingId, 'You’ve arrived', `Your key code & arrival details for ${arrivalPropName(s.propKey)} are ready.`);
                     } else if (res.reason === 'nearby') {
                         arrivalGeo[s.propKey] = { lat: res.prop_lat, lng: res.prop_lng };
                         setNearbyNote(s.bookingId, s.propKey, res.distance_m);
+                        if (!s.notifiedNear) { s.notifiedNear = true; notifyArrival('arr-near-' + s.bookingId, 'You’re nearly there', `You’re close to ${arrivalPropName(s.propKey)} — your key code unlocks within 25m.`); }
                         if (!s.autoMapShown) { s.autoMapShown = true; openMapModal(s.propKey); }   // auto-open on entering range
                         else if (mapModal.open && mapModal.propKey === s.propKey) renderMapModal();
                     } else if (res.reason === 'no_active_stay') {
@@ -4206,6 +4208,7 @@
                         setArrivalNote(s.bookingId, `You've arrived early — your key code unlocks at ${res.arrival_time || 'your check-in time'}.`, s.propKey, s.bookingId, false, IC_PIN);
                     } else if (res.reason === 'too_far') {
                         s.autoMapShown = false;   // re-arm auto-open if they come back within 1km
+                        s.notifiedNear = false;   // re-arm the "you're close" alert too
                         if (mapModal.open && mapModal.propKey === s.propKey) closeMapModal();
                         setArrivalNote(s.bookingId, `You're about ${formatDistance(res.distance_m)} away — a map appears once you're within 1km of the cottage.`, s.propKey, s.bookingId, false);
                     }
@@ -4227,6 +4230,28 @@
             const html = `${IC_CHECK} You've arrived — your arrival details are shown. <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="openArrivalModal('${propKey}', arrivalInfoCache['${propKey}'])">Show again</button>`;
             arrivalNoteEls(bookingId).forEach(el => el.innerHTML = html);
             closeMapModal();
+        }
+
+        // ----- Browser notifications for the on-arrival watcher -----
+        // So a guest who leaves the tab open in the background still gets a "you're
+        // close" / "you've arrived" alert. Works while the tab is open (foreground or
+        // backgrounded); a fully-closed app/locked phone would need Web Push + a
+        // service worker, which isn't set up here.
+        function arrivalPropName(propKey) { return (propertyMeta[propKey] && propertyMeta[propKey].name) || propKey; }
+        function requestArrivalNotifications() {
+            try {
+                if (!('Notification' in window)) return;
+                if (Notification.permission === 'default') {
+                    Notification.requestPermission().then(() => { homeArrivalBookingId = null; renderHomeArrival(); });
+                }
+            } catch (e) {}
+        }
+        function notifyArrival(tag, title, body) {
+            try {
+                if (!('Notification' in window) || Notification.permission !== 'granted') return;
+                const n = new Notification(title, { body, tag, icon: 'apple-touch-icon.png' });
+                n.onclick = () => { try { window.focus(); } catch (e) {} n.close(); };
+            } catch (e) {}
         }
 
         function openArrivalModal(propKey, info) {
@@ -4262,9 +4287,12 @@
             if (homeArrivalBookingId !== s.bookingId) {   // (re)build only when the stay changes
                 homeArrivalBookingId = s.bookingId;
                 const name = (propertyMeta[s.propKey] && propertyMeta[s.propKey].name) || s.propKey;
+                const alertsBtn = ('Notification' in window && Notification.permission === 'default')
+                    ? `<button class="btn-sm btn-edit" style="margin-left:4px;" onclick="requestArrivalNotifications()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg> Get alerts</button>`
+                    : '';
                 el.innerHTML = `<div class="home-arrival-card">
                     <div class="home-arrival-text">${IC_PIN} You're staying at <strong>${escapeHtml(name)}</strong></div>
-                    <div id="home-arr-note" class="home-arrival-note">Your key code &amp; arrival info opens automatically when you reach the cottage. <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="revealArrivalAccess('${s.propKey}','${s.bookingId}')">Show now</button></div>
+                    <div id="home-arr-note" class="home-arrival-note">Your key code &amp; arrival info opens automatically when you reach the cottage. <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="revealArrivalAccess('${s.propKey}','${s.bookingId}')">Show now</button>${alertsBtn}</div>
                 </div>`;
             }
             el.classList.add('show');
@@ -4298,6 +4326,7 @@
 
         // Manual one-shot check — the "Show now" fallback.
         async function revealArrivalAccess(propKey, bookingId) {
+            requestArrivalNotifications();   // user gesture — also opt them into arrival alerts
             setArrivalNote(bookingId, "Checking you're at the cottage…", propKey, bookingId, false, IC_PIN);
             if (!navigator.geolocation) {
                 setArrivalNote(bookingId, "This device can't share its location.", propKey, bookingId, false);
@@ -7739,7 +7768,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'hm3b7t9k';
+            const BUILD = 'nt6c2v8w';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
