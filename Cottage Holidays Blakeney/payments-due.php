@@ -56,4 +56,41 @@ foreach ($due as $b) {
     }
 }
 
-json_out(['ok' => true, 'window_days' => $days, 'found' => count($due), 'requested' => $sent, 'skipped' => $skipped, 'detail' => $report]);
+// ---- Reminder pass --------------------------------------------------------
+// Chase still-unpaid balances we've already requested, while arrival is between
+// STOP and FROM days away, at most once every ~3 days, then stop before arrival.
+$fromDays = (defined('PAYMENT_REMINDER_FROM_DAYS') && (int)PAYMENT_REMINDER_FROM_DAYS > 0) ? (int)PAYMENT_REMINDER_FROM_DAYS : 14;
+$stopDays = (defined('PAYMENT_REMINDER_STOP_DAYS') && (int)PAYMENT_REMINDER_STOP_DAYS >= 0) ? (int)PAYMENT_REMINDER_STOP_DAYS : 3;
+$reminded = 0; $remReport = [];
+try {
+    $rs = db()->prepare(
+        "SELECT * FROM bookings
+         WHERE payment <> 'paid'
+           AND email IS NOT NULL AND email <> ''
+           AND balance_requested_at IS NOT NULL
+           AND check_in >= (CURDATE() + INTERVAL ? DAY)
+           AND check_in <= (CURDATE() + INTERVAL ? DAY)
+           AND (balance_reminded_at IS NULL OR balance_reminded_at < (NOW() - INTERVAL 3 DAY))"
+    );
+    $rs->execute([$stopDays, $fromDays]);
+    $toRemind = $rs->fetchAll();
+} catch (\Throwable $e) { $toRemind = []; }
+
+foreach ($toRemind as $b) {
+    $res = request_booking_payment($b, 'balance', true);   // reminder = true
+    if (!empty($res['ok'])) {
+        try { db()->prepare('UPDATE bookings SET balance_reminded_at = NOW() WHERE id = ?')->execute([(int)$b['id']]); } catch (\Throwable $e) {}
+        $reminded++;
+        $remReport[] = ['id' => (int)$b['id'], 'status' => 'reminded', 'amount' => $res['amount'] ?? null];
+    } elseif (($res['error'] ?? '') === 'Nothing left to pay.') {
+        // Settled since the request — stop reminding.
+        try { db()->prepare('UPDATE bookings SET balance_reminded_at = NOW() WHERE id = ?')->execute([(int)$b['id']]); } catch (\Throwable $e) {}
+    }
+}
+
+json_out([
+    'ok' => true, 'window_days' => $days,
+    'found' => count($due), 'requested' => $sent, 'skipped' => $skipped,
+    'reminders_sent' => $reminded, 'reminder_window' => [$stopDays, $fromDays],
+    'detail' => $report, 'reminders' => $remReport,
+]);
