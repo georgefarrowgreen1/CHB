@@ -1460,6 +1460,11 @@
         .btn-glass-ghost { background: transparent; opacity: 0.85; }
         #cottages { scroll-margin-top: calc(100px + env(safe-area-inset-top)); }
         .fluid-swap { animation: fluidFadeIn 0.5s var(--fluid-bezier); }
+        /* Per-cottage reviews block on the property page */
+        .prop-reviews-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 18px; }
+        .prop-reviews-score { font-family: var(--font-serif); font-size: 1.9rem; color: var(--text-light); letter-spacing: 0.5px; }
+        .prop-reviews-count { font-size: 0.92rem; color: var(--text-muted); }
+        .prop-reviews .reviews-grid { grid-template-columns: 1fr; gap: 14px; margin-top: 0; }
         /* Hero-as-results-screen (Airbnb-style): search panel swaps for the result cards */
         .hero-results-wrap { position: relative; z-index: 2; width: 92%; max-width: 1100px; margin: 0 auto; }
         .hero-results-head { text-align: center; margin-bottom: 6px; }
@@ -1673,16 +1678,7 @@
             </div>
         </section>
 
-        <!-- GUEST REVIEWS (owner-curated; hidden until reviews exist) -->
-        <section class="container" id="reviews-section" style="display:none; padding-top: 0;">
-            <h2 class="section-title text-center" data-edit-text="reviews-title">Guest Words</h2>
-            <div class="reviews-grid" id="reviews-list"></div>
-            <div id="reviews-more-wrap" style="text-align:center;margin-top:30px;display:none;">
-                <button class="btn-glass" style="padding:14px 34px;" onclick="openAllReviews()">View more reviews</button>
-            </div>
-        </section>
-
-        <!-- ALL REVIEWS MODAL -->
+        <!-- ALL REVIEWS MODAL (per-cottage "read all reviews") -->
         <div id="reviews-modal" class="reviews-modal">
             <div class="reviews-modal-box glass-panel">
                 <div class="reviews-modal-head">
@@ -1764,6 +1760,7 @@
                         <span><span class="avail-dot avail-taken"></span> Booked</span>
                     </div>
                 </div>
+                <div id="prop-reviews" class="prop-reviews" style="margin-top:32px;"></div>
             </div>
             <div class="glass-panel booking-glass" style="border-radius: 24px;">
                 <h3 style="font-family: var(--font-serif); font-size: 1.8rem; margin-bottom: 4px;" id="prop-price-heading"></h3>
@@ -5184,6 +5181,7 @@
                 try { if (document.getElementById('enq-price-box')) updateEnquiryPrice(); } catch (e) {}
                 // Keep the cottage calendar / date picker availability fresh.
                 try { if (activeFrontProperty) await loadAvailability(activeFrontProperty); } catch (e) {}
+                try { if (activeFrontProperty) renderPropReviews(activeFrontProperty); } catch (e) {}
             } finally {
                 liveUpdateBusy = false;
             }
@@ -6339,12 +6337,35 @@
             if (moreWrap) moreWrap.style.display = reviews.length > 3 ? '' : 'none';
             sec.style.display = '';
         }
-        function openAllReviews() {
+        function openAllReviews(propKey) {
             const m = document.getElementById('reviews-modal');
             const body = document.getElementById('reviews-modal-list');
             if (!m || !body) return;
-            body.innerHTML = allReviews().map(reviewCardHtml).join('');
+            let list = allReviews();
+            if (propKey) list = list.filter(r => r.prop === propKey);
+            body.innerHTML = list.map(reviewCardHtml).join('');
             m.classList.add('open');
+        }
+        // Per-cottage reviews on the property page (Airbnb-style: score + count + cards).
+        function renderPropReviews(propKey) {
+            const wrap = document.getElementById('prop-reviews');
+            if (!wrap) return;
+            const list = allReviews().filter(r => r.prop === propKey);
+            if (!list.length) { wrap.style.display = 'none'; wrap.innerHTML = ''; return; }
+            const count = list.length;
+            const avg = list.reduce((s, r) => s + Math.max(1, Math.min(5, parseInt(r.stars) || 5)), 0) / count;
+            const show = list.slice(0, 4);
+            const more = count > show.length
+                ? `<button class="btn-glass" style="margin-top:18px;padding:12px 28px;" onclick="openAllReviews('${propKey}')">Read all ${count} reviews</button>` : '';
+            wrap.style.display = '';
+            wrap.innerHTML = `
+                <h3 class="section-title" style="text-align:left;font-size:1.6rem;margin-bottom:14px;">Guest reviews</h3>
+                <div class="prop-reviews-head">
+                    <span class="prop-reviews-score">★ ${avg.toFixed(1)}</span>
+                    <span class="prop-reviews-count">${count} review${count === 1 ? '' : 's'}</span>
+                </div>
+                <div class="reviews-grid">${show.map(reviewCardHtml).join('')}</div>
+                ${more}`;
         }
         function closeAllReviews() {
             const m = document.getElementById('reviews-modal');
@@ -7650,6 +7671,9 @@
             // Reset / refresh price box
             updateEnquiryPrice();
 
+            // This cottage's guest reviews (Airbnb-style score + cards)
+            try { renderPropReviews(propKey); } catch (e) {}
+
             nav('view-21a');
         }
 
@@ -8221,7 +8245,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'dp6m4k8x';
+            const BUILD = 'eq7n5k9w';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
