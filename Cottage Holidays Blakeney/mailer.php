@@ -370,6 +370,27 @@ function send_payment_request($b, $payUrl) {
     return smtp_send($b['email'], $name, $subject, $text, $html);
 }
 
+// High-level: build the secure pay link for a booking row + kind and email the
+// guest the request. Returns ['ok'=>bool,'error'=>string,'amount'=>float].
+// Requires db.php + pricing.php to be loaded (always true for callers). The
+// amount is derived server-side from the booking; nothing is trusted from input.
+function request_booking_payment($b, $kind) {
+    $kind = ($kind === 'balance') ? 'balance' : 'deposit';
+    if (!square_enabled()) return ['ok' => false, 'error' => 'Square payments are not switched on.'];
+    if (empty($b['email'])) return ['ok' => false, 'error' => 'No guest email on file.'];
+    $amt = booking_amount_due($b, $kind);
+    if ($amt['due'] <= 0) return ['ok' => false, 'error' => 'Nothing left to pay.', 'amount' => 0];
+    $payUrl = site_base_url() . 'index.html?pay=' . pay_token($b['id']) . '&b=' . (int)$b['id'] . '&k=' . $kind;
+    $rate = get_rate($b['prop_key']);
+    $res = send_payment_request([
+        'name' => $b['name'], 'email' => $b['email'], 'prop_key' => $b['prop_key'],
+        'prop_name' => $rate['name'] ?? $b['prop_key'], 'check_in' => $b['check_in'],
+        'check_out' => $b['check_out'], 'kind' => $kind, 'amount' => $amt['due'], 'total' => $amt['total'],
+    ], $payUrl);
+    $res['amount'] = $amt['due'];
+    return $res;
+}
+
 function send_payment_receipt($b) {
     if (empty($b['email'])) return ['ok' => false, 'error' => 'No guest email on file'];
     $money = fn($n) => '£' . number_format((float)$n, 2);

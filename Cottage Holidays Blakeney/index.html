@@ -2283,7 +2283,8 @@
                 <span style="color:var(--text-muted);">% of the total</span>
                 <button class="btn-sm btn-edit" onclick="saveDepositPct()">Save</button>
             </div>
-            <p style="font-size:0.8rem;color:var(--text-muted);margin-top:14px;">Your Square keys live in <code>config.php</code> on the server (kept private, like your database and email passwords); set <code>SQUARE_PAYMENTS_ENABLED</code> to <code>true</code> once they're filled in — see <strong>SETUP-SQUARE.md</strong>. Guests pay the deposit now and the balance later: open any booking's details and use <em>Request deposit</em> / <em>Request balance</em>.</p>
+            <p style="font-size:0.82rem;color:var(--text-light);margin-top:14px;line-height:1.6;"><strong>Automatic schedule:</strong> when you approve an enquiry the guest is emailed a request for the deposit above. The balance is then auto-requested <strong>30 days before check-in</strong>. If a booking is approved when check-in is already inside 30 days, the guest is asked for the <strong>full amount upfront</strong>.</p>
+            <p style="font-size:0.8rem;color:var(--text-muted);margin-top:10px;">The balance chaser runs from a daily cron on <code>payments-due.php</code> — see <strong>SETUP-SQUARE.md</strong>. Your Square keys live in <code>config.php</code> (kept private, like your database and email passwords); set <code>SQUARE_PAYMENTS_ENABLED</code> to <code>true</code> once filled in. You can still send a request manually anytime from a booking's details.</p>
         </div>
 
         <h3 class="accounts-section-title">Security</h3>
@@ -6734,7 +6735,7 @@
                 ? '<span style="color:#4CAF50;">●</span> Connected — guests can pay by card. Send a request from any booking\'s details.'
                 : '<span style="color:#FFA726;">●</span> Not set up — add your Square keys in <code>config.php</code> and set <code>SQUARE_PAYMENTS_ENABLED</code> to true.';
             const inp = document.getElementById('sq-deposit-pct');
-            if (inp) { const v = parseFloat(siteContent['square-deposit-pct']); inp.value = (v > 0 && v <= 100) ? v : 30; }
+            if (inp) { const v = parseFloat(siteContent['square-deposit-pct']); inp.value = (v > 0 && v <= 100) ? v : 25; }
         }
         async function saveDepositPct() {
             const v = Math.round(parseFloat((document.getElementById('sq-deposit-pct') || {}).value) || 0);
@@ -9291,7 +9292,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'lr7s8q9t';
+            const BUILD = 'ms8t9r2u';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');

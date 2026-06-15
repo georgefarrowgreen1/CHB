@@ -36,7 +36,28 @@ secret). It creates the `payments` ledger table.
 
 ## 5. Set your deposit policy
 **Settings & Fees → Online payments (Square)** → set the deposit percentage
-(default 30%) and Save.
+(default 25%) and Save.
+
+## 5a. The automatic payment schedule
+Once Square is on, payments run themselves:
+- **On approval** — when you approve an enquiry, the guest is automatically emailed
+  a request for the **deposit** (e.g. 25%).
+- **30 days before check-in** — the **balance** is automatically requested.
+- **Approved inside 30 days** — the guest is asked for the **full amount upfront**
+  (no split).
+
+The 30-day window is `PAYMENT_BALANCE_DAYS` in `config.php` (change it if you like).
+You can still send any request by hand from a booking's details.
+
+### Set up the daily cron (required for the balance step)
+The balance chaser runs from a scheduled job. In the **IONOS control panel →
+Cron Jobs**, add a job that runs **once a day** calling:
+```
+https://YOURDOMAIN/payments-due.php?cron=YOUR_APP_SECRET
+```
+`YOUR_APP_SECRET` is the `APP_SECRET` value from `config.php`. (This is the same
+pattern as the check-in push and pre-arrival crons.) Until this cron exists, the
+deposit-on-approval still works; only the automatic balance step needs it.
 
 ## 6. Test in Sandbox
 1. Approve an enquiry so it becomes a booking with a guest email.

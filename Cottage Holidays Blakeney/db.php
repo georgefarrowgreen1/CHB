@@ -200,6 +200,14 @@ function square_api_base() {
 function pay_token($bookingId) {
     return substr(hash_hmac('sha256', 'pay:' . (int)$bookingId, APP_SECRET), 0, 32);
 }
+// Public site root (scheme + host + the folder this script runs from), used to
+// build guest links (e.g. the pay link). Proxy-aware HTTPS via request_is_https().
+function site_base_url() {
+    $scheme = request_is_https() ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    $dir = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/')), '/');
+    return $scheme . '://' . $host . $dir . '/';
+}
 // Minimal Square REST call over cURL (no Composer/SDK needed on shared hosting,
 // matching the raw SMTP/webpush approach). Returns ['status'=>int,'body'=>array].
 // Never throws; a transport failure comes back as status 0 with an 'error' body.

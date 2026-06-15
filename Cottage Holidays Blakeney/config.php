@@ -64,3 +64,7 @@ define('SQUARE_ACCESS_TOKEN', '');                   // SECRET access token for 
 define('SQUARE_WEBHOOK_SIGNATURE_KEY', '');          // SECRET — from the webhook subscription
 define('SQUARE_WEBHOOK_URL', '');                    // the EXACT URL you register, e.g. https://yourdomain.co.uk/square-webhook.php
 define('SQUARE_API_VERSION', '2024-01-18');          // Square-Version header (bump when you adopt newer features)
+// Payment schedule: deposit on approval, then the balance is auto-requested this
+// many days before check-in (and the full amount is requested upfront if a booking
+// is approved inside this window). Requires a daily cron on payments-due.php.
+define('PAYMENT_BALANCE_DAYS', 30);
