@@ -1545,8 +1545,8 @@
             <ul>
                 <span class="nav-indicator" aria-hidden="true"></span>
                 <li><a onclick="nav('view-main')" data-edit-text="nav-home">Home</a></li>
-                <li><a onclick="nav('view-main', 'cottages')" data-edit-text="nav-cottages">Cottages</a></li>
-                <li><a class="btn-glass" onclick="nav('view-main', 'cottages')" data-edit-text="nav-book">Enquire Now</a></li>
+                <li><a onclick="nav('view-cottages')" data-edit-text="nav-cottages">Cottages</a></li>
+                <li><a class="btn-glass" onclick="nav('view-cottages')" data-edit-text="nav-book">Enquire Now</a></li>
             </ul>
         </nav>
         <button class="account-btn" id="account-btn" onclick="openGuestArea()" title="Sign in" aria-label="Sign in / my account">
@@ -1587,8 +1587,8 @@
 
     <div class="mobile-nav-overlay" id="mobileMenu">
         <a onclick="toggleMobileMenu(); nav('view-main')" data-edit-text="mnav-home">Home</a>
-        <a onclick="toggleMobileMenu(); nav('view-main', 'cottages')" data-edit-text="mnav-cottages">Cottages</a>
-        <a class="btn-glass" onclick="toggleMobileMenu(); nav('view-main', 'cottages')" data-edit-text="mnav-book">Enquire Now</a>
+        <a onclick="toggleMobileMenu(); nav('view-cottages')" data-edit-text="mnav-cottages">Cottages</a>
+        <a class="btn-glass" onclick="toggleMobileMenu(); nav('view-cottages')" data-edit-text="mnav-book">Enquire Now</a>
     </div>
 
     <!-- ================= MAIN VIEW ================= -->
@@ -1673,34 +1673,6 @@
             </div>
         </section>
 
-        <section class="container text-center" id="about-intro" style="padding-top: clamp(16px, 3.5vw, 28px); padding-bottom: 0;">
-            <h2 class="section-title" data-edit-text="about-title" style="margin-bottom: 14px;">A Fluid Escape</h2>
-            <p class="lead" data-edit-text="about-desc">Immerse yourself in the dark coastal elegance of North Norfolk. Our handpicked properties blend historic architectural shells with seamless, modern glass interiors. Flow from the saltmarshes to sanctuary.</p>
-        </section>
-
-        <section class="container" id="cottages" style="padding-top: 0;">
-            <div class="grid" style="margin-top: 28px;">
-                <div class="card glass-panel" onclick="openProperty('21a')">
-                    <div class="card-img" data-edit-img="card1-img" style="background-image: url('card-21a.jpg');"></div>
-                    <div class="card-title" data-edit-text="card1-title">21A Westgate</div>
-                    <div class="card-meta" data-edit-text="card1-meta">Sleeps 6 • Townhouse</div>
-                    <div class="card-price" id="card-price-21a"></div>
-                </div>
-                <div class="card glass-panel" onclick="openProperty('jollyboat')">
-                    <div class="card-img" data-edit-img="card2-img" style="background-image: url('card-jollyboat.jpg');"></div>
-                    <div class="card-title" data-edit-text="card2-title">Jollyboat</div>
-                    <div class="card-meta" data-edit-text="card2-meta">Sleeps 2 • Romantic</div>
-                    <div class="card-price" id="card-price-jollyboat"></div>
-                </div>
-                <div class="card glass-panel" onclick="openProperty('pimpernel')">
-                    <div class="card-img" data-edit-img="card3-img" style="background-image: url('card-pimpernel.jpg');"></div>
-                    <div class="card-title" data-edit-text="card3-title">Pimpernel</div>
-                    <div class="card-meta" data-edit-text="card3-meta">Sleeps 4 • Contemporary</div>
-                    <div class="card-price" id="card-price-pimpernel"></div>
-                </div>
-            </div>
-        </section>
-
         <!-- GUEST REVIEWS (owner-curated; hidden until reviews exist) -->
         <section class="container" id="reviews-section" style="display:none; padding-top: 0;">
             <h2 class="section-title text-center" data-edit-text="reviews-title">Guest Words</h2>
@@ -1721,6 +1693,35 @@
             </div>
         </div>
 
+    </main>
+
+    <!-- ================= COTTAGES (the property collection — reached from the header) ================= -->
+    <main id="view-cottages" class="page-view container">
+        <span class="back-link" onclick="nav('view-main')">← Back to Home</span>
+        <div class="text-center">
+            <h2 class="section-title" data-edit-text="about-title" style="margin-bottom: 14px;">A Fluid Escape</h2>
+            <p class="lead" data-edit-text="about-desc">Immerse yourself in the dark coastal elegance of North Norfolk. Our handpicked properties blend historic architectural shells with seamless, modern glass interiors. Flow from the saltmarshes to sanctuary.</p>
+        </div>
+        <div class="grid" id="cottages" style="margin-top: 36px;">
+            <div class="card glass-panel" onclick="openProperty('21a')">
+                <div class="card-img" data-edit-img="card1-img" style="background-image: url('card-21a.jpg');"></div>
+                <div class="card-title" data-edit-text="card1-title">21A Westgate</div>
+                <div class="card-meta" data-edit-text="card1-meta">Sleeps 6 • Townhouse</div>
+                <div class="card-price" id="card-price-21a"></div>
+            </div>
+            <div class="card glass-panel" onclick="openProperty('jollyboat')">
+                <div class="card-img" data-edit-img="card2-img" style="background-image: url('card-jollyboat.jpg');"></div>
+                <div class="card-title" data-edit-text="card2-title">Jollyboat</div>
+                <div class="card-meta" data-edit-text="card2-meta">Sleeps 2 • Romantic</div>
+                <div class="card-price" id="card-price-jollyboat"></div>
+            </div>
+            <div class="card glass-panel" onclick="openProperty('pimpernel')">
+                <div class="card-img" data-edit-img="card3-img" style="background-image: url('card-pimpernel.jpg');"></div>
+                <div class="card-title" data-edit-text="card3-title">Pimpernel</div>
+                <div class="card-meta" data-edit-text="card3-meta">Sleeps 4 • Contemporary</div>
+                <div class="card-price" id="card-price-pimpernel"></div>
+            </div>
+        </div>
     </main>
 
     <!-- ================= PROPERTY DETAIL VIEW (template, populated per cottage) ================= -->
@@ -2675,7 +2676,7 @@
         }
 
         /* --- 1. ROUTING --- */
-        const EDITABLE_VIEWS = ['view-main', 'view-21a', 'view-backoffice', 'view-settings', 'view-accounts'];
+        const EDITABLE_VIEWS = ['view-main', 'view-cottages', 'view-21a', 'view-backoffice', 'view-settings', 'view-accounts'];
 
         function nav(viewId, anchorId = null) {
             const target = document.getElementById(viewId);
@@ -3967,7 +3968,7 @@
                 list.innerHTML = `<div class="glass-panel guest-empty">
                     <p style="font-size:1.3rem;font-weight:600;margin-bottom:8px;">No Bookings Yet</p>
                     <p style="font-size:0.95rem;">Once you book one of our cottages, it will appear here.</p>
-                    <button class="btn-glass" style="margin-top:20px;" onclick="nav('view-main','cottages')">Browse Cottages</button>
+                    <button class="btn-glass" style="margin-top:20px;" onclick="nav('view-cottages')">Browse Cottages</button>
                 </div>`;
                 return;
             }
@@ -7080,7 +7081,7 @@
                 </div>`;
             const noneMsg = (txt) => `<div class="glass-panel" style="grid-column:1/-1;text-align:center;padding:28px;">
                     <p style="margin-bottom:14px;">${escapeHtml(txt)}</p>
-                    <button class="btn-glass" onclick="nav('view-main','cottages')">Browse all cottages</button>
+                    <button class="btn-glass" onclick="nav('view-cottages')">Browse all cottages</button>
                 </div>`;
 
             const fitKeys = Object.keys(results);
@@ -8220,7 +8221,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'cn5p9k3w';
+            const BUILD = 'dp6m4k8x';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
