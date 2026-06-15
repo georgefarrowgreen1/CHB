@@ -85,6 +85,13 @@
     <link rel="icon" type="image/png" sizes="64x64" href="favicon.png?v=3">
     <link rel="shortcut icon" type="image/png" href="favicon.png?v=3">
     <link rel="apple-touch-icon" href="apple-touch-icon.png?v=3">
+    <!-- Installable PWA + Web Push (arrival check-in notifications) -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#121316">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="CHB Stays">
     <style>
         /* --- DESIGN TOKENS & RESET --- */
         * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -4241,10 +4248,55 @@
         function requestArrivalNotifications() {
             try {
                 if (!('Notification' in window)) return;
+                if (Notification.permission === 'granted') { enableArrivalPush(); return; }
                 if (Notification.permission === 'default') {
-                    Notification.requestPermission().then(() => { homeArrivalBookingId = null; renderHomeArrival(); });
+                    Notification.requestPermission().then((p) => {
+                        homeArrivalBookingId = null; renderHomeArrival();
+                        if (p === 'granted') enableArrivalPush();
+                    });
                 }
             } catch (e) {}
+        }
+
+        // ---- Web Push: subscribe this device so check-in alerts arrive even when the
+        //      app is closed (sent on a time trigger by push.php's cron). All optional —
+        //      if VAPID keys aren't configured server-side, this silently does nothing. ----
+        let __vapidKey = null;
+        async function getVapidKey() {
+            if (__vapidKey !== null) return __vapidKey;
+            try { const r = await apiGet('push.php?action=key'); __vapidKey = r.key || ''; }
+            catch (e) { __vapidKey = ''; }
+            return __vapidKey;
+        }
+        function urlB64ToUint8(b64) {
+            const pad = '='.repeat((4 - (b64.length % 4)) % 4);
+            const s = (b64 + pad).replace(/-/g, '+').replace(/_/g, '/');
+            const raw = atob(s); const out = new Uint8Array(raw.length);
+            for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+            return out;
+        }
+        async function registerServiceWorker() {
+            if (!('serviceWorker' in navigator)) return null;
+            try { return await navigator.serviceWorker.register('sw.js'); } catch (e) { return null; }
+        }
+        async function enableArrivalPush() {
+            try {
+                if (!currentGuest) return;
+                if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+                if (!('Notification' in window) || Notification.permission !== 'granted') return;
+                const key = await getVapidKey();
+                if (!key) return;   // server has no VAPID keys yet — feature off
+                const reg = await registerServiceWorker();
+                if (!reg) return;
+                let sub = await reg.pushManager.getSubscription();
+                if (!sub) {
+                    sub = await reg.pushManager.subscribe({
+                        userVisibleOnly: true,
+                        applicationServerKey: urlB64ToUint8(key)
+                    });
+                }
+                await apiPost('push.php', { action: 'subscribe', subscription: sub.toJSON() });
+            } catch (e) { /* push is best-effort; never break the page */ }
         }
         function notifyArrival(tag, title, body) {
             try {
@@ -5036,6 +5088,12 @@
             try { setAuthUI(); } catch (e) { console.error(e); }
             try { setGuestUI(); } catch (e) { console.error(e); }
             try { wireCallButtons(); } catch (e) { console.error(e); }
+            // Register the service worker (PWA install) and, for a returning guest who
+            // already allowed notifications, refresh their push subscription.
+            try { registerServiceWorker(); } catch (e) { console.error(e); }
+            try {
+                if (currentGuest && 'Notification' in window && Notification.permission === 'granted') enableArrivalPush();
+            } catch (e) { console.error(e); }
           } catch (e) {
             // Last-resort: never leave the visitor stuck on the loading crown.
             console.error('Bootstrap error:', e);
@@ -7768,7 +7826,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'nt6c2v8w';
+            const BUILD = 'px9k4r2d';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
