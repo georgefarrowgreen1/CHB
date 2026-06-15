@@ -104,6 +104,12 @@
         html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; scroll-behavior: smooth; }
         img, svg, video { max-width: 100%; height: auto; display: block; }
         button, input, select, textarea { font-family: inherit; font-size: inherit; }
+        /* Consistent, on-brand keyboard focus ring across interactive elements
+           (mouse/touch users never see it — only keyboard navigation does). */
+        a:focus-visible, button:focus-visible, input:focus-visible,
+        select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
+            outline: 2px solid var(--accent-soft); outline-offset: 2px; border-radius: 6px;
+        }
         @media (prefers-reduced-motion: reduce) {
             * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
         }
@@ -130,6 +136,9 @@
             --prop-pimpernel-border: rgba(156, 39, 176, 0.7);
             --text-light: #F4F5F7;
             --text-muted: #B4B8C6;
+            /* Brand accent (rose-gold) — used for focus rings & subtle highlights. */
+            --accent: #D6A785;
+            --accent-soft: rgba(214, 167, 133, 0.55);
             /* Ambient background blobs (themeable) */
             --blob-1: #2A2D3A;
             --blob-2: #1B1E28;
@@ -442,8 +451,8 @@
             display: inline-block;
         }
         .btn-glass:hover { background: var(--text-light); color: var(--dark-grey); }
-        /* Springy press + a hint of lift on hover for a tactile feel. */
-        @media (hover: hover) { .btn-glass:hover { transform: translateY(-1px); } }
+        /* Springy press + a hint of lift + soft shadow on hover for a tactile feel. */
+        @media (hover: hover) { .btn-glass:hover { transform: translateY(-1px); box-shadow: 0 8px 22px rgba(0,0,0,0.28); } }
         .btn-glass:active { transform: scale(0.95); }
         /* Busy/disabled state — used while an async action (e.g. sending an enquiry) is in flight. */
         .btn-glass:disabled, .btn-glass.is-busy { opacity: 0.6; cursor: progress; pointer-events: none; }
@@ -10200,7 +10209,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'ua6b7d9h';
+            const BUILD = 'vb7c8e0i';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
