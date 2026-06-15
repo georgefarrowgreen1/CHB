@@ -722,6 +722,7 @@
         .host-line { display: flex; gap: 10px; align-items: center; font-size: 0.9rem; color: var(--text-light); }
         .host-line .ic { width: 20px; height: 20px; color: var(--text-muted); flex-shrink: 0; }
         .host-bio { font-size: 0.92rem; color: var(--text-muted); line-height: 1.6; margin: 0; }
+        .host-edit-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); display: block; margin: 14px 0 5px; }
         /* Things to know */
         .things-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 26px; }
         .things-title { font-family: var(--font-serif); font-size: 1.15rem; color: var(--text-light); margin-bottom: 10px; }
@@ -1656,6 +1657,9 @@
             <button class="admin-dock-btn" data-view="view-accounts" data-label="Money &amp; income" aria-label="Money &amp; income" title="Money &amp; income" onclick="openAccounts()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><text x="12" y="16.2" font-size="11" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="Georgia, serif">&#163;</text></svg>
             </button>
+            <button class="admin-dock-btn" data-view="view-host" data-label="Host profile" aria-label="Host profile" title="Host profile" onclick="openHostEditor()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg>
+            </button>
             <button class="admin-dock-btn" data-view="view-settings" data-label="Settings &amp; fees" aria-label="Settings &amp; fees" title="Settings &amp; fees" onclick="openSettings()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             </button>
@@ -1878,22 +1882,22 @@
                 <h3 class="section-title prop-section-h">Meet your host</h3>
                 <div class="host-card glass-panel">
                     <div class="host-top">
-                        <div class="host-photo" data-edit-img="host-photo" style="background-image:url('host.jpg');"></div>
+                        <div class="host-photo" id="host-photo"></div>
                         <div>
-                            <div class="host-name" data-edit-text="host-name">Sophia</div>
-                            <div class="host-badge" data-edit-text="host-badge">Superhost</div>
+                            <div class="host-name" id="host-name">Sophia</div>
+                            <div class="host-badge" id="host-badge">Owner</div>
                         </div>
                     </div>
                     <div class="host-stats">
-                        <div><strong data-edit-text="host-reviews">56</strong><span>Reviews</span></div>
-                        <div><strong data-edit-text="host-rating">4.95 ★</strong><span>Rating</span></div>
-                        <div><strong data-edit-text="host-years">10 years</strong><span>Hosting</span></div>
+                        <div><strong id="host-reviews">56</strong><span>Reviews</span></div>
+                        <div><strong id="host-rating">4.95 ★</strong><span>Rating</span></div>
+                        <div><strong id="host-years">10 years</strong><span>Hosting</span></div>
                     </div>
                     <div class="host-lines">
-                        <div class="host-line"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9l9-5 9 5-9 5z"/><path d="M21 9v6M7 11.5V16c0 1 2.2 2.5 5 2.5s5-1.5 5-2.5v-4.5"/></svg> <span data-edit-text="host-school">Where I studied: North Norfolk</span></div>
-                        <div class="host-line"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> <span data-edit-text="host-work">My work: holiday accommodation</span></div>
+                        <div class="host-line"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 9l9-5 9 5-9 5z"/><path d="M21 9v6M7 11.5V16c0 1 2.2 2.5 5 2.5s5-1.5 5-2.5v-4.5"/></svg> <span id="host-school">Where I studied: North Norfolk</span></div>
+                        <div class="host-line"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg> <span id="host-work">My work: holiday accommodation</span></div>
                     </div>
-                    <p class="host-bio" data-edit-text="host-bio">Hi — you can take the girl out of Norfolk, but you can't take Norfolk out of the girl. I love helping guests discover this beautiful stretch of coast.</p>
+                    <p class="host-bio" id="host-bio">Hi — you can take the girl out of Norfolk, but you can't take Norfolk out of the girl. I love helping guests discover this beautiful stretch of coast.</p>
                 </div>
             </div>
             <!-- The enquiry now lives in the two-step #enquire-modal (opened by "Enquire now"). -->
@@ -2162,6 +2166,39 @@
         <div class="accounts-stat" style="max-width:720px;">
             <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 12px;">Guests can write a review from their account once a stay is complete. Nothing appears on the site until you approve it here.</p>
             <div id="guest-review-moderation"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
+        </div>
+    </main>
+
+    <!-- ================= HOST PROFILE EDITOR (admin) ================= -->
+    <main id="view-host" class="page-view container">
+        <span class="back-link" onclick="nav('view-owner-home')">← Back</span>
+        <div class="dashboard-header">
+            <div>
+                <h1 class="section-title" style="margin-bottom: 5px;">Host profile</h1>
+                <p class="lead" style="text-align: left; margin: 0;">Edit the "Meet your host" details shown on every cottage page.</p>
+            </div>
+        </div>
+        <div class="glass-panel" style="max-width: 640px; padding: 30px; border-radius: 20px;">
+            <div style="display:flex;align-items:center;gap:18px;margin-bottom:8px;">
+                <div id="host-edit-photo" style="width:84px;height:84px;border-radius:50%;background-size:cover;background-position:center;background:var(--dark-grey);flex-shrink:0;border:1px solid var(--glass-border);"></div>
+                <button type="button" class="btn-sm btn-edit" onclick="uploadHostPhoto()">Change photo</button>
+            </div>
+            <label class="host-edit-label" for="host-f-name">Name</label>
+            <input class="input-glass" id="host-f-name" onchange="saveHostText('host-name', this.value)">
+            <label class="host-edit-label" for="host-f-badge">Role / badge</label>
+            <input class="input-glass" id="host-f-badge" onchange="saveHostText('host-badge', this.value)">
+            <div style="display:flex;gap:14px;">
+                <div style="flex:1;"><label class="host-edit-label" for="host-f-reviews">Reviews</label><input class="input-glass" id="host-f-reviews" onchange="saveHostText('host-reviews', this.value)"></div>
+                <div style="flex:1;"><label class="host-edit-label" for="host-f-rating">Rating</label><input class="input-glass" id="host-f-rating" onchange="saveHostText('host-rating', this.value)"></div>
+                <div style="flex:1;"><label class="host-edit-label" for="host-f-years">Years hosting</label><input class="input-glass" id="host-f-years" onchange="saveHostText('host-years', this.value)"></div>
+            </div>
+            <label class="host-edit-label" for="host-f-school">"Where I studied" line</label>
+            <input class="input-glass" id="host-f-school" onchange="saveHostText('host-school', this.value)">
+            <label class="host-edit-label" for="host-f-work">"My work" line</label>
+            <input class="input-glass" id="host-f-work" onchange="saveHostText('host-work', this.value)">
+            <label class="host-edit-label" for="host-f-bio">Bio</label>
+            <textarea class="input-glass" id="host-f-bio" rows="4" style="resize:vertical;" onchange="saveHostText('host-bio', this.value)"></textarea>
+            <p id="host-save-msg" style="font-size:0.82rem;color:#4CAF50;min-height:1em;margin:4px 0 0;"></p>
         </div>
     </main>
 
@@ -2848,7 +2885,7 @@
         }
 
         /* --- 1. ROUTING --- */
-        const EDITABLE_VIEWS = ['view-main', 'view-cottages', 'view-21a', 'view-backoffice', 'view-settings', 'view-accounts'];
+        const EDITABLE_VIEWS = ['view-main', 'view-cottages', 'view-21a', 'view-backoffice', 'view-settings', 'view-accounts', 'view-host'];
 
         function nav(viewId, anchorId = null) {
             const target = document.getElementById(viewId);
@@ -5800,6 +5837,51 @@
             saveContent(key, activePropSafety.slice());
         }
 
+        // ---- Meet your host (one shared profile, edited on the admin Host page) ----
+        const HOST_DEFAULTS = {
+            'host-name': 'Sophia', 'host-badge': 'Owner', 'host-reviews': '56',
+            'host-rating': '4.95 ★', 'host-years': '10 years',
+            'host-school': 'Where I studied: North Norfolk',
+            'host-work': 'My work: holiday accommodation',
+            'host-bio': "Hi — you can take the girl out of Norfolk, but you can't take Norfolk out of the girl. I love helping guests discover this beautiful stretch of coast.",
+            'host-photo': ''
+        };
+        const hostVal = (k) => { const v = siteContent[k]; return (v === undefined || v === null || v === '') ? HOST_DEFAULTS[k] : v; };
+        // Fill the cottage-page host card from saved content (no longer inline-editable).
+        function renderHost() {
+            const set = (id) => { const e = document.getElementById(id); if (e) e.textContent = hostVal(id); };
+            ['host-name', 'host-badge', 'host-reviews', 'host-rating', 'host-years', 'host-school', 'host-work', 'host-bio'].forEach(set);
+            const photo = document.getElementById('host-photo');
+            if (photo) photo.style.backgroundImage = hostVal('host-photo') ? `url('${hostVal('host-photo')}')` : '';
+        }
+        // Admin: open the Host profile editor and load the current values.
+        function openHostEditor() {
+            if (!isAuthenticated) { tryAccessBackOffice(); return; }
+            nav('view-host');
+            const setv = (id, key) => { const e = document.getElementById(id); if (e) e.value = hostVal(key); };
+            setv('host-f-name', 'host-name'); setv('host-f-badge', 'host-badge');
+            setv('host-f-reviews', 'host-reviews'); setv('host-f-rating', 'host-rating'); setv('host-f-years', 'host-years');
+            setv('host-f-school', 'host-school'); setv('host-f-work', 'host-work'); setv('host-f-bio', 'host-bio');
+            const photo = document.getElementById('host-edit-photo');
+            if (photo) photo.style.backgroundImage = hostVal('host-photo') ? `url('${hostVal('host-photo')}')` : '';
+        }
+        function saveHostText(key, value) {
+            const v = (value || '').trim();
+            siteContent[key] = v;
+            saveContent(key, v);
+            renderHost();
+            const msg = document.getElementById('host-save-msg');
+            if (msg) { msg.textContent = 'Saved.'; clearTimeout(msg.__t); msg.__t = setTimeout(() => { msg.textContent = ''; }, 1500); }
+        }
+        function uploadHostPhoto() {
+            pickAndUpload('host-photo', async (url) => {
+                siteContent['host-photo'] = url;
+                await saveContent('host-photo', url);
+                const a = document.getElementById('host-edit-photo'); if (a) a.style.backgroundImage = `url('${url}')`;
+                renderHost();
+            });
+        }
+
         // ---- House rules: derived from each cottage's own settings ----
         function renderHouseRules(propKey) {
             const wrap = document.getElementById('prop-house-rules');
@@ -8102,6 +8184,7 @@
             try { renderPropStats(propKey); } catch (e) {}
             try { renderHouseRules(propKey); } catch (e) {}
             try { renderLocationMap(propKey); } catch (e) {}
+            try { renderHost(); } catch (e) {}
             try { renderPropFeatures(propKey); } catch (e) {}
             try { updateBookBar(); } catch (e) {}
 
@@ -8684,7 +8767,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'uw9a5x7k';
+            const BUILD = 'vx9b6y8k';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
