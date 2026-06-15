@@ -1395,6 +1395,30 @@
         .admin-dock-sep { width: 1px; height: 30px; background: rgba(255,255,255,0.14); margin: 0 5px; flex-shrink: 0; }
         .admin-dock-logout:hover, .admin-dock-logout:focus-visible { background: rgba(229,83,60,0.22); }
 
+        /* ----- Homepage arrival banner (floating, logged-in guest mid-stay) ----- */
+        .home-arrival {
+            position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
+            z-index: 1400; display: none; width: max-content; max-width: calc(100vw - 24px);
+        }
+        .home-arrival.show { display: block; }
+        .home-arrival-card {
+            display: flex; align-items: center; gap: 16px;
+            background: rgba(26,25,27,0.92);
+            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.10);
+            border-radius: 18px; padding: 12px 18px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+        }
+        .home-arrival-text { font-size: 0.95rem; color: var(--text-light); white-space: nowrap; }
+        .home-arrival-text strong { font-family: var(--font-serif); }
+        .home-arrival-note { font-size: 0.82rem; color: var(--text-muted); display: flex; align-items: center; flex-wrap: wrap; gap: 4px; }
+        @media (max-width: 620px) {
+            .home-arrival { bottom: 14px; }
+            .home-arrival-card { flex-direction: column; align-items: stretch; gap: 10px; padding: 12px 16px; }
+            .home-arrival-text { white-space: normal; text-align: center; }
+            .home-arrival-note { justify-content: center; }
+        }
+
         /* ----- Liquid-glass zoom buttons on the arrival map ----- */
         .leaflet-bar, .leaflet-control-zoom {
             border: none !important;
@@ -1502,6 +1526,9 @@
             </button>
         </nav>
     </div>
+
+    <!-- Floating arrival banner for a logged-in guest mid-stay (filled in by renderHomeArrival) -->
+    <div id="home-arrival" class="home-arrival" aria-live="polite"></div>
 
     <div class="mobile-nav-overlay" id="mobileMenu">
         <a onclick="toggleMobileMenu(); nav('view-main')" data-edit-text="mnav-home">Home</a>
@@ -2568,8 +2595,11 @@
                 b.classList.toggle('current', b.getAttribute('data-view') === viewId));
             requestAnimationFrame(moveDockIndicator);
 
-            // Stop watching the guest's location once they leave My Bookings.
-            if (viewId !== 'view-guest-bookings') { try { stopArrivalWatch(); } catch (e) {} }
+            // Keep watching the guest's location while a current stay is active (so the
+            // homepage banner + auto-reveal keep working); otherwise stop once they
+            // leave My Bookings. Also show/hide the homepage arrival banner for this view.
+            if (viewId !== 'view-guest-bookings' && !homeArrivalStays.length) { try { stopArrivalWatch(); } catch (e) {} }
+            try { renderHomeArrival(); } catch (e) {}
 
             // On the owner home page the tiles ARE the menu, so hide the top owner bar there.
             document.body.classList.toggle('on-owner-home', viewId === 'view-owner-home');
@@ -3418,6 +3448,8 @@
                 btn.classList.toggle('logged-in', !!currentGuest);
                 btn.title = currentGuest ? `My account — ${currentGuest.name.split(' ')[0]}` : 'Sign in';
             }
+            // Refresh the homepage arrival banner whenever guest login state changes.
+            try { refreshHomeArrival(); } catch (e) {}
         }
 
         // Populate the account "Your details" panel from the logged-in guest.
@@ -3943,6 +3975,21 @@
         const arrivalInfoCache = {};    // propKey -> last unlocked info (for re-open)
         const arrivalGeo = {};          // propKey -> {lat,lng} cottage spot (once within 1km)
         let lastGuestPos = null;        // {lat,lng} last device position (for the map window)
+        // Homepage arrival banner: mirrors the My Bookings on-arrival UI so a guest
+        // mid-stay can reach their live map / key code without opening their account.
+        let homeArrivalStays = [];       // [{propKey, bookingId}] stays whose dates include today
+        let homeArrivalBookingId = null; // the stay currently shown in the banner
+        // All note targets for a booking: the My Bookings card note, and (when it's the
+        // banner's stay) the homepage banner note — so the shared arrival functions
+        // below update both places at once.
+        function arrivalNoteEls(bookingId) {
+            const els = [];
+            const card = document.getElementById('arr-note-' + bookingId);
+            if (card) els.push(card);
+            const banner = document.getElementById('home-arr-note');
+            if (banner && String(homeArrivalBookingId) === String(bookingId)) els.push(banner);
+            return els;
+        }
         const IC_PIN = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.2-6-10a6 6 0 1 1 12 0c0 4.8-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg>';
         const IC_LOCK = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
         const IC_CHECK = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg>';
@@ -3975,11 +4022,12 @@
         }
         // Card note when nearby (25m–1km): distance + a button to open the map window.
         function setNearbyNote(bookingId, propKey, distM) {
-            const note = document.getElementById('arr-note-' + bookingId);
-            if (!note) return;
+            const els = arrivalNoteEls(bookingId);
+            if (!els.length) return;
             const geo = arrivalGeo[propKey];
             const dir = geo ? ` · <a href="https://www.google.com/maps/dir/?api=1&destination=${geo.lat},${geo.lng}&travelmode=driving" target="_blank" rel="noopener" style="color:var(--text-light);text-decoration:underline;">Get directions</a>` : '';
-            note.innerHTML = `${IC_PIN} About ${formatDistance(distM)} away — unlocks within 25m. <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="openMapModal('${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4L3.5 6v14L9 18l6 2 5.5-2V4L15 6 9 4z"/><path d="M9 4v14M15 6v14"/></svg> Live map</button>${dir}`;
+            const html = `${IC_PIN} About ${formatDistance(distM)} away — unlocks within 25m. <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="openMapModal('${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4L3.5 6v14L9 18l6 2 5.5-2V4L15 6 9 4z"/><path d="M9 4v14M15 6v14"/></svg> Live map</button>${dir}`;
+            els.forEach(el => el.innerHTML = html);
         }
 
         // ----- Live map window (its own liquid-glass modal) -----
@@ -4172,13 +4220,12 @@
                 s.propKey, s.bookingId, true, IC_PIN));
         }
         function setArrivalNote(bookingId, text, propKey, bid, showBtn, icon) {
-            const note = document.getElementById('arr-note-' + bookingId);
-            if (!note) return;
-            note.innerHTML = `${icon ? icon + ' ' : ''}${escapeHtml(text)} ${showBtn ? `<button class="btn-sm btn-edit" style="margin-left:4px;" onclick="revealArrivalAccess('${propKey}','${bid}')">Show now</button>` : ''}`;
+            const html = `${icon ? icon + ' ' : ''}${escapeHtml(text)} ${showBtn ? `<button class="btn-sm btn-edit" style="margin-left:4px;" onclick="revealArrivalAccess('${propKey}','${bid}')">Show now</button>` : ''}`;
+            arrivalNoteEls(bookingId).forEach(el => el.innerHTML = html);
         }
         function markArrivalUnlocked(bookingId, propKey) {
-            const note = document.getElementById('arr-note-' + bookingId);
-            if (note) note.innerHTML = `${IC_CHECK} You've arrived — your arrival details are shown. <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="openArrivalModal('${propKey}', arrivalInfoCache['${propKey}'])">Show again</button>`;
+            const html = `${IC_CHECK} You've arrived — your arrival details are shown. <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="openArrivalModal('${propKey}', arrivalInfoCache['${propKey}'])">Show again</button>`;
+            arrivalNoteEls(bookingId).forEach(el => el.innerHTML = html);
             closeMapModal();
         }
 
@@ -4197,6 +4244,56 @@
         function closeArrivalModal() {
             const m = document.getElementById('arrival-modal');
             if (m) m.classList.remove('open');
+        }
+
+        // ----- Homepage arrival banner (logged-in guest, mid-stay) -----
+        // Shows a floating card on any page (except the account page, which has its own
+        // arrival UI) so the guest can reach the live map / key code without navigating
+        // to "My Bookings". Reuses revealArrivalAccess + the shared note functions.
+        function renderHomeArrival() {
+            const el = document.getElementById('home-arrival');
+            if (!el) return;
+            const activeViewId = (document.querySelector('.page-view.active') || {}).id;
+            if (!currentGuest || !homeArrivalStays.length || activeViewId === 'view-guest-bookings') {
+                el.classList.remove('show');
+                return;
+            }
+            const s = homeArrivalStays[0];   // usually exactly one current stay
+            if (homeArrivalBookingId !== s.bookingId) {   // (re)build only when the stay changes
+                homeArrivalBookingId = s.bookingId;
+                const name = (propertyMeta[s.propKey] && propertyMeta[s.propKey].name) || s.propKey;
+                el.innerHTML = `<div class="home-arrival-card">
+                    <div class="home-arrival-text">${IC_PIN} You're staying at <strong>${escapeHtml(name)}</strong></div>
+                    <div id="home-arr-note" class="home-arrival-note">Your key code &amp; arrival info opens automatically when you reach the cottage. <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="revealArrivalAccess('${s.propKey}','${s.bookingId}')">Show now</button></div>
+                </div>`;
+            }
+            el.classList.add('show');
+        }
+        // Look up the logged-in guest's current stays (today within the booking) and
+        // drive the banner + the on-arrival GPS watch. Safe to call repeatedly.
+        async function refreshHomeArrival() {
+            try {
+                if (!currentGuest) {
+                    homeArrivalStays = []; homeArrivalBookingId = null;
+                    renderHomeArrival();
+                    try { stopArrivalWatch(); } catch (e) {}
+                    return;
+                }
+                let rows = [];
+                try { const res = await apiGet('my-bookings.php'); rows = res.bookings || []; }
+                catch (e) { return; }   // leave any existing banner as-is on a transient failure
+                const today = formatDashed(new Date());
+                homeArrivalStays = rows
+                    .map(r => ({ propKey: r.prop_key, b: mapBookingFromApi(r) }))
+                    .filter(x => x.b.checkIn <= today && x.b.checkOut >= today)
+                    .map(x => ({ propKey: x.propKey, bookingId: x.b.id }));
+                if (homeArrivalBookingId && !homeArrivalStays.some(s => s.bookingId === homeArrivalBookingId)) {
+                    homeArrivalBookingId = null;   // previous stay ended — allow a rebuild
+                }
+                renderHomeArrival();
+                if (homeArrivalStays.length) startArrivalWatch(homeArrivalStays);
+                else { try { stopArrivalWatch(); } catch (e) {} }
+            } catch (e) { /* never let the banner break the page */ }
         }
 
         // Manual one-shot check — the "Show now" fallback.
@@ -7642,7 +7739,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'fq7m4x8t';
+            const BUILD = 'hm3b7t9k';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
