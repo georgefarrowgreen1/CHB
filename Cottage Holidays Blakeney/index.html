@@ -1058,6 +1058,24 @@
         .money-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
         .money-actions .field-sm { width: auto; min-width: 120px; margin: 0; }
         .money-actions .money-dep { width: 130px; }
+        .money-owed { font-size: 0.95rem; color: var(--text-light); margin: 4px 0 4px; }
+        .money-owed strong { color: #FFA726; }
+        .money-owed.all-paid strong, .money-owed.all-paid { color: #4CAF50; }
+        .money-row.due-soon { border-color: rgba(255,167,38,0.5); }
+        .money-badge { display: inline-block; margin-left: 8px; padding: 2px 9px; border-radius: 10px; font-size: 0.7rem; font-weight: 600; background: rgba(255,167,38,0.18); color: #FFB74D; vertical-align: middle; }
+        /* Recent payments feed */
+        .feed-list { padding: 4px 16px; border-radius: 16px; }
+        .feed-row { display: grid; grid-template-columns: 92px auto 1fr auto auto auto; gap: 12px; align-items: center; padding: 11px 0; border-top: 1px solid var(--glass-border); font-size: 0.86rem; }
+        .feed-row:first-child { border-top: none; }
+        .feed-date { color: var(--text-muted); font-size: 0.8rem; }
+        .feed-who { color: var(--text-light); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .feed-kind { color: var(--text-muted); }
+        .feed-amt { font-weight: 600; text-align: right; }
+        .feed-status { color: var(--text-muted); font-size: 0.74rem; text-transform: capitalize; }
+        @media (max-width: 640px) {
+            .feed-row { grid-template-columns: 1fr auto; row-gap: 3px; }
+            .feed-row .prop-tag, .feed-row .feed-kind, .feed-row .feed-status { display: none; }
+        }
         .os-card { background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 18px; padding: 18px 20px; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
         .os-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin-bottom: 8px; }
         .os-value { font-family: var(--font-serif); font-size: 1.7rem; line-height: 1.1; }
@@ -2396,9 +2414,11 @@
         <div id="money-panel">
             <!-- JS injects the per-booking payments & balances manager here -->
         </div>
-        <h3 class="accounts-section-title" style="margin-top:34px;">Income report</h3>
+        <div id="money-feed" style="margin-top:34px;"><!-- recent payments feed --></div>
+        <div id="money-forecast" style="margin-top:34px;"><!-- income forecast by month --></div>
+        <h3 class="accounts-section-title" style="margin-top:34px;">Income &amp; tax</h3>
         <div id="accounts-content">
-            <!-- JS injects the report here -->
+            <!-- JS injects the slim income line + CSV export here -->
         </div>
     </main>
 
@@ -3853,6 +3873,8 @@
             // back office first), then render the payments manager + income report.
             try { if (!Object.keys(dbBookings).some(k => (dbBookings[k] || []).length)) await loadData(); } catch (e) {}
             try { renderMoneyPanel(); } catch (e) {}
+            try { renderMoneyForecast(); } catch (e) {}
+            try { renderMoneyFeed(); } catch (e) {}
             await renderAccounts();
         }
 
@@ -3871,71 +3893,21 @@
 
             const total = rep.total || 0;
             const heldDeposits = rep.held_deposits || 0;
-            const txnCount = rep.count || 0;
-            const byProp = rep.by_property || {};
-            const payments = rep.payments || [];
             const undated = rep.undated || { count: 0, total: 0, held: 0 };
 
-            let html = `
-                <div class="accounts-summary">
-                    <div class="accounts-stat headline">
-                        <div class="label">Rental income — ${taxYearShort(startYear)}</div>
-                        <div class="value">${gbp(total)}</div>
-                    </div>
-                    <div class="accounts-stat">
-                        <div class="label">Damages deposits held</div>
-                        <div class="value">${gbp(heldDeposits)}</div>
-                    </div>
-                    <div class="accounts-stat">
-                        <div class="label">Payments recorded</div>
-                        <div class="value">${txnCount}</div>
-                    </div>
+            content.innerHTML = `
+                <div class="accounts-stat headline" style="max-width:420px;">
+                    <div class="label">Rental income — ${taxYearShort(startYear)}</div>
+                    <div class="value">${gbp(total)}</div>
                 </div>
-                <div class="accounts-note">Rental income is what you have earned. Damages deposits are held and refundable — they are shown separately and are <strong>not</strong> counted as income.</div>`;
-
-            html += `<h3 class="accounts-section-title">Rental Income by Property</h3>
-                <table class="accounts-table">
-                    <thead><tr><th>Property</th><th class="num">Income</th></tr></thead>
-                    <tbody>
-                        ${Object.keys(propertyMeta).map(k =>
-                            `<tr><td><span class="legend-swatch swatch-${k}"></span> ${escapeHtml(propertyMeta[k].name)}</td><td class="num">${gbp(byProp[k] || 0)}</td></tr>`
-                        ).join('')}
-                        <tr><td style="font-weight:600;">Total income</td><td class="num" style="font-weight:600;">${gbp(total)}</td></tr>
-                    </tbody>
-                </table>`;
-
-            if (payments.length > 0) {
-                html += `<h3 class="accounts-section-title">Payments</h3>
-                    <table class="accounts-table">
-                        <thead><tr><th>Date</th><th>Booking ref</th><th>Guest</th><th>Property</th><th>Method</th><th class="num">Income</th><th class="num">Held deposit</th><th class="num">Received</th></tr></thead>
-                        <tbody>
-                            ${payments.map(r => `<tr>
-                                <td>${r.payment_date || '—'}</td>
-                                <td>${bookingRef('b' + r.id)}</td>
-                                <td>${escapeHtml(r.name || '')}</td>
-                                <td>${escapeHtml(r.property_name || (propertyMeta[r.prop_key] && propertyMeta[r.prop_key].name) || '')}</td>
-                                <td>${escapeHtml(r.payment_method || '—')}</td>
-                                <td class="num">${gbp(parseFloat(r.income_part) || 0)}</td>
-                                <td class="num">${gbp(parseFloat(r.held_part) || 0)}</td>
-                                <td class="num">${gbp(parseFloat(r.received) || 0)}</td>
-                            </tr>`).join('')}
-                            <tr style="font-weight:600;"><td colspan="5">Totals</td><td class="num">${gbp(total)}</td><td class="num">${gbp(heldDeposits)}</td><td class="num">${gbp(total + heldDeposits)}</td></tr>
-                        </tbody>
-                    </table>`;
-            } else {
-                html += `<div class="accounts-empty">No payments recorded in this tax year.</div>`;
-            }
-
-            if (undated.count > 0) {
-                html += `<div class="accounts-note"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4"/><circle cx="12" cy="17.4" r="0.6" fill="currentColor" stroke="none"/></svg> ${undated.count} payment(s) totalling ${gbp((undated.total || 0) + (undated.held || 0))} have no payment date recorded, so they are not counted in any tax year. Add a payment date in the booking's details to include them.</div>`;
-            }
-
-            html += `<div class="accounts-actions">
-                        <button class="btn-sm btn-edit" onclick="exportAccountsCSV()">⤓ Export this year (CSV)</button>
-                     </div>
-                     <div class="accounts-note">Figures show money actually received, split into rental income and refundable damages deposits held, allocated to the UK tax year by the date each payment was recorded. This is a summary to assist your record-keeping, not a substitute for formal accounting advice.</div>`;
-
-            content.innerHTML = html;
+                <div class="accounts-actions" style="margin-top:14px;">
+                    <button class="btn-sm btn-edit" onclick="exportAccountsCSV()">⤓ Export this year (CSV)</button>
+                </div>
+                <div class="accounts-note" style="margin-top:12px;">
+                    ${heldDeposits > 0 ? gbp(heldDeposits) + ' in refundable damages deposits is held separately and is <strong>not</strong> income. ' : ''}
+                    Figures are money received, allocated to the UK tax year by each payment's recorded date — a record-keeping aid, not formal accounting advice.
+                    ${undated.count > 0 ? `<br>${undated.count} payment(s) totalling ${gbp((undated.total || 0) + (undated.held || 0))} have no payment date recorded, so they aren't counted in any tax year — add a payment date on the booking to include them.` : ''}
+                </div>`;
         }
 
         // Per-booking payments & balances manager (top of the Money & income view).
@@ -3946,9 +3918,19 @@
             const today = todayDashed();
             const rows = [];
             Object.keys(dbBookings).forEach(propKey => {
-                (dbBookings[propKey] || []).forEach(b => { if ((b.checkOut || '') >= today) rows.push({ propKey, b }); });
+                (dbBookings[propKey] || []).forEach(b => {
+                    if ((b.checkOut || '') >= today) rows.push({ propKey, b, ps: paymentSummary(propKey, b) });
+                });
             });
-            rows.sort((a, b) => (a.b.checkIn || '').localeCompare(b.b.checkIn || ''));
+            // "Owed to you" focus: unpaid/part-paid first (an action queue), then settled;
+            // within each group, soonest check-in first.
+            rows.sort((a, b) => {
+                const ap = a.ps.fullyPaid ? 1 : 0, bp = b.ps.fullyPaid ? 1 : 0;
+                if (ap !== bp) return ap - bp;
+                return (a.b.checkIn || '').localeCompare(b.b.checkIn || '');
+            });
+            const owed = rows.filter(r => !r.ps.fullyPaid);
+            const owedTotal = owed.reduce((s, r) => s + (r.ps.balance || 0), 0);
             const intro = squareAdminEnabled
                 ? 'Email the guest a secure card link with <strong>Request deposit</strong> / <strong>Request full balance</strong>, or record a manual payment (bank transfer, cash) with the controls on each row.'
                 : 'Square card payments are off — set them up in Settings to email pay links. You can still record manual payments (bank transfer, cash) below.';
@@ -3956,20 +3938,27 @@
                 el.innerHTML = `<h3 class="accounts-section-title">Payments &amp; balances</h3><div class="accounts-empty">No upcoming or current bookings.</div>`;
                 return;
             }
-            const cards = rows.map(({ propKey, b }) => {
-                const ps = paymentSummary(propKey, b);
+            const owedBanner = owed.length
+                ? `<div class="money-owed">You're owed <strong>${gbp(owedTotal)}</strong> across ${owed.length} booking${owed.length === 1 ? '' : 's'}.</div>`
+                : `<div class="money-owed all-paid">All upcoming bookings are paid in full.</div>`;
+            const cards = rows.map(({ propKey, b, ps }) => {
                 const meta = paymentMeta[b.payment] || { label: '—', dot: '#888' };
+                const ci = dpParse(b.checkIn), t0 = dpParse(today);
+                const days = (ci && t0) ? Math.round((ci - t0) / 86400000) : 99;
+                const dueSoon = !ps.fullyPaid && days <= 7;   // within a week, today, or already started
+                const badge = dueSoon
+                    ? `<span class="money-badge">${days < 0 ? 'In progress · unpaid' : (days === 0 ? 'Arrives today · unpaid' : 'Due soon · ' + days + 'd')}</span>` : '';
                 const sqBtns = (squareAdminEnabled && b.email) ? `
                         <button class="btn-sm btn-edit" onclick="requestPayment('${b.id}','deposit')">Request deposit</button>
                         <button class="btn-sm btn-edit" onclick="requestPayment('${b.id}','balance')">Request full balance</button>` : '';
                 const history = (squareAdminEnabled && b.email)
                     ? `<div id="sq-pay-${b.id}" class="sq-pay-history" style="margin-top:10px;font-size:0.82rem;color:var(--text-muted);">Loading payments…</div>` : '';
                 return `
-                <div class="money-row glass-panel">
+                <div class="money-row glass-panel${dueSoon ? ' due-soon' : ''}">
                     <div class="money-row-head">
                         <div><span class="prop-tag tag-${propKey}">${propertyMeta[propKey] ? propertyMeta[propKey].name : propKey}</span>
                             <strong style="margin-left:8px;">${escapeHtml(b.name)}</strong>
-                            <span style="color:var(--text-muted);margin-left:8px;font-size:0.85rem;">${b.checkIn} → ${b.checkOut}</span></div>
+                            <span style="color:var(--text-muted);margin-left:8px;font-size:0.85rem;">${b.checkIn} → ${b.checkOut}</span> ${badge}</div>
                         <span class="money-status"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${meta.dot};"></span> ${meta.label}</span>
                     </div>
                     <div class="money-figures">
@@ -3989,8 +3978,96 @@
                 </div>`;
             }).join('');
             el.innerHTML = `<h3 class="accounts-section-title">Payments &amp; balances</h3>
-                <p style="font-size:0.82rem;color:var(--text-muted);margin:-6px 0 16px;max-width:640px;">${intro}</p>${cards}`;
+                ${owedBanner}
+                <p style="font-size:0.82rem;color:var(--text-muted);margin:8px 0 16px;max-width:640px;">${intro}</p>${cards}`;
             if (squareAdminEnabled) rows.forEach(({ b }) => { if (b.email) loadBookingPayments(b.id); });
+        }
+        // Recent Square transactions across all bookings (deposits, balances, refunds).
+        async function renderMoneyFeed() {
+            const el = document.getElementById('money-feed');
+            if (!el) return;
+            let list = [];
+            try { const r = await apiPost('bookings.php', { action: 'recent_payments' }); list = r.payments || []; }
+            catch (e) { el.innerHTML = ''; return; }
+            if (!list.length) {
+                el.innerHTML = `<h3 class="accounts-section-title">Recent payments</h3><div class="accounts-empty">No card payments yet. Card deposits, balances and refunds will appear here.</div>`;
+                return;
+            }
+            const rows = list.map(p => {
+                const refund = p.kind === 'refund';
+                const label = refund ? 'Refund' : (p.kind.charAt(0).toUpperCase() + p.kind.slice(1));
+                const amt = (refund ? '−' : '') + gbp(Math.abs(parseFloat(p.amount) || 0));
+                const date = (p.created_at || '').slice(0, 10) || '—';
+                const propName = propertyMeta[p.prop_key] ? propertyMeta[p.prop_key].name : (p.prop_key || '');
+                return `<div class="feed-row">
+                    <span class="feed-date">${escapeHtml(date)}</span>
+                    <span class="prop-tag tag-${p.prop_key}">${escapeHtml(propName)}</span>
+                    <span class="feed-who">${escapeHtml(p.name || 'Guest')}</span>
+                    <span class="feed-kind">${label}</span>
+                    <span class="feed-amt" style="${refund ? 'color:#E57373;' : 'color:#4CAF50;'}">${amt}</span>
+                    <span class="feed-status">${escapeHtml(p.status || '')}</span>
+                </div>`;
+            }).join('');
+            el.innerHTML = `<h3 class="accounts-section-title">Recent payments</h3><div class="feed-list glass-panel">${rows}</div>`;
+        }
+        // Projected revenue + occupancy by month from confirmed upcoming bookings.
+        function renderMoneyForecast() {
+            const el = document.getElementById('money-forecast');
+            if (!el) return;
+            const now = new Date();
+            const months = [];
+            for (let i = 0; i < 6; i++) {
+                const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+                months.push({
+                    key: d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'),
+                    label: d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' }),
+                    start: new Date(d.getFullYear(), d.getMonth(), 1),
+                    end: new Date(d.getFullYear(), d.getMonth() + 1, 0),
+                    revenue: 0, bookings: 0, nights: new Set()
+                });
+            }
+            const propCount = Object.keys(propertyMeta).length || 3;
+            // Revenue: direct bookings by check-in month. Occupancy: direct bookings + iCal
+            // blocks, each cottage-night counted once (mirrors renderOwnerSummary).
+            const addNights = (m, propKey, checkIn, checkOut) => {
+                let d = dpParse(checkIn), end = dpParse(checkOut);
+                if (!d || !end) return;
+                for (; d < end; d.setDate(d.getDate() + 1)) {
+                    if (d >= m.start && d <= m.end) m.nights.add(propKey + '|' + formatDashed(d));
+                }
+            };
+            Object.keys(dbBookings).forEach(propKey => {
+                (dbBookings[propKey] || []).forEach(b => {
+                    months.forEach(m => {
+                        const ci = dpParse(b.checkIn);
+                        if (ci && ci >= m.start && ci <= m.end) {
+                            m.revenue += (b.agreedPrice && b.agreedPrice.total) || 0;
+                            m.bookings++;
+                        }
+                        addNights(m, propKey, b.checkIn, b.checkOut);
+                    });
+                });
+            });
+            Object.keys(dbBlocks || {}).forEach(propKey => {
+                (dbBlocks[propKey] || []).forEach(bl => months.forEach(m => addNights(m, propKey, bl.checkIn, bl.checkOut)));
+            });
+            const body = months.map(m => {
+                const daysInMonth = m.end.getDate();
+                const occ = Math.round((m.nights.size / (daysInMonth * propCount)) * 100);
+                return `<tr>
+                    <td>${escapeHtml(m.label)}</td>
+                    <td class="num">${gbp(m.revenue)}</td>
+                    <td class="num">${m.bookings}</td>
+                    <td class="num">${occ}%</td>
+                </tr>`;
+            }).join('');
+            const projTotal = months.reduce((s, m) => s + m.revenue, 0);
+            el.innerHTML = `<h3 class="accounts-section-title">Income forecast (next 6 months)</h3>
+                <table class="accounts-table">
+                    <thead><tr><th>Month</th><th class="num">Projected revenue</th><th class="num">Bookings</th><th class="num">Occupancy</th></tr></thead>
+                    <tbody>${body}<tr style="font-weight:600;"><td>Total projected</td><td class="num">${gbp(projTotal)}</td><td class="num"></td><td class="num"></td></tr></tbody>
+                </table>
+                <div class="accounts-note" style="margin-top:8px;">Projected revenue is the agreed total of confirmed bookings whose check-in falls in each month; occupancy counts booked cottage-nights (direct + imported) across all ${propCount} cottages.</div>`;
         }
         // Refresh after any payment change: re-render the money panel if we're on the
         // Money & income view, otherwise re-open the booking detail pop-up (calendar).
@@ -9393,7 +9470,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'nt9u2s4v';
+            const BUILD = 'pu2v3t5w';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');

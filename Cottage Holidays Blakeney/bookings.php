@@ -398,4 +398,16 @@ if ($action === 'payments') {
     } catch (\Throwable $e) { json_out(['payments' => []]); }
 }
 
+// Recent Square transactions across all bookings (Money & income feed).
+if ($action === 'recent_payments') {
+    try {
+        $rows = db()->query(
+            'SELECT p.square_payment_id, p.kind, p.amount, p.status, p.created_at, b.name, b.prop_key
+             FROM payments p JOIN bookings b ON b.id = p.booking_id
+             ORDER BY p.id DESC LIMIT 25'
+        )->fetchAll();
+        json_out(['payments' => $rows]);
+    } catch (\Throwable $e) { json_out(['payments' => []]); }
+}
+
 json_out(['error' => 'Unknown action'], 400);
