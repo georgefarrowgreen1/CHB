@@ -1065,15 +1065,17 @@
         .money-badge { display: inline-block; margin-left: 8px; padding: 2px 9px; border-radius: 10px; font-size: 0.7rem; font-weight: 600; background: rgba(255,167,38,0.18); color: #FFB74D; vertical-align: middle; }
         /* Recent payments feed */
         .feed-list { padding: 4px 16px; border-radius: 16px; }
-        .feed-row { display: grid; grid-template-columns: 92px auto 1fr auto auto auto; gap: 12px; align-items: center; padding: 11px 0; border-top: 1px solid var(--glass-border); font-size: 0.86rem; }
+        .feed-row { display: grid; grid-template-columns: 92px auto 1fr auto auto auto 30px; gap: 12px; align-items: center; padding: 11px 0; border-top: 1px solid var(--glass-border); font-size: 0.86rem; }
         .feed-row:first-child { border-top: none; }
         .feed-date { color: var(--text-muted); font-size: 0.8rem; }
         .feed-who { color: var(--text-light); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .feed-kind { color: var(--text-muted); }
         .feed-amt { font-weight: 600; text-align: right; }
         .feed-status { color: var(--text-muted); font-size: 0.74rem; text-transform: capitalize; }
+        .feed-del { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.2rem; line-height: 1; padding: 2px 6px; border-radius: 7px; justify-self: end; }
+        .feed-del:hover, .feed-del:focus-visible { background: rgba(229,83,60,0.16); color: #ff8a78; }
         @media (max-width: 640px) {
-            .feed-row { grid-template-columns: 1fr auto; row-gap: 3px; }
+            .feed-row { grid-template-columns: 1fr auto auto; row-gap: 3px; }
             .feed-row .prop-tag, .feed-row .feed-kind, .feed-row .feed-status { display: none; }
         }
         .os-card { background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 18px; padding: 18px 20px; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
@@ -4008,9 +4010,21 @@
                     <span class="feed-kind">${label}</span>
                     <span class="feed-amt" style="${refund ? 'color:#E57373;' : 'color:#4CAF50;'}">${amt}</span>
                     <span class="feed-status">${escapeHtml(p.status || '')}</span>
+                    <button class="feed-del" title="Remove this record from the log" aria-label="Remove this payment record" onclick="deleteRecentPayment('${escapeHtml(p.square_payment_id)}')">&times;</button>
                 </div>`;
             }).join('');
-            el.innerHTML = `<h3 class="accounts-section-title">Recent payments</h3><div class="feed-list glass-panel">${rows}</div>`;
+            el.innerHTML = `<h3 class="accounts-section-title">Recent payments</h3>
+                <p style="font-size:0.78rem;color:var(--text-muted);margin:-6px 0 12px;">Tidying up test transactions? The &times; removes a record from this log only — it doesn't refund anyone or change a booking.</p>
+                <div class="feed-list glass-panel">${rows}</div>`;
+        }
+        // Remove a single transaction from the recent-payments log (test cleanup).
+        async function deleteRecentPayment(sqId) {
+            if (!await glassConfirm("Remove this payment from the recent-payments log? This only deletes the record shown here — it does NOT refund the guest or change a booking.")) return;
+            try {
+                await apiPost('bookings.php', { action: 'delete_payment', square_payment_id: sqId });
+                toast('Payment record removed.');
+                renderMoneyFeed();
+            } catch (e) { glassAlert("Couldn't remove that record: " + e.message); }
         }
         // Projected revenue + occupancy by month from confirmed upcoming bookings.
         function renderMoneyForecast() {
@@ -9472,7 +9486,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'qv3w4u6x';
+            const BUILD = 'rw4x5v7y';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
