@@ -90,4 +90,27 @@ if ($action === 'unsubscribe') {
     json_out(['ok' => true]);
 }
 
+// Verification: send an immediate push to THIS logged-in guest's own device(s).
+// Visit while logged in as a guest:  /push.php?action=test
+if ($action === 'test') {
+    if (!wp_vapid_configured()) json_out(['error' => 'VAPID keys not set in config.php yet'], 400);
+    try {
+        $q = db()->prepare('SELECT id, endpoint FROM push_subscriptions WHERE guest_id = ?');
+        $q->execute([$guestId]);
+        $rows = $q->fetchAll();
+    } catch (\Throwable $e) {
+        json_out(['error' => 'Could not read subscriptions — has migration-push.sql been run?'], 500);
+    }
+    $sent = 0; $statuses = [];
+    foreach ($rows as $sub) {
+        $r = send_webpush($sub['endpoint']);
+        $statuses[] = $r['status'];
+        if ($r['ok']) $sent++;
+        elseif (in_array($r['status'], [404, 410], true)) {
+            db()->prepare('DELETE FROM push_subscriptions WHERE id = ?')->execute([(int)$sub['id']]);
+        }
+    }
+    json_out(['ok' => true, 'devices' => count($rows), 'sent' => $sent, 'statuses' => $statuses]);
+}
+
 json_out(['error' => 'Unknown action'], 400);
