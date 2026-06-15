@@ -1226,6 +1226,16 @@
         .os-sub { font-size: 0.74rem; color: var(--text-muted); margin-top: 4px; }
         .os-value.os-good { color: #4CAF50; }
         .os-value.os-warn { color: #FFA726; }
+        /* Infographic dashboard cards */
+        .os-card { display: flex; flex-direction: column; }
+        .os-card .os-value { margin-top: 2px; }
+        .os-donut-row { display: flex; align-items: center; gap: 14px; margin-top: 6px; }
+        .os-donut { width: 62px; height: 62px; flex-shrink: 0; }
+        .os-donut-meta { min-width: 0; }
+        .os-donut-meta .os-value { font-size: 1.5rem; }
+        .os-spark { width: 100%; height: 36px; display: block; margin-top: 8px; overflow: visible; }
+        .os-bar { height: 8px; border-radius: 5px; background: rgba(255,255,255,0.10); overflow: hidden; margin-top: 10px; }
+        .os-bar > span { display: block; height: 100%; border-radius: 5px; background: #4CAF50; transition: width 0.6s var(--fluid-bezier); }
         /* Tidy action row on guest booking cards */
         .card-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
         .card-actions .btn-sm { padding: 10px 18px; }
@@ -9685,13 +9695,45 @@
             const occ = totalRoomNights ? Math.round((nightsThisMonth / totalRoomNights) * 100) : 0;
             const monthName = now.toLocaleDateString('en-GB', { month: 'long' });
 
+            const paidFrac = (received + outstanding) > 0 ? received / (received + outstanding) : (received > 0 ? 1 : 0);
             el.innerHTML = `
-                <div class="os-card"><div class="os-label">Visits this week</div><div class="os-value" id="os-visits">—</div><div class="os-sub" id="os-visits-sub">last 7 days</div></div>
-                <div class="os-card"><div class="os-label">Arrivals (next 30 days)</div><div class="os-value">${arrivals30}</div><div class="os-sub">guests checking in</div></div>
-                <div class="os-card"><div class="os-label">Received</div><div class="os-value os-good">${gbp(received)}</div><div class="os-sub">payments collected</div></div>
-                <div class="os-card"><div class="os-label">Outstanding</div><div class="os-value ${outstanding > 0.001 ? 'os-warn' : ''}">${gbp(outstanding)}</div><div class="os-sub">${unpaidUpcoming} upcoming not fully paid</div></div>
-                <div class="os-card"><div class="os-label">Occupancy (${monthName})</div><div class="os-value">${occ}%</div><div class="os-sub">${nightsThisMonth} of ${totalRoomNights} cottage-nights</div></div>`;
+                <div class="os-card"><div class="os-label">Visits this week</div>
+                    <div class="os-value" id="os-visits">—</div>
+                    <svg class="os-spark" id="os-visits-spark" viewBox="0 0 100 36" preserveAspectRatio="none" aria-hidden="true"></svg>
+                    <div class="os-sub" id="os-visits-sub">last 7 days</div></div>
+                <div class="os-card"><div class="os-label">Occupancy (${monthName})</div>
+                    <div class="os-donut-row">${osDonut(occ, 'var(--accent)')}
+                        <div class="os-donut-meta"><div class="os-sub" style="margin-top:0;">${nightsThisMonth} of ${totalRoomNights}<br>cottage-nights</div></div>
+                    </div></div>
+                <div class="os-card"><div class="os-label">Received</div>
+                    <div class="os-value os-good">${gbp(received)}</div>
+                    <div class="os-bar"><span style="width:${Math.round(paidFrac * 100)}%;"></span></div>
+                    <div class="os-sub">${outstanding > 0.001 ? gbp(outstanding) + ' outstanding · ' + unpaidUpcoming + ' unpaid' : 'All upcoming stays paid'}</div></div>
+                <div class="os-card"><div class="os-label">Arrivals (next 30 days)</div>
+                    <div class="os-value">${arrivals30}</div><div class="os-sub">guests checking in</div></div>`;
             refreshHomeVisits();
+        }
+        // Radial donut gauge (inline SVG) for a 0–100 percentage.
+        function osDonut(pct, color) {
+            pct = Math.max(0, Math.min(100, pct || 0));
+            const R = 26, C = 2 * Math.PI * R, dash = (C * pct / 100).toFixed(1);
+            return `<svg class="os-donut" viewBox="0 0 64 64" role="img" aria-label="${pct}%">
+                <circle cx="32" cy="32" r="${R}" fill="none" stroke="rgba(255,255,255,0.10)" stroke-width="7"/>
+                <circle cx="32" cy="32" r="${R}" fill="none" stroke="${color}" stroke-width="7" stroke-linecap="round" stroke-dasharray="${dash} ${C.toFixed(1)}" transform="rotate(-90 32 32)"/>
+                <text x="32" y="38" text-anchor="middle" font-family="var(--font-serif)" font-size="16" fill="var(--text-light)">${pct}%</text>
+            </svg>`;
+        }
+        // Filled sparkline for a small series of values (drawn into an existing <svg>).
+        function osSparkline(el, values, color) {
+            if (!el) return;
+            const vals = (values && values.length) ? values : [0];
+            const max = Math.max(1, ...vals), n = vals.length;
+            const x = i => n === 1 ? 50 : (i * 100) / (n - 1);
+            const y = v => 34 - (v / max) * 32 + 1;
+            const pts = vals.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
+            const area = `0,36 ${pts} 100,36`;
+            el.innerHTML = `<polygon points="${area}" fill="${color}" fill-opacity="0.18"/>
+                <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`;
         }
         // Fill the dashboard "Visits this week" card from the analytics endpoint
         // (cached ~60s so flipping calendar months doesn't refetch each time).
@@ -9709,6 +9751,8 @@
                 cur.textContent = __homeVisits.weekViews || 0;
                 const s = document.getElementById('os-visits-sub');
                 if (s) s.textContent = `${__homeVisits.weekUnique || 0} unique · last 7 days`;
+                const daily = Array.isArray(__homeVisits.daily) ? __homeVisits.daily.map(d => d.views || 0) : [];
+                osSparkline(document.getElementById('os-visits-spark'), daily, '#5BA8FF');
             } else {
                 cur.textContent = '–';
             }
@@ -10715,7 +10759,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'ci4j5l7p';
+            const BUILD = 'dj5k6m8q';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
