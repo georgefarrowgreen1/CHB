@@ -54,6 +54,8 @@ function chat_notify_owner($name, $email, $bodyTxt) {
                 "Someone has sent you a message via the website chat.\n\nFrom: " . ($name ?: '—') . " (" . ($email ?: 'no email') . ")\n\n\"" . $bodyTxt . "\"\n\nOpen the back office → Guest messages to reply.");
         }
     } catch (\Throwable $e) {}
+    // Wake the owner's devices (best-effort).
+    try { require_once __DIR__ . '/webpush.php'; alert_owner('New message', ($name ?: 'A visitor') . ': ' . mb_substr($bodyTxt, 0, 80)); } catch (\Throwable $e) {}
 }
 
 // ---------------- ADMIN ----------------

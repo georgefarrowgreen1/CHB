@@ -60,6 +60,51 @@ if ($action === 'send_checkin') {
     json_out(['ok' => true, 'due' => count($due), 'pushed' => $pushed]);
 }
 
+// ---- Service worker tickle: what should THIS device show? (session-aware) ----
+// Called by sw.js on every push. Admin device -> the latest owner alert (or a
+// generic). Guest device -> the check-in message. No session -> safe default.
+if ($action === 'sw_notify') {
+    if (!empty($_SESSION['admin_id'])) {
+        $p = owner_ping_take();
+        if ($p) json_out(['title' => $p['title'] ?: 'Cottage Holidays Blakeney', 'body' => $p['body'] ?? '', 'url' => './', 'tag' => 'chb-owner']);
+        json_out(['title' => 'Cottage Holidays Blakeney', 'body' => 'You have a new notification — tap to open the back office.', 'url' => './', 'tag' => 'chb-owner']);
+    }
+    json_out(['title' => 'Your cottage is ready', 'body' => 'Tap to open your live arrival map and key code.', 'url' => './?arrival=1', 'tag' => 'chb-checkin']);
+}
+
+// ---- Admin: subscribe this device for owner alerts / test / release ping ----
+if ($action === 'subscribe_admin' || $action === 'test_admin' || $action === 'unsubscribe_admin') {
+    if (empty($_SESSION['admin_id'])) json_out(['error' => 'Not authorised'], 401);
+    if ($action === 'subscribe_admin') {
+        $sub = $in['subscription'] ?? null;
+        if (!is_array($sub) || empty($sub['endpoint'])) json_out(['error' => 'Invalid subscription'], 400);
+        $endpoint = (string)$sub['endpoint'];
+        try {
+            db()->prepare('DELETE FROM push_subscriptions WHERE endpoint = ?')->execute([$endpoint]);
+            db()->prepare("INSERT INTO push_subscriptions (guest_id, role, endpoint, p256dh, auth, created_at) VALUES (NULL, 'admin', ?, ?, ?, NOW())")
+                ->execute([$endpoint, (string)($sub['keys']['p256dh'] ?? ''), (string)($sub['keys']['auth'] ?? '')]);
+        } catch (\Throwable $e) { json_out(['error' => 'Could not save — run migrate.php (migration-push2-admin.sql).'], 500); }
+        json_out(['ok' => true]);
+    }
+    if ($action === 'unsubscribe_admin') {
+        $endpoint = (string)($in['endpoint'] ?? '');
+        if ($endpoint !== '') { try { db()->prepare("DELETE FROM push_subscriptions WHERE endpoint = ? AND role = 'admin'")->execute([$endpoint]); } catch (\Throwable $e) {} }
+        json_out(['ok' => true]);
+    }
+    // test_admin
+    if (!wp_vapid_configured()) json_out(['error' => 'VAPID keys not set in config.php yet'], 400);
+    $sent = alert_owner('Test alert', 'Owner push is working 🎉');
+    json_out(['ok' => true, 'sent' => $sent]);
+}
+
+// ---- New-release ping (called by the deploy workflow, or an admin) ----
+if ($action === 'notify_release') {
+    $isCron = isset($_GET['cron']) && hash_equals(APP_SECRET, (string)$_GET['cron']);
+    if (!$isCron && empty($_SESSION['admin_id'])) json_out(['error' => 'Not authorised'], 401);
+    $sent = alert_owner('Cottage Holidays Blakeney', 'A new version of your website is now live.');
+    json_out(['ok' => true, 'sent' => $sent]);
+}
+
 // ---- Guest-only: manage this device's subscription ----
 require_guest();
 $guestId = (int)$_SESSION['guest_id'];

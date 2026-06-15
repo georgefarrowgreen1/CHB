@@ -144,6 +144,8 @@ if ($action === 'charge') {
             'kind' => $kind, 'amount' => $amountDue, 'status' => $newStatus,
         ]);
     } catch (\Throwable $e) {}
+    // Wake the owner's devices (best-effort).
+    try { require_once __DIR__ . '/webpush.php'; alert_owner('Payment received', '£' . number_format($amountDue, 2) . ' · ' . $propName); } catch (\Throwable $e) {}
 
     json_out(['ok' => true, 'status' => $newStatus, 'paid' => $amountDue, 'fullyPaid' => ($newStatus === 'paid')]);
 }

@@ -9,16 +9,23 @@ self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
 
 self.addEventListener('push', (event) => {
-    const title = 'Your cottage is ready';
-    const body = 'Tap to open your live arrival map and key code.';
-    event.waitUntil(self.registration.showNotification(title, {
-        body,
-        icon: 'apple-touch-icon.png',
-        badge: 'favicon.png',
-        tag: 'chb-checkin',
-        renotify: true,
-        data: { url: './?arrival=1' }
-    }));
+    // Pushes are payload-less, so ask the server what THIS device should show
+    // (owner alerts vs the guest check-in message). Falls back to the check-in
+    // message if the fetch fails (e.g. no session / offline).
+    event.waitUntil((async () => {
+        let n = { title: 'Your cottage is ready', body: 'Tap to open your live arrival map and key code.', tag: 'chb-checkin', url: './?arrival=1' };
+        try {
+            const r = await fetch('push.php?action=sw_notify', { credentials: 'include', cache: 'no-store' });
+            if (r.ok) {
+                const d = await r.json();
+                if (d && d.title) n = { title: d.title, body: d.body || '', tag: d.tag || 'chb', url: d.url || './' };
+            }
+        } catch (e) {}
+        await self.registration.showNotification(n.title, {
+            body: n.body, icon: 'apple-touch-icon.png', badge: 'favicon.png',
+            tag: n.tag, renotify: true, data: { url: n.url }
+        });
+    })());
 });
 
 self.addEventListener('notificationclick', (event) => {

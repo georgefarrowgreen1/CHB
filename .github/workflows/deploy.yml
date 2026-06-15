@@ -96,3 +96,20 @@ jobs:
           # appears on the command line and special characters can't mangle it.
           lftp -u "$USERNAME" --env-password "sftp://$HOST:$PORT" -e "set sftp:auto-confirm yes; set net:max-retries 3; set net:reconnect-interval-base 5; mirror -R --verbose --no-perms --parallel=2 ./deploy/ \"$REMOTE\"; bye"
           echo "Deploy complete."
+
+      # Best-effort post-deploy hooks: apply any new DB migrations and ping the
+      # owner's devices that a new version is live. Both need the APP_SECRET repo
+      # secret (matching config.php). If it's unset, these are skipped — the
+      # deploy still succeeds.
+      - name: Post-deploy (migrate + notify owner)
+        if: ${{ success() }}
+        env:
+          APP_SECRET: ${{ secrets.APP_SECRET }}
+          SITE_URL: ${{ secrets.SITE_URL }}
+        run: |
+          if [ -z "$APP_SECRET" ]; then echo "APP_SECRET not set — skipping migrate + release ping."; exit 0; fi
+          URL="${SITE_URL:-https://cottageholidaysblakeney.co.uk}"
+          echo "Applying migrations…"
+          curl -fsS --max-time 60 "$URL/migrate.php?cron=$APP_SECRET" || echo "migrate ping failed (non-fatal)"
+          echo "Notifying owner of release…"
+          curl -fsS --max-time 30 "$URL/push.php?action=notify_release&cron=$APP_SECRET" || echo "release ping failed (non-fatal)"

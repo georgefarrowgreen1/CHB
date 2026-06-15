@@ -96,6 +96,8 @@ if ($action === 'submit') {
             $adultsN, $childrenN,
             clean($in['message'] ?? ''), $termsAt, $termsVer
         ]);
+    // Wake the owner's devices (best-effort).
+    try { require_once __DIR__ . '/webpush.php'; alert_owner('New enquiry', trim(($name ?: 'Someone') . ' · ' . $checkIn . '–' . $checkOut)); } catch (\Throwable $e) {}
     json_out(['ok' => true]);
 }
 
