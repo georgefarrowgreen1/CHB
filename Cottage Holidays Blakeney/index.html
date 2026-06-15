@@ -5920,11 +5920,15 @@
 
         // Detect a date-range clash for a property (ignores a record being edited)
         function hasDateClash(propKey, checkIn, checkOut, ignoreId = null) {
-            return (dbBookings[propKey] || []).some(b => {
+            // overlap if start < other end AND end > other start (checkout day is free)
+            const bookingClash = (dbBookings[propKey] || []).some(b => {
                 if (b.id === ignoreId) return false;
-                // overlap if start < other end AND end > other start
                 return checkIn < b.checkOut && checkOut > b.checkIn;
             });
+            if (bookingClash) return true;
+            // Also respect imported Airbnb/Vrbo (iCal) blocks, exactly like the server's
+            // clash_message/dates_clash — so the admin warning catches external bookings too.
+            return (dbBlocks[propKey] || []).some(bl => checkIn < bl.checkOut && checkOut > bl.checkIn);
         }
 
         // Changing the status must stay consistent with the recorded deposit:
@@ -7940,7 +7944,7 @@
             const enq = enquiries.find(e => e.id === enqId);
             if (!enq) return;
             if (hasDateClash(enq.propKey, enq.checkIn, enq.checkOut)) {
-                if (!await glassConfirm(`Heads up: these dates clash with an existing booking at ${propertyMeta[enq.propKey].name}. Approve anyway?`)) return;
+                if (!await glassConfirm(`Heads up: these dates clash with an existing booking or an imported Airbnb/Vrbo block at ${propertyMeta[enq.propKey].name}. Approve anyway?`)) return;
             }
             try {
                 const res = await apiPost('enquiries.php', { action: 'approve', id: enq.dbId });
@@ -8139,7 +8143,7 @@
 
             // ----- Booking add / edit -----
             if (hasDateClash(propKey, checkIn, checkOut, mode === 'booking' ? id : null)) {
-                if (!await glassConfirm(`These dates clash with another booking at ${propertyMeta[propKey].name}. Save anyway?`)) return;
+                if (!await glassConfirm(`These dates clash with an existing booking or an imported Airbnb/Vrbo block at ${propertyMeta[propKey].name}. Save anyway?`)) return;
             }
 
             // If the status is "deposit", we need an amount. Ask for it (the server
@@ -8245,7 +8249,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'eq7n5k9w';
+            const BUILD = 'fr8p6m2k';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
