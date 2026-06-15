@@ -85,6 +85,13 @@
     <link rel="icon" type="image/png" sizes="64x64" href="favicon.png?v=3">
     <link rel="shortcut icon" type="image/png" href="favicon.png?v=3">
     <link rel="apple-touch-icon" href="apple-touch-icon.png?v=3">
+    <!-- Installable PWA + Web Push (arrival check-in notifications) -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#121316">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="CHB Stays">
     <style>
         /* --- DESIGN TOKENS & RESET --- */
         * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -4185,9 +4192,11 @@
                         arrivalInfoCache[s.propKey] = res.info || '';
                         markArrivalUnlocked(s.bookingId, s.propKey);
                         openArrivalModal(s.propKey, res.info);
+                        notifyArrival('arr-here-' + s.bookingId, 'You’ve arrived', `Your key code & arrival details for ${arrivalPropName(s.propKey)} are ready.`);
                     } else if (res.reason === 'nearby') {
                         arrivalGeo[s.propKey] = { lat: res.prop_lat, lng: res.prop_lng };
                         setNearbyNote(s.bookingId, s.propKey, res.distance_m);
+                        if (!s.notifiedNear) { s.notifiedNear = true; notifyArrival('arr-near-' + s.bookingId, 'You’re nearly there', `You’re close to ${arrivalPropName(s.propKey)} — your key code unlocks within 25m.`); }
                         if (!s.autoMapShown) { s.autoMapShown = true; openMapModal(s.propKey); }   // auto-open on entering range
                         else if (mapModal.open && mapModal.propKey === s.propKey) renderMapModal();
                     } else if (res.reason === 'no_active_stay') {
@@ -4206,6 +4215,7 @@
                         setArrivalNote(s.bookingId, `You've arrived early — your key code unlocks at ${res.arrival_time || 'your check-in time'}.`, s.propKey, s.bookingId, false, IC_PIN);
                     } else if (res.reason === 'too_far') {
                         s.autoMapShown = false;   // re-arm auto-open if they come back within 1km
+                        s.notifiedNear = false;   // re-arm the "you're close" alert too
                         if (mapModal.open && mapModal.propKey === s.propKey) closeMapModal();
                         setArrivalNote(s.bookingId, `You're about ${formatDistance(res.distance_m)} away — a map appears once you're within 1km of the cottage.`, s.propKey, s.bookingId, false);
                     }
@@ -4227,6 +4237,73 @@
             const html = `${IC_CHECK} You've arrived — your arrival details are shown. <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="openArrivalModal('${propKey}', arrivalInfoCache['${propKey}'])">Show again</button>`;
             arrivalNoteEls(bookingId).forEach(el => el.innerHTML = html);
             closeMapModal();
+        }
+
+        // ----- Browser notifications for the on-arrival watcher -----
+        // So a guest who leaves the tab open in the background still gets a "you're
+        // close" / "you've arrived" alert. Works while the tab is open (foreground or
+        // backgrounded); a fully-closed app/locked phone would need Web Push + a
+        // service worker, which isn't set up here.
+        function arrivalPropName(propKey) { return (propertyMeta[propKey] && propertyMeta[propKey].name) || propKey; }
+        function requestArrivalNotifications() {
+            try {
+                if (!('Notification' in window)) return;
+                if (Notification.permission === 'granted') { enableArrivalPush(); return; }
+                if (Notification.permission === 'default') {
+                    Notification.requestPermission().then((p) => {
+                        homeArrivalBookingId = null; renderHomeArrival();
+                        if (p === 'granted') enableArrivalPush();
+                    });
+                }
+            } catch (e) {}
+        }
+
+        // ---- Web Push: subscribe this device so check-in alerts arrive even when the
+        //      app is closed (sent on a time trigger by push.php's cron). All optional —
+        //      if VAPID keys aren't configured server-side, this silently does nothing. ----
+        let __vapidKey = null;
+        async function getVapidKey() {
+            if (__vapidKey !== null) return __vapidKey;
+            try { const r = await apiGet('push.php?action=key'); __vapidKey = r.key || ''; }
+            catch (e) { __vapidKey = ''; }
+            return __vapidKey;
+        }
+        function urlB64ToUint8(b64) {
+            const pad = '='.repeat((4 - (b64.length % 4)) % 4);
+            const s = (b64 + pad).replace(/-/g, '+').replace(/_/g, '/');
+            const raw = atob(s); const out = new Uint8Array(raw.length);
+            for (let i = 0; i < raw.length; i++) out[i] = raw.charCodeAt(i);
+            return out;
+        }
+        async function registerServiceWorker() {
+            if (!('serviceWorker' in navigator)) return null;
+            try { return await navigator.serviceWorker.register('sw.js'); } catch (e) { return null; }
+        }
+        async function enableArrivalPush() {
+            try {
+                if (!currentGuest) return;
+                if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
+                if (!('Notification' in window) || Notification.permission !== 'granted') return;
+                const key = await getVapidKey();
+                if (!key) return;   // server has no VAPID keys yet — feature off
+                const reg = await registerServiceWorker();
+                if (!reg) return;
+                let sub = await reg.pushManager.getSubscription();
+                if (!sub) {
+                    sub = await reg.pushManager.subscribe({
+                        userVisibleOnly: true,
+                        applicationServerKey: urlB64ToUint8(key)
+                    });
+                }
+                await apiPost('push.php', { action: 'subscribe', subscription: sub.toJSON() });
+            } catch (e) { /* push is best-effort; never break the page */ }
+        }
+        function notifyArrival(tag, title, body) {
+            try {
+                if (!('Notification' in window) || Notification.permission !== 'granted') return;
+                const n = new Notification(title, { body, tag, icon: 'apple-touch-icon.png' });
+                n.onclick = () => { try { window.focus(); } catch (e) {} n.close(); };
+            } catch (e) {}
         }
 
         function openArrivalModal(propKey, info) {
@@ -4262,9 +4339,12 @@
             if (homeArrivalBookingId !== s.bookingId) {   // (re)build only when the stay changes
                 homeArrivalBookingId = s.bookingId;
                 const name = (propertyMeta[s.propKey] && propertyMeta[s.propKey].name) || s.propKey;
+                const alertsBtn = ('Notification' in window && Notification.permission === 'default')
+                    ? `<button class="btn-sm btn-edit" style="margin-left:4px;" onclick="requestArrivalNotifications()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg> Get alerts</button>`
+                    : '';
                 el.innerHTML = `<div class="home-arrival-card">
                     <div class="home-arrival-text">${IC_PIN} You're staying at <strong>${escapeHtml(name)}</strong></div>
-                    <div id="home-arr-note" class="home-arrival-note">Your key code &amp; arrival info opens automatically when you reach the cottage. <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="revealArrivalAccess('${s.propKey}','${s.bookingId}')">Show now</button></div>
+                    <div id="home-arr-note" class="home-arrival-note">Your key code &amp; arrival info opens automatically when you reach the cottage. <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="revealArrivalAccess('${s.propKey}','${s.bookingId}')">Show now</button>${alertsBtn}</div>
                 </div>`;
             }
             el.classList.add('show');
@@ -4298,6 +4378,7 @@
 
         // Manual one-shot check — the "Show now" fallback.
         async function revealArrivalAccess(propKey, bookingId) {
+            requestArrivalNotifications();   // user gesture — also opt them into arrival alerts
             setArrivalNote(bookingId, "Checking you're at the cottage…", propKey, bookingId, false, IC_PIN);
             if (!navigator.geolocation) {
                 setArrivalNote(bookingId, "This device can't share its location.", propKey, bookingId, false);
@@ -5007,6 +5088,12 @@
             try { setAuthUI(); } catch (e) { console.error(e); }
             try { setGuestUI(); } catch (e) { console.error(e); }
             try { wireCallButtons(); } catch (e) { console.error(e); }
+            // Register the service worker (PWA install) and, for a returning guest who
+            // already allowed notifications, refresh their push subscription.
+            try { registerServiceWorker(); } catch (e) { console.error(e); }
+            try {
+                if (currentGuest && 'Notification' in window && Notification.permission === 'granted') enableArrivalPush();
+            } catch (e) { console.error(e); }
           } catch (e) {
             // Last-resort: never leave the visitor stuck on the loading crown.
             console.error('Bootstrap error:', e);
@@ -7739,7 +7826,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'hm3b7t9k';
+            const BUILD = 'px9k4r2d';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');

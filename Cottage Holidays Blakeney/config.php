@@ -21,6 +21,13 @@ define('APP_SECRET', 'change-this-to-a-long-random-string');
 // front end and API are on the same domain you can leave as '' .
 define('ALLOWED_ORIGIN', ''); // e.g. 'https://www.yourdomain.co.uk'  (empty = same-origin)
 
+// --- Web Push (optional: check-in notifications). Leave blank to keep it off. ---
+// Generate real values with vapid-keygen.php (run once, paste here, then delete it).
+// See SETUP-PUSH.md.
+define('VAPID_PUBLIC_KEY', '');                          // base64url uncompressed P-256 point
+define('VAPID_PRIVATE_KEY', '');                         // EC private key in PEM
+define('VAPID_SUBJECT', 'mailto:you@yourdomain.co.uk');  // your contact email or site URL
+
 // ============================================================
 //  Email (SMTP) — for booking confirmation emails.
 //  Use a real mailbox: an IONOS @yourdomain address, or a Gmail account.
