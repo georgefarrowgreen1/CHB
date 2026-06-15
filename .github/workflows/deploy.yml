@@ -1,0 +1,100 @@
+name: Deploy to IONOS
+
+# Deploys the site to your IONOS web space over SFTP whenever code lands on the
+# main branch (or when you run it manually from the Actions tab).
+#
+# IMPORTANT — set these repository secrets first (Settings → Secrets and
+# variables → Actions → New repository secret). See SETUP-DEPLOY.md for how to
+# find each value in the IONOS control panel:
+#   IONOS_SFTP_HOST    e.g. access-XXXXXXXX.webspace-host.com  (NOT your DB host)
+#   IONOS_SFTP_USER    your SFTP/SSH username
+#   IONOS_SFTP_PASS    your SFTP/SSH password
+#   IONOS_REMOTE_PATH  web root to deploy into, e.g. /  (or /subfolder)
+#   IONOS_SFTP_PORT    optional, defaults to 22
+#
+# Safety: this NEVER deletes remote files, so your uploaded photos in uploads/
+# and your live config.php are preserved. config.php, the run-once tools, and
+# repo-only files are excluded from the upload entirely.
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch: {}
+
+concurrency:
+  group: deploy-ionos
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check required secrets are present
+        env:
+          HOST: ${{ secrets.IONOS_SFTP_HOST }}
+          USER: ${{ secrets.IONOS_SFTP_USER }}
+          PASS: ${{ secrets.IONOS_SFTP_PASS }}
+        run: |
+          missing=""
+          [ -z "$HOST" ] && missing="$missing IONOS_SFTP_HOST"
+          [ -z "$USER" ] && missing="$missing IONOS_SFTP_USER"
+          [ -z "$PASS" ] && missing="$missing IONOS_SFTP_PASS"
+          if [ -n "$missing" ]; then
+            echo "::error::Missing required secret(s):$missing — see SETUP-DEPLOY.md"
+            exit 1
+          fi
+          echo "All required secrets are set."
+
+      - name: Stage files for upload
+        run: |
+          set -e
+          SRC="Cottage Holidays Blakeney"
+          OUT="deploy"
+          rm -rf "$OUT"; mkdir -p "$OUT"
+          cp -r "$SRC"/. "$OUT"/
+
+          # Apache config ships as htaccess.txt in the repo; it must be .htaccess live.
+          [ -f "$OUT/htaccess.txt" ] && mv -f "$OUT/htaccess.txt" "$OUT/.htaccess"
+
+          # Run-once tools must never be live on the server.
+          rm -f "$OUT/setup.php" "$OUT/health.php"
+
+          # Never overwrite live secrets — the server keeps its own config.php.
+          rm -f "$OUT/config.php"
+
+          # Repo-only / non-served files: tests, docs, SQL, stale backups.
+          rm -f "$OUT/smoke-test.js"
+          rm -f "$OUT"/*.md "$OUT"/*.sql
+          rm -f "$OUT"/index.backup-*.html
+
+          # Don't ship local uploaded photos; keep only the folder guards.
+          if [ -d "$OUT/uploads" ]; then
+            find "$OUT/uploads" -type f ! -name '.htaccess' ! -name 'README.txt' -delete
+          fi
+
+          echo "Staged files:"; ls -la "$OUT"
+
+      - name: Upload via SFTP (lftp mirror)
+        env:
+          HOST: ${{ secrets.IONOS_SFTP_HOST }}
+          USERNAME: ${{ secrets.IONOS_SFTP_USER }}
+          PASSWORD: ${{ secrets.IONOS_SFTP_PASS }}
+          PORT: ${{ secrets.IONOS_SFTP_PORT }}
+          REMOTE: ${{ secrets.IONOS_REMOTE_PATH }}
+        run: |
+          set -e
+          sudo apt-get update -qq && sudo apt-get install -y lftp
+          PORT="${PORT:-22}"
+          REMOTE="${REMOTE:-/}"
+          # mirror -R = push local→remote, recursively (includes dotfiles like .htaccess).
+          # No --delete, so remote-only files (uploaded photos, config.php) are kept.
+          lftp -c "
+            set sftp:auto-confirm yes;
+            set net:max-retries 3;
+            set net:reconnect-interval-base 5;
+            open -u \"\$USERNAME\",\"\$PASSWORD\" sftp://\$HOST:\$PORT;
+            mirror -R --verbose --no-perms --parallel=2 ./deploy/ \"\$REMOTE\";
+          "
+          echo "Deploy complete."
