@@ -5102,7 +5102,7 @@
             try {
                 const res = await apiGet('content.php');
                 siteContent = res.content || {};
-            } catch (e) { siteContent = {}; return; }
+            } catch (e) { return; }   // keep last-good content on a transient failure (e.g. background poll)
 
             // Merge per-property gallery image lists into propertyContent
             Object.keys(propertyContent).forEach(propKey => {
@@ -5143,6 +5143,49 @@
                 const v = siteContent[el.getAttribute('data-edit-img')];
                 if (typeof v === 'string' && v) el.style.backgroundImage = `url('${v}')`;
             });
+        }
+
+        // ---- Live background refresh ----
+        // Keep the public site current (new bookings, iCal syncs, price/review/content
+        // changes) without a manual reload. Turned OFF for the admin: when logged in
+        // the owner is managing data and auto-refreshing would clobber edits / cause
+        // churn, so the tick simply no-ops while authenticated.
+        let liveUpdateTimer = null;
+        let liveUpdateBusy = false;
+        const LIVE_UPDATE_MS = 10000;   // every ~10s
+        async function liveUpdateTick() {
+            if (isAuthenticated) return;        // admin logged in — leave their data alone
+            if (document.hidden) return;        // tab not visible — save bandwidth
+            if (liveUpdateBusy) return;         // don't overlap a slow tick
+            if (isEditMode) return;             // never refresh mid-edit
+            liveUpdateBusy = true;
+            try {
+                await Promise.all([
+                    loadRates().catch(() => {}),
+                    loadContent().catch(() => {}),
+                    loadPublicReviews().catch(() => {})
+                ]);
+                // Re-render the same public bits the initial boot does (data-only loaders
+                // above don't touch the DOM themselves), so changes show up live.
+                try { renderCardPrices(); } catch (e) {}
+                try { loadPropContentOverrides(); } catch (e) {}
+                try { renderReviews(); } catch (e) {}
+                try { updatePropPriceHeading(); } catch (e) {}
+                try { if (document.getElementById('enq-price-box')) updateEnquiryPrice(); } catch (e) {}
+                // Keep the cottage calendar / date picker availability fresh.
+                try { if (activeFrontProperty) await loadAvailability(activeFrontProperty); } catch (e) {}
+            } finally {
+                liveUpdateBusy = false;
+            }
+        }
+        function startLiveUpdates() {
+            if (liveUpdateTimer) return;
+            liveUpdateTimer = setInterval(liveUpdateTick, LIVE_UPDATE_MS);
+            // Refresh promptly when the tab is brought back to the foreground.
+            document.addEventListener('visibilitychange', () => { if (!document.hidden) liveUpdateTick(); });
+        }
+        function stopLiveUpdates() {
+            if (liveUpdateTimer) { clearInterval(liveUpdateTimer); liveUpdateTimer = null; }
         }
 
         window.addEventListener('DOMContentLoaded', async () => {
@@ -5195,6 +5238,7 @@
           } finally {
             // Everything is loaded (or safely failed) — always reveal the page.
             hideLoadingOverlay();
+            try { startLiveUpdates(); } catch (e) { console.error(e); }
           }
         });
 
@@ -6212,7 +6256,7 @@
             try {
                 const res = await apiGet('reviews.php');
                 publicGuestReviews = Array.isArray(res.reviews) ? res.reviews : [];
-            } catch (e) { publicGuestReviews = []; }
+            } catch (e) { /* keep last-good reviews on a transient failure */ }
         }
         // ---- FAQ / house rules (per cottage, shown inside each booking card) ----
         let __faqUid = 0;
@@ -8138,7 +8182,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'yp4n8k2c';
+            const BUILD = 'zc6k4n8w';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
