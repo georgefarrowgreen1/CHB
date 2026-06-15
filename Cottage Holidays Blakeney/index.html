@@ -1460,6 +1460,12 @@
         .btn-glass-ghost { background: transparent; opacity: 0.85; }
         #cottages { scroll-margin-top: calc(100px + env(safe-area-inset-top)); }
         .fluid-swap { animation: fluidFadeIn 0.5s var(--fluid-bezier); }
+        /* Hero-as-results-screen (Airbnb-style): search panel swaps for the result cards */
+        .hero-results-wrap { position: relative; z-index: 2; width: 92%; max-width: 1100px; margin: 0 auto; }
+        .hero-results-head { text-align: center; margin-bottom: 6px; }
+        .hero-results-wrap .grid { margin-top: 24px; }
+        .hero.results-mode { background: var(--dark-grey); }
+        .hero.results-mode .hero-bg { opacity: 0.16; transition: opacity 0.5s var(--fluid-bezier); }
         .hs-unavail { opacity: 0.7; }
         .hs-banner { background: rgba(255,167,38,0.16); color: #FFB74D; border: 1px solid rgba(255,167,38,0.4); border-radius: 10px; padding: 7px 10px; font-size: 0.76rem; line-height: 1.35; margin-bottom: 12px; text-align: center; }
         .hs-banner-red { background: rgba(229,115,115,0.16); color: #E57373; border-color: rgba(229,115,115,0.4); }
@@ -1610,9 +1616,9 @@
             </div>
         </div>
 
-        <section class="hero">
+        <section class="hero" id="hero">
             <div class="hero-bg" data-edit-img="hero-bg" style="background-image: url('hero.jpg');"></div>
-            <div class="hero-content glass-panel" style="border-radius: 30px;">
+            <div class="hero-content glass-panel" id="hero-search-panel" style="border-radius: 30px;">
                 <h1 data-edit-text="hero-title">Liquid Coastal Luxury</h1>
                 <p data-edit-text="hero-sub">Boutique holiday escapes in Blakeney, Norfolk</p>
                 <div class="hero-search">
@@ -1658,6 +1664,13 @@
                     <div class="hs-msg" id="hs-msg"></div>
                 </div>
             </div>
+            <div class="hero-results-wrap" id="hero-results-wrap" style="display:none;">
+                <div class="hero-results-head">
+                    <h2 class="section-title" id="hs-results-title" style="margin-bottom: 10px;">Available for your dates</h2>
+                    <button type="button" class="btn-sm btn-edit" onclick="backToSearch()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg> Change search</button>
+                </div>
+                <div class="grid" id="hs-results-grid"></div>
+            </div>
         </section>
 
         <section class="container text-center" id="about-intro" style="padding-top: clamp(16px, 3.5vw, 28px); padding-bottom: 0;">
@@ -1666,11 +1679,7 @@
         </section>
 
         <section class="container" id="cottages" style="padding-top: 0;">
-            <div id="cottages-results-head" style="display:none; text-align:center;">
-                <h2 class="section-title" id="hs-results-title" style="margin-bottom: 12px;">Available for your dates</h2>
-                <button type="button" class="btn-sm btn-edit" onclick="resetCottagesView()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg> Show all cottages</button>
-            </div>
-            <div class="grid" id="cottages-default-grid" style="margin-top: 28px;">
+            <div class="grid" style="margin-top: 28px;">
                 <div class="card glass-panel" onclick="openProperty('21a')">
                     <div class="card-img" data-edit-img="card1-img" style="background-image: url('card-21a.jpg');"></div>
                     <div class="card-title" data-edit-text="card1-title">21A Westgate</div>
@@ -1690,7 +1699,6 @@
                     <div class="card-price" id="card-price-pimpernel"></div>
                 </div>
             </div>
-            <div class="grid" id="hs-results-grid" style="display:none; margin-top: 28px;"></div>
         </section>
 
         <!-- GUEST REVIEWS (owner-curated; hidden until reviews exist) -->
@@ -7111,7 +7119,7 @@
                 <button type="button" class="btn-glass btn-glass-ghost" onclick="backToSearch()">Change your search</button>
             </div>`;
             grid.innerHTML = html;
-            showCottageResults();
+            showHeroResults();
         }
         // Fluidly swap the "Our properties" intro + default cottage grid for the search
         // results (and back). The results render right where the cottages normally are.
@@ -7119,34 +7127,26 @@
             if (!el) return;
             el.classList.remove('fluid-swap'); void el.offsetWidth; el.classList.add('fluid-swap');
         }
-        function showCottageResults() {
-            const intro = document.getElementById('about-intro');
-            const def = document.getElementById('cottages-default-grid');
-            const head = document.getElementById('cottages-results-head');
-            const res = document.getElementById('hs-results-grid');
-            if (intro) intro.style.display = 'none';
-            if (def) def.style.display = 'none';
-            if (head) { head.style.display = ''; fluidSwap(head); }
-            if (res) { res.style.display = ''; fluidSwap(res); }
-            const sec = document.getElementById('cottages');
-            if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        // The hero itself becomes the results screen (Airbnb-style): the search panel
+        // is swapped out for the available/unavailable cards, in place, and the hero
+        // background is dimmed for a clean backdrop.
+        function showHeroResults() {
+            const panel = document.getElementById('hero-search-panel');
+            const wrap = document.getElementById('hero-results-wrap');
+            const hero = document.getElementById('hero');
+            if (panel) panel.style.display = 'none';
+            if (wrap) { wrap.style.display = ''; fluidSwap(wrap); }
+            if (hero) { hero.classList.add('results-mode'); hero.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
         }
-        function resetCottagesView() {
-            const intro = document.getElementById('about-intro');
-            const def = document.getElementById('cottages-default-grid');
-            const head = document.getElementById('cottages-results-head');
-            const res = document.getElementById('hs-results-grid');
-            if (head) head.style.display = 'none';
-            if (res) res.style.display = 'none';
-            if (intro) { intro.style.display = ''; fluidSwap(intro); }
-            if (def) { def.style.display = ''; fluidSwap(def); }
-        }
-        // Anti-stuck escape: clear the results and glide back up to the search so the
-        // guest can tweak dates / party / cottage and try again.
+        // Anti-stuck escape: clear the results and glide back to the search so the guest
+        // can tweak dates / party / cottage and try again.
         function backToSearch() {
-            resetCottagesView();
-            const hs = document.querySelector('.hero-search');
-            if (hs) { hs.scrollIntoView({ behavior: 'smooth', block: 'center' }); fluidSwap(hs); }
+            const panel = document.getElementById('hero-search-panel');
+            const wrap = document.getElementById('hero-results-wrap');
+            const hero = document.getElementById('hero');
+            if (wrap) wrap.style.display = 'none';
+            if (panel) { panel.style.display = ''; fluidSwap(panel); }
+            if (hero) { hero.classList.remove('results-mode'); hero.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
         }
         // Open the cottage with the chosen dates + party pre-filled, ready to send.
         function startBooking(key, ci, co) {
@@ -8220,7 +8220,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'bm4t8w2k';
+            const BUILD = 'cn5p9k3w';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
