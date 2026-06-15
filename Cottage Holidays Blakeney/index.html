@@ -1426,6 +1426,29 @@
             .home-arrival-note { justify-content: center; }
         }
 
+        /* ----- Homepage hero availability search ----- */
+        .hero-search { width: 100%; max-width: 540px; margin: 26px auto 14px; display: flex; flex-direction: column; gap: 12px; text-align: left; }
+        .hs-field { width: 100%; background: rgba(255,255,255,0.07); border: 1px solid var(--glass-border); border-radius: 16px; padding: 12px 18px; color: var(--text-light); cursor: pointer; transition: background 0.25s, border-color 0.25s; box-sizing: border-box; }
+        button.hs-field { font-family: inherit; text-align: left; }
+        .hs-field:hover { background: rgba(255,255,255,0.12); }
+        .hs-label { display: block; font-size: 0.66rem; text-transform: uppercase; letter-spacing: 1.3px; color: var(--text-muted); margin-bottom: 3px; }
+        .hs-value { font-size: 0.98rem; }
+        .hs-guests { cursor: default; }
+        .hs-guest-rows { display: flex; gap: 18px; flex-wrap: wrap; }
+        .hs-guest { display: flex; align-items: center; gap: 8px; font-size: 0.92rem; }
+        .hs-gtype { color: var(--text-muted); font-size: 0.8rem; min-width: 54px; }
+        .hs-step { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--glass-border); background: rgba(255,255,255,0.07); color: var(--text-light); font-size: 1.15rem; line-height: 1; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; transition: background 0.2s; }
+        .hs-step:hover { background: rgba(255,255,255,0.18); }
+        .hs-count { min-width: 18px; text-align: center; font-variant-numeric: tabular-nums; }
+        .hs-msg { font-size: 0.82rem; color: #FFB74D; min-height: 1em; text-align: center; }
+        .btn-glass-ghost { background: transparent; opacity: 0.85; }
+        #hero-results { scroll-margin-top: 110px; }
+        .hs-unavail { opacity: 0.55; }
+        @media (max-width: 560px) {
+            .hs-guest-rows { justify-content: space-between; gap: 10px; }
+            .hs-gtype { min-width: 0; }
+        }
+
         /* ----- Liquid-glass zoom buttons on the arrival map ----- */
         .leaflet-bar, .leaflet-control-zoom {
             border: none !important;
@@ -1573,8 +1596,36 @@
             <div class="hero-content glass-panel" style="border-radius: 30px;">
                 <h1 data-edit-text="hero-title">Liquid Coastal Luxury</h1>
                 <p data-edit-text="hero-sub">Boutique holiday escapes in Blakeney, Norfolk</p>
-                <button class="btn-glass" onclick="nav('view-main', 'cottages')" data-edit-text="hero-btn">Explore Collection</button>
+                <div class="hero-search">
+                    <button type="button" class="hs-field" onclick="openHeroDatePicker()">
+                        <span class="hs-label">Dates</span>
+                        <span class="hs-value" id="hs-dates">Add your dates</span>
+                    </button>
+                    <div class="hs-field hs-guests">
+                        <span class="hs-label">Guests</span>
+                        <div class="hs-guest-rows">
+                            <div class="hs-guest"><span class="hs-gtype">Adults</span>
+                                <button type="button" class="hs-step" onclick="hsAdjust('adults',-1)" aria-label="Fewer adults">&minus;</button>
+                                <span class="hs-count" id="hs-adults">2</span>
+                                <button type="button" class="hs-step" onclick="hsAdjust('adults',1)" aria-label="More adults">+</button>
+                            </div>
+                            <div class="hs-guest"><span class="hs-gtype">Children</span>
+                                <button type="button" class="hs-step" onclick="hsAdjust('children',-1)" aria-label="Fewer children">&minus;</button>
+                                <span class="hs-count" id="hs-children">0</span>
+                                <button type="button" class="hs-step" onclick="hsAdjust('children',1)" aria-label="More children">+</button>
+                            </div>
+                        </div>
+                    </div>
+                    <button type="button" class="btn-glass" style="width:100%;" onclick="runHeroSearch()">Check availability</button>
+                    <div class="hs-msg" id="hs-msg"></div>
+                </div>
+                <button class="btn-glass btn-glass-ghost" onclick="nav('view-main', 'cottages')" data-edit-text="hero-btn">Explore Collection</button>
             </div>
+        </section>
+
+        <section class="container" id="hero-results" style="display:none; padding-top: clamp(24px, 5vw, 48px);">
+            <h2 class="section-title text-center" id="hs-results-title">Available for your dates</h2>
+            <div class="grid" id="hs-results-grid"></div>
         </section>
 
         <section class="container text-center" style="padding-top: clamp(24px, 5vw, 48px);">
@@ -6605,6 +6656,11 @@
         const CONTACT_PHONE_DISPLAY = '01263 000000';      // fallback display number
 
         const dpState = { view: null, start: null, end: null }; // start/end are 'YYYY-MM-DD'
+        // The shared date-picker runs in two modes: 'enquiry' (a single cottage, shading
+        // its booked nights) and 'search' (the homepage hero — no per-cottage shading,
+        // since availability is shown per cottage in the results).
+        let dpMode = 'enquiry';
+        const heroSearch = { checkin: null, checkout: null, adults: 2, children: 0 };
 
         // ---- Availability for the public date picker ----
         // { propKey: [{start,end}] } — end is EXCLUSIVE (checkout day is free).
@@ -6673,6 +6729,7 @@
         }
 
         function openDatePicker() {
+            dpMode = 'enquiry';
             loadAvailability(activeFrontProperty);   // refresh booked dates (repaints when it lands)
             // Seed from any existing values
             dpState.start = document.getElementById('enq-checkin').value || null;
@@ -6713,7 +6770,7 @@
                 const date = new Date(year, month, d);
                 const ds = formatDashed(date);
                 const isPast = date < today;
-                const booked = !isPast && isBookedNight(ds);
+                const booked = (dpMode !== 'search') && !isPast && isBookedNight(ds);
                 // Clickability rules (server enforces too — this is the friendly layer):
                 //  - picking check-in: any free future night (a checkout/turnover day IS free)
                 //  - picking check-out: any later date, as long as no booked night falls
@@ -6721,6 +6778,7 @@
                 //    checkout (turnover day), so a "booked" cell can still end a stay.
                 let clickable;
                 if (isPast) clickable = false;
+                else if (dpMode === 'search') clickable = true;                           // hero search: any future date
                 else if (!pickingEnd) clickable = !booked;
                 else if (ds <= dpState.start) clickable = !booked;                       // restart selection
                 else clickable = !rangeCrossesBooked(dpState.start, ds);                  // valid checkout
@@ -6761,6 +6819,16 @@
         }
 
         function dpDone() {
+            if (dpMode === 'search') {
+                heroSearch.checkin = dpState.start || null;
+                heroSearch.checkout = dpState.end || null;
+                const disp = document.getElementById('hs-dates');
+                if (disp) disp.innerText = (heroSearch.checkin && heroSearch.checkout)
+                    ? `${dpPretty(heroSearch.checkin)} → ${dpPretty(heroSearch.checkout)}`
+                    : (heroSearch.checkin ? `${dpPretty(heroSearch.checkin)} — pick check-out` : 'Add your dates');
+                closeDatePicker();
+                return;
+            }
             const ci = document.getElementById('enq-checkin');
             const co = document.getElementById('enq-checkout');
             const trigger = document.getElementById('enq-date-trigger');
@@ -6779,6 +6847,94 @@
             }
             closeDatePicker();
             updateEnquiryPrice();
+        }
+
+        // ===== Homepage hero availability search =====
+        function hsAdjust(field, delta) {
+            const min = field === 'adults' ? 1 : 0;
+            const max = field === 'adults' ? 6 : 4;
+            heroSearch[field] = Math.max(min, Math.min(max, heroSearch[field] + delta));
+            const el = document.getElementById('hs-' + field);
+            if (el) el.innerText = heroSearch[field];
+        }
+        function openHeroDatePicker() {
+            dpMode = 'search';
+            dpState.start = heroSearch.checkin;
+            dpState.end = heroSearch.checkout;
+            const seed = dpParse(dpState.start) || dpToday0();
+            dpState.view = new Date(seed.getFullYear(), seed.getMonth(), 1);
+            renderDatePicker();
+            document.getElementById('date-picker').classList.add('open');
+        }
+        function runHeroSearch() {
+            const msg = document.getElementById('hs-msg');
+            const setMsg = (t) => { if (msg) msg.innerText = t || ''; };
+            const ci = heroSearch.checkin, co = heroSearch.checkout;
+            if (!ci || !co) { setMsg('Please choose your check-in and check-out dates.'); return; }
+            if (co <= ci) { setMsg('Your check-out date must be after check-in.'); return; }
+            setMsg('');
+            const { adults, children } = heroSearch;
+            const nights = nightsBetween(ci, co);
+            const avail = [], unavail = [];
+            let tooSmall = 0;
+            for (const key of Object.keys(propertyMeta)) {
+                const lim = occupancyLimits[key] || { maxAdults: 99, maxChildren: 99, maxTotal: 99 };
+                if (adults > lim.maxAdults || children > lim.maxChildren || (adults + children) > lim.maxTotal) { tooSmall++; continue; }
+                const ruleErr = checkBookingRules(key, ci, co);
+                if (ruleErr || hasDateClash(key, ci, co)) { unavail.push({ key, reason: ruleErr || 'Not available for these dates' }); continue; }
+                avail.push({ key, price: priceBreakdown(key, adults, children, ci, co) });
+            }
+            renderHeroResults(avail, unavail, tooSmall, nights);
+        }
+        function renderHeroResults(avail, unavail, tooSmall, nights) {
+            const sec = document.getElementById('hero-results');
+            const grid = document.getElementById('hs-results-grid');
+            const title = document.getElementById('hs-results-title');
+            if (!sec || !grid) return;
+            const propImg = (key) => (propertyContent[key] && propertyContent[key].images && propertyContent[key].images[0]) || '';
+            const dateLabel = `${dpPretty(heroSearch.checkin)} → ${dpPretty(heroSearch.checkout)} · ${nights} night${nights === 1 ? '' : 's'}`;
+            title.innerText = avail.length ? 'Available for your dates' : 'No cottages free for those dates';
+            let html = avail.map(a => `
+                <div class="card glass-panel">
+                    <div class="card-img" style="background-image:url('${propImg(a.key)}');"></div>
+                    <div class="card-title">${escapeHtml(propertyMeta[a.key].name)}</div>
+                    <div class="card-meta">${dateLabel}</div>
+                    <div class="card-price">${gbp(a.price.total)} total</div>
+                    <button class="btn-glass" style="width:100%;margin-top:10px;" onclick="startBooking('${a.key}')">Book / Enquire</button>
+                </div>`).join('');
+            html += unavail.map(u => `
+                <div class="card glass-panel hs-unavail">
+                    <div class="card-img" style="background-image:url('${propImg(u.key)}');"></div>
+                    <div class="card-title">${escapeHtml(propertyMeta[u.key].name)}</div>
+                    <div class="card-meta">${escapeHtml(u.reason)}</div>
+                    <button class="btn-glass" style="width:100%;margin-top:10px;" onclick="startBooking('${u.key}')">Enquire anyway</button>
+                </div>`).join('');
+            if (!avail.length && !unavail.length) {
+                const party = heroSearch.adults + heroSearch.children;
+                html = `<div class="glass-panel" style="grid-column:1/-1;text-align:center;padding:28px;">
+                    <p style="margin-bottom:14px;">Sorry, none of our cottages can host ${party} guest${party === 1 ? '' : 's'} on those dates.</p>
+                    <button class="btn-glass" onclick="nav('view-main','cottages')">Browse all cottages</button>
+                </div>`;
+            } else if (tooSmall > 0) {
+                html += `<p style="grid-column:1/-1;text-align:center;font-size:0.8rem;color:var(--text-muted);margin-top:6px;">${tooSmall} cottage${tooSmall === 1 ? ' was' : 's were'} hidden — too small for ${heroSearch.adults + heroSearch.children} guests.</p>`;
+            }
+            grid.innerHTML = html;
+            sec.style.display = '';
+            sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+        // Open the cottage with the searched dates + party pre-filled, ready to send.
+        function startBooking(key) {
+            openProperty(key);
+            const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
+            set('enq-checkin', heroSearch.checkin || '');
+            set('enq-checkout', heroSearch.checkout || '');
+            set('enq-adults', heroSearch.adults);
+            set('enq-children', heroSearch.children);
+            try { onOccupancyInput(); } catch (e) {}
+            try { refreshDateTrigger(); } catch (e) {}
+            try { updateEnquiryPrice(); } catch (e) {}
+            const target = document.getElementById('enq-date-trigger') || document.getElementById('enq-name');
+            if (target) setTimeout(() => target.scrollIntoView({ behavior: 'smooth', block: 'center' }), 160);
         }
 
         // Reflect programmatic changes (e.g. guest autofill) onto the trigger label
@@ -7834,7 +7990,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'hd7r2m9p';
+            const BUILD = 'bk6s3v8q';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
