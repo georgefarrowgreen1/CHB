@@ -17,9 +17,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         // codes etc). Admin reads these via the get_all action below.
         if (strpos($r['item_key'], 'ical-feeds-') === 0) continue;
         if (strpos($r['item_key'], 'arrival-') === 0) continue;
-        // Cottage GPS coordinates (used for the on-arrival key-code unlock) are
-        // checked server-side only — never expose them to the public site.
-        if (strpos($r['item_key'], 'geo-') === 0) continue;
+        // Cottage GPS coordinates (geo-<propKey>) ARE exposed publicly so the cottage
+        // page can show an exact-pin "Where you'll be" map. They're still used
+        // server-side for the on-arrival key-code unlock too.
         // Values are stored as JSON; decode so the client gets real types.
         $decoded = json_decode($r['item_value'], true);
         $out[$r['item_key']] = ($decoded === null && $r['item_value'] !== 'null') ? $r['item_value'] : $decoded;
