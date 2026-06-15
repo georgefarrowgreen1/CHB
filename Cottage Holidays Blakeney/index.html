@@ -613,6 +613,12 @@
            span the whole screen width rather than sitting in a narrow centred column). */
         #view-cottages { max-width: none; margin: 0; width: 100%; box-sizing: border-box; padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
         #cottages { grid-template-columns: 1fr; gap: 16px; }
+        /* Desktop: a 3-up collection grid (cards side by side), centred to a
+           comfortable width — mobile stays full-width single column above. */
+        @media (min-width: 860px) {
+            #view-cottages { max-width: 1500px; margin: 0 auto; padding-left: clamp(20px, 4vw, 40px); padding-right: clamp(20px, 4vw, 40px); }
+            #cottages { grid-template-columns: repeat(3, 1fr); gap: 28px; align-items: start; }
+        }
 
         /* --- GUEST REVIEWS --- */
         .reviews-grid {
@@ -9867,7 +9873,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'zf4g5d7h';
+            const BUILD = 'ag5h6e8j';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
