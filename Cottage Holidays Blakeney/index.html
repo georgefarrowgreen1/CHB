@@ -560,10 +560,13 @@
         .terms-modal-foot { padding: 16px 28px; border-top: 1px solid var(--glass-border); display: flex; gap: 12px; justify-content: flex-end; flex-wrap: wrap; }
 
         /* --- HERO & LAYOUT --- */
+        /* The home view is a flex column so the hero can grow to fill the space down
+           to the footer — no big empty gap, no scroll, footer always in view. */
+        #view-main { display: flex; flex-direction: column; }
         .hero {
-            min-height: clamp(420px, 78vh, 760px); display: flex; align-items: flex-start; justify-content: center;
+            min-height: clamp(420px, 78vh, 760px); flex: 1 1 auto; display: flex; align-items: center; justify-content: center;
             text-align: center; border-radius: 0 0 40px 40px; overflow: hidden;
-            position: relative; margin-bottom: 50px;
+            position: relative; margin-bottom: 0;
             padding: calc(96px + env(safe-area-inset-top)) 0 40px;   /* clear the floating header (+ notch) */
         }
         .hero-bg {
@@ -605,14 +608,10 @@
         .card-meta { font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: 1px; margin-bottom: 15px; }
         .card-price { font-family: var(--font-serif); font-size: 1.15rem; color: var(--text-light); }
         .card-price span { font-size: 0.8rem; color: var(--text-muted); font-family: var(--font-sans); }
-        /* Cottages page: the 3 cottages flex to fill the viewport (same stacked layout
-           on mobile AND desktop), so the whole collection is visible without scrolling. */
-        #view-cottages { min-height: 100svh; display: flex; flex-direction: column; box-sizing: border-box; }
-        #cottages { flex: 1 1 auto; display: flex; flex-direction: column; gap: 14px; min-height: 0; }
-        #cottages .card { flex: 1 1 0; min-height: 0; margin: 0; padding: 14px; }
-        #cottages .card-img { flex: 1 1 auto; min-height: 90px; height: auto; margin-bottom: 10px; }
-        #cottages .card-title { font-size: clamp(1.2rem, 3.2vw, 1.55rem); margin-bottom: 2px; }
-        #cottages .card-meta { margin-bottom: 6px; }
+        /* Cottages page: full-width single column on mobile AND desktop (the cards
+           span the whole screen width rather than sitting in a narrow centred column). */
+        #view-cottages { max-width: none; margin: 0; width: 100%; box-sizing: border-box; padding-left: max(12px, env(safe-area-inset-left)); padding-right: max(12px, env(safe-area-inset-right)); }
+        #cottages { grid-template-columns: 1fr; gap: 16px; }
 
         /* --- GUEST REVIEWS --- */
         .reviews-grid {
@@ -1225,7 +1224,7 @@
         .modal-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); display: block; margin-bottom: 5px; }
 
         /* --- FOOTER & EDITOR UI --- */
-        .site-footer { margin-top: auto; padding: 40px 20px; text-align: center; border-top: 1px solid var(--glass-border); }
+        .site-footer { margin-top: auto; padding: 22px 20px; text-align: center; border-top: 1px solid var(--glass-border); }
         .footer-controls { display: flex; justify-content: center; gap: 15px; margin-top: 15px; }
 
         /* Same-day changeover toasts (lower-right) */
@@ -1467,7 +1466,7 @@
 
         /* ---------- PORTRAIT PHONE (≤480px) ---------- */
         @media (max-width: 480px) {
-            .hero { border-radius: 0 0 28px 28px; margin-bottom: 36px; }
+            .hero { border-radius: 0 0 28px 28px; margin-bottom: 0; }
             .hero-content { padding: 24px 16px; }
             .container { padding-left: 14px; padding-right: 14px; }
             .glass-panel { border-radius: 20px; }
@@ -1502,7 +1501,7 @@
 
         /* ---------- SHORT LANDSCAPE (phones turned sideways) ---------- */
         @media (max-height: 480px) and (orientation: landscape) {
-            .hero { min-height: 100vh; padding: calc(90px + env(safe-area-inset-top)) 0 50px; }
+            .hero { min-height: 0; padding: calc(74px + env(safe-area-inset-top)) 0 18px; }
             .mobile-nav-overlay { justify-content: flex-start; padding-top: 80px; overflow-y: auto; }
             .mobile-nav-overlay a { font-size: 1.15rem; margin: 10px 0; }
         }
@@ -9867,7 +9866,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'vb8c9z3d';
+            const BUILD = 'ye3f4c6g';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
