@@ -1479,6 +1479,12 @@
             .hs-gtype { min-width: 0; }
         }
 
+        /* ----- Directions provider toggle (Apple / Google) on the arrival map ----- */
+        .map-provider-toggle { display: inline-flex; border: 1px solid var(--glass-border); border-radius: 12px; overflow: hidden; }
+        .map-provider-toggle button { background: transparent; border: none; color: var(--text-muted); font-family: inherit; font-size: 0.78rem; padding: 8px 12px; cursor: pointer; transition: background 0.2s, color 0.2s; }
+        .map-provider-toggle button + button { border-left: 1px solid var(--glass-border); }
+        .map-provider-toggle button.is-on { background: rgba(255,255,255,0.16); color: var(--text-light); }
+
         /* ----- Liquid-glass zoom buttons on the arrival map ----- */
         .leaflet-bar, .leaflet-control-zoom {
             border: none !important;
@@ -2421,7 +2427,13 @@
             <div id="map-canvas" style="height:60vh;min-height:300px;border-radius:16px;overflow:hidden;"></div>
             <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:12px;">
                 <span id="map-modal-info" style="font-size:0.85rem;color:var(--text-muted);"></span>
-                <a id="map-modal-dir" href="#" target="_blank" rel="noopener" class="btn-sm btn-edit" style="text-decoration:none;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 5h5v5M19 5l-9 9"/><path d="M19 13.5V18a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h4.5"/></svg> Get directions</a>
+                <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+                    <div class="map-provider-toggle" id="map-provider-toggle" role="group" aria-label="Directions provider">
+                        <button type="button" data-provider="apple" onclick="setMapProvider('apple')">Apple Maps</button>
+                        <button type="button" data-provider="google" onclick="setMapProvider('google')">Google Maps</button>
+                    </div>
+                    <a id="map-modal-dir" href="#" target="_blank" rel="noopener" class="btn-sm btn-edit" style="text-decoration:none;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 5h5v5M19 5l-9 9"/><path d="M19 13.5V18a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h4.5"/></svg> Get directions</a>
+                </div>
             </div>
         </div>
     </div>
@@ -4129,12 +4141,44 @@
             });
             return __leafletLoader;
         }
+        // ---- Directions provider: native maps app by device, with a manual override ----
+        // Embedded map stays OpenStreetMap; only the "Get directions" hand-off changes.
+        function isAppleDevice() {
+            const ua = navigator.userAgent || '';
+            return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+        }
+        let mapProvider = (() => {
+            try { const s = localStorage.getItem('chb-map-provider'); if (s === 'apple' || s === 'google') return s; } catch (e) {}
+            return isAppleDevice() ? 'apple' : 'google';
+        })();
+        function directionsUrl(lat, lng) {
+            return mapProvider === 'apple'
+                ? `https://maps.apple.com/?daddr=${lat},${lng}&dirflg=d`
+                : `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
+        }
+        // Re-point the map modal's directions link to the current provider + cottage.
+        function updateDirectionsLink() {
+            const dirA = document.getElementById('map-modal-dir');
+            const geo = arrivalGeo[mapModal.propKey];
+            if (dirA && geo) dirA.href = directionsUrl(geo.lat, geo.lng);
+        }
+        function reflectMapProviderToggle() {
+            document.querySelectorAll('#map-provider-toggle [data-provider]').forEach(b =>
+                b.classList.toggle('is-on', b.getAttribute('data-provider') === mapProvider));
+        }
+        function setMapProvider(p) {
+            mapProvider = (p === 'apple') ? 'apple' : 'google';
+            try { localStorage.setItem('chb-map-provider', mapProvider); } catch (e) {}
+            reflectMapProviderToggle();
+            updateDirectionsLink();
+        }
+
         // Card note when nearby (25m–1km): distance + a button to open the map window.
         function setNearbyNote(bookingId, propKey, distM) {
             const els = arrivalNoteEls(bookingId);
             if (!els.length) return;
             const geo = arrivalGeo[propKey];
-            const dir = geo ? ` · <a href="https://www.google.com/maps/dir/?api=1&destination=${geo.lat},${geo.lng}&travelmode=driving" target="_blank" rel="noopener" style="color:var(--text-light);text-decoration:underline;">Get directions</a>` : '';
+            const dir = geo ? ` · <a href="${directionsUrl(geo.lat, geo.lng)}" target="_blank" rel="noopener" style="color:var(--text-light);text-decoration:underline;">Get directions</a>` : '';
             const html = `${IC_PIN} About ${formatDistance(distM)} away — unlocks within 25m. <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="openMapModal('${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4L3.5 6v14L9 18l6 2 5.5-2V4L15 6 9 4z"/><path d="M9 4v14M15 6v14"/></svg> Live map</button>${dir}`;
             els.forEach(el => el.innerHTML = html);
         }
@@ -4160,9 +4204,8 @@
             mapModal.open = true;
             const overlay = document.getElementById('map-modal');
             if (overlay) overlay.classList.add('open');
-            const geo = arrivalGeo[propKey];
-            const dirA = document.getElementById('map-modal-dir');
-            if (dirA && geo) dirA.href = `https://www.google.com/maps/dir/?api=1&destination=${geo.lat},${geo.lng}&travelmode=driving`;
+            reflectMapProviderToggle();
+            updateDirectionsLink();
             await renderMapModal();
         }
         function closeMapModal() {
@@ -8259,7 +8302,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'gs9q7n3m';
+            const BUILD = 'hk5r9m4w';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
