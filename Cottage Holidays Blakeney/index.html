@@ -295,7 +295,7 @@
         /* --- RESPONSIVE HEADER --- */
         header {
             position: fixed;
-            top: 20px; left: 50%;
+            top: calc(20px + env(safe-area-inset-top)); left: 50%;
             transform: translateX(-50%);
             width: 90%; max-width: 1200px;
             z-index: 1000;
@@ -1211,7 +1211,7 @@
 
         /* ---------- LANDSCAPE PHONE / SMALL TABLET (≤768px) ---------- */
         @media (max-width: 768px) {
-            header { padding: 12px 18px; width: calc(100% - 24px); top: 10px; border-radius: 28px; }
+            header { padding: 12px 18px; width: calc(100% - 24px); top: calc(10px + env(safe-area-inset-top)); border-radius: 28px; }
             nav ul { display: none; }
             .menu-toggle { display: block; }
             .logo-text { display: none; }   /* mobile: show just the crown mark */
@@ -7826,7 +7826,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'px9k4r2d';
+            const BUILD = 'sa4f9w2n';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
