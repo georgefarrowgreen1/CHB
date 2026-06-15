@@ -1064,6 +1064,43 @@
         .msg-thread-row .mtr-main { flex: 1; min-width: 0; }
         .msg-thread-row .mtr-name { font-size: 0.95rem; }
         .msg-thread-row .mtr-last { font-size: 0.8rem; color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        /* Admin reply-modal context block (where they came from, location, bookings) */
+        .msg-ctx { background: rgba(255,255,255,0.03); border: 1px solid var(--glass-border); border-radius: 12px; padding: 10px 14px; margin-bottom: 14px; }
+        .msg-ctx:empty { display: none; }
+        .mc-row { display: flex; gap: 10px; font-size: 0.8rem; padding: 3px 0; }
+        .mc-row .mc-k { color: var(--text-muted); min-width: 84px; flex-shrink: 0; }
+        .mc-row .mc-v { color: var(--text-light); }
+
+        /* Floating chat bubble + widget (public site) */
+        .chat-fab {
+            position: fixed; right: 22px; bottom: 22px; z-index: 1400;
+            width: 58px; height: 58px; border-radius: 50%; border: 1px solid var(--glass-highlight);
+            background: rgba(214,167,133,0.95); color: #1a191b; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.4);
+            transition: transform 0.2s var(--spring), opacity 0.25s ease;
+        }
+        .chat-fab svg { width: 26px; height: 26px; }
+        .chat-fab:hover { transform: translateY(-2px) scale(1.04); }
+        .chat-fab.hidden { opacity: 0; pointer-events: none; transform: scale(0.6); }
+        body.owner-mode .chat-fab, body.owner-mode .chat-widget { display: none !important; }
+        .chat-widget {
+            position: fixed; right: 22px; bottom: 22px; z-index: 1401;
+            width: min(380px, calc(100vw - 32px)); max-height: min(620px, calc(100vh - 90px));
+            display: none; flex-direction: column; overflow: hidden;
+            background: rgba(26,25,30,0.96); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px);
+            border: 1px solid var(--glass-highlight); border-radius: 22px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.5);
+        }
+        .chat-widget.open { display: flex; animation: fluidFadeIn 0.3s var(--fluid-bezier); }
+        .chat-widget-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 16px 16px 12px; border-bottom: 1px solid var(--glass-border); }
+        .chat-widget-title { font-family: var(--font-serif); font-size: 1.2rem; }
+        .chat-widget-sub { font-size: 0.72rem; color: var(--text-muted); margin-top: 2px; }
+        .chat-widget .chat-thread { flex: 1; max-height: none; padding: 14px; }
+        @media (max-width: 480px) {
+            .chat-widget { right: 10px; bottom: 10px; width: calc(100vw - 20px); max-height: calc(100vh - 80px); }
+            .chat-fab { right: 16px; bottom: 16px; }
+        }
 
         /* Enquiry cards stacked in the sidebar */
         .enquiry-card {
@@ -2690,7 +2727,6 @@
                 </div>
             </div>
         </div>
-        <div id="guest-messages"><!-- JS injects the "message your host" thread here --></div>
         <div id="guest-bookings-list">
             <!-- JS injects the guest's bookings here -->
         </div>
@@ -2703,11 +2739,32 @@
                 <h3 id="messages-modal-title" style="font-family:var(--font-serif);font-size:1.4rem;">Messages</h3>
                 <button class="reviews-modal-close" onclick="closeMessagesModal()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
+            <div class="msg-ctx" id="messages-modal-ctx"></div>
             <div class="chat-thread" id="messages-modal-thread"></div>
             <div class="chat-composer">
                 <textarea id="messages-modal-input" class="input-glass" rows="2" placeholder="Write a reply…"></textarea>
                 <button class="btn-glass" onclick="adminSendMessage()">Send</button>
             </div>
+        </div>
+    </div>
+
+    <!-- ================= FLOATING CHAT (everyone) ================= -->
+    <button id="chat-fab" class="chat-fab" onclick="toggleChat()" aria-label="Chat with us" title="Chat with us">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.6-.8L3 21l1.9-5.7A8.38 8.38 0 0 1 4 11.5 8.5 8.5 0 0 1 12.5 3 8.38 8.38 0 0 1 21 11.5z"/></svg>
+    </button>
+    <div id="chat-widget" class="chat-widget" role="dialog" aria-label="Chat with Cottage Holidays Blakeney">
+        <div class="chat-widget-head">
+            <div><div class="chat-widget-title">Chat with us</div><div class="chat-widget-sub">We usually reply by email too</div></div>
+            <button class="reviews-modal-close" onclick="closeChat()" aria-label="Close chat"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+        </div>
+        <div class="chat-thread" id="chat-thread"></div>
+        <div id="chat-intro" style="display:none;padding:0 14px;">
+            <input type="text" id="chat-name" class="input-glass field-sm" placeholder="Your name (optional)" style="margin:0 0 8px;">
+            <input type="email" id="chat-email" name="email" autocomplete="email" class="input-glass field-sm" placeholder="Email (so we can reply)" style="margin:0;">
+        </div>
+        <div class="chat-composer" style="padding:12px 14px 14px;">
+            <textarea id="chat-input" class="input-glass" rows="2" placeholder="Write a message…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat();}"></textarea>
+            <button class="btn-glass" onclick="sendChat()">Send</button>
         </div>
     </div>
 
@@ -5149,7 +5206,6 @@
             if (welcome) welcome.innerText = `Welcome back, ${currentGuest.name.split(' ')[0]} — here are your stays.`;
             loadPasskeys();
             fillGuestProfile();
-            try { renderGuestMessages(); } catch (e) {}
 
             // Fetch this guest's own bookings + pending enquiries (incl. property address)
             let rows = [], enqRows = [];
@@ -7895,31 +7951,69 @@
             return msgs.map(m => `<div class="chat-msg ${m.role === meRole ? 'me' : 'them'}">${escapeHtml(m.body)}<div class="chat-meta">${m.role === 'guest' ? (meRole === 'guest' ? 'You' : 'Guest') : (meRole === 'admin' ? 'You' : 'Host')} · ${fmtMsgTime(m.at)}</div></div>`).join('');
         }
 
-        // ---- Guest side: "Message your host" panel in the account ----
-        async function renderGuestMessages() {
-            const wrap = document.getElementById('guest-messages');
-            if (!wrap) return;
-            let msgs = [];
-            try { const r = await apiPost('messages.php', { action: 'thread' }); msgs = r.messages || []; }
-            catch (e) { wrap.innerHTML = ''; return; }
-            wrap.innerHTML = `<section class="glass-panel" style="padding:24px;margin-bottom:28px;">
-                <h3 style="font-family:var(--font-serif);font-size:1.3rem;margin-bottom:14px;">Message your host</h3>
-                <div class="chat-thread" id="guest-chat-thread">${msgs.length ? chatBubbles(msgs, 'guest') : `<p class="chat-empty">Questions about your stay, arrival, or anything at all — send your host a message.</p>`}</div>
-                <div class="chat-composer">
-                    <textarea id="guest-chat-input" class="input-glass" rows="2" placeholder="Write a message…"></textarea>
-                    <button class="btn-glass" onclick="guestSendMessage()">Send</button>
-                </div>
-            </section>`;
-            const t = document.getElementById('guest-chat-thread'); if (t) t.scrollTop = t.scrollHeight;
+        // ---- Floating chat widget (everyone: logged-in guests + anonymous visitors) ----
+        function chatGetToken() { try { return localStorage.getItem('chb-chat-token') || ''; } catch (e) { return ''; } }
+        function chatNewToken() {
+            let t = ''; const a = new Uint8Array(16);
+            (window.crypto || {}).getRandomValues ? crypto.getRandomValues(a) : a.forEach((_, i) => a[i] = Math.floor(Math.random() * 256));
+            t = Array.from(a).map(b => b.toString(16).padStart(2, '0')).join('');
+            try { localStorage.setItem('chb-chat-token', t); } catch (e) {}
+            return t;
         }
-        async function guestSendMessage() {
-            const input = document.getElementById('guest-chat-input');
+        function toggleChat() {
+            const w = document.getElementById('chat-widget');
+            if (!w) return;
+            if (w.classList.contains('open')) { closeChat(); return; }
+            w.classList.add('open');
+            document.getElementById('chat-fab').classList.add('hidden');
+            loadChat();
+        }
+        function closeChat() {
+            const w = document.getElementById('chat-widget'); if (w) w.classList.remove('open');
+            const f = document.getElementById('chat-fab'); if (f) f.classList.remove('hidden');
+        }
+        async function loadChat() {
+            const thread = document.getElementById('chat-thread');
+            const intro = document.getElementById('chat-intro');
+            if (!thread) return;
+            const loggedIn = !!currentGuest;
+            const token = chatGetToken();
+            // Anonymous with no prior chat → show the name/email intro.
+            if (intro) intro.style.display = (!loggedIn && !token) ? 'block' : 'none';
+            thread.innerHTML = `<p class="chat-empty">Loading…</p>`;
+            try {
+                const payload = loggedIn ? { action: 'thread' } : { action: 'thread', token };
+                const r = await apiPost('messages.php', payload);
+                const msgs = r.messages || [];
+                thread.innerHTML = msgs.length ? chatBubbles(msgs, 'guest')
+                    : `<p class="chat-empty">Hi! 👋 Ask us anything — about a cottage, your dates, or your stay. We'll reply by email too.</p>`;
+                thread.scrollTop = thread.scrollHeight;
+            } catch (e) { thread.innerHTML = `<p class="chat-empty">Couldn't load the chat right now.</p>`; }
+        }
+        async function sendChat() {
+            const input = document.getElementById('chat-input');
             const body = (input && input.value || '').trim();
             if (!body) return;
+            const loggedIn = !!currentGuest;
+            let payload;
+            if (loggedIn) {
+                payload = { action: 'send', body };
+            } else {
+                let token = chatGetToken();
+                const nameEl = document.getElementById('chat-name'), emailEl = document.getElementById('chat-email');
+                const email = (emailEl && emailEl.value || '').trim();
+                if (!token) {   // first message from an anonymous visitor
+                    if (email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { glassAlert('Please enter a valid email so we can reply.'); return; }
+                    token = chatNewToken();
+                }
+                payload = { action: 'send', token, body, name: (nameEl && nameEl.value || '').trim(), email, ref: document.referrer || '' };
+            }
             try {
-                await apiPost('messages.php', { action: 'send', body });
+                const r = await apiPost('messages.php', payload);
+                if (r && r.token) { try { localStorage.setItem('chb-chat-token', r.token); } catch (e) {} }
                 if (input) input.value = '';
-                await renderGuestMessages();
+                const intro = document.getElementById('chat-intro'); if (intro) intro.style.display = 'none';
+                await loadChat();
             } catch (e) { glassAlert("Couldn't send: " + e.message); }
         }
 
@@ -7968,38 +8062,56 @@
             if (badge) { badge.textContent = unread; badge.classList.toggle('zero', unread === 0); }
             if (!list) return;
             list.innerHTML = threads.length ? threads.map(t => `
-                <button class="msg-thread-row" onclick="openMessageThread(${t.guest_id}, '${escapeHtml((t.name || '').replace(/'/g, "\\'"))}')">
-                    <span class="mtr-main"><span class="mtr-name">${escapeHtml(t.name || t.email || 'Guest')}${t.unread ? ` <span class="inbox-badge" style="min-width:18px;height:18px;font-size:0.66rem;">${t.unread}</span>` : ''}</span><span class="mtr-last">${escapeHtml(t.last_body || '')}</span></span>
+                <button class="msg-thread-row" onclick="openMessageThread(${t.thread_id})">
+                    <span class="mtr-main"><span class="mtr-name">${escapeHtml(t.name || t.email || 'Visitor')}${t.is_guest ? '' : ' <span style="font-size:0.66rem;color:var(--text-muted);">· visitor</span>'}${t.unread ? ` <span class="inbox-badge" style="min-width:18px;height:18px;font-size:0.66rem;">${t.unread}</span>` : ''}</span><span class="mtr-last">${escapeHtml(t.last_body || '')}</span></span>
                     <span class="settings-row-chev" aria-hidden="true">›</span>
-                </button>`).join('') : `<p style="font-size:0.82rem;color:var(--text-muted);">No guest messages yet.</p>`;
+                </button>`).join('') : `<p style="font-size:0.82rem;color:var(--text-muted);">No messages yet.</p>`;
         }
-        let __msgThreadGuest = null;
-        async function openMessageThread(guestId, name) {
-            __msgThreadGuest = guestId;
+        let __msgThreadId = null;
+        function bookingLine(b) {
+            const name = (propertyMeta[b.prop_key] || {}).name || b.prop_key;
+            return `${escapeHtml(name)} · ${b.check_in} → ${b.check_out}${b.payment ? ' · ' + escapeHtml(b.payment) : ''}`;
+        }
+        async function openMessageThread(threadId) {
+            __msgThreadId = threadId;
             const modal = document.getElementById('messages-modal');
             const title = document.getElementById('messages-modal-title');
+            const ctx = document.getElementById('messages-modal-ctx');
             const thread = document.getElementById('messages-modal-thread');
-            if (title) title.textContent = name ? `Messages — ${name}` : 'Messages';
             if (thread) thread.innerHTML = `<p class="chat-empty">Loading…</p>`;
+            if (ctx) ctx.innerHTML = '';
             if (modal) modal.classList.add('open');
             try {
-                const r = await apiPost('messages.php', { action: 'thread', guest_id: guestId });
+                const r = await apiPost('messages.php', { action: 'thread', thread_id: threadId });
+                const t = r.thread || {};
+                if (title) title.textContent = t.name ? t.name : (t.email || 'Message');
+                if (ctx) {
+                    const bk = (r.bookings || []).length
+                        ? `<div class="mc-row"><span class="mc-k">Bookings</span><span class="mc-v">${r.bookings.map(bookingLine).join('<br>')}</span></div>`
+                        : `<div class="mc-row"><span class="mc-k">Bookings</span><span class="mc-v">None on file</span></div>`;
+                    ctx.innerHTML = `
+                        ${t.email ? `<div class="mc-row"><span class="mc-k">Email</span><span class="mc-v">${escapeHtml(t.email)}</span></div>` : ''}
+                        <div class="mc-row"><span class="mc-k">Came from</span><span class="mc-v">${escapeHtml(t.source || '—')}</span></div>
+                        <div class="mc-row"><span class="mc-k">Location</span><span class="mc-v">${escapeHtml(t.location || 'Unknown')}</span></div>
+                        <div class="mc-row"><span class="mc-k">Account</span><span class="mc-v">${t.is_guest ? 'Registered guest' : 'Website visitor'}</span></div>
+                        ${bk}`;
+                }
                 if (thread) { thread.innerHTML = chatBubbles(r.messages || [], 'admin'); thread.scrollTop = thread.scrollHeight; }
             } catch (e) { if (thread) thread.innerHTML = `<p class="chat-empty">Couldn't load this thread.</p>`; }
             loadAdminMessages();   // clear the unread badge now it's been read
         }
         function closeMessagesModal() {
             const m = document.getElementById('messages-modal'); if (m) m.classList.remove('open');
-            __msgThreadGuest = null;
+            __msgThreadId = null;
         }
         async function adminSendMessage() {
             const input = document.getElementById('messages-modal-input');
             const body = (input && input.value || '').trim();
-            if (!body || !__msgThreadGuest) return;
+            if (!body || !__msgThreadId) return;
             try {
-                await apiPost('messages.php', { action: 'send', guest_id: __msgThreadGuest, body });
+                await apiPost('messages.php', { action: 'send', thread_id: __msgThreadId, body });
                 if (input) input.value = '';
-                const r = await apiPost('messages.php', { action: 'thread', guest_id: __msgThreadGuest });
+                const r = await apiPost('messages.php', { action: 'thread', thread_id: __msgThreadId });
                 const thread = document.getElementById('messages-modal-thread');
                 if (thread) { thread.innerHTML = chatBubbles(r.messages || [], 'admin'); thread.scrollTop = thread.scrollHeight; }
                 loadAdminMessages();
@@ -10552,7 +10664,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'ye0f1h3l';
+            const BUILD = 'zf1g2i4m';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
