@@ -3425,7 +3425,7 @@
                 const res = await apiGet('accounts.php');
                 years = res.years || [];
             } catch (e) { glassAlert("Couldn't load accounts: " + e.message); return; }
-            if (years.length === 0) years = [taxYearStartOf(formatDashed(new Date()))];
+            if (years.length === 0) years = [taxYearStartOf(todayDashed())];
             const sel = document.getElementById('accounts-year');
             sel.innerHTML = years.map(y => `<option value="${y}">${taxYearShort(y)}  (${taxYearLabel(y)})</option>`).join('');
             nav('view-accounts');
@@ -3947,7 +3947,7 @@
 
             // Order so upcoming stays appear first (soonest check-in first),
             // then past stays (most recently finished first).
-            const todaySort = formatDashed(new Date());
+            const todaySort = todayDashed();
             mine.sort((a, b) => {
                 const au = a.booking.checkOut >= todaySort;
                 const bu = b.booking.checkOut >= todaySort;
@@ -3970,7 +3970,7 @@
                 return;
             }
 
-            const todayStr = formatDashed(new Date());
+            const todayStr = todayDashed();
             const currentStays = [];   // bookings whose stay includes today (for the on-arrival watcher)
 
             // Pending enquiry cards — same layout as a confirmed booking, but marked
@@ -4464,7 +4464,7 @@
                 let rows = [];
                 try { const res = await apiGet('my-bookings.php'); rows = res.bookings || []; }
                 catch (e) { return; }   // leave any existing banner as-is on a transient failure
-                const today = formatDashed(new Date());
+                const today = todayDashed();
                 homeArrivalStays = rows
                     .map(r => ({ propKey: r.prop_key, b: mapBookingFromApi(r) }))
                     .filter(x => x.b.checkIn <= today && x.b.checkOut >= today)
@@ -4743,7 +4743,7 @@
             // Invoice meta
             doc.setFontSize(10);
             rowLR('Invoice reference', bookingRef(b.id), y); y += 18;
-            rowLR('Issued', formatDashed(new Date()), y); y += 18;
+            rowLR('Issued', todayDashed(), y); y += 18;
             rowLR('Guest', b.name || '', y); y += 18;
             if (b.email) { rowLR('Email', b.email, y); y += 18; }
             y += 10; line(y); y += 28;
@@ -5669,7 +5669,7 @@
                 rentalTotal: p.rentalTotal,
                 total: p.total,
                 extraAdults: p.extraAdults,
-                agreedOn: formatDashed(new Date())
+                agreedOn: todayDashed()
             };
             return booking;
         }
@@ -5940,7 +5940,7 @@
         // valid date is now present, false if the user cancelled / gave a bad date.
         async function ensurePaymentDate(booking) {
             if (booking.paymentDate && /^\d{4}-\d{2}-\d{2}$/.test(booking.paymentDate)) return true;
-            const today = formatDashed(new Date());
+            const today = todayDashed();
             const entered = await glassPrompt('A payment date is required (YYYY-MM-DD):', today);
             if (entered === null) return false;                  // cancelled
             const val = entered.trim();
@@ -5967,7 +5967,7 @@
                 payload.deposit = Math.max(0, parseFloat(entered) || 0);
             }
             if (newStatus === 'deposit' || newStatus === 'paid') {
-                const d = await glassPrompt('Payment date (YYYY-MM-DD):', booking.paymentDate || formatDashed(new Date()));
+                const d = await glassPrompt('Payment date (YYYY-MM-DD):', booking.paymentDate || todayDashed());
                 if (d === null) { showDetails(propKey, booking); return; }
                 if (!/^\d{4}-\d{2}-\d{2}$/.test(d.trim())) { glassAlert('A valid payment date is required.'); showDetails(propKey, booking); return; }
                 payload.payment_date = d.trim();
@@ -6002,7 +6002,7 @@
             const payload = { id: booking.dbId, payment: status };
             if (status === 'deposit') payload.deposit = Math.round(dep * 100) / 100;
             if (dep > 0.001) {
-                const d = await glassPrompt('Payment date (YYYY-MM-DD):', booking.paymentDate || formatDashed(new Date()));
+                const d = await glassPrompt('Payment date (YYYY-MM-DD):', booking.paymentDate || todayDashed());
                 if (d === null) { showDetails(propKey, booking); return; }
                 if (!/^\d{4}-\d{2}-\d{2}$/.test(d.trim())) { glassAlert('A valid payment date is required.'); showDetails(propKey, booking); return; }
                 payload.payment_date = d.trim();
@@ -6133,7 +6133,7 @@
         // Find every same-day changeover (a checkout meeting a check-in at the same
         // property on the same date), today and into the future, for planning ahead.
         function findChangeovers() {
-            const todayStr = formatDashed(new Date());
+            const todayStr = todayDashed();
             const out = [];
             Object.keys(dbBookings).forEach(propKey => {
                 const list = dbBookings[propKey] || [];
@@ -6652,6 +6652,16 @@
             const d = String(dateObj.getDate()).padStart(2, '0');
             return `${y}-${m}-${d}`;
         }
+        // "Today" in UK time (the business operates in the UK), so availability and
+        // stay logic don't drift by a day for guests in other timezones. Mirrors the
+        // server, which is pinned to Europe/London.
+        function ukNowParts() {
+            const parts = {};
+            new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/London', year: 'numeric', month: '2-digit', day: '2-digit' })
+                .formatToParts(new Date()).forEach(p => { if (p.type !== 'literal') parts[p.type] = p.value; });
+            return { y: +parts.year, m: +parts.month, d: +parts.day };
+        }
+        function todayDashed() { const t = ukNowParts(); return `${t.y}-${String(t.m).padStart(2, '0')}-${String(t.d).padStart(2, '0')}`; }
 
         // ============ Custom glass date-range picker (customer booking) ============
         // ===================================================================
@@ -6809,7 +6819,7 @@
             const ranges = propertyAvailability[activeFrontProperty] || [];
             const isBooked = ds => ranges.some(r => ds >= r.start && ds < r.end);
             const pad = n => String(n).padStart(2, '0');
-            const todayStr = formatDashed(new Date());
+            const todayStr = todayDashed();
             const dow = ['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
             let html = dow.map(d => `<div class="avail-dow">${d}</div>`).join('');
             // Monday-first offset
@@ -6837,7 +6847,7 @@
         }
 
         function dpParse(str) { if (!str) return null; const [y,m,d] = str.split('-').map(Number); return new Date(y, m-1, d); }
-        function dpToday0() { const t = new Date(); t.setHours(0,0,0,0); return t; }
+        function dpToday0() { const u = ukNowParts(); const t = new Date(u.y, u.m - 1, u.d); t.setHours(0,0,0,0); return t; }
         function dpPretty(str) {
             const d = dpParse(str); if (!d) return '';
             return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -7234,7 +7244,7 @@
         function renderOwnerSummary() {
             const el = document.getElementById('owner-summary');
             if (!el) return;
-            const todayStr = formatDashed(new Date());
+            const todayStr = todayDashed();
             const now = new Date();
             const in30 = formatDashed(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 30));
             const monthStart = formatDashed(new Date(now.getFullYear(), now.getMonth(), 1));
@@ -8165,7 +8175,7 @@
                     depositAmount = Math.max(0, parseFloat(entered) || 0);
                 }
                 // Payment date required when money is recorded
-                const existingDate = (existing && existing.paymentDate) ? existing.paymentDate : formatDashed(new Date());
+                const existingDate = (existing && existing.paymentDate) ? existing.paymentDate : todayDashed();
                 const d = await glassPrompt('Payment date (YYYY-MM-DD):', existingDate);
                 if (d === null) return;
                 if (!/^\d{4}-\d{2}-\d{2}$/.test(d.trim())) { showErr('A valid payment date (YYYY-MM-DD) is required.'); return; }
@@ -8249,7 +8259,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'fr8p6m2k';
+            const BUILD = 'gs9q7n3m';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');

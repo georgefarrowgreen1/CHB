@@ -115,6 +115,13 @@ if ($action === 'approve') {
     if (!$e) json_out(['error' => 'Enquiry not found'], 404);
 
     $rate = get_rate($e['prop_key']);
+    book_lock($e['prop_key']);   // serialise so concurrent approvals can't both win
+    // Don't approve onto dates that have since been taken (a confirmed booking or an
+    // imported Airbnb/Vrbo block). This path previously skipped the clash check.
+    if (dates_clash($e['prop_key'], $e['check_in'], $e['check_out'])) {
+        book_unlock($e['prop_key']);
+        json_out(['error' => 'Those dates are no longer available — another booking now overlaps them. Please decline or adjust this enquiry.'], 409);
+    }
     $p = price_breakdown($rate, $e['adults'], $e['children'], $e['check_in'], $e['check_out']);
     $today = date('Y-m-d');
 
@@ -132,6 +139,7 @@ if ($action === 'approve') {
         ]);
     $bookingId = db()->lastInsertId();
     db()->prepare('DELETE FROM enquiries WHERE id = ?')->execute([$id]);
+    book_unlock($e['prop_key']);   // free before the (slower) email send
 
     // Send confirmation emails (guest + owner). Wrapped so an email problem
     // never breaks the approval — the booking is already saved above.

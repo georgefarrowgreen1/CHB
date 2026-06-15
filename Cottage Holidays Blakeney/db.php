@@ -13,6 +13,10 @@ error_reporting(E_ALL);
 
 require_once __DIR__ . '/config.php';
 
+// Pin all server date/time logic to UK time (the business operates in the UK),
+// so PHP date() and MySQL NOW()/CURDATE() agree regardless of the server locale.
+date_default_timezone_set('Europe/London');
+
 // ---- Detect HTTPS robustly (IONOS terminates SSL at a proxy, so $_SERVER['HTTPS']
 //      is often unset even on https://). Check forwarded headers too. ----
 function request_is_https() {
@@ -59,11 +63,28 @@ function db() {
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                 PDO::ATTR_EMULATE_PREPARES   => false,
             ]);
+            // Align MySQL NOW()/CURDATE() with UK time (handles BST/GMT via the
+            // current Europe/London offset). Ignored silently if not permitted.
+            try { $pdo->exec("SET time_zone = '" . (new DateTime('now', new DateTimeZone('Europe/London')))->format('P') . "'"); } catch (\Throwable $e) {}
         } catch (PDOException $e) {
             json_out(['error' => 'Database connection failed'], 500);
         }
     }
     return $pdo;
+}
+
+// ---- Per-property write lock (race safety for bookings) ----
+// Serialises booking creation/edit per property so two near-simultaneous
+// confirmations can't both pass the clash check. The lock is connection-scoped,
+// so it auto-frees if a request dies; no-ops gracefully without GET_LOCK.
+function book_lock($propKey) {
+    $name = 'chb_book_' . preg_replace('/[^a-z0-9_]/i', '', (string)$propKey);
+    try { $s = db()->prepare('SELECT GET_LOCK(?, 10)'); $s->execute([$name]); return (int)$s->fetchColumn() === 1; }
+    catch (\Throwable $e) { return false; }
+}
+function book_unlock($propKey) {
+    $name = 'chb_book_' . preg_replace('/[^a-z0-9_]/i', '', (string)$propKey);
+    try { db()->prepare('SELECT RELEASE_LOCK(?)')->execute([$name]); } catch (\Throwable $e) {}
 }
 
 // ---- JSON helpers ----
