@@ -66,7 +66,7 @@ if ($action === 'send_checkin') {
 if ($action === 'sw_notify') {
     if (!empty($_SESSION['admin_id'])) {
         $p = owner_ping_take();
-        if ($p) json_out(['title' => $p['title'] ?: 'Cottage Holidays Blakeney', 'body' => $p['body'] ?? '', 'url' => './', 'tag' => 'chb-owner']);
+        if ($p) json_out(['title' => $p['title'] ?: 'Cottage Holidays Blakeney', 'body' => $p['body'] ?? '', 'url' => './', 'tag' => 'chb-owner', 'reload' => !empty($p['reload'])]);
         json_out(['title' => 'Cottage Holidays Blakeney', 'body' => 'You have a new notification — tap to open the back office.', 'url' => './', 'tag' => 'chb-owner']);
     }
     json_out(['title' => 'Your cottage is ready', 'body' => 'Tap to open your live arrival map and key code.', 'url' => './?arrival=1', 'tag' => 'chb-checkin']);
@@ -101,7 +101,7 @@ if ($action === 'subscribe_admin' || $action === 'test_admin' || $action === 'un
 if ($action === 'notify_release') {
     $isCron = isset($_GET['cron']) && hash_equals(APP_SECRET, (string)$_GET['cron']);
     if (!$isCron && empty($_SESSION['admin_id'])) json_out(['error' => 'Not authorised'], 401);
-    $sent = alert_owner('Cottage Holidays Blakeney', 'A new version of your website is now live.');
+    $sent = alert_owner('Cottage Holidays Blakeney', 'A new version of your website is now live.', true);
     json_out(['ok' => true, 'sent' => $sent]);
 }
 

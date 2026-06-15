@@ -14,13 +14,22 @@ self.addEventListener('push', (event) => {
     // message if the fetch fails (e.g. no session / offline).
     event.waitUntil((async () => {
         let n = { title: 'Your cottage is ready', body: 'Tap to open your live arrival map and key code.', tag: 'chb-checkin', url: './?arrival=1' };
+        let reload = false;
         try {
             const r = await fetch('push.php?action=sw_notify', { credentials: 'include', cache: 'no-store' });
             if (r.ok) {
                 const d = await r.json();
                 if (d && d.title) n = { title: d.title, body: d.body || '', tag: d.tag || 'chb', url: d.url || './' };
+                reload = !!(d && d.reload);
             }
         } catch (e) {}
+        // On a new release, ask any open pages to refresh to the new build.
+        if (reload) {
+            try {
+                const cs = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+                cs.forEach(c => c.postMessage({ type: 'chb-reload' }));
+            } catch (e) {}
+        }
         await self.registration.showNotification(n.title, {
             body: n.body, icon: 'apple-touch-icon.png', badge: 'favicon.png',
             tag: n.tag, renotify: true, data: { url: n.url }
