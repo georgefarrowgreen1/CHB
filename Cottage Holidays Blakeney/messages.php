@@ -57,7 +57,10 @@ function chat_notify_owner($name, $email, $bodyTxt) {
 }
 
 // ---------------- ADMIN ----------------
-if ($isAdmin) {
+// Admin *tools* never carry a visitor token. If a token is present the request
+// is coming from the floating chat widget (e.g. the owner testing it while also
+// logged in), so let it fall through to the visitor path instead of erroring.
+if ($isAdmin && empty($in['token'])) {
     try {
         if ($action === 'thread') {
             $tid = (int)($in['thread_id'] ?? 0);

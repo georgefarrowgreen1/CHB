@@ -7988,7 +7988,10 @@
                 thread.innerHTML = msgs.length ? chatBubbles(msgs, 'guest')
                     : `<p class="chat-empty">Hi! 👋 Ask us anything — about a cottage, your dates, or your stay. We'll reply by email too.</p>`;
                 thread.scrollTop = thread.scrollHeight;
-            } catch (e) { thread.innerHTML = `<p class="chat-empty">Couldn't load the chat right now.</p>`; }
+            } catch (e) {
+                // Don't alarm the visitor — show the greeting and let them type.
+                thread.innerHTML = `<p class="chat-empty">Hi! 👋 Ask us anything — about a cottage, your dates, or your stay. We'll reply by email too.</p>`;
+            }
         }
         async function sendChat() {
             const input = document.getElementById('chat-input');
@@ -10664,7 +10667,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'zf1g2i4m';
+            const BUILD = 'ag2h3j5n';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
