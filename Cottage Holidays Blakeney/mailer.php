@@ -443,11 +443,13 @@ function send_refund_email($b) {
     $esc = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
     $name = $b['name'] ?: 'Guest';
     $prop = $b['prop_name'] ?: 'your cottage';
+    $reason = trim((string)($b['reason'] ?? ''));
 
     $subject = "Refund on its way — {$prop}";
     $text = "Hello {$name},\n\n"
           . "We've issued a refund of " . $money($b['amount']) . " for your booking at {$prop}"
           . (!empty($b['check_in']) ? " ({$b['check_in']} to {$b['check_out']})" : "") . ".\n\n"
+          . ($reason !== '' ? "Reason: {$reason}\n\n" : "")
           . "It's been sent back to the card you paid with. Refunds usually take a few working days "
           . "to appear, depending on your bank.\n\n"
           . "Any questions, just reply to this email.\n\nCottage Holidays Blakeney";
@@ -463,8 +465,89 @@ function send_refund_email($b) {
       . '<div style="margin:20px 0;padding:18px;background:#f3f4f8;border:1px solid #e6e8f0;border-radius:12px;text-align:center;">'
       . '<div style="font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#8a8e9c;">Refund</div>'
       . '<div style="font-size:30px;font-weight:700;color:' . $accent . ';padding:6px 0 2px;">' . $money($b['amount']) . '</div></div>'
+      . ($reason !== '' ? '<p style="font-size:13px;color:#555;line-height:1.6;margin:0 0 10px;"><strong>Reason:</strong> ' . $esc($reason) . '</p>' : '')
       . '<p style="font-size:13px;color:#555;line-height:1.6;margin:0;">It\'s on its way back to the card you paid with. Refunds usually take a few working days to appear, depending on your bank.</p>'
       . '<p style="font-size:13px;color:#777;line-height:1.6;margin:22px 0 4px;">Any questions? Just reply to this email.</p>'
+      . '<p style="font-size:13px;color:#777;margin:0 0 6px;">Cottage Holidays Blakeney</p>'
+      . '</td></tr></table></td></tr></table></body></html>';
+
+    return smtp_send($b['email'], $name, $subject, $text, $html);
+}
+
+// Damage-deposit return after a stay. $b: name, email, prop_key, prop_name,
+// check_in, check_out, amount, held, reason (retention note), manual (bool).
+function send_deposit_return_email($b) {
+    if (empty($b['email'])) return ['ok' => false, 'error' => 'No guest email on file'];
+    $colors = ['21a' => '#42A5F5', 'jollyboat' => '#43A047', 'pimpernel' => '#9C27B0'];
+    $accent = $colors[$b['prop_key'] ?? ''] ?? '#42A5F5';
+    $money = fn($n) => '£' . number_format((float)$n, 2);
+    $esc = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+    $name = $b['name'] ?: 'Guest';
+    $prop = $b['prop_name'] ?: 'your cottage';
+    $reason = trim((string)($b['reason'] ?? ''));
+    $held = (float)($b['held'] ?? $b['amount']);
+    $retained = round(max(0, $held - (float)$b['amount']), 2);
+    $how = !empty($b['manual']) ? "by the method we agreed" : "to the card you paid with";
+
+    $subject = "Your damage deposit — {$prop}";
+    $text = "Hello {$name},\n\n"
+          . "Thank you for staying at {$prop}. We're returning your refundable damage deposit.\n\n"
+          . "Returned: " . $money($b['amount']) . " ({$how}).\n"
+          . ($retained > 0.001 ? "Retained: " . $money($retained) . ($reason !== '' ? " — {$reason}" : "") . "\n" : "")
+          . "\nRefunds usually take a few working days to appear, depending on your bank.\n\n"
+          . "We hope to welcome you back.\n\nCottage Holidays Blakeney";
+
+    $html = '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f4f4f6;">'
+      . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f6;padding:24px 0;"><tr><td align="center">'
+      . '<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">'
+      . email_crown_header('#ffffff')
+      . '<tr><td style="padding:26px 30px 18px;">'
+      . '<p style="font-size:14px;color:#333;line-height:1.6;margin:0;">Hello ' . $esc($name) . ',</p>'
+      . '<p style="font-size:14px;color:#333;line-height:1.6;margin:10px 0 0;">Thank you for staying at <strong>' . $esc($prop) . '</strong>. We\'re returning your refundable damage deposit.</p>'
+      . '<div style="margin:20px 0;padding:18px;background:#f3f4f8;border:1px solid #e6e8f0;border-radius:12px;text-align:center;">'
+      . '<div style="font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#8a8e9c;">Deposit returned</div>'
+      . '<div style="font-size:30px;font-weight:700;color:' . $accent . ';padding:6px 0 2px;">' . $money($b['amount']) . '</div></div>'
+      . ($retained > 0.001 ? '<p style="font-size:13px;color:#555;line-height:1.6;margin:0 0 10px;"><strong>Amount retained:</strong> ' . $money($retained) . ($reason !== '' ? ' — ' . $esc($reason) : '') . '</p>' : '')
+      . '<p style="font-size:13px;color:#555;line-height:1.6;margin:0;">It\'s on its way ' . $esc($how) . '. Refunds usually take a few working days to appear, depending on your bank.</p>'
+      . '<p style="font-size:13px;color:#777;margin:22px 0 6px;">We hope to welcome you back.<br>Cottage Holidays Blakeney</p>'
+      . '</td></tr></table></td></tr></table></body></html>';
+
+    return smtp_send($b['email'], $name, $subject, $text, $html);
+}
+
+// Booking cancellation notice. $b: name, email, prop_key, prop_name, check_in,
+// check_out, refund (amount), card (bool — refunded to card vs manual), reason.
+function send_cancellation_email($b) {
+    if (empty($b['email'])) return ['ok' => false, 'error' => 'No guest email on file'];
+    $money = fn($n) => '£' . number_format((float)$n, 2);
+    $esc = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+    $name = $b['name'] ?: 'Guest';
+    $prop = $b['prop_name'] ?: 'your cottage';
+    $reason = trim((string)($b['reason'] ?? ''));
+    $refund = (float)($b['refund'] ?? 0);
+    $refundLine = $refund > 0.001
+        ? "A refund of " . $money($refund) . (!empty($b['card']) ? " is on its way back to the card you paid with" : " will be arranged with you") . "."
+        : "";
+
+    $subject = "Booking cancelled — {$prop}";
+    $text = "Hello {$name},\n\n"
+          . "Your booking at {$prop}"
+          . (!empty($b['check_in']) ? " ({$b['check_in']} to {$b['check_out']})" : "") . " has been cancelled.\n\n"
+          . ($reason !== '' ? "Reason: {$reason}\n\n" : "")
+          . ($refundLine !== '' ? $refundLine . "\n\n" : "")
+          . "If you have any questions, just reply to this email.\n\nCottage Holidays Blakeney";
+
+    $html = '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f4f4f6;">'
+      . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f6;padding:24px 0;"><tr><td align="center">'
+      . '<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">'
+      . email_crown_header('#ffffff')
+      . '<tr><td style="padding:26px 30px 18px;">'
+      . '<p style="font-size:14px;color:#333;line-height:1.6;margin:0;">Hello ' . $esc($name) . ',</p>'
+      . '<p style="font-size:14px;color:#333;line-height:1.6;margin:10px 0 0;">Your booking at <strong>' . $esc($prop) . '</strong>'
+      . (!empty($b['check_in']) ? ' (' . $esc($b['check_in']) . ' to ' . $esc($b['check_out']) . ')' : '') . ' has been cancelled.</p>'
+      . ($reason !== '' ? '<p style="font-size:13px;color:#555;line-height:1.6;margin:12px 0 0;"><strong>Reason:</strong> ' . $esc($reason) . '</p>' : '')
+      . ($refundLine !== '' ? '<div style="margin:18px 0;padding:14px 18px;background:#f3f4f8;border-radius:10px;font-size:14px;color:#333;">' . $esc($refundLine) . '</div>' : '')
+      . '<p style="font-size:13px;color:#777;line-height:1.6;margin:18px 0 4px;">Any questions? Just reply to this email.</p>'
       . '<p style="font-size:13px;color:#777;margin:0 0 6px;">Cottage Holidays Blakeney</p>'
       . '</td></tr></table></td></tr></table></body></html>';
 

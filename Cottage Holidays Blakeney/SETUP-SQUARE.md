@@ -16,7 +16,9 @@ details; nothing changes for guests until you switch it on.
 ## 2. Add a webhook (recommended backstop)
 1. In the app → **Webhooks → Subscriptions → Add endpoint**.
 2. URL: `https://YOURDOMAIN/square-webhook.php`
-3. Subscribe to events: `payment.created` and `payment.updated`.
+3. Subscribe to events: `payment.created`, `payment.updated`, `refund.created`
+   and `refund.updated` (the refund events keep refund/deposit-return statuses
+   up to date in your dashboard).
 4. Copy the **Signature key** — SECRET.
 
 ## 3. Fill in `config.php` on the server (never committed/deployed)
