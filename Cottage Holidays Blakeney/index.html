@@ -711,7 +711,7 @@
         .prop-feature .ic { width: 24px; height: 24px; flex-shrink: 0; color: var(--text-light); margin-top: 2px; }
         .prop-feature-title { color: var(--text-light); font-size: 0.98rem; }
         .prop-feature-sub { color: var(--text-muted); font-size: 0.83rem; line-height: 1.4; }
-        .prop-book-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1300; display: flex;
+        .prop-book-bar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1300; display: none;
             align-items: center; justify-content: space-between; gap: 16px;
             padding: 12px max(16px, env(safe-area-inset-left)) calc(12px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-right));
             background: rgba(26,25,27,0.94); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
@@ -2793,6 +2793,10 @@
             // leave My Bookings. Also show/hide the homepage arrival banner for this view.
             if (viewId !== 'view-guest-bookings' && !homeArrivalStays.length) { try { stopArrivalWatch(); } catch (e) {} }
             try { renderHomeArrival(); } catch (e) {}
+
+            // The cottage page's sticky booking bar lives on <body> (so its position:fixed
+            // isn't trapped by the page-view transform); show it only on the cottage page.
+            try { const bb = document.getElementById('prop-book-bar'); if (bb) bb.style.display = (viewId === 'view-21a') ? 'flex' : 'none'; } catch (e) {}
 
             // On the owner home page the tiles ARE the menu, so hide the top owner bar there.
             document.body.classList.toggle('on-owner-home', viewId === 'view-owner-home');
@@ -5326,6 +5330,7 @@
             // position:fixed, and a transformed page-view ancestor would otherwise trap
             // it (off-screen). Move it out once, on boot.
             try { const em = document.getElementById('enquire-modal'); if (em && em.parentElement !== document.body) document.body.appendChild(em); } catch (e) {}
+            try { const bb = document.getElementById('prop-book-bar'); if (bb && bb.parentElement !== document.body) document.body.appendChild(bb); } catch (e) {}
             // Show the passkey sign-in option only if the device/browser supports it
             if (window.PublicKeyCredential && navigator.credentials && navigator.credentials.get) {
                 const w = document.getElementById('passkey-login-wrap');
@@ -8500,7 +8505,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'ln8u4p2k';
+            const BUILD = 'mp9v5q3k';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
