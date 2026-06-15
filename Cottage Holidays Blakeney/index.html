@@ -594,6 +594,8 @@
 
         /* --- GRID CARDS --- */
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; margin-top: 60px; }
+        /* Cottages collection: always three tiles across on desktop (Airbnb-style) */
+        @media (min-width: 760px) { .grid-3 { grid-template-columns: repeat(3, 1fr); } }
         .card { padding: 15px; display: flex; flex-direction: column; cursor: pointer;
             transition: background 0.5s var(--fluid-bezier), border-color 0.5s var(--fluid-bezier), transform 0.55s var(--spring), box-shadow 0.5s var(--fluid-bezier); }
         /* A touch more lift + scale than the generic glass panel, with springy easing. */
@@ -1797,11 +1799,7 @@
     <!-- ================= COTTAGES (the property collection — reached from the header) ================= -->
     <main id="view-cottages" class="page-view container">
         <span class="back-link" onclick="nav('view-main')">← Back to Home</span>
-        <div class="text-center">
-            <h2 class="section-title" data-edit-text="about-title" style="margin-bottom: 14px;">A Fluid Escape</h2>
-            <p class="lead" data-edit-text="about-desc">Immerse yourself in the dark coastal elegance of North Norfolk. Our handpicked properties blend historic architectural shells with seamless, modern glass interiors. Flow from the saltmarshes to sanctuary.</p>
-        </div>
-        <div class="grid" id="cottages" style="margin-top: 36px;">
+        <div class="grid grid-3" id="cottages" style="margin-top: 18px;">
             <div class="card glass-panel" onclick="openProperty('21a')">
                 <div class="card-img" data-edit-img="card1-img" style="background-image: url('card-21a.jpg');"></div>
                 <div class="card-title" data-edit-text="card1-title">21A Westgate</div>
@@ -8820,7 +8818,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'zd2f3c5k';
+            const BUILD = 'ae3g4d6k';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
