@@ -3180,27 +3180,35 @@
                     <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px;">Export — paste this into Airbnb &amp; Vrbo</div>
                     <input class="input-glass" readonly onclick="this.select()" value="${escapeHtml(data.export_url || '')}" style="font-size:0.8rem;margin-bottom:14px;">
                     <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px;">Import — paste the platform calendar links here</div>
-                    <input class="input-glass" id="sync-airbnb-${key}" placeholder="Airbnb iCal link (https://www.airbnb.com/calendar/ical/...)" value="${escapeHtml(airbnb ? airbnb.url : '')}" style="font-size:0.8rem;margin-bottom:8px;">
-                    <input class="input-glass" id="sync-vrbo-${key}" placeholder="Vrbo iCal link (http://www.vrbo.com/icalendar/...)" value="${escapeHtml(vrbo ? vrbo.url : '')}" style="font-size:0.8rem;margin-bottom:10px;">
+                    <input class="input-glass" id="sync-airbnb-${key}" onblur="saveSyncFeeds('${key}', true)" placeholder="Airbnb iCal link (https://www.airbnb.com/calendar/ical/...)" value="${escapeHtml(airbnb ? airbnb.url : '')}" style="font-size:0.8rem;margin-bottom:8px;">
+                    <input class="input-glass" id="sync-vrbo-${key}" onblur="saveSyncFeeds('${key}', true)" placeholder="Vrbo iCal link (http://www.vrbo.com/icalendar/...)" value="${escapeHtml(vrbo ? vrbo.url : '')}" style="font-size:0.8rem;margin-bottom:10px;">
                     <button class="btn-sm btn-edit" onclick="saveSyncFeeds('${key}')">Save links</button>
                     <button class="btn-sm btn-edit" onclick="runSync('${key}')">Sync now</button>
                     <span style="font-size:0.8rem;color:var(--text-muted);margin-left:8px;">${data.blocks || 0} imported blocked range${(data.blocks===1)?'':'s'}</span>
+                    <div style="font-size:0.72rem;color:var(--text-muted);margin-top:8px;">Links save automatically as you type, and are kept on the server — they stay put across devices and logins.</div>
                 </div>`;
             }
             box.innerHTML = html;
         }
-        async function saveSyncFeeds(key) {
+        // Persist the Airbnb/Vrbo links for a property. Called on blur (quiet) and
+        // by the explicit "Save links" button (with a confirmation). quiet=true
+        // suppresses the popup so auto-save isn't intrusive.
+        async function saveSyncFeeds(key, quiet) {
+            const a = document.getElementById('sync-airbnb-' + key);
+            const v = document.getElementById('sync-vrbo-' + key);
+            if (!a || !v) return;
             const feeds = [
-                { source: 'airbnb', url: (document.getElementById('sync-airbnb-' + key).value || '').trim() },
-                { source: 'vrbo',   url: (document.getElementById('sync-vrbo-' + key).value || '').trim() }
+                { source: 'airbnb', url: (a.value || '').trim() },
+                { source: 'vrbo',   url: (v.value || '').trim() }
             ];
             try {
                 await apiPost('ical-import.php', { action: 'save_feeds', prop: key, feeds });
-                glassAlert('Calendar links saved. Click "Sync now" to pull in the latest blocked dates.');
-            } catch (e) { glassAlert("Couldn't save: " + e.message); }
+                if (!quiet) glassAlert('Calendar links saved. Click "Sync now" to pull in the latest blocked dates.');
+            } catch (e) { if (!quiet) glassAlert("Couldn't save: " + e.message); }
         }
         async function runSync(key) {
             try {
+                await saveSyncFeeds(key, true);   // persist whatever's in the boxes first, so links can't be lost
                 const res = await apiPost('ical-import.php', { action: 'sync', prop: key });
                 try { localStorage.setItem(ICAL_LAST_SYNC_KEY, String(Date.now())); } catch (e) {}
                 let msg = 'Sync complete.';
@@ -7826,7 +7834,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'sa4f9w2n';
+            const BUILD = 'ic5l8k3v';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
