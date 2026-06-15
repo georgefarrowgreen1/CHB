@@ -2362,19 +2362,6 @@
                         <!-- JS injects enquiry cards here -->
                     </div>
                 </section>
-                <!-- GUEST MESSAGES -->
-                <section class="glass-panel inbox-strip" id="messages-strip">
-                    <div class="inbox-strip-head" onclick="toggleMessagesStrip()">
-                        <h3>
-                            <span>Guest messages</span>
-                            <span class="inbox-badge zero" id="messages-badge">0</span>
-                        </h3>
-                        <span class="inbox-strip-chevron" id="messages-chevron">▾</span>
-                    </div>
-                    <div class="inbox-strip-body" id="messages-list">
-                        <!-- JS injects guest message threads here -->
-                    </div>
-                </section>
             </div>
         </div>
     </main>
@@ -2392,6 +2379,13 @@
         <!-- INDEX — ordered by importance: your cottages first, then money & guests,
              then your listing & account, with the legal reference last. -->
         <div id="settings-index" class="settings-index">
+            <div class="settings-group">
+                <button class="settings-row" onclick="settingsOpen('messages')">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.6-.8L3 21l1.9-5.7A8.38 8.38 0 0 1 4 11.5 8.5 8.5 0 0 1 12.5 3 8.38 8.38 0 0 1 21 11.5z"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Guest messages</span><span class="settings-row-sub">Chats from your website</span></span>
+                    <span class="inbox-badge zero" id="messages-badge" style="margin-right:8px;">0</span><span class="settings-row-chev">›</span>
+                </button>
+            </div>
             <div class="settings-group">
                 <button class="settings-row" onclick="settingsOpen('accom')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/></svg></span>
@@ -2457,6 +2451,12 @@
         <div id="settings-panel" style="display:none;">
             <span class="back-link" id="settings-back" onclick="settingsBack()">‹ Back</span>
             <h2 class="section-title" id="settings-panel-title" style="text-align:left;font-size:1.6rem;margin:6px 0 18px;"></h2>
+
+            <!-- Guest messages -->
+            <div class="settings-sec" id="sec-messages" style="display:none;">
+                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 16px;">Conversations from your website chat — registered guests and anonymous visitors. Click one to read and reply.</p>
+                <div id="messages-list"><!-- JS injects message threads here --></div>
+            </div>
 
             <!-- Host profile -->
             <div class="settings-sec" id="sec-host" style="display:none;">
@@ -3965,11 +3965,12 @@
             // the host fields have their data ready when a row is opened.
             try { const r = await apiPost('content.php', { action: 'get_all' }); adminPrivateContent = r.content || {}; }
             catch (e) { adminPrivateContent = {}; }
+            try { loadAdminMessages(); } catch (e) {}   // keep the Guest messages badge live
             if (section) settingsOpen(section); else settingsShowIndex();
         }
 
         // ---- Settings router: Apple-style index → drill-down sub-pages ----
-        const SETTINGS_TITLES = { host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Preferences', calendar: 'Calendar', cancel: 'Cancellation policy', payments: 'Payments', guests: 'Guest accounts', analytics: 'Analytics', waitlist: 'Waitlist' };
+        const SETTINGS_TITLES = { messages: 'Guest messages', host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Preferences', calendar: 'Calendar', cancel: 'Cancellation policy', payments: 'Payments', guests: 'Guest accounts', analytics: 'Analytics', waitlist: 'Waitlist' };
         let settingsBackTarget = null;
         function settingsShowIndex() {
             const idx = document.getElementById('settings-index'); const panel = document.getElementById('settings-panel');
@@ -3988,7 +3989,8 @@
             const title = document.getElementById('settings-panel-title');
             if (title) title.textContent = SETTINGS_TITLES[section] || 'Settings';
             settingsBackTarget = () => settingsShowIndex();
-            if (section === 'host') fillHostFields();
+            if (section === 'messages') loadAdminMessages();
+            else if (section === 'host') fillHostFields();
             else if (section === 'reviews') loadGuestReviewModeration();
             else if (section === 'analytics') loadAnalytics();
             else if (section === 'waitlist') loadWaitlist();
@@ -7714,7 +7716,6 @@
             await loadData();
             renderCalendar();
             renderInbox();
-            try { loadAdminMessages(); } catch (e) {}
             try { await loadDepositReturns(); } catch (e) {}   // for the deposits-to-return line
             try { renderTodayPanel(); } catch (e) {}
             const sb = document.getElementById('booking-search'); if (sb) { sb.value = ''; bookingSearch(''); }
@@ -8051,10 +8052,7 @@
             } catch (e) { show(e.message || 'Could not join the waitlist.'); }
         }
 
-        // ---- Admin side: threads strip + reply modal ----
-        function toggleMessagesStrip() {
-            document.getElementById('messages-strip').classList.toggle('collapsed');
-        }
+        // ---- Admin side: Guest messages (Settings → Guest messages) + reply modal ----
         async function loadAdminMessages() {
             const list = document.getElementById('messages-list');
             const badge = document.getElementById('messages-badge');
@@ -10667,7 +10665,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'ag2h3j5n';
+            const BUILD = 'bh3i4k6o';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
