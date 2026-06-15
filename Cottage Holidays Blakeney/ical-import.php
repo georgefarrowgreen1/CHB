@@ -16,6 +16,7 @@
 //  ical-import.php?cron=SECRET   (SECRET = APP_SECRET) -> runs sync for all
 // ============================================================
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/pricing.php';   // get_rate() for the manual-block property check
 
 // ---- helpers ----
 // ical_token() lives in db.php (shared with ical-export.php).
@@ -159,6 +160,22 @@ if ($action === 'blocks') {
     // them as "taken", colour-coded by property.
     $rows = db()->query('SELECT id, prop_key, source, check_in, check_out FROM ical_blocks ORDER BY check_in ASC')->fetchAll();
     json_out(['ok' => true, 'blocks' => $rows]);
+}
+
+if ($action === 'add_block') {
+    // Owner-created manual block (maintenance / personal use). Stored like an
+    // imported block with source 'owner' so the calendar shows the dates as taken.
+    $prop = preg_replace('/[^a-z0-9_]/i', '', $in['prop'] ?? '');
+    $checkIn = clean($in['check_in'] ?? '');
+    $checkOut = clean($in['check_out'] ?? '');
+    if (!get_rate($prop)) json_out(['error' => 'Unknown property'], 400);
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $checkIn) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $checkOut)) json_out(['error' => 'Valid from/to dates are required'], 400);
+    if ($checkOut <= $checkIn) json_out(['error' => 'The end date must be after the start date'], 400);
+    if (dates_clash($prop, $checkIn, $checkOut)) json_out(['error' => 'Those dates overlap an existing booking or block.'], 409);
+    $uid = 'owner-' . bin2hex(random_bytes(8));
+    db()->prepare('INSERT INTO ical_blocks (prop_key, source, uid, check_in, check_out) VALUES (?,?,?,?,?)')
+        ->execute([$prop, 'owner', $uid, $checkIn, $checkOut]);
+    json_out(['ok' => true]);
 }
 
 if ($action === 'delete_block') {

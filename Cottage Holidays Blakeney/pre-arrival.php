@@ -44,4 +44,40 @@ foreach ($due as $b) {
     ];
 }
 
-json_out(['ok' => true, 'days_before' => $days, 'sent' => count(array_filter($results, fn($r) => $r['ok'])), 'details' => $results]);
+// ---- Post-checkout review requests --------------------------------------
+// A few days after checkout, ask the guest for a review (once per booking).
+$reviewDays = defined('REVIEW_REQUEST_DAYS') ? max(1, (int)REVIEW_REQUEST_DAYS) : 2;
+$reviewsSent = 0;
+try {
+    $rs = db()->prepare(
+        "SELECT b.*, p.name AS property_name FROM bookings b JOIN properties p ON p.prop_key = b.prop_key
+         WHERE b.check_out = DATE_SUB(CURDATE(), INTERVAL ? DAY)
+           AND b.email <> '' AND b.review_request_sent IS NULL"
+    );
+    $rs->execute([$reviewDays]);
+    $toAsk = $rs->fetchAll();
+} catch (\Throwable $e) { $toAsk = []; }   // column not migrated yet
+
+if ($toAsk) {
+    $scheme = request_is_https() ? 'https' : 'http';
+    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    $dir = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/')), '/');
+    $base = $scheme . '://' . $host . $dir . '/';
+    foreach ($toAsk as $b) {
+        $res = send_review_request_email([
+            'name' => $b['name'], 'email' => $b['email'], 'prop_key' => $b['prop_key'],
+            'prop_name' => $b['property_name'] ?? $b['prop_key'],
+            'reviewUrl' => $base . 'index.html?review=' . rawurlencode($b['prop_key']),
+        ]);
+        if (!empty($res['ok'])) {
+            try { db()->prepare('UPDATE bookings SET review_request_sent = NOW() WHERE id = ?')->execute([(int)$b['id']]); } catch (\Throwable $e) {}
+            $reviewsSent++;
+        }
+    }
+}
+
+json_out([
+    'ok' => true, 'days_before' => $days,
+    'sent' => count(array_filter($results, fn($r) => $r['ok'])), 'details' => $results,
+    'review_requests_sent' => $reviewsSent, 'review_days_after' => $reviewDays,
+]);

@@ -1048,6 +1048,18 @@
         .seo-text { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
         .review-source { font-size: 0.72rem; color: var(--text-muted); opacity: 0.8; }
         /* Owner summary stat bar (back office) */
+        /* "Today / needs doing" panel (back office) */
+        .today-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 16px; }
+        .today-card { background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 16px; padding: 14px 16px; }
+        .today-card-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); }
+        .today-card-value { font-family: var(--font-serif); font-size: 1.9rem; color: var(--text-light); line-height: 1.1; margin: 2px 0 6px; }
+        .today-card-list { font-size: 0.82rem; color: var(--text-light); display: flex; flex-direction: column; gap: 3px; }
+        .today-card-list .prop-tag { margin-right: 4px; }
+        /* Back-office booking search */
+        .bo-search { max-width: 720px; margin: 0 auto 22px; }
+        .bo-search-empty { font-size: 0.85rem; color: var(--text-muted); padding: 10px 2px; }
+        .bo-search-hit { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 12px; padding: 10px 12px; margin-top: 8px; color: var(--text-light); cursor: pointer; }
+        .bo-search-hit:hover, .bo-search-hit:focus-visible { background: var(--glass-hover); }
         .owner-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 26px; }
         /* Money & income — per-booking payments manager */
         .money-row { padding: 16px 18px; border-radius: 16px; margin-bottom: 12px; }
@@ -1114,6 +1126,14 @@
         .accounts-table th { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); font-weight: 600; }
         .accounts-table td.num, .accounts-table th.num { text-align: right; font-variant-numeric: tabular-nums; }
         .accounts-table tr:last-child td { border-bottom: none; }
+        /* Admin mobile polish: let wide tables scroll instead of overflowing, and
+           keep money-row controls comfortably tappable. */
+        @media (max-width: 640px) {
+            .accounts-table { display: block; overflow-x: auto; white-space: nowrap; -webkit-overflow-scrolling: touch; }
+            .money-actions .field-sm, .money-actions .money-dep { flex: 1 1 auto; min-width: 0; }
+            .money-row-head { gap: 6px; }
+            .today-card-value { font-size: 1.6rem; }
+        }
         .accounts-section-title { font-family: var(--font-serif); font-size: 1.4rem; margin: 36px 0 6px; }
         .accounts-empty { text-align: center; padding: 50px 20px; color: var(--text-muted); }
         .accounts-actions { margin-top: 26px; display: flex; gap: 12px; flex-wrap: wrap; }
@@ -2223,7 +2243,14 @@
     <!-- ================= UNIFIED BACK OFFICE ================= -->
     <main id="view-backoffice" class="page-view container wide">
 
+        <div id="today-panel"><!-- JS injects the "today / needs doing" list --></div>
+
         <div class="owner-summary" id="owner-summary"><!-- JS injects summary stats --></div>
+
+        <div class="bo-search">
+            <input type="search" class="input-glass" id="booking-search" placeholder="Search bookings by guest name or email…" oninput="bookingSearch(this.value)" style="margin:0;">
+            <div id="booking-search-results"></div>
+        </div>
 
         <!-- CALENDAR (left) + PENDING ENQUIRIES (right) -->
         <div class="bo-layout">
@@ -2235,7 +2262,10 @@
                         <div class="cal-month-title" id="cal-month-display">June 2026</div>
                         <button onclick="changeMonth(1)">&#10095;</button>
                     </div>
-                    <button class="btn-glass cal-add-btn" onclick="openAddBooking()" data-edit-text="cal-add-btn">+ Add Booking</button>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <button class="btn-glass cal-add-btn" onclick="openAddBooking()" data-edit-text="cal-add-btn">+ Add Booking</button>
+                        <button class="btn-glass cal-add-btn" style="background:rgba(255,255,255,0.06);" onclick="openBlockDates()">Block dates</button>
+                    </div>
                 </div>
 
                 <div class="cal-legend">
@@ -4627,7 +4657,8 @@
             const mine = rows.map(row => ({
                 propKey: row.prop_key,
                 booking: mapBookingFromApi(row),
-                address: row.property_address || ''
+                address: row.property_address || '',
+                payToken: row.pay_token || ''
             }));
             guestBookingsCache = mine; // for invoice download
 
@@ -4710,7 +4741,7 @@
                 </div>`;
             }).join('');
 
-            list.innerHTML = pendingHtml + mine.map(({ propKey, booking: b, address }) => {
+            list.innerHTML = pendingHtml + mine.map(({ propKey, booking: b, address, payToken }) => {
                 const meta = propertyMeta[propKey];
                 const r = propertyRates[propKey] || defaultRates[propKey];
                 const addr = address || (r && r.address) || '';
@@ -4751,6 +4782,7 @@
                                 <div class="price-row total"><span>${ps.fullyPaid ? 'Paid in full' : 'Balance due'}</span><span class="price-amount" style="${ps.fullyPaid ? 'color:#4CAF50;' : ''}">${gbp(ps.fullyPaid ? ps.total : ps.balance)}</span></div>` : ''}
                             </div>
                             <div class="card-actions">
+                                ${(upcoming && !ps.fullyPaid && payToken) ? `<button class="btn-glass btn-sm" style="background:rgba(76,175,80,0.22);border-color:var(--booked-border);" onclick="openPayView('${payToken}', ${b.dbId}, 'balance')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay balance ${gbp(ps.balance)}</button>` : ''}
                                 <button class="btn-sm btn-edit" onclick="downloadInvoice('${b.id}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v10M8 11l4 4 4-4M5 19h14"/></svg> Invoice</button>
                                 <button class="btn-sm btn-edit" onclick="addBookingToCalendar('${b.id}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg> Add to Calendar</button>
                                 <button class="btn-sm btn-edit" onclick="downloadTermsPDF()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h9a3 3 0 0 1 3 3v13H9a3 3 0 0 1-3-3z"/><path d="M6 17h12"/></svg> Terms</button>
@@ -4965,6 +4997,17 @@
             } finally {
                 if (btn) { btn.disabled = false; btn.classList.remove('is-busy'); btn.textContent = orig; }
             }
+        }
+        // Opened from a post-checkout review-request email (?review=<prop>): take a
+        // logged-in guest to My Bookings (where the review form lives), else prompt login.
+        function maybeOpenReviewLink() {
+            try {
+                const usp = new URLSearchParams(window.location.search);
+                if (!usp.has('review')) return false;
+                if (currentGuest) { nav('view-guest-bookings'); renderGuestBookings(); }
+                else { openGuestArea(); }
+                return true;
+            } catch (e) { return false; }
         }
         // If the page was opened from a pay link, jump straight to the payment view.
         function maybeOpenPayLink() {
@@ -6139,6 +6182,7 @@
             hideLoadingOverlay();
             try { startLiveUpdates(); } catch (e) { console.error(e); }
             try { maybeOpenPayLink(); } catch (e) { console.error(e); }   // ?pay=… → payment view
+            try { maybeOpenReviewLink(); } catch (e) { console.error(e); } // ?review=… → My Bookings
             setTimeout(() => { try { maybeShowInstallHint(); } catch (e) {} }, 2500);
           }
         });
@@ -7149,10 +7193,86 @@
             await loadData();
             renderCalendar();
             renderInbox();
+            try { await loadDepositReturns(); } catch (e) {}   // for the deposits-to-return line
+            try { renderTodayPanel(); } catch (e) {}
+            const sb = document.getElementById('booking-search'); if (sb) { sb.value = ''; bookingSearch(''); }
             showChangeoverToasts();
             // Quietly refresh external (Airbnb/Vrbo) bookings in the background so
             // cancelled or moved dates drop off on their own. Non-blocking + throttled.
             autoSyncIcalBlocks();
+        }
+        // "Today / needs doing" — arrivals, departures, balances due this week,
+        // and deposits to return, all from the data already loaded for the calendar.
+        function renderTodayPanel() {
+            const el = document.getElementById('today-panel');
+            if (!el) return;
+            const today = todayDashed();
+            const in7 = formatDashed(new Date(dpParse(today).getFullYear(), dpParse(today).getMonth(), dpParse(today).getDate() + 7));
+            const arrivals = [], departures = [], dueSoon = [], toReturn = [];
+            Object.keys(dbBookings).forEach(propKey => {
+                (dbBookings[propKey] || []).forEach(b => {
+                    const name = (b.name || '').split(' ')[0];
+                    const tag = `<span class="prop-tag tag-${propKey}">${propertyMeta[propKey] ? propertyMeta[propKey].short : propKey}</span>`;
+                    if (b.checkIn === today) arrivals.push(`${tag} ${escapeHtml(name)} · ${b.checkInTime || '15:00'}`);
+                    if (b.checkOut === today) departures.push(`${tag} ${escapeHtml(name)} · ${b.checkOutTime || '10:00'}`);
+                    const ps = paymentSummary(propKey, b);
+                    if (!ps.fullyPaid && b.checkIn >= today && b.checkIn <= in7) dueSoon.push(`${tag} ${escapeHtml(name)} · ${gbp(ps.balance)} (${b.checkIn})`);
+                    const dh = damageHeld(propKey, b);
+                    if (dh.held > 0 && (b.checkOut || '') < today) toReturn.push(`${tag} ${escapeHtml(name)} · ${gbp(dh.held)}`);
+                });
+            });
+            const card = (label, items, accent) => `
+                <div class="today-card">
+                    <div class="today-card-label">${label}</div>
+                    <div class="today-card-value" style="${accent || ''}">${items.length}</div>
+                    <div class="today-card-list">${items.length ? items.slice(0, 4).map(i => `<div>${i}</div>`).join('') + (items.length > 4 ? `<div style="color:var(--text-muted);">+${items.length - 4} more</div>` : '') : '<span style="color:var(--text-muted);">Nothing</span>'}</div>
+                </div>`;
+            const anything = arrivals.length || departures.length || dueSoon.length || toReturn.length;
+            el.innerHTML = `<div class="today-grid">
+                ${card('Arrivals today', arrivals)}
+                ${card('Departures today', departures)}
+                ${card('Balances due (7 days)', dueSoon, dueSoon.length ? 'color:#FFA726;' : '')}
+                ${card('Deposits to return', toReturn, toReturn.length ? 'color:#FFA726;' : '')}
+            </div>${anything ? '' : '<p style="font-size:0.82rem;color:var(--text-muted);margin:2px 0 0;">All clear — nothing needs doing today.</p>'}`;
+        }
+        // Quick find: filter bookings by guest name/email; click a result to open it.
+        function bookingSearch(q) {
+            const out = document.getElementById('booking-search-results');
+            if (!out) return;
+            q = (q || '').trim().toLowerCase();
+            if (q.length < 2) { out.innerHTML = ''; return; }
+            const hits = [];
+            Object.keys(dbBookings).forEach(propKey => {
+                (dbBookings[propKey] || []).forEach(b => {
+                    if ((b.name || '').toLowerCase().includes(q) || (b.email || '').toLowerCase().includes(q)) hits.push({ propKey, b });
+                });
+            });
+            hits.sort((a, b) => (b.b.checkIn || '').localeCompare(a.b.checkIn || ''));
+            if (!hits.length) { out.innerHTML = `<div class="bo-search-empty">No bookings match “${escapeHtml(q)}”.</div>`; return; }
+            out.innerHTML = hits.slice(0, 12).map(({ propKey, b }) =>
+                `<button class="bo-search-hit" onclick="showDetails('${propKey}', findBookingById('${b.id}'))">
+                    <span class="prop-tag tag-${propKey}">${propertyMeta[propKey] ? propertyMeta[propKey].short : propKey}</span>
+                    <span>${escapeHtml(b.name)}</span>
+                    <span style="color:var(--text-muted);font-size:0.8rem;">${b.checkIn} → ${b.checkOut}</span>
+                </button>`).join('');
+        }
+        // Owner block: hold dates for maintenance / personal use (no fake booking).
+        async function openBlockDates() {
+            const names = Object.keys(propertyMeta).map(k => `${k} = ${propertyMeta[k].name}`).join(', ');
+            const prop = await glassPrompt(`Which cottage to block? Enter its key (${names}):`, '21a');
+            if (prop === null) return;
+            const key = (prop || '').trim();
+            if (!propertyMeta[key]) { glassAlert('Unknown cottage key. Use one of: ' + Object.keys(propertyMeta).join(', ')); return; }
+            const from = await glassPrompt('Block FROM date (YYYY-MM-DD):', todayDashed());
+            if (from === null) return;
+            const to = await glassPrompt('Block TO date (YYYY-MM-DD, the morning it frees up):', '');
+            if (to === null) return;
+            if (!/^\d{4}-\d{2}-\d{2}$/.test(from.trim()) || !/^\d{4}-\d{2}-\d{2}$/.test(to.trim())) { glassAlert('Please enter valid dates (YYYY-MM-DD).'); return; }
+            try {
+                await apiPost('ical-import.php', { action: 'add_block', prop: key, check_in: from.trim(), check_out: to.trim() });
+                toast('Dates blocked.');
+                await initBackOffice();
+            } catch (e) { glassAlert("Couldn't block those dates: " + e.message); }
         }
 
         // Pull the latest external calendars and refresh the blocks shown here.
@@ -9608,7 +9728,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'sx5y6w8z';
+            const BUILD = 'tz6a7x9b';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
