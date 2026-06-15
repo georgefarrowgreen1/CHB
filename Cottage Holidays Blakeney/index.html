@@ -1450,7 +1450,9 @@
         .hs-chip.is-on { background: rgba(255,255,255,0.18); color: var(--text-light); border-color: rgba(255,255,255,0.32); }
         .btn-glass-ghost { background: transparent; opacity: 0.85; }
         #hero-results { scroll-margin-top: 110px; }
-        .hs-unavail { opacity: 0.55; }
+        .hs-unavail { opacity: 0.7; }
+        .hs-banner { background: rgba(255,167,38,0.16); color: #FFB74D; border: 1px solid rgba(255,167,38,0.4); border-radius: 10px; padding: 7px 10px; font-size: 0.76rem; line-height: 1.35; margin-bottom: 12px; text-align: center; }
+        .hs-banner-red { background: rgba(229,115,115,0.16); color: #E57373; border-color: rgba(229,115,115,0.4); }
         @media (max-width: 560px) {
             .hs-guest-rows { justify-content: space-between; gap: 10px; }
             .hs-gtype { min-width: 0; }
@@ -6945,10 +6947,15 @@
             const party = heroSearch.adults + heroSearch.children;
             const flexNote = heroSearch.flex ? ` (±${heroSearch.flex} day${heroSearch.flex === 1 ? '' : 's'})` : '';
             const sub = (t) => `<h3 style="grid-column:1/-1;text-align:center;font-family:var(--font-serif);font-weight:400;margin:22px 0 2px;font-size:1.25rem;">${escapeHtml(t)}</h3>`;
+            const reqRange = `${dpPretty(heroSearch.checkin)} – ${dpPretty(heroSearch.checkout)}`;
             const card = (key, r) => {
                 const nights = nightsBetween(r.ci, r.co);
+                // When the match isn't the exact requested dates (a ±flex shift), flag it
+                // clearly so the guest knows before they proceed. Dates shown ARE available.
+                const banner = r.offset ? `<div class="hs-banner">Your dates (${reqRange}) aren't free here — these are the closest available.</div>` : '';
                 const moved = r.offset ? ` <span style="color:var(--text-muted);">· moved ${Math.abs(r.offset)} day${Math.abs(r.offset) === 1 ? '' : 's'}</span>` : '';
                 return `<div class="card glass-panel">
+                    ${banner}
                     <div class="card-img" style="background-image:url('${propImg(key)}');"></div>
                     <div class="card-title">${escapeHtml(propertyMeta[key].name)}</div>
                     <div class="card-meta">${dpPretty(r.ci)} → ${dpPretty(r.co)} · ${nights} night${nights === 1 ? '' : 's'}${moved}</div>
@@ -6956,11 +6963,14 @@
                     <button class="btn-glass" style="width:100%;margin-top:10px;" onclick="startBooking('${key}','${r.ci}','${r.co}')">Book / Enquire</button>
                 </div>`;
             };
+            // Unavailable: never carry the clashing dates into the enquiry form (that would
+            // error there). Open the cottage with its date picker ready so they pick free dates.
             const unavailCard = (key, reason) => `<div class="card glass-panel hs-unavail">
+                    <div class="hs-banner hs-banner-red">${escapeHtml(reason || 'Not available for these dates')}</div>
                     <div class="card-img" style="background-image:url('${propImg(key)}');"></div>
                     <div class="card-title">${escapeHtml(propertyMeta[key].name)}</div>
-                    <div class="card-meta">${escapeHtml(reason || 'Not available for these dates')}</div>
-                    <button class="btn-glass" style="width:100%;margin-top:10px;" onclick="startBooking('${key}','${heroSearch.checkin}','${heroSearch.checkout}')">Enquire anyway</button>
+                    <div class="card-meta">Pick different dates to book this cottage.</div>
+                    <button class="btn-glass" style="width:100%;margin-top:10px;" onclick="startBooking('${key}','','')">Choose other dates</button>
                 </div>`;
             const noneMsg = (txt) => `<div class="glass-panel" style="grid-column:1/-1;text-align:center;padding:28px;">
                     <p style="margin-bottom:14px;">${escapeHtml(txt)}</p>
@@ -7004,8 +7014,10 @@
         }
         // Open the cottage with the chosen dates + party pre-filled, ready to send.
         function startBooking(key, ci, co) {
-            ci = ci || heroSearch.checkin || '';
-            co = co || heroSearch.checkout || '';
+            // '' is meaningful (clear the dates for an unavailable cottage); only fall
+            // back to the searched dates when the argument was genuinely omitted.
+            if (ci === undefined) ci = heroSearch.checkin || '';
+            if (co === undefined) co = heroSearch.checkout || '';
             openProperty(key);
             const set = (id, val) => { const el = document.getElementById(id); if (el) el.value = val; };
             set('enq-checkin', ci);
@@ -8072,7 +8084,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'tc5w9k2x';
+            const BUILD = 'wd6r4k8n';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
