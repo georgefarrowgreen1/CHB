@@ -799,6 +799,10 @@
         .pay-amount { font-family: var(--font-serif); font-size: 2.2rem; color: var(--text-light); padding: 4px 0 2px; }
         .pay-amount-sub { font-size: 0.8rem; color: var(--text-muted); }
         .sq-card { min-height: 56px; padding: 4px 0; }
+        .sq-wallets { display: flex; flex-direction: column; gap: 10px; }
+        .sq-wallets > div { min-height: 44px; }
+        .sq-or { text-align: center; color: var(--text-muted); font-size: 0.8rem; text-transform: uppercase; letter-spacing: 1px; margin: 16px 0 4px; }
+        .sq-apple-btn { -webkit-appearance: -apple-pay-button; appearance: -apple-pay-button; -apple-pay-button-type: plain; -apple-pay-button-style: white-outline; height: 44px; width: 100%; border-radius: 10px; cursor: pointer; border: none; }
         .pay-msg { display: none; margin: 14px 0 0; padding: 11px 14px; border-radius: 12px; background: rgba(229,57,53,0.12); border: 1px solid rgba(229,57,53,0.35); color: #ff9b95; font-size: 0.85rem; line-height: 1.4; }
         .pay-msg.show { display: block; }
         .pay-done, .pay-error { text-align: center; padding: 16px 0; }
@@ -1045,6 +1049,15 @@
         .review-source { font-size: 0.72rem; color: var(--text-muted); opacity: 0.8; }
         /* Owner summary stat bar (back office) */
         .owner-summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 14px; margin-bottom: 26px; }
+        /* Money & income — per-booking payments manager */
+        .money-row { padding: 16px 18px; border-radius: 16px; margin-bottom: 12px; }
+        .money-row-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+        .money-status { font-size: 0.85rem; color: var(--text-light); display: inline-flex; align-items: center; gap: 7px; white-space: nowrap; }
+        .money-figures { display: flex; gap: 22px; flex-wrap: wrap; margin: 12px 0; font-size: 0.85rem; color: var(--text-muted); }
+        .money-figures strong { color: var(--text-light); font-size: 1rem; margin-left: 4px; }
+        .money-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+        .money-actions .field-sm { width: auto; min-width: 120px; margin: 0; }
+        .money-actions .money-dep { width: 130px; }
         .os-card { background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 18px; padding: 18px 20px; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
         .os-label { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin-bottom: 8px; }
         .os-value { font-family: var(--font-serif); font-size: 1.7rem; line-height: 1.1; }
@@ -2115,6 +2128,8 @@
                         <div class="pay-amount" id="pay-amount">£0.00</div>
                         <div class="pay-amount-sub" id="pay-amount-sub"></div>
                     </div>
+                    <div id="sq-wallets" class="sq-wallets"></div>
+                    <div id="sq-or" class="sq-or" style="display:none;">or pay by card</div>
                     <div class="enq-field-label">Card details</div>
                     <div id="sq-card" class="sq-card"></div>
                     <p class="pay-msg" id="pay-msg" role="alert"></p>
@@ -2370,14 +2385,18 @@
         <span class="back-link" onclick="nav('view-backoffice'); initBackOffice();">← Back to Dashboard</span>
         <div class="dashboard-header">
             <div>
-                <h1 class="section-title" style="margin-bottom: 5px;">Accounts</h1>
-                <p class="lead" style="text-align: left; margin: 0;">Income received per UK tax year (6 April – 5 April), based on the date each payment was recorded.</p>
+                <h1 class="section-title" style="margin-bottom: 5px;">Money &amp; income</h1>
+                <p class="lead" style="text-align: left; margin: 0;">Request deposits and balances, reconcile payments, and review income per UK tax year (6 April – 5 April). The tax-year selector applies to the income report below.</p>
             </div>
             <div>
                 <label style="font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);display:block;margin-bottom:6px;">Tax Year</label>
                 <select class="input-glass" id="accounts-year" style="margin:0;min-width:160px;" onchange="renderAccounts()"></select>
             </div>
         </div>
+        <div id="money-panel">
+            <!-- JS injects the per-booking payments & balances manager here -->
+        </div>
+        <h3 class="accounts-section-title" style="margin-top:34px;">Income report</h3>
         <div id="accounts-content">
             <!-- JS injects the report here -->
         </div>
@@ -3830,6 +3849,10 @@
             const sel = document.getElementById('accounts-year');
             sel.innerHTML = years.map(y => `<option value="${y}">${taxYearShort(y)}  (${taxYearLabel(y)})</option>`).join('');
             nav('view-accounts');
+            // Ensure booking data is loaded (the owner may land here without opening the
+            // back office first), then render the payments manager + income report.
+            try { if (!Object.keys(dbBookings).some(k => (dbBookings[k] || []).length)) await loadData(); } catch (e) {}
+            try { renderMoneyPanel(); } catch (e) {}
             await renderAccounts();
         }
 
@@ -3913,6 +3936,70 @@
                      <div class="accounts-note">Figures show money actually received, split into rental income and refundable damages deposits held, allocated to the UK tax year by the date each payment was recorded. This is a summary to assist your record-keeping, not a substitute for formal accounting advice.</div>`;
 
             content.innerHTML = html;
+        }
+
+        // Per-booking payments & balances manager (top of the Money & income view).
+        // Upcoming + current stays, with manual reconcile + Square request/refund.
+        function renderMoneyPanel() {
+            const el = document.getElementById('money-panel');
+            if (!el) return;
+            const today = todayDashed();
+            const rows = [];
+            Object.keys(dbBookings).forEach(propKey => {
+                (dbBookings[propKey] || []).forEach(b => { if ((b.checkOut || '') >= today) rows.push({ propKey, b }); });
+            });
+            rows.sort((a, b) => (a.b.checkIn || '').localeCompare(b.b.checkIn || ''));
+            const intro = squareAdminEnabled
+                ? 'Email the guest a secure card link with <strong>Request deposit</strong> / <strong>Request full balance</strong>, or record a manual payment (bank transfer, cash) with the controls on each row.'
+                : 'Square card payments are off — set them up in Settings to email pay links. You can still record manual payments (bank transfer, cash) below.';
+            if (!rows.length) {
+                el.innerHTML = `<h3 class="accounts-section-title">Payments &amp; balances</h3><div class="accounts-empty">No upcoming or current bookings.</div>`;
+                return;
+            }
+            const cards = rows.map(({ propKey, b }) => {
+                const ps = paymentSummary(propKey, b);
+                const meta = paymentMeta[b.payment] || { label: '—', dot: '#888' };
+                const sqBtns = (squareAdminEnabled && b.email) ? `
+                        <button class="btn-sm btn-edit" onclick="requestPayment('${b.id}','deposit')">Request deposit</button>
+                        <button class="btn-sm btn-edit" onclick="requestPayment('${b.id}','balance')">Request full balance</button>` : '';
+                const history = (squareAdminEnabled && b.email)
+                    ? `<div id="sq-pay-${b.id}" class="sq-pay-history" style="margin-top:10px;font-size:0.82rem;color:var(--text-muted);">Loading payments…</div>` : '';
+                return `
+                <div class="money-row glass-panel">
+                    <div class="money-row-head">
+                        <div><span class="prop-tag tag-${propKey}">${propertyMeta[propKey] ? propertyMeta[propKey].name : propKey}</span>
+                            <strong style="margin-left:8px;">${escapeHtml(b.name)}</strong>
+                            <span style="color:var(--text-muted);margin-left:8px;font-size:0.85rem;">${b.checkIn} → ${b.checkOut}</span></div>
+                        <span class="money-status"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${meta.dot};"></span> ${meta.label}</span>
+                    </div>
+                    <div class="money-figures">
+                        <span>Total<strong>${gbp(ps.total)}</strong></span>
+                        <span>Received<strong style="color:#4CAF50;">${gbp(ps.deposit)}</strong></span>
+                        <span>${ps.fullyPaid ? 'Settled' : 'Balance due'}<strong>${gbp(ps.fullyPaid ? 0 : ps.balance)}</strong></span>
+                    </div>
+                    <div class="money-actions">
+                        ${sqBtns}
+                        <select class="input-glass field-sm" onchange="updatePaymentStatus('${b.id}', this.value)" title="Payment status">
+                            ${Object.keys(paymentMeta).map(k => `<option value="${k}" ${b.payment === k ? 'selected' : ''}>${paymentMeta[k].label}</option>`).join('')}
+                        </select>
+                        <input type="number" min="0" step="0.01" class="input-glass field-sm money-dep" title="Record amount received (£)"
+                               value="${b.depositPaid != null ? b.depositPaid : 0}" onchange="updateDeposit('${b.id}', this.value)">
+                    </div>
+                    ${history}
+                </div>`;
+            }).join('');
+            el.innerHTML = `<h3 class="accounts-section-title">Payments &amp; balances</h3>
+                <p style="font-size:0.82rem;color:var(--text-muted);margin:-6px 0 16px;max-width:640px;">${intro}</p>${cards}`;
+            if (squareAdminEnabled) rows.forEach(({ b }) => { if (b.email) loadBookingPayments(b.id); });
+        }
+        // Refresh after any payment change: re-render the money panel if we're on the
+        // Money & income view, otherwise re-open the booking detail pop-up (calendar).
+        function afterPaymentChange(bookingId) {
+            const acc = document.getElementById('view-accounts');
+            if (acc && acc.classList.contains('active')) { try { renderMoneyPanel(); } catch (e) {} return; }
+            const fresh = findBookingById(bookingId);
+            const loc = findBookingLocation(bookingId);
+            if (fresh && loc) showDetails(loc.propKey, fresh);
         }
 
         function exportAccountsCSV() {
@@ -4589,11 +4676,66 @@
                 squarePayments = window.Square.payments(cfg.applicationId, cfg.locationId);
                 squareCard = await squarePayments.card();
                 await squareCard.attach('#sq-card');
+                try { await mountWallets(s.amountDue); } catch (e) {}   // Apple/Google Pay (best-effort)
                 if (ld) ld.style.display = 'none';
                 document.getElementById('pay-body').style.display = '';
             } catch (e) {
                 showPayError(e.message || 'Could not load the payment form.');
             }
+        }
+        // Charge a Square token (from the card field OR an Apple/Google Pay wallet)
+        // through the same server endpoint, then show the receipt state.
+        async function payWithToken(sourceId) {
+            const res = await apiPost('pay.php', {
+                action: 'charge', booking_id: payState.bookingId, token: payState.token,
+                kind: payState.kind, source_id: sourceId
+            });
+            document.getElementById('pay-body').style.display = 'none';
+            document.getElementById('pay-done-sub').textContent = res.fullyPaid
+                ? 'Your booking is now paid in full. We look forward to welcoming you.'
+                : `Thank you — ${gbp(res.paid)} received. We'll be in touch about the remaining balance before your stay.`;
+            document.getElementById('pay-done').style.display = '';
+            try { toast('Payment received — thank you!'); } catch (e) {}
+        }
+        // Try to mount Apple Pay / Google Pay buttons for the exact amount due. Each
+        // is independent + best-effort: an unsupported wallet is simply hidden and the
+        // card field still works. Reveals the "or pay by card" divider if any mounted.
+        async function mountWallets(amountDue) {
+            const wrap = document.getElementById('sq-wallets');
+            if (!wrap || !squarePayments) return;
+            wrap.innerHTML = '';
+            let any = false;
+            let req;
+            try {
+                req = squarePayments.paymentRequest({
+                    countryCode: 'GB', currencyCode: 'GBP',
+                    total: { amount: Number(amountDue).toFixed(2), label: 'Cottage Holidays Blakeney' }
+                });
+            } catch (e) { return; }
+            const walletPay = async (wallet) => {
+                setPayMsg('');
+                try {
+                    const result = await wallet.tokenize();
+                    if (result.status !== 'OK') throw new Error((result.errors && result.errors[0] && result.errors[0].message) || 'Payment was cancelled.');
+                    await payWithToken(result.token);
+                } catch (e) { setPayMsg(e.message || 'Payment failed. Please try again.'); }
+            };
+            try {
+                const gp = await squarePayments.googlePay(req);
+                const el = document.createElement('div'); el.id = 'sq-gpay'; wrap.appendChild(el);
+                await gp.attach('#sq-gpay', { buttonColor: 'black', buttonType: 'long', buttonSizeMode: 'fill' });
+                el.addEventListener('click', async (e) => { e.preventDefault(); await walletPay(gp); });
+                any = true;
+            } catch (e) { const x = document.getElementById('sq-gpay'); if (x) x.remove(); }
+            try {
+                const ap = await squarePayments.applePay(req);
+                const btn = document.createElement('button'); btn.id = 'sq-apay'; btn.type = 'button';
+                btn.className = 'sq-apple-btn'; btn.setAttribute('aria-label', 'Pay with Apple Pay');
+                wrap.appendChild(btn);
+                btn.addEventListener('click', async () => { await walletPay(ap); });
+                any = true;
+            } catch (e) { const x = document.getElementById('sq-apay'); if (x) x.remove(); }
+            const orEl = document.getElementById('sq-or'); if (orEl) orEl.style.display = any ? '' : 'none';
         }
         async function submitPayment() {
             if (!squareCard) return;
@@ -4607,16 +4749,7 @@
                     const m = (result.errors && result.errors[0] && result.errors[0].message) || 'Please check your card details and try again.';
                     throw new Error(m);
                 }
-                const res = await apiPost('pay.php', {
-                    action: 'charge', booking_id: payState.bookingId, token: payState.token,
-                    kind: payState.kind, source_id: result.token
-                });
-                document.getElementById('pay-body').style.display = 'none';
-                document.getElementById('pay-done-sub').textContent = res.fullyPaid
-                    ? 'Your booking is now paid in full. We look forward to welcoming you.'
-                    : `Thank you — ${gbp(res.paid)} received. We'll be in touch about the remaining balance before your stay.`;
-                document.getElementById('pay-done').style.display = '';
-                try { toast('Payment received — thank you!'); } catch (e) {}
+                await payWithToken(result.token);
             } catch (e) {
                 setPayMsg(e.message || 'Payment failed. Please try again.');
             } finally {
@@ -6640,13 +6773,13 @@
                 const total = (booking.agreedPrice && booking.agreedPrice.total) || 0;
                 const existing = booking.depositPaid > 0 && booking.depositPaid < total ? booking.depositPaid : '';
                 const entered = await glassPrompt(`Deposit amount paid (£). More than £0 and less than ${gbp(total)}:`, existing);
-                if (entered === null) { showDetails(propKey, booking); return; }
+                if (entered === null) { afterPaymentChange(bookingId); return; }
                 payload.deposit = Math.max(0, parseFloat(entered) || 0);
             }
             if (newStatus === 'deposit' || newStatus === 'paid') {
                 const d = await glassPrompt('Payment date (YYYY-MM-DD):', booking.paymentDate || todayDashed());
-                if (d === null) { showDetails(propKey, booking); return; }
-                if (!/^\d{4}-\d{2}-\d{2}$/.test(d.trim())) { glassAlert('A valid payment date is required.'); showDetails(propKey, booking); return; }
+                if (d === null) { afterPaymentChange(bookingId); return; }
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(d.trim())) { glassAlert('A valid payment date is required.'); afterPaymentChange(bookingId); return; }
                 payload.payment_date = d.trim();
                 const m = await glassPrompt('Payment method (optional):', booking.paymentMethod || '');
                 payload.payment_method = (m === null) ? '' : m.trim();
@@ -6657,8 +6790,8 @@
                 await loadData();
                 renderCalendar();
                 const fresh = findBookingById(bookingId);
-                if (fresh) showDetails(propKey, fresh);
-            } catch (e) { glassAlert("Couldn't update payment: " + e.message); showDetails(propKey, booking); }
+                if (fresh) afterPaymentChange(bookingId);
+            } catch (e) { glassAlert("Couldn't update payment: " + e.message); afterPaymentChange(bookingId); }
         }
 
         // Staff records how much deposit has been paid; status auto-syncs server-side.
@@ -6680,8 +6813,8 @@
             if (status === 'deposit') payload.deposit = Math.round(dep * 100) / 100;
             if (dep > 0.001) {
                 const d = await glassPrompt('Payment date (YYYY-MM-DD):', booking.paymentDate || todayDashed());
-                if (d === null) { showDetails(propKey, booking); return; }
-                if (!/^\d{4}-\d{2}-\d{2}$/.test(d.trim())) { glassAlert('A valid payment date is required.'); showDetails(propKey, booking); return; }
+                if (d === null) { afterPaymentChange(bookingId); return; }
+                if (!/^\d{4}-\d{2}-\d{2}$/.test(d.trim())) { glassAlert('A valid payment date is required.'); afterPaymentChange(bookingId); return; }
                 payload.payment_date = d.trim();
                 payload.payment_method = booking.paymentMethod || '';
             }
@@ -6690,8 +6823,8 @@
                 await loadData();
                 renderCalendar();
                 const fresh = findBookingById(bookingId);
-                if (fresh) showDetails(propKey, fresh);
-            } catch (e) { glassAlert("Couldn't update deposit: " + e.message); showDetails(propKey, booking); }
+                if (fresh) afterPaymentChange(bookingId);
+            } catch (e) { glassAlert("Couldn't update deposit: " + e.message); afterPaymentChange(bookingId); }
         }
 
         // Setter for payment metadata (method, date) without changing the amount.
@@ -6702,7 +6835,7 @@
             const propKey = loc ? loc.propKey : '21a';
             if (field === 'paymentDate' && !value && Number(booking.depositPaid) > 0) {
                 glassAlert('A payment date is required while a payment is recorded. Set the deposit to £0 first if you need to remove it.');
-                showDetails(propKey, booking);
+                afterPaymentChange(bookingId);
                 return;
             }
             // Re-send the current payment with the changed metadata field
@@ -6718,8 +6851,8 @@
                 await loadData();
                 renderCalendar();
                 const fresh = findBookingById(bookingId);
-                if (fresh) showDetails(propKey, fresh);
-            } catch (e) { glassAlert("Couldn't update: " + e.message); showDetails(propKey, booking); }
+                if (fresh) afterPaymentChange(bookingId);
+            } catch (e) { glassAlert("Couldn't update: " + e.message); afterPaymentChange(bookingId); }
         }
 
         // ---- Square online payments (admin) ----
@@ -6790,7 +6923,7 @@
                 await loadData();
                 renderCalendar();
                 const fresh = findBookingById(bookingId);
-                if (fresh) showDetails(propKey, fresh);
+                if (fresh) afterPaymentChange(bookingId);
             } catch (e) { glassAlert("Refund failed: " + e.message); }
         }
 
@@ -8501,36 +8634,13 @@
                         <span class="booking-detail-label">Check Out</span>
                         <span class="booking-detail-value" style="font-size: 1rem;">${b.checkOut}${outTime}</span>
                     </div>
-                    <div class="booking-detail-item">
-                        <span class="booking-detail-label">Payment Status</span>
-                        <div style="display: flex; align-items: center; gap: 10px; margin-top: 4px;">
-                            <span id="pay-badge-${b.id}" style="display:inline-block;width:12px;height:12px;border-radius:50%;flex-shrink:0;background:${paymentMeta[b.payment] ? paymentMeta[b.payment].dot : '#888'};"></span>
-                            <select class="input-glass" style="margin:0; padding:10px 12px; flex:1;"
-                                    onchange="updatePaymentStatus('${b.id}', this.value)">
-                                ${Object.keys(paymentMeta).map(k =>
-                                    `<option value="${k}" ${b.payment === k ? 'selected' : ''}>${paymentMeta[k].label}</option>`
-                                ).join('')}
-                            </select>
+                    <div class="booking-detail-item" style="grid-column:1/-1;">
+                        <span class="booking-detail-label">Payment</span>
+                        <div style="display:flex;align-items:center;gap:10px;margin-top:4px;flex-wrap:wrap;">
+                            <span style="display:inline-block;width:12px;height:12px;border-radius:50%;flex-shrink:0;background:${paymentMeta[b.payment] ? paymentMeta[b.payment].dot : '#888'};"></span>
+                            <span class="booking-detail-value" style="font-size:0.95rem;">${paymentMeta[b.payment] ? paymentMeta[b.payment].label : '—'}${(b.depositPaid > 0) ? ` · ${gbp(b.depositPaid)} received` : ''}</span>
+                            <button class="btn-sm btn-edit" style="margin-left:auto;" onclick="closeDetailsModal(); openAccounts();">Manage payment →</button>
                         </div>
-                    </div>
-                    <div class="booking-detail-item">
-                        <span class="booking-detail-label">Deposit Paid (£)</span>
-                        <input type="number" min="0" step="0.01" class="input-glass" style="margin:0; padding:10px 12px;"
-                               value="${b.depositPaid != null ? b.depositPaid : 0}"
-                               onchange="updateDeposit('${b.id}', this.value)">
-                    </div>
-                    <div class="booking-detail-item">
-                        <span class="booking-detail-label">Payment Method</span>
-                        <select class="input-glass" style="margin:0; padding:10px 12px;" onchange="updatePaymentField('${b.id}','paymentMethod',this.value)">
-                            ${['', 'Card', 'Bank Transfer', 'Cash', 'PayPal', 'Other'].map(m =>
-                                `<option value="${m}" ${(b.paymentMethod || '') === m ? 'selected' : ''}>${m || '—'}</option>`
-                            ).join('')}
-                        </select>
-                    </div>
-                    <div class="booking-detail-item">
-                        <span class="booking-detail-label">Payment Date</span>
-                        <input type="date" class="input-glass" style="margin:0; padding:10px 12px;"
-                               value="${b.paymentDate || ''}" onchange="updatePaymentField('${b.id}','paymentDate',this.value)">
                     </div>
                     <div class="booking-detail-item" style="grid-column: 1 / -1;">
                         <span class="booking-detail-label">Staff Notes</span>
@@ -8538,15 +8648,6 @@
                     </div>
                 </div>
                 ${priceBlock}
-                ${squareAdminEnabled && b.email ? `
-                <div class="sq-admin" style="margin-top:20px;max-width:380px;">
-                    <span class="booking-detail-label" style="margin-bottom:8px;">Take payment online (Square)</span>
-                    <div style="display:flex;gap:10px;">
-                        <button class="btn-sm btn-edit" style="flex:1;" onclick="requestPayment('${b.id}','deposit')">Request deposit</button>
-                        <button class="btn-sm btn-edit" style="flex:1;" onclick="requestPayment('${b.id}','balance')">Request balance</button>
-                    </div>
-                    <div id="sq-pay-${b.id}" class="sq-pay-history" style="margin-top:10px;font-size:0.82rem;color:var(--text-muted);">Loading payments…</div>
-                </div>` : ''}
                 <div style="display: flex; gap: 10px; margin-top: 20px; max-width: 320px;">
                     <button class="btn-sm btn-edit" style="flex:1;" onclick="openEditBooking('${b.id}')">Edit / Move</button>
                     <button class="btn-sm btn-decline" style="flex:1;" onclick="deleteBooking('${b.id}')">Delete</button>
@@ -9292,7 +9393,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'ms8t9r2u';
+            const BUILD = 'nt9u2s4v';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');

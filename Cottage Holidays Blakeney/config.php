@@ -68,3 +68,8 @@ define('SQUARE_API_VERSION', '2024-01-18');          // Square-Version header (b
 // many days before check-in (and the full amount is requested upfront if a booking
 // is approved inside this window). Requires a daily cron on payments-due.php.
 define('PAYMENT_BALANCE_DAYS', 30);
+// Balance reminders: if a requested balance is still unpaid, the daily cron sends
+// gentle reminders while check-in is between STOP and FROM days away (at most once
+// every ~3 days), then stops a few days before arrival.
+define('PAYMENT_REMINDER_FROM_DAYS', 14);
+define('PAYMENT_REMINDER_STOP_DAYS', 3);

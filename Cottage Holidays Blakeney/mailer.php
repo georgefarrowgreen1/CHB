@@ -374,7 +374,7 @@ function send_payment_request($b, $payUrl) {
 // guest the request. Returns ['ok'=>bool,'error'=>string,'amount'=>float].
 // Requires db.php + pricing.php to be loaded (always true for callers). The
 // amount is derived server-side from the booking; nothing is trusted from input.
-function request_booking_payment($b, $kind) {
+function request_booking_payment($b, $kind, $reminder = false) {
     $kind = ($kind === 'balance') ? 'balance' : 'deposit';
     if (!square_enabled()) return ['ok' => false, 'error' => 'Square payments are not switched on.'];
     if (empty($b['email'])) return ['ok' => false, 'error' => 'No guest email on file.'];
@@ -382,13 +382,55 @@ function request_booking_payment($b, $kind) {
     if ($amt['due'] <= 0) return ['ok' => false, 'error' => 'Nothing left to pay.', 'amount' => 0];
     $payUrl = site_base_url() . 'index.html?pay=' . pay_token($b['id']) . '&b=' . (int)$b['id'] . '&k=' . $kind;
     $rate = get_rate($b['prop_key']);
-    $res = send_payment_request([
+    $payload = [
         'name' => $b['name'], 'email' => $b['email'], 'prop_key' => $b['prop_key'],
         'prop_name' => $rate['name'] ?? $b['prop_key'], 'check_in' => $b['check_in'],
         'check_out' => $b['check_out'], 'kind' => $kind, 'amount' => $amt['due'], 'total' => $amt['total'],
-    ], $payUrl);
+    ];
+    $res = $reminder ? send_payment_reminder($payload, $payUrl) : send_payment_request($payload, $payUrl);
     $res['amount'] = $amt['due'];
     return $res;
+}
+
+// A gentler nudge for a balance that's been requested but not yet paid, sent in
+// the run-up to arrival. Same secure link; warmer copy + days-until-arrival.
+function send_payment_reminder($b, $payUrl) {
+    if (empty($b['email'])) return ['ok' => false, 'error' => 'No guest email on file'];
+    $colors = ['21a' => '#42A5F5', 'jollyboat' => '#43A047', 'pimpernel' => '#9C27B0'];
+    $accent = $colors[$b['prop_key'] ?? ''] ?? '#42A5F5';
+    $money = fn($n) => '£' . number_format((float)$n, 2);
+    $esc = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+    $name = $b['name'] ?: 'Guest';
+    $prop = $b['prop_name'] ?: 'your cottage';
+    $days = max(0, (int)floor((strtotime($b['check_in']) - strtotime(date('Y-m-d'))) / 86400));
+    $when = $days <= 1 ? 'tomorrow' : "in {$days} days";
+
+    $subject = "Reminder: balance due for {$prop}";
+    $text = "Hello {$name},\n\n"
+          . "Just a friendly reminder that the balance for your stay at {$prop} is still outstanding, "
+          . "and your arrival is {$when} ({$b['check_in']}).\n\n"
+          . "Please pay the remaining " . $money($b['amount']) . " securely by card here:\n" . $payUrl . "\n\n"
+          . "If you've already paid, thank you — please ignore this. Any questions, just reply.\n\n"
+          . "Cottage Holidays Blakeney";
+
+    $html = '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f4f4f6;">'
+      . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f6;padding:24px 0;"><tr><td align="center">'
+      . '<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">'
+      . email_crown_header('#ffffff')
+      . '<tr><td style="padding:26px 30px 8px;">'
+      . '<p style="font-size:14px;color:#333;line-height:1.6;margin:0;">Hello ' . $esc($name) . ',</p>'
+      . '<p style="font-size:14px;color:#333;line-height:1.6;margin:10px 0 0;">A friendly reminder that the balance for your stay at <strong>' . $esc($prop) . '</strong> is still outstanding, and your arrival is <strong>' . $esc($when) . '</strong> (' . $esc($b['check_in']) . ').</p>'
+      . '<div style="margin:20px 0;padding:18px;background:#f3f4f8;border:1px solid #e6e8f0;border-radius:12px;text-align:center;">'
+      . '<div style="font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#8a8e9c;">Balance due</div>'
+      . '<div style="font-size:30px;font-weight:700;color:#1c1e26;padding:6px 0 2px;">' . $money($b['amount']) . '</div></div>'
+      . '<table role="presentation" cellpadding="0" cellspacing="0" width="100%"><tr><td align="center">'
+      . '<a href="' . $esc($payUrl) . '" style="display:inline-block;background:' . $accent . ';color:#ffffff;text-decoration:none;font-size:16px;font-weight:700;padding:14px 38px;border-radius:12px;">Pay securely by card</a>'
+      . '</td></tr></table>'
+      . '<p style="font-size:12px;color:#999;line-height:1.6;margin:18px 0 0;text-align:center;">Already paid? Thank you — please ignore this. Powered by Square.</p>'
+      . '<p style="font-size:13px;color:#777;margin:22px 0 6px;">Cottage Holidays Blakeney</p>'
+      . '</td></tr></table></td></tr></table></body></html>';
+
+    return smtp_send($b['email'], $name, $subject, $text, $html);
 }
 
 function send_payment_receipt($b) {

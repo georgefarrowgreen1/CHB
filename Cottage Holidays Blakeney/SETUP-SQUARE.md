@@ -59,6 +59,28 @@ https://YOURDOMAIN/payments-due.php?cron=YOUR_APP_SECRET
 pattern as the check-in push and pre-arrival crons.) Until this cron exists, the
 deposit-on-approval still works; only the automatic balance step needs it.
 
+## 5b. Apple Pay & Google Pay (optional, recommended)
+The card form can also show **Apple Pay** and **Google Pay** buttons. To enable:
+1. In the Square Developer Dashboard → your app → **Web Payments / Digital Wallets**,
+   turn on Apple Pay and Google Pay.
+2. **Apple Pay** additionally needs your live domain registered: Square gives you a
+   verification file to place at `/.well-known/apple-developer-merchantid-domain-association`
+   (upload it to your web space), then "Add domain" in Square. Google Pay needs no
+   domain step.
+3. Nothing else to change in the code — the buttons appear automatically on supported
+   devices/browsers (Apple Pay in Safari on Apple devices; Google Pay in Chrome). If a
+   wallet isn't available, it's simply hidden and the card field still works.
+
+The site's security policy already allows Google Pay; if you serve from a different
+domain, no change is needed.
+
+## 5c. Balance reminders
+If a balance request goes unpaid, the daily cron (step 5a) also sends **gentle
+reminders** while check-in is between `PAYMENT_REMINDER_STOP_DAYS` (default 3) and
+`PAYMENT_REMINDER_FROM_DAYS` (default 14) days away — at most once every ~3 days —
+then stops a few days before arrival. Both windows are in `config.php`. No extra
+setup beyond the daily cron.
+
 ## 6. Test in Sandbox
 1. Approve an enquiry so it becomes a booking with a guest email.
 2. Open the booking's details → **Request deposit**. The guest gets an email with
