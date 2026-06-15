@@ -576,7 +576,7 @@
         .hero h1 { font-family: var(--font-serif); font-size: clamp(2.4rem, 6vw, 4.5rem); margin-bottom: 20px; font-weight: 400; line-height: 1.1; color: var(--text-light); }
         .hero p { font-size: clamp(0.85rem, 2.2vw, 1.2rem); color: var(--text-muted); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 40px; }
 
-        .container { max-width: 1200px; margin: 0 auto; padding: clamp(90px, 12vw, 120px) clamp(16px, 4vw, 20px) 60px; }
+        .container { max-width: 1200px; margin: 0 auto; padding: calc(clamp(90px, 12vw, 120px) + env(safe-area-inset-top)) clamp(16px, 4vw, 20px) 60px; }
         .container.wide { max-width: 1500px; }
         /* iPhone notch / Dynamic Island safe areas. With viewport-fit=cover the page
            background fills the whole screen in landscape; these keep content and the
@@ -7834,7 +7834,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'ic5l8k3v';
+            const BUILD = 'hd7r2m9p';
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
             const yr = document.getElementById('footer-year');
