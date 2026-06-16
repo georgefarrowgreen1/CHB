@@ -1399,6 +1399,14 @@
         @media (min-width: 760px) { .mo-kpis { grid-template-columns: repeat(4, 1fr); } .mo-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; } .mo-grid2 .mo-card { margin-top: 12px; } }
         .exp-tag { display: inline-block; font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.5px; padding: 1px 7px; border-radius: 10px; background: rgba(214,167,133,0.18); color: var(--accent); margin-left: 6px; vertical-align: middle; }
         .exp-receipt img { height: 30px; width: 30px; object-fit: cover; border-radius: 6px; border: 1px solid var(--glass-border); display: block; }
+        /* Add-an-expense form: stack the fields full-width on phones so they don't
+           cram together in the wrap row. */
+        @media (max-width: 600px) {
+            .exp-add-form { flex-direction: column; align-items: stretch; gap: 12px; }
+            .exp-add-form > div, .exp-add-form > label, .exp-add-form > button { width: 100%; }
+            .exp-add-form input, .exp-add-form select { width: 100% !important; box-sizing: border-box; }
+            .exp-add-form > button { justify-content: center; padding: 12px; }
+        }
         .accounts-section-title { font-family: var(--font-serif); font-size: 1.4rem; margin: 36px 0 6px; }
         .accounts-empty { text-align: center; padding: 50px 20px; color: var(--text-muted); }
         .accounts-actions { margin-top: 26px; display: flex; gap: 12px; flex-wrap: wrap; }
@@ -4828,7 +4836,7 @@
                 ${chart}
                 <div class="accounts-stat" style="max-width:680px;">
                     <div class="label">Add an expense</div>
-                    <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;align-items:flex-end;">
+                    <div class="exp-add-form" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;align-items:flex-end;">
                         <div><label class="modal-label">Date</label><input type="date" id="exp-date" class="input-glass field-sm" value="${today}" style="margin:0;"></div>
                         <div><label class="modal-label">Category</label><select id="exp-cat" class="input-glass field-sm" style="margin:0;">${EXPENSE_CATS.map(c => `<option>${c}</option>`).join('')}</select></div>
                         <div><label class="modal-label">Amount (£)</label><input type="number" min="0" step="0.01" id="exp-amount" class="input-glass field-sm" placeholder="0.00" style="margin:0;width:110px;"></div>
@@ -11583,7 +11591,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'vb3c4d6i';
+            const BUILD = 'wc4d5e7j';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
