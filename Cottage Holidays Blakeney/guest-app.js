@@ -22,12 +22,9 @@
     // Home button; My Stays only shows when signed in; Account is folded in (no
     // separate floating button).
     var DOCK = [
-        { key: 'experiences', label: 'Experiences', cls: 'gt-auth',
+        { key: 'experiences', label: 'Experiences', cls: 'gt-auth', views: ['view-experiences'],
           icon: '<path d="M12 3l2.1 4.6L19 9l-4 3.3.9 5.1L12 15.9 8.1 17.4 9 12.3 5 9l4.9-1.4z"/>',
-          go: function () {
-              if (window.toast) window.toast('Experiences — coming soon');
-              else alert('Experiences — coming soon');
-          } },
+          go: function () { if (window.nav) window.nav('view-experiences'); } },
         { key: 'cottages', label: 'Cottages', views: ['view-cottages', 'view-21a'],
           icon: '<path d="M3 18v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6"/><path d="M3 14h18"/><path d="M7 10V7a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3"/>',
           go: function () { if (window.nav) window.nav('view-cottages'); } },
