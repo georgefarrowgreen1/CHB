@@ -9267,10 +9267,20 @@
             w.classList.add('open');
             document.getElementById('chat-fab').classList.add('hidden');
             loadChat();
+            chatStartPolling();   // keep the thread live while it's open
         }
         function closeChat() {
             const w = document.getElementById('chat-widget'); if (w) w.classList.remove('open');
             const f = document.getElementById('chat-fab'); if (f) f.classList.remove('hidden');
+            chatStopPolling();
+        }
+        // Signature of the server-side thread, so background polling can tell when
+        // something actually changed (a new host reply) before touching the DOM.
+        let __chatSig = '';
+        function chatMsgSig(msgs) {
+            if (!msgs || !msgs.length) return '0';
+            const last = msgs[msgs.length - 1];
+            return msgs.length + ':' + (last.at || '') + ':' + (last.role || '') + ':' + ((last.body || '').length);
         }
         async function loadChat() {
             const thread = document.getElementById('chat-thread');
@@ -9285,6 +9295,7 @@
                 const payload = loggedIn ? { action: 'thread' } : { action: 'thread', token };
                 const r = await apiPost('messages.php', payload);
                 const msgs = r.messages || [];
+                __chatSig = chatMsgSig(msgs);
                 thread.innerHTML = msgs.length ? chatBubbles(msgs, 'guest')
                     : `<p class="chat-empty">Hi! 👋 Ask us anything — about a cottage, your dates, or your stay. We'll reply by email too.</p>`;
                 thread.scrollTop = thread.scrollHeight;
@@ -9293,6 +9304,46 @@
                 thread.innerHTML = `<p class="chat-empty">Hi! 👋 Ask us anything — about a cottage, your dates, or your stay. We'll reply by email too.</p>`;
             }
         }
+        // ---- Background refresh: while the chat is open, quietly poll for new
+        //  messages so a host reply appears without the guest reloading. We only
+        //  re-render when the thread actually changed (preserving any instant
+        //  FAQ/availability bubbles otherwise), and pause while the tab is hidden. ----
+        let __chatPollTimer = null;
+        function chatStartPolling() {
+            chatStopPolling();
+            __chatPollTimer = setInterval(chatPoll, 15000);
+        }
+        function chatStopPolling() {
+            if (__chatPollTimer) { clearInterval(__chatPollTimer); __chatPollTimer = null; }
+        }
+        async function chatPoll() {
+            const w = document.getElementById('chat-widget');
+            if (!w || !w.classList.contains('open')) { chatStopPolling(); return; }
+            if (document.hidden) return;                       // don't poll a backgrounded tab
+            const loggedIn = !!currentGuest;
+            const token = chatGetToken();
+            if (!loggedIn && !token) return;                   // anon visitor hasn't started a thread yet
+            try {
+                const payload = loggedIn ? { action: 'thread' } : { action: 'thread', token };
+                const r = await apiPost('messages.php', payload);
+                const msgs = r.messages || [];
+                const sig = chatMsgSig(msgs);
+                if (sig === __chatSig) return;                 // nothing new — leave the DOM (and any bot bubbles) alone
+                __chatSig = sig;
+                const thread = document.getElementById('chat-thread');
+                if (thread && msgs.length) {
+                    const nearBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 60;
+                    thread.innerHTML = chatBubbles(msgs, 'guest');
+                    if (nearBottom) thread.scrollTop = thread.scrollHeight;   // only autoscroll if they were at the bottom
+                }
+            } catch (e) { /* transient — try again next tick */ }
+        }
+        // Returning to the tab with the chat open → refresh straight away.
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden) return;
+            const w = document.getElementById('chat-widget');
+            if (w && w.classList.contains('open')) chatPoll();
+        });
         // Guest quick-reply chips: common questions send immediately; "Report an
         // issue" prefills a prefix and lets the guest describe it.
         function chatQuick(text) {
@@ -12477,7 +12528,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'vp9w4z2k';
+            const BUILD = 'wc2x5b8n';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
