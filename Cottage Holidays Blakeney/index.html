@@ -4645,19 +4645,31 @@
         }
         // ---- Expenses manager (Money → Expenses) ----
         const EXPENSE_CATS = ['Cleaning', 'Laundry', 'Maintenance', 'Utilities', 'Supplies', 'Insurance', 'Fees', 'Marketing', 'Other'];
-        let __expReceiptUrl = '';   // pending receipt photo for the add form
+        // Receipt photo is a scan source only — it is NEVER uploaded or stored.
+        // We OCR it in memory on the device and keep only the extracted figures.
         function pickExpenseReceipt() {
-            pickAndUpload('expense-receipt', async (url) => {
-                __expReceiptUrl = url;
+            const input = document.createElement('input');
+            input.type = 'file';
+            input.accept = 'image/*,.heic,.heif';
+            input.onchange = async () => {
+                const file = input.files && input.files[0];
+                if (!file) return;
                 const prev = document.getElementById('exp-receipt-prev');
-                if (prev) prev.innerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener"><img src="${escapeHtml(url)}" alt="Receipt" style="height:40px;border-radius:6px;border:1px solid var(--glass-border);"></a> <button class="feed-del" title="Remove receipt" onclick="clearExpenseReceipt()">×</button> <span id="exp-scan-status" style="font-size:0.75rem;color:var(--text-muted);"></span>`;
-                try { scanReceipt(url); } catch (e) {}   // read amount/date/vendor on-device
-            });
+                if (prev) prev.innerHTML = '<span id="exp-scan-status" style="font-size:0.75rem;color:var(--text-muted);">Reading…</span>';
+                try {
+                    let img = file;
+                    if (isHeic(file)) { try { img = await ensureUploadable(file); } catch (e) {} } // HEIC → JPEG so OCR can read it
+                    await scanReceiptFile(img);
+                } catch (e) {
+                    const st = document.getElementById('exp-scan-status'); if (st) st.textContent = 'couldn’t read it — enter manually';
+                }
+            };
+            input.click();
         }
-        function clearExpenseReceipt() { __expReceiptUrl = ''; const p = document.getElementById('exp-receipt-prev'); if (p) p.innerHTML = ''; }
 
-        // ---- On-device receipt OCR (Tesseract.js, lazy-loaded; the image never
-        // leaves the device — only the OCR engine is fetched from a CDN and cached). ----
+        // ---- On-device receipt OCR (Tesseract.js, lazy-loaded; the image stays in
+        // memory on the device and is never uploaded — only the OCR engine is
+        // fetched from a CDN and cached). ----
         let __tessLoading = null;
         function loadTesseract() {
             if (window.Tesseract) return Promise.resolve();
@@ -4671,12 +4683,12 @@
             });
             return __tessLoading;
         }
-        async function scanReceipt(url) {
+        async function scanReceiptFile(file) {
             const status = () => document.getElementById('exp-scan-status');
             try {
                 if (status()) status().textContent = 'Reading…';
                 await loadTesseract();
-                const { data } = await window.Tesseract.recognize(url, 'eng');
+                const { data } = await window.Tesseract.recognize(file, 'eng');
                 const filled = applyReceiptText((data && data.text) || '');
                 if (status()) status().textContent = filled ? '✓ read — check the details' : 'couldn’t read it — enter manually';
             } catch (e) {
@@ -4700,9 +4712,28 @@
             if (m && MON[m[1].slice(0,3).toLowerCase()]) return ok(yr(+m[3]), MON[m[1].slice(0,3).toLowerCase()], +m[2]);
             return '';
         }
-        // Heuristically fill the expense form from OCR text. Returns true if anything filled.
+        // Pull line items (name + price) out of OCR text, skipping totals/payment lines.
+        function parseReceiptItems(lines) {
+            const skip = /(sub-?total|^total|vat|tax|change|cash|card|balance|amount due|to pay|visa|master|debit|credit|tip|service charge|rounding|invoice|receipt|tel\b|phone|www\.|http|@|^date|^time)/i;
+            const itemRe = /^(.{2,42}?)\s+(?:£|gbp|\$)?\s?(\d{1,4}[.,]\d{2})$/i;
+            const items = [];
+            for (const l of lines) {
+                if (skip.test(l)) continue;
+                const m = l.match(itemRe);
+                if (m) {
+                    const name = m[1].replace(/\s{2,}/g, ' ').replace(/[.\s]+$/, '').trim();
+                    if (name && /[a-z]/i.test(name)) items.push({ name: name.slice(0, 42), price: parseFloat(m[2].replace(',', '.')) });
+                }
+                if (items.length >= 40) break;
+            }
+            return items;
+        }
+        // The most recent on-device scan: { supplier, date, items[], amount }.
+        let __lastReceipt = null;
+        // Heuristically read the receipt from OCR text, fill the form, and show the
+        // formatted window. Returns true if anything was recognised.
         function applyReceiptText(text) {
-            if (!text || !text.trim()) return false;
+            if (!text || !text.trim()) { renderReceiptCard(null); return false; }
             const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
             const moneyRe = /(?:£|gbp|\$)?\s*(\d{1,5}[.,]\d{2})\b/i;
             // Amount: prefer a "total"-ish line; else the largest money figure on the receipt.
@@ -4715,12 +4746,41 @@
                 if (max > 0) amount = max;
             }
             const date = parseReceiptDate(text);
-            const vendor = (lines.find(l => /[a-z]/i.test(l) && l.replace(/[^a-z]/gi, '').length >= 3) || '').slice(0, 40);
+            const supplier = (lines.find(l => /[a-z]/i.test(l) && l.replace(/[^a-z]/gi, '').length >= 3) || '').slice(0, 42);
+            const items = parseReceiptItems(lines);
+            __lastReceipt = { supplier: supplier || '', date: date || '', items, amount: (amount != null ? amount : null) };
             const set = (id, v) => { const el = document.getElementById(id); if (el && v != null && v !== '') el.value = v; };
             if (amount != null) set('exp-amount', amount.toFixed(2));
             if (date) set('exp-date', date);
-            if (vendor) set('exp-desc', vendor);
-            return (amount != null) || !!date || !!vendor;
+            if (supplier) set('exp-desc', supplier);
+            renderReceiptCard(__lastReceipt);
+            return (amount != null) || !!date || !!supplier || items.length > 0;
+        }
+        // Formatted receipt window: Supplier · Date · Items · Amount.
+        function receiptCardHtml(r) {
+            if (!r) return '';
+            const items = (r.items || []).map(it =>
+                `<div style="display:flex;justify-content:space-between;gap:12px;font-size:0.82rem;"><span>${escapeHtml(it.name)}</span><span style="color:var(--text-muted);">${gbp(it.price)}</span></div>`).join('');
+            return `<div style="display:flex;justify-content:space-between;gap:12px;margin-top:4px;"><span style="color:var(--text-muted);">Supplier</span><strong>${escapeHtml(r.supplier || '—')}</strong></div>
+                <div style="display:flex;justify-content:space-between;gap:12px;"><span style="color:var(--text-muted);">Date</span><strong>${escapeHtml(r.date || '—')}</strong></div>
+                ${items ? `<div style="margin:8px 0;border-top:1px solid var(--glass-border);padding-top:8px;">${items}</div>` : ''}
+                <div style="display:flex;justify-content:space-between;gap:12px;border-top:1px solid var(--glass-border);padding-top:8px;"><span style="color:var(--text-muted);">Amount</span><strong>${r.amount != null ? gbp(r.amount) : '—'}</strong></div>`;
+        }
+        function renderReceiptCard(r) {
+            const el = document.getElementById('exp-receipt-card');
+            if (!el) return;
+            const empty = !r || (!r.supplier && !r.date && r.amount == null && !(r.items || []).length);
+            el.innerHTML = empty ? '' : `<div class="mo-card" style="max-width:420px;margin-top:10px;"><div class="mo-card-title">Scanned receipt</div>${receiptCardHtml(r)}</div>`;
+        }
+        // Expand/collapse a stored receipt's formatted data in the expenses list.
+        let __expenseReceipts = {};
+        function toggleReceiptDetail(id) {
+            const el = document.getElementById('exp-rd-' + id);
+            if (!el) return;
+            if (el.style.display === 'none' || !el.style.display) {
+                el.innerHTML = `<div class="mo-card" style="max-width:420px;margin:4px 0 10px;">${receiptCardHtml(__expenseReceipts[id])}</div>`;
+                el.style.display = '';
+            } else { el.style.display = 'none'; }
         }
         function renderExpenses() {
             const wrap = document.getElementById('expenses-body');
@@ -4731,6 +4791,9 @@
             const rowsByYear = {};
             allExpenses.forEach(x => { const y = taxYearStartOf(x.date); (rowsByYear[y] = rowsByYear[y] || []).push(x); });
             const years = Object.keys(rowsByYear).sort((a, b) => b - a);
+            // Parse stored receipt data (supplier/date/items/amount) for the list toggles.
+            __expenseReceipts = {};
+            allExpenses.forEach(x => { if (x.receipt_data) { try { __expenseReceipts[x.id] = JSON.parse(x.receipt_data); } catch (e) {} } });
 
             // Spend-by-category chart for the most recent year that has expenses.
             let chart = '';
@@ -4748,12 +4811,15 @@
                 const tot = items.reduce((s, x) => s + (x.amount || 0), 0);
                 return `<div style="margin-top:18px;">
                     <div style="display:flex;justify-content:space-between;font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px;"><span>${taxYearShort(parseInt(y,10))}</span><span>${gbp(tot)}</span></div>
-                    ${items.map(x => `<div class="feed-row" style="grid-template-columns:84px 1fr auto auto auto;gap:10px;">
+                    ${items.map(x => `<div>
+                      <div class="feed-row" style="grid-template-columns:84px 1fr auto auto auto;gap:10px;">
                         <span class="feed-date">${x.date}</span>
                         <span class="feed-who">${escapeHtml(x.category)}${x.description ? ' · ' + escapeHtml(x.description) : ''}${x.prop_key && propertyMeta[x.prop_key] ? ' · ' + escapeHtml(propertyMeta[x.prop_key].short || propertyMeta[x.prop_key].name) : ''}${x.recurring ? ' <span class="exp-tag">recurring</span>' : ''}</span>
-                        ${x.receipt_url ? `<a class="exp-receipt" href="${escapeHtml(x.receipt_url)}" target="_blank" rel="noopener" title="View receipt"><img src="${escapeHtml(x.receipt_url)}" alt="Receipt"></a>` : '<span></span>'}
+                        ${__expenseReceipts[x.id] ? `<button class="feed-del" title="View scanned receipt" onclick="toggleReceiptDetail(${x.id})">🧾</button>` : '<span></span>'}
                         <span class="feed-amt">${gbp(x.amount)}</span>
                         <span style="display:flex;gap:2px;">${x.recurring ? `<button class="feed-del" title="Add next month's copy" onclick="repeatExpense(${x.id})" style="color:var(--accent);">↻</button>` : ''}<button class="feed-del" title="Remove" onclick="deleteExpense(${x.id})">×</button></span>
+                      </div>
+                      <div id="exp-rd-${x.id}" style="display:none;"></div>
                     </div>`).join('')}
                 </div>`;
             }).join('') : `<p style="font-size:0.85rem;color:var(--text-muted);margin-top:14px;">No expenses logged yet.</p>`;
@@ -4768,21 +4834,26 @@
                         <div><label class="modal-label">Amount (£)</label><input type="number" min="0" step="0.01" id="exp-amount" class="input-glass field-sm" placeholder="0.00" style="margin:0;width:110px;"></div>
                         <div><label class="modal-label">Cottage</label><select id="exp-prop" class="input-glass field-sm" style="margin:0;">${cottageOpts}</select></div>
                         <div style="flex:1 1 160px;"><label class="modal-label">Note (optional)</label><input type="text" id="exp-desc" class="input-glass field-sm" placeholder="e.g. End-of-stay clean" style="margin:0;width:100%;"></div>
-                        <div><label class="modal-label">Receipt <span style="text-transform:none;letter-spacing:0;color:var(--text-muted);">· auto-reads on device</span></label><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><button class="btn-sm btn-edit" type="button" onclick="pickExpenseReceipt()">＋ Photo</button><span id="exp-receipt-prev" style="display:inline-flex;align-items:center;gap:6px;"></span></div></div>
+                        <div><label class="modal-label">Receipt <span style="text-transform:none;letter-spacing:0;color:var(--text-muted);">· scanned on device, not stored</span></label><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><button class="btn-sm btn-edit" type="button" onclick="pickExpenseReceipt()">＋ Scan photo</button><span id="exp-receipt-prev" style="display:inline-flex;align-items:center;gap:6px;"></span></div></div>
                         <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;color:var(--text-muted);"><input type="checkbox" id="exp-recurring" style="width:auto;margin:0;"> Recurring</label>
                         <button class="btn-sm btn-edit" onclick="addExpense()">Add</button>
                     </div>
+                    <div id="exp-receipt-card"></div>
                 </div>
                 <div class="feed-list" style="max-width:680px;margin-top:8px;">${list}</div>`;
         }
         async function addExpense() {
             const v = id => (document.getElementById(id) || {}).value;
             const recurring = (document.getElementById('exp-recurring') || {}).checked ? 1 : 0;
-            const payload = { action: 'add', date: v('exp-date'), category: v('exp-cat'), amount: parseFloat(v('exp-amount')) || 0, prop: v('exp-prop'), description: v('exp-desc'), receipt_url: __expReceiptUrl || '', recurring };
+            const payload = { action: 'add', date: v('exp-date'), category: v('exp-cat'), amount: parseFloat(v('exp-amount')) || 0, prop: v('exp-prop'), description: v('exp-desc'), recurring };
+            // Attach the scanned receipt data (supplier/date/items/amount) if present.
+            if (__lastReceipt && ((__lastReceipt.items || []).length || __lastReceipt.supplier)) payload.receipt_data = JSON.stringify(__lastReceipt);
             if (!payload.amount || payload.amount <= 0) { glassAlert('Enter an amount greater than zero.'); return; }
             try {
                 await apiPost('expenses.php', payload);
-                clearExpenseReceipt();
+                __lastReceipt = null;
+                const prev = document.getElementById('exp-receipt-prev'); if (prev) prev.innerHTML = '';
+                const card = document.getElementById('exp-receipt-card'); if (card) card.innerHTML = '';
                 await loadExpenses();
                 renderExpenses();
                 try { renderAccounts(); } catch (e) {}
@@ -11512,7 +11583,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'ua2b3c5h';
+            const BUILD = 'vb3c4d6i';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
