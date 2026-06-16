@@ -96,6 +96,7 @@ try {
 
 // ---- Compose ------------------------------------------------------------
 $names = ['21a' => '21A Westgate', 'jollyboat' => 'Jollyboat', 'pimpernel' => 'Pimpernel'];
+$accent = ['21a' => '#42A5F5', 'jollyboat' => '#43A047', 'pimpernel' => '#9C27B0'];
 $nameOf = fn($k) => $names[$k] ?? $k;
 $pretty = fn($d) => date('D j M', strtotime($d));
 
@@ -118,34 +119,31 @@ $text = "Good morning,\n\n"
       . ($occPct !== null ? "  • Occupancy (next 30 days): {$occPct}%\n" : "")
       . "\nHave a good week,\nyour website";
 
-$row = fn($label, $val) => '<tr><td style="padding:7px 0;font-size:14px;color:#555;">' . htmlspecialchars($label) . '</td>'
-    . '<td style="padding:7px 0;font-size:14px;color:#222;font-weight:700;text-align:right;">' . htmlspecialchars($val) . '</td></tr>';
+$sectionLabel = fn($t) => '<div style="font-family:' . email_sans() . ';font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#8a8f9e;margin:22px 0 2px;">' . htmlspecialchars($t) . '</div>';
 $arrivalsHtml = $arrivals
-    ? implode('', array_map(fn($a) => '<li style="margin:4px 0;font-size:14px;color:#333;">' . htmlspecialchars($pretty($a['check_in'])) . ' — <strong>' . htmlspecialchars($a['name']) . '</strong> · ' . htmlspecialchars($nameOf($a['prop_key'])) . '</li>', $arrivals))
-    : '<li style="margin:4px 0;font-size:14px;color:#999;">No arrivals in the next 7 days.</li>';
+    ? '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:8px 0;">' . implode('', array_map(fn($a) =>
+        '<tr><td style="padding:7px 0;border-bottom:1px solid #2c2f38;font-family:' . email_sans() . ';font-size:14px;color:#d7dae3;">'
+        . '<span style="display:inline-block;width:9px;height:9px;border-radius:3px;background:' . ($accent[$a['prop_key']] ?? '#D6A785') . ';margin-right:9px;"></span>'
+        . htmlspecialchars($pretty($a['check_in'])) . ' — <strong style="color:#f4f5f7;">' . htmlspecialchars($a['name']) . '</strong> · ' . htmlspecialchars($nameOf($a['prop_key'])) . '</td></tr>', $arrivals)) . '</table>'
+    : email_p('No arrivals in the next 7 days.', true);
 
-$html = '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f4f4f6;">'
-  . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f6;padding:24px 0;"><tr><td align="center">'
-  . '<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">'
-  . email_crown_header('#ffffff')
-  . '<tr><td style="padding:24px 30px 6px;">'
-  . '<h2 style="font-size:18px;color:#222;margin:0 0 2px;">Your week at a glance</h2>'
-  . '<p style="font-size:13px;color:#888;margin:0 0 14px;">' . htmlspecialchars(date('l j F Y')) . '</p>'
-  . '<h3 style="font-size:13px;letter-spacing:.5px;text-transform:uppercase;color:#aaa;margin:14px 0 2px;">The week just gone</h3>'
-  . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0">'
-  . $row('New bookings', $newBookings . ' (' . $money($newValue) . ')')
-  . $row('Money received', $money($received))
-  . '</table>'
-  . '<h3 style="font-size:13px;letter-spacing:.5px;text-transform:uppercase;color:#aaa;margin:18px 0 2px;">The week ahead — arrivals</h3>'
-  . '<ul style="margin:6px 0 0;padding-left:18px;">' . $arrivalsHtml . '</ul>'
-  . '<h3 style="font-size:13px;letter-spacing:.5px;text-transform:uppercase;color:#aaa;margin:18px 0 2px;">To keep an eye on</h3>'
-  . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0">'
-  . $row('Balances owed', $owedCount . ' (' . $money($owedSum) . ')')
-  . $row('Pending enquiries', (string)$pending)
-  . ($occPct !== null ? $row('Occupancy (next 30 days)', $occPct . '%') : '')
-  . '</table>'
-  . '<p style="font-size:13px;color:#777;margin:22px 0 6px;">Have a good week.</p>'
-  . '</td></tr></table></td></tr></table></body></html>';
+$inner = email_h('Your week at a glance', '#D6A785')
+  . email_p(htmlspecialchars(date('l j F Y')), true)
+  . $sectionLabel('The week just gone')
+  . email_rows([
+      ['New bookings', $newBookings . ' <span style="color:#a7acbb;">(' . $money($newValue) . ')</span>'],
+      ['Money received', $money($received)],
+  ])
+  . $sectionLabel('The week ahead — arrivals')
+  . $arrivalsHtml
+  . $sectionLabel('To keep an eye on')
+  . email_rows(array_filter([
+      ['Balances owed', $owedCount . ' <span style="color:#a7acbb;">(' . $money($owedSum) . ')</span>'],
+      ['Pending enquiries', (string)$pending],
+      $occPct !== null ? ['Occupancy (next 30 days)', $occPct . '%'] : null,
+  ]))
+  . email_p('Have a good week.', true);
+$html = email_shell('Your Blakeney week at a glance', $inner, '#D6A785');
 
 $res = smtp_send(OWNER_NOTIFY_EMAIL, 'Owner', $subject, $text, $html);
 

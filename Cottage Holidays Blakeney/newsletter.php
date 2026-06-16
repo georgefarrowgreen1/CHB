@@ -87,15 +87,16 @@ if ($action === 'broadcast') {
         $name = $s['name'] ?: 'there';
         $unsub = $base . 'index.html?unsub=' . rawurlencode($s['token']);
         $text = $bodyText . "\n\n—\nYou're receiving this because you signed up at Cottage Holidays Blakeney.\nUnsubscribe: " . $unsub;
-        $html = '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f4f4f6;">'
-          . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f6;padding:24px 0;"><tr><td align="center">'
-          . '<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">'
-          . (function_exists('email_crown_header') ? email_crown_header('#ffffff') : '')
-          . '<tr><td style="padding:26px 30px 8px;">'
-          . '<p style="font-size:15px;color:#333;line-height:1.65;margin:0;">' . $bodyHtml . '</p>'
-          . '<p style="font-size:11px;color:#aaa;line-height:1.6;margin:22px 0 6px;border-top:1px solid #eee;padding-top:12px;">You\'re receiving this because you signed up at Cottage Holidays Blakeney. '
-          . '<a href="' . $esc($unsub) . '" style="color:#999;">Unsubscribe</a>.</p>'
-          . '</td></tr></table></td></tr></table></body></html>';
+        $inner = (function_exists('email_p')
+            ? email_p($bodyHtml)
+            : '<p style="font-size:15px;color:#d7dae3;line-height:1.7;margin:0;">' . $bodyHtml . '</p>');
+        $html = function_exists('email_shell')
+            ? email_shell($subject, $inner, '#D6A785', [
+                'unsubscribe' => $unsub,
+                'footer' => "You're receiving this because you signed up at Cottage Holidays Blakeney.",
+              ])
+            : '<!DOCTYPE html><html><body style="margin:0;padding:0;">' . $inner
+              . '<p style="font-size:11px;color:#999;">Unsubscribe: <a href="' . $esc($unsub) . '">' . $esc($unsub) . '</a></p></body></html>';
         $res = smtp_send($s['email'], $name, $subject, $text, $html);
         if (!empty($res['ok'])) $sent++; else $failed++;
     }
