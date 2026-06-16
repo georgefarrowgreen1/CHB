@@ -135,9 +135,10 @@ body.guest-app:not(.owner-mode) #guest-msg-fab {
     .guest-dock-btn svg { width: 20px; height: 20px; }
 }
 
-/* Clear the floating dock so document/footer content isn't hidden behind it. */
-body.guest-app:not(.owner-mode) { padding-bottom: calc(98px + env(safe-area-inset-bottom, 0px)); }
-body.guest-app:not(.owner-mode) .site-footer { padding-bottom: calc(106px + env(safe-area-inset-bottom, 0px)); }
+/* Clear the floating dock so document/footer content is never hidden behind it.
+   The dock is ~104px tall (button + padding + 20px gap) on its largest size, so
+   keep a comfortable margin below all page content and the footer. */
+body.guest-app:not(.owner-mode) { padding-bottom: calc(124px + env(safe-area-inset-bottom, 0px)); }
 
 /* On mobile the footer is pared back to just the dark/light toggle, the
    "Made by George" credit, and the build number — nothing else. */
@@ -183,7 +184,16 @@ body.guest-app:not(.owner-mode) #chat-widget {
    sticky book bar sits just ABOVE the floating dock. */
 body.guest-app:not(.owner-mode) .account-btn { display: none; }
 body.guest-app:not(.owner-mode) .chat-fab { display: none; }
-body.guest-app:not(.owner-mode) #prop-book-bar { bottom: calc(94px + env(safe-area-inset-bottom, 0px)); }
+/* On mobile the cottage "Enquire now" bar moves to the TOP of the page (below the
+   notch) instead of the bottom, so booking is the first thing in reach. */
+body.guest-app:not(.owner-mode) #prop-book-bar {
+    top: 0; bottom: auto;
+    padding: calc(12px + env(safe-area-inset-top, 0px)) max(16px, env(safe-area-inset-right, 0px)) 12px max(16px, env(safe-area-inset-left, 0px));
+    border-top: 0; border-bottom: 1px solid var(--glass-border);
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.45);
+}
+/* The cottage page then needs room at the top so its content clears that bar. */
+body.guest-app:not(.owner-mode) #view-21a { padding-top: calc(96px + env(safe-area-inset-top, 0px)); }
 /* These other floating elements default to the very bottom (z-index above the
    dock), so lift them clear of the dock too: the mid-stay arrival banner and the
    iOS add-to-home-screen hint. */
@@ -201,7 +211,7 @@ body.guest-app:not(.owner-mode) .page-view.active { animation: gtFade 0.32s var(
 body.guest-app:not(.owner-mode) #guest-install-chip.show {
     display: flex; align-items: center; gap: 10px;
     position: fixed; left: 12px; right: 12px;
-    bottom: calc(98px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(116px + env(safe-area-inset-bottom, 0px));
     z-index: 1399;
     padding: 12px 14px; border-radius: 16px;
     background: rgba(18, 19, 22, 0.9);
