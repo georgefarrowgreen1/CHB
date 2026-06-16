@@ -3268,12 +3268,11 @@
 
     <!-- FOOTER -->
     <footer class="site-footer">
-        <p class="footer-nap" style="font-size:0.7rem;color:var(--text-muted);opacity:0.55;margin-bottom:4px;letter-spacing:0.2px;">Self-catering holiday cottages in Blakeney, North Norfolk · NR25</p>
-        <p>&copy; <span id="footer-year">2026</span> Cottage Holidays Blakeney. &nbsp;·&nbsp; <a onclick="nav('view-privacy')" style="cursor:pointer;color:var(--text-muted);text-decoration:underline;">Privacy Policy</a></p>
         <div class="footer-controls">
             <button id="theme-toggle" class="toggle-btn" onclick="toggleTheme()" title="Switch to light mode" aria-label="Switch to light mode"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.8 4.8l1.8 1.8M17.4 17.4l1.8 1.8M19.2 4.8l-1.8 1.8M6.6 17.4l-1.8 1.8"/></svg></button>
         </div>
-        <p style="margin-top: 8px; font-size: 0.74rem; color: var(--text-muted);">Made by George with <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:#E57373;"><path d="M12 20s-7-4.6-7-9.5A3.7 3.7 0 0 1 12 7a3.7 3.7 0 0 1 7 3.5C19 15.4 12 20 12 20z" fill="currentColor" stroke="none"/></svg></p>
+        <p class="footer-nap" style="font-size:0.7rem;color:var(--text-muted);opacity:0.55;margin-bottom:4px;letter-spacing:0.2px;">Self-catering holiday cottages in Blakeney, North Norfolk · NR25</p>
+        <p style="font-size:0.74rem;color:var(--text-muted);">&copy; <span id="footer-year">2026</span> Cottage Holidays Blakeney &nbsp;·&nbsp; <a onclick="nav('view-privacy')" style="cursor:pointer;color:var(--text-muted);text-decoration:underline;">Privacy Policy</a> &nbsp;·&nbsp; Made by George with <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:#E57373;"><path d="M12 20s-7-4.6-7-9.5A3.7 3.7 0 0 1 12 7a3.7 3.7 0 0 1 7 3.5C19 15.4 12 20 12 20z" fill="currentColor" stroke="none"/></svg></p>
         <p style="margin-top: 4px; font-size: 0.68rem; color: var(--text-muted); opacity: 0.6;">Build <span id="build-stamp">—</span></p>
     </footer>
 
@@ -11720,7 +11719,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'ek2l3m5r';
+            const BUILD = 'fl3m4n6s';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
