@@ -2739,6 +2739,18 @@
                 <div class="accounts-stat" style="max-width:720px;">
                     <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 12px;">Guests can write a review from their account once a stay is complete. Nothing appears on the site until you approve it here.</p>
                     <div id="guest-review-moderation"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
+                    <!-- Google review funnel: a few days after checkout we email guests a
+                         review link. Paste your Google "write a review" link to make it the
+                         primary button (great for search ranking). Leave blank to skip. -->
+                    <div style="margin-top:24px;border-top:1px solid var(--glass-border);padding-top:18px;">
+                        <label class="modal-label" for="google-review-url-input">Google review link (optional)</label>
+                        <p style="font-size:0.78rem;color:var(--text-muted);margin:2px 0 8px;line-height:1.5;">In Google Business Profile, choose “Get more reviews” and copy the short link (e.g. <code>https://g.page/r/…/review</code>). Added to the post-stay review email.</p>
+                        <input type="url" id="google-review-url-input" class="input-glass" placeholder="https://g.page/r/…/review" autocomplete="off" spellcheck="false">
+                        <div style="margin-top:10px;display:flex;gap:10px;align-items:center;">
+                            <button class="btn-sm btn-edit" onclick="saveGoogleReviewUrl()">Save link</button>
+                            <span id="google-review-url-msg" style="font-size:0.8rem;"></span>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -9955,7 +9967,22 @@
             catch (e) { glassAlert("Couldn't remove: " + e.message); }
         }
 
+        // Populate the Google review link field from saved content.
+        function initGoogleReviewUrl() {
+            const el = document.getElementById('google-review-url-input');
+            if (el) el.value = (siteContent && siteContent['google-review-url']) || '';
+            const msg = document.getElementById('google-review-url-msg'); if (msg) msg.textContent = '';
+        }
+        async function saveGoogleReviewUrl() {
+            const el = document.getElementById('google-review-url-input');
+            const msg = document.getElementById('google-review-url-msg');
+            const val = (el && el.value || '').trim();
+            await saveContent('google-review-url', val);
+            siteContent['google-review-url'] = val;
+            if (msg) { msg.style.color = '#4CAF50'; msg.textContent = val ? 'Saved ✓' : 'Cleared.'; }
+        }
         async function loadGuestReviewModeration() {
+            initGoogleReviewUrl();
             const wrap = document.getElementById('guest-review-moderation');
             if (!wrap) return;
             let rows = [];
@@ -12140,7 +12167,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'qa7m2k9d';
+            const BUILD = 'rb5n8t3w';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;

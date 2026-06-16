@@ -229,14 +229,23 @@ function send_review_request_email($b) {
     $name = $b['name'] ?: 'there';
     $prop = $b['prop_name'] ?: 'your cottage';
     $url = $b['reviewUrl'] ?? '';
+    // Google review funnel: if the owner has set a Google review link, make it the
+    // primary call to action (best for search ranking + social proof); the on-site
+    // review form stays as a secondary option.
+    $googleUrl = $b['googleUrl'] ?? '';
 
     $subject = "How was {$prop}? Leave a review";
     $text = "Hi {$name},\n\n"
           . "Thank you for staying at {$prop}. We'd love to hear how it went — a short review "
           . "really helps other guests (and us).\n\n"
-          . "Leave a review: {$url}\n\n"
-          . "Just log in with this email and open My Bookings to add a few words.\n\n"
+          . ($googleUrl ? "Leave us a Google review: {$googleUrl}\n\n" : "")
+          . ($url ? "Or review us on our site: {$url}\n\n" : "")
           . "Hope to welcome you back.\nCottage Holidays Blakeney";
+
+    $btn = function ($href, $label, $bg) use ($esc) {
+        return '<table role="presentation" cellpadding="0" cellspacing="0" width="100%"><tr><td align="center" style="padding:10px 0 4px;">'
+            . '<a href="' . $esc($href) . '" style="display:inline-block;background:' . $bg . ';color:#ffffff;text-decoration:none;font-size:16px;font-weight:700;padding:14px 38px;border-radius:12px;">' . $esc($label) . '</a></td></tr></table>';
+    };
 
     $html = '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f4f4f6;">'
       . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f6;padding:24px 0;"><tr><td align="center">'
@@ -245,9 +254,9 @@ function send_review_request_email($b) {
       . '<tr><td style="padding:26px 30px 8px;">'
       . '<p style="font-size:14px;color:#333;line-height:1.6;margin:0;">Hi ' . $esc($name) . ',</p>'
       . '<p style="font-size:14px;color:#333;line-height:1.6;margin:10px 0 0;">Thank you for staying at <strong>' . $esc($prop) . '</strong>. We\'d love to hear how it went — a short review really helps other guests (and us).</p>'
-      . ($url ? '<table role="presentation" cellpadding="0" cellspacing="0" width="100%"><tr><td align="center" style="padding:18px 0 6px;">'
-            . '<a href="' . $esc($url) . '" style="display:inline-block;background:' . $accent . ';color:#ffffff;text-decoration:none;font-size:16px;font-weight:700;padding:14px 38px;border-radius:12px;">Leave a review</a></td></tr></table>' : '')
-      . '<p style="font-size:12px;color:#999;line-height:1.6;margin:10px 0 0;text-align:center;">Log in with this email and open My Bookings.</p>'
+      . ($googleUrl ? $btn($googleUrl, '★ Review us on Google', '#4285F4') : '')
+      . ($url ? $btn($url, ($googleUrl ? 'Or review us on our site' : 'Leave a review'), $accent) : '')
+      . ($url && !$googleUrl ? '<p style="font-size:12px;color:#999;line-height:1.6;margin:10px 0 0;text-align:center;">Log in with this email and open My Bookings.</p>' : '')
       . '<p style="font-size:13px;color:#777;margin:22px 0 6px;">Hope to welcome you back.<br>Cottage Holidays Blakeney</p>'
       . '</td></tr></table></td></tr></table></body></html>';
 

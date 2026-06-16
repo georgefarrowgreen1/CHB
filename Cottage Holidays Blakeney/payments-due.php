@@ -88,9 +88,44 @@ foreach ($toRemind as $b) {
     }
 }
 
+// ---- Abandoned-deposit recovery -------------------------------------------
+// A deposit was requested on approval (check-in far off) but never paid. A few
+// days later, send ONE gentle nudge with a fresh pay link. We only touch bookings
+// OUTSIDE the balance window (check-in further away than $days), so this never
+// overlaps the balance request/reminder passes above. Tracked by
+// deposit_reminded_at so each booking is recovered at most once.
+$recoverDays = (defined('PAYMENT_RECOVERY_DAYS') && (int)PAYMENT_RECOVERY_DAYS > 0) ? (int)PAYMENT_RECOVERY_DAYS : 3;
+$recovered = 0; $recReport = [];
+try {
+    $rc = db()->prepare(
+        "SELECT * FROM bookings
+         WHERE payment = 'unpaid'
+           AND email IS NOT NULL AND email <> ''
+           AND deposit_requested_at IS NOT NULL
+           AND deposit_reminded_at IS NULL
+           AND deposit_requested_at <= (NOW() - INTERVAL ? DAY)
+           AND check_in > (CURDATE() + INTERVAL ? DAY)"
+    );
+    $rc->execute([$recoverDays, $days]);
+    $toRecover = $rc->fetchAll();
+} catch (\Throwable $e) { $toRecover = []; }   // columns not migrated yet
+
+foreach ($toRecover as $b) {
+    $res = request_booking_payment($b, 'deposit', true);   // reminder = true
+    if (!empty($res['ok'])) {
+        try { db()->prepare('UPDATE bookings SET deposit_reminded_at = NOW() WHERE id = ?')->execute([(int)$b['id']]); } catch (\Throwable $e) {}
+        $recovered++;
+        $recReport[] = ['id' => (int)$b['id'], 'status' => 'recovered', 'amount' => $res['amount'] ?? null];
+    } elseif (($res['error'] ?? '') === 'Nothing left to pay.') {
+        // Paid since (status not yet flipped, or edge case) — stop chasing.
+        try { db()->prepare('UPDATE bookings SET deposit_reminded_at = NOW() WHERE id = ?')->execute([(int)$b['id']]); } catch (\Throwable $e) {}
+    }
+}
+
 json_out([
     'ok' => true, 'window_days' => $days,
     'found' => count($due), 'requested' => $sent, 'skipped' => $skipped,
     'reminders_sent' => $reminded, 'reminder_window' => [$stopDays, $fromDays],
-    'detail' => $report, 'reminders' => $remReport,
+    'deposits_recovered' => $recovered, 'recovery_after_days' => $recoverDays,
+    'detail' => $report, 'reminders' => $remReport, 'recovery' => $recReport,
 ]);
