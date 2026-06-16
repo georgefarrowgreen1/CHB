@@ -3658,7 +3658,10 @@
                 throw new Error(res.ok ? 'Unexpected server response.' :
                     ('Server error ' + res.status + (text ? ': ' + text.slice(0, 200) : '')));
             }
-            if (!res.ok) throw new Error(data.error || ('Request failed (' + res.status + ')'));
+            if (!res.ok) {
+                if (res.status === 401) maybeHandleStaleAdmin();
+                throw new Error(data.error || ('Request failed (' + res.status + ')'));
+            }
             return data;
         }
         async function apiGet(endpoint) {
@@ -3677,8 +3680,47 @@
                 throw new Error(res.ok ? 'Unexpected server response.' :
                     ('Server error ' + res.status + (text ? ': ' + text.slice(0, 200) : '')));
             }
-            if (!res.ok) throw new Error(data.error || ('Request failed (' + res.status + ')'));
+            if (!res.ok) {
+                if (res.status === 401) maybeHandleStaleAdmin();
+                throw new Error(data.error || ('Request failed (' + res.status + ')'));
+            }
             return data;
+        }
+
+        // If a request comes back 401 while the UI still believes an admin is signed
+        // in, the server session has almost certainly expired (so the dashboard is
+        // showing but every action fails "Not authorised"). Confirm with the server
+        // and, if the admin session really is gone, log out cleanly so the UI matches
+        // reality. Guest/anonymous 401s are expected and ignored.
+        let __staleAdminChecking = false;
+        let __sessionExpiredNotified = false;
+        async function maybeHandleStaleAdmin() {
+            if (!isAuthenticated) return;          // not posing as admin → a normal 401
+            if (__staleAdminChecking) return;      // one check at a time
+            __staleAdminChecking = true;
+            try {
+                const s = await apiPost('auth.php', { action: 'admin_status' });
+                if (!s || !s.admin) forceAdminLogout();
+            } catch (e) {
+                /* network hiccup — don't log out on uncertainty */
+            } finally {
+                __staleAdminChecking = false;
+            }
+        }
+        function forceAdminLogout() {
+            isAuthenticated = false;
+            try { setAuthUI(); } catch (e) {}
+            try { if (typeof isEditMode !== 'undefined' && isEditMode) toggleEditMode(); } catch (e) {}
+            // If they're sitting on an admin-only screen, return them to the public site
+            // so they're not stuck on a dead dashboard.
+            const adminViews = ['view-backoffice', 'view-settings', 'view-accounts'];
+            const active = (document.querySelector('.page-view.active') || {}).id;
+            if (adminViews.includes(active)) { try { nav('view-main'); } catch (e) {} }
+            if (!__sessionExpiredNotified) {
+                __sessionExpiredNotified = true;
+                try { toast('Your admin session expired — please sign in again.'); } catch (e) {}
+                setTimeout(() => { __sessionExpiredNotified = false; }, 8000);
+            }
         }
 
         // Upload an image file to the server (multipart). Returns the saved URL.
@@ -12533,7 +12575,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'xd3y6c9p';
+            const BUILD = 'ye4z7d2q';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
