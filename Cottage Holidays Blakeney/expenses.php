@@ -53,6 +53,46 @@ if ($action === 'add') {
     }
 }
 
+if ($action === 'update') {
+    $id = (int)($in['id'] ?? 0);
+    if ($id <= 0) json_out(['error' => 'An expense id is required'], 400);
+    $category = substr(clean($in['category'] ?? 'General') ?: 'General', 0, 64);
+    $description = substr(clean($in['description'] ?? ''), 0, 255);
+    $amount = round((float)($in['amount'] ?? 0), 2);
+    $prop = preg_replace('/[^a-z0-9_]/i', '', (string)($in['prop'] ?? ''));
+    $prop = $prop === '' ? null : substr($prop, 0, 32);
+    $date = clean($in['date'] ?? '');
+    $recurring = !empty($in['recurring']) ? 1 : 0;
+    if ($amount <= 0) json_out(['error' => 'Enter an amount greater than zero.'], 400);
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) json_out(['error' => 'Enter a valid date (YYYY-MM-DD).'], 400);
+    // receipt_data is only changed if the key is present (e.g. re-scanned); otherwise kept.
+    $touchReceipt = array_key_exists('receipt_data', $in);
+    $receiptData = null;
+    if ($touchReceipt) {
+        $rd = (string)($in['receipt_data'] ?? '');
+        if ($rd !== '') { if (strlen($rd) > 6000) $rd = substr($rd, 0, 6000); $dec = json_decode($rd, true); $receiptData = is_array($dec) ? json_encode($dec, JSON_UNESCAPED_UNICODE) : null; }
+    }
+    try {
+        if ($touchReceipt) {
+            db()->prepare('UPDATE expenses SET category=?, description=?, amount=?, prop_key=?, recurring=?, receipt_data=?, expense_date=? WHERE id=?')
+                ->execute([$category, $description, $amount, $prop, $recurring, $receiptData, $date, $id]);
+        } else {
+            db()->prepare('UPDATE expenses SET category=?, description=?, amount=?, prop_key=?, recurring=?, expense_date=? WHERE id=?')
+                ->execute([$category, $description, $amount, $prop, $recurring, $date, $id]);
+        }
+        json_out(['ok' => true]);
+    } catch (\Throwable $e) {
+        // Older DB without recurring/receipt_data — update the core fields only.
+        try {
+            db()->prepare('UPDATE expenses SET category=?, description=?, amount=?, prop_key=?, expense_date=? WHERE id=?')
+                ->execute([$category, $description, $amount, $prop, $date, $id]);
+            json_out(['ok' => true]);
+        } catch (\Throwable $e2) {
+            json_out(['error' => 'Could not update — has migrate.php been run?'], 500);
+        }
+    }
+}
+
 if ($action === 'delete') {
     $id = (int)($in['id'] ?? 0);
     if ($id <= 0) json_out(['error' => 'An expense id is required'], 400);
