@@ -13,10 +13,9 @@
    viewport or when the site is installed (handled in guest-app.js). */
 #guest-tabbar { display: none; }
 #guest-install-chip { display: none; }
-#guest-account-fab { display: none; }
 
 /* In the guest shell the top header is removed entirely — navigation lives in
-   the bottom bar and the floating account button below. */
+   the floating dock menu below. */
 body.guest-app:not(.owner-mode) header { display: none; }
 
 /* The page hero and .container reserve ~90–120px of top padding to clear the
@@ -30,97 +29,110 @@ body.guest-app:not(.owner-mode) .container {
     padding-top: calc(66px + env(safe-area-inset-top, 0px));
 }
 
+/* The guest menu is a centred, floating "pill" — the same look and layout as the
+   admin dock (.admin-dock): dark glass, rounded, equal circular icon buttons, and
+   a white selection indicator that physically glides between tabs. #guest-tabbar
+   is just the fixed positioning wrapper (mirrors .admin-dock-wrap). */
 body.guest-app:not(.owner-mode) #guest-tabbar {
-    display: flex;
-    align-items: center;
-    position: fixed;
-    left: 0; right: 0; bottom: 0;
-    z-index: 1400;
-    padding: 6px 14px calc(6px + env(safe-area-inset-bottom, 0px));
-    background: rgba(18, 19, 22, 0.72);
-    -webkit-backdrop-filter: blur(22px) saturate(160%);
-    backdrop-filter: blur(22px) saturate(160%);
-    border-top: 1px solid var(--glass-border);
-    box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.28);
+    display: flex; align-items: center; justify-content: center;
+    position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    transform: translateX(-50%);
+    z-index: 1400; max-width: calc(100vw - 20px); padding: 0 10px;
 }
-
-/* Three zones keep the crown centred whether the right side holds one icon
-   (Cottages) or two (Cottages + My Stays when signed in). */
-.gt-side {
-    flex: 1 1 0;
-    display: flex; align-items: center; gap: 18px;
-    min-width: 0;
+.guest-dock {
+    position: relative;
+    display: flex; align-items: center; gap: 6px;
+    background: rgba(26, 25, 27, 0.92);
+    -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 999px;
+    padding: 12px 16px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
 }
-.gt-left { justify-content: flex-start; }
-.gt-right { justify-content: flex-end; }
-
-.gt-btn {
-    display: flex; flex-direction: column; align-items: center; gap: 3px;
-    background: none; border: 0; cursor: pointer;
-    color: var(--text-muted);
-    font-family: var(--font-sans); font-size: 0.66rem; font-weight: 600;
-    letter-spacing: 0.02em;
-    padding: 4px 2px; border-radius: 12px;
+.guest-dock-btn {
+    position: relative; z-index: 1;
+    width: 60px; height: 60px; flex-shrink: 0;
+    display: inline-flex; align-items: center; justify-content: center;
+    background: transparent; border: none; border-radius: 999px;
+    color: #fff; cursor: pointer;
+    transition: background 0.2s var(--fluid-bezier), transform 0.15s var(--fluid-bezier);
     -webkit-tap-highlight-color: transparent;
-    transition: color 0.2s ease, transform 0.2s var(--spring);
 }
-.gt-btn svg { width: 23px; height: 23px; display: block; }
-.gt-btn span { line-height: 1; }
-.gt-btn:active { transform: scale(0.92); }
-.gt-btn.active { color: var(--accent); }
+.guest-dock-btn svg { width: 27px; height: 27px; display: block; transition: transform 0.4s cubic-bezier(0.34,1.5,0.5,1); }
+.guest-dock-btn:hover, .guest-dock-btn:focus-visible { background: rgba(255, 255, 255, 0.16); outline: none; }
+.guest-dock-btn:active { transform: scale(0.92); }
+/* Current section: icon flips dark to sit over the white indicator + nudges up. */
+.guest-dock-btn.current { color: #1a191b; }
+.guest-dock-btn.current svg { transform: scale(1.08); }
 
-/* My Stays only exists for a signed-in guest; otherwise the right zone is
-   just Cottages. */
+/* The crown logo is the Home button; darken to a silhouette when it's current
+   so it reads against the white indicator. */
+.guest-dock-btn.gt-home img {
+    width: 30px; height: 30px; display: block;
+    filter: drop-shadow(0 0 8px rgba(214, 167, 133, 0.5));
+    transition: transform 0.4s cubic-bezier(0.34,1.5,0.5,1);
+}
+.guest-dock-btn.gt-home.current img { filter: brightness(0); transform: scale(1.08); }
+
+/* My Stays only appears for a signed-in guest. */
 .gt-stays { display: none; }
-body.guest-app:not(.owner-mode).guest-signed-in .gt-stays { display: flex; }
+body.guest-app:not(.owner-mode).guest-signed-in .gt-stays { display: inline-flex; }
 
-/* Centre: the crown logo is the Home button — larger and visually dominant. */
-.gt-home {
-    flex: 0 0 auto;
-    display: flex; align-items: center; justify-content: center;
-    background: none; border: 0; cursor: pointer;
-    padding: 2px 14px; margin: 0;
-    -webkit-tap-highlight-color: transparent;
-    transition: transform 0.2s var(--spring);
+/* Instagram-style white selection pill; JS sizes/positions it under .current. */
+.guest-dock-indicator {
+    position: absolute; top: 50%; left: 0; transform: translateY(-50%);
+    width: 60px; height: 60px; border-radius: 999px;
+    background: rgba(255, 255, 255, 0.92);
+    opacity: 0; pointer-events: none; z-index: 0;
+    transition: left 0.5s cubic-bezier(0.34,1.5,0.5,1),
+                width 0.5s cubic-bezier(0.34,1.5,0.5,1),
+                height 0.3s var(--fluid-bezier),
+                opacity 0.28s ease;
 }
-.gt-home img {
-    height: 42px; width: auto; display: block;
-    filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.45))
-            drop-shadow(0 0 10px rgba(214, 167, 133, 0.45));
-}
-.gt-home:active { transform: scale(0.9); }
+.guest-dock-indicator.show { opacity: 1; }
 
-/* Floating account button — replaces the header account pill, top-right. */
-body.guest-app:not(.owner-mode) #guest-account-fab {
-    display: flex; align-items: center; justify-content: center;
-    position: fixed;
-    top: calc(10px + env(safe-area-inset-top, 0px)); right: 12px;
-    z-index: 1401;
-    width: 44px; height: 44px; border-radius: 50%;
-    background: rgba(18, 19, 22, 0.72);
-    -webkit-backdrop-filter: blur(18px) saturate(160%);
-    backdrop-filter: blur(18px) saturate(160%);
-    border: 1px solid var(--glass-border);
-    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
-    color: var(--text-light); cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
-    transition: transform 0.2s var(--spring);
+/* Hover label so each icon's purpose is clear (desktop / pointer devices). */
+.guest-dock-btn::after {
+    content: attr(data-label);
+    position: absolute; bottom: calc(100% + 12px); left: 50%; transform: translateX(-50%) translateY(4px);
+    background: rgba(20, 20, 22, 0.96); color: #fff;
+    font-size: 0.72rem; font-weight: 500; white-space: nowrap; letter-spacing: 0.3px;
+    padding: 7px 11px; border-radius: 9px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+    opacity: 0; pointer-events: none;
+    transition: opacity 0.18s var(--fluid-bezier), transform 0.18s var(--fluid-bezier);
 }
-#guest-account-fab svg { width: 22px; height: 22px; display: block; }
-#guest-account-fab:active { transform: scale(0.9); }
-body.guest-app:not(.owner-mode).guest-signed-in #guest-account-fab {
-    color: var(--accent); border-color: var(--accent-soft, var(--glass-border));
+.guest-dock-btn:hover::after, .guest-dock-btn:focus-visible::after {
+    opacity: 1; transform: translateX(-50%) translateY(0);
 }
 
-/* Clear the bar so document/footer content isn't hidden behind it. */
-body.guest-app:not(.owner-mode) { padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
-body.guest-app:not(.owner-mode) .site-footer { padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+@media (prefers-reduced-motion: reduce) {
+    .guest-dock-indicator { transition: opacity 0.2s ease; }
+    .guest-dock-btn svg, .guest-dock-btn.current svg, .guest-dock-btn.gt-home img { transition: none; transform: none; }
+}
 
-/* The floating account pill is replaced by the Account tab; the chat FAB and
-   the cottage page's sticky book bar sit just ABOVE the tab bar. */
+/* Tighter buttons on small phones — same breakpoints as the admin dock. */
+@media (max-width: 480px) {
+    .guest-dock { padding: 7px 9px; gap: 2px; }
+    .guest-dock-btn { width: 44px; height: 44px; }
+    .guest-dock-btn svg { width: 22px; height: 22px; }
+    .guest-dock-btn.gt-home img { width: 24px; height: 24px; }
+    .guest-dock-indicator { width: 44px; height: 44px; }
+}
+@media (max-width: 360px) {
+    .guest-dock-btn { width: 40px; height: 40px; }
+    .guest-dock-btn svg { width: 20px; height: 20px; }
+}
+
+/* Clear the floating dock so document/footer content isn't hidden behind it. */
+body.guest-app:not(.owner-mode) { padding-bottom: calc(98px + env(safe-area-inset-bottom, 0px)); }
+body.guest-app:not(.owner-mode) .site-footer { padding-bottom: calc(106px + env(safe-area-inset-bottom, 0px)); }
+
+/* The header account pill is gone; the chat FAB and the cottage page's sticky
+   book bar sit just ABOVE the floating dock. */
 body.guest-app:not(.owner-mode) .account-btn { display: none; }
-body.guest-app:not(.owner-mode) .chat-fab { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
-body.guest-app:not(.owner-mode) #prop-book-bar { bottom: calc(60px + env(safe-area-inset-bottom, 0px)); }
+body.guest-app:not(.owner-mode) .chat-fab { bottom: calc(98px + env(safe-area-inset-bottom, 0px)); }
+body.guest-app:not(.owner-mode) #prop-book-bar { bottom: calc(94px + env(safe-area-inset-bottom, 0px)); }
 
 /* Subtle app-like page transition (guest shell only; desktop/admin stay instant). */
 body.guest-app:not(.owner-mode) .page-view.active { animation: gtFade 0.32s var(--fluid-bezier); }
@@ -131,7 +143,7 @@ body.guest-app:not(.owner-mode) .page-view.active { animation: gtFade 0.32s var(
 body.guest-app:not(.owner-mode) #guest-install-chip.show {
     display: flex; align-items: center; gap: 10px;
     position: fixed; left: 12px; right: 12px;
-    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(98px + env(safe-area-inset-bottom, 0px));
     z-index: 1399;
     padding: 12px 14px; border-radius: 16px;
     background: rgba(18, 19, 22, 0.9);
@@ -148,10 +160,3 @@ body.guest-app:not(.owner-mode) #guest-install-chip.show {
 }
 #guest-install-chip .gic-go { background: var(--accent); color: #1a191b; padding: 8px 14px; }
 #guest-install-chip .gic-x { background: transparent; color: var(--text-muted); font-size: 1.2rem; padding: 2px 8px; }
-
-/* Tidy the bar on wider screens (e.g. installed on a tablet/desktop): cap each
-   zone so the icons cluster toward the centre rather than the screen edges. */
-@media (min-width: 700px) {
-    body.guest-app:not(.owner-mode) #guest-tabbar { gap: 24px; }
-    .gt-side { flex: 0 1 220px; gap: 44px; }
-}

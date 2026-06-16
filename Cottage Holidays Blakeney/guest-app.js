@@ -15,77 +15,68 @@
 (function () {
     'use strict';
 
-    // Each tab maps to one or more page-views (for the active highlight) and a
-    // go() that reuses the page's existing navigation — no new router. The bar is
-    // laid out in three zones so the crown stays centred regardless of how many
-    // icons sit on the right: left { Experiences }, centre { crown=Home },
-    // right { Cottages, My Stays(only when signed in) }.
-    var TABS = [
-        { key: 'experiences', zone: 'left', label: 'Experiences',
+    // The guest menu mirrors the admin's floating dock: one centred pill of equal
+    // circular icon buttons with a white selection indicator that slides between
+    // them. Each button maps to page-view(s) (for the highlight) and a go() that
+    // reuses the page's existing navigation — no new router. The crown logo is the
+    // Home button; My Stays only shows when signed in; Account is folded in (no
+    // separate floating button).
+    var DOCK = [
+        { key: 'experiences', label: 'Experiences',
           icon: '<path d="M12 3l2.1 4.6L19 9l-4 3.3.9 5.1L12 15.9 8.1 17.4 9 12.3 5 9l4.9-1.4z"/>',
           go: function () {
               if (window.toast) window.toast('Experiences — coming soon');
               else alert('Experiences — coming soon');
           } },
-        { key: 'cottages', zone: 'right', label: 'Cottages', views: ['view-cottages', 'view-21a'],
+        { key: 'cottages', label: 'Cottages', views: ['view-cottages', 'view-21a'],
           icon: '<path d="M3 18v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6"/><path d="M3 14h18"/><path d="M7 10V7a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3"/>',
           go: function () { if (window.nav) window.nav('view-cottages'); } },
-        { key: 'stays', zone: 'right', cls: 'gt-stays', label: 'My Stays', views: ['view-guest-bookings'],
+        { key: 'home', crown: true, label: 'Home', views: ['view-main'],
+          go: function () { if (window.nav) window.nav('view-main'); } },
+        { key: 'stays', cls: 'gt-stays', label: 'My Stays', views: ['view-guest-bookings'],
           icon: '<rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/>',
-          go: function () { if (window.openGuestArea) window.openGuestArea(); } }
+          go: function () { if (window.openGuestArea) window.openGuestArea(); } },
+        { key: 'account', label: 'Account',
+          icon: '<circle cx="12" cy="8" r="3.6"/><path d="M5.5 19.5a6.5 6.5 0 0 1 13 0"/>',
+          go: function () {
+              if (window.guestAccountTab) window.guestAccountTab();
+              else if (window.openGuestArea) window.openGuestArea();
+          } }
     ];
 
-    function makeTabBtn(t) {
+    function makeDockBtn(t) {
         var b = document.createElement('button');
         b.type = 'button';
-        b.className = 'gt-btn' + (t.cls ? ' ' + t.cls : '');
+        b.className = 'guest-dock-btn' + (t.cls ? ' ' + t.cls : '') + (t.crown ? ' gt-home' : '');
         b.dataset.tab = t.key;
+        b.setAttribute('data-label', t.label);
         b.setAttribute('aria-label', t.label);
-        b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + t.icon + '</svg><span>' + t.label + '</span>';
+        b.title = t.label;
+        b.innerHTML = t.crown
+            ? '<img src="logo.svg" alt="Home">'
+            : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + t.icon + '</svg>';
         b.addEventListener('click', function () { try { t.go(); } catch (e) {} });
         return b;
     }
 
     function buildBar() {
         if (document.getElementById('guest-tabbar')) return;
-        var bar = document.createElement('nav');
-        bar.id = 'guest-tabbar';
-        bar.setAttribute('aria-label', 'Guest navigation');
+        var wrap = document.createElement('div');
+        wrap.id = 'guest-tabbar';
+        wrap.setAttribute('role', 'navigation');
+        wrap.setAttribute('aria-label', 'Guest navigation');
 
-        var left = document.createElement('div');
-        left.className = 'gt-side gt-left';
-        var right = document.createElement('div');
-        right.className = 'gt-side gt-right';
-        TABS.forEach(function (t) {
-            (t.zone === 'left' ? left : right).appendChild(makeTabBtn(t));
-        });
+        var dock = document.createElement('nav');
+        dock.className = 'guest-dock';
+        // Sliding white selection pill (sized + positioned under .current by JS).
+        var ind = document.createElement('span');
+        ind.className = 'guest-dock-indicator';
+        ind.setAttribute('aria-hidden', 'true');
+        dock.appendChild(ind);
+        DOCK.forEach(function (t) { dock.appendChild(makeDockBtn(t)); });
 
-        // Centre: the crown logo doubles as the Home button.
-        var home = document.createElement('button');
-        home.type = 'button';
-        home.className = 'gt-home';
-        home.dataset.tab = 'home';
-        home.setAttribute('aria-label', 'Home');
-        home.innerHTML = '<img src="logo.svg" alt="Home">';
-        home.addEventListener('click', function () { if (window.nav) window.nav('view-main'); });
-
-        bar.appendChild(left);
-        bar.appendChild(home);
-        bar.appendChild(right);
-        document.body.appendChild(bar);
-
-        // Account moves out of the (now hidden) header into a floating top-right
-        // button. Opens account details when signed in, else the sign-in flow.
-        var fab = document.createElement('button');
-        fab.type = 'button';
-        fab.id = 'guest-account-fab';
-        fab.setAttribute('aria-label', 'Account');
-        fab.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M5.5 19.5a6.5 6.5 0 0 1 13 0"/></svg>';
-        fab.addEventListener('click', function () {
-            if (window.guestAccountTab) window.guestAccountTab();
-            else if (window.openGuestArea) window.openGuestArea();
-        });
-        document.body.appendChild(fab);
+        wrap.appendChild(dock);
+        document.body.appendChild(wrap);
 
         var chip = document.createElement('div');
         chip.id = 'guest-install-chip';
@@ -97,20 +88,36 @@
         chip.querySelector('.gic-x').addEventListener('click', function () { hideInstallChip(true); });
     }
 
-    // Highlight the tab matching the active page-view. Exposed so index.html's
+    // Slide the white indicator under the current button so it glides between tabs
+    // (mirrors moveDockIndicator() for the admin dock). Hidden when no tab matches
+    // (e.g. on a modal) or when the dock isn't visible.
+    function moveGuestDockIndicator() {
+        var dock = document.querySelector('.guest-dock');
+        if (!dock) return;
+        var ind = dock.querySelector('.guest-dock-indicator');
+        if (!ind) return;
+        var cur = dock.querySelector('.guest-dock-btn.current');
+        if (!cur || cur.offsetParent === null) { ind.classList.remove('show'); return; }
+        ind.style.width = cur.offsetWidth + 'px';
+        ind.style.height = cur.offsetHeight + 'px';
+        ind.style.left = cur.offsetLeft + 'px';
+        ind.classList.add('show');
+    }
+
+    // Highlight the button matching the active page-view. Exposed so index.html's
     // nav() can call it on every navigation (including programmatic ones).
+    // Experiences/Account map to no page-view and never highlight.
     function setActiveTab(viewId) {
-        var bar = document.getElementById('guest-tabbar');
-        if (!bar) return;
-        // The crown (Home) lives outside TABS; map it explicitly. Experiences has
-        // no view and never highlights.
-        var activeKey = (viewId === 'view-main') ? 'home' : null;
-        TABS.forEach(function (t) {
+        var dock = document.querySelector('.guest-dock');
+        if (!dock) return;
+        var activeKey = null;
+        DOCK.forEach(function (t) {
             if (t.views && t.views.indexOf(viewId) !== -1) activeKey = t.key;
         });
-        bar.querySelectorAll('[data-tab]').forEach(function (b) {
-            b.classList.toggle('active', b.dataset.tab === activeKey);
+        dock.querySelectorAll('.guest-dock-btn').forEach(function (b) {
+            b.classList.toggle('current', b.dataset.tab === activeKey);
         });
+        requestAnimationFrame(moveGuestDockIndicator);
     }
     window.setActiveTab = setActiveTab;
 
@@ -159,6 +166,12 @@
         else window.addEventListener('resize', updateShell);
         var mqD = window.matchMedia ? window.matchMedia('(display-mode: standalone)') : null;
         if (mqD && mqD.addEventListener) mqD.addEventListener('change', updateShell);
+        // Re-align the sliding indicator after a resize (button sizes change at the
+        // dock's breakpoints, and signing in/out adds/removes the My Stays button).
+        window.addEventListener('resize', function () {
+            clearTimeout(window.__guestDockT);
+            window.__guestDockT = setTimeout(moveGuestDockIndicator, 120);
+        });
     }
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
