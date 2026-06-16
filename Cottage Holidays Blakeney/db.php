@@ -235,6 +235,12 @@ function square_api_base() {
 function pay_token($bookingId) {
     return substr(hash_hmac('sha256', 'pay:' . (int)$bookingId, APP_SECRET), 0, 32);
 }
+// Unguessable token for a passwordless email sign-in link. Binds a guest id to
+// an issue-time so it expires (checked in auth.php), and leaks nothing if seen —
+// same one-way HMAC idea as pay_token. The timestamp travels in the link too.
+function login_token($guestId, $ts) {
+    return substr(hash_hmac('sha256', 'login:' . (int)$guestId . ':' . (int)$ts, APP_SECRET), 0, 32);
+}
 // Public site root (scheme + host + the folder this script runs from), used to
 // build guest links (e.g. the pay link). Proxy-aware HTTPS via request_is_https().
 function site_base_url() {

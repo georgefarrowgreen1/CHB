@@ -12,6 +12,7 @@
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/pricing.php';
 require_once __DIR__ . '/mailer.php';
+require_once __DIR__ . '/webpush.php';
 
 $isCron = isset($_GET['cron']) && hash_equals(APP_SECRET, (string)$_GET['cron']);
 if (!$isCron && empty($_SESSION['admin_id'])) json_out(['error' => 'Not authorised'], 401);
@@ -44,6 +45,7 @@ foreach ($due as $b) {
     $res = request_booking_payment($b, 'balance');
     if (!empty($res['ok'])) {
         try { db()->prepare('UPDATE bookings SET balance_requested_at = NOW() WHERE id = ?')->execute([(int)$b['id']]); } catch (\Throwable $e) {}
+        try { notify_guest_email($b['email'], 'Balance due', 'Your stay is coming up — tap to pay your balance' . (isset($res['amount']) ? ' of £' . number_format((float)$res['amount'], 2) : '') . '.', './'); } catch (\Throwable $e) {}
         $sent++;
         $report[] = ['id' => (int)$b['id'], 'status' => 'requested', 'amount' => $res['amount'] ?? null];
     } else {
@@ -80,6 +82,7 @@ foreach ($toRemind as $b) {
     $res = request_booking_payment($b, 'balance', true);   // reminder = true
     if (!empty($res['ok'])) {
         try { db()->prepare('UPDATE bookings SET balance_reminded_at = NOW() WHERE id = ?')->execute([(int)$b['id']]); } catch (\Throwable $e) {}
+        try { notify_guest_email($b['email'], 'Balance reminder', 'A friendly reminder to pay your remaining balance before your stay.', './'); } catch (\Throwable $e) {}
         $reminded++;
         $remReport[] = ['id' => (int)$b['id'], 'status' => 'reminded', 'amount' => $res['amount'] ?? null];
     } elseif (($res['error'] ?? '') === 'Nothing left to pay.') {

@@ -130,6 +130,46 @@ switch ($action) {
         json_out(['ok' => true, 'guest' => ['name' => $row['name'], 'email' => $row['email'], 'phone' => $row['phone'], 'address' => $row['address'], 'postcode' => $row['postcode']]]);
     }
 
+    // Passwordless sign-in: email the guest a one-tap magic link. We ALWAYS
+    // reply ok (even if no such account) so the endpoint can't be used to probe
+    // which emails are registered. The link carries id + issue-time + HMAC.
+    case 'guest_magic_request': {
+        $email = strtolower(clean($in['email'] ?? ''));
+        throttle_check('magic:' . $email);
+        if ($email !== '' && filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $stmt = db()->prepare('SELECT id, name, email FROM guests WHERE email = ?');
+            $stmt->execute([$email]);
+            $g = $stmt->fetch();
+            if ($g) {
+                $ts  = time();
+                $url = site_base_url() . 'index.html?mlogin=' . (int)$g['id'] . '&t=' . $ts . '&k=' . login_token($g['id'], $ts);
+                require_once __DIR__ . '/mailer.php';
+                send_magic_link_email($g, $url);
+            }
+        }
+        throttle_record('magic:' . $email, true);   // never reveal failure
+        json_out(['ok' => true]);
+    }
+
+    // Consume a magic link: verify the HMAC and that it's fresh (30 min), then
+    // sign the guest in exactly like guest_login.
+    case 'guest_magic_consume': {
+        $gid = (int)($in['guest_id'] ?? 0);
+        $ts  = (int)($in['ts'] ?? 0);
+        $tok = (string)($in['token'] ?? '');
+        if ($gid <= 0 || $ts <= 0 || $tok === '' || !hash_equals(login_token($gid, $ts), $tok)) {
+            json_out(['error' => 'This sign-in link is invalid.'], 401);
+        }
+        if (abs(time() - $ts) > 1800) json_out(['error' => 'This sign-in link has expired — please request a new one.'], 401);
+        $stmt = db()->prepare('SELECT id, name, email, phone, address, postcode FROM guests WHERE id = ?');
+        $stmt->execute([$gid]);
+        $row = $stmt->fetch();
+        if (!$row) json_out(['error' => 'This sign-in link is invalid.'], 401);
+        $_SESSION['guest_id'] = (int)$row['id'];
+        unset($_SESSION['admin_id']);   // one role at a time
+        json_out(['ok' => true, 'guest' => ['name' => $row['name'], 'email' => $row['email'], 'phone' => $row['phone'], 'address' => $row['address'], 'postcode' => $row['postcode']]]);
+    }
+
     case 'guest_logout':
         unset($_SESSION['guest_id']);
         json_out(['ok' => true]);

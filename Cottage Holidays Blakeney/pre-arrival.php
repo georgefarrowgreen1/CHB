@@ -14,6 +14,7 @@
 // ============================================================
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/mailer.php';
+require_once __DIR__ . '/webpush.php';
 
 // Auth: cron secret OR logged-in admin
 $isCron = isset($_GET['cron']) && hash_equals(APP_SECRET, (string)$_GET['cron']);
@@ -38,6 +39,9 @@ try {
 $results = [];
 foreach ($due as $b) {
     $res = send_arrival_for_booking($b);
+    if (!empty($res['ok'])) {
+        try { notify_guest_email($b['email'], 'Your stay is nearly here', 'Arrival info for your cottage is ready — tap to view your live arrival map and key code.', './?arrival=1'); } catch (\Throwable $e) {}
+    }
     $results[] = [
         'booking' => (int)$b['id'], 'guest' => $b['name'],
         'ok' => !empty($res['ok']), 'error' => $res['error'] ?? null,
@@ -73,6 +77,7 @@ if ($toAsk) {
         ]);
         if (!empty($res['ok'])) {
             try { db()->prepare('UPDATE bookings SET review_request_sent = NOW() WHERE id = ?')->execute([(int)$b['id']]); } catch (\Throwable $e) {}
+            try { notify_guest_email($b['email'], 'How was your stay?', 'We\'d love a quick review of your time at ' . ($b['property_name'] ?? 'the cottage') . '.', './index.html?review=' . rawurlencode($b['prop_key'])); } catch (\Throwable $e) {}
             $reviewsSent++;
         }
     }

@@ -177,6 +177,14 @@ if ($action === 'approve') {
         $emailResult = ['error' => 'Mail step skipped: ' . $ex->getMessage()];
     }
 
+    // Best-effort: push the guest "booking confirmed" if they have an account +
+    // a subscribed device. Never blocks the approval (no-op without either).
+    try {
+        require_once __DIR__ . '/webpush.php';
+        notify_guest_email($e['email'], 'Booking confirmed 🎉',
+            ($rate['name'] ?? 'Your cottage') . ' · ' . $e['check_in'] . ' to ' . $e['check_out'], './');
+    } catch (\Throwable $ex) {}
+
     // Auto payment request (Square): on approval ask the guest for the 25% deposit —
     // or, if check-in is already inside the balance window (default 30 days), ask for
     // the full amount upfront. The scheduled job (payments-due.php) chases the balance
