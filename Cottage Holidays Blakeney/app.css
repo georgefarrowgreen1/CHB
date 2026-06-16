@@ -1963,3 +1963,6 @@
         @media (max-width: 600px) {
             .owner-bar-btn { padding: 9px 12px; }
         }
+
+/* Settings → Website content: image rows */
+.content-edit-row { display: flex; gap: 12px; align-items: center; margin-bottom: 14px; max-width: 640px; }
