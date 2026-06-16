@@ -113,6 +113,29 @@ function owner_ping_take() {
     } catch (\Throwable $e) { return null; }
 }
 
+// Per-guest ping stash (mirrors owner_ping_*): because pushes are payload-less,
+// stash the guest's next notification text keyed by their id; sw.js fetches it
+// (push.php?action=sw_notify) when the ping lands, and it's consumed once.
+function guest_ping_set($guestId, $title, $body, $url = './') {
+    try {
+        db()->prepare("INSERT INTO content (item_key, item_value) VALUES (?, ?)
+                       ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = CURRENT_TIMESTAMP")
+            ->execute(['guest-ping-' . (int)$guestId, json_encode(['title' => (string)$title, 'body' => (string)$body, 'url' => (string)$url, 'at' => time()], JSON_UNESCAPED_UNICODE)]);
+    } catch (\Throwable $e) {}
+}
+function guest_ping_take($guestId) {
+    try {
+        $k = 'guest-ping-' . (int)$guestId;
+        $s = db()->prepare("SELECT item_value FROM content WHERE item_key = ?");
+        $s->execute([$k]);
+        $v = $s->fetchColumn();
+        if ($v === false) return null;
+        db()->prepare("DELETE FROM content WHERE item_key = ?")->execute([$k]);
+        $d = json_decode((string)$v, true);
+        return is_array($d) ? $d : null;
+    } catch (\Throwable $e) { return null; }
+}
+
 // Wake every admin device. Dead subscriptions (404/410) are pruned. Returns count.
 function ping_admin_devices() {
     if (!wp_vapid_configured()) return 0;
