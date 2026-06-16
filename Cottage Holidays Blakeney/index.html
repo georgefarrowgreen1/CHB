@@ -1337,7 +1337,7 @@
         .money-badge { display: inline-block; margin-left: 8px; padding: 2px 9px; border-radius: 10px; font-size: 0.7rem; font-weight: 600; background: rgba(255,167,38,0.18); color: #FFB74D; vertical-align: middle; }
         /* Recent payments feed */
         .feed-list { padding: 4px 16px; border-radius: 16px; }
-        .feed-row { display: grid; grid-template-columns: 92px auto 1fr auto auto auto 30px; gap: 12px; align-items: center; padding: 11px 0; border-top: 1px solid var(--glass-border); font-size: 0.86rem; }
+        .feed-row { display: grid; grid-template-columns: 92px auto 1fr auto auto auto; gap: 12px; align-items: center; padding: 11px 0; border-top: 1px solid var(--glass-border); font-size: 0.86rem; }
         .feed-row:first-child { border-top: none; }
         .feed-date { color: var(--text-muted); font-size: 0.8rem; }
         .feed-who { color: var(--text-light); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -5622,7 +5622,6 @@
                     <span class="feed-kind">${label}${feeNote}</span>
                     <span class="feed-amt" style="${isReturn ? 'color:#E57373;' : 'color:#4CAF50;'}"${(!isReturn && fee != null) ? ` title="Gross ${gbp(gross)} · fee ${gbp(fee)} · net ${gbp(Math.max(0, gross - fee))}"` : ''}>${amt}</span>
                     <span class="feed-status">${escapeHtml(p.status || '')}</span>
-                    <button class="feed-del" title="Remove this record from the log" aria-label="Remove this payment record" onclick="deleteRecentPayment('${escapeHtml(p.square_payment_id)}')">&times;</button>
                 </div>`;
             }).join('');
             // Gross / fees / net reconciliation across the shown card payments.
@@ -5636,18 +5635,8 @@
                 ${feeKnown < list.length ? `<div class="os-sub" style="margin-top:6px;">Fees appear once Square settles each payment (usually within a day or two), so recent charges may not show a fee yet.</div>` : ''}
             </div>` : '';
             el.innerHTML = `<h3 class="accounts-section-title">Recent payments</h3>
-                <p style="font-size:0.78rem;color:var(--text-muted);margin:-6px 0 12px;">Tidying up test transactions? The &times; removes a record from this log only — it doesn't refund anyone or change a booking.</p>
                 ${recon}
                 <div class="feed-list glass-panel">${rows}</div>`;
-        }
-        // Remove a single transaction from the recent-payments log (test cleanup).
-        async function deleteRecentPayment(sqId) {
-            if (!await glassConfirm("Remove this payment from the recent-payments log? This only deletes the record shown here — it does NOT refund the guest or change a booking.")) return;
-            try {
-                await apiPost('bookings.php', { action: 'delete_payment', square_payment_id: sqId });
-                toast('Payment record removed.');
-                renderMoneyFeed();
-            } catch (e) { glassAlert("Couldn't remove that record: " + e.message); }
         }
         // Projected revenue + occupancy by month from confirmed upcoming bookings.
         function renderMoneyForecast() {
@@ -12738,7 +12727,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'bh7c2g5t';
+            const BUILD = 'ci8d3h6u';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
