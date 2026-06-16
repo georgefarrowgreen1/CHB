@@ -60,7 +60,8 @@ body.guest-app:not(.owner-mode) #guest-tabbar {
     -webkit-tap-highlight-color: transparent;
 }
 .guest-dock-btn svg { width: 27px; height: 27px; display: block; transition: transform 0.4s cubic-bezier(0.34,1.5,0.5,1); }
-.guest-dock-btn:hover, .guest-dock-btn:focus-visible { background: rgba(255, 255, 255, 0.16); outline: none; }
+.guest-dock-btn:hover { background: rgba(255, 255, 255, 0.16); }
+.guest-dock-btn:focus-visible { background: rgba(255, 255, 255, 0.16); outline: 2px solid var(--accent-soft, #d6a785); outline-offset: 2px; }
 .guest-dock-btn:active { transform: scale(0.92); }
 /* Current section: icon flips dark to sit over the white indicator + nudges up. */
 .guest-dock-btn.current { color: #1a191b; }
