@@ -1626,6 +1626,16 @@
         }
         #loading-overlay.show-slow #loading-slow-msg { display: block; }
         #loading-slow-msg p { color: rgba(255,255,255,0.6); font-size: 0.9rem; margin-bottom: 14px; }
+        /* Discrete offline indicator — a small no-WiFi button shown while the device
+           has no connection (no full-screen "you're not connected" message). */
+        .offline-pill {
+            position: fixed; top: calc(env(safe-area-inset-top, 0px) + 70px); right: 14px; z-index: 1400;
+            width: 34px; height: 34px; border-radius: 50%; display: none; align-items: center; justify-content: center;
+            background: var(--glass-bg); border: 1px solid var(--glass-border);
+            backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); color: var(--text-muted); opacity: 0.85;
+        }
+        .offline-pill .ic { width: 18px; height: 18px; }
+        body.is-offline .offline-pill { display: flex; }
         #loading-slow-msg button {
             background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.15);
             color: #f5f5f7; padding: 11px 26px; border-radius: 30px;
@@ -2025,6 +2035,10 @@
             <p>This is taking longer than usual.</p>
             <button onclick="location.reload()">Reload</button>
         </div>
+    </div>
+    <!-- Discrete offline indicator (shown whenever the device loses its connection). -->
+    <div id="offline-pill" class="offline-pill" title="No internet connection" aria-label="No internet connection" role="status">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1 1l22 22"/><path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/><path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/><path d="M10.71 5.05A16 16 0 0 1 22.58 9"/><path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><path d="M12 20h.01"/></svg>
     </div>
 
     <div class="ambient-bg">
@@ -3324,6 +3338,13 @@
             if (ci !== -1) path = path.slice(0, ci + 1);
             return path;                                 // e.g. "/something/" — PHP files live here
         })();
+        // Connection state: a discrete no-WiFi button appears while offline (no
+        // full-screen "you're not connected" message). Toggled by the browser's
+        // online/offline events.
+        function updateOnlineStatus() { try { document.body.classList.toggle('is-offline', navigator.onLine === false); } catch (e) {} }
+        window.addEventListener('online', updateOnlineStatus);
+        window.addEventListener('offline', updateOnlineStatus);
+        updateOnlineStatus();
         // Fetch with a timeout so a stuck request never hangs the page forever.
         async function fetchWithTimeout(url, opts, ms) {
             const ctrl = new AbortController();
@@ -11668,7 +11689,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'ag8h9i1n';
+            const BUILD = 'bh9i0j2o';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
