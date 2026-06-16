@@ -1143,6 +1143,12 @@
             background: var(--glass-bg); border: 1px solid var(--glass-border); transition: background 0.2s, border-color 0.2s; }
         .chat-chip:hover, .chat-chip:focus-visible { background: var(--glass-hover); border-color: var(--text-muted); }
         .chat-chip-issue { color: #FFB74D; border-color: rgba(255,167,38,0.4); }
+        /* Trip-planner interest chips (toggle) */
+        .trip-interests { display: flex; flex-wrap: wrap; gap: 8px; }
+        .trip-chip { font-size: 0.8rem; padding: 7px 14px; border-radius: 999px; cursor: pointer; color: var(--text-light);
+            background: var(--glass-bg); border: 1px solid var(--glass-border); transition: background 0.2s, border-color 0.2s, color 0.2s; }
+        .trip-chip:hover { background: var(--glass-hover); }
+        .trip-chip.on { background: var(--accent); border-color: var(--accent); color: #1a191b; font-weight: 600; }
         .msg-thread-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; background: rgba(255,255,255,0.02); border: 1px solid var(--glass-border); border-radius: 14px; padding: 12px 14px; color: var(--text-light); cursor: pointer; transition: background 0.2s; }
         .msg-thread-row:hover, .msg-thread-row:focus-visible { background: var(--glass-hover); }
         .msg-thread-row .mtr-main { flex: 1; min-width: 0; }
@@ -2322,6 +2328,9 @@
                         <p class="things-note" id="prop-carfree"></p>
                     </div>
                 </div>
+                <div style="text-align:center;margin-top:18px;">
+                    <button class="btn-glass" type="button" onclick="openTripModal()">✨ Plan my North Norfolk days</button>
+                </div>
 
                 <!-- Guest reviews (below Things to know). The leading divider is hidden
                      together with the section when this cottage has no reviews yet. -->
@@ -2975,6 +2984,24 @@
                 <textarea id="messages-modal-input" class="input-glass" rows="2" placeholder="Write a reply…"></textarea>
                 <button class="btn-glass" onclick="adminSendMessage()">Send</button>
             </div>
+        </div>
+    </div>
+
+    <!-- ================= TRIP PLANNER (curated, tide-aware) ================= -->
+    <div id="trip-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Plan your days" onclick="if(event.target===this) closeTripModal()">
+        <div class="modal-box glass-panel" style="max-width:560px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:8px;">
+                <h2 class="section-title" style="font-size:1.4rem;margin:0;">Plan your North Norfolk days</h2>
+                <button class="reviews-modal-close" onclick="closeTripModal()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+            </div>
+            <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 12px;">Tell us what you're into and we'll sketch a tide-aware itinerary for your stay.</p>
+            <div class="trip-interests" id="trip-interests"></div>
+            <div style="display:flex;align-items:center;gap:10px;margin:14px 0;flex-wrap:wrap;">
+                <label style="font-size:0.85rem;color:var(--text-muted);">Days</label>
+                <select id="trip-days" class="input-glass field-sm" style="width:80px;margin:0;"></select>
+                <button class="btn-glass" onclick="runTripPlan()" style="margin-left:auto;">Plan my days</button>
+            </div>
+            <div id="trip-result"></div>
         </div>
     </div>
 
@@ -8027,6 +8054,84 @@
                 } else { sv.style.display = 'none'; }
             }
         }
+        // ---- Trip planner (curated + tide-aware). AI seam: TRIP_PLAN_SOURCE can later
+        // switch to a 'tripplan.php' LLM endpoint without changing the UI/markup. ----
+        const TRIP_PLAN_SOURCE = 'curated';
+        const TRIP_INTERESTS = [['seals', 'Seals'], ['beach', 'Beaches & coast'], ['walk', 'Walks'], ['dogs', 'Dogs'], ['kids', 'With kids'], ['foodie', 'Food & pubs'], ['rainy', 'Rainy day']];
+        const DEFAULT_TRIP_ACTIVITIES = [
+            { name: 'Blakeney Point seal trip', blurb: 'Boat trip from Morston Quay to the seal colony — book ahead in season.', tags: ['seals', 'kids'], tide: 'high' },
+            { name: 'Walk out to Blakeney Point', blurb: 'A long shingle walk to the seals and the old lifeboat house (~4 miles round trip).', tags: ['walk', 'dogs'], tide: 'low' },
+            { name: 'Crabbing off Blakeney Quay', blurb: 'Drop a line off the quay when the tide is in — a classic with kids.', tags: ['kids', 'seals'], tide: 'high' },
+            { name: 'Cley Marshes nature reserve', blurb: 'Norfolk Wildlife Trust reserve with birdwatching hides and a café.', tags: ['walk', 'kids'], tide: 'any' },
+            { name: 'Saltmarsh walk to Morston', blurb: 'Follow the Norfolk Coast Path across the marshes.', tags: ['walk', 'dogs'], tide: 'low' },
+            { name: 'Wells-next-the-Sea beach', blurb: 'Wide sandy beach, colourful beach huts and pinewoods.', tags: ['beach', 'kids', 'dogs'], tide: 'any' },
+            { name: 'Holkham beach & estate', blurb: 'Vast nature-reserve beach backed by woodland.', tags: ['beach', 'dogs', 'walk'], tide: 'any' },
+            { name: 'Wiveton Hall Café & farm shop', blurb: 'Fruit picking and lunch with a view over the marshes.', tags: ['foodie', 'kids'], tide: 'any' },
+            { name: 'Blakeney pubs & seafood', blurb: 'Local crab, fish and a pint in the village.', tags: ['foodie'], tide: 'any' },
+            { name: 'Cromer pier & crab', blurb: 'Victorian pier and the famous Cromer crab.', tags: ['foodie', 'kids'], tide: 'any' },
+            { name: 'Cosy day in', blurb: 'Wood-burner, a good book and the rain on the window.', tags: ['rainy'], tide: 'any' },
+            { name: 'Muckleburgh Collection', blurb: 'Military vehicle museum near Weybourne — a great rainy-day option.', tags: ['rainy', 'kids'], tide: 'any' },
+        ];
+        function tripActivities() {
+            const c = siteContent['trip-activities'];
+            return (Array.isArray(c) && c.length) ? c : DEFAULT_TRIP_ACTIVITIES;
+        }
+        function openTripModal() {
+            const wrap = document.getElementById('trip-interests');
+            if (wrap) wrap.innerHTML = TRIP_INTERESTS.map(([id, label]) =>
+                `<button type="button" class="trip-chip" data-int="${id}" onclick="this.classList.toggle('on')">${label}</button>`).join('');
+            const sel = document.getElementById('trip-days');
+            if (sel) sel.innerHTML = [2, 3, 4, 5, 6, 7].map(n => `<option value="${n}" ${n === 3 ? 'selected' : ''}>${n}</option>`).join('');
+            const res = document.getElementById('trip-result'); if (res) res.innerHTML = '';
+            const m = document.getElementById('trip-modal'); if (m) m.classList.add('open');
+        }
+        function closeTripModal() { const m = document.getElementById('trip-modal'); if (m) m.classList.remove('open'); }
+        function runTripPlan() {
+            const interests = Array.from(document.querySelectorAll('#trip-interests .trip-chip.on')).map(b => b.getAttribute('data-int'));
+            const days = Math.max(1, Math.min(7, parseInt((document.getElementById('trip-days') || {}).value, 10) || 3));
+            const plan = generateTripPlan({ interests, days });
+            const res = document.getElementById('trip-result');
+            if (!res) return;
+            if (!plan.length) { res.innerHTML = `<p style="color:var(--text-muted);font-size:0.9rem;">Pick an interest or two and tap “Plan my days”.</p>`; return; }
+            res.innerHTML = plan.map((items, di) => `
+                <div class="mo-card" style="margin-top:12px;">
+                    <div class="mo-card-title">Day ${di + 1}</div>
+                    ${items.map(it => `<div style="margin-top:8px;"><strong>${escapeHtml(it.name)}</strong><span style="color:var(--accent);font-size:0.8rem;">${escapeHtml(it.tide)}</span><br><span style="font-size:0.85rem;color:var(--text-muted);">${escapeHtml(it.blurb)}</span></div>`).join('')}
+                </div>`).join('') +
+                `<p style="font-size:0.72rem;color:var(--text-muted);margin:10px 0 0;">A loose suggestion — check seasons/opening times. Tide notes use live Blakeney tide data when available.</p>`;
+        }
+        // Generation seam: curated now; a future AI source can replace this body.
+        function generateTripPlan(prefs) {
+            if (TRIP_PLAN_SOURCE === 'curated') return curatedTripPlan(prefs);
+            return curatedTripPlan(prefs);
+        }
+        function curatedTripPlan({ interests, days }) {
+            const pool = tripActivities();
+            let matched = (interests && interests.length) ? pool.filter(a => (a.tags || []).some(t => interests.includes(t))) : pool.slice();
+            if (!matched.length) matched = pool.slice();
+            matched = matched.slice().sort(() => Math.random() - 0.5);
+            const tideNote = (a) => {
+                if (!a.tide || a.tide === 'any') return '';
+                const want = a.tide === 'high' ? 'high' : 'low';
+                if (__tideData && __tideData.ok && Array.isArray(__tideData.extremes)) {
+                    const ex = __tideData.extremes.map(e => ({ t: new Date(e.time), type: e.type }))
+                        .filter(e => new RegExp(want, 'i').test(e.type) && e.t.getTime() >= Date.now())
+                        .sort((a, b) => a.t - b.t);
+                    if (ex.length) { const d = ex[0].t; return ` · best near ${want} tide (~${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')})`; }
+                }
+                return a.tide === 'high' ? ' · best around high tide' : ' · best around low tide';
+            };
+            const perDay = 2, plan = []; let i = 0;
+            for (let d = 0; d < days && i < matched.length; d++) {
+                const items = [];
+                for (let n = 0; n < perDay && i < matched.length; n++, i++) {
+                    const a = matched[i];
+                    items.push({ name: a.name, blurb: a.blurb, tide: tideNote(a) });
+                }
+                plan.push(items);
+            }
+            return plan;
+        }
         // ---- House rules: derived from each cottage's own settings ----
         function renderHouseRules(propKey) {
             const wrap = document.getElementById('prop-house-rules');
@@ -11905,7 +12010,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'ms0t1u3z';
+            const BUILD = 'nt1u2v4a';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
