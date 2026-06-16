@@ -154,3 +154,42 @@ function ping_admin_devices() {
 }
 // Convenience: set the owner alert text AND wake their devices.
 function alert_owner($title, $body, $reload = false) { owner_ping_set($title, $body, $reload); return ping_admin_devices(); }
+
+// Wake every device belonging to one guest. Mirrors ping_admin_devices: dead
+// subscriptions (404/410) are pruned. Returns the number woken. Best-effort.
+function ping_guest_devices($guestId) {
+    if (!wp_vapid_configured()) return 0;
+    try {
+        $q = db()->prepare("SELECT id, endpoint FROM push_subscriptions WHERE guest_id = ?");
+        $q->execute([(int)$guestId]);
+        $rows = $q->fetchAll();
+    } catch (\Throwable $e) { return 0; }
+    $sent = 0;
+    foreach ($rows as $sub) {
+        $r = send_webpush($sub['endpoint']);
+        if (!empty($r['ok'])) $sent++;
+        elseif (in_array($r['status'] ?? 0, [404, 410], true)) {
+            try { db()->prepare('DELETE FROM push_subscriptions WHERE id = ?')->execute([(int)$sub['id']]); } catch (\Throwable $e) {}
+        }
+    }
+    return $sent;
+}
+// Convenience: stash a guest's notification text (sw.js fetches it via
+// push.php?action=sw_notify) AND wake their devices. Mirrors alert_owner.
+function notify_guest($guestId, $title, $body, $url = './') { guest_ping_set($guestId, $title, $body, $url); return ping_guest_devices($guestId); }
+
+// Resolve a guest id from an email so booking/payment flows that only know the
+// guest's email can target their devices. Returns 0 if no account. Best-effort.
+function guest_id_for_email($email) {
+    if (!$email) return 0;
+    try {
+        $s = db()->prepare('SELECT id FROM guests WHERE LOWER(email) = LOWER(?) LIMIT 1');
+        $s->execute([(string)$email]);
+        return (int)($s->fetchColumn() ?: 0);
+    } catch (\Throwable $e) { return 0; }
+}
+// Notify a guest by email — a no-op if that email has no account or no devices.
+function notify_guest_email($email, $title, $body, $url = './') {
+    $gid = guest_id_for_email($email);
+    return $gid ? notify_guest($gid, $title, $body, $url) : 0;
+}

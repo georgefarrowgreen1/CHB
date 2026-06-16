@@ -477,6 +477,31 @@ function send_arrival_email($b) {
     return smtp_send($b['email'], $name, $subject, $text, $html);
 }
 
+// Passwordless sign-in link. $g: a guest row (needs name, email). $url: the
+// magic link from auth.php (carries id + issue-time + HMAC, expires in 30 min).
+function send_magic_link_email($g, $url) {
+    if (empty($g['email'])) return ['ok' => false, 'error' => 'No email'];
+    $accent = '#D6A785';
+    $esc = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+    $name = $g['name'] ?: 'there';
+
+    $subject = 'Your sign-in link — Cottage Holidays Blakeney';
+    $text = "Hello {$name},\n\n"
+          . "Here is your secure sign-in link for Cottage Holidays Blakeney:\n"
+          . $url . "\n\n"
+          . "It expires in 30 minutes. If you didn't request it, you can safely ignore this email.\n\n"
+          . "Cottage Holidays Blakeney";
+
+    $inner = email_h('Sign in to your account', $accent)
+      . email_p('Hello ' . $esc($name) . ', tap the button below to sign in to your Cottage Holidays Blakeney account — no password needed.')
+      . email_btn($url, 'Sign me in', $accent)
+      . email_p('This link expires in 30 minutes. If you didn\'t request it, you can safely ignore this email.', true)
+      . email_p('Cottage Holidays Blakeney', true);
+    $html = email_shell('Your secure sign-in link', $inner, $accent);
+
+    return smtp_send($g['email'], $name, $subject, $text, $html);
+}
+
 // ------------------------------------------------------------------
 //  Square payments — request + receipt emails. Both reuse smtp_send and the
 //  crown header. $b: name, email, prop_key, prop_name, check_in, check_out,
