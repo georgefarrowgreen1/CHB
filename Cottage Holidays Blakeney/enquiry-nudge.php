@@ -35,10 +35,17 @@ foreach ($rows as $e) {
     $rate = get_rate($e['prop_key']);
     $propName = ($rate['name'] ?? '') ?: $e['prop_key'];
     $name = $e['name'] ?: 'there';
+    // A direct link back to the cottage so they can pick up and book in one tap.
+    $slugs = ['21a' => '21a-westgate', 'jollyboat' => 'jollyboat', 'pimpernel' => 'pimpernel'];
+    $base = function_exists('site_base_url') ? site_base_url() : '';
+    $slug = $slugs[$e['prop_key']] ?? '';
+    $link = $base ? ($base . ($slug ? 'cottages/' . $slug : '')) : '';
     $subject = 'Still thinking about your Blakeney stay?';
     $text = "Hello " . $name . ",\n\n"
           . "Thanks for your enquiry about " . $propName . " for " . $e['check_in'] . " to " . $e['check_out'] . ".\n\n"
-          . "We're still holding those dates for you. Just reply to this email, or message us on the website, and we'll get your booking confirmed.\n\n"
+          . "We're still holding those dates for you. "
+          . ($link ? ("You can pick up where you left off here:\n" . $link . "\n\n") : "")
+          . "Or just reply to this email (or message us on the website) and we'll get your booking confirmed.\n\n"
           . "Warm wishes,\nCottage Holidays Blakeney";
     try {
         if (function_exists('smtp_send')) smtp_send($e['email'], $name, $subject, $text);
