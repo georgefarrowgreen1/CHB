@@ -145,6 +145,26 @@ body.guest-app:not(.owner-mode) #footer-newsletter,
 body.guest-app:not(.owner-mode) .footer-nap,
 body.guest-app:not(.owner-mode) .footer-legal { display: none; }
 
+/* On mobile, sign in / create account is shown as a full PAGE (like Cottages),
+   not a floating window: full-bleed, opaque page background, scrollable, and
+   sitting just BELOW the dock so the menu stays usable (tapping Home/Cottages
+   leaves it via nav()). */
+body.guest-app:not(.owner-mode) #guest-auth-modal {
+    z-index: 1390;
+    padding: 0;
+    background: var(--dark-grey);
+    -webkit-backdrop-filter: none; backdrop-filter: none;
+    align-items: stretch; justify-content: stretch;
+    overflow-y: auto;
+}
+body.guest-app:not(.owner-mode) #guest-auth-modal .modal-box {
+    width: 100%; max-width: none; max-height: none; min-height: 100%;
+    margin: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none;
+    padding: calc(58px + env(safe-area-inset-top, 0px)) 22px calc(110px + env(safe-area-inset-bottom, 0px));
+}
+/* Keep the form itself a comfortable, centred column on wider phones/tablets. */
+body.guest-app:not(.owner-mode) #guest-auth-modal .modal-box > div { max-width: 440px; width: 100%; margin: 0 auto; }
+
 /* The header account pill is gone; the messages bubble now lives in the dock as
    the leftmost button, so hide the floating chat FAB here. The cottage page's
    sticky book bar sits just ABOVE the floating dock. */
