@@ -954,7 +954,7 @@
         }
 
         // ---- Settings router: Apple-style index → drill-down sub-pages ----
-        const SETTINGS_TITLES = { enquiries: 'Enquiries', messages: 'Guest messages', notify: 'Notifications', host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Preferences', calendar: 'Calendar', cancel: 'Cancellation policy', payments: 'Payments', guests: 'Guest accounts', analytics: 'Analytics', waitlist: 'Waitlist', newsletter: 'Newsletter', experiences: 'Experiences', content: 'Website content', photos: 'Guest photos', apis: 'API keys', diagnostics: 'System check' };
+        const SETTINGS_TITLES = { enquiries: 'Enquiries', messages: 'Guest messages', notify: 'Notifications', host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Preferences', calendar: 'Calendar', cancel: 'Cancellation policy', payments: 'Payments', guests: 'Guest accounts', analytics: 'Analytics', waitlist: 'Waitlist', newsletter: 'Newsletter', experiences: 'Experiences', content: 'Home page & menu', photos: 'Guest photos', apis: 'API keys', diagnostics: 'System check' };
         let settingsBackTarget = null;
         // The full Settings drill-down path, so the auto-update reload can restore the
         // exact folder/sub-folder the owner was in: { section, prop, accomSec }.
@@ -1022,12 +1022,15 @@
         function loadContentEditor() {
             const wrap = document.getElementById('content-editor');
             if (!wrap) return;
-            const isCottage = el => !!el.closest('#view-21a');     // per-cottage fields are edited under Preferences
-            const imgs = [...document.querySelectorAll('[data-edit-img]')].filter(el => !isCottage(el));
-            const texts = [...document.querySelectorAll('[data-edit-text]')].filter(el => !isCottage(el));
+            // Per-cottage fields live under Preferences → [cottage]: the cottage detail
+            // template (#view-21a) AND the home-page cards (card1/2/3 → each cottage's
+            // own "Website content" folder). This page keeps only the site-wide bits.
+            const skip = el => !!el.closest('#view-21a') || /^card[123]-(img|title|meta)$/.test(el.getAttribute('data-edit-text') || el.getAttribute('data-edit-img') || '');
+            const imgs = [...document.querySelectorAll('[data-edit-img]')].filter(el => !skip(el));
+            const texts = [...document.querySelectorAll('[data-edit-text]')].filter(el => !skip(el));
             const seen = new Set();
             const label = k => CONTENT_LABELS[k] || k;
-            let html = '<p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 18px;">Edit the wording and images shown across the public site. Changes save instantly and go live for visitors. (Each cottage’s own photos &amp; text are under Preferences → the cottage.)</p>';
+            let html = '<p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 18px;">The site-wide wording &amp; images: the hero banner, menu labels and site name. Each cottage’s own home-page card, photos &amp; text are under Preferences → the cottage.</p>';
             if (imgs.length) {
                 html += '<h3 style="font-family:var(--font-serif);font-size:1.15rem;margin:0 0 12px;">Images</h3>';
                 imgs.forEach(el => {
@@ -1123,6 +1126,7 @@
         // Each cottage's Preferences open as a sub-index of subfolders; each row drills
         // into just that part (rates, house rules, safety, …) — see settingsOpenAccomSec.
         const ACCOM_SECTIONS = [
+            { id: 'web',      label: 'Website content',   sub: 'How this cottage appears on the home page', ic: '<rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="M3 9h18"/><circle cx="6" cy="6.7" r="0.7" fill="currentColor" stroke="none"/>' },
             { id: 'photos',   label: 'Photos',            sub: 'Gallery images for this cottage', ic: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="11" r="2"/><path d="M21 17l-5-5-4 4-2-2-4 4"/>' },
             { id: 'text',     label: 'Text & details',    sub: 'Title, description &amp; features', ic: '<path d="M4 6h16M4 12h16M4 18h10"/>' },
             { id: 'rates',    label: 'Rates & fees',      sub: 'Nightly prices, deposit &amp; fee', ic: '<path d="M2 6h20v12H2z"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9v6M18 9v6"/>' },
@@ -6569,6 +6573,22 @@
         function accomSectionHtml(k, sec) {
             const r = propertyRates[k] || {};
             switch (sec) {
+                case 'web': {
+                    // This cottage's home-page card (the tile on the home + cottages pages).
+                    const n = { '21a': 1, 'jollyboat': 2, 'pimpernel': 3 }[k] || 1;
+                    const curText = key => { const el = document.querySelector('[data-edit-text="' + key + '"]'); return el ? (el.textContent || '').trim() : (siteContent[key] || ''); };
+                    const imgEl = document.querySelector('[data-edit-img="card' + n + '-img"]');
+                    const imgUrl = imgEl ? contentBgUrl(imgEl) : (siteContent['card' + n + '-img'] || '');
+                    return `<p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 14px;">How this cottage appears on the home page (the tile guests tap). Its detail-page photos &amp; text are in the Photos and Text tabs.</p>
+                        <div class="content-edit-row"><div class="exp-edit-thumb" id="ce-thumb-card${n}-img" style="background-image:url('${escapeHtml(imgUrl)}');"></div>
+                            <div style="flex:1;min-width:0;"><div class="modal-label" style="margin:0 0 6px;">Home-page photo</div><button class="btn-sm btn-edit" onclick="contentEditImage('card${n}-img')">Replace image</button></div></div>
+                        <label class="modal-label" for="ce-card${n}-title">Home-page title</label>
+                        <input type="text" class="input-glass" id="ce-card${n}-title" value="${escapeHtml(curText('card' + n + '-title'))}">
+                        <button class="btn-sm btn-edit" style="margin-top:6px;" onclick="contentEditSave('card${n}-title')">Save</button>
+                        <label class="modal-label" for="ce-card${n}-meta">Home-page subtitle</label>
+                        <input type="text" class="input-glass" id="ce-card${n}-meta" value="${escapeHtml(curText('card' + n + '-meta'))}">
+                        <button class="btn-sm btn-edit" style="margin-top:6px;" onclick="contentEditSave('card${n}-meta')">Save</button>`;
+                }
                 case 'photos': {
                     const imgs = accomImages(k);
                     return `<label class="modal-label" style="margin-top:0;">Gallery photos (shown on the cottage page, in this order)</label>
@@ -9806,7 +9826,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'gm8l3r6z';
+            const BUILD = 'hn9m4s7a';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
