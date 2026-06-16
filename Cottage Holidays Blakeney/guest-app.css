@@ -75,9 +75,10 @@ body.guest-app:not(.owner-mode) #guest-tabbar {
 }
 .guest-dock-btn.gt-home.current img { filter: brightness(0); transform: scale(1.08); }
 
-/* My Stays only appears for a signed-in guest. */
-.gt-stays { display: none; }
-body.guest-app:not(.owner-mode).guest-signed-in .gt-stays { display: inline-flex; }
+/* My Stays and Experiences only appear for a signed-in guest. */
+.gt-stays, .gt-auth { display: none; }
+body.guest-app:not(.owner-mode).guest-signed-in .gt-stays,
+body.guest-app:not(.owner-mode).guest-signed-in .gt-auth { display: inline-flex; }
 
 /* Instagram-style white selection pill; JS sizes/positions it under .current. */
 .guest-dock-indicator {
