@@ -4650,10 +4650,78 @@
             pickAndUpload('expense-receipt', async (url) => {
                 __expReceiptUrl = url;
                 const prev = document.getElementById('exp-receipt-prev');
-                if (prev) prev.innerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener"><img src="${escapeHtml(url)}" alt="Receipt" style="height:40px;border-radius:6px;border:1px solid var(--glass-border);"></a> <button class="feed-del" title="Remove receipt" onclick="clearExpenseReceipt()">×</button>`;
+                if (prev) prev.innerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener"><img src="${escapeHtml(url)}" alt="Receipt" style="height:40px;border-radius:6px;border:1px solid var(--glass-border);"></a> <button class="feed-del" title="Remove receipt" onclick="clearExpenseReceipt()">×</button> <span id="exp-scan-status" style="font-size:0.75rem;color:var(--text-muted);"></span>`;
+                try { scanReceipt(url); } catch (e) {}   // read amount/date/vendor on-device
             });
         }
         function clearExpenseReceipt() { __expReceiptUrl = ''; const p = document.getElementById('exp-receipt-prev'); if (p) p.innerHTML = ''; }
+
+        // ---- On-device receipt OCR (Tesseract.js, lazy-loaded; the image never
+        // leaves the device — only the OCR engine is fetched from a CDN and cached). ----
+        let __tessLoading = null;
+        function loadTesseract() {
+            if (window.Tesseract) return Promise.resolve();
+            if (__tessLoading) return __tessLoading;
+            __tessLoading = new Promise((resolve, reject) => {
+                const s = document.createElement('script');
+                s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+                s.onload = resolve;
+                s.onerror = () => { __tessLoading = null; reject(new Error('scanner unavailable')); };
+                document.head.appendChild(s);
+            });
+            return __tessLoading;
+        }
+        async function scanReceipt(url) {
+            const status = () => document.getElementById('exp-scan-status');
+            try {
+                if (status()) status().textContent = 'Reading…';
+                await loadTesseract();
+                const { data } = await window.Tesseract.recognize(url, 'eng');
+                const filled = applyReceiptText((data && data.text) || '');
+                if (status()) status().textContent = filled ? '✓ read — check the details' : 'couldn’t read it — enter manually';
+            } catch (e) {
+                if (status()) status().textContent = 'couldn’t read it — enter manually';
+            }
+        }
+        // Pull a date out of OCR text → YYYY-MM-DD (UK day-first), or '' if none found.
+        function parseReceiptDate(text) {
+            const MON = { jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12 };
+            const pad = n => String(n).padStart(2, '0');
+            const yr = y => (y < 100 ? 2000 + y : y);
+            const ok = (y, m, d) => (m >= 1 && m <= 12 && d >= 1 && d <= 31) ? `${y}-${pad(m)}-${pad(d)}` : '';
+            let m;
+            m = text.match(/(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);                       // 2026-06-16
+            if (m) return ok(+m[1], +m[2], +m[3]);
+            m = text.match(/(\d{1,2})[-/.](\d{1,2})[-/.](\d{2,4})/);                     // 16/06/2026 (day-first)
+            if (m) return ok(yr(+m[3]), +m[2], +m[1]);
+            m = text.match(/(\d{1,2})\s*([A-Za-z]{3,})\.?\s*,?\s*(\d{2,4})/);            // 16 Jun 2026
+            if (m && MON[m[2].slice(0,3).toLowerCase()]) return ok(yr(+m[3]), MON[m[2].slice(0,3).toLowerCase()], +m[1]);
+            m = text.match(/([A-Za-z]{3,})\.?\s*(\d{1,2})\s*,?\s*(\d{2,4})/);            // Jun 16, 2026
+            if (m && MON[m[1].slice(0,3).toLowerCase()]) return ok(yr(+m[3]), MON[m[1].slice(0,3).toLowerCase()], +m[2]);
+            return '';
+        }
+        // Heuristically fill the expense form from OCR text. Returns true if anything filled.
+        function applyReceiptText(text) {
+            if (!text || !text.trim()) return false;
+            const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+            const moneyRe = /(?:£|gbp|\$)?\s*(\d{1,5}[.,]\d{2})\b/i;
+            // Amount: prefer a "total"-ish line; else the largest money figure on the receipt.
+            let amount = null;
+            const totalLine = lines.find(l => /total|amount due|balance due|to pay|grand total/i.test(l) && moneyRe.test(l));
+            if (totalLine) { const mm = totalLine.match(moneyRe); if (mm) amount = parseFloat(mm[1].replace(',', '.')); }
+            if (amount == null) {
+                let max = 0; const re = /(\d{1,5}[.,]\d{2})\b/g; let mm;
+                lines.forEach(l => { while ((mm = re.exec(l))) { const v = parseFloat(mm[1].replace(',', '.')); if (v > max) max = v; } });
+                if (max > 0) amount = max;
+            }
+            const date = parseReceiptDate(text);
+            const vendor = (lines.find(l => /[a-z]/i.test(l) && l.replace(/[^a-z]/gi, '').length >= 3) || '').slice(0, 40);
+            const set = (id, v) => { const el = document.getElementById(id); if (el && v != null && v !== '') el.value = v; };
+            if (amount != null) set('exp-amount', amount.toFixed(2));
+            if (date) set('exp-date', date);
+            if (vendor) set('exp-desc', vendor);
+            return (amount != null) || !!date || !!vendor;
+        }
         function renderExpenses() {
             const wrap = document.getElementById('expenses-body');
             if (!wrap) return;
@@ -4700,7 +4768,7 @@
                         <div><label class="modal-label">Amount (£)</label><input type="number" min="0" step="0.01" id="exp-amount" class="input-glass field-sm" placeholder="0.00" style="margin:0;width:110px;"></div>
                         <div><label class="modal-label">Cottage</label><select id="exp-prop" class="input-glass field-sm" style="margin:0;">${cottageOpts}</select></div>
                         <div style="flex:1 1 160px;"><label class="modal-label">Note (optional)</label><input type="text" id="exp-desc" class="input-glass field-sm" placeholder="e.g. End-of-stay clean" style="margin:0;width:100%;"></div>
-                        <div><label class="modal-label">Receipt</label><div style="display:flex;align-items:center;gap:8px;"><button class="btn-sm btn-edit" type="button" onclick="pickExpenseReceipt()">＋ Photo</button><span id="exp-receipt-prev" style="display:inline-flex;align-items:center;gap:6px;"></span></div></div>
+                        <div><label class="modal-label">Receipt <span style="text-transform:none;letter-spacing:0;color:var(--text-muted);">· auto-reads on device</span></label><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><button class="btn-sm btn-edit" type="button" onclick="pickExpenseReceipt()">＋ Photo</button><span id="exp-receipt-prev" style="display:inline-flex;align-items:center;gap:6px;"></span></div></div>
                         <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;color:var(--text-muted);"><input type="checkbox" id="exp-recurring" style="width:auto;margin:0;"> Recurring</label>
                         <button class="btn-sm btn-edit" onclick="addExpense()">Add</button>
                     </div>
@@ -11444,7 +11512,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'tz1a2c4g';
+            const BUILD = 'ua2b3c5h';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
