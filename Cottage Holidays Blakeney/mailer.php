@@ -203,6 +203,97 @@ function build_booking_ics($b) {
     return implode("\r\n", array_filter($lines, fn($l) => $l !== ''));
 }
 
+// ============================================================
+//  "Midnight Glass" email design kit — a dark, liquid-glass look that mirrors
+//  the site. Inboxes can't blur, so the glass feel is evoked with a deep
+//  gradient backdrop, a lifted card with a hairline top highlight, a rose-gold
+//  accent, and Playfair/Montserrat (Georgia/Arial fallbacks). All inline,
+//  table-based and Outlook-safe (bgcolor fallbacks + VML buttons).
+// ============================================================
+function email_sans()  { return "'Montserrat','Helvetica Neue',Arial,sans-serif"; }
+function email_serif() { return "'Playfair Display',Georgia,'Times New Roman',serif"; }
+function email_esc($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); }
+
+// Bulletproof rose-gold button (rounded in Outlook too, via VML).
+function email_btn($href, $label, $accent = '#D6A785', $textColor = '#1a191b') {
+    $h = email_esc($href); $l = email_esc($label); $sans = email_sans();
+    return '<table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:8px auto 4px;"><tr><td align="center" bgcolor="' . $accent . '" style="border-radius:12px;">'
+        . '<!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="' . $h . '" style="height:46px;v-text-anchor:middle;width:300px;" arcsize="26%" stroke="f" fillcolor="' . $accent . '"><w:anchorlock/><center style="color:' . $textColor . ';font-family:' . $sans . ';font-size:16px;font-weight:bold;"><![endif]-->'
+        . '<a href="' . $h . '" style="display:inline-block;background:' . $accent . ';color:' . $textColor . ';text-decoration:none;font-family:' . $sans . ';font-size:16px;font-weight:700;line-height:46px;padding:0 34px;border-radius:12px;">' . $l . '</a>'
+        . '<!--[if mso]></center></v:roundrect><![endif]--></td></tr></table>';
+}
+
+// Centred amount/stat sub-panel (deposit due, refund, etc.). $amount is pre-formatted.
+function email_amount($label, $amount, $sub = '', $valueColor = '#F4F5F7') {
+    $sans = email_sans(); $serif = email_serif();
+    return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;"><tr><td bgcolor="#15161b" style="background:#15161b;border:1px solid #2c2f38;border-radius:14px;padding:18px;text-align:center;">'
+        . '<div style="font-family:' . $sans . ';font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#8a8f9e;">' . email_esc($label) . '</div>'
+        . '<div style="font-family:' . $serif . ';font-size:32px;font-weight:700;color:' . $valueColor . ';padding:6px 0 2px;">' . $amount . '</div>'
+        . ($sub !== '' ? '<div style="font-family:' . $sans . ';font-size:12px;color:#8a8f9e;">' . $sub . '</div>' : '')
+        . '</td></tr></table>';
+}
+
+// Label/value detail rows with hairline dividers. $rows = [[label, valueHtml], ...]
+function email_rows($rows) {
+    $sans = email_sans();
+    $out = '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0;">';
+    $n = count($rows); $i = 0;
+    foreach ($rows as $r) {
+        $i++; $bd = $i < $n ? 'border-bottom:1px solid #2c2f38;' : '';
+        $out .= '<tr><td style="padding:11px 0;' . $bd . 'font-family:' . $sans . ';font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#8a8f9e;vertical-align:top;width:40%;">' . $r[0] . '</td>'
+              . '<td align="right" style="padding:11px 0;' . $bd . 'font-family:' . $sans . ';font-size:14px;color:#F4F5F7;vertical-align:top;">' . $r[1] . '</td></tr>';
+    }
+    return $out . '</table>';
+}
+
+// Left-accent callout box.
+function email_note($html, $accent = '#D6A785') {
+    $sans = email_sans();
+    return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0;"><tr>'
+        . '<td bgcolor="#15161b" style="background:#15161b;border-left:3px solid ' . $accent . ';border-radius:8px;padding:14px 16px;font-family:' . $sans . ';font-size:13px;color:#c9cdda;line-height:1.7;">' . $html . '</td></tr></table>';
+}
+
+// Serif heading inside the card (optional cottage-accent square).
+function email_h($text, $accent = '') {
+    $serif = email_serif();
+    $bar = $accent !== '' ? '<span style="display:inline-block;width:13px;height:13px;border-radius:4px;background:' . $accent . ';vertical-align:middle;margin-right:11px;"></span>' : '';
+    return '<h1 style="font-family:' . $serif . ';font-size:25px;font-weight:700;color:#F4F5F7;margin:0 0 6px;line-height:1.25;">' . $bar . email_esc($text) . '</h1>';
+}
+
+// Body paragraph (muted=secondary text). Pass pre-escaped HTML.
+function email_p($html, $muted = false) {
+    return '<p style="font-family:' . email_sans() . ';font-size:14px;color:' . ($muted ? '#a7acbb' : '#d7dae3') . ';line-height:1.7;margin:12px 0 0;">' . $html . '</p>';
+}
+
+// The full document shell. $inner = card body HTML. $accentBar = top hairline colour.
+// $opts: ['unsubscribe' => url, 'footer' => html]
+function email_shell($preheader, $inner, $accentBar = '#D6A785', $opts = []) {
+    $sans = email_sans(); $serif = email_serif();
+    $unsub = $opts['unsubscribe'] ?? '';
+    $footerExtra = $opts['footer'] ?? '';
+    return '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><meta name="supported-color-schemes" content="dark">'
+      . '<style>@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Montserrat:wght@400;600;700&display=swap");'
+      . 'body{margin:0;padding:0;background:#101114;}'
+      . '@media (max-width:600px){.ec-wrap{width:100%!important;}.ec-pad{padding-left:22px!important;padding-right:22px!important;}}'
+      . '</style></head>'
+      . '<body style="margin:0;padding:0;background:#101114;">'
+      . '<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">' . email_esc($preheader) . '</div>'
+      . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#101114" style="background:#101114;background-image:linear-gradient(160deg,#181a20 0%,#101114 55%);"><tr><td align="center" style="padding:30px 12px;">'
+      . '<table role="presentation" width="600" class="ec-wrap" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">'
+      . email_crown_header('')
+      . '<tr><td align="center" style="padding:14px 20px 22px;"><div style="font-family:' . $serif . ';font-size:20px;color:#F4F5F7;letter-spacing:0.5px;">Cottage Holidays Blakeney</div>'
+      . '<div style="font-family:' . $sans . ';font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#8a8f9e;padding-top:4px;">North Norfolk Coast</div></td></tr>'
+      . '<tr><td class="ec-pad" bgcolor="#1b1d23" style="background:#1b1d23;border:1px solid #2c2f38;border-top:3px solid ' . $accentBar . ';border-radius:20px;padding:30px 34px;">'
+      . $inner
+      . '</td></tr>'
+      . '<tr><td align="center" style="padding:22px 24px 8px;font-family:' . $sans . ';font-size:11px;color:#71768a;line-height:1.7;">'
+      . 'Self-catering holiday cottages in Blakeney, North Norfolk &middot; NR25<br>'
+      . ($footerExtra !== '' ? $footerExtra . '<br>' : '')
+      . ($unsub !== '' ? '<a href="' . email_esc($unsub) . '" style="color:#71768a;text-decoration:underline;">Unsubscribe</a>' : '')
+      . '</td></tr>'
+      . '</table></td></tr></table></body></html>';
+}
+
 // Let the owner know money has landed. $b: name, prop_name, kind, amount, status.
 function send_owner_payment_notice($b) {
     if (!defined('OWNER_NOTIFY_EMAIL') || !OWNER_NOTIFY_EMAIL) return ['ok' => false, 'error' => 'No owner email'];
@@ -242,23 +333,16 @@ function send_review_request_email($b) {
           . ($url ? "Or review us on our site: {$url}\n\n" : "")
           . "Hope to welcome you back.\nCottage Holidays Blakeney";
 
-    $btn = function ($href, $label, $bg) use ($esc) {
-        return '<table role="presentation" cellpadding="0" cellspacing="0" width="100%"><tr><td align="center" style="padding:10px 0 4px;">'
-            . '<a href="' . $esc($href) . '" style="display:inline-block;background:' . $bg . ';color:#ffffff;text-decoration:none;font-size:16px;font-weight:700;padding:14px 38px;border-radius:12px;">' . $esc($label) . '</a></td></tr></table>';
-    };
-
-    $html = '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f4f4f6;">'
-      . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f6;padding:24px 0;"><tr><td align="center">'
-      . '<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">'
-      . email_crown_header('#ffffff')
-      . '<tr><td style="padding:26px 30px 8px;">'
-      . '<p style="font-size:14px;color:#333;line-height:1.6;margin:0;">Hi ' . $esc($name) . ',</p>'
-      . '<p style="font-size:14px;color:#333;line-height:1.6;margin:10px 0 0;">Thank you for staying at <strong>' . $esc($prop) . '</strong>. We\'d love to hear how it went — a short review really helps other guests (and us).</p>'
-      . ($googleUrl ? $btn($googleUrl, '★ Review us on Google', '#4285F4') : '')
-      . ($url ? $btn($url, ($googleUrl ? 'Or review us on our site' : 'Leave a review'), $accent) : '')
-      . ($url && !$googleUrl ? '<p style="font-size:12px;color:#999;line-height:1.6;margin:10px 0 0;text-align:center;">Log in with this email and open My Bookings.</p>' : '')
-      . '<p style="font-size:13px;color:#777;margin:22px 0 6px;">Hope to welcome you back.<br>Cottage Holidays Blakeney</p>'
-      . '</td></tr></table></td></tr></table></body></html>';
+    $inner = email_h('How was your stay?')
+      . email_p('Hi ' . $esc($name) . ', thank you for staying at <strong style="color:#f4f5f7;">' . $esc($prop) . '</strong>. We\'d love to hear how it went — a short review really helps other guests (and us).');
+    if ($googleUrl) $inner .= email_btn($googleUrl, '★ Review us on Google');
+    if ($url) {
+        $inner .= $googleUrl
+            ? '<p style="text-align:center;font-family:' . email_sans() . ';font-size:13px;margin:12px 0 0;"><a href="' . $esc($url) . '" style="color:#D6A785;text-decoration:none;">…or leave one on our site &rsaquo;</a></p>'
+            : email_btn($url, 'Leave a review');
+    }
+    $inner .= email_p('Hope to welcome you back.<br>Cottage Holidays Blakeney', true);
+    $html = email_shell("We'd love your feedback on " . $prop, $inner, $accent);
 
     return smtp_send($b['email'], $name, $subject, $text, $html);
 }
@@ -302,49 +386,31 @@ function send_booking_emails($b) {
         $body .= "Total: " . $money($b['total']) . "\n\n";
         $body .= "If you have any questions, just reply to this email.\nCottage Holidays Blakeney\n";
 
-        // HTML version — table-based, all-inline styles for email-client safety,
-        // styled to match the on-site booking detail card.
-        $serif = "'Georgia','Times New Roman',serif";
-        $sans  = "'Helvetica Neue',Arial,sans-serif";
-        $row = fn($label,$value) => '<td style="padding:0 0 6px;"><div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#8a8e9c;font-family:'.$sans.';">'.$label.'</div><div style="font-size:16px;color:#1c1e26;font-family:'.$sans.';padding-top:3px;">'.$value.'</div></td>';
-        $priceRow = fn($l,$v) => '<tr><td style="padding:7px 0;font-size:15px;color:#3a3d49;font-family:'.$sans.';">'.$l.'</td><td align="right" style="padding:7px 0;font-size:15px;color:#3a3d49;font-family:'.$sans.';">'.$v.'</td></tr>';
-
-        $html = '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#eceef4;">'
-          . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#eceef4;padding:30px 12px;"><tr><td align="center">'
-          . '<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#fbfbfd;border-radius:24px;overflow:hidden;border:1px solid #e2e4ec;">'
-          . email_crown_header('#fbfbfd')
-          // header band
-          . '<tr><td style="padding:34px 40px 8px;">'
-          . '<table role="presentation" cellpadding="0" cellspacing="0"><tr>'
-          . '<td style="vertical-align:middle;"><span style="display:inline-block;width:16px;height:16px;border-radius:4px;background:'.$accent.';"></span></td>'
-          . '<td style="vertical-align:middle;padding-left:12px;"><span style="font-family:'.$serif.';font-size:30px;font-weight:700;color:#1c1e26;">'.$esc($b['prop_name']).'</span></td>'
-          . '<td style="vertical-align:middle;padding-left:14px;"><span style="display:inline-block;background:#c7e7cb;color:#2e7d32;font-family:'.$sans.';font-size:11px;font-weight:700;letter-spacing:1px;padding:6px 14px;border-radius:14px;">UPCOMING</span></td>'
-          . '</tr></table>'
-          . '<div style="font-family:'.$sans.';font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#8a8e9c;padding-top:12px;">Booking Ref '.$esc($b['ref']).'</div>'
-          . '</td></tr>'
-          // check in / out
-          . '<tr><td style="padding:22px 40px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>'
-          . $row('Check in', $esc($b['check_in']).' &middot; '.$esc($b['check_in_time']))
-          . $row('Check out', $esc($b['check_out']).' &middot; '.$esc($b['check_out_time']))
-          . '</tr></table><div style="border-bottom:1px solid #e8eaf0;margin-top:14px;"></div></td></tr>'
-          // party / payment
-          . '<tr><td style="padding:18px 40px 0;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr>'
-          . $row('Party', $esc($party))
-          . '<td style="padding:0 0 6px;"><div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#8a8e9c;font-family:'.$sans.';">Payment</div><div style="font-size:16px;color:'.$paymentColor.';font-family:'.$sans.';padding-top:3px;">'.$paymentLabel.'</div></td>'
-          . '</tr></table><div style="border-bottom:1px solid #e8eaf0;margin-top:14px;"></div></td></tr>'
-          // address
-          . '<tr><td style="padding:18px 40px 0;"><div style="font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#8a8e9c;font-family:'.$sans.';">Address</div><div style="font-size:16px;color:#1c1e26;font-family:'.$sans.';padding-top:5px;">'.$esc($b['address']).'</div><div style="border-bottom:1px solid #e8eaf0;margin-top:16px;"></div></td></tr>'
-          // price box
-          . '<tr><td style="padding:24px 40px 8px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f8;border:1px solid #e6e8f0;border-radius:14px;"><tr><td style="padding:6px 22px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">'
-          . $priceRow($money($b['per_night']).' &times; '.$nightsTxt, $money($b['nightly']))
-          . $priceRow('Transaction fee ('.$esc($b['tx_pct']).'%)', $money($b['tx_fee']))
-          . $priceRow('Refundable damages deposit', $money($b['damages_deposit']))
-          . '<tr><td colspan="2" style="border-bottom:1px solid #dcdee8;padding-top:4px;"></td></tr>'
-          . '<tr><td style="padding:14px 0 6px;font-family:'.$serif.';font-size:20px;font-weight:700;color:#1c1e26;">Total</td><td align="right" style="padding:14px 0 6px;font-family:'.$serif.';font-size:22px;font-weight:700;color:#1c1e26;">'.$money($b['total']).'</td></tr>'
-          . '</table></td></tr></table></td></tr>'
-          // footer
-          . '<tr><td style="padding:18px 40px 36px;text-align:center;font-family:'.$sans.';font-size:13px;color:#8a8e9c;line-height:1.6;">Any questions? Just reply to this email.<br>We look forward to welcoming you.<br><strong style="color:#1c1e26;">Cottage Holidays Blakeney</strong></td></tr>'
-          . '</table></td></tr></table></body></html>';
+        // HTML version — "Midnight Glass" shell + the booking "stay ticket".
+        $paymentColor = ($b['payment'] ?? 'unpaid') === 'paid' ? '#7bd687' : '#e0a06a';
+        $sans = email_sans(); $serif = email_serif();
+        $statusBadge = '<span style="display:inline-block;background:#22321f;color:#7bd687;font-family:' . $sans . ';font-size:10px;font-weight:700;letter-spacing:1.5px;padding:5px 12px;border-radius:12px;">UPCOMING</span>';
+        $pr = fn($l, $v) => '<tr><td style="padding:8px 0;font-family:' . $sans . ';font-size:14px;color:#c9cdda;">' . $l . '</td><td align="right" style="padding:8px 0;font-family:' . $sans . ';font-size:14px;color:#c9cdda;">' . $v . '</td></tr>';
+        $priceBox = '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0 4px;"><tr><td bgcolor="#15161b" style="background:#15161b;border:1px solid #2c2f38;border-radius:14px;padding:8px 20px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">'
+          . $pr($money($b['per_night']) . ' &times; ' . $nightsTxt, $money($b['nightly']))
+          . $pr('Transaction fee (' . $esc($b['tx_pct']) . '%)', $money($b['tx_fee']))
+          . $pr('Refundable damages deposit', $money($b['damages_deposit']))
+          . '<tr><td colspan="2" style="border-top:1px solid #2c2f38;font-size:0;line-height:0;">&nbsp;</td></tr>'
+          . '<tr><td style="padding:12px 0 4px;font-family:' . $serif . ';font-size:19px;font-weight:700;color:#F4F5F7;">Total</td><td align="right" style="padding:12px 0 4px;font-family:' . $serif . ';font-size:21px;font-weight:700;color:#F4F5F7;">' . $money($b['total']) . '</td></tr>'
+          . '</table></td></tr></table>';
+        $inner = email_h($b['prop_name'], $accent)
+          . '<div style="font-family:' . $sans . ';font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#8a8f9e;margin:2px 0 16px;">Booking ref ' . $esc($b['ref']) . ' &nbsp;&middot;&nbsp; ' . $statusBadge . '</div>'
+          . email_p('Dear ' . $esc($b['name']) . ', good news — your stay is confirmed. Here are the details:')
+          . email_rows([
+              ['Check in', $esc($b['check_in']) . ' &middot; ' . $esc($b['check_in_time'])],
+              ['Check out', $esc($b['check_out']) . ' &middot; ' . $esc($b['check_out_time'])],
+              ['Party', $esc($party)],
+              ['Payment', '<span style="color:' . $paymentColor . ';font-weight:600;">' . $paymentLabel . '</span>'],
+              ['Address', $esc($b['address'])],
+          ])
+          . $priceBox
+          . email_p('Any questions? Just reply to this email — we look forward to welcoming you.', true);
+        $html = email_shell('Your booking at ' . $b['prop_name'] . ' is confirmed', $inner, $accent);
 
         // Attach a calendar invite (.ics) so the guest can add the stay in one tap.
         $ics = build_booking_ics($b);
@@ -401,22 +467,12 @@ function send_arrival_email($b) {
           . "We look forward to welcoming you.\n\nCottage Holidays Blakeney";
 
     $addrHtml = $addr !== '' ? nl2br(htmlspecialchars($addr, ENT_QUOTES, 'UTF-8')) : '';
-    $html = '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f4f4f6;">'
-      . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f6;padding:24px 0;"><tr><td align="center">'
-      . '<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">'
-      . email_crown_header('#ffffff')
-      . '<tr><td style="padding:26px 30px 18px;">'
-      . '<table role="presentation" cellpadding="0" cellspacing="0"><tr>'
-      . '<td style="width:12px;height:12px;background:' . $accent . ';border-radius:3px;"></td>'
-      . '<td style="padding-left:10px;font-size:18px;font-weight:bold;color:#1a1a1a;">' . htmlspecialchars($prop, ENT_QUOTES, 'UTF-8') . '</td>'
-      . '</tr></table>'
-      . '<p style="font-size:14px;color:#333;line-height:1.6;margin:18px 0 0;">Hello ' . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . ',</p>'
-      . '<p style="font-size:14px;color:#333;line-height:1.6;margin:10px 0 0;">Your stay begins on <strong>' . $inDate . '</strong>. Check-in is from <strong>' . htmlspecialchars($time, ENT_QUOTES, 'UTF-8') . '</strong>.</p>'
-      . ($addrHtml !== '' ? '<p style="font-size:13px;color:#555;line-height:1.6;margin:16px 0 0;"><strong style="color:#333;">Address</strong><br>' . $addrHtml . '</p>' : '')
-      . '<div style="margin:18px 0 0;padding:16px 18px;background:#f8f8fa;border-left:4px solid ' . $accent . ';border-radius:8px;font-size:13px;color:#444;line-height:1.7;">When you arrive, log in to your account on our website and open <strong>My Bookings</strong> to reveal your entry details for the cottage.</div>'
-      . '<p style="font-size:13px;color:#777;line-height:1.6;margin:22px 0 4px;">We look forward to welcoming you.</p>'
-      . '<p style="font-size:13px;color:#777;margin:0 0 6px;">Cottage Holidays Blakeney</p>'
-      . '</td></tr></table></td></tr></table></body></html>';
+    $inner = email_h($prop, $accent)
+      . email_p('Hello ' . htmlspecialchars($name, ENT_QUOTES, 'UTF-8') . ', your stay begins on <strong style="color:#f4f5f7;">' . $inDate . '</strong>. Check-in is from <strong style="color:#f4f5f7;">' . htmlspecialchars($time, ENT_QUOTES, 'UTF-8') . '</strong>.')
+      . ($addrHtml !== '' ? email_rows([['Address', $addrHtml]]) : '')
+      . email_note('When you arrive, log in to your account on our website and open <strong style="color:#f4f5f7;">My Bookings</strong> to reveal your entry details for the cottage.', $accent)
+      . email_p('We look forward to welcoming you.<br>Cottage Holidays Blakeney', true);
+    $html = email_shell('Arrival information for your stay at ' . $prop, $inner, $accent);
 
     return smtp_send($b['email'], $name, $subject, $text, $html);
 }
@@ -444,28 +500,13 @@ function send_payment_request($b, $payUrl) {
           . "The full stay total is " . $money($b['total']) . ". You can reply to this email with any questions.\n\n"
           . "Cottage Holidays Blakeney";
 
-    $html = '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f4f4f6;">'
-      . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f6;padding:24px 0;"><tr><td align="center">'
-      . '<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">'
-      . email_crown_header('#ffffff')
-      . '<tr><td style="padding:26px 30px 8px;">'
-      . '<table role="presentation" cellpadding="0" cellspacing="0"><tr>'
-      . '<td style="width:12px;height:12px;background:' . $accent . ';border-radius:3px;"></td>'
-      . '<td style="padding-left:10px;font-size:18px;font-weight:bold;color:#1a1a1a;">' . $esc($prop) . '</td>'
-      . '</tr></table>'
-      . '<p style="font-size:14px;color:#333;line-height:1.6;margin:18px 0 0;">Hello ' . $esc($name) . ',</p>'
-      . '<p style="font-size:14px;color:#333;line-height:1.6;margin:10px 0 0;">Thank you for booking <strong>' . $esc($prop) . '</strong> (' . $esc($b['check_in']) . ' to ' . $esc($b['check_out']) . ').</p>'
-      . '<div style="margin:20px 0;padding:18px;background:#f3f4f8;border:1px solid #e6e8f0;border-radius:12px;text-align:center;">'
-      . '<div style="font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#8a8e9c;">' . ucfirst($what) . ' due</div>'
-      . '<div style="font-size:30px;font-weight:700;color:#1c1e26;padding:6px 0 2px;">' . $money($b['amount']) . '</div>'
-      . '<div style="font-size:12px;color:#8a8e9c;">of ' . $money($b['total']) . ' total</div></div>'
-      . '<table role="presentation" cellpadding="0" cellspacing="0" width="100%"><tr><td align="center">'
-      . '<a href="' . $esc($payUrl) . '" style="display:inline-block;background:' . $accent . ';color:#ffffff;text-decoration:none;font-size:16px;font-weight:700;padding:14px 38px;border-radius:12px;">Pay securely by card</a>'
-      . '</td></tr></table>'
-      . '<p style="font-size:12px;color:#999;line-height:1.6;margin:18px 0 0;text-align:center;">Powered by Square. We never see or store your card number.</p>'
-      . '<p style="font-size:13px;color:#777;line-height:1.6;margin:22px 0 4px;">Any questions? Just reply to this email.</p>'
-      . '<p style="font-size:13px;color:#777;margin:0 0 6px;">Cottage Holidays Blakeney</p>'
-      . '</td></tr></table></td></tr></table></body></html>';
+    $inner = email_h($prop, $accent)
+      . email_p('Hello ' . $esc($name) . ', thank you for booking <strong style="color:#f4f5f7;">' . $esc($prop) . '</strong> (' . $esc($b['check_in']) . ' to ' . $esc($b['check_out']) . ').')
+      . email_amount(ucfirst($what) . ' due', $money($b['amount']), 'of ' . $money($b['total']) . ' total')
+      . email_btn($payUrl, 'Pay securely by card')
+      . email_p('Powered by Square — we never see or store your card number.', true)
+      . email_p('Any questions? Just reply to this email.<br>Cottage Holidays Blakeney', true);
+    $html = email_shell('Pay your ' . $what . ' for ' . $prop, $inner, $accent);
 
     return smtp_send($b['email'], $name, $subject, $text, $html);
 }
@@ -513,22 +554,13 @@ function send_payment_reminder($b, $payUrl) {
           . "If you've already paid, thank you — please ignore this. Any questions, just reply.\n\n"
           . "Cottage Holidays Blakeney";
 
-    $html = '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f4f4f6;">'
-      . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f6;padding:24px 0;"><tr><td align="center">'
-      . '<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">'
-      . email_crown_header('#ffffff')
-      . '<tr><td style="padding:26px 30px 8px;">'
-      . '<p style="font-size:14px;color:#333;line-height:1.6;margin:0;">Hello ' . $esc($name) . ',</p>'
-      . '<p style="font-size:14px;color:#333;line-height:1.6;margin:10px 0 0;">A friendly reminder that the balance for your stay at <strong>' . $esc($prop) . '</strong> is still outstanding, and your arrival is <strong>' . $esc($when) . '</strong> (' . $esc($b['check_in']) . ').</p>'
-      . '<div style="margin:20px 0;padding:18px;background:#f3f4f8;border:1px solid #e6e8f0;border-radius:12px;text-align:center;">'
-      . '<div style="font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#8a8e9c;">Balance due</div>'
-      . '<div style="font-size:30px;font-weight:700;color:#1c1e26;padding:6px 0 2px;">' . $money($b['amount']) . '</div></div>'
-      . '<table role="presentation" cellpadding="0" cellspacing="0" width="100%"><tr><td align="center">'
-      . '<a href="' . $esc($payUrl) . '" style="display:inline-block;background:' . $accent . ';color:#ffffff;text-decoration:none;font-size:16px;font-weight:700;padding:14px 38px;border-radius:12px;">Pay securely by card</a>'
-      . '</td></tr></table>'
-      . '<p style="font-size:12px;color:#999;line-height:1.6;margin:18px 0 0;text-align:center;">Already paid? Thank you — please ignore this. Powered by Square.</p>'
-      . '<p style="font-size:13px;color:#777;margin:22px 0 6px;">Cottage Holidays Blakeney</p>'
-      . '</td></tr></table></td></tr></table></body></html>';
+    $inner = email_h($prop, $accent)
+      . email_p('Hello ' . $esc($name) . ', a friendly reminder that the balance for your stay at <strong style="color:#f4f5f7;">' . $esc($prop) . '</strong> is still outstanding, and your arrival is <strong style="color:#f4f5f7;">' . $esc($when) . '</strong> (' . $esc($b['check_in']) . ').')
+      . email_amount('Balance due', $money($b['amount']))
+      . email_btn($payUrl, 'Pay securely by card')
+      . email_p('Already paid? Thank you — please ignore this. Powered by Square.', true)
+      . email_p('Cottage Holidays Blakeney', true);
+    $html = email_shell('Balance reminder for ' . $prop, $inner, $accent);
 
     return smtp_send($b['email'], $name, $subject, $text, $html);
 }
@@ -554,22 +586,13 @@ function send_refund_email($b) {
           . "to appear, depending on your bank.\n\n"
           . "Any questions, just reply to this email.\n\nCottage Holidays Blakeney";
 
-    $html = '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f4f4f6;">'
-      . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f6;padding:24px 0;"><tr><td align="center">'
-      . '<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">'
-      . email_crown_header('#ffffff')
-      . '<tr><td style="padding:26px 30px 18px;">'
-      . '<p style="font-size:14px;color:#333;line-height:1.6;margin:0;">Hello ' . $esc($name) . ',</p>'
-      . '<p style="font-size:14px;color:#333;line-height:1.6;margin:10px 0 0;">We\'ve issued a refund for your booking at <strong>' . $esc($prop) . '</strong>'
-      . (!empty($b['check_in']) ? ' (' . $esc($b['check_in']) . ' to ' . $esc($b['check_out']) . ')' : '') . '.</p>'
-      . '<div style="margin:20px 0;padding:18px;background:#f3f4f8;border:1px solid #e6e8f0;border-radius:12px;text-align:center;">'
-      . '<div style="font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#8a8e9c;">Refund</div>'
-      . '<div style="font-size:30px;font-weight:700;color:' . $accent . ';padding:6px 0 2px;">' . $money($b['amount']) . '</div></div>'
-      . ($reason !== '' ? '<p style="font-size:13px;color:#555;line-height:1.6;margin:0 0 10px;"><strong>Reason:</strong> ' . $esc($reason) . '</p>' : '')
-      . '<p style="font-size:13px;color:#555;line-height:1.6;margin:0;">It\'s on its way back to the card you paid with. Refunds usually take a few working days to appear, depending on your bank.</p>'
-      . '<p style="font-size:13px;color:#777;line-height:1.6;margin:22px 0 4px;">Any questions? Just reply to this email.</p>'
-      . '<p style="font-size:13px;color:#777;margin:0 0 6px;">Cottage Holidays Blakeney</p>'
-      . '</td></tr></table></td></tr></table></body></html>';
+    $inner = email_h('Refund on its way', $accent)
+      . email_p('Hello ' . $esc($name) . ', we\'ve issued a refund for your booking at <strong style="color:#f4f5f7;">' . $esc($prop) . '</strong>' . (!empty($b['check_in']) ? ' (' . $esc($b['check_in']) . ' to ' . $esc($b['check_out']) . ')' : '') . '.')
+      . email_amount('Refund', $money($b['amount']), '', '#D6A785')
+      . ($reason !== '' ? email_note('<strong style="color:#f4f5f7;">Reason:</strong> ' . $esc($reason), $accent) : '')
+      . email_p('It\'s on its way back to the card you paid with. Refunds usually take a few working days to appear, depending on your bank.', true)
+      . email_p('Any questions? Just reply to this email.<br>Cottage Holidays Blakeney', true);
+    $html = email_shell('Refund on its way — ' . $prop, $inner, $accent);
 
     return smtp_send($b['email'], $name, $subject, $text, $html);
 }
@@ -597,20 +620,13 @@ function send_deposit_return_email($b) {
           . "\nRefunds usually take a few working days to appear, depending on your bank.\n\n"
           . "We hope to welcome you back.\n\nCottage Holidays Blakeney";
 
-    $html = '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f4f4f6;">'
-      . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f6;padding:24px 0;"><tr><td align="center">'
-      . '<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">'
-      . email_crown_header('#ffffff')
-      . '<tr><td style="padding:26px 30px 18px;">'
-      . '<p style="font-size:14px;color:#333;line-height:1.6;margin:0;">Hello ' . $esc($name) . ',</p>'
-      . '<p style="font-size:14px;color:#333;line-height:1.6;margin:10px 0 0;">Thank you for staying at <strong>' . $esc($prop) . '</strong>. We\'re returning your refundable damage deposit.</p>'
-      . '<div style="margin:20px 0;padding:18px;background:#f3f4f8;border:1px solid #e6e8f0;border-radius:12px;text-align:center;">'
-      . '<div style="font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#8a8e9c;">Deposit returned</div>'
-      . '<div style="font-size:30px;font-weight:700;color:' . $accent . ';padding:6px 0 2px;">' . $money($b['amount']) . '</div></div>'
-      . ($retained > 0.001 ? '<p style="font-size:13px;color:#555;line-height:1.6;margin:0 0 10px;"><strong>Amount retained:</strong> ' . $money($retained) . ($reason !== '' ? ' — ' . $esc($reason) : '') . '</p>' : '')
-      . '<p style="font-size:13px;color:#555;line-height:1.6;margin:0;">It\'s on its way ' . $esc($how) . '. Refunds usually take a few working days to appear, depending on your bank.</p>'
-      . '<p style="font-size:13px;color:#777;margin:22px 0 6px;">We hope to welcome you back.<br>Cottage Holidays Blakeney</p>'
-      . '</td></tr></table></td></tr></table></body></html>';
+    $inner = email_h('Your damage deposit', $accent)
+      . email_p('Hello ' . $esc($name) . ', thank you for staying at <strong style="color:#f4f5f7;">' . $esc($prop) . '</strong>. We\'re returning your refundable damage deposit.')
+      . email_amount('Deposit returned', $money($b['amount']), '', '#D6A785')
+      . ($retained > 0.001 ? email_note('<strong style="color:#f4f5f7;">Amount retained:</strong> ' . $money($retained) . ($reason !== '' ? ' — ' . $esc($reason) : ''), $accent) : '')
+      . email_p('It\'s on its way ' . $esc($how) . '. Refunds usually take a few working days to appear, depending on your bank.', true)
+      . email_p('We hope to welcome you back.<br>Cottage Holidays Blakeney', true);
+    $html = email_shell('Your damage deposit — ' . $prop, $inner, $accent);
 
     return smtp_send($b['email'], $name, $subject, $text, $html);
 }
@@ -637,19 +653,12 @@ function send_cancellation_email($b) {
           . ($refundLine !== '' ? $refundLine . "\n\n" : "")
           . "If you have any questions, just reply to this email.\n\nCottage Holidays Blakeney";
 
-    $html = '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f4f4f6;">'
-      . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f6;padding:24px 0;"><tr><td align="center">'
-      . '<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">'
-      . email_crown_header('#ffffff')
-      . '<tr><td style="padding:26px 30px 18px;">'
-      . '<p style="font-size:14px;color:#333;line-height:1.6;margin:0;">Hello ' . $esc($name) . ',</p>'
-      . '<p style="font-size:14px;color:#333;line-height:1.6;margin:10px 0 0;">Your booking at <strong>' . $esc($prop) . '</strong>'
-      . (!empty($b['check_in']) ? ' (' . $esc($b['check_in']) . ' to ' . $esc($b['check_out']) . ')' : '') . ' has been cancelled.</p>'
-      . ($reason !== '' ? '<p style="font-size:13px;color:#555;line-height:1.6;margin:12px 0 0;"><strong>Reason:</strong> ' . $esc($reason) . '</p>' : '')
-      . ($refundLine !== '' ? '<div style="margin:18px 0;padding:14px 18px;background:#f3f4f8;border-radius:10px;font-size:14px;color:#333;">' . $esc($refundLine) . '</div>' : '')
-      . '<p style="font-size:13px;color:#777;line-height:1.6;margin:18px 0 4px;">Any questions? Just reply to this email.</p>'
-      . '<p style="font-size:13px;color:#777;margin:0 0 6px;">Cottage Holidays Blakeney</p>'
-      . '</td></tr></table></td></tr></table></body></html>';
+    $inner = email_h('Booking cancelled')
+      . email_p('Hello ' . $esc($name) . ', your booking at <strong style="color:#f4f5f7;">' . $esc($prop) . '</strong>' . (!empty($b['check_in']) ? ' (' . $esc($b['check_in']) . ' to ' . $esc($b['check_out']) . ')' : '') . ' has been cancelled.')
+      . ($reason !== '' ? email_p('<strong style="color:#f4f5f7;">Reason:</strong> ' . $esc($reason), true) : '')
+      . ($refundLine !== '' ? email_note($esc($refundLine)) : '')
+      . email_p('If you have any questions, just reply to this email.<br>Cottage Holidays Blakeney', true);
+    $html = email_shell('Booking cancelled — ' . $prop, $inner);
 
     return smtp_send($b['email'], $name, $subject, $text, $html);
 }
@@ -672,19 +681,15 @@ function send_payment_receipt($b) {
           . "Paid so far: " . $money($b['paid_so_far']) . " of " . $money($b['total']) . ".\n"
           . $statusLine . "\n\n"
           . "Cottage Holidays Blakeney";
-    $html = '<!DOCTYPE html><html><body style="margin:0;padding:0;background:#f4f4f6;">'
-      . '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f6;padding:24px 0;"><tr><td align="center">'
-      . '<table role="presentation" width="560" cellpadding="0" cellspacing="0" style="max-width:560px;width:100%;background:#ffffff;border-radius:14px;overflow:hidden;font-family:Arial,Helvetica,sans-serif;">'
-      . email_crown_header('#ffffff')
-      . '<tr><td style="padding:26px 30px 18px;">'
-      . '<p style="font-size:14px;color:#333;line-height:1.6;margin:0;">Hello ' . $esc($name) . ',</p>'
-      . '<p style="font-size:14px;color:#333;line-height:1.6;margin:10px 0 0;">Thank you — we\'ve received your ' . $what . ' payment of <strong>' . $money($b['amount']) . '</strong> for <strong>' . $esc($prop) . '</strong>.</p>'
-      . '<div style="margin:16px 0;padding:14px 18px;background:#f3f4f8;border-radius:10px;font-size:13px;color:#444;line-height:1.8;">'
-      . 'Reference: <strong>' . $esc($b['ref']) . '</strong><br>'
-      . 'Paid so far: <strong>' . $money($b['paid_so_far']) . '</strong> of ' . $money($b['total']) . '</div>'
-      . '<p style="font-size:13px;color:#555;line-height:1.6;margin:0;">' . $esc($statusLine) . '</p>'
-      . '<p style="font-size:13px;color:#777;margin:22px 0 0;">Cottage Holidays Blakeney</p>'
-      . '</td></tr></table></td></tr></table></body></html>';
+    $inner = email_h('Payment received')
+      . email_p('Hello ' . $esc($name) . ', thank you — we\'ve received your ' . $what . ' payment of <strong style="color:#f4f5f7;">' . $money($b['amount']) . '</strong> for <strong style="color:#f4f5f7;">' . $esc($prop) . '</strong>.')
+      . email_rows([
+          ['Reference', $esc($b['ref'])],
+          ['Paid so far', $money($b['paid_so_far']) . ' of ' . $money($b['total'])],
+      ])
+      . email_p($esc($statusLine), true)
+      . email_p('Cottage Holidays Blakeney', true);
+    $html = email_shell('Payment received — ' . $prop, $inner);
 
     return smtp_send($b['email'], $name, $subject, $text, $html);
 }
