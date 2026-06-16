@@ -112,10 +112,22 @@ if ($action === 'charge') {
     // Reconcile: record the ledger row (idempotent on square_payment_id) and move
     // the booking's headline payment state forward.
     $sqId = (string)$payment['id'];
+    // The processing fee is usually computed later (back-filled by the webhook),
+    // but record it now if Square already returned it.
+    $fee = null;
+    if (!empty($payment['processing_fee']) && is_array($payment['processing_fee'])) {
+        $cents = 0;
+        foreach ($payment['processing_fee'] as $pf) { $cents += (int)($pf['amount_money']['amount'] ?? 0); }
+        $fee = round($cents / 100, 2);
+    }
     try {
         db()->prepare('INSERT IGNORE INTO payments (booking_id, square_payment_id, kind, amount, status, guest_name, prop_key, created_at)
                        VALUES (?,?,?,?,?,?,?,NOW())')
             ->execute([$bookingId, $sqId, $kind, $amountDue, $payment['status'], $b['name'], $b['prop_key']]);
+        if ($fee !== null) {
+            try { db()->prepare('UPDATE payments SET fee = ? WHERE square_payment_id = ?')->execute([$fee, $sqId]); }
+            catch (\Throwable $eFee) { /* fee column not migrated yet — ignore */ }
+        }
     } catch (\Throwable $e) { /* table missing — booking update below still applies */ }
 
     $newPaid = round(min($total, $nowPaid + $amountDue), 2);
