@@ -128,6 +128,12 @@ body.guest-app:not(.owner-mode).guest-signed-in .gt-stays { display: inline-flex
 body.guest-app:not(.owner-mode) { padding-bottom: calc(98px + env(safe-area-inset-bottom, 0px)); }
 body.guest-app:not(.owner-mode) .site-footer { padding-bottom: calc(106px + env(safe-area-inset-bottom, 0px)); }
 
+/* On mobile the footer is pared back to just the dark/light toggle, the
+   "Made by George" credit, and the build number — nothing else. */
+body.guest-app:not(.owner-mode) #footer-newsletter,
+body.guest-app:not(.owner-mode) .footer-nap,
+body.guest-app:not(.owner-mode) .footer-legal { display: none; }
+
 /* The header account pill is gone; the messages bubble now lives in the dock as
    the leftmost button, so hide the floating chat FAB here. The cottage page's
    sticky book bar sits just ABOVE the floating dock. */
