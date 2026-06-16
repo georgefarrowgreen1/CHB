@@ -1471,6 +1471,19 @@
         .hub-tile .ic { width: 22px; height: 22px; }
         .hub-tile:hover { background: rgba(255,255,255,0.09); border-color: var(--accent-soft, var(--glass-border)); }
         .hub-tile:active { transform: scale(0.94); }
+        /* Experiences tab (local things to do) */
+        .exp-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
+        .exp-chip { background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--text-muted); border-radius: 999px; padding: 7px 14px; font-family: var(--font-sans); font-size: 0.78rem; font-weight: 600; cursor: pointer; -webkit-tap-highlight-color: transparent; transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease; }
+        .exp-chip.is-on { background: var(--text-light); color: var(--dark-grey); border-color: var(--text-light); }
+        .exp-card { position: relative; padding: 0; overflow: hidden; display: flex; flex-direction: column; }
+        .exp-card .card-img { height: clamp(150px, 26vw, 200px); margin: 0; border-radius: 0; }
+        .exp-card .exp-noimg { background: linear-gradient(135deg, rgba(214,167,133,0.25), rgba(255,255,255,0.04)); }
+        .exp-card .card-title { margin: 14px 18px 0; }
+        .exp-body { margin: 8px 18px 0; font-size: 0.9rem; color: var(--text-muted); line-height: 1.5; white-space: pre-line; }
+        .exp-cat-tag { position: absolute; top: 12px; left: 12px; background: rgba(18,19,22,0.78); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: var(--text-light); font-size: 0.66rem; font-weight: 600; letter-spacing: 0.3px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--glass-border); }
+        .exp-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 18px 18px; }
+        .exp-suggest { margin-top: 24px; padding: 22px 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+        .exp-edit-thumb { width: 64px; height: 64px; flex-shrink: 0; border-radius: 12px; background-size: cover; background-position: center; background-color: rgba(255,255,255,0.06); border: 1px solid var(--glass-border); }
         .guest-booking { padding: 0; margin-bottom: 25px; overflow: hidden; border-radius: 22px; }
         .guest-booking-head { display: flex; gap: 22px; align-items: stretch; flex-wrap: wrap; }
         .guest-booking-img { width: 220px; min-height: 180px; background-size: cover; background-position: center; flex-shrink: 0; }
@@ -2289,6 +2302,49 @@
         </div>
     </main>
 
+    <!-- ================= EXPERIENCES (local things to do; owner-curated + guest suggestions) ================= -->
+    <main id="view-experiences" class="page-view container">
+        <span class="back-link" onclick="nav('view-main')">← Back to Home</span>
+        <h1 class="section-title" style="text-align:left;margin:6px 0 4px;">Experiences</h1>
+        <p class="lead" style="text-align:left;margin:0 0 16px;">Hand-picked things to do around Blakeney &amp; the North Norfolk coast.</p>
+        <div id="exp-filters" class="exp-filters"></div>
+        <div id="exp-grid" class="grid grid-3" style="margin-top:18px;"></div>
+        <div id="exp-empty" class="glass-panel" style="display:none;padding:32px;text-align:center;">
+            <p style="font-size:1.15rem;font-weight:600;margin:0 0 6px;">Experiences coming soon</p>
+            <p style="font-size:0.9rem;color:var(--text-muted);margin:0;">We're putting together our favourite local spots. Know a great one? Suggest it below.</p>
+        </div>
+        <div class="exp-suggest glass-panel">
+            <div>
+                <h3 style="font-family:var(--font-serif);font-size:1.2rem;margin:0 0 4px;">Know a great local spot?</h3>
+                <p style="font-size:0.85rem;color:var(--text-muted);margin:0;">Suggest an experience and we'll review it.</p>
+            </div>
+            <button class="btn-glass" style="width:auto;padding:13px 22px;" onclick="openExperienceSuggest()">Suggest an experience</button>
+        </div>
+    </main>
+
+    <!-- Suggest-an-experience form (guest) -->
+    <div id="exp-suggest-modal" class="modal-overlay pop-modal" onclick="if(event.target===this) closeExperienceSuggest()">
+        <div class="modal-box glass-panel" style="max-width:480px;">
+            <div style="display:flex;justify-content:flex-end;margin:-6px -6px 4px 0;">
+                <button class="reviews-modal-close" onclick="closeExperienceSuggest()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+            </div>
+            <h2 class="section-title" style="font-size:1.5rem;margin:0 0 6px;">Suggest an experience</h2>
+            <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:16px;">Tell us about a local spot you loved — we'll review it before it appears.</p>
+            <label class="modal-label" for="exp-s-title">Name</label>
+            <input type="text" class="input-glass" id="exp-s-title" placeholder="e.g. Beans Boat Trips — seal watching">
+            <label class="modal-label" for="exp-s-cat">Category</label>
+            <select class="input-glass" id="exp-s-cat"></select>
+            <label class="modal-label" for="exp-s-body">Description</label>
+            <textarea class="input-glass" id="exp-s-body" rows="3" placeholder="What is it, and why's it great?" style="resize:vertical;"></textarea>
+            <label class="modal-label" for="exp-s-link">Website (optional)</label>
+            <input type="text" class="input-glass" id="exp-s-link" inputmode="url" autocapitalize="off" placeholder="https://…">
+            <label class="modal-label" for="exp-s-phone">Phone (optional)</label>
+            <input type="tel" class="input-glass" id="exp-s-phone" inputmode="tel" placeholder="Contact number">
+            <div id="exp-s-msg" style="font-size:0.8rem;margin:4px 0 10px;display:none;"></div>
+            <button class="btn-glass" style="width:100%;padding:14px;" onclick="submitExperienceSuggestion()">Send suggestion</button>
+        </div>
+    </div>
+
     <!-- ================= PROPERTY DETAIL VIEW (template, populated per cottage) ================= -->
     <main id="view-21a" class="page-view container">
         <span class="back-link" onclick="nav('view-cottages')">← Back to Cottages</span>
@@ -2704,6 +2760,10 @@
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Newsletter</span><span class="settings-row-sub">Mailing list &amp; seasonal broadcasts</span></span><span class="settings-row-chev">›</span>
                 </button>
+                <button class="settings-row" onclick="settingsOpen('experiences')">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15.6 8.4l-2.1 5.1-5.1 2.1 2.1-5.1z"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Experiences <span id="exp-pending-badge" style="display:none;background:#E5533C;color:#fff;font-size:0.62rem;font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:middle;"></span></span><span class="settings-row-sub">Local things to do &amp; guest suggestions</span></span><span class="settings-row-chev">›</span>
+                </button>
                 <button class="settings-row" onclick="settingsOpen('apis')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 13.5l-5.3 5.3a2 2 0 0 1-2.8-2.8l5.3-5.3"/><circle cx="15.5" cy="8.5" r="5"/><path d="M13.5 10.5l1.5 1.5"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">API keys</span><span class="settings-row-sub">Tide data &amp; other integrations</span></span><span class="settings-row-chev">›</span>
@@ -2752,6 +2812,12 @@
             <!-- Notifications (owner push) -->
             <div class="settings-sec" id="sec-notify" style="display:none;">
                 <div id="notify-body"></div>
+            </div>
+
+            <!-- Experiences (local things to do + guest suggestions) -->
+            <div class="settings-sec" id="sec-experiences" style="display:none;">
+                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 16px;">Local things to do, shown to signed-in guests on the Experiences tab. Add your own, reorder them, and review guest suggestions.</p>
+                <div id="exp-admin"><!-- JS injects pending suggestions + the editable list here --></div>
             </div>
 
             <!-- API keys / integrations -->
@@ -3997,6 +4063,7 @@
                 clearChangeoverToasts();   // toasts are a back-office aid only
             }
             if (viewId === 'view-settings') { try { renderSquareSettings(); } catch (e) {} }
+            if (viewId === 'view-experiences') { try { renderExperiencesView(); } catch (e) {} }
 
             // First-party analytics: count customer-facing page views (skips owner).
             if (CUSTOMER_FACING_VIEWS.includes(viewId)) {
@@ -4534,7 +4601,7 @@
         }
 
         // ---- Settings router: Apple-style index → drill-down sub-pages ----
-        const SETTINGS_TITLES = { enquiries: 'Enquiries', messages: 'Guest messages', notify: 'Notifications', host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Preferences', calendar: 'Calendar', cancel: 'Cancellation policy', payments: 'Payments', guests: 'Guest accounts', analytics: 'Analytics', waitlist: 'Waitlist', newsletter: 'Newsletter', photos: 'Guest photos', apis: 'API keys', diagnostics: 'System check' };
+        const SETTINGS_TITLES = { enquiries: 'Enquiries', messages: 'Guest messages', notify: 'Notifications', host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Preferences', calendar: 'Calendar', cancel: 'Cancellation policy', payments: 'Payments', guests: 'Guest accounts', analytics: 'Analytics', waitlist: 'Waitlist', newsletter: 'Newsletter', experiences: 'Experiences', photos: 'Guest photos', apis: 'API keys', diagnostics: 'System check' };
         let settingsBackTarget = null;
         // The full Settings drill-down path, so the auto-update reload can restore the
         // exact folder/sub-folder the owner was in: { section, prop, accomSec }.
@@ -4567,6 +4634,7 @@
             else if (section === 'analytics') loadAnalytics();
             else if (section === 'waitlist') loadWaitlist();
             else if (section === 'newsletter') loadNewsletter();
+            else if (section === 'experiences') loadExperiencesAdmin();
             else if (section === 'diagnostics') loadDiagnostics();
             else if (section === 'apis') renderApis();
             else if (section === 'security') loadAdminPasskeys();
@@ -9331,6 +9399,7 @@
             await loadData();
             renderCalendar();
             renderInbox();
+            try { refreshExpPendingBadge(); } catch (e) {}   // pending experience suggestions count
             try { await loadDepositReturns(); } catch (e) {}   // for the deposits-to-return line
             try { renderTodayPanel(); } catch (e) {}
             const sb = document.getElementById('booking-search'); if (sb) { sb.value = ''; bookingSearch(''); }
@@ -12976,12 +13045,207 @@
             closeDetailsModal();
         }
 
+        // ============================================================
+        //  EXPERIENCES — local things to do (owner-curated + guest suggestions).
+        //  Guest page (view-experiences) + a "suggest" form; admin curation +
+        //  moderation lives in Settings -> Experiences. Backend: experiences.php.
+        // ============================================================
+        const EXPERIENCE_CATEGORIES = ['Beaches & coast', 'Walks & nature', 'Boat trips & wildlife', 'Food & drink', 'Family & kids', 'Days out & attractions', 'Local shops & markets'];
+        let __experiences = [];     // published list (guest view)
+        let __expFilter = 'all';
+
+        async function renderExperiencesView() {
+            const grid = document.getElementById('exp-grid');
+            const empty = document.getElementById('exp-empty');
+            const filters = document.getElementById('exp-filters');
+            if (!grid) return;
+            try { const res = await apiGet('experiences.php'); __experiences = (res && res.experiences) || []; }
+            catch (e) { __experiences = []; }
+            if (!__experiences.length) {
+                grid.innerHTML = ''; if (filters) filters.innerHTML = '';
+                if (empty) empty.style.display = 'block';
+                return;
+            }
+            if (empty) empty.style.display = 'none';
+            if (__expFilter !== 'all' && !__experiences.some(x => x.category === __expFilter)) __expFilter = 'all';
+            expBuildFilters();
+            expRenderCards();
+        }
+        function expBuildFilters() {
+            const filters = document.getElementById('exp-filters'); if (!filters) return;
+            const present = EXPERIENCE_CATEGORIES.filter(c => __experiences.some(x => x.category === c));
+            if (present.length < 2) { filters.innerHTML = ''; return; }
+            filters.innerHTML = ['all'].concat(present).map(c => {
+                const on = __expFilter === c ? ' is-on' : '';
+                return `<button type="button" class="exp-chip${on}" data-cat="${escapeHtml(c)}">${c === 'all' ? 'All' : escapeHtml(c)}</button>`;
+            }).join('');
+            filters.querySelectorAll('.exp-chip').forEach(b => b.addEventListener('click', () => {
+                __expFilter = b.dataset.cat; expBuildFilters(); expRenderCards();
+            }));
+        }
+        function expRenderCards() {
+            const grid = document.getElementById('exp-grid'); if (!grid) return;
+            const list = __expFilter === 'all' ? __experiences : __experiences.filter(x => x.category === __expFilter);
+            grid.innerHTML = list.map(expCardHtml).join('');
+        }
+        function expCardHtml(x) {
+            const img = x.image
+                ? `<div class="card-img" style="background-image:url('${escapeHtml(x.image)}');"></div>`
+                : `<div class="card-img exp-noimg"></div>`;
+            const cat = x.category ? `<div class="exp-cat-tag">${escapeHtml(x.category)}</div>` : '';
+            const link = x.linkUrl
+                ? `<a class="btn-sm btn-edit" href="${escapeHtml(x.linkUrl)}" target="_blank" rel="noopener noreferrer"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M10 5H5v14h14v-5"/></svg> ${escapeHtml(x.linkLabel || 'Find out more')}</a>`
+                : '';
+            const phone = x.phone
+                ? `<a class="btn-sm btn-edit" href="tel:${escapeHtml(String(x.phone).replace(/\s+/g, ''))}"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.6 3.5l2.1.4 1 3-1.5 1.4a12 12 0 0 0 5 5l1.4-1.5 3 1 .4 2.1a2 2 0 0 1-2 2.3A15.5 15.5 0 0 1 4.3 5.5a2 2 0 0 1 2.3-2z"/></svg> Call</a>`
+                : '';
+            const actions = (link || phone) ? `<div class="exp-actions">${link}${phone}</div>` : '';
+            return `<div class="card glass-panel exp-card">${img}${cat}<div class="card-title">${escapeHtml(x.title)}</div><p class="exp-body">${escapeHtml(x.body)}</p>${actions}</div>`;
+        }
+
+        // ---- Guest: suggest an experience ----
+        function openExperienceSuggest() {
+            if (!currentGuest) { openGuestArea(); return; }   // sign-in first
+            const sel = document.getElementById('exp-s-cat');
+            if (sel) sel.innerHTML = '<option value="">— Choose a category —</option>' + EXPERIENCE_CATEGORIES.map(c => `<option value="${escapeHtml(c)}">${escapeHtml(c)}</option>`).join('');
+            ['exp-s-title', 'exp-s-body', 'exp-s-link', 'exp-s-phone'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+            const msg = document.getElementById('exp-s-msg'); if (msg) msg.style.display = 'none';
+            const m = document.getElementById('exp-suggest-modal'); if (m) { m.classList.remove('closing'); m.classList.add('open'); }
+        }
+        function closeExperienceSuggest() {
+            const m = document.getElementById('exp-suggest-modal'); if (!m || !m.classList.contains('open')) return;
+            m.classList.add('closing'); setTimeout(() => m.classList.remove('open', 'closing'), 350);
+        }
+        async function submitExperienceSuggestion() {
+            const g = id => (document.getElementById(id) ? document.getElementById(id).value : '');
+            const title = g('exp-s-title').trim(), body = g('exp-s-body').trim();
+            const category = g('exp-s-cat'), link_url = g('exp-s-link').trim(), phone = g('exp-s-phone').trim();
+            const msg = document.getElementById('exp-s-msg');
+            const show = (t, ok) => { if (msg) { msg.textContent = t; msg.style.color = ok ? '#4CAF50' : '#E53935'; msg.style.display = 'block'; } };
+            if (title.length < 3) { show('Please add a name.', false); return; }
+            if (body.length < 10) { show('Please add a short description.', false); return; }
+            try {
+                await apiPost('experiences.php', { action: 'suggest', title, body, category, link_url, phone });
+                show("Thanks! We'll review your suggestion.", true);
+                setTimeout(closeExperienceSuggest, 1400);
+            } catch (e) { show(e.message || 'Could not send — please try again.', false); }
+        }
+
+        // ---- Admin: curate + moderate (Settings -> Experiences) ----
+        let __expAdmin = [];
+        async function refreshExpPendingBadge(known) {
+            const badge = document.getElementById('exp-pending-badge'); if (!badge) return;
+            let n = known;
+            if (n === undefined) {
+                try { const r = await apiPost('experiences.php', { action: 'list_admin' }); n = (r.experiences || []).filter(x => x.status === 'pending').length; }
+                catch (e) { n = 0; }
+            }
+            if (n > 0) { badge.textContent = n; badge.style.display = ''; } else { badge.style.display = 'none'; }
+        }
+        async function loadExperiencesAdmin() {
+            const wrap = document.getElementById('exp-admin'); if (!wrap) return;
+            wrap.innerHTML = '<p style="color:var(--text-muted);font-size:0.9rem;">Loading…</p>';
+            let rows = [];
+            try { const r = await apiPost('experiences.php', { action: 'list_admin' }); rows = r.experiences || []; }
+            catch (e) { wrap.innerHTML = `<p style="color:#E57373;font-size:0.9rem;">${escapeHtml(e.message || 'Could not load — has migrate.php been run?')}</p>`; return; }
+            __expAdmin = rows;
+            const pending = rows.filter(r => r.status === 'pending');
+            const published = rows.filter(r => r.status === 'published');
+            let html = '';
+            if (pending.length) {
+                html += `<h3 style="font-family:var(--font-serif);font-size:1.15rem;margin:0 0 10px;">Suggestions to review (${pending.length})</h3>`;
+                html += pending.map(expPendingHtml).join('');
+                html += `<div class="prop-divider" style="margin:22px 0;"></div>`;
+            }
+            html += `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 12px;"><h3 style="font-family:var(--font-serif);font-size:1.15rem;margin:0;">Published (${published.length})</h3><button class="btn-sm btn-edit" onclick="expAddNew()">＋ Add experience</button></div>`;
+            html += `<div id="exp-admin-list">` + (published.length ? published.map(expEditHtml).join('') : `<p style="color:var(--text-muted);font-size:0.88rem;">None yet — add your first experience.</p>`) + `</div>`;
+            wrap.innerHTML = html;
+            refreshExpPendingBadge(pending.length);
+        }
+        function expPendingHtml(r) {
+            return `<div class="glass-panel" style="padding:14px 16px;margin-bottom:10px;border:1px solid var(--accent-soft, var(--glass-border));">
+                <div style="font-weight:600;">${escapeHtml(r.title)}${r.category ? ` <span style="font-size:0.7rem;color:var(--text-muted);">· ${escapeHtml(r.category)}</span>` : ''}</div>
+                <div style="font-size:0.84rem;color:var(--text-muted);margin:6px 0;white-space:pre-line;">${escapeHtml(r.body)}</div>
+                <div style="font-size:0.74rem;color:var(--text-muted);">Suggested by ${escapeHtml(r.suggested_by_name || 'a guest')}${r.link_url ? ` · <a href="${escapeHtml(r.link_url)}" target="_blank" rel="noopener" style="color:var(--text-muted);text-decoration:underline;">link</a>` : ''}${r.phone ? ' · ' + escapeHtml(r.phone) : ''}</div>
+                <div style="display:flex;gap:8px;margin-top:10px;">
+                    <button class="btn-sm btn-edit" style="background:rgba(76,175,80,0.22);border-color:var(--booked-border);" onclick="expApprove(${r.id})">Approve &amp; publish</button>
+                    <button class="btn-sm btn-delete" onclick="expReject(${r.id})">Reject</button>
+                </div>
+            </div>`;
+        }
+        function expEditHtml(r) {
+            const id = r.id || 0;
+            const catOpts = ['<option value="">— Category —</option>'].concat(
+                EXPERIENCE_CATEGORIES.map(c => `<option value="${escapeHtml(c)}"${c === r.category ? ' selected' : ''}>${escapeHtml(c)}</option>`)).join('');
+            return `<div class="glass-panel exp-edit" data-id="${id}" style="padding:14px 16px;margin-bottom:12px;">
+                <input type="hidden" id="exp-img-${id}" value="${escapeHtml(r.image_url || '')}">
+                <div style="display:flex;gap:10px;align-items:flex-start;">
+                    <div class="exp-edit-thumb" id="exp-thumb-${id}" style="background-image:url('${escapeHtml(r.image_url || '')}');"></div>
+                    <div style="flex:1;min-width:0;">
+                        <input type="text" class="input-glass" id="exp-t-${id}" value="${escapeHtml(r.title || '')}" placeholder="Title" style="margin-bottom:8px;">
+                        <select class="input-glass" id="exp-c-${id}" style="margin-bottom:0;">${catOpts}</select>
+                    </div>
+                </div>
+                <textarea class="input-glass" id="exp-b-${id}" rows="2" placeholder="Description" style="resize:vertical;margin:8px 0;">${escapeHtml(r.body || '')}</textarea>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+                    <input type="text" class="input-glass" id="exp-ll-${id}" value="${escapeHtml(r.link_label || '')}" placeholder="Link label (e.g. Find out more)" style="flex:1;min-width:150px;">
+                    <input type="text" class="input-glass" id="exp-lu-${id}" value="${escapeHtml(r.link_url || '')}" placeholder="https://…" style="flex:1;min-width:150px;">
+                    <input type="tel" class="input-glass" id="exp-p-${id}" value="${escapeHtml(r.phone || '')}" placeholder="Phone" style="flex:1;min-width:120px;">
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                    <button class="btn-sm btn-edit" onclick="expUpload(${id})">Photo</button>
+                    <button class="btn-sm btn-edit" onclick="expSave(${id})">Save</button>
+                    <button class="btn-sm btn-edit" onclick="expMove(${id},-1)" aria-label="Move up">↑</button>
+                    <button class="btn-sm btn-edit" onclick="expMove(${id},1)" aria-label="Move down">↓</button>
+                    <button class="btn-sm btn-delete" style="margin-left:auto;" onclick="expDelete(${id})">Delete</button>
+                </div>
+            </div>`;
+        }
+        function expAddNew() {
+            const list = document.getElementById('exp-admin-list'); if (!list) return;
+            if (list.querySelector('.exp-edit[data-id="0"]')) return;   // one blank at a time
+            const blank = { id: 0, title: '', body: '', image_url: '', link_label: '', link_url: '', phone: '', category: '' };
+            const p = list.querySelector('p'); if (p) p.remove();
+            list.insertAdjacentHTML('afterbegin', expEditHtml(blank));
+        }
+        function expUpload(id) {
+            pickAndUpload('experience', async (url) => {
+                const h = document.getElementById('exp-img-' + id); if (h) h.value = url;
+                const t = document.getElementById('exp-thumb-' + id); if (t) t.style.backgroundImage = `url('${url}')`;
+            });
+        }
+        async function expSave(id) {
+            const g = s => (document.getElementById(s) ? document.getElementById(s).value : '');
+            const payload = {
+                action: 'save', id: id || 0,
+                title: g('exp-t-' + id).trim(), body: g('exp-b-' + id).trim(),
+                image_url: g('exp-img-' + id), link_label: g('exp-ll-' + id).trim(),
+                link_url: g('exp-lu-' + id).trim(), phone: g('exp-p-' + id).trim(), category: g('exp-c-' + id)
+            };
+            if (!payload.title) { glassAlert('Please add a title.'); return; }
+            try { await apiPost('experiences.php', payload); await loadExperiencesAdmin(); } catch (e) { glassAlert(e.message); }
+        }
+        async function expDelete(id) {
+            if (!id) { const row = document.querySelector('.exp-edit[data-id="0"]'); if (row) row.remove(); return; }
+            if (!confirm('Delete this experience?')) return;
+            try { await apiPost('experiences.php', { action: 'delete', id }); await loadExperiencesAdmin(); } catch (e) { glassAlert(e.message); }
+        }
+        async function expApprove(id) { try { await apiPost('experiences.php', { action: 'approve', id }); await loadExperiencesAdmin(); } catch (e) { glassAlert(e.message); } }
+        async function expReject(id) { try { await apiPost('experiences.php', { action: 'reject', id }); await loadExperiencesAdmin(); } catch (e) { glassAlert(e.message); } }
+        async function expMove(id, dir) {
+            const pub = __expAdmin.filter(r => r.status === 'published').map(r => r.id);
+            const i = pub.indexOf(id); if (i < 0) return;
+            const j = i + dir; if (j < 0 || j >= pub.length) return;
+            const t = pub[i]; pub[i] = pub[j]; pub[j] = t;
+            try { await apiPost('experiences.php', { action: 'reorder', ids: pub }); await loadExperiencesAdmin(); } catch (e) { glassAlert(e.message); }
+        }
+
         // ⬇️ BUILD STAMP — keep this as the LAST statement in the script.
         // It only runs if the whole file loaded, so if a truncated upload cuts
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'vb7z2e5n';
+            const BUILD = 'wc8a3f6p';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
@@ -12992,7 +13256,7 @@
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
-    <script defer src="guest-app.js?v=9"></script>
+    <script defer src="guest-app.js?v=10"></script>
 
 </body>
 </html>
