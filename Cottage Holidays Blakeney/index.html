@@ -6241,11 +6241,12 @@
             fillGuestProfile();
 
             // Fetch this guest's own bookings + pending enquiries (incl. property address)
-            let rows = [], enqRows = [];
+            let rows = [], enqRows = [], completedStays = 0;
             try {
                 const res = await apiGet('my-bookings.php');
                 rows = res.bookings || [];
                 enqRows = res.enquiries || [];
+                completedStays = res.completed_stays || 0;
             } catch (e) {
                 list.innerHTML = `<div class="glass-panel guest-empty"><p>Couldn't load your bookings right now. Please try again.</p></div>`;
                 return;
@@ -6339,7 +6340,8 @@
             }).join('');
 
             const hasUpcoming = mine.some(m => m.booking.checkOut >= todaySort);
-            list.innerHTML = guestPushPromptHtml(hasUpcoming) + pendingHtml + mine.map(({ propKey, booking: b, address, payToken }) => {
+            const upcomingCards = [], pastCards = [];
+            mine.forEach(({ propKey, booking: b, address, payToken }) => {
                 const meta = propertyMeta[propKey];
                 const r = propertyRates[propKey] || defaultRates[propKey];
                 const addr = address || (r && r.address) || '';
@@ -6356,7 +6358,7 @@
                 const statusTag = upcoming
                     ? `<span class="guest-status-badge" style="background:rgba(76,175,80,0.25);color:#fff;border:1px solid var(--booked-border);">Upcoming</span>`
                     : `<span class="guest-status-badge" style="background:rgba(255,255,255,0.06);color:var(--text-muted);">Past stay</span>`;
-                return `
+                const __card = `
                 <div class="glass-panel guest-booking">
                     <div class="guest-booking-head">
                         <div class="guest-booking-img" style="background-image:url('${img}');"></div>
@@ -6398,7 +6400,14 @@
                         </div>
                     </div>
                 </div>`;
-            }).join('');
+                (upcoming ? upcomingCards : pastCards).push(__card);
+            });
+            const gHdr = (t) => `<h3 style="font-family:var(--font-serif);font-size:1.2rem;font-weight:600;margin:18px 2px 10px;color:var(--text-light);">${t}</h3>`;
+            list.innerHTML = guestPushPromptHtml(hasUpcoming)
+                + loyaltyBannerHtml(completedStays)
+                + pendingHtml
+                + (upcomingCards.length ? gHdr('Upcoming stays') + upcomingCards.join('') : '')
+                + (pastCards.length ? gHdr('Past stays') + pastCards.join('') : '');
 
             // Auto-watch the device's location for any in-progress stay so the
             // arrival details pop up by themselves once the guest reaches the cottage.
@@ -7073,6 +7082,19 @@
         function dismissGuestPushPrompt() {
             try { localStorage.setItem('chb-guest-push-prompt', '1'); } catch (e) {}
             const el = document.getElementById('guest-push-prompt'); if (el) el.remove();
+        }
+        // Returning-guest welcome offer — shown once a guest has at least one
+        // completed stay. Informational: the owner applies the rate on enquiry
+        // (mirrors how pricing/overrides already work), so nothing is auto-discounted.
+        function loyaltyBannerHtml(n) {
+            if (!n || n < 1) return '';
+            return `<div class="glass-panel" style="padding:16px 18px;margin-bottom:16px;border:1px solid var(--accent-soft);display:flex;align-items:center;gap:12px;">
+                <span style="font-size:1.5rem;" aria-hidden="true">🌿</span>
+                <div>
+                    <div style="font-weight:600;margin-bottom:2px;">Welcome back!</div>
+                    <div style="font-size:0.85rem;color:var(--text-muted);">Thank you for ${n === 1 ? 'staying' : 'returning to stay'} with us. As a returning guest you're entitled to our <strong style="color:var(--text-light);">returning-guest rate</strong> — just mention it when you enquire and we'll apply it to your next booking.</div>
+                </div>
+            </div>`;
         }
         // Markup for the opt-in card — only when there's an upcoming stay, the guest
         // hasn't dismissed it, and they haven't already granted/denied permission.
@@ -12869,7 +12891,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'ek0f5m8w';
+            const BUILD = 'fl1g6n9x';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
