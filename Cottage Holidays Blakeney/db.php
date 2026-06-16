@@ -192,7 +192,22 @@ function decrypt_value($stored) {
 }
 // Content keys whose values are encrypted at rest.
 function is_private_content_key($key) {
-    return strpos($key, 'ical-feeds-') === 0 || strpos($key, 'arrival-') === 0;
+    return strpos($key, 'ical-feeds-') === 0 || strpos($key, 'arrival-') === 0 || strpos($key, 'apikey-') === 0;
+}
+
+// Read a single content value as a plain string (decrypting private keys), '' if unset.
+// Used server-side (e.g. tides.php reads the owner-pasted tide API key).
+function content_value($key) {
+    try {
+        $s = db()->prepare('SELECT item_value FROM content WHERE item_key = ?');
+        $s->execute([$key]);
+        $v = $s->fetchColumn();
+        if ($v === false) return '';
+        if (is_private_content_key($key)) $v = decrypt_value($v);
+        $d = json_decode($v, true);
+        if (is_string($d)) return $d;
+        return is_scalar($d) ? (string)$d : '';
+    } catch (\Throwable $e) { return ''; }
 }
 
 // Token for a property's iCal export feed: unguessable, needs no login, derived
