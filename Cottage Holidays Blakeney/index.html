@@ -835,6 +835,17 @@
         .host-line .ic { width: 20px; height: 20px; color: var(--text-muted); flex-shrink: 0; }
         .host-bio { font-size: 0.92rem; color: var(--text-muted); line-height: 1.6; margin: 0; }
         .host-edit-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); display: block; margin: 14px 0 5px; }
+        /* Guest photo wall (UGC) */
+        .guest-photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+        .guest-photo { position: relative; aspect-ratio: 1; border-radius: 12px; overflow: hidden; cursor: pointer; background: var(--glass-bg); border: 1px solid var(--glass-border); }
+        .guest-photo img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.3s ease; }
+        .guest-photo:hover img { transform: scale(1.05); }
+        .guest-photo .gp-cap { position: absolute; left: 0; right: 0; bottom: 0; padding: 14px 10px 7px; font-size: 0.7rem; color: #fff; background: linear-gradient(transparent, rgba(0,0,0,0.65)); }
+        .photo-lightbox { position: fixed; inset: 0; z-index: 4000; background: rgba(0,0,0,0.88); display: none; align-items: center; justify-content: center; padding: 24px; }
+        .photo-lightbox.open { display: flex; }
+        .photo-lightbox img { max-width: 92vw; max-height: 82vh; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.6); }
+        .photo-lightbox .pl-cap { position: absolute; bottom: 20px; left: 0; right: 0; text-align: center; color: #eee; font-size: 0.85rem; padding: 0 24px; }
+        .photo-lightbox .pl-close { position: absolute; top: 18px; right: 20px; background: rgba(255,255,255,0.12); border: none; color: #fff; width: 42px; height: 42px; border-radius: 50%; cursor: pointer; font-size: 1.4rem; }
         /* Things to know */
         .things-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 26px; }
         .things-title { font-family: var(--font-serif); font-size: 1.15rem; color: var(--text-light); margin-bottom: 10px; }
@@ -2350,6 +2361,14 @@
                 <div class="prop-divider" id="reviews-divider"></div>
                 <div id="prop-reviews" class="prop-reviews"></div>
 
+                <!-- Guest photos (UGC) — shown only when there are approved photos. -->
+                <div class="prop-divider" id="guest-photos-divider" style="display:none;"></div>
+                <div id="guest-photos-section" style="display:none;">
+                    <h3 class="section-title prop-section-h">Guest photos</h3>
+                    <p class="things-note" style="text-align:center;margin:-6px auto 16px;max-width:560px;">Real moments shared by guests who've stayed here.</p>
+                    <div class="guest-photo-grid" id="guest-photo-grid"></div>
+                </div>
+
                 <div class="prop-divider"></div>
                 <!-- Where you'll be (exact pin) -->
                 <h3 class="section-title prop-section-h">Where you'll be</h3>
@@ -2629,6 +2648,10 @@
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 17.77 6.8 19.5l.99-5.78-4.21-4.1 5.82-.85z"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Reviews</span><span class="settings-row-sub">Approve guest reviews for your site</span></span><span class="settings-row-chev">›</span>
                 </button>
+                <button class="settings-row" onclick="settingsOpen('photos')">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.2"/><path d="M8 6l1.5-2h5L16 6"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Guest photos</span><span class="settings-row-sub">Approve photos guests share</span></span><span class="settings-row-chev">›</span>
+                </button>
                 <button class="settings-row" onclick="settingsOpen('security')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Security</span><span class="settings-row-sub">Password &amp; passkeys</span></span><span class="settings-row-chev">›</span>
@@ -2767,6 +2790,12 @@
             <div class="settings-sec" id="sec-waitlist" style="display:none;">
                 <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 16px;">Guests who asked to be told if dates free up. They're emailed automatically when a booking for matching dates is cancelled — or notify them manually below.</p>
                 <div id="waitlist-body"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
+            </div>
+
+            <!-- Guest photos (UGC moderation) -->
+            <div class="settings-sec" id="sec-photos" style="display:none;">
+                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 16px;">Photos guests shared from their stays. Approve the ones you'd like to show in the gallery on each cottage page — nothing appears publicly until you approve it.</p>
+                <div id="photos-admin"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
             </div>
 
             <!-- Newsletter / seasonal broadcast -->
@@ -3052,6 +3081,32 @@
                 <button class="btn-glass" onclick="runTripPlan()" style="margin-left:auto;">Plan my days</button>
             </div>
             <div id="trip-result"></div>
+        </div>
+    </div>
+
+    <!-- ================= GUEST PHOTO LIGHTBOX ================= -->
+    <div id="photo-lightbox" class="photo-lightbox" onclick="if(event.target===this||event.target.classList.contains('pl-close'))closePhotoLightbox()">
+        <button class="pl-close" aria-label="Close">×</button>
+        <img id="pl-img" src="" alt="Guest photo">
+        <div class="pl-cap" id="pl-cap"></div>
+    </div>
+
+    <!-- ================= GUEST PHOTO UPLOAD ================= -->
+    <div id="photo-upload-modal" class="modal-overlay pop-modal" onclick="if(event.target===this) closePhotoUpload()">
+        <div class="modal-box glass-panel" style="max-width:460px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:6px;">
+                <h3 style="font-family:var(--font-serif);font-size:1.5rem;">Share a photo</h3>
+                <button class="reviews-modal-close" onclick="closePhotoUpload()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+            </div>
+            <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:14px;">Add a photo from your stay at <strong id="pu-prop-name"></strong>. We'll review it before it appears on the cottage page.</p>
+            <label class="modal-label" for="pu-file">Photo</label>
+            <input type="file" id="pu-file" accept="image/*" class="input-glass" style="margin-bottom:12px;">
+            <label class="modal-label" for="pu-caption">Caption (optional)</label>
+            <input type="text" id="pu-caption" class="input-glass" maxlength="280" placeholder="e.g. Sunset over the marshes">
+            <div style="margin-top:14px;display:flex;gap:10px;align-items:center;">
+                <button class="btn-glass" style="width:auto;padding:11px 22px;" onclick="submitGuestPhoto()">Submit photo</button>
+                <span id="pu-msg" style="font-size:0.82rem;" aria-live="polite"></span>
+            </div>
         </div>
     </div>
 
@@ -4366,7 +4421,7 @@
         }
 
         // ---- Settings router: Apple-style index → drill-down sub-pages ----
-        const SETTINGS_TITLES = { enquiries: 'Enquiries', messages: 'Guest messages', notify: 'Notifications', host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Preferences', calendar: 'Calendar', cancel: 'Cancellation policy', payments: 'Payments', guests: 'Guest accounts', analytics: 'Analytics', waitlist: 'Waitlist', newsletter: 'Newsletter', apis: 'API keys' };
+        const SETTINGS_TITLES = { enquiries: 'Enquiries', messages: 'Guest messages', notify: 'Notifications', host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Preferences', calendar: 'Calendar', cancel: 'Cancellation policy', payments: 'Payments', guests: 'Guest accounts', analytics: 'Analytics', waitlist: 'Waitlist', newsletter: 'Newsletter', photos: 'Guest photos', apis: 'API keys' };
         let settingsBackTarget = null;
         // The full Settings drill-down path, so the auto-update reload can restore the
         // exact folder/sub-folder the owner was in: { section, prop, accomSec }.
@@ -4395,6 +4450,7 @@
             else if (section === 'notify') renderNotifySettings();
             else if (section === 'host') fillHostFields();
             else if (section === 'reviews') loadGuestReviewModeration();
+            else if (section === 'photos') loadGuestPhotosAdmin();
             else if (section === 'analytics') loadAnalytics();
             else if (section === 'waitlist') loadWaitlist();
             else if (section === 'newsletter') loadNewsletter();
@@ -6096,6 +6152,7 @@
             myGuestReviews = {};
             try { const rv = await apiPost('reviews.php', { action: 'mine' }); myGuestReviews = rv.mine || {}; } catch (e) {}
             const reviewShown = new Set();   // one review block per property
+            const photoShown = new Set();    // one "share a photo" button per property
             if (mine.length === 0 && pendingMine.length === 0) {
                 list.innerHTML = `<div class="glass-panel guest-empty">
                     <p style="font-size:1.3rem;font-weight:600;margin-bottom:8px;">No Bookings Yet</p>
@@ -6194,6 +6251,7 @@
                                 <button class="btn-sm btn-edit" onclick="openTermsModal(event, '${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h9a3 3 0 0 1 3 3v13H9a3 3 0 0 1-3-3z"/><path d="M6 17h12"/></svg> Terms</button>
                                 ${upcoming ? faqBlockHtml(propKey) : ''}
                                 ${(!upcoming && !reviewShown.has(propKey) && reviewShown.add(propKey)) ? guestReviewButton(propKey) : ''}
+                                ${(!upcoming && !photoShown.has(propKey) && photoShown.add(propKey)) ? guestPhotoButton(propKey) : ''}
                             </div>
                             ${currentStay ? `<div id="arr-${b.id}" class="arrival-access" style="margin-top:12px;">
                                 <div id="arr-note-${b.id}" style="font-size:0.82rem;color:var(--text-muted);">${IC_PIN} Your key code &amp; arrival info will open automatically when you reach the cottage. <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="revealArrivalAccess('${propKey}','${b.id}')">Show now</button></div>
@@ -6990,6 +7048,43 @@
             if (existing.status === 'approved') return `<button class="btn-sm btn-edit" onclick="toggleGuestReview('${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.9l-5.2 2.6.99-5.78-4.21-4.1 5.82-.85z" fill="currentColor" stroke="none"/></svg> Edit your review</button>`;
             if (existing.status === 'pending') return `<button class="btn-sm btn-edit" onclick="toggleGuestReview('${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.9l-5.2 2.6.99-5.78-4.21-4.1 5.82-.85z" fill="currentColor" stroke="none"/></svg> Review submitted</button>`;
             return `<button class="btn-sm btn-edit" onclick="toggleGuestReview('${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.9l-5.2 2.6.99-5.78-4.21-4.1 5.82-.85z" fill="currentColor" stroke="none"/></svg> Edit your review</button>`;
+        }
+        function guestPhotoButton(propKey) {
+            return `<button class="btn-sm btn-edit" onclick="openPhotoUpload('${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.5"/><path d="M8 6l1.5-2h5L16 6"/></svg> Share a photo</button>`;
+        }
+        // ---- Guest photo submission (from My Bookings) ----
+        let __photoUploadProp = null;
+        function openPhotoUpload(propKey) {
+            __photoUploadProp = propKey;
+            const meta = propertyMeta[propKey] || { name: propKey };
+            const nameEl = document.getElementById('pu-prop-name'); if (nameEl) nameEl.textContent = meta.name;
+            const fileEl = document.getElementById('pu-file'); if (fileEl) fileEl.value = '';
+            const capEl = document.getElementById('pu-caption'); if (capEl) capEl.value = '';
+            const msg = document.getElementById('pu-msg'); if (msg) { msg.textContent = ''; }
+            const m = document.getElementById('photo-upload-modal'); if (m) m.classList.add('open');
+        }
+        function closePhotoUpload() { const m = document.getElementById('photo-upload-modal'); if (m) m.classList.remove('open'); }
+        async function submitGuestPhoto() {
+            const fileEl = document.getElementById('pu-file');
+            const capEl = document.getElementById('pu-caption');
+            const msg = document.getElementById('pu-msg');
+            const show = (t, ok) => { if (msg) { msg.style.color = ok ? '#4CAF50' : '#E57373'; msg.textContent = t; } };
+            const file = fileEl && fileEl.files && fileEl.files[0];
+            if (!file) { show('Please choose a photo.', false); return; }
+            if (file.size > 8 * 1024 * 1024) { show('Please choose an image 8 MB or smaller.', false); return; }
+            show('Uploading…', true);
+            try {
+                const fd = new FormData();
+                fd.append('action', 'submit');
+                fd.append('prop_key', __photoUploadProp);
+                fd.append('caption', (capEl && capEl.value || '').trim());
+                fd.append('image', file);
+                const r = await fetch(API_BASE + 'photos.php', { method: 'POST', credentials: 'same-origin', body: fd });
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok || data.error) throw new Error(data.error || 'Upload failed.');
+                show('Thank you! Your photo will appear once we approve it.', true);
+                setTimeout(closePhotoUpload, 1600);
+            } catch (e) { show(e.message || 'Could not upload your photo.', false); }
         }
         function guestReviewForm(propKey) {
             const existing = myGuestReviews[propKey];
@@ -8119,6 +8214,38 @@
                 } else { sv.style.display = 'none'; }
             }
         }
+        // ---- Guest photo wall (UGC): approved photos on the cottage page ----
+        async function renderGuestPhotos(propKey) {
+            const section = document.getElementById('guest-photos-section');
+            const divider = document.getElementById('guest-photos-divider');
+            const grid = document.getElementById('guest-photo-grid');
+            if (!section || !grid) return;
+            const hide = () => { section.style.display = 'none'; if (divider) divider.style.display = 'none'; };
+            try {
+                const r = await apiGet('photos.php?prop=' + encodeURIComponent(propKey));
+                const photos = (r && r.photos) || [];
+                if (!photos.length) { hide(); return; }
+                grid.innerHTML = photos.map(p => {
+                    const cap = p.caption ? `<div class="gp-cap">${escapeHtml(p.caption)}</div>` : '';
+                    const data = encodeURIComponent(p.url) + '|' + encodeURIComponent(p.caption || '');
+                    return `<div class="guest-photo" onclick="openPhotoLightbox('${data}')"><img loading="lazy" src="${escapeHtml(p.url)}" alt="${escapeHtml(p.caption || 'Guest photo')}">${cap}</div>`;
+                }).join('');
+                section.style.display = '';
+                if (divider) divider.style.display = '';
+            } catch (e) { hide(); }
+        }
+        function openPhotoLightbox(data) {
+            const [url, cap] = String(data).split('|').map(decodeURIComponent);
+            const box = document.getElementById('photo-lightbox');
+            const img = document.getElementById('pl-img'); const c = document.getElementById('pl-cap');
+            if (img) img.src = url; if (c) c.textContent = cap || '';
+            if (box) box.classList.add('open');
+        }
+        function closePhotoLightbox() {
+            const box = document.getElementById('photo-lightbox'); if (box) box.classList.remove('open');
+            const img = document.getElementById('pl-img'); if (img) img.src = '';
+        }
+
         // ---- Trip planner (curated + tide-aware). AI seam: TRIP_PLAN_SOURCE can later
         // switch to a 'tripplan.php' LLM endpoint without changing the UI/markup. ----
         const TRIP_PLAN_SOURCE = 'curated';
@@ -10060,6 +10187,37 @@
             catch (e) { glassAlert("Couldn't remove: " + e.message); }
         }
 
+        // ---- Guest photos: admin moderation (Settings → Guest photos) ----
+        async function loadGuestPhotosAdmin() {
+            const wrap = document.getElementById('photos-admin');
+            if (!wrap) return;
+            wrap.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p>`;
+            let rows = [];
+            try { const r = await apiPost('photos.php', { action: 'list_admin' }); rows = r.photos || []; }
+            catch (e) { wrap.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">Couldn't load (run migrate.php?): ${escapeHtml(e.message || '')}</p>`; return; }
+            if (!rows.length) { wrap.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">No guest photos yet. They'll appear here when guests share photos from My Bookings.</p>`; return; }
+            wrap.innerHTML = `<div class="guest-photo-grid" style="grid-template-columns:repeat(auto-fill,minmax(180px,1fr));">${rows.map(p => {
+                const meta = propertyMeta[p.prop_key] || { name: p.prop_key };
+                const pend = p.status === 'pending';
+                const data = encodeURIComponent(p.url) + '|' + encodeURIComponent(p.caption || '');
+                return `<div style="background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:14px;overflow:hidden;">
+                    <div class="guest-photo" style="aspect-ratio:4/3;border:none;border-radius:0;" onclick="openPhotoLightbox('${data}')"><img loading="lazy" src="${escapeHtml(p.url)}" alt=""></div>
+                    <div style="padding:9px 11px;">
+                        <div style="font-size:0.74rem;color:var(--text-muted);"><span class="prop-tag tag-${p.prop_key}">${escapeHtml(meta.short||meta.name)}</span> ${escapeHtml(p.guest_name||'Guest')}${pend ? ' · <span style="color:#FFB74D;">Pending</span>' : ' · <span style="color:#4CAF50;">Live</span>'}</div>
+                        ${p.caption ? `<div style="font-size:0.8rem;margin:6px 0 0;">${escapeHtml(p.caption)}</div>` : ''}
+                        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
+                            ${pend ? `<button class="btn-sm btn-edit" onclick="moderatePhoto(${p.id},'approve')">Approve</button>` : ''}
+                            ${pend ? `<button class="btn-sm btn-delete" onclick="moderatePhoto(${p.id},'reject')">Reject</button>` : ''}
+                            <button class="btn-sm btn-delete" onclick="moderatePhoto(${p.id},'delete')">Delete</button>
+                        </div>
+                    </div></div>`;
+            }).join('')}</div>`;
+        }
+        async function moderatePhoto(id, action) {
+            if (action === 'delete' && !await glassConfirm('Delete this photo permanently?')) return;
+            try { await apiPost('photos.php', { action, id }); loadGuestPhotosAdmin(); }
+            catch (e) { glassAlert("Couldn't update: " + (e.message || e)); }
+        }
         // Populate the Google review link field from saved content.
         function initGoogleReviewUrl() {
             const el = document.getElementById('google-review-url-input');
@@ -11650,6 +11808,7 @@
             try { renderPropStats(propKey); } catch (e) {}
             try { renderHouseRules(propKey); } catch (e) {}
             try { renderLocalGuide(propKey); } catch (e) {}
+            try { renderGuestPhotos(propKey); } catch (e) {}
             try { renderTides(); } catch (e) {}
             try { renderLocationMap(propKey); } catch (e) {}
             try { renderHost(); } catch (e) {}
@@ -12260,7 +12419,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'sc6p9v4z';
+            const BUILD = 'td7q2w8m';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
