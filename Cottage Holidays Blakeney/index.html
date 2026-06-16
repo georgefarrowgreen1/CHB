@@ -162,6 +162,7 @@
     <link rel="apple-touch-icon" href="apple-touch-icon.png?v=3">
     <!-- Installable PWA + Web Push (arrival check-in notifications) -->
     <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="guest-app.css?v=1">
     <meta name="theme-color" content="#121316">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -3948,6 +3949,10 @@
             document.querySelectorAll('.page-view').forEach(v => v.classList.remove('active'));
             target.classList.add('active');
 
+            // Keep the guest app shell's bottom tab bar in sync with the active view
+            // (guest-app.js defines this; safe no-op before it loads / for admins).
+            try { if (window.setActiveTab) window.setActiveTab(viewId); } catch (e) {}
+
             // Keep the address bar in sync: leaving a cottage page restores the root URL.
             if (viewId !== 'view-21a') { try { clearCottageUrl(); } catch (e) {} }
 
@@ -5932,6 +5937,13 @@
                 openGuestAuthModal();
             }
         }
+        // Account tab of the guest app shell (guest-app.js): a signed-in guest gets
+        // their details/security; a signed-out visitor gets the sign-in screen.
+        function guestAccountTab() {
+            if (currentGuest) openGuestDetailsModal();
+            else openGuestArea();
+        }
+        window.guestAccountTab = guestAccountTab;
 
         // Customer login/register floating window (liquid-glass modal).
         function openGuestAuthModal() {
@@ -11493,8 +11505,7 @@
         // One-tap "Book again" from a past stay: open that cottage and start a fresh
         // enquiry (the guest picks new dates; their saved details prefill as usual).
         function rebookCottage(propKey) {
-            try { openProperty(propKey); } catch (e) {}
-            nav('view-' + propKey);
+            try { openProperty(propKey); } catch (e) {}   // openProperty navigates to the cottage page itself
             setTimeout(() => { try { openEnquireModal(); } catch (e) {} }, 220);
         }
 
@@ -12858,7 +12869,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'dj9e4k7v';
+            const BUILD = 'ek0f5m8w';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
@@ -12866,6 +12877,10 @@
             if (yr) yr.textContent = new Date().getFullYear();
         })();
     </script>
+
+    <!-- App-style guest shell (bottom tab bar + install chip). External so the
+         single-page index.html stays reviewable; gated to guests via CSS. -->
+    <script defer src="guest-app.js?v=1"></script>
 
 </body>
 </html>

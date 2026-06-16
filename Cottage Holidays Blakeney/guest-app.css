@@ -1,0 +1,87 @@
+/* ============================================================
+   guest-app.css — app-style guest shell: bottom tab bar, install
+   chip, and a subtle page transition.
+
+   Loaded as a SEPARATE file (the only external CSS) to keep the
+   single-page index.html from growing further. Every rule is gated
+   to  body.guest-app:not(.owner-mode)  so the admin/back-office UI
+   is never affected — the same proven pattern as body.owner-mode.
+   Bump the ?v= in index.html AND the CACHE name in sw.js on change.
+   ============================================================ */
+
+/* Hidden by default; the shell only appears for guests on a phone-sized
+   viewport or when the site is installed (handled in guest-app.js). */
+#guest-tabbar { display: none; }
+#guest-install-chip { display: none; }
+
+body.guest-app:not(.owner-mode) #guest-tabbar {
+    display: flex;
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    z-index: 1400;
+    padding: 8px 6px calc(8px + env(safe-area-inset-bottom, 0px));
+    background: rgba(18, 19, 22, 0.72);
+    -webkit-backdrop-filter: blur(22px) saturate(160%);
+    backdrop-filter: blur(22px) saturate(160%);
+    border-top: 1px solid var(--glass-border);
+    box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.28);
+}
+
+.gt-btn {
+    flex: 1 1 0;
+    display: flex; flex-direction: column; align-items: center; gap: 3px;
+    background: none; border: 0; cursor: pointer;
+    color: var(--text-muted);
+    font-family: var(--font-sans); font-size: 0.66rem; font-weight: 600;
+    letter-spacing: 0.02em;
+    padding: 4px 2px; border-radius: 12px;
+    -webkit-tap-highlight-color: transparent;
+    transition: color 0.2s ease, transform 0.2s var(--spring);
+}
+.gt-btn svg { width: 23px; height: 23px; display: block; }
+.gt-btn span { line-height: 1; }
+.gt-btn:active { transform: scale(0.92); }
+.gt-btn.active { color: var(--accent); }
+
+/* Clear the bar so document/footer content isn't hidden behind it. */
+body.guest-app:not(.owner-mode) { padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px)); }
+body.guest-app:not(.owner-mode) .site-footer { padding-bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+
+/* The floating account pill is replaced by the Account tab; the chat FAB and
+   the cottage page's sticky book bar sit just ABOVE the tab bar. */
+body.guest-app:not(.owner-mode) .account-btn { display: none; }
+body.guest-app:not(.owner-mode) .chat-fab { bottom: calc(76px + env(safe-area-inset-bottom, 0px)); }
+body.guest-app:not(.owner-mode) #prop-book-bar { bottom: calc(60px + env(safe-area-inset-bottom, 0px)); }
+
+/* Subtle app-like page transition (guest shell only; desktop/admin stay instant). */
+body.guest-app:not(.owner-mode) .page-view.active { animation: gtFade 0.32s var(--fluid-bezier); }
+@keyframes gtFade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* "Install app" chip — shown on Android/desktop when the browser offers an
+   install prompt (beforeinstallprompt). iOS uses the existing A2HS hint. */
+body.guest-app:not(.owner-mode) #guest-install-chip.show {
+    display: flex; align-items: center; gap: 10px;
+    position: fixed; left: 12px; right: 12px;
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+    z-index: 1399;
+    padding: 12px 14px; border-radius: 16px;
+    background: rgba(18, 19, 22, 0.9);
+    -webkit-backdrop-filter: blur(18px); backdrop-filter: blur(18px);
+    border: 1px solid var(--glass-highlight);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+    color: var(--text-light); font-family: var(--font-sans); font-size: 0.86rem;
+    animation: gtFade 0.32s var(--fluid-bezier);
+}
+#guest-install-chip .gic-text { flex: 1; }
+#guest-install-chip button {
+    border: 0; cursor: pointer; border-radius: 10px;
+    font-family: var(--font-sans); font-weight: 600; font-size: 0.82rem;
+}
+#guest-install-chip .gic-go { background: var(--accent); color: #1a191b; padding: 8px 14px; }
+#guest-install-chip .gic-x { background: transparent; color: var(--text-muted); font-size: 1.2rem; padding: 2px 8px; }
+
+/* Tidy the bar on wider screens (e.g. installed on a tablet/desktop). */
+@media (min-width: 700px) {
+    body.guest-app:not(.owner-mode) #guest-tabbar { justify-content: center; gap: 44px; }
+    .gt-btn { flex: 0 0 92px; }
+}
