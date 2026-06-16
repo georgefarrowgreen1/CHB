@@ -39,4 +39,13 @@ $eq = db()->prepare(
 );
 $eq->execute([$guest['email']]);
 
-json_out(['bookings' => $bookings, 'enquiries' => $eq->fetchAll()]);
+// Loyalty: how many stays this guest has already completed with us (check-out in
+// the past). Drives the returning-guest welcome offer in the account. Counted
+// from the rows we already have — no extra query.
+$today = date('Y-m-d');
+$completedStays = 0;
+foreach ($bookings as $bk) {
+    if (!empty($bk['check_out']) && $bk['check_out'] < $today) $completedStays++;
+}
+
+json_out(['bookings' => $bookings, 'enquiries' => $eq->fetchAll(), 'completed_stays' => $completedStays]);
