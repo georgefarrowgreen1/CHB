@@ -2898,7 +2898,11 @@
         <div class="modal-box glass-panel" style="max-width:520px;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px;">
                 <h3 id="messages-modal-title" style="font-family:var(--font-serif);font-size:1.4rem;">Messages</h3>
-                <button class="reviews-modal-close" onclick="closeMessagesModal()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+                <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
+                    <button class="btn-sm btn-edit" id="msg-archive-btn" onclick="archiveCurrentThread()">Archive</button>
+                    <button class="btn-sm" id="msg-delete-btn" onclick="deleteCurrentThread()" style="color:#E57373;">Delete</button>
+                    <button class="reviews-modal-close" onclick="closeMessagesModal()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+                </div>
             </div>
             <div class="msg-ctx" id="messages-modal-ctx"></div>
             <div class="chat-thread" id="messages-modal-thread"></div>
@@ -8782,22 +8786,27 @@
         }
 
         // ---- Admin side: Guest messages (Settings → Guest messages) + reply modal ----
+        let __msgShowArchived = false;
         async function loadAdminMessages() {
             const list = document.getElementById('messages-list');
             const badge = document.getElementById('messages-badge');
             let threads = [];
-            try { const r = await apiPost('messages.php', { action: 'threads' }); threads = r.threads || []; }
+            try { const r = await apiPost('messages.php', { action: 'threads', archived: __msgShowArchived ? 1 : 0 }); threads = r.threads || []; }
             catch (e) { if (list) list.innerHTML = `<p style="font-size:0.82rem;color:var(--text-muted);">Couldn't load messages.</p>`; return; }
-            const unread = threads.reduce((s, t) => s + (t.unread || 0), 0);
-            if (badge) { badge.textContent = unread; badge.classList.toggle('zero', unread === 0); }
+            // The settings badge only ever reflects unread in the active inbox.
+            if (!__msgShowArchived && badge) { const unread = threads.reduce((s, t) => s + (t.unread || 0), 0); badge.textContent = unread; badge.classList.toggle('zero', unread === 0); }
             if (!list) return;
-            list.innerHTML = threads.length ? threads.map(t => `
+            const toggle = `<button class="btn-sm btn-edit" style="margin-bottom:10px;" onclick="toggleArchivedMessages()">${__msgShowArchived ? '← Active conversations' : 'Show archived'}</button>`;
+            const rows = threads.length ? threads.map(t => `
                 <button class="msg-thread-row" onclick="openMessageThread(${t.thread_id})">
                     <span class="mtr-main"><span class="mtr-name">${escapeHtml(t.name || t.email || 'Visitor')}${t.is_guest ? '' : ' <span style="font-size:0.66rem;color:var(--text-muted);">· visitor</span>'}${t.unread ? ` <span class="inbox-badge" style="min-width:18px;height:18px;font-size:0.66rem;">${t.unread}</span>` : ''}</span><span class="mtr-last">${escapeHtml(t.last_body || '')}</span></span>
                     <span class="settings-row-chev" aria-hidden="true">›</span>
-                </button>`).join('') : `<p style="font-size:0.82rem;color:var(--text-muted);">No messages yet.</p>`;
+                </button>`).join('') : `<p style="font-size:0.82rem;color:var(--text-muted);">${__msgShowArchived ? 'No archived conversations.' : 'No messages yet.'}</p>`;
+            list.innerHTML = toggle + rows;
         }
+        function toggleArchivedMessages() { __msgShowArchived = !__msgShowArchived; loadAdminMessages(); }
         let __msgThreadId = null;
+        let __msgThreadArchived = false;
         function bookingLine(b) {
             const name = (propertyMeta[b.prop_key] || {}).name || b.prop_key;
             return `${escapeHtml(name)} · ${b.check_in} → ${b.check_out}${b.payment ? ' · ' + escapeHtml(b.payment) : ''}`;
@@ -8814,6 +8823,8 @@
             try {
                 const r = await apiPost('messages.php', { action: 'thread', thread_id: threadId });
                 const t = r.thread || {};
+                __msgThreadArchived = !!t.archived;
+                const archBtn = document.getElementById('msg-archive-btn'); if (archBtn) archBtn.textContent = __msgThreadArchived ? 'Unarchive' : 'Archive';
                 if (title) title.textContent = t.name ? t.name : (t.email || 'Message');
                 if (ctx) {
                     const bk = (r.bookings || []).length
@@ -8833,6 +8844,28 @@
         function closeMessagesModal() {
             const m = document.getElementById('messages-modal'); if (m) m.classList.remove('open');
             __msgThreadId = null;
+        }
+        // Archive / unarchive the open conversation (kept, hidden from the active inbox).
+        async function archiveCurrentThread() {
+            if (!__msgThreadId) return;
+            const archiving = !__msgThreadArchived;
+            try {
+                await apiPost('messages.php', { action: archiving ? 'archive' : 'unarchive', thread_id: __msgThreadId });
+                closeMessagesModal();
+                loadAdminMessages();
+                toast(archiving ? 'Conversation archived.' : 'Conversation restored.');
+            } catch (e) { glassAlert("Couldn't update: " + e.message); }
+        }
+        // Permanently delete the open conversation and its messages.
+        async function deleteCurrentThread() {
+            if (!__msgThreadId) return;
+            if (!await glassConfirm('Delete this conversation and all its messages permanently?')) return;
+            try {
+                await apiPost('messages.php', { action: 'delete', thread_id: __msgThreadId });
+                closeMessagesModal();
+                loadAdminMessages();
+                toast('Conversation deleted.');
+            } catch (e) { glassAlert("Couldn't delete: " + e.message); }
         }
         async function adminSendMessage() {
             const input = document.getElementById('messages-modal-input');
@@ -11635,7 +11668,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'zf7g8h0m';
+            const BUILD = 'ag8h9i1n';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;

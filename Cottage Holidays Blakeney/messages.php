@@ -82,7 +82,22 @@ if ($isAdmin && empty($in['token'])) {
                 'id' => $tid, 'name' => $thread['name'] ?? '', 'email' => $thread['email'] ?? '',
                 'source' => $thread['source'] ?? '', 'location' => $thread['location'] ?? '',
                 'user_agent' => $thread['user_agent'] ?? '', 'is_guest' => !empty($thread['guest_id']),
+                'archived' => !empty($thread['archived']),
             ], 'bookings' => $bookings, 'messages' => chat_msgs($tid)]);
+        }
+        if ($action === 'archive' || $action === 'unarchive') {
+            $tid = (int)($in['thread_id'] ?? 0);
+            if ($tid <= 0) json_out(['error' => 'thread_id required'], 400);
+            try { db()->prepare('UPDATE chat_threads SET archived = ? WHERE id = ?')->execute([$action === 'archive' ? 1 : 0, $tid]); }
+            catch (\Throwable $e) { json_out(['error' => 'Run migrate.php to enable archiving.'], 500); }
+            json_out(['ok' => true]);
+        }
+        if ($action === 'delete') {
+            $tid = (int)($in['thread_id'] ?? 0);
+            if ($tid <= 0) json_out(['error' => 'thread_id required'], 400);
+            db()->prepare('DELETE FROM messages WHERE thread_id = ?')->execute([$tid]);
+            db()->prepare('DELETE FROM chat_threads WHERE id = ?')->execute([$tid]);
+            json_out(['ok' => true]);
         }
         if ($action === 'send') {
             $tid = (int)($in['thread_id'] ?? 0);
@@ -104,17 +119,37 @@ if ($isAdmin && empty($in['token'])) {
             $c = (int)db()->query("SELECT COUNT(*) FROM messages WHERE sender_role = 'guest' AND read_by_admin = 0")->fetchColumn();
             json_out(['ok' => true, 'count' => $c]);
         }
-        // default: list threads (only those with at least one message)
-        $rows = db()->query("SELECT t.id tid, t.guest_id, t.name, t.email, t.source, t.location,
-                COALESCE(MAX(m.created_at), t.created_at) last_at,
-                SUM(m.sender_role = 'guest' AND m.read_by_admin = 0) unread,
-                (SELECT body FROM messages mm WHERE mm.thread_id = t.id ORDER BY mm.id DESC LIMIT 1) last_body
-            FROM chat_threads t JOIN messages m ON m.thread_id = t.id
-            GROUP BY t.id, t.guest_id, t.name, t.email, t.source, t.location
-            ORDER BY last_at DESC")->fetchAll();
+        // default: list threads (only those with at least one message).
+        // Active by default; pass archived:1 to list the archived ones instead.
+        $showArchived = !empty($in['archived']) ? 1 : 0;
+        $hasArch = true;
+        try {
+            $q = db()->prepare("SELECT t.id tid, t.guest_id, t.name, t.email, t.source, t.location, t.archived,
+                    COALESCE(MAX(m.created_at), t.created_at) last_at,
+                    SUM(m.sender_role = 'guest' AND m.read_by_admin = 0) unread,
+                    (SELECT body FROM messages mm WHERE mm.thread_id = t.id ORDER BY mm.id DESC LIMIT 1) last_body
+                FROM chat_threads t JOIN messages m ON m.thread_id = t.id
+                WHERE t.archived = ?
+                GROUP BY t.id, t.guest_id, t.name, t.email, t.source, t.location, t.archived
+                ORDER BY last_at DESC");
+            $q->execute([$showArchived]);
+            $rows = $q->fetchAll();
+        } catch (\Throwable $e2) {
+            // archived column not migrated yet — there are no archived threads.
+            if ($showArchived) json_out(['ok' => true, 'threads' => []]);
+            $hasArch = false;
+            $rows = db()->query("SELECT t.id tid, t.guest_id, t.name, t.email, t.source, t.location,
+                    COALESCE(MAX(m.created_at), t.created_at) last_at,
+                    SUM(m.sender_role = 'guest' AND m.read_by_admin = 0) unread,
+                    (SELECT body FROM messages mm WHERE mm.thread_id = t.id ORDER BY mm.id DESC LIMIT 1) last_body
+                FROM chat_threads t JOIN messages m ON m.thread_id = t.id
+                GROUP BY t.id, t.guest_id, t.name, t.email, t.source, t.location
+                ORDER BY last_at DESC")->fetchAll();
+        }
         json_out(['ok' => true, 'threads' => array_map(fn($r) => [
             'thread_id' => (int)$r['tid'], 'name' => $r['name'], 'email' => $r['email'],
             'source' => $r['source'], 'location' => $r['location'], 'is_guest' => !empty($r['guest_id']),
+            'archived' => $hasArch ? (int)($r['archived'] ?? 0) : 0,
             'last_at' => $r['last_at'], 'unread' => (int)$r['unread'], 'last_body' => mb_substr((string)$r['last_body'], 0, 120),
         ], $rows)]);
     } catch (\Throwable $e) {
