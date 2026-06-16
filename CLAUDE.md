@@ -18,6 +18,12 @@ build step**); PHP backend files sit alongside it. App-style guest shell lives i
 - Run `node smoke-test.js` and `php test-pricing.php` — must pass (CI runs both).
 
 ## Conventions
+- Owner content editing lives in **Settings**: "Website content" (global homepage/nav
+  text + images) and Preferences → [cottage] → Photos / Text (per-cottage). The old
+  inline live editor is retired — `handleEditToggle` / `body.edit-mode` remain dormant
+  (unused). Content is still APPLIED to the page via the `data-edit-*` attributes +
+  `applyContentOverrides` (reads `siteContent`), and galleries via `images-<prop>` —
+  do NOT remove those; they're the rendering path, not the editing UI.
 - Guest mobile shell CSS/JS is gated to `body.guest-app:not(.owner-mode)` so admin
   (`owner-mode`) and desktop are never affected. Keep new shell rules gated the same way.
 - The site deploys from `main`; the repo is cloned fresh each session (ephemeral
