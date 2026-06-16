@@ -63,11 +63,13 @@ if ($toAsk) {
     $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
     $dir = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/')), '/');
     $base = $scheme . '://' . $host . $dir . '/';
+    $googleUrl = trim(content_value('google-review-url'));   // owner-set, optional
     foreach ($toAsk as $b) {
         $res = send_review_request_email([
             'name' => $b['name'], 'email' => $b['email'], 'prop_key' => $b['prop_key'],
             'prop_name' => $b['property_name'] ?? $b['prop_key'],
             'reviewUrl' => $base . 'index.html?review=' . rawurlencode($b['prop_key']),
+            'googleUrl' => $googleUrl,
         ]);
         if (!empty($res['ok'])) {
             try { db()->prepare('UPDATE bookings SET review_request_sent = NOW() WHERE id = ?')->execute([(int)$b['id']]); } catch (\Throwable $e) {}

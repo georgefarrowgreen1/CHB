@@ -199,6 +199,13 @@ if ($action === 'approve') {
                     try { db()->prepare('UPDATE bookings SET balance_requested_at = NOW() WHERE id = ?')->execute([(int)$bookingId]); }
                     catch (\Throwable $e2) {}
                 }
+                // Deposit asked for now (check-in still far off): record when, so the
+                // abandoned-payment recovery in payments-due.php can chase it once if it
+                // goes unpaid. Harmless if the column isn't migrated yet.
+                if (!empty($paymentRequest['ok']) && !$withinWindow) {
+                    try { db()->prepare('UPDATE bookings SET deposit_requested_at = NOW() WHERE id = ?')->execute([(int)$bookingId]); }
+                    catch (\Throwable $e2) {}
+                }
             }
         } catch (\Throwable $ex) { $paymentRequest = ['ok' => false, 'error' => $ex->getMessage()]; }
     }
