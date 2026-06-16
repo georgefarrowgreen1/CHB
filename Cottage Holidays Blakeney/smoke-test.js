@@ -30,9 +30,12 @@ function approx(a, b) { return Math.abs(a - b) < 0.005; }
 
 const html = fs.readFileSync(HTML_PATH, 'utf8');
 
-// ---- Extract the main inline <script> (the app code; ignores <script src> and JSON-LD) ----
-const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
-const appScript = scripts.sort((a, b) => b.length - a.length)[0] || '';
+// ---- The app code. It now lives in an external app.js (extracted from the old
+// inline <script>); fall back to the largest inline <script> if ever re-inlined. ----
+let appScript = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]).sort((a, b) => b.length - a.length)[0] || '';
+if (appScript.trim().length < 2000) {
+    try { appScript = fs.readFileSync(path.join(path.dirname(HTML_PATH), 'app.js'), 'utf8'); } catch (e) {}
+}
 
 console.log('\n== 1. JavaScript loads in a browser-like shim ==');
 
