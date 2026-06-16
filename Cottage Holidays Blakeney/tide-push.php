@@ -43,9 +43,12 @@ $body  = "Today's tides: " . implode(' · ', $parts)
        . '. Around low tide is lovely for the beach & coast path; seal-trip boats sail near high water.';
 
 // Mid-stay bookings we haven't pushed today, whose guest has a subscribed device.
+// Arrival day is excluded (check_in < today): that day gets the "cottage ready"
+// check-in push, and both share the payload-less sw_notify path — so tide pushes
+// begin the morning after arrival. The in-stay card still shows tides on day one.
 try {
     $rows = db()->query("SELECT id, email FROM bookings
-        WHERE check_in <= CURDATE() AND check_out > CURDATE()
+        WHERE check_in < CURDATE() AND check_out > CURDATE()
           AND email IS NOT NULL AND email <> ''
           AND (tide_push_sent IS NULL OR tide_push_sent < CURDATE())")->fetchAll();
 } catch (\Throwable $e) {
