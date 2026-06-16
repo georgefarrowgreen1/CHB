@@ -162,7 +162,7 @@
     <link rel="apple-touch-icon" href="apple-touch-icon.png?v=3">
     <!-- Installable PWA + Web Push (arrival check-in notifications) -->
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="guest-app.css?v=13">
+    <link rel="stylesheet" href="guest-app.css?v=14">
     <meta name="theme-color" content="#121316">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -3961,6 +3961,8 @@
             // (below the dock), so navigating via the dock should leave them like
             // any other page.
             try { closeGuestAuthModal(); } catch (e) {}
+            try { closeGuestDetailsModal(); } catch (e) {}
+            try { closeGuestSecurityModal(); } catch (e) {}
             try { closeChat(); } catch (e) {}
 
             // Keep the guest app shell's bottom tab bar in sync with the active view
@@ -12979,7 +12981,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'ua6y1d4m';
+            const BUILD = 'vb7z2e5n';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
