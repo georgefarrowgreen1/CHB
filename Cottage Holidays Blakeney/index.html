@@ -1400,12 +1400,15 @@
         .exp-tag { display: inline-block; font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.5px; padding: 1px 7px; border-radius: 10px; background: rgba(214,167,133,0.18); color: var(--accent); margin-left: 6px; vertical-align: middle; }
         .exp-receipt img { height: 30px; width: 30px; object-fit: cover; border-radius: 6px; border: 1px solid var(--glass-border); display: block; }
         /* Add-an-expense form: stack the fields full-width on phones so they don't
-           cram together in the wrap row. */
+           cram together in the wrap row, with Scan photo + Add as equal-size buttons. */
         @media (max-width: 600px) {
             .exp-add-form { flex-direction: column; align-items: stretch; gap: 12px; }
             .exp-add-form > div, .exp-add-form > label, .exp-add-form > button { width: 100%; }
-            .exp-add-form input, .exp-add-form select { width: 100% !important; box-sizing: border-box; }
-            .exp-add-form > button { justify-content: center; padding: 12px; }
+            .exp-add-form input:not([type="checkbox"]):not([type="radio"]),
+            .exp-add-form select { width: 100% !important; box-sizing: border-box; }
+            .exp-add-form .exp-scan-btn, .exp-add-form .exp-add-btn { width: 100%; justify-content: center; padding: 12px; }
+            .exp-receipt-field > div { display: block !important; }
+            #exp-receipt-prev { margin-top: 8px; }
         }
         .accounts-section-title { font-family: var(--font-serif); font-size: 1.4rem; margin: 36px 0 6px; }
         .accounts-empty { text-align: center; padding: 50px 20px; color: var(--text-muted); }
@@ -4842,9 +4845,9 @@
                         <div><label class="modal-label">Amount (£)</label><input type="number" min="0" step="0.01" id="exp-amount" class="input-glass field-sm" placeholder="0.00" style="margin:0;width:110px;"></div>
                         <div><label class="modal-label">Cottage</label><select id="exp-prop" class="input-glass field-sm" style="margin:0;">${cottageOpts}</select></div>
                         <div style="flex:1 1 160px;"><label class="modal-label">Note (optional)</label><input type="text" id="exp-desc" class="input-glass field-sm" placeholder="e.g. End-of-stay clean" style="margin:0;width:100%;"></div>
-                        <div><label class="modal-label">Receipt <span style="text-transform:none;letter-spacing:0;color:var(--text-muted);">· scanned on device, not stored</span></label><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><button class="btn-sm btn-edit" type="button" onclick="pickExpenseReceipt()">＋ Scan photo</button><span id="exp-receipt-prev" style="display:inline-flex;align-items:center;gap:6px;"></span></div></div>
-                        <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;color:var(--text-muted);"><input type="checkbox" id="exp-recurring" style="width:auto;margin:0;"> Recurring</label>
-                        <button class="btn-sm btn-edit" onclick="addExpense()">Add</button>
+                        <label class="exp-recurring-label" style="display:flex;align-items:center;gap:6px;font-size:0.82rem;color:var(--text-muted);"><input type="checkbox" id="exp-recurring" style="width:auto;margin:0;"> Recurring</label>
+                        <div class="exp-receipt-field"><label class="modal-label">Receipt <span style="text-transform:none;letter-spacing:0;color:var(--text-muted);">· scanned on device, not stored</span></label><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><button class="btn-sm btn-edit exp-scan-btn" type="button" onclick="pickExpenseReceipt()">＋ Scan photo</button><span id="exp-receipt-prev" style="display:inline-flex;align-items:center;gap:6px;"></span></div></div>
+                        <button class="btn-sm btn-edit exp-add-btn" onclick="addExpense()">Add</button>
                     </div>
                     <div id="exp-receipt-card"></div>
                 </div>
@@ -11591,7 +11594,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'wc4d5e7j';
+            const BUILD = 'xd5e6f8k';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
