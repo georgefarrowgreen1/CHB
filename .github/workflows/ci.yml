@@ -28,3 +28,7 @@ jobs:
       - name: Front-end smoke test
         working-directory: "Cottage Holidays Blakeney"
         run: node smoke-test.js
+
+      - name: Pricing parity (PHP price_breakdown vs JS fixtures)
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-pricing.php
