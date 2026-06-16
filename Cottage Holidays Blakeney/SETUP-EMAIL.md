@@ -53,10 +53,25 @@ per booking from the back office ("📩 Send arrival info" in the booking detail
 
 ## Daily cron jobs (one place)
 
-The site does its scheduled work through small URLs you "ping" once a day. In the
-IONOS control panel, create **one DAILY cron job per line below** (replace
+The site does its scheduled work through small URLs you "ping" once a day.
+
+### Simplest: one cron job for everything (recommended)
+
+In the IONOS control panel, create **a single DAILY cron job** pointing at:
+
+```
+https://YOURDOMAIN/YOURFOLDER/cron.php?cron=APP_SECRET
+```
+
+`cron.php` runs every scheduled task in turn, so you only manage one job. That's
+all you need.
+
+### Or: one cron job per task
+
+If you'd rather schedule them individually (e.g. to run some at different times),
+create **one DAILY cron job per line below** instead of using `cron.php`. Replace
 `YOURDOMAIN/YOURFOLDER` with your site, and `APP_SECRET` with the value from
-`config.php`). Mid-morning is a good time. Each one is safe to run every day — it
+`config.php`. Mid-morning is a good time. Each one is safe to run every day — it
 only acts when there's something to do, and never repeats itself.
 
 ```
