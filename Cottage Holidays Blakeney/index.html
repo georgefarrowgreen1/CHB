@@ -2641,6 +2641,10 @@
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M18 8v6M21 11h-6"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Waitlist</span><span class="settings-row-sub">Guests waiting on sold-out dates</span></span><span class="settings-row-chev">›</span>
                 </button>
+                <button class="settings-row" onclick="settingsOpen('newsletter')">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Newsletter</span><span class="settings-row-sub">Mailing list &amp; seasonal broadcasts</span></span><span class="settings-row-chev">›</span>
+                </button>
                 <button class="settings-row" onclick="settingsOpen('apis')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 13.5l-5.3 5.3a2 2 0 0 1-2.8-2.8l5.3-5.3"/><circle cx="15.5" cy="8.5" r="5"/><path d="M13.5 10.5l1.5 1.5"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">API keys</span><span class="settings-row-sub">Tide data &amp; other integrations</span></span><span class="settings-row-chev">›</span>
@@ -2763,6 +2767,23 @@
             <div class="settings-sec" id="sec-waitlist" style="display:none;">
                 <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 16px;">Guests who asked to be told if dates free up. They're emailed automatically when a booking for matching dates is cancelled — or notify them manually below.</p>
                 <div id="waitlist-body"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
+            </div>
+
+            <!-- Newsletter / seasonal broadcast -->
+            <div class="settings-sec" id="sec-newsletter" style="display:none;">
+                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 16px;">Guests who opted in from the website footer. Write a short update or seasonal offer and send it to everyone — each email includes a one-click unsubscribe link.</p>
+                <div id="newsletter-stats" style="margin-bottom:18px;"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
+                <div class="glass-panel" style="max-width:640px;padding:22px;border-radius:18px;">
+                    <h3 style="font-family:var(--font-serif);font-size:1.15rem;margin:0 0 12px;">Compose broadcast</h3>
+                    <label class="modal-label" for="nl-subject">Subject</label>
+                    <input type="text" id="nl-subject" class="input-glass" placeholder="e.g. Autumn by the Norfolk coast — midweek offer" style="margin-bottom:12px;">
+                    <label class="modal-label" for="nl-body">Message</label>
+                    <textarea id="nl-body" class="input-glass" rows="8" placeholder="Write your update…" style="resize:vertical;"></textarea>
+                    <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                        <button class="btn-glass" style="width:auto;padding:11px 22px;" onclick="sendBroadcast()">Send to subscribers</button>
+                        <span id="nl-send-msg" style="font-size:0.82rem;"></span>
+                    </div>
+                </div>
             </div>
 
             <!-- Security -->
@@ -3424,7 +3445,17 @@
                 </span>
             </button>
         </div>
-        <p class="footer-nap" style="font-size:0.7rem;color:var(--text-muted);opacity:0.55;margin-bottom:4px;letter-spacing:0.2px;">Self-catering holiday cottages in Blakeney, North Norfolk · NR25</p>
+        <!-- Newsletter opt-in: a direct-booking audience the owner owns. -->
+        <div class="footer-newsletter" id="footer-newsletter">
+            <p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 8px;">Our occasional Blakeney news &amp; offers — no spam, unsubscribe any time.</p>
+            <form onsubmit="submitNewsletter(event)" style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;max-width:420px;margin:0 auto;">
+                <input type="email" id="nl-email" name="email" autocomplete="email" placeholder="you@example.com" required
+                    style="flex:1;min-width:180px;background:var(--glass-bg);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);font-size:0.82rem;">
+                <button type="submit" class="btn-glass" style="padding:9px 18px;font-size:0.82rem;width:auto;">Sign up</button>
+            </form>
+            <p id="nl-msg" style="font-size:0.76rem;margin:8px 0 0;min-height:1em;" aria-live="polite"></p>
+        </div>
+        <p class="footer-nap" style="font-size:0.7rem;color:var(--text-muted);opacity:0.55;margin:14px 0 4px;letter-spacing:0.2px;">Self-catering holiday cottages in Blakeney, North Norfolk · NR25</p>
         <p style="font-size:0.74rem;color:var(--text-muted);">&copy; <span id="footer-year">2026</span> Cottage Holidays Blakeney &nbsp;·&nbsp; <a onclick="nav('view-privacy')" style="cursor:pointer;color:var(--text-muted);text-decoration:underline;">Privacy Policy</a> &nbsp;·&nbsp; Made by George with <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:#E57373;"><path d="M12 20s-7-4.6-7-9.5A3.7 3.7 0 0 1 12 7a3.7 3.7 0 0 1 7 3.5C19 15.4 12 20 12 20z" fill="currentColor" stroke="none"/></svg></p>
         <p style="margin-top: 4px; font-size: 0.68rem; color: var(--text-muted); opacity: 0.6;">Build <span id="build-stamp">—</span></p>
     </footer>
@@ -4335,7 +4366,7 @@
         }
 
         // ---- Settings router: Apple-style index → drill-down sub-pages ----
-        const SETTINGS_TITLES = { enquiries: 'Enquiries', messages: 'Guest messages', notify: 'Notifications', host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Preferences', calendar: 'Calendar', cancel: 'Cancellation policy', payments: 'Payments', guests: 'Guest accounts', analytics: 'Analytics', waitlist: 'Waitlist', apis: 'API keys' };
+        const SETTINGS_TITLES = { enquiries: 'Enquiries', messages: 'Guest messages', notify: 'Notifications', host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Preferences', calendar: 'Calendar', cancel: 'Cancellation policy', payments: 'Payments', guests: 'Guest accounts', analytics: 'Analytics', waitlist: 'Waitlist', newsletter: 'Newsletter', apis: 'API keys' };
         let settingsBackTarget = null;
         // The full Settings drill-down path, so the auto-update reload can restore the
         // exact folder/sub-folder the owner was in: { section, prop, accomSec }.
@@ -4366,6 +4397,7 @@
             else if (section === 'reviews') loadGuestReviewModeration();
             else if (section === 'analytics') loadAnalytics();
             else if (section === 'waitlist') loadWaitlist();
+            else if (section === 'newsletter') loadNewsletter();
             else if (section === 'apis') renderApis();
             else if (section === 'security') loadAdminPasskeys();
             else if (section === 'payments') renderSquareSettings();
@@ -7681,6 +7713,7 @@
             try { maybeOpenPayLink(); } catch (e) { console.error(e); }   // ?pay=… → payment view
             try { maybeOpenReviewLink(); } catch (e) { console.error(e); } // ?review=… → My Bookings
             try { maybeOpenCottageRoute(); } catch (e) { console.error(e); } // /cottages/<slug> → that cottage
+            try { maybeHandleUnsubscribe(); } catch (e) { console.error(e); } // ?unsub=… → newsletter opt-out
             try { oqFlush(); } catch (e) {}                                  // sync any offline-queued admin writes
             setTimeout(() => { try { maybeShowInstallHint(); } catch (e) {} }, 2500);
           }
@@ -9235,6 +9268,31 @@
             } catch (e) { show(e.message || 'Could not join the waitlist.'); }
         }
 
+        // ---- Newsletter opt-in (footer) ----
+        async function submitNewsletter(ev) {
+            if (ev) ev.preventDefault();
+            const el = document.getElementById('nl-email');
+            const msg = document.getElementById('nl-msg');
+            const email = (el && el.value || '').trim();
+            const show = (t, ok) => { if (msg) { msg.style.color = ok ? '#4CAF50' : '#E57373'; msg.textContent = t; } };
+            if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) { show('Please enter a valid email address.', false); return; }
+            try {
+                await apiPost('newsletter.php', { action: 'subscribe', email, name: (currentGuest && currentGuest.name) || '', source: 'footer' });
+                if (el) el.value = '';
+                show("You're in — thank you! We'll only email occasionally.", true);
+            } catch (e) { show(e.message || 'Could not sign you up just now.', false); }
+        }
+        // One-click unsubscribe from a broadcast (?unsub=TOKEN in the email link).
+        async function maybeHandleUnsubscribe() {
+            const usp = new URLSearchParams(window.location.search);
+            const token = usp.get('unsub');
+            if (!token) return;
+            try { await apiPost('newsletter.php', { action: 'unsubscribe', token }); } catch (e) {}
+            try { toast("You've been unsubscribed — sorry to see you go."); } catch (e) {}
+            // Tidy the URL so a refresh doesn't repeat it.
+            try { history.replaceState(null, '', window.location.pathname); } catch (e) {}
+        }
+
         // ---- Admin side: Guest messages (Settings → Guest messages) + reply modal ----
         let __msgShowArchived = false;
         async function loadAdminMessages() {
@@ -9955,6 +10013,41 @@
                     </div>
                 </div>`;
             }).join('');
+        }
+        // ---- Newsletter (Settings → Newsletter) ----
+        async function loadNewsletter() {
+            const stats = document.getElementById('newsletter-stats');
+            const sendMsg = document.getElementById('nl-send-msg'); if (sendMsg) sendMsg.textContent = '';
+            if (!stats) return;
+            stats.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p>`;
+            let r;
+            try { r = await apiGet('newsletter.php'); }
+            catch (e) { stats.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">Couldn't load subscribers${e && e.message ? ' (' + escapeHtml(e.message) + ')' : ''}.</p>`; return; }
+            const active = r.active || 0, total = r.total || 0;
+            const recent = (r.recent || []).filter(s => !s.unsubscribed_at).slice(0, 12);
+            const list = recent.length
+                ? `<div style="font-size:0.82rem;color:var(--text-muted);margin-top:10px;">${recent.map(s => escapeHtml(s.email)).join(' · ')}${active > recent.length ? ' …' : ''}</div>`
+                : `<div style="font-size:0.82rem;color:var(--text-muted);margin-top:10px;">No subscribers yet — the footer sign-up form feeds this list.</div>`;
+            stats.innerHTML = `<div class="accounts-stat" style="max-width:640px;">
+                <div style="display:flex;gap:26px;flex-wrap:wrap;">
+                    <div><div class="today-card-value" style="font-size:1.7rem;">${active}</div><div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;">Active subscribers</div></div>
+                    <div><div class="today-card-value" style="font-size:1.7rem;">${total - active}</div><div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;">Unsubscribed</div></div>
+                </div>${list}</div>`;
+        }
+        async function sendBroadcast() {
+            const subEl = document.getElementById('nl-subject'), bodyEl = document.getElementById('nl-body');
+            const msg = document.getElementById('nl-send-msg');
+            const subject = (subEl && subEl.value || '').trim();
+            const bodyText = (bodyEl && bodyEl.value || '').trim();
+            const show = (t, ok) => { if (msg) { msg.style.color = ok ? '#4CAF50' : '#E57373'; msg.textContent = t; } };
+            if (!subject || !bodyText) { show('A subject and a message are both required.', false); return; }
+            if (!await glassConfirm('Send this to all active subscribers now?')) return;
+            show('Sending…', true);
+            try {
+                const r = await apiPost('newsletter.php', { action: 'broadcast', subject, body: bodyText });
+                show(`Sent to ${r.sent || 0} subscriber${(r.sent === 1) ? '' : 's'}${r.failed ? ` (${r.failed} failed)` : ''}.`, true);
+                if (r.sent) { if (subEl) subEl.value = ''; if (bodyEl) bodyEl.value = ''; }
+            } catch (e) { show(e.message || "Couldn't send the broadcast.", false); }
         }
         async function notifyWaitlist(id) {
             if (!await glassConfirm('Email this guest that dates may now be available?')) return;
@@ -12167,7 +12260,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'rb5n8t3w';
+            const BUILD = 'sc6p9v4z';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
