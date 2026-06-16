@@ -162,7 +162,7 @@
     <link rel="apple-touch-icon" href="apple-touch-icon.png?v=3">
     <!-- Installable PWA + Web Push (arrival check-in notifications) -->
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="guest-app.css?v=8">
+    <link rel="stylesheet" href="guest-app.css?v=9">
     <meta name="theme-color" content="#121316">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -3065,7 +3065,7 @@
     <main id="view-guest-bookings" class="page-view container">
         <div class="dashboard-header">
             <div>
-                <h1 class="section-title" style="margin-bottom: 5px;">My Bookings</h1>
+                <h1 class="section-title" style="margin-bottom: 5px;">My Stays</h1>
                 <p class="lead" style="text-align: left; margin: 0;" id="guest-welcome">Your stays with Cottage Holidays Blakeney.</p>
             </div>
             <!-- Account actions (Your details / Account & Security / Log Out) now live
@@ -5834,7 +5834,7 @@
 
         function setGuestUI() {
             const acct = document.getElementById('footer-account');
-            if (acct) acct.innerText = currentGuest ? 'My Bookings' : 'Sign in';
+            if (acct) acct.innerText = currentGuest ? 'My Stays' : 'Sign in';
             const btn = document.getElementById('account-btn');
             if (btn) {
                 btn.classList.toggle('logged-in', !!currentGuest);
@@ -12928,7 +12928,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'ov0s5x8g';
+            const BUILD = 'pw1t6y9h';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
@@ -12939,7 +12939,7 @@
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
-    <script defer src="guest-app.js?v=5"></script>
+    <script defer src="guest-app.js?v=6"></script>
 
 </body>
 </html>

@@ -22,9 +22,6 @@
     // Home button; My Stays only shows when signed in; Account is folded in (no
     // separate floating button).
     var DOCK = [
-        { key: 'messages', label: 'Messages',
-          icon: '<path d="M4 5h16v10H9l-4 4z"/><path d="M8 9h8M8 12h5"/>',
-          go: function () { if (window.toggleChat) window.toggleChat(); } },
         { key: 'experiences', label: 'Experiences',
           icon: '<path d="M12 3l2.1 4.6L19 9l-4 3.3.9 5.1L12 15.9 8.1 17.4 9 12.3 5 9l4.9-1.4z"/>',
           go: function () {
@@ -80,6 +77,25 @@
 
         wrap.appendChild(dock);
         document.body.appendChild(wrap);
+
+        // Messages sits on its own at the bottom-left — detached from the menu but
+        // reusing the exact dock pill + button styling (a one-button dock).
+        var msgWrap = document.createElement('div');
+        msgWrap.id = 'guest-msg-fab';
+        var msgDock = document.createElement('nav');
+        msgDock.className = 'guest-dock';
+        msgDock.setAttribute('aria-label', 'Messages');
+        var msgBtn = document.createElement('button');
+        msgBtn.type = 'button';
+        msgBtn.className = 'guest-dock-btn';
+        msgBtn.setAttribute('data-label', 'Messages');
+        msgBtn.setAttribute('aria-label', 'Messages');
+        msgBtn.title = 'Messages';
+        msgBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v10H9l-4 4z"/><path d="M8 9h8M8 12h5"/></svg>';
+        msgBtn.addEventListener('click', function () { if (window.toggleChat) window.toggleChat(); });
+        msgDock.appendChild(msgBtn);
+        msgWrap.appendChild(msgDock);
+        document.body.appendChild(msgWrap);
 
         var chip = document.createElement('div');
         chip.id = 'guest-install-chip';

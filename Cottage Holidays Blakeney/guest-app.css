@@ -13,6 +13,7 @@
    viewport or when the site is installed (handled in guest-app.js). */
 #guest-tabbar { display: none; }
 #guest-install-chip { display: none; }
+#guest-msg-fab { display: none; }
 
 /* In the guest shell the top header is removed entirely — navigation lives in
    the floating dock menu below. */
@@ -90,6 +91,15 @@ body.guest-app:not(.owner-mode).guest-signed-in .gt-stays { display: inline-flex
                 opacity 0.28s ease;
 }
 .guest-dock-indicator.show { opacity: 1; }
+
+/* Standalone Messages button — detached from the menu at the bottom-left, but
+   it reuses .guest-dock + .guest-dock-btn so it's the same size/design. */
+body.guest-app:not(.owner-mode) #guest-msg-fab {
+    display: flex; align-items: center;
+    position: fixed; left: 12px;
+    bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    z-index: 1400;
+}
 
 /* Hover label so each icon's purpose is clear (desktop / pointer devices). */
 .guest-dock-btn::after {
