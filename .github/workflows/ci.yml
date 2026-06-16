@@ -1,0 +1,30 @@
+name: CI
+
+# Tiny safety net: lint every PHP file and run the front-end smoke test on each
+# pull request (and on pushes to main) so a broken edit can't reach production.
+
+on:
+  push:
+    branches: [ main ]
+  pull_request: {}
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: PHP syntax check (php -l on every .php)
+        run: |
+          set -e
+          find "Cottage Holidays Blakeney" -name '*.php' -print0 \
+            | xargs -0 -n1 php -l
+
+      - name: Front-end smoke test
+        working-directory: "Cottage Holidays Blakeney"
+        run: node smoke-test.js

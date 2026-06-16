@@ -72,6 +72,17 @@ if ($action === 'suggest') {
     $guest = $g->fetch();
     if (!$guest) json_out(['error' => 'Account not found'], 404);
 
+    // Rate-limit: cap how many suggestions a guest can have AWAITING review, so a
+    // single guest can't flood the moderation queue. Approved/rejected ones don't
+    // count, so genuine contributors aren't permanently blocked.
+    try {
+        $c = db()->prepare("SELECT COUNT(*) FROM experiences WHERE source = 'guest' AND status = 'pending' AND suggested_by_email = ?");
+        $c->execute([$guest['email']]);
+        if ((int)$c->fetchColumn() >= 5) {
+            json_out(['error' => "Thanks! You've reached the suggestion limit for now — we'll review the ones you've already sent."], 429);
+        }
+    } catch (\Throwable $e) { /* table not migrated yet — let the insert below report it */ }
+
     // Optional photo the guest attached (validated + stored like guest photos).
     $image = '';
     if (!empty($_FILES['image']) && is_array($_FILES['image']) && (($_FILES['image']['error'] ?? 4) === UPLOAD_ERR_OK)) {
