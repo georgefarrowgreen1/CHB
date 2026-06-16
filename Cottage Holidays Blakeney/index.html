@@ -706,6 +706,10 @@
         .card-img { height: clamp(180px, 30vw, 250px); border-radius: 16px; background-size: cover; background-position: center; margin-bottom: 20px; }
         .card-title { font-family: var(--font-serif); font-size: clamp(1.4rem, 4vw, 1.8rem); margin-bottom: 5px; }
         .card-meta { font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted); letter-spacing: 1px; margin-bottom: 15px; }
+        .card-rating { font-size: 0.85rem; color: var(--text-light); margin-bottom: 12px; display: flex; align-items: center; gap: 5px; }
+        .card-rating .cr-star { color: #FFB74D; }
+        .card-rating .cr-count { color: var(--text-muted); }
+        .card-rating .cr-new { color: var(--text-muted); font-size: 0.8rem; font-style: italic; }
         .card-price { font-family: var(--font-serif); font-size: 1.15rem; color: var(--text-light); }
         .card-price span { font-size: 0.8rem; color: var(--text-muted); font-family: var(--font-sans); }
         /* Cottages page: full-width single column on mobile AND desktop (the cards
@@ -2303,18 +2307,21 @@
                 <div class="card-img" data-edit-img="card1-img" style="background-image: url('card-21a.jpg');"></div>
                 <div class="card-title" data-edit-text="card1-title">21A Westgate</div>
                 <div class="card-meta" data-edit-text="card1-meta">Sleeps 6 • Townhouse</div>
+                <div class="card-rating" id="card-rating-21a"></div>
                 <div class="card-price" id="card-price-21a"></div>
             </a>
             <a class="card glass-panel" href="/cottages/jollyboat" onclick="return cottageLink(event,'jollyboat')">
                 <div class="card-img" data-edit-img="card2-img" style="background-image: url('card-jollyboat.jpg');"></div>
                 <div class="card-title" data-edit-text="card2-title">Jollyboat</div>
                 <div class="card-meta" data-edit-text="card2-meta">Sleeps 2 • Romantic</div>
+                <div class="card-rating" id="card-rating-jollyboat"></div>
                 <div class="card-price" id="card-price-jollyboat"></div>
             </a>
             <a class="card glass-panel" href="/cottages/pimpernel" onclick="return cottageLink(event,'pimpernel')">
                 <div class="card-img" data-edit-img="card3-img" style="background-image: url('card-pimpernel.jpg');"></div>
                 <div class="card-title" data-edit-text="card3-title">Pimpernel</div>
                 <div class="card-meta" data-edit-text="card3-meta">Sleeps 4 • Contemporary</div>
+                <div class="card-rating" id="card-rating-pimpernel"></div>
                 <div class="card-price" id="card-price-pimpernel"></div>
             </a>
         </div>
@@ -10294,6 +10301,7 @@
             return guest.concat(curated);
         }
         function renderReviews() {
+            try { renderCardRatings(); } catch (e) {}   // social proof on the cottage cards (runs even with no reviews)
             const sec = document.getElementById('reviews-section');
             const list = document.getElementById('reviews-list');
             if (!sec || !list) return;
@@ -11065,6 +11073,20 @@
             saveContent('rules-' + propKey, rules);
         }
 
+        // Star rating + review count on each cottage listing card (social proof at
+        // the point of choosing). Shows "New" until a cottage has approved reviews.
+        function renderCardRatings() {
+            let all = [];
+            try { all = (typeof allReviews === 'function') ? allReviews() : []; } catch (e) { all = []; }
+            Object.keys(propertyRates || {}).forEach(k => {
+                const el = document.getElementById('card-rating-' + k);
+                if (!el) return;
+                const rs = all.filter(r => r.prop === k);
+                if (!rs.length) { el.innerHTML = `<span class="cr-new">New — be the first to review</span>`; return; }
+                const avg = rs.reduce((s, r) => s + (parseInt(r.stars, 10) || 0), 0) / rs.length;
+                el.innerHTML = `<span class="cr-star">★</span> ${avg.toFixed(1)} <span class="cr-count">· ${rs.length} review${rs.length === 1 ? '' : 's'}</span>`;
+            });
+        }
         // Fill each cottage card with its live "from £[couple rate] / night"
         function renderCardPrices() {
             Object.keys(propertyRates).forEach(k => {
@@ -13321,7 +13343,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'ag2e7k0t';
+            const BUILD = 'bh3f8l1u';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
