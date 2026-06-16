@@ -146,25 +146,29 @@ body.guest-app:not(.owner-mode) #footer-newsletter,
 body.guest-app:not(.owner-mode) .footer-nap,
 body.guest-app:not(.owner-mode) .footer-legal { display: none; }
 
-/* On mobile, sign in / create account is shown as a full PAGE (like Cottages),
-   not a floating window: full-bleed, opaque page background, scrollable, and
-   sitting just BELOW the dock so the menu stays usable (tapping Home/Cottages
-   leaves it via nav()). */
-body.guest-app:not(.owner-mode) #guest-auth-modal {
+/* On mobile, the sign-in / create-account and account screens (Your details,
+   Account & Security) are shown as full PAGES (like Cottages), not floating
+   windows: full-bleed, opaque, sitting just BELOW the dock so the menu stays
+   usable (tapping another tab leaves them via nav()). They adapt to the screen:
+   the form is a fluid-width column that centres vertically when it fits and
+   scrolls when it doesn't, full-width on small phones and capped on larger ones. */
+body.guest-app:not(.owner-mode) #guest-auth-modal,
+body.guest-app:not(.owner-mode) #guest-details-modal,
+body.guest-app:not(.owner-mode) #guest-security-modal {
     z-index: 1390;
-    padding: 0;
     background: var(--dark-grey);
     -webkit-backdrop-filter: none; backdrop-filter: none;
-    align-items: stretch; justify-content: stretch;
+    flex-direction: column; align-items: center; justify-content: safe center;
     overflow-y: auto;
+    padding: calc(58px + env(safe-area-inset-top, 0px)) clamp(16px, 5vw, 32px) calc(124px + env(safe-area-inset-bottom, 0px));
 }
-body.guest-app:not(.owner-mode) #guest-auth-modal .modal-box {
-    width: 100%; max-width: none; max-height: none; min-height: 100%;
+body.guest-app:not(.owner-mode) #guest-auth-modal .modal-box,
+body.guest-app:not(.owner-mode) #guest-details-modal .modal-box,
+body.guest-app:not(.owner-mode) #guest-security-modal .modal-box {
+    width: 100%; max-height: none; min-height: 0; flex: 0 0 auto;
     margin: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none;
-    padding: calc(58px + env(safe-area-inset-top, 0px)) 22px calc(110px + env(safe-area-inset-bottom, 0px));
+    padding: 0;
 }
-/* Keep the form itself a comfortable, centred column on wider phones/tablets. */
-body.guest-app:not(.owner-mode) #guest-auth-modal .modal-box > div { max-width: 440px; width: 100%; margin: 0 auto; }
 
 /* Messages is also a full PAGE on mobile (like the other menu items), not a
    floating window: full-bleed, opaque, scrollable, below the dock so the menu
