@@ -162,7 +162,7 @@
     <link rel="apple-touch-icon" href="apple-touch-icon.png?v=3">
     <!-- Installable PWA + Web Push (arrival check-in notifications) -->
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="guest-app.css?v=15">
+    <link rel="stylesheet" href="guest-app.css?v=16">
     <meta name="theme-color" content="#121316">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -2364,8 +2364,8 @@
             <div class="gallery-track" id="gallery-21a">
                 <!-- slides injected dynamically by renderGallery() -->
             </div>
-            <button class="gallery-nav prev" onclick="moveGallery('gallery-21a', -1)">&#10094;</button>
-            <button class="gallery-nav next" onclick="moveGallery('gallery-21a', 1)">&#10095;</button>
+            <button class="gallery-nav prev" aria-label="Previous photo" onclick="moveGallery('gallery-21a', -1)">&#10094;</button>
+            <button class="gallery-nav next" aria-label="Next photo" onclick="moveGallery('gallery-21a', 1)">&#10095;</button>
         </div>
         <!-- Gallery editing controls (only visible in edit mode) -->
         <div class="gallery-edit-bar" id="gallery-edit-bar">
@@ -3132,7 +3132,7 @@
                     <input type="tel" class="input-glass" id="reg-phone" name="tel" autocomplete="tel" inputmode="tel" placeholder="Contact number">
                     <label class="modal-label" for="reg-address">UK Address</label>
                     <textarea class="input-glass" id="reg-address" name="address" autocomplete="street-address" rows="2" placeholder="House name/number, street, town, county" style="resize: vertical;"></textarea>
-                    <label class="modal-label">Postcode</label>
+                    <label class="modal-label" for="reg-postcode">Postcode</label>
                     <input type="text" class="input-glass" id="reg-postcode" placeholder="e.g. NR25 7AB" autocomplete="postal-code" style="margin-bottom: 6px;">
                     <p style="font-size: 0.72rem; color: var(--text-muted); margin: 0 0 18px;">Used only to manage your bookings and contact you. See our <a onclick="closeGuestAuthModal(); nav('view-privacy')" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy Policy</a>.</p>
                     <label class="modal-label" for="reg-password">Password</label>
@@ -3199,7 +3199,7 @@
             <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 12px;">Tell us what you're into and we'll sketch a tide-aware itinerary for your stay.</p>
             <div class="trip-interests" id="trip-interests"></div>
             <div style="display:flex;align-items:center;gap:10px;margin:14px 0;flex-wrap:wrap;">
-                <label style="font-size:0.85rem;color:var(--text-muted);">Days</label>
+                <label style="font-size:0.85rem;color:var(--text-muted);" for="trip-days">Days</label>
                 <select id="trip-days" class="input-glass field-sm" style="width:80px;margin:0;"></select>
                 <button class="btn-glass" onclick="runTripPlan()" style="margin-left:auto;">Plan my days</button>
             </div>
@@ -3255,8 +3255,8 @@
         </div>
         <div class="chat-thread" id="chat-thread"></div>
         <div id="chat-intro" style="display:none;padding:0 14px;">
-            <input type="text" id="chat-name" class="input-glass field-sm" placeholder="Your name (optional)" style="margin:0 0 8px;">
-            <input type="email" id="chat-email" name="email" autocomplete="email" class="input-glass field-sm" placeholder="Email (so we can reply)" style="margin:0;">
+            <input type="text" id="chat-name" aria-label="Your name" class="input-glass field-sm" placeholder="Your name (optional)" style="margin:0 0 8px;">
+            <input type="email" id="chat-email" name="email" autocomplete="email" aria-label="Your email" class="input-glass field-sm" placeholder="Email (so we can reply)" style="margin:0;">
         </div>
         <div class="chat-quick" id="chat-quick">
             <button type="button" class="chat-chip chat-chip-avail" onclick="chatAvailStart()">Check availability</button>
@@ -3309,7 +3309,7 @@
             <input type="tel" class="input-glass" id="profile-phone" placeholder="Contact number">
             <label class="modal-label">UK Address</label>
             <textarea class="input-glass" id="profile-address" rows="2" placeholder="House name/number, street, town, county" style="resize:vertical;"></textarea>
-            <label class="modal-label">Postcode</label>
+            <label class="modal-label" for="profile-postcode">Postcode</label>
             <input type="text" class="input-glass" id="profile-postcode" placeholder="e.g. NR25 7AB" autocomplete="postal-code" style="margin-bottom:6px;">
             <p style="font-size:0.72rem;color:var(--text-muted);margin:0 0 10px;">Used only to manage your bookings and contact you. See our <a onclick="closeGuestDetailsModal(); nav('view-privacy')" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy Policy</a>.</p>
             <div id="profile-msg" style="font-size:0.8rem;margin:4px 0 10px;display:none;"></div>
@@ -3527,7 +3527,7 @@
 
             <label class="modal-label">Home Address</label>
             <textarea class="input-glass" id="modal-address" rows="2" placeholder="House name/number, street, town, county" style="resize: vertical;"></textarea>
-            <label class="modal-label">Postcode</label>
+            <label class="modal-label" for="modal-postcode">Postcode</label>
             <input type="text" class="input-glass" id="modal-postcode" placeholder="e.g. NR25 7AB">
 
             <div style="display: flex; gap: 15px;">
@@ -10834,7 +10834,7 @@
                 const pend = p.status === 'pending';
                 const data = encodeURIComponent(p.url) + '|' + encodeURIComponent(p.caption || '');
                 return `<div style="background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:14px;overflow:hidden;">
-                    <div class="guest-photo" style="aspect-ratio:4/3;border:none;border-radius:0;" onclick="openPhotoLightbox('${data}')"><img loading="lazy" src="${escapeHtml(p.url)}" alt=""></div>
+                    <div class="guest-photo" style="aspect-ratio:4/3;border:none;border-radius:0;" onclick="openPhotoLightbox('${data}')"><img loading="lazy" src="${escapeHtml(p.url)}" alt="${escapeHtml(p.caption || 'Guest photo')}"></div>
                     <div style="padding:9px 11px;">
                         <div style="font-size:0.74rem;color:var(--text-muted);"><span class="prop-tag tag-${p.prop_key}">${escapeHtml(meta.short||meta.name)}</span> ${escapeHtml(p.guest_name||'Guest')}${pend ? ' · <span style="color:#FFB74D;">Pending</span>' : ' · <span style="color:#4CAF50;">Live</span>'}</div>
                         ${p.caption ? `<div style="font-size:0.8rem;margin:6px 0 0;">${escapeHtml(p.caption)}</div>` : ''}
@@ -13133,7 +13133,7 @@
         }
         function expCardHtml(x) {
             const img = x.image
-                ? `<img class="card-img exp-img" loading="lazy" decoding="async" src="${escapeHtml(x.image)}" alt="${escapeHtml(x.title)}">`
+                ? `<img class="card-img exp-img" width="400" height="260" loading="lazy" decoding="async" src="${escapeHtml(x.image)}" alt="${escapeHtml(x.title)}">`
                 : `<div class="card-img exp-noimg"></div>`;
             const cat = x.category ? `<div class="exp-cat-tag">${escapeHtml(x.category)}</div>` : '';
             const link = x.linkUrl
@@ -13312,7 +13312,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'ye0c5h8r';
+            const BUILD = 'zf1d6j9s';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
