@@ -3068,21 +3068,10 @@
                 <h1 class="section-title" style="margin-bottom: 5px;">My Bookings</h1>
                 <p class="lead" style="text-align: left; margin: 0;" id="guest-welcome">Your stays with Cottage Holidays Blakeney.</p>
             </div>
-            <div class="action-menu">
-                <div class="action-cluster">
-                    <button onclick="openGuestDetailsModal()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M5.5 19.5a6.5 6.5 0 0 1 13 0"/></svg> Your details</button>
-                    <button onclick="openGuestSecurityModal()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="15" cy="9" r="3.6"/><path d="M12.4 11.6L4 20"/><path d="M7 17l2 2M5 19l2 2"/></svg> Account &amp; Security</button>
-                    <a id="acct-call-btn" title="Call to discuss"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.6 3.5l2.1.4 1 3-1.5 1.4a12 12 0 0 0 5 5l1.4-1.5 3 1 .4 2.1a2 2 0 0 1-2 2.3A15.5 15.5 0 0 1 4.3 5.5a2 2 0 0 1 2.3-2z"/></svg> Call</a>
-                    <button class="ac-danger" onclick="guestLogout()">Log Out</button>
-                </div>
-                <button class="action-dd-toggle" onclick="toggleActionMenu(event)" aria-haspopup="true" aria-expanded="false">Menu ▾</button>
-                <div class="action-dd-panel">
-                    <button onclick="closeActionMenu(); openGuestDetailsModal()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M5.5 19.5a6.5 6.5 0 0 1 13 0"/></svg> Your details</button>
-                    <button onclick="closeActionMenu(); openGuestSecurityModal()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="15" cy="9" r="3.6"/><path d="M12.4 11.6L4 20"/><path d="M7 17l2 2M5 19l2 2"/></svg> Account &amp; Security</button>
-                    <a id="acct-call-btn-dd"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.6 3.5l2.1.4 1 3-1.5 1.4a12 12 0 0 0 5 5l1.4-1.5 3 1 .4 2.1a2 2 0 0 1-2 2.3A15.5 15.5 0 0 1 4.3 5.5a2 2 0 0 1 2.3-2z"/></svg> Call to Discuss</a>
-                    <button class="ac-danger" onclick="closeActionMenu(); guestLogout()">Log Out</button>
-                </div>
-            </div>
+            <!-- Account actions (Your details / Account & Security / Log Out) now live
+                 in the account section opened from the dock's Account button, so the
+                 header keeps only the support shortcut. -->
+            <a id="acct-call-btn" class="btn-sm btn-edit" title="Call to discuss"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.6 3.5l2.1.4 1 3-1.5 1.4a12 12 0 0 0 5 5l1.4-1.5 3 1 .4 2.1a2 2 0 0 1-2 2.3A15.5 15.5 0 0 1 4.3 5.5a2 2 0 0 1 2.3-2z"/></svg> Call to Discuss</a>
         </div>
         <div id="guest-bookings-list">
             <!-- JS injects the guest's bookings here -->
@@ -3242,6 +3231,10 @@
             <p style="font-size:0.72rem;color:var(--text-muted);margin:0 0 10px;">Used only to manage your bookings and contact you. See our <a onclick="closeGuestDetailsModal(); nav('view-privacy')" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy Policy</a>.</p>
             <div id="profile-msg" style="font-size:0.8rem;margin:4px 0 10px;display:none;"></div>
             <button class="btn-glass" style="width:100%;padding:14px;" onclick="saveGuestProfile()">Save details</button>
+            <div style="display:flex;flex-direction:column;gap:10px;margin-top:16px;padding-top:16px;border-top:1px solid var(--glass-border);">
+                <button class="btn-sm btn-edit" style="width:100%;justify-content:center;" onclick="closeGuestDetailsModal(); openGuestSecurityModal()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="15" cy="9" r="3.6"/><path d="M12.4 11.6L4 20"/><path d="M7 17l2 2M5 19l2 2"/></svg> Account &amp; Security</button>
+                <button class="btn-sm btn-edit" style="width:100%;justify-content:center;color:#E57373;border-color:rgba(229,115,115,0.4);" onclick="closeGuestDetailsModal(); guestLogout()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l-5-5 5-5"/><path d="M5 12h11"/></svg> Log Out</button>
+            </div>
         </div>
     </div>
 
@@ -12935,7 +12928,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'ls7p2u5d';
+            const BUILD = 'mt8q3v6e';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
