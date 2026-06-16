@@ -2692,6 +2692,10 @@
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 13.5l-5.3 5.3a2 2 0 0 1-2.8-2.8l5.3-5.3"/><circle cx="15.5" cy="8.5" r="5"/><path d="M13.5 10.5l1.5 1.5"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">API keys</span><span class="settings-row-sub">Tide data &amp; other integrations</span></span><span class="settings-row-chev">›</span>
                 </button>
+                <button class="settings-row" onclick="settingsOpen('diagnostics')">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2 5 4-12 2 7h6"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">System check</span><span class="settings-row-sub">Test every feature is working</span></span><span class="settings-row-chev">›</span>
+                </button>
             </div>
             <div class="settings-group">
                 <button class="settings-row" onclick="openTermsModal(event)">
@@ -2746,6 +2750,17 @@
                         <span id="apikey-tides-msg" style="font-size:0.82rem;color:#4CAF50;"></span>
                     </div>
                 </div>
+            </div>
+
+            <!-- System check (diagnostics) -->
+            <div class="settings-sec" id="sec-diagnostics" style="display:none;">
+                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 14px;">A quick health check of every feature — database tables, migrations and integrations. Green is good; amber is an optional thing that's off; red needs attention.</p>
+                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">
+                    <button class="btn-glass" style="width:auto;padding:11px 22px;" onclick="loadDiagnostics()">Run checks</button>
+                    <button class="btn-sm btn-edit" onclick="sendTestEmail()">Send test email</button>
+                    <span id="diag-msg" style="font-size:0.82rem;"></span>
+                </div>
+                <div id="diagnostics-body"></div>
             </div>
 
             <!-- Host profile -->
@@ -4494,7 +4509,7 @@
         }
 
         // ---- Settings router: Apple-style index → drill-down sub-pages ----
-        const SETTINGS_TITLES = { enquiries: 'Enquiries', messages: 'Guest messages', notify: 'Notifications', host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Preferences', calendar: 'Calendar', cancel: 'Cancellation policy', payments: 'Payments', guests: 'Guest accounts', analytics: 'Analytics', waitlist: 'Waitlist', newsletter: 'Newsletter', photos: 'Guest photos', apis: 'API keys' };
+        const SETTINGS_TITLES = { enquiries: 'Enquiries', messages: 'Guest messages', notify: 'Notifications', host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Preferences', calendar: 'Calendar', cancel: 'Cancellation policy', payments: 'Payments', guests: 'Guest accounts', analytics: 'Analytics', waitlist: 'Waitlist', newsletter: 'Newsletter', photos: 'Guest photos', apis: 'API keys', diagnostics: 'System check' };
         let settingsBackTarget = null;
         // The full Settings drill-down path, so the auto-update reload can restore the
         // exact folder/sub-folder the owner was in: { section, prop, accomSec }.
@@ -4527,6 +4542,7 @@
             else if (section === 'analytics') loadAnalytics();
             else if (section === 'waitlist') loadWaitlist();
             else if (section === 'newsletter') loadNewsletter();
+            else if (section === 'diagnostics') loadDiagnostics();
             else if (section === 'apis') renderApis();
             else if (section === 'security') loadAdminPasskeys();
             else if (section === 'payments') renderSquareSettings();
@@ -10402,6 +10418,51 @@
                     <div><div class="today-card-value" style="font-size:1.7rem;">${total - active}</div><div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;">Unsubscribed</div></div>
                 </div>${list}</div>`;
         }
+        // ---- System check (Settings → System check) ----
+        async function loadDiagnostics() {
+            const body = document.getElementById('diagnostics-body');
+            const msg = document.getElementById('diag-msg'); if (msg) msg.textContent = '';
+            if (!body) return;
+            body.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">Running checks…</p>`;
+            let r;
+            try { r = await apiPost('diagnostics.php', { action: 'run' }); }
+            catch (e) { body.innerHTML = `<p style="font-size:0.85rem;color:#E57373;">Couldn't run checks: ${escapeHtml(e.message || '')}</p>`; return; }
+            const checks = r.checks || [], s = r.summary || {};
+            const dot = st => st === 'ok' ? '#4CAF50' : (st === 'warn' ? '#FFB74D' : '#E57373');
+            const word = st => st === 'ok' ? 'OK' : (st === 'warn' ? 'Optional' : 'Action needed');
+            // Group by category, preserving order of first appearance.
+            const cats = [];
+            checks.forEach(c => { if (!cats.includes(c.category)) cats.push(c.category); });
+            const summary = `<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;font-size:0.85rem;">
+                <span style="color:#4CAF50;">● ${s.ok || 0} OK</span>
+                <span style="color:#FFB74D;">● ${s.warn || 0} optional/off</span>
+                <span style="color:#E57373;">● ${s.fail || 0} need attention</span></div>`;
+            body.innerHTML = summary + cats.map(cat => `
+                <div class="accounts-stat" style="max-width:640px;margin-bottom:14px;">
+                    <div class="label">${escapeHtml(cat)}</div>
+                    <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px;">
+                        ${checks.filter(c => c.category === cat).map(c => `
+                            <div style="display:flex;gap:10px;align-items:flex-start;">
+                                <span style="color:${dot(c.status)};font-size:1.1rem;line-height:1.2;flex-shrink:0;">●</span>
+                                <div style="min-width:0;">
+                                    <div style="font-size:0.9rem;color:var(--text-light);"><strong>${escapeHtml(c.label)}</strong> <span style="font-size:0.72rem;color:${dot(c.status)};">${word(c.status)}</span></div>
+                                    <div style="font-size:0.8rem;color:var(--text-muted);">${escapeHtml(c.detail || '')}</div>
+                                    ${c.hint && c.status !== 'ok' ? `<div style="font-size:0.76rem;color:var(--text-muted);opacity:0.85;margin-top:2px;">→ ${escapeHtml(c.hint)}</div>` : ''}
+                                </div>
+                            </div>`).join('')}
+                    </div>
+                </div>`).join('');
+        }
+        async function sendTestEmail() {
+            const msg = document.getElementById('diag-msg');
+            const show = (t, ok) => { if (msg) { msg.style.color = ok ? '#4CAF50' : '#E57373'; msg.textContent = t; } };
+            show('Sending…', true);
+            try {
+                const r = await apiPost('diagnostics.php', { action: 'test_email' });
+                if (r.ok) show('Sent ✓ — check ' + (r.to || 'your owner inbox') + '.', true);
+                else show(r.error || "Couldn't send.", false);
+            } catch (e) { show(e.message || "Couldn't send.", false); }
+        }
         async function sendBroadcast() {
             const subEl = document.getElementById('nl-subject'), bodyEl = document.getElementById('nl-body');
             const msg = document.getElementById('nl-send-msg');
@@ -12662,7 +12723,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'zf5a8e3r';
+            const BUILD = 'ag6b9f4s';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
