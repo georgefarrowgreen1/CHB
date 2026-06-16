@@ -50,3 +50,39 @@ Settings & Fees → "Arrival info email").
 
 Each booking gets the email once (never repeated). You can also send it manually
 per booking from the back office ("📩 Send arrival info" in the booking details).
+
+## Daily cron jobs (one place)
+
+The site does its scheduled work through small URLs you "ping" once a day. In the
+IONOS control panel, create **one DAILY cron job per line below** (replace
+`YOURDOMAIN/YOURFOLDER` with your site, and `APP_SECRET` with the value from
+`config.php`). Mid-morning is a good time. Each one is safe to run every day — it
+only acts when there's something to do, and never repeats itself.
+
+```
+https://YOURDOMAIN/YOURFOLDER/pre-arrival.php?cron=APP_SECRET
+https://YOURDOMAIN/YOURFOLDER/payments-due.php?cron=APP_SECRET
+https://YOURDOMAIN/YOURFOLDER/enquiry-nudge.php?cron=APP_SECRET
+https://YOURDOMAIN/YOURFOLDER/owner-digest.php?cron=APP_SECRET
+https://YOURDOMAIN/YOURFOLDER/tide-push.php?cron=APP_SECRET
+https://YOURDOMAIN/YOURFOLDER/push.php?action=send_checkin&cron=APP_SECRET
+```
+
+What each one does:
+
+- **pre-arrival.php** — arrival-info emails a few days before check-in, **and**
+  the post-stay review request (Google review button if you set the link in
+  Settings → Reviews).
+- **payments-due.php** — requests the balance as check-in approaches, chases
+  unpaid balances, and recovers abandoned deposits (one gentle reminder).
+- **enquiry-nudge.php** — a friendly follow-up to enquirers who haven't booked.
+- **owner-digest.php** — your Monday-morning summary email. Self-limits to
+  Mondays and at most once a day, so a daily ping is fine.
+- **tide-push.php** — pushes today's Blakeney tide window to guests who are
+  mid-stay and have the app + notifications enabled (once a day per stay).
+- **push.php?action=send_checkin** — the one-time "your cottage is ready" push
+  on check-in day.
+
+> These same URLs are also pinged automatically after every deploy, but a real
+> daily cron is what makes the time-sensitive ones reliable.
+
