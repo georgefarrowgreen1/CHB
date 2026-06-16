@@ -1279,6 +1279,11 @@
         .bo-search-hit:hover, .bo-search-hit:focus-visible { background: var(--glass-hover); }
         /* Apple-style grouped Settings index */
         .settings-index { max-width: 640px; }
+        /* Keep every Settings folder, sub-folder and drill-down on the same 640px
+           content column as the folder index, so navigating in/out stays aligned
+           and every panel's content lines up regardless of what it renders. */
+        .settings-sec { max-width: 640px; }
+        #accom-detail, #calendar-detail, #cancel-detail { max-width: 640px; }
         .settings-group { background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 16px; overflow: hidden; margin-bottom: 22px; }
         .settings-row { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; background: none; border: none; border-top: 1px solid var(--glass-border); color: var(--text-light); padding: 15px 18px; cursor: pointer; transition: background 0.2s; }
         .settings-row:first-child { border-top: none; }
@@ -1469,7 +1474,7 @@
             .guest-booking-img { width: 100%; min-height: 160px; }
             .guest-booking-body { min-width: 0; padding: 22px 20px; }
         }
-        .rate-prop { background: var(--glass-bg); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); border: 1px solid var(--glass-border); border-radius: 20px; padding: 28px 26px; box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
+        .rate-prop { background: var(--glass-bg); backdrop-filter: blur(24px); -webkit-backdrop-filter: blur(24px); border: 1px solid var(--glass-border); border-radius: 18px; padding: 24px 26px; box-shadow: 0 8px 32px rgba(0,0,0,0.2); }
         .rate-prop h4 { font-family: var(--font-serif); font-size: 1.4rem; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
         .rate-field { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 14px; }
         .rate-field label { font-size: 0.85rem; color: var(--text-muted); }
@@ -2731,7 +2736,7 @@
 
             <!-- API keys / integrations -->
             <div class="settings-sec" id="sec-apis" style="display:none;">
-                <div class="glass-panel" style="max-width:640px;padding:24px;border-radius:18px;">
+                <div class="glass-panel" style="max-width:640px;padding:24px 26px;border-radius:18px;">
                     <h3 style="font-family:var(--font-serif);font-size:1.2rem;margin:0 0 6px;">Tide data</h3>
                     <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 14px;line-height:1.5;">Powers the tide-times widget on each cottage page. Get a free key from <strong>worldtides.info</strong> (Account → API key) and paste it below. Stored encrypted; never shown on the public site. Leave blank to hide the tide widget.</p>
                     <label class="modal-label" for="apikey-tides-input">WorldTides API key</label>
@@ -2745,7 +2750,7 @@
 
             <!-- Host profile -->
             <div class="settings-sec" id="sec-host" style="display:none;">
-                <div class="glass-panel" style="max-width: 640px; padding: 30px; border-radius: 20px;">
+                <div class="glass-panel" style="max-width: 640px; padding: 24px 26px; border-radius: 18px;">
                     <div style="display:flex;align-items:center;gap:18px;margin-bottom:8px;">
                         <div id="host-edit-photo" style="width:84px;height:84px;border-radius:50%;background-size:cover;background-position:center;background-color:var(--dark-grey);flex-shrink:0;border:1px solid var(--glass-border);"></div>
                         <button type="button" class="btn-sm btn-edit" onclick="uploadHostPhoto()">Change photo</button>
@@ -2778,7 +2783,7 @@
 
             <!-- Reviews (moderation) -->
             <div class="settings-sec" id="sec-reviews" style="display:none;">
-                <div class="accounts-stat" style="max-width:720px;">
+                <div class="accounts-stat" style="max-width:640px;">
                     <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 12px;">Guests can write a review from their account once a stay is complete. Nothing appears on the site until you approve it here.</p>
                     <div id="guest-review-moderation"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
                     <!-- Google review funnel: a few days after checkout we email guests a
@@ -2817,7 +2822,7 @@
             <div class="settings-sec" id="sec-newsletter" style="display:none;">
                 <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 16px;">Guests who opted in from the website footer. Write a short update or seasonal offer and send it to everyone — each email includes a one-click unsubscribe link.</p>
                 <div id="newsletter-stats" style="margin-bottom:18px;"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
-                <div class="glass-panel" style="max-width:640px;padding:22px;border-radius:18px;">
+                <div class="glass-panel" style="max-width:640px;padding:24px 26px;border-radius:18px;">
                     <h3 style="font-family:var(--font-serif);font-size:1.15rem;margin:0 0 12px;">Compose broadcast</h3>
                     <label class="modal-label" for="nl-subject">Subject</label>
                     <input type="text" id="nl-subject" class="input-glass" placeholder="e.g. Autumn by the Norfolk coast — midweek offer" style="margin-bottom:12px;">
@@ -2832,12 +2837,12 @@
 
             <!-- Security -->
             <div class="settings-sec" id="sec-security" style="display:none;">
-                <div class="accounts-stat" style="max-width:420px;">
+                <div class="accounts-stat" style="max-width:640px;">
                     <div class="label">Admin Password</div>
                     <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 16px;">This password protects the Back Office, Settings, Money and Live Editor.</p>
                     <button class="btn-sm btn-edit" onclick="changeAdminPassword()">Change Password</button>
                 </div>
-                <div class="accounts-stat" style="max-width:560px;margin-top:16px;">
+                <div class="accounts-stat" style="max-width:640px;margin-top:16px;">
                     <div class="label">Passkeys (Face ID / Touch ID)</div>
                     <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 16px;">Sign in to the Back Office faster with a passkey. Your password still works as a backup. <strong>Tip:</strong> add a passkey on two devices (e.g. phone and laptop) so you're never locked out.</p>
                     <button class="btn-sm btn-edit" onclick="addAdminPasskey()">＋ Add a passkey</button>
@@ -2853,7 +2858,7 @@
 
             <!-- Calendar sync (cottage list → per-cottage detail) -->
             <div class="settings-sec" id="sec-calendar" style="display:none;">
-                <p style="font-size:0.85rem;color:var(--text-muted);max-width:680px;margin:0 0 14px;">Two-way iCal sync per cottage. <strong>Export:</strong> paste your link into Airbnb/Vrbo. <strong>Import:</strong> paste their links here. Updates can lag a few hours, so a small double-booking risk remains in busy periods.</p>
+                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 16px;">Two-way iCal sync per cottage. <strong>Export:</strong> paste your link into Airbnb/Vrbo. <strong>Import:</strong> paste their links here. Updates can lag a few hours, so a small double-booking risk remains in busy periods.</p>
                 <div id="calendar-list" class="settings-index"></div>
                 <div id="calendar-detail" style="display:none;"></div>
             </div>
@@ -2866,7 +2871,7 @@
 
             <!-- Payments -->
             <div class="settings-sec" id="sec-payments" style="display:none;">
-                <div class="accounts-stat" style="max-width:560px;">
+                <div class="accounts-stat" style="max-width:640px;">
                     <div class="label">Card payments status</div>
                     <p id="sq-settings-status" style="font-size:0.9rem;margin:8px 0 4px;">Checking…</p>
                     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:14px;">
@@ -2882,7 +2887,7 @@
 
             <!-- Guest accounts -->
             <div class="settings-sec" id="sec-guests" style="display:none;">
-                <div class="accounts-stat" style="max-width:560px;">
+                <div class="accounts-stat" style="max-width:640px;">
                     <div class="label">Reset a guest's password</div>
                     <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 16px;">If a guest is locked out, set a new password for them here, then tell them the new password so they can log in and change it.</p>
                     <button class="btn-sm btn-edit" onclick="loadGuestList()">Show Guest Accounts</button>
@@ -10208,15 +10213,15 @@
                     <div class="os-card"><div class="os-label">Visits (30 days)</div><div class="os-value">${d.totalViews || 0}</div><div class="os-sub">page views</div></div>
                     <div class="os-card"><div class="os-label">Unique visitors</div><div class="os-value">${d.uniqueVisitors || 0}</div><div class="os-sub">approx, last 30 days</div></div>
                 </div>
-                <div class="accounts-stat" style="max-width:720px;margin-bottom:16px;">
+                <div class="accounts-stat" style="max-width:640px;margin-bottom:16px;">
                     <div class="label">Visits over time <span style="opacity:0.6;text-transform:none;letter-spacing:0;">(last ${series.length} days)</span></div>
                     ${areaChart(series)}
                 </div>
-                <div class="accounts-stat" style="max-width:720px;margin-bottom:16px;">
+                <div class="accounts-stat" style="max-width:640px;margin-bottom:16px;">
                     <div class="label" style="margin-bottom:12px;">Top referrers</div>
                     ${refsHtml}
                 </div>
-                ${cottageHtml ? `<div class="accounts-stat" style="max-width:720px;">
+                ${cottageHtml ? `<div class="accounts-stat" style="max-width:640px;">
                     <div class="label" style="margin-bottom:12px;">Most-viewed cottages</div>
                     ${cottageHtml}
                 </div>` : ''}`;
@@ -10235,7 +10240,7 @@
                 const name = (propertyMeta[w.prop_key] || {}).name || w.prop_key;
                 const dates = (w.check_in && w.check_out) ? `${w.check_in} → ${w.check_out}` : 'Any dates';
                 const notified = w.notified_at ? `<span style="color:#4CAF50;">Notified ${escapeHtml(String(w.notified_at).slice(0,10))}</span>` : '<span style="color:var(--text-muted);">Waiting</span>';
-                return `<div class="accounts-stat" style="max-width:680px;margin-bottom:12px;">
+                return `<div class="accounts-stat" style="max-width:640px;margin-bottom:12px;">
                     <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:baseline;">
                         <div><span class="prop-tag tag-${w.prop_key}">${escapeHtml((propertyMeta[w.prop_key]||{}).short || w.prop_key)}</span> <strong>${escapeHtml(name)}</strong> · ${escapeHtml(dates)}</div>
                         <div style="font-size:0.78rem;">${notified}</div>
@@ -12528,7 +12533,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'wc2x5b8n';
+            const BUILD = 'xd3y6c9p';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
