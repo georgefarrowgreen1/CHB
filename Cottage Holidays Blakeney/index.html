@@ -3130,6 +3130,17 @@
         </div>
     </div>
 
+    <!-- ================= IN-STAY WELCOME BOOK ================= -->
+    <div id="welcome-modal" class="modal-overlay pop-modal" onclick="if(event.target===this) closeWelcomeModal()">
+        <div class="modal-box glass-panel" style="max-width:520px;">
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:6px;">
+                <h3 id="welcome-modal-title" style="font-family:var(--font-serif);font-size:1.4rem;">Welcome book</h3>
+                <button class="reviews-modal-close" onclick="closeWelcomeModal()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+            </div>
+            <div id="welcome-modal-body" style="margin-top:8px;"></div>
+        </div>
+    </div>
+
     <!-- ================= FLOATING CHAT (everyone) ================= -->
     <button id="chat-fab" class="chat-fab" onclick="toggleChat()" aria-label="Chat with us" title="Chat with us">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.6-.8L3 21l1.9-5.7A8.38 8.38 0 0 1 4 11.5 8.5 8.5 0 0 1 12.5 3 8.38 8.38 0 0 1 21 11.5z"/></svg>
@@ -4593,6 +4604,7 @@
             { id: 'location', label: 'Location',          sub: 'Address &amp; key-code unlock spot', ic: '<path d="M12 21s-7-5.2-7-11a7 7 0 0 1 14 0c0 5.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/>' },
             { id: 'local',    label: 'Local guide',       sub: 'Dark skies, car-free &amp; accessibility notes', ic: '<circle cx="12" cy="12" r="9"/><path d="M15 9l-4.2 1.8L9 15l4.2-1.8z"/>' },
             { id: 'faq',      label: 'Good to Know',      sub: 'FAQ shown in this cottage\'s bookings', ic: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.8" r="0.7" fill="currentColor" stroke="none"/>' },
+            { id: 'welcome',  label: 'Welcome book',      sub: 'In-stay guide: Wi-Fi, appliances, bins, tips', ic: '<path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H19v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 5.5V20.5"/>' },
         ];
         function settingsOpenAccom(k) {
             const list = document.getElementById('accom-list'); const detail = document.getElementById('accom-detail');
@@ -6312,6 +6324,7 @@
                                 <button class="btn-sm btn-edit" onclick="addBookingToCalendar('${b.id}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg> Add to Calendar</button>
                                 <button class="btn-sm btn-edit" onclick="openTermsModal(event, '${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h9a3 3 0 0 1 3 3v13H9a3 3 0 0 1-3-3z"/><path d="M6 17h12"/></svg> Terms</button>
                                 ${upcoming ? faqBlockHtml(propKey) : ''}
+                                ${upcoming ? guestWelcomeButton(propKey) : ''}
                                 ${(!upcoming && !reviewShown.has(propKey) && reviewShown.add(propKey)) ? guestReviewButton(propKey) : ''}
                                 ${(!upcoming && !photoShown.has(propKey) && photoShown.add(propKey)) ? guestPhotoButton(propKey) : ''}
                             </div>
@@ -7149,6 +7162,37 @@
         function guestPhotoButton(propKey) {
             return `<button class="btn-sm btn-edit" onclick="openPhotoUpload('${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.5"/><path d="M8 6l1.5-2h5L16 6"/></svg> Share a photo</button>`;
         }
+        // ---- In-stay welcome book (guest, booking-gated) ----
+        function guestWelcomeButton(propKey) {
+            return `<button class="btn-sm btn-edit" onclick="openWelcomeBook('${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H19v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 5.5V20.5"/></svg> Welcome book</button>`;
+        }
+        async function openWelcomeBook(propKey) {
+            const meta = propertyMeta[propKey] || { name: propKey };
+            const titleEl = document.getElementById('welcome-modal-title');
+            const bodyEl = document.getElementById('welcome-modal-body');
+            if (titleEl) titleEl.textContent = (meta.name || 'Your cottage') + ' — welcome book';
+            if (bodyEl) bodyEl.innerHTML = `<p style="color:var(--text-muted);font-size:0.9rem;">Loading…</p>`;
+            const m = document.getElementById('welcome-modal'); if (m) m.classList.add('open');
+            let sections = [];
+            try {
+                const r = await apiPost('welcome.php', { action: 'get', prop: propKey });
+                sections = (r && r.sections) || [];
+            } catch (e) {
+                if (bodyEl) bodyEl.innerHTML = `<p style="color:var(--text-muted);font-size:0.9rem;">Couldn't load the welcome book${e && e.message ? ' (' + escapeHtml(e.message) + ')' : ''}.</p>`;
+                return;
+            }
+            if (!bodyEl) return;
+            if (!sections.length) {
+                bodyEl.innerHTML = `<p style="color:var(--text-muted);font-size:0.9rem;">Your host hasn't added a welcome book for this cottage yet. Anything you need? Just message us.</p>`;
+                return;
+            }
+            bodyEl.innerHTML = sections.map(s => `
+                <div style="margin-bottom:18px;">
+                    <h4 style="font-family:var(--font-serif);font-size:1.1rem;margin:0 0 6px;">${escapeHtml(s.title)}</h4>
+                    <div style="font-size:0.9rem;color:var(--text-light);line-height:1.6;white-space:pre-line;">${escapeHtml(s.body)}</div>
+                </div>`).join('');
+        }
+        function closeWelcomeModal() { const m = document.getElementById('welcome-modal'); if (m) m.classList.remove('open'); }
         // ---- Guest photo submission (from My Bookings) ----
         let __photoUploadProp = null;
         function openPhotoUpload(propKey) {
@@ -9833,6 +9877,16 @@
                         <button class="btn-sm btn-edit" onclick="addFaqRow('${k}')">＋ Add question</button>
                         <button class="btn-sm btn-edit" onclick="saveFaqs('${k}')">Save FAQ</button>
                     </div>`;
+                case 'welcome': {
+                    const secs = Array.isArray(adminPrivateContent['welcome-'+k]) ? adminPrivateContent['welcome-'+k] : [];
+                    return `
+                    <label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:10px;">A private in-stay guide your guests can open during their stay (Wi-Fi, how things work, bins, parking, heating, local tips, checkout). Kept private — only shown to guests who've booked this cottage.</label>
+                    <div id="welcome-editor-${k}">${secs.map(s => welcomeRowHtml(k, s)).join('')}</div>
+                    <div style="display:flex;gap:10px;margin-top:8px;">
+                        <button class="btn-sm btn-edit" onclick="addWelcomeRow('${k}')">＋ Add section</button>
+                        <button class="btn-sm btn-edit" onclick="saveWelcome('${k}')">Save welcome book</button>
+                    </div>`;
+                }
                 default: return '';
             }
         }
@@ -10185,6 +10239,39 @@
                 await saveContent('faqs-' + propKey, faqs);
                 siteContent['faqs-' + propKey] = faqs;
                 toast(faqs.length ? 'Good to Know saved.' : 'Saved — no FAQ entries now.');
+            } catch (e) { glassAlert("Couldn't save: " + e.message); }
+        }
+
+        // ---- Welcome book editor (per cottage, private) ----
+        function welcomeRowHtml(propKey, s) {
+            s = s || { title: '', body: '' };
+            return `<div class="welcome-row" style="border:1px solid var(--glass-border);border-radius:14px;padding:14px;margin-bottom:10px;background:var(--glass-bg);">
+                <div style="display:flex;gap:8px;margin-bottom:8px;">
+                    <input type="text" class="input-glass field-sm" placeholder="Section title (e.g. Wi-Fi, Heating, Bins)" value="${escapeHtml(s.title || '')}" data-wb="title" style="flex:1 1 240px;min-width:160px;">
+                    <button class="btn-sm btn-delete" onclick="this.closest('.welcome-row').remove()" title="Remove section"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+                </div>
+                <textarea rows="3" class="input-glass field-sm" placeholder="Details…" data-wb="body">${escapeHtml(s.body || '')}</textarea>
+            </div>`;
+        }
+        function addWelcomeRow(propKey) {
+            const wrap = document.getElementById('welcome-editor-' + propKey);
+            if (wrap) wrap.insertAdjacentHTML('beforeend', welcomeRowHtml(propKey, null));
+        }
+        async function saveWelcome(propKey) {
+            const wrap = document.getElementById('welcome-editor-' + propKey);
+            if (!wrap) return;
+            const sections = [];
+            for (const row of wrap.querySelectorAll('.welcome-row')) {
+                const get = sel => { const el = row.querySelector(`[data-wb="${sel}"]`); return el ? el.value.trim() : ''; };
+                const title = get('title'), body = get('body');
+                if (!title && !body) continue;            // empty row — skip
+                if (!title || !body) { glassAlert('Each section needs both a title and some details.'); return; }
+                sections.push({ title, body });
+            }
+            try {
+                await saveContent('welcome-' + propKey, sections);
+                adminPrivateContent['welcome-' + propKey] = sections;   // private key — kept in the admin cache
+                toast(sections.length ? 'Welcome book saved.' : 'Saved — no sections yet.');
             } catch (e) { glassAlert("Couldn't save: " + e.message); }
         }
 
@@ -12575,7 +12662,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'ye4z7d2q';
+            const BUILD = 'zf5a8e3r';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;

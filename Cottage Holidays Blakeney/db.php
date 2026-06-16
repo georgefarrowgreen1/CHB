@@ -192,7 +192,7 @@ function decrypt_value($stored) {
 }
 // Content keys whose values are encrypted at rest.
 function is_private_content_key($key) {
-    return strpos($key, 'ical-feeds-') === 0 || strpos($key, 'arrival-') === 0 || strpos($key, 'apikey-') === 0;
+    return strpos($key, 'ical-feeds-') === 0 || strpos($key, 'arrival-') === 0 || strpos($key, 'apikey-') === 0 || strpos($key, 'welcome-') === 0;
 }
 
 // Read a single content value as a plain string (decrypting private keys), '' if unset.
