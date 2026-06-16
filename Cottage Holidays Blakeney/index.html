@@ -1406,10 +1406,12 @@
             .exp-add-form > div, .exp-add-form > label, .exp-add-form > button { width: 100%; }
             .exp-add-form input:not([type="checkbox"]):not([type="radio"]),
             .exp-add-form select { width: 100% !important; box-sizing: border-box; }
-            .exp-add-form .exp-scan-btn, .exp-add-form .exp-add-btn { width: 100%; justify-content: center; padding: 12px; }
+            .exp-add-form .exp-scan-btn, .exp-add-form .exp-add-btn, .exp-add-form .exp-clear-btn { width: 100%; justify-content: center; padding: 12px; }
             .exp-receipt-field > div { display: block !important; }
             #exp-receipt-prev { margin-top: 8px; }
         }
+        .exp-clear-btn { background: transparent; color: var(--text-muted); }
+        .exp-clear-btn:hover, .exp-clear-btn:focus-visible { background: var(--glass-hover); color: var(--text-light); }
         .accounts-section-title { font-family: var(--font-serif); font-size: 1.4rem; margin: 36px 0 6px; }
         .accounts-empty { text-align: center; padding: 50px 20px; color: var(--text-muted); }
         .accounts-actions { margin-top: 26px; display: flex; gap: 12px; flex-wrap: wrap; }
@@ -4848,6 +4850,7 @@
                         <label class="exp-recurring-label" style="display:flex;align-items:center;gap:6px;font-size:0.82rem;color:var(--text-muted);"><input type="checkbox" id="exp-recurring" style="width:auto;margin:0;"> Recurring</label>
                         <div class="exp-receipt-field"><label class="modal-label">Receipt <span style="text-transform:none;letter-spacing:0;color:var(--text-muted);">· scanned on device, not stored</span></label><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><button class="btn-sm btn-edit exp-scan-btn" type="button" onclick="pickExpenseReceipt()">＋ Scan photo</button><span id="exp-receipt-prev" style="display:inline-flex;align-items:center;gap:6px;"></span></div></div>
                         <button class="btn-sm btn-edit exp-add-btn" onclick="addExpense()">Add</button>
+                        <button class="btn-sm exp-clear-btn" type="button" onclick="clearExpenseForm()">Clear</button>
                     </div>
                     <div id="exp-receipt-card"></div>
                 </div>
@@ -4871,6 +4874,19 @@
                 try { renderMoneyOverview(); } catch (e) {}
                 toast('Expense added.');
             } catch (e) { glassAlert("Couldn't save: " + e.message); }
+        }
+        // Reset the add-expense form + any scanned receipt data (e.g. if OCR was wrong).
+        function clearExpenseForm() {
+            const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+            set('exp-date', todayDashed());
+            const cat = document.getElementById('exp-cat'); if (cat) cat.selectedIndex = 0;
+            set('exp-amount', '');
+            const prop = document.getElementById('exp-prop'); if (prop) prop.value = '';
+            set('exp-desc', '');
+            const rec = document.getElementById('exp-recurring'); if (rec) rec.checked = false;
+            __lastReceipt = null;
+            const prev = document.getElementById('exp-receipt-prev'); if (prev) prev.innerHTML = '';
+            const card = document.getElementById('exp-receipt-card'); if (card) card.innerHTML = '';
         }
         // Recurring expenses: one tap clones the entry into the following month.
         async function repeatExpense(id) {
@@ -11594,7 +11610,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'xd5e6f8k';
+            const BUILD = 'ye6f7g9l';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
