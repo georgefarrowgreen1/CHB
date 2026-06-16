@@ -19,6 +19,17 @@
    the bottom bar and the floating account button below. */
 body.guest-app:not(.owner-mode) header { display: none; }
 
+/* The page hero and .container reserve ~90–120px of top padding to clear the
+   (now hidden) floating header. With no header, that leaves a large empty gap
+   at the top of every page. Pull the content back up so it starts just below
+   the floating account button (≈54px) plus a little breathing room + notch. */
+body.guest-app:not(.owner-mode) .hero {
+    padding-top: calc(66px + env(safe-area-inset-top, 0px));
+}
+body.guest-app:not(.owner-mode) .container {
+    padding-top: calc(66px + env(safe-area-inset-top, 0px));
+}
+
 body.guest-app:not(.owner-mode) #guest-tabbar {
     display: flex;
     align-items: center;

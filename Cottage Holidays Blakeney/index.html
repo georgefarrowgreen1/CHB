@@ -162,7 +162,7 @@
     <link rel="apple-touch-icon" href="apple-touch-icon.png?v=3">
     <!-- Installable PWA + Web Push (arrival check-in notifications) -->
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="guest-app.css?v=2">
+    <link rel="stylesheet" href="guest-app.css?v=3">
     <meta name="theme-color" content="#121316">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1460,6 +1460,17 @@
 
         /* Guest "My Bookings" cards */
         .guest-tab { background: transparent; }
+        /* "My Stay" hub — the in-stay action panel shown at the top of My Stays. */
+        .my-stay-hub { padding: 22px 24px; margin-bottom: 25px; border-radius: 22px; }
+        .hub-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+        .hub-title { font-family: var(--font-serif); font-size: 1.35rem; color: var(--text-light); line-height: 1.2; }
+        .hub-sub { font-size: 0.8rem; color: var(--text-muted); margin-top: 2px; }
+        .hub-arrival { background: rgba(0,0,0,0.2); border: 1px solid var(--glass-border); border-radius: 14px; padding: 14px 16px; }
+        .hub-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(98px, 1fr)); gap: 10px; margin-top: 14px; }
+        .hub-tile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 7px; min-height: 78px; padding: 12px 8px; border-radius: 14px; cursor: pointer; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); color: var(--text-light); font-family: var(--font-sans); font-size: 0.74rem; font-weight: 600; letter-spacing: 0.02em; text-align: center; -webkit-tap-highlight-color: transparent; transition: background 0.2s ease, transform 0.2s var(--spring), border-color 0.2s ease; }
+        .hub-tile .ic { width: 22px; height: 22px; }
+        .hub-tile:hover { background: rgba(255,255,255,0.09); border-color: var(--accent-soft, var(--glass-border)); }
+        .hub-tile:active { transform: scale(0.94); }
         .guest-booking { padding: 0; margin-bottom: 25px; overflow: hidden; border-radius: 22px; }
         .guest-booking-head { display: flex; gap: 22px; align-items: stretch; flex-wrap: wrap; }
         .guest-booking-img { width: 220px; min-height: 180px; background-size: cover; background-position: center; flex-shrink: 0; }
@@ -6342,7 +6353,7 @@
             }).join('');
 
             const hasUpcoming = mine.some(m => m.booking.checkOut >= todaySort);
-            const upcomingCards = [], pastCards = [];
+            const upcomingCards = [], pastCards = [], hubCards = [];
             mine.forEach(({ propKey, booking: b, address, payToken }) => {
                 const meta = propertyMeta[propKey];
                 const r = propertyRates[propKey] || defaultRates[propKey];
@@ -6394,19 +6405,50 @@
                                 ${(!upcoming && !reviewShown.has(propKey) && reviewShown.add(propKey)) ? guestReviewButton(propKey) : ''}
                                 ${(!upcoming && !photoShown.has(propKey) && photoShown.add(propKey)) ? guestPhotoButton(propKey) : ''}
                             </div>
-                            ${currentStay ? `<div class="instay-tides" style="margin-top:12px;"></div>` : ''}
-                            ${currentStay ? `<div id="arr-${b.id}" class="arrival-access" style="margin-top:12px;">
-                                <div id="arr-note-${b.id}" style="font-size:0.82rem;color:var(--text-muted);">${IC_PIN} Your key code &amp; arrival info will open automatically when you reach the cottage. <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="revealArrivalAccess('${propKey}','${b.id}')">Show now</button></div>
-                            </div>` : ''}
                             ${(!upcoming && reviewShown.has(propKey)) ? guestReviewForm(propKey) : ''}
                         </div>
                     </div>
                 </div>`;
                 (upcoming ? upcomingCards : pastCards).push(__card);
+
+                // While a stay is in progress, gather its in-stay actions into one
+                // prominent "My Stay" hub (rendered at the top of the list). The arrival
+                // block keeps the exact arr-/arr-note- ids and .instay-tides class so the
+                // GPS auto-reveal (startArrivalWatch) and tide fill (renderInStayTides)
+                // still target it. All tiles reuse existing functions.
+                if (currentStay) {
+                    const nightsLeft = Math.max(0, nightsBetween(todayStr, b.checkOut));
+                    const balanceTile = (upcoming && !ps.fullyPaid && payToken)
+                        ? `<button class="hub-tile" onclick="openPayView('${payToken}', ${b.dbId}, 'balance')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg><span>Pay balance</span></button>`
+                        : '';
+                    hubCards.push(`
+                    <div class="glass-panel my-stay-hub">
+                        <div class="hub-head">
+                            <span class="legend-swatch swatch-${propKey}"></span>
+                            <div>
+                                <div class="hub-title">You're staying at <strong>${escapeHtml(meta.name)}</strong></div>
+                                <div class="hub-sub">Until ${b.checkOut} · ${b.checkOutTime || '10:00'} · ${nightsLeft} night${nightsLeft === 1 ? '' : 's'} left</div>
+                            </div>
+                        </div>
+                        <div id="arr-${b.id}" class="arrival-access hub-arrival">
+                            <div id="arr-note-${b.id}" style="font-size:0.84rem;color:var(--text-muted);">${IC_PIN} Your key code &amp; arrival info opens automatically when you reach the cottage. <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="revealArrivalAccess('${propKey}','${b.id}')">Show now</button></div>
+                        </div>
+                        <div class="instay-tides" style="margin-top:12px;"></div>
+                        <div class="hub-grid">
+                            <button class="hub-tile" onclick="openMapModal('${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6.5-5.5-6.5-10a6.5 6.5 0 0 1 13 0c0 4.5-6.5 10-6.5 10z"/><circle cx="12" cy="11" r="2.2"/></svg><span>Directions</span></button>
+                            <button class="hub-tile" onclick="openWelcomeBook('${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h6v18H6a2 2 0 0 1-2-2z"/><path d="M20 5a2 2 0 0 0-2-2h-6v18h6a2 2 0 0 0 2-2z"/></svg><span>Welcome book</span></button>
+                            <button class="hub-tile" onclick="openFaqModal('${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 0 1 4.5 1.5c0 1.7-2 2-2 3.2"/><path d="M12 17h.01"/></svg><span>Good to know</span></button>
+                            <button class="hub-tile" onclick="toggleChat()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/></svg><span>Contact host</span></button>
+                            ${balanceTile}
+                            <button class="hub-tile" onclick="openTermsModal(event, '${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h9a3 3 0 0 1 3 3v13H9a3 3 0 0 1-3-3z"/><path d="M6 17h12"/></svg><span>Terms</span></button>
+                        </div>
+                    </div>`);
+                }
             });
             const gHdr = (t) => `<h3 style="font-family:var(--font-serif);font-size:1.2rem;font-weight:600;margin:18px 2px 10px;color:var(--text-light);">${t}</h3>`;
             list.innerHTML = guestPushPromptHtml(hasUpcoming)
                 + loyaltyBannerHtml(completedStays)
+                + (hubCards.length ? gHdr('Your stay') + hubCards.join('') : '')
                 + pendingHtml
                 + (upcomingCards.length ? gHdr('Upcoming stays') + upcomingCards.join('') : '')
                 + (pastCards.length ? gHdr('Past stays') + pastCards.join('') : '');
@@ -7203,7 +7245,7 @@
                     : '';
                 el.innerHTML = `<div class="home-arrival-card">
                     <div class="home-arrival-text">${IC_PIN} You're staying at <strong>${escapeHtml(name)}</strong></div>
-                    <div id="home-arr-note" class="home-arrival-note">Your key code &amp; arrival info opens automatically when you reach the cottage. <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="revealArrivalAccess('${s.propKey}','${s.bookingId}')">Show now</button>${alertsBtn}</div>
+                    <div id="home-arr-note" class="home-arrival-note">Your key code &amp; arrival info opens automatically when you reach the cottage. <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="revealArrivalAccess('${s.propKey}','${s.bookingId}')">Show now</button><button class="btn-sm btn-edit" style="margin-left:4px;" onclick="openGuestArea()">Open my stay</button>${alertsBtn}</div>
                     <div class="instay-tides" style="margin-top:10px;"></div>
                 </div>`;
                 try { renderInStayTides(); } catch (e) {}
@@ -12893,7 +12935,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'gm2h7p0y';
+            const BUILD = 'ip4k9r2a';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
