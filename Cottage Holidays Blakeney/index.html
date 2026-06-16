@@ -861,6 +861,7 @@
         .pr-price { font-family: var(--font-serif); font-size: 1.5rem; color: var(--text-light); line-height: 1.2; }
         .pr-price small { font-family: var(--font-sans); font-size: 0.85rem; color: var(--text-muted); }
         .pr-sub { font-size: 0.82rem; color: var(--text-muted); margin-top: 8px; }
+        .pr-savings { display: inline-block; margin-top: 8px; font-size: 0.74rem; font-weight: 600; color: #4CAF50; background: rgba(76,175,80,0.12); border: 1px solid rgba(76,175,80,0.35); border-radius: 999px; padding: 3px 10px; }
         @media (min-width: 900px) {
             .prop-layout { grid-template-columns: minmax(0, 1.7fr) minmax(300px, 360px); gap: 48px; max-width: 1120px; }
             .prop-reserve { display: block; position: sticky; top: 100px; }
@@ -2294,6 +2295,20 @@
                     </div>
                 </div>
 
+                <!-- Local guide (dark skies + car-free) — owner-editable per cottage. -->
+                <div class="prop-divider"></div>
+                <h3 class="section-title prop-section-h">Good to know locally</h3>
+                <div class="things-grid" id="prop-local-guide">
+                    <div class="things-col">
+                        <div class="things-title">Dark skies &amp; stargazing</div>
+                        <p class="things-note" id="prop-darkskies"></p>
+                    </div>
+                    <div class="things-col">
+                        <div class="things-title">Getting here car-free</div>
+                        <p class="things-note" id="prop-carfree"></p>
+                    </div>
+                </div>
+
                 <!-- Guest reviews (below Things to know). The leading divider is hidden
                      together with the section when this cottage has no reviews yet. -->
                 <div class="prop-divider" id="reviews-divider"></div>
@@ -2330,6 +2345,7 @@
             </div>
             <aside class="prop-reserve" id="prop-reserve">
                 <div class="pr-price" id="pr-price"></div>
+                <div class="pr-savings" id="pr-savings" style="display:none;"></div>
                 <div class="pr-sub">No payment now — enquire to check your dates &amp; price.</div>
                 <button type="button" id="reserve-enquire-btn" class="btn-glass" style="width:100%;padding:15px;margin-top:16px;" onclick="openEnquireModal()">Enquire now</button>
             </aside>
@@ -4302,6 +4318,7 @@
             { id: 'seasons',  label: 'Seasonal rates',    sub: 'Different prices by date range', ic: '<rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/>' },
             { id: 'arrival',  label: 'Arrival info',      sub: 'Private pre-arrival email', ic: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/>' },
             { id: 'location', label: 'Location',          sub: 'Address &amp; key-code unlock spot', ic: '<path d="M12 21s-7-5.2-7-11a7 7 0 0 1 14 0c0 5.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/>' },
+            { id: 'local',    label: 'Local guide',       sub: 'Dark skies &amp; car-free notes shown on the page', ic: '<circle cx="12" cy="12" r="9"/><path d="M15 9l-4.2 1.8L9 15l4.2-1.8z"/>' },
             { id: 'faq',      label: 'Good to Know',      sub: 'FAQ shown in this cottage\'s bookings', ic: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.8" r="0.7" fill="currentColor" stroke="none"/>' },
         ];
         function settingsOpenAccom(k) {
@@ -7896,6 +7913,27 @@
         // Host profile now lives inside Settings; this shim keeps any old callers working.
         function openHostEditor() { openSettings('host'); }
 
+        // ---- Local guide (dark skies + car-free) + book-direct savings badge ----
+        const DEFAULT_DARKSKIES = "North Norfolk has some of England's darkest skies. On a clear night, step outside and look up — you can often see the Milky Way. Give your eyes 15 minutes to adjust and bring a blanket.";
+        const DEFAULT_CARFREE = "You can reach us car-free: train to Sheringham, then the Coasthopper bus along the coast to Blakeney. The Norfolk Coast Path runs through the village, so it's an easy base for walking to Cley, Morston and Wells.";
+        function saveLocalContent(key, value) { saveContent(key, value); try { renderLocalGuide(activeFrontProperty); } catch (e) {} }
+        function renderLocalGuide(propKey) {
+            const dk = (siteContent['darkskies-' + propKey] || DEFAULT_DARKSKIES);
+            const cf = (siteContent['carfree-' + propKey] || DEFAULT_CARFREE);
+            const dkEl = document.getElementById('prop-darkskies'); if (dkEl) dkEl.textContent = dk;
+            const cfEl = document.getElementById('prop-carfree'); if (cfEl) cfEl.textContent = cf;
+            // Book-direct savings badge: only when the owner set a higher OTA price.
+            const sv = document.getElementById('pr-savings');
+            if (sv) {
+                const ota = parseFloat(siteContent['ota-price-' + propKey]);
+                const r = propertyRates[propKey] || defaultRates[propKey] || {};
+                const ours = parseFloat(r.coupleRate);
+                if (ota > 0 && ours > 0 && ota > ours) {
+                    sv.textContent = `Save ${gbp(ota - ours)}/night booking direct`;
+                    sv.style.display = '';
+                } else { sv.style.display = 'none'; }
+            }
+        }
         // ---- House rules: derived from each cottage's own settings ----
         function renderHouseRules(propKey) {
             const wrap = document.getElementById('prop-house-rules');
@@ -9043,7 +9081,9 @@
                     <div class="rate-field"><label>Extra adult / night (£)</label><input type="number" min="0" step="1" value="${r.extraAdultRate}" onchange="updateRate('${k}','extraAdultRate',this.value)"></div>
                     <div class="rate-field"><label>Child / night (£)</label><input type="number" min="0" step="1" value="${r.childRate}" onchange="updateRate('${k}','childRate',this.value)"></div>
                     <div class="rate-field"><label>Standard damages deposit (£)</label><input type="number" min="0" step="5" value="${r.damagesDeposit}" onchange="updateRate('${k}','damagesDeposit',this.value)"></div>
-                    <div class="rate-field"><label>Transaction fee (%)</label><input type="number" min="0" step="0.1" value="${r.transactionPct}" onchange="updateRate('${k}','transactionPct',this.value)"></div>`;
+                    <div class="rate-field"><label>Transaction fee (%)</label><input type="number" min="0" step="0.1" value="${r.transactionPct}" onchange="updateRate('${k}','transactionPct',this.value)"></div>
+                    <div class="rate-field"><label>Airbnb/OTA price for comparison (£/night, optional)</label><input type="number" min="0" step="1" value="${siteContent['ota-price-'+k] != null ? siteContent['ota-price-'+k] : ''}" placeholder="e.g. 165" onchange="saveLocalContent('ota-price-${k}', this.value)"></div>
+                    <p style="font-size:0.72rem;color:var(--text-muted);margin:4px 0 0;">If set and higher than your couple rate, a "Save £X/night booking direct" badge shows on the cottage page.</p>`;
                 case 'house': return `
                     <div class="rate-field"><label>Check-in time</label><input type="time" value="${r.checkInTime || '15:00'}" onchange="updateRuleField('${k}','checkInTime',this.value)" style="text-align:left;width:130px;"></div>
                     <div class="rate-field"><label>Check-out time</label><input type="time" value="${r.checkOutTime || '10:00'}" onchange="updateRuleField('${k}','checkOutTime',this.value)" style="text-align:left;width:130px;"></div>
@@ -9100,6 +9140,9 @@
                         </div>
                         <p style="font-size:0.72rem;color:var(--text-muted);margin:6px 0 0;">Tip: in Google Maps, right-click the exact spot and click the latitude/longitude at the top of the menu to copy it, then paste here.</p>
                     </div>`;
+                case 'local': return `
+                    <div style="margin-bottom:14px;"><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Dark skies / stargazing note — shown on the cottage page.</label><textarea rows="3" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" onchange="saveLocalContent('darkskies-${k}', this.value)">${escapeHtml(siteContent['darkskies-'+k] || DEFAULT_DARKSKIES)}</textarea></div>
+                    <div><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Getting here car-free — shown on the cottage page.</label><textarea rows="3" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" onchange="saveLocalContent('carfree-${k}', this.value)">${escapeHtml(siteContent['carfree-'+k] || DEFAULT_CARFREE)}</textarea></div>`;
                 case 'faq': return `
                     <label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:10px;">FAQ shown in this cottage's bookings (the "Good to Know" button).</label>
                     <div id="faq-editor-${k}">${((Array.isArray(siteContent['faqs-'+k]) ? siteContent['faqs-'+k] : []).map(f => faqRowHtml(k, f)).join(''))}</div>
@@ -11144,6 +11187,7 @@
             try { renderPropReviews(propKey); } catch (e) {}
             try { renderPropStats(propKey); } catch (e) {}
             try { renderHouseRules(propKey); } catch (e) {}
+            try { renderLocalGuide(propKey); } catch (e) {}
             try { renderLocationMap(propKey); } catch (e) {}
             try { renderHost(); } catch (e) {}
             try { renderPropFeatures(propKey); } catch (e) {}
@@ -11751,7 +11795,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'jp7q8r0w';
+            const BUILD = 'kq8r9s1x';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
