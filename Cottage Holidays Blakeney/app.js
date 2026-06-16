@@ -954,7 +954,7 @@
         }
 
         // ---- Settings router: Apple-style index → drill-down sub-pages ----
-        const SETTINGS_TITLES = { enquiries: 'Enquiries', messages: 'Guest messages', notify: 'Notifications', host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Preferences', calendar: 'Calendar', cancel: 'Cancellation policy', payments: 'Payments', guests: 'Guest accounts', analytics: 'Analytics', waitlist: 'Waitlist', newsletter: 'Newsletter', experiences: 'Experiences', photos: 'Guest photos', apis: 'API keys', diagnostics: 'System check' };
+        const SETTINGS_TITLES = { enquiries: 'Enquiries', messages: 'Guest messages', notify: 'Notifications', host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Preferences', calendar: 'Calendar', cancel: 'Cancellation policy', payments: 'Payments', guests: 'Guest accounts', analytics: 'Analytics', waitlist: 'Waitlist', newsletter: 'Newsletter', experiences: 'Experiences', content: 'Website content', photos: 'Guest photos', apis: 'API keys', diagnostics: 'System check' };
         let settingsBackTarget = null;
         // The full Settings drill-down path, so the auto-update reload can restore the
         // exact folder/sub-folder the owner was in: { section, prop, accomSec }.
@@ -988,6 +988,7 @@
             else if (section === 'waitlist') loadWaitlist();
             else if (section === 'newsletter') loadNewsletter();
             else if (section === 'experiences') loadExperiencesAdmin();
+            else if (section === 'content') loadContentEditor();
             else if (section === 'diagnostics') loadDiagnostics();
             else if (section === 'apis') renderApis();
             else if (section === 'security') loadAdminPasskeys();
@@ -998,6 +999,70 @@
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
         function settingsBack() { if (settingsBackTarget) settingsBackTarget(); else settingsShowIndex(); }
+
+        // ---- Settings → Website content (form-based editor for the global homepage /
+        // nav text + images that used to be edited inline via edit-mode). Reads each
+        // field's CURRENT value straight off the live element, saves via saveContent,
+        // and updates the page immediately. Per-cottage text/photos live under
+        // Preferences → [cottage]; this excludes the cottage-template fields. ----
+        const CONTENT_LABELS = {
+            'site-logo': 'Site name', 'hero-title': 'Hero heading', 'hero-sub': 'Hero subheading',
+            'hero-btn': 'Hero button', 'hero-bg': 'Hero background image',
+            'card1-title': 'Cottage 1 — card title', 'card1-meta': 'Cottage 1 — card subtitle', 'card1-img': 'Cottage 1 — card photo',
+            'card2-title': 'Cottage 2 — card title', 'card2-meta': 'Cottage 2 — card subtitle', 'card2-img': 'Cottage 2 — card photo',
+            'card3-title': 'Cottage 3 — card title', 'card3-meta': 'Cottage 3 — card subtitle', 'card3-img': 'Cottage 3 — card photo',
+            'nav-home': 'Menu: Home', 'nav-cottages': 'Menu: Cottages', 'nav-book': 'Menu: Book',
+            'mnav-home': 'Mobile menu: Home', 'mnav-cottages': 'Mobile menu: Cottages', 'mnav-book': 'Mobile menu: Book',
+            'amenities-title': 'Amenities heading', 'terms-title': 'Terms heading', 'cal-add-btn': 'Calendar “add” button'
+        };
+        function contentBgUrl(el) {
+            const m = (el.style.backgroundImage || '').match(/url\(["']?([^"')]+)["']?\)/);
+            return m ? m[1] : '';
+        }
+        function loadContentEditor() {
+            const wrap = document.getElementById('content-editor');
+            if (!wrap) return;
+            const isCottage = el => !!el.closest('#view-21a');     // per-cottage fields are edited under Preferences
+            const imgs = [...document.querySelectorAll('[data-edit-img]')].filter(el => !isCottage(el));
+            const texts = [...document.querySelectorAll('[data-edit-text]')].filter(el => !isCottage(el));
+            const seen = new Set();
+            const label = k => CONTENT_LABELS[k] || k;
+            let html = '<p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 18px;">Edit the wording and images shown across the public site. Changes save instantly and go live for visitors. (Each cottage’s own photos &amp; text are under Preferences → the cottage.)</p>';
+            if (imgs.length) {
+                html += '<h3 style="font-family:var(--font-serif);font-size:1.15rem;margin:0 0 12px;">Images</h3>';
+                imgs.forEach(el => {
+                    const k = el.getAttribute('data-edit-img'); if (seen.has(k)) return; seen.add(k);
+                    html += `<div class="content-edit-row"><div class="exp-edit-thumb" id="ce-thumb-${k}" style="background-image:url('${escapeHtml(contentBgUrl(el))}');"></div>`
+                          + `<div style="flex:1;min-width:0;"><div class="modal-label" style="margin:0 0 6px;">${escapeHtml(label(k))}</div>`
+                          + `<button class="btn-sm btn-edit" onclick="contentEditImage('${k}')">Replace image</button></div></div>`;
+                });
+            }
+            html += '<h3 style="font-family:var(--font-serif);font-size:1.15rem;margin:22px 0 12px;">Text</h3>';
+            texts.forEach(el => {
+                const k = el.getAttribute('data-edit-text'); if (seen.has(k)) return; seen.add(k);
+                const val = (el.textContent || '').trim();
+                const field = val.length > 60
+                    ? `<textarea class="input-glass" id="ce-${k}" rows="2" style="resize:vertical;">${escapeHtml(val)}</textarea>`
+                    : `<input type="text" class="input-glass" id="ce-${k}" value="${escapeHtml(val)}">`;
+                html += `<div style="margin-bottom:14px;max-width:640px;"><label class="modal-label" for="ce-${k}">${escapeHtml(label(k))}</label>${field}`
+                      + `<button class="btn-sm btn-edit" style="margin-top:6px;" onclick="contentEditSave('${k}')">Save</button></div>`;
+            });
+            wrap.innerHTML = html;
+        }
+        function contentEditSave(key) {
+            const el = document.getElementById('ce-' + key); if (!el) return;
+            const val = el.value;
+            saveContent(key, val); siteContent[key] = val;
+            document.querySelectorAll('[data-edit-text="' + key + '"]').forEach(t => { t.textContent = val; });
+            el.style.borderColor = '#4CAF50'; setTimeout(() => { el.style.borderColor = ''; }, 1200);
+        }
+        function contentEditImage(key) {
+            pickAndUpload('content-' + key, async (url) => {
+                await saveContent(key, url); siteContent[key] = url;
+                document.querySelectorAll('[data-edit-img="' + key + '"]').forEach(t => { t.style.backgroundImage = `url('${url}')`; });
+                const th = document.getElementById('ce-thumb-' + key); if (th) th.style.backgroundImage = `url('${url}')`;
+            });
+        }
         // ---- Settings → API keys ----
         function renderApis() {
             const el = document.getElementById('apikey-tides-input');
@@ -9667,7 +9732,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'dj5h0n3w';
+            const BUILD = 'ek6j1p4x';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
