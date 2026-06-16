@@ -2655,7 +2655,8 @@
 
             <!-- Enquiries -->
             <div class="settings-sec" id="sec-enquiries" style="display:none;">
-                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 16px;">Pending booking requests from the website. Approve to turn one into a booking, edit the dates, or decline.</p>
+                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 10px;">Pending booking requests from the website. Approve to turn one into a booking, edit the dates, or decline.</p>
+                <label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;color:var(--text-muted);max-width:640px;margin:0 0 16px;"><input type="checkbox" id="enq-nudge-toggle" style="width:auto;margin:0;" onchange="saveContent('enquiry-nudge-off', this.checked ? '' : '1')"> Email a friendly follow-up to enquirers who haven't booked after 2 days</label>
                 <div id="inbox-list"><!-- JS injects enquiry cards here --></div>
             </div>
 
@@ -11643,6 +11644,8 @@
 
         function renderInbox() {
             refreshInboxBadge();
+            const tg = document.getElementById('enq-nudge-toggle');
+            if (tg) tg.checked = (siteContent['enquiry-nudge-off'] !== '1');
             const list = document.getElementById('inbox-list');
 
             if (enquiries.length === 0) {
@@ -12010,7 +12013,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'nt1u2v4a';
+            const BUILD = 'ou2v3w5b';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
