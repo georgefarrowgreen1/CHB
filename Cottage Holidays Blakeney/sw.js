@@ -1,17 +1,70 @@
 // ============================================================
-//  sw.js — service worker for Web Push + "Add to Home Screen" (PWA).
-//  Push messages are sent payload-less (no encrypted body) so the server stays
-//  dependency-free; this worker shows a fixed "your cottage is ready" message.
-//  Tapping it opens the site, where the in-app GPS flow reveals the live map and
-//  key code. Keep this file in the SAME folder as index.html.
+//  sw.js — service worker: offline cache (PWA) + Web Push.
+//
+//  OFFLINE CACHE
+//  - Precaches the app shell on install.
+//  - Navigations (HTML): network-first → cached shell offline (always fresh online).
+//  - Other same-origin GETs (assets, public GET endpoints): stale-while-revalidate,
+//    so the last-seen content shows offline and refreshes silently when online.
+//  - POSTs and cross-origin requests are never cached. version.php is always live.
+//
+//  WEB PUSH (unchanged): payload-less pushes; this worker asks the server what to
+//  show (push.php?action=sw_notify) and relays release reloads to open pages.
+//  Keep this file in the SAME folder as index.html.
 // ============================================================
-self.addEventListener('install', () => self.skipWaiting());
-self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
+const CACHE = 'chb-cache-v2';
+const CORE = ['./', 'index.html', 'logo.svg', 'favicon.png', 'apple-touch-icon.png', 'manifest.json'];
 
+self.addEventListener('install', (event) => {
+    self.skipWaiting();
+    event.waitUntil(caches.open(CACHE).then(c => c.addAll(CORE).catch(() => {})));
+});
+
+self.addEventListener('activate', (event) => {
+    event.waitUntil((async () => {
+        const keys = await caches.keys();
+        await Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)));
+        await self.clients.claim();
+    })());
+});
+
+self.addEventListener('fetch', (event) => {
+    const req = event.request;
+    if (req.method !== 'GET') return;                 // never cache writes (POST/PUT/…)
+    let url;
+    try { url = new URL(req.url); } catch (e) { return; }
+    if (url.origin !== self.location.origin) return;   // let cross-origin (Square, fonts, tiles) pass through
+    if (url.pathname.endsWith('/version.php')) return; // the update probe must always be live
+
+    const accept = req.headers.get('accept') || '';
+    const isNav = req.mode === 'navigate' || accept.includes('text/html');
+
+    if (isNav) {
+        // Network-first: fresh HTML when online, cached shell when offline.
+        event.respondWith((async () => {
+            try {
+                const res = await fetch(req);
+                if (res && res.ok) { const c = await caches.open(CACHE); c.put('index.html', res.clone()).catch(() => {}); }
+                return res;
+            } catch (e) {
+                const c = await caches.open(CACHE);
+                return (await c.match('index.html')) || (await c.match('./')) || Response.error();
+            }
+        })());
+        return;
+    }
+
+    // Other same-origin GETs: stale-while-revalidate.
+    event.respondWith((async () => {
+        const c = await caches.open(CACHE);
+        const cached = await c.match(req);
+        const network = fetch(req).then(res => { if (res && res.ok) c.put(req, res.clone()).catch(() => {}); return res; }).catch(() => null);
+        return cached || (await network) || Response.error();
+    })());
+});
+
+// ---- Web Push (payload-less; ask the server what THIS device should show) ----
 self.addEventListener('push', (event) => {
-    // Pushes are payload-less, so ask the server what THIS device should show
-    // (owner alerts vs the guest check-in message). Falls back to the check-in
-    // message if the fetch fails (e.g. no session / offline).
     event.waitUntil((async () => {
         let n = { title: 'Your cottage is ready', body: 'Tap to open your live arrival map and key code.', tag: 'chb-checkin', url: './?arrival=1' };
         let reload = false;
