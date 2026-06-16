@@ -162,7 +162,7 @@
     <link rel="apple-touch-icon" href="apple-touch-icon.png?v=3">
     <!-- Installable PWA + Web Push (arrival check-in notifications) -->
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="guest-app.css?v=9">
+    <link rel="stylesheet" href="guest-app.css?v=10">
     <meta name="theme-color" content="#121316">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -5840,8 +5840,10 @@
                 btn.classList.toggle('logged-in', !!currentGuest);
                 btn.title = currentGuest ? `My account — ${currentGuest.name.split(' ')[0]}` : 'Sign in';
             }
-            // Drives the guest-shell bar: My Stays / account-FAB state react to this.
+            // Drives the guest-shell bar: My Stays / Experiences appear only when
+            // signed in, so re-sync the dock highlight/indicator after the change.
             document.body.classList.toggle('guest-signed-in', !!currentGuest);
+            try { if (window.setActiveTab) { const av = document.querySelector('.page-view.active'); if (av) window.setActiveTab(av.id); } } catch (e) {}
             // Refresh the homepage arrival banner whenever guest login state changes.
             try { refreshHomeArrival(); } catch (e) {}
         }
@@ -7075,6 +7077,36 @@
             document.addEventListener('visibilitychange', check);
             window.addEventListener('focus', check);
         }
+        // Customers get the same silent auto-update, but ONLY while the page is
+        // idle — we never reload in the middle of an interaction, an open modal,
+        // the chat, or a booking. So unlike the admin watch, this does NOT react to
+        // focus/visibility (that's when they're actively returning); it reloads only
+        // on the idle tick once there's been no input for a while.
+        let __gVerTimer = null, __gVerReloading = false, __gLastInput = Date.now();
+        const __G_IDLE_MS = 45000;
+        ['pointerdown', 'keydown', 'touchstart', 'wheel', 'scroll', 'click'].forEach(function (ev) {
+            window.addEventListener(ev, function () { __gLastInput = Date.now(); }, { passive: true });
+        });
+        function startGuestVersionWatch() {
+            if (__gVerTimer) return;
+            const check = async () => {
+                if (__gVerReloading) return;
+                if (document.visibilityState !== 'visible') return;
+                if (document.body.classList.contains('owner-mode')) return;        // admin uses startVersionWatch
+                if (Date.now() - __gLastInput < __G_IDLE_MS) return;               // still interacting — leave them be
+                if (document.querySelector('.modal-overlay.open, .pop-modal.open, #chat-widget.open')) return;  // mid-task
+                try {
+                    const r = await fetchWithTimeout(API_BASE + 'version.php', { cache: 'no-store' }, 8000);
+                    if (!r.ok) return;
+                    const d = await r.json();
+                    if (d && d.build && window.__BUILD && d.build !== window.__BUILD) {
+                        __gVerReloading = true;
+                        try { location.reload(); } catch (_) {}
+                    }
+                } catch (e) { /* transient — retry next tick */ }
+            };
+            __gVerTimer = setInterval(check, 60000);          // every 60s, gated on idle above
+        }
         async function enableArrivalPush() {
             try {
                 if (!currentGuest) return;
@@ -8110,6 +8142,7 @@
             try { const av = document.querySelector('.page-view.active'); trackView(av ? av.id : 'view-main', activeFrontProperty); } catch (e) {}
             try { startLiveUpdates(); } catch (e) { console.error(e); }
             try { startVersionWatch(); } catch (e) { console.error(e); }
+            try { startGuestVersionWatch(); } catch (e) { console.error(e); }
             // After an auto-update reload, return the owner to the screen they were on.
             try { restoreAdminState(); } catch (e) { console.error(e); }
             try { maybeConsumeMagicLink(); } catch (e) { console.error(e); } // ?mlogin=… → passwordless sign in
@@ -12928,7 +12961,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'pw1t6y9h';
+            const BUILD = 'qx2u7z0i';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
@@ -12939,7 +12972,7 @@
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
-    <script defer src="guest-app.js?v=6"></script>
+    <script defer src="guest-app.js?v=7"></script>
 
 </body>
 </html>

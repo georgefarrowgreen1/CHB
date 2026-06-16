@@ -22,7 +22,7 @@
     // Home button; My Stays only shows when signed in; Account is folded in (no
     // separate floating button).
     var DOCK = [
-        { key: 'experiences', label: 'Experiences',
+        { key: 'experiences', label: 'Experiences', cls: 'gt-auth',
           icon: '<path d="M12 3l2.1 4.6L19 9l-4 3.3.9 5.1L12 15.9 8.1 17.4 9 12.3 5 9l4.9-1.4z"/>',
           go: function () {
               if (window.toast) window.toast('Experiences — coming soon');

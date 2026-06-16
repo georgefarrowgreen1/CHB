@@ -12,8 +12,8 @@
 //  show (push.php?action=sw_notify) and relays release reloads to open pages.
 //  Keep this file in the SAME folder as index.html.
 // ============================================================
-const CACHE = 'chb-cache-v13';
-const CORE = ['./', 'index.html', 'logo.svg', 'favicon.png', 'apple-touch-icon.png', 'manifest.json', 'guest-app.css?v=9', 'guest-app.js?v=6'];
+const CACHE = 'chb-cache-v14';
+const CORE = ['./', 'index.html', 'logo.svg', 'favicon.png', 'apple-touch-icon.png', 'manifest.json', 'guest-app.css?v=10', 'guest-app.js?v=7'];
 
 self.addEventListener('install', (event) => {
     self.skipWaiting();
