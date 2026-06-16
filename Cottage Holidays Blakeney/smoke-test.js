@@ -170,10 +170,14 @@ const ld = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>
 let ldOk = false; try { if (ld) { JSON.parse(ld[1]); ldOk = true; } } catch (e) {}
 check('JSON-LD structured data is valid JSON', ldOk);
 
-// 6e. CSS braces balanced inside <style>.
-const style = html.match(/<style>([\s\S]*?)<\/style>/);
-const braceBal = style ? (style[1].split('{').length - style[1].split('}').length) : 1;
-check('CSS braces balanced', braceBal === 0);
+// 6e. CSS braces balanced. The bulk of the CSS now lives in app.css (extracted
+// from the old inline <style>); fall back to an inline <style> if present.
+let cssText = '';
+const inlineStyle = html.match(/<style>([\s\S]*?)<\/style>/);
+if (inlineStyle) cssText = inlineStyle[1];
+else { try { cssText = fs.readFileSync(path.join(path.dirname(HTML_PATH), 'app.css'), 'utf8'); } catch (e) {} }
+const braceBal = cssText ? (cssText.split('{').length - cssText.split('}').length) : 1;
+check('CSS braces balanced (app.css)', braceBal === 0);
 
 // 6f. Viewport has cover (landscape fix should not regress).
 check('viewport-fit=cover present', /viewport-fit=cover/.test(html));
