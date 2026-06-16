@@ -1137,6 +1137,12 @@
         .chat-empty { font-size: 0.85rem; color: var(--text-muted); text-align: center; padding: 18px 6px; }
         .chat-composer { display: flex; gap: 8px; margin-top: 12px; align-items: flex-end; }
         .chat-composer textarea { flex: 1; resize: vertical; min-height: 44px; margin: 0; }
+        /* Quick-reply chips in the guest chat */
+        .chat-quick { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 14px; }
+        .chat-chip { font-size: 0.74rem; padding: 5px 11px; border-radius: 999px; cursor: pointer; color: var(--text-light);
+            background: var(--glass-bg); border: 1px solid var(--glass-border); transition: background 0.2s, border-color 0.2s; }
+        .chat-chip:hover, .chat-chip:focus-visible { background: var(--glass-hover); border-color: var(--text-muted); }
+        .chat-chip-issue { color: #FFB74D; border-color: rgba(255,167,38,0.4); }
         .msg-thread-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; background: rgba(255,255,255,0.02); border: 1px solid var(--glass-border); border-radius: 14px; padding: 12px 14px; color: var(--text-light); cursor: pointer; transition: background 0.2s; }
         .msg-thread-row:hover, .msg-thread-row:focus-visible { background: var(--glass-hover); }
         .msg-thread-row .mtr-main { flex: 1; min-width: 0; }
@@ -2931,6 +2937,14 @@
             </div>
             <div class="msg-ctx" id="messages-modal-ctx"></div>
             <div class="chat-thread" id="messages-modal-thread"></div>
+            <select id="msg-canned" class="input-glass field-sm" onchange="adminCanned(this.value)" style="margin:0 0 8px;" aria-label="Quick replies">
+                <option value="">Quick replies…</option>
+                <option>Thanks for getting in touch — I'll check and reply shortly.</option>
+                <option>Those dates look available — would you like me to hold them for you?</option>
+                <option>Check-in is from 3pm and check-out by 10am.</option>
+                <option>Yes, dogs are welcome at this cottage.</option>
+                <option>Could you let me know your preferred dates and party size?</option>
+            </select>
             <div class="chat-composer">
                 <textarea id="messages-modal-input" class="input-glass" rows="2" placeholder="Write a reply…"></textarea>
                 <button class="btn-glass" onclick="adminSendMessage()">Send</button>
@@ -2951,6 +2965,13 @@
         <div id="chat-intro" style="display:none;padding:0 14px;">
             <input type="text" id="chat-name" class="input-glass field-sm" placeholder="Your name (optional)" style="margin:0 0 8px;">
             <input type="email" id="chat-email" name="email" autocomplete="email" class="input-glass field-sm" placeholder="Email (so we can reply)" style="margin:0;">
+        </div>
+        <div class="chat-quick" id="chat-quick">
+            <button type="button" class="chat-chip" onclick="chatQuick('What time is check-in and check-out?')">Check-in time?</button>
+            <button type="button" class="chat-chip" onclick="chatQuick('Is there parking at the cottage?')">Parking?</button>
+            <button type="button" class="chat-chip" onclick="chatQuick('What is the Wi-Fi like?')">Wi-Fi?</button>
+            <button type="button" class="chat-chip" onclick="chatQuick('Are dogs welcome at this cottage?')">Dogs?</button>
+            <button type="button" class="chat-chip chat-chip-issue" onclick="chatQuick('__issue')">Report an issue</button>
         </div>
         <div class="chat-composer" style="padding:12px 14px 14px;">
             <textarea id="chat-input" class="input-glass" rows="2" placeholder="Write a message…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat();}"></textarea>
@@ -8847,6 +8868,22 @@
                 thread.innerHTML = `<p class="chat-empty">Hi! 👋 Ask us anything — about a cottage, your dates, or your stay. We'll reply by email too.</p>`;
             }
         }
+        // Guest quick-reply chips: common questions send immediately; "Report an
+        // issue" prefills a prefix and lets the guest describe it.
+        function chatQuick(text) {
+            const input = document.getElementById('chat-input');
+            if (!input) return;
+            if (text === '__issue') { input.value = '🛠 Issue: '; input.focus(); return; }
+            input.value = text;
+            sendChat();
+        }
+        // Admin canned reply: drop a pre-written line into the reply box to edit/send.
+        function adminCanned(text) {
+            if (!text) return;
+            const t = document.getElementById('messages-modal-input');
+            if (t) { t.value = text; t.focus(); }
+            const s = document.getElementById('msg-canned'); if (s) s.value = '';
+        }
         async function sendChat() {
             const input = document.getElementById('chat-input');
             const body = (input && input.value || '').trim();
@@ -11795,7 +11832,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'kq8r9s1x';
+            const BUILD = 'lr9s0t2y';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
