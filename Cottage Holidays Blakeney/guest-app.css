@@ -133,6 +133,11 @@ body.guest-app:not(.owner-mode) .site-footer { padding-bottom: calc(106px + env(
 body.guest-app:not(.owner-mode) .account-btn { display: none; }
 body.guest-app:not(.owner-mode) .chat-fab { bottom: calc(98px + env(safe-area-inset-bottom, 0px)); }
 body.guest-app:not(.owner-mode) #prop-book-bar { bottom: calc(94px + env(safe-area-inset-bottom, 0px)); }
+/* These other floating elements default to the very bottom (z-index above the
+   dock), so lift them clear of the dock too: the mid-stay arrival banner and the
+   iOS add-to-home-screen hint. */
+body.guest-app:not(.owner-mode) .home-arrival { bottom: calc(98px + env(safe-area-inset-bottom, 0px)); }
+body.guest-app:not(.owner-mode) .a2hs-hint { bottom: calc(98px + env(safe-area-inset-bottom, 0px)); }
 
 /* Subtle app-like page transition (guest shell only; desktop/admin stay instant).
    MUST keep `forwards` — the base .page-view rule is opacity:0, so without it the
