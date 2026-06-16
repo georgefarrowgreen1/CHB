@@ -11,10 +11,11 @@ build step**); PHP backend files sit alongside it. App-style guest shell lives i
   failing or the work is explicitly a draft/WIP.
 
 ## Deploy checklist (do this whenever shipping frontend changes)
-- Bump `const BUILD` in `index.html`.
-- Bump `CACHE` in `sw.js` (and the `?v=` query on `guest-app.css` / `guest-app.js`
-  in both `index.html` and the `sw.js` CORE list when those files change).
-- Run `node smoke-test.js` — must pass.
+- Bump `const BUILD` — it now lives in **`app.js`** (last statement), not index.html.
+- Bump `CACHE` in `sw.js`, and the `?v=` query on whichever of `app.css` / `app.js` /
+  `guest-app.css` / `guest-app.js` you changed — in BOTH `index.html` and the `sw.js`
+  CORE list.
+- Run `node smoke-test.js` and `php test-pricing.php` — must pass (CI runs both).
 
 ## Conventions
 - Guest mobile shell CSS/JS is gated to `body.guest-app:not(.owner-mode)` so admin
@@ -25,11 +26,14 @@ build step**); PHP backend files sit alongside it. App-style guest shell lives i
 ## Architecture map
 Single-operator holiday-let PWA. No framework, no build step.
 
-**Frontend**
-- `index.html` (~900KB) — the whole SPA: one big inline `<style>`, one big inline
-  `<script>`, and `<main class="page-view">` sections toggled by `nav(viewId)`.
-  `currentGuest`/`isAuthenticated` + `body.owner-mode`/`body.guest-app` classes drive
-  what shows. `const BUILD` (last statement) is the version stamp.
+**Frontend** (no inline blobs anymore — CSS and JS are extracted into cached files)
+- `index.html` (~144KB) — markup + `<head>` only: `<main class="page-view">` sections
+  toggled by `nav(viewId)`; `currentGuest`/`isAuthenticated` + `body.owner-mode`/
+  `body.guest-app` classes drive what shows. Links `app.css`, then `app.js`, then
+  `guest-app.js`.
+- `app.css` — the main stylesheet (was the inline `<style>`).
+- `app.js` — the whole app: all the page logic + globals that inline `onclick`s call.
+  `const BUILD` (last statement) is the version stamp. Loads before `guest-app.js`.
 - `guest-app.js` / `guest-app.css` — the mobile app shell only (the floating dock,
   full-page overlays, install chip). Loaded with `?v=` and gated as above.
 - Routing is `nav()` toggling `.page-view.active`; per-view init lives in `nav()`
