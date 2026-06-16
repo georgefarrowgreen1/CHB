@@ -92,9 +92,15 @@
         var msgDock = document.createElement('nav');
         msgDock.className = 'guest-dock';
         msgDock.setAttribute('aria-label', 'Messages');
+        // Its own indicator so it can show the "you're in Messages" highlight too.
+        var msgInd = document.createElement('span');
+        msgInd.className = 'guest-dock-indicator';
+        msgInd.setAttribute('aria-hidden', 'true');
+        msgDock.appendChild(msgInd);
         var msgBtn = document.createElement('button');
         msgBtn.type = 'button';
         msgBtn.className = 'guest-dock-btn';
+        msgBtn.dataset.tab = 'messages';
         msgBtn.setAttribute('data-label', 'Messages');
         msgBtn.setAttribute('aria-label', 'Messages');
         msgBtn.title = 'Messages';
@@ -114,38 +120,55 @@
         chip.querySelector('.gic-x').addEventListener('click', function () { hideInstallChip(true); });
     }
 
-    // Slide the white indicator under the current button so it glides between tabs
-    // (mirrors moveDockIndicator() for the admin dock). Hidden when no tab matches
-    // (e.g. on a modal) or when the dock isn't visible.
+    // Slide each dock's white indicator under its current button so it glides
+    // between tabs (mirrors moveDockIndicator() for the admin dock). Runs for BOTH
+    // the main dock and the standalone Messages button. Hidden when that dock has
+    // no current button or isn't visible.
     function moveGuestDockIndicator() {
-        var dock = document.querySelector('.guest-dock');
-        if (!dock) return;
-        var ind = dock.querySelector('.guest-dock-indicator');
-        if (!ind) return;
-        var cur = dock.querySelector('.guest-dock-btn.current');
-        if (!cur || cur.offsetParent === null) { ind.classList.remove('show'); return; }
-        ind.style.width = cur.offsetWidth + 'px';
-        ind.style.height = cur.offsetHeight + 'px';
-        ind.style.left = cur.offsetLeft + 'px';
-        ind.classList.add('show');
+        document.querySelectorAll('.guest-dock').forEach(function (dock) {
+            var ind = dock.querySelector('.guest-dock-indicator');
+            if (!ind) return;
+            var cur = dock.querySelector('.guest-dock-btn.current');
+            if (!cur || cur.offsetParent === null) { ind.classList.remove('show'); return; }
+            ind.style.width = cur.offsetWidth + 'px';
+            ind.style.height = cur.offsetHeight + 'px';
+            ind.style.left = cur.offsetLeft + 'px';
+            ind.classList.add('show');
+        });
     }
 
-    // Highlight the button matching the active page-view. Exposed so index.html's
-    // nav() can call it on every navigation (including programmatic ones).
-    // Experiences/Account map to no page-view and never highlight.
-    function setActiveTab(viewId) {
-        var dock = document.querySelector('.guest-dock');
-        if (!dock) return;
-        var activeKey = null;
-        DOCK.forEach(function (t) {
-            if (t.views && t.views.indexOf(viewId) !== -1) activeKey = t.key;
-        });
-        dock.querySelectorAll('.guest-dock-btn').forEach(function (b) {
-            b.classList.toggle('current', b.dataset.tab === activeKey);
+    // The page-view that maps to a dock key (or null). Experiences/Messages/Account
+    // open overlays rather than page-views, so they don't appear here.
+    function keyForView(viewId) {
+        var key = null;
+        DOCK.forEach(function (t) { if (t.views && t.views.indexOf(viewId) !== -1) key = t.key; });
+        return key;
+    }
+    // Highlight exactly one menu button (across both docks) for the given key, or
+    // none when key is null, then animate the indicator(s).
+    function applyCurrent(key) {
+        document.querySelectorAll('.guest-dock-btn').forEach(function (b) {
+            b.classList.toggle('current', !!key && b.dataset.tab === key);
         });
         requestAnimationFrame(moveGuestDockIndicator);
     }
+
+    // While an overlay "page" is open (Messages / Account / sign-in) its menu key
+    // is current; otherwise the active page-view's key is. Exposed so index.html
+    // can drive both: nav() calls setActiveTab; the overlays call setGuestDockOverlay.
+    var __overlayKey = null;
+    function setActiveTab(viewId) {
+        __overlayKey = null;                 // navigating to a page clears any overlay highlight
+        applyCurrent(keyForView(viewId));
+    }
+    function setGuestDockOverlay(key) {       // key: 'messages' | 'account' | null
+        __overlayKey = key || null;
+        if (__overlayKey) { applyCurrent(__overlayKey); return; }
+        var av = document.querySelector('.page-view.active');
+        applyCurrent(keyForView(av ? av.id : ''));
+    }
     window.setActiveTab = setActiveTab;
+    window.setGuestDockOverlay = setGuestDockOverlay;
 
     // The shell applies for an installed PWA or a phone-sized viewport. Admins
     // are filtered out by CSS, so no auth check is needed here.
