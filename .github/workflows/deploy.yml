@@ -113,3 +113,5 @@ jobs:
           curl -fsS --max-time 60 "$URL/migrate.php?cron=$APP_SECRET" || echo "migrate ping failed (non-fatal)"
           echo "Notifying owner of release…"
           curl -fsS --max-time 30 "$URL/push.php?action=notify_release&cron=$APP_SECRET" || echo "release ping failed (non-fatal)"
+          echo "Sending any due enquiry follow-ups…"
+          curl -fsS --max-time 30 "$URL/enquiry-nudge.php?cron=$APP_SECRET" || echo "enquiry-nudge ping failed (non-fatal)"
