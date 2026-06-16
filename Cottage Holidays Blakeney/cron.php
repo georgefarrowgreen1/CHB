@@ -2,17 +2,26 @@
 // ============================================================
 //  cron.php — one daily cron entry point that runs ALL scheduled jobs.
 //  Instead of creating a separate IONOS cron job per task, point a single
-//  DAILY cron at this file and it pings each job in turn:
+//  DAILY cron at this file and it pings each job in turn. The secret can be
+//  passed EITHER as a query string OR as a path segment — handy for cron
+//  panels (like IONOS) that don't allow "?" in the URL:
 //
+//    https://YOURDOMAIN/YOURFOLDER/cron.php/APP_SECRET     (no "?")
 //    https://YOURDOMAIN/YOURFOLDER/cron.php?cron=APP_SECRET
 //
 //  Each job is independently safe to run daily (acts only when there's work,
-//  never repeats itself). A logged-in admin can also run it with ?cron=… or
-//  by visiting while signed in. Returns a per-job summary.
+//  never repeats itself). A logged-in admin can also run it while signed in.
+//  Returns a per-job summary.
 // ============================================================
 require_once __DIR__ . '/db.php';
 
-$isCron = isset($_GET['cron']) && hash_equals(APP_SECRET, (string)$_GET['cron']);
+// Accept the secret from ?cron=… OR from the path (/cron.php/APP_SECRET),
+// so it works even where a cron panel forbids query strings.
+$provided = (string)($_GET['cron'] ?? '');
+if ($provided === '' && !empty($_SERVER['PATH_INFO'])) {
+    $provided = ltrim((string)$_SERVER['PATH_INFO'], '/');
+}
+$isCron = $provided !== '' && hash_equals(APP_SECRET, $provided);
 if (!$isCron && empty($_SESSION['admin_id'])) json_out(['error' => 'Not authorised'], 401);
 
 // Build an absolute base URL to this folder from the current request, so the
