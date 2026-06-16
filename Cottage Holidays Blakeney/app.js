@@ -1123,6 +1123,8 @@
         // Each cottage's Preferences open as a sub-index of subfolders; each row drills
         // into just that part (rates, house rules, safety, …) — see settingsOpenAccomSec.
         const ACCOM_SECTIONS = [
+            { id: 'photos',   label: 'Photos',            sub: 'Gallery images for this cottage', ic: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="11" r="2"/><path d="M21 17l-5-5-4 4-2-2-4 4"/>' },
+            { id: 'text',     label: 'Text & details',    sub: 'Title, description &amp; features', ic: '<path d="M4 6h16M4 12h16M4 18h10"/>' },
             { id: 'rates',    label: 'Rates & fees',      sub: 'Nightly prices, deposit &amp; fee', ic: '<path d="M2 6h20v12H2z"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9v6M18 9v6"/>' },
             { id: 'house',    label: 'House rules',       sub: 'Check-in/out, nights, arrival days &amp; note', ic: '<path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/>' },
             { id: 'safety',   label: 'Safety &amp; property', sub: 'Safety items shown to guests', ic: '<path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/>' },
@@ -6521,9 +6523,81 @@
         }
 
         // ---- Per-cottage section builders (one subfolder each) ----
+        // ---- Preferences → [cottage] → Photos & Text (form-based per-cottage editor
+        // that replaces the on-page gallery bar / inline text editing). All reuse the
+        // existing content store: images-<k>, <k>-title/subtitle/tagline/desc/location,
+        // amenities-<k>. ----
+        function accomImages(k) {
+            const o = siteContent['images-' + k];
+            return (Array.isArray(o) && o.length) ? o.slice() : (((propertyContent[k] || {}).images) || []).slice();
+        }
+        function accomPhotoRow(k, url, i, n) {
+            return `<div class="content-edit-row">
+                <div class="exp-edit-thumb" style="background-image:url('${escapeHtml(url)}');"></div>
+                <div style="flex:1;min-width:0;font-size:0.76rem;color:var(--text-muted);word-break:break-all;">${escapeHtml(url)}${i === 0 ? ' <span style="color:var(--accent);">· main</span>' : ''}</div>
+                <div style="display:flex;gap:6px;flex-shrink:0;">
+                    <button class="btn-sm btn-edit" onclick="accomMovePhoto('${k}',${i},-1)" ${i === 0 ? 'disabled' : ''} aria-label="Move up">↑</button>
+                    <button class="btn-sm btn-edit" onclick="accomMovePhoto('${k}',${i},1)" ${i === n - 1 ? 'disabled' : ''} aria-label="Move down">↓</button>
+                    <button class="btn-sm btn-edit" onclick="accomReplacePhoto('${k}',${i})">Replace</button>
+                    <button class="btn-sm btn-delete" onclick="accomRemovePhoto('${k}',${i})">Remove</button>
+                </div></div>`;
+        }
+        async function accomSavePhotos(k, imgs) {
+            await savePropertyImages(k, imgs);
+            siteContent['images-' + k] = imgs;
+            if (propertyContent[k]) propertyContent[k].images = imgs.slice();
+            const wrap = document.getElementById('accom-photos-' + k);
+            if (wrap) wrap.innerHTML = imgs.length ? imgs.map((u, i) => accomPhotoRow(k, u, i, imgs.length)).join('') : '<p style="font-size:0.85rem;color:var(--text-muted);">No photos yet — add the first below.</p>';
+        }
+        function accomAddPhoto(k) { pickAndUpload('gallery-' + k, async (url) => { const imgs = accomImages(k); imgs.push(url); await accomSavePhotos(k, imgs); }); }
+        function accomReplacePhoto(k, i) { pickAndUpload('gallery-' + k, async (url) => { const imgs = accomImages(k); if (i < 0 || i >= imgs.length) return; imgs[i] = url; await accomSavePhotos(k, imgs); }); }
+        async function accomMovePhoto(k, i, dir) { const imgs = accomImages(k); const j = i + dir; if (j < 0 || j >= imgs.length) return; const t = imgs[i]; imgs[i] = imgs[j]; imgs[j] = t; await accomSavePhotos(k, imgs); }
+        async function accomRemovePhoto(k, i) { if (!confirm('Remove this photo?')) return; const imgs = accomImages(k); imgs.splice(i, 1); await accomSavePhotos(k, imgs); }
+        function accomSaveText(k) {
+            const g = f => { const el = document.getElementById('accom-t-' + f + '-' + k); return el ? el.value : ''; };
+            ['title', 'subtitle', 'tagline', 'desc', 'location'].forEach(f => { const v = g(f); saveContent(k + '-' + f, v); siteContent[k + '-' + f] = v; });
+            const m = document.getElementById('accom-text-msg-' + k);
+            if (m) { m.textContent = 'Saved.'; m.style.color = '#4CAF50'; setTimeout(() => { m.textContent = ''; }, 1500); }
+        }
+        function accomAddAmenity(k) { const wrap = document.getElementById('accom-am-rows-' + k); if (wrap) wrap.insertAdjacentHTML('beforeend', listRowHtml('am', '', 'e.g. Wood-burning stove')); }
+        function accomSaveAmenities(k) {
+            const wrap = document.getElementById('accom-am-rows-' + k);
+            const items = collectListRows(wrap, 'am');
+            saveContent('amenities-' + k, items); siteContent['amenities-' + k] = items;
+        }
+
         function accomSectionHtml(k, sec) {
             const r = propertyRates[k] || {};
             switch (sec) {
+                case 'photos': {
+                    const imgs = accomImages(k);
+                    return `<label class="modal-label" style="margin-top:0;">Gallery photos (shown on the cottage page, in this order)</label>
+                        <p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 12px;">Add, replace, reorder or remove. The first photo is the main image.</p>
+                        <div id="accom-photos-${k}">${imgs.length ? imgs.map((u, i) => accomPhotoRow(k, u, i, imgs.length)).join('') : '<p style="font-size:0.85rem;color:var(--text-muted);">No photos yet — add the first below.</p>'}</div>
+                        <button class="btn-sm btn-edit" style="margin-top:10px;" onclick="accomAddPhoto('${k}')">＋ Add photo</button>`;
+                }
+                case 'text': {
+                    const def = propertyContent[k] || {};
+                    const tv = (f, d) => (siteContent[k + '-' + f] != null ? siteContent[k + '-' + f] : (d || ''));
+                    const ams = Array.isArray(siteContent['amenities-' + k]) ? siteContent['amenities-' + k] : (def.amenities || []);
+                    return `<label class="modal-label" style="margin-top:0;">Title</label>
+                        <input type="text" class="input-glass" id="accom-t-title-${k}" value="${escapeHtml(tv('title', def.title))}">
+                        <label class="modal-label">Subtitle</label>
+                        <input type="text" class="input-glass" id="accom-t-subtitle-${k}" value="${escapeHtml(tv('subtitle', ''))}">
+                        <label class="modal-label">Price tagline</label>
+                        <input type="text" class="input-glass" id="accom-t-tagline-${k}" value="${escapeHtml(tv('tagline', ''))}">
+                        <label class="modal-label">Description</label>
+                        <textarea class="input-glass" id="accom-t-desc-${k}" rows="4" style="resize:vertical;">${escapeHtml(tv('desc', def.desc))}</textarea>
+                        <label class="modal-label">Location blurb</label>
+                        <input type="text" class="input-glass" id="accom-t-location-${k}" value="${escapeHtml(tv('location', ''))}">
+                        <div style="margin-top:10px;"><button class="btn-sm btn-edit" onclick="accomSaveText('${k}')">Save text</button> <span id="accom-text-msg-${k}" style="font-size:0.8rem;margin-left:8px;"></span></div>
+                        <div class="rule-divider">Features <span style="opacity:0.6;text-transform:none;letter-spacing:0;">(the pills on the cottage page)</span></div>
+                        <div id="accom-am-rows-${k}">${ams.map(a => listRowHtml('am', a, 'e.g. Wood-burning stove')).join('')}</div>
+                        <div style="display:flex;gap:10px;margin-top:8px;">
+                            <button class="btn-sm btn-edit" onclick="accomAddAmenity('${k}')">＋ Add feature</button>
+                            <button class="btn-sm btn-edit" onclick="accomSaveAmenities('${k}')">Save features</button>
+                        </div>`;
+                }
                 case 'rates': return `
                     <div class="rate-field"><label>Couple / night — 2 adults (£)</label><input type="number" min="0" step="1" value="${r.coupleRate}" onchange="updateRate('${k}','coupleRate',this.value)"></div>
                     <div class="rate-field"><label>Extra adult / night (£)</label><input type="number" min="0" step="1" value="${r.extraAdultRate}" onchange="updateRate('${k}','extraAdultRate',this.value)"></div>
@@ -9732,7 +9806,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'ek6j1p4x';
+            const BUILD = 'fl7k2q5y';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
