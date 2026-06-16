@@ -698,19 +698,6 @@
         .card { padding: 15px; display: flex; flex-direction: column; cursor: pointer;
             transition: background 0.5s var(--fluid-bezier), border-color 0.5s var(--fluid-bezier), transform 0.55s var(--spring), box-shadow 0.5s var(--fluid-bezier); }
         a.card { text-decoration: none; color: var(--text-light); }
-        /* Homepage internal links to each cottage's page (real /cottages/<slug> hrefs
-           for crawlers + new-tab, SPA navigation on a plain click). */
-        .home-cottages { max-width: 1100px; margin: 6px auto 0; padding: 0 clamp(20px, 4vw, 40px); }
-        .home-cottages .section-title { text-align: center; font-size: clamp(1.5rem, 4vw, 2rem); margin: 4px 0 18px; }
-        .home-cottages-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
-        .home-cottage-link { display: flex; flex-direction: column; gap: 4px; padding: 18px 20px; border-radius: 18px;
-            background: var(--glass-bg); border: 1px solid var(--glass-border); color: var(--text-light); text-decoration: none;
-            transition: transform 0.2s var(--fluid-bezier), border-color 0.2s var(--fluid-bezier), background 0.2s var(--fluid-bezier); }
-        .home-cottage-link:hover, .home-cottage-link:focus-visible { transform: translateY(-2px); border-color: var(--glass-highlight); background: var(--glass-hover); }
-        .home-cottage-link .hc-name { font-family: var(--font-serif); font-size: 1.25rem; }
-        .home-cottage-link .hc-sub { font-size: 0.82rem; color: var(--text-muted); line-height: 1.45; }
-        .home-cottage-link .hc-go { font-size: 0.78rem; color: var(--accent); margin-top: 6px; }
-        @media (max-width: 640px) { .home-cottages-row { grid-template-columns: 1fr; } }
         /* A touch more lift + scale than the generic glass panel, with springy easing. */
         @media (hover: hover) { .card:hover { transform: translateY(-7px) scale(1.012); } }
         .card-img { height: clamp(180px, 30vw, 250px); border-radius: 16px; background-size: cover; background-position: center; margin-bottom: 20px; }
@@ -2164,29 +2151,6 @@
                     <button type="button" class="btn-sm btn-edit" onclick="backToSearch()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg> Change search</button>
                 </div>
                 <div class="grid" id="hs-results-grid"></div>
-            </div>
-        </section>
-
-        <!-- Internal links to each cottage's own page (/cottages/<slug>) — helps
-             visitors and search engines reach and index the individual cottages. -->
-        <section class="home-cottages" aria-label="Our cottages">
-            <h2 class="section-title">Our Blakeney Cottages</h2>
-            <div class="home-cottages-row">
-                <a class="home-cottage-link" href="/cottages/21a-westgate" onclick="return cottageLink(event,'21a')">
-                    <span class="hc-name">21A Westgate</span>
-                    <span class="hc-sub">A premium townhouse near the quay</span>
-                    <span class="hc-go">View cottage →</span>
-                </a>
-                <a class="home-cottage-link" href="/cottages/jollyboat" onclick="return cottageLink(event,'jollyboat')">
-                    <span class="hc-name">Jollyboat</span>
-                    <span class="hc-sub">A cosy coastal cottage for two</span>
-                    <span class="hc-go">View cottage →</span>
-                </a>
-                <a class="home-cottage-link" href="/cottages/pimpernel" onclick="return cottageLink(event,'pimpernel')">
-                    <span class="hc-name">Pimpernel</span>
-                    <span class="hc-sub">A contemporary retreat for families</span>
-                    <span class="hc-go">View cottage →</span>
-                </a>
             </div>
         </section>
 
@@ -11756,7 +11720,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'dj1k2l4q';
+            const BUILD = 'ek2l3m5r';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
