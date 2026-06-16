@@ -69,6 +69,12 @@ if ($action === 'sw_notify') {
         if ($p) json_out(['title' => $p['title'] ?: 'Cottage Holidays Blakeney', 'body' => $p['body'] ?? '', 'url' => './', 'tag' => 'chb-owner', 'reload' => !empty($p['reload'])]);
         json_out(['title' => 'Cottage Holidays Blakeney', 'body' => 'You have a new notification — tap to open the back office.', 'url' => './', 'tag' => 'chb-owner']);
     }
+    // Logged-in guest: a pending contextual ping (e.g. today's tide window) wins;
+    // otherwise fall back to the generic check-in message.
+    if (!empty($_SESSION['guest_id'])) {
+        $gp = guest_ping_take((int)$_SESSION['guest_id']);
+        if ($gp) json_out(['title' => $gp['title'] ?: 'Cottage Holidays Blakeney', 'body' => $gp['body'] ?? '', 'url' => $gp['url'] ?? './', 'tag' => 'chb-guest']);
+    }
     json_out(['title' => 'Your cottage is ready', 'body' => 'Tap to open your live arrival map and key code.', 'url' => './?arrival=1', 'tag' => 'chb-checkin']);
 }
 

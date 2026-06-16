@@ -6253,6 +6253,7 @@
                                 ${(!upcoming && !reviewShown.has(propKey) && reviewShown.add(propKey)) ? guestReviewButton(propKey) : ''}
                                 ${(!upcoming && !photoShown.has(propKey) && photoShown.add(propKey)) ? guestPhotoButton(propKey) : ''}
                             </div>
+                            ${currentStay ? `<div class="instay-tides" style="margin-top:12px;"></div>` : ''}
                             ${currentStay ? `<div id="arr-${b.id}" class="arrival-access" style="margin-top:12px;">
                                 <div id="arr-note-${b.id}" style="font-size:0.82rem;color:var(--text-muted);">${IC_PIN} Your key code &amp; arrival info will open automatically when you reach the cottage. <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="revealArrivalAccess('${propKey}','${b.id}')">Show now</button></div>
                             </div>` : ''}
@@ -6265,6 +6266,38 @@
             // Auto-watch the device's location for any in-progress stay so the
             // arrival details pop up by themselves once the guest reaches the cottage.
             startArrivalWatch(currentStays);
+            // Fill any in-stay tide cards (mid-stay guests).
+            if (currentStays.length) renderInStayTides();
+        }
+
+        // ---- In-stay "tide of the day" card (My Bookings + home arrival banner) ----
+        async function renderInStayTides() {
+            const els = document.querySelectorAll('.instay-tides');
+            if (!els.length) return;
+            let data;
+            try { data = await apiGet('tides.php?start=' + todayDashed() + '&days=1'); }
+            catch (e) { els.forEach(el => el.style.display = 'none'); return; }
+            if (!data || !data.ok || !Array.isArray(data.extremes)) { els.forEach(el => el.style.display = 'none'); return; }
+            const today = todayDashed();
+            const lows = [], highs = [];
+            data.extremes.forEach(e => {
+                if (!e.time) return;
+                const d = new Date(e.time);
+                if (isNaN(d)) return;
+                const ds = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+                if (ds !== today) return;
+                const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+                if (/low/i.test(e.type)) lows.push(hm); else if (/high/i.test(e.type)) highs.push(hm);
+            });
+            if (!lows.length && !highs.length) { els.forEach(el => el.style.display = 'none'); return; }
+            const parts = [];
+            if (lows.length) parts.push(`<strong>Low</strong> ${lows.join(' & ')}`);
+            if (highs.length) parts.push(`<strong>High</strong> ${highs.join(' & ')}`);
+            const html = `<div style="background:rgba(66,165,245,0.12);border:1px solid rgba(66,165,245,0.3);border-radius:12px;padding:12px 14px;">
+                <div style="font-size:0.85rem;color:var(--text-light);">🌊 Today's tides at Blakeney — ${parts.join(' · ')}</div>
+                <div style="font-size:0.76rem;color:var(--text-muted);margin-top:5px;">Lovely beach &amp; coast-path walking around low water; seal-trip boats sail near high tide.</div>
+            </div>`;
+            els.forEach(el => { el.innerHTML = html; el.style.display = ''; });
         }
 
         // ===== On-arrival key code =====
@@ -6965,7 +6998,9 @@
                 el.innerHTML = `<div class="home-arrival-card">
                     <div class="home-arrival-text">${IC_PIN} You're staying at <strong>${escapeHtml(name)}</strong></div>
                     <div id="home-arr-note" class="home-arrival-note">Your key code &amp; arrival info opens automatically when you reach the cottage. <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="revealArrivalAccess('${s.propKey}','${s.bookingId}')">Show now</button>${alertsBtn}</div>
+                    <div class="instay-tides" style="margin-top:10px;"></div>
                 </div>`;
+                try { renderInStayTides(); } catch (e) {}
             }
             el.classList.add('show');
         }
@@ -12419,7 +12454,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'td7q2w8m';
+            const BUILD = 'ue8r3x5n';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
