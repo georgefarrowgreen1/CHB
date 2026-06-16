@@ -1480,6 +1480,8 @@
         .exp-card .exp-noimg { background: linear-gradient(135deg, rgba(214,167,133,0.25), rgba(255,255,255,0.04)); }
         .exp-card .card-title { margin: 14px 18px 0; }
         .exp-body { margin: 8px 18px 0; font-size: 0.9rem; color: var(--text-muted); line-height: 1.5; white-space: pre-line; }
+        .exp-dist { display: flex; align-items: center; gap: 6px; margin: 8px 18px 0; font-size: 0.78rem; color: var(--text-muted); }
+        .exp-dist .ic { width: 15px; height: 15px; flex-shrink: 0; }
         .exp-cat-tag { position: absolute; top: 12px; left: 12px; background: rgba(18,19,22,0.78); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: var(--text-light); font-size: 0.66rem; font-weight: 600; letter-spacing: 0.3px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--glass-border); }
         .exp-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 18px 18px; }
         .exp-suggest { margin-top: 24px; padding: 22px 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
@@ -2340,6 +2342,8 @@
             <input type="text" class="input-glass" id="exp-s-link" inputmode="url" autocapitalize="off" placeholder="https://…">
             <label class="modal-label" for="exp-s-phone">Phone (optional)</label>
             <input type="tel" class="input-glass" id="exp-s-phone" inputmode="tel" placeholder="Contact number">
+            <label class="modal-label" for="exp-s-photo">Photo (optional)</label>
+            <input type="file" class="input-glass" id="exp-s-photo" accept="image/*,.heic,.heif">
             <div id="exp-s-msg" style="font-size:0.8rem;margin:4px 0 10px;display:none;"></div>
             <button class="btn-glass" style="width:100%;padding:14px;" onclick="submitExperienceSuggestion()">Send suggestion</button>
         </div>
@@ -2839,9 +2843,11 @@
                 <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 14px;">A quick health check of every feature — database tables, migrations and integrations. Green is good; amber is an optional thing that's off; red needs attention.</p>
                 <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">
                     <button class="btn-glass" style="width:auto;padding:11px 22px;" onclick="loadDiagnostics()">Run checks</button>
+                    <button class="btn-sm btn-edit" onclick="runMigrations()">Run database migrations</button>
                     <button class="btn-sm btn-edit" onclick="sendTestEmail()">Send test email</button>
                     <span id="diag-msg" style="font-size:0.82rem;"></span>
                 </div>
+                <div id="migrate-result" style="display:none;font-size:0.82rem;margin-bottom:16px;"></div>
                 <div id="diagnostics-body"></div>
             </div>
 
@@ -10707,6 +10713,36 @@
                 </div>${list}</div>`;
         }
         // ---- System check (Settings → System check) ----
+        // Apply any pending database migrations from the UI (calls migrate.php with
+        // the admin session) — so new tables/columns go live without phpMyAdmin.
+        async function runMigrations() {
+            const out = document.getElementById('migrate-result');
+            const msg = document.getElementById('diag-msg');
+            if (msg) { msg.style.color = ''; msg.textContent = 'Running migrations…'; }
+            if (out) out.style.display = 'none';
+            try {
+                const r = await fetch(API_BASE + 'migrate.php', { credentials: 'same-origin' });
+                const data = await r.json().catch(() => ({}));
+                const list = (data && data.migrations) || [];
+                const changed = list.filter(m => /^(applied|re-applied|baselined)/i.test(m.status || ''));
+                if (msg) {
+                    msg.style.color = data.ok ? '#4CAF50' : '#E57373';
+                    msg.textContent = !data.ok ? 'Some migrations failed — see below.'
+                        : (changed.length ? `Done — applied ${changed.length} migration(s).` : 'Database already up to date.');
+                }
+                if (out) {
+                    out.style.display = 'block';
+                    out.innerHTML = list.length ? list.map(m => {
+                        const err = (m.status || '').toLowerCase() === 'error';
+                        return `<div style="color:${err ? '#E57373' : 'var(--text-muted)'};">${escapeHtml(m.file || '')} — ${escapeHtml(m.status || '')}${m.error ? ': ' + escapeHtml(m.error) : ''}</div>`;
+                    }).join('') : '<div style="color:var(--text-muted);">No migration files found.</div>';
+                }
+                try { refreshExpPendingBadge(); } catch (e) {}
+            } catch (e) {
+                if (msg) { msg.style.color = '#E57373'; msg.textContent = 'Could not run migrations: ' + (e.message || 'error'); }
+            }
+        }
+
         async function loadDiagnostics() {
             const body = document.getElementById('diagnostics-body');
             const msg = document.getElementById('diag-msg'); if (msg) msg.textContent = '';
@@ -13099,8 +13135,14 @@
             const phone = x.phone
                 ? `<a class="btn-sm btn-edit" href="tel:${escapeHtml(String(x.phone).replace(/\s+/g, ''))}"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.6 3.5l2.1.4 1 3-1.5 1.4a12 12 0 0 0 5 5l1.4-1.5 3 1 .4 2.1a2 2 0 0 1-2 2.3A15.5 15.5 0 0 1 4.3 5.5a2 2 0 0 1 2.3-2z"/></svg> Call</a>`
                 : '';
-            const actions = (link || phone) ? `<div class="exp-actions">${link}${phone}</div>` : '';
-            return `<div class="card glass-panel exp-card">${img}${cat}<div class="card-title">${escapeHtml(x.title)}</div><p class="exp-body">${escapeHtml(x.body)}</p>${actions}</div>`;
+            const directions = x.mapQuery
+                ? `<a class="btn-sm btn-edit" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(x.mapQuery)}" target="_blank" rel="noopener noreferrer"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6.5-5.5-6.5-10a6.5 6.5 0 0 1 13 0c0 4.5-6.5 10-6.5 10z"/><circle cx="12" cy="11" r="2.2"/></svg> Directions</a>`
+                : '';
+            const dist = x.distance
+                ? `<div class="exp-dist"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6.5-5.5-6.5-10a6.5 6.5 0 0 1 13 0c0 4.5-6.5 10-6.5 10z"/><circle cx="12" cy="11" r="2.2"/></svg> ${escapeHtml(x.distance)}</div>`
+                : '';
+            const actions = (link || phone || directions) ? `<div class="exp-actions">${link}${phone}${directions}</div>` : '';
+            return `<div class="card glass-panel exp-card">${img}${cat}<div class="card-title">${escapeHtml(x.title)}</div>${dist}<p class="exp-body">${escapeHtml(x.body)}</p>${actions}</div>`;
         }
 
         // ---- Guest: suggest an experience ----
@@ -13122,10 +13164,21 @@
             const category = g('exp-s-cat'), link_url = g('exp-s-link').trim(), phone = g('exp-s-phone').trim();
             const msg = document.getElementById('exp-s-msg');
             const show = (t, ok) => { if (msg) { msg.textContent = t; msg.style.color = ok ? '#4CAF50' : '#E53935'; msg.style.display = 'block'; } };
+            const fileEl = document.getElementById('exp-s-photo');
+            const file = fileEl && fileEl.files && fileEl.files[0];
             if (title.length < 3) { show('Please add a name.', false); return; }
             if (body.length < 10) { show('Please add a short description.', false); return; }
+            if (file && file.size > 8 * 1024 * 1024) { show('Please choose an image 8 MB or smaller.', false); return; }
             try {
-                await apiPost('experiences.php', { action: 'suggest', title, body, category, link_url, phone });
+                // multipart so an optional photo can ride along (validated server-side).
+                const fd = new FormData();
+                fd.append('action', 'suggest');
+                fd.append('title', title); fd.append('body', body); fd.append('category', category);
+                fd.append('link_url', link_url); fd.append('phone', phone);
+                if (file) fd.append('image', file);
+                const r = await fetch(API_BASE + 'experiences.php', { method: 'POST', credentials: 'same-origin', body: fd });
+                const data = await r.json().catch(() => ({}));
+                if (!r.ok || data.error) throw new Error(data.error || 'Could not send.');
                 show("Thanks! We'll review your suggestion.", true);
                 setTimeout(closeExperienceSuggest, 1400);
             } catch (e) { show(e.message || 'Could not send — please try again.', false); }
@@ -13163,7 +13216,9 @@
             refreshExpPendingBadge(pending.length);
         }
         function expPendingHtml(r) {
+            const thumb = r.image_url ? `<div class="exp-edit-thumb" style="background-image:url('${escapeHtml(r.image_url)}');margin-bottom:10px;"></div>` : '';
             return `<div class="glass-panel" style="padding:14px 16px;margin-bottom:10px;border:1px solid var(--accent-soft, var(--glass-border));">
+                ${thumb}
                 <div style="font-weight:600;">${escapeHtml(r.title)}${r.category ? ` <span style="font-size:0.7rem;color:var(--text-muted);">· ${escapeHtml(r.category)}</span>` : ''}</div>
                 <div style="font-size:0.84rem;color:var(--text-muted);margin:6px 0;white-space:pre-line;">${escapeHtml(r.body)}</div>
                 <div style="font-size:0.74rem;color:var(--text-muted);">Suggested by ${escapeHtml(r.suggested_by_name || 'a guest')}${r.link_url ? ` · <a href="${escapeHtml(r.link_url)}" target="_blank" rel="noopener" style="color:var(--text-muted);text-decoration:underline;">link</a>` : ''}${r.phone ? ' · ' + escapeHtml(r.phone) : ''}</div>
@@ -13191,6 +13246,10 @@
                     <input type="text" class="input-glass" id="exp-ll-${id}" value="${escapeHtml(r.link_label || '')}" placeholder="Link label (e.g. Find out more)" style="flex:1;min-width:150px;">
                     <input type="text" class="input-glass" id="exp-lu-${id}" value="${escapeHtml(r.link_url || '')}" placeholder="https://…" style="flex:1;min-width:150px;">
                     <input type="tel" class="input-glass" id="exp-p-${id}" value="${escapeHtml(r.phone || '')}" placeholder="Phone" style="flex:1;min-width:120px;">
+                </div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+                    <input type="text" class="input-glass" id="exp-d-${id}" value="${escapeHtml(r.distance || '')}" placeholder="Distance (e.g. 5 min walk)" style="flex:1;min-width:150px;">
+                    <input type="text" class="input-glass" id="exp-m-${id}" value="${escapeHtml(r.map_query || '')}" placeholder="Map location (address or place name)" style="flex:1;min-width:150px;">
                 </div>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
                     <button class="btn-sm btn-edit" onclick="expUpload(${id})">Photo</button>
@@ -13220,7 +13279,8 @@
                 action: 'save', id: id || 0,
                 title: g('exp-t-' + id).trim(), body: g('exp-b-' + id).trim(),
                 image_url: g('exp-img-' + id), link_label: g('exp-ll-' + id).trim(),
-                link_url: g('exp-lu-' + id).trim(), phone: g('exp-p-' + id).trim(), category: g('exp-c-' + id)
+                link_url: g('exp-lu-' + id).trim(), phone: g('exp-p-' + id).trim(), category: g('exp-c-' + id),
+                distance: g('exp-d-' + id).trim(), map_query: g('exp-m-' + id).trim()
             };
             if (!payload.title) { glassAlert('Please add a title.'); return; }
             try { await apiPost('experiences.php', payload); await loadExperiencesAdmin(); } catch (e) { glassAlert(e.message); }
@@ -13245,7 +13305,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'wc8a3f6p';
+            const BUILD = 'xd9b4g7q';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
