@@ -2307,15 +2307,7 @@
                     </div>
                 </div>
 
-                <!-- Tide times (Blakeney) — shown when a tide API key is configured. -->
-                <div class="prop-divider" id="tides-divider" style="display:none;"></div>
-                <div class="glass-panel" id="prop-tides" style="display:none;padding:16px 18px;border-radius:16px;">
-                    <div class="things-title" style="margin-bottom:8px;">Tides at Blakeney</div>
-                    <div id="prop-tides-body" style="font-size:0.9rem;display:flex;flex-direction:column;gap:6px;"></div>
-                    <p style="font-size:0.72rem;color:var(--text-muted);margin:10px 0 0;">Plan the quay, seal trips and the coastal path around the tide.</p>
-                </div>
-
-                <!-- Local guide (dark skies + car-free) — owner-editable per cottage. -->
+                <!-- Local guide (dark skies + car-free + tides) — owner-editable per cottage. -->
                 <div class="prop-divider"></div>
                 <h3 class="section-title prop-section-h">Good to know locally</h3>
                 <div class="things-grid" id="prop-local-guide">
@@ -2326,6 +2318,12 @@
                     <div class="things-col">
                         <div class="things-title">Getting here car-free</div>
                         <p class="things-note" id="prop-carfree"></p>
+                    </div>
+                    <!-- Tides — shown only when a tide API key is configured. -->
+                    <div class="things-col" id="prop-tides-col" style="display:none;">
+                        <div class="things-title">Tides at Blakeney</div>
+                        <div id="prop-tides-body" class="things-list" style="display:flex;flex-direction:column;gap:6px;"></div>
+                        <p class="things-note" style="margin-top:8px;font-size:0.72rem;">Plan the quay, seal trips and the coastal path around the tide.</p>
                     </div>
                 </div>
                 <div style="text-align:center;margin-top:18px;">
@@ -8015,11 +8013,10 @@
         // Hidden entirely unless an API key is configured (Settings → API keys). ----
         let __tideData = null;
         async function renderTides() {
-            const card = document.getElementById('prop-tides');
-            const div = document.getElementById('tides-divider');
+            const card = document.getElementById('prop-tides-col');
             const body = document.getElementById('prop-tides-body');
             if (!card || !body) return;
-            const hide = () => { card.style.display = 'none'; if (div) div.style.display = 'none'; };
+            const hide = () => { card.style.display = 'none'; };
             try {
                 if (!__tideData) __tideData = await apiGet('tides.php?start=' + todayDashed() + '&days=2');
                 if (!__tideData || !__tideData.ok || !Array.isArray(__tideData.extremes)) { hide(); return; }
@@ -8035,7 +8032,7 @@
                     const label = /high/i.test(e.type) ? 'High tide' : 'Low tide';
                     return `<div style="display:flex;justify-content:space-between;gap:12px;"><span>${label}</span><span style="color:var(--text-muted);">${hh}:${mm}</span></div>`;
                 }).join('');
-                card.style.display = ''; if (div) div.style.display = '';
+                card.style.display = '';
             } catch (e) { hide(); }
         }
         function renderLocalGuide(propKey) {
@@ -12013,7 +12010,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'ou2v3w5b';
+            const BUILD = 'pv3w4x6c';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
