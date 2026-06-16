@@ -181,6 +181,8 @@
         select:focus-visible, textarea:focus-visible, [tabindex]:focus-visible {
             outline: 2px solid var(--accent-soft); outline-offset: 2px; border-radius: 6px;
         }
+        /* On-brand text selection (visible in form fields and the Live Editor). */
+        ::selection { background: var(--accent-soft); color: #1a191b; }
         @media (prefers-reduced-motion: reduce) {
             * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
         }
@@ -532,10 +534,10 @@
         .btn-glass:focus-visible, .btn-sm:focus-visible, .account-btn:focus-visible,
         .reviews-modal-close:focus-visible, .gallery-nav:focus-visible,
         .lightbox-nav:focus-visible, .lightbox-close:focus-visible {
-            outline: 2px solid var(--prop-21a); outline-offset: 3px;
+            outline: 2px solid var(--accent); outline-offset: 3px;
         }
         .input-glass:focus-visible, .date-range-trigger:focus-visible, .terms-accept input:focus-visible {
-            outline: 2px solid var(--prop-21a); outline-offset: 2px; border-color: var(--text-light);
+            outline: 2px solid var(--accent); outline-offset: 2px; border-color: var(--text-light);
         }
 
         select.input-glass { appearance: none; -webkit-appearance: none; cursor: pointer; }
@@ -837,15 +839,28 @@
         .host-edit-label { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); display: block; margin: 14px 0 5px; }
         /* Guest photo wall (UGC) */
         .guest-photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
-        .guest-photo { position: relative; aspect-ratio: 1; border-radius: 12px; overflow: hidden; cursor: pointer; background: var(--glass-bg); border: 1px solid var(--glass-border); }
-        .guest-photo img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.3s ease; }
-        .guest-photo:hover img { transform: scale(1.05); }
+        .guest-photo { position: relative; aspect-ratio: 1; border-radius: 12px; overflow: hidden; cursor: pointer; background: var(--glass-bg); border: 1px solid var(--glass-border); transition: border-color 0.3s var(--fluid-bezier), box-shadow 0.3s var(--fluid-bezier); }
+        .guest-photo img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.4s var(--fluid-bezier); }
+        .guest-photo:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+        @media (hover: hover) {
+            .guest-photo:hover { border-color: var(--glass-highlight); box-shadow: 0 10px 30px rgba(0,0,0,0.3); }
+            .guest-photo:hover img { transform: scale(1.05); }
+        }
         .guest-photo .gp-cap { position: absolute; left: 0; right: 0; bottom: 0; padding: 14px 10px 7px; font-size: 0.7rem; color: #fff; background: linear-gradient(transparent, rgba(0,0,0,0.65)); }
-        .photo-lightbox { position: fixed; inset: 0; z-index: 4000; background: rgba(0,0,0,0.88); display: none; align-items: center; justify-content: center; padding: 24px; }
-        .photo-lightbox.open { display: flex; }
-        .photo-lightbox img { max-width: 92vw; max-height: 82vh; border-radius: 12px; box-shadow: 0 20px 60px rgba(0,0,0,0.6); }
-        .photo-lightbox .pl-cap { position: absolute; bottom: 20px; left: 0; right: 0; text-align: center; color: #eee; font-size: 0.85rem; padding: 0 24px; }
-        .photo-lightbox .pl-close { position: absolute; top: 18px; right: 20px; background: rgba(255,255,255,0.12); border: none; color: #fff; width: 42px; height: 42px; border-radius: 50%; cursor: pointer; font-size: 1.4rem; }
+        .photo-lightbox { position: fixed; inset: 0; z-index: 4000; background: rgba(0,0,0,0.9); display: none; align-items: center; justify-content: center; padding: 24px; -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px); }
+        .photo-lightbox.open { display: flex; animation: fluidFadeIn 0.35s var(--fluid-bezier) forwards; opacity: 0; }
+        .photo-lightbox img { max-width: 92vw; max-height: 82vh; border-radius: 14px; box-shadow: 0 24px 70px rgba(0,0,0,0.7); }
+        .photo-lightbox .pl-cap { position: absolute; bottom: 22px; left: 0; right: 0; text-align: center; color: #f0f0f0; font-size: 0.85rem; padding: 0 24px; text-shadow: 0 1px 6px rgba(0,0,0,0.6); }
+        .photo-lightbox .pl-close { position: absolute; top: 18px; right: 20px; background: rgba(255,255,255,0.14); border: none; color: #fff; width: 42px; height: 42px; border-radius: 50%; cursor: pointer; font-size: 1.4rem; line-height: 1; transition: background 0.2s ease; }
+        .photo-lightbox .pl-close:hover, .photo-lightbox .pl-close:focus-visible { background: rgba(255,255,255,0.28); outline: none; }
+        @media (prefers-reduced-motion: reduce) {
+            .guest-photo img, .guest-photo:hover img { transition: none; transform: none; }
+            .photo-lightbox.open { animation: none; opacity: 1; }
+        }
+        /* Newsletter footer: tidy spacing + brand-accent focus on the email field */
+        .footer-newsletter { margin: 6px auto 20px; max-width: 460px; }
+        #nl-email { transition: border-color 0.2s var(--fluid-bezier); }
+        #nl-email:focus { outline: none; border-color: var(--accent) !important; }
         /* Things to know */
         .things-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 26px; }
         .things-title { font-family: var(--font-serif); font-size: 1.15rem; color: var(--text-light); margin-bottom: 10px; }
@@ -8263,7 +8278,8 @@
                 grid.innerHTML = photos.map(p => {
                     const cap = p.caption ? `<div class="gp-cap">${escapeHtml(p.caption)}</div>` : '';
                     const data = encodeURIComponent(p.url) + '|' + encodeURIComponent(p.caption || '');
-                    return `<div class="guest-photo" onclick="openPhotoLightbox('${data}')"><img loading="lazy" src="${escapeHtml(p.url)}" alt="${escapeHtml(p.caption || 'Guest photo')}">${cap}</div>`;
+                    const label = escapeHtml(p.caption || ('Guest photo at ' + ((propertyMeta[propKey] || {}).name || '')));
+                    return `<div class="guest-photo" role="button" tabindex="0" aria-label="${label}" onclick="openPhotoLightbox('${data}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openPhotoLightbox('${data}')}"><img loading="lazy" src="${escapeHtml(p.url)}" alt="${escapeHtml(p.caption || 'Guest photo')}">${cap}</div>`;
                 }).join('');
                 section.style.display = '';
                 if (divider) divider.style.display = '';
@@ -8274,11 +8290,16 @@
             const box = document.getElementById('photo-lightbox');
             const img = document.getElementById('pl-img'); const c = document.getElementById('pl-cap');
             if (img) img.src = url; if (c) c.textContent = cap || '';
-            if (box) box.classList.add('open');
+            if (box) {
+                box.classList.add('open');
+                document.body.style.overflow = 'hidden';   // lock scroll behind the lightbox
+                const close = box.querySelector('.pl-close'); if (close) close.focus();
+            }
         }
         function closePhotoLightbox() {
             const box = document.getElementById('photo-lightbox'); if (box) box.classList.remove('open');
             const img = document.getElementById('pl-img'); if (img) img.src = '';
+            document.body.style.overflow = '';
         }
 
         // ---- Trip planner (curated + tide-aware). AI seam: TRIP_PLAN_SOURCE can later
@@ -10590,6 +10611,8 @@
                 if (fm && fm.classList.contains('open')) closeFaqModal();
                 const dm = document.getElementById('details-modal');
                 if (dm && dm.classList.contains('open')) closeDetailsModal();
+                const pl = document.getElementById('photo-lightbox');
+                if (pl && pl.classList.contains('open')) closePhotoLightbox();
             }
         });
         document.addEventListener('click', (e) => {
@@ -12454,7 +12477,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'ue8r3x5n';
+            const BUILD = 'vp9w4z2k';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
