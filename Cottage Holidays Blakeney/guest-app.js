@@ -78,6 +78,13 @@
         wrap.appendChild(dock);
         document.body.appendChild(wrap);
 
+        // The Home button is the crown <img>; until it loads its width is wrong, so
+        // the indicator can land zero-width on the page you first arrive on. Re-place
+        // it once the image (and the rest of the page) is ready.
+        var crownImg = dock.querySelector('.gt-home img');
+        if (crownImg && !crownImg.complete) crownImg.addEventListener('load', moveGuestDockIndicator);
+        window.addEventListener('load', moveGuestDockIndicator);
+
         // Messages sits on its own at the bottom-left — detached from the menu but
         // reusing the exact dock pill + button styling (a one-button dock).
         var msgWrap = document.createElement('div');
@@ -191,6 +198,8 @@
             clearTimeout(window.__guestDockT);
             window.__guestDockT = setTimeout(moveGuestDockIndicator, 120);
         });
+        // Safety net: place the indicator once layout has settled (fonts/images).
+        setTimeout(moveGuestDockIndicator, 250);
     }
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);

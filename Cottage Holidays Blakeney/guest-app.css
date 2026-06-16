@@ -165,6 +165,19 @@ body.guest-app:not(.owner-mode) #guest-auth-modal .modal-box {
 /* Keep the form itself a comfortable, centred column on wider phones/tablets. */
 body.guest-app:not(.owner-mode) #guest-auth-modal .modal-box > div { max-width: 440px; width: 100%; margin: 0 auto; }
 
+/* Messages is also a full PAGE on mobile (like the other menu items), not a
+   floating window: full-bleed, opaque, scrollable, below the dock so the menu
+   stays usable (nav() closes it when you tap another tab). */
+body.guest-app:not(.owner-mode) #chat-widget {
+    left: 0; right: 0; top: 0; bottom: 0;
+    width: 100%; height: auto; max-height: none;
+    border: 0; border-radius: 0; box-shadow: none;
+    background: var(--dark-grey);
+    -webkit-backdrop-filter: none; backdrop-filter: none;
+    z-index: 1390;
+    padding: calc(8px + env(safe-area-inset-top, 0px)) 0 calc(98px + env(safe-area-inset-bottom, 0px));
+}
+
 /* The header account pill is gone; the messages bubble now lives in the dock as
    the leftmost button, so hide the floating chat FAB here. The cottage page's
    sticky book bar sits just ABOVE the floating dock. */
