@@ -5892,11 +5892,13 @@
             const msg = document.getElementById('profile-msg'); if (msg) msg.style.display = 'none';
             const m = document.getElementById('guest-details-modal');
             if (m) { m.classList.remove('closing'); m.classList.add('open'); }
+            try { if (window.setGuestDockOverlay) window.setGuestDockOverlay('account'); } catch (e) {}
         }
         function closeGuestDetailsModal() {
             const m = document.getElementById('guest-details-modal');
             if (!m || !m.classList.contains('open')) return;
             m.classList.add('closing');
+            try { if (window.setGuestDockOverlay) window.setGuestDockOverlay(null); } catch (e) {}
             setTimeout(() => { m.classList.remove('open', 'closing'); }, 350);
         }
 
@@ -5907,11 +5909,13 @@
             loadPasskeys();
             const m = document.getElementById('guest-security-modal');
             if (m) { m.classList.remove('closing'); m.classList.add('open'); }
+            try { if (window.setGuestDockOverlay) window.setGuestDockOverlay('account'); } catch (e) {}
         }
         function closeGuestSecurityModal() {
             const m = document.getElementById('guest-security-modal');
             if (!m || !m.classList.contains('open')) return;
             m.classList.add('closing');
+            try { if (window.setGuestDockOverlay) window.setGuestDockOverlay(null); } catch (e) {}
             setTimeout(() => { m.classList.remove('open', 'closing'); }, 350);
         }
         async function changeGuestPassword() {
@@ -5969,6 +5973,7 @@
             const re = document.getElementById('reg-error'); if (re) re.style.display = 'none';
             const m = document.getElementById('guest-auth-modal');
             if (m) { m.classList.remove('closing'); m.classList.add('open'); }
+            try { if (window.setGuestDockOverlay) window.setGuestDockOverlay('account'); } catch (e) {}
             setTimeout(() => { const el = document.getElementById('login-email'); if (el) el.focus(); }, 120);
         }
         function closeGuestAuthModal() {
@@ -5976,6 +5981,7 @@
             if (!m || !m.classList.contains('open')) return;
             // Play the fade-out, then actually hide it (animation lasts 0.35s).
             m.classList.add('closing');
+            try { if (window.setGuestDockOverlay) window.setGuestDockOverlay(null); } catch (e) {}
             setTimeout(() => { m.classList.remove('open', 'closing'); }, 350);
         }
 
@@ -9582,12 +9588,14 @@
             if (w.classList.contains('open')) { closeChat(); return; }
             w.classList.add('open');
             document.getElementById('chat-fab').classList.add('hidden');
+            try { if (window.setGuestDockOverlay) window.setGuestDockOverlay('messages'); } catch (e) {}
             loadChat();
             chatStartPolling();   // keep the thread live while it's open
         }
         function closeChat() {
             const w = document.getElementById('chat-widget'); if (w) w.classList.remove('open');
             const f = document.getElementById('chat-fab'); if (f) f.classList.remove('hidden');
+            try { if (window.setGuestDockOverlay) window.setGuestDockOverlay(null); } catch (e) {}
             chatStopPolling();
         }
         // Signature of the server-side thread, so background polling can tell when
@@ -12971,7 +12979,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'tz5x0c3l';
+            const BUILD = 'ua6y1d4m';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
@@ -12982,7 +12990,7 @@
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
-    <script defer src="guest-app.js?v=8"></script>
+    <script defer src="guest-app.js?v=9"></script>
 
 </body>
 </html>
