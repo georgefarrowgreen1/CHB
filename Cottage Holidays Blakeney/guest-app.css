@@ -128,10 +128,11 @@ body.guest-app:not(.owner-mode).guest-signed-in .gt-stays { display: inline-flex
 body.guest-app:not(.owner-mode) { padding-bottom: calc(98px + env(safe-area-inset-bottom, 0px)); }
 body.guest-app:not(.owner-mode) .site-footer { padding-bottom: calc(106px + env(safe-area-inset-bottom, 0px)); }
 
-/* The header account pill is gone; the chat FAB and the cottage page's sticky
-   book bar sit just ABOVE the floating dock. */
+/* The header account pill is gone; the messages bubble now lives in the dock as
+   the leftmost button, so hide the floating chat FAB here. The cottage page's
+   sticky book bar sits just ABOVE the floating dock. */
 body.guest-app:not(.owner-mode) .account-btn { display: none; }
-body.guest-app:not(.owner-mode) .chat-fab { bottom: calc(98px + env(safe-area-inset-bottom, 0px)); }
+body.guest-app:not(.owner-mode) .chat-fab { display: none; }
 body.guest-app:not(.owner-mode) #prop-book-bar { bottom: calc(94px + env(safe-area-inset-bottom, 0px)); }
 /* These other floating elements default to the very bottom (z-index above the
    dock), so lift them clear of the dock too: the mid-stay arrival banner and the
