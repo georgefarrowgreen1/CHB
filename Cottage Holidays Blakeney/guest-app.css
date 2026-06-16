@@ -130,9 +130,11 @@ body.guest-app:not(.owner-mode) #guest-msg-fab {
     .guest-dock-btn.gt-home img { width: 24px; height: 24px; }
     .guest-dock-indicator { width: 44px; height: 44px; }
 }
-@media (max-width: 360px) {
-    .guest-dock-btn { width: 40px; height: 40px; }
-    .guest-dock-btn svg { width: 20px; height: 20px; }
+/* On very narrow phones the centred dock would crowd the bottom-left Messages
+   button, so anchor the dock to the right edge there (Messages stays on the
+   left). Buttons keep their 44px tap target rather than shrinking. */
+@media (max-width: 380px) {
+    body.guest-app:not(.owner-mode) #guest-tabbar { left: auto; right: 12px; transform: none; }
 }
 
 /* Clear the floating dock so document/footer content is never hidden behind it.
@@ -230,5 +232,5 @@ body.guest-app:not(.owner-mode) #guest-install-chip.show {
     border: 0; cursor: pointer; border-radius: 10px;
     font-family: var(--font-sans); font-weight: 600; font-size: 0.82rem;
 }
-#guest-install-chip .gic-go { background: var(--accent); color: #1a191b; padding: 8px 14px; }
-#guest-install-chip .gic-x { background: transparent; color: var(--text-muted); font-size: 1.2rem; padding: 2px 8px; }
+#guest-install-chip .gic-go { background: var(--accent); color: #1a191b; padding: 10px 16px; min-height: 44px; }
+#guest-install-chip .gic-x { background: transparent; color: var(--text-muted); font-size: 1.2rem; padding: 8px 12px; min-width: 44px; min-height: 44px; }

@@ -162,7 +162,7 @@
     <link rel="apple-touch-icon" href="apple-touch-icon.png?v=3">
     <!-- Installable PWA + Web Push (arrival check-in notifications) -->
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="guest-app.css?v=14">
+    <link rel="stylesheet" href="guest-app.css?v=15">
     <meta name="theme-color" content="#121316">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1477,6 +1477,7 @@
         .exp-chip.is-on { background: var(--text-light); color: var(--dark-grey); border-color: var(--text-light); }
         .exp-card { position: relative; padding: 0; overflow: hidden; display: flex; flex-direction: column; }
         .exp-card .card-img { height: clamp(150px, 26vw, 200px); margin: 0; border-radius: 0; }
+        .exp-card img.card-img { width: 100%; object-fit: cover; display: block; background: rgba(255,255,255,0.04); }
         .exp-card .exp-noimg { background: linear-gradient(135deg, rgba(214,167,133,0.25), rgba(255,255,255,0.04)); }
         .exp-card .card-title { margin: 14px 18px 0; }
         .exp-body { margin: 8px 18px 0; font-size: 0.9rem; color: var(--text-muted); line-height: 1.5; white-space: pre-line; }
@@ -1486,6 +1487,12 @@
         .exp-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 18px 18px; }
         .exp-suggest { margin-top: 24px; padding: 22px 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
         .exp-edit-thumb { width: 64px; height: 64px; flex-shrink: 0; border-radius: 12px; background-size: cover; background-position: center; background-color: rgba(255,255,255,0.06); border: 1px solid var(--glass-border); }
+        /* Mobile polish: stack card grids to one column and give close buttons a
+           proper 44px tap target on phones. */
+        @media (max-width: 480px) {
+            .grid { grid-template-columns: 1fr; gap: 16px; margin-top: 24px; }
+            .reviews-modal-close { width: 44px; height: 44px; }
+        }
         .guest-booking { padding: 0; margin-bottom: 25px; overflow: hidden; border-radius: 22px; }
         .guest-booking-head { display: flex; gap: 22px; align-items: stretch; flex-wrap: wrap; }
         .guest-booking-img { width: 220px; min-height: 180px; background-size: cover; background-position: center; flex-shrink: 0; }
@@ -7193,7 +7200,7 @@
                     const d = await r.json();
                     if (d && d.build && window.__BUILD && d.build !== window.__BUILD) {
                         __gVerReloading = true;
-                        try { location.reload(); } catch (_) {}
+                        try { location.reload(); } catch (_) { __gVerReloading = false; }
                     }
                 } catch (e) { /* transient — retry next tick */ }
             };
@@ -13126,7 +13133,7 @@
         }
         function expCardHtml(x) {
             const img = x.image
-                ? `<div class="card-img" style="background-image:url('${escapeHtml(x.image)}');"></div>`
+                ? `<img class="card-img exp-img" loading="lazy" decoding="async" src="${escapeHtml(x.image)}" alt="${escapeHtml(x.title)}">`
                 : `<div class="card-img exp-noimg"></div>`;
             const cat = x.category ? `<div class="exp-cat-tag">${escapeHtml(x.category)}</div>` : '';
             const link = x.linkUrl
@@ -13305,7 +13312,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'xd9b4g7q';
+            const BUILD = 'ye0c5h8r';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
@@ -13316,7 +13323,7 @@
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
-    <script defer src="guest-app.js?v=10"></script>
+    <script defer src="guest-app.js?v=11"></script>
 
 </body>
 </html>
