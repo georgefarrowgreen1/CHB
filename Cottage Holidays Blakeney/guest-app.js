@@ -122,15 +122,21 @@
     // the main dock and the standalone Messages button. Hidden when that dock has
     // no current button or isn't visible.
     function moveGuestDockIndicator() {
+        // Read all geometry first, then write — avoids a forced reflow per dock.
+        var ops = [];
         document.querySelectorAll('.guest-dock').forEach(function (dock) {
             var ind = dock.querySelector('.guest-dock-indicator');
             if (!ind) return;
             var cur = dock.querySelector('.guest-dock-btn.current');
-            if (!cur || cur.offsetParent === null) { ind.classList.remove('show'); return; }
-            ind.style.width = cur.offsetWidth + 'px';
-            ind.style.height = cur.offsetHeight + 'px';
-            ind.style.left = cur.offsetLeft + 'px';
-            ind.classList.add('show');
+            if (!cur || cur.offsetParent === null) { ops.push({ ind: ind, hide: true }); return; }
+            ops.push({ ind: ind, w: cur.offsetWidth, h: cur.offsetHeight, l: cur.offsetLeft });
+        });
+        ops.forEach(function (o) {
+            if (o.hide) { o.ind.classList.remove('show'); return; }
+            o.ind.style.width = o.w + 'px';
+            o.ind.style.height = o.h + 'px';
+            o.ind.style.left = o.l + 'px';
+            o.ind.classList.add('show');
         });
     }
 
