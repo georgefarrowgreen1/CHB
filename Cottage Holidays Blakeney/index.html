@@ -162,7 +162,7 @@
     <link rel="apple-touch-icon" href="apple-touch-icon.png?v=3">
     <!-- Installable PWA + Web Push (arrival check-in notifications) -->
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="guest-app.css?v=16">
+    <link rel="stylesheet" href="guest-app.css?v=17">
     <meta name="theme-color" content="#121316">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1492,6 +1492,15 @@
         @media (max-width: 480px) {
             .grid { grid-template-columns: 1fr; gap: 16px; margin-top: 24px; }
             .reviews-modal-close { width: 44px; height: 44px; }
+        }
+        /* Lighter backdrop-blur on phones: blur cost scales with radius, so a
+           modest trim noticeably eases scroll/compositing on low-end devices
+           while keeping the frosted-glass look (these elements composite over
+           scrolling content). */
+        @media (max-width: 768px) {
+            .glass-panel { backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+            .btn-glass { backdrop-filter: blur(16px) saturate(150%); -webkit-backdrop-filter: blur(16px) saturate(150%); }
+            .prop-book-bar, .chat-widget { backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
         }
         .guest-booking { padding: 0; margin-bottom: 25px; overflow: hidden; border-radius: 22px; }
         .guest-booking-head { display: flex; gap: 22px; align-items: stretch; flex-wrap: wrap; }
@@ -13312,7 +13321,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'zf1d6j9s';
+            const BUILD = 'ag2e7k0t';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
