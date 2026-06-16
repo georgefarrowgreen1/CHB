@@ -558,7 +558,7 @@ if ($action === 'payments') {
 if ($action === 'recent_payments') {
     try {
         $rows = db()->query(
-            'SELECT p.square_payment_id, p.kind, p.amount, p.status, p.note, p.created_at,
+            'SELECT p.square_payment_id, p.kind, p.amount, p.fee, p.status, p.note, p.created_at,
                     COALESCE(b.name, p.guest_name) AS name,
                     COALESCE(b.prop_key, p.prop_key) AS prop_key,
                     (b.id IS NULL) AS booking_deleted

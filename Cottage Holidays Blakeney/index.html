@@ -5009,11 +5009,17 @@
                 el.innerHTML = `<h3 class="accounts-section-title">Recent payments</h3><div class="accounts-empty">No card payments yet. Card deposits, balances and refunds will appear here.</div>`;
                 return;
             }
+            let grossIn = 0, feeSum = 0, feeKnown = 0;
             const rows = list.map(p => {
                 const isReturn = (p.kind === 'refund' || p.kind === 'damages_return');
                 const label = p.kind === 'refund' ? 'Refund'
                     : (p.kind === 'damages_return' ? 'Deposit return' : (p.kind.charAt(0).toUpperCase() + p.kind.slice(1)));
-                const amt = (isReturn ? '−' : '') + gbp(Math.abs(parseFloat(p.amount) || 0));
+                const gross = Math.abs(parseFloat(p.amount) || 0);
+                const fee = (p.fee != null && p.fee !== '') ? Math.abs(parseFloat(p.fee) || 0) : null;
+                const amt = (isReturn ? '−' : '') + gbp(gross);
+                if (!isReturn) { grossIn += gross; if (fee != null) { feeSum += fee; feeKnown++; } }
+                // Gross / fee / net per card-in transaction (fees settle after the charge).
+                const feeNote = (!isReturn && fee != null && fee > 0) ? ` · fee ${gbp(fee)} · net ${gbp(Math.max(0, gross - fee))}` : '';
                 const date = (p.created_at || '').slice(0, 10) || '—';
                 const propName = propertyMeta[p.prop_key] ? propertyMeta[p.prop_key].name : (p.prop_key || '');
                 const deleted = (p.booking_deleted == 1 || p.booking_deleted === true);
@@ -5023,14 +5029,25 @@
                     <span class="feed-date">${escapeHtml(date)}</span>
                     <span class="prop-tag tag-${p.prop_key}">${escapeHtml(propName)}</span>
                     <span class="feed-who"${deleted ? ' style="color:var(--text-muted);"' : ''}>${escapeHtml(who)}</span>
-                    <span class="feed-kind">${label}</span>
-                    <span class="feed-amt" style="${isReturn ? 'color:#E57373;' : 'color:#4CAF50;'}">${amt}</span>
+                    <span class="feed-kind">${label}${feeNote}</span>
+                    <span class="feed-amt" style="${isReturn ? 'color:#E57373;' : 'color:#4CAF50;'}"${(!isReturn && fee != null) ? ` title="Gross ${gbp(gross)} · fee ${gbp(fee)} · net ${gbp(Math.max(0, gross - fee))}"` : ''}>${amt}</span>
                     <span class="feed-status">${escapeHtml(p.status || '')}</span>
                     <button class="feed-del" title="Remove this record from the log" aria-label="Remove this payment record" onclick="deleteRecentPayment('${escapeHtml(p.square_payment_id)}')">&times;</button>
                 </div>`;
             }).join('');
+            // Gross / fees / net reconciliation across the shown card payments.
+            const recon = grossIn > 0 ? `<div class="mo-card" style="margin:-2px 0 12px;">
+                <div class="mo-card-title">Card reconciliation · last ${list.length} transaction${list.length === 1 ? '' : 's'}</div>
+                <div style="display:flex;gap:22px;flex-wrap:wrap;font-size:0.9rem;margin-top:6px;">
+                    <span style="color:var(--text-muted);">Gross<strong style="color:var(--text-light);margin-left:6px;">${gbp(grossIn)}</strong></span>
+                    <span style="color:var(--text-muted);">Square fees<strong style="color:#E57373;margin-left:6px;">− ${gbp(feeSum)}</strong></span>
+                    <span style="color:var(--text-muted);">Net payout<strong style="color:#4CAF50;margin-left:6px;">${gbp(Math.max(0, grossIn - feeSum))}</strong></span>
+                </div>
+                ${feeKnown < list.length ? `<div class="os-sub" style="margin-top:6px;">Fees appear once Square settles each payment (usually within a day or two), so recent charges may not show a fee yet.</div>` : ''}
+            </div>` : '';
             el.innerHTML = `<h3 class="accounts-section-title">Recent payments</h3>
                 <p style="font-size:0.78rem;color:var(--text-muted);margin:-6px 0 12px;">Tidying up test transactions? The &times; removes a record from this log only — it doesn't refund anyone or change a booking.</p>
+                ${recon}
                 <div class="feed-list glass-panel">${rows}</div>`;
         }
         // Remove a single transaction from the recent-payments log (test cleanup).
@@ -11427,7 +11444,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'sy0z1b3f';
+            const BUILD = 'tz1a2c4g';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;

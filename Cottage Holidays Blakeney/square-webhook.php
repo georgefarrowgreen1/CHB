@@ -45,15 +45,31 @@ $sqId   = (string)($payment['id'] ?? '');
 $status = (string)($payment['status'] ?? '');
 $refId  = (string)($payment['reference_id'] ?? '');
 
+// Square computes the processing fee after settlement; sum any fee components
+// present on this event (in pence) so we can store gross/fee/net.
+$fee = null;
+if (!empty($payment['processing_fee']) && is_array($payment['processing_fee'])) {
+    $cents = 0;
+    foreach ($payment['processing_fee'] as $pf) { $cents += (int)($pf['amount_money']['amount'] ?? 0); }
+    $fee = round($cents / 100, 2);
+}
+
 // Map back to our booking: prefer the ledger row; fall back to reference_id (CHB-000123).
 $bookingId = 0;
 try {
     $s = db()->prepare('SELECT booking_id FROM payments WHERE square_payment_id = ?');
     $s->execute([$sqId]);
     $bookingId = (int)($s->fetchColumn() ?: 0);
-    // Reflect the latest status on the ledger row.
+    // Reflect the latest status (and fee, once known) on the ledger row. COALESCE
+    // keeps a previously-recorded fee if this event doesn't carry one. Falls back
+    // to a status-only update if the fee column hasn't been migrated yet.
     if ($bookingId && $status !== '') {
-        db()->prepare('UPDATE payments SET status = ? WHERE square_payment_id = ?')->execute([$status, $sqId]);
+        try {
+            db()->prepare('UPDATE payments SET status = ?, fee = COALESCE(?, fee) WHERE square_payment_id = ?')
+                ->execute([$status, $fee, $sqId]);
+        } catch (\Throwable $eFee) {
+            db()->prepare('UPDATE payments SET status = ? WHERE square_payment_id = ?')->execute([$status, $sqId]);
+        }
     }
 } catch (\Throwable $e) { /* payments table not migrated — nothing to reconcile */ json_out(['ok' => true]); }
 
