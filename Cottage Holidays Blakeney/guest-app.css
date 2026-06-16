@@ -134,8 +134,10 @@ body.guest-app:not(.owner-mode) .account-btn { display: none; }
 body.guest-app:not(.owner-mode) .chat-fab { bottom: calc(98px + env(safe-area-inset-bottom, 0px)); }
 body.guest-app:not(.owner-mode) #prop-book-bar { bottom: calc(94px + env(safe-area-inset-bottom, 0px)); }
 
-/* Subtle app-like page transition (guest shell only; desktop/admin stay instant). */
-body.guest-app:not(.owner-mode) .page-view.active { animation: gtFade 0.32s var(--fluid-bezier); }
+/* Subtle app-like page transition (guest shell only; desktop/admin stay instant).
+   MUST keep `forwards` — the base .page-view rule is opacity:0, so without it the
+   page fades in then reverts to blank when the animation ends. */
+body.guest-app:not(.owner-mode) .page-view.active { animation: gtFade 0.32s var(--fluid-bezier) forwards; }
 @keyframes gtFade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
 
 /* "Install app" chip — shown on Android/desktop when the browser offers an
