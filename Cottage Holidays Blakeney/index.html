@@ -1384,6 +1384,21 @@
             .money-row-head { gap: 6px; }
             .today-card-value { font-size: 1.6rem; }
         }
+        /* ---- Money overview dashboard (graphical landing) ---- */
+        .money-overview { margin-bottom: 22px; }
+        .mo-kpis { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+        .mo-kpi { background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 18px; padding: 16px 18px; }
+        .mo-kpi .mo-label { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); }
+        .mo-kpi .mo-value { font-family: var(--font-serif); font-size: 1.55rem; line-height: 1.1; margin-top: 4px; }
+        .mo-kpi .mo-sub { font-size: 0.72rem; color: var(--text-muted); margin-top: 3px; }
+        .mo-value.mo-good { color: #4CAF50; } .mo-value.mo-warn { color: #FFA726; }
+        .mo-card { background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 18px; padding: 16px 18px; margin-top: 12px; }
+        .mo-card-title { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin-bottom: 6px; }
+        .mo-chase { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; background: rgba(255,167,38,0.10); border: 1px solid rgba(255,167,38,0.35); border-radius: 16px; padding: 14px 16px; margin-top: 12px; }
+        .mo-chase .mo-chase-text { flex: 1 1 200px; font-size: 0.9rem; color: var(--text-light); }
+        @media (min-width: 760px) { .mo-kpis { grid-template-columns: repeat(4, 1fr); } .mo-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; } .mo-grid2 .mo-card { margin-top: 12px; } }
+        .exp-tag { display: inline-block; font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.5px; padding: 1px 7px; border-radius: 10px; background: rgba(214,167,133,0.18); color: var(--accent); margin-left: 6px; vertical-align: middle; }
+        .exp-receipt img { height: 30px; width: 30px; object-fit: cover; border-radius: 6px; border: 1px solid var(--glass-border); display: block; }
         .accounts-section-title { font-family: var(--font-serif); font-size: 1.4rem; margin: 36px 0 6px; }
         .accounts-empty { text-align: center; padding: 50px 20px; color: var(--text-muted); }
         .accounts-actions { margin-top: 26px; display: flex; gap: 12px; flex-wrap: wrap; }
@@ -2717,6 +2732,7 @@
 
         <!-- INDEX -->
         <div id="accounts-index" class="settings-index">
+            <div id="money-overview" class="money-overview"><!-- JS injects the graphical financial dashboard --></div>
             <div class="settings-group">
                 <button class="settings-row" onclick="accountsOpen('payments')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9v6M18 9v6"/></svg></span>
@@ -2730,11 +2746,11 @@
             <div class="settings-group">
                 <button class="settings-row" onclick="accountsOpen('income')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16"/><rect x="6" y="11" width="3" height="6" rx="0.5"/><rect x="10.5" y="7" width="3" height="10" rx="0.5"/><rect x="15" y="13" width="3" height="4" rx="0.5"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Income &amp; tax</span><span class="settings-row-sub">Net profit per UK tax year, CSV export</span></span><span class="settings-row-chev">›</span>
+                    <span class="settings-row-main"><span class="settings-row-label">Income &amp; tax</span><span class="settings-row-sub">Net profit, quarterly (MTD), PDF &amp; CSV export</span></span><span class="settings-row-chev">›</span>
                 </button>
                 <button class="settings-row" onclick="accountsOpen('expenses')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16v13H4z"/><path d="M4 7l2-3h12l2 3"/><path d="M9 12h6"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Expenses</span><span class="settings-row-sub">Log running costs (cleaning, upkeep…)</span></span><span class="settings-row-chev">›</span>
+                    <span class="settings-row-main"><span class="settings-row-label">Expenses</span><span class="settings-row-sub">Receipts, categories &amp; recurring costs</span></span><span class="settings-row-chev">›</span>
                 </button>
             </div>
         </div>
@@ -4521,6 +4537,7 @@
             try { renderMoneyFeed(); } catch (e) {}
             try { await loadExpenses(); } catch (e) {}
             await renderAccounts();
+            try { renderMoneyOverview(); } catch (e) {}
             accountsShowIndex();
         }
 
@@ -4540,6 +4557,7 @@
             const idx = document.getElementById('accounts-index'); const panel = document.getElementById('accounts-panel');
             if (panel) panel.style.display = 'none';
             if (idx) idx.style.display = '';
+            try { renderMoneyOverview(); } catch (e) {}
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
         function accountsOpen(section) {
@@ -4584,6 +4602,25 @@
             const expTotal = expYear.reduce((s, x) => s + (x.amount || 0), 0);
             const net = total - expTotal;
 
+            // Quarterly split for Making Tax Digital (UK tax quarters from 6 Apr).
+            const payments = Array.isArray(rep.payments) ? rep.payments : [];
+            const qBounds = [
+                ['Q1 · Apr–Jun', `${startYear}-04-06`, `${startYear}-07-05`],
+                ['Q2 · Jul–Sep', `${startYear}-07-06`, `${startYear}-10-05`],
+                ['Q3 · Oct–Dec', `${startYear}-10-06`, `${startYear + 1}-01-05`],
+                ['Q4 · Jan–Mar', `${startYear + 1}-01-06`, `${startYear + 1}-04-05`],
+            ];
+            const qRows = qBounds.map(([lbl, s, e]) => {
+                const inc = payments.filter(p => (p.payment_date || '') >= s && (p.payment_date || '') <= e).reduce((a, p) => a + (p.income_part || 0), 0);
+                const exp = expYear.filter(x => (x.date || '') >= s && (x.date || '') <= e).reduce((a, x) => a + (x.amount || 0), 0);
+                return { lbl, inc, exp, net: inc - exp };
+            });
+            const quarterly = `<div class="mo-card" style="max-width:460px;margin-top:14px;"><div class="mo-card-title">Quarterly breakdown (Making Tax Digital)</div>
+                <div class="feed-list" style="padding:0;">
+                    <div class="feed-row" style="grid-template-columns:1fr auto auto auto;gap:10px;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);"><span>Quarter</span><span>Income</span><span>Costs</span><span>Net</span></div>
+                    ${qRows.map(q => `<div class="feed-row" style="grid-template-columns:1fr auto auto auto;gap:10px;"><span class="feed-who">${q.lbl}</span><span class="feed-amt">${gbp(q.inc)}</span><span class="feed-amt" style="color:var(--text-muted);">${gbp(q.exp)}</span><span class="feed-amt" style="color:${q.net < 0 ? '#FFA726' : 'var(--text-light)'};">${gbp(q.net)}</span></div>`).join('')}
+                </div></div>`;
+
             content.innerHTML = `
                 <div class="accounts-stat headline" style="max-width:460px;">
                     <div class="label">Net profit — ${taxYearShort(startYear)}</div>
@@ -4594,8 +4631,10 @@
                     <div class="feed-row" style="grid-template-columns:1fr auto;"><span class="feed-who">Expenses${expYear.length ? ` (${expYear.length})` : ''}</span><span class="feed-amt">− ${gbp(expTotal)}</span></div>
                     <div class="feed-row" style="grid-template-columns:1fr auto;border-top:1px solid var(--glass-border);"><span class="feed-who" style="color:var(--text-light);">Net</span><span class="feed-amt" style="color:var(--text-light);">${gbp(net)}</span></div>
                 </div>
+                ${quarterly}
                 <div class="accounts-actions" style="margin-top:14px;">
-                    <button class="btn-sm btn-edit" onclick="exportAccountsCSV()">⤓ Export this year (CSV)</button>
+                    <button class="btn-sm btn-edit" onclick="downloadYearStatement(${startYear})">⤓ Statement (PDF)</button>
+                    <button class="btn-sm btn-edit" onclick="exportAccountsCSV()">⤓ Export (CSV)</button>
                     <button class="btn-sm btn-edit" onclick="accountsOpen('expenses')">Manage expenses</button>
                 </div>
                 <div class="accounts-note" style="margin-top:12px;">
@@ -4605,39 +4644,64 @@
                 </div>`;
         }
         // ---- Expenses manager (Money → Expenses) ----
+        const EXPENSE_CATS = ['Cleaning', 'Laundry', 'Maintenance', 'Utilities', 'Supplies', 'Insurance', 'Fees', 'Marketing', 'Other'];
+        let __expReceiptUrl = '';   // pending receipt photo for the add form
+        function pickExpenseReceipt() {
+            pickAndUpload('expense-receipt', async (url) => {
+                __expReceiptUrl = url;
+                const prev = document.getElementById('exp-receipt-prev');
+                if (prev) prev.innerHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener"><img src="${escapeHtml(url)}" alt="Receipt" style="height:40px;border-radius:6px;border:1px solid var(--glass-border);"></a> <button class="feed-del" title="Remove receipt" onclick="clearExpenseReceipt()">×</button>`;
+            });
+        }
+        function clearExpenseReceipt() { __expReceiptUrl = ''; const p = document.getElementById('exp-receipt-prev'); if (p) p.innerHTML = ''; }
         function renderExpenses() {
             const wrap = document.getElementById('expenses-body');
             if (!wrap) return;
             const today = todayDashed();
-            const cats = ['Cleaning', 'Laundry', 'Maintenance', 'Utilities', 'Supplies', 'Insurance', 'Fees', 'Other'];
             const cottageOpts = ['<option value="">All / general</option>']
                 .concat(Object.keys(propertyMeta).map(k => `<option value="${k}">${escapeHtml(propertyMeta[k].name)}</option>`)).join('');
             const rowsByYear = {};
             allExpenses.forEach(x => { const y = taxYearStartOf(x.date); (rowsByYear[y] = rowsByYear[y] || []).push(x); });
             const years = Object.keys(rowsByYear).sort((a, b) => b - a);
+
+            // Spend-by-category chart for the most recent year that has expenses.
+            let chart = '';
+            if (years.length) {
+                const items = rowsByYear[years[0]];
+                const byCat = {};
+                items.forEach(x => { byCat[x.category || 'Other'] = (byCat[x.category || 'Other'] || 0) + (x.amount || 0); });
+                const max = Math.max(1, ...Object.values(byCat));
+                const bars = osHBars(Object.keys(byCat).sort((a, b) => byCat[b] - byCat[a]).map(c => ({ label: c, value: Math.round(byCat[c]), max, valLabel: gbp(byCat[c]), color: 'var(--accent)' })));
+                chart = `<div class="mo-card" style="max-width:680px;"><div class="mo-card-title">Spend by category · ${taxYearShort(parseInt(years[0], 10))}</div>${bars}</div>`;
+            }
+
             const list = years.length ? years.map(y => {
                 const items = rowsByYear[y];
                 const tot = items.reduce((s, x) => s + (x.amount || 0), 0);
                 return `<div style="margin-top:18px;">
                     <div style="display:flex;justify-content:space-between;font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px;"><span>${taxYearShort(parseInt(y,10))}</span><span>${gbp(tot)}</span></div>
-                    ${items.map(x => `<div class="feed-row" style="grid-template-columns:84px 1fr auto auto;gap:12px;">
+                    ${items.map(x => `<div class="feed-row" style="grid-template-columns:84px 1fr auto auto auto;gap:10px;">
                         <span class="feed-date">${x.date}</span>
-                        <span class="feed-who">${escapeHtml(x.category)}${x.description ? ' · ' + escapeHtml(x.description) : ''}${x.prop_key && propertyMeta[x.prop_key] ? ' · ' + escapeHtml(propertyMeta[x.prop_key].short || propertyMeta[x.prop_key].name) : ''}</span>
+                        <span class="feed-who">${escapeHtml(x.category)}${x.description ? ' · ' + escapeHtml(x.description) : ''}${x.prop_key && propertyMeta[x.prop_key] ? ' · ' + escapeHtml(propertyMeta[x.prop_key].short || propertyMeta[x.prop_key].name) : ''}${x.recurring ? ' <span class="exp-tag">recurring</span>' : ''}</span>
+                        ${x.receipt_url ? `<a class="exp-receipt" href="${escapeHtml(x.receipt_url)}" target="_blank" rel="noopener" title="View receipt"><img src="${escapeHtml(x.receipt_url)}" alt="Receipt"></a>` : '<span></span>'}
                         <span class="feed-amt">${gbp(x.amount)}</span>
-                        <button class="feed-del" title="Remove" onclick="deleteExpense(${x.id})">×</button>
+                        <span style="display:flex;gap:2px;">${x.recurring ? `<button class="feed-del" title="Add next month's copy" onclick="repeatExpense(${x.id})" style="color:var(--accent);">↻</button>` : ''}<button class="feed-del" title="Remove" onclick="deleteExpense(${x.id})">×</button></span>
                     </div>`).join('')}
                 </div>`;
             }).join('') : `<p style="font-size:0.85rem;color:var(--text-muted);margin-top:14px;">No expenses logged yet.</p>`;
 
             wrap.innerHTML = `
+                ${chart}
                 <div class="accounts-stat" style="max-width:680px;">
                     <div class="label">Add an expense</div>
                     <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;align-items:flex-end;">
                         <div><label class="modal-label">Date</label><input type="date" id="exp-date" class="input-glass field-sm" value="${today}" style="margin:0;"></div>
-                        <div><label class="modal-label">Category</label><select id="exp-cat" class="input-glass field-sm" style="margin:0;">${cats.map(c => `<option>${c}</option>`).join('')}</select></div>
+                        <div><label class="modal-label">Category</label><select id="exp-cat" class="input-glass field-sm" style="margin:0;">${EXPENSE_CATS.map(c => `<option>${c}</option>`).join('')}</select></div>
                         <div><label class="modal-label">Amount (£)</label><input type="number" min="0" step="0.01" id="exp-amount" class="input-glass field-sm" placeholder="0.00" style="margin:0;width:110px;"></div>
                         <div><label class="modal-label">Cottage</label><select id="exp-prop" class="input-glass field-sm" style="margin:0;">${cottageOpts}</select></div>
-                        <div style="flex:1 1 180px;"><label class="modal-label">Note (optional)</label><input type="text" id="exp-desc" class="input-glass field-sm" placeholder="e.g. End-of-stay clean" style="margin:0;width:100%;"></div>
+                        <div style="flex:1 1 160px;"><label class="modal-label">Note (optional)</label><input type="text" id="exp-desc" class="input-glass field-sm" placeholder="e.g. End-of-stay clean" style="margin:0;width:100%;"></div>
+                        <div><label class="modal-label">Receipt</label><div style="display:flex;align-items:center;gap:8px;"><button class="btn-sm btn-edit" type="button" onclick="pickExpenseReceipt()">＋ Photo</button><span id="exp-receipt-prev" style="display:inline-flex;align-items:center;gap:6px;"></span></div></div>
+                        <label style="display:flex;align-items:center;gap:6px;font-size:0.82rem;color:var(--text-muted);"><input type="checkbox" id="exp-recurring" style="width:auto;margin:0;"> Recurring</label>
                         <button class="btn-sm btn-edit" onclick="addExpense()">Add</button>
                     </div>
                 </div>
@@ -4645,15 +4709,34 @@
         }
         async function addExpense() {
             const v = id => (document.getElementById(id) || {}).value;
-            const payload = { action: 'add', date: v('exp-date'), category: v('exp-cat'), amount: parseFloat(v('exp-amount')) || 0, prop: v('exp-prop'), description: v('exp-desc') };
+            const recurring = (document.getElementById('exp-recurring') || {}).checked ? 1 : 0;
+            const payload = { action: 'add', date: v('exp-date'), category: v('exp-cat'), amount: parseFloat(v('exp-amount')) || 0, prop: v('exp-prop'), description: v('exp-desc'), receipt_url: __expReceiptUrl || '', recurring };
             if (!payload.amount || payload.amount <= 0) { glassAlert('Enter an amount greater than zero.'); return; }
             try {
                 await apiPost('expenses.php', payload);
+                clearExpenseReceipt();
                 await loadExpenses();
                 renderExpenses();
                 try { renderAccounts(); } catch (e) {}
+                try { renderMoneyOverview(); } catch (e) {}
                 toast('Expense added.');
             } catch (e) { glassAlert("Couldn't save: " + e.message); }
+        }
+        // Recurring expenses: one tap clones the entry into the following month.
+        async function repeatExpense(id) {
+            const x = allExpenses.find(e => e.id === id);
+            if (!x) return;
+            const [yy, mm, dd] = (x.date || todayDashed()).split('-').map(Number);
+            const next = new Date(yy, (mm - 1) + 1, dd);
+            const nd = formatDashed(next);
+            if (!await glassConfirm(`Add a copy of "${x.category}${x.description ? ' · ' + x.description : ''}" (${gbp(x.amount)}) dated ${nd}?`)) return;
+            try {
+                await apiPost('expenses.php', { action: 'add', date: nd, category: x.category, amount: x.amount, prop: x.prop_key || '', description: x.description || '', recurring: 1 });
+                await loadExpenses(); renderExpenses();
+                try { renderAccounts(); } catch (e) {}
+                try { renderMoneyOverview(); } catch (e) {}
+                toast('Recurring expense added for next month.');
+            } catch (e) { glassAlert("Couldn't add: " + e.message); }
         }
         async function deleteExpense(id) {
             if (!await glassConfirm('Remove this expense?')) return;
@@ -4662,6 +4745,7 @@
                 await loadExpenses();
                 renderExpenses();
                 try { renderAccounts(); } catch (e) {}
+                try { renderMoneyOverview(); } catch (e) {}
             } catch (e) { glassAlert("Couldn't remove: " + e.message); }
         }
 
@@ -4759,6 +4843,72 @@
                 if (document.getElementById('view-accounts') && document.getElementById('view-accounts').classList.contains('active')) afterPaymentChange(bookingId);
             } catch (e) { glassAlert("Couldn't cancel: " + e.message); }
         }
+        // ---- Graphical Money overview (the dashboard shown above the folders) ----
+        function renderMoneyOverview() {
+            const el = document.getElementById('money-overview');
+            if (!el) return;
+            const today = todayDashed();
+            const now = new Date();
+            const curTY = taxYearStartOf(today);
+
+            // Trailing 12 calendar months (oldest → newest) for the received-cash trend.
+            const months = [];
+            for (let i = 11; i >= 0; i--) {
+                const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                months.push({ key: d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'), short: d.toLocaleDateString('en-GB', { month: 'short' }), received: 0 });
+            }
+            const monthIndex = {}; months.forEach((m, i) => monthIndex[m.key] = i);
+
+            let monthRevenue = 0, receivedTY = 0, owedUpcoming = 0, receivedUpcoming = 0, owedCount = 0, next90 = 0;
+            const byCottageTY = {}; Object.keys(propertyMeta).forEach(k => byCottageTY[k] = 0);
+            const in90 = formatDashed(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 90));
+            const monthStart = formatDashed(new Date(now.getFullYear(), now.getMonth(), 1));
+            const monthEnd = formatDashed(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+
+            Object.keys(dbBookings).forEach(propKey => {
+                (dbBookings[propKey] || []).forEach(b => {
+                    const ps = paymentSummary(propKey, b);
+                    const recv = Math.max(0, ps.deposit || 0);
+                    if (recv > 0 && b.paymentDate) {
+                        const mk = (b.paymentDate || '').slice(0, 7);
+                        if (monthIndex[mk] != null) months[monthIndex[mk]].received += recv;
+                        if (taxYearStartOf(b.paymentDate) === curTY) { receivedTY += recv; byCottageTY[propKey] = (byCottageTY[propKey] || 0) + recv; }
+                    }
+                    if ((b.checkIn || '') >= monthStart && (b.checkIn || '') <= monthEnd) monthRevenue += ps.total || 0;
+                    if ((b.checkOut || '') >= today) {
+                        receivedUpcoming += ps.deposit || 0;
+                        if (!ps.fullyPaid) { owedUpcoming += ps.balance || 0; owedCount++; }
+                        if ((b.checkIn || '') >= today && (b.checkIn || '') <= in90) next90 += ps.total || 0;
+                    }
+                });
+            });
+            const expTY = expensesForYear(curTY).reduce((s, x) => s + (x.amount || 0), 0);
+            const netTY = receivedTY - expTY;
+            const collectedPct = (receivedUpcoming + owedUpcoming) > 0 ? Math.round(receivedUpcoming / (receivedUpcoming + owedUpcoming) * 100) : (receivedUpcoming > 0 ? 100 : 0);
+            const cottageMax = Math.max(1, ...Object.values(byCottageTY));
+
+            const trendBars = osVBars(months.map(m => ({ label: m.short, short: m.short, value: Math.round(m.received) })), moneyShort);
+            const cottageBars = osHBars(Object.keys(byCottageTY).map(k => ({ label: propertyMeta[k].name, value: Math.round(byCottageTY[k]), max: cottageMax, valLabel: gbp(byCottageTY[k]), color: `var(--prop-${k})` })));
+            const chase = owedUpcoming > 0.5 ? `<div class="mo-chase">
+                <div class="mo-chase-text">You're owed <strong>${gbp(owedUpcoming)}</strong> across ${owedCount} upcoming booking${owedCount === 1 ? '' : 's'}.</div>
+                <button class="btn-sm btn-edit" onclick="accountsOpen('payments')">Chase balances →</button></div>` : '';
+
+            el.innerHTML = `
+                <div class="mo-kpis">
+                    <div class="mo-kpi"><div class="mo-label">Received · ${taxYearShort(curTY)}</div><div class="mo-value mo-good">${gbp(receivedTY)}</div><div class="mo-sub">this tax year</div></div>
+                    <div class="mo-kpi"><div class="mo-label">Net profit · ${taxYearShort(curTY)}</div><div class="mo-value ${netTY < 0 ? 'mo-warn' : ''}">${gbp(netTY)}</div><div class="mo-sub">after ${gbp(expTY)} expenses</div></div>
+                    <div class="mo-kpi"><div class="mo-label">Outstanding</div><div class="mo-value ${owedUpcoming > 0 ? 'mo-warn' : 'mo-good'}">${gbp(owedUpcoming)}</div><div class="mo-sub">${owedCount} unpaid · upcoming</div></div>
+                    <div class="mo-kpi"><div class="mo-label">Booked · next 90 days</div><div class="mo-value">${gbp(next90)}</div><div class="mo-sub">confirmed arrivals</div></div>
+                </div>
+                ${chase}
+                <div class="mo-grid2">
+                    <div class="mo-card"><div class="mo-card-title">Received · last 12 months</div>${trendBars || '<div class="mo-sub">No payments recorded yet.</div>'}</div>
+                    <div class="mo-card"><div class="mo-card-title">Collected vs outstanding · upcoming</div>
+                        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:8px;">${osDonut(collectedPct, 'var(--accent)')}
+                            <div class="mo-sub" style="font-size:0.8rem;">${gbp(receivedUpcoming)} collected<br>of ${gbp(receivedUpcoming + owedUpcoming)} due</div></div>
+                        <div class="mo-card-title" style="margin-top:16px;">Received by cottage · ${taxYearShort(curTY)}</div>${cottageBars || '<div class="mo-sub">No income yet.</div>'}</div>
+                </div>`;
+        }
         // Per-booking payments & balances manager (top of the Money & income view).
         // Upcoming + current stays, with manual reconcile + Square request/refund.
         function renderMoneyPanel() {
@@ -4838,6 +4988,7 @@
                         </select>
                         <input type="number" min="0" step="0.01" class="input-glass field-sm money-dep" title="Record amount received (£)"
                                value="${b.depositPaid != null ? b.depositPaid : 0}" onchange="updateDeposit('${b.id}', this.value)">
+                        <button class="btn-sm btn-edit" onclick="downloadInvoice('${b.id}')" title="Download an invoice / receipt PDF">Invoice (PDF)</button>
                     </div>
                     ${history}
                 </div>`;
@@ -5007,6 +5158,59 @@
             a.download = `Cottage-Holidays-Blakeney-Accounts-${taxYearShort(startYear).replace('/', '-')}.csv`;
             document.body.appendChild(a); a.click(); a.remove();
             URL.revokeObjectURL(url);
+        }
+        // Year-end income statement (PDF) for the selected UK tax year.
+        function downloadYearStatement(startYear) {
+            if (!window.jspdf || !window.jspdf.jsPDF) { glassAlert('The PDF tool is still loading — please try again in a moment.'); return; }
+            const rep = (accountsReport && accountsReport.year === startYear) ? accountsReport : null;
+            const income = rep ? (rep.total || 0) : 0;
+            const held = rep ? (rep.held_deposits || 0) : 0;
+            const byProp = rep ? (rep.by_property || {}) : {};
+            const exp = expensesForYear(startYear).slice().sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+            const expTotal = exp.reduce((s, x) => s + (x.amount || 0), 0);
+            const net = income - expTotal;
+
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+            const W = doc.internal.pageSize.getWidth(), H = doc.internal.pageSize.getHeight();
+            const left = 50, right = W - 50;
+            let y = 60;
+            const line = (yy) => { doc.setDrawColor(210); doc.line(left, yy, right, yy); };
+            const rowLR = (l, rr, yy, bold) => { doc.setFont('helvetica', bold ? 'bold' : 'normal'); doc.text(String(l), left, yy); doc.text(String(rr), right, yy, { align: 'right' }); };
+            const brk = () => { if (y > H - 70) { doc.addPage(); y = 60; } };
+
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(22);
+            doc.text('Cottage Holidays Blakeney', left, y);
+            doc.setFont('helvetica', 'normal'); doc.setFontSize(11); doc.setTextColor(120);
+            doc.text('INCOME STATEMENT', right, y, { align: 'right' });
+            doc.setTextColor(0); y += 16; doc.setFontSize(9); doc.setTextColor(120);
+            doc.text(`UK tax year ${taxYearLabel(startYear)}`, left, y);
+            doc.setTextColor(0); y += 24; line(y); y += 28;
+
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.text('Summary', left, y); y += 20; doc.setFontSize(10);
+            rowLR('Rental income received', gbp(income), y); y += 18;
+            rowLR('Expenses', '− ' + gbp(expTotal), y); y += 18;
+            y += 4; line(y); y += 18;
+            rowLR('Net profit', gbp(net), y, true); y += 22;
+            if (held > 0) { doc.setFontSize(9); doc.setTextColor(120); doc.text(`(${gbp(held)} refundable damage deposits held — not income)`, left, y); doc.setTextColor(0); doc.setFontSize(10); y += 18; }
+            y += 8; line(y); y += 28;
+
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.text('Income by cottage', left, y); y += 20; doc.setFontSize(10);
+            Object.keys(byProp).forEach(k => { rowLR(propertyMeta[k] ? propertyMeta[k].name : k, gbp(byProp[k]), y); y += 18; brk(); });
+            y += 10; line(y); y += 28;
+
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(12); doc.text('Expenses', left, y); y += 20; doc.setFontSize(9);
+            if (!exp.length) { doc.setTextColor(120); doc.text('No expenses logged.', left, y); doc.setTextColor(0); y += 18; }
+            exp.forEach(x => {
+                const lbl = `${x.date}  ${x.category || ''}${x.description ? ' · ' + x.description : ''}`;
+                rowLR(lbl.length > 70 ? lbl.slice(0, 70) + '…' : lbl, gbp(x.amount), y); y += 16; brk();
+            });
+            y += 4; line(y); y += 18; doc.setFontSize(10);
+            rowLR('Total expenses', gbp(expTotal), y, true); y += 28;
+
+            doc.setFontSize(8); doc.setTextColor(120);
+            doc.text('A record-keeping aid, not formal accounting advice. Income is allocated to the tax year by each payment date.', left, y);
+            doc.save(`CHB-Statement-${taxYearShort(startYear).replace('/', '-')}.pdf`);
         }
 
         // ===================================================================
@@ -11223,7 +11427,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'rx9y0a2e';
+            const BUILD = 'sy0z1b3f';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;

@@ -22,14 +22,26 @@ if ($action === 'add') {
     $prop = preg_replace('/[^a-z0-9_]/i', '', (string)($in['prop'] ?? ''));
     $prop = $prop === '' ? null : substr($prop, 0, 32);
     $date = clean($in['date'] ?? '');
+    // Only accept an in-app upload path (uploads/…) as a receipt — never an
+    // arbitrary URL — so this can't be used to store external links.
+    $receipt = (string)($in['receipt_url'] ?? '');
+    $receipt = preg_match('#^uploads/[A-Za-z0-9._-]+$#', $receipt) ? $receipt : null;
+    $recurring = !empty($in['recurring']) ? 1 : 0;
     if ($amount <= 0) json_out(['error' => 'Enter an amount greater than zero.'], 400);
     if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) json_out(['error' => 'Enter a valid date (YYYY-MM-DD).'], 400);
     try {
-        db()->prepare('INSERT INTO expenses (category, description, amount, prop_key, expense_date) VALUES (?,?,?,?,?)')
-            ->execute([$category, $description, $amount, $prop, $date]);
+        db()->prepare('INSERT INTO expenses (category, description, amount, prop_key, receipt_url, recurring, expense_date) VALUES (?,?,?,?,?,?,?)')
+            ->execute([$category, $description, $amount, $prop, $receipt, $recurring, $date]);
         json_out(['ok' => true, 'id' => (int)db()->lastInsertId()]);
     } catch (\Throwable $e) {
-        json_out(['error' => 'Could not save — has migration-expenses.sql been run?'], 500);
+        // Older DB without the receipt_url/recurring columns — save the core fields.
+        try {
+            db()->prepare('INSERT INTO expenses (category, description, amount, prop_key, expense_date) VALUES (?,?,?,?,?)')
+                ->execute([$category, $description, $amount, $prop, $date]);
+            json_out(['ok' => true, 'id' => (int)db()->lastInsertId()]);
+        } catch (\Throwable $e2) {
+            json_out(['error' => 'Could not save — has migrate.php been run?'], 500);
+        }
     }
 }
 
@@ -42,13 +54,20 @@ if ($action === 'delete') {
 
 // Default: list all expenses (newest first). The client buckets them by UK tax year.
 try {
-    $rows = db()->query('SELECT id, category, description, amount, prop_key, expense_date FROM expenses ORDER BY expense_date DESC, id DESC')->fetchAll();
+    // Try the full column set first; fall back if the new columns aren't migrated.
+    try {
+        $rows = db()->query('SELECT id, category, description, amount, prop_key, receipt_url, recurring, expense_date FROM expenses ORDER BY expense_date DESC, id DESC')->fetchAll();
+    } catch (\Throwable $eCols) {
+        $rows = db()->query('SELECT id, category, description, amount, prop_key, expense_date FROM expenses ORDER BY expense_date DESC, id DESC')->fetchAll();
+    }
     json_out(['ok' => true, 'expenses' => array_map(fn($r) => [
         'id' => (int)$r['id'],
         'category' => $r['category'],
         'description' => $r['description'],
         'amount' => (float)$r['amount'],
         'prop_key' => $r['prop_key'],
+        'receipt_url' => $r['receipt_url'] ?? null,
+        'recurring' => (int)($r['recurring'] ?? 0),
         'date' => $r['expense_date'],
     ], $rows)]);
 } catch (\Throwable $e) {
