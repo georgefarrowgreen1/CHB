@@ -1817,6 +1817,9 @@
         body.owner-mode .account-btn { display: none; }
         /* Leave room at the bottom so the floating dock never covers page content. */
         body.owner-mode .container { padding-bottom: 110px; }
+        /* The footer sits outside .container, so give it its own clearance in
+           owner-mode — otherwise the floating admin dock overlaps the footer text. */
+        body.owner-mode .site-footer { padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px)); }
 
         /* ----- ADMIN ICON DOCK (floating bottom pill nav, icons only) ----- */
         /* Hidden by default; only shown while an admin is signed in (owner-mode),
@@ -11749,7 +11752,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'gm4n5o7t';
+            const BUILD = 'hn5o6p8u';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
