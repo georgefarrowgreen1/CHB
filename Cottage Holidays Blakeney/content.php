@@ -17,6 +17,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         // codes etc). Admin reads these via the get_all action below.
         if (strpos($r['item_key'], 'ical-feeds-') === 0) continue;
         if (strpos($r['item_key'], 'arrival-') === 0) continue;
+        if (strpos($r['item_key'], 'apikey-') === 0) continue;   // secret API keys (e.g. tides)
         // Cottage GPS coordinates (geo-<propKey>) ARE exposed publicly so the cottage
         // page can show an exact-pin "Where you'll be" map. They're still used
         // server-side for the on-arrival key-code unlock too.
