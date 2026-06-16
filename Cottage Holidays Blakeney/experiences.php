@@ -23,6 +23,8 @@ function exp_public_row($r) {
         'linkUrl'   => $r['link_url'],
         'phone'     => $r['phone'],
         'category'  => $r['category'],
+        'distance'  => $r['distance'] ?? '',
+        'mapQuery'  => $r['map_query'] ?? '',
     ];
 }
 function exp_published() {
@@ -44,8 +46,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     json_out(['experiences' => exp_published()]);
 }
 
-$in = body();
-$action = $in['action'] ?? '';
+// Support both JSON (admin/guest actions) and multipart (a suggestion with a photo).
+$action = $_POST['action'] ?? '';
+if ($action === '') { $in = body(); $action = $in['action'] ?? ''; } else { $in = $_POST; }
 
 if ($action === 'list') {
     json_out(['experiences' => exp_published()]);
@@ -69,11 +72,20 @@ if ($action === 'suggest') {
     $guest = $g->fetch();
     if (!$guest) json_out(['error' => 'Account not found'], 404);
 
+    // Optional photo the guest attached (validated + stored like guest photos).
+    $image = '';
+    if (!empty($_FILES['image']) && is_array($_FILES['image']) && (($_FILES['image']['error'] ?? 4) === UPLOAD_ERR_OK)) {
+        require_once __DIR__ . '/image-save.php';
+        $res = save_uploaded_image($_FILES['image'], 'experience');
+        if (!empty($res['error'])) json_out(['error' => $res['error']], $res['code'] ?? 400);
+        $image = $res['url'];
+    }
+
     try {
         db()->prepare(
-            "INSERT INTO experiences (title, body, link_url, phone, category, status, source, suggested_by_name, suggested_by_email)
-             VALUES (?,?,?,?,?, 'pending', 'guest', ?, ?)"
-        )->execute([$title, $bodyTxt, $linkUrl, $phone, $category, $guest['name'], $guest['email']]);
+            "INSERT INTO experiences (title, body, image_url, link_url, phone, category, status, source, suggested_by_name, suggested_by_email)
+             VALUES (?,?,?,?,?,?, 'pending', 'guest', ?, ?)"
+        )->execute([$title, $bodyTxt, $image, $linkUrl, $phone, $category, $guest['name'], $guest['email']]);
     } catch (\Throwable $e) {
         json_out(['error' => 'Experiences not ready — has migrate.php been run? (migration-experiences.sql)'], 500);
     }
@@ -116,18 +128,20 @@ if ($action === 'save') {
     $linkUrl = exp_norm_url($in['link_url'] ?? '');
     $phone = trim((string)($in['phone'] ?? ''));
     $category = clean($in['category'] ?? '');
+    $distance = trim((string)($in['distance'] ?? ''));
+    $mapQuery = trim((string)($in['map_query'] ?? ''));
     if (mb_strlen($title) < 1) json_out(['error' => 'A title is required'], 400);
     try {
         if ($id) {
             db()->prepare(
-                "UPDATE experiences SET title=?, body=?, image_url=?, link_label=?, link_url=?, phone=?, category=?, status='published' WHERE id=?"
-            )->execute([$title, $bodyTxt, $image, $linkLabel, $linkUrl, $phone, $category, $id]);
+                "UPDATE experiences SET title=?, body=?, image_url=?, link_label=?, link_url=?, phone=?, category=?, distance=?, map_query=?, status='published' WHERE id=?"
+            )->execute([$title, $bodyTxt, $image, $linkLabel, $linkUrl, $phone, $category, $distance, $mapQuery, $id]);
         } else {
             $max = (int)(db()->query("SELECT COALESCE(MAX(sort_order),0) m FROM experiences")->fetch()['m'] ?? 0);
             db()->prepare(
-                "INSERT INTO experiences (title, body, image_url, link_label, link_url, phone, category, status, source, sort_order)
-                 VALUES (?,?,?,?,?,?,?, 'published','admin', ?)"
-            )->execute([$title, $bodyTxt, $image, $linkLabel, $linkUrl, $phone, $category, $max + 1]);
+                "INSERT INTO experiences (title, body, image_url, link_label, link_url, phone, category, distance, map_query, status, source, sort_order)
+                 VALUES (?,?,?,?,?,?,?,?,?, 'published','admin', ?)"
+            )->execute([$title, $bodyTxt, $image, $linkLabel, $linkUrl, $phone, $category, $distance, $mapQuery, $max + 1]);
             $id = (int)db()->lastInsertId();
         }
     } catch (\Throwable $e) {

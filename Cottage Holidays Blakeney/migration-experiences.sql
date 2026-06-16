@@ -10,6 +10,8 @@ CREATE TABLE IF NOT EXISTS experiences (
   link_url VARCHAR(512) NOT NULL DEFAULT '',
   phone VARCHAR(40) NOT NULL DEFAULT '',
   category VARCHAR(48) NOT NULL DEFAULT '',
+  distance VARCHAR(80) NOT NULL DEFAULT '',
+  map_query VARCHAR(255) NOT NULL DEFAULT '',
   status ENUM('published','pending','rejected') NOT NULL DEFAULT 'published',
   source ENUM('admin','guest') NOT NULL DEFAULT 'admin',
   suggested_by_name VARCHAR(120) NOT NULL DEFAULT '',
