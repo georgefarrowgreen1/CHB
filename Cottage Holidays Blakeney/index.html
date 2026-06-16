@@ -5546,7 +5546,8 @@
                     ? `<span class="money-badge">${days < 0 ? 'In progress · unpaid' : (days === 0 ? 'Arrives today · unpaid' : 'Due soon · ' + days + 'd')}</span>` : '';
                 const sqBtns = (squareAdminEnabled && b.email) ? `
                         <button class="btn-sm btn-edit" onclick="requestPayment('${b.id}','deposit')">Request deposit</button>
-                        <button class="btn-sm btn-edit" onclick="requestPayment('${b.id}','balance')">Request full balance</button>` : '';
+                        <button class="btn-sm btn-edit" onclick="requestPayment('${b.id}','balance')">Request full balance</button>
+                        <button class="btn-sm btn-edit" onclick="copyPayLink('${b.id}','balance')">Copy pay link</button>` : '';
                 const history = (squareAdminEnabled && b.email)
                     ? `<div id="sq-pay-${b.id}" class="sq-pay-history" style="margin-top:10px;font-size:0.82rem;color:var(--text-muted);">Loading payments…</div>` : '';
                 const dh = damageHeld(propKey, b);
@@ -9059,6 +9060,20 @@
                 const res = await apiPost('bookings.php', { action: 'request_payment', id: booking.dbId, kind });
                 toast(`${kind === 'balance' ? 'Balance' : 'Deposit'} request sent — ${gbp(res.amount)}.`);
             } catch (e) { glassAlert("Couldn't send the payment request: " + e.message); }
+        }
+        // Copy a secure pay link to the clipboard, to share by WhatsApp/SMS/etc.
+        async function copyPayLink(bookingId, kind) {
+            const booking = findBookingById(bookingId);
+            if (!booking) return;
+            try {
+                const res = await apiPost('bookings.php', { action: 'pay_link', id: booking.dbId, kind });
+                const url = res.url || '';
+                if (!url) throw new Error('No link returned.');
+                let copied = false;
+                try { await navigator.clipboard.writeText(url); copied = true; } catch (e) { /* clipboard blocked */ }
+                if (copied) toast('Pay link copied to clipboard.');
+                else await glassAlert('Copy this secure pay link:\n\n' + url);
+            } catch (e) { glassAlert("Couldn't get the pay link: " + e.message); }
         }
         // Show the Square payment ledger for a booking inside the details modal.
         async function loadBookingPayments(bookingId) {
@@ -12723,7 +12738,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'ag6b9f4s';
+            const BUILD = 'bh7c2g5t';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;

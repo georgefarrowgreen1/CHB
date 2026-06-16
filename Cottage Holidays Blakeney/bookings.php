@@ -412,6 +412,18 @@ if ($action === 'request_payment') {
     json_out(['error' => $res['error'] ?? 'Email failed to send'], 200);
 }
 
+// Return the secure pay link for a booking (to copy/share by WhatsApp, SMS, etc.)
+// without emailing it. Same token the email uses; authorises paying THIS booking.
+if ($action === 'pay_link') {
+    if (!square_enabled()) json_out(['error' => 'Square payments are not switched on yet (see config.php / Settings).'], 400);
+    $id = (int)($in['id'] ?? 0);
+    $kind = (($in['kind'] ?? 'balance') === 'deposit') ? 'deposit' : 'balance';
+    $b = booking_by_id($id);
+    if (!$b) json_out(['error' => 'Booking not found'], 404);
+    $url = site_base_url() . 'index.html?pay=' . pay_token($id) . '&b=' . $id . '&k=' . $kind;
+    json_out(['ok' => true, 'url' => $url, 'kind' => $kind]);
+}
+
 // Refund a Square payment (full or partial) and re-reconcile the booking.
 if ($action === 'refund') {
     if (!square_enabled()) json_out(['error' => 'Square payments are not switched on yet.'], 400);

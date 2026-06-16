@@ -106,6 +106,12 @@ if ($action === 'charge') {
     if (!$ok) {
         book_unlock($b['prop_key']);
         $detail = $res['body']['errors'][0]['detail'] ?? ($res['body']['error'] ?? 'Payment was declined. Please check your card and try again.');
+        // Best-effort: alert the owner (push) so they can follow up on a failed card payment.
+        try {
+            require_once __DIR__ . '/webpush.php';
+            alert_owner('Card payment declined',
+                ($b['name'] ?: 'A guest') . ' — ' . $propName . ': ' . ucfirst($kind) . ' £' . number_format($amountDue, 2) . ' was declined.');
+        } catch (\Throwable $e) { /* never let an alert break the response */ }
         json_out(['error' => $detail], 402);
     }
 
