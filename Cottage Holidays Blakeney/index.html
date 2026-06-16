@@ -1528,33 +1528,31 @@
             border: 1px solid var(--glass-border); transition: all 0.3s; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px;
         }
         .toggle-btn:hover { color: var(--text-light); border-color: var(--text-light); }
-        /* iOS-style light/dark toggle: a pill track + sliding knob, sun & moon ends. */
+        /* iOS-style light/dark toggle: a pill track + a sliding knob that carries the
+           current mode's icon (moon → sun crossfade as it slides). */
         .theme-switch {
-            position: relative; width: 58px; height: 32px; flex-shrink: 0; padding: 0; cursor: pointer;
+            position: relative; width: 60px; height: 32px; flex-shrink: 0; padding: 0; cursor: pointer;
             border-radius: 999px; border: 1px solid var(--glass-border);
-            background: rgba(255,255,255,0.06); -webkit-tap-highlight-color: transparent;
-            transition: background 0.4s var(--fluid-bezier), border-color 0.4s var(--fluid-bezier), box-shadow 0.3s var(--fluid-bezier);
+            background: rgba(255,255,255,0.08); -webkit-tap-highlight-color: transparent;
+            transition: background 0.4s var(--fluid-bezier), border-color 0.4s var(--fluid-bezier), box-shadow 0.25s var(--fluid-bezier);
         }
         .theme-switch:hover { box-shadow: 0 0 0 4px var(--glass-bg); }
-        .theme-switch:active .ts-knob { width: 28px; }   /* subtle squish on press */
-        .theme-switch .ts-ico {
-            position: absolute; top: 50%; transform: translateY(-50%); display: flex;
-            color: var(--text-muted); transition: opacity 0.4s var(--fluid-bezier), color 0.4s var(--fluid-bezier);
-        }
-        .theme-switch .ts-ico .ic { width: 14px; height: 14px; }
-        .theme-switch .ts-moon { left: 9px; opacity: 1; color: var(--text-light); }
-        .theme-switch .ts-sun { right: 9px; opacity: 0.4; }
+        .theme-switch:focus-visible { outline: 2px solid var(--accent-soft); outline-offset: 3px; }
         .theme-switch .ts-knob {
-            position: absolute; top: 3px; left: 3px; width: 24px; height: 24px; border-radius: 50%;
-            background: var(--text-light); box-shadow: 0 2px 6px rgba(0,0,0,0.35);
-            transition: transform 0.45s var(--spring), background 0.4s var(--fluid-bezier), width 0.2s var(--fluid-bezier);
+            position: absolute; top: 3px; left: 3px; width: 26px; height: 26px; border-radius: 50%;
+            background: #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center;
+            transition: transform 0.45s var(--spring), width 0.18s var(--fluid-bezier);
         }
-        /* Light mode = "on": knob slides right, track warms, sun lights up. */
+        .theme-switch:active .ts-knob { width: 30px; }   /* subtle squish on press */
+        .theme-switch .ts-i { position: absolute; width: 15px; height: 15px; transition: opacity 0.3s var(--fluid-bezier), transform 0.45s var(--spring); }
+        .theme-switch .ts-i-moon { color: #33343a; opacity: 1; }
+        .theme-switch .ts-i-sun { color: var(--accent); opacity: 0; transform: rotate(-90deg); }
+        /* Light mode = "on": knob slides right, track warms, knob shows the sun. */
         body.light-mode .theme-switch { background: var(--accent); border-color: var(--accent); }
-        body.light-mode .theme-switch .ts-knob { transform: translateX(26px); background: #fff; }
-        body.light-mode .theme-switch:active .ts-knob { transform: translateX(22px); }
-        body.light-mode .theme-switch .ts-sun { opacity: 1; color: #fff; }
-        body.light-mode .theme-switch .ts-moon { opacity: 0.5; color: rgba(255,255,255,0.75); }
+        body.light-mode .theme-switch .ts-knob { transform: translateX(28px); }
+        body.light-mode .theme-switch:active .ts-knob { transform: translateX(24px); }
+        body.light-mode .theme-switch .ts-i-moon { opacity: 0; transform: rotate(90deg); }
+        body.light-mode .theme-switch .ts-i-sun { color: #E8943B; opacity: 1; transform: rotate(0deg); }
         /* Condensed segmented action cluster (guest dashboard header) */
         .action-cluster {
             display: inline-flex; align-items: stretch;
@@ -3300,9 +3298,10 @@
     <footer class="site-footer">
         <div class="footer-controls">
             <button id="theme-toggle" class="theme-switch" role="switch" aria-checked="false" onclick="toggleTheme()" title="Switch to light mode" aria-label="Switch to light mode">
-                <span class="ts-ico ts-moon"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg></span>
-                <span class="ts-ico ts-sun"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.8 4.8l1.8 1.8M17.4 17.4l1.8 1.8M19.2 4.8l-1.8 1.8M6.6 17.4l-1.8 1.8"/></svg></span>
-                <span class="ts-knob" aria-hidden="true"></span>
+                <span class="ts-knob" aria-hidden="true">
+                    <svg class="ts-i ts-i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg>
+                    <svg class="ts-i ts-i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.8 4.8l1.8 1.8M17.4 17.4l1.8 1.8M19.2 4.8l-1.8 1.8M6.6 17.4l-1.8 1.8"/></svg>
+                </span>
             </button>
         </div>
         <p class="footer-nap" style="font-size:0.7rem;color:var(--text-muted);opacity:0.55;margin-bottom:4px;letter-spacing:0.2px;">Self-catering holiday cottages in Blakeney, North Norfolk · NR25</p>
@@ -11752,7 +11751,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'hn5o6p8u';
+            const BUILD = 'io6p7q9v';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
