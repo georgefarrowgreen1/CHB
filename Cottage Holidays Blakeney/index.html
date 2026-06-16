@@ -3342,16 +3342,26 @@
             return path;                                 // e.g. "/something/" — PHP files live here
         })();
         // Connection state + offline action queue. A discrete no-WiFi button appears
-        // while disconnected (no full-screen message); admin writes attempted offline
-        // are saved locally and replayed automatically when the connection returns.
-        const OQ_KEY = 'chb-offline-queue';
-        function oqLoad() { try { return JSON.parse(localStorage.getItem(OQ_KEY) || '[]'); } catch (e) { return []; } }
-        function oqSave(q) { try { localStorage.setItem(OQ_KEY, JSON.stringify(q)); } catch (e) {} }
-        function oqCount() { return oqLoad().length; }
+        // while disconnected; admin writes attempted offline are saved to IndexedDB
+        // (shared with the service worker) and replayed when the connection returns —
+        // by the page on reconnect/open, and by the SW via Background Sync even when
+        // the app is closed (where the browser supports it; iOS falls back to on-open).
+        function oqDB() {
+            return new Promise((res, rej) => {
+                let r; try { r = indexedDB.open('chb-db', 1); } catch (e) { return rej(e); }
+                r.onupgradeneeded = () => { const db = r.result; if (!db.objectStoreNames.contains('queue')) db.createObjectStore('queue', { keyPath: 'id', autoIncrement: true }); };
+                r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+            });
+        }
+        async function oqAll() { const db = await oqDB(); return new Promise((res, rej) => { const tx = db.transaction('queue', 'readonly'); const rq = tx.objectStore('queue').getAll(); rq.onsuccess = () => res(rq.result || []); rq.onerror = () => rej(rq.error); }); }
+        async function oqAdd(item) { const db = await oqDB(); await new Promise((res, rej) => { const tx = db.transaction('queue', 'readwrite'); tx.objectStore('queue').add(item); tx.oncomplete = res; tx.onerror = () => rej(tx.error); }); }
+        async function oqDelete(id) { const db = await oqDB(); await new Promise((res, rej) => { const tx = db.transaction('queue', 'readwrite'); tx.objectStore('queue').delete(id); tx.oncomplete = res; tx.onerror = () => rej(tx.error); }); }
+        let __oqCount = 0;
+        async function oqRefreshCount() { try { __oqCount = (await oqAll()).length; } catch (e) { __oqCount = 0; } updateOnlineStatus(); }
         function updateOnlineStatus() {
             try {
                 const offline = navigator.onLine === false;
-                const n = oqCount();
+                const n = __oqCount;
                 document.body.classList.toggle('is-offline', offline);
                 document.body.classList.toggle('has-queued', n > 0);
                 const b = document.getElementById('offline-count');
@@ -3360,9 +3370,13 @@
                 if (pill) pill.title = (offline ? 'No internet connection' : 'Reconnecting…') + (n ? ` — ${n} change${n === 1 ? '' : 's'} waiting to sync` : '');
             } catch (e) {}
         }
-        // Send now if online; otherwise queue and report it as queued.
+        // Ask the service worker to replay the queue in the background (when supported).
+        async function oqRegisterSync() {
+            try { const reg = await navigator.serviceWorker.ready; if (reg && 'sync' in reg) await reg.sync.register('chb-sync'); } catch (e) {}
+        }
+        // Send now if online; otherwise queue it and report it as queued.
         async function queueOrPost(endpoint, payload) {
-            const enqueue = () => { const q = oqLoad(); q.push({ endpoint, payload }); oqSave(q); updateOnlineStatus(); return { queued: true }; };
+            const enqueue = async () => { try { await oqAdd({ endpoint, payload, at: Date.now() }); } catch (e) {} await oqRefreshCount(); oqRegisterSync(); return { queued: true }; };
             if (navigator.onLine === false) return enqueue();
             try { return await apiPost(endpoint, payload); }
             catch (e) { if (navigator.onLine === false) return enqueue(); throw e; }
@@ -3370,24 +3384,26 @@
         let __oqFlushing = false;
         async function oqFlush() {
             if (__oqFlushing || navigator.onLine === false) return;
-            let q = oqLoad(); if (!q.length) return;
+            let items = []; try { items = await oqAll(); } catch (e) {}
+            if (!items.length) { await oqRefreshCount(); return; }
             __oqFlushing = true;
             try {
-                while (q.length) {
-                    try { await apiPost(q[0].endpoint, q[0].payload); }
+                for (const it of items) {
+                    try { await apiPost(it.endpoint, it.payload); }
                     catch (e) { if (navigator.onLine === false) break; /* online but rejected — drop it so the queue can't get stuck */ }
-                    q.shift(); oqSave(q);
+                    try { await oqDelete(it.id); } catch (e) {}
                 }
-            } finally { __oqFlushing = false; updateOnlineStatus(); }
+            } finally { __oqFlushing = false; await oqRefreshCount(); }
             // Refresh any open admin views with the now-synced data.
             try { if (typeof loadExpenses === 'function') { await loadExpenses(); if (document.querySelector('#asec-expenses')) renderExpenses(); } } catch (e) {}
             try { if (typeof loadAdminMessages === 'function') loadAdminMessages(); } catch (e) {}
             try { if (typeof renderMoneyOverview === 'function') renderMoneyOverview(); } catch (e) {}
-            if (oqCount() === 0) { try { toast('Offline changes synced.'); } catch (e) {} }
+            if (__oqCount === 0) { try { toast('Offline changes synced.'); } catch (e) {} }
         }
         window.addEventListener('online', () => { updateOnlineStatus(); oqFlush(); });
         window.addEventListener('offline', updateOnlineStatus);
         updateOnlineStatus();
+        try { oqRefreshCount(); } catch (e) {}
         // Fetch with a timeout so a stuck request never hangs the page forever.
         async function fetchWithTimeout(url, opts, ms) {
             const ctrl = new AbortController();
@@ -6532,6 +6548,11 @@
                     if (e.data && e.data.type === 'chb-reload') {
                         try { toast('Updating to the new version…'); } catch (_) {}
                         setTimeout(reloadForUpdate, 1200);
+                    } else if (e.data && e.data.type === 'chb-synced') {
+                        // The SW replayed queued offline writes in the background — refresh.
+                        try { oqRefreshCount(); } catch (_) {}
+                        try { if (typeof loadExpenses === 'function') loadExpenses().then(() => { if (document.querySelector('#asec-expenses')) renderExpenses(); try { renderMoneyOverview(); } catch (_) {} }); } catch (_) {}
+                        try { if (typeof loadAdminMessages === 'function') loadAdminMessages(); } catch (_) {}
                     }
                 });
             }
@@ -11735,7 +11756,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'ci0j1k3p';
+            const BUILD = 'dj1k2l4q';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;

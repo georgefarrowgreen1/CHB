@@ -63,6 +63,50 @@ self.addEventListener('fetch', (event) => {
     })());
 });
 
+// ---- Background Sync: replay queued admin writes even when the app is closed ----
+// The page stores offline writes in IndexedDB ('chb-db' → 'queue'); on a 'sync'
+// event we POST each one and remove it. A network failure re-throws so the
+// browser retries the sync later; an HTTP response (even an error) is treated as
+// handled so a rejected request can't wedge the queue. Not supported on iOS — the
+// page's on-reconnect / on-open flush covers that case.
+function swQueueDB() {
+    return new Promise((res, rej) => {
+        let r; try { r = indexedDB.open('chb-db', 1); } catch (e) { return rej(e); }
+        r.onupgradeneeded = () => { const db = r.result; if (!db.objectStoreNames.contains('queue')) db.createObjectStore('queue', { keyPath: 'id', autoIncrement: true }); };
+        r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
+    });
+}
+function swQueueAll(db) { return new Promise((res, rej) => { const tx = db.transaction('queue', 'readonly'); const rq = tx.objectStore('queue').getAll(); rq.onsuccess = () => res(rq.result || []); rq.onerror = () => rej(rq.error); }); }
+function swQueueDelete(db, id) { return new Promise((res, rej) => { const tx = db.transaction('queue', 'readwrite'); tx.objectStore('queue').delete(id); tx.oncomplete = res; tx.onerror = () => rej(tx.error); }); }
+
+async function swFlushQueue() {
+    const db = await swQueueDB();
+    const items = await swQueueAll(db);
+    if (!items.length) return;
+    let sent = 0;
+    for (const it of items) {
+        let r;
+        try {
+            r = await fetch(it.endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include', body: JSON.stringify(it.payload || {}) });
+        } catch (e) {
+            // True network failure — stop and let the browser retry the sync later.
+            throw e;
+        }
+        await swQueueDelete(db, it.id);   // got a response → handled (don't loop on 4xx/5xx)
+        sent++;
+    }
+    if (sent) {
+        try {
+            const cs = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+            cs.forEach(c => c.postMessage({ type: 'chb-synced', sent }));
+        } catch (e) {}
+    }
+}
+
+self.addEventListener('sync', (event) => {
+    if (event.tag === 'chb-sync') event.waitUntil(swFlushQueue());
+});
+
 // ---- Web Push (payload-less; ask the server what THIS device should show) ----
 self.addEventListener('push', (event) => {
     event.waitUntil((async () => {
