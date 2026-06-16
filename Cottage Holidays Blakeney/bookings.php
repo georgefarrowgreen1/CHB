@@ -593,12 +593,4 @@ if ($action === 'recent_payments') {
 // Remove a single Square transaction from the ledger (e.g. tidying up test
 // payments). This only deletes the audit record — it does not refund the guest
 // or change a booking's stored figures.
-if ($action === 'delete_payment') {
-    $sqId = clean($in['square_payment_id'] ?? '');
-    if ($sqId === '') json_out(['error' => 'Missing payment id'], 400);
-    try { db()->prepare('DELETE FROM payments WHERE square_payment_id = ?')->execute([$sqId]); }
-    catch (\Throwable $e) { json_out(['error' => 'Could not delete'], 500); }
-    json_out(['ok' => true]);
-}
-
 json_out(['error' => 'Unknown action'], 400);
