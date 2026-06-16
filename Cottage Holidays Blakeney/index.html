@@ -1143,6 +1143,14 @@
             background: var(--glass-bg); border: 1px solid var(--glass-border); transition: background 0.2s, border-color 0.2s; }
         .chat-chip:hover, .chat-chip:focus-visible { background: var(--glass-hover); border-color: var(--text-muted); }
         .chat-chip-issue { color: #FFB74D; border-color: rgba(255,167,38,0.4); }
+        .chat-chip-avail { color: #81C784; border-color: rgba(129,199,132,0.4); }
+        /* In-chat assistant bubble (instant FAQ answers + live availability) */
+        .chat-bot { align-self: flex-start; max-width: 90%; background: var(--glass-bg); border: 1px solid var(--glass-border);
+            border-radius: 14px; padding: 10px 12px; margin: 8px 14px; font-size: 0.82rem; color: var(--text-light); line-height: 1.45; }
+        .chat-bot .cb-meta { font-size: 0.62rem; color: var(--text-muted); margin-top: 7px; }
+        .chat-bot select.input-glass, .chat-bot input.input-glass { margin: 6px 0; }
+        .chat-bot-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 9px; }
+        .chat-bot-actions .btn-glass { font-size: 0.76rem; padding: 7px 14px; width: auto; }
         /* Trip-planner interest chips (toggle) */
         .trip-interests { display: flex; flex-wrap: wrap; gap: 8px; }
         .trip-chip { font-size: 0.8rem; padding: 7px 14px; border-radius: 999px; cursor: pointer; color: var(--text-light);
@@ -1217,7 +1225,8 @@
         .avail-nav:hover { background: var(--glass-hover); }
         .avail-cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
         .avail-cal-grid .avail-dow { text-align: center; font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-muted); padding-bottom: 4px; }
-        .avail-cell { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; font-size: 0.82rem; border-radius: 9px; color: var(--text-light); }
+        .avail-cell { aspect-ratio: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 0.82rem; border-radius: 9px; color: var(--text-light); line-height: 1.04; }
+        .avail-cell .ac-price { font-size: 0.54rem; color: var(--text-muted); margin-top: 1px; letter-spacing: -0.2px; }
         .avail-cell.empty { background: transparent; }
         .avail-cell.free { background: rgba(76,175,80,0.12); }
         .avail-cell.taken { background: rgba(255,255,255,0.04); color: var(--text-muted); text-decoration: line-through; }
@@ -2330,6 +2339,12 @@
                     <button class="btn-glass" type="button" onclick="openTripModal()">✨ Plan my North Norfolk days</button>
                 </div>
 
+                <!-- Accessibility (per cottage) — owner-editable; helps guests book with
+                     confidence and adds useful, indexable detail for search. -->
+                <div class="prop-divider"></div>
+                <h3 class="section-title prop-section-h">Accessibility</h3>
+                <p class="things-note" id="prop-access" style="max-width:760px;white-space:pre-line;"></p>
+
                 <!-- Guest reviews (below Things to know). The leading divider is hidden
                      together with the section when this cottage has no reviews yet. -->
                 <div class="prop-divider" id="reviews-divider"></div>
@@ -2662,6 +2677,9 @@
             <div class="settings-sec" id="sec-messages" style="display:none;">
                 <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 16px;">Conversations from your website chat — registered guests and anonymous visitors. Click one to read and reply.</p>
                 <div id="messages-list"><!-- JS injects message threads here --></div>
+                <!-- Instant chat answers: the chat shows these the moment a guest taps a
+                     quick-question chip, so common questions answer themselves. -->
+                <div id="chat-answers-editor" style="max-width:640px;margin-top:26px;"></div>
             </div>
 
             <!-- Notifications (owner push) -->
@@ -3019,10 +3037,11 @@
             <input type="email" id="chat-email" name="email" autocomplete="email" class="input-glass field-sm" placeholder="Email (so we can reply)" style="margin:0;">
         </div>
         <div class="chat-quick" id="chat-quick">
-            <button type="button" class="chat-chip" onclick="chatQuick('What time is check-in and check-out?')">Check-in time?</button>
-            <button type="button" class="chat-chip" onclick="chatQuick('Is there parking at the cottage?')">Parking?</button>
-            <button type="button" class="chat-chip" onclick="chatQuick('What is the Wi-Fi like?')">Wi-Fi?</button>
-            <button type="button" class="chat-chip" onclick="chatQuick('Are dogs welcome at this cottage?')">Dogs?</button>
+            <button type="button" class="chat-chip chat-chip-avail" onclick="chatAvailStart()">Check availability</button>
+            <button type="button" class="chat-chip" onclick="chatFaq('checkin')">Check-in time?</button>
+            <button type="button" class="chat-chip" onclick="chatFaq('parking')">Parking?</button>
+            <button type="button" class="chat-chip" onclick="chatFaq('wifi')">Wi-Fi?</button>
+            <button type="button" class="chat-chip" onclick="chatFaq('dogs')">Dogs?</button>
             <button type="button" class="chat-chip chat-chip-issue" onclick="chatQuick('__issue')">Report an issue</button>
         </div>
         <div class="chat-composer" style="padding:12px 14px 14px;">
@@ -4410,7 +4429,7 @@
             { id: 'seasons',  label: 'Seasonal rates',    sub: 'Different prices by date range', ic: '<rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/>' },
             { id: 'arrival',  label: 'Arrival info',      sub: 'Private pre-arrival email', ic: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/>' },
             { id: 'location', label: 'Location',          sub: 'Address &amp; key-code unlock spot', ic: '<path d="M12 21s-7-5.2-7-11a7 7 0 0 1 14 0c0 5.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/>' },
-            { id: 'local',    label: 'Local guide',       sub: 'Dark skies &amp; car-free notes shown on the page', ic: '<circle cx="12" cy="12" r="9"/><path d="M15 9l-4.2 1.8L9 15l4.2-1.8z"/>' },
+            { id: 'local',    label: 'Local guide',       sub: 'Dark skies, car-free &amp; accessibility notes', ic: '<circle cx="12" cy="12" r="9"/><path d="M15 9l-4.2 1.8L9 15l4.2-1.8z"/>' },
             { id: 'faq',      label: 'Good to Know',      sub: 'FAQ shown in this cottage\'s bookings', ic: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.8" r="0.7" fill="currentColor" stroke="none"/>' },
         ];
         function settingsOpenAccom(k) {
@@ -8008,6 +8027,7 @@
         // ---- Local guide (dark skies + car-free) + book-direct savings badge ----
         const DEFAULT_DARKSKIES = "North Norfolk has some of England's darkest skies. On a clear night, step outside and look up — you can often see the Milky Way. Give your eyes 15 minutes to adjust and bring a blanket.";
         const DEFAULT_CARFREE = "You can reach us car-free: train to Sheringham, then the Coasthopper bus along the coast to Blakeney. The Norfolk Coast Path runs through the village, so it's an easy base for walking to Cley, Morston and Wells.";
+        const DEFAULT_ACCESS = "Please ask us before you book if you have specific access needs — we're happy to talk through the layout. Tell us about parking distance, steps or stairs, doorway widths, ground-floor sleeping and bathroom facilities so we can confirm the cottage is right for you.";
         function saveLocalContent(key, value) { saveContent(key, value); try { renderLocalGuide(activeFrontProperty); } catch (e) {} }
         // ---- Tide widget (Blakeney) — fetched once from tides.php, cached in-memory.
         // Hidden entirely unless an API key is configured (Settings → API keys). ----
@@ -8038,8 +8058,10 @@
         function renderLocalGuide(propKey) {
             const dk = (siteContent['darkskies-' + propKey] || DEFAULT_DARKSKIES);
             const cf = (siteContent['carfree-' + propKey] || DEFAULT_CARFREE);
+            const ac = (siteContent['access-' + propKey] || DEFAULT_ACCESS);
             const dkEl = document.getElementById('prop-darkskies'); if (dkEl) dkEl.textContent = dk;
             const cfEl = document.getElementById('prop-carfree'); if (cfEl) cfEl.textContent = cf;
+            const acEl = document.getElementById('prop-access'); if (acEl) acEl.textContent = ac;
             // Book-direct savings badge: only when the owner set a higher OTA price.
             const sv = document.getElementById('pr-savings');
             if (sv) {
@@ -9052,6 +9074,90 @@
             input.value = text;
             sendChat();
         }
+
+        // ---- In-chat assistant: instant FAQ answers + a live availability check.
+        //  Pure client-side (no owner ping) so common questions self-serve; the guest
+        //  can still type below for a real reply. Answers are owner-editable in
+        //  Settings → Guest messages (content keys below), with sensible defaults.
+        const CHAT_FAQ = {
+            checkin: { q: 'What time is check-in and check-out?', key: 'chat-ans-checkin',
+                def: "Check-in is from 3pm and check-out is by 10am. If you need a little flexibility, just ask — we'll always try to help around our changeover." },
+            parking: { q: 'Is there parking at the cottage?', key: 'chat-ans-parking',
+                def: "Parking details are in your arrival information, and Blakeney has a large pay-and-display car park down by the quay. Tell us which cottage and we'll give you the specifics." },
+            wifi:    { q: 'What is the Wi-Fi like?', key: 'chat-ans-wifi',
+                def: "There's free Wi-Fi throughout the cottage — fine for browsing, email and streaming." },
+            dogs:    { q: 'Are dogs welcome?', key: 'chat-ans-dogs',
+                def: "Some of our cottages are dog-friendly — tell us your dates and which cottage and we'll confirm. Blakeney's beaches and the coast path are wonderful for dogs." }
+        };
+        const CHAT_FAQ_ORDER = ['checkin', 'parking', 'wifi', 'dogs'];
+        function chatThreadEl() { return document.getElementById('chat-thread'); }
+        function chatScroll() { const t = chatThreadEl(); if (t) t.scrollTop = t.scrollHeight; }
+        function chatClearEmpty() { const t = chatThreadEl(); const e = t && t.querySelector('.chat-empty'); if (e) e.remove(); }
+        function chatAppendMe(text) {
+            const t = chatThreadEl(); if (!t) return;
+            const d = document.createElement('div'); d.className = 'chat-msg me'; d.textContent = text;
+            t.appendChild(d); chatScroll();
+        }
+        function chatBot(html) {
+            const t = chatThreadEl(); if (!t) return null;
+            const d = document.createElement('div'); d.className = 'chat-bot';
+            d.innerHTML = html + '<div class="cb-meta">Quick answer — type below to reach a person.</div>';
+            t.appendChild(d); chatScroll(); return d;
+        }
+        function chatFaq(which) {
+            const f = CHAT_FAQ[which]; if (!f) return;
+            chatClearEmpty();
+            chatAppendMe(f.q);
+            const ans = ((siteContent && siteContent[f.key]) || '').trim() || f.def;
+            chatBot(escapeHtml(ans).replace(/\n/g, '<br>'));
+        }
+        // Live availability check, in the chat thread.
+        let __chatAvailUid = 0;
+        function chatAvailStart() {
+            chatClearEmpty();
+            chatAppendMe('Check availability');
+            const uid = 'cav' + (++__chatAvailUid);
+            const opts = Object.keys(propertyMeta).map(k =>
+                `<option value="${k}"${k === activeFrontProperty ? ' selected' : ''}>${escapeHtml(propertyMeta[k].name)}</option>`).join('');
+            const today = todayDashed();
+            chatBot(
+                "Pick a cottage and your dates — I'll check the live calendar right now." +
+                `<select id="${uid}-prop" class="input-glass field-sm">${opts}</select>` +
+                `<div style="display:flex;gap:8px;"><input type="date" id="${uid}-ci" class="input-glass field-sm" min="${today}" aria-label="Check-in"><input type="date" id="${uid}-co" class="input-glass field-sm" min="${today}" aria-label="Check-out"></div>` +
+                `<div class="chat-bot-actions"><button type="button" class="btn-glass" onclick="chatAvailRun('${uid}')">Check dates</button></div>`
+            );
+        }
+        async function chatAvailRun(uid) {
+            const prop = (document.getElementById(uid + '-prop') || {}).value;
+            const ci = (document.getElementById(uid + '-ci') || {}).value;
+            const co = (document.getElementById(uid + '-co') || {}).value;
+            if (!prop || !ci || !co) { chatBot('Please choose a cottage and both dates.'); return; }
+            if (co <= ci) { chatBot('Your check-out date needs to be after your check-in date.'); return; }
+            try { await loadAvailability(prop); } catch (e) {}
+            const ranges = propertyAvailability[prop] || [];
+            const clash = ranges.some(r => r.start < co && r.end > ci);   // end is checkout-exclusive
+            const name = (propertyMeta[prop] || {}).name || prop;
+            const nm = nightsBetween(ci, co);
+            const span = `${dpPretty(ci)} → ${dpPretty(co)}`;
+            if (clash) {
+                chatBot(`Sorry — ${escapeHtml(name)} isn't free for ${span}; those dates overlap an existing booking. Try different dates, or I can let you know if they free up.` +
+                    `<div class="chat-bot-actions"><button type="button" class="btn-glass" onclick="chatAvailNotify('${prop}','${ci}','${co}')">Notify me</button></div>`);
+            } else {
+                chatBot(`Good news — ${escapeHtml(name)} looks free for ${span} (${nm} night${nm === 1 ? '' : 's'}). Shall I start your enquiry? No payment is taken now.` +
+                    `<div class="chat-bot-actions"><button type="button" class="btn-glass" onclick="chatAvailEnquire('${prop}','${ci}','${co}')">Enquire now</button></div>`);
+            }
+        }
+        function chatAvailEnquire(prop, ci, co) {
+            closeChat();
+            try { openProperty(prop); } catch (e) {}
+            const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+            set('enq-checkin', ci); set('enq-checkout', co);
+            try { openEnquireModal(); } catch (e) {}
+        }
+        function chatAvailNotify(prop, ci, co) {
+            closeChat();
+            try { openWaitlistModal({ prop, checkIn: ci, checkOut: co }); } catch (e) {}
+        }
         // Admin canned reply: drop a pre-written line into the reply box to edit/send.
         function adminCanned(text) {
             if (!text) return;
@@ -9135,6 +9241,19 @@
                     <span class="settings-row-chev" aria-hidden="true">›</span>
                 </button>`).join('') : `<p style="font-size:0.82rem;color:var(--text-muted);">${__msgShowArchived ? 'No archived conversations.' : 'No messages yet.'}</p>`;
             list.innerHTML = toggle + rows;
+            renderChatAnswersEditor();
+        }
+        // Owner-editable instant answers for the chat quick chips.
+        function renderChatAnswersEditor() {
+            const host = document.getElementById('chat-answers-editor'); if (!host) return;
+            host.innerHTML = '<h3 style="font-family:var(--font-serif);font-size:1.1rem;margin:0 0 4px;">Instant chat answers</h3>'
+                + '<p style="font-size:0.8rem;color:var(--text-muted);margin:0 0 14px;">Shown the moment a guest taps a quick-question chip in the website chat, so common questions answer themselves. Leave blank to use the default.</p>'
+                + CHAT_FAQ_ORDER.map(which => {
+                    const f = CHAT_FAQ[which];
+                    const val = (siteContent[f.key] != null && siteContent[f.key] !== '') ? siteContent[f.key] : '';
+                    return `<div style="margin-bottom:14px;"><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">${escapeHtml(f.q)}</label>`
+                        + `<textarea rows="3" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" placeholder="${escapeHtml(f.def)}" onchange="saveContent('${f.key}', this.value)">${escapeHtml(val)}</textarea></div>`;
+                }).join('');
         }
         function toggleArchivedMessages() { __msgShowArchived = !__msgShowArchived; loadAdminMessages(); }
         let __msgThreadId = null;
@@ -9354,7 +9473,8 @@
                     </div>`;
                 case 'local': return `
                     <div style="margin-bottom:14px;"><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Dark skies / stargazing note — shown on the cottage page.</label><textarea rows="3" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" onchange="saveLocalContent('darkskies-${k}', this.value)">${escapeHtml(siteContent['darkskies-'+k] || DEFAULT_DARKSKIES)}</textarea></div>
-                    <div><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Getting here car-free — shown on the cottage page.</label><textarea rows="3" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" onchange="saveLocalContent('carfree-${k}', this.value)">${escapeHtml(siteContent['carfree-'+k] || DEFAULT_CARFREE)}</textarea></div>`;
+                    <div style="margin-bottom:14px;"><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Getting here car-free — shown on the cottage page.</label><textarea rows="3" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" onchange="saveLocalContent('carfree-${k}', this.value)">${escapeHtml(siteContent['carfree-'+k] || DEFAULT_CARFREE)}</textarea></div>
+                    <div><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Accessibility — steps, parking distance, ground-floor sleeping, bathroom layout. Shown on the cottage page.</label><textarea rows="4" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" onchange="saveLocalContent('access-${k}', this.value)">${escapeHtml(siteContent['access-'+k] || DEFAULT_ACCESS)}</textarea></div>`;
                 case 'faq': return `
                     <label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:10px;">FAQ shown in this cottage's bookings (the "Good to Know" button).</label>
                     <div id="faq-editor-${k}">${((Array.isArray(siteContent['faqs-'+k]) ? siteContent['faqs-'+k] : []).map(f => faqRowHtml(k, f)).join(''))}</div>
@@ -10267,12 +10387,22 @@
             let lead = (first.getDay() + 6) % 7;
             for (let i = 0; i < lead; i++) html += `<div class="avail-cell empty"></div>`;
             const days = new Date(year, month + 1, 0).getDate();
+            // Per-night "from" price = the couple rate for that night (season-aware),
+            // shown on free, future dates so guests see cost at a glance.
+            const rate = propertyRates[activeFrontProperty] || defaultRates[activeFrontProperty] || { coupleRate: 0 };
+            const seasons = propertySeasons[activeFrontProperty] || [];
             for (let d = 1; d <= days; d++) {
                 const ds = `${year}-${pad(month + 1)}-${pad(d)}`;
                 let cls = 'avail-cell ';
-                if (ds < todayStr) cls += 'past ' + (isBooked(ds) ? 'taken' : 'free');
-                else cls += isBooked(ds) ? 'taken' : 'free';
-                html += `<div class="${cls}">${d}</div>`;
+                const taken = isBooked(ds);
+                if (ds < todayStr) cls += 'past ' + (taken ? 'taken' : 'free');
+                else cls += taken ? 'taken' : 'free';
+                let priceTag = '';
+                if (!taken && ds >= todayStr) {
+                    const nightly = coupleRateForNight(ds, rate.coupleRate, seasons);
+                    if (nightly > 0) priceTag = `<span class="ac-price">£${Math.round(nightly)}</span>`;
+                }
+                html += `<div class="${cls}"><span class="ac-day">${d}</span>${priceTag}</div>`;
             }
             grid.innerHTML = html;
         }
@@ -12010,7 +12140,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'pv3w4x6c';
+            const BUILD = 'qa7m2k9d';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
