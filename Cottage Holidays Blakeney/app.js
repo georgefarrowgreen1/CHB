@@ -360,7 +360,16 @@
             document.body.appendChild(bar);
             document.body.classList.add('has-staging-banner');
         }
-        if (IS_STAGING) { try { document.addEventListener('DOMContentLoaded', injectStagingBanner); } catch (e) {} }
+        if (IS_STAGING) {
+            try {
+                document.addEventListener('DOMContentLoaded', () => {
+                    injectStagingBanner();
+                    // Already on staging — no point linking to it from its own Settings.
+                    const row = document.getElementById('staging-link-row');
+                    if (row) row.style.display = 'none';
+                });
+            } catch (e) {}
+        }
         // First-party, cookie-free page-view ping (see track.php). Fire-and-forget;
         // never blocks the UI and never counts the owner's own browsing.
         function trackView(viewId, prop) {
@@ -10093,7 +10102,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'e2w8b6zt';
+            const BUILD = 'f3x9c7au';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
