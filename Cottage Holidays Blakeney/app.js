@@ -7259,8 +7259,9 @@
         // Re-place the calendar whenever we cross the desktop/mobile breakpoint.
         try { calDesktopMq.addEventListener('change', placeAvailCalendar); }
         catch (e) { try { calDesktopMq.addListener(placeAvailCalendar); } catch (e2) {} }
-        // Keep the sticky booking bar's price in sync with the form (total when dates
-        // are chosen, otherwise the nightly "from" price).
+        // Keep the sticky booking bar's price in sync with the form. Always a "from"
+        // price (never a "total") — the price isn't final until we confirm the booking,
+        // since the enquiry can change it (extra guests, etc.).
         function updateBookBar() {
             if (!activeFrontProperty) return;
             const ci = (document.getElementById('enq-checkin') || {}).value;
@@ -7270,7 +7271,7 @@
             let html;
             if (ci && co && co > ci) {
                 const p = priceBreakdown(activeFrontProperty, adults, children, ci, co);
-                html = `${gbp(p.total)} <small>total · ${p.nights} night${p.nights === 1 ? '' : 's'}</small>`;
+                html = `From ${gbp(p.total)} <small>· ${p.nights} night${p.nights === 1 ? '' : 's'}</small>`;
             } else {
                 const r = propertyRates[activeFrontProperty] || defaultRates[activeFrontProperty] || {};
                 html = r.coupleRate != null ? `From ${gbp(r.coupleRate)} <small>/ night · select dates</small>` : `Select your dates`;
@@ -8899,7 +8900,7 @@
                     <div class="card-img" style="background-image:url('${propImg(key)}');"></div>
                     <div class="card-title">${escapeHtml(propertyMeta[key].name)}</div>
                     <div class="card-meta">${dpPretty(r.ci)} → ${dpPretty(r.co)} · ${nights} night${nights === 1 ? '' : 's'}${moved}</div>
-                    <div class="card-price">${gbp(r.price.total)} total</div>
+                    <div class="card-price">From ${gbp(r.price.total)}</div>
                     <button class="btn-glass" style="width:100%;margin-top:10px;" onclick="startBooking('${key}','${r.ci}','${r.co}')">Book / Enquire</button>
                 </div>`;
             };
@@ -10599,7 +10600,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'r7v2w9xk';
+            const BUILD = 's4k9m1zp';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
