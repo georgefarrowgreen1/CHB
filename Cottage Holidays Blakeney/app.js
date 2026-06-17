@@ -396,8 +396,10 @@
         function nav(viewId, anchorId = null) {
             // A signed-in admin has no customer-facing site — send any such view to
             // the back office (covers deep links, the address bar, stray calls). In
-            // preview-as-guest mode we let the customer views through.
-            if (isAuthenticated && !PREVIEW_MODE && !ADMIN_VIEWS.includes(viewId)) viewId = 'view-backoffice';
+            // preview-as-guest mode we let the customer views through. The secure pay
+            // page is token-authorised (not a session), so it's always allowed — an
+            // admin can open a pay link to test it (staging) or settle on a guest's behalf.
+            if (isAuthenticated && !PREVIEW_MODE && viewId !== 'view-pay' && !ADMIN_VIEWS.includes(viewId)) viewId = 'view-backoffice';
             const target = document.getElementById(viewId);
             if (!target) {
                 console.warn(`nav(): unknown view "${viewId}"`);
@@ -10387,7 +10389,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'g4y0d8bv';
+            const BUILD = 'h5z1e9cw';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
