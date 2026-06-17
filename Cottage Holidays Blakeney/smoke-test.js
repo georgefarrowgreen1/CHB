@@ -102,8 +102,8 @@ if (typeof pb !== 'function') {
     check('nightly = 390 (3 x 130)', approx(p.nightly, 390));
     check('per-night = 130', approx(p.perNight, 130));
     check('transaction fee = 11.70 (3% of 390)', approx(p.txFee, 11.7));
-    check('damages deposit = 75', approx(p.damagesDeposit, 75));
-    check('total = 476.70 (390 + 11.70 + 75)', approx(p.total, 476.7));
+    check('damages deposit = 75 (held separately, not in total)', approx(p.damagesDeposit, 75));
+    check('total = 401.70 (390 + 11.70; damages held, not charged)', approx(p.total, 401.7));
     // Extra adult should add the extra-adult rate per night (pimpernel allows 3).
     const p2 = pb('pimpernel', 3, 0, '2026-07-01', '2026-07-03'); // 2 nights, 1 extra adult @ 42
     check('extra adult adds 42/night (pimpernel 2 nights)', approx(p2.nightly, (120 + 42) * 2));

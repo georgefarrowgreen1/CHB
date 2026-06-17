@@ -287,7 +287,9 @@
                 paymentMethod: row.payment_method || '',
                 paymentDate: row.payment_date || '',
                 termsAcceptedAt: row.terms_accepted_at || '',
-                termsVersion: row.terms_version || ''
+                termsVersion: row.terms_version || '',
+                holdStatus: row.hold_status || 'none',
+                holdAmount: parseFloat(row.hold_amount) || 0
             };
             if (row.agreed_total != null) {
                 const nightly = parseFloat(row.agreed_nightly) || 0;
@@ -2209,7 +2211,7 @@
                             ? `<strong>${gbp(dh.held)} held</strong>${dh.returned > 0 ? ` · ${gbp(dh.returned)} returned` : ''}`
                             : `<span style="color:#4CAF50;">returned${dh.returned < dh.collected - 0.001 ? ` (${gbp(dh.collected - dh.returned)} retained)` : ''}</span>`}</span>
                         ${dh.held > 0 ? `<button class="btn-sm btn-edit" onclick="returnDeposit('${b.id}')">Return deposit</button>` : ''}
-                    </div>` : '';
+                    </div>` : holdControls(b);
                 return `
                 <div class="money-row glass-panel${dueSoon ? ' due-soon' : ''}">
                     <div class="money-row-head">
@@ -2996,8 +2998,8 @@
                             <div class="guest-price-box">
                                 <div class="price-row"><span>${gbp(p.perNight)} × ${p.nights} night${p.nights === 1 ? '' : 's'}</span><span>${gbp(p.nightly)}</span></div>
                                 <div class="price-row"><span>Transaction fee (${p.transactionPct}%)</span><span>${gbp(p.txFee)}</span></div>
-                                <div class="price-row"><span>Refundable damages deposit</span><span>${gbp(p.damagesDeposit)}</span></div>
                                 <div class="price-row total"><span>Total</span><span class="price-amount">${gbp(p.total)}</span></div>
+                                ${p.damagesDeposit > 0 ? `<div class="price-row" style="color:var(--text-muted);font-size:0.8rem;"><span>+ ${gbp(p.damagesDeposit)} refundable deposit</span><span>held on arrival, not charged</span></div>` : ''}
                                 <p style="color:var(--text-muted);font-size:0.75rem;text-align:center;margin:8px 0 0;">Estimate — we'll confirm your dates and final price by email.</p>
                             </div>
                             <div class="card-actions">
@@ -3045,8 +3047,8 @@
                             <div class="guest-price-box">
                                 <div class="price-row"><span>${gbp(p.perNight)} × ${p.nights} night${p.nights === 1 ? '' : 's'}</span><span>${gbp(p.nightly)}</span></div>
                                 <div class="price-row"><span>Transaction fee (${p.transactionPct}%)</span><span>${gbp(p.txFee)}</span></div>
-                                <div class="price-row"><span>Refundable damages deposit</span><span>${gbp(p.damagesDeposit)}</span></div>
                                 <div class="price-row total"><span>Total</span><span class="price-amount">${gbp(p.total)}</span></div>
+                                ${p.damagesDeposit > 0 ? `<div class="price-row" style="color:var(--text-muted);font-size:0.8rem;"><span>+ ${gbp(p.damagesDeposit)} refundable deposit</span><span>held on arrival, not charged</span></div>` : ''}
                                 ${ps.deposit > 0 ? `
                                 <div class="price-row" style="color:#4CAF50;"><span>Paid${b.paymentMethod ? ' (' + escapeHtml(b.paymentMethod) + ')' : ''}${b.paymentDate ? ' on ' + b.paymentDate : ''}</span><span>− ${gbp(ps.deposit)}</span></div>
                                 <div class="price-row total"><span>${ps.fullyPaid ? 'Paid in full' : 'Balance due'}</span><span class="price-amount" style="${ps.fullyPaid ? 'color:#4CAF50;' : ''}">${gbp(ps.fullyPaid ? ps.total : ps.balance)}</span></div>` : ''}
@@ -3252,11 +3254,12 @@
                 payState.amountDue = s.amountDue;
                 const propEl = document.getElementById('pay-prop');
                 if (propEl) propEl.textContent = `${s.propName} · ${s.checkIn} → ${s.checkOut}`;
-                document.getElementById('pay-kind-label').textContent = s.kind === 'balance' ? 'Balance due' : 'Deposit due';
+                document.getElementById('pay-kind-label').textContent = s.kind === 'hold' ? 'Refundable security hold' : (s.kind === 'balance' ? 'Balance due' : 'Deposit due');
                 document.getElementById('pay-amount').textContent = gbp(s.amountDue);
-                document.getElementById('pay-amount-sub').textContent = s.kind === 'balance'
-                    ? `of ${gbp(s.total)} total`
-                    : `${s.depositPct}% deposit · ${gbp(s.total)} total`;
+                document.getElementById('pay-amount-sub').textContent = s.kind === 'hold'
+                    ? 'held, not charged — released after checkout'
+                    : (s.kind === 'balance' ? `of ${gbp(s.total)} total` : `${s.depositPct}% deposit · ${gbp(s.total)} total`);
+                try { const pb = document.getElementById('pay-btn'); if (pb) pb.textContent = s.kind === 'hold' ? 'Place hold' : 'Pay now'; } catch (e) {}
                 if (!(s.amountDue > 0)) { showPayError("This booking is already settled — there's nothing left to pay."); return; }
                 await loadSquareSdk(cfg.environment);
                 squarePayments = window.Square.payments(cfg.applicationId, cfg.locationId);
@@ -3272,6 +3275,15 @@
         // Charge a Square token (from the card field OR an Apple/Google Pay wallet)
         // through the same server endpoint, then show the receipt state.
         async function payWithToken(sourceId) {
+            // A damages deposit is an AUTHORISATION (hold), not a charge.
+            if (payState.kind === 'hold') {
+                await apiPost('pay.php', { action: 'authorize', booking_id: payState.bookingId, token: payState.token, kind: 'hold', source_id: sourceId });
+                document.getElementById('pay-body').style.display = 'none';
+                document.getElementById('pay-done-sub').textContent = 'Your refundable security hold is in place — held, not charged. It\'s released after checkout, provided there\'s no damage.';
+                document.getElementById('pay-done').style.display = '';
+                try { toast('Card hold placed — thank you!'); } catch (e) {}
+                return;
+            }
             const res = await apiPost('pay.php', {
                 action: 'charge', booking_id: payState.bookingId, token: payState.token,
                 kind: payState.kind, source_id: sourceId
@@ -3357,6 +3369,9 @@
         function maybeOpenPayLink() {
             try {
                 const usp = new URLSearchParams(window.location.search);
+                // Damage-deposit card hold link: ?hold=<token>&b=<id>
+                const h = usp.get('hold'); const hb = parseInt(usp.get('b'), 10);
+                if (h && hb) { openPayView(h, hb, 'hold'); return true; }
                 const t = usp.get('pay'); const b = parseInt(usp.get('b'), 10);
                 const k = usp.get('k') === 'balance' ? 'balance' : 'deposit';
                 if (t && b) { openPayView(t, b, k); return true; }
@@ -5537,9 +5552,10 @@
             const damagesDeposit = nights > 0 ? (Math.max(0, depBase) || 0) : 0;
             // Transaction fee applies to rental income only (not the held deposit).
             const txFee = Math.round((nightly) * (r.transactionPct / 100) * 100) / 100;
-            // Rental subtotal = income the owner earns; total = what the guest pays upfront.
+            // The damages deposit is taken as a separate card HOLD near arrival (authorised,
+            // not captured), so it is NOT part of the total the guest is charged.
             const rentalTotal = nightly + txFee;
-            const total = rentalTotal + damagesDeposit;
+            const total = rentalTotal;
             return { nights, perNight, nightly, damagesDeposit, transactionPct: r.transactionPct, txFee, rentalTotal, total, extraAdults };
         }
 
@@ -5977,6 +5993,62 @@
                 if (copied) toast('Pay link copied to clipboard.');
                 else await glassAlert('Copy this secure pay link:\n\n' + url);
             } catch (e) { glassAlert("Couldn't get the pay link: " + e.message); }
+        }
+        // ---- Refundable damage deposit as a Square card HOLD (admin controls) ----
+        function holdControls(b) {
+            if (typeof squareAdminEnabled === 'undefined' || !squareAdminEnabled || !b.email) return '';
+            const amt = b.holdAmount || (b.agreedPrice ? b.agreedPrice.damagesDeposit : 0) || 0;
+            if (amt <= 0) return '';
+            const st = b.holdStatus || 'none';
+            if (st === 'authorized') return `<div class="money-deposit"><span>Damage hold: <strong>${gbp(amt)} held</strong></span>
+                <button class="btn-sm btn-edit" onclick="releaseHold('${b.id}')">Release</button>
+                <button class="btn-sm btn-edit" onclick="captureHold('${b.id}')">Capture (damage)</button></div>`;
+            if (st === 'captured') return `<div class="money-deposit"><span>Damage hold: <strong style="color:#E57373;">${gbp(amt)} captured</strong> for damage</span></div>`;
+            if (st === 'released') return `<div class="money-deposit"><span>Damage hold: <span style="color:#4CAF50;">released</span></span></div>`;
+            if (st === 'expired') return `<div class="money-deposit"><span>Damage hold: expired (auto-released)</span> <button class="btn-sm btn-edit" onclick="requestHold('${b.id}')">Re-request</button></div>`;
+            return `<div class="money-deposit"><span>Refundable damage hold (${gbp(amt)})</span>
+                <button class="btn-sm btn-edit" onclick="requestHold('${b.id}')">Request hold</button>
+                <button class="btn-sm btn-edit" onclick="copyHoldLink('${b.id}')">Copy hold link</button></div>`;
+        }
+        async function requestHold(bookingId) {
+            const booking = findBookingById(bookingId);
+            if (!booking) return;
+            try {
+                const res = await apiPost('bookings.php', { action: 'hold_request', id: booking.dbId });
+                toast(`Card-hold request sent — ${gbp(res.amount)}.`);
+            } catch (e) { glassAlert("Couldn't send the hold request: " + e.message); }
+        }
+        async function copyHoldLink(bookingId) {
+            const booking = findBookingById(bookingId);
+            if (!booking) return;
+            try {
+                const res = await apiPost('bookings.php', { action: 'hold_link', id: booking.dbId });
+                const url = res.url || ''; if (!url) throw new Error('No link returned.');
+                let copied = false;
+                try { await navigator.clipboard.writeText(url); copied = true; } catch (e) {}
+                if (copied) toast('Hold link copied to clipboard.');
+                else await glassAlert('Copy this secure card-hold link:\n\n' + url);
+            } catch (e) { glassAlert("Couldn't get the hold link: " + e.message); }
+        }
+        async function captureHold(bookingId) {
+            const booking = findBookingById(bookingId);
+            if (!booking) return;
+            if (!await glassConfirm('Capture the full damage hold? Use this only if there IS damage — it takes the held amount. (If the damage was less, capture then refund the difference.)')) return;
+            try {
+                const res = await apiPost('bookings.php', { action: 'hold_capture', id: booking.dbId });
+                toast(`Hold captured — ${gbp(res.captured)}.`);
+                try { await loadData(); renderMoneyPanel(); } catch (e) {}
+            } catch (e) { glassAlert("Couldn't capture the hold: " + e.message); }
+        }
+        async function releaseHold(bookingId) {
+            const booking = findBookingById(bookingId);
+            if (!booking) return;
+            if (!await glassConfirm('Release the damage hold? This frees the held funds on the guest\'s card.')) return;
+            try {
+                await apiPost('bookings.php', { action: 'hold_release', id: booking.dbId });
+                toast('Hold released.');
+                try { await loadData(); renderMoneyPanel(); } catch (e) {}
+            } catch (e) { glassAlert("Couldn't release the hold: " + e.message); }
         }
         // Show the Square payment ledger for a booking inside the details modal.
         async function loadBookingPayments(bookingId) {
@@ -10405,7 +10477,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'i6a2f0dx';
+            const BUILD = 'j7b3g1ey';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
