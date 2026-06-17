@@ -8537,7 +8537,7 @@
         // its booked nights) and 'search' (the homepage hero — no per-cottage shading,
         // since availability is shown per cottage in the results).
         let dpMode = 'enquiry';
-        const heroSearch = { checkin: null, checkout: null, adults: 2, children: 0, cottage: 'any', flex: 0 };
+        const heroSearch = { checkin: null, checkout: null, adults: 2, children: 0, cottage: 'any', flex: 0, mode: 'exact', nights: 3, month: null };
 
         // ---- Availability for the public date picker ----
         // { propKey: [{start,end}] } — end is EXCLUSIVE (checkout day is free).
@@ -8749,7 +8749,8 @@
             try { localStorage.setItem('chb-search', JSON.stringify({
                 checkin: heroSearch.checkin, checkout: heroSearch.checkout,
                 adults: heroSearch.adults, children: heroSearch.children,
-                cottage: heroSearch.cottage, flex: heroSearch.flex
+                cottage: heroSearch.cottage, flex: heroSearch.flex,
+                mode: heroSearch.mode, nights: heroSearch.nights, month: heroSearch.month
             })); } catch (e) {}
         }
         // Rehydrate the hero search from the last visit (future dates only) and
@@ -8763,6 +8764,18 @@
             if (typeof s.children === 'number') heroSearch.children = Math.max(0, Math.min(4, s.children));
             if (s.cottage) heroSearch.cottage = s.cottage;
             if (typeof s.flex === 'number') heroSearch.flex = s.flex;
+            if (typeof s.nights === 'number') heroSearch.nights = Math.max(1, Math.min(14, s.nights));
+            // Only restore the month if it's still within the current 0–3 month horizon.
+            if (s.month) {
+                const now = dpToday0();
+                const minYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+                const max = new Date(now.getFullYear(), now.getMonth() + 3, 1);
+                const maxYM = `${max.getFullYear()}-${String(max.getMonth() + 1).padStart(2, '0')}`;
+                if (s.month >= minYM && s.month <= maxYM) heroSearch.month = s.month;
+            }
+            const ns = document.getElementById('hs-nights'); if (ns) ns.innerText = heroSearch.nights;
+            hsRenderMonths();
+            hsSetMode(s.mode === 'flex' ? 'flex' : 'exact');
             const a = document.getElementById('hs-adults'); if (a) a.innerText = heroSearch.adults;
             const c = document.getElementById('hs-children'); if (c) c.innerText = heroSearch.children;
             const disp = document.getElementById('hs-dates');
@@ -8824,6 +8837,48 @@
             const sec = document.getElementById('hero-results');
             if (sec && sec.style.display !== 'none' && heroSearch.checkin && heroSearch.checkout) runHeroSearch();
         }
+        // ---- Flexible search: pick a stay length + a month, we suggest free windows ----
+        // Toggle between "exact dates" and "I'm flexible". Each mode shows its own fields;
+        // guests + the action button are shared. The button's label/handler follow the mode.
+        function hsSetMode(mode) {
+            heroSearch.mode = mode === 'flex' ? 'flex' : 'exact';
+            const ex = document.getElementById('hs-mode-exact');
+            const fl = document.getElementById('hs-mode-flex');
+            if (ex) ex.style.display = heroSearch.mode === 'flex' ? 'none' : 'flex';
+            if (fl) fl.style.display = heroSearch.mode === 'flex' ? 'flex' : 'none';
+            const eb = document.getElementById('hs-mode-exact-btn'); if (eb) eb.classList.toggle('is-on', heroSearch.mode === 'exact');
+            const fb = document.getElementById('hs-mode-flex-btn'); if (fb) fb.classList.toggle('is-on', heroSearch.mode === 'flex');
+            const btn = document.getElementById('hs-search-btn'); if (btn) btn.innerText = heroSearch.mode === 'flex' ? 'Find flexible dates' : 'Check availability';
+            const msg = document.getElementById('hs-msg'); if (msg) msg.innerText = '';
+            if (heroSearch.mode === 'flex' && !document.querySelector('#hs-month-chips .hs-chip')) hsRenderMonths();
+        }
+        // The search button dispatches by mode.
+        function hsRun() { return heroSearch.mode === 'flex' ? runFlexSearch() : runHeroSearch(); }
+        function hsAdjustNights(delta) {
+            heroSearch.nights = Math.max(1, Math.min(14, (heroSearch.nights || 3) + delta));
+            const el = document.getElementById('hs-nights'); if (el) el.innerText = heroSearch.nights;
+            const s = document.getElementById('hs-nights-s'); if (s) s.style.display = heroSearch.nights === 1 ? 'none' : '';
+        }
+        // Month chips: the current month through 3 months ahead (the booking horizon).
+        function hsRenderMonths() {
+            const wrap = document.getElementById('hs-month-chips'); if (!wrap) return;
+            const now = dpToday0();
+            let html = '';
+            for (let i = 0; i <= 3; i++) {
+                const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+                const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+                const lbl = d.getFullYear() === now.getFullYear()
+                    ? d.toLocaleDateString('en-GB', { month: 'short' })
+                    : d.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+                html += `<button type="button" class="hs-chip${heroSearch.month === ym ? ' is-on' : ''}" data-ym="${ym}" onclick="hsSetMonth('${ym}')">${lbl}</button>`;
+            }
+            wrap.innerHTML = html;
+        }
+        function hsSetMonth(ym) {
+            heroSearch.month = ym;
+            document.querySelectorAll('#hs-month-chips .hs-chip').forEach(c => c.classList.toggle('is-on', c.getAttribute('data-ym') === ym));
+            const msg = document.getElementById('hs-msg'); if (msg) msg.innerText = '';
+        }
         function shiftDate(ds, days) { const d = dpParse(ds); d.setDate(d.getDate() + days); return formatDashed(d); }
         // Offsets to try, nearest-to-exact first: 0, -1, +1, -2, +2, ...
         function flexOffsets(F) { const o = [0]; for (let i = 1; i <= F; i++) { o.push(-i, i); } return o; }
@@ -8851,6 +8906,90 @@
                 return { fits: true, available: true, ci: sci, co: sco, offset: off, price: priceBreakdown(key, adults, children, sci, sco) };
             }
             return { fits: true, available: false, reason };
+        }
+        // Flexible search: find up to `max` non-overlapping free windows of `nights`
+        // length whose CHECK-IN falls in the given month (YYYY-MM). Same authoritative
+        // availability + booking-rule + occupancy checks as the exact search.
+        function findFlexWindows(key, ym, nights, adults, children, max) {
+            const lim = occupancyLimits[key] || { maxAdults: 99, maxChildren: 99, maxTotal: 99 };
+            if (adults > lim.maxAdults || children > lim.maxChildren || (adults + children) > lim.maxTotal) return { fits: false, windows: [] };
+            const [y, m] = ym.split('-').map(Number);
+            const today = formatDashed(dpToday0());
+            const daysInMonth = new Date(y, m, 0).getDate();
+            const windows = [];
+            for (let d = 1; d <= daysInMonth; d++) {
+                const ci = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                if (ci < today) continue;                       // never suggest a past check-in
+                const co = shiftDate(ci, nights);                // same length stay (may spill into next month)
+                if (checkBookingRules(key, ci, co)) continue;    // min-stay / arrival-day rules
+                if (rangeClashes(key, ci, co)) continue;         // authoritative: bookings + iCal blocks
+                windows.push({ ci, co, price: priceBreakdown(key, adults, children, ci, co) });
+                if (windows.length >= max) break;
+                d += nights - 1;                                 // jump past this window so options are spread out
+            }
+            return { fits: true, windows };
+        }
+        async function runFlexSearch() {
+            const msg = document.getElementById('hs-msg');
+            const setMsg = (t, ok) => { if (msg) { msg.innerText = t || ''; msg.style.color = ok ? 'var(--text-muted)' : '#FFB74D'; } };
+            if (!heroSearch.month) { setMsg('Please choose how long you’d like to stay and which month.'); return; }
+            const nights = Math.max(1, Math.min(14, heroSearch.nights || 3));
+            hsPersist();
+            const keys = liveCottageKeys();
+            setMsg('', true);
+            const grid0 = document.getElementById('hs-results-grid');
+            if (grid0) { grid0.innerHTML = '<div class="card glass-panel sk-card"><div class="skeleton sk-img"></div><div class="skeleton sk-line w60"></div><div class="skeleton sk-line w40"></div></div>'.repeat(3); }
+            try { showHeroResults(); } catch (e) {}
+            try { await Promise.all(keys.map(k => loadAvailability(k))); }
+            catch (e) { /* loadAvailability keeps prior data; server still enforces */ }
+            setMsg('');
+            const { adults, children, month } = heroSearch;
+            const results = {};
+            let tooSmall = 0;
+            for (const key of keys) {
+                const r = findFlexWindows(key, month, nights, adults, children, 3);
+                if (!r.fits) { tooSmall++; continue; }
+                results[key] = r;
+            }
+            renderFlexResults(results, tooSmall, nights, month);
+        }
+        function renderFlexResults(results, tooSmall, nights, ym) {
+            const grid = document.getElementById('hs-results-grid');
+            const title = document.getElementById('hs-results-title');
+            if (!grid) return;
+            const propImg = (key) => (propertyContent[key] && propertyContent[key].images && propertyContent[key].images[0]) || '';
+            const party = heroSearch.adults + heroSearch.children;
+            const [y, m] = ym.split('-').map(Number);
+            const monthName = new Date(y, m - 1, 1).toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+            const nightsLbl = `${nights} night${nights === 1 ? '' : 's'}`;
+            const optRow = (key, w) => {
+                const nn = nightsBetween(w.ci, w.co);
+                return `<button type="button" class="flex-opt" onclick="startBooking('${key}','${w.ci}','${w.co}')">
+                    <span><span class="fo-dates">${dpPretty(w.ci)} → ${dpPretty(w.co)}</span><br><span class="fo-sub">${nn} night${nn === 1 ? '' : 's'}</span></span>
+                    <span class="fo-price">From ${gbp(w.price.total)}</span>
+                </button>`;
+            };
+            const card = (key, windows) => `<div class="card glass-panel">
+                <div class="card-img" style="background-image:url('${propImg(key)}');"></div>
+                <div class="card-title">${escapeHtml(propertyMeta[key].name)}</div>
+                ${windows.length
+                    ? `<div class="card-meta">${windows.length} free option${windows.length === 1 ? '' : 's'} in ${escapeHtml(monthName)}</div><div class="flex-opts">${windows.map(w => optRow(key, w)).join('')}</div>`
+                    : `<div class="card-meta">No ${nightsLbl} gap in ${escapeHtml(monthName)} — try another month.</div>
+                       <button class="btn-glass" style="width:100%;margin-top:10px;" onclick="openWaitlistModal({prop:'${key}',checkIn:'',checkOut:''})">Notify me if dates free up</button>`}
+            </div>`;
+            const fitKeys = Object.keys(results);
+            const withOpts = fitKeys.filter(k => results[k].windows.length);
+            title.innerText = withOpts.length ? `${nightsLbl} in ${monthName}` : `No ${nightsLbl} stays free in ${monthName}`;
+            let html = withOpts.map(k => card(k, results[k].windows)).join('');
+            html += fitKeys.filter(k => !results[k].windows.length).map(k => card(k, [])).join('');
+            if (!fitKeys.length) html = `<div class="glass-panel" style="grid-column:1/-1;text-align:center;padding:28px;"><p style="margin-bottom:14px;">Sorry, none of our cottages can host ${party} guest${party === 1 ? '' : 's'}.</p><button class="btn-glass" onclick="nav('view-cottages')">Browse all cottages</button></div>`;
+            else if (tooSmall > 0) html += `<p style="grid-column:1/-1;text-align:center;font-size:0.8rem;color:var(--text-muted);margin-top:6px;">${tooSmall} cottage${tooSmall === 1 ? ' was' : 's were'} hidden — too small for ${party} guests.</p>`;
+            html += `<div class="hs-back-cta" style="grid-column:1/-1;text-align:center;margin-top:22px;">
+                <p style="color:var(--text-muted);font-size:0.88rem;margin-bottom:12px;">Want a different length or month?</p>
+                <button type="button" class="btn-glass btn-glass-ghost" onclick="backToSearch()">Change your search</button>
+            </div>`;
+            grid.innerHTML = html;
+            showHeroResults();
         }
         async function runHeroSearch() {
             const msg = document.getElementById('hs-msg');
@@ -10600,7 +10739,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 's4k9m1zp';
+            const BUILD = 't6n3q8wd';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
