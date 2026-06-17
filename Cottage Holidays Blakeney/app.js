@@ -2521,6 +2521,7 @@
         // "Your details" floating window (liquid-glass modal) from the account pill.
         function openGuestDetailsModal() {
             fillGuestProfile();
+            try { loadPasskeys(); } catch (e) {}   // populate the passkey list (works from any entry point, incl. desktop)
             const msg = document.getElementById('profile-msg'); if (msg) msg.style.display = 'none';
             const m = document.getElementById('guest-details-modal');
             if (m) { m.classList.remove('closing'); m.classList.add('open'); }
@@ -10491,7 +10492,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'k8c4h2fz';
+            const BUILD = 'm9d5j3ga';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;

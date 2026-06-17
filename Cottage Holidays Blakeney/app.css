@@ -2001,6 +2001,10 @@ body.has-preview-banner { padding-top: 40px; }
 }
 body.has-staging-banner { padding-top: 38px; }
 
+/* The My-Stays "Account & settings" button is the desktop entry to the account
+   screen; on the mobile shell the dock's Account tab handles it, so hide it there. */
+body.guest-app:not(.owner-mode) #acct-settings-btn { display: none; }
+
 /* Full-page guest Sign-in / Account / Security screens on DESKTOP too (match the
    mobile shell). On mobile, body.guest-app already does this; the :not(.guest-app)
    guard means these rules only cover the wide/desktop layout. Admin is excluded. */
