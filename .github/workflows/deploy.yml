@@ -123,12 +123,19 @@ jobs:
   # ---- Staging mirror (optional) -------------------------------------------
   # Deploys the SAME code to a separate staging site (e.g. staging.<domain>) that
   # has its OWN database + config.php (sandbox Square/email). This gives a true
-  # isolated test environment. It is entirely OPT-IN: until the STAGING_SFTP_*
-  # secrets are set the job logs "not configured" and succeeds, so nothing breaks.
-  # Required secrets (Settings → Secrets → Actions) — see SETUP-STAGING.md:
-  #   STAGING_SFTP_HOST / STAGING_SFTP_USER / STAGING_SFTP_PASS
-  #   STAGING_REMOTE_PATH (the staging subdomain's web root) / STAGING_SFTP_PORT (opt)
-  #   STAGING_APP_SECRET (matches staging config.php) / STAGING_URL (opt)
+  # isolated test environment. It is entirely OPT-IN and is switched on simply by
+  # setting STAGING_REMOTE_PATH; until then the job logs "not configured" and
+  # succeeds, so nothing breaks.
+  #
+  # A subdomain lives in the SAME IONOS webspace, so the SFTP login is identical
+  # to production — the staging job reuses the IONOS_SFTP_* secrets by default.
+  # You therefore only NEED these staging secrets (Settings → Secrets → Actions):
+  #   STAGING_REMOTE_PATH  the staging subdomain's folder, e.g. /staging  (REQUIRED, must differ from the live path)
+  #   STAGING_APP_SECRET   matches staging config.php (REQUIRED for post-deploy migrate)
+  #   STAGING_URL          e.g. https://staging.<domain> (REQUIRED for post-deploy migrate)
+  # Optional overrides if staging ever uses a different login:
+  #   STAGING_SFTP_HOST / STAGING_SFTP_USER / STAGING_SFTP_PASS / STAGING_SFTP_PORT
+  # See SETUP-STAGING.md.
   deploy-staging:
     runs-on: ubuntu-latest
     needs: deploy
@@ -136,14 +143,20 @@ jobs:
       - name: Is staging configured?
         id: chk
         env:
-          STG_HOST: ${{ secrets.STAGING_SFTP_HOST }}
+          STG_PATH:  ${{ secrets.STAGING_REMOTE_PATH }}
+          LIVE_PATH: ${{ secrets.IONOS_REMOTE_PATH }}
         run: |
-          if [ -z "$STG_HOST" ]; then
+          if [ -z "$STG_PATH" ]; then
             echo "configured=false" >> "$GITHUB_OUTPUT"
-            echo "Staging not configured (STAGING_SFTP_HOST unset) — skipping. See SETUP-STAGING.md."
-          else
-            echo "configured=true" >> "$GITHUB_OUTPUT"
+            echo "Staging not configured (STAGING_REMOTE_PATH unset) — skipping. See SETUP-STAGING.md."
+            exit 0
           fi
+          # Safety: staging must target a DIFFERENT folder, or it would overwrite production.
+          if [ "$STG_PATH" = "${LIVE_PATH:-/}" ]; then
+            echo "::error::STAGING_REMOTE_PATH ($STG_PATH) is the same as the live IONOS_REMOTE_PATH — set it to a separate folder (e.g. /staging) so staging can't overwrite production."
+            exit 1
+          fi
+          echo "configured=true" >> "$GITHUB_OUTPUT"
 
       - uses: actions/checkout@v4
         if: steps.chk.outputs.configured == 'true'
@@ -169,10 +182,12 @@ jobs:
       - name: Upload to staging via SFTP (lftp mirror)
         if: steps.chk.outputs.configured == 'true'
         env:
-          HOST: ${{ secrets.STAGING_SFTP_HOST }}
-          USERNAME: ${{ secrets.STAGING_SFTP_USER }}
-          LFTP_PASSWORD: ${{ secrets.STAGING_SFTP_PASS }}
-          PORT: ${{ secrets.STAGING_SFTP_PORT }}
+          # SFTP login defaults to the live IONOS credentials (same webspace);
+          # override only if the STAGING_SFTP_* secrets are set.
+          HOST: ${{ secrets.STAGING_SFTP_HOST || secrets.IONOS_SFTP_HOST }}
+          USERNAME: ${{ secrets.STAGING_SFTP_USER || secrets.IONOS_SFTP_USER }}
+          LFTP_PASSWORD: ${{ secrets.STAGING_SFTP_PASS || secrets.IONOS_SFTP_PASS }}
+          PORT: ${{ secrets.STAGING_SFTP_PORT || secrets.IONOS_SFTP_PORT }}
           REMOTE: ${{ secrets.STAGING_REMOTE_PATH }}
         run: |
           set -e
