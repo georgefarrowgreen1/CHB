@@ -7,14 +7,22 @@ SET time_zone = '+00:00';
 
 -- ---------- Property rates & fees (one row per cottage) ----------
 CREATE TABLE IF NOT EXISTS properties (
-    prop_key        VARCHAR(32)   NOT NULL PRIMARY KEY,   -- '21a','jollyboat','pimpernel'
+    prop_key        VARCHAR(32)   NOT NULL PRIMARY KEY,   -- '21a','jollyboat','pimpernel' (or owner-added)
     name            VARCHAR(120)  NOT NULL,
     couple_rate     DECIMAL(10,2) NOT NULL DEFAULT 0,
     extra_adult_rate DECIMAL(10,2) NOT NULL DEFAULT 0,
     child_rate      DECIMAL(10,2) NOT NULL DEFAULT 0,
     booking_fee     DECIMAL(10,2) NOT NULL DEFAULT 0,   -- repurposed: standard REFUNDABLE DAMAGES DEPOSIT (held, not income)
     transaction_pct DECIMAL(5,2)  NOT NULL DEFAULT 0,
-    address         TEXT          NULL
+    address         TEXT          NULL,
+    -- Dynamic accommodations (owner can add/remove): see migration-accommodations.sql
+    archived_at     DATETIME      NULL,                 -- NULL = live; set = removed (soft-archived, history kept)
+    slug            VARCHAR(80)   NULL,                  -- pretty URL segment /cottages/<slug>
+    accent          VARCHAR(16)   NULL,                  -- hex accent colour for swatches/tags/bars
+    sort_order      INT           NOT NULL DEFAULT 100,  -- display order of the cottage cards
+    max_adults      INT           NOT NULL DEFAULT 2,    -- occupancy caps (single source of truth)
+    max_children    INT           NOT NULL DEFAULT 0,
+    max_total       INT           NOT NULL DEFAULT 2
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ---------- Guest accounts ----------
@@ -105,10 +113,10 @@ CREATE TABLE IF NOT EXISTS content (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ---------- Seed the three properties (edit later in Settings) ----------
-INSERT INTO properties (prop_key, name, couple_rate, extra_adult_rate, child_rate, booking_fee, transaction_pct, address) VALUES
- ('21a',       '21A Westgate', 130, 45, 30, 75, 3, '21A Westgate Street, Blakeney, Norfolk NR25 7NQ'),
- ('jollyboat', 'Jollyboat',    110, 40, 25, 75, 3, 'Jollyboat, Quay Road, Blakeney, Norfolk NR25 7ND'),
- ('pimpernel', 'Pimpernel',    120, 42, 28, 75, 3, 'Pimpernel, High Street, Cley-next-the-Sea, Norfolk NR25 7RF')
+INSERT INTO properties (prop_key, name, couple_rate, extra_adult_rate, child_rate, booking_fee, transaction_pct, address, slug, accent, sort_order, max_adults, max_children, max_total) VALUES
+ ('21a',       '21A Westgate', 130, 45, 30, 75, 3, '21A Westgate Street, Blakeney, Norfolk NR25 7NQ', '21a-westgate', '#42A5F5', 10, 2, 0, 2),
+ ('jollyboat', 'Jollyboat',    110, 40, 25, 75, 3, 'Jollyboat, Quay Road, Blakeney, Norfolk NR25 7ND',  'jollyboat',    '#43A047', 20, 2, 0, 2),
+ ('pimpernel', 'Pimpernel',    120, 42, 28, 75, 3, 'Pimpernel, High Street, Cley-next-the-Sea, Norfolk NR25 7RF', 'pimpernel', '#9C27B0', 30, 3, 1, 3)
 ON DUPLICATE KEY UPDATE name = VALUES(name);
 
 -- NOTE: the initial admin user is created by running setup.php once (it hashes

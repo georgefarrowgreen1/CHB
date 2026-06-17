@@ -55,6 +55,22 @@ Single-operator holiday-let PWA. No framework, no build step.
 (`smtp_send`, `send_*`). Crons run daily via `cron.php` (pre-arrival, payments-due,
 tide-push, push checkin, enquiry-nudge).
 
+**Accommodations are dynamic** — the owner adds/removes cottages from the back office
+(Settings → Preferences → "Add accommodation"; per-cottage "Remove" / "Restore"). The
+`properties` table is the single source of truth (`prop_key`, `name`, `couple_rate`…,
+plus `archived_at`, `slug`, `accent`, `sort_order`, `max_adults/children/total` — see
+`migration-accommodations.sql`). `rates.php` actions: `create` (name + couple rate →
+generates key/slug/accent), `archive`/`unarchive` (soft-remove; **never hard-delete** —
+past bookings/payments/emails key off `prop_key`), `save` (extended to name/slug/accent/
+occupancy). All payment/booking logic works for any cottage with a row. On the front end
+`loadRates()` synthesizes `propertyMeta`/`propertyContent`/`propSubtitleDefault`/
+`COTTAGE_SLUGS` for every row, `injectPropColors()` gives added cottages a runtime accent,
+and `renderCottageCards()` rebuilds `#cottages` from the live list; `db.php` `occupancy_limits()`
++ `prop_display()` and the email files (`mailer.php`/`owner-digest.php`/`enquiry-nudge.php`)
+read the rows too. The hardcoded JS maps + PHP fallbacks now only cover the original three
+offline / pre-migration. Known minor gaps: `index.html` JSON-LD and `sitemap.xml` still list
+only the original three (added cottages stay crawlable via their `/cottages/<slug>` links).
+
 **Data / migrations** — MySQL. Schema in `schema.sql`; changes ship as
 `migration-*.sql` applied by `migrate.php` (admin visit or `?cron=APP_SECRET`, or
 Settings → System check → Run migrations). Migrations are idempotent

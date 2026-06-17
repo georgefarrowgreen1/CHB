@@ -126,20 +126,38 @@ function clean($v) { return is_string($v) ? trim($v) : $v; }
 // Per-property occupancy caps. Used by the public enquiry validation (enquiries.php)
 // AND served to the front end via rates.php, so the two can never disagree.
 function occupancy_limits() {
-    // Sensible defaults; the owner can override these per cottage in the admin
-    // (Settings → Preferences → cottage → House rules), saved to the content table
-    // under 'occupancy-<key>'. We merge any saved overrides on top of the defaults so
-    // the enquiry validation and rates.php both reflect the owner's chosen limits.
-    $limits = [
-        '21a'       => ['maxAdults' => 2, 'maxChildren' => 0, 'maxTotal' => 2],
-        'jollyboat' => ['maxAdults' => 2, 'maxChildren' => 0, 'maxTotal' => 2],
-        'pimpernel' => ['maxAdults' => 3, 'maxChildren' => 1, 'maxTotal' => 3],
-    ];
+    // The cottages themselves are the single source of truth, so this works for
+    // however many the owner has added — not just the original three. Each live
+    // property's caps come from its row (max_adults/max_children/max_total, added
+    // by migration-accommodations.sql); a saved override in content('occupancy-<key>')
+    // wins when present (back office → Preferences → cottage → House rules), so
+    // existing owner edits are kept. Falls back to a fixed map for the original
+    // three if the properties table / new columns aren't there yet.
+    $limits = [];
+    try {
+        // Only live (non-archived) cottages constrain the public enquiry form.
+        $rows = db()->query("SELECT prop_key, max_adults, max_children, max_total FROM properties WHERE archived_at IS NULL")->fetchAll();
+        foreach ($rows as $row) {
+            $limits[$row['prop_key']] = [
+                'maxAdults'   => max(1, (int)($row['max_adults']   ?? 2)),
+                'maxChildren' => max(0, (int)($row['max_children'] ?? 0)),
+                'maxTotal'    => max(1, (int)($row['max_total']    ?? 2)),
+            ];
+        }
+    } catch (\Throwable $e) { /* properties table / columns not migrated yet */ }
+    if (!$limits) {
+        // Pre-migration fallback so the original three keep working unchanged.
+        $limits = [
+            '21a'       => ['maxAdults' => 2, 'maxChildren' => 0, 'maxTotal' => 2],
+            'jollyboat' => ['maxAdults' => 2, 'maxChildren' => 0, 'maxTotal' => 2],
+            'pimpernel' => ['maxAdults' => 3, 'maxChildren' => 1, 'maxTotal' => 3],
+        ];
+    }
     try {
         $rows = db()->query("SELECT item_key, item_value FROM content WHERE item_key LIKE 'occupancy-%'")->fetchAll();
         foreach ($rows as $row) {
             $key = substr($row['item_key'], strlen('occupancy-'));
-            if (!isset($limits[$key])) continue;
+            if (!isset($limits[$key])) continue;   // ignore overrides for archived/unknown cottages
             $v = json_decode($row['item_value'], true);
             if (is_array($v) && isset($v['maxAdults'], $v['maxChildren'], $v['maxTotal'])) {
                 $limits[$key] = [
@@ -151,6 +169,33 @@ function occupancy_limits() {
         }
     } catch (\Throwable $e) { /* content table unavailable — fall back to defaults */ }
     return $limits;
+}
+
+// Per-cottage display info (name, accent colour, URL slug) for emails/crons, so
+// they label/colour/link correctly for ANY cottage the owner has added — not just
+// the original three. Reads the property row; falls back to a fixed map (and finally
+// to the key itself) so it never breaks pre-migration.
+function prop_display($key) {
+    static $cache = null;
+    if ($cache === null) {
+        $cache = [];
+        try {
+            foreach (db()->query("SELECT prop_key, name, accent, slug FROM properties")->fetchAll() as $r) {
+                $cache[$r['prop_key']] = [
+                    'name'   => $r['name'] ?: $r['prop_key'],
+                    'accent' => $r['accent'] ?: '#8FB3C7',
+                    'slug'   => $r['slug'] ?: $r['prop_key'],
+                ];
+            }
+        } catch (\Throwable $e) { /* table/columns missing — use the fallback below */ }
+    }
+    if (isset($cache[$key])) return $cache[$key];
+    $fallback = [
+        '21a'       => ['name' => '21A Westgate', 'accent' => '#42A5F5', 'slug' => '21a-westgate'],
+        'jollyboat' => ['name' => 'Jollyboat',    'accent' => '#43A047', 'slug' => 'jollyboat'],
+        'pimpernel' => ['name' => 'Pimpernel',    'accent' => '#9C27B0', 'slug' => 'pimpernel'],
+    ];
+    return $fallback[$key] ?? ['name' => $key, 'accent' => '#8FB3C7', 'slug' => $key];
 }
 
 // True if the text contains a UK postcode (used where a postcode sits inside a
