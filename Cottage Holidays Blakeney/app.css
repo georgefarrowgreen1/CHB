@@ -1755,8 +1755,10 @@
         body.owner-mode #footer-newsletter,
         body.owner-mode .footer-nap,
         body.owner-mode .footer-meta { display: none !important; }
-        /* Leave room at the bottom so the floating dock never covers page content. */
-        body.owner-mode .container { padding-bottom: 110px; }
+        /* The public header is hidden for admins, so the big top padding that cleared
+           it is wasted space — pull the back-office content up to fill the screen
+           (small margin + notch clearance). Dock clearance stays at the bottom. */
+        body.owner-mode .container { padding-top: calc(28px + env(safe-area-inset-top, 0px)); padding-bottom: 110px; }
         /* The footer sits outside .container, so give it its own clearance in
            owner-mode — otherwise the floating admin dock overlaps the footer text. */
         body.owner-mode .site-footer { padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px)); }
