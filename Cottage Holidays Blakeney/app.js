@@ -7562,12 +7562,14 @@
             tcOwnerEmail = data.owner_email || '';
             tcSquare = data.square || { enabled: false, production: false };
             const bk = data.bookings || [];
-            const intro = `<p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 14px;">Creates a real but clearly-flagged booking (future dates, unpaid, tagged <strong>[CHB-TEST]</strong>) so you can run the actual pay, email and arrival flows against it — then remove it on the Test data page.</p>`;
+            const intro = `<p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 12px;">Creates a real but clearly-flagged booking (unpaid, tagged <strong>[CHB-TEST]</strong>, kept out of your revenue) so you can run the actual pay, email, arrival and daily-automation flows against it — then remove it on the Test data page. Pick dates to match what you want to test:</p>`;
             const sqNote = tcSquare.production
                 ? `<div class="email-note" style="border-left:3px solid #E57373;background:rgba(229,115,115,0.08);padding:10px 12px;border-radius:8px;font-size:0.8rem;color:#E57373;margin-bottom:12px;">Square is in <strong>PRODUCTION</strong> mode — paying will make a real charge. Switch to sandbox in config.php to test safely.</div>`
-                : (tcSquare.enabled ? `<p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 12px;">Square is in sandbox — pay flows use test cards, no real money moves.</p>` : `<p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 12px;">Square is off — the pay buttons will say so. Emails &amp; arrival still work.</p>`);
+                : (tcSquare.enabled ? `<p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 12px;">Square is in sandbox — pay flows use test cards, no real money moves.</p>` : `<p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 12px;">Square is off — the pay/balance buttons will say so. Emails &amp; arrival still work.</p>`);
+            const guestBtn = `<button class="btn-glass" style="width:auto;padding:12px 22px;margin-bottom:14px;" onclick="tcGuestLogin(this)">Log in as a test guest ↗</button>
+                <p style="font-size:0.78rem;color:var(--text-muted);margin:-6px 0 14px;">Opens the guest app (My Stays, in-stay hub, arrival reveal, chat) signed in as a test guest. Tip: open in a private window to stay signed in as admin here.</p>`;
             if (!bk.length) {
-                detail.innerHTML = `<div class="rate-prop">${intro}${sqNote}<button class="btn-glass" style="width:auto;padding:12px 22px;" onclick="tcCreateBooking(this)">Create a test booking</button><div id="tc-bk-msg" style="font-size:0.82rem;margin-top:12px;"></div></div>`;
+                detail.innerHTML = `<div class="rate-prop">${intro}${tcPresetButtons()}${sqNote}<div id="tc-bk-msg" style="font-size:0.82rem;margin-top:12px;"></div></div>`;
                 return;
             }
             const rows = bk.map(b => {
@@ -7575,35 +7577,78 @@
                 return `<div class="accounts-stat" style="max-width:640px;margin-bottom:12px;">
                     <div class="label">${escapeHtml(name)} · #${b.id} <span style="background:#E5533C;color:#fff;font-size:0.6rem;font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;">TEST</span></div>
                     <div style="font-size:0.85rem;color:var(--text-muted);margin:4px 0 10px;">${escapeHtml(b.check_in)} → ${escapeHtml(b.check_out)} · ${gbp(b.agreed_total || 0)}</div>
-                    <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                    <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:6px;">Payments &amp; emails</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
                         <button class="btn-sm btn-edit" onclick="tcPay(${b.id},'deposit',this)">Pay deposit ↗</button>
                         <button class="btn-sm btn-edit" onclick="tcPay(${b.id},'balance',this)">Pay balance ↗</button>
                         <button class="btn-sm btn-edit" onclick="tcBookingEmail(${b.id},'send_confirmation',this)">Email confirmation</button>
                         <button class="btn-sm btn-edit" onclick="tcBookingEmail(${b.id},'send_arrival',this)">Email arrival info</button>
                         <button class="btn-sm btn-edit" onclick="tcBookingEmail(${b.id},'request_payment',this)">Email payment request</button>
+                    </div>
+                    <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:6px;">Daily automations (run now, as the cron would)</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                        <button class="btn-sm btn-edit" onclick="tcAutomation(${b.id},'pre_arrival',this)">Pre-arrival email</button>
+                        <button class="btn-sm btn-edit" onclick="tcAutomation(${b.id},'balance_reminder',this)">Balance reminder</button>
+                        <button class="btn-sm btn-edit" onclick="tcAutomation(${b.id},'review',this)">Review request</button>
+                        <button class="btn-sm btn-edit" onclick="tcAutomation(${b.id},'checkin_push',this)">Check-in push</button>
                         <button class="btn-sm btn-edit" style="color:#E57373;border-color:rgba(229,115,115,0.4);" onclick="tcDeleteBooking(${b.id})">Delete</button>
                     </div></div>`;
             }).join('');
-            detail.innerHTML = `<div class="rate-prop">${intro}${sqNote}${rows}
-                <button class="btn-sm btn-edit" style="margin-top:6px;" onclick="tcCreateBooking(this)">＋ Another test booking</button>
+            detail.innerHTML = `<div class="rate-prop">${intro}${sqNote}${guestBtn}${rows}
+                <div class="rule-divider">Create another</div>${tcPresetButtons()}
                 <div id="tc-bk-msg" style="font-size:0.82rem;margin-top:12px;"></div></div>`;
         }
-        async function tcCreateBooking(btn) {
+        // Date presets so the owner can target date-gated features (mid-stay hub,
+        // pre-arrival, post-stay review) — not just a far-future booking.
+        function tcPresetButtons() {
+            return `<div style="display:flex;flex-wrap:wrap;gap:8px;">
+                <button class="btn-sm btn-edit" onclick="tcCreateBooking('midstay',this)">Arriving today (mid-stay)</button>
+                <button class="btn-sm btn-edit" onclick="tcCreateBooking('prearrival',this)">Pre-arrival (in 3 days)</button>
+                <button class="btn-sm btn-edit" onclick="tcCreateBooking('past',this)">Past stay (for review)</button>
+                <button class="btn-sm btn-edit" onclick="tcCreateBooking('future',this)">Future (+30 days)</button>
+            </div>`;
+        }
+        async function tcCreateBooking(preset, btn) {
             const msg = document.getElementById('tc-bk-msg');
             const show = (t, ok) => { if (msg) { msg.style.color = ok ? '#4CAF50' : '#E57373'; msg.textContent = t; } };
             const key = liveCottageKeys()[0]; if (!key) { show('No live cottage to book against.', false); return; }
             const d = n => { const x = new Date(); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
+            let ci, co;
+            if (preset === 'midstay') { ci = d(-1); co = d(2); }
+            else if (preset === 'prearrival') { ci = d(3); co = d(6); }
+            else if (preset === 'past') { ci = d(-5); co = d(-2); }
+            else { ci = d(30); co = d(33); }
             if (btn) btn.disabled = true; show('Creating…', true);
             try {
                 const r = await apiPost('bookings.php', {
                     action: 'add', prop_key: key, name: 'TEST — Test Centre',
-                    email: tcOwnerEmail || '', phone: '', check_in: d(30), check_out: d(33),
+                    email: tcOwnerEmail || '', phone: '', check_in: ci, check_out: co,
                     adults: 2, children: 0, payment: 'unpaid', notes: '[CHB-TEST] safe to delete', override_clash: true
                 });
                 if (r && r.id) { show('Created ✓', true); tcRenderBooking(); }
                 else show((r && r.error) || (r && r.clash ? 'Those dates clash — try again.' : "Couldn't create."), false);
             } catch (e) { show(e.message || "Couldn't create.", false); }
             if (btn) btn.disabled = false;
+        }
+        async function tcGuestLogin(btn) {
+            if (!await glassConfirm('Open the guest app signed in as a test guest?\n\nThis signs THIS browser in as the guest, which ends your admin session here. Tip: open it in a private/incognito window to stay signed in as admin in this one.')) return;
+            if (btn) btn.disabled = true;
+            try {
+                const r = await apiPost('testcentre.php', { action: 'guest_login' });
+                if (r && r.url) window.open(r.url, '_blank', 'noopener');
+                else glassAlert((r && r.error) || "Couldn't set up the test guest.");
+            } catch (e) { glassAlert(e.message || 'Failed.'); }
+            if (btn) btn.disabled = false;
+        }
+        async function tcAutomation(id, which, btn) {
+            const msg = document.getElementById('tc-bk-msg');
+            const show = (t, ok) => { if (msg) { msg.style.color = ok ? '#4CAF50' : '#E57373'; msg.textContent = t; } };
+            let old; if (btn) { btn.disabled = true; old = btn.textContent; btn.textContent = 'Running…'; }
+            try {
+                const r = await apiPost('testcentre.php', { action: 'run_automation', which, id });
+                show(r && r.ok ? ('Done ✓' + (r.note ? ' — ' + escapeHtml(r.note) : ' — check your inbox.')) : ((r && r.error) || "Couldn't run."), !!(r && r.ok));
+            } catch (e) { show(e.message || "Couldn't run.", false); }
+            if (btn) { btn.disabled = false; btn.textContent = old; }
         }
         async function tcPay(id, kind, btn) {
             const msg = document.getElementById('tc-bk-msg');
@@ -7638,8 +7683,11 @@
             detail.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">Loading…</p>';
             let data; try { data = await apiPost('testcentre.php', { action: 'list_data' }); }
             catch (e) { detail.innerHTML = `<p style="color:#E57373;">${escapeHtml(e.message || '')}</p>`; return; }
-            const bk = data.bookings || [], enq = data.enquiries || [];
-            if (!bk.length && !enq.length) {
+            const bk = data.bookings || [], enq = data.enquiries || [], guest = data.guest || null;
+            // The test guest only counts as removable data if WE created the account
+            // (reusing the owner's real account is left alone).
+            const showGuest = guest && guest.created;
+            if (!bk.length && !enq.length && !showGuest) {
                 detail.innerHTML = `<div class="rate-prop"><p style="font-size:0.95rem;color:var(--text-light);">No test data — you're clean. ✓</p><p style="font-size:0.82rem;color:var(--text-muted);">Anything the Test centre creates shows here for one-tap removal.</p></div>`;
                 return;
             }
@@ -7653,10 +7701,17 @@
                     <span class="settings-row-main"><span class="settings-row-label">Enquiry · #${e.id}</span><span class="settings-row-sub">${escapeHtml(e.check_in || '')} → ${escapeHtml(e.check_out || '')}</span></span>
                     <button class="btn-sm btn-edit" style="color:#E57373;border-color:rgba(229,115,115,0.4);" onclick="tcDeleteData('enquiry',${e.id})">Remove</button>
                 </div>`).join('');
+            const gRows = showGuest ? `
+                <div class="settings-row" style="cursor:default;">
+                    <span class="settings-row-main"><span class="settings-row-label">Test guest account</span><span class="settings-row-sub">${escapeHtml(guest.email || '')}</span></span>
+                    <button class="btn-sm btn-edit" style="color:#E57373;border-color:rgba(229,115,115,0.4);" onclick="tcDeleteData('guest',${guest.id})">Remove</button>
+                </div>` : '';
+            const total = bk.length + enq.length + (showGuest ? 1 : 0);
             detail.innerHTML = `<div class="rate-prop">
-                <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 12px;">${bk.length + enq.length} test record${(bk.length + enq.length) === 1 ? '' : 's'}. These never count toward your real revenue.</p>
+                <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 12px;">${total} test record${total === 1 ? '' : 's'}. These never count toward your real revenue.</p>
                 ${bk.length ? `<div class="rule-divider">Test bookings</div><div class="settings-group">${bRows}</div>` : ''}
                 ${enq.length ? `<div class="rule-divider">Test enquiries</div><div class="settings-group">${eRows}</div>` : ''}
+                ${showGuest ? `<div class="rule-divider">Test guest</div><div class="settings-group">${gRows}</div>` : ''}
                 <button class="btn-glass" style="width:auto;padding:12px 22px;margin-top:16px;color:#E57373;" onclick="tcPurgeData()">Remove all test data</button></div>`;
         }
         async function tcDeleteData(type, id) {
@@ -10306,7 +10361,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'b8t5y3wq';
+            const BUILD = 'c9u6z4xr';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
