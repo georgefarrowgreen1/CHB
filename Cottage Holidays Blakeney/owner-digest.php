@@ -95,9 +95,9 @@ try {
 } catch (\Throwable $e) {}
 
 // ---- Compose ------------------------------------------------------------
-$names = ['21a' => '21A Westgate', 'jollyboat' => 'Jollyboat', 'pimpernel' => 'Pimpernel'];
-$accent = ['21a' => '#42A5F5', 'jollyboat' => '#43A047', 'pimpernel' => '#9C27B0'];
-$nameOf = fn($k) => $names[$k] ?? $k;
+// Names + accents come from the cottage rows, so any owner-added cottage is labelled correctly.
+$nameOf   = fn($k) => prop_display($k)['name'];
+$accentOf = fn($k) => prop_display($k)['accent'];
 $pretty = fn($d) => date('D j M', strtotime($d));
 
 $subject = 'Your Blakeney week: ' . $newBookings . ' new booking' . ($newBookings === 1 ? '' : 's')
@@ -123,7 +123,7 @@ $sectionLabel = fn($t) => '<div style="font-family:' . email_sans() . ';font-siz
 $arrivalsHtml = $arrivals
     ? '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:8px 0;">' . implode('', array_map(fn($a) =>
         '<tr><td style="padding:7px 0;border-bottom:1px solid #2c2f38;font-family:' . email_sans() . ';font-size:14px;color:#d7dae3;">'
-        . '<span style="display:inline-block;width:9px;height:9px;border-radius:3px;background:' . ($accent[$a['prop_key']] ?? '#D6A785') . ';margin-right:9px;"></span>'
+        . '<span style="display:inline-block;width:9px;height:9px;border-radius:3px;background:' . $accentOf($a['prop_key']) . ';margin-right:9px;"></span>'
         . htmlspecialchars($pretty($a['check_in'])) . ' — <strong style="color:#f4f5f7;">' . htmlspecialchars($a['name']) . '</strong> · ' . htmlspecialchars($nameOf($a['prop_key'])) . '</td></tr>', $arrivals)) . '</table>'
     : email_p('No arrivals in the next 7 days.', true);
 

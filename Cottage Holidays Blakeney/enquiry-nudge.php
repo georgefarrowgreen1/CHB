@@ -36,9 +36,8 @@ foreach ($rows as $e) {
     $propName = ($rate['name'] ?? '') ?: $e['prop_key'];
     $name = $e['name'] ?: 'there';
     // A direct link back to the cottage so they can pick up and book in one tap.
-    $slugs = ['21a' => '21a-westgate', 'jollyboat' => 'jollyboat', 'pimpernel' => 'pimpernel'];
     $base = function_exists('site_base_url') ? site_base_url() : '';
-    $slug = $slugs[$e['prop_key']] ?? '';
+    $slug = prop_display($e['prop_key'])['slug'];   // pretty URL for any cottage, owner-added included
     $link = $base ? ($base . ($slug ? 'cottages/' . $slug : '')) : '';
     $subject = 'Still thinking about your Blakeney stay?';
     $text = "Hello " . $name . ",\n\n"

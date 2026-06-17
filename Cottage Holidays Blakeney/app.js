@@ -1125,18 +1125,72 @@
             const title = document.getElementById('settings-panel-title'); if (title) title.textContent = SETTINGS_TITLES.accom;
             if (!list) return;
             list.style.display = '';
-            list.innerHTML = `<div class="settings-group">${cottageRowsHtml('settingsOpenAccom')}</div>`;
+            list.innerHTML = `<div class="settings-group">${cottageRowsHtml('settingsOpenAccom')}</div>${accomAddRowHtml()}`;
             // Add a current-month occupancy donut to each cottage (load bookings if needed).
             try {
                 if (!Object.keys(dbBookings).some(k => (dbBookings[k] || []).length)) await loadData();
                 const occ = cottageMonthOccupancy();
-                list.innerHTML = `<div class="settings-group">${Object.keys(propertyMeta).map(k => `
-                    <button class="settings-row" onclick="settingsOpenAccom('${k}')">
+                list.innerHTML = `<div class="settings-group">${Object.keys(propertyMeta).map(k => {
+                    const arch = propertyMeta[k] && propertyMeta[k].archived;
+                    const o = occ[k] || { pct: 0, nights: 0, total: 0 };
+                    const sub = arch ? 'Removed — hidden from the site (tap to restore)' : `${o.pct}% booked this month · ${o.nights}/${o.total} nights`;
+                    return `
+                    <button class="settings-row" onclick="settingsOpenAccom('${k}')" ${arch ? 'style="opacity:0.55;"' : ''}>
                         <span class="settings-row-ic"><span class="legend-swatch swatch-${k}" style="width:16px;height:16px;border-radius:5px;"></span></span>
-                        <span class="settings-row-main"><span class="settings-row-label">${escapeHtml(propertyMeta[k].name)}</span><span class="settings-row-sub">${occ[k].pct}% booked this month · ${occ[k].nights}/${occ[k].total} nights</span></span>
-                        ${osMiniDonut(occ[k].pct, 'var(--prop-' + k + ')')}<span class="settings-row-chev" style="margin-left:10px;">›</span>
-                    </button>`).join('')}</div>`;
+                        <span class="settings-row-main"><span class="settings-row-label">${escapeHtml(propertyMeta[k].name)}${arch ? ' <span style="font-size:0.7rem;color:var(--text-muted);font-weight:600;">· removed</span>' : ''}</span><span class="settings-row-sub">${sub}</span></span>
+                        ${arch ? '<span class="settings-row-chev" style="margin-left:10px;">›</span>' : osMiniDonut(o.pct, 'var(--prop-' + k + ')') + '<span class="settings-row-chev" style="margin-left:10px;">›</span>'}
+                    </button>`;
+                }).join('')}</div>${accomAddRowHtml()}`;
             } catch (e) { /* keep the plain list if booking data isn't available */ }
+        }
+        // The "Add accommodation" action shown under the cottage list in Preferences.
+        function accomAddRowHtml() {
+            return `<div class="settings-group" style="margin-top:14px;">
+                <button class="settings-row" onclick="addAccommodationPrompt()">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Add accommodation</span><span class="settings-row-sub">Create a new cottage, then fill in its details</span></span><span class="settings-row-chev">›</span>
+                </button>
+            </div>`;
+        }
+        // "Create then fill in": just a name + nightly couple rate. The server
+        // generates the key/slug/accent; everything else is completed afterwards in
+        // the new cottage's Preferences folders. All booking/payment logic works for
+        // it immediately because it's a real properties row.
+        async function addAccommodationPrompt() {
+            const name = (await glassPrompt('Name of the new accommodation', ''));
+            if (name == null) return;
+            if (!String(name).trim()) { glassAlert('Please enter a name.'); return; }
+            const rateStr = (await glassPrompt(`Nightly price for a couple at "${String(name).trim()}" (£)`, ''));
+            if (rateStr == null) return;
+            const rate = parseFloat(rateStr);
+            if (!(rate > 0)) { glassAlert('Please enter a nightly couple rate above £0.'); return; }
+            try {
+                const res = await apiPost('rates.php', { action: 'create', name: String(name).trim(), couple_rate: rate });
+                await loadRates();
+                await renderAccomList();
+                if (res && res.prop_key) settingsOpenAccom(res.prop_key);   // drop straight into "fill in"
+                toast(`Added "${String(name).trim()}" — now add its photos & details.`);
+            } catch (e) { glassAlert("Couldn't add the accommodation: " + (e && e.message ? e.message : e)); }
+        }
+        async function archiveAccommodation(k) {
+            const name = (propertyMeta[k] && propertyMeta[k].name) || k;
+            const ok = await glassConfirm(`Remove "${name}" from the site?\n\nIt’s hidden from guests and new bookings, but its past bookings, payments and history are kept — you can restore it any time.`);
+            if (!ok) return;
+            try {
+                await apiPost('rates.php', { action: 'archive', prop_key: k });
+                await loadRates();
+                await renderAccomList();
+                toast(`"${name}" removed — hidden from the site.`);
+            } catch (e) { glassAlert("Couldn't remove it: " + (e && e.message ? e.message : e)); }
+        }
+        async function restoreAccommodation(k) {
+            const name = (propertyMeta[k] && propertyMeta[k].name) || k;
+            try {
+                await apiPost('rates.php', { action: 'unarchive', prop_key: k });
+                await loadRates();
+                await renderAccomList();
+                toast(`"${name}" restored — live on the site again.`);
+            } catch (e) { glassAlert("Couldn't restore it: " + (e && e.message ? e.message : e)); }
         }
         // Each cottage's Preferences open as a sub-index of subfolders; each row drills
         // into just that part (rates, house rules, safety, …) — see settingsOpenAccomSec.
@@ -1159,11 +1213,25 @@
             if (list) list.style.display = 'none';
             if (detail) {
                 detail.style.display = '';
+                const arch = propertyMeta[k] && propertyMeta[k].archived;
+                const removeRow = arch
+                    ? `<div class="settings-group" style="margin-top:14px;">
+                        <button class="settings-row" onclick="restoreAccommodation('${k}')">
+                            <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></span>
+                            <span class="settings-row-main"><span class="settings-row-label">Restore to the site</span><span class="settings-row-sub">This cottage is currently removed (hidden)</span></span><span class="settings-row-chev">›</span>
+                        </button>
+                    </div>`
+                    : `<div class="settings-group" style="margin-top:14px;">
+                        <button class="settings-row" onclick="archiveAccommodation('${k}')">
+                            <span class="settings-row-ic" style="color:#E57373;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></span>
+                            <span class="settings-row-main"><span class="settings-row-label" style="color:#E57373;">Remove this accommodation</span><span class="settings-row-sub">Hides it from the site — bookings &amp; history are kept, and you can restore it</span></span><span class="settings-row-chev">›</span>
+                        </button>
+                    </div>`;
                 detail.innerHTML = `<div class="settings-group">${ACCOM_SECTIONS.map(s =>
                     `<button class="settings-row" onclick="settingsOpenAccomSec('${k}','${s.id}')">
                         <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${s.ic}</svg></span>
                         <span class="settings-row-main"><span class="settings-row-label">${s.label}</span><span class="settings-row-sub">${s.sub}</span></span><span class="settings-row-chev">›</span>
-                    </button>`).join('')}</div>`;
+                    </button>`).join('')}</div>${removeRow}`;
             }
             const title = document.getElementById('settings-panel-title'); if (title) title.textContent = (propertyMeta[k] ? propertyMeta[k].name : k);
             settingsBackTarget = () => settingsOpen('accom');
@@ -1279,7 +1347,9 @@
         // Change the admin password (must be logged in). Verifies the current
         // password, then requires the new one entered twice.
         // ---- Owner tool: Calendar Sync (iCal import/export) ----
-        const SYNC_PROPS = [['21a','21A Westgate'],['jollyboat','Jollyboat'],['pimpernel','Pimpernel']];
+        // Cottages to offer iCal sync for — derived from the live list so owner-added
+        // cottages appear automatically (was a hardcoded three).
+        function syncProps() { return liveCottageKeys().map(k => [k, (propertyMeta[k] || {}).name || k]); }
         // The Airbnb/Vrbo sync box markup for ONE cottage.
         function calendarPropBoxHtml(key, label, data) {
             const feeds = data.feeds || [];
@@ -1314,7 +1384,7 @@
             if (!box) return;
             box.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">Loading…</p>';
             let html = '';
-            for (const [key, label] of SYNC_PROPS) {
+            for (const [key, label] of syncProps()) {
                 let data;
                 try { data = await apiPost('ical-import.php', { action: 'list', prop: key }); }
                 catch (e) { html += `<p style="color:#E53935;">${label}: ${escapeHtml(e.message)}</p>`; continue; }
@@ -5267,6 +5337,39 @@
         let propertyRates = JSON.parse(JSON.stringify(defaultRates));
         // Seasonal couple-rate overrides per property: { propKey: [{label,start_date,end_date,couple_rate}] }
         let propertySeasons = {};
+        // The cottages as the server knows them (source of truth for add/remove).
+        // Each: {prop_key, name, slug, accent, sort_order, archived}. Populated by
+        // loadRates(); the hardcoded maps above are only an offline/first-paint fallback.
+        let propertyList = [];
+        // The original three have hand-tuned colours + saved card content in app.css /
+        // the content table; new cottages get runtime colours + per-key card content.
+        const STATIC_COLOR_KEYS = { '21a': 1, 'jollyboat': 1, 'pimpernel': 1 };
+        const LEGACY_CARD_N = { '21a': 1, 'jollyboat': 2, 'pimpernel': 3 };
+
+        // Live (non-archived) cottage keys in display order — what the public site shows.
+        function liveCottageKeys() {
+            if (propertyList && propertyList.length) {
+                return propertyList.filter(p => !p.archived).map(p => p.prop_key);
+            }
+            return Object.keys(propertyMeta).filter(k => !(propertyMeta[k] && propertyMeta[k].archived));
+        }
+        // The content keys for a cottage's home-page card. The original three keep
+        // their legacy card1/2/3 keys (so saved edits survive); new cottages use
+        // per-key keys. Reads prefer the per-key value, then the legacy one.
+        function cardKeys(k) {
+            const n = LEGACY_CARD_N[k];
+            return {
+                img:   n ? ('card' + n + '-img')   : ('card-img-' + k),
+                title: n ? ('card' + n + '-title') : ('card-title-' + k),
+                meta:  n ? ('card' + n + '-meta')  : ('card-meta-' + k)
+            };
+        }
+        // A friendly "Sleeps N" line from a cottage's occupancy caps (card fallback).
+        function cottageSleepsLabel(k) {
+            const o = occupancyLimits[k];
+            if (!o) return '';
+            return 'Sleeps ' + (o.maxTotal || o.maxAdults || 2);
+        }
 
         function persistRates() { /* rates are saved per-field via updateRate -> API */ }
         async function loadRates() {
@@ -5280,9 +5383,14 @@
                 if (res.occupancy && typeof res.occupancy === 'object') {
                     Object.keys(res.occupancy).forEach(k => { occupancyLimits[k] = res.occupancy[k]; });
                 }
+                propertyList = (properties || []).map(p => ({
+                    prop_key: p.prop_key, name: p.name, slug: p.slug || p.prop_key,
+                    accent: p.accent || '', sort_order: p.sort_order || 100, archived: !!p.archived
+                }));
                 (properties || []).forEach(p => {
-                    const def = defaultRates[p.prop_key] || {};
-                    propertyRates[p.prop_key] = {
+                    const k = p.prop_key;
+                    const def = defaultRates[k] || {};
+                    propertyRates[k] = {
                         coupleRate: parseFloat(p.couple_rate),
                         extraAdultRate: parseFloat(p.extra_adult_rate),
                         childRate: parseFloat(p.child_rate),
@@ -5297,7 +5405,25 @@
                         maxNights: def.maxNights || 0,
                         arrivalDays: Array.isArray(def.arrivalDays) ? def.arrivalDays.slice() : []
                     };
+                    // Synthesize the front-end maps for any cottage the owner has added,
+                    // so a new one behaves exactly like the original three (name, colour,
+                    // page content, pretty URL) without being hardcoded.
+                    const existing = propertyMeta[k] || {};
+                    propertyMeta[k] = {
+                        name: p.name || existing.name || k,
+                        short: existing.short || (p.name || k).split(/\s+/)[0],
+                        color: existing.color || '',
+                        accent: p.accent || existing.accent || '#8FB3C7',
+                        slug: p.slug || k,
+                        archived: !!p.archived
+                    };
+                    if (!propertyContent[k]) propertyContent[k] = { title: p.name || k, desc: '', amenities: [], images: [] };
+                    if (!(k in propSubtitleDefault)) propSubtitleDefault[k] = '';
+                    const slug = (p.slug || k).toLowerCase();
+                    COTTAGE_SLUGS[k] = slug; SLUG_TO_KEY[slug] = k;
                 });
+                try { injectPropColors(); } catch (e) {}
+                try { renderCottageCards(); } catch (e) {}
             } catch (e) { /* keep defaults if the API is unavailable */ }
         }
 
@@ -6590,19 +6716,21 @@
             switch (sec) {
                 case 'web': {
                     // This cottage's home-page card (the tile on the home + cottages pages).
-                    const n = { '21a': 1, 'jollyboat': 2, 'pimpernel': 3 }[k] || 1;
+                    // Uses per-cottage content keys (the original three keep their legacy
+                    // card1/2/3 keys via cardKeys()), so any cottage edits its own card.
+                    const ck = cardKeys(k);
                     const curText = key => { const el = document.querySelector('[data-edit-text="' + key + '"]'); return el ? (el.textContent || '').trim() : (siteContent[key] || ''); };
-                    const imgEl = document.querySelector('[data-edit-img="card' + n + '-img"]');
-                    const imgUrl = imgEl ? contentBgUrl(imgEl) : (siteContent['card' + n + '-img'] || '');
+                    const imgEl = document.querySelector('[data-edit-img="' + ck.img + '"]');
+                    const imgUrl = imgEl ? contentBgUrl(imgEl) : (siteContent[ck.img] || '');
                     return `<p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 14px;">How this cottage appears on the home page (the tile guests tap). Its detail-page photos &amp; text are in the Photos and Text tabs.</p>
-                        <div class="content-edit-row"><div class="exp-edit-thumb" id="ce-thumb-card${n}-img" style="background-image:url('${escapeHtml(imgUrl)}');"></div>
-                            <div style="flex:1;min-width:0;"><div class="modal-label" style="margin:0 0 6px;">Home-page photo</div><button class="btn-sm btn-edit" onclick="contentEditImage('card${n}-img')">Replace image</button></div></div>
-                        <label class="modal-label" for="ce-card${n}-title">Home-page title</label>
-                        <input type="text" class="input-glass" id="ce-card${n}-title" value="${escapeHtml(curText('card' + n + '-title'))}">
-                        <button class="btn-sm btn-edit" style="margin-top:6px;" onclick="contentEditSave('card${n}-title')">Save</button>
-                        <label class="modal-label" for="ce-card${n}-meta">Home-page subtitle</label>
-                        <input type="text" class="input-glass" id="ce-card${n}-meta" value="${escapeHtml(curText('card' + n + '-meta'))}">
-                        <button class="btn-sm btn-edit" style="margin-top:6px;" onclick="contentEditSave('card${n}-meta')">Save</button>`;
+                        <div class="content-edit-row"><div class="exp-edit-thumb" id="ce-thumb-${ck.img}" style="background-image:url('${escapeHtml(imgUrl)}');"></div>
+                            <div style="flex:1;min-width:0;"><div class="modal-label" style="margin:0 0 6px;">Home-page photo</div><button class="btn-sm btn-edit" onclick="contentEditImage('${ck.img}')">Replace image</button></div></div>
+                        <label class="modal-label" for="ce-${ck.title}">Home-page title</label>
+                        <input type="text" class="input-glass" id="ce-${ck.title}" value="${escapeHtml(curText(ck.title))}">
+                        <button class="btn-sm btn-edit" style="margin-top:6px;" onclick="contentEditSave('${ck.title}')">Save</button>
+                        <label class="modal-label" for="ce-${ck.meta}">Home-page subtitle</label>
+                        <input type="text" class="input-glass" id="ce-${ck.meta}" value="${escapeHtml(curText(ck.meta))}">
+                        <button class="btn-sm btn-edit" style="margin-top:6px;" onclick="contentEditSave('${ck.meta}')">Save</button>`;
                 }
                 case 'photos': {
                     const imgs = accomImages(k);
@@ -7593,6 +7721,60 @@
             });
         }
 
+        // Give cottages the owner has ADDED their own accent colour at runtime (the
+        // original three keep their hand-tuned colours in app.css). Writes the same
+        // CSS custom properties + .swatch-/.tag-/.bar- rules the static ones use, so
+        // legends, tags and calendar bars look right for any number of cottages.
+        function injectPropColors() {
+            try {
+                if (!document.head || !document.createElement) return;
+                let varRules = '', classRules = '';
+                (propertyList || []).forEach(p => {
+                    const k = p.prop_key;
+                    if (STATIC_COLOR_KEYS[k]) return;                 // app.css already styles these
+                    const a = (propertyMeta[k] && propertyMeta[k].accent) || p.accent || '#8FB3C7';
+                    varRules += `--prop-${k}:${a};--prop-${k}-bg:${a}22;--prop-${k}-border:${a}55;`;
+                    classRules += `.swatch-${k}{background:var(--prop-${k}-bg);border:1px solid var(--prop-${k}-border);}`
+                        + `.tag-${k}{background:var(--prop-${k}-bg);border:1px solid var(--prop-${k}-border);color:var(--prop-${k});}`
+                        + `.booking-bar.bar-${k}{background:var(--prop-${k}-bg);color:var(--prop-${k});}`;
+                });
+                let style = document.getElementById('prop-accent-colors');
+                if (!style) { style = document.createElement('style'); style.id = 'prop-accent-colors'; document.head.appendChild(style); }
+                style.textContent = (varRules ? `:root{${varRules}}` : '') + classRules;
+            } catch (e) { /* no document head (smoke test) — colours come from app.css */ }
+        }
+
+        // Rebuild the cottage grid from the live property list so cottages the owner
+        // ADDS appear and ones they ARCHIVE disappear — without hardcoding three cards.
+        // The original three keep their legacy data-edit keys (saved card edits survive).
+        function renderCottageCards() {
+            const grid = document.getElementById('cottages');
+            if (!grid) return;
+            const keys = liveCottageKeys();
+            if (!keys.length) return;   // never blank the grid if the list hasn't loaded
+            const sc = (typeof siteContent === 'object' && siteContent) ? siteContent : {};
+            grid.innerHTML = keys.map(k => {
+                const ck = cardKeys(k);
+                const slug = (COTTAGE_SLUGS[k] || k);
+                const img = sc[ck.img] || ('card-' + k + '.jpg');
+                const title = sc[ck.title] || ((propertyMeta[k] && propertyMeta[k].name) || k);
+                const meta = sc[ck.meta] || cottageSleepsLabel(k);
+                return `<a class="card glass-panel" href="/cottages/${escapeHtml(slug)}" onclick="return cottageLink(event,'${k}')">
+                    <div class="card-img" data-edit-img="${ck.img}" style="background-image: url('${escapeHtml(img)}');"></div>
+                    <div class="card-title" data-edit-text="${ck.title}">${escapeHtml(title)}</div>
+                    <div class="card-meta" data-edit-text="${ck.meta}">${escapeHtml(meta)}</div>
+                    <div class="card-rating" id="card-rating-${k}"></div>
+                    <div class="card-price" id="card-price-${k}"></div>
+                </a>`;
+            }).join('');
+            try { renderCardPrices(); } catch (e) {}
+            try { renderCardRatings(); } catch (e) {}
+            // Keep inline edit mode working on the freshly-built cards.
+            if (typeof isEditMode !== 'undefined' && isEditMode) {
+                grid.querySelectorAll('[data-edit-text]').forEach(el => { el.contentEditable = 'true'; try { el.addEventListener('paste', plainTextPaste); } catch (e) {} });
+            }
+        }
+
         // The price heading at the top of the active property's booking box
         function updatePropPriceHeading() {
             const el = document.getElementById('prop-price-heading');
@@ -8111,7 +8293,7 @@
             hsPersist();   // remember this search for the visitor's next visit
             // Pull the live calendar (bookings + Airbnb/Vrbo blocks) for every cottage
             // BEFORE deciding what's available, so we never offer a booked stay.
-            const keys = Object.keys(propertyMeta);
+            const keys = liveCottageKeys();   // only offer cottages currently live on the site
             setMsg('', true);
             // Show shimmer skeleton cards while the live calendar is fetched.
             const grid0 = document.getElementById('hs-results-grid');
@@ -8936,7 +9118,16 @@
         }
         // Open a cottage's dedicated page, populating it from that property's content + rates
         function openProperty(propKey) {
-            if (!propertyContent[propKey]) propKey = '21a';
+            // A cottage the owner added has rates but maybe no hardcoded content yet —
+            // synthesize a minimal content entry so it gets a real page (text/photos
+            // then come from its saved overrides). Only fall back if the key is unknown.
+            if (!propertyContent[propKey]) {
+                if (propertyRates[propKey] || (propertyMeta[propKey] && !propertyMeta[propKey].archived)) {
+                    propertyContent[propKey] = { title: (propertyMeta[propKey] && propertyMeta[propKey].name) || propKey, desc: '', amenities: [], images: [] };
+                } else {
+                    propKey = liveCottageKeys()[0] || '21a';
+                }
+            }
             activeFrontProperty = propKey;
             loadAvailability(propKey);   // prefetch booked dates for the date picker
             availCalMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
@@ -9841,7 +10032,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'kq3p7v0d';
+            const BUILD = 'a7m4x2qp';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;

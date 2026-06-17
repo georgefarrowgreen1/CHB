@@ -314,8 +314,7 @@ function send_owner_payment_notice($b) {
 // Ask a past guest to leave a review. $b: name, email, prop_key, prop_name, reviewUrl.
 function send_review_request_email($b) {
     if (empty($b['email'])) return ['ok' => false, 'error' => 'No guest email on file'];
-    $colors = ['21a' => '#42A5F5', 'jollyboat' => '#43A047', 'pimpernel' => '#9C27B0'];
-    $accent = $colors[$b['prop_key'] ?? ''] ?? '#42A5F5';
+    $accent = prop_display($b['prop_key'] ?? '')['accent'];   // per-cottage accent (works for owner-added cottages too)
     $esc = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
     $name = $b['name'] ?: 'there';
     $prop = $b['prop_name'] ?: 'your cottage';
@@ -361,8 +360,7 @@ function send_booking_emails($b) {
            . ((int)$b['children'] > 0 ? ', ' . $b['children'] . ' child' . ((int)$b['children'] === 1 ? '' : 'ren') : '');
 
     // Property accent colour (matches the site's calendar/tag colours)
-    $colors = ['21a' => '#42A5F5', 'jollyboat' => '#43A047', 'pimpernel' => '#9C27B0'];
-    $accent = $colors[$b['prop_key'] ?? ''] ?? '#42A5F5';
+    $accent = prop_display($b['prop_key'] ?? '')['accent'];   // per-cottage accent (works for owner-added cottages too)
     $paymentLabel = ucfirst($b['payment'] ?? 'unpaid');
     $paymentColor = ($b['payment'] ?? 'unpaid') === 'paid' ? '#2E7D32' : '#C62828';
     $esc = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
@@ -448,8 +446,7 @@ function send_booking_emails($b) {
 // ------------------------------------------------------------------
 function send_arrival_email($b) {
     if (empty($b['email'])) return ['ok' => false, 'error' => 'No guest email on file'];
-    $colors = ['21a' => '#42A5F5', 'jollyboat' => '#43A047', 'pimpernel' => '#9C27B0'];
-    $accent = $colors[$b['prop_key'] ?? ''] ?? '#42A5F5';
+    $accent = prop_display($b['prop_key'] ?? '')['accent'];   // per-cottage accent (works for owner-added cottages too)
     $name = $b['name'] ?: 'Guest';
     $prop = $b['prop_name'] ?: 'your cottage';
     $inDate  = date('D j M Y', strtotime($b['check_in']));
@@ -509,8 +506,7 @@ function send_magic_link_email($g, $url) {
 // ------------------------------------------------------------------
 function send_payment_request($b, $payUrl) {
     if (empty($b['email'])) return ['ok' => false, 'error' => 'No guest email on file'];
-    $colors = ['21a' => '#42A5F5', 'jollyboat' => '#43A047', 'pimpernel' => '#9C27B0'];
-    $accent = $colors[$b['prop_key'] ?? ''] ?? '#42A5F5';
+    $accent = prop_display($b['prop_key'] ?? '')['accent'];   // per-cottage accent (works for owner-added cottages too)
     $money = fn($n) => '£' . number_format((float)$n, 2);
     $esc = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
     $name = $b['name'] ?: 'Guest';
@@ -562,8 +558,7 @@ function request_booking_payment($b, $kind, $reminder = false) {
 // the run-up to arrival. Same secure link; warmer copy + days-until-arrival.
 function send_payment_reminder($b, $payUrl) {
     if (empty($b['email'])) return ['ok' => false, 'error' => 'No guest email on file'];
-    $colors = ['21a' => '#42A5F5', 'jollyboat' => '#43A047', 'pimpernel' => '#9C27B0'];
-    $accent = $colors[$b['prop_key'] ?? ''] ?? '#42A5F5';
+    $accent = prop_display($b['prop_key'] ?? '')['accent'];   // per-cottage accent (works for owner-added cottages too)
     $money = fn($n) => '£' . number_format((float)$n, 2);
     $esc = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
     $name = $b['name'] ?: 'Guest';
@@ -594,8 +589,7 @@ function send_payment_reminder($b, $payUrl) {
 // check_in, check_out, amount.
 function send_refund_email($b) {
     if (empty($b['email'])) return ['ok' => false, 'error' => 'No guest email on file'];
-    $colors = ['21a' => '#42A5F5', 'jollyboat' => '#43A047', 'pimpernel' => '#9C27B0'];
-    $accent = $colors[$b['prop_key'] ?? ''] ?? '#42A5F5';
+    $accent = prop_display($b['prop_key'] ?? '')['accent'];   // per-cottage accent (works for owner-added cottages too)
     $money = fn($n) => '£' . number_format((float)$n, 2);
     $esc = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
     $name = $b['name'] ?: 'Guest';
@@ -626,8 +620,7 @@ function send_refund_email($b) {
 // check_in, check_out, amount, held, reason (retention note), manual (bool).
 function send_deposit_return_email($b) {
     if (empty($b['email'])) return ['ok' => false, 'error' => 'No guest email on file'];
-    $colors = ['21a' => '#42A5F5', 'jollyboat' => '#43A047', 'pimpernel' => '#9C27B0'];
-    $accent = $colors[$b['prop_key'] ?? ''] ?? '#42A5F5';
+    $accent = prop_display($b['prop_key'] ?? '')['accent'];   // per-cottage accent (works for owner-added cottages too)
     $money = fn($n) => '£' . number_format((float)$n, 2);
     $esc = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
     $name = $b['name'] ?: 'Guest';
