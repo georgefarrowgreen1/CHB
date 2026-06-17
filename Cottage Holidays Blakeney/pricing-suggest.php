@@ -25,28 +25,52 @@ try {
     $props = db()->query('SELECT * FROM properties WHERE archived_at IS NULL ORDER BY sort_order, name')->fetchAll();
 } catch (\Throwable $e) { $props = []; }
 
-// Bookings overlapping the next 120 days, grouped by cottage.
+// Reservations overlapping the next 120 days, grouped by cottage. We combine the
+// SAME two authoritative sources the public availability calendar uses, so the
+// Coach sees true cross-channel occupancy, not just direct bookings:
+//   1. confirmed direct bookings on this site
+//   2. imported Airbnb/Vrbo iCal blocks (busy dates synced from those platforms;
+//      iCal carries no prices, so this is occupancy only)
 $horizon = date('Y-m-d', strtotime('+120 days'));
 $bkByProp = [];
+$hasExternal = false;
 try {
     $st = db()->prepare('SELECT prop_key, check_in, check_out FROM bookings WHERE check_out >= ? AND check_in <= ? ORDER BY check_in');
     $st->execute([$today, $horizon]);
     foreach ($st->fetchAll() as $b) { $bkByProp[$b['prop_key']][] = $b; }
 } catch (\Throwable $e) {}
+try {
+    $st = db()->prepare('SELECT prop_key, check_in, check_out FROM ical_blocks WHERE check_out >= ? AND check_in <= ? ORDER BY check_in');
+    $st->execute([$today, $horizon]);
+    foreach ($st->fetchAll() as $b) { $bkByProp[$b['prop_key']][] = $b; $hasExternal = true; }
+} catch (\Throwable $e) { /* ical_blocks not present on older installs */ }
 
-// Booked nights within [start, end) for one cottage's bookings.
-function booked_nights_in($bookings, $start, $end) {
-    $s = strtotime($start); $e = strtotime($end); $n = 0;
-    foreach ($bookings as $b) {
-        $bs = max($s, strtotime($b['check_in']));
-        $be = min($e, strtotime($b['check_out']));
-        if ($be > $bs) $n += (int)round(($be - $bs) / 86400);
-    }
-    return $n;
-}
 function is_booked_date($bookings, $date) {
     foreach ($bookings as $b) { if ($date >= $b['check_in'] && $date < $b['check_out']) return true; }
     return false;
+}
+// DISTINCT booked nights within [start, end) — counts each day at most once, so
+// overlapping ranges from the two sources (direct + Airbnb/Vrbo) never double-count.
+function booked_days_in($bookings, $start, $end) {
+    $n = 0; $days = (int)round((strtotime($end) - strtotime($start)) / 86400);
+    for ($i = 0; $i < $days; $i++) {
+        if (is_booked_date($bookings, date('Y-m-d', strtotime($start . " +$i days")))) $n++;
+    }
+    return $n;
+}
+// Merge overlapping/adjacent reservation intervals (across both sources) so gap
+// detection sees one continuous calendar rather than two interleaved feeds.
+function merge_intervals($bookings) {
+    $iv = [];
+    foreach ($bookings as $b) $iv[] = [$b['check_in'], $b['check_out']];
+    usort($iv, fn($a, $b) => strcmp($a[0], $b[0]));
+    $out = [];
+    foreach ($iv as $cur) {
+        if ($out && $cur[0] <= end($out)[1]) {
+            if ($cur[1] > $out[count($out) - 1][1]) $out[count($out) - 1][1] = $cur[1];
+        } else { $out[] = $cur; }
+    }
+    return $out;
 }
 
 // ---- Search demand (global), last 60 days ----
@@ -79,11 +103,13 @@ foreach ($props as $p) {
     $weekendDays = array_map('intval', array_filter(explode(',', (string)($p['weekend_days'] ?? '5,6')), 'strlen'));
     if (!$weekendDays) $weekendDays = [5, 6];
 
-    // 90-day + 30-day occupancy.
+    // 90-day + 30-day occupancy (direct bookings + Airbnb/Vrbo, distinct days).
     $win90 = date('Y-m-d', strtotime('+90 days'));
     $win30 = date('Y-m-d', strtotime('+30 days'));
-    $occ90 = (int)round(booked_nights_in($bk, $today, $win90) / 90 * 100);
-    $occ30 = (int)round(booked_nights_in($bk, $today, $win30) / 30 * 100);
+    $booked30 = booked_days_in($bk, $today, $win30);
+    $occ90 = (int)round(booked_days_in($bk, $today, $win90) / 90 * 100);
+    $occ30 = (int)round($booked30 / 30 * 100);
+    $chan = $hasExternal ? ' (direct + Airbnb/Vrbo)' : '';
 
     // Weekend nights in the next 90 days: total / free / booked.
     $wkTotal = 0; $wkFree = 0;
@@ -114,28 +140,29 @@ foreach ($props as $p) {
             'id' => 'weekend-up-' . $k, 'prop_key' => $k, 'prop_name' => $name,
             'severity' => 'opportunity',
             'title' => 'Raise the weekend uplift for ' . $name,
-            'detail' => 'Your Fri/Sat are ' . $wkOcc . '% booked over the next 90 days — strong demand. Consider raising the weekend uplift from ' . (int)$weekendPct . '% to ' . $newPct . '%.',
+            'detail' => 'Your Fri/Sat are ' . $wkOcc . '% booked' . $chan . ' over the next 90 days — strong demand. Consider raising the weekend uplift from ' . (int)$weekendPct . '% to ' . $newPct . '%.',
             'apply' => ['field' => 'weekendPct', 'value' => $newPct],
         ];
     }
 
     // 3) Quiet next 30 days — flag for a last-minute push (Phase 2 will automate it).
-    if ($occ30 < 40 && booked_nights_in($bk, $today, $win30) < 30) {
+    if ($occ30 < 40 && $booked30 < 30) {
         $suggestions[] = [
             'id' => 'quiet30-' . $k, 'prop_key' => $k, 'prop_name' => $name,
             'severity' => 'info',
             'title' => $name . ' is quiet in the next 30 days',
-            'detail' => 'Only ' . $occ30 . '% of the next 30 days is booked. A short last-minute offer (within ~10 days of arrival) is the usual way to fill near-term gaps.',
+            'detail' => 'Only ' . $occ30 . '% of the next 30 days is booked' . $chan . '. A short last-minute offer (within ~10 days of arrival) is the usual way to fill near-term gaps.',
             'apply' => null,
         ];
     }
 
-    // 4) Orphan gaps: 1–2 night gaps between bookings your minimum stay may block.
+    // 4) Orphan gaps: 1–2 night gaps between reservations (across BOTH channels)
+    // that your minimum stay may be leaving empty. Merge first so interleaved
+    // direct + Airbnb/Vrbo ranges read as one calendar.
     $orphans = 0;
-    $sorted = $bk;
-    usort($sorted, fn($a, $b) => strcmp($a['check_in'], $b['check_in']));
-    for ($i = 0; $i < count($sorted) - 1; $i++) {
-        $gap = (int)round((strtotime($sorted[$i + 1]['check_in']) - strtotime($sorted[$i]['check_out'])) / 86400);
+    $merged = merge_intervals($bk);
+    for ($i = 0; $i < count($merged) - 1; $i++) {
+        $gap = (int)round((strtotime($merged[$i + 1][0]) - strtotime($merged[$i][1])) / 86400);
         if ($gap >= 1 && $gap <= 2) $orphans += $gap;
     }
     if ($orphans > 0) {
