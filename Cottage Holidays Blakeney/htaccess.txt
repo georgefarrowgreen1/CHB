@@ -88,6 +88,16 @@ RewriteRule (?i)^uploads/.*\.(php|php[0-9]?|phtml|phps|pht|pl|py|cgi|sh|lua|asp|
 # ---- Don't list directory contents ----
 Options -Indexes
 
+# ---- Keep the staging site out of search engines ----
+# The same code is deployed to staging.<domain>; on that host only, send a
+# noindex header so the test environment is never indexed or shown publicly.
+<IfModule mod_setenvif.c>
+    SetEnvIf Host "(^|\.)staging\." CHB_STAGING=1
+</IfModule>
+<IfModule mod_headers.c>
+    Header set X-Robots-Tag "noindex, nofollow" env=CHB_STAGING
+</IfModule>
+
 # ---- Send the right charset ----
 AddDefaultCharset UTF-8
 

@@ -87,6 +87,12 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   (`fetchpriority="high"` preload) — keep it prioritised, not deferred.
 - Dev/CI-only files (`smoke-test.js`, `test-pricing.php`, `*.md`, `*.sql` are shipped
   for migrate but `.htaccess`-denied) are excluded from the deploy in `deploy.yml`.
+- **Staging sandbox** (optional, opt-in): `deploy.yml` has a `deploy-staging` job that
+  mirrors the same code to a `staging.<domain>` site with its OWN database + `config.php`
+  (Square sandbox + test email) — a true isolated environment. It's a no-op until the
+  `STAGING_SFTP_*` secrets are set (see `SETUP-STAGING.md`). On the staging host only,
+  `.htaccess` sends `X-Robots-Tag: noindex` and `app.js` (`IS_STAGING`) shows a STAGING
+  banner. Staging post-deploy is migrate-only (never fires owner notify/digest/nudge).
 
 ## Testing / CI
 - Before shipping: `node smoke-test.js` (loads index.html in a shim; pricing,
