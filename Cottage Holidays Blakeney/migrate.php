@@ -42,8 +42,10 @@ if (!$force) {
 $files = glob(__DIR__ . '/migration-*.sql');
 sort($files);
 
-// Split a .sql file into individual statements (strips comments; DDL only, so
-// no semicolons inside string literals to worry about).
+// Split a .sql file into individual statements. Strips comments, then splits on
+// ';' — but only OUTSIDE string literals / quoted identifiers, so semicolons that
+// appear inside seed text (e.g. "...sail daily; check tide times...") don't chop a
+// statement in half. Handles '' / "" doubling and backslash escapes.
 function split_sql($path) {
     $raw = (string)file_get_contents($path);
     $raw = preg_replace('!/\*.*?\*/!s', '', $raw);              // block comments
@@ -53,7 +55,26 @@ function split_sql($path) {
         if ($t === '' || strpos($t, '--') === 0 || strpos($t, '#') === 0) continue;
         $kept[] = $line;
     }
-    $parts = array_map('trim', explode(';', implode("\n", $kept)));
+    $sql = implode("\n", $kept);
+    $parts = []; $buf = ''; $q = ''; $len = strlen($sql);
+    for ($i = 0; $i < $len; $i++) {
+        $ch = $sql[$i];
+        if ($q !== '') {                                  // inside a quoted string / identifier
+            $buf .= $ch;
+            if ($ch === '\\' && $q !== '`' && $i + 1 < $len) { $buf .= $sql[++$i]; }     // backslash escape
+            elseif ($ch === $q) {
+                if ($i + 1 < $len && $sql[$i + 1] === $q) { $buf .= $sql[++$i]; }         // doubled = literal quote
+                else { $q = ''; }                                                        // string closed
+            }
+        } elseif ($ch === ';') {
+            $parts[] = trim($buf); $buf = '';
+        } else {
+            $buf .= $ch;
+            if ($ch === "'" || $ch === '"' || $ch === '`') { $q = $ch; }                 // string opened
+        }
+    }
+    if (trim($buf) !== '') $parts[] = trim($buf);
+
     return array_values(array_filter($parts, fn($s) => $s !== ''));
 }
 
