@@ -348,6 +348,10 @@
         // The only views an admin ever sees — everything else is the customer site,
         // which a signed-in admin has no use for (nav() bounces it to the back office).
         const ADMIN_VIEWS = ['view-backoffice', 'view-settings', 'view-accounts'];
+        // Preview-as-guest: opening the site with ?preview=1 renders the customer
+        // experience even though an admin is signed in (owner-mode + the admin bounce
+        // are suppressed). Read-only — used by the staging Test centre to view the site.
+        const PREVIEW_MODE = /[?&]preview=1\b/.test(location.search || '');
         // The staging site runs the same code from a staging.<domain> host with its
         // OWN database + sandbox Square/email. Show a persistent banner there so it's
         // never mistaken for the live site. (Search engines are blocked via .htaccess.)
@@ -364,12 +368,15 @@
             try {
                 document.addEventListener('DOMContentLoaded', () => {
                     injectStagingBanner();
-                    // Already on staging — no point linking to it from its own Settings.
-                    const row = document.getElementById('staging-link-row');
-                    if (row) row.style.display = 'none';
+                    // Staging is the test environment: show the Test centre tools, and
+                    // hide the "open staging" link (we're already on it).
+                    const tc = document.getElementById('testcentre-row'); if (tc) tc.style.display = '';
+                    const link = document.getElementById('staging-link-row'); if (link) link.style.display = 'none';
                 });
             } catch (e) {}
         }
+        // True for a booking the Test centre created (tagged in its notes).
+        function isTestBooking(b) { return !!(b && typeof b.notes === 'string' && b.notes.indexOf('[CHB-TEST]') !== -1); }
         // First-party, cookie-free page-view ping (see track.php). Fire-and-forget;
         // never blocks the UI and never counts the owner's own browsing.
         function trackView(viewId, prop) {
@@ -388,8 +395,9 @@
 
         function nav(viewId, anchorId = null) {
             // A signed-in admin has no customer-facing site — send any such view to
-            // the back office (covers deep links, the address bar, stray calls).
-            if (isAuthenticated && !ADMIN_VIEWS.includes(viewId)) viewId = 'view-backoffice';
+            // the back office (covers deep links, the address bar, stray calls). In
+            // preview-as-guest mode we let the customer views through.
+            if (isAuthenticated && !PREVIEW_MODE && !ADMIN_VIEWS.includes(viewId)) viewId = 'view-backoffice';
             const target = document.getElementById(viewId);
             if (!target) {
                 console.warn(`nav(): unknown view "${viewId}"`);
@@ -948,9 +956,12 @@
             // The owner's tools now live in the labelled owner menu bar (shown via the
             // 'owner-mode' body class). The footer keeps only the theme toggle and the
             // back-office (🔩) button, so there's nothing per-button to show/hide here.
-            document.body.classList.toggle('owner-mode', isAuthenticated);
+            // In preview-as-guest mode the admin sees the customer site, so don't
+            // apply owner chrome or bounce them into the back office.
+            document.body.classList.toggle('owner-mode', isAuthenticated && !PREVIEW_MODE);
             // Force dark mode for admins (and restore the saved theme on sign-out).
             try { applySavedTheme(); } catch (e) {}
+            if (PREVIEW_MODE) { try { injectPreviewBanner(); } catch (e) {} return; }
             // Keep the floating admin dock's enquiry count live whenever signed in.
             if (isAuthenticated) {
                 try { refreshOwnerHomeBadges(); } catch (e) {}
@@ -959,6 +970,18 @@
                 try { const av = document.querySelector('.page-view.active'); if (!av || !ADMIN_VIEWS.includes(av.id)) nav('view-backoffice'); } catch (e) {}
             }
         }
+        // A slim banner across the top of a preview tab so it's obvious you're seeing
+        // the guest view (and a one-tap way out).
+        function injectPreviewBanner() {
+            if (document.getElementById('preview-banner')) return;
+            const bar = document.createElement('div');
+            bar.id = 'preview-banner';
+            bar.innerHTML = `<span>Preview mode — viewing the site as a guest. Nothing you do here is saved.</span>
+                <button type="button" onclick="exitPreview()">Exit preview</button>`;
+            document.body.appendChild(bar);
+            document.body.classList.add('has-preview-banner');
+        }
+        function exitPreview() { try { window.close(); } catch (e) {} location.href = 'index.html'; }
 
         // ---- Owner navigation helpers ----
         // Enquiries now live in Settings → Enquiries.
@@ -991,7 +1014,7 @@
         }
 
         // ---- Settings router: Apple-style index → drill-down sub-pages ----
-        const SETTINGS_TITLES = { enquiries: 'Enquiries', messages: 'Guest messages', notify: 'Notifications', host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Preferences', calendar: 'Calendar', cancel: 'Cancellation policy', payments: 'Payments', guests: 'Guest accounts', analytics: 'Analytics', waitlist: 'Waitlist', newsletter: 'Newsletter', experiences: 'Experiences', content: 'Home page & menu', photos: 'Guest photos', apis: 'API keys', diagnostics: 'System check' };
+        const SETTINGS_TITLES = { enquiries: 'Enquiries', messages: 'Guest messages', notify: 'Notifications', host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Preferences', calendar: 'Calendar', cancel: 'Cancellation policy', payments: 'Payments', guests: 'Guest accounts', analytics: 'Analytics', waitlist: 'Waitlist', newsletter: 'Newsletter', experiences: 'Experiences', content: 'Home page & menu', photos: 'Guest photos', apis: 'API keys', diagnostics: 'System check', testcentre: 'Test centre' };
         // Open the separate staging sandbox (where all testing now happens) in a new tab.
         const STAGING_URL = 'https://staging.cottageholidaysblakeney.co.uk/';
         function openStagingSite() { window.open(STAGING_URL, '_blank', 'noopener'); }
@@ -1030,6 +1053,7 @@
             else if (section === 'experiences') loadExperiencesAdmin();
             else if (section === 'content') loadContentEditor();
             else if (section === 'diagnostics') loadDiagnostics();
+            else if (section === 'testcentre') renderTestCentreList();
             else if (section === 'apis') renderApis();
             else if (section === 'security') loadAdminPasskeys();
             else if (section === 'payments') renderSquareSettings();
@@ -7464,6 +7488,267 @@
             } catch (e) { show(e.message || "Couldn't send.", false); }
         }
 
+        // ============================================================
+        //  Test centre (Settings → Test centre): try every customer-facing feature
+        //  from the back office — preview the site, send sample emails, run a
+        //  disposable test booking through the real pay/email/arrival flows, and
+        //  see & remove all test data in one place.
+        // ============================================================
+        let tcOwnerEmail = '';
+        let tcSquare = { enabled: false, production: false };
+        const TC_PAGES = [
+            { id: 'preview', label: 'Preview as guest', sub: 'See the live customer site, read-only', ic: '<path d="M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12z"/><circle cx="12" cy="12" r="3"/>' },
+            { id: 'emails',  label: 'Test emails',       sub: 'Send [TEST] samples to your inbox',   ic: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>' },
+            { id: 'booking', label: 'Test booking',      sub: 'Create one &amp; run pay / email / arrival flows', ic: '<rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/>' },
+            { id: 'data',    label: 'Test data',         sub: 'See &amp; remove anything the Test centre created', ic: '<path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>' },
+        ];
+        function renderTestCentreList() {
+            const list = document.getElementById('testcentre-list'); const detail = document.getElementById('testcentre-detail');
+            if (detail) { detail.style.display = 'none'; detail.innerHTML = ''; }
+            settingsBackTarget = () => settingsShowIndex();
+            const title = document.getElementById('settings-panel-title'); if (title) title.textContent = SETTINGS_TITLES.testcentre;
+            if (!list) return;
+            list.style.display = '';
+            list.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 16px;">Try every customer-facing feature without being a guest. Emails arrive in your owner inbox marked <strong>[TEST]</strong>; test bookings are clearly tagged, kept out of your revenue, and removable on the Test data page.</p>
+                <div class="settings-group">${TC_PAGES.map(p => `
+                    <button class="settings-row" onclick="tcOpen('${p.id}')">
+                        <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p.ic}</svg></span>
+                        <span class="settings-row-main"><span class="settings-row-label">${p.label}</span><span class="settings-row-sub">${p.sub}</span></span><span class="settings-row-chev">›</span>
+                    </button>`).join('')}</div>`;
+        }
+        function tcOpen(page) {
+            const list = document.getElementById('testcentre-list'); const detail = document.getElementById('testcentre-detail');
+            if (list) list.style.display = 'none';
+            if (detail) { detail.style.display = ''; detail.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">Loading…</p>'; }
+            const meta = TC_PAGES.find(p => p.id === page);
+            const title = document.getElementById('settings-panel-title');
+            if (title) title.innerHTML = `${SETTINGS_TITLES.testcentre} <span style="color:var(--text-muted);">·</span> ${meta ? meta.label : ''}`;
+            settingsBackTarget = () => renderTestCentreList();
+            if (page === 'preview') detail.innerHTML = tcPagePreview();
+            else if (page === 'emails') detail.innerHTML = tcPageEmails();
+            else if (page === 'booking') tcRenderBooking();
+            else if (page === 'data') tcRenderData();
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+        // ---- Preview as guest ----
+        function tcPagePreview() {
+            const cottages = liveCottageKeys().map(k =>
+                `<button class="btn-sm btn-edit" style="margin:0 8px 8px 0;" onclick="tcPreview('/cottages/${COTTAGE_SLUGS[k] || k}')">${escapeHtml((propertyMeta[k] || {}).name || k)} ↗</button>`).join('');
+            return `<div class="rate-prop">
+                <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 14px;">Opens the real public site in a new tab, rendered exactly as a guest sees it (you stay signed in, but the admin chrome is hidden). Browse anywhere — home, cottages, experiences, the enquiry form — nothing is saved.</p>
+                <button class="btn-glass" style="width:auto;padding:12px 22px;margin-bottom:8px;" onclick="tcPreview('index.html')">Open homepage as a guest ↗</button>
+                <div class="rule-divider">Jump straight to a cottage page</div>
+                ${cottages || '<p style="font-size:0.85rem;color:var(--text-muted);">No live cottages.</p>'}</div>`;
+        }
+        function tcPreview(path) { const sep = path.indexOf('?') !== -1 ? '&' : '?'; window.open(path + sep + 'preview=1', '_blank', 'noopener'); }
+        // ---- Test emails ----
+        const TC_EMAILS = [
+            ['confirmation', 'Booking confirmation'], ['arrival', 'Arrival information'],
+            ['payment_request', 'Payment request'], ['payment_reminder', 'Balance reminder'],
+            ['payment_receipt', 'Payment receipt'], ['review_request', 'Review request'],
+            ['magic_link', 'Sign-in (magic) link'], ['refund', 'Refund notice'],
+            ['deposit_return', 'Damage deposit return'], ['cancellation', 'Booking cancelled'],
+            ['owner_notice', 'Owner: payment received'],
+        ];
+        function tcPageEmails() {
+            return `<div class="rate-prop">
+                <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 12px;">Sends real samples to your owner inbox (subject prefixed <strong>[TEST]</strong>) using dummy data, so you can check wording, formatting &amp; delivery.</p>
+                <button class="btn-glass" style="width:auto;padding:12px 22px;margin-bottom:12px;" onclick="tcSendEmail('all',this)">Send all samples</button>
+                <div id="tc-email-msg" style="font-size:0.82rem;margin-bottom:12px;"></div>
+                <div class="settings-group">${TC_EMAILS.map(([w, l]) => `
+                    <div class="settings-row" style="cursor:default;">
+                        <span class="settings-row-main"><span class="settings-row-label">${l}</span></span>
+                        <button class="btn-sm btn-edit" onclick="tcSendEmail('${w}',this)">Send</button>
+                    </div>`).join('')}</div></div>`;
+        }
+        async function tcSendEmail(which, btn) {
+            const msg = document.getElementById('tc-email-msg');
+            const show = (t, ok) => { if (msg) { msg.style.color = ok ? '#4CAF50' : '#E57373'; msg.innerHTML = t; } };
+            let old; if (btn) { btn.disabled = true; old = btn.textContent; btn.textContent = 'Sending…'; }
+            show('Sending…', true);
+            try {
+                const r = await apiPost('testcentre.php', { action: 'send_email', which });
+                if (!r.ok) show(r.error || "Couldn't send.", false);
+                else if (which === 'all') {
+                    const fails = (r.results || []).filter(x => !x.ok);
+                    show(`Sent ${r.sent} sample${r.sent === 1 ? '' : 's'} to ${escapeHtml(r.to || 'your inbox')}${fails.length ? ` · ${fails.length} failed: ${fails.map(f => escapeHtml(f.label)).join(', ')}` : ''}.`, fails.length === 0);
+                } else {
+                    const one = (r.results || [])[0] || {};
+                    show(one.ok ? `Sent ✓ — check ${escapeHtml(r.to || 'your inbox')}.` : (one.error || "Couldn't send."), !!one.ok);
+                }
+            } catch (e) { show(e.message || "Couldn't send.", false); }
+            if (btn) { btn.disabled = false; btn.textContent = old; }
+        }
+        // ---- Test booking (real flows against a disposable, clearly-flagged booking) ----
+        async function tcRenderBooking() {
+            const detail = document.getElementById('testcentre-detail'); if (!detail) return;
+            detail.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">Loading…</p>';
+            let data; try { data = await apiPost('testcentre.php', { action: 'list_data' }); }
+            catch (e) { detail.innerHTML = `<p style="color:#E57373;">${escapeHtml(e.message || '')}</p>`; return; }
+            tcOwnerEmail = data.owner_email || '';
+            tcSquare = data.square || { enabled: false, production: false };
+            const bk = data.bookings || [];
+            const intro = `<p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 12px;">Creates a real but clearly-flagged booking (unpaid, tagged <strong>[CHB-TEST]</strong>, kept out of your revenue) so you can run the actual pay, email, arrival and daily-automation flows against it — then remove it on the Test data page. Pick dates to match what you want to test:</p>`;
+            const sqNote = tcSquare.production
+                ? `<div class="email-note" style="border-left:3px solid #E57373;background:rgba(229,115,115,0.08);padding:10px 12px;border-radius:8px;font-size:0.8rem;color:#E57373;margin-bottom:12px;">Square is in <strong>PRODUCTION</strong> mode — paying will make a real charge. Switch to sandbox in config.php to test safely.</div>`
+                : (tcSquare.enabled ? `<p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 12px;">Square is in sandbox — pay flows use test cards, no real money moves.</p>` : `<p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 12px;">Square is off — the pay/balance buttons will say so. Emails &amp; arrival still work.</p>`);
+            const guestBtn = `<button class="btn-glass" style="width:auto;padding:12px 22px;margin-bottom:14px;" onclick="tcGuestLogin(this)">Log in as a test guest ↗</button>
+                <p style="font-size:0.78rem;color:var(--text-muted);margin:-6px 0 14px;">Opens the guest app (My Stays, in-stay hub, arrival reveal, chat) signed in as a test guest. Tip: open in a private window to stay signed in as admin here.</p>`;
+            if (!bk.length) {
+                detail.innerHTML = `<div class="rate-prop">${intro}${tcPresetButtons()}${sqNote}<div id="tc-bk-msg" style="font-size:0.82rem;margin-top:12px;"></div></div>`;
+                return;
+            }
+            const rows = bk.map(b => {
+                const name = (propertyMeta[b.prop_key] || {}).name || b.prop_key;
+                return `<div class="accounts-stat" style="max-width:640px;margin-bottom:12px;">
+                    <div class="label">${escapeHtml(name)} · #${b.id} <span style="background:#E5533C;color:#fff;font-size:0.6rem;font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;">TEST</span></div>
+                    <div style="font-size:0.85rem;color:var(--text-muted);margin:4px 0 10px;">${escapeHtml(b.check_in)} → ${escapeHtml(b.check_out)} · ${gbp(b.agreed_total || 0)}</div>
+                    <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:6px;">Payments &amp; emails</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
+                        <button class="btn-sm btn-edit" onclick="tcPay(${b.id},'deposit',this)">Pay deposit ↗</button>
+                        <button class="btn-sm btn-edit" onclick="tcPay(${b.id},'balance',this)">Pay balance ↗</button>
+                        <button class="btn-sm btn-edit" onclick="tcBookingEmail(${b.id},'send_confirmation',this)">Email confirmation</button>
+                        <button class="btn-sm btn-edit" onclick="tcBookingEmail(${b.id},'send_arrival',this)">Email arrival info</button>
+                        <button class="btn-sm btn-edit" onclick="tcBookingEmail(${b.id},'request_payment',this)">Email payment request</button>
+                    </div>
+                    <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:6px;">Daily automations (run now, as the cron would)</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                        <button class="btn-sm btn-edit" onclick="tcAutomation(${b.id},'pre_arrival',this)">Pre-arrival email</button>
+                        <button class="btn-sm btn-edit" onclick="tcAutomation(${b.id},'balance_reminder',this)">Balance reminder</button>
+                        <button class="btn-sm btn-edit" onclick="tcAutomation(${b.id},'review',this)">Review request</button>
+                        <button class="btn-sm btn-edit" onclick="tcAutomation(${b.id},'checkin_push',this)">Check-in push</button>
+                        <button class="btn-sm btn-edit" style="color:#E57373;border-color:rgba(229,115,115,0.4);" onclick="tcDeleteBooking(${b.id})">Delete</button>
+                    </div></div>`;
+            }).join('');
+            detail.innerHTML = `<div class="rate-prop">${intro}${sqNote}${guestBtn}${rows}
+                <div class="rule-divider">Create another</div>${tcPresetButtons()}
+                <div id="tc-bk-msg" style="font-size:0.82rem;margin-top:12px;"></div></div>`;
+        }
+        // Date presets so the owner can target date-gated features (mid-stay hub,
+        // pre-arrival, post-stay review) — not just a far-future booking.
+        function tcPresetButtons() {
+            return `<div style="display:flex;flex-wrap:wrap;gap:8px;">
+                <button class="btn-sm btn-edit" onclick="tcCreateBooking('midstay',this)">Arriving today (mid-stay)</button>
+                <button class="btn-sm btn-edit" onclick="tcCreateBooking('prearrival',this)">Pre-arrival (in 3 days)</button>
+                <button class="btn-sm btn-edit" onclick="tcCreateBooking('past',this)">Past stay (for review)</button>
+                <button class="btn-sm btn-edit" onclick="tcCreateBooking('future',this)">Future (+30 days)</button>
+            </div>`;
+        }
+        async function tcCreateBooking(preset, btn) {
+            const msg = document.getElementById('tc-bk-msg');
+            const show = (t, ok) => { if (msg) { msg.style.color = ok ? '#4CAF50' : '#E57373'; msg.textContent = t; } };
+            const key = liveCottageKeys()[0]; if (!key) { show('No live cottage to book against.', false); return; }
+            const d = n => { const x = new Date(); x.setDate(x.getDate() + n); return x.toISOString().slice(0, 10); };
+            let ci, co;
+            if (preset === 'midstay') { ci = d(-1); co = d(2); }
+            else if (preset === 'prearrival') { ci = d(3); co = d(6); }
+            else if (preset === 'past') { ci = d(-5); co = d(-2); }
+            else { ci = d(30); co = d(33); }
+            if (btn) btn.disabled = true; show('Creating…', true);
+            try {
+                const r = await apiPost('bookings.php', {
+                    action: 'add', prop_key: key, name: 'TEST — Test Centre',
+                    email: tcOwnerEmail || '', phone: '', check_in: ci, check_out: co,
+                    adults: 2, children: 0, payment: 'unpaid', notes: '[CHB-TEST] safe to delete', override_clash: true
+                });
+                if (r && r.id) { show('Created ✓', true); tcRenderBooking(); }
+                else show((r && r.error) || (r && r.clash ? 'Those dates clash — try again.' : "Couldn't create."), false);
+            } catch (e) { show(e.message || "Couldn't create.", false); }
+            if (btn) btn.disabled = false;
+        }
+        async function tcGuestLogin(btn) {
+            if (!await glassConfirm('Open the guest app signed in as a test guest?\n\nThis signs THIS browser in as the guest, which ends your admin session here. Tip: open it in a private/incognito window to stay signed in as admin in this one.')) return;
+            if (btn) btn.disabled = true;
+            try {
+                const r = await apiPost('testcentre.php', { action: 'guest_login' });
+                if (r && r.url) window.open(r.url, '_blank', 'noopener');
+                else glassAlert((r && r.error) || "Couldn't set up the test guest.");
+            } catch (e) { glassAlert(e.message || 'Failed.'); }
+            if (btn) btn.disabled = false;
+        }
+        async function tcAutomation(id, which, btn) {
+            const msg = document.getElementById('tc-bk-msg');
+            const show = (t, ok) => { if (msg) { msg.style.color = ok ? '#4CAF50' : '#E57373'; msg.textContent = t; } };
+            let old; if (btn) { btn.disabled = true; old = btn.textContent; btn.textContent = 'Running…'; }
+            try {
+                const r = await apiPost('testcentre.php', { action: 'run_automation', which, id });
+                show(r && r.ok ? ('Done ✓' + (r.note ? ' — ' + escapeHtml(r.note) : ' — check your inbox.')) : ((r && r.error) || "Couldn't run."), !!(r && r.ok));
+            } catch (e) { show(e.message || "Couldn't run.", false); }
+            if (btn) { btn.disabled = false; btn.textContent = old; }
+        }
+        async function tcPay(id, kind, btn) {
+            const msg = document.getElementById('tc-bk-msg');
+            const show = (t, ok) => { if (msg) { msg.style.color = ok ? '#4CAF50' : '#E57373'; msg.textContent = t; } };
+            if (tcSquare && tcSquare.production && !await glassConfirm('Square is in PRODUCTION (live) mode — paying will make a REAL charge. Continue?')) return;
+            if (btn) btn.disabled = true;
+            try {
+                const r = await apiPost('bookings.php', { action: 'pay_link', id, kind });
+                if (r && r.url) { window.open(r.url, '_blank', 'noopener'); show('Opened the ' + kind + ' pay page ↗', true); }
+                else show((r && r.error) || "Couldn't get the pay link.", false);
+            } catch (e) { show(e.message || 'Square is not available.', false); }
+            if (btn) btn.disabled = false;
+        }
+        async function tcBookingEmail(id, action, btn) {
+            const msg = document.getElementById('tc-bk-msg');
+            const show = (t, ok) => { if (msg) { msg.style.color = ok ? '#4CAF50' : '#E57373'; msg.textContent = t; } };
+            let old; if (btn) { btn.disabled = true; old = btn.textContent; btn.textContent = 'Sending…'; }
+            try {
+                const r = await apiPost('bookings.php', { action, id, kind: 'deposit' });
+                show(r && r.ok ? 'Sent ✓ — check your inbox.' : ((r && r.error) || "Couldn't send."), !!(r && r.ok));
+            } catch (e) { show(e.message || "Couldn't send.", false); }
+            if (btn) { btn.disabled = false; btn.textContent = old; }
+        }
+        async function tcDeleteBooking(id) {
+            if (!await glassConfirm('Delete this test booking?')) return;
+            try { await apiPost('testcentre.php', { action: 'delete_data', type: 'booking', id }); toast('Test booking deleted.'); tcRenderBooking(); }
+            catch (e) { glassAlert(e.message || "Couldn't delete."); }
+        }
+        // ---- Test data (see & remove everything tagged [CHB-TEST]) ----
+        async function tcRenderData() {
+            const detail = document.getElementById('testcentre-detail'); if (!detail) return;
+            detail.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">Loading…</p>';
+            let data; try { data = await apiPost('testcentre.php', { action: 'list_data' }); }
+            catch (e) { detail.innerHTML = `<p style="color:#E57373;">${escapeHtml(e.message || '')}</p>`; return; }
+            const bk = data.bookings || [], enq = data.enquiries || [], guest = data.guest || null;
+            // The test guest only counts as removable data if WE created the account
+            // (reusing the owner's real account is left alone).
+            const showGuest = guest && guest.created;
+            if (!bk.length && !enq.length && !showGuest) {
+                detail.innerHTML = `<div class="rate-prop"><p style="font-size:0.95rem;color:var(--text-light);">No test data — you're clean. ✓</p><p style="font-size:0.82rem;color:var(--text-muted);">Anything the Test centre creates shows here for one-tap removal.</p></div>`;
+                return;
+            }
+            const bRows = bk.map(b => { const name = (propertyMeta[b.prop_key] || {}).name || b.prop_key; return `
+                <div class="settings-row" style="cursor:default;">
+                    <span class="settings-row-main"><span class="settings-row-label">${escapeHtml(name)} · #${b.id}</span><span class="settings-row-sub">${escapeHtml(b.check_in)} → ${escapeHtml(b.check_out)} · ${gbp(b.agreed_total || 0)}${b.payments ? ` · ${b.payments} payment${b.payments === 1 ? '' : 's'}` : ''}</span></span>
+                    <button class="btn-sm btn-edit" style="color:#E57373;border-color:rgba(229,115,115,0.4);" onclick="tcDeleteData('booking',${b.id})">Remove</button>
+                </div>`; }).join('');
+            const eRows = enq.map(e => `
+                <div class="settings-row" style="cursor:default;">
+                    <span class="settings-row-main"><span class="settings-row-label">Enquiry · #${e.id}</span><span class="settings-row-sub">${escapeHtml(e.check_in || '')} → ${escapeHtml(e.check_out || '')}</span></span>
+                    <button class="btn-sm btn-edit" style="color:#E57373;border-color:rgba(229,115,115,0.4);" onclick="tcDeleteData('enquiry',${e.id})">Remove</button>
+                </div>`).join('');
+            const gRows = showGuest ? `
+                <div class="settings-row" style="cursor:default;">
+                    <span class="settings-row-main"><span class="settings-row-label">Test guest account</span><span class="settings-row-sub">${escapeHtml(guest.email || '')}</span></span>
+                    <button class="btn-sm btn-edit" style="color:#E57373;border-color:rgba(229,115,115,0.4);" onclick="tcDeleteData('guest',${guest.id})">Remove</button>
+                </div>` : '';
+            const total = bk.length + enq.length + (showGuest ? 1 : 0);
+            detail.innerHTML = `<div class="rate-prop">
+                <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 12px;">${total} test record${total === 1 ? '' : 's'}. These never count toward your real revenue.</p>
+                ${bk.length ? `<div class="rule-divider">Test bookings</div><div class="settings-group">${bRows}</div>` : ''}
+                ${enq.length ? `<div class="rule-divider">Test enquiries</div><div class="settings-group">${eRows}</div>` : ''}
+                ${showGuest ? `<div class="rule-divider">Test guest</div><div class="settings-group">${gRows}</div>` : ''}
+                <button class="btn-glass" style="width:auto;padding:12px 22px;margin-top:16px;color:#E57373;" onclick="tcPurgeData()">Remove all test data</button></div>`;
+        }
+        async function tcDeleteData(type, id) {
+            try { await apiPost('testcentre.php', { action: 'delete_data', type, id }); tcRenderData(); }
+            catch (e) { glassAlert(e.message || "Couldn't remove."); }
+        }
+        async function tcPurgeData() {
+            if (!await glassConfirm('Remove ALL test data? This deletes every [CHB-TEST] booking and its payments.')) return;
+            try { await apiPost('testcentre.php', { action: 'purge_data' }); toast('All test data removed.'); tcRenderData(); }
+            catch (e) { glassAlert(e.message || "Couldn't purge."); }
+        }
         async function sendBroadcast() {
             const subEl = document.getElementById('nl-subject'), bodyEl = document.getElementById('nl-body');
             const msg = document.getElementById('nl-send-msg');
@@ -10102,7 +10387,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'f3x9c7au';
+            const BUILD = 'g4y0d8bv';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;

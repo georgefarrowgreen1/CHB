@@ -168,7 +168,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=7">
+    <link rel="stylesheet" href="app.css?v=8">
     <!-- Speed up the font fetch (and the jsPDF CDN) by opening the connections early. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -849,6 +849,13 @@
                     <span class="settings-row-main"><span class="settings-row-label">Test environment ↗</span><span class="settings-row-sub">Open the staging sandbox to test safely</span></span><span class="settings-row-chev">›</span>
                 </button>
             </div>
+            <!-- Test centre — shown on the staging sandbox only (revealed by JS when IS_STAGING) -->
+            <div class="settings-group" id="testcentre-row" style="display:none;">
+                <button class="settings-row" onclick="settingsOpen('testcentre')">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6M10 3v5.2L5.4 17a2 2 0 0 0 1.8 3h9.6a2 2 0 0 0 1.8-3L14 8.2V3"/><path d="M8 14h8"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Test centre</span><span class="settings-row-sub">Preview, sample emails, test bookings &amp; data</span></span><span class="settings-row-chev">›</span>
+                </button>
+            </div>
             <!-- Always last: sign out -->
             <div class="settings-group">
                 <button class="settings-row settings-row-logout" onclick="logoutStaff()">
@@ -920,6 +927,12 @@
                 </div>
                 <div id="migrate-result" style="display:none;font-size:0.82rem;margin-bottom:16px;"></div>
                 <div id="diagnostics-body"></div>
+            </div>
+
+            <!-- Test centre (staging only): preview, sample emails, test booking, test data -->
+            <div class="settings-sec" id="sec-testcentre" style="display:none;">
+                <div id="testcentre-list" class="settings-index"></div>
+                <div id="testcentre-detail" style="display:none;"></div>
             </div>
 
 
@@ -1722,7 +1735,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=13"></script>
+    <script src="app.js?v=14"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
