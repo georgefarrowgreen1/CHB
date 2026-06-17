@@ -8421,11 +8421,14 @@
             try { all = (typeof allReviews === 'function') ? allReviews() : []; } catch (e) { all = []; }
             Object.keys(propertyRates || {}).forEach(k => {
                 const el = document.getElementById('card-rating-' + k);
+                const fav = document.getElementById('cott-fav-' + k);
                 if (!el) return;
                 const rs = all.filter(r => r.prop === k);
-                if (!rs.length) { el.innerHTML = `<span class="cr-new">New — be the first to review</span>`; return; }
+                if (!rs.length) { el.innerHTML = `<span class="cr-new">New — be the first to review</span>`; if (fav) fav.hidden = true; return; }
                 const avg = rs.reduce((s, r) => s + (parseInt(r.stars, 10) || 0), 0) / rs.length;
                 el.innerHTML = `<span class="cr-star">★</span> ${avg.toFixed(1)} <span class="cr-count">· ${rs.length} review${rs.length === 1 ? '' : 's'}</span>`;
+                // "Guest favourite" badge for highly-rated cottages (Airbnb-style).
+                if (fav) fav.hidden = !(rs.length >= 3 && avg >= 4.8);
             });
         }
         // Fill each cottage card with its live "from £[couple rate] / night"
@@ -8475,10 +8478,15 @@
                 const title = sc[ck.title] || ((propertyMeta[k] && propertyMeta[k].name) || k);
                 const meta = sc[ck.meta] || cottageSleepsLabel(k);
                 return `<a class="card glass-panel" data-prop="${k}" href="/cottages/${escapeHtml(slug)}" onclick="return cottageLink(event,'${k}')">
-                    <div class="card-img" data-edit-img="${ck.img}" style="background-image: url('${escapeHtml(img)}');"></div>
-                    <div class="card-title" data-edit-text="${ck.title}">${escapeHtml(title)}</div>
+                    <div class="card-img-wrap">
+                        <div class="card-img" data-edit-img="${ck.img}" style="background-image: url('${escapeHtml(img)}');"></div>
+                        <span class="cott-fav" id="cott-fav-${k}" hidden><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21s-7-4.6-9.3-9C1.4 9 2.7 5.5 6 5.5c2 0 3.2 1.2 4 2.5.8-1.3 2-2.5 4-2.5 3.3 0 4.6 3.5 3.3 6.5C19 16.4 12 21 12 21z"/></svg> Guest favourite</span>
+                    </div>
+                    <div class="cott-head">
+                        <div class="card-title" data-edit-text="${ck.title}">${escapeHtml(title)}</div>
+                        <div class="card-rating" id="card-rating-${k}"></div>
+                    </div>
                     <div class="card-meta" data-edit-text="${ck.meta}">${escapeHtml(meta)}</div>
-                    <div class="card-rating" id="card-rating-${k}"></div>
                     <div class="card-price" id="card-price-${k}"></div>
                 </a>`;
             }).join('');
@@ -10939,7 +10947,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'v9w4x7za';
+            const BUILD = 'w2y6z3ab';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
