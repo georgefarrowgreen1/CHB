@@ -1976,7 +1976,15 @@
         }
 
 /* Settings → Website content: image rows */
-.content-edit-row { display: flex; gap: 12px; align-items: center; margin-bottom: 14px; max-width: 640px; }
+.content-edit-row { display: flex; gap: 12px; align-items: center; margin-bottom: 14px; max-width: 640px; flex-wrap: wrap; }
+/* Per-cottage Photos rows: thumbnail + label + action buttons that reflow neatly
+   on narrow screens (the buttons drop to a full-width row under the thumbnail). */
+.accom-photo-row .accom-photo-label { flex: 1 1 120px; min-width: 100px; font-size: 0.85rem; color: var(--text-light); }
+.accom-photo-row .accom-photo-actions { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; }
+@media (max-width: 560px) {
+    .accom-photo-row { align-items: center; }
+    .accom-photo-row .accom-photo-actions { width: 100%; }
+}
 
 /* Test centre → Preview as guest: the banner shown across a preview tab */
 #preview-banner {
