@@ -1422,8 +1422,12 @@
             <button class="btn-sm btn-edit" onclick="addPasskey()">＋ Add a passkey</button>
             <div id="passkey-list" style="margin-top:14px;"></div>
 
+            <h3 style="font-family:var(--font-serif);font-size:1.1rem;margin:26px 0 6px;">Your data</h3>
+            <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:12px;">Download a copy of everything we hold about you — your account, bookings, payments, enquiries, messages and more — as a JSON file.</p>
+            <button class="btn-sm btn-edit" onclick="exportGuestData(this)">Download my data</button>
+
             <h3 style="font-family:var(--font-serif);font-size:1.1rem;margin:26px 0 6px;color:#E57373;">Delete my account</h3>
-            <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:12px;">Permanently removes your login and saved passkeys. Your past bookings stay on record with us. This can't be undone.</p>
+            <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:12px;">Erases your login, contact details, messages, reviews and mailing-list entry. Past bookings are kept as legally-required financial records but anonymised. This can't be undone.</p>
             <button class="btn-sm btn-decline" onclick="deleteGuestAccount()">Delete my account</button>
         </div>
     </div>
@@ -1735,7 +1739,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=15"></script>
+    <script src="app.js?v=16"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

@@ -2564,16 +2564,32 @@
             } catch (e) { show(e.message, false); }
         }
 
-        // Guest permanently deletes their own account (login + passkeys).
+        // GDPR: guest downloads everything we hold about them as a JSON file.
+        async function exportGuestData(btn) {
+            if (btn) btn.disabled = true;
+            try {
+                const r = await apiPost('auth.php', { action: 'guest_export_data' });
+                const blob = new Blob([JSON.stringify(r.data || {}, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = 'my-data-cottageholidaysblakeney.json';
+                document.body.appendChild(a); a.click(); a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 2000);
+                toast('Your data has been downloaded.');
+            } catch (e) { glassAlert("Couldn't export your data: " + (e.message || e)); }
+            if (btn) btn.disabled = false;
+        }
+
+        // Guest permanently deletes their own account (GDPR erasure).
         async function deleteGuestAccount() {
-            const ok = await glassConfirm('Delete your account?\n\nThis permanently removes your login and any saved passkeys. Your past bookings stay on record with us. This cannot be undone.');
+            const ok = await glassConfirm('Delete your account?\n\nThis erases your login, contact details, messages, reviews and mailing-list entry. Past bookings are kept as legally-required financial records but anonymised (your name & contact details removed). This cannot be undone.');
             if (!ok) return;
             try {
                 await apiPost('auth.php', { action: 'guest_delete_account' });
                 currentGuest = null;
                 setGuestUI();
                 nav('view-main');
-                toast('Your account has been deleted.');
+                toast('Your account and personal data have been deleted.');
             } catch (e) {
                 glassAlert("Couldn't delete your account: " + e.message);
             }
@@ -10389,7 +10405,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'h5z1e9cw';
+            const BUILD = 'i6a2f0dx';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
