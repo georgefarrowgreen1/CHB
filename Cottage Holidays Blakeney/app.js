@@ -203,16 +203,54 @@
             const n = (file && file.name || '').toLowerCase();
             return t === 'image/heic' || t === 'image/heif' || n.endsWith('.heic') || n.endsWith('.heif');
         }
-        // Return an uploadable image File. HEIC/HEIF in -> JPEG out; anything else
-        // is passed straight through unchanged.
+        // Return an uploadable image File. HEIC/HEIF in -> JPEG out; then large
+        // photos are downscaled + recompressed so the upload is small and fast
+        // (full-res phone photos are several MB and would time out / hit PHP limits).
         async function ensureUploadable(file) {
-            if (!file || !isHeic(file)) return file;
-            await loadHeic2any();
-            const out = await window.heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 });
-            const jpeg = Array.isArray(out) ? out[0] : out;
-            const name = (file.name || 'photo').replace(/\.(heic|heif)$/i, '') + '.jpg';
-            try { return new File([jpeg], name, { type: 'image/jpeg' }); }
-            catch (e) { jpeg.name = name; return jpeg; }   // older browsers: Blob + name
+            if (file && isHeic(file)) {
+                await loadHeic2any();
+                const out = await window.heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 });
+                const jpeg = Array.isArray(out) ? out[0] : out;
+                const name = (file.name || 'photo').replace(/\.(heic|heif)$/i, '') + '.jpg';
+                try { file = new File([jpeg], name, { type: 'image/jpeg' }); }
+                catch (e) { jpeg.name = name; file = jpeg; }   // older browsers: Blob + name
+            }
+            try { file = await downscaleImage(file, 2000, 0.82); } catch (e) { /* keep original on any failure */ }
+            return file;
+        }
+        // Downscale a raster image to <= maxDim on its longest edge and re-encode as
+        // JPEG. Returns the original untouched if it's already small, not a raster
+        // type, or anything fails (so an edge case never blocks the upload).
+        async function downscaleImage(file, maxDim, quality) {
+            const type = (file && file.type || '').toLowerCase();
+            if (!/^image\/(jpeg|jpg|png|webp)$/.test(type)) return file;     // skip svg/gif/etc.
+            maxDim = maxDim || 2000;
+            let src = null, w = 0, h = 0, objUrl = null, bitmap = null;
+            try {
+                if (window.createImageBitmap) { bitmap = await createImageBitmap(file); w = bitmap.width; h = bitmap.height; src = bitmap; }
+                else {
+                    objUrl = URL.createObjectURL(file);
+                    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = objUrl; });
+                    w = img.naturalWidth; h = img.naturalHeight; src = img;
+                }
+                if (!w || !h) throw new Error('decode failed');
+                // Already small enough: leave it as-is.
+                if (Math.max(w, h) <= maxDim && file.size <= 1200000) return file;
+                const scale = Math.min(1, maxDim / Math.max(w, h));
+                const cw = Math.max(1, Math.round(w * scale)), ch = Math.max(1, Math.round(h * scale));
+                const canvas = document.createElement('canvas'); canvas.width = cw; canvas.height = ch;
+                canvas.getContext('2d').drawImage(src, 0, 0, cw, ch);
+                const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', quality || 0.82));
+                if (!blob) return file;
+                const name = (file.name || 'photo').replace(/\.(png|webp|jpe?g)$/i, '') + '.jpg';
+                try { return new File([blob], name, { type: 'image/jpeg' }); }
+                catch (e) { blob.name = name; return blob; }
+            } catch (e) {
+                return file;
+            } finally {
+                try { if (bitmap && bitmap.close) bitmap.close(); } catch (e) {}
+                try { if (objUrl) URL.revokeObjectURL(objUrl); } catch (e) {}
+            }
         }
 
         async function apiUpload(file, slot) {
@@ -6832,10 +6870,10 @@
             return (Array.isArray(o) && o.length) ? o.slice() : (((propertyContent[k] || {}).images) || []).slice();
         }
         function accomPhotoRow(k, url, i, n) {
-            return `<div class="content-edit-row">
+            return `<div class="content-edit-row accom-photo-row">
                 <div class="exp-edit-thumb" style="background-image:url('${escapeHtml(url)}');"></div>
-                <div style="flex:1;min-width:0;font-size:0.76rem;color:var(--text-muted);word-break:break-all;">${escapeHtml(url)}${i === 0 ? ' <span style="color:var(--accent);">· main</span>' : ''}</div>
-                <div style="display:flex;gap:6px;flex-shrink:0;">
+                <div class="accom-photo-label">Photo ${i + 1}${i === 0 ? ' <span style="color:var(--accent);">· main</span>' : ''}</div>
+                <div class="accom-photo-actions">
                     <button class="btn-sm btn-edit" onclick="accomMovePhoto('${k}',${i},-1)" ${i === 0 ? 'disabled' : ''} aria-label="Move up">↑</button>
                     <button class="btn-sm btn-edit" onclick="accomMovePhoto('${k}',${i},1)" ${i === n - 1 ? 'disabled' : ''} aria-label="Move down">↓</button>
                     <button class="btn-sm btn-edit" onclick="accomReplacePhoto('${k}',${i})">Replace</button>
@@ -10492,7 +10530,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'm9d5j3ga';
+            const BUILD = 'n1e6k4hb';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
