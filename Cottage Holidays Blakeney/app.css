@@ -1938,15 +1938,16 @@
             .cottages-split { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 30px; align-items: start; margin-top: 18px; }
             .cottages-split.no-map { grid-template-columns: 1fr; }
             /* Two big, image-forward cards per row (Airbnb-style); third wraps underneath.
-               The list scrolls beside the sticky map — generous photos are fine. */
-            .cottages-list .grid { margin-top: 0 !important; grid-template-columns: repeat(2, 1fr); gap: 26px; }
+               Use #cottages (id) so this beats the legacy `#cottages { repeat(3,1fr) }`
+               at min-width:860 — a class selector alone loses to that id. */
+            .cottages-list #cottages { margin-top: 0 !important; grid-template-columns: repeat(2, 1fr); gap: 26px; }
             .cottages-list .card { padding: 0; background: transparent; border: none; box-shadow: none; }
             .cottages-list .card:hover { transform: none; }
             .cottages-list .card-img { height: clamp(230px, 21vw, 320px); border-radius: 18px; margin-bottom: 12px; }
             .cottages-list .card-title { font-size: 1.2rem; line-height: 1.25; }
             .cottages-list .card-meta { margin-bottom: 6px; font-size: 0.72rem; }
             .cottages-list .card-price { font-size: 1rem; }
-            .cottages-split.no-map .cottages-list .grid { grid-template-columns: repeat(3, 1fr); }
+            .cottages-split.no-map .cottages-list #cottages { grid-template-columns: repeat(3, 1fr); }
             .cottages-map-pane { display: block; position: sticky; top: 90px; height: calc(100vh - 120px); min-height: 460px; }
             .cottages-map { width: 100%; height: 100%; border-radius: 22px; overflow: hidden; border: 1px solid var(--glass-border); }
         }
