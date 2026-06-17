@@ -18,7 +18,7 @@ if (!square_enabled()) json_out(['error' => 'Online payment is not available rig
 
 $bookingId = (int)($in['booking_id'] ?? 0);
 $token     = clean($in['token'] ?? '');
-$kind      = (($in['kind'] ?? 'deposit') === 'balance') ? 'balance' : 'deposit';
+$kind      = in_array(($in['kind'] ?? 'deposit'), ['deposit', 'balance', 'hold'], true) ? $in['kind'] : 'deposit';
 
 // Validate the pay token before touching anything.
 if ($bookingId <= 0 || !hash_equals(pay_token($bookingId), $token)) {
@@ -48,10 +48,23 @@ $depPct = square_deposit_pct();
 $depositAmount = round($total * ($depPct / 100), 2);
 $alreadyPaid   = round((float)($b['deposit_paid'] ?? 0), 2);
 
+// Refundable damages deposit (taken as a card HOLD, not a charge). Use the frozen
+// snapshot, falling back to a live calc for legacy rows.
+$holdAmount = round((float)($b['agreed_booking_fee'] ?? 0), 2);
+if ($holdAmount <= 0 && $rate) {
+    $pp = price_breakdown($rate, $b['adults'], $b['children'], $b['check_in'], $b['check_out']);
+    $holdAmount = round((float)$pp['damagesDeposit'], 2);
+}
+$holdStatus = $b['hold_status'] ?? 'none';
+
 // Amount due for this request, derived from kind (never trusted from the client).
-$amountDue = ($kind === 'balance')
-    ? round(max(0, $total - $alreadyPaid), 2)
-    : round(max(0, $depositAmount - $alreadyPaid), 2);
+if ($kind === 'hold') {
+    $amountDue = in_array($holdStatus, ['authorized', 'captured'], true) ? 0.0 : $holdAmount;
+} else {
+    $amountDue = ($kind === 'balance')
+        ? round(max(0, $total - $alreadyPaid), 2)
+        : round(max(0, $depositAmount - $alreadyPaid), 2);
+}
 
 $propName = $rate['name'] ?? $b['prop_key'];
 
@@ -69,7 +82,48 @@ if ($action === 'summary') {
         'balance'    => round(max(0, $total - $alreadyPaid), 2),
         'depositPct' => $depPct,
         'amountDue'  => $amountDue,
+        'holdAmount' => $holdAmount,
+        'holdStatus' => $holdStatus,
     ]);
+}
+
+// Place a refundable card HOLD for the damages deposit (authorise, do NOT capture).
+// Square holds the funds; the owner later captures (if damage) or releases it.
+if ($action === 'authorize') {
+    if ($kind !== 'hold') json_out(['error' => 'Wrong action for this payment.'], 400);
+    $sourceId = clean($in['source_id'] ?? '');
+    if ($sourceId === '') json_out(['error' => 'Missing card details — please try again.'], 400);
+    if ($holdAmount <= 0) json_out(['error' => 'No security deposit is required for this booking.'], 409);
+    if (in_array($holdStatus, ['authorized', 'captured'], true)) json_out(['error' => 'A security hold is already in place for this booking.'], 409);
+
+    $pence = (int)round($holdAmount * 100);
+    $ref = 'CHBHOLD-' . str_pad(substr(preg_replace('/\D/', '', (string)$bookingId), -6), 6, '0', STR_PAD_LEFT);
+    $res = square_api('POST', '/v2/payments', [
+        'source_id'           => $sourceId,
+        'idempotency_key'     => bin2hex(random_bytes(16)),
+        'amount_money'        => ['amount' => $pence, 'currency' => 'GBP'],
+        'autocomplete'        => false,   // AUTHORISE only — funds held, not captured
+        'location_id'         => SQUARE_LOCATION_ID,
+        'reference_id'        => $ref,
+        'note'                => "Refundable damage hold for {$propName} ({$b['check_in']} to {$b['check_out']})",
+        'buyer_email_address' => $b['email'] ?: null,
+    ]);
+    $payment = $res['body']['payment'] ?? null;
+    $ok = in_array($res['status'], [200, 201], true) && $payment
+        && in_array(($payment['status'] ?? ''), ['APPROVED', 'AUTHORIZED'], true);
+    if (!$ok) {
+        $detail = $res['body']['errors'][0]['detail'] ?? 'Your card couldn\'t be authorised. Please try another card.';
+        json_out(['error' => $detail], 402);
+    }
+    $sqId = (string)$payment['id'];
+    try {
+        db()->prepare('UPDATE bookings SET hold_payment_id = ?, hold_status = ?, hold_amount = ?, hold_authorized_at = NOW() WHERE id = ?')
+            ->execute([$sqId, 'authorized', $holdAmount, $bookingId]);
+    } catch (\Throwable $e) {
+        json_out(['error' => 'Hold authorised but could not be recorded — please contact us.'], 500);
+    }
+    try { require_once __DIR__ . '/webpush.php'; alert_owner('Damage hold placed', '£' . number_format($holdAmount, 2) . ' held · ' . $propName); } catch (\Throwable $e) {}
+    json_out(['ok' => true, 'held' => $holdAmount]);
 }
 
 if ($action === 'charge') {

@@ -82,6 +82,14 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   lockstep with PHP `price_breakdown()` (pricing.php). `smoke-test.js` §2 tests the
   JS side and `test-pricing.php` the PHP side against the SAME fixtures — keep both
   green when touching pricing.
+- **`total` is RENTAL ONLY** (nightly + txn). The refundable damages deposit is returned
+  by the price model as `damagesDeposit` but is NOT in `total` — it's taken as a separate
+  Square card **HOLD** (authorise → capture/release), never charged with the booking.
+  Lifecycle: `pay.php` `authorize` (autocomplete:false) places it; `bookings.php`
+  `hold_request`/`hold_link`/`hold_capture`/`hold_release` drive it; state lives in
+  `bookings.hold_*` (migration-damage-hold.sql). Square auths last ~6 days, so the hold is
+  placed near check-in and auto-releases on long stays. Legacy bookings that collected the
+  deposit the old way still use `damageHeld()`/`return_deposit`.
 - Offscreen `.page-view`s are `display:none`, so their CSS background-images aren't
   fetched until shown (built-in lazy-loading). The hero is the LCP image
   (`fetchpriority="high"` preload) — keep it prioritised, not deferred.

@@ -62,7 +62,9 @@ function price_breakdown($rate, $adults, $children, $checkIn, $checkOut, $deposi
     $txPct = (float)$rate['transaction_pct'];
     $txFee = round($nightly * ($txPct / 100), 2);          // income only
     $rentalTotal = $nightly + $txFee;                       // what the owner earns
-    $total = $rentalTotal + $damagesDeposit;                // what the guest pays
+    // The refundable damages deposit is taken as a separate card HOLD near arrival
+    // (authorised, not captured) — so it is NOT part of the total the guest is charged.
+    $total = $rentalTotal;
     return [
         'nights' => $nights, 'perNight' => $perNight, 'nightly' => $nightly,
         'damagesDeposit' => round($damagesDeposit, 2), 'transactionPct' => $txPct,

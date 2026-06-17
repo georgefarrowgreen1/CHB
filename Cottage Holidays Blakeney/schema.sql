@@ -90,6 +90,13 @@ CREATE TABLE IF NOT EXISTS bookings (
     price_override     DECIMAL(10,2) NULL,   -- if set, this is the agreed TOTAL (manual back-office price)
     terms_accepted_at  DATETIME      NULL,
     terms_version      VARCHAR(20)   NULL,
+    -- Refundable damage deposit taken as a Square card HOLD (see migration-damage-hold.sql)
+    hold_payment_id    VARCHAR(64)   NULL,
+    hold_status        VARCHAR(16)   NOT NULL DEFAULT 'none',  -- none|authorized|captured|released|expired
+    hold_amount        DECIMAL(10,2) NULL,
+    hold_authorized_at DATETIME      NULL,
+    hold_settled_at    DATETIME      NULL,
+    hold_requested_at  DATETIME      NULL,
     created_at     DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_email (email),
     INDEX idx_dates (prop_key, check_in, check_out),

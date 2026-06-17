@@ -424,6 +424,87 @@ if ($action === 'pay_link') {
     json_out(['ok' => true, 'url' => $url, 'kind' => $kind]);
 }
 
+// ---- Refundable damage deposit as a Square card HOLD (authorise/capture/release) ----
+// Return the secure "place your card hold" link (to copy/share), like pay_link.
+if ($action === 'hold_link') {
+    if (!square_enabled()) json_out(['error' => 'Square payments are not switched on yet.'], 400);
+    $id = (int)($in['id'] ?? 0);
+    $b = booking_by_id($id);
+    if (!$b) json_out(['error' => 'Booking not found'], 404);
+    $url = site_base_url() . 'index.html?hold=' . pay_token($id) . '&b=' . $id;
+    json_out(['ok' => true, 'url' => $url]);
+}
+
+// Email the guest the "place your refundable card hold" link.
+if ($action === 'hold_request') {
+    if (!square_enabled()) json_out(['error' => 'Square payments are not switched on yet.'], 400);
+    $id = (int)($in['id'] ?? 0);
+    $b = booking_by_id($id);
+    if (!$b) json_out(['error' => 'Booking not found'], 404);
+    if (empty($b['email'])) json_out(['error' => 'This booking has no guest email on file.'], 400);
+    if (in_array($b['hold_status'] ?? 'none', ['authorized', 'captured'], true)) json_out(['error' => 'A hold is already in place.'], 409);
+    require_once __DIR__ . '/mailer.php';
+    $rate = get_rate($b['prop_key']);
+    $amt = round((float)($b['agreed_booking_fee'] ?? 0), 2);
+    if ($amt <= 0 && $rate) { $p = price_breakdown($rate, $b['adults'], $b['children'], $b['check_in'], $b['check_out']); $amt = round((float)$p['damagesDeposit'], 2); }
+    if ($amt <= 0) json_out(['error' => 'This booking has no damage deposit set.'], 400);
+    $url = site_base_url() . 'index.html?hold=' . pay_token($id) . '&b=' . $id;
+    $res = send_hold_request([
+        'name' => $b['name'], 'email' => $b['email'], 'prop_key' => $b['prop_key'],
+        'prop_name' => $rate['name'] ?? $b['prop_key'], 'check_in' => $b['check_in'],
+        'check_out' => $b['check_out'], 'amount' => $amt,
+    ], $url);
+    if (!empty($res['ok'])) { try { db()->prepare('UPDATE bookings SET hold_requested_at = NOW() WHERE id = ?')->execute([$id]); } catch (\Throwable $e) {} json_out(['ok' => true, 'amount' => $amt]); }
+    json_out(['error' => $res['error'] ?? 'Email failed to send'], 200);
+}
+
+// Capture the hold (keep the money — used when there IS damage). Square's
+// CompletePayment captures the full authorised amount; refund any excess via the
+// normal refund flow if the damage was less than the full deposit.
+if ($action === 'hold_capture') {
+    if (!square_enabled()) json_out(['error' => 'Square payments are not switched on yet.'], 400);
+    $id = (int)($in['id'] ?? 0);
+    $b = booking_by_id($id);
+    if (!$b) json_out(['error' => 'Booking not found'], 404);
+    if (($b['hold_status'] ?? 'none') !== 'authorized' || empty($b['hold_payment_id'])) json_out(['error' => 'There is no active hold to capture.'], 409);
+    $res = square_api('POST', '/v2/payments/' . rawurlencode($b['hold_payment_id']) . '/complete', new stdClass());
+    if (!in_array($res['status'], [200, 201], true)) {
+        json_out(['error' => $res['body']['errors'][0]['detail'] ?? 'Could not capture the hold (it may have already expired).'], 402);
+    }
+    $amt = round((float)($b['hold_amount'] ?? 0), 2);
+    db()->prepare('UPDATE bookings SET hold_status = ?, hold_settled_at = NOW() WHERE id = ?')->execute(['captured', $id]);
+    try { db()->prepare('INSERT IGNORE INTO payments (booking_id, square_payment_id, kind, amount, status, guest_name, prop_key, created_at) VALUES (?,?,?,?,?,?,?,NOW())')
+        ->execute([$id, $b['hold_payment_id'], 'damages', $amt, 'COMPLETED', $b['name'], $b['prop_key']]); } catch (\Throwable $e) {}
+    json_out(['ok' => true, 'captured' => $amt]);
+}
+
+// Release the hold (the normal, no-damage case): cancel the authorisation so the
+// funds are freed on the guest's card.
+if ($action === 'hold_release') {
+    if (!square_enabled()) json_out(['error' => 'Square payments are not switched on yet.'], 400);
+    $id = (int)($in['id'] ?? 0);
+    $b = booking_by_id($id);
+    if (!$b) json_out(['error' => 'Booking not found'], 404);
+    if (($b['hold_status'] ?? 'none') !== 'authorized' || empty($b['hold_payment_id'])) json_out(['error' => 'There is no active hold to release.'], 409);
+    $res = square_api('POST', '/v2/payments/' . rawurlencode($b['hold_payment_id']) . '/cancel', new stdClass());
+    // Treat an already-expired/canceled auth as released (the funds are free either way).
+    $ok = in_array($res['status'], [200, 201], true) || stripos(json_encode($res['body'] ?? []), 'CANCELED') !== false;
+    if (!$ok) json_out(['error' => $res['body']['errors'][0]['detail'] ?? 'Could not release the hold.'], 402);
+    db()->prepare('UPDATE bookings SET hold_status = ?, hold_settled_at = NOW() WHERE id = ?')->execute(['released', $id]);
+    $emailResult = null;
+    if (!empty($b['email'])) {
+        try {
+            require_once __DIR__ . '/mailer.php';
+            $rate = get_rate($b['prop_key']);
+            $emailResult = send_hold_released([
+                'name' => $b['name'], 'email' => $b['email'], 'prop_key' => $b['prop_key'],
+                'prop_name' => $rate['name'] ?? $b['prop_key'], 'amount' => round((float)($b['hold_amount'] ?? 0), 2),
+            ]);
+        } catch (\Throwable $e) {}
+    }
+    json_out(['ok' => true, 'email' => $emailResult]);
+}
+
 // Refund a Square payment (full or partial) and re-reconcile the booking.
 if ($action === 'refund') {
     if (!square_enabled()) json_out(['error' => 'Square payments are not switched on yet.'], 400);

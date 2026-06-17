@@ -382,8 +382,8 @@ function send_booking_emails($b) {
         $body .= "Address: {$b['address']}\n\n";
         $body .= $money($b['per_night']) . " x {$nightsTxt}: " . $money($b['nightly']) . "\n";
         $body .= "Transaction fee ({$b['tx_pct']}%): " . $money($b['tx_fee']) . "\n";
-        $body .= "Refundable damages deposit: " . $money($b['damages_deposit']) . "\n";
-        $body .= "Total: " . $money($b['total']) . "\n\n";
+        $body .= "Total: " . $money($b['total']) . "\n";
+        $body .= "Plus a refundable security deposit of " . $money($b['damages_deposit']) . ", held on your card near arrival (not charged) and released after checkout.\n\n";
         $body .= "If you have any questions, just reply to this email.\nCottage Holidays Blakeney\n";
 
         // HTML version — "Midnight Glass" shell + the booking "stay ticket".
@@ -394,9 +394,9 @@ function send_booking_emails($b) {
         $priceBox = '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0 4px;"><tr><td bgcolor="#15161b" style="background:#15161b;border:1px solid #2c2f38;border-radius:14px;padding:8px 20px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">'
           . $pr($money($b['per_night']) . ' &times; ' . $nightsTxt, $money($b['nightly']))
           . $pr('Transaction fee (' . $esc($b['tx_pct']) . '%)', $money($b['tx_fee']))
-          . $pr('Refundable damages deposit', $money($b['damages_deposit']))
           . '<tr><td colspan="2" style="border-top:1px solid #2c2f38;font-size:0;line-height:0;">&nbsp;</td></tr>'
           . '<tr><td style="padding:12px 0 4px;font-family:' . $serif . ';font-size:19px;font-weight:700;color:#F4F5F7;">Total</td><td align="right" style="padding:12px 0 4px;font-family:' . $serif . ';font-size:21px;font-weight:700;color:#F4F5F7;">' . $money($b['total']) . '</td></tr>'
+          . $pr('<span style="color:#8a8f9e;">+ ' . $money($b['damages_deposit']) . ' refundable deposit</span>', '<span style="color:#8a8f9e;">held, not charged</span>')
           . '</table></td></tr></table>';
         $inner = email_h($b['prop_name'], $accent)
           . '<div style="font-family:' . $sans . ';font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#8a8f9e;margin:2px 0 16px;">Booking ref ' . $esc($b['ref']) . ' &nbsp;&middot;&nbsp; ' . $statusBadge . '</div>'
@@ -584,6 +584,59 @@ function send_payment_reminder($b, $payUrl) {
       . email_p('Cottage Holidays Blakeney', true);
     $html = email_shell('Balance reminder for ' . $prop, $inner, $accent);
 
+    return smtp_send($b['email'], $name, $subject, $text, $html);
+}
+
+// Ask the guest to place a refundable card HOLD before arrival. $b: name, email,
+// prop_key, prop_name, check_in, check_out, amount. $url: the secure hold link.
+function send_hold_request($b, $url) {
+    if (empty($b['email'])) return ['ok' => false, 'error' => 'No guest email on file'];
+    $accent = prop_display($b['prop_key'] ?? '')['accent'];
+    $money = fn($n) => '£' . number_format((float)$n, 2);
+    $esc = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+    $name = $b['name'] ?: 'Guest';
+    $prop = $b['prop_name'] ?: 'your cottage';
+
+    $subject = "Secure your stay — refundable card hold for {$prop}";
+    $text = "Hello {$name},\n\n"
+          . "Ahead of your stay at {$prop} ({$b['check_in']} to {$b['check_out']}), please place the refundable "
+          . "security hold of " . $money($b['amount']) . " on your card here:\n" . $url . "\n\n"
+          . "This is a HOLD, not a charge — the amount is simply set aside on your card and released after checkout, "
+          . "provided there's no damage. Powered by Square; we never see your card number.\n\n"
+          . "Cottage Holidays Blakeney";
+
+    $inner = email_h($prop, $accent)
+      . email_p('Hello ' . $esc($name) . ', ahead of your stay (' . $esc($b['check_in']) . ' to ' . $esc($b['check_out']) . ') please place the refundable security hold on your card.')
+      . email_amount('Refundable hold', $money($b['amount']), 'held, not charged')
+      . email_btn($url, 'Place the card hold')
+      . email_p('This is a <strong style="color:#f4f5f7;">hold, not a charge</strong> — the amount is set aside on your card and released after checkout, provided there\'s no damage.', true)
+      . email_p('Powered by Square — we never see or store your card number.<br>Cottage Holidays Blakeney', true);
+    $html = email_shell('Place your refundable card hold for ' . $prop, $inner, $accent);
+    return smtp_send($b['email'], $name, $subject, $text, $html);
+}
+
+// Tell the guest their card hold has been released. $b: name, email, prop_key,
+// prop_name, amount.
+function send_hold_released($b) {
+    if (empty($b['email'])) return ['ok' => false, 'error' => 'No guest email on file'];
+    $accent = prop_display($b['prop_key'] ?? '')['accent'];
+    $money = fn($n) => '£' . number_format((float)$n, 2);
+    $esc = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+    $name = $b['name'] ?: 'Guest';
+    $prop = $b['prop_name'] ?: 'your cottage';
+
+    $subject = "Your security hold has been released — {$prop}";
+    $text = "Hello {$name},\n\n"
+          . "Thank you for staying at {$prop}. We've released the refundable security hold of " . $money($b['amount']) . " on your card. "
+          . "Any remaining authorisation will clear from your statement within a few working days, depending on your bank.\n\n"
+          . "We hope to welcome you back.\nCottage Holidays Blakeney";
+
+    $inner = email_h('Security hold released', $accent)
+      . email_p('Hello ' . $esc($name) . ', thank you for staying at <strong style="color:#f4f5f7;">' . $esc($prop) . '</strong>. We\'ve released your refundable security hold.')
+      . email_amount('Hold released', $money($b['amount']), '', '#D6A785')
+      . email_p('It will clear from your statement within a few working days, depending on your bank.', true)
+      . email_p('We hope to welcome you back.<br>Cottage Holidays Blakeney', true);
+    $html = email_shell('Your security hold has been released — ' . $prop, $inner, $accent);
     return smtp_send($b['email'], $name, $subject, $text, $html);
 }
 
