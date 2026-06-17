@@ -168,7 +168,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=13">
+    <link rel="stylesheet" href="app.css?v=14">
     <!-- Speed up the font fetch (and the jsPDF CDN) by opening the connections early. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -362,28 +362,35 @@
     <!-- ================= COTTAGES (the property collection — reached from the header) ================= -->
     <main id="view-cottages" class="page-view container">
         <span class="back-link" onclick="nav('view-main')">← Back to Home</span>
-        <div class="grid grid-3" id="cottages" style="margin-top: 18px;">
-            <a class="card glass-panel" href="/cottages/21a-westgate" onclick="return cottageLink(event,'21a')">
+        <div class="cottages-split">
+          <div class="cottages-list">
+            <div class="grid grid-3" id="cottages" style="margin-top: 18px;">
+              <a class="card glass-panel" data-prop="21a" href="/cottages/21a-westgate" onclick="return cottageLink(event,'21a')">
                 <div class="card-img" data-edit-img="card1-img" style="background-image: url('card-21a.jpg');"></div>
                 <div class="card-title" data-edit-text="card1-title">21A Westgate</div>
                 <div class="card-meta" data-edit-text="card1-meta">Sleeps 6 • Townhouse</div>
                 <div class="card-rating" id="card-rating-21a"></div>
                 <div class="card-price" id="card-price-21a"></div>
             </a>
-            <a class="card glass-panel" href="/cottages/jollyboat" onclick="return cottageLink(event,'jollyboat')">
+              <a class="card glass-panel" data-prop="jollyboat" href="/cottages/jollyboat" onclick="return cottageLink(event,'jollyboat')">
                 <div class="card-img" data-edit-img="card2-img" style="background-image: url('card-jollyboat.jpg');"></div>
                 <div class="card-title" data-edit-text="card2-title">Jollyboat</div>
                 <div class="card-meta" data-edit-text="card2-meta">Sleeps 2 • Romantic</div>
                 <div class="card-rating" id="card-rating-jollyboat"></div>
                 <div class="card-price" id="card-price-jollyboat"></div>
             </a>
-            <a class="card glass-panel" href="/cottages/pimpernel" onclick="return cottageLink(event,'pimpernel')">
+              <a class="card glass-panel" data-prop="pimpernel" href="/cottages/pimpernel" onclick="return cottageLink(event,'pimpernel')">
                 <div class="card-img" data-edit-img="card3-img" style="background-image: url('card-pimpernel.jpg');"></div>
                 <div class="card-title" data-edit-text="card3-title">Pimpernel</div>
                 <div class="card-meta" data-edit-text="card3-meta">Sleeps 4 • Contemporary</div>
                 <div class="card-rating" id="card-rating-pimpernel"></div>
                 <div class="card-price" id="card-price-pimpernel"></div>
             </a>
+            </div>
+          </div>
+          <aside class="cottages-map-pane">
+            <div id="cottages-map" class="cottages-map" aria-label="Map of our cottages in Blakeney"></div>
+          </aside>
         </div>
     </main>
 
@@ -1806,7 +1813,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=25"></script>
+    <script src="app.js?v=26"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
