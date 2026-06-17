@@ -441,6 +441,19 @@
             if (document.body.classList.contains('owner-mode')) return;
             try { apiPost('track.php', { search: info || {} }).catch(() => {}); } catch (e) {}
         }
+        // Site-wide: block pinch-to-zoom of the PAGE for an app-like feel. The viewport
+        // meta + `touch-action: pan-x pan-y` cover Chrome/Android; iOS Safari ignores both,
+        // so we also cancel its pinch "gesture" events and 2-finger zoom — EXCEPT inside a
+        // Leaflet map, where pinch-zoom is the expected behaviour.
+        (function blockPinchZoom() {
+            const inMap = el => !!(el && el.closest && el.closest('.leaflet-container'));
+            ['gesturestart', 'gesturechange', 'gestureend'].forEach(type => {
+                document.addEventListener(type, e => { if (!inMap(e.target)) e.preventDefault(); }, { passive: false });
+            });
+            document.addEventListener('touchmove', e => {
+                if (e.touches && e.touches.length > 1 && !inMap(e.target)) e.preventDefault();
+            }, { passive: false });
+        })();
         // Show/hide the dock Edit button for the given view (customer-facing only).
         function updateDockEditVisibility(viewId) {
             const btn = document.getElementById('dock-edit-btn');
@@ -10947,7 +10960,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'w2y6z3ab';
+            const BUILD = 'x5b8c1de';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
