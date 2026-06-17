@@ -1976,6 +1976,10 @@
         }
 
 /* Settings → Website content: image rows */
+/* Settings index: small section headers that group related folders. */
+.settings-index .settings-section-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1.3px; font-weight: 700; color: var(--text-muted); margin: 22px 6px 8px; }
+.settings-index > .settings-section-label:first-child { margin-top: 2px; }
+
 .content-edit-row { display: flex; gap: 12px; align-items: center; margin-bottom: 14px; max-width: 640px; flex-wrap: wrap; }
 /* Per-cottage Photos rows: thumbnail + label + action buttons that reflow neatly
    on narrow screens (the buttons drop to a full-width row under the thumbnail). */
