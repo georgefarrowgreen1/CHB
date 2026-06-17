@@ -21,6 +21,40 @@ $action = $in['action'] ?? '';
 // page can find and remove all of it in one place.
 const TEST_MARK = '[CHB-TEST]';
 
+// ---- Test guest tracking ---------------------------------------------------
+// The test guest is stored in content('testcentre-guest') as {id, created, email}
+// so we know whether WE created the account (safe to delete on purge) or merely
+// reused the owner's existing guest account (must never be deleted).
+function tc_guest_meta() {
+    try {
+        $v = content_value('testcentre-guest');
+        if (!$v) return null;
+        $d = json_decode($v, true);
+        if (!is_array($d) || empty($d['id'])) return null;
+        $s = db()->prepare('SELECT id, email FROM guests WHERE id = ?'); $s->execute([$d['id']]);
+        $row = $s->fetch();
+        if (!$row) return null;            // account gone — treat as no test guest
+        $d['email'] = $row['email'];
+        return $d;
+    } catch (\Throwable $e) { return null; }
+}
+function tc_set_guest_meta($id, $created, $email) {
+    try { db()->prepare('INSERT INTO content (item_key, item_value, updated_at) VALUES (?,?,NOW())
+                         ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = NOW()')
+        ->execute(['testcentre-guest', json_encode(['id' => (int)$id, 'created' => (bool)$created, 'email' => $email])]); }
+    catch (\Throwable $e) {}
+}
+function tc_clear_guest_meta() { try { db()->prepare('DELETE FROM content WHERE item_key = ?')->execute(['testcentre-guest']); } catch (\Throwable $e) {} }
+// Delete the test guest only if WE created it (never the owner's real account).
+function tc_remove_test_guest() {
+    $meta = tc_guest_meta();
+    if ($meta && !empty($meta['created'])) {
+        try { db()->prepare('DELETE FROM guest_passkeys WHERE guest_id = ?')->execute([$meta['id']]); } catch (\Throwable $e) {}
+        try { db()->prepare('DELETE FROM guests WHERE id = ?')->execute([$meta['id']]); } catch (\Throwable $e) {}
+    }
+    tc_clear_guest_meta();
+}
+
 // ---------------------------------------------------------------------------
 //  Email samples
 // ---------------------------------------------------------------------------
@@ -100,6 +134,76 @@ if ($action === 'send_email') {
 }
 
 // ---------------------------------------------------------------------------
+//  Log in as a test guest — create/reuse a guest tied to the owner email (so
+//  My Stays shows the test booking and its emails reach the owner), then return
+//  a real magic-link URL that signs that guest in.
+// ---------------------------------------------------------------------------
+if ($action === 'guest_login') {
+    $owner = (defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL) ? OWNER_NOTIFY_EMAIL : '';
+    if ($owner === '') json_out(['ok' => false, 'error' => 'Set OWNER_NOTIFY_EMAIL in config.php first — the test guest uses it so its bookings & emails reach you.']);
+    $meta = tc_guest_meta();
+    if (!$meta) {
+        $s = db()->prepare('SELECT id FROM guests WHERE email = ?'); $s->execute([$owner]);
+        $row = $s->fetch();
+        if ($row) { $gid = (int)$row['id']; $created = false; }          // reuse the owner's existing account
+        else {
+            $pw = password_hash(bin2hex(random_bytes(9)), PASSWORD_DEFAULT);
+            db()->prepare('INSERT INTO guests (name, email, password_hash) VALUES (?,?,?)')
+                ->execute(['Test Centre (test guest)', $owner, $pw]);
+            $gid = (int)db()->lastInsertId(); $created = true;
+        }
+        tc_set_guest_meta($gid, $created, $owner);
+        $meta = ['id' => $gid, 'created' => $created, 'email' => $owner];
+    }
+    // Make sure the test booking(s) belong to this guest's email so they appear in My Stays.
+    try { db()->prepare("UPDATE bookings SET email = ? WHERE notes LIKE ? AND (email = '' OR email IS NULL)")->execute([$owner, '%' . TEST_MARK . '%']); } catch (\Throwable $e) {}
+    $ts = time();
+    $base = function_exists('site_base_url') ? site_base_url() : '';
+    $url = $base . 'index.html?mlogin=' . (int)$meta['id'] . '&t=' . $ts . '&k=' . login_token((int)$meta['id'], $ts);
+    json_out(['ok' => true, 'url' => $url, 'email' => $owner]);
+}
+
+// ---------------------------------------------------------------------------
+//  Run a daily automation on demand, scoped to ONE test booking (so it emails
+//  the owner, never real guests). Reuses the exact cron senders.
+// ---------------------------------------------------------------------------
+if ($action === 'run_automation') {
+    require_once __DIR__ . '/mailer.php';
+    require_once __DIR__ . '/pricing.php';
+    $which = $in['which'] ?? ''; $id = (int)($in['id'] ?? 0);
+    $b = null;
+    try { $s = db()->prepare("SELECT * FROM bookings WHERE id = ? AND notes LIKE ?"); $s->execute([$id, '%' . TEST_MARK . '%']); $b = $s->fetch(); } catch (\Throwable $e) {}
+    if (!$b) json_out(['error' => 'Test booking not found — create one first.'], 404);
+    if (empty($b['email'])) json_out(['ok' => false, 'error' => 'The test booking has no email — use “Log in as a test guest” first so it reaches your inbox.']);
+
+    if ($which === 'pre_arrival') {
+        $r = send_arrival_for_booking($b);
+        json_out(['ok' => !empty($r['ok']), 'error' => $r['error'] ?? null]);
+    }
+    if ($which === 'review') {
+        $base = function_exists('site_base_url') ? site_base_url() : '';
+        $r = send_review_request_email([
+            'name' => $b['name'], 'email' => $b['email'], 'prop_key' => $b['prop_key'],
+            'prop_name' => prop_display($b['prop_key'])['name'],
+            'reviewUrl' => $base . 'index.html?review=' . rawurlencode($b['prop_key']),
+            'googleUrl' => trim(content_value('google-review-url')),
+        ]);
+        json_out(['ok' => !empty($r['ok']), 'error' => $r['error'] ?? null]);
+    }
+    if ($which === 'balance_reminder') {
+        if (!function_exists('square_enabled') || !square_enabled()) json_out(['ok' => false, 'error' => 'Square is off — balance reminders need card payments enabled.']);
+        $r = request_booking_payment($b, 'balance', true);
+        json_out(['ok' => !empty($r['ok']), 'error' => $r['error'] ?? null]);
+    }
+    if ($which === 'checkin_push') {
+        require_once __DIR__ . '/webpush.php';
+        try { notify_guest_email($b['email'], 'Your cottage is ready', 'Your arrival map and key code are now available — tap to open.', './?arrival=1'); } catch (\Throwable $e) {}
+        json_out(['ok' => true, 'note' => 'push sent if the test guest has notifications enabled on a device']);
+    }
+    json_out(['error' => 'Unknown automation'], 400);
+}
+
+// ---------------------------------------------------------------------------
 //  Test data — list / delete / purge
 // ---------------------------------------------------------------------------
 function tc_test_bookings() {
@@ -133,9 +237,11 @@ if ($action === 'list_data') {
     }
     unset($b);
     $enquiries = tc_test_enquiries();
+    $gmeta = tc_guest_meta();
+    $guest = $gmeta ? ['id' => (int)$gmeta['id'], 'email' => $gmeta['email'], 'created' => !empty($gmeta['created'])] : null;
     json_out([
-        'ok' => true, 'bookings' => $bookings, 'enquiries' => $enquiries,
-        'count' => count($bookings) + count($enquiries),
+        'ok' => true, 'bookings' => $bookings, 'enquiries' => $enquiries, 'guest' => $guest,
+        'count' => count($bookings) + count($enquiries) + ($guest ? 1 : 0),
         'owner_email' => (defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL) ? OWNER_NOTIFY_EMAIL : '',
         'square' => [
             'enabled'    => function_exists('square_enabled') && square_enabled(),
@@ -149,6 +255,7 @@ if ($action === 'delete_data') {
     if ($id <= 0) json_out(['error' => 'Missing id'], 400);
     if ($type === 'booking')      tc_delete_booking($id);
     else if ($type === 'enquiry') db()->prepare("DELETE FROM enquiries WHERE id = ? AND message LIKE ?")->execute([$id, '%' . TEST_MARK . '%']);
+    else if ($type === 'guest')   tc_remove_test_guest();
     else json_out(['error' => 'Unknown type'], 400);
     json_out(['ok' => true]);
 }
@@ -156,6 +263,7 @@ if ($action === 'delete_data') {
 if ($action === 'purge_data') {
     foreach (tc_test_bookings() as $b) tc_delete_booking((int)$b['id']);
     try { db()->prepare("DELETE FROM enquiries WHERE message LIKE ?")->execute(['%' . TEST_MARK . '%']); } catch (\Throwable $e) {}
+    tc_remove_test_guest();
     json_out(['ok' => true]);
 }
 
