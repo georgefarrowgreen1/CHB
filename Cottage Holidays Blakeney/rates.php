@@ -22,6 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $r['child_rate'] = (float)$r['child_rate'];
         $r['booking_fee'] = (float)$r['booking_fee'];
         $r['transaction_pct'] = (float)$r['transaction_pct'];
+        if (array_key_exists('weekend_pct', $r)) $r['weekend_pct'] = (float)$r['weekend_pct'];
         if (array_key_exists('sort_order', $r)) $r['sort_order'] = (int)$r['sort_order'];
         // Surface the archived flag plainly so the front end can hide archived
         // cottages from the public site but still let the admin restore them.
@@ -125,9 +126,9 @@ if (($in['action'] ?? '') === 'save') {
     $propKey = clean($in['prop_key'] ?? '');
     if (!get_rate_exists($propKey)) json_out(['error' => 'Unknown property'], 400);
 
-    $numeric = ['couple_rate','extra_adult_rate','child_rate','booking_fee','transaction_pct'];
+    $numeric = ['couple_rate','extra_adult_rate','child_rate','booking_fee','transaction_pct','weekend_pct'];
     $ints    = ['sort_order','max_adults','max_children','max_total'];
-    $text    = ['address','name','slug','accent'];
+    $text    = ['address','name','slug','accent','weekend_days'];
     $set = []; $vals = [];
     foreach (array_merge($numeric, $ints, $text) as $f) {
         if (!array_key_exists($f, $in)) continue;

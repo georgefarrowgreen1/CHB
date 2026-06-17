@@ -30,6 +30,23 @@ function couple_rate_for_night($date, $baseRate, $seasons) {
     return (float)$baseRate;
 }
 
+// Weekend uplift % that applies on a given night, from a properties row.
+// weekend_days is a CSV of day-of-week numbers (0=Sun … 6=Sat); default Fri,Sat.
+// MUST mirror weekendPctFor() in app.js exactly (lockstep, guarded by the tests).
+function weekend_pct_for_night($date, $rate) {
+    $pct = (float)($rate['weekend_pct'] ?? 0);
+    if ($pct <= 0) return 0.0;
+    $days = array_map('intval', array_filter(explode(',', (string)($rate['weekend_days'] ?? '5,6')), 'strlen'));
+    return in_array((int)date('w', strtotime($date)), $days, true) ? $pct : 0.0;
+}
+
+// The full nightly rate for a date: season/base, then weekend uplift if applicable.
+function nightly_rate_for($date, $rate, $seasons) {
+    $base = couple_rate_for_night($date, $rate['couple_rate'], $seasons);
+    $pct = weekend_pct_for_night($date, $rate);
+    return $pct > 0 ? $base * (1 + $pct / 100) : $base;
+}
+
 // $rate is a properties row. Returns the full breakdown.
 // $depositOverride: optional per-booking damages deposit (null = use property standard).
 // $seasons: optional pre-fetched seasonal rates (null = fetch from DB).
@@ -48,7 +65,7 @@ function price_breakdown($rate, $adults, $children, $checkIn, $checkOut, $deposi
     $nightly = 0.0;
     for ($i = 0; $i < $nights; $i++) {
         $d = date('Y-m-d', strtotime($checkIn . ' +' . $i . ' days'));
-        $nightly += couple_rate_for_night($d, $rate['couple_rate'], $seasons) + $extrasPerNight;
+        $nightly += nightly_rate_for($d, $rate, $seasons) + $extrasPerNight;
     }
     $nightly = round($nightly, 2);
     // Average per-night figure (for display and the agreed snapshot).

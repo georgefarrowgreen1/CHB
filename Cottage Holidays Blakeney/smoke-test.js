@@ -108,6 +108,17 @@ if (typeof pb !== 'function') {
     const p2 = pb('pimpernel', 3, 0, '2026-07-01', '2026-07-03'); // 2 nights, 1 extra adult @ 42
     check('extra adult adds 42/night (pimpernel 2 nights)', approx(p2.nightly, (120 + 42) * 2));
 }
+// Weekend uplift — tested via the pure helper (propertyRates isn't reachable in
+// the shim). MUST match weekend_pct_for_night()/nightly_rate_for() in pricing.php.
+const nrf = get('nightlyRateFor');
+if (typeof nrf !== 'function') { fail('nightlyRateFor is not defined'); }
+else {
+    const wk = { coupleRate: 100, weekendPct: 20, weekendDays: '5,6' };
+    check('weekend +20% on a Friday (2026-01-02)', approx(nrf('2026-01-02', wk, []), 120));
+    check('weekend +20% on a Saturday (2026-01-03)', approx(nrf('2026-01-03', wk, []), 120));
+    check('no uplift on a Monday (2026-01-05)', approx(nrf('2026-01-05', wk, []), 100));
+    check('no uplift when weekendPct = 0', approx(nrf('2026-01-03', { coupleRate: 100, weekendPct: 0 }, []), 100));
+}
 
 console.log('\n== 3. UK postcode validation ==');
 const hp = get('hasUkPostcode');
