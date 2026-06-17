@@ -345,6 +345,9 @@
         // "Edit text & photos" button. The button is hidden on the admin tools (Home,
         // Reviews, Money, Settings) so it only appears where there's site content to edit.
         const CUSTOMER_FACING_VIEWS = ['view-main', 'view-cottages', 'view-21a'];
+        // The only views an admin ever sees — everything else is the customer site,
+        // which a signed-in admin has no use for (nav() bounces it to the back office).
+        const ADMIN_VIEWS = ['view-backoffice', 'view-settings', 'view-accounts'];
         // First-party, cookie-free page-view ping (see track.php). Fire-and-forget;
         // never blocks the UI and never counts the owner's own browsing.
         function trackView(viewId, prop) {
@@ -362,6 +365,9 @@
         }
 
         function nav(viewId, anchorId = null) {
+            // A signed-in admin has no customer-facing site — send any such view to
+            // the back office (covers deep links, the address bar, stray calls).
+            if (isAuthenticated && !ADMIN_VIEWS.includes(viewId)) viewId = 'view-backoffice';
             const target = document.getElementById(viewId);
             if (!target) {
                 console.warn(`nav(): unknown view "${viewId}"`);
@@ -920,7 +926,12 @@
             // back-office (🔩) button, so there's nothing per-button to show/hide here.
             document.body.classList.toggle('owner-mode', isAuthenticated);
             // Keep the floating admin dock's enquiry count live whenever signed in.
-            if (isAuthenticated) { try { refreshOwnerHomeBadges(); } catch (e) {} }
+            if (isAuthenticated) {
+                try { refreshOwnerHomeBadges(); } catch (e) {}
+                // No customer site for admins — if a reload left them on the public
+                // hero (or any customer view), drop them into the back office.
+                try { const av = document.querySelector('.page-view.active'); if (!av || !ADMIN_VIEWS.includes(av.id)) nav('view-backoffice'); } catch (e) {}
+            }
         }
 
         // ---- Owner navigation helpers ----
@@ -9826,7 +9837,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'hn9m4s7a';
+            const BUILD = 'io1n5t8b';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
