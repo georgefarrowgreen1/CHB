@@ -99,6 +99,38 @@ RewriteRule (?i)^uploads/.*\.(php|php[0-9]?|phtml|phps|pht|pl|py|cgi|sh|lua|asp|
     </FilesMatch>
 </IfModule>
 
+# ---- Compress text assets (CSS / JS / JSON / SVG) ----
+# The host already gzips HTML, but NOT CSS/JS — so app.js (~750KB) and app.css
+# (~155KB) were shipping uncompressed. Enabling DEFLATE for these MIME types cuts
+# them ~75-80% on the wire, the single biggest first-load saving. Brotli is used
+# when available (smaller still); both are no-ops if the module is absent.
+<IfModule mod_deflate.c>
+    AddOutputFilterByType DEFLATE text/html text/plain text/xml text/css
+    AddOutputFilterByType DEFLATE text/javascript application/javascript application/x-javascript
+    AddOutputFilterByType DEFLATE application/json application/manifest+json
+    AddOutputFilterByType DEFLATE image/svg+xml application/xml application/rss+xml
+</IfModule>
+<IfModule mod_brotli.c>
+    AddOutputFilterByType BROTLI_COMPRESS text/html text/css text/javascript application/javascript application/json image/svg+xml
+</IfModule>
+
+# ---- Long-cache versioned static assets ----
+# CSS/JS/fonts are cache-busted with ?v=… (and the service worker), so they can be
+# cached effectively forever. This turns repeat visits into instant, no-network
+# loads. We also drop the cookie-keyed Vary the host adds so caches store them.
+<IfModule mod_headers.c>
+    <FilesMatch "(?i)\.(css|js|mjs|woff2?|ttf|otf|eot)$">
+        Header set Cache-Control "public, max-age=31536000, immutable"
+        Header unset Vary
+        Header unset Set-Cookie
+    </FilesMatch>
+    # EXCEPTION: the service worker must never be long-cached, or browsers won't
+    # pick up new releases. Keep it revalidated. (This block runs last, so it wins.)
+    <FilesMatch "(?i)^sw\.js$">
+        Header set Cache-Control "no-cache"
+    </FilesMatch>
+</IfModule>
+
 # ---- Don't list directory contents ----
 Options -Indexes
 
