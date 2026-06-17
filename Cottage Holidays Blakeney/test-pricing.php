@@ -38,6 +38,13 @@ $ratePimp = ['prop_key' => 'pimpernel', 'couple_rate' => 120, 'extra_adult_rate'
 $p2 = price_breakdown($ratePimp, 3, 0, '2026-07-01', '2026-07-03', null, []);
 chk('Pimpernel extra adult adds 42/night (2 nights) => nightly = 324', approxEq($p2['nightly'], (120 + 42) * 2));
 
+// Weekend uplift: base 100, +20% on Fri(5)/Sat(6). 2026-01-02 is Fri, 01-03 Sat.
+$rateWk = ['prop_key' => 'wk', 'couple_rate' => 100, 'extra_adult_rate' => 0, 'child_rate' => 0, 'booking_fee' => 0, 'transaction_pct' => 0, 'weekend_pct' => 20, 'weekend_days' => '5,6'];
+$pw = price_breakdown($rateWk, 2, 0, '2026-01-02', '2026-01-04', null, []);   // Fri + Sat = 2 weekend nights
+chk('weekend +20%: Fri+Sat nightly = 240 (120 x 2)', approxEq($pw['nightly'], 240));
+$pw2 = price_breakdown($rateWk, 2, 0, '2026-01-05', '2026-01-07', null, []);  // Mon + Tue = no uplift
+chk('weekend rule leaves weekdays at base = 200', approxEq($pw2['nightly'], 200));
+
 echo "\n";
 if ($fail) { fwrite(STDERR, "$fail pricing check(s) FAILED — JS and PHP pricing may have diverged.\n"); exit(1); }
 echo "All pricing parity checks passed.\n";

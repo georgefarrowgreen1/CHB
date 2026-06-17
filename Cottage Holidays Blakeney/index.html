@@ -836,6 +836,10 @@
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Payments</span><span class="settings-row-sub">Card payments (Square) &amp; your deposit policy</span></span><span class="settings-row-chev">›</span>
                 </button>
+                <button class="settings-row" onclick="settingsOpen('pricingcoach')">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8"/><path d="M21 7v5h-5"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Pricing coach</span><span class="settings-row-sub">Smart pricing ideas from your bookings &amp; demand</span></span><span class="settings-row-chev">›</span>
+                </button>
             </div>
 
             <div class="settings-section-label">Website</div>
@@ -1031,6 +1035,11 @@
                         </div>
                     </div>
                 </div>
+            </div>
+
+            <!-- Pricing coach (data-driven suggestions; apply is opt-in) -->
+            <div class="settings-sec" id="sec-pricingcoach" style="display:none;">
+                <div id="pricingcoach-body"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
             </div>
 
             <!-- Reviews (moderation) -->
@@ -1828,7 +1837,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=28"></script>
+    <script src="app.js?v=29"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

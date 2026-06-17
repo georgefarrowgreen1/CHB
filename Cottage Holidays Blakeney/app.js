@@ -1088,7 +1088,7 @@
         }
 
         // ---- Settings router: Apple-style index → drill-down sub-pages ----
-        const SETTINGS_TITLES = { enquiries: 'Enquiries', messages: 'Guest messages', notify: 'Notifications', host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Cottages', calendar: 'Calendar sync', cancel: 'Cancellation policy', payments: 'Payments', guests: 'Guest accounts', analytics: 'Analytics', waitlist: 'Waitlist', newsletter: 'Newsletter', experiences: 'Experiences', content: 'Home page & menu', photos: 'Guest photos', apis: 'API keys', diagnostics: 'System check', testcentre: 'Test centre' };
+        const SETTINGS_TITLES = { enquiries: 'Enquiries', messages: 'Guest messages', notify: 'Notifications', host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Cottages', calendar: 'Calendar sync', cancel: 'Cancellation policy', pricingcoach: 'Pricing coach', payments: 'Payments', guests: 'Guest accounts', analytics: 'Analytics', waitlist: 'Waitlist', newsletter: 'Newsletter', experiences: 'Experiences', content: 'Home page & menu', photos: 'Guest photos', apis: 'API keys', diagnostics: 'System check', testcentre: 'Test centre' };
         // Open the separate staging sandbox (where all testing now happens) in a new tab.
         const STAGING_URL = 'https://staging.cottageholidaysblakeney.co.uk/';
         function openStagingSite() { window.open(STAGING_URL, '_blank', 'noopener'); }
@@ -1134,9 +1134,54 @@
             else if (section === 'accom') renderAccomList();
             else if (section === 'calendar') renderCalendarList();
             else if (section === 'cancel') renderCancelList();
+            else if (section === 'pricingcoach') renderPricingCoach();
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
         function settingsBack() { if (settingsBackTarget) settingsBackTarget(); else settingsShowIndex(); }
+
+        // ---- Settings → Pricing coach (data-driven suggestions; apply is opt-in) ----
+        async function renderPricingCoach() {
+            const wrap = document.getElementById('pricingcoach-body');
+            if (!wrap) return;
+            wrap.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">Analysing your bookings &amp; demand…</p>`;
+            let d;
+            try { d = await apiGet('pricing-suggest.php?action=suggest'); }
+            catch (e) { wrap.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">Couldn't load suggestions${e && e.message ? ' (' + escapeHtml(e.message) + ')' : ''}.</p>`; return; }
+            const sugg = Array.isArray(d.suggestions) ? d.suggestions : [];
+            const sig = d.signals || {};
+            const intro = `<p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 14px;line-height:1.55;">Pricing ideas from <strong>your own</strong> data — calendar occupancy, weekend demand, near-term pace, orphan gaps and what guests search for. These are advice: nothing changes until you tap <strong>Apply</strong>, and your prices stay exactly as set otherwise.</p>`;
+            const since = sig.searches60 ? `<p style="font-size:0.78rem;color:var(--text-muted);margin:-4px 0 16px;">Demand from ${sig.searches60} search${sig.searches60 === 1 ? '' : 'es'} in the last 60 days${sig.noResult60 ? ` · ${sig.noResult60} found nothing free` : ''}.</p>` : '';
+            if (!sugg.length) {
+                wrap.innerHTML = intro + since + `<div class="accounts-stat" style="max-width:640px;"><p style="font-size:0.9rem;color:var(--text-light);margin:0;">Nothing to suggest right now — your pricing looks well matched to current demand. Check back as bookings and searches build up.</p></div>`;
+                return;
+            }
+            const badge = (op) => op
+                ? `<span style="background:rgba(76,175,80,0.18);color:#7FD68A;font-size:0.66rem;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;border-radius:999px;padding:3px 9px;white-space:nowrap;">Opportunity</span>`
+                : `<span style="background:rgba(255,255,255,0.1);color:var(--text-muted);font-size:0.66rem;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;border-radius:999px;padding:3px 9px;white-space:nowrap;">Insight</span>`;
+            const card = (s) => {
+                const op = s.severity === 'opportunity';
+                const applyBtn = s.apply
+                    ? `<button class="btn-sm btn-edit" onclick="applyPricingSuggestion('${s.prop_key}','${s.apply.field}',${Number(s.apply.value)},'${s.id}')">Apply${s.apply.field === 'weekendPct' ? ' — set ' + Number(s.apply.value) + '% weekend' : ''}</button>`
+                    : '';
+                return `<div class="accounts-stat" id="psug-${escapeHtml(s.id)}" style="max-width:640px;margin-bottom:12px;">
+                    <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap;">
+                        <strong style="font-size:0.98rem;">${escapeHtml(s.title)}</strong>${badge(op)}
+                    </div>
+                    <p style="font-size:0.86rem;color:var(--text-muted);margin:8px 0 0;line-height:1.5;">${escapeHtml(s.detail)}</p>
+                    ${applyBtn ? `<div style="margin-top:12px;">${applyBtn}</div>` : ''}
+                </div>`;
+            };
+            wrap.innerHTML = intro + since + sugg.map(card).join('');
+        }
+        async function applyPricingSuggestion(propKey, field, value, id) {
+            if (field !== 'weekendPct' || !propKey) return;
+            try {
+                await updateRate(propKey, 'weekendPct', value);   // existing validated save path
+                const el = document.getElementById('psug-' + id);
+                if (el) el.innerHTML = `<p style="font-size:0.92rem;color:#7FD68A;margin:0;">✓ Applied — weekend uplift set to ${Number(value)}% for ${escapeHtml((propertyMeta[propKey] || {}).name || propKey)}. Adjust any time in Cottages → ${escapeHtml((propertyMeta[propKey] || {}).name || propKey)} → Rates.</p>`;
+                try { toast('Weekend pricing updated.'); } catch (e) {}
+            } catch (e) { glassAlert("Couldn't apply: " + e.message); }
+        }
 
         // ---- Settings → Website content (form-based editor for the global homepage /
         // nav text + images that used to be edited inline via edit-mode). Reads each
@@ -5647,6 +5692,8 @@
                         childRate: parseFloat(p.child_rate),
                         damagesDeposit: parseFloat(p.booking_fee),
                         transactionPct: parseFloat(p.transaction_pct),
+                        weekendPct: parseFloat(p.weekend_pct) || 0,
+                        weekendDays: p.weekend_days || '5,6',
                         address: p.address || '',
                         // Booking rules aren't stored in the rates table; carry the
                         // defaults here so loadContent can layer any saved overrides on top.
@@ -5697,6 +5744,22 @@
             }
             return baseRate;
         }
+        // Weekend uplift % for a night, from a rate object. weekendDays is a CSV of
+        // day-of-week numbers (0=Sun … 6=Sat); default Fri,Sat. MUST mirror
+        // weekend_pct_for_night() in pricing.php exactly (lockstep, tested).
+        function weekendPctFor(dateStr, r) {
+            const pct = parseFloat(r && r.weekendPct) || 0;
+            if (pct <= 0) return 0;
+            const days = String((r && r.weekendDays) || '5,6').split(',').map(s => parseInt(s, 10));
+            const dow = new Date(dateStr + 'T00:00:00Z').getUTCDay();
+            return days.indexOf(dow) !== -1 ? pct : 0;
+        }
+        // Full nightly rate for a date: season/base, then the weekend uplift if any.
+        function nightlyRateFor(dateStr, r, seasons) {
+            const base = coupleRateForNight(dateStr, (r && r.coupleRate) || 0, seasons);
+            const pct = weekendPctFor(dateStr, r);
+            return pct > 0 ? base * (1 + pct / 100) : base;
+        }
 
         function priceBreakdown(propKey, adults, children, checkIn, checkOut, depositOverride) {
             const r = propertyRates[propKey] || defaultRates[propKey] || { coupleRate:0, extraAdultRate:0, childRate:0, damagesDeposit:0, transactionPct:0 };
@@ -5710,7 +5773,7 @@
             const t = new Date(checkIn + 'T00:00:00Z').getTime();
             for (let i = 0; i < nights; i++) {
                 const d = new Date(t + i * 86400000).toISOString().slice(0, 10);
-                nightly += coupleRateForNight(d, r.coupleRate, seasons) + extrasPerNight;
+                nightly += nightlyRateFor(d, r, seasons) + extrasPerNight;
             }
             nightly = Math.round(nightly * 100) / 100;
             const perNight = nights > 0 ? Math.round((nightly / nights) * 100) / 100
@@ -7076,6 +7139,7 @@
                     <div class="rate-field"><label>Child / night (£)</label><input type="number" min="0" step="1" value="${r.childRate}" onchange="updateRate('${k}','childRate',this.value)"></div>
                     <div class="rate-field"><label>Standard damages deposit (£)</label><input type="number" min="0" step="5" value="${r.damagesDeposit}" onchange="updateRate('${k}','damagesDeposit',this.value)"></div>
                     <div class="rate-field"><label>Transaction fee (%)</label><input type="number" min="0" step="0.1" value="${r.transactionPct}" onchange="updateRate('${k}','transactionPct',this.value)"></div>
+                    <div class="rate-field"><label>Weekend uplift (%) — Fri &amp; Sat <span style="opacity:0.7;">(0 = off)</span></label><input type="number" min="0" max="200" step="1" value="${r.weekendPct || 0}" onchange="updateRate('${k}','weekendPct',this.value)" placeholder="e.g. 20"></div>
                     <div class="rate-field"><label>Airbnb/OTA price for comparison (£/night, optional)</label><input type="number" min="0" step="1" value="${siteContent['ota-price-'+k] != null ? siteContent['ota-price-'+k] : ''}" placeholder="e.g. 165" onchange="saveLocalContent('ota-price-${k}', this.value)"></div>
                     <p style="font-size:0.72rem;color:var(--text-muted);margin:4px 0 0;">If set and higher than your couple rate, a "Save £X/night booking direct" badge shows on the cottage page.</p>`;
                 case 'house': return `
@@ -8369,7 +8433,7 @@
         const RATE_FIELD_MAP = {
             coupleRate: 'couple_rate', extraAdultRate: 'extra_adult_rate',
             childRate: 'child_rate', damagesDeposit: 'booking_fee',
-            transactionPct: 'transaction_pct', address: 'address'
+            transactionPct: 'transaction_pct', weekendPct: 'weekend_pct', address: 'address'
         };
         async function saveRateField(propKey, field, value) {
             const col = RATE_FIELD_MAP[field];
@@ -8802,7 +8866,7 @@
                 else cls += taken ? 'taken' : 'free';
                 let priceTag = '';
                 if (!taken && ds >= todayStr) {
-                    const nightly = coupleRateForNight(ds, rate.coupleRate, seasons);
+                    const nightly = nightlyRateFor(ds, rate, seasons);
                     if (nightly > 0) priceTag = `<span class="ac-price">£${Math.round(nightly)}</span>`;
                 }
                 html += `<div class="${cls}"><span class="ac-day">${d}</span>${priceTag}</div>`;
@@ -10960,7 +11024,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'x5b8c1de';
+            const BUILD = 'y3c7d2ef';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
