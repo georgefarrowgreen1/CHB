@@ -455,7 +455,9 @@
         function applySavedTheme() {
             let pref = null;
             try { pref = localStorage.getItem('chb-theme'); } catch (e) {}
-            if (pref === 'light') document.body.classList.add('light-mode');
+            // Admins always use dark mode (their toggle is hidden). The saved
+            // preference is left untouched and re-applied when they sign out.
+            if (pref === 'light' && !isAuthenticated) document.body.classList.add('light-mode');
             else document.body.classList.remove('light-mode');
             setThemeLabel();
         }
@@ -925,6 +927,8 @@
             // 'owner-mode' body class). The footer keeps only the theme toggle and the
             // back-office (🔩) button, so there's nothing per-button to show/hide here.
             document.body.classList.toggle('owner-mode', isAuthenticated);
+            // Force dark mode for admins (and restore the saved theme on sign-out).
+            try { applySavedTheme(); } catch (e) {}
             // Keep the floating admin dock's enquiry count live whenever signed in.
             if (isAuthenticated) {
                 try { refreshOwnerHomeBadges(); } catch (e) {}
@@ -9837,7 +9841,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'io1n5t8b';
+            const BUILD = 'jp2o6u9c';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
