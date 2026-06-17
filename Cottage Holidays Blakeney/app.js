@@ -9740,8 +9740,10 @@
                         const bar = document.createElement('div');
                         bar.className = `booking-bar bar-${propKey} ext-block`;
                         const arrow = (dateStr === bl.checkIn) ? '▶' : '·';
-                        bar.innerHTML = `${IC_LOCK}<span class="bb-code">${meta.short}</span><span class="bb-name"> ${arrow} EXTERNAL</span>`;
-                        bar.title = `${meta.name} — external booking (${bl.checkIn} to ${bl.checkOut}). Click for details.`;
+                        const srcName = bl.source === 'airbnb' ? 'Airbnb' : bl.source === 'vrbo' ? 'Vrbo'
+                            : (bl.source ? bl.source.charAt(0).toUpperCase() + bl.source.slice(1) : 'External');
+                        bar.innerHTML = `${IC_LOCK}<span class="bb-code">${meta.short}</span><span class="bb-name"> ${arrow} ${escapeHtml(srcName.toUpperCase())}</span>`;
+                        bar.title = `${meta.name} — ${srcName} booking (${bl.checkIn} to ${bl.checkOut}). Click for details.`;
                         bar.onclick = (e) => { e.stopPropagation(); showBlockDetails(propKey, bl); };
                         dayBars.push(bar);
                     });
@@ -11024,7 +11026,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'z6f1g4hj';
+            const BUILD = 'a7g2h5kl';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
