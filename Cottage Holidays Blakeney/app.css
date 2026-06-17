@@ -2,7 +2,7 @@
         * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
         /* Inline line-icons (replace emoji). Size to the surrounding text. */
         .ic { width: 1em; height: 1em; display: inline-block; vertical-align: -0.16em; flex-shrink: 0; }
-        html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; scroll-behavior: smooth; }
+        html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; scroll-behavior: smooth; touch-action: pan-x pan-y; }
         img, svg, video { max-width: 100%; height: auto; display: block; }
         button, input, select, textarea { font-family: inherit; font-size: inherit; }
         /* Consistent, on-brand keyboard focus ring across interactive elements
