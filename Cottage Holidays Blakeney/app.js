@@ -352,6 +352,19 @@
         // experience even though an admin is signed in (owner-mode + the admin bounce
         // are suppressed). Read-only — used by the Test centre to view the live site.
         const PREVIEW_MODE = /[?&]preview=1\b/.test(location.search || '');
+        // The staging site runs the same code from a staging.<domain> host with its
+        // OWN database + sandbox Square/email. Show a persistent banner there so it's
+        // never mistaken for the live site. (Search engines are blocked via .htaccess.)
+        const IS_STAGING = /(^|\.)staging\./i.test(location.hostname || '');
+        function injectStagingBanner() {
+            if (!IS_STAGING || document.getElementById('staging-banner')) return;
+            const bar = document.createElement('div');
+            bar.id = 'staging-banner';
+            bar.textContent = 'STAGING — test environment. This is a separate sandbox; data and payments here do not affect the live site.';
+            document.body.appendChild(bar);
+            document.body.classList.add('has-staging-banner');
+        }
+        if (IS_STAGING) { try { document.addEventListener('DOMContentLoaded', injectStagingBanner); } catch (e) {} }
         // True for a booking the Test centre created (tagged in its notes).
         function isTestBooking(b) { return !!(b && typeof b.notes === 'string' && b.notes.indexOf('[CHB-TEST]') !== -1); }
         // First-party, cookie-free page-view ping (see track.php). Fire-and-forget;
@@ -10361,7 +10374,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'c9u6z4xr';
+            const BUILD = 'd1v7a5ys';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;

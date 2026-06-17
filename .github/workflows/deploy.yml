@@ -119,3 +119,77 @@ jobs:
           curl -fsS --max-time 30 "$URL/owner-digest.php?cron=$APP_SECRET" || echo "owner-digest ping failed (non-fatal)"
           echo "Tide-timed in-stay push (once/day per mid-stay guest)…"
           curl -fsS --max-time 30 "$URL/tide-push.php?cron=$APP_SECRET" || echo "tide-push ping failed (non-fatal)"
+
+  # ---- Staging mirror (optional) -------------------------------------------
+  # Deploys the SAME code to a separate staging site (e.g. staging.<domain>) that
+  # has its OWN database + config.php (sandbox Square/email). This gives a true
+  # isolated test environment. It is entirely OPT-IN: until the STAGING_SFTP_*
+  # secrets are set the job logs "not configured" and succeeds, so nothing breaks.
+  # Required secrets (Settings → Secrets → Actions) — see SETUP-STAGING.md:
+  #   STAGING_SFTP_HOST / STAGING_SFTP_USER / STAGING_SFTP_PASS
+  #   STAGING_REMOTE_PATH (the staging subdomain's web root) / STAGING_SFTP_PORT (opt)
+  #   STAGING_APP_SECRET (matches staging config.php) / STAGING_URL (opt)
+  deploy-staging:
+    runs-on: ubuntu-latest
+    needs: deploy
+    steps:
+      - name: Is staging configured?
+        id: chk
+        env:
+          STG_HOST: ${{ secrets.STAGING_SFTP_HOST }}
+        run: |
+          if [ -z "$STG_HOST" ]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "Staging not configured (STAGING_SFTP_HOST unset) — skipping. See SETUP-STAGING.md."
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.chk.outputs.configured == 'true'
+
+      - name: Stage files for upload
+        if: steps.chk.outputs.configured == 'true'
+        run: |
+          set -e
+          SRC="Cottage Holidays Blakeney"
+          OUT="deploy"
+          rm -rf "$OUT"; mkdir -p "$OUT"
+          cp -r "$SRC"/. "$OUT"/
+          [ -f "$OUT/htaccess.txt" ] && mv -f "$OUT/htaccess.txt" "$OUT/.htaccess"
+          rm -f "$OUT/setup.php" "$OUT/health.php"
+          rm -f "$OUT/config.php"          # staging keeps its OWN config.php (sandbox DB + sandbox Square/email)
+          rm -f "$OUT/smoke-test.js" "$OUT/test-pricing.php"
+          rm -f "$OUT"/*.md
+          rm -f "$OUT"/index.backup-*.html
+          if [ -d "$OUT/uploads" ]; then
+            find "$OUT/uploads" -type f ! -name '.htaccess' ! -name 'README.txt' -delete
+          fi
+
+      - name: Upload to staging via SFTP (lftp mirror)
+        if: steps.chk.outputs.configured == 'true'
+        env:
+          HOST: ${{ secrets.STAGING_SFTP_HOST }}
+          USERNAME: ${{ secrets.STAGING_SFTP_USER }}
+          LFTP_PASSWORD: ${{ secrets.STAGING_SFTP_PASS }}
+          PORT: ${{ secrets.STAGING_SFTP_PORT }}
+          REMOTE: ${{ secrets.STAGING_REMOTE_PATH }}
+        run: |
+          set -e
+          sudo apt-get update -qq && sudo apt-get install -y lftp
+          PORT="${PORT:-22}"
+          REMOTE="${REMOTE:-/}"
+          lftp -u "$USERNAME" --env-password "sftp://$HOST:$PORT" -e "set sftp:auto-confirm yes; set net:max-retries 3; set net:reconnect-interval-base 5; mirror -R --verbose --no-perms --parallel=2 ./deploy/ \"$REMOTE\"; bye"
+          echo "Staging deploy complete."
+
+      # Staging post-deploy is migrate-ONLY: never run the owner-notify / digest /
+      # nudge pings from staging (they'd email/push for real).
+      - name: Post-deploy (migrate staging only)
+        if: ${{ steps.chk.outputs.configured == 'true' && success() }}
+        env:
+          APP_SECRET: ${{ secrets.STAGING_APP_SECRET }}
+          SITE_URL: ${{ secrets.STAGING_URL }}
+        run: |
+          if [ -z "$APP_SECRET" ] || [ -z "$SITE_URL" ]; then echo "STAGING_APP_SECRET/STAGING_URL unset — skipping staging migrate."; exit 0; fi
+          echo "Applying migrations on staging…"
+          curl -fsS --max-time 60 "$SITE_URL/migrate.php?cron=$APP_SECRET" || echo "staging migrate ping failed (non-fatal)"
