@@ -7965,6 +7965,10 @@
         }
         async function loadGuestReviewModeration() {
             initGoogleReviewUrl();
+            // Set up the "import reviews from Airbnb & other sites" tools (always —
+            // independent of whether there are on-site reviews to moderate).
+            fillReviewImportControls();
+            renderReviewsEditor();
             const wrap = document.getElementById('guest-review-moderation');
             if (!wrap) return;
             let rows = [];
@@ -8015,6 +8019,71 @@
         function addReviewRow() {
             const wrap = document.getElementById('reviews-editor');
             if (wrap) wrap.insertAdjacentHTML('beforeend', reviewRowHtml(null));
+        }
+        // Populate the bulk-import dropdowns (cottages are dynamic, so build at open).
+        // Source defaults to Airbnb — the common case for a one-time import.
+        function fillReviewImportControls() {
+            const propSel = document.getElementById('bulk-rev-prop');
+            if (propSel) propSel.innerHTML = '<option value="">(no cottage)</option>'
+                + Object.keys(propertyMeta).map(k => `<option value="${k}">${escapeHtml(propertyMeta[k].name)}</option>`).join('');
+            const srcSel = document.getElementById('bulk-rev-source');
+            if (srcSel) srcSel.innerHTML = ['Airbnb', 'Vrbo', 'Booking.com', 'Google', 'Email', 'Guestbook', '']
+                .map(s => `<option value="${s}" ${s === 'Airbnb' ? 'selected' : ''}>${s || '(no source)'}</option>`).join('');
+            const starSel = document.getElementById('bulk-rev-stars');
+            if (starSel) starSel.innerHTML = [5, 4, 3].map(n => `<option value="${n}">${'★'.repeat(n)}</option>`).join('');
+        }
+        // One-time bulk import: parse pasted reviews (one per blank-line-separated block)
+        // into editable rows in #reviews-editor. Forgiving by design — the owner reviews
+        // every row before saving, so we favour "add something sensible" over strictness.
+        //   • A line that's only ★ chars or "5 stars" / "5/5" sets that review's rating.
+        //   • A standalone date / "2 weeks ago" / "Reviewed…" line is dropped.
+        //   • First remaining line → name, the rest → the review text.
+        //   • A single-line block becomes the review text with a blank name to fill in.
+        function bulkImportReviews() {
+            const ta = document.getElementById('bulk-rev-text');
+            const raw = (ta && ta.value || '').trim();
+            if (!raw) { glassAlert('Paste your reviews into the box first.'); return; }
+            const prop = (document.getElementById('bulk-rev-prop') || {}).value || '';
+            const source = (document.getElementById('bulk-rev-source') || {}).value || '';
+            const defStars = parseInt((document.getElementById('bulk-rev-stars') || {}).value) || 5;
+            const wrap = document.getElementById('reviews-editor');
+            if (!wrap) return;
+
+            const isStarLine = l => /^[★☆\s]*★[★☆\s]*$/.test(l) || /^\s*[1-5]\s*(?:\/\s*5|stars?|★)/i.test(l);
+            const starsFrom = l => { const c = (l.match(/★/g) || []).length; if (c) return c; const m = l.match(/[1-5]/); return m ? parseInt(m[0]) : defStars; };
+            // A month only counts as a DATE when paired with a number (year or day) — so
+            // real names like "Mark", "May", "April", "June" or "Janet" are NOT dropped.
+            const MONTH = '(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
+            const monthYear = new RegExp('^\\s*' + MONTH + '\\.?\\s+\\d{4}\\s*$', 'i');                       // "October 2024"
+            const dayMonth = new RegExp('^\\s*\\d{1,2}(?:st|nd|rd|th)?\\s+' + MONTH + '(?:\\.?\\s+\\d{4})?\\s*$', 'i'); // "12 May", "2 March 2024"
+            const isMetaLine = l =>
+                monthYear.test(l) || dayMonth.test(l)
+                || /^\s*\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4}\s*$/.test(l)                                       // 12/05/2024
+                || /\b(?:days?|weeks?|months?|years?)\s+ago\b/i.test(l)                                        // "2 weeks ago"
+                || /^\s*(?:reviewed|stayed|response from)\b/i.test(l);                                          // dashboard chrome
+
+            const blocks = raw.split(/\n\s*\n+/).map(b => b.trim()).filter(Boolean);
+            let added = 0;
+            for (const block of blocks) {
+                let lines = block.split('\n').map(l => l.trim()).filter(Boolean);
+                let stars = defStars;
+                const si = lines.findIndex(isStarLine);
+                if (si !== -1) { stars = starsFrom(lines[si]); lines.splice(si, 1); }
+                stars = Math.max(3, Math.min(5, stars));   // the row editor only offers 3–5
+                lines = lines.filter(l => !isMetaLine(l));
+                if (!lines.length) continue;
+                let name = '', text = '';
+                if (lines.length === 1) { text = lines[0]; }
+                else { name = lines[0].replace(/[\s:\-–—]+$/, '').slice(0, 80); text = lines.slice(1).join(' '); }
+                text = text.trim();
+                if (!text) continue;
+                wrap.insertAdjacentHTML('beforeend', reviewRowHtml({ name, stars, text, prop, source }));
+                added++;
+            }
+            if (!added) { glassAlert("Couldn't find any reviews to add — check the format: the guest's name on the first line, their review underneath, and a blank line between each one."); return; }
+            ta.value = '';
+            toast(added + ' review' + (added === 1 ? '' : 's') + ' added below — check them over, then “Save imported reviews”.');
+            wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
         // Quick-add helper: build a review from the compact form, drop it into the
         // editor as a new row, then clear the form ready for the next one.
@@ -10530,7 +10599,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'p3a8r2tg';
+            const BUILD = 'r7v2w9xk';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
