@@ -27,8 +27,6 @@ function smtp_send($toEmail, $toName, $subject, $bodyText, $bodyHtml = null, $at
     if (!defined('MAIL_ENABLED') || !MAIL_ENABLED) {
         return ['ok' => false, 'error' => 'Mail disabled'];
     }
-    // Test Centre marks sample emails so they're unmistakable in the inbox.
-    if (!empty($GLOBALS['__chb_test_prefix'])) $subject = $GLOBALS['__chb_test_prefix'] . $subject;
     $host = SMTP_HOST; $port = (int)SMTP_PORT; $secure = strtolower(SMTP_SECURE);
     $timeout = 15;
 
