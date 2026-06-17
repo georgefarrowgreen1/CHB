@@ -2899,6 +2899,9 @@
         async function guestLogout() {
             try { await apiPost('auth.php', { action: 'guest_logout' }); } catch (e) {}
             try { stopArrivalWatch(); closeArrivalModal(); } catch (e) {}
+            // On staging, remember the explicit logout so we don't auto-sign-in again
+            // (lets the real sign-in / sign-up flow be tested). Cleared on a new tab.
+            try { if (IS_STAGING) sessionStorage.setItem('chb-staging-noauto', '1'); } catch (e) {}
             currentGuest = null;
             setGuestUI();
             nav('view-main');
@@ -4800,6 +4803,17 @@
                 (async () => { try { const s = await apiPost('auth.php', { action: 'admin_status' }); isAuthenticated = !!s.admin; } catch (e) {} })(),
                 restoreGuestSession().catch(e => console.error('restoreGuestSession', e))
             ]);
+            // Staging sandbox: skip the sign-in wall — auto-establish a test-guest
+            // session so every guest-only feature is testable without logging in.
+            // Never overrides an admin session, and respects an explicit logout
+            // (so the real sign-in flow can still be tested).
+            if (IS_STAGING && !isAuthenticated && !currentGuest) {
+                let optedOut = false;
+                try { optedOut = sessionStorage.getItem('chb-staging-noauto') === '1'; } catch (e) {}
+                if (!optedOut) {
+                    try { const r = await apiPost('auth.php', { action: 'staging_guest_session' }); currentGuest = r.guest || null; } catch (e) {}
+                }
+            }
             try { setAuthUI(); } catch (e) { console.error(e); }
             try { setGuestUI(); } catch (e) { console.error(e); }
             try { wireCallButtons(); } catch (e) { console.error(e); }
@@ -10477,7 +10491,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'j7b3g1ey';
+            const BUILD = 'k8c4h2fz';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;

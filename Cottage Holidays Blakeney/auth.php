@@ -271,6 +271,32 @@ switch ($action) {
         json_out(['ok' => true]);
     }
 
+    // Staging sandbox ONLY: frictionless guest testing. Establishes a test-guest
+    // session without the sign-in wall, so the owner can try all the guest-only
+    // features. Refuses on any non-staging host. Reuses the owner-email guest (so
+    // Test-centre test bookings appear in My Stays), creating it if needed.
+    case 'staging_guest_session': {
+        if (!preg_match('/(^|\.)staging\./i', $_SERVER['HTTP_HOST'] ?? '')) json_out(['error' => 'Not available'], 403);
+        if (!empty($_SESSION['guest_id'])) {
+            $s = db()->prepare('SELECT name, email, phone, address, postcode FROM guests WHERE id = ?');
+            $s->execute([$_SESSION['guest_id']]);
+            json_out(['ok' => true, 'guest' => $s->fetch() ?: null]);
+        }
+        $email = (defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL) ? OWNER_NOTIFY_EMAIL : 'staging-guest@example.invalid';
+        $s = db()->prepare('SELECT id, name, email, phone, address, postcode FROM guests WHERE email = ?');
+        $s->execute([$email]); $g = $s->fetch();
+        if (!$g) {
+            db()->prepare('INSERT INTO guests (name, email, password_hash) VALUES (?,?,?)')
+                ->execute(['Staging Test Guest', $email, password_hash(bin2hex(random_bytes(9)), PASSWORD_DEFAULT)]);
+            $gid = (int)db()->lastInsertId();
+            $s = db()->prepare('SELECT id, name, email, phone, address, postcode FROM guests WHERE id = ?');
+            $s->execute([$gid]); $g = $s->fetch();
+        }
+        $_SESSION['guest_id'] = (int)$g['id'];
+        unset($_SESSION['admin_id']);   // one role at a time
+        json_out(['ok' => true, 'guest' => ['name' => $g['name'], 'email' => $g['email'], 'phone' => $g['phone'], 'address' => $g['address'], 'postcode' => $g['postcode']]]);
+    }
+
     // ----------- ADMIN: manage guest accounts -----------
     case 'guest_list': {
         require_admin();
