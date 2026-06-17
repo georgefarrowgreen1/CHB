@@ -213,12 +213,59 @@ switch ($action) {
         json_out(['ok' => true]);
     }
 
-    // Logged-in guest deletes their own account (login + passkeys). Their past
-    // bookings remain as business/tax records.
+    // GDPR: a logged-in guest downloads everything we hold about them (JSON).
+    case 'guest_export_data': {
+        if (empty($_SESSION['guest_id'])) json_out(['error' => 'Please log in first'], 401);
+        $gid = (int)$_SESSION['guest_id'];
+        $acc = db()->prepare('SELECT id, name, email, phone, address, postcode, created_at FROM guests WHERE id = ?');
+        $acc->execute([$gid]);
+        $account = $acc->fetch() ?: [];
+        $email = (string)($account['email'] ?? '');
+        $grab = function ($sql, $params) { try { $s = db()->prepare($sql); $s->execute($params); return $s->fetchAll(); } catch (\Throwable $e) { return []; } };
+        $bookings = $email !== '' ? $grab('SELECT * FROM bookings WHERE email = ? ORDER BY check_in', [$email]) : [];
+        $payments = [];
+        $ids = array_values(array_filter(array_map(fn($b) => (int)$b['id'], $bookings)));
+        if ($ids) { $ph = implode(',', array_fill(0, count($ids), '?')); $payments = $grab("SELECT booking_id, kind, amount, status, created_at FROM payments WHERE booking_id IN ($ph)", $ids); }
+        $data = [
+            'exported_at'  => date('c'),
+            'account'      => $account,
+            'bookings'     => $bookings,
+            'payments'     => $payments,
+            'enquiries'    => $email !== '' ? $grab('SELECT * FROM enquiries WHERE email = ?', [$email]) : [],
+            'chat_threads' => $grab('SELECT * FROM chat_threads WHERE guest_id = ?', [$gid]),
+            'messages'     => $grab('SELECT * FROM messages WHERE guest_id = ?', [$gid]),
+            'reviews'      => $grab('SELECT * FROM guest_reviews WHERE guest_id = ?', [$gid]),
+            'photos'       => $grab('SELECT * FROM guest_photos WHERE guest_id = ?', [$gid]),
+            'newsletter'   => $email !== '' ? $grab('SELECT email, name, created_at FROM newsletter_subscribers WHERE email = ?', [$email]) : [],
+            'waitlist'     => $email !== '' ? $grab('SELECT * FROM waitlist WHERE email = ?', [$email]) : [],
+        ];
+        json_out(['ok' => true, 'data' => $data]);
+    }
+
+    // GDPR erasure: a logged-in guest deletes their account. Financial records
+    // (bookings + payments) are RETAINED for tax/accounting but stripped of personal
+    // data; everything else (enquiries, messages, reviews, mailing-list, passkeys,
+    // push, etc.) is purged. Public photos are kept but de-identified.
     case 'guest_delete_account': {
         if (empty($_SESSION['guest_id'])) json_out(['error' => 'Please log in first'], 401);
         $gid = (int)$_SESSION['guest_id'];
-        try { db()->prepare('DELETE FROM guest_passkeys WHERE guest_id = ?')->execute([$gid]); } catch (\Throwable $e) { /* table may not exist */ }
+        $r = db()->prepare('SELECT email FROM guests WHERE id = ?'); $r->execute([$gid]);
+        $email = (string)($r->fetchColumn() ?: '');
+        $try = function ($sql, $params) { try { db()->prepare($sql)->execute($params); } catch (\Throwable $e) { /* table may not exist */ } };
+        if ($email !== '') {
+            // Anonymise the financial trail (kept for accounting), then purge non-financial PII.
+            $try('UPDATE payments p JOIN bookings b ON b.id = p.booking_id SET p.guest_name = ? WHERE b.email = ?', ['Former guest', $email]);
+            $try('UPDATE bookings SET name = ?, email = NULL, phone = NULL, address = NULL, postcode = NULL WHERE email = ?', ['Former guest', $email]);
+            $try('DELETE FROM enquiries WHERE email = ?', [$email]);
+            $try('DELETE FROM newsletter_subscribers WHERE email = ?', [$email]);
+            $try('DELETE FROM waitlist WHERE email = ?', [$email]);
+        }
+        $try('DELETE FROM messages WHERE guest_id = ?', [$gid]);
+        $try('DELETE FROM chat_threads WHERE guest_id = ?', [$gid]);
+        $try('DELETE FROM guest_reviews WHERE guest_id = ?', [$gid]);
+        $try('UPDATE guest_photos SET guest_id = NULL, guest_name = ? WHERE guest_id = ?', ['Former guest', $gid]);
+        $try('DELETE FROM push_subscriptions WHERE guest_id = ?', [$gid]);
+        $try('DELETE FROM guest_passkeys WHERE guest_id = ?', [$gid]);
         db()->prepare('DELETE FROM guests WHERE id = ?')->execute([$gid]);
         unset($_SESSION['guest_id']);
         json_out(['ok' => true]);
