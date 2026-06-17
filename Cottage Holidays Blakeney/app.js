@@ -5424,6 +5424,7 @@
                 });
                 try { injectPropColors(); } catch (e) {}
                 try { renderCottageCards(); } catch (e) {}
+                try { injectStructuredData(); } catch (e) {}
             } catch (e) { /* keep defaults if the API is unavailable */ }
         }
 
@@ -7773,6 +7774,49 @@
             if (typeof isEditMode !== 'undefined' && isEditMode) {
                 grid.querySelectorAll('[data-edit-text]').forEach(el => { el.contentEditable = 'true'; try { el.addEventListener('paste', plainTextPaste); } catch (e) {} });
             }
+        }
+
+        // Regenerate the page's JSON-LD structured data from the live cottage list so
+        // search engines see exactly the cottages currently on the site (owner-added
+        // ones included, removed ones dropped). The rich hand-written fields for the
+        // original three are preserved by merging onto their existing nodes.
+        function injectStructuredData() {
+            try {
+                const script = document.querySelector('script[type="application/ld+json"]');
+                if (!script) return;
+                const data = JSON.parse(script.textContent);
+                const graph = data['@graph'];
+                if (!Array.isArray(graph)) return;
+                const origin = SITE_ORIGIN;
+                const isCottageNode = n => /#cottage-/.test((n && n['@id']) || '');
+                const existing = {};
+                graph.forEach(n => { if (isCottageNode(n)) existing[n['@id']] = n; });
+                const keys = liveCottageKeys();
+                if (!keys.length) return;
+                // Point the venue's containsPlace at the live cottages.
+                graph.forEach(n => { if (n && Array.isArray(n.containsPlace)) n.containsPlace = keys.map(k => ({ '@id': origin + '/#cottage-' + k })); });
+                // Replace the per-cottage Accommodation nodes.
+                const base = graph.filter(n => !isCottageNode(n));
+                keys.forEach(k => {
+                    const id = origin + '/#cottage-' + k;
+                    const prev = existing[id] || {};
+                    const meta = propertyMeta[k] || {};
+                    const lim = occupancyLimits[k] || {};
+                    const node = Object.assign({
+                        '@type': ['Accommodation', 'VacationRental'],
+                        '@id': id,
+                        'image': origin + '/hero.jpg',
+                        'containedInPlace': { '@type': 'Place', 'name': 'Blakeney, Norfolk' }
+                    }, prev, {
+                        'name': meta.name || k,
+                        'url': origin + '/cottages/' + (COTTAGE_SLUGS[k] || k),
+                        'occupancy': { '@type': 'QuantitativeValue', 'maxValue': lim.maxTotal || lim.maxAdults || 2 }
+                    });
+                    base.push(node);
+                });
+                data['@graph'] = base;
+                script.textContent = JSON.stringify(data, null, 2);
+            } catch (e) { /* leave the static JSON-LD in place if anything is off */ }
         }
 
         // The price heading at the top of the active property's booking box
