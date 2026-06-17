@@ -1907,6 +1907,17 @@
         .hs-chip { flex: 1 1 auto; padding: 9px 8px; border-radius: 12px; border: 1px solid var(--glass-border); background: rgba(255,255,255,0.05); color: var(--text-muted); font-family: inherit; font-size: 0.78rem; cursor: pointer; transition: background 0.2s, color 0.2s, border-color 0.2s; white-space: nowrap; }
         .hs-chip:hover { background: rgba(255,255,255,0.12); }
         .hs-chip.is-on { background: rgba(255,255,255,0.18); color: var(--text-light); border-color: rgba(255,255,255,0.32); }
+        /* Flexible search: mode toggle + per-cottage free-date options */
+        .hs-mode-pane { display: flex; flex-direction: column; gap: 12px; }
+        .hs-mode { display: flex; gap: 6px; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); border-radius: 14px; padding: 4px; }
+        .hs-mode-btn { flex: 1 1 0; padding: 9px 8px; border-radius: 10px; border: none; background: transparent; color: var(--text-muted); font-family: inherit; font-size: 0.84rem; cursor: pointer; transition: background 0.2s, color 0.2s; }
+        .hs-mode-btn.is-on { background: rgba(255,255,255,0.18); color: var(--text-light); }
+        .flex-opts { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+        .flex-opt { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; text-align: left; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--glass-border); background: rgba(255,255,255,0.05); color: var(--text-light); font-family: inherit; cursor: pointer; transition: background 0.2s, border-color 0.2s; }
+        .flex-opt:hover { background: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.3); }
+        .flex-opt .fo-dates { font-size: 0.9rem; }
+        .flex-opt .fo-sub { font-size: 0.72rem; color: var(--text-muted); }
+        .flex-opt .fo-price { font-size: 0.85rem; white-space: nowrap; }
         .btn-glass-ghost { background: transparent; opacity: 0.85; }
         #cottages { scroll-margin-top: calc(100px + env(safe-area-inset-top)); }
         .fluid-swap { animation: fluidFadeIn 0.5s var(--fluid-bezier); }
