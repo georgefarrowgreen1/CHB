@@ -417,11 +417,29 @@
         }
         // True for a booking the Test centre created (tagged in its notes).
         function isTestBooking(b) { return !!(b && typeof b.notes === 'string' && b.notes.indexOf('[CHB-TEST]') !== -1); }
-        // First-party, cookie-free page-view ping (see track.php). Fire-and-forget;
-        // never blocks the UI and never counts the owner's own browsing.
+        // First-party, cookie-free analytics (see track.php). Fire-and-forget; never
+        // blocks the UI and never counts the owner's own browsing. utm_source from the
+        // landing URL is captured once so campaign traffic (newsletter, Instagram…) is
+        // attributable even though search engines hide their query terms.
+        let __utmSource = '';
+        try {
+            const __u = new URLSearchParams(location.search);
+            __utmSource = (__u.get('utm_source') || __u.get('utm_medium') || '').toString().slice(0, 60);
+        } catch (e) {}
         function trackView(viewId, prop) {
             if (document.body.classList.contains('owner-mode')) return;
-            try { apiPost('track.php', { path: viewId || 'view-main', prop: prop || '' }).catch(() => {}); } catch (e) {}
+            try { apiPost('track.php', { path: viewId || 'view-main', prop: prop || '', source: __utmSource }).catch(() => {}); } catch (e) {}
+        }
+        // A named intent event — builds the in-page conversion funnel.
+        // Known events: book_click, enquiry_open, enquiry_submit, pay_start.
+        function trackEvent(name, prop) {
+            if (document.body.classList.contains('owner-mode')) return;
+            try { apiPost('track.php', { event: name, prop: prop || '', source: __utmSource }).catch(() => {}); } catch (e) {}
+        }
+        // Log a homepage availability search + whether it found anything (demand signal).
+        function logSearch(info) {
+            if (document.body.classList.contains('owner-mode')) return;
+            try { apiPost('track.php', { search: info || {} }).catch(() => {}); } catch (e) {}
         }
         // Show/hide the dock Edit button for the given view (customer-facing only).
         function updateDockEditVisibility(viewId) {
@@ -3281,6 +3299,7 @@
         }
         // Opened from a secure pay link (?pay=<token>&b=<id>&k=<kind>) parsed at boot.
         async function openPayView(token, bookingId, kind) {
+            try { trackEvent('pay_start', ''); } catch (e) {}
             payState.token = token; payState.bookingId = bookingId;
             payState.kind = (kind === 'balance') ? 'balance' : 'deposit';
             squareCard = null;
@@ -7282,6 +7301,7 @@
         function openEnquireModal() {
             const key = activeFrontProperty;
             if (!key) return;
+            try { trackEvent('enquiry_open', key); } catch (e) {}
             const img = (propertyContent[key] && propertyContent[key].images && propertyContent[key].images[0]) || '';
             const imgEl = document.getElementById('enq-sum-img'); if (imgEl) imgEl.style.backgroundImage = img ? `url('${img}')` : '';
             const nameEl = document.getElementById('enq-sum-name'); if (nameEl) nameEl.innerText = (propertyMeta[key] && propertyMeta[key].name) || key;
@@ -7490,24 +7510,110 @@
                 ? cottages.map(c => hbar(escapeHtml((propertyMeta[c.prop_key] || {}).name || c.prop_key), c.views, cotMax, `var(--prop-${c.prop_key}, var(--glass-highlight))`)).join('')
                 : '';
 
+            // ---- Funnel (label + value + % of the step above), widths vs the top step ----
+            function funnelHtml(steps, note) {
+                const top = steps[0].value || 0;
+                const rows = steps.map((s, i) => {
+                    const prev = i === 0 ? null : steps[i - 1].value;
+                    const fromTop = top ? Math.round((s.value / top) * 100) : 0;
+                    const fromPrev = (prev != null && prev > 0) ? Math.round((s.value / prev) * 100) : null;
+                    return `<div style="margin-bottom:10px;">
+                        <div style="display:flex;justify-content:space-between;gap:10px;font-size:0.84rem;margin-bottom:5px;"><span style="color:var(--text-light);">${escapeHtml(s.label)}</span><span style="color:var(--text-muted);font-variant-numeric:tabular-nums;">${s.value}${fromPrev != null ? ` · ${fromPrev}%` : ''}</span></div>
+                        <div style="height:11px;border-radius:6px;background:rgba(255,255,255,0.08);overflow:hidden;"><div style="height:100%;width:${Math.max(3, fromTop)}%;background:var(--glass-highlight);border-radius:6px;transition:width 0.5s var(--fluid-bezier);"></div></div>
+                    </div>`;
+                }).join('');
+                return rows + (note ? `<p style="font-size:0.74rem;color:var(--text-muted);margin:8px 0 0;">${note}</p>` : '');
+            }
+            const PAGE_LABELS = { 'view-main': 'Home', 'view-cottages': 'All cottages', 'view-experiences': 'Experiences', 'view-21a': 'A cottage page', 'view-guest-bookings': 'My stays', 'view-pay': 'Payment', 'view-account': 'Account' };
+            const pageLabel = p => PAGE_LABELS[p] || (p || '').replace(/^view-/, '').replace(/-/g, ' ') || 'Home';
+            const monthName = ym => { const [y, m] = (ym || '').split('-'); return (y && m) ? new Date(+y, +m - 1, 1).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : (ym || ''); };
+
+            // Conversion funnel: real visitors → enquiries → bookings (same window).
+            const funnel = funnelHtml([
+                { label: 'Unique visitors', value: d.uniqueVisitors || 0 },
+                { label: 'Enquiries', value: d.enquiries || 0 },
+                { label: 'Bookings', value: d.bookings || 0 },
+            ], 'Enquiries &amp; bookings are counted by the date they came in.');
+
+            // In-page engagement funnel from the tracked intent events.
+            const ev = d.events || {};
+            const engagement = funnelHtml([
+                { label: 'Clicked “Book / Enquire”', value: ev.book_click || 0 },
+                { label: 'Opened the enquiry form', value: ev.enquiry_open || 0 },
+                { label: 'Sent an enquiry', value: ev.enquiry_submit || 0 },
+                { label: 'Started a payment', value: ev.pay_start || 0 },
+            ]);
+
+            // Where visitors come from: channels, then the specific search engines.
+            const channels = Array.isArray(d.channels) ? d.channels : [];
+            const chMax = channels.reduce((m, c) => Math.max(m, c.count), 0);
+            const channelsHtml = channels.length
+                ? channels.map(c => hbar(escapeHtml(c.channel), c.count, chMax, 'var(--glass-highlight)')).join('')
+                : `<p style="font-size:0.82rem;color:var(--text-muted);margin:0;">No visits recorded yet.</p>`;
+            const engines = Array.isArray(d.searchEngines) ? d.searchEngines : [];
+            const enMax = engines.reduce((m, e) => Math.max(m, e.count), 0);
+            const enginesHtml = engines.length
+                ? engines.map(e => hbar(escapeHtml(e.name), e.count, enMax, 'var(--glass-highlight)')).join('')
+                  + `<p style="font-size:0.72rem;color:var(--text-muted);margin:8px 0 0;line-height:1.5;">Search engines hide the words people typed, so we can name the engine but not the search terms — for those, connect Google Search Console.</p>`
+                : `<p style="font-size:0.82rem;color:var(--text-muted);margin:0;">No search-engine visits recorded yet.</p>`;
+            const sources = Array.isArray(d.sources) ? d.sources : [];
+            const srcMax = sources.reduce((m, s) => Math.max(m, s.count), 0);
+            const sourcesHtml = sources.length
+                ? sources.map(s => hbar(escapeHtml(s.source), s.count, srcMax, 'var(--glass-highlight)')).join('')
+                : '';
+
+            const pages = Array.isArray(d.topPages) ? d.topPages : [];
+            const pgMax = pages.reduce((m, p) => Math.max(m, p.views), 0);
+            const pagesHtml = pages.length
+                ? pages.map(p => hbar(escapeHtml(pageLabel(p.path)), p.views, pgMax, 'var(--glass-highlight)')).join('')
+                : '';
+
+            // Search demand: what guests searched + how often nothing was free.
+            const sd = d.searchDemand || { total: 0, noResult: 0, topMonths: [], recentNoResult: [] };
+            const noPct = sd.total ? Math.round((sd.noResult / sd.total) * 100) : 0;
+            const tmMax = (sd.topMonths || []).reduce((m, x) => Math.max(m, x.count), 0);
+            const topMonthsHtml = (sd.topMonths || []).map(x =>
+                hbar(`${monthName(x.month)} <span style="color:var(--text-muted);font-size:0.75rem;">· ${x.count ? Math.round((x.found / x.count) * 100) : 0}% found space</span>`, x.count, tmMax, 'var(--glass-highlight)')).join('');
+            const recentNoHtml = (sd.recentNoResult || []).map(r => {
+                const who = `${r.adults} adult${r.adults === 1 ? '' : 's'}${r.children ? ` + ${r.children} child${r.children === 1 ? '' : 'ren'}` : ''}`;
+                const when = r.mode === 'flex'
+                    ? `${r.nights || '?'} night${r.nights === 1 ? '' : 's'} in ${monthName(r.month)}`
+                    : `${dpPretty(r.check_in) || 'dates'}${r.nights ? ` · ${r.nights} night${r.nights === 1 ? '' : 's'}` : ''}`;
+                return `<li style="margin-bottom:5px;">${escapeHtml(when)} · ${escapeHtml(who)}</li>`;
+            }).join('');
+
+            // Week-on-week trend for the headline card.
+            const trend = (d.prevWeekViews > 0) ? Math.round(((d.weekViews - d.prevWeekViews) / d.prevWeekViews) * 100) : null;
+            const weekSub = `${d.weekUnique || 0} unique${trend !== null ? ` · ${trend >= 0 ? '▲' : '▼'} ${Math.abs(trend)}% vs last wk` : ''}`;
+
+            const card = (label, body) => `<div class="accounts-stat" style="max-width:640px;margin-bottom:16px;"><div class="label" style="margin-bottom:12px;">${label}</div>${body}</div>`;
+
             wrap.innerHTML = `
                 <div class="owner-summary" style="margin-bottom:18px;">
-                    <div class="os-card"><div class="os-label">Visits this week</div><div class="os-value">${d.weekViews || 0}</div><div class="os-sub">${d.weekUnique || 0} unique · last 7 days</div></div>
+                    <div class="os-card"><div class="os-label">Visits this week</div><div class="os-value">${d.weekViews || 0}</div><div class="os-sub">${weekSub}</div></div>
                     <div class="os-card"><div class="os-label">Visits (30 days)</div><div class="os-value">${d.totalViews || 0}</div><div class="os-sub">page views</div></div>
                     <div class="os-card"><div class="os-label">Unique visitors</div><div class="os-value">${d.uniqueVisitors || 0}</div><div class="os-sub">approx, last 30 days</div></div>
                 </div>
+                ${card('From visitor to booking <span style="opacity:0.6;text-transform:none;letter-spacing:0;">(last 30 days)</span>', funnel)}
                 <div class="accounts-stat" style="max-width:640px;margin-bottom:16px;">
                     <div class="label">Visits over time <span style="opacity:0.6;text-transform:none;letter-spacing:0;">(last ${series.length} days)</span></div>
                     ${areaChart(series)}
                 </div>
-                <div class="accounts-stat" style="max-width:640px;margin-bottom:16px;">
-                    <div class="label" style="margin-bottom:12px;">Top referrers</div>
-                    ${refsHtml}
-                </div>
-                ${cottageHtml ? `<div class="accounts-stat" style="max-width:640px;">
-                    <div class="label" style="margin-bottom:12px;">Most-viewed cottages</div>
-                    ${cottageHtml}
-                </div>` : ''}`;
+                ${card('On-site engagement <span style="opacity:0.6;text-transform:none;letter-spacing:0;">(where people drop off)</span>', engagement)}
+                ${card('Where visitors come from', channelsHtml)}
+                ${card('Search engines', enginesHtml)}
+                ${sourcesHtml ? card('Campaign sources <span style="opacity:0.6;text-transform:none;letter-spacing:0;">(utm_source)</span>', sourcesHtml) : ''}
+                ${card('Top referrers', refsHtml)}
+                ${pagesHtml ? card('Most-viewed pages', pagesHtml) : ''}
+                ${cottageHtml ? card('Most-viewed cottages', cottageHtml) : ''}
+                ${card('What guests are searching for', `
+                    <div class="owner-summary" style="margin-bottom:14px;">
+                        <div class="os-card"><div class="os-label">Searches</div><div class="os-value">${sd.total || 0}</div><div class="os-sub">last 30 days</div></div>
+                        <div class="os-card"><div class="os-label">Found nothing</div><div class="os-value">${sd.noResult || 0}</div><div class="os-sub">${noPct}% of searches</div></div>
+                    </div>
+                    ${topMonthsHtml ? `<div style="font-size:0.78rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin:4px 0 10px;">Most-requested months</div>${topMonthsHtml}` : ''}
+                    ${recentNoHtml ? `<div style="font-size:0.78rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin:14px 0 8px;">Recent searches that found nothing</div><ul style="margin:0;padding-left:18px;font-size:0.85rem;color:var(--text-light);">${recentNoHtml}</ul><p style="font-size:0.74rem;color:var(--text-muted);margin:10px 0 0;">These are unmet demand — consider opening dates, adjusting prices, or nudging your waitlist.</p>` : (sd.total ? '' : `<p style="font-size:0.82rem;color:var(--text-muted);margin:0;">No searches recorded yet.</p>`)}
+                `)}`;
         }
 
         // ---- Waitlist manager (Settings → Waitlist) ----
@@ -8952,6 +9058,10 @@
                 results[key] = r;
             }
             renderFlexResults(results, tooSmall, nights, month);
+            try {
+                const withN = Object.keys(results).filter(k => results[k].windows.length).length;
+                logSearch({ mode: 'flex', adults, children, nights, month, results: withN, found: withN > 0 ? 1 : 0 });
+            } catch (e) {}
         }
         function renderFlexResults(results, tooSmall, nights, ym) {
             const grid = document.getElementById('hs-results-grid');
@@ -9018,6 +9128,10 @@
                 results[key] = r;
             }
             renderHeroResults(results, tooSmall);
+            try {
+                const availN = Object.keys(results).filter(k => results[k].available).length;
+                logSearch({ mode: 'exact', adults, children, nights: nightsBetween(ci, co), check_in: ci, results: availN, found: availN > 0 ? 1 : 0 });
+            } catch (e) {}
         }
         function renderHeroResults(results, tooSmall) {
             const grid = document.getElementById('hs-results-grid');
@@ -9128,6 +9242,7 @@
         }
         // Open the cottage with the chosen dates + party pre-filled, ready to send.
         function startBooking(key, ci, co) {
+            try { trackEvent('book_click', key); } catch (e) {}
             // '' is meaningful (clear the dates for an unavailable cottage); only fall
             // back to the searched dates when the argument was genuinely omitted.
             if (ci === undefined) ci = heroSearch.checkin || '';
@@ -10122,6 +10237,7 @@
             } finally {
                 if (submitBtn) { submitBtn.disabled = false; submitBtn.classList.remove('is-busy'); submitBtn.textContent = origSubmitLabel; }
             }
+            try { trackEvent('enquiry_submit', propKey); } catch (e) {}
 
             // Reset the form
             ['enq-name', 'enq-email', 'enq-phone', 'enq-address', 'enq-postcode', 'enq-checkin', 'enq-checkout', 'enq-message']
@@ -10739,7 +10855,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 't6n3q8wd';
+            const BUILD = 'u8p5s2yc';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
