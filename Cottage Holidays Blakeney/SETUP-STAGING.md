@@ -52,27 +52,36 @@ The deploy never overwrites `config.php`, so staging keeps these settings foreve
 
 ## 4. Add the GitHub secrets (Settings → Secrets and variables → Actions)
 
-Until these are set, the staging deploy job just logs "not configured" and is skipped —
-production is unaffected.
+A subdomain lives in the **same IONOS webspace**, so the SFTP login is identical to
+production — the staging job **reuses your existing `IONOS_SFTP_*` secrets** by default.
+Staging is switched on simply by setting `STAGING_REMOTE_PATH`. Until then the staging
+job logs "not configured" and is skipped, so production is unaffected.
+
+You only need these three:
 
 | Secret | Value |
 |---|---|
-| `STAGING_SFTP_HOST` | same SFTP host as production (e.g. `access-XXXX.webspace-host.com`) |
-| `STAGING_SFTP_USER` | your SFTP username |
-| `STAGING_SFTP_PASS` | your SFTP password |
-| `STAGING_REMOTE_PATH` | the staging folder, e.g. `/staging` |
-| `STAGING_SFTP_PORT` | optional (defaults to 22) |
+| `STAGING_REMOTE_PATH` | the staging folder, e.g. `/staging` — **must differ from your live path** (the build refuses if they match, so it can't overwrite production) |
 | `STAGING_APP_SECRET` | the **staging** `APP_SECRET` from step 3 |
 | `STAGING_URL` | `https://staging.cottageholidaysblakeney.co.uk` |
 
+Optional — only if staging ever uses a *different* SFTP login: `STAGING_SFTP_HOST`,
+`STAGING_SFTP_USER`, `STAGING_SFTP_PASS`, `STAGING_SFTP_PORT`. Leave them unset to reuse
+the live `IONOS_SFTP_*` credentials.
+
 ## 5. First-time build of the staging database
 
-1. Push to `main` (or run the **Deploy to IONOS** action) — the code lands in `/staging`.
-2. Visit `https://staging.cottageholidaysblakeney.co.uk/setup.php` **once** to create
-   the schema + your admin login on the sandbox DB. *(Re-upload `setup.php` if the
-   deploy stripped it — it's removed from live uploads for safety; on staging you can
-   run it from the repo copy or temporarily place it.)*
-3. Visit `…/migrate.php` (signed in as admin) to apply all migrations.
+1. **Create the tables:** IONOS → phpMyAdmin → select the **sandbox** database →
+   **Import** → upload `schema.sql` from the repo → Go. *(This creates every table and
+   seeds the three cottages.)*
+2. **Push to `main`** (or run the **Deploy to IONOS** action) — the code lands in
+   `/staging` via the new `deploy-staging` job.
+3. **Create your staging admin:** `setup.php` is stripped from deployed files, so upload
+   the repo's `setup.php` into `/staging` manually, visit
+   `https://staging.cottageholidaysblakeney.co.uk/setup.php?username=admin&password=YOURPASS`
+   over https, then **delete `setup.php`** from `/staging`.
+4. **Apply migrations:** sign in to staging's back office → **Settings → System check →
+   Run migrations** (or visit `…/migrate.php?cron=YOUR-STAGING-APP-SECRET`).
 
 You now have an isolated sandbox. Every future push to `main` deploys to **both**
 production and staging automatically.
