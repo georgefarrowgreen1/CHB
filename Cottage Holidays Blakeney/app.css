@@ -2000,3 +2000,24 @@ body.has-preview-banner { padding-top: 40px; }
     border-bottom: 2px solid #ffb74d; box-shadow: 0 2px 12px rgba(0,0,0,0.25);
 }
 body.has-staging-banner { padding-top: 38px; }
+
+/* Full-page guest Sign-in / Account / Security screens on DESKTOP too (match the
+   mobile shell). On mobile, body.guest-app already does this; the :not(.guest-app)
+   guard means these rules only cover the wide/desktop layout. Admin is excluded. */
+body:not(.guest-app):not(.owner-mode) #guest-auth-modal,
+body:not(.guest-app):not(.owner-mode) #guest-details-modal,
+body:not(.guest-app):not(.owner-mode) #guest-security-modal {
+    z-index: 1390;
+    background: var(--dark-grey);
+    -webkit-backdrop-filter: none; backdrop-filter: none;
+    flex-direction: column; align-items: center; justify-content: safe center;
+    overflow-y: auto;
+    padding: clamp(48px, 8vh, 96px) clamp(16px, 5vw, 32px) clamp(32px, 6vh, 64px);
+}
+body:not(.guest-app):not(.owner-mode) #guest-auth-modal .modal-box,
+body:not(.guest-app):not(.owner-mode) #guest-details-modal .modal-box,
+body:not(.guest-app):not(.owner-mode) #guest-security-modal .modal-box {
+    width: 100%; max-width: 460px; max-height: none; min-height: 0; flex: 0 0 auto;
+    margin: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none;
+    padding: 0;
+}
