@@ -1918,6 +1918,21 @@
         .flex-opt .fo-dates { font-size: 0.9rem; }
         .flex-opt .fo-sub { font-size: 0.72rem; color: var(--text-muted); }
         .flex-opt .fo-price { font-size: 0.85rem; white-space: nowrap; }
+        /* Cottages page: Airbnb-style map + list (desktop split; mobile keeps the grid) */
+        .cottages-split { display: block; }
+        .cottages-map-pane { display: none; }
+        .cottages-map.is-empty { display: none; }
+        .card.map-highlight { outline: 2px solid var(--glass-highlight); outline-offset: 3px; }
+        .map-price-pill { background: transparent !important; border: 0 !important; }
+        .map-price-pill .mp-pill { display: inline-flex; align-items: center; white-space: nowrap; transform: translate(-50%, -50%); background: #fff; color: #1f1f1f; font-family: var(--font-sans); font-weight: 700; font-size: 0.8rem; padding: 6px 11px; border-radius: 999px; box-shadow: 0 2px 9px rgba(0,0,0,0.3); border: 1px solid rgba(0,0,0,0.06); cursor: pointer; transition: transform 0.15s var(--fluid-bezier), background 0.15s, color 0.15s; }
+        .map-price-pill .mp-pill:hover, .map-price-pill.is-active .mp-pill { background: #1f1f1f; color: #fff; transform: translate(-50%, -50%) scale(1.07); z-index: 5; }
+        @media (min-width: 960px) {
+            .cottages-split { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 30px; align-items: start; margin-top: 18px; }
+            .cottages-split.no-map { grid-template-columns: 1fr; }
+            .cottages-list .grid { margin-top: 0 !important; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); }
+            .cottages-map-pane { display: block; position: sticky; top: 90px; height: calc(100vh - 120px); min-height: 460px; }
+            .cottages-map { width: 100%; height: 100%; border-radius: 22px; overflow: hidden; border: 1px solid var(--glass-border); }
+        }
         .btn-glass-ghost { background: transparent; opacity: 0.85; }
         #cottages { scroll-margin-top: calc(100px + env(safe-area-inset-top)); }
         .fluid-swap { animation: fluidFadeIn 0.5s var(--fluid-bezier); }

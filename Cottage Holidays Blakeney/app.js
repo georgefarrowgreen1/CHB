@@ -513,6 +513,7 @@
             }
             if (viewId === 'view-settings') { try { renderSquareSettings(); } catch (e) {} }
             if (viewId === 'view-experiences') { try { renderExperiencesView(); } catch (e) {} }
+            if (viewId === 'view-cottages') { try { renderCottagesMap(); } catch (e) {} }
 
             // First-party analytics: count customer-facing page views (skips owner).
             if (CUSTOMER_FACING_VIEWS.includes(viewId)) {
@@ -5465,6 +5466,89 @@
             setTimeout(() => { try { map.invalidateSize(); } catch (e) {} }, 220);
         }
 
+        // ---- Cottages page: Airbnb-style map of all cottages (desktop split layout) ----
+        // A sticky interactive map alongside the cards, one clickable "From £x" price pin
+        // per cottage. Reuses Leaflet + the cottages' saved coordinates (geo-<key>).
+        let __cottagesMap = null;
+        let __cottagesMarkers = {};
+        function highlightCottageCard(k, on) {
+            const card = document.querySelector('#cottages a[data-prop="' + k + '"]');
+            if (card) card.classList.toggle('map-highlight', !!on);
+            const m = __cottagesMarkers[k];
+            if (m && m._icon) m._icon.classList.toggle('is-active', !!on);
+        }
+        function wireCottageCardHover() {
+            document.querySelectorAll('#cottages a[data-prop]').forEach(card => {
+                if (card.__mapWired) return;
+                card.__mapWired = true;
+                const k = card.getAttribute('data-prop');
+                card.addEventListener('mouseenter', () => highlightCottageCard(k, true));
+                card.addEventListener('mouseleave', () => highlightCottageCard(k, false));
+            });
+        }
+        async function renderCottagesMap() {
+            const el = document.getElementById('cottages-map');
+            if (!el) return;
+            const split = el.closest('.cottages-split');
+            // The map pane is desktop-only (hidden by CSS on narrow screens) — skip work otherwise.
+            if (window.matchMedia && !window.matchMedia('(min-width: 960px)').matches) return;
+            wireCottageCardHover();
+            const keys = liveCottageKeys().filter(k => {
+                const g = siteContent['geo-' + k];
+                return g && g.lat != null && g.lng != null && isFinite(+g.lat) && isFinite(+g.lng);
+            });
+            // No cottage has coordinates yet — hide the pane and let the list go full-width.
+            if (!keys.length) { el.classList.add('is-empty'); if (split) split.classList.add('no-map'); return; }
+            el.classList.remove('is-empty'); if (split) split.classList.remove('no-map');
+            try { await loadLeaflet(); } catch (e) { el.classList.add('is-empty'); if (split) split.classList.add('no-map'); return; }
+            if (__cottagesMap) { try { __cottagesMap.remove(); } catch (e) {} __cottagesMap = null; }
+            __cottagesMarkers = {};
+            el.innerHTML = '';
+            const map = L.map(el, { zoomControl: true, attributionControl: true, scrollWheelZoom: false });
+            map.attributionControl.setPrefix('');
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 19, subdomains: 'abcd', attribution: '© OpenStreetMap, © CARTO' }).addTo(map);
+
+            // Overlap handling: the cottages are all in one village and pins can land on
+            // top of each other. Nudge any pin that sits within ~SEP of an already-placed
+            // one outward along a small spiral so every price pill stays clickable.
+            const placed = [];
+            const SEP = 0.00045;   // ≈ 45–50 m
+            const spread = (lat, lng) => {
+                let a = lat, n = lng, t = 0;
+                const clash = () => placed.some(p => Math.abs(p.lat - a) < SEP && Math.abs(p.lng - n) < SEP);
+                while (clash() && t < 10) {
+                    t++;
+                    const ang = t * 2.39996;                         // golden angle
+                    const r = SEP * (1 + t * 0.5);
+                    a = lat + Math.sin(ang) * r;
+                    n = lng + Math.cos(ang) * r / Math.max(0.2, Math.cos(lat * Math.PI / 180));
+                }
+                placed.push({ lat: a, lng: n });
+                return [a, n];
+            };
+
+            const bounds = [];
+            keys.forEach(k => {
+                const g = siteContent['geo-' + k];
+                const [la, ln] = spread(+g.lat, +g.lng);
+                bounds.push([la, ln]);
+                const rate = (propertyRates[k] || defaultRates[k] || {}).coupleRate;
+                const name = (propertyMeta[k] || {}).name || k;
+                const label = rate != null ? 'From ' + gbp(rate) : escapeHtml(name);
+                const icon = L.divIcon({ className: 'map-price-pill', iconSize: null,
+                    html: '<div class="mp-pill">' + label + '</div>' });
+                const marker = L.marker([la, ln], { icon, riseOnHover: true, keyboard: true, title: name, alt: name }).addTo(map);
+                marker.on('click', () => { try { openProperty(k); } catch (e) {} });
+                marker.on('mouseover', () => highlightCottageCard(k, true));
+                marker.on('mouseout', () => highlightCottageCard(k, false));
+                __cottagesMarkers[k] = marker;
+            });
+            if (bounds.length === 1) map.setView(bounds[0], 15);
+            else { try { map.fitBounds(bounds, { padding: [55, 55], maxZoom: 16 }); } catch (e) {} }
+            __cottagesMap = map;
+            setTimeout(() => { try { map.invalidateSize(); } catch (e) {} }, 220);
+        }
+
 
 
         // Payment status config: label + colour. Keys are stored on each booking.
@@ -8390,7 +8474,7 @@
                 const img = sc[ck.img] || ('card-' + k + '.jpg');
                 const title = sc[ck.title] || ((propertyMeta[k] && propertyMeta[k].name) || k);
                 const meta = sc[ck.meta] || cottageSleepsLabel(k);
-                return `<a class="card glass-panel" href="/cottages/${escapeHtml(slug)}" onclick="return cottageLink(event,'${k}')">
+                return `<a class="card glass-panel" data-prop="${k}" href="/cottages/${escapeHtml(slug)}" onclick="return cottageLink(event,'${k}')">
                     <div class="card-img" data-edit-img="${ck.img}" style="background-image: url('${escapeHtml(img)}');"></div>
                     <div class="card-title" data-edit-text="${ck.title}">${escapeHtml(title)}</div>
                     <div class="card-meta" data-edit-text="${ck.meta}">${escapeHtml(meta)}</div>
@@ -10855,7 +10939,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'u8p5s2yc';
+            const BUILD = 'v9w4x7za';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
