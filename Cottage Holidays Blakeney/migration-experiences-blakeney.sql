@@ -16,6 +16,37 @@
 --  owner adds a photo).
 -- ============================================================
 
+-- ---- Schema safety ----
+-- Make sure the table AND the columns these cards use exist before inserting.
+-- Older installs created `experiences` before the distance/map_query columns were
+-- added, and CREATE TABLE IF NOT EXISTS won't add columns to an existing table —
+-- so guard with ALTERs. migrate.php treats "duplicate column" as already-applied,
+-- so both are safe to re-run. (This file sorts before migration-experiences.sql,
+-- so the CREATE also covers a brand-new database where the table doesn't exist yet.)
+CREATE TABLE IF NOT EXISTS experiences (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  title VARCHAR(160) NOT NULL,
+  body TEXT NOT NULL,
+  image_url VARCHAR(512) NOT NULL DEFAULT '',
+  link_label VARCHAR(80) NOT NULL DEFAULT '',
+  link_url VARCHAR(512) NOT NULL DEFAULT '',
+  phone VARCHAR(40) NOT NULL DEFAULT '',
+  category VARCHAR(48) NOT NULL DEFAULT '',
+  distance VARCHAR(80) NOT NULL DEFAULT '',
+  map_query VARCHAR(255) NOT NULL DEFAULT '',
+  status ENUM('published','pending','rejected') NOT NULL DEFAULT 'published',
+  source ENUM('admin','guest') NOT NULL DEFAULT 'admin',
+  suggested_by_name VARCHAR(120) NOT NULL DEFAULT '',
+  suggested_by_email VARCHAR(190) NOT NULL DEFAULT '',
+  sort_order INT NOT NULL DEFAULT 0,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_status (status),
+  INDEX idx_cat (category)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+ALTER TABLE experiences ADD COLUMN distance VARCHAR(80) NOT NULL DEFAULT '';
+ALTER TABLE experiences ADD COLUMN map_query VARCHAR(255) NOT NULL DEFAULT '';
+
 -- ---- Seal trips to Blakeney Point (Boat trips & wildlife) ----
 INSERT INTO experiences (title, body, category, distance, map_query, phone, link_label, link_url, status, source, sort_order)
 SELECT 'Beans Boat Trips — Blakeney Point seals', 'A Blakeney institution: the Bean family have run ferries out to the Blakeney Point grey-seal colony for generations. Sail from Morston Quay to see seals hauled out on the sand and seabirds along the spit — check tide times, as departures follow the tide.', 'Boat trips & wildlife', 'About 5 min drive to Morston Quay', 'Beans Boat Trips, Morston Quay, Norfolk', '01263 740505', 'Visit website', 'https://www.beansboattrips.co.uk/', 'published', 'admin', 7
