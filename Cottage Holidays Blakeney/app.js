@@ -3213,7 +3213,9 @@
                             </div>
                         </div>
                         <div id="arr-${b.id}" class="arrival-access hub-arrival">
-                            <div id="arr-note-${b.id}" style="font-size:0.84rem;color:var(--text-muted);">${IC_PIN} Your key code &amp; arrival info opens automatically when you reach the cottage. <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="revealArrivalAccess('${propKey}','${b.id}')">Show now</button></div>
+                            <div id="arr-note-${b.id}" style="font-size:0.84rem;color:var(--text-muted);">${ps.fullyPaid
+                                ? `${IC_PIN} Your key code &amp; arrival info opens automatically when you reach the cottage. <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="revealArrivalAccess('${propKey}','${b.id}')">Show now</button>`
+                                : `${IC_LOCK} Your key code &amp; arrival info unlock once your holiday balance is paid.${payToken ? ` <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="openPayView('${payToken}', ${b.dbId}, 'balance')">Pay balance ${gbp(ps.balance)}</button>` : ''}`}</div>
                         </div>
                         <div class="instay-tides" style="margin-top:12px;"></div>
                         <div class="hub-grid">
@@ -3285,8 +3287,9 @@
         let lastGuestPos = null;        // {lat,lng} last device position (for the map window)
         // Homepage arrival banner: mirrors the My Bookings on-arrival UI so a guest
         // mid-stay can reach their live map / key code without opening their account.
-        let homeArrivalStays = [];       // [{propKey, bookingId}] stays whose dates include today
+        let homeArrivalStays = [];       // [{propKey, bookingId, paid}] stays whose dates include today
         let homeArrivalBookingId = null; // the stay currently shown in the banner
+        let homeArrivalRenderKey = null; // last rendered key (bookingId + paid) so payment changes re-render
         // Bookings the guest has dismissed the arrival banner for (per booking, so a NEW
         // stay still shows). Persisted so it stays closed across reloads.
         let homeArrivalDismissed = (() => {
@@ -3726,6 +3729,9 @@
                     } else if (res.reason === 'before_arrival') {
                         if (mapModal.open && mapModal.propKey === s.propKey) closeMapModal();
                         setArrivalNote(s.bookingId, `You've arrived early — your key code unlocks at ${res.arrival_time || 'your check-in time'}.`, s.propKey, s.bookingId, false, IC_PIN);
+                    } else if (res.reason === 'unpaid') {
+                        if (mapModal.open && mapModal.propKey === s.propKey) closeMapModal();
+                        setArrivalNote(s.bookingId, 'Your key code &amp; arrival info unlock once your holiday balance is paid.', s.propKey, s.bookingId, false, IC_LOCK);
                     } else if (res.reason === 'too_far') {
                         s.autoMapShown = false;   // re-arm auto-open if they come back within 1km
                         s.notifiedNear = false;   // re-arm the "you're close" alert too
@@ -4070,16 +4076,23 @@
             }
             const s = homeArrivalStays[0];   // usually exactly one current stay
             if (homeArrivalDismissed[s.bookingId]) { el.classList.remove('show'); return; }   // guest closed it
-            if (homeArrivalBookingId !== s.bookingId) {   // (re)build only when the stay changes
+            const renderKey = s.bookingId + '|' + (s.paid ? 'p' : 'u');
+            if (homeArrivalRenderKey !== renderKey) {   // (re)build when the stay OR its paid state changes
+                homeArrivalRenderKey = renderKey;
                 homeArrivalBookingId = s.bookingId;
                 const name = (propertyMeta[s.propKey] && propertyMeta[s.propKey].name) || s.propKey;
                 const alertsBtn = ('Notification' in window && Notification.permission === 'default')
                     ? `<button class="btn-sm btn-edit" style="margin-left:4px;" onclick="requestArrivalNotifications()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg> Get alerts</button>`
                     : '';
+                // Paid → the usual on-arrival reveal. Unpaid → withhold the key code and
+                // point them to pay (mirrors the server gate in arrival-access.php).
+                const noteHtml = s.paid
+                    ? `Your key code &amp; arrival info opens automatically when you reach the cottage. <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="revealArrivalAccess('${s.propKey}','${s.bookingId}')">Show now</button><button class="btn-sm btn-edit" style="margin-left:4px;" onclick="openGuestArea()">Open my stay</button>${alertsBtn}`
+                    : `${IC_LOCK} Your key code &amp; arrival info unlock once your holiday balance is paid. <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="openGuestArea()">Pay &amp; open my stay</button>`;
                 el.innerHTML = `<div class="home-arrival-card">
                     <button class="home-arrival-close" onclick="dismissHomeArrival()" aria-label="Dismiss" title="Dismiss">&times;</button>
                     <div class="home-arrival-text">${IC_PIN} You're staying at <strong>${escapeHtml(name)}</strong></div>
-                    <div id="home-arr-note" class="home-arrival-note">Your key code &amp; arrival info opens automatically when you reach the cottage. <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="revealArrivalAccess('${s.propKey}','${s.bookingId}')">Show now</button><button class="btn-sm btn-edit" style="margin-left:4px;" onclick="openGuestArea()">Open my stay</button>${alertsBtn}</div>
+                    <div id="home-arr-note" class="home-arrival-note">${noteHtml}</div>
                     <div class="instay-tides" style="margin-top:10px;"></div>
                 </div>`;
                 try { renderInStayTides(); } catch (e) {}
@@ -4113,7 +4126,7 @@
                 homeArrivalStays = rows
                     .map(r => ({ propKey: r.prop_key, b: mapBookingFromApi(r) }))
                     .filter(x => x.b.checkIn <= today && x.b.checkOut >= today)
-                    .map(x => ({ propKey: x.propKey, bookingId: x.b.id }));
+                    .map(x => ({ propKey: x.propKey, bookingId: x.b.id, paid: !!(paymentSummary(x.propKey, x.b) || {}).fullyPaid }));
                 if (homeArrivalBookingId && !homeArrivalStays.some(s => s.bookingId === homeArrivalBookingId)) {
                     homeArrivalBookingId = null;   // previous stay ended — allow a rebuild
                 }
@@ -4149,6 +4162,8 @@
                         setArrivalNote(bookingId, `Your map and arrival details unlock 15 minutes before your ${res.arrival_time || ''} check-in.`, propKey, bookingId, false, IC_LOCK);
                     } else if (res.reason === 'before_arrival') {
                         setArrivalNote(bookingId, `You've arrived early — your key code unlocks at ${res.arrival_time || 'your check-in time'}.`, propKey, bookingId, false, IC_PIN);
+                    } else if (res.reason === 'unpaid') {
+                        setArrivalNote(bookingId, 'Your key code &amp; arrival info unlock once your holiday balance is paid.', propKey, bookingId, false, IC_LOCK);
                     } else if (res.reason === 'too_far') {
                         setArrivalNote(bookingId, `You're about ${formatDistance(res.distance_m)} away — a map appears once you're within 1km of the cottage.`, propKey, bookingId, true);
                     } else if (res.reason === 'no_location') {
@@ -4195,7 +4210,10 @@
                 const r = await apiPost('welcome.php', { action: 'get', prop: propKey });
                 sections = (r && r.sections) || [];
             } catch (e) {
-                if (bodyEl) bodyEl.innerHTML = `<p style="color:var(--text-muted);font-size:0.9rem;">Couldn't load the welcome book${e && e.message ? ' (' + escapeHtml(e.message) + ')' : ''}.</p>`;
+                // Show the server's message directly (e.g. the payment-gate notice
+                // "Your welcome book unlocks once your holiday balance is paid.").
+                const msg = (e && e.message) ? escapeHtml(e.message) : '';
+                if (bodyEl) bodyEl.innerHTML = `<p style="color:var(--text-muted);font-size:0.9rem;">${msg || "Couldn't load the welcome book — please try again."}</p>`;
                 return;
             }
             if (!bodyEl) return;
@@ -11109,7 +11127,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'f5r8s2uw';
+            const BUILD = 'g6s9t3vx';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
