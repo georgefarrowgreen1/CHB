@@ -19,8 +19,8 @@ if (!request_is_https()) {
 $username = clean($_GET['username'] ?? '');
 $password = $_GET['password'] ?? '';
 
-if ($username === '' || strlen($password) < 4) {
-    json_out(['error' => 'Provide ?username=...&password=... (min 4 chars)'], 400);
+if ($username === '' || strlen($password) < 12) {
+    json_out(['error' => 'Provide ?username=...&password=... (min 12 chars)'], 400);
 }
 
 // Refuse if an admin already exists (so this can't be abused to add admins)

@@ -22,7 +22,9 @@ CREATE TABLE IF NOT EXISTS properties (
     sort_order      INT           NOT NULL DEFAULT 100,  -- display order of the cottage cards
     max_adults      INT           NOT NULL DEFAULT 2,    -- occupancy caps (single source of truth)
     max_children    INT           NOT NULL DEFAULT 0,
-    max_total       INT           NOT NULL DEFAULT 2
+    max_total       INT           NOT NULL DEFAULT 2,
+    weekend_pct     DECIMAL(5,2)  NOT NULL DEFAULT 0,    -- weekend uplift % (smart pricing); 0 = off
+    weekend_days    VARCHAR(16)   NOT NULL DEFAULT '5,6' -- weekend day-of-week CSV (0=Sun…6=Sat)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ---------- Guest accounts ----------

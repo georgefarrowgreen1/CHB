@@ -20,6 +20,17 @@ function throttle_check($identifier) {
         if ((int)$s->fetch()['c'] >= 5) {
             json_out(['error' => 'Too many failed attempts. Please wait 10 minutes and try again.'], 429);
         }
+        // Per-account cap regardless of IP — stops a distributed / IP-rotating
+        // brute force against a single account (especially the lone admin) that
+        // the per-IP limit above can't catch. Threshold is higher so legitimate
+        // users behind shared/CGNAT IPs aren't tripped by others' failures.
+        $s2 = db()->prepare('SELECT COUNT(*) c FROM login_attempts
+                             WHERE identifier = ? AND success = 0
+                               AND attempted_at > (NOW() - INTERVAL 10 MINUTE)');
+        $s2->execute([$identifier]);
+        if ((int)$s2->fetch()['c'] >= 20) {
+            json_out(['error' => 'Too many failed attempts on this account. Please wait 10 minutes and try again.'], 429);
+        }
     } catch (\Throwable $e) { /* table missing — don't block logins */ }
 }
 function throttle_record($identifier, $ok) {
@@ -72,7 +83,7 @@ switch ($action) {
         require_admin();
         $current = $in['current'] ?? '';
         $next    = $in['next'] ?? '';
-        if (strlen($next) < 4) json_out(['error' => 'New password must be at least 4 characters'], 400);
+        if (strlen($next) < 12) json_out(['error' => 'New password must be at least 12 characters'], 400);
         $stmt = db()->prepare('SELECT password_hash FROM admins WHERE id = ?');
         $stmt->execute([$_SESSION['admin_id']]);
         $row = $stmt->fetch();
@@ -93,8 +104,8 @@ switch ($action) {
         $address  = clean($in['address'] ?? '');
         $postcode = clean($in['postcode'] ?? '');
         $pw       = $in['password'] ?? '';
-        if ($name === '' || $email === '' || strlen($pw) < 4) {
-            json_out(['error' => 'Name, email and a 4+ character password are required'], 400);
+        if ($name === '' || $email === '' || strlen($pw) < 8) {
+            json_out(['error' => 'Name, email and an 8+ character password are required'], 400);
         }
         if ($address === '') json_out(['error' => 'Please enter your UK address'], 400);
         if (!uk_postcode_valid($postcode)) json_out(['error' => 'Please enter a valid UK postcode'], 400);
@@ -201,7 +212,7 @@ switch ($action) {
         if (empty($_SESSION['guest_id'])) json_out(['error' => 'Please log in first'], 401);
         $current = $in['current'] ?? '';
         $next    = $in['next'] ?? '';
-        if (strlen($next) < 4) json_out(['error' => 'New password must be at least 4 characters'], 400);
+        if (strlen($next) < 8) json_out(['error' => 'New password must be at least 8 characters'], 400);
         $stmt = db()->prepare('SELECT password_hash FROM guests WHERE id = ?');
         $stmt->execute([$_SESSION['guest_id']]);
         $row = $stmt->fetch();
@@ -309,7 +320,7 @@ switch ($action) {
         $email = strtolower(clean($in['email'] ?? ''));
         $next  = $in['next'] ?? '';
         if ($email === '') json_out(['error' => 'Guest email is required'], 400);
-        if (strlen($next) < 4) json_out(['error' => 'New password must be at least 4 characters'], 400);
+        if (strlen($next) < 8) json_out(['error' => 'New password must be at least 8 characters'], 400);
         $stmt = db()->prepare('SELECT id FROM guests WHERE email = ?');
         $stmt->execute([$email]);
         $row = $stmt->fetch();
