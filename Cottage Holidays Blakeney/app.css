@@ -1071,7 +1071,7 @@
         .enquiry-meta strong { color: var(--text-light); font-weight: 500; }
         .enquiry-msg { font-size: 0.78rem; color: var(--text-muted); margin-top: 8px; font-style: italic; }
         .enquiry-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: auto; }
-        .btn-sm { padding: 8px 14px; border-radius: 18px; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.5px; cursor: pointer; border: 1px solid var(--glass-border); background: transparent; color: var(--text-light); transition: all 0.3s; white-space: nowrap; }
+        .btn-sm { padding: 8px 14px; border-radius: 18px; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.5px; cursor: pointer; border: 1px solid var(--glass-border); background: transparent; color: var(--text-light); transition: all 0.3s; white-space: nowrap; text-decoration: none; }
         .btn-sm:hover { transform: translateY(-2px); }
         /* Read-only availability calendar on cottage pages */
         .avail-cal { margin-top: 28px; padding: 20px 22px; border-radius: 20px; }
@@ -1321,6 +1321,9 @@
         .exp-dist .ic { width: 15px; height: 15px; flex-shrink: 0; }
         .exp-cat-tag { position: absolute; top: 12px; left: 12px; background: rgba(18,19,22,0.78); -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px); color: var(--text-light); font-size: 0.66rem; font-weight: 600; letter-spacing: 0.3px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--glass-border); }
         .exp-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 18px 18px; }
+        /* Even pills, icon + label centred (no link underline — handled on .btn-sm). */
+        .exp-actions .btn-sm { flex: 1 1 auto; display: inline-flex; align-items: center; justify-content: center; gap: 6px; }
+        .exp-actions .btn-sm .ic { flex-shrink: 0; }
         .exp-suggest { margin-top: 24px; padding: 22px 24px; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
         .exp-edit-thumb { width: 64px; height: 64px; flex-shrink: 0; border-radius: 12px; background-size: cover; background-position: center; background-color: rgba(255,255,255,0.06); border: 1px solid var(--glass-border); }
         /* Mobile polish: stack card grids to one column and give close buttons a
