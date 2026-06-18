@@ -459,6 +459,8 @@
         .dp-day.dp-start.dp-end { border-radius: 10px; }
         .dp-foot { display: flex; gap: 10px; margin-top: 16px; }
         .dp-foot button { flex: 1; }
+        /* Make the date-picker "Clear" obvious: dims when there are no dates to clear. */
+        .dp-clear.is-empty { opacity: 0.4; pointer-events: none; }
 
         /* Terms acceptance checkbox */
         .terms-accept { display: flex; align-items: flex-start; gap: 10px; margin: 4px 0 18px; font-size: 0.85rem; color: var(--text-muted); line-height: 1.5; cursor: pointer; }
