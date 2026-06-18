@@ -3283,6 +3283,12 @@
         // mid-stay can reach their live map / key code without opening their account.
         let homeArrivalStays = [];       // [{propKey, bookingId}] stays whose dates include today
         let homeArrivalBookingId = null; // the stay currently shown in the banner
+        // Bookings the guest has dismissed the arrival banner for (per booking, so a NEW
+        // stay still shows). Persisted so it stays closed across reloads.
+        let homeArrivalDismissed = (() => {
+            try { return JSON.parse(localStorage.getItem('chb-arrival-dismissed') || '{}') || {}; }
+            catch (e) { return {}; }
+        })();
         // All note targets for a booking: the My Bookings card note, and (when it's the
         // banner's stay) the homepage banner note — so the shared arrival functions
         // below update both places at once.
@@ -4059,6 +4065,7 @@
                 return;
             }
             const s = homeArrivalStays[0];   // usually exactly one current stay
+            if (homeArrivalDismissed[s.bookingId]) { el.classList.remove('show'); return; }   // guest closed it
             if (homeArrivalBookingId !== s.bookingId) {   // (re)build only when the stay changes
                 homeArrivalBookingId = s.bookingId;
                 const name = (propertyMeta[s.propKey] && propertyMeta[s.propKey].name) || s.propKey;
@@ -4066,6 +4073,7 @@
                     ? `<button class="btn-sm btn-edit" style="margin-left:4px;" onclick="requestArrivalNotifications()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg> Get alerts</button>`
                     : '';
                 el.innerHTML = `<div class="home-arrival-card">
+                    <button class="home-arrival-close" onclick="dismissHomeArrival()" aria-label="Dismiss" title="Dismiss">&times;</button>
                     <div class="home-arrival-text">${IC_PIN} You're staying at <strong>${escapeHtml(name)}</strong></div>
                     <div id="home-arr-note" class="home-arrival-note">Your key code &amp; arrival info opens automatically when you reach the cottage. <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="revealArrivalAccess('${s.propKey}','${s.bookingId}')">Show now</button><button class="btn-sm btn-edit" style="margin-left:4px;" onclick="openGuestArea()">Open my stay</button>${alertsBtn}</div>
                     <div class="instay-tides" style="margin-top:10px;"></div>
@@ -4073,6 +4081,16 @@
                 try { renderInStayTides(); } catch (e) {}
             }
             el.classList.add('show');
+        }
+        // Guest closed the arrival banner — hide it and remember (per booking) so it
+        // stays closed for this stay, while a future stay can still surface its own.
+        function dismissHomeArrival() {
+            if (homeArrivalBookingId != null) {
+                homeArrivalDismissed[homeArrivalBookingId] = 1;
+                try { localStorage.setItem('chb-arrival-dismissed', JSON.stringify(homeArrivalDismissed)); } catch (e) {}
+            }
+            const el = document.getElementById('home-arrival');
+            if (el) el.classList.remove('show');
         }
         // Look up the logged-in guest's current stays (today within the booking) and
         // drive the banner + the on-arrival GPS watch. Safe to call repeatedly.
@@ -11047,7 +11065,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'c9k4m7pq';
+            const BUILD = 'd1m5n8rs';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
