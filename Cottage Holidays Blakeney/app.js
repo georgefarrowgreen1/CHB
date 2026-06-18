@@ -7831,6 +7831,22 @@
         // ---- System check (Settings → System check) ----
         // Apply any pending database migrations from the UI (calls migrate.php with
         // the admin session) — so new tables/columns go live without phpMyAdmin.
+        // Generate WebP companions for EXISTING uploaded photos (new uploads already
+        // get one). Safe to re-run; processes in batches, so click again if more remain.
+        async function backfillWebp() {
+            const msg = document.getElementById('diag-msg');
+            if (msg) { msg.style.color = ''; msg.textContent = 'Generating WebP copies of your photos…'; }
+            try {
+                const r = await apiPost('webp-backfill.php', {});
+                if (!msg) return;
+                if (!r.ok) { msg.style.color = '#E57373'; msg.textContent = r.error || 'WebP generation failed.'; return; }
+                msg.style.color = '#4CAF50';
+                const more = r.remaining > 0 ? ` ${r.remaining} more to go — click again to continue.` : '';
+                msg.textContent = `Done — created ${r.created} WebP cop${r.created === 1 ? 'y' : 'ies'}`
+                    + ` (${r.skipped} already had one${r.failed ? `, ${r.failed} skipped` : ''}).${more}`;
+            } catch (e) { if (msg) { msg.style.color = '#E57373'; msg.textContent = 'Could not run: ' + (e.message || 'error'); } }
+        }
+
         async function runMigrations() {
             const out = document.getElementById('migrate-result');
             const msg = document.getElementById('diag-msg');
@@ -11031,7 +11047,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'b8h3j6mn';
+            const BUILD = 'c9k4m7pq';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;

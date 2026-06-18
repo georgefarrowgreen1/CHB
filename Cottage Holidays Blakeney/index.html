@@ -990,6 +990,7 @@
                 <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">
                     <button class="btn-glass" style="width:auto;padding:11px 22px;" onclick="loadDiagnostics()">Run checks</button>
                     <button class="btn-sm btn-edit" onclick="runMigrations()">Run database migrations</button>
+                    <button class="btn-sm btn-edit" onclick="backfillWebp()">Generate WebP for photos</button>
                     <button class="btn-sm btn-edit" onclick="sendTestEmail()">Send test email</button>
                     <span id="diag-msg" style="font-size:0.82rem;"></span>
                 </div>
@@ -1837,7 +1838,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=32"></script>
+    <script src="app.js?v=33"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
