@@ -9009,6 +9009,9 @@
             if (!dpState.start) hint.innerText = 'Select your check-in date';
             else if (!dpState.end) hint.innerText = 'Now select your check-out date';
             else hint.innerText = `${dpPretty(dpState.start)} → ${dpPretty(dpState.end)} · ${nightsBetween(dpState.start, dpState.end)} night(s)`;
+            // Dim "Clear dates" when there's nothing selected to clear.
+            const clearBtn = document.getElementById('dp-clear');
+            if (clearBtn) clearBtn.classList.toggle('is-empty', !dpState.start && !dpState.end);
 
             const grid = document.getElementById('dp-grid');
             const year = view.getFullYear(), month = view.getMonth();
@@ -11119,7 +11122,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'j8u2v5xz';
+            const BUILD = 'k3p9w1qd';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;

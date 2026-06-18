@@ -168,7 +168,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=23">
+    <link rel="stylesheet" href="app.css?v=24">
     <!-- Speed up the font fetch (and the jsPDF CDN) by opening the connections early. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -526,29 +526,6 @@
                         <div class="things-title">Cancellation policy</div>
                         <p class="things-note" id="prop-cancellation">Enquiries are free — we'll confirm your dates and any deposit by email before anything is due.</p>
                     </div>
-                </div>
-
-                <!-- Local guide (dark skies + car-free + tides) — owner-editable per cottage. -->
-                <div class="prop-divider"></div>
-                <h3 class="section-title prop-section-h">Good to know locally</h3>
-                <div class="things-grid" id="prop-local-guide">
-                    <div class="things-col">
-                        <div class="things-title">Dark skies &amp; stargazing</div>
-                        <p class="things-note" id="prop-darkskies"></p>
-                    </div>
-                    <div class="things-col">
-                        <div class="things-title">Getting here car-free</div>
-                        <p class="things-note" id="prop-carfree"></p>
-                    </div>
-                    <!-- Tides — shown only when a tide API key is configured. -->
-                    <div class="things-col" id="prop-tides-col" style="display:none;">
-                        <div class="things-title">Tides at Blakeney</div>
-                        <div id="prop-tides-body" class="things-list" style="display:flex;flex-direction:column;gap:6px;"></div>
-                        <p class="things-note" style="margin-top:8px;font-size:0.72rem;">Plan the quay, seal trips and the coastal path around the tide.</p>
-                    </div>
-                </div>
-                <div style="text-align:center;margin-top:18px;">
-                    <button class="btn-glass" type="button" onclick="openTripModal()">✨ Plan my North Norfolk days</button>
                 </div>
 
                 <!-- Accessibility (per cottage) — owner-editable; helps guests book with
@@ -1578,7 +1555,7 @@
             <div class="dp-grid" id="dp-grid"></div>
             <div style="font-size:0.72rem;color:var(--text-muted);text-align:center;margin-top:10px;">Crossed-out dates are already booked</div>
             <div class="dp-foot">
-                <button class="toggle-btn" onclick="dpClear()">Clear</button>
+                <button class="toggle-btn dp-clear" id="dp-clear" onclick="dpClear()">Clear dates</button>
                 <button class="btn-glass" id="dp-done" onclick="dpDone()">Done</button>
             </div>
         </div>
@@ -1838,7 +1815,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=39"></script>
+    <script src="app.js?v=40"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
