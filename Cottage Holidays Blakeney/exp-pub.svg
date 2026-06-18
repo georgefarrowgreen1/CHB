@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 260" width="400" height="260" role="img" aria-label="Local pub">
+  <defs>
+    <linearGradient id="pbg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e7d2ad"/><stop offset="1" stop-color="#c79a6a"/></linearGradient>
+  </defs>
+  <rect width="400" height="260" fill="url(#pbg)"/>
+  <circle cx="320" cy="60" r="30" fill="#fff4dd" opacity="0.7"/>
+  <!-- pint glass -->
+  <g transform="translate(200,130)">
+    <path d="M-44 -52 H44 L36 78 H-36 Z" fill="#f3e6c4" opacity="0.5" stroke="#7a5230" stroke-width="4" stroke-linejoin="round"/>
+    <path d="M-41 -10 H41 L36 78 H-36 Z" fill="#c8862f"/>
+    <path d="M-44 -52 H44 L41 -10 H-41 Z" fill="#fbf3df"/>
+    <ellipse cx="-26" cy="-52" rx="14" ry="9" fill="#fff"/>
+    <ellipse cx="2" cy="-56" rx="16" ry="10" fill="#fff"/>
+    <ellipse cx="28" cy="-52" rx="13" ry="9" fill="#fff"/>
+    <path d="M44 -34 q 26 6 26 30 t -22 28" fill="none" stroke="#7a5230" stroke-width="4"/>
+  </g>
+</svg>

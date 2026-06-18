@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 260" width="400" height="260" role="img" aria-label="Smokehouse and fresh fish">
+  <defs>
+    <linearGradient id="sbg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#bcd0d8"/><stop offset="1" stop-color="#7e9aa6"/></linearGradient>
+  </defs>
+  <rect width="400" height="260" fill="url(#sbg)"/>
+  <circle cx="320" cy="58" r="28" fill="#f3f8fa" opacity="0.65"/>
+  <!-- fish -->
+  <g transform="translate(186,138)">
+    <path d="M-110 0 C -70 -52, 70 -52, 120 0 C 70 52, -70 52, -110 0 Z" fill="#c98a3f"/>
+    <path d="M-110 0 C -90 -22, -90 22, -110 0 Z" fill="#c98a3f"/>
+    <path d="M-150 -34 L-110 0 L-150 34 L-128 0 Z" fill="#a9763e"/>
+    <path d="M-110 0 C -70 -52, 70 -52, 120 0 C 70 52, -70 52, -110 0 Z" fill="none" stroke="#8a5a26" stroke-width="3" opacity="0.5"/>
+    <circle cx="92" cy="-12" r="7" fill="#3a2a18"/><circle cx="94" cy="-13" r="2.2" fill="#fff"/>
+    <g stroke="#8a5a26" stroke-width="3" fill="none" opacity="0.5">
+      <path d="M30 -30 C 40 0, 40 0, 30 30"/><path d="M0 -34 C 10 0, 10 0, 0 34"/><path d="M-30 -32 C -20 0, -20 0, -30 32"/>
+    </g>
+  </g>
+</svg>

@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 260" width="400" height="260" role="img" aria-label="Seal boat trip">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c4dceb"/><stop offset="1" stop-color="#8fb3c7"/></linearGradient>
+    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#3f7088"/><stop offset="1" stop-color="#264a5d"/></linearGradient>
+  </defs>
+  <rect width="400" height="260" fill="url(#sky)"/>
+  <circle cx="318" cy="56" r="30" fill="#fdf3da" opacity="0.92"/>
+  <rect y="150" width="400" height="110" fill="url(#sea)"/>
+  <ellipse cx="115" cy="150" rx="150" ry="10" fill="#dac99c" opacity="0.7"/>
+  <g transform="translate(252,151)">
+    <path d="M-46 0 H46 L35 24 H-35 Z" fill="#21323b"/>
+    <rect x="-16" y="-22" width="32" height="22" rx="3" fill="#33505e"/>
+  </g>
+  <g transform="translate(108,160)" fill="#2b3940">
+    <ellipse cx="0" cy="6" rx="21" ry="9"/>
+    <circle cx="17" cy="-3" r="8.5"/>
+    <circle cx="20" cy="-4" r="1.5" fill="#cfe0e6"/>
+  </g>
+  <g stroke="#cfe3ee" stroke-width="2.4" fill="none" opacity="0.5" stroke-linecap="round">
+    <path d="M44 212 q 13 -9 26 0 t 26 0"/>
+    <path d="M300 228 q 13 -9 26 0 t 26 0"/>
+  </g>
+</svg>
