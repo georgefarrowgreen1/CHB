@@ -12,6 +12,7 @@
 //  Otherwise the code is never sent to the browser.
 // ============================================================
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/pricing.php';   // booking_amount_due() for the payment gate
 require_guest();
 
 $in = body();
@@ -32,7 +33,7 @@ if (!$guest) json_out(['error' => 'Guest not found'], 404);
 //    out two time gates, in the database's own clock so they match CURDATE():
 //      • map_allowed  — from 15 minutes before the arrival (check-in date + time)
 //      • info_allowed — from the arrival time onwards
-$b = db()->prepare('SELECT check_in_time,
+$b = db()->prepare('SELECT *,
         (NOW() >= (CAST(CONCAT(check_in, " ", check_in_time) AS DATETIME) - INTERVAL 15 MINUTE)) AS map_allowed,
         (NOW() >=  CAST(CONCAT(check_in, " ", check_in_time) AS DATETIME))                        AS info_allowed
     FROM bookings
@@ -48,6 +49,15 @@ if (!$bk) {
 $mapAllowed  = (int)$bk['map_allowed'] === 1;
 $infoAllowed = (int)$bk['info_allowed'] === 1;
 $arrivalHm   = substr((string)$bk['check_in_time'], 0, 5);
+
+// PAYMENT GATE — the key code, arrival info AND the location/map are withheld
+// until the holiday is paid in full. (The refundable damages deposit is a
+// separate card hold and is NOT counted here.) Server-authoritative: nothing
+// trip-sensitive is sent for an unpaid booking, whatever the UI does.
+$bal = booking_amount_due($bk, 'balance');
+if ((float)($bal['due'] ?? 0) > 0.005) {
+    json_out(['ok' => true, 'unlocked' => false, 'reason' => 'unpaid', 'balance_due' => round((float)$bal['due'], 2)]);
+}
 
 // 2) Property coordinates (geo-<propKey>, stored as plain JSON {lat,lng}).
 $cs = db()->prepare('SELECT item_value FROM content WHERE item_key = ?');

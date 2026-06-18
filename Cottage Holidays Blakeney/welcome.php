@@ -11,6 +11,7 @@
 //  content.php with the private welcome-<prop> key).
 // ============================================================
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/pricing.php';   // booking_amount_due() for the payment gate
 
 $in = body();
 $action = $in['action'] ?? '';
@@ -29,9 +30,19 @@ $g->execute([$guestId]);
 $email = $g->fetchColumn();
 if (!$email) json_out(['error' => 'Please log in first'], 401);
 
-$own = db()->prepare("SELECT COUNT(*) FROM bookings WHERE prop_key = ? AND email IS NOT NULL AND LOWER(email) = LOWER(?)");
+// Only a guest who has booked this cottage may read its welcome book — AND the
+// holiday must be paid in full. (Trip information is gated behind payment just
+// like the key code.) Allow it if ANY of their bookings here is settled.
+$own = db()->prepare("SELECT * FROM bookings WHERE prop_key = ? AND email IS NOT NULL AND LOWER(email) = LOWER(?)");
 $own->execute([$prop, $email]);
-if ((int)$own->fetchColumn() < 1) json_out(['error' => 'No booking found for this cottage.'], 403);
+$bookings = $own->fetchAll();
+if (!$bookings) json_out(['error' => 'No booking found for this cottage.'], 403);
+$paid = false;
+foreach ($bookings as $b) {
+    $d = booking_amount_due($b, 'balance');
+    if ((float)($d['due'] ?? 0) <= 0.005) { $paid = true; break; }
+}
+if (!$paid) json_out(['error' => 'Your welcome book unlocks once your holiday balance is paid.', 'reason' => 'unpaid'], 402);
 
 // Read + decrypt the stored welcome book (a JSON array of {title, body}).
 $sections = [];
