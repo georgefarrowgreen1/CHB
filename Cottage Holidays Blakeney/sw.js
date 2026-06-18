@@ -4,16 +4,18 @@
 //  OFFLINE CACHE
 //  - Precaches the app shell on install.
 //  - Navigations (HTML): network-first → cached shell offline (always fresh online).
-//  - Other same-origin GETs (assets, public GET endpoints): stale-while-revalidate,
-//    so the last-seen content shows offline and refreshes silently when online.
-//  - POSTs and cross-origin requests are never cached. version.php is always live.
+//  - Static same-origin assets (css/js/images/manifest): stale-while-revalidate,
+//    so the last-seen asset shows offline and refreshes silently when online.
+//  - Dynamic JSON APIs (*.php) are network-only: never stale, never cached
+//    (prices/availability must be fresh; credentialed responses must not be stored).
+//  - POSTs and cross-origin requests are never cached.
 //
 //  WEB PUSH (unchanged): payload-less pushes; this worker asks the server what to
 //  show (push.php?action=sw_notify) and relays release reloads to open pages.
 //  Keep this file in the SAME folder as index.html.
 // ============================================================
-const CACHE = 'chb-cache-v62';
-const CORE = ['./', 'index.html', 'logo.svg', 'favicon.png', 'apple-touch-icon.png', 'manifest.json', 'app.css?v=18', 'app.js?v=31', 'guest-app.css?v=17', 'guest-app.js?v=11'];
+const CACHE = 'chb-cache-v63';
+const CORE = ['./', 'index.html', 'logo.svg', 'favicon.png', 'apple-touch-icon.png', 'manifest.json', 'app.css?v=18', 'app.js?v=32', 'guest-app.css?v=17', 'guest-app.js?v=11'];
 
 self.addEventListener('install', (event) => {
     self.skipWaiting();
@@ -34,7 +36,11 @@ self.addEventListener('fetch', (event) => {
     let url;
     try { url = new URL(req.url); } catch (e) { return; }
     if (url.origin !== self.location.origin) return;   // let cross-origin (Square, fonts, tiles) pass through
-    if (url.pathname.endsWith('/version.php')) return; // the update probe must always be live
+    // Dynamic JSON APIs are network-only — never serve stale prices/availability,
+    // never write credentialed (admin/guest) responses to the shared cache, and
+    // never let per-date/year query strings grow the cache unbounded. (Covers the
+    // version.php update probe too, which must always be live.)
+    if (url.pathname.endsWith('.php')) return;
 
     const accept = req.headers.get('accept') || '';
     const isNav = req.mode === 'navigate' || accept.includes('text/html');

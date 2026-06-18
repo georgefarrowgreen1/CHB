@@ -44,6 +44,10 @@ $pw = price_breakdown($rateWk, 2, 0, '2026-01-02', '2026-01-04', null, []);   //
 chk('weekend +20%: Fri+Sat nightly = 240 (120 x 2)', approxEq($pw['nightly'], 240));
 $pw2 = price_breakdown($rateWk, 2, 0, '2026-01-05', '2026-01-07', null, []);  // Mon + Tue = no uplift
 chk('weekend rule leaves weekdays at base = 200', approxEq($pw2['nightly'], 200));
+// Empty weekend_days = NO weekend days (must NOT fall back to Fri/Sat) — parity guard.
+$rateWkEmpty = ['prop_key' => 'wke', 'couple_rate' => 100, 'extra_adult_rate' => 0, 'child_rate' => 0, 'booking_fee' => 0, 'transaction_pct' => 0, 'weekend_pct' => 20, 'weekend_days' => ''];
+$pwe = price_breakdown($rateWkEmpty, 2, 0, '2026-01-02', '2026-01-04', null, []);   // Fri + Sat, but no weekend days set
+chk('weekend_days="" applies no uplift => 200', approxEq($pwe['nightly'], 200));
 
 echo "\n";
 if ($fail) { fwrite(STDERR, "$fail pricing check(s) FAILED — JS and PHP pricing may have diverged.\n"); exit(1); }

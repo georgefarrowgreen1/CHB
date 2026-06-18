@@ -41,7 +41,10 @@ function fetch_url($url) {
             CURLOPT_FOLLOWLOCATION => true,
             CURLOPT_TIMEOUT => 20,
             CURLOPT_USERAGENT => 'CHB-Calendar-Sync/1.0',
-            CURLOPT_SSL_VERIFYPEER => false,
+            // Verify the platform's TLS certificate. These feeds gate the public
+            // booking form + Pricing Coach, so a MITM mustn't be able to forge them.
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
         ]);
         $body = curl_exec($ch);
         $err = curl_error($ch);

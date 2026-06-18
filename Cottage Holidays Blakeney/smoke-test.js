@@ -118,6 +118,8 @@ else {
     check('weekend +20% on a Saturday (2026-01-03)', approx(nrf('2026-01-03', wk, []), 120));
     check('no uplift on a Monday (2026-01-05)', approx(nrf('2026-01-05', wk, []), 100));
     check('no uplift when weekendPct = 0', approx(nrf('2026-01-03', { coupleRate: 100, weekendPct: 0 }, []), 100));
+    // Empty weekendDays must mean "no weekend days" (parity with PHP), NOT a fallback to Fri/Sat.
+    check('weekendDays="" applies no uplift (parity)', approx(nrf('2026-01-03', { coupleRate: 100, weekendPct: 20, weekendDays: '' }, []), 100));
 }
 
 console.log('\n== 3. UK postcode validation ==');
@@ -178,6 +180,20 @@ check('no duplicate element ids' + (dupes.length ? ' (dupes: ' + [...new Set(dup
 
 // 6c. Build stamp present and well-formed.
 check('build stamp present (const BUILD = \'xxxxxxxx\')', /const BUILD = '[a-z0-9]{6,}';/.test(appScript));
+
+// 6c-ii. Service-worker precache ?v= versions must match index.html's, so a
+// half-bump can't make the SW precache a stale asset (silent regression).
+try {
+    const sw = fs.readFileSync(path.join(path.dirname(HTML_PATH), 'sw.js'), 'utf8');
+    const drift = [];
+    ['app.css', 'app.js', 'guest-app.css', 'guest-app.js'].forEach(a => {
+        const re = new RegExp('(?<![-\\w])' + a.replace('.', '\\.') + '\\?v=(\\d+)');
+        const inHtml = (html.match(re) || [])[1];
+        const inSw = (sw.match(re) || [])[1];
+        if (inHtml !== inSw) drift.push(`${a} (index.html v${inHtml} vs sw.js v${inSw})`);
+    });
+    check('sw.js precache ?v= matches index.html' + (drift.length ? ' — drift: ' + drift.join(', ') : ''), drift.length === 0);
+} catch (e) { check('sw.js precache version check ran (' + e.message + ')', false); }
 
 // 6d. JSON-LD structured data parses.
 const ld = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);

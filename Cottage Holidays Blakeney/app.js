@@ -5750,7 +5750,12 @@
         function weekendPctFor(dateStr, r) {
             const pct = parseFloat(r && r.weekendPct) || 0;
             if (pct <= 0) return 0;
-            const days = String((r && r.weekendDays) || '5,6').split(',').map(s => parseInt(s, 10));
+            // Default to Fri/Sat only when weekendDays is absent — an EMPTY string means
+            // "no weekend days" and must NOT fall back to the default, or JS would apply
+            // an uplift PHP doesn't (price_breakdown / weekend_pct_for_night). Keep both
+            // engines identical here; the parity tests cover the empty-string case.
+            const raw = (r && r.weekendDays != null) ? String(r.weekendDays) : '5,6';
+            const days = raw.split(',').map(s => parseInt(s, 10)).filter(n => !isNaN(n));
             const dow = new Date(dateStr + 'T00:00:00Z').getUTCDay();
             return days.indexOf(dow) !== -1 ? pct : 0;
         }
@@ -11026,7 +11031,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'a7g2h5kl';
+            const BUILD = 'b8h3j6mn';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
