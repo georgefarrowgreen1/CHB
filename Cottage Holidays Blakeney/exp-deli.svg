@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 260" width="400" height="260" role="img" aria-label="Local deli and shop">
+  <defs>
+    <linearGradient id="dbg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#e3ddcb"/><stop offset="1" stop-color="#bfb288"/></linearGradient>
+  </defs>
+  <rect width="400" height="260" fill="url(#dbg)"/>
+  <circle cx="322" cy="58" r="28" fill="#fbf3df" opacity="0.7"/>
+  <!-- basket -->
+  <g transform="translate(200,150)">
+    <!-- bread -->
+    <ellipse cx="-22" cy="-30" rx="40" ry="18" fill="#c98a3f" transform="rotate(-12 -22 -30)"/>
+    <g stroke="#9a6526" stroke-width="3" stroke-linecap="round" transform="rotate(-12 -22 -30)">
+      <path d="M-44 -32 l 8 6"/><path d="M-24 -36 l 8 6"/><path d="M-4 -34 l 8 6"/>
+    </g>
+    <!-- cheese wedge -->
+    <path d="M14 -28 L62 -14 L40 6 Z" fill="#e7c558" stroke="#b8932f" stroke-width="3" stroke-linejoin="round"/>
+    <circle cx="36" cy="-12" r="3" fill="#cf9f2f"/><circle cx="46" cy="-6" r="2.4" fill="#cf9f2f"/>
+    <!-- basket body -->
+    <path d="M-66 -6 H66 L54 60 H-54 Z" fill="#a9763e"/>
+    <g stroke="#7a5230" stroke-width="3" opacity="0.7">
+      <path d="M-60 8 H60"/><path d="M-58 26 H58"/><path d="M-56 44 H56"/>
+      <path d="M-30 -6 L-36 60"/><path d="M0 -6 V60"/><path d="M30 -6 L36 60"/>
+    </g>
+    <path d="M-72 -6 H72" stroke="#7a5230" stroke-width="6" stroke-linecap="round"/>
+  </g>
+</svg>

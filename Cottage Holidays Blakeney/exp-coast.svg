@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 260" width="400" height="260" role="img" aria-label="Norfolk coast and marshes">
+  <defs>
+    <linearGradient id="csky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#cfe1ec"/><stop offset="1" stop-color="#a7c4b6"/></linearGradient>
+    <linearGradient id="cland" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#7ca982"/><stop offset="1" stop-color="#5d8a66"/></linearGradient>
+  </defs>
+  <rect width="400" height="260" fill="url(#csky)"/>
+  <circle cx="74" cy="58" r="26" fill="#fdf3da" opacity="0.9"/>
+  <path d="M0 188 Q 100 168 200 184 T 400 178 V260 H0 Z" fill="url(#cland)"/>
+  <path d="M0 206 Q 120 192 240 204 T 400 200 V260 H0 Z" fill="#4f7a58" opacity="0.85"/>
+  <!-- windmill silhouette -->
+  <g transform="translate(300,150)" fill="#2f4636">
+    <path d="M-13 38 L-8 -2 H8 L13 38 Z"/>
+    <circle cx="0" cy="-4" r="4"/>
+    <g stroke="#2f4636" stroke-width="4" stroke-linecap="round">
+      <path d="M0 -4 L0 -34"/><path d="M0 -4 L26 -4"/><path d="M0 -4 L0 26"/><path d="M0 -4 L-26 -4"/>
+    </g>
+  </g>
+  <!-- marsh grasses -->
+  <g stroke="#3f6a49" stroke-width="2.4" fill="none" stroke-linecap="round" opacity="0.8">
+    <path d="M60 240 q -4 -22 0 -34"/><path d="M70 240 q 4 -20 0 -30"/><path d="M120 244 q -4 -20 0 -30"/><path d="M130 244 q 4 -18 0 -26"/>
+  </g>
+</svg>
