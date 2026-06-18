@@ -210,6 +210,100 @@ if ($action === 'run_automation') {
 }
 
 // ---------------------------------------------------------------------------
+//  Seed demo data — populate everything needed to exercise the recent features
+//  (cottages map pins, Airbnb-style cards + Guest-favourite badge, weekend
+//  pricing, Pricing Coach, cross-channel Airbnb/Vrbo blocks, the arrival
+//  banner). Everything is tagged/manifested so "Remove all test data" reverses
+//  it completely. Staging-only (guarded at the top of this file).
+// ---------------------------------------------------------------------------
+if ($action === 'seed_features') {
+    $owner = (defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL) ? OWNER_NOTIFY_EMAIL : '';
+    $keys = [];
+    try { $keys = db()->query('SELECT prop_key FROM properties WHERE archived_at IS NULL ORDER BY sort_order, name')->fetchAll(\PDO::FETCH_COLUMN); }
+    catch (\Throwable $e) {}
+    if (!$keys) json_out(['ok' => false, 'error' => 'No cottages found — run migrations first (Settings → System check).']);
+    $k0 = $keys[0];
+    $k1 = $keys[1] ?? $keys[0];
+    $k2 = $keys[2] ?? $keys[0];
+    $manifest = ['geo' => [], 'weekend' => [], 'reviews' => true];
+
+    // 1) GPS coords → map pins (spread slightly around Blakeney). Record prior
+    //    values so purge restores them.
+    $coords = [[52.9536, 1.0206], [52.9551, 1.0182], [52.9523, 1.0235], [52.9510, 1.0150]];
+    foreach ($keys as $i => $k) {
+        try {
+            $s = db()->prepare('SELECT item_value FROM content WHERE item_key = ?'); $s->execute(['geo-' . $k]);
+            $prev = $s->fetchColumn();
+            $manifest['geo'][$k] = ($prev === false) ? null : $prev;
+            $c = $coords[$i % count($coords)];
+            db()->prepare('INSERT INTO content (item_key, item_value, updated_at) VALUES (?,?,NOW()) ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = NOW()')
+                ->execute(['geo-' . $k, json_encode(['lat' => $c[0], 'lng' => $c[1]])]);
+        } catch (\Throwable $e) {}
+    }
+
+    // 2) Weekend uplift on the first cottage (visible in price + calendar).
+    try {
+        $s = db()->prepare('SELECT weekend_pct FROM properties WHERE prop_key = ?'); $s->execute([$k0]);
+        $prevW = $s->fetchColumn();
+        $manifest['weekend'][$k0] = ($prevW === false || $prevW === null) ? 0 : (float)$prevW;
+        db()->prepare('UPDATE properties SET weekend_pct = 20, weekend_days = ? WHERE prop_key = ?')->execute(['5,6', $k0]);
+    } catch (\Throwable $e) {}
+
+    // 3) Curated 5★ reviews on k0 → card rating + "Guest favourite" badge.
+    try {
+        $cur = content_value('reviews'); $arr = $cur ? json_decode($cur, true) : []; if (!is_array($arr)) $arr = [];
+        $names = ['Sarah & Tom', 'The Williams family', 'Margaret H', 'James P'];
+        $texts = ['Spotless, beautifully styled and steps from the quay. We will be back!',
+                  'Perfect coastal bolthole — the welcome book made everything effortless.',
+                  'Faultless from booking to check-out, and the local tips were spot on.',
+                  'A real gem: comfortable, characterful and brilliantly located.'];
+        for ($i = 0; $i < 4; $i++) {
+            $arr[] = ['prop' => $k0, 'stars' => 5, 'text' => $texts[$i], 'name' => $names[$i],
+                      'source' => 'Airbnb', 'date' => date('Y-m-d', strtotime('-' . (3 + $i) . ' days')), '_test' => true];
+        }
+        db()->prepare("INSERT INTO content (item_key, item_value, updated_at) VALUES ('reviews', ?, NOW()) ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = NOW()")
+            ->execute([json_encode($arr)]);
+    } catch (\Throwable $e) {}
+
+    // 4) Bookings (TEST_MARK in notes → removed by purge): a CURRENT stay for the
+    //    test guest (arrival banner) + two on k1 with a 1-night orphan gap.
+    $mkBooking = function ($prop, $name, $ci, $co, $email) {
+        db()->prepare('INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, notes, payment) VALUES (?,?,?,?,?,?,?,?,?)')
+            ->execute([$prop, $name, $email, $ci, $co, 2, 0, 'Seeded demo ' . TEST_MARK, 'paid']);
+    };
+    try {
+        $mkBooking($k0, 'Current guest ' . TEST_MARK, date('Y-m-d', strtotime('-1 day')), date('Y-m-d', strtotime('+3 days')), $owner);
+        $mkBooking($k1, 'Gap A ' . TEST_MARK, date('Y-m-d', strtotime('+14 days')), date('Y-m-d', strtotime('+17 days')), '');
+        $mkBooking($k1, 'Gap B ' . TEST_MARK, date('Y-m-d', strtotime('+18 days')), date('Y-m-d', strtotime('+21 days')), '');   // 1-night gap (17→18)
+    } catch (\Throwable $e) {}
+
+    // 5) Imported Airbnb/Vrbo blocks → calendar labels + cross-channel Coach.
+    try {
+        $mkBlock = function ($prop, $src, $ci, $co) {
+            db()->prepare('INSERT INTO ical_blocks (prop_key, source, uid, check_in, check_out) VALUES (?,?,?,?,?)')
+                ->execute([$prop, $src, $src . '-' . bin2hex(random_bytes(4)) . '-' . TEST_MARK, $ci, $co]);
+        };
+        $mkBlock($k0, 'airbnb', date('Y-m-d', strtotime('+25 days')), date('Y-m-d', strtotime('+28 days')));
+        $mkBlock($k2, 'vrbo', date('Y-m-d', strtotime('+33 days')), date('Y-m-d', strtotime('+36 days')));
+    } catch (\Throwable $e) {}
+
+    // 6) Search demand incl. a no-result month → Coach "unmet demand". Tagged via
+    //    a sentinel ip_hash so purge can find them.
+    try {
+        $sentinel = hash('sha256', TEST_MARK);
+        $month = date('Y-m', strtotime('+2 months'));
+        $ins = db()->prepare('INSERT INTO search_log (mode, adults, children, nights, month, results, found, ip_hash, created_at) VALUES (?,?,?,?,?,?,?,?,?)');
+        for ($i = 0; $i < 22; $i++) $ins->execute(['flex', 2, 0, 3, $month, 1, 1, $sentinel, date('Y-m-d H:i:s', strtotime('-' . random_int(1, 40) . ' days'))]);
+        for ($i = 0; $i < 9; $i++)  $ins->execute(['flex', 2, 0, 3, $month, 0, 0, $sentinel, date('Y-m-d H:i:s', strtotime('-' . random_int(1, 40) . ' days'))]);
+    } catch (\Throwable $e) {}
+
+    try { db()->prepare("INSERT INTO content (item_key, item_value, updated_at) VALUES ('testcentre-seeded', ?, NOW()) ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = NOW()")->execute([json_encode($manifest)]); }
+    catch (\Throwable $e) {}
+
+    json_out(['ok' => true, 'cottages' => count($keys), 'owner_email' => $owner]);
+}
+
+// ---------------------------------------------------------------------------
 //  Test data — list / delete / purge
 // ---------------------------------------------------------------------------
 function tc_test_bookings() {
@@ -269,6 +363,30 @@ if ($action === 'delete_data') {
 if ($action === 'purge_data') {
     foreach (tc_test_bookings() as $b) tc_delete_booking((int)$b['id']);
     try { db()->prepare("DELETE FROM enquiries WHERE message LIKE ?")->execute(['%' . TEST_MARK . '%']); } catch (\Throwable $e) {}
+    // Seeded feature data (ical blocks + search demand).
+    try { db()->prepare("DELETE FROM ical_blocks WHERE uid LIKE ?")->execute(['%' . TEST_MARK . '%']); } catch (\Throwable $e) {}
+    try { db()->prepare('DELETE FROM search_log WHERE ip_hash = ?')->execute([hash('sha256', TEST_MARK)]); } catch (\Throwable $e) {}
+    // Reverse the seed manifest (GPS coords, weekend uplift, curated test reviews).
+    try {
+        $m = json_decode(content_value('testcentre-seeded') ?: '{}', true);
+        if (is_array($m)) {
+            foreach (($m['geo'] ?? []) as $k => $prev) {
+                if ($prev === null) db()->prepare('DELETE FROM content WHERE item_key = ?')->execute(['geo-' . $k]);
+                else db()->prepare('UPDATE content SET item_value = ? WHERE item_key = ?')->execute([$prev, 'geo-' . $k]);
+            }
+            foreach (($m['weekend'] ?? []) as $prop => $prev) {
+                db()->prepare('UPDATE properties SET weekend_pct = ? WHERE prop_key = ?')->execute([(float)$prev, $prop]);
+            }
+            if (!empty($m['reviews'])) {
+                $cur = content_value('reviews'); $arr = $cur ? json_decode($cur, true) : [];
+                if (is_array($arr)) {
+                    $arr = array_values(array_filter($arr, function ($r) { return empty($r['_test']); }));
+                    db()->prepare("UPDATE content SET item_value = ? WHERE item_key = 'reviews'")->execute([json_encode($arr)]);
+                }
+            }
+        }
+    } catch (\Throwable $e) {}
+    try { db()->prepare("DELETE FROM content WHERE item_key = 'testcentre-seeded'")->execute(); } catch (\Throwable $e) {}
     tc_remove_test_guest();
     json_out(['ok' => true]);
 }

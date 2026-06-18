@@ -7947,6 +7947,7 @@
         let tcOwnerEmail = '';
         let tcSquare = { enabled: false, production: false };
         const TC_PAGES = [
+            { id: 'features', label: 'Recent features', sub: 'Seed demo data to try the latest additions', ic: '<path d="M12 2l2.5 7.5H22l-6.2 4.6L18 22l-6-4.4L6 22l2.2-7.9L2 9.5h7.5z"/>' },
             { id: 'preview', label: 'Preview as guest', sub: 'See the live customer site, read-only', ic: '<path d="M1.5 12S5 5 12 5s10.5 7 10.5 7-3.5 7-10.5 7S1.5 12 1.5 12z"/><circle cx="12" cy="12" r="3"/>' },
             { id: 'emails',  label: 'Test emails',       sub: 'Send [TEST] samples to your inbox',   ic: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>' },
             { id: 'booking', label: 'Test booking',      sub: 'Create one &amp; run pay / email / arrival flows', ic: '<rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/>' },
@@ -7974,11 +7975,50 @@
             const title = document.getElementById('settings-panel-title');
             if (title) title.innerHTML = `${SETTINGS_TITLES.testcentre} <span style="color:var(--text-muted);">·</span> ${meta ? meta.label : ''}`;
             settingsBackTarget = () => renderTestCentreList();
-            if (page === 'preview') detail.innerHTML = tcPagePreview();
+            if (page === 'features') detail.innerHTML = tcPageFeatures();
+            else if (page === 'preview') detail.innerHTML = tcPagePreview();
             else if (page === 'emails') detail.innerHTML = tcPageEmails();
             else if (page === 'booking') tcRenderBooking();
             else if (page === 'data') tcRenderData();
             window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+        // ---- Recent features: seed demo data, then a checklist of what to try ----
+        function tcPageFeatures() {
+            const items = [
+                ['Cottages map &amp; Airbnb-style cards', 'Preview as guest → Cottages: 2-up cards with big photos, map pins, and a “Guest favourite” badge on the top-rated cottage.'],
+                ['Weekend pricing', 'The first cottage gets a +20% Fri/Sat uplift — see it on its page price and the availability calendar.'],
+                ['Pricing Coach', 'Settings → Pricing coach: suggestions appear from the seeded bookings, Airbnb/Vrbo blocks and searches (turn-on-weekend, orphan nights, unmet demand, quiet period).'],
+                ['Cross-channel calendar', 'The back-office calendar shows the seeded Airbnb/Vrbo bookings, tagged by platform; the Coach counts them too.'],
+                ['Arrival banner + close button', 'Open “Test booking → Log in as a test guest”, then the homepage shows the floating arrival window for the seeded current stay — try the × to dismiss it.'],
+                ['Pinch-zoom, performance, audit fixes', 'These are global and already live on staging (same code) — no seeding needed.'],
+                ['WebP images', 'Settings → System check → “Generate WebP for photos” (needs uploaded photos to convert).'],
+            ];
+            return `<div class="rate-prop">
+                <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 12px;">Seeds demo data — sample bookings, Airbnb/Vrbo blocks, searches, reviews, GPS pins and a weekend uplift — so you can try everything we've built recently. All of it is tagged and removable in one click via <strong>Test data → Remove all</strong>.</p>
+                <button class="btn-glass" style="width:auto;padding:12px 22px;margin-bottom:6px;" onclick="tcSeedFeatures(this)">Seed demo data</button>
+                <div id="tc-seed-msg" style="font-size:0.82rem;margin:8px 0 14px;"></div>
+                <div class="rule-divider">What to try</div>
+                <div class="settings-group">${items.map(([t, d]) => `
+                    <div class="settings-row" style="cursor:default;align-items:flex-start;">
+                        <span class="settings-row-main"><span class="settings-row-label">${t}</span><span class="settings-row-sub" style="white-space:normal;">${d}</span></span>
+                    </div>`).join('')}</div></div>`;
+        }
+        async function tcSeedFeatures(btn) {
+            const msg = document.getElementById('tc-seed-msg');
+            if (btn) { btn.disabled = true; btn.textContent = 'Seeding…'; }
+            try {
+                const r = await apiPost('testcentre.php', { action: 'seed_features' });
+                if (msg) {
+                    if (r.ok) {
+                        msg.style.color = '#7FD68A';
+                        msg.innerHTML = `✓ Demo data seeded across ${r.cottages} cottage${r.cottages === 1 ? '' : 's'}. Work through the checklist below — open <strong>Preview as guest</strong> for the public-facing items and <strong>Settings → Pricing coach</strong> for the suggestions.`;
+                    } else { msg.style.color = '#E57373'; msg.textContent = r.error || 'Seeding failed.'; }
+                }
+                // Refresh admin-side data so the calendar/cards reflect it without a reload.
+                try { await loadData(); } catch (e) {}
+                try { await loadRates(); } catch (e) {}
+            } catch (e) { if (msg) { msg.style.color = '#E57373'; msg.textContent = 'Could not seed: ' + (e.message || 'error'); } }
+            finally { if (btn) { btn.disabled = false; btn.textContent = 'Seed demo data'; } }
         }
         // ---- Preview as guest ----
         function tcPagePreview() {
@@ -11065,7 +11105,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'd1m5n8rs';
+            const BUILD = 'e4p7q1tv';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
