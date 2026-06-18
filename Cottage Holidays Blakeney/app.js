@@ -3107,6 +3107,7 @@
                         <div class="guest-booking-body">
                             <h3><span class="legend-swatch swatch-${propKey}"></span> ${escapeHtml(meta.name)} <span class="guest-status-badge" style="background:rgba(255,167,38,0.22);color:#FFB74D;border:1px solid rgba(255,167,38,0.5);">Pending</span></h3>
                             <div class="guest-ref">Awaiting confirmation</div>
+                            <div class="guest-booking-cols">
                             <div class="guest-detail-grid">
                                 <div class="booking-detail-item"><span class="booking-detail-label">Check In</span><span class="booking-detail-value" style="font-size:1rem;">${checkIn} · ${checkInTime}</span></div>
                                 <div class="booking-detail-item"><span class="booking-detail-label">Check Out</span><span class="booking-detail-value" style="font-size:1rem;">${checkOut} · ${checkOutTime}</span></div>
@@ -3120,6 +3121,7 @@
                                 <div class="price-row total"><span>Total</span><span class="price-amount">${gbp(p.total)}</span></div>
                                 ${p.damagesDeposit > 0 ? `<div class="price-row" style="color:var(--text-muted);font-size:0.8rem;"><span>+ ${gbp(p.damagesDeposit)} refundable deposit</span><span>held on arrival, not charged</span></div>` : ''}
                                 <p style="color:var(--text-muted);font-size:0.75rem;text-align:center;margin:8px 0 0;">Estimate — we'll confirm your dates and final price by email.</p>
+                            </div>
                             </div>
                             <div class="card-actions">
                                 <button class="btn-sm btn-edit" onclick="openTermsModal(event, '${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h9a3 3 0 0 1 3 3v13H9a3 3 0 0 1-3-3z"/><path d="M6 17h12"/></svg> Terms</button>
@@ -3156,6 +3158,7 @@
                         <div class="guest-booking-body">
                             <h3><span class="legend-swatch swatch-${propKey}"></span> ${escapeHtml(meta.name)} ${statusTag}</h3>
                             <div class="guest-ref">Booking ref ${bookingRef(b.id)}</div>
+                            <div class="guest-booking-cols">
                             <div class="guest-detail-grid">
                                 <div class="booking-detail-item"><span class="booking-detail-label">Check In</span><span class="booking-detail-value" style="font-size:1rem;">${b.checkIn} · ${b.checkInTime || '15:00'}</span></div>
                                 <div class="booking-detail-item"><span class="booking-detail-label">Check Out</span><span class="booking-detail-value" style="font-size:1rem;">${b.checkOut} · ${b.checkOutTime || '10:00'}</span></div>
@@ -3171,6 +3174,7 @@
                                 ${ps.deposit > 0 ? `
                                 <div class="price-row" style="color:#4CAF50;"><span>Paid${b.paymentMethod ? ' (' + escapeHtml(b.paymentMethod) + ')' : ''}${b.paymentDate ? ' on ' + b.paymentDate : ''}</span><span>− ${gbp(ps.deposit)}</span></div>
                                 <div class="price-row total"><span>${ps.fullyPaid ? 'Paid in full' : 'Balance due'}</span><span class="price-amount" style="${ps.fullyPaid ? 'color:#4CAF50;' : ''}">${gbp(ps.fullyPaid ? ps.total : ps.balance)}</span></div>` : ''}
+                            </div>
                             </div>
                             <div class="card-actions">
                                 ${(upcoming && !ps.fullyPaid && payToken) ? `<button class="btn-glass btn-sm" style="background:rgba(76,175,80,0.22);border-color:var(--booked-border);" onclick="openPayView('${payToken}', ${b.dbId}, 'balance')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay balance ${gbp(ps.balance)}</button>` : ''}
@@ -11105,7 +11109,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'e4p7q1tv';
+            const BUILD = 'f5r8s2uw';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
