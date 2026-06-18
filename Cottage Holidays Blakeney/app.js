@@ -3731,7 +3731,7 @@
                         setArrivalNote(s.bookingId, `You've arrived early — your key code unlocks at ${res.arrival_time || 'your check-in time'}.`, s.propKey, s.bookingId, false, IC_PIN);
                     } else if (res.reason === 'unpaid') {
                         if (mapModal.open && mapModal.propKey === s.propKey) closeMapModal();
-                        setArrivalNote(s.bookingId, 'Your key code &amp; arrival info unlock once your holiday balance is paid.', s.propKey, s.bookingId, false, IC_LOCK);
+                        setArrivalNote(s.bookingId, 'Your key code & arrival info unlock once your holiday balance is paid.', s.propKey, s.bookingId, false, IC_LOCK);
                     } else if (res.reason === 'too_far') {
                         s.autoMapShown = false;   // re-arm auto-open if they come back within 1km
                         s.notifiedNear = false;   // re-arm the "you're close" alert too
@@ -4163,7 +4163,7 @@
                     } else if (res.reason === 'before_arrival') {
                         setArrivalNote(bookingId, `You've arrived early — your key code unlocks at ${res.arrival_time || 'your check-in time'}.`, propKey, bookingId, false, IC_PIN);
                     } else if (res.reason === 'unpaid') {
-                        setArrivalNote(bookingId, 'Your key code &amp; arrival info unlock once your holiday balance is paid.', propKey, bookingId, false, IC_LOCK);
+                        setArrivalNote(bookingId, 'Your key code & arrival info unlock once your holiday balance is paid.', propKey, bookingId, false, IC_LOCK);
                     } else if (res.reason === 'too_far') {
                         setArrivalNote(bookingId, `You're about ${formatDistance(res.distance_m)} away — a map appears once you're within 1km of the cottage.`, propKey, bookingId, true);
                     } else if (res.reason === 'no_location') {
@@ -11127,7 +11127,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'g6s9t3vx';
+            const BUILD = 'h7t1u4wy';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
