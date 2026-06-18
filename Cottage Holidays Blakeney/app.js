@@ -3198,11 +3198,11 @@
                 // block keeps the exact arr-/arr-note- ids and .instay-tides class so the
                 // GPS auto-reveal (startArrivalWatch) and tide fill (renderInStayTides)
                 // still target it. All tiles reuse existing functions.
-                if (currentStay) {
+                // The "My Stay" hub (key code, directions, welcome book…) is the in-trip
+                // experience — only surface it once the holiday is paid in full. An
+                // unpaid current stay still shows in the list below with a Pay button.
+                if (currentStay && ps.fullyPaid) {
                     const nightsLeft = Math.max(0, nightsBetween(todayStr, b.checkOut));
-                    const balanceTile = (upcoming && !ps.fullyPaid && payToken)
-                        ? `<button class="hub-tile" onclick="openPayView('${payToken}', ${b.dbId}, 'balance')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg><span>Pay balance</span></button>`
-                        : '';
                     hubCards.push(`
                     <div class="glass-panel my-stay-hub">
                         <div class="hub-head">
@@ -3213,9 +3213,7 @@
                             </div>
                         </div>
                         <div id="arr-${b.id}" class="arrival-access hub-arrival">
-                            <div id="arr-note-${b.id}" style="font-size:0.84rem;color:var(--text-muted);">${ps.fullyPaid
-                                ? `${IC_PIN} Your key code &amp; arrival info opens automatically when you reach the cottage. <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="revealArrivalAccess('${propKey}','${b.id}')">Show now</button>`
-                                : `${IC_LOCK} Your key code &amp; arrival info unlock once your holiday balance is paid.${payToken ? ` <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="openPayView('${payToken}', ${b.dbId}, 'balance')">Pay balance ${gbp(ps.balance)}</button>` : ''}`}</div>
+                            <div id="arr-note-${b.id}" style="font-size:0.84rem;color:var(--text-muted);">${IC_PIN} Your key code &amp; arrival info opens automatically when you reach the cottage. <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="revealArrivalAccess('${propKey}','${b.id}')">Show now</button></div>
                         </div>
                         <div class="instay-tides" style="margin-top:12px;"></div>
                         <div class="hub-grid">
@@ -3287,9 +3285,8 @@
         let lastGuestPos = null;        // {lat,lng} last device position (for the map window)
         // Homepage arrival banner: mirrors the My Bookings on-arrival UI so a guest
         // mid-stay can reach their live map / key code without opening their account.
-        let homeArrivalStays = [];       // [{propKey, bookingId, paid}] stays whose dates include today
+        let homeArrivalStays = [];       // [{propKey, bookingId}] PAID stays whose dates include today
         let homeArrivalBookingId = null; // the stay currently shown in the banner
-        let homeArrivalRenderKey = null; // last rendered key (bookingId + paid) so payment changes re-render
         // Bookings the guest has dismissed the arrival banner for (per booking, so a NEW
         // stay still shows). Persisted so it stays closed across reloads.
         let homeArrivalDismissed = (() => {
@@ -4074,25 +4071,18 @@
                 el.classList.remove('show');
                 return;
             }
-            const s = homeArrivalStays[0];   // usually exactly one current stay
+            const s = homeArrivalStays[0];   // usually exactly one current (paid) stay
             if (homeArrivalDismissed[s.bookingId]) { el.classList.remove('show'); return; }   // guest closed it
-            const renderKey = s.bookingId + '|' + (s.paid ? 'p' : 'u');
-            if (homeArrivalRenderKey !== renderKey) {   // (re)build when the stay OR its paid state changes
-                homeArrivalRenderKey = renderKey;
+            if (homeArrivalBookingId !== s.bookingId) {   // (re)build only when the stay changes
                 homeArrivalBookingId = s.bookingId;
                 const name = (propertyMeta[s.propKey] && propertyMeta[s.propKey].name) || s.propKey;
                 const alertsBtn = ('Notification' in window && Notification.permission === 'default')
                     ? `<button class="btn-sm btn-edit" style="margin-left:4px;" onclick="requestArrivalNotifications()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg> Get alerts</button>`
                     : '';
-                // Paid → the usual on-arrival reveal. Unpaid → withhold the key code and
-                // point them to pay (mirrors the server gate in arrival-access.php).
-                const noteHtml = s.paid
-                    ? `Your key code &amp; arrival info opens automatically when you reach the cottage. <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="revealArrivalAccess('${s.propKey}','${s.bookingId}')">Show now</button><button class="btn-sm btn-edit" style="margin-left:4px;" onclick="openGuestArea()">Open my stay</button>${alertsBtn}`
-                    : `${IC_LOCK} Your key code &amp; arrival info unlock once your holiday balance is paid. <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="openGuestArea()">Pay &amp; open my stay</button>`;
                 el.innerHTML = `<div class="home-arrival-card">
                     <button class="home-arrival-close" onclick="dismissHomeArrival()" aria-label="Dismiss" title="Dismiss">&times;</button>
                     <div class="home-arrival-text">${IC_PIN} You're staying at <strong>${escapeHtml(name)}</strong></div>
-                    <div id="home-arr-note" class="home-arrival-note">${noteHtml}</div>
+                    <div id="home-arr-note" class="home-arrival-note">Your key code &amp; arrival info opens automatically when you reach the cottage. <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="revealArrivalAccess('${s.propKey}','${s.bookingId}')">Show now</button><button class="btn-sm btn-edit" style="margin-left:4px;" onclick="openGuestArea()">Open my stay</button>${alertsBtn}</div>
                     <div class="instay-tides" style="margin-top:10px;"></div>
                 </div>`;
                 try { renderInStayTides(); } catch (e) {}
@@ -4125,8 +4115,10 @@
                 const today = todayDashed();
                 homeArrivalStays = rows
                     .map(r => ({ propKey: r.prop_key, b: mapBookingFromApi(r) }))
-                    .filter(x => x.b.checkIn <= today && x.b.checkOut >= today)
-                    .map(x => ({ propKey: x.propKey, bookingId: x.b.id, paid: !!(paymentSummary(x.propKey, x.b) || {}).fullyPaid }));
+                    // Only current stays that are PAID IN FULL — the arrival banner is the
+                    // in-trip experience and shouldn't surface until the holiday is paid.
+                    .filter(x => x.b.checkIn <= today && x.b.checkOut >= today && !!(paymentSummary(x.propKey, x.b) || {}).fullyPaid)
+                    .map(x => ({ propKey: x.propKey, bookingId: x.b.id }));
                 if (homeArrivalBookingId && !homeArrivalStays.some(s => s.bookingId === homeArrivalBookingId)) {
                     homeArrivalBookingId = null;   // previous stay ended — allow a rebuild
                 }
@@ -11127,7 +11119,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'h7t1u4wy';
+            const BUILD = 'j8u2v5xz';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
