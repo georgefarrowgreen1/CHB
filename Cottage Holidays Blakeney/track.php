@@ -56,37 +56,46 @@ if ($method === 'GET' && ($_GET['action'] ?? '') === 'summary') {
         db()->exec('DELETE FROM pageviews WHERE created_at < (NOW() - INTERVAL 180 DAY)');
         try { db()->exec('DELETE FROM search_log WHERE created_at < (NOW() - INTERVAL 180 DAY)'); } catch (\Throwable $e) {}
 
-        $since = "(NOW() - INTERVAL $days DAY)";
+        // Bind the window into every query instead of interpolating it (hygiene /
+        // defence-in-depth — $days is already int-cast + clamped to 1..365 above).
+        // $qDays prepares a single-placeholder query and binds $days as an int.
+        $sinceSql = '(NOW() - INTERVAL ? DAY)';
+        $qDays = function ($sql) use ($days) {
+            $st = db()->prepare($sql);
+            $st->bindValue(1, $days, PDO::PARAM_INT);
+            $st->execute();
+            return $st;
+        };
         // Page views only (event IS NULL) for all the "traffic" figures.
-        $pv = "FROM pageviews WHERE event IS NULL AND created_at >= $since";
-        $total = (int)db()->query("SELECT COUNT(*) $pv")->fetchColumn();
-        $uniq  = (int)db()->query("SELECT COUNT(DISTINCT ip_hash) $pv")->fetchColumn();
+        $pv = "FROM pageviews WHERE event IS NULL AND created_at >= $sinceSql";
+        $total = (int)$qDays("SELECT COUNT(*) $pv")->fetchColumn();
+        $uniq  = (int)$qDays("SELECT COUNT(DISTINCT ip_hash) $pv")->fetchColumn();
 
         // Last 7 days ("this week") + the 7 days before that (for a trend %).
         $weekViews  = (int)db()->query("SELECT COUNT(*) FROM pageviews WHERE event IS NULL AND created_at >= (NOW() - INTERVAL 7 DAY)")->fetchColumn();
         $weekUnique = (int)db()->query("SELECT COUNT(DISTINCT ip_hash) FROM pageviews WHERE event IS NULL AND created_at >= (NOW() - INTERVAL 7 DAY)")->fetchColumn();
         $prevWeek   = (int)db()->query("SELECT COUNT(*) FROM pageviews WHERE event IS NULL AND created_at >= (NOW() - INTERVAL 14 DAY) AND created_at < (NOW() - INTERVAL 7 DAY)")->fetchColumn();
 
-        $daily = db()->query("SELECT DATE(created_at) d, COUNT(*) c FROM pageviews
-                              WHERE event IS NULL AND created_at >= $since GROUP BY DATE(created_at) ORDER BY d ASC")->fetchAll();
-        $refs = db()->query("SELECT referrer_host h, COUNT(*) c FROM pageviews
-                             WHERE event IS NULL AND created_at >= $since AND referrer_host IS NOT NULL AND referrer_host <> ''
+        $daily = $qDays("SELECT DATE(created_at) d, COUNT(*) c FROM pageviews
+                              WHERE event IS NULL AND created_at >= $sinceSql GROUP BY DATE(created_at) ORDER BY d ASC")->fetchAll();
+        $refs = $qDays("SELECT referrer_host h, COUNT(*) c FROM pageviews
+                             WHERE event IS NULL AND created_at >= $sinceSql AND referrer_host IS NOT NULL AND referrer_host <> ''
                              GROUP BY referrer_host ORDER BY c DESC LIMIT 8")->fetchAll();
-        $byProp = db()->query("SELECT prop_key p, COUNT(*) c FROM pageviews
-                               WHERE event IS NULL AND created_at >= $since AND prop_key IS NOT NULL AND prop_key <> ''
+        $byProp = $qDays("SELECT prop_key p, COUNT(*) c FROM pageviews
+                               WHERE event IS NULL AND created_at >= $sinceSql AND prop_key IS NOT NULL AND prop_key <> ''
                                GROUP BY prop_key ORDER BY c DESC")->fetchAll();
 
         // Top pages (by SPA path) — page views only.
-        $pages = db()->query("SELECT path, COUNT(*) c FROM pageviews
-                              WHERE event IS NULL AND created_at >= $since AND path <> ''
+        $pages = $qDays("SELECT path, COUNT(*) c FROM pageviews
+                              WHERE event IS NULL AND created_at >= $sinceSql AND path <> ''
                               GROUP BY path ORDER BY c DESC LIMIT 8")->fetchAll();
 
         // Channels + search engines: classify every referrer'd page view.
-        $allRefs = db()->query("SELECT referrer_host h, COUNT(*) c FROM pageviews
-                                WHERE event IS NULL AND created_at >= $since AND referrer_host IS NOT NULL AND referrer_host <> ''
+        $allRefs = $qDays("SELECT referrer_host h, COUNT(*) c FROM pageviews
+                                WHERE event IS NULL AND created_at >= $sinceSql AND referrer_host IS NOT NULL AND referrer_host <> ''
                                 GROUP BY referrer_host")->fetchAll();
-        $direct = (int)db()->query("SELECT COUNT(*) FROM pageviews
-                                    WHERE event IS NULL AND created_at >= $since AND (referrer_host IS NULL OR referrer_host = '')")->fetchColumn();
+        $direct = (int)$qDays("SELECT COUNT(*) FROM pageviews
+                                    WHERE event IS NULL AND created_at >= $sinceSql AND (referrer_host IS NULL OR referrer_host = '')")->fetchColumn();
         $channels = ['Direct' => $direct, 'Search' => 0, 'Social' => 0, 'Referral' => 0];
         $engines = [];
         foreach ($allRefs as $r) {
@@ -102,32 +111,32 @@ if ($method === 'GET' && ($_GET['action'] ?? '') === 'summary') {
         foreach ($engines as $name => $c) $enginesOut[] = ['name' => $name, 'count' => $c];
 
         // Campaign sources (utm_source).
-        $sources = db()->query("SELECT source s, COUNT(*) c FROM pageviews
-                                WHERE event IS NULL AND created_at >= $since AND source IS NOT NULL AND source <> ''
+        $sources = $qDays("SELECT source s, COUNT(*) c FROM pageviews
+                                WHERE event IS NULL AND created_at >= $sinceSql AND source IS NOT NULL AND source <> ''
                                 GROUP BY source ORDER BY c DESC LIMIT 8")->fetchAll();
 
         // In-page events (the conversion funnel within the site).
         $events = ['book_click' => 0, 'enquiry_open' => 0, 'enquiry_submit' => 0, 'pay_start' => 0];
-        foreach (db()->query("SELECT event e, COUNT(*) c FROM pageviews WHERE event IS NOT NULL AND created_at >= $since GROUP BY event")->fetchAll() as $r) {
+        foreach ($qDays("SELECT event e, COUNT(*) c FROM pageviews WHERE event IS NOT NULL AND created_at >= $sinceSql GROUP BY event")->fetchAll() as $r) {
             if (isset($events[$r['e']])) $events[$r['e']] = (int)$r['c'];
         }
 
         // Funnel against real outcomes (enquiries + bookings in the same window).
         $enquiriesN = 0; $bookingsN = 0;
-        try { $enquiriesN = (int)db()->query("SELECT COUNT(*) FROM enquiries WHERE created_at >= $since")->fetchColumn(); } catch (\Throwable $e) {}
-        try { $bookingsN  = (int)db()->query("SELECT COUNT(*) FROM bookings  WHERE created_at >= $since")->fetchColumn(); } catch (\Throwable $e) {}
+        try { $enquiriesN = (int)$qDays("SELECT COUNT(*) FROM enquiries WHERE created_at >= $sinceSql")->fetchColumn(); } catch (\Throwable $e) {}
+        try { $bookingsN  = (int)$qDays("SELECT COUNT(*) FROM bookings  WHERE created_at >= $sinceSql")->fetchColumn(); } catch (\Throwable $e) {}
 
         // Search demand (own table; default gracefully if the migration hasn't run).
         $searchDemand = ['total' => 0, 'noResult' => 0, 'topMonths' => [], 'recentNoResult' => []];
         try {
-            $searchDemand['total']    = (int)db()->query("SELECT COUNT(*) FROM search_log WHERE created_at >= $since")->fetchColumn();
-            $searchDemand['noResult'] = (int)db()->query("SELECT COUNT(*) FROM search_log WHERE created_at >= $since AND found = 0")->fetchColumn();
-            $tm = db()->query("SELECT month, COUNT(*) c, SUM(found) f FROM search_log
-                               WHERE created_at >= $since AND month IS NOT NULL GROUP BY month ORDER BY c DESC LIMIT 6")->fetchAll();
+            $searchDemand['total']    = (int)$qDays("SELECT COUNT(*) FROM search_log WHERE created_at >= $sinceSql")->fetchColumn();
+            $searchDemand['noResult'] = (int)$qDays("SELECT COUNT(*) FROM search_log WHERE created_at >= $sinceSql AND found = 0")->fetchColumn();
+            $tm = $qDays("SELECT month, COUNT(*) c, SUM(found) f FROM search_log
+                               WHERE created_at >= $sinceSql AND month IS NOT NULL GROUP BY month ORDER BY c DESC LIMIT 6")->fetchAll();
             $searchDemand['topMonths'] = array_map(fn($r) => [
                 'month' => $r['month'], 'count' => (int)$r['c'], 'found' => (int)$r['f']], $tm);
-            $rn = db()->query("SELECT mode, adults, children, nights, month, check_in, created_at FROM search_log
-                               WHERE created_at >= $since AND found = 0 ORDER BY created_at DESC LIMIT 8")->fetchAll();
+            $rn = $qDays("SELECT mode, adults, children, nights, month, check_in, created_at FROM search_log
+                               WHERE created_at >= $sinceSql AND found = 0 ORDER BY created_at DESC LIMIT 8")->fetchAll();
             $searchDemand['recentNoResult'] = array_map(fn($r) => [
                 'mode' => $r['mode'], 'adults' => (int)$r['adults'], 'children' => (int)$r['children'],
                 'nights' => $r['nights'] !== null ? (int)$r['nights'] : null,
