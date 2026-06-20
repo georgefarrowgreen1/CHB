@@ -3194,11 +3194,10 @@
                 (upcoming ? upcomingCards : pastCards).push(__card);
 
                 // While a stay is in progress, gather its in-stay actions into one
-                // prominent "My Stay" hub (rendered at the top of the list). The arrival
-                // block keeps the exact arr-/arr-note- ids and .instay-tides class so the
-                // GPS auto-reveal (startArrivalWatch) and tide fill (renderInStayTides)
-                // still target it. All tiles reuse existing functions.
-                // The "My Stay" hub (key code, directions, welcome book…) is the in-trip
+                // prominent "My Stay" hub (rendered at the top of the list). The
+                // .instay-tides element keeps its class so renderInStayTides() fills it.
+                // All tiles reuse existing functions.
+                // The "My Stay" hub (directions, welcome book…) is the in-trip
                 // experience — only surface it once the holiday is paid in full. An
                 // unpaid current stay still shows in the list below with a Pay button.
                 if (currentStay && ps.fullyPaid) {
@@ -3212,12 +3211,9 @@
                                 <div class="hub-sub">Until ${b.checkOut} · ${b.checkOutTime || '10:00'} · ${nightsLeft} night${nightsLeft === 1 ? '' : 's'} left</div>
                             </div>
                         </div>
-                        <div id="arr-${b.id}" class="arrival-access hub-arrival">
-                            <div id="arr-note-${b.id}" style="font-size:0.84rem;color:var(--text-muted);">${IC_PIN} Your key code &amp; arrival info opens automatically when you reach the cottage. <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="revealArrivalAccess('${propKey}','${b.id}')">Show now</button></div>
-                        </div>
                         <div class="instay-tides" style="margin-top:12px;"></div>
                         <div class="hub-grid">
-                            <button class="hub-tile" onclick="openMapModal('${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6.5-5.5-6.5-10a6.5 6.5 0 0 1 13 0c0 4.5-6.5 10-6.5 10z"/><circle cx="12" cy="11" r="2.2"/></svg><span>Directions</span></button>
+                            <button class="hub-tile" onclick="openCottageDirections('${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6.5-5.5-6.5-10a6.5 6.5 0 0 1 13 0c0 4.5-6.5 10-6.5 10z"/><circle cx="12" cy="11" r="2.2"/></svg><span>Directions</span></button>
                             <button class="hub-tile" onclick="openWelcomeBook('${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h6v18H6a2 2 0 0 1-2-2z"/><path d="M20 5a2 2 0 0 0-2-2h-6v18h6a2 2 0 0 0 2-2z"/></svg><span>Welcome book</span></button>
                             <button class="hub-tile" onclick="openFaqModal('${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 0 1 4.5 1.5c0 1.7-2 2-2 3.2"/><path d="M12 17h.01"/></svg><span>Good to know</span></button>
                             <button class="hub-tile" onclick="toggleChat()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/></svg><span>Contact host</span></button>
@@ -3235,9 +3231,6 @@
                 + (upcomingCards.length ? gHdr('Upcoming stays') + upcomingCards.join('') : '')
                 + (pastCards.length ? gHdr('Past stays') + pastCards.join('') : '');
 
-            // Auto-watch the device's location for any in-progress stay so the
-            // arrival details pop up by themselves once the guest reaches the cottage.
-            startArrivalWatch(currentStays);
             // Fill any in-stay tide cards (mid-stay guests).
             if (currentStays.length) renderInStayTides();
         }
@@ -3539,6 +3532,29 @@
             try { localStorage.setItem('chb-map-provider', mapProvider); } catch (e) {}
             reflectMapProviderToggle();
             updateDirectionsLink();
+        }
+
+        // ---- Directions to the cottage (no key code, no GPS tracking) ----
+        // Opens the device's maps app routed to the cottage. Uses the owner-set
+        // coordinates (geo-<propKey>) when available, else a name search for the
+        // cottage in Blakeney. Coordinates are fetched once and cached.
+        const __cottageGeoCache = {};
+        async function openCottageDirections(propKey) {
+            let geo = __cottageGeoCache[propKey];
+            if (!geo) {
+                try {
+                    const res = await apiPost('arrival-access.php', { prop_key: propKey });
+                    if (res && res.lat != null && res.lng != null) geo = __cottageGeoCache[propKey] = { lat: res.lat, lng: res.lng };
+                } catch (e) { /* fall back to a name search */ }
+            }
+            const meta = propertyMeta[propKey] || { name: propKey };
+            const dest = encodeURIComponent(((meta.name || 'cottage') + ', Blakeney, Norfolk, UK'));
+            const url = geo
+                ? directionsUrl(geo.lat, geo.lng)
+                : (mapProvider === 'apple'
+                    ? `https://maps.apple.com/?daddr=${dest}&dirflg=d`
+                    : `https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`);
+            try { window.open(url, '_blank', 'noopener'); } catch (e) { location.href = url; }
         }
 
         // Card note when nearby (25m–1km): distance + a button to open the map window.
@@ -4076,13 +4092,10 @@
             if (homeArrivalBookingId !== s.bookingId) {   // (re)build only when the stay changes
                 homeArrivalBookingId = s.bookingId;
                 const name = (propertyMeta[s.propKey] && propertyMeta[s.propKey].name) || s.propKey;
-                const alertsBtn = ('Notification' in window && Notification.permission === 'default')
-                    ? `<button class="btn-sm btn-edit" style="margin-left:4px;" onclick="requestArrivalNotifications()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg> Get alerts</button>`
-                    : '';
                 el.innerHTML = `<div class="home-arrival-card">
                     <button class="home-arrival-close" onclick="dismissHomeArrival()" aria-label="Dismiss" title="Dismiss">&times;</button>
                     <div class="home-arrival-text">${IC_PIN} You're staying at <strong>${escapeHtml(name)}</strong></div>
-                    <div id="home-arr-note" class="home-arrival-note">Your key code &amp; arrival info opens automatically when you reach the cottage. <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="revealArrivalAccess('${s.propKey}','${s.bookingId}')">Show now</button><button class="btn-sm btn-edit" style="margin-left:4px;" onclick="openGuestArea()">Open my stay</button>${alertsBtn}</div>
+                    <div id="home-arr-note" class="home-arrival-note"><button class="btn-sm btn-edit" onclick="openCottageDirections('${s.propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6.5-5.5-6.5-10a6.5 6.5 0 0 1 13 0c0 4.5-6.5 10-6.5 10z"/><circle cx="12" cy="11" r="2.2"/></svg> Directions</button><button class="btn-sm btn-edit" style="margin-left:4px;" onclick="openGuestArea()">Open my stay</button></div>
                     <div class="instay-tides" style="margin-top:10px;"></div>
                 </div>`;
                 try { renderInStayTides(); } catch (e) {}
@@ -4106,7 +4119,6 @@
                 if (!currentGuest) {
                     homeArrivalStays = []; homeArrivalBookingId = null;
                     renderHomeArrival();
-                    try { stopArrivalWatch(); } catch (e) {}
                     return;
                 }
                 let rows = [];
@@ -4123,8 +4135,6 @@
                     homeArrivalBookingId = null;   // previous stay ended — allow a rebuild
                 }
                 renderHomeArrival();
-                if (homeArrivalStays.length) startArrivalWatch(homeArrivalStays);
-                else { try { stopArrivalWatch(); } catch (e) {} }
             } catch (e) { /* never let the banner break the page */ }
         }
 
@@ -11122,7 +11132,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'm5r2t8wb';
+            const BUILD = 'n7v4x2pk';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
