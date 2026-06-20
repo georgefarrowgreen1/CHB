@@ -197,6 +197,9 @@ try {
         $tid = (int)($s->fetchColumn() ?: 0);
     }
     if ($action === 'send') {
+        // Anonymous visitor chat — rate-limit per IP (a new thread also emails the
+        // owner, so this curbs spam/flooding without affecting logged-in guests).
+        rate_limit('chat', 20, 10);
         $bodyTxt = mb_substr(trim((string)($in['body'] ?? '')), 0, 4000);
         if ($bodyTxt === '') json_out(['error' => 'Type a message first'], 400);
         if (!$tid) {
