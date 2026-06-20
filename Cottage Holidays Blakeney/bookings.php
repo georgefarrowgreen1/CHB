@@ -154,6 +154,7 @@ function send_booking_confirmation($bookingId) {
             $deposit  = (float)$b['agreed_booking_fee'];
             $total    = ($b['price_override'] !== null) ? (float)$b['price_override'] : (float)$b['agreed_total'];
         } else {
+            if (!$rate) return ['error' => 'Property rate not found'];
             $p = price_breakdown($rate, $b['adults'], $b['children'], $b['check_in'], $b['check_out']);
             $nights=$p['nights']; $perNight=$p['perNight']; $nightly=$p['nightly'];
             $txPct=$p['transactionPct']; $txFee=$p['txFee']; $deposit=$p['damagesDeposit']; $total=$p['total'];

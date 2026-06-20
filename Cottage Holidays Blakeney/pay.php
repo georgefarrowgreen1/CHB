@@ -38,6 +38,7 @@ $rate = get_rate($b['prop_key']);
 if ($b['agreed_total'] !== null) {
     $total = ($b['price_override'] !== null) ? (float)$b['price_override'] : (float)$b['agreed_total'];
 } else {
+    if (!$rate) json_out(['error' => 'Property not found'], 404);
     $p = price_breakdown($rate, $b['adults'], $b['children'], $b['check_in'], $b['check_out']);
     $total = $p['total'];
 }

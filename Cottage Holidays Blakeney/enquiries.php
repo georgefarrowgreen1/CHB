@@ -117,6 +117,7 @@ if ($action === 'approve') {
     if (!$e) json_out(['error' => 'Enquiry not found'], 404);
 
     $rate = get_rate($e['prop_key']);
+    if (!$rate) json_out(['error' => 'Property not found'], 404);
     book_lock($e['prop_key']);   // serialise so concurrent approvals can't both win
     // Don't approve onto dates that have since been taken (a confirmed booking or an
     // imported Airbnb/Vrbo block). This path previously skipped the clash check.
