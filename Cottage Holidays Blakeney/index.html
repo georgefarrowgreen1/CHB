@@ -168,7 +168,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=26">
+    <link rel="stylesheet" href="app.css?v=27">
     <!-- Speed up the font fetch (and the jsPDF CDN) by opening the connections early. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -219,7 +219,7 @@
         <button class="account-btn" id="account-btn" onclick="openGuestArea()" title="Sign in" aria-label="Sign in / my account">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M5.5 19.5a6.5 6.5 0 0 1 13 0"/></svg>
         </button>
-        <button class="menu-toggle" onclick="toggleMobileMenu()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+        <button class="menu-toggle" onclick="toggleMobileMenu()" aria-label="Menu"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
     </header>
 
     <!-- ADMIN FLOATING DOCK (icons only; shown only while an admin is signed in) -->
@@ -1077,9 +1077,9 @@
                         <h3 style="font-family:var(--font-serif);font-size:1.15rem;margin:0 0 6px;">Add reviews from Airbnb &amp; other sites</h3>
                         <p style="font-size:0.78rem;color:var(--text-muted);margin:2px 0 12px;line-height:1.5;">Copy your reviews from your Airbnb (or Vrbo / Booking.com / Google) host dashboard and paste them below. Pick the cottage and where they came from, then paste — each one is added as an editable row that you check and save. They appear on that cottage's page tagged with the source and count toward its rating.</p>
                         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
-                            <select class="input-glass field-sm" id="bulk-rev-prop" style="flex:1 1 160px;min-width:140px;" title="Which cottage these reviews are for"></select>
-                            <select class="input-glass field-sm" id="bulk-rev-source" style="flex:0 1 150px;" title="Where these reviews came from"></select>
-                            <select class="input-glass field-sm" id="bulk-rev-stars" style="flex:0 1 120px;" title="Default star rating"></select>
+                            <select class="input-glass field-sm" id="bulk-rev-prop" style="flex:1 1 160px;min-width:140px;" title="Which cottage these reviews are for" aria-label="Which cottage these reviews are for"></select>
+                            <select class="input-glass field-sm" id="bulk-rev-source" style="flex:0 1 150px;" title="Where these reviews came from" aria-label="Where these reviews came from"></select>
+                            <select class="input-glass field-sm" id="bulk-rev-stars" style="flex:0 1 120px;" title="Default star rating" aria-label="Default star rating"></select>
                         </div>
                         <textarea id="bulk-rev-text" class="input-glass" rows="6" style="resize:vertical;" placeholder="Paste reviews here — one per block, e.g.&#10;&#10;Jane (London)&#10;We loved every minute — spotless cottage, perfect spot for the coast path.&#10;&#10;Mark&#10;Brilliant week. Catherine was a wonderful, attentive host. We'll be back!"></textarea>
                         <p style="font-size:0.74rem;color:var(--text-muted);margin:6px 0 0;line-height:1.5;">Put the guest's name on the first line and their review underneath; leave a blank line between each review. A line that's just ★★★★★ or “5 stars” sets that review's rating. Dates are ignored. You can edit every row below before saving.</p>
@@ -1636,7 +1636,7 @@
         <div class="lightbox-counter" id="lightbox-counter"></div>
     </div>
 
-    <div id="glass-dialog" role="dialog" aria-modal="true">
+    <div id="glass-dialog" role="dialog" aria-modal="true" aria-labelledby="glass-dialog-msg">
         <div class="glass-dialog-box glass-panel">
             <div class="glass-dialog-msg" id="glass-dialog-msg"></div>
             <input type="text" class="input-glass glass-dialog-input" id="glass-dialog-input" style="display:none;">
@@ -1822,7 +1822,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=44"></script>
+    <script src="app.js?v=45"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
