@@ -157,6 +157,7 @@ if ($action === 'login_finish') {
     $newCount = is_object($data) && isset($data->signCount) ? (int)$data->signCount : (int)$cred['sign_count'];
     db()->prepare('UPDATE guest_passkeys SET sign_count = ?, last_used_at = NOW() WHERE id = ?')
         ->execute([$newCount, $cred['id']]);
+    session_regenerate_id(true);    // new session id on login — prevents session fixation
     $_SESSION['guest_id'] = (int)$cred['guest_id'];
     unset($_SESSION['admin_id']);   // one role at a time: a guest session ends any admin session
     unset($_SESSION['pk_login_challenge']);
@@ -240,6 +241,7 @@ if ($action === 'admin_login_finish') {
     $newCount = is_object($data) && isset($data->signCount) ? (int)$data->signCount : (int)$cred['sign_count'];
     db()->prepare('UPDATE admin_passkeys SET sign_count = ?, last_used_at = NOW() WHERE id = ?')
         ->execute([$newCount, $cred['id']]);
+    session_regenerate_id(true);    // new session id on login — prevents session fixation
     $_SESSION['admin_id'] = (int)$cred['admin_id'];
     unset($_SESSION['guest_id']);   // one role at a time: signing in as admin ends any guest session
     unset($_SESSION['pk_admin_login_challenge']);
@@ -290,6 +292,7 @@ if ($action === 'any_login_finish') {
         }
         $newCount = is_object($data) && isset($data->signCount) ? (int)$data->signCount : (int)$cred['sign_count'];
         db()->prepare('UPDATE admin_passkeys SET sign_count = ?, last_used_at = NOW() WHERE id = ?')->execute([$newCount, $cred['id']]);
+        session_regenerate_id(true);             // new session id on login — prevents session fixation
         $_SESSION['admin_id'] = (int)$cred['admin_id'];
         unset($_SESSION['guest_id']);            // one role at a time
         unset($_SESSION['pk_any_login_challenge']);
@@ -309,6 +312,7 @@ if ($action === 'any_login_finish') {
     }
     $newCount = is_object($data) && isset($data->signCount) ? (int)$data->signCount : (int)$cred['sign_count'];
     db()->prepare('UPDATE guest_passkeys SET sign_count = ?, last_used_at = NOW() WHERE id = ?')->execute([$newCount, $cred['id']]);
+    session_regenerate_id(true);                // new session id on login — prevents session fixation
     $_SESSION['guest_id'] = (int)$cred['guest_id'];
     unset($_SESSION['admin_id']);                // one role at a time
     unset($_SESSION['pk_any_login_challenge']);

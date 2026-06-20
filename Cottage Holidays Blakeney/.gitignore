@@ -1,0 +1,15 @@
+# Local secrets / overrides — NEVER commit real credentials.
+# NOTE: config.php IS tracked on purpose as a PLACEHOLDER template (it ships only
+# CHANGE_ME / empty values; the live server keeps its own real config.php, which
+# deploy.yml preserves and never overwrites). Put real secrets ONLY on the server,
+# never in a committed file. Use the patterns below for any local secret copies.
+config.local.php
+*.local.php
+.env
+.env.*
+
+# Editor / OS cruft
+.DS_Store
+Thumbs.db
+*.swp
+*~
