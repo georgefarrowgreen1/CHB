@@ -67,6 +67,7 @@ switch ($action) {
             json_out(['error' => 'Incorrect username or password'], 401);
         }
         throttle_record('admin:' . strtolower($username), true);
+        session_regenerate_id(true);    // new session id on login — prevents session fixation
         $_SESSION['admin_id'] = (int)$row['id'];
         unset($_SESSION['guest_id']);   // one role at a time: signing in as admin ends any guest session
         json_out(['ok' => true]);
@@ -119,6 +120,7 @@ switch ($action) {
         $hash = password_hash($pw, PASSWORD_DEFAULT);
         db()->prepare('INSERT INTO guests (name, email, phone, address, postcode, password_hash) VALUES (?,?,?,?,?,?)')
             ->execute([$name, $email, $phone, $address, $postcode, $hash]);
+        session_regenerate_id(true);    // new session id on login — prevents session fixation
         $_SESSION['guest_id'] = (int)db()->lastInsertId();
         unset($_SESSION['admin_id']);   // one role at a time: a guest session ends any admin session
         json_out(['ok' => true, 'guest' => ['name' => $name, 'email' => $email, 'phone' => $phone, 'address' => $address, 'postcode' => $postcode]]);
@@ -136,6 +138,7 @@ switch ($action) {
             json_out(['error' => 'Email or password not recognised'], 401);
         }
         throttle_record('guest:' . $email, true);
+        session_regenerate_id(true);    // new session id on login — prevents session fixation
         $_SESSION['guest_id'] = (int)$row['id'];
         unset($_SESSION['admin_id']);   // one role at a time: a guest session ends any admin session
         json_out(['ok' => true, 'guest' => ['name' => $row['name'], 'email' => $row['email'], 'phone' => $row['phone'], 'address' => $row['address'], 'postcode' => $row['postcode']]]);
@@ -158,7 +161,10 @@ switch ($action) {
                 send_magic_link_email($g, $url);
             }
         }
-        throttle_record('magic:' . $email, true);   // never reveal failure
+        // Count EVERY request (pass false so it records an attempt rather than
+        // clearing the slate) — this rate-limits magic-link emails (anti-bombing /
+        // anti-enumeration) without ever revealing whether the account exists.
+        throttle_record('magic:' . $email, false);
         json_out(['ok' => true]);
     }
 
@@ -176,6 +182,7 @@ switch ($action) {
         $stmt->execute([$gid]);
         $row = $stmt->fetch();
         if (!$row) json_out(['error' => 'This sign-in link is invalid.'], 401);
+        session_regenerate_id(true);    // new session id on login — prevents session fixation
         $_SESSION['guest_id'] = (int)$row['id'];
         unset($_SESSION['admin_id']);   // one role at a time
         json_out(['ok' => true, 'guest' => ['name' => $row['name'], 'email' => $row['email'], 'phone' => $row['phone'], 'address' => $row['address'], 'postcode' => $row['postcode']]]);

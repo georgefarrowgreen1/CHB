@@ -27,6 +27,10 @@ function smtp_send($toEmail, $toName, $subject, $bodyText, $bodyHtml = null, $at
     if (!defined('MAIL_ENABLED') || !MAIL_ENABLED) {
         return ['ok' => false, 'error' => 'Mail disabled'];
     }
+    // Defence-in-depth: strip any CR/LF from the recipient so it can never inject
+    // extra SMTP commands (RCPT TO) or email headers. Addresses are also validated
+    // with FILTER_VALIDATE_EMAIL on input.
+    $toEmail = preg_replace('/[\r\n]+/', '', (string)$toEmail);
     // The staging Test centre marks sample emails so they're unmistakable in the inbox.
     if (!empty($GLOBALS['__chb_test_prefix'])) $subject = $GLOBALS['__chb_test_prefix'] . $subject;
     $host = SMTP_HOST; $port = (int)SMTP_PORT; $secure = strtolower(SMTP_SECURE);
