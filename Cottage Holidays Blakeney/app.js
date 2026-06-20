@@ -5411,6 +5411,7 @@
                 });
                 try { injectPropColors(); } catch (e) {}
                 try { renderCottageCards(); } catch (e) {}
+                try { renderHomeCottages(); } catch (e) {}
                 try { injectStructuredData(); } catch (e) {}
             } catch (e) { /* keep defaults if the API is unavailable */ }
         }
@@ -8325,6 +8326,38 @@
             }
         }
 
+        // Homepage cottage cards (above the "Check availability" search): SIMPLIFIED
+        // versions of the cottages-page cards — photo + name + subtitle only, no live
+        // price / rating / "guest favourite" (so no duplicate ids with #cottages). Same
+        // data sources as renderCottageCards(); clicking opens the cottage.
+        function renderHomeCottages() {
+            const grid = document.getElementById('home-cottages-grid');
+            if (!grid) return;
+            const keys = liveCottageKeys();
+            if (!keys.length) return;   // never blank the static fallback before the list loads
+            const sc = (typeof siteContent === 'object' && siteContent) ? siteContent : {};
+            grid.innerHTML = keys.map(k => {
+                const ck = cardKeys(k);
+                const slug = (COTTAGE_SLUGS[k] || k);
+                const img = sc[ck.img] || ('card-' + k + '.jpg');
+                const title = sc[ck.title] || ((propertyMeta[k] && propertyMeta[k].name) || k);
+                const meta = sc[ck.meta] || cottageSleepsLabel(k);
+                return `<a class="card glass-panel" data-prop="${k}" href="/cottages/${escapeHtml(slug)}" onclick="return cottageLink(event,'${k}')">
+                    <div class="card-img-wrap">
+                        <div class="card-img" data-edit-img="${ck.img}" style="background-image: url('${escapeHtml(img)}');"></div>
+                    </div>
+                    <div class="cott-head">
+                        <div class="card-title" data-edit-text="${ck.title}">${escapeHtml(title)}</div>
+                    </div>
+                    <div class="card-meta" data-edit-text="${ck.meta}">${escapeHtml(meta)}</div>
+                </a>`;
+            }).join('');
+            // Keep inline edit mode working on the freshly-built cards.
+            if (typeof isEditMode !== 'undefined' && isEditMode) {
+                grid.querySelectorAll('[data-edit-text]').forEach(el => { el.contentEditable = 'true'; try { el.addEventListener('paste', plainTextPaste); } catch (e) {} });
+            }
+        }
+
         // Regenerate the page's JSON-LD structured data from the live cottage list so
         // search engines see exactly the cottages currently on the site (owner-added
         // ones included, removed ones dropped). The rich hand-written fields for the
@@ -9145,20 +9178,20 @@
         function showHeroResults() {
             const panel = document.getElementById('hero-search-panel');
             const wrap = document.getElementById('hero-results-wrap');
-            const hero = document.getElementById('hero');
+            const sec = document.getElementById('home-availability');
             if (panel) panel.style.display = 'none';
             if (wrap) { wrap.style.display = ''; fluidSwap(wrap); }
-            if (hero) { hero.classList.add('results-mode'); hero.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+            if (sec) { sec.classList.add('results-mode'); sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
         }
         // Anti-stuck escape: clear the results and glide back to the search so the guest
         // can tweak dates / party / cottage and try again.
         function backToSearch() {
             const panel = document.getElementById('hero-search-panel');
             const wrap = document.getElementById('hero-results-wrap');
-            const hero = document.getElementById('hero');
+            const sec = document.getElementById('home-availability');
             if (wrap) wrap.style.display = 'none';
             if (panel) { panel.style.display = ''; fluidSwap(panel); }
-            if (hero) { hero.classList.remove('results-mode'); hero.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+            if (sec) { sec.classList.remove('results-mode'); sec.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
         }
         // Open the cottage with the chosen dates + party pre-filled, ready to send.
         function startBooking(key, ci, co) {
@@ -10777,7 +10810,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'p9w6y3rc';
+            const BUILD = 'r4t7m1xv';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;

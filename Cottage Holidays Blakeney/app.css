@@ -483,12 +483,13 @@
         .terms-modal-foot { padding: 18px 32px; border-top: 1px solid var(--glass-border); display: flex; gap: 12px; justify-content: flex-end; flex-wrap: wrap; }
 
         /* --- HERO & LAYOUT --- */
-        /* The home view is a flex column so the hero can grow to fill the space down
-           to the footer — no big empty gap, no scroll, footer always in view.
+        /* The home view is a flex column so its sections (hero → cottages → search)
+           stack cleanly. The hero is a fixed banner (it no longer grows to fill the
+           viewport — the cottage + availability sections provide the page content).
            Scoped to .active so it still hides (display:none) when on another page. */
         #view-main.active { display: flex; flex-direction: column; }
         .hero {
-            min-height: clamp(420px, 78vh, 760px); flex: 1 1 auto; display: flex; justify-content: center;
+            min-height: clamp(360px, 56vh, 560px); flex: 0 0 auto; display: flex; justify-content: center;
             align-items: center;
             /* "safe center": centre vertically when there's room, but anchor to the
                top (never overflow upward under the floating header) when the content
@@ -507,6 +508,12 @@
         .hero-content {
             position: relative; z-index: 2; max-width: 800px; width: 90%; padding: 40px;
         }
+        /* Homepage sections below the hero: the cottage cards and the relocated
+           "Check availability" panel. */
+        .home-cottages { max-width: 1200px; width: 100%; margin: 0 auto; padding: clamp(20px, 4vw, 40px) clamp(16px, 4vw, 20px) 0; box-sizing: border-box; }
+        .home-cottages .card-meta { margin-bottom: 0; }
+        .home-availability { max-width: 720px; width: 100%; margin: 0 auto; padding: clamp(24px, 4vw, 40px) clamp(16px, 4vw, 20px) 60px; box-sizing: border-box; scroll-margin-top: calc(100px + env(safe-area-inset-top)); }
+        .home-availability .hero-content { width: 100%; max-width: 100%; margin: 0 auto; }
         .hero h1 { font-family: var(--font-serif); font-size: clamp(2.4rem, 6vw, 4.5rem); margin-bottom: 20px; font-weight: 400; line-height: 1.1; color: var(--text-light); }
         .hero p { font-size: clamp(0.85rem, 2.2vw, 1.2rem); color: var(--text-muted); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 40px; }
 
@@ -1990,8 +1997,9 @@
         .hero-results-wrap { position: relative; z-index: 2; width: 92%; max-width: 1100px; margin: 0 auto; }
         .hero-results-head { text-align: center; margin-bottom: 6px; }
         .hero-results-wrap .grid { margin-top: 24px; }
-        .hero.results-mode { background: var(--dark-grey); }
-        .hero.results-mode .hero-bg { opacity: 0.16; transition: opacity 0.5s var(--fluid-bezier); }
+        /* While showing search results, widen the availability section so the result
+           cards aren't cramped inside the narrower search-panel column. */
+        .home-availability.results-mode { max-width: 1160px; }
         .hs-unavail { opacity: 0.7; }
         .hs-banner { background: rgba(255,167,38,0.16); color: #FFB74D; border: 1px solid rgba(255,167,38,0.4); border-radius: 10px; padding: 7px 10px; font-size: 0.76rem; line-height: 1.35; margin-bottom: 12px; text-align: center; }
         .hs-banner-red { background: rgba(229,115,115,0.16); color: #E57373; border-color: rgba(229,115,115,0.4); }

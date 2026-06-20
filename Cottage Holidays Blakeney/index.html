@@ -168,7 +168,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=25">
+    <link rel="stylesheet" href="app.css?v=26">
     <!-- Speed up the font fetch (and the jsPDF CDN) by opening the connections early. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -277,9 +277,52 @@
 
         <section class="hero" id="hero">
             <div class="hero-bg" data-edit-img="hero-bg" style="background-image: url('hero.jpg');"></div>
-            <div class="hero-content glass-panel" id="hero-search-panel" style="border-radius: 30px;">
+            <div class="hero-content glass-panel" id="hero-headline-panel" style="border-radius: 30px;">
                 <h1 data-edit-text="hero-title">Liquid Coastal Luxury</h1>
                 <p data-edit-text="hero-sub">Boutique holiday escapes in Blakeney, Norfolk</p>
+            </div>
+        </section>
+
+        <!-- OUR COTTAGES (homepage) — simplified cards, above the availability search.
+             renderHomeCottages() rebuilds #home-cottages-grid from the live list; these
+             static cards are the no-JS / first-paint fallback for the original three. -->
+        <section class="home-cottages" id="home-cottages">
+            <h2 class="section-title text-center">Our cottages</h2>
+            <div class="grid grid-3" id="home-cottages-grid" style="margin-top: 18px;">
+              <a class="card glass-panel" data-prop="21a" href="/cottages/21a-westgate" onclick="return cottageLink(event,'21a')">
+                <div class="card-img-wrap">
+                    <div class="card-img" data-edit-img="card1-img" style="background-image: url('card-21a.jpg');"></div>
+                </div>
+                <div class="cott-head">
+                    <div class="card-title" data-edit-text="card1-title">21A Westgate</div>
+                </div>
+                <div class="card-meta" data-edit-text="card1-meta">Sleeps 6 • Townhouse</div>
+              </a>
+              <a class="card glass-panel" data-prop="jollyboat" href="/cottages/jollyboat" onclick="return cottageLink(event,'jollyboat')">
+                <div class="card-img-wrap">
+                    <div class="card-img" data-edit-img="card2-img" style="background-image: url('card-jollyboat.jpg');"></div>
+                </div>
+                <div class="cott-head">
+                    <div class="card-title" data-edit-text="card2-title">Jollyboat</div>
+                </div>
+                <div class="card-meta" data-edit-text="card2-meta">Sleeps 2 • Romantic</div>
+              </a>
+              <a class="card glass-panel" data-prop="pimpernel" href="/cottages/pimpernel" onclick="return cottageLink(event,'pimpernel')">
+                <div class="card-img-wrap">
+                    <div class="card-img" data-edit-img="card3-img" style="background-image: url('card-pimpernel.jpg');"></div>
+                </div>
+                <div class="cott-head">
+                    <div class="card-title" data-edit-text="card3-title">Pimpernel</div>
+                </div>
+                <div class="card-meta" data-edit-text="card3-meta">Sleeps 4 • Contemporary</div>
+              </a>
+            </div>
+        </section>
+
+        <!-- CHECK AVAILABILITY — the search panel + results, relocated below the cottages. -->
+        <section class="home-availability" id="home-availability">
+            <div class="hero-content glass-panel" id="hero-search-panel" style="border-radius: 30px;">
+                <h2 class="section-title text-center" style="margin-bottom: 18px;">Check availability</h2>
                 <div class="hero-search">
                     <!-- Search mode: exact dates (default) or flexible (length + month) -->
                     <div class="hs-mode" role="group" aria-label="Search mode">
@@ -1779,7 +1822,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=43"></script>
+    <script src="app.js?v=44"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
