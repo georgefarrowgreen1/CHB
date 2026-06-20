@@ -1300,7 +1300,6 @@
         .hub-head { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
         .hub-title { font-family: var(--font-serif); font-size: 1.35rem; color: var(--text-light); line-height: 1.2; }
         .hub-sub { font-size: 0.8rem; color: var(--text-muted); margin-top: 2px; }
-        .hub-arrival { background: rgba(0,0,0,0.2); border: 1px solid var(--glass-border); border-radius: 14px; padding: 14px 16px; }
         /* Desktop: drop the tides line from the My Stay hub (kept on mobile, where
            it's a handy at-a-glance during a stay). */
         @media (min-width: 621px) { .my-stay-hub .instay-tides { display: none; } }
@@ -2001,13 +2000,7 @@
             .hs-gtype { min-width: 0; }
         }
 
-        /* ----- Directions provider toggle (Apple / Google) on the arrival map ----- */
-        .map-provider-toggle { display: inline-flex; border: 1px solid var(--glass-border); border-radius: 12px; overflow: hidden; }
-        .map-provider-toggle button { background: transparent; border: none; color: var(--text-muted); font-family: inherit; font-size: 0.78rem; padding: 8px 12px; cursor: pointer; transition: background 0.2s, color 0.2s; }
-        .map-provider-toggle button + button { border-left: 1px solid var(--glass-border); }
-        .map-provider-toggle button.is-on { background: rgba(255,255,255,0.16); color: var(--text-light); }
-
-        /* ----- Liquid-glass zoom buttons on the arrival map ----- */
+        /* ----- Liquid-glass zoom buttons on the cottage maps ----- */
         .leaflet-bar, .leaflet-control-zoom {
             border: none !important;
             border-radius: 12px !important;

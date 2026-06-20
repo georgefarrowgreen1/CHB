@@ -508,10 +508,7 @@
             updateDockEditVisibility(viewId);
             requestAnimationFrame(moveDockIndicator);
 
-            // Keep watching the guest's location while a current stay is active (so the
-            // homepage banner + auto-reveal keep working); otherwise stop once they
-            // leave My Bookings. Also show/hide the homepage arrival banner for this view.
-            if (viewId !== 'view-guest-bookings' && !homeArrivalStays.length) { try { stopArrivalWatch(); } catch (e) {} }
+            // Show/hide the homepage arrival banner for this view.
             try { renderHomeArrival(); } catch (e) {}
 
             // The cottage page's sticky booking bar lives on <body> (so its position:fixed
@@ -3014,7 +3011,6 @@
 
         async function guestLogout() {
             try { await apiPost('auth.php', { action: 'guest_logout' }); } catch (e) {}
-            try { stopArrivalWatch(); closeArrivalModal(); } catch (e) {}
             // On staging, remember the explicit logout so we don't auto-sign-in again
             // (lets the real sign-in / sign-up flow be tested). Cleared on a new tab.
             try { if (IS_STAGING) sessionStorage.setItem('chb-staging-noauto', '1'); } catch (e) {}
@@ -3265,19 +3261,8 @@
             els.forEach(el => { el.innerHTML = html; el.style.display = ''; });
         }
 
-        // ===== On-arrival key code =====
-        // While the guest is on My Bookings with a CURRENT stay, we watch the
-        // device's location. The moment the server confirms they're within 25m,
-        // a window pops up automatically with the arrival details. "Show now" is a
-        // manual fallback (e.g. if the auto location prompt was dismissed/denied).
-        let arrivalWatchId = null;
-        let arrivalStays = [];          // [{propKey, bookingId, unlocked}]
-        let arrivalLastCheck = 0;       // throttle server checks
-        const arrivalInfoCache = {};    // propKey -> last unlocked info (for re-open)
-        const arrivalGeo = {};          // propKey -> {lat,lng} cottage spot (once within 1km)
-        let lastGuestPos = null;        // {lat,lng} last device position (for the map window)
-        // Homepage arrival banner: mirrors the My Bookings on-arrival UI so a guest
-        // mid-stay can reach their live map / key code without opening their account.
+        // Homepage arrival banner: shows a mid-stay guest "you're staying at X" with a
+        // Directions button + tide card, on any page except the account view.
         let homeArrivalStays = [];       // [{propKey, bookingId}] PAID stays whose dates include today
         let homeArrivalBookingId = null; // the stay currently shown in the banner
         // Bookings the guest has dismissed the arrival banner for (per booking, so a NEW
@@ -3286,28 +3271,9 @@
             try { return JSON.parse(localStorage.getItem('chb-arrival-dismissed') || '{}') || {}; }
             catch (e) { return {}; }
         })();
-        // All note targets for a booking: the My Bookings card note, and (when it's the
-        // banner's stay) the homepage banner note — so the shared arrival functions
-        // below update both places at once.
-        function arrivalNoteEls(bookingId) {
-            const els = [];
-            const card = document.getElementById('arr-note-' + bookingId);
-            if (card) els.push(card);
-            const banner = document.getElementById('home-arr-note');
-            if (banner && String(homeArrivalBookingId) === String(bookingId)) els.push(banner);
-            return els;
-        }
         const IC_PIN = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.2-6-10a6 6 0 1 1 12 0c0 4.8-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg>';
         const IC_LOCK = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
         const IC_CHECK = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg>';
-
-        function distanceM(lat1, lng1, lat2, lng2) {
-            const R = 6371000, toR = Math.PI / 180;
-            const dLat = (lat2 - lat1) * toR, dLng = (lng2 - lng1) * toR;
-            const a = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * toR) * Math.cos(lat2 * toR) * Math.sin(dLng / 2) ** 2;
-            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-        }
-        function formatDistance(m) { return m < 1000 ? Math.round(m) + 'm' : (m / 1000).toFixed(1) + 'km'; }
 
         // Lazy-load Leaflet (open-source map library) only when a guest is near.
         let __leafletLoader = null;
@@ -3517,22 +3483,6 @@
                 ? `https://maps.apple.com/?daddr=${lat},${lng}&dirflg=d`
                 : `https://www.google.com/maps/dir/?api=1&destination=${lat},${lng}&travelmode=driving`;
         }
-        // Re-point the map modal's directions link to the current provider + cottage.
-        function updateDirectionsLink() {
-            const dirA = document.getElementById('map-modal-dir');
-            const geo = arrivalGeo[mapModal.propKey];
-            if (dirA && geo) dirA.href = directionsUrl(geo.lat, geo.lng);
-        }
-        function reflectMapProviderToggle() {
-            document.querySelectorAll('#map-provider-toggle [data-provider]').forEach(b =>
-                b.classList.toggle('is-on', b.getAttribute('data-provider') === mapProvider));
-        }
-        function setMapProvider(p) {
-            mapProvider = (p === 'apple') ? 'apple' : 'google';
-            try { localStorage.setItem('chb-map-provider', mapProvider); } catch (e) {}
-            reflectMapProviderToggle();
-            updateDirectionsLink();
-        }
 
         // ---- Directions to the cottage (no key code, no GPS tracking) ----
         // Opens the device's maps app routed to the cottage. Uses the owner-set
@@ -3555,239 +3505,6 @@
                     ? `https://maps.apple.com/?daddr=${dest}&dirflg=d`
                     : `https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`);
             try { window.open(url, '_blank', 'noopener'); } catch (e) { location.href = url; }
-        }
-
-        // Card note when nearby (25m–1km): distance + a button to open the map window.
-        function setNearbyNote(bookingId, propKey, distM) {
-            const els = arrivalNoteEls(bookingId);
-            if (!els.length) return;
-            const geo = arrivalGeo[propKey];
-            const dir = geo ? ` · <a href="${directionsUrl(geo.lat, geo.lng)}" target="_blank" rel="noopener" style="color:var(--text-light);text-decoration:underline;">Get directions</a>` : '';
-            const html = `${IC_PIN} About ${formatDistance(distM)} away — unlocks within 25m. <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="openMapModal('${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4L3.5 6v14L9 18l6 2 5.5-2V4L15 6 9 4z"/><path d="M9 4v14M15 6v14"/></svg> Live map</button>${dir}`;
-            els.forEach(el => el.innerHTML = html);
-        }
-
-        // ----- Live map window (its own liquid-glass modal) -----
-        const mapModal = { open: false, map: null, propMarker: null, guestMarker: null, routeLine: null, straightLine: null, routeMeta: null, propKey: null, lastRouteAt: 0 };
-
-        async function ensureMapModalMap() {
-            if (mapModal.map) { try { mapModal.map.invalidateSize(); } catch (e) {} return; }
-            const el = document.getElementById('map-canvas');
-            if (!el) return;
-            try { await loadLeaflet(); } catch (e) { return; }
-            const map = L.map(el, { zoomControl: true, attributionControl: true });
-            map.attributionControl.setPrefix('');
-            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', { maxZoom: 20, subdomains: 'abcd', attribution: '© OpenStreetMap, © CARTO' }).addTo(map);
-            mapModal.map = map;
-            mapModal.propMarker = L.marker([0, 0]).addTo(map).bindPopup('Your cottage');
-            mapModal.guestMarker = L.circleMarker([0, 0], { radius: 8, color: '#fff', weight: 2, fillColor: '#2A7DE1', fillOpacity: 1 }).addTo(map).bindPopup('You');
-            setTimeout(() => { try { map.invalidateSize(); } catch (e) {} }, 220);
-        }
-        async function openMapModal(propKey) {
-            mapModal.propKey = propKey;
-            mapModal.open = true;
-            const overlay = document.getElementById('map-modal');
-            if (overlay) overlay.classList.add('open');
-            reflectMapProviderToggle();
-            updateDirectionsLink();
-            await renderMapModal();
-        }
-        function closeMapModal() {
-            mapModal.open = false;
-            const overlay = document.getElementById('map-modal');
-            if (overlay) overlay.classList.remove('open');
-        }
-        function destroyMapModal() {
-            if (mapModal.map) { try { mapModal.map.remove(); } catch (e) {} }
-            mapModal.map = null; mapModal.propMarker = null; mapModal.guestMarker = null;
-            mapModal.routeLine = null; mapModal.straightLine = null; mapModal.routeMeta = null;
-            mapModal.lastRouteAt = 0;
-        }
-        async function renderMapModal() {
-            if (!mapModal.open) return;
-            const geo = arrivalGeo[mapModal.propKey];
-            if (!geo || !lastGuestPos) return;
-            await ensureMapModalMap();
-            if (!mapModal.map) return;
-            const gLat = lastGuestPos.lat, gLng = lastGuestPos.lng;
-            mapModal.propMarker.setLatLng([geo.lat, geo.lng]);
-            mapModal.guestMarker.setLatLng([gLat, gLng]);
-            if (mapModal.straightLine) mapModal.straightLine.setLatLngs([[gLat, gLng], [geo.lat, geo.lng]]);
-            if (!mapModal.routeLine) { try { mapModal.map.fitBounds([[gLat, gLng], [geo.lat, geo.lng]], { padding: [40, 40] }); } catch (e) {} }
-            updateMapModalInfo(distanceM(gLat, gLng, geo.lat, geo.lng));
-            updateMapModalRoute(gLat, gLng, geo.lat, geo.lng);
-        }
-        // Fetch a real driving route (via roads) from the free OSRM service and draw
-        // it. Re-used periodically so the line follows the roads as the guest moves.
-        async function updateMapModalRoute(gLat, gLng, pLat, pLng) {
-            if (!mapModal.map) return;
-            const now = Date.now();
-            if (mapModal.routeLine && now - mapModal.lastRouteAt < 7000) return;   // don't refetch too often
-            mapModal.lastRouteAt = now;
-            try {
-                const url = `https://router.project-osrm.org/route/v1/driving/${gLng},${gLat};${pLng},${pLat}?overview=full&geometries=geojson`;
-                const r = await fetch(url);
-                if (!r.ok) throw new Error('route http ' + r.status);
-                const data = await r.json();
-                const route = data.routes && data.routes[0];
-                if (!route || !route.geometry) throw new Error('no route');
-                const latlngs = route.geometry.coordinates.map(c => [c[1], c[0]]);
-                if (mapModal.routeLine) mapModal.routeLine.setLatLngs(latlngs);
-                else mapModal.routeLine = L.polyline(latlngs, { color: '#2A7DE1', weight: 5, opacity: 0.85 }).addTo(mapModal.map);
-                if (mapModal.straightLine) { try { mapModal.map.removeLayer(mapModal.straightLine); } catch (e) {} mapModal.straightLine = null; }
-                mapModal.routeMeta = { distance: route.distance, duration: route.duration };
-                try { mapModal.map.fitBounds(mapModal.routeLine.getBounds(), { padding: [40, 40] }); } catch (e) {}
-                updateMapModalInfo(distanceM(gLat, gLng, pLat, pLng));
-            } catch (e) {
-                // Routing unavailable — fall back to a straight dashed line.
-                if (!mapModal.routeLine) {
-                    if (mapModal.straightLine) mapModal.straightLine.setLatLngs([[gLat, gLng], [pLat, pLng]]);
-                    else mapModal.straightLine = L.polyline([[gLat, gLng], [pLat, pLng]], { color: '#2A7DE1', dashArray: '6,8', weight: 2 }).addTo(mapModal.map);
-                }
-            }
-        }
-        function updateMapModalInfo(distM) {
-            const el = document.getElementById('map-modal-info');
-            if (!el) return;
-            let driving = '';
-            if (mapModal.routeMeta) {
-                const mins = Math.max(1, Math.round(mapModal.routeMeta.duration / 60));
-                driving = ` · ${formatDistance(mapModal.routeMeta.distance)} by road, ~${mins} min drive`;
-            }
-            el.textContent = `About ${formatDistance(distM)} away${driving}`;
-        }
-
-        async function startArrivalWatch(stays) {
-            stopArrivalWatch();
-            arrivalStays = (stays || []).map(s => ({ ...s, unlocked: false }));
-            if (!arrivalStays.length || !navigator.geolocation) return;
-            arrivalLastCheck = 0;
-
-            // Only trigger the OS location prompt when we actually need to. The
-            // Permissions API tells us the current state WITHOUT prompting:
-            //   • 'granted' → start watching silently (no prompt at all)
-            //   • 'denied'  → never prompt again; show the manual "Show now" note
-            //   • 'prompt'  → ask exactly once (the browser then remembers the choice)
-            let state = 'prompt';
-            try {
-                if (navigator.permissions && navigator.permissions.query) {
-                    const status = await navigator.permissions.query({ name: 'geolocation' });
-                    state = status.state;
-                }
-            } catch (e) { /* Permissions API unsupported — fall through to one prompt */ }
-
-            if (state === 'denied') { onArrivalGeoError(); return; }
-
-            arrivalWatchId = navigator.geolocation.watchPosition(
-                onArrivalPosition, onArrivalGeoError,
-                { enableHighAccuracy: true, maximumAge: 10000, timeout: 20000 }
-            );
-        }
-        function stopArrivalWatch() {
-            if (arrivalWatchId != null && navigator.geolocation) {
-                try { navigator.geolocation.clearWatch(arrivalWatchId); } catch (e) {}
-            }
-            arrivalWatchId = null;
-            arrivalStays = [];
-            closeMapModal();
-            destroyMapModal();
-        }
-        async function onArrivalPosition(pos) {
-            const gLat = pos.coords.latitude, gLng = pos.coords.longitude;
-            lastGuestPos = { lat: gLat, lng: gLng };
-
-            // Live, local updates every tick (no server call): refresh each card's
-            // distance and the open map window where we already know the cottage spot.
-            arrivalStays.forEach(s => {
-                const geo = arrivalGeo[s.propKey];
-                if (geo && !s.unlocked) {
-                    const d = distanceM(gLat, gLng, geo.lat, geo.lng);
-                    if (d > 25) setNearbyNote(s.bookingId, s.propKey, d);   // server handles the within-25m messaging
-                }
-            });
-            if (mapModal.open) renderMapModal();
-
-            // Authoritative server check — throttled.
-            const now = Date.now();
-            if (now - arrivalLastCheck < 8000) return;
-            arrivalLastCheck = now;
-            const pending = arrivalStays.filter(s => !s.unlocked);
-            if (!pending.length) { stopArrivalWatch(); return; }
-            for (const s of pending) {
-                try {
-                    const res = await apiPost('arrival-access.php', { prop_key: s.propKey, lat: gLat, lng: gLng });
-                    if (res.unlocked) {
-                        s.unlocked = true;
-                        arrivalInfoCache[s.propKey] = res.info || '';
-                        markArrivalUnlocked(s.bookingId, s.propKey);
-                        openArrivalModal(s.propKey, res.info);
-                        notifyArrival('arr-here-' + s.bookingId, 'You’ve arrived', `Your key code & arrival details for ${arrivalPropName(s.propKey)} are ready.`);
-                    } else if (res.reason === 'nearby') {
-                        arrivalGeo[s.propKey] = { lat: res.prop_lat, lng: res.prop_lng };
-                        setNearbyNote(s.bookingId, s.propKey, res.distance_m);
-                        if (!s.notifiedNear) { s.notifiedNear = true; notifyArrival('arr-near-' + s.bookingId, 'You’re nearly there', `You’re close to ${arrivalPropName(s.propKey)} — your key code unlocks within 25m.`); }
-                        if (!s.autoMapShown) { s.autoMapShown = true; openMapModal(s.propKey); }   // auto-open on entering range
-                        else if (mapModal.open && mapModal.propKey === s.propKey) renderMapModal();
-                    } else if (res.reason === 'no_active_stay') {
-                        // Before the stay starts, or once checkout time has passed —
-                        // no map and no details. Wind this stay's watcher down.
-                        s.unlocked = true;
-                        if (mapModal.open && mapModal.propKey === s.propKey) closeMapModal();
-                        const note = document.getElementById('arr-note-' + s.bookingId);
-                        if (note) note.innerHTML = '';
-                    } else if (res.reason === 'too_early') {
-                        s.autoMapShown = false;
-                        if (mapModal.open && mapModal.propKey === s.propKey) closeMapModal();
-                        setArrivalNote(s.bookingId, `Your map and arrival details unlock 15 minutes before your ${res.arrival_time || ''} check-in.`, s.propKey, s.bookingId, false, IC_LOCK);
-                    } else if (res.reason === 'before_arrival') {
-                        if (mapModal.open && mapModal.propKey === s.propKey) closeMapModal();
-                        setArrivalNote(s.bookingId, `You've arrived early — your key code unlocks at ${res.arrival_time || 'your check-in time'}.`, s.propKey, s.bookingId, false, IC_PIN);
-                    } else if (res.reason === 'unpaid') {
-                        if (mapModal.open && mapModal.propKey === s.propKey) closeMapModal();
-                        setArrivalNote(s.bookingId, 'Your key code & arrival info unlock once your holiday balance is paid.', s.propKey, s.bookingId, false, IC_LOCK);
-                    } else if (res.reason === 'too_far') {
-                        s.autoMapShown = false;   // re-arm auto-open if they come back within 1km
-                        s.notifiedNear = false;   // re-arm the "you're close" alert too
-                        if (mapModal.open && mapModal.propKey === s.propKey) closeMapModal();
-                        setArrivalNote(s.bookingId, `You're about ${formatDistance(res.distance_m)} away — a map appears once you're within 1km of the cottage.`, s.propKey, s.bookingId, false);
-                    }
-                } catch (e) { /* try again on the next position update */ }
-            }
-            if (arrivalStays.every(s => s.unlocked)) stopArrivalWatch();
-        }
-        function onArrivalGeoError() {
-            // Permission denied / unavailable — keep the manual "Show now" route.
-            arrivalStays.forEach(s => setArrivalNote(s.bookingId,
-                'Allow location to unlock your key code automatically when you arrive —',
-                s.propKey, s.bookingId, true, IC_PIN));
-        }
-        function setArrivalNote(bookingId, text, propKey, bid, showBtn, icon) {
-            const html = `${icon ? icon + ' ' : ''}${escapeHtml(text)} ${showBtn ? `<button class="btn-sm btn-edit" style="margin-left:4px;" onclick="revealArrivalAccess('${propKey}','${bid}')">Show now</button>` : ''}`;
-            arrivalNoteEls(bookingId).forEach(el => el.innerHTML = html);
-        }
-        function markArrivalUnlocked(bookingId, propKey) {
-            const html = `${IC_CHECK} You've arrived — your arrival details are shown. <button class="btn-sm btn-edit" style="margin-left:4px;" onclick="openArrivalModal('${propKey}', arrivalInfoCache['${propKey}'])">Show again</button>`;
-            arrivalNoteEls(bookingId).forEach(el => el.innerHTML = html);
-            closeMapModal();
-        }
-
-        // ----- Browser notifications for the on-arrival watcher -----
-        // So a guest who leaves the tab open in the background still gets a "you're
-        // close" / "you've arrived" alert. Works while the tab is open (foreground or
-        // backgrounded); a fully-closed app/locked phone would need Web Push + a
-        // service worker, which isn't set up here.
-        function arrivalPropName(propKey) { return (propertyMeta[propKey] && propertyMeta[propKey].name) || propKey; }
-        function requestArrivalNotifications() {
-            try {
-                if (!('Notification' in window)) return;
-                if (Notification.permission === 'granted') { enableArrivalPush(); return; }
-                if (Notification.permission === 'default') {
-                    Notification.requestPermission().then((p) => {
-                        homeArrivalBookingId = null; renderHomeArrival();
-                        if (p === 'granted') enableArrivalPush();
-                    });
-                }
-            } catch (e) {}
         }
 
         // ---- Web Push: subscribe this device so check-in alerts arrive even when the
@@ -4050,35 +3767,9 @@
                 </div>
             </div>`;
         }
-        function notifyArrival(tag, title, body) {
-            try {
-                if (!('Notification' in window) || Notification.permission !== 'granted') return;
-                const n = new Notification(title, { body, tag, icon: 'apple-touch-icon.png' });
-                n.onclick = () => { try { window.focus(); } catch (e) {} n.close(); };
-            } catch (e) {}
-        }
-
-        function openArrivalModal(propKey, info) {
-            const meta = propertyMeta[propKey] || { name: propKey };
-            const titleEl = document.getElementById('arrival-modal-title');
-            const bodyEl = document.getElementById('arrival-modal-body');
-            if (!bodyEl) return;
-            if (titleEl) titleEl.innerText = 'Welcome to ' + meta.name;
-            const text = (info || '').trim();
-            bodyEl.innerHTML = text ? escapeHtml(text).replace(/\n/g, '<br>')
-                : 'No arrival details have been added yet — please contact us for your key code.';
-            const m = document.getElementById('arrival-modal');
-            if (m) m.classList.add('open');
-        }
-        function closeArrivalModal() {
-            const m = document.getElementById('arrival-modal');
-            if (m) m.classList.remove('open');
-        }
-
         // ----- Homepage arrival banner (logged-in guest, mid-stay) -----
-        // Shows a floating card on any page (except the account page, which has its own
-        // arrival UI) so the guest can reach the live map / key code without navigating
-        // to "My Bookings". Reuses revealArrivalAccess + the shared note functions.
+        // Shows a floating card on any page (except the account page) with a Directions
+        // button + tide card so a mid-stay guest can reach their stay quickly.
         function renderHomeArrival() {
             const el = document.getElementById('home-arrival');
             if (!el) return;
@@ -4113,7 +3804,7 @@
             if (el) el.classList.remove('show');
         }
         // Look up the logged-in guest's current stays (today within the booking) and
-        // drive the banner + the on-arrival GPS watch. Safe to call repeatedly.
+        // drive the homepage banner. Safe to call repeatedly.
         async function refreshHomeArrival() {
             try {
                 if (!currentGuest) {
@@ -4138,50 +3829,6 @@
             } catch (e) { /* never let the banner break the page */ }
         }
 
-        // Manual one-shot check — the "Show now" fallback.
-        async function revealArrivalAccess(propKey, bookingId) {
-            requestArrivalNotifications();   // user gesture — also opt them into arrival alerts
-            setArrivalNote(bookingId, "Checking you're at the cottage…", propKey, bookingId, false, IC_PIN);
-            if (!navigator.geolocation) {
-                setArrivalNote(bookingId, "This device can't share its location.", propKey, bookingId, false);
-                return;
-            }
-            navigator.geolocation.getCurrentPosition(async (pos) => {
-                try {
-                    const res = await apiPost('arrival-access.php', {
-                        prop_key: propKey, lat: pos.coords.latitude, lng: pos.coords.longitude
-                    });
-                    if (res.unlocked) {
-                        arrivalInfoCache[propKey] = res.info || '';
-                        markArrivalUnlocked(bookingId, propKey);
-                        openArrivalModal(propKey, res.info);
-                    } else if (res.reason === 'nearby') {
-                        arrivalGeo[propKey] = { lat: res.prop_lat, lng: res.prop_lng };
-                        lastGuestPos = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-                        setNearbyNote(bookingId, propKey, res.distance_m);
-                        openMapModal(propKey);
-                    } else if (res.reason === 'too_early') {
-                        setArrivalNote(bookingId, `Your map and arrival details unlock 15 minutes before your ${res.arrival_time || ''} check-in.`, propKey, bookingId, false, IC_LOCK);
-                    } else if (res.reason === 'before_arrival') {
-                        setArrivalNote(bookingId, `You've arrived early — your key code unlocks at ${res.arrival_time || 'your check-in time'}.`, propKey, bookingId, false, IC_PIN);
-                    } else if (res.reason === 'unpaid') {
-                        setArrivalNote(bookingId, 'Your key code & arrival info unlock once your holiday balance is paid.', propKey, bookingId, false, IC_LOCK);
-                    } else if (res.reason === 'too_far') {
-                        setArrivalNote(bookingId, `You're about ${formatDistance(res.distance_m)} away — a map appears once you're within 1km of the cottage.`, propKey, bookingId, true);
-                    } else if (res.reason === 'no_location') {
-                        setArrivalNote(bookingId, "This cottage isn't set up for on-arrival unlock yet — please contact us for your key code.", propKey, bookingId, false);
-                    } else if (res.reason === 'no_active_stay') {
-                        setArrivalNote(bookingId, 'Your key code becomes available during your stay.', propKey, bookingId, false);
-                    } else {
-                        setArrivalNote(bookingId, "Couldn't unlock right now — please try again.", propKey, bookingId, true);
-                    }
-                } catch (e) {
-                    setArrivalNote(bookingId, "Couldn't unlock — please try again.", propKey, bookingId, true);
-                }
-            }, () => {
-                setArrivalNote(bookingId, 'Location access is needed to unlock your key code. Please allow location and', propKey, bookingId, true);
-            }, { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 });
-        }
 
         // ---- Guest dashboard: "review your stay" ----
         let myGuestReviews = {};   // { propKey: {stars, text, status} } for the logged-in guest
@@ -8866,8 +8513,6 @@
             'admin-login-modal': closeAdminLogin,
             'terms-modal': closeTermsModal,
             'edit-modal': closeModal,
-            'arrival-modal': closeArrivalModal,
-            'map-modal': closeMapModal,
         };
         function topOpenDialog() {
             const lb = document.getElementById('lightbox');
@@ -11132,7 +10777,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'n7v4x2pk';
+            const BUILD = 'p9w6y3rc';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
