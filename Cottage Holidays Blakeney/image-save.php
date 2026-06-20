@@ -53,10 +53,42 @@ function save_uploaded_image($file, $slot = '', $maxBytes = null) {
         return ['error' => 'Could not save the uploaded image (check folder permissions).', 'code' => 500];
     }
 
+    // Privacy: strip metadata (EXIF — incl. GPS location, device, timestamps) from
+    // JPEG originals before they're served. Applies any EXIF orientation first so
+    // the photo still shows the right way up. Done BEFORE the WebP copy so that
+    // companion is built from the clean, correctly-oriented image.
+    if ($type === IMAGETYPE_JPEG) strip_jpeg_metadata($dest);
+
     // Optimised WebP companion (served automatically via .htaccess where supported).
     make_webp_copy($dest, $type, $dest . '.webp');
 
     return ['ok' => true, 'url' => 'uploads/' . $fname];
+}
+
+/**
+ * Strip EXIF/metadata from a JPEG in place by re-encoding it through GD, applying
+ * the EXIF orientation first so it still displays correctly. Best-effort and
+ * orientation-safe: only runs when the exif extension is available (so we can read
+ * and bake in the orientation); otherwise it leaves the file untouched rather than
+ * risk dropping the orientation tag and rotating the photo.
+ */
+function strip_jpeg_metadata($path) {
+    if (!function_exists('imagecreatefromjpeg') || !function_exists('exif_read_data')) return;
+    $orientation = 1;
+    try {
+        $exif = @exif_read_data($path);
+        if (is_array($exif) && !empty($exif['Orientation'])) $orientation = (int)$exif['Orientation'];
+    } catch (\Throwable $e) { /* no readable EXIF — treat as orientation 1 */ }
+    $img = @imagecreatefromjpeg($path);
+    if (!$img) return;   // unreadable — leave the original as-is
+    // Bake in orientation (covers the four values phones actually produce).
+    if ($orientation === 3)      $img = imagerotate($img, 180, 0);
+    elseif ($orientation === 6)  $img = imagerotate($img, -90, 0);   // GD: negative = clockwise
+    elseif ($orientation === 8)  $img = imagerotate($img, 90, 0);
+    if ($img) {
+        @imagejpeg($img, $path, 90);   // re-encode drops ALL metadata (incl. orientation)
+        imagedestroy($img);
+    }
 }
 
 /**

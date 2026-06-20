@@ -19,7 +19,8 @@ $in = body();
 $action = $in['action'] ?? '';
 
 if ($action === 'submit') {
-    // Public — anyone can submit an enquiry
+    // Public — anyone can submit an enquiry. Rate-limit per IP to stop floods.
+    rate_limit('enquiry', 6, 15);
     $propKey = clean($in['prop_key'] ?? '');
     if (!get_rate($propKey)) json_out(['error' => 'Unknown property'], 400);
     $name = clean($in['name'] ?? '');

@@ -119,6 +119,29 @@ function require_guest() {
     }
 }
 
+// ---- Generic per-IP rate limiter for public POSTs (anti-spam / anti-flood) ----
+// Reuses the login_attempts ledger (ip, identifier, success, attempted_at). Records
+// one row per call under $key; once $max rows exist for this IP+key within the
+// window it replies 429 and exits. Resilient: if the table is missing (migration
+// not run) it allows the request rather than ever hard-blocking a public action.
+function rate_limit($key, $max = 8, $windowMin = 10) {
+    try {
+        $ip  = $_SERVER['REMOTE_ADDR'] ?? '';
+        $win = (int)$windowMin;   // not user-controlled; safe to inline in INTERVAL
+        $s = db()->prepare("SELECT COUNT(*) c FROM login_attempts
+                            WHERE ip = ? AND identifier = ?
+                              AND attempted_at > (NOW() - INTERVAL $win MINUTE)");
+        $s->execute([$ip, $key]);
+        if ((int)(($s->fetch() ?: ['c' => 0])['c']) >= $max) {
+            json_out(['error' => 'Too many requests. Please wait a few minutes and try again.'], 429);
+        }
+        db()->prepare('INSERT INTO login_attempts (ip, identifier, success) VALUES (?,?,0)')->execute([$ip, $key]);
+        if (random_int(1, 20) === 1) {
+            db()->prepare('DELETE FROM login_attempts WHERE attempted_at < (NOW() - INTERVAL 1 DAY)')->execute();
+        }
+    } catch (\Throwable $e) { /* table missing — don't block public actions */ }
+}
+
 // ---- Simple input sanitising ----
 function clean($v) { return is_string($v) ? trim($v) : $v; }
 
