@@ -332,7 +332,7 @@ function send_review_request_email($b) {
           . "really helps other guests (and us).\n\n"
           . ($googleUrl ? "Leave us a Google review: {$googleUrl}\n\n" : "")
           . ($url ? "Or review us on our site: {$url}\n\n" : "")
-          . "Hope to welcome you back.\nCottage Holidays Blakeney";
+          . "We hope to welcome you back.\nCottage Holidays Blakeney";
 
     $inner = email_h('How was your stay?')
       . email_p('Hi ' . $esc($name) . ', thank you for staying at <strong style="color:#f4f5f7;">' . $esc($prop) . '</strong>. We\'d love to hear how it went — a short review really helps other guests (and us).');
@@ -342,7 +342,7 @@ function send_review_request_email($b) {
             ? '<p style="text-align:center;font-family:' . email_sans() . ';font-size:13px;margin:12px 0 0;"><a href="' . $esc($url) . '" style="color:#D6A785;text-decoration:none;">…or leave one on our site &rsaquo;</a></p>'
             : email_btn($url, 'Leave a review');
     }
-    $inner .= email_p('Hope to welcome you back.<br>Cottage Holidays Blakeney', true);
+    $inner .= email_p('We hope to welcome you back.<br>Cottage Holidays Blakeney', true);
     $html = email_shell("We'd love your feedback on " . $prop, $inner, $accent);
 
     return smtp_send($b['email'], $name, $subject, $text, $html);

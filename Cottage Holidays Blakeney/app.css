@@ -1595,7 +1595,7 @@
             position: fixed; top: calc(env(safe-area-inset-top, 0px) + 70px); right: 14px; z-index: 1400;
             width: 34px; height: 34px; border-radius: 50%; display: none; align-items: center; justify-content: center;
             background: var(--glass-bg); border: 1px solid var(--glass-border);
-            backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); color: var(--text-muted); opacity: 0.85;
+            backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); color: var(--text-light); opacity: 0.9;
         }
         .offline-pill .ic { width: 18px; height: 18px; }
         body.is-offline .offline-pill, body.has-queued .offline-pill { display: flex; }
@@ -1739,6 +1739,7 @@
             .toggle-btn { padding: 7px 14px; font-size: 0.7rem; }
             /* Comfortable tap targets on small screens */
             .btn-glass, .btn-sm, .cal-add-btn, .account-btn, .menu-toggle { min-height: 44px; }
+            .hs-step { width: 40px; height: 40px; }
             /* Keep header items from colliding */
             header { gap: 10px; }
             .account-btn { width: 44px; height: 44px; flex-shrink: 0; }
