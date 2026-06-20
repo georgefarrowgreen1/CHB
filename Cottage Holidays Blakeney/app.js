@@ -7420,9 +7420,9 @@
         function renderPropFeatures(propKey) {
             const el = document.getElementById('prop-features');
             if (!el) return;
-            const row = (icon, title, sub) => `<div class="prop-feature">${icon}<div><div class="prop-feature-title">${title}</div><div class="prop-feature-sub">${escapeHtml(sub)}</div></div></div>`;
+            const row = (icon, title, sub) => `<div class="prop-feature">${icon}<div><div class="prop-feature-title">${title}</div>${sub ? `<div class="prop-feature-sub">${escapeHtml(sub)}</div>` : ''}</div></div>`;
             el.innerHTML = [
-                row(IC_LOCK, 'Self check-in', 'Your private door code unlocks automatically when you reach the cottage.'),
+                row(IC_LOCK, 'Self check-in', ''),
                 row(IC_CHECK, 'Direct with the owner', 'No platform fees — book and chat straight with us.'),
                 row(IC_PIN, 'On the North Norfolk coast', 'Moments from Blakeney quay, the coastal path and the saltmarshes.')
             ].join('');
@@ -11122,7 +11122,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'k3p9w1qd';
+            const BUILD = 'm5r2t8wb';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
