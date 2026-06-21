@@ -522,11 +522,11 @@
         html.js-reveal .reveal { opacity: 0; transform: translateY(22px); transition: opacity 0.7s var(--fluid-bezier), transform 0.7s var(--spring); }
         html.js-reveal .reveal.in-view { opacity: 1; transform: none; }
         @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1 !important; transform: none !important; transition: none !important; } }
-        /* Homepage section order: dates-first — the "Check availability" panel sits
-           directly under the hero, then the trust strip, then the cottage cards. */
-        .home-availability { order: 1; }
-        .home-trust { order: 2; }
-        .home-cottages { order: 3; }
+        /* Homepage section order: hero → trust strip → cottage cards → availability.
+           ("Our cottages" sits above "Check availability".) */
+        .home-trust { order: 1; }
+        .home-cottages { order: 2; }
+        .home-availability { order: 3; }
         /* Trust strip — slim, factual reassurance band under the hero. */
         .home-trust { max-width: 1100px; width: 100%; margin: 0 auto; padding: clamp(8px, 2vw, 16px) clamp(16px, 4vw, 20px) 0; box-sizing: border-box; }
         .trust-strip { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px 28px; padding: 15px 22px; border-radius: 18px; }
