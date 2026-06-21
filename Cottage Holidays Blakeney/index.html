@@ -855,7 +855,7 @@
                 </button>
                 <button class="settings-row" onclick="settingsOpen('notify')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Notifications</span><span class="settings-row-sub">Push alerts to your phone for new bookings &amp; messages</span></span><span class="settings-row-chev">›</span>
+                    <span class="settings-row-main"><span class="settings-row-label">Notifications</span><span class="settings-row-sub">Get phone alerts for new bookings &amp; messages</span></span><span class="settings-row-chev">›</span>
                 </button>
             </div>
 
@@ -935,7 +935,7 @@
                 </button>
                 <button class="settings-row" onclick="settingsOpen('security')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Security</span><span class="settings-row-sub">Your password &amp; passkeys</span></span><span class="settings-row-chev">›</span>
+                    <span class="settings-row-main"><span class="settings-row-label">Security</span><span class="settings-row-sub">Your password &amp; quick sign-in (Face ID / fingerprint)</span></span><span class="settings-row-chev">›</span>
                 </button>
                 <button class="settings-row" onclick="settingsOpen('apis')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 13.5l-5.3 5.3a2 2 0 0 1-2.8-2.8l5.3-5.3"/><circle cx="15.5" cy="8.5" r="5"/><path d="M13.5 10.5l1.5 1.5"/></svg></span>
@@ -1055,9 +1055,9 @@
                     </div>
                     <label class="host-edit-label" for="host-f-name">Name</label>
                     <input class="input-glass" id="host-f-name" onchange="saveHostText('host-name', this.value)">
-                    <label class="host-edit-label" for="host-f-badge">Role / badge</label>
+                    <label class="host-edit-label" for="host-f-badge">Your title (shown to guests, e.g. Owner)</label>
                     <input class="input-glass" id="host-f-badge" onchange="saveHostText('host-badge', this.value)">
-                    <label class="host-edit-label" for="host-f-years">Years hosting</label>
+                    <label class="host-edit-label" for="host-f-years">Years of experience</label>
                     <input class="input-glass" id="host-f-years" onchange="saveHostText('host-years', this.value)">
                     <p style="font-size:0.78rem;color:var(--text-muted);margin:6px 0 0;">Reviews total &amp; rating are calculated automatically from your published guest reviews.</p>
                     <label class="host-edit-label" for="host-f-school">"Where I studied" line</label>
@@ -1069,7 +1069,7 @@
                     <p id="host-save-msg" style="font-size:0.82rem;color:#4CAF50;min-height:1em;margin:4px 0 0;"></p>
                     <div style="margin-top:22px;padding-top:20px;border-top:1px solid var(--glass-border);">
                         <label class="host-edit-label" for="contact-phone-dial" style="margin-top:0;">Contact number — "Call to Discuss" buttons</label>
-                        <p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 10px;">Shown on the booking form and guest dashboard. The dial number is what actually gets called (use full form like +441263740512 for mobiles); the display number is how it reads in the tooltip.</p>
+                        <p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 10px;">Guests see a "Call to discuss" button on the booking form. <strong>Dial number</strong> — the full number we'll call (e.g. +44 1263 740512). <strong>Display</strong> — how it reads to guests (e.g. 01263 740512).</p>
                         <div style="display:flex;gap:10px;flex-wrap:wrap;">
                             <input type="tel" class="input-glass field-sm" id="contact-phone-dial" placeholder="Dial number (e.g. +441263740512)" style="flex:1 1 220px;">
                             <input type="text" class="input-glass field-sm" id="contact-phone-display" placeholder="Display (e.g. 01263 740512)" style="flex:1 1 180px;">
