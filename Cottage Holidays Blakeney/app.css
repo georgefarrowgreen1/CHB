@@ -1292,6 +1292,8 @@
         .ana-export { appearance: none; cursor: pointer; font: inherit; font-size: 0.8rem; padding: 6px 13px; border-radius: 999px; border: 1px solid var(--glass-border); background: rgba(255,255,255,0.05); color: var(--text-light); margin-left: auto; }
         .ana-group-title { font-family: var(--font-serif); font-size: 1.18rem; color: var(--text-light); margin: 24px 0 2px; }
         .ana-group-title:first-of-type { margin-top: 14px; }
+        .ana-insights { background: rgba(214,167,133,0.08); border: 1px solid rgba(214,167,133,0.30); border-left: 3px solid var(--accent); border-radius: 14px; padding: 12px 16px 12px 18px; margin: 12px 0 4px; }
+        .ana-insights li { font-size: 0.86rem; color: var(--text-light); margin: 3px 0; line-height: 1.5; }
         .exp-tag { display: inline-block; font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.5px; padding: 1px 7px; border-radius: 10px; background: rgba(214,167,133,0.18); color: var(--accent); margin-left: 6px; vertical-align: middle; }
         .exp-receipt img { height: 30px; width: 30px; object-fit: cover; border-radius: 6px; border: 1px solid var(--glass-border); display: block; }
         /* Add-an-expense form: stack the fields full-width on phones so they don't
