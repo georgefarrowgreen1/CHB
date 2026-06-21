@@ -7322,6 +7322,8 @@
                 ['Metric', 'Value'],
                 ['Page views', d.totalViews || 0],
                 ['Unique visitors', d.uniqueVisitors || 0],
+                ['New visitors', (d.visitorMix || {}).new || 0],
+                ['Returning visitors', (d.visitorMix || {}).returning || 0],
                 ['Views this week', d.weekViews || 0],
                 ['Unique this week', d.weekUnique || 0],
                 ['Enquiries', d.enquiries || 0],
@@ -7495,6 +7497,21 @@
             const trend = (d.prevWeekViews > 0) ? Math.round(((d.weekViews - d.prevWeekViews) / d.prevWeekViews) * 100) : null;
             const weekSub = `${d.weekUnique || 0} unique${trend !== null ? ` · ${trend >= 0 ? '▲' : '▼'} ${Math.abs(trend)}% vs last wk` : ''}`;
 
+            // Period-over-period delta vs the previous equal-length window (same maths as above).
+            const delta = (cur, prev) => {
+                if (!prev || prev <= 0) return '';
+                const pct = Math.round(((cur - prev) / prev) * 100);
+                return ` · ${pct >= 0 ? '▲' : '▼'} ${Math.abs(pct)}% vs prev ${winLabel}`;
+            };
+
+            // New vs returning visitors (two proportional bars summing to unique visitors).
+            const mix = d.visitorMix || { new: 0, returning: 0 };
+            const mixMax = Math.max(mix.new || 0, mix.returning || 0);
+            const mixHtml = (mix.new || mix.returning)
+                ? hbar('New', mix.new || 0, mixMax, 'var(--glass-highlight)')
+                  + hbar('Returning', mix.returning || 0, mixMax, 'var(--glass-highlight)')
+                : '';
+
             const card = (label, body) => `<div class="accounts-stat" style="max-width:640px;margin-bottom:16px;"><div class="label" style="margin-bottom:12px;">${label}</div>${body}</div>`;
 
             // Time-range picker (reuses the backend's days param) + CSV export.
@@ -7508,10 +7525,11 @@
             wrap.innerHTML = pickerRow + `
                 <div class="owner-summary" style="margin-bottom:18px;">
                     <div class="os-card"><div class="os-label">Visits this week</div><div class="os-value">${d.weekViews || 0}</div><div class="os-sub">${weekSub}</div></div>
-                    <div class="os-card"><div class="os-label">Visits (${winLabel})</div><div class="os-value">${d.totalViews || 0}</div><div class="os-sub">page views</div></div>
-                    <div class="os-card"><div class="os-label">Unique visitors</div><div class="os-value">${d.uniqueVisitors || 0}</div><div class="os-sub">approx, last ${winLabel}</div></div>
+                    <div class="os-card"><div class="os-label">Visits (${winLabel})</div><div class="os-value">${d.totalViews || 0}</div><div class="os-sub">page views${delta(d.totalViews || 0, d.prevTotalViews || 0)}</div></div>
+                    <div class="os-card"><div class="os-label">Unique visitors</div><div class="os-value">${d.uniqueVisitors || 0}</div><div class="os-sub">approx, last ${winLabel}${delta(d.uniqueVisitors || 0, d.prevUniqueVisitors || 0)}</div></div>
                 </div>
                 ${card(`From visitor to booking <span style="opacity:0.6;text-transform:none;letter-spacing:0;">(last ${winLabel})</span>`, funnel)}
+                ${mixHtml ? card('New vs returning visitors', mixHtml) : ''}
                 <div class="accounts-stat" style="max-width:640px;margin-bottom:16px;">
                     <div class="label">Visits over time <span style="opacity:0.6;text-transform:none;letter-spacing:0;">(last ${winLabel})</span></div>
                     ${areaChart(series)}
@@ -10872,7 +10890,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'a7k3n2qp';
+            const BUILD = 'c4m8p1rk';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
