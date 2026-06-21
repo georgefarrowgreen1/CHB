@@ -1356,7 +1356,7 @@
                 list.innerHTML = `<div class="settings-group">${Object.keys(propertyMeta).map(k => {
                     const arch = propertyMeta[k] && propertyMeta[k].archived;
                     const o = occ[k] || { pct: 0, nights: 0, total: 0 };
-                    const sub = arch ? 'Removed — hidden from the site (tap to restore)' : `${o.pct}% booked this month · ${o.nights}/${o.total} nights`;
+                    const sub = arch ? 'Hidden from your website (tap to bring back)' : `${o.pct}% booked this month · ${o.nights}/${o.total} nights`;
                     return `
                     <button class="settings-row" onclick="settingsOpenAccom('${k}')" ${arch ? 'style="opacity:0.55;"' : ''}>
                         <span class="settings-row-ic"><span class="legend-swatch swatch-${k}" style="width:16px;height:16px;border-radius:5px;"></span></span>
@@ -1403,7 +1403,7 @@
                 await apiPost('rates.php', { action: 'archive', prop_key: k });
                 await loadRates();
                 await renderAccomList();
-                toast(`"${name}" removed — hidden from the site.`);
+                toast(`"${name}" is now hidden from your website. You can bring it back anytime.`);
             } catch (e) { glassAlert("Couldn't remove it: " + (e && e.message ? e.message : e)); }
         }
         async function restoreAccommodation(k) {
@@ -1418,17 +1418,17 @@
         // Each cottage's Preferences open as a sub-index of subfolders; each row drills
         // into just that part (rates, house rules, safety, …) — see settingsOpenAccomSec.
         const ACCOM_SECTIONS = [
-            { id: 'web',      label: 'Website content',   sub: 'How this cottage appears on the home page', ic: '<rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="M3 9h18"/><circle cx="6" cy="6.7" r="0.7" fill="currentColor" stroke="none"/>' },
+            { id: 'web',      label: 'Home page card',    sub: 'How this cottage appears on the home page', ic: '<rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="M3 9h18"/><circle cx="6" cy="6.7" r="0.7" fill="currentColor" stroke="none"/>' },
             { id: 'photos',   label: 'Photos',            sub: 'Gallery images for this cottage', ic: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="11" r="2"/><path d="M21 17l-5-5-4 4-2-2-4 4"/>' },
             { id: 'text',     label: 'Text & details',    sub: 'Title, description &amp; features', ic: '<path d="M4 6h16M4 12h16M4 18h10"/>' },
             { id: 'rates',    label: 'Rates & fees',      sub: 'Nightly prices, deposit &amp; fee', ic: '<path d="M2 6h20v12H2z"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9v6M18 9v6"/>' },
-            { id: 'house',    label: 'House rules',       sub: 'Check-in/out, nights, arrival days &amp; note', ic: '<path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/>' },
-            { id: 'safety',   label: 'Safety &amp; property', sub: 'Safety items shown to guests', ic: '<path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/>' },
-            { id: 'seasons',  label: 'Seasonal rates',    sub: 'Different prices by date range', ic: '<rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/>' },
-            { id: 'arrival',  label: 'Arrival info',      sub: 'Private pre-arrival email', ic: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/>' },
-            { id: 'location', label: 'Location',          sub: 'Address &amp; key-code unlock spot', ic: '<path d="M12 21s-7-5.2-7-11a7 7 0 0 1 14 0c0 5.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/>' },
-            { id: 'local',    label: 'Local guide',       sub: 'Dark skies, car-free &amp; accessibility notes', ic: '<circle cx="12" cy="12" r="9"/><path d="M15 9l-4.2 1.8L9 15l4.2-1.8z"/>' },
-            { id: 'faq',      label: 'Good to Know',      sub: 'FAQ shown in this cottage\'s bookings', ic: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.8" r="0.7" fill="currentColor" stroke="none"/>' },
+            { id: 'house',    label: 'House rules',       sub: 'Check-in/out times, minimum nights &amp; which days guests can arrive', ic: '<path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/>' },
+            { id: 'safety',   label: 'Safety &amp; property', sub: 'Safety features guests see (alarms, first aid, etc.)', ic: '<path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/>' },
+            { id: 'seasons',  label: 'Seasonal rates',    sub: 'Set different prices for summer, holidays, etc.', ic: '<rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/>' },
+            { id: 'arrival',  label: 'Arrival info',      sub: 'Email sent to guests a few days before they arrive', ic: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/>' },
+            { id: 'location', label: 'Location',          sub: 'Address &amp; where guests find the key', ic: '<path d="M12 21s-7-5.2-7-11a7 7 0 0 1 14 0c0 5.8-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/>' },
+            { id: 'local',    label: 'Local guide',       sub: 'Notes about your area — parking, accessibility, nature', ic: '<circle cx="12" cy="12" r="9"/><path d="M15 9l-4.2 1.8L9 15l4.2-1.8z"/>' },
+            { id: 'faq',      label: 'Questions &amp; answers', sub: 'Common questions guests see when booking', ic: '<circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.8" r="0.7" fill="currentColor" stroke="none"/>' },
             { id: 'welcome',  label: 'Welcome book',      sub: 'In-stay guide: Wi-Fi, appliances, bins, tips', ic: '<path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H19v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 5.5V20.5"/>' },
         ];
         function settingsOpenAccom(k) {
@@ -1639,7 +1639,7 @@
                 let msg = 'Sync complete.';
                 if (res.result && Array.isArray(res.result)) {
                     msg += '\n\n' + res.result.map(r => r.ok
-                        ? `${r.source}: ${r.events} blocked range(s) imported`
+                        ? `${r.source}: brought in ${r.events} set(s) of booked dates`
                         : `${r.source}: failed (${r.error})`).join('\n');
                 }
                 toast(msg);
@@ -10988,7 +10988,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'y8d3v6rn';
+            const BUILD = 'a4n7c2js';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
