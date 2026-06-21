@@ -28,6 +28,16 @@ function pv_ip_hash() {
     return hash('sha256', $ip . '|' . $ua . '|' . $salt);
 }
 
+// Coarse device class from the User-Agent (the raw UA is never stored, only this).
+function pv_device() {
+    $ua = strtolower((string)($_SERVER['HTTP_USER_AGENT'] ?? ''));
+    if ($ua === '') return null;
+    if (preg_match('/ipad|tablet|kindle|silk|playbook|nexus 7|nexus 10/', $ua)
+        || (strpos($ua, 'android') !== false && strpos($ua, 'mobile') === false)) return 'tablet';
+    if (preg_match('/mobi|iphone|ipod|android|windows phone|blackberry|opera mini|iemobile/', $ua)) return 'mobile';
+    return 'desktop';
+}
+
 // Classify a bare referrer host into a marketing channel + a friendly source name.
 // Search engines hide the actual query terms (HTTPS referrer policy), so we can
 // only name the engine, not the keywords — real keywords need Search Console.
@@ -121,6 +131,16 @@ if ($method === 'GET' && ($_GET['action'] ?? '') === 'summary') {
             if (isset($events[$r['e']])) $events[$r['e']] = (int)$r['c'];
         }
 
+        // Device split (mobile / tablet / desktop) — guarded: the column may not
+        // exist yet on a DB that hasn't run migration-analytics-v3.sql.
+        $devices = [];
+        try {
+            $devices = array_map(fn($r) => ['device' => $r['d'], 'count' => (int)$r['c']],
+                $qDays("SELECT device d, COUNT(*) c FROM pageviews
+                             WHERE event IS NULL AND device IS NOT NULL AND created_at >= $sinceSql
+                             GROUP BY device ORDER BY c DESC")->fetchAll());
+        } catch (\Throwable $e) { /* device column not migrated yet */ }
+
         // Funnel against real outcomes (enquiries + bookings in the same window).
         $enquiriesN = 0; $bookingsN = 0;
         try { $enquiriesN = (int)$qDays("SELECT COUNT(*) FROM enquiries WHERE created_at >= $sinceSql")->fetchColumn(); } catch (\Throwable $e) {}
@@ -159,6 +179,7 @@ if ($method === 'GET' && ($_GET['action'] ?? '') === 'summary') {
             'searchEngines' => $enginesOut,
             'sources' => array_map(fn($r) => ['source' => $r['s'], 'count' => (int)$r['c']], $sources),
             'events' => $events,
+            'devices' => $devices,
             'enquiries' => $enquiriesN,
             'bookings' => $bookingsN,
             'searchDemand' => $searchDemand,
@@ -230,8 +251,10 @@ if ($method === 'POST') {
         $rl = db()->prepare('SELECT COUNT(*) FROM pageviews WHERE ip_hash = ? AND created_at > (NOW() - INTERVAL 1 MINUTE)');
         $rl->execute([$ipHash]);
         if ((int)$rl->fetchColumn() < 60) {
-            db()->prepare('INSERT INTO pageviews (prop_key, path, referrer_host, ip_hash, event, source) VALUES (?,?,?,?,?,?)')
-                ->execute([$prop, $path, $refHost, $ipHash, $event, $source]);
+            // Device class only on ordinary page views; NULL on intent-event rows.
+            $device = $event === null ? pv_device() : null;
+            db()->prepare('INSERT INTO pageviews (prop_key, path, referrer_host, ip_hash, event, source, device) VALUES (?,?,?,?,?,?,?)')
+                ->execute([$prop, $path, $refHost, $ipHash, $event, $source, $device]);
         }
     } catch (\Throwable $e) { /* analytics must never break the page */ }
 
