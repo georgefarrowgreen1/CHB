@@ -7357,134 +7357,146 @@
             catch (e) { wrap.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">Couldn't load analytics${e && e.message ? ' (' + escapeHtml(e.message) + ')' : ''}.</p>`; return; }
             __analyticsSummary = d;   // stashed for the CSV export below
 
-            // Human label for the active window (drives every "(last N days)" caption).
+            // ---- labels / formatters ----
             const rangeLabel = n => n === 7 ? '7 days' : n === 90 ? '90 days' : n === 365 ? '12 months' : '30 days';
             const winDays = d.days || days;
             const winLabel = rangeLabel(winDays);
-
-            const daily = Array.isArray(d.daily) ? d.daily : [];
-            const series = daily;   // backend already groups only within the window
-            const fmtDay = s => { const [y, m, dd] = (s || '').split('-'); return dd ? `${dd}/${m}` : s; };
-
-            // ---- Smooth area + line chart for the daily visit series (inline SVG) ----
-            function areaChart(points) {
-                if (!points.length) return `<p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 0;">No visits recorded yet — check back once guests have browsed the site.</p>`;
-                const W = 680, H = 150, pad = 6;
-                const peak = points.reduce((m, r) => Math.max(m, r.views), 0) || 1;
-                const n = points.length;
-                const x = i => pad + (n === 1 ? (W - 2 * pad) / 2 : (i * (W - 2 * pad)) / (n - 1));
-                const y = v => pad + (H - 2 * pad) * (1 - v / peak);
-                const line = points.map((r, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)} ${y(r.views).toFixed(1)}`).join(' ');
-                const area = `M${x(0).toFixed(1)} ${(H - pad).toFixed(1)} ` +
-                    points.map((r, i) => `L${x(i).toFixed(1)} ${y(r.views).toFixed(1)}`).join(' ') +
-                    ` L${x(n - 1).toFixed(1)} ${(H - pad).toFixed(1)} Z`;
-                const dots = points.map((r, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(r.views).toFixed(1)}" r="2.4" fill="var(--glass-highlight)"><title>${fmtDay(r.date)}: ${r.views}</title></circle>`).join('');
-                const firstLbl = fmtDay(points[0].date), lastLbl = fmtDay(points[n - 1].date);
-                return `<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" style="width:100%;height:160px;display:block;margin-top:8px;" role="img" aria-label="Daily visits">
-                        <defs><linearGradient id="anaFill" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stop-color="var(--glass-highlight)" stop-opacity="0.35"/>
-                            <stop offset="100%" stop-color="var(--glass-highlight)" stop-opacity="0"/>
-                        </linearGradient></defs>
-                        <path d="${area}" fill="url(#anaFill)"/>
-                        <path d="${line}" fill="none" stroke="var(--glass-highlight)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
-                        ${dots}
-                    </svg>
-                    <div style="display:flex;justify-content:space-between;font-size:0.68rem;color:var(--text-muted);margin-top:2px;"><span>${firstLbl}</span><span>peak ${peak}/day</span><span>${lastLbl}</span></div>`;
-            }
-
-            // ---- Horizontal bar (label + proportional fill + value) ----
-            function hbar(label, value, max, color) {
-                const pct = Math.max(2, Math.round((value / (max || 1)) * 100));
-                return `<div style="margin-bottom:11px;">
-                    <div style="display:flex;justify-content:space-between;gap:10px;font-size:0.84rem;margin-bottom:5px;"><span style="color:var(--text-light);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${label}</span><span style="color:var(--text-muted);font-variant-numeric:tabular-nums;">${value}</span></div>
-                    <div style="height:9px;border-radius:6px;background:rgba(255,255,255,0.08);overflow:hidden;"><div style="height:100%;width:${pct}%;background:${color};border-radius:6px;transition:width 0.5s var(--fluid-bezier);"></div></div>
-                </div>`;
-            }
-
-            const refs = Array.isArray(d.topReferrers) ? d.topReferrers : [];
-            const refMax = refs.reduce((m, r) => Math.max(m, r.count), 0);
-            const refsHtml = refs.length
-                ? refs.map(r => hbar(escapeHtml(r.host), r.count, refMax, 'var(--glass-highlight)')).join('')
-                : `<p style="font-size:0.82rem;color:var(--text-muted);margin:0;">Mostly direct visits (no referrer) so far.</p>`;
-
-            const cottages = Array.isArray(d.byCottage) ? d.byCottage : [];
-            const cotMax = cottages.reduce((m, c) => Math.max(m, c.views), 0);
-            const cottageHtml = cottages.length
-                ? cottages.map(c => hbar(escapeHtml((propertyMeta[c.prop_key] || {}).name || c.prop_key), c.views, cotMax, `var(--prop-${c.prop_key}, var(--glass-highlight))`)).join('')
-                : '';
-
-            // ---- Funnel (label + value + % of the step above), widths vs the top step ----
-            function funnelHtml(steps, note) {
-                const top = steps[0].value || 0;
-                const rows = steps.map((s, i) => {
-                    const prev = i === 0 ? null : steps[i - 1].value;
-                    const fromTop = top ? Math.round((s.value / top) * 100) : 0;
-                    const fromPrev = (prev != null && prev > 0) ? Math.round((s.value / prev) * 100) : null;
-                    return `<div style="margin-bottom:10px;">
-                        <div style="display:flex;justify-content:space-between;gap:10px;font-size:0.84rem;margin-bottom:5px;"><span style="color:var(--text-light);">${escapeHtml(s.label)}</span><span style="color:var(--text-muted);font-variant-numeric:tabular-nums;">${s.value}${fromPrev != null ? ` · ${fromPrev}%` : ''}</span></div>
-                        <div style="height:11px;border-radius:6px;background:rgba(255,255,255,0.08);overflow:hidden;"><div style="height:100%;width:${Math.max(3, fromTop)}%;background:var(--glass-highlight);border-radius:6px;transition:width 0.5s var(--fluid-bezier);"></div></div>
-                    </div>`;
-                }).join('');
-                return rows + (note ? `<p style="font-size:0.74rem;color:var(--text-muted);margin:8px 0 0;">${note}</p>` : '');
-            }
             const PAGE_LABELS = { 'view-main': 'Home', 'view-cottages': 'All cottages', 'view-experiences': 'Experiences', 'view-21a': 'A cottage page', 'view-guest-bookings': 'My stays', 'view-pay': 'Payment', 'view-account': 'Account' };
             const pageLabel = p => PAGE_LABELS[p] || (p || '').replace(/^view-/, '').replace(/-/g, ' ') || 'Home';
             const monthName = ym => { const [y, m] = (ym || '').split('-'); return (y && m) ? new Date(+y, +m - 1, 1).toLocaleDateString('en-GB', { month: 'short', year: 'numeric' }) : (ym || ''); };
+            const moCard = (title, body) => `<div class="mo-card"><div class="mo-card-title">${title}</div>${body}</div>`;
+            const grid2 = (a, b) => `<div class="mo-grid2">${a}${b}</div>`;
+            const emptyNote = t => `<p style="font-size:0.82rem;color:var(--text-muted);margin:2px 0 0;">${t}</p>`;
 
-            // Conversion funnel: real visitors → enquiries → bookings (same window).
-            const funnel = funnelHtml([
-                { label: 'Unique visitors', value: d.uniqueVisitors || 0 },
+            // Category palette — colour bars by meaning rather than one flat hue.
+            const HUE = { Direct: 'var(--accent)', Search: '#5BA8FF', Social: '#C792EA', Referral: '#7FD1AE',
+                mobile: '#5BA8FF', tablet: '#7FD1AE', desktop: 'var(--accent)' };
+
+            // Period-over-period delta vs the previous equal-length window.
+            const delta = (cur, prev) => {
+                if (!prev || prev <= 0) return '';
+                const pct = Math.round(((cur - prev) / prev) * 100);
+                return ` · ${pct >= 0 ? '▲' : '▼'} ${Math.abs(pct)}% vs prev ${winLabel}`;
+            };
+
+            // ---- KPI tiles ----
+            const uniq = d.uniqueVisitors || 0, bookings = d.bookings || 0;
+            const convPct = uniq > 0 ? (bookings / uniq) * 100 : 0;
+            const convDisp = convPct >= 10 ? Math.round(convPct) : Math.round(convPct * 10) / 10;
+            const mix = d.visitorMix || { new: 0, returning: 0 };
+            const mixTotal = (mix.new || 0) + (mix.returning || 0);
+            const retPct = mixTotal > 0 ? Math.round((mix.returning / mixTotal) * 100) : 0;
+            const kpis = `<div class="mo-kpis">
+                <div class="mo-kpi"><div class="mo-label">Visits</div><div class="mo-value">${d.totalViews || 0}</div><div class="mo-sub">${winLabel}${delta(d.totalViews || 0, d.prevTotalViews || 0)}</div></div>
+                <div class="mo-kpi"><div class="mo-label">Unique visitors</div><div class="mo-value">${uniq}</div><div class="mo-sub">${winLabel}${delta(uniq, d.prevUniqueVisitors || 0)}</div></div>
+                <div class="mo-kpi"><div class="mo-label">Conversion</div><div class="mo-value">${convDisp}%</div><div class="mo-sub">${bookings} booking${bookings === 1 ? '' : 's'} ÷ visitors</div></div>
+                <div class="mo-kpi"><div class="mo-label">Returning</div><div class="mo-value">${retPct}%</div><div class="mo-sub">${mix.new || 0} new · ${mix.returning || 0} returning</div></div>
+            </div>`;
+
+            // ---- daily trend → vertical bars, rolled up so long windows stay readable ----
+            const daily = Array.isArray(d.daily) ? d.daily : [];
+            const fmtDM = s => { const [y, m, dd] = (s || '').split('-'); return dd ? `${+dd}/${+m}` : s; };
+            let trendItems;
+            if (winDays <= 30) {
+                trendItems = daily.map(r => ({ short: (r.date || '').slice(8), label: fmtDM(r.date), value: r.views }));
+            } else if (winDays <= 120) {
+                trendItems = [];
+                for (let i = 0; i < daily.length; i += 7) {
+                    const chunk = daily.slice(i, i + 7);
+                    trendItems.push({ short: fmtDM(chunk[0].date), label: 'week of ' + fmtDM(chunk[0].date), value: chunk.reduce((a, b) => a + b.views, 0) });
+                }
+            } else {
+                const mm = {};
+                daily.forEach(r => { const k = (r.date || '').slice(0, 7); mm[k] = (mm[k] || 0) + r.views; });
+                trendItems = Object.keys(mm).sort().map(k => ({ short: monthName(k).replace(/\s\d+$/, ''), label: monthName(k), value: mm[k] }));
+            }
+            const peak = daily.reduce((mx, r) => Math.max(mx, r.views), 0);
+            const trendHtml = daily.length
+                ? osVBars(trendItems) + `<div style="font-size:0.68rem;color:var(--text-muted);margin-top:4px;">peak ${peak}/day · ${winDays <= 30 ? 'by day' : winDays <= 120 ? 'by week' : 'by month'}</div>`
+                : emptyNote('No visits recorded yet — check back once guests have browsed the site.');
+
+            // ---- funnels (green→amber so drop-off reads at a glance) ----
+            const stepColor = (i, n) => `hsl(${Math.round(140 - (140 - 35) * (n > 1 ? i / (n - 1) : 0))}, 52%, 56%)`;
+            const funnelBars = (steps) => {
+                const top = steps[0].value || 0, n = steps.length;
+                return osHBars(steps.map((s, i) => {
+                    const prev = i === 0 ? null : steps[i - 1].value;
+                    const fromPrev = (prev != null && prev > 0) ? Math.round((s.value / prev) * 100) : null;
+                    return { label: s.label, value: s.value, max: top || 1, valLabel: s.value + (fromPrev != null ? ` · ${fromPrev}%` : ''), color: stepColor(i, n) };
+                }));
+            };
+            const funnel = funnelBars([
+                { label: 'Unique visitors', value: uniq },
                 { label: 'Enquiries', value: d.enquiries || 0 },
-                { label: 'Bookings', value: d.bookings || 0 },
-            ], 'Enquiries &amp; bookings are counted by the date they came in.');
-
-            // In-page engagement funnel from the tracked intent events.
+                { label: 'Bookings', value: bookings },
+            ]) + emptyNote('Enquiries &amp; bookings are counted by the date they came in.');
             const ev = d.events || {};
-            const engagement = funnelHtml([
+            const engagement = funnelBars([
                 { label: 'Clicked “Book / Enquire”', value: ev.book_click || 0 },
                 { label: 'Opened the enquiry form', value: ev.enquiry_open || 0 },
                 { label: 'Sent an enquiry', value: ev.enquiry_submit || 0 },
                 { label: 'Started a payment', value: ev.pay_start || 0 },
             ]);
+            const convDonut = `<div style="display:flex;align-items:center;gap:14px;margin-bottom:6px;">${osDonut(Math.round(convPct), 'var(--accent)')}<div style="font-size:0.82rem;color:var(--text-muted);line-height:1.5;">${bookings} booking${bookings === 1 ? '' : 's'} from ${uniq} unique visitor${uniq === 1 ? '' : 's'} this ${winLabel}.</div></div>`;
 
-            // Where visitors come from: channels, then the specific search engines.
-            const channels = Array.isArray(d.channels) ? d.channels : [];
-            const chMax = channels.reduce((m, c) => Math.max(m, c.count), 0);
-            const channelsHtml = channels.length
-                ? channels.map(c => hbar(escapeHtml(c.channel), c.count, chMax, 'var(--glass-highlight)')).join('')
-                : `<p style="font-size:0.82rem;color:var(--text-muted);margin:0;">No visits recorded yet.</p>`;
-            const engines = Array.isArray(d.searchEngines) ? d.searchEngines : [];
-            const enMax = engines.reduce((m, e) => Math.max(m, e.count), 0);
-            const enginesHtml = engines.length
-                ? engines.map(e => hbar(escapeHtml(e.name), e.count, enMax, 'var(--glass-highlight)')).join('')
-                  + `<p style="font-size:0.72rem;color:var(--text-muted);margin:8px 0 0;line-height:1.5;">Search engines hide the words people typed, so we can name the engine but not the search terms — for those, connect Google Search Console.</p>`
-                : `<p style="font-size:0.82rem;color:var(--text-muted);margin:0;">No search-engine visits recorded yet.</p>`;
-            const sources = Array.isArray(d.sources) ? d.sources : [];
-            const srcMax = sources.reduce((m, s) => Math.max(m, s.count), 0);
-            const sourcesHtml = sources.length
-                ? sources.map(s => hbar(escapeHtml(s.source), s.count, srcMax, 'var(--glass-highlight)')).join('')
-                : '';
-
-            // How visitors browse: mobile / tablet / desktop.
+            // ---- audience: new/returning + devices ----
+            const mixMax = Math.max(mix.new || 0, mix.returning || 0, 1);
+            const mixHtml = mixTotal
+                ? osHBars([{ label: 'New', value: mix.new || 0, max: mixMax, color: '#5BA8FF' }, { label: 'Returning', value: mix.returning || 0, max: mixMax, color: '#7FD1AE' }])
+                : emptyNote('No visitors recorded yet.');
             const DEVICE_LABELS = { mobile: 'Mobile', tablet: 'Tablet', desktop: 'Desktop' };
             const devices = Array.isArray(d.devices) ? d.devices : [];
             const devMax = devices.reduce((m, x) => Math.max(m, x.count), 0);
             const devicesHtml = devices.length
-                ? devices.map(x => hbar(escapeHtml(DEVICE_LABELS[x.device] || x.device), x.count, devMax, 'var(--glass-highlight)')).join('')
-                : '';
+                ? osHBars(devices.map(x => ({ label: DEVICE_LABELS[x.device] || x.device, value: x.count, max: devMax, color: HUE[x.device] || 'var(--accent)' })))
+                : emptyNote('No device data yet.');
 
+            // ---- acquisition: channels / engines / sources / referrers ----
+            const channels = Array.isArray(d.channels) ? d.channels : [];
+            const chMax = channels.reduce((m, c) => Math.max(m, c.count), 0);
+            const channelsHtml = channels.length
+                ? osHBars(channels.map(c => ({ label: c.channel, value: c.count, max: chMax, color: HUE[c.channel] || 'var(--accent)' })))
+                : emptyNote('No visits recorded yet.');
+            const engines = Array.isArray(d.searchEngines) ? d.searchEngines : [];
+            const enMax = engines.reduce((m, e) => Math.max(m, e.count), 0);
+            const enginesHtml = engines.length
+                ? osHBars(engines.map(e => ({ label: e.name, value: e.count, max: enMax, color: '#5BA8FF' }))) + `<p style="font-size:0.72rem;color:var(--text-muted);margin:6px 0 0;line-height:1.5;">Search engines hide the words people typed — connect Google Search Console for the actual terms.</p>`
+                : emptyNote('No search-engine visits yet.');
+            const sources = Array.isArray(d.sources) ? d.sources : [];
+            const srcMax = sources.reduce((m, s) => Math.max(m, s.count), 0);
+            const sourcesHtml = sources.length
+                ? osHBars(sources.map(s => ({ label: s.source, value: s.count, max: srcMax, color: '#C792EA' })))
+                : emptyNote('No tagged campaign links yet.');
+            const refs = Array.isArray(d.topReferrers) ? d.topReferrers : [];
+            const refMax = refs.reduce((m, r) => Math.max(m, r.count), 0);
+            const refsHtml = refs.length
+                ? osHBars(refs.map(r => ({ label: r.host, value: r.count, max: refMax, color: '#7FD1AE' })))
+                : emptyNote('Mostly direct visits (no referrer) so far.');
+
+            // ---- behaviour: devices already built above; pages / exit pages / cottages ----
             const pages = Array.isArray(d.topPages) ? d.topPages : [];
             const pgMax = pages.reduce((m, p) => Math.max(m, p.views), 0);
             const pagesHtml = pages.length
-                ? pages.map(p => hbar(escapeHtml(pageLabel(p.path)), p.views, pgMax, 'var(--glass-highlight)')).join('')
-                : '';
+                ? osHBars(pages.map(p => ({ label: pageLabel(p.path), value: p.views, max: pgMax, color: 'var(--accent)' })))
+                : emptyNote('No page views yet.');
+            const exits = Array.isArray(d.exitPages) ? d.exitPages : [];
+            const exMax = exits.reduce((m, x) => Math.max(m, x.count), 0);
+            const exitsHtml = exits.length
+                ? osHBars(exits.map(x => ({ label: pageLabel(x.path), value: x.count, max: exMax, color: '#C792EA' })))
+                : emptyNote('Not enough data yet.');
+            const cottages = Array.isArray(d.byCottage) ? d.byCottage : [];
+            const cotMax = cottages.reduce((m, c) => Math.max(m, c.views), 0);
+            const cottageHtml = cottages.length
+                ? osHBars(cottages.map(c => ({ label: (propertyMeta[c.prop_key] || {}).name || c.prop_key, value: c.views, max: cotMax, color: `var(--prop-${c.prop_key}, var(--accent))` })))
+                : emptyNote('No cottage page views yet.');
 
             // Search demand: what guests searched + how often nothing was free.
             const sd = d.searchDemand || { total: 0, noResult: 0, topMonths: [], recentNoResult: [] };
             const noPct = sd.total ? Math.round((sd.noResult / sd.total) * 100) : 0;
             const tmMax = (sd.topMonths || []).reduce((m, x) => Math.max(m, x.count), 0);
-            const topMonthsHtml = (sd.topMonths || []).map(x =>
-                hbar(`${monthName(x.month)} <span style="color:var(--text-muted);font-size:0.75rem;">· ${x.count ? Math.round((x.found / x.count) * 100) : 0}% found space</span>`, x.count, tmMax, 'var(--glass-highlight)')).join('');
+            const topMonthsHtml = (sd.topMonths || []).length
+                ? osHBars((sd.topMonths || []).map(x => ({ label: `${monthName(x.month)} · ${x.count ? Math.round((x.found / x.count) * 100) : 0}% found space`, value: x.count, max: tmMax, color: 'var(--accent)' })))
+                : '';
             const recentNoHtml = (sd.recentNoResult || []).map(r => {
                 const who = `${r.adults} adult${r.adults === 1 ? '' : 's'}${r.children ? ` + ${r.children} child${r.children === 1 ? '' : 'ren'}` : ''}`;
                 const when = r.mode === 'flex'
@@ -7493,62 +7505,34 @@
                 return `<li style="margin-bottom:5px;">${escapeHtml(when)} · ${escapeHtml(who)}</li>`;
             }).join('');
 
-            // Week-on-week trend for the headline card.
-            const trend = (d.prevWeekViews > 0) ? Math.round(((d.weekViews - d.prevWeekViews) / d.prevWeekViews) * 100) : null;
-            const weekSub = `${d.weekUnique || 0} unique${trend !== null ? ` · ${trend >= 0 ? '▲' : '▼'} ${Math.abs(trend)}% vs last wk` : ''}`;
+            // ---- sticky period bar (segmented control) + CSV export ----
+            const seg = `<div class="ana-seg" role="tablist">${[7, 30, 90, 365].map(n => `<button type="button" class="ana-seg-btn${n === winDays ? ' on' : ''}" onclick="loadAnalytics(${n})">${rangeLabel(n)}</button>`).join('')}</div>`;
+            const pickerRow = `<div class="ana-pick">${seg}<button type="button" class="ana-export" onclick="exportAnalyticsCsv()">⬇ Export CSV</button></div>`;
 
-            // Period-over-period delta vs the previous equal-length window (same maths as above).
-            const delta = (cur, prev) => {
-                if (!prev || prev <= 0) return '';
-                const pct = Math.round(((cur - prev) / prev) * 100);
-                return ` · ${pct >= 0 ? '▲' : '▼'} ${Math.abs(pct)}% vs prev ${winLabel}`;
-            };
+            wrap.innerHTML = pickerRow + kpis + `
+                <div class="ana-group-title">Behaviour over time</div>
+                ${moCard(`Visits <span style="opacity:0.6;">(last ${winLabel})</span>`, trendHtml)}
+                ${grid2(moCard('From visitor to booking', convDonut + funnel), moCard('On-site engagement <span style="opacity:0.6;">(drop-off)</span>', engagement))}
 
-            // New vs returning visitors (two proportional bars summing to unique visitors).
-            const mix = d.visitorMix || { new: 0, returning: 0 };
-            const mixMax = Math.max(mix.new || 0, mix.returning || 0);
-            const mixHtml = (mix.new || mix.returning)
-                ? hbar('New', mix.new || 0, mixMax, 'var(--glass-highlight)')
-                  + hbar('Returning', mix.returning || 0, mixMax, 'var(--glass-highlight)')
-                : '';
+                <div class="ana-group-title">Audience</div>
+                ${grid2(moCard('New vs returning', mixHtml), moCard('How visitors browse', devicesHtml))}
 
-            const card = (label, body) => `<div class="accounts-stat" style="max-width:640px;margin-bottom:16px;"><div class="label" style="margin-bottom:12px;">${label}</div>${body}</div>`;
+                <div class="ana-group-title">Where visitors come from</div>
+                ${grid2(moCard('Channels', channelsHtml), moCard('Search engines', enginesHtml))}
+                ${grid2(moCard('Campaign sources <span style="opacity:0.6;">(utm_source)</span>', sourcesHtml), moCard('Top referrers', refsHtml))}
 
-            // Time-range picker (reuses the backend's days param) + CSV export.
-            const pill = n => `<button type="button" onclick="loadAnalytics(${n})" style="appearance:none;cursor:pointer;font:inherit;font-size:0.8rem;padding:6px 13px;border-radius:999px;border:1px solid var(--glass-border, rgba(255,255,255,0.12));background:${n === winDays ? 'var(--glass-highlight)' : 'rgba(255,255,255,0.05)'};color:${n === winDays ? '#fff' : 'var(--text-light)'};transition:background 0.2s var(--fluid-bezier);">${rangeLabel(n)}</button>`;
-            const pickerRow = `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;max-width:640px;margin-bottom:18px;">
-                <span style="font-size:0.78rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-right:2px;">Period</span>
-                ${[7, 30, 90, 365].map(pill).join('')}
-                <button type="button" onclick="exportAnalyticsCsv()" style="appearance:none;cursor:pointer;font:inherit;font-size:0.8rem;padding:6px 13px;border-radius:999px;border:1px solid var(--glass-border, rgba(255,255,255,0.12));background:rgba(255,255,255,0.05);color:var(--text-light);margin-left:auto;">⬇ Export CSV</button>
-            </div>`;
+                <div class="ana-group-title">On-site behaviour</div>
+                ${grid2(moCard('Most-viewed pages', pagesHtml), moCard('Where people leave <span style="opacity:0.6;">(exit pages)</span>', exitsHtml))}
+                ${grid2(moCard('Most-viewed cottages', cottageHtml), moCard('Bounce rate', `<div style="display:flex;align-items:center;gap:14px;">${osDonut(d.bounceRate || 0, '#C792EA')}<div style="font-size:0.82rem;color:var(--text-muted);line-height:1.5;">Visitors who looked at just one page before leaving.</div></div>`))}
 
-            wrap.innerHTML = pickerRow + `
-                <div class="owner-summary" style="margin-bottom:18px;">
-                    <div class="os-card"><div class="os-label">Visits this week</div><div class="os-value">${d.weekViews || 0}</div><div class="os-sub">${weekSub}</div></div>
-                    <div class="os-card"><div class="os-label">Visits (${winLabel})</div><div class="os-value">${d.totalViews || 0}</div><div class="os-sub">page views${delta(d.totalViews || 0, d.prevTotalViews || 0)}</div></div>
-                    <div class="os-card"><div class="os-label">Unique visitors</div><div class="os-value">${d.uniqueVisitors || 0}</div><div class="os-sub">approx, last ${winLabel}${delta(d.uniqueVisitors || 0, d.prevUniqueVisitors || 0)}</div></div>
-                </div>
-                ${card(`From visitor to booking <span style="opacity:0.6;text-transform:none;letter-spacing:0;">(last ${winLabel})</span>`, funnel)}
-                ${mixHtml ? card('New vs returning visitors', mixHtml) : ''}
-                <div class="accounts-stat" style="max-width:640px;margin-bottom:16px;">
-                    <div class="label">Visits over time <span style="opacity:0.6;text-transform:none;letter-spacing:0;">(last ${winLabel})</span></div>
-                    ${areaChart(series)}
-                </div>
-                ${card('On-site engagement <span style="opacity:0.6;text-transform:none;letter-spacing:0;">(where people drop off)</span>', engagement)}
-                ${card('Where visitors come from', channelsHtml)}
-                ${devicesHtml ? card('How visitors browse', devicesHtml) : ''}
-                ${card('Search engines', enginesHtml)}
-                ${sourcesHtml ? card('Campaign sources <span style="opacity:0.6;text-transform:none;letter-spacing:0;">(utm_source)</span>', sourcesHtml) : ''}
-                ${card('Top referrers', refsHtml)}
-                ${pagesHtml ? card('Most-viewed pages', pagesHtml) : ''}
-                ${cottageHtml ? card('Most-viewed cottages', cottageHtml) : ''}
-                ${card('What guests are searching for', `
-                    <div class="owner-summary" style="margin-bottom:14px;">
-                        <div class="os-card"><div class="os-label">Searches</div><div class="os-value">${sd.total || 0}</div><div class="os-sub">last ${winLabel}</div></div>
-                        <div class="os-card"><div class="os-label">Found nothing</div><div class="os-value">${sd.noResult || 0}</div><div class="os-sub">${noPct}% of searches</div></div>
+                <div class="ana-group-title">What guests are searching for</div>
+                ${moCard('Search demand', `
+                    <div class="mo-kpis" style="margin-bottom:12px;">
+                        <div class="mo-kpi"><div class="mo-label">Searches</div><div class="mo-value">${sd.total || 0}</div><div class="mo-sub">last ${winLabel}</div></div>
+                        <div class="mo-kpi"><div class="mo-label">Found nothing</div><div class="mo-value${noPct >= 40 ? ' mo-warn' : ''}">${sd.noResult || 0}</div><div class="mo-sub">${noPct}% of searches</div></div>
                     </div>
-                    ${topMonthsHtml ? `<div style="font-size:0.78rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin:4px 0 10px;">Most-requested months</div>${topMonthsHtml}` : ''}
-                    ${recentNoHtml ? `<div style="font-size:0.78rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin:14px 0 8px;">Recent searches that found nothing</div><ul style="margin:0;padding-left:18px;font-size:0.85rem;color:var(--text-light);">${recentNoHtml}</ul><p style="font-size:0.74rem;color:var(--text-muted);margin:10px 0 0;">These are unmet demand — consider opening dates, adjusting prices, or nudging your waitlist.</p>` : (sd.total ? '' : `<p style="font-size:0.82rem;color:var(--text-muted);margin:0;">No searches recorded yet.</p>`)}
+                    ${topMonthsHtml ? `<div style="font-size:0.74rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin:4px 0 10px;">Most-requested months</div>${topMonthsHtml}` : ''}
+                    ${recentNoHtml ? `<div style="font-size:0.74rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin:14px 0 8px;">Recent searches that found nothing</div><ul style="margin:0;padding-left:18px;font-size:0.85rem;color:var(--text-light);">${recentNoHtml}</ul><p style="font-size:0.74rem;color:var(--text-muted);margin:10px 0 0;">These are unmet demand — consider opening dates, adjusting prices, or nudging your waitlist.</p>` : (sd.total ? '' : emptyNote('No searches recorded yet.'))}
                 `)}`;
         }
 
@@ -10890,7 +10874,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'c4m8p1rk';
+            const BUILD = 'f9t2v7wq';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
