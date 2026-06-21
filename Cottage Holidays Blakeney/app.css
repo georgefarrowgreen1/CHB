@@ -366,6 +366,15 @@
         .lightbox-nav:focus-visible, .lightbox-close:focus-visible {
             outline: 2px solid var(--accent); outline-offset: 3px;
         }
+        /* Same clear focus ring for the homepage search controls, chips and nav-pill
+           CTA so the whole customer journey is keyboard-navigable consistently. */
+        .hs-field:focus-visible, .hs-step:focus-visible, .hs-chip:focus-visible,
+        .hs-mode-btn:focus-visible, .flex-opt:focus-visible, .hs-opt:focus-visible,
+        .hs-select-btn:focus-visible, .exp-chip:focus-visible, .avail-nav:focus-visible,
+        #guest-book-cta:focus-visible, nav a:focus-visible, .back-link:focus-visible,
+        .menu-toggle:focus-visible {
+            outline: 2px solid var(--accent); outline-offset: 2px;
+        }
         .input-glass:focus-visible, .date-range-trigger:focus-visible, .terms-accept input:focus-visible {
             outline: 2px solid var(--accent); outline-offset: 2px; border-color: var(--text-light);
         }
