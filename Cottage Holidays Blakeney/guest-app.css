@@ -59,7 +59,7 @@ body.guest-app:not(.owner-mode) #guest-tabbar {
     transition: background 0.2s var(--fluid-bezier), transform 0.15s var(--fluid-bezier);
     -webkit-tap-highlight-color: transparent;
 }
-.guest-dock-btn svg { width: 27px; height: 27px; display: block; transition: transform 0.4s cubic-bezier(0.34,1.5,0.5,1); }
+.guest-dock-btn svg { width: 27px; height: 27px; display: block; transition: transform 0.4s var(--spring); }
 .guest-dock-btn:hover { background: rgba(255, 255, 255, 0.16); }
 .guest-dock-btn:focus-visible { background: rgba(255, 255, 255, 0.16); outline: 2px solid var(--accent-soft, #d6a785); outline-offset: 2px; }
 .guest-dock-btn:active { transform: scale(0.92); }
@@ -72,7 +72,7 @@ body.guest-app:not(.owner-mode) #guest-tabbar {
 .guest-dock-btn.gt-home img {
     width: 30px; height: 30px; display: block;
     filter: drop-shadow(0 0 8px rgba(214, 167, 133, 0.5));
-    transition: transform 0.4s cubic-bezier(0.34,1.5,0.5,1);
+    transition: transform 0.4s var(--spring);
 }
 .guest-dock-btn.gt-home.current img { filter: brightness(0); transform: scale(1.08); }
 
@@ -87,8 +87,8 @@ body.guest-app:not(.owner-mode).guest-signed-in .gt-auth { display: inline-flex;
     width: 60px; height: 60px; border-radius: 999px;
     background: rgba(255, 255, 255, 0.92);
     opacity: 0; pointer-events: none; z-index: 0;
-    transition: left 0.5s cubic-bezier(0.34,1.5,0.5,1),
-                width 0.5s cubic-bezier(0.34,1.5,0.5,1),
+    transition: left 0.5s var(--spring),
+                width 0.5s var(--spring),
                 height 0.3s var(--fluid-bezier),
                 opacity 0.28s ease;
 }
