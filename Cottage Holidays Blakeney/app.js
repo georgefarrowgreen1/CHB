@@ -426,10 +426,30 @@
             const __u = new URLSearchParams(location.search);
             __utmSource = (__u.get('utm_source') || __u.get('utm_medium') || '').toString().slice(0, 60);
         } catch (e) {}
+        // Time-on-page (dwell): beacon how long the current view was visible, so the
+        // owner can see which pages hold attention. Skipped for the owner's own browsing.
+        let __viewKey = null, __viewAt = 0;
+        function flushDwell() {
+            if (!__viewKey || !__viewAt) { __viewAt = 0; return; }
+            const ms = Date.now() - __viewAt;
+            __viewAt = 0;
+            if (document.body.classList.contains('owner-mode')) return;
+            if (ms < 500 || ms > 1800000) return;   // ignore flicks and backgrounded/absurd spans
+            const payload = JSON.stringify({ dwell: ms, path: __viewKey });
+            try {
+                if (navigator.sendBeacon) navigator.sendBeacon(API_BASE + 'track.php', new Blob([payload], { type: 'application/json' }));
+                else apiPost('track.php', { dwell: ms, path: __viewKey }).catch(() => {});
+            } catch (e) {}
+        }
         function trackView(viewId, prop) {
             if (document.body.classList.contains('owner-mode')) return;
+            flushDwell();                                   // close out the previous view's dwell
+            __viewKey = viewId || 'view-main'; __viewAt = Date.now();
             try { apiPost('track.php', { path: viewId || 'view-main', prop: prop || '', source: __utmSource }).catch(() => {}); } catch (e) {}
         }
+        // Flush dwell when the tab is hidden / unloaded; resume timing when it returns.
+        document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') flushDwell(); else if (__viewKey) __viewAt = Date.now(); });
+        window.addEventListener('pagehide', flushDwell);
         // A named intent event — builds the in-page conversion funnel.
         // Known events: book_click, enquiry_open, enquiry_submit, pay_start.
         function trackEvent(name, prop) {
@@ -7508,8 +7528,9 @@
             // ---- behaviour: devices already built above; pages / exit pages / cottages ----
             const pages = Array.isArray(d.topPages) ? d.topPages : [];
             const pgMax = pages.reduce((m, p) => Math.max(m, p.views), 0);
+            const fmtDur = ms => { if (!ms) return ''; const s = Math.round(ms / 1000); return s < 60 ? ` · ${s}s` : ` · ${Math.floor(s / 60)}m ${s % 60}s`; };
             const pagesHtml = pages.length
-                ? osHBars(pages.map(p => ({ label: pageLabel(p.path), value: p.views, max: pgMax, color: 'var(--accent)' })))
+                ? osHBars(pages.map(p => ({ label: pageLabel(p.path), value: p.views, max: pgMax, valLabel: `${p.views}${fmtDur(p.dwellMs)}`, color: 'var(--accent)' })))
                 : emptyNote('No page views yet.');
             const exits = Array.isArray(d.exitPages) ? d.exitPages : [];
             const exMax = exits.reduce((m, x) => Math.max(m, x.count), 0);
@@ -10912,7 +10933,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'h3x8k2dz';
+            const BUILD = 'k7p4m9bn';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;

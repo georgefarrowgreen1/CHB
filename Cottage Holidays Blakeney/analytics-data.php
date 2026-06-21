@@ -115,6 +115,16 @@ function analytics_summary($days) {
                           WHERE event IS NULL AND created_at >= $sinceSql AND path <> ''
                           GROUP BY path ORDER BY c DESC LIMIT 8")->fetchAll();
 
+    // Average time-on-page per path (guarded: dwell_ms may not be migrated yet).
+    $dwellByPath = [];
+    try {
+        foreach ($qDays("SELECT path, AVG(dwell_ms) a FROM pageviews
+                              WHERE event IS NULL AND dwell_ms IS NOT NULL AND path <> '' AND created_at >= $sinceSql
+                              GROUP BY path")->fetchAll() as $r) {
+            $dwellByPath[$r['path']] = (int)round($r['a']);
+        }
+    } catch (\Throwable $e) { /* dwell_ms column not migrated yet */ }
+
     // Channels + search engines: classify every referrer'd page view.
     $allRefs = $qDays("SELECT referrer_host h, COUNT(*) c FROM pageviews
                             WHERE event IS NULL AND created_at >= $sinceSql AND referrer_host IS NOT NULL AND referrer_host <> ''
@@ -194,7 +204,7 @@ function analytics_summary($days) {
         'daily' => array_map(fn($r) => ['date' => $r['d'], 'views' => (int)$r['c']], $daily),
         'topReferrers' => array_map(fn($r) => ['host' => $r['h'], 'count' => (int)$r['c']], $refs),
         'byCottage' => array_map(fn($r) => ['prop_key' => $r['p'], 'views' => (int)$r['c']], $byProp),
-        'topPages' => array_map(fn($r) => ['path' => $r['path'], 'views' => (int)$r['c']], $pages),
+        'topPages' => array_map(fn($r) => ['path' => $r['path'], 'views' => (int)$r['c'], 'dwellMs' => $dwellByPath[$r['path']] ?? null], $pages),
         'channels' => $channelsOut,
         'searchEngines' => $enginesOut,
         'sources' => array_map(fn($r) => ['source' => $r['s'], 'count' => (int)$r['c']], $sources),
