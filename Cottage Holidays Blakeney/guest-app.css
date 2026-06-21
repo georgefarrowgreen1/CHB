@@ -195,11 +195,21 @@ body.guest-app:not(.owner-mode) .chat-fab { display: none; }
    above the dock — the universal "sticky CTA" pattern guests expect (it used to sit
    at the top, which fought scroll habits and covered the title/first photo). */
 body.guest-app:not(.owner-mode) #prop-book-bar {
-    top: auto; bottom: calc(96px + env(safe-area-inset-bottom, 0px));
-    left: 12px; right: 12px; border-radius: 18px;
-    padding: 12px 16px; border-top: 1px solid var(--glass-border);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5);
+    top: auto; bottom: calc(94px + env(safe-area-inset-bottom, 0px));
+    left: 12px; right: 12px; border-radius: 20px;
+    gap: 12px; padding: 11px 12px 11px 18px;
+    background: rgba(24, 23, 26, 0.97);
+    border: 1px solid var(--glass-border); border-top: 1px solid var(--glass-border);
+    box-shadow: 0 14px 44px rgba(0, 0, 0, 0.55);
 }
+/* Make the bar's CTA a solid accent button (was a faint glass outline that read
+   as inactive) so it's clearly the primary action. */
+body.guest-app:not(.owner-mode) #prop-book-bar .pbb-btn {
+    background: var(--accent); color: #1b1208; border-color: transparent;
+    font-weight: 600; padding: 13px 20px; border-radius: 14px;
+}
+body.guest-app:not(.owner-mode) #prop-book-bar .pbb-btn:hover { background: var(--accent); color: #1b1208; }
+body.guest-app:not(.owner-mode) #prop-book-bar .pbb-price { font-size: 1.15rem; }
 /* The cottage page then needs room at the bottom so its content clears the bar + dock. */
 body.guest-app:not(.owner-mode) #view-21a { padding-bottom: calc(188px + env(safe-area-inset-bottom, 0px)); }
 /* These other floating elements default to the very bottom (z-index above the
