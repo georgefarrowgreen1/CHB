@@ -7307,16 +7307,61 @@
 
         // ---- Moderation of guest-submitted reviews (Settings) ----
         // ---- Analytics panel (Settings → Analytics) ----
-        async function loadAnalytics() {
+        let __analyticsSummary = null;   // last summary fetched, for the CSV export
+
+        // Build + download a CSV of the current analytics window (no backend).
+        function exportAnalyticsCsv() {
+            const d = __analyticsSummary;
+            if (!d) { glassAlert('Open the analytics panel first.'); return; }
+            const q = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+            const rows = [
+                ['Cottage Holidays Blakeney — analytics'],
+                ['Window (days)', d.days || ''],
+                ['Generated', new Date().toISOString()],
+                [],
+                ['Metric', 'Value'],
+                ['Page views', d.totalViews || 0],
+                ['Unique visitors', d.uniqueVisitors || 0],
+                ['Views this week', d.weekViews || 0],
+                ['Unique this week', d.weekUnique || 0],
+                ['Enquiries', d.enquiries || 0],
+                ['Bookings', d.bookings || 0],
+                ['Searches', (d.searchDemand || {}).total || 0],
+                ['Searches found nothing', (d.searchDemand || {}).noResult || 0],
+                [],
+                ['Device', 'Views'],
+                ...((d.devices || []).map(x => [x.device, x.count])),
+                [],
+                ['Date', 'Views'],
+                ...((d.daily || []).map(r => [r.date, r.views])),
+            ];
+            const csv = rows.map(r => r.map(q).join(',')).join('\r\n');
+            const today = new Date().toISOString().slice(0, 10);
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = `chb-analytics-${d.days || 30}d-${today}.csv`;
+            document.body.appendChild(a); a.click(); a.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
+
+        async function loadAnalytics(days = 30) {
             const wrap = document.getElementById('analytics-body');
             if (!wrap) return;
+            days = [7, 30, 90, 365].includes(+days) ? +days : 30;
             wrap.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p>`;
             let d;
-            try { d = await apiGet('track.php?action=summary&days=30'); }
+            try { d = await apiGet('track.php?action=summary&days=' + days); }
             catch (e) { wrap.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">Couldn't load analytics${e && e.message ? ' (' + escapeHtml(e.message) + ')' : ''}.</p>`; return; }
+            __analyticsSummary = d;   // stashed for the CSV export below
+
+            // Human label for the active window (drives every "(last N days)" caption).
+            const rangeLabel = n => n === 7 ? '7 days' : n === 90 ? '90 days' : n === 365 ? '12 months' : '30 days';
+            const winDays = d.days || days;
+            const winLabel = rangeLabel(winDays);
 
             const daily = Array.isArray(d.daily) ? d.daily : [];
-            const series = daily.slice(-30);
+            const series = daily;   // backend already groups only within the window
             const fmtDay = s => { const [y, m, dd] = (s || '').split('-'); return dd ? `${dd}/${m}` : s; };
 
             // ---- Smooth area + line chart for the daily visit series (inline SVG) ----
@@ -7418,6 +7463,14 @@
                 ? sources.map(s => hbar(escapeHtml(s.source), s.count, srcMax, 'var(--glass-highlight)')).join('')
                 : '';
 
+            // How visitors browse: mobile / tablet / desktop.
+            const DEVICE_LABELS = { mobile: 'Mobile', tablet: 'Tablet', desktop: 'Desktop' };
+            const devices = Array.isArray(d.devices) ? d.devices : [];
+            const devMax = devices.reduce((m, x) => Math.max(m, x.count), 0);
+            const devicesHtml = devices.length
+                ? devices.map(x => hbar(escapeHtml(DEVICE_LABELS[x.device] || x.device), x.count, devMax, 'var(--glass-highlight)')).join('')
+                : '';
+
             const pages = Array.isArray(d.topPages) ? d.topPages : [];
             const pgMax = pages.reduce((m, p) => Math.max(m, p.views), 0);
             const pagesHtml = pages.length
@@ -7444,19 +7497,28 @@
 
             const card = (label, body) => `<div class="accounts-stat" style="max-width:640px;margin-bottom:16px;"><div class="label" style="margin-bottom:12px;">${label}</div>${body}</div>`;
 
-            wrap.innerHTML = `
+            // Time-range picker (reuses the backend's days param) + CSV export.
+            const pill = n => `<button type="button" onclick="loadAnalytics(${n})" style="appearance:none;cursor:pointer;font:inherit;font-size:0.8rem;padding:6px 13px;border-radius:999px;border:1px solid var(--glass-border, rgba(255,255,255,0.12));background:${n === winDays ? 'var(--glass-highlight)' : 'rgba(255,255,255,0.05)'};color:${n === winDays ? '#fff' : 'var(--text-light)'};transition:background 0.2s var(--fluid-bezier);">${rangeLabel(n)}</button>`;
+            const pickerRow = `<div style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;max-width:640px;margin-bottom:18px;">
+                <span style="font-size:0.78rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin-right:2px;">Period</span>
+                ${[7, 30, 90, 365].map(pill).join('')}
+                <button type="button" onclick="exportAnalyticsCsv()" style="appearance:none;cursor:pointer;font:inherit;font-size:0.8rem;padding:6px 13px;border-radius:999px;border:1px solid var(--glass-border, rgba(255,255,255,0.12));background:rgba(255,255,255,0.05);color:var(--text-light);margin-left:auto;">⬇ Export CSV</button>
+            </div>`;
+
+            wrap.innerHTML = pickerRow + `
                 <div class="owner-summary" style="margin-bottom:18px;">
                     <div class="os-card"><div class="os-label">Visits this week</div><div class="os-value">${d.weekViews || 0}</div><div class="os-sub">${weekSub}</div></div>
-                    <div class="os-card"><div class="os-label">Visits (30 days)</div><div class="os-value">${d.totalViews || 0}</div><div class="os-sub">page views</div></div>
-                    <div class="os-card"><div class="os-label">Unique visitors</div><div class="os-value">${d.uniqueVisitors || 0}</div><div class="os-sub">approx, last 30 days</div></div>
+                    <div class="os-card"><div class="os-label">Visits (${winLabel})</div><div class="os-value">${d.totalViews || 0}</div><div class="os-sub">page views</div></div>
+                    <div class="os-card"><div class="os-label">Unique visitors</div><div class="os-value">${d.uniqueVisitors || 0}</div><div class="os-sub">approx, last ${winLabel}</div></div>
                 </div>
-                ${card('From visitor to booking <span style="opacity:0.6;text-transform:none;letter-spacing:0;">(last 30 days)</span>', funnel)}
+                ${card(`From visitor to booking <span style="opacity:0.6;text-transform:none;letter-spacing:0;">(last ${winLabel})</span>`, funnel)}
                 <div class="accounts-stat" style="max-width:640px;margin-bottom:16px;">
-                    <div class="label">Visits over time <span style="opacity:0.6;text-transform:none;letter-spacing:0;">(last ${series.length} days)</span></div>
+                    <div class="label">Visits over time <span style="opacity:0.6;text-transform:none;letter-spacing:0;">(last ${winLabel})</span></div>
                     ${areaChart(series)}
                 </div>
                 ${card('On-site engagement <span style="opacity:0.6;text-transform:none;letter-spacing:0;">(where people drop off)</span>', engagement)}
                 ${card('Where visitors come from', channelsHtml)}
+                ${devicesHtml ? card('How visitors browse', devicesHtml) : ''}
                 ${card('Search engines', enginesHtml)}
                 ${sourcesHtml ? card('Campaign sources <span style="opacity:0.6;text-transform:none;letter-spacing:0;">(utm_source)</span>', sourcesHtml) : ''}
                 ${card('Top referrers', refsHtml)}
@@ -7464,7 +7526,7 @@
                 ${cottageHtml ? card('Most-viewed cottages', cottageHtml) : ''}
                 ${card('What guests are searching for', `
                     <div class="owner-summary" style="margin-bottom:14px;">
-                        <div class="os-card"><div class="os-label">Searches</div><div class="os-value">${sd.total || 0}</div><div class="os-sub">last 30 days</div></div>
+                        <div class="os-card"><div class="os-label">Searches</div><div class="os-value">${sd.total || 0}</div><div class="os-sub">last ${winLabel}</div></div>
                         <div class="os-card"><div class="os-label">Found nothing</div><div class="os-value">${sd.noResult || 0}</div><div class="os-sub">${noPct}% of searches</div></div>
                     </div>
                     ${topMonthsHtml ? `<div style="font-size:0.78rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin:4px 0 10px;">Most-requested months</div>${topMonthsHtml}` : ''}
@@ -10810,7 +10872,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'u2y6b9fm';
+            const BUILD = 'a7k3n2qp';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
