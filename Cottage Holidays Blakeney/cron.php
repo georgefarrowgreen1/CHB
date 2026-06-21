@@ -38,6 +38,7 @@ $jobs = [
     'payments-due.php?cron='                   => 'Balance requests, chasers & deposit recovery',
     'enquiry-nudge.php?cron='                  => 'Enquiry follow-ups',
     'owner-digest.php?cron='                   => 'Owner weekly digest (Mondays)',
+    'weekly-analytics.php?cron='               => 'Weekly analytics digest (Sundays)',
     'tide-push.php?cron='                      => 'Tide-timed in-stay push',
     'push.php?action=send_checkin&cron='       => 'Check-in "cottage ready" push',
 ];
