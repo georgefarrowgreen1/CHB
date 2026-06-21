@@ -56,14 +56,14 @@
         /* ---- LIGHT MODE: swap the theme tokens; the rest of the CSS follows ---- */
         body.light-mode {
             --dark-grey: #EDEEF2;                      /* page background */
-            --glass-bg: rgba(255, 255, 255, 0.46);     /* frosted light glass */
-            --glass-hover: rgba(255, 255, 255, 0.70);
-            --glass-border: rgba(20, 22, 34, 0.10);
-            --glass-highlight: rgba(20, 22, 34, 0.20);
+            --glass-bg: rgba(255, 255, 255, 0.72);     /* frosted light glass — opaque enough to read as a panel */
+            --glass-hover: rgba(255, 255, 255, 0.88);
+            --glass-border: rgba(20, 22, 34, 0.14);
+            --glass-highlight: rgba(20, 22, 34, 0.22);
             /* Mobile menu: heavily frosted light glass — page shows through, blurred */
             --mobile-glass: rgba(237, 238, 242, 0.38);
             --text-light: #1C1E26;                     /* dark text on light */
-            --text-muted: #5C6072;
+            --text-muted: #4C5160;                     /* darker for AA contrast on the light bg */
             --blob-1: #D6DBEA;
             --blob-2: #E3E0EC;
             --blob-3: #DCE6E2;
@@ -517,6 +517,11 @@
             position: relative; z-index: 2; max-width: 800px; width: 90%; padding: 40px;
         }
         .hero-cta { margin-top: 4px; }
+        /* Scroll-reveal: only armed once JS adds html.js-reveal, so content is never
+           hidden without JS. initScrollReveal() skips arming under reduced-motion. */
+        html.js-reveal .reveal { opacity: 0; transform: translateY(22px); transition: opacity 0.7s var(--fluid-bezier), transform 0.7s var(--spring); }
+        html.js-reveal .reveal.in-view { opacity: 1; transform: none; }
+        @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1 !important; transform: none !important; transition: none !important; } }
         /* Homepage section order: dates-first — the "Check availability" panel sits
            directly under the hero, then the trust strip, then the cottage cards. */
         .home-availability { order: 1; }
