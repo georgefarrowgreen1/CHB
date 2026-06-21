@@ -7347,6 +7347,38 @@
             setTimeout(() => URL.revokeObjectURL(url), 1000);
         }
 
+        // Turn the analytics summary into a few ranked plain-English "so what" lines.
+        function buildInsights(d) {
+            const out = [];
+            const uniq = d.uniqueVisitors || 0, views = d.totalViews || 0;
+            const prevV = d.prevTotalViews || 0, bookings = d.bookings || 0;
+            const days = d.days || 30;
+            const winLabel = days === 7 ? '7 days' : days === 90 ? '90 days' : days === 365 ? '12 months' : '30 days';
+            const mName = ym => { const [y, m] = (ym || '').split('-'); return (y && m) ? new Date(+y, +m - 1, 1).toLocaleDateString('en-GB', { month: 'long' }) : ym; };
+            // Momentum vs the previous equal-length window.
+            if (prevV > 0) { const p = Math.round((views - prevV) / prevV * 100); if (Math.abs(p) >= 10) out.push({ t: `Visits are ${p >= 0 ? 'up' : 'down'} ${Math.abs(p)}% versus the previous ${winLabel}.`, s: Math.abs(p) + (p < 0 ? 25 : 0) }); }
+            // Conversion (only worth saying once there's a meaningful base).
+            if (uniq >= 20) { const c = Math.round(bookings / uniq * 1000) / 10; out.push({ t: `${c}% of unique visitors booked (${bookings} from ${uniq}).`, s: 30 }); }
+            // Device mix.
+            const devs = d.devices || [], devTot = devs.reduce((a, b) => a + b.count, 0);
+            if (devTot > 0) { const m = devs.find(x => x.device === 'mobile'); const mp = m ? Math.round(m.count / devTot * 100) : 0; if (mp >= 50) out.push({ t: `${mp}% of visits are on mobile — keep the booking flow thumb-friendly.`, s: 24 }); else if (mp > 0 && mp <= 25) out.push({ t: `Most visitors are on desktop (${100 - mp}%).`, s: 12 }); }
+            // Bounce.
+            if ((d.bounceRate || 0) >= 60 && uniq >= 20) out.push({ t: `${d.bounceRate}% of visitors leave after a single page — stronger calls-to-action could help.`, s: 26 });
+            // Returning interest.
+            const mix = d.visitorMix || { new: 0, returning: 0 }, mt = (mix.new || 0) + (mix.returning || 0);
+            if (mt >= 20) { const rp = Math.round(mix.returning / mt * 100); if (rp >= 30) out.push({ t: `${rp}% of visitors are returning — interest is building.`, s: 16 }); }
+            // Top channel.
+            const ch = d.channels || []; if (ch.length) out.push({ t: `${ch[0].channel} is your top traffic source.`, s: 10 });
+            // Unmet demand.
+            const sd = d.searchDemand || {};
+            if ((sd.noResult || 0) > 0 && (sd.total || 0) > 0) {
+                const np = Math.round(sd.noResult / sd.total * 100);
+                const top = (sd.topMonths || []).find(m => m.count > m.found);
+                out.push({ t: `${np}% of availability searches found nothing free${top ? ` — most for ${mName(top.month)}` : ''}.`, s: 22 + (np >= 40 ? 15 : 0) });
+            }
+            return out.sort((a, b) => b.s - a.s).slice(0, 4).map(x => x.t);
+        }
+
         async function loadAnalytics(days = 30) {
             const wrap = document.getElementById('analytics-body');
             if (!wrap) return;
@@ -7509,7 +7541,13 @@
             const seg = `<div class="ana-seg" role="tablist">${[7, 30, 90, 365].map(n => `<button type="button" class="ana-seg-btn${n === winDays ? ' on' : ''}" onclick="loadAnalytics(${n})">${rangeLabel(n)}</button>`).join('')}</div>`;
             const pickerRow = `<div class="ana-pick">${seg}<button type="button" class="ana-export" onclick="exportAnalyticsCsv()">⬇ Export CSV</button></div>`;
 
-            wrap.innerHTML = pickerRow + kpis + `
+            // Auto-generated highlights ("so what") from the summary above.
+            const insights = buildInsights(d);
+            const insightsHtml = insights.length
+                ? `<div class="ana-insights"><div class="mo-card-title" style="margin-bottom:6px;">Highlights</div><ul style="margin:0;padding-left:18px;">${insights.map(t => `<li>${escapeHtml(t)}</li>`).join('')}</ul></div>`
+                : '';
+
+            wrap.innerHTML = pickerRow + insightsHtml + kpis + `
                 <div class="ana-group-title">Behaviour over time</div>
                 ${moCard(`Visits <span style="opacity:0.6;">(last ${winLabel})</span>`, trendHtml)}
                 ${grid2(moCard('From visitor to booking', convDonut + funnel), moCard('On-site engagement <span style="opacity:0.6;">(drop-off)</span>', engagement))}
@@ -10874,7 +10912,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'f9t2v7wq';
+            const BUILD = 'h3x8k2dz';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
