@@ -773,6 +773,7 @@
             padding: 12px max(16px, env(safe-area-inset-left)) calc(12px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-right));
             background: rgba(26,25,27,0.94); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
             border-top: 1px solid var(--glass-border); box-shadow: 0 -10px 40px rgba(0,0,0,0.45); }
+        .gallery-count { position: absolute; bottom: 14px; right: 14px; z-index: 3; background: rgba(0,0,0,0.6); color: #fff; font-size: 0.78rem; letter-spacing: 0.5px; padding: 5px 11px; border-radius: 999px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); pointer-events: none; }
         .pbb-price { font-family: var(--font-serif); font-size: 1.25rem; color: var(--text-light); }
         .pbb-price small { font-family: var(--font-sans); font-size: 0.8rem; color: var(--text-muted); }
         .pbb-sub { font-size: 0.78rem; color: var(--text-muted); display: flex; align-items: center; gap: 5px; margin-top: 2px; }

@@ -162,13 +162,13 @@
     <link rel="apple-touch-icon" href="apple-touch-icon.png?v=3">
     <!-- Installable PWA + Web Push (arrival check-in notifications) -->
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="guest-app.css?v=18">
+    <link rel="stylesheet" href="guest-app.css?v=19">
     <meta name="theme-color" content="#121316">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=32">
+    <link rel="stylesheet" href="app.css?v=33">
     <!-- Speed up the font fetch (and the jsPDF CDN) by opening the connections early. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -518,6 +518,7 @@
             </div>
             <button class="gallery-nav prev" aria-label="Previous photo" onclick="moveGallery('gallery-21a', -1)">&#10094;</button>
             <button class="gallery-nav next" aria-label="Next photo" onclick="moveGallery('gallery-21a', 1)">&#10095;</button>
+            <div class="gallery-count" id="gallery-count-21a" aria-hidden="true" style="display:none;"></div>
         </div>
         <!-- Gallery editing controls (only visible in edit mode) -->
         <div class="gallery-edit-bar" id="gallery-edit-bar">
@@ -634,7 +635,7 @@
                 <div class="pr-price" id="pr-price"></div>
                 <div class="pr-savings" id="pr-savings" style="display:none;"></div>
                 <div class="pr-sub">No payment now — enquire to check your dates &amp; price.</div>
-                <button type="button" id="reserve-enquire-btn" class="btn-glass" style="width:100%;padding:15px;margin-top:16px;" onclick="openEnquireModal()">Enquire now</button>
+                <button type="button" id="reserve-enquire-btn" class="btn-glass" style="width:100%;padding:15px;margin-top:16px;" onclick="openEnquireModal()">Check availability</button>
             </aside>
             <!-- The enquiry now lives in the two-step #enquire-modal (opened by "Enquire now"). -->
         </div>
@@ -643,7 +644,7 @@
             <div class="pbb-info">
                 <div class="pbb-price" id="pbb-price"></div>
             </div>
-            <button type="button" class="btn-glass pbb-btn" onclick="openEnquireModal()">Enquire now</button>
+            <button type="button" class="btn-glass pbb-btn" onclick="openEnquireModal()">Check availability</button>
         </div>
 
         <!-- ===== Airbnb-style two-step enquiry: Review your stay → Your details ===== -->
@@ -1833,7 +1834,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=53"></script>
+    <script src="app.js?v=54"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
