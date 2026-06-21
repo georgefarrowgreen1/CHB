@@ -168,7 +168,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=34">
+    <link rel="stylesheet" href="app.css?v=35">
     <!-- Speed up the font fetch (and the jsPDF CDN) by opening the connections early. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -287,7 +287,7 @@
         </section>
 
         <!-- TRUST STRIP — factual reassurance points (ordered just under the hero). -->
-        <section class="home-trust" id="home-trust" aria-label="Why book with us">
+        <section class="home-trust reveal" id="home-trust" aria-label="Why book with us">
             <div class="trust-strip glass-panel">
                 <div class="trust-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-5.6-7-11a7 7 0 0 1 14 0c0 5.4-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg> In the heart of Blakeney, North Norfolk</div>
                 <div class="trust-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.2 5.2L20 9l-4 3.6L17 18l-5-2.8L7 18l1-5.4L4 9l5.8-.8z"/></svg> Boutique self-catering</div>
@@ -299,7 +299,7 @@
         <!-- OUR COTTAGES (homepage) — simplified cards, above the availability search.
              renderHomeCottages() rebuilds #home-cottages-grid from the live list; these
              static cards are the no-JS / first-paint fallback for the original three. -->
-        <section class="home-cottages" id="home-cottages">
+        <section class="home-cottages reveal" id="home-cottages">
             <h2 class="section-title text-center">Our cottages</h2>
             <div class="grid grid-3" id="home-cottages-grid" style="margin-top: 18px;">
               <a class="card glass-panel" data-prop="21a" href="/cottages/21a-westgate" onclick="return cottageLink(event,'21a')">
@@ -1843,7 +1843,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=55"></script>
+    <script src="app.js?v=56"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

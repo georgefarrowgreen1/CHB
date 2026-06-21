@@ -461,6 +461,27 @@
             const el = document.getElementById('home-availability');
             if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
+        // Progressive scroll-reveal: fade + rise sections as they enter view. Does nothing
+        // under reduced-motion (so .reveal elements stay fully visible), and only arms the
+        // hiding CSS by adding html.js-reveal — content is never hidden without JS.
+        let __revealIO = null;
+        function observeReveals(root) {
+            if (!__revealIO) return;
+            (root || document).querySelectorAll('.reveal:not(.in-view)').forEach(el => __revealIO.observe(el));
+        }
+        function initScrollReveal() {
+            try {
+                if (!('IntersectionObserver' in window)) return;
+                if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+                document.documentElement.classList.add('js-reveal');
+                __revealIO = new IntersectionObserver((entries) => {
+                    entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in-view'); __revealIO.unobserve(e.target); } });
+                }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
+                observeReveals(document);
+            } catch (e) { /* leave content visible */ }
+        }
+        if (document.readyState !== 'loading') initScrollReveal();
+        else document.addEventListener('DOMContentLoaded', initScrollReveal);
         // Log a homepage availability search + whether it found anything (demand signal).
         function logSearch(info) {
             if (document.body.classList.contains('owner-mode')) return;
@@ -10967,7 +10988,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 't3v8n2hp';
+            const BUILD = 'w5z2q8fk';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
