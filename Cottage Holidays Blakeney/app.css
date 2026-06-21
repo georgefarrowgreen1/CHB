@@ -437,7 +437,7 @@
         .dp-nav-btn {
             background: transparent; border: 1px solid var(--glass-border); color: var(--text-light);
             width: 38px; height: 38px; border-radius: 50%; cursor: pointer; font-size: 1.1rem;
-            display: flex; align-items: center; justify-content: center; transition: all 0.3s;
+            display: flex; align-items: center; justify-content: center;
         }
         .dp-nav-btn:hover { border-color: var(--glass-highlight); background: var(--glass-hover); }
         .dp-hint { font-size: 0.78rem; color: var(--text-muted); text-align: center; margin-bottom: 14px; min-height: 1.1em; }
@@ -637,7 +637,7 @@
             display: none; flex-shrink: 0; width: 22px; height: 22px; line-height: 1;
             border-radius: 50%; border: 1px solid var(--glass-border); background: transparent;
             color: var(--text-muted); cursor: pointer; font-size: 1rem; padding: 0;
-            align-items: center; justify-content: center; transition: all 0.25s;
+            align-items: center; justify-content: center;
         }
         .amenity-remove:hover { color: #fff; border-color: #E53935; background: rgba(229,57,53,0.25); }
         body.edit-mode .amenity-remove { display: inline-flex; }
@@ -645,7 +645,7 @@
         .amenity-add {
             display: none; padding: 12px 20px; border-radius: 12px; font-size: 0.9rem;
             border: 1px dashed var(--glass-highlight); background: transparent; color: var(--text-muted);
-            cursor: pointer; transition: all 0.25s; font-family: var(--font-sans);
+            cursor: pointer; font-family: var(--font-sans);
         }
         .amenity-add:hover { color: var(--text-light); border-color: var(--text-light); background: var(--glass-hover); }
         body.edit-mode .amenity-add { display: inline-block; }
@@ -834,9 +834,11 @@
             background: rgba(18, 19, 22, 0.4); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
             border: 1px solid var(--glass-border); color: var(--text-light); width: 50px; height: 50px;
             display: flex; align-items: center; justify-content: center; font-size: 1.2rem;
-            cursor: pointer; border-radius: 50%; z-index: 10; transition: all 0.3s ease;
+            cursor: pointer; border-radius: 50%; z-index: 10;
+            transition: background 0.3s var(--fluid-bezier), border-color 0.3s var(--fluid-bezier), transform 0.3s var(--spring), box-shadow 0.3s var(--fluid-bezier);
         }
-        .gallery-nav:hover { background: rgba(18, 19, 22, 0.8); border-color: var(--text-light); transform: translateY(-50%) scale(1.05); }
+        @media (hover: hover) { .gallery-nav:hover { background: rgba(18, 19, 22, 0.8); border-color: var(--text-light); transform: translateY(-50%) scale(1.06); box-shadow: 0 6px 18px rgba(0,0,0,0.28); } }
+        .gallery-nav:active { transform: translateY(-50%) scale(0.96); }
         .gallery-nav.prev { left: 20px; }
         .gallery-nav.next { right: 20px; }
         /* Photos open full-screen on click (except in edit mode, which has its own controls). */
@@ -858,9 +860,11 @@
             width: 54px; height: 54px; border-radius: 50%;
             background: rgba(255,255,255,0.08); border: 1px solid var(--glass-border);
             color: var(--text-light); font-size: 1.7rem; cursor: pointer;
-            display: flex; align-items: center; justify-content: center; transition: all 0.25s;
+            display: flex; align-items: center; justify-content: center;
+            transition: background 0.25s var(--fluid-bezier), border-color 0.25s var(--fluid-bezier), transform 0.25s var(--spring), box-shadow 0.25s var(--fluid-bezier);
         }
-        .lightbox-nav:hover { background: rgba(255,255,255,0.2); }
+        @media (hover: hover) { .lightbox-nav:hover { background: rgba(255,255,255,0.2); transform: translateY(-50%) scale(1.06); box-shadow: 0 6px 18px rgba(0,0,0,0.28); } }
+        .lightbox-nav:active { transform: translateY(-50%) scale(0.96); }
         .lightbox-nav.prev { left: 18px; }
         .lightbox-nav.next { right: 18px; }
         .lightbox-close {
@@ -903,7 +907,7 @@
         /* Property legend */
         .cal-legend { display: flex; gap: 22px; flex-wrap: wrap; align-items: center; justify-content: center; margin-bottom: 25px; }
         .cal-updated { display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap; margin: -12px 0 22px; font-size: 0.78rem; color: var(--text-muted); }
-        .cal-refresh-btn { background: transparent; border: 1px solid var(--glass-border); color: var(--text-muted); cursor: pointer; font-size: 0.72rem; padding: 5px 12px; border-radius: 14px; transition: all 0.3s; }
+        .cal-refresh-btn { background: transparent; border: 1px solid var(--glass-border); color: var(--text-muted); cursor: pointer; font-size: 0.72rem; padding: 5px 12px; border-radius: 14px; }
         .cal-refresh-btn:hover { color: var(--text-light); border-color: var(--glass-highlight); background: var(--glass-hover); }
         .cal-refresh-btn.syncing { opacity: 0.6; pointer-events: none; }
         .legend-item { display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--text-muted); letter-spacing: 0.5px; }
@@ -1080,7 +1084,7 @@
         .enquiry-meta strong { color: var(--text-light); font-weight: 500; }
         .enquiry-msg { font-size: 0.78rem; color: var(--text-muted); margin-top: 8px; font-style: italic; }
         .enquiry-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: auto; }
-        .btn-sm { padding: 8px 14px; border-radius: 18px; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.5px; cursor: pointer; border: 1px solid var(--glass-border); background: transparent; color: var(--text-light); transition: all 0.3s; white-space: nowrap; text-decoration: none; }
+        .btn-sm { padding: 8px 14px; border-radius: 18px; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.5px; cursor: pointer; border: 1px solid var(--glass-border); background: transparent; color: var(--text-light); white-space: nowrap; text-decoration: none; }
         .btn-sm:hover { transform: translateY(-2px); }
         /* Read-only availability calendar on cottage pages */
         .avail-cal { margin-top: 28px; padding: 20px 22px; border-radius: 20px; }
@@ -1476,7 +1480,7 @@
         
         .toggle-btn {
             background: transparent; color: var(--text-muted); padding: 8px 18px; border-radius: 20px; font-weight: 500; cursor: pointer;
-            border: 1px solid var(--glass-border); transition: all 0.3s; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px;
+            border: 1px solid var(--glass-border); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px;
         }
         .toggle-btn:hover { color: var(--text-light); border-color: var(--text-light); }
         /* iOS-style light/dark toggle: a pill track + a sliding knob that carries the
@@ -2111,3 +2115,49 @@ body:not(.guest-app):not(.owner-mode) #guest-security-modal .modal-box {
     margin: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none;
     padding: 0;
 }
+
+        /* ============================================================
+           UNIFIED LIQUID-GLASS INTERACTIONS
+           One motion language for every interactive control: the same
+           --fluid-bezier (colour/bg/border) + --spring (transform) easing, a
+           subtle hover lift + soft shadow on pointer devices, and a consistent
+           press. Appended last so it standardises the scattered per-component
+           rules. Reduced motion is already neutralised globally (the * rule near
+           the top). .card / .btn-glass keep their own larger reference lift;
+           these bring every other control in line with the same feel. Each
+           element keeps its own colour/background :hover — we only add the
+           transform + shadow + press. .gallery-nav / .lightbox-nav are handled
+           separately because they carry a translateY(-50%) centring transform. */
+        .btn-sm, .btn-edit, .toggle-btn, .account-btn, .menu-toggle, .hub-tile,
+        .chat-chip, .amenity-add, .amenity-remove, .hs-field, .hs-step, .hs-chip,
+        .hs-mode-btn, .hs-opt, .dp-day, .dp-nav-btn, .avail-nav, .reviews-modal-close,
+        .lightbox-close, .cancel-card, .cal-refresh-btn, .cal-add-btn {
+            transition: background 0.35s var(--fluid-bezier), color 0.35s var(--fluid-bezier),
+                        border-color 0.35s var(--fluid-bezier), transform 0.35s var(--spring),
+                        box-shadow 0.35s var(--fluid-bezier);
+        }
+        @media (hover: hover) {
+            .btn-sm:hover, .btn-edit:hover, .toggle-btn:hover, .account-btn:hover,
+            .menu-toggle:hover, .hub-tile:hover, .chat-chip:hover, .amenity-add:hover,
+            .amenity-remove:hover, .hs-field:hover, .hs-step:hover, .hs-chip:hover,
+            .hs-mode-btn:hover, .hs-opt:hover, .dp-day:hover, .dp-nav-btn:hover,
+            .avail-nav:hover, .reviews-modal-close:hover, .lightbox-close:hover,
+            .cancel-card:hover, .cal-refresh-btn:hover, .cal-add-btn:hover {
+                transform: translateY(-2px);
+                box-shadow: 0 6px 18px rgba(0,0,0,0.22);
+            }
+        }
+        .btn-sm:active, .btn-edit:active, .toggle-btn:active, .account-btn:active,
+        .menu-toggle:active, .hub-tile:active, .chat-chip:active, .amenity-add:active,
+        .amenity-remove:active, .hs-field:active, .hs-step:active, .hs-chip:active,
+        .hs-mode-btn:active, .hs-opt:active, .dp-day:active, .dp-nav-btn:active,
+        .avail-nav:active, .reviews-modal-close:active, .lightbox-close:active,
+        .cancel-card:active, .cal-refresh-btn:active, .cal-add-btn:active {
+            transform: scale(0.96);
+        }
+        /* Full-width list rows: same easing + a gentle press, but no lift. */
+        .settings-row, .msg-thread-row, .bo-search-hit {
+            transition: background 0.35s var(--fluid-bezier), color 0.35s var(--fluid-bezier),
+                        transform 0.35s var(--spring), box-shadow 0.35s var(--fluid-bezier);
+        }
+        .settings-row:active, .msg-thread-row:active, .bo-search-hit:active { transform: scale(0.997); }
