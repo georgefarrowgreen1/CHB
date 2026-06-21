@@ -73,6 +73,14 @@
         DOCK.forEach(function (t) { dock.appendChild(makeDockBtn(t)); });
 
         wrap.appendChild(dock);
+        // Contextual primary CTA that lives in the menu pill on cottage pages, so
+        // booking is part of the dock cluster rather than a separate floating bar.
+        var cta = document.createElement('button');
+        cta.type = 'button';
+        cta.id = 'guest-book-cta';
+        cta.textContent = 'Check availability';
+        cta.addEventListener('click', function () { if (window.openEnquireModal) window.openEnquireModal(); });
+        wrap.insertBefore(cta, dock);
         document.body.appendChild(wrap);
 
         // The Home button is the crown <img>; until it loads its width is wrong, so
@@ -160,15 +168,26 @@
     // is current; otherwise the active page-view's key is. Exposed so index.html
     // can drive both: nav() calls setActiveTab; the overlays call setGuestDockOverlay.
     var __overlayKey = null;
+    // Show the in-dock "Check availability" CTA only on a cottage page (and not while
+    // a full-page overlay like Messages/Account is covering it).
+    function refreshBookCta() {
+        var wrap = document.getElementById('guest-tabbar');
+        if (!wrap) return;
+        var av = document.querySelector('.page-view.active');
+        var onCottage = !__overlayKey && !!(av && av.id === 'view-21a');
+        wrap.classList.toggle('gt-show-cta', onCottage);
+    }
     function setActiveTab(viewId) {
         __overlayKey = null;                 // navigating to a page clears any overlay highlight
         applyCurrent(keyForView(viewId));
+        refreshBookCta();
     }
     function setGuestDockOverlay(key) {       // key: 'messages' | 'account' | null
         __overlayKey = key || null;
-        if (__overlayKey) { applyCurrent(__overlayKey); return; }
+        if (__overlayKey) { applyCurrent(__overlayKey); refreshBookCta(); return; }
         var av = document.querySelector('.page-view.active');
         applyCurrent(keyForView(av ? av.id : ''));
+        refreshBookCta();
     }
     window.setActiveTab = setActiveTab;
     window.setGuestDockOverlay = setGuestDockOverlay;

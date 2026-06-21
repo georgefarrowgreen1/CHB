@@ -35,11 +35,26 @@ body.guest-app:not(.owner-mode) .container {
    a white selection indicator that physically glides between tabs. #guest-tabbar
    is just the fixed positioning wrapper (mirrors .admin-dock-wrap). */
 body.guest-app:not(.owner-mode) #guest-tabbar {
-    display: flex; align-items: center; justify-content: center;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 9px;
     position: fixed; left: 50%; bottom: calc(20px + env(safe-area-inset-bottom, 0px));
     transform: translateX(-50%);
     z-index: 1400; max-width: calc(100vw - 20px); padding: 0 10px;
 }
+/* In-dock "Check availability" CTA — a compact accent pill stacked just above the
+   nav dock on cottage pages, so the two read as one centred menu cluster (replaces
+   the separate full-width booking bar on mobile). */
+#guest-book-cta { display: none; }
+body.guest-app:not(.owner-mode) #guest-tabbar.gt-show-cta #guest-book-cta {
+    display: inline-flex; align-items: center; justify-content: center;
+    font: inherit; font-size: 0.95rem; font-weight: 600; letter-spacing: 0.3px; white-space: nowrap;
+    cursor: pointer; color: #1b1208; background: var(--accent); border: none;
+    border-radius: 999px; padding: 14px 30px;
+    box-shadow: 0 16px 44px rgba(0, 0, 0, 0.45);
+    transition: transform 0.15s var(--fluid-bezier);
+}
+body.guest-app:not(.owner-mode) #guest-book-cta:active { transform: scale(0.96); }
+/* The separate full-width booking bar is replaced by the in-dock CTA on mobile. */
+body.guest-app:not(.owner-mode) #prop-book-bar { display: none !important; }
 .guest-dock {
     position: relative;
     display: flex; align-items: center; gap: 6px;
@@ -192,26 +207,10 @@ body.guest-app:not(.owner-mode) #chat-widget {
 body.guest-app:not(.owner-mode) .account-btn { display: none; }
 body.guest-app:not(.owner-mode) .chat-fab { display: none; }
 /* On mobile the cottage booking bar is a floating pill pinned to the BOTTOM, just
-   above the dock — the universal "sticky CTA" pattern guests expect (it used to sit
-   at the top, which fought scroll habits and covered the title/first photo). */
-body.guest-app:not(.owner-mode) #prop-book-bar {
-    top: auto; bottom: calc(94px + env(safe-area-inset-bottom, 0px));
-    left: 12px; right: 12px; border-radius: 20px;
-    gap: 12px; padding: 11px 12px 11px 18px;
-    background: rgba(24, 23, 26, 0.97);
-    border: 1px solid var(--glass-border); border-top: 1px solid var(--glass-border);
-    box-shadow: 0 14px 44px rgba(0, 0, 0, 0.55);
-}
-/* Make the bar's CTA a solid accent button (was a faint glass outline that read
-   as inactive) so it's clearly the primary action. */
-body.guest-app:not(.owner-mode) #prop-book-bar .pbb-btn {
-    background: var(--accent); color: #1b1208; border-color: transparent;
-    font-weight: 600; padding: 13px 20px; border-radius: 14px;
-}
-body.guest-app:not(.owner-mode) #prop-book-bar .pbb-btn:hover { background: var(--accent); color: #1b1208; }
-body.guest-app:not(.owner-mode) #prop-book-bar .pbb-price { font-size: 1.15rem; }
-/* The cottage page then needs room at the bottom so its content clears the bar + dock. */
-body.guest-app:not(.owner-mode) #view-21a { padding-bottom: calc(188px + env(safe-area-inset-bottom, 0px)); }
+   above the dock. On mobile the separate bar is hidden (see above) and replaced by
+   the in-dock "Check availability" CTA; this is the cottage page's bottom spacing
+   so content clears the dock + CTA cluster. */
+body.guest-app:not(.owner-mode) #view-21a { padding-bottom: calc(196px + env(safe-area-inset-bottom, 0px)); }
 /* These other floating elements default to the very bottom (z-index above the
    dock), so lift them clear of the dock too: the mid-stay arrival banner and the
    iOS add-to-home-screen hint. */
