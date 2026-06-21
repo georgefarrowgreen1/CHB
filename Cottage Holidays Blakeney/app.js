@@ -8376,22 +8376,27 @@
             let all = [];
             try { all = (typeof allReviews === 'function') ? allReviews() : []; } catch (e) { all = []; }
             Object.keys(propertyRates || {}).forEach(k => {
-                const el = document.getElementById('card-rating-' + k);
                 const fav = document.getElementById('cott-fav-' + k);
-                if (!el) return;
                 const rs = all.filter(r => r.prop === k);
-                if (!rs.length) { el.innerHTML = `<span class="cr-new">New — be the first to review</span>`; if (fav) fav.hidden = true; return; }
-                const avg = rs.reduce((s, r) => s + (parseInt(r.stars, 10) || 0), 0) / rs.length;
-                el.innerHTML = `<span class="cr-star">★</span> ${avg.toFixed(1)} <span class="cr-count">· ${rs.length} review${rs.length === 1 ? '' : 's'}</span>`;
-                // "Guest favourite" badge for highly-rated cottages (Airbnb-style).
-                if (fav) fav.hidden = !(rs.length >= 3 && avg >= 4.8);
+                let html;
+                if (!rs.length) {
+                    html = `<span class="cr-new">New — be the first to review</span>`;
+                    if (fav) fav.hidden = true;
+                } else {
+                    const avg = rs.reduce((s, r) => s + (parseInt(r.stars, 10) || 0), 0) / rs.length;
+                    html = `<span class="cr-star">★</span> ${avg.toFixed(1)} <span class="cr-count">· ${rs.length} review${rs.length === 1 ? '' : 's'}</span>`;
+                    // "Guest favourite" badge for highly-rated cottages (Airbnb-style).
+                    if (fav) fav.hidden = !(rs.length >= 3 && avg >= 4.8);
+                }
+                // Fill both the cottages-page card and (if present) the homepage card.
+                ['card-rating-' + k, 'home-card-rating-' + k].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = html; });
             });
         }
         // Fill each cottage card with its live "from £[couple rate] / night"
         function renderCardPrices() {
             Object.keys(propertyRates).forEach(k => {
-                const el = document.getElementById('card-price-' + k);
-                if (el) el.innerHTML = `from ${gbp(propertyRates[k].coupleRate)} <span>/ night (couple)</span>`;
+                const html = `from ${gbp(propertyRates[k].coupleRate)} <span>/ night (couple)</span>`;
+                ['card-price-' + k, 'home-card-price-' + k].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = html; });
             });
         }
 
@@ -8476,10 +8481,14 @@
                     </div>
                     <div class="cott-head">
                         <div class="card-title" data-edit-text="${ck.title}">${escapeHtml(title)}</div>
+                        <div class="card-rating" id="home-card-rating-${k}"></div>
                     </div>
                     <div class="card-meta" data-edit-text="${ck.meta}">${escapeHtml(meta)}</div>
+                    <div class="card-price" id="home-card-price-${k}"></div>
                 </a>`;
             }).join('');
+            try { renderCardPrices(); } catch (e) {}
+            try { renderCardRatings(); } catch (e) {}
             // Keep inline edit mode working on the freshly-built cards.
             if (typeof isEditMode !== 'undefined' && isEditMode) {
                 grid.querySelectorAll('[data-edit-text]').forEach(el => { el.contentEditable = 'true'; try { el.addEventListener('paste', plainTextPaste); } catch (e) {} });
@@ -10938,7 +10947,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'm2q9t5xc';
+            const BUILD = 'p6w3r8ej';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
