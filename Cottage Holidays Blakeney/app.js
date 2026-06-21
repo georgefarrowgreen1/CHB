@@ -773,7 +773,18 @@
             
             track.style.transform = `translateX(${-(galleryState[trackId] * 100)}%)`;
             loadGallerySlides(trackId);
-            if (trackId === 'gallery-21a') updateGalleryHint();
+            if (trackId === 'gallery-21a') { updateGalleryHint(); updateGalleryCount(); }
+        }
+        // Customer-facing "n / total" photo counter on the mobile gallery carousel
+        // (so guests know there are more photos). Hidden when there's 0–1 photo.
+        function updateGalleryCount() {
+            const el = document.getElementById('gallery-count-21a');
+            if (!el) return;
+            const total = (window.__galleryImages || []).filter(Boolean).length;
+            if (total <= 1) { el.style.display = 'none'; return; }
+            const cur = Math.min((galleryState['gallery-21a'] || 0) + 1, total);
+            el.style.display = 'block';
+            el.textContent = `${cur} / ${total}`;
         }
 
         // ---- Full-screen photo lightbox ----
@@ -881,6 +892,7 @@
             track.style.transform = `translateX(${-(idx * 100)}%)`;
             loadGallerySlides('gallery-21a');
             updateGalleryHint();
+            updateGalleryCount();
             renderGalleryGrid(list);
         }
         // Desktop-only Airbnb-style photo grid (1 big + up to 4 small) built from the
@@ -10947,7 +10959,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'p6w3r8ej';
+            const BUILD = 'r9b4k7mt';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
