@@ -76,10 +76,34 @@ if ($method === 'GET' && ($_GET['action'] ?? '') === 'summary') {
             $st->execute();
             return $st;
         };
+        // Same idea for a two-window query (current vs the equal-length window before it):
+        // binds the FIRST '?' as 2*days (start of the previous window) and the SECOND as days.
+        $qDays2 = function ($sql) use ($days) {
+            $st = db()->prepare($sql);
+            $st->bindValue(1, $days * 2, PDO::PARAM_INT);
+            $st->bindValue(2, $days, PDO::PARAM_INT);
+            $st->execute();
+            return $st;
+        };
         // Page views only (event IS NULL) for all the "traffic" figures.
         $pv = "FROM pageviews WHERE event IS NULL AND created_at >= $sinceSql";
         $total = (int)$qDays("SELECT COUNT(*) $pv")->fetchColumn();
         $uniq  = (int)$qDays("SELECT COUNT(DISTINCT ip_hash) $pv")->fetchColumn();
+
+        // The immediately preceding window of equal length, for a period-over-period delta.
+        $prevWindow = "FROM pageviews WHERE event IS NULL AND created_at >= (NOW() - INTERVAL ? DAY) AND created_at < (NOW() - INTERVAL ? DAY)";
+        $prevTotal  = (int)$qDays2("SELECT COUNT(*) $prevWindow")->fetchColumn();
+        $prevUniq   = (int)$qDays2("SELECT COUNT(DISTINCT ip_hash) $prevWindow")->fetchColumn();
+
+        // New vs returning: a visitor is "new" if their first-ever page view falls in the
+        // window. Guarded so a query hiccup can never break the whole summary.
+        $visitorMix = ['new' => 0, 'returning' => 0];
+        try {
+            $newN = (int)$qDays("SELECT COUNT(*) FROM (SELECT ip_hash, MIN(created_at) m FROM pageviews
+                                      WHERE event IS NULL AND ip_hash IS NOT NULL GROUP BY ip_hash
+                                      HAVING m >= $sinceSql) t")->fetchColumn();
+            $visitorMix = ['new' => $newN, 'returning' => max(0, $uniq - $newN)];
+        } catch (\Throwable $e) { /* leave the zero default */ }
 
         // Last 7 days ("this week") + the 7 days before that (for a trend %).
         $weekViews  = (int)db()->query("SELECT COUNT(*) FROM pageviews WHERE event IS NULL AND created_at >= (NOW() - INTERVAL 7 DAY)")->fetchColumn();
@@ -168,6 +192,9 @@ if ($method === 'GET' && ($_GET['action'] ?? '') === 'summary') {
             'days' => $days,
             'totalViews' => $total,
             'uniqueVisitors' => $uniq,
+            'prevTotalViews' => $prevTotal,
+            'prevUniqueVisitors' => $prevUniq,
+            'visitorMix' => $visitorMix,
             'weekViews' => $weekViews,
             'weekUnique' => $weekUnique,
             'prevWeekViews' => $prevWeek,
