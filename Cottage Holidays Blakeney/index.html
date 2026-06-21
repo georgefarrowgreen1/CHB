@@ -168,7 +168,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=31">
+    <link rel="stylesheet" href="app.css?v=32">
     <!-- Speed up the font fetch (and the jsPDF CDN) by opening the connections early. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -281,6 +281,16 @@
                 <h1 data-edit-text="hero-title">Liquid Coastal Luxury</h1>
                 <p data-edit-text="hero-sub">Boutique holiday escapes in Blakeney, Norfolk</p>
                 <button type="button" class="btn-glass hero-cta" onclick="scrollToAvailability()">Check availability</button>
+            </div>
+        </section>
+
+        <!-- TRUST STRIP — factual reassurance points (ordered just under the hero). -->
+        <section class="home-trust" id="home-trust" aria-label="Why book with us">
+            <div class="trust-strip glass-panel">
+                <div class="trust-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-5.6-7-11a7 7 0 0 1 14 0c0 5.4-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg> In the heart of Blakeney, North Norfolk</div>
+                <div class="trust-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.2 5.2L20 9l-4 3.6L17 18l-5-2.8L7 18l1-5.4L4 9l5.8-.8z"/></svg> Boutique self-catering</div>
+                <div class="trust-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.4 12 22l-9-9V3h10z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg> Book direct — no booking fees</div>
+                <div class="trust-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg> Personally hosted by the owner</div>
             </div>
         </section>
 
@@ -1823,7 +1833,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=52"></script>
+    <script src="app.js?v=53"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
