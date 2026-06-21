@@ -289,7 +289,7 @@
         nav ul { position: relative; display: flex; gap: 6px; list-style: none; align-items: center; flex-wrap: nowrap; flex-shrink: 0; }
         nav a {
             font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1.5px;
-            color: var(--text-muted); cursor: pointer; transition: color 0.4s;
+            color: var(--text-muted); cursor: pointer; transition: color 0.4s var(--fluid-bezier);
         }
         /* Text tabs get padding so the sliding glass pill can wrap them. */
         nav ul li a:not(.btn-glass) { position: relative; z-index: 1; display: inline-block; padding: 9px 16px; border-radius: 999px; }
@@ -943,7 +943,7 @@
         .cal-header-bar .cal-month-nav { grid-column: 2; }
         .cal-add-btn { grid-column: 3; justify-self: end; padding: 12px 22px; font-size: 0.75rem; }
         .cal-month-nav { display: flex; gap: 25px; align-items: center; justify-content: center; }
-        .cal-month-nav button { background: transparent; border: none; color: var(--text-light); font-size: 1.5rem; cursor: pointer; transition: color 0.3s; }
+        .cal-month-nav button { background: transparent; border: none; color: var(--text-light); font-size: 1.5rem; cursor: pointer; transition: color 0.3s var(--fluid-bezier); }
         .cal-month-nav button:hover { color: var(--glass-highlight); }
         .cal-month-title { font-family: var(--font-serif); font-size: clamp(1.4rem, 4vw, 2rem); width: clamp(160px, 40vw, 240px); text-align: center; }
 
@@ -1073,7 +1073,7 @@
             background: var(--glass-bg); border: 1px solid var(--glass-border); transition: background 0.2s, border-color 0.2s, color 0.2s; }
         .trip-chip:hover { background: var(--glass-hover); }
         .trip-chip.on { background: var(--accent); border-color: var(--accent); color: #1a191b; font-weight: 600; }
-        .msg-thread-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; background: rgba(255,255,255,0.02); border: 1px solid var(--glass-border); border-radius: 14px; padding: 12px 14px; color: var(--text-light); cursor: pointer; transition: background 0.2s; }
+        .msg-thread-row { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; background: rgba(255,255,255,0.02); border: 1px solid var(--glass-border); border-radius: 14px; padding: 12px 14px; color: var(--text-light); cursor: pointer; transition: background 0.2s var(--fluid-bezier); }
         .msg-thread-row:hover, .msg-thread-row:focus-visible { background: var(--glass-hover); }
         .msg-thread-row .mtr-main { flex: 1; min-width: 0; }
         .msg-thread-row .mtr-name { font-size: 0.95rem; }
