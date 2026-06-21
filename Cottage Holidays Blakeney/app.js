@@ -456,6 +456,11 @@
             if (document.body.classList.contains('owner-mode')) return;
             try { apiPost('track.php', { event: name, prop: prop || '', source: __utmSource }).catch(() => {}); } catch (e) {}
         }
+        // Hero CTA → smooth-scroll to the "Check availability" panel (dates-first homepage).
+        function scrollToAvailability() {
+            const el = document.getElementById('home-availability');
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
         // Log a homepage availability search + whether it found anything (demand signal).
         function logSearch(info) {
             if (document.body.classList.contains('owner-mode')) return;
@@ -10933,7 +10938,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'k7p4m9bn';
+            const BUILD = 'm2q9t5xc';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
