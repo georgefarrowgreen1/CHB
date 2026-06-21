@@ -522,10 +522,9 @@
         html.js-reveal .reveal { opacity: 0; transform: translateY(22px); transition: opacity 0.7s var(--fluid-bezier), transform 0.7s var(--spring); }
         html.js-reveal .reveal.in-view { opacity: 1; transform: none; }
         @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1 !important; transform: none !important; transition: none !important; } }
-        /* Homepage section order: hero → trust strip → cottage cards → availability.
-           ("Our cottages" sits above "Check availability".) */
-        .home-trust { order: 1; }
-        .home-cottages { order: 2; }
+        /* Homepage section order: hero → cottage cards → trust strip → availability. */
+        .home-cottages { order: 1; }
+        .home-trust { order: 2; }
         .home-availability { order: 3; }
         /* Trust strip — slim, factual reassurance band under the hero. */
         .home-trust { max-width: 1100px; width: 100%; margin: 0 auto; padding: clamp(8px, 2vw, 16px) clamp(16px, 4vw, 20px) 0; box-sizing: border-box; }
@@ -779,8 +778,8 @@
             background: rgba(26,25,27,0.94); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
             border-top: 1px solid var(--glass-border); box-shadow: 0 -10px 40px rgba(0,0,0,0.45); }
         .gallery-count { position: absolute; bottom: 14px; right: 14px; z-index: 3; background: rgba(0,0,0,0.6); color: #fff; font-size: 0.78rem; letter-spacing: 0.5px; padding: 5px 11px; border-radius: 999px; backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); pointer-events: none; }
-        .pbb-price { font-family: var(--font-serif); font-size: 1.25rem; color: var(--text-light); }
-        .pbb-price small { font-family: var(--font-sans); font-size: 0.8rem; color: var(--text-muted); }
+        .pbb-price { font-family: var(--font-serif); font-size: 1.25rem; color: var(--text-light); line-height: 1.15; }
+        .pbb-price small { font-family: var(--font-sans); font-size: 0.74rem; color: var(--text-muted); display: block; margin-top: 2px; }
         .pbb-sub { font-size: 0.78rem; color: var(--text-muted); display: flex; align-items: center; gap: 5px; margin-top: 2px; }
         .pbb-sub .ic { width: 14px; height: 14px; color: #4CAF50; }
         .pbb-btn { width: auto; padding: 14px 30px; white-space: nowrap; flex-shrink: 0; }
