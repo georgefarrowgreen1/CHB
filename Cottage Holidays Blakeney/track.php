@@ -60,6 +60,19 @@ if ($method === 'POST') {
 
     $in = body();
 
+    // --- Time-on-page beacon: attach a dwell to the visitor's most recent view ---
+    if (isset($in['dwell'])) {
+        $dwell = (int)$in['dwell'];
+        $p = substr(preg_replace('/[?#].*$/', '', clean($in['path'] ?? '')), 0, 255);
+        if ($dwell > 0 && $dwell <= 1800000 && $p !== '') {
+            try {
+                db()->prepare('UPDATE pageviews SET dwell_ms = ? WHERE ip_hash = ? AND path = ? AND event IS NULL AND dwell_ms IS NULL AND created_at > (NOW() - INTERVAL 1 HOUR) ORDER BY created_at DESC LIMIT 1')
+                    ->execute([$dwell, pv_ip_hash(), $p]);
+            } catch (\Throwable $e) { /* column may not be migrated yet; never break */ }
+        }
+        json_out(['ok' => true]);
+    }
+
     // --- Search-demand log ---
     if (isset($in['search']) && is_array($in['search'])) {
         $s = $in['search'];
