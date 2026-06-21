@@ -78,7 +78,7 @@
             try { if (typeof loadExpenses === 'function') { await loadExpenses(); if (document.querySelector('#asec-expenses')) renderExpenses(); } } catch (e) {}
             try { if (typeof loadAdminMessages === 'function') loadAdminMessages(); } catch (e) {}
             try { if (typeof renderMoneyOverview === 'function') renderMoneyOverview(); } catch (e) {}
-            if (__oqCount === 0) { try { toast('Offline changes synced.'); } catch (e) {} }
+            if (__oqCount === 0) { try { toast('Changes saved.'); } catch (e) {} }
         }
         window.addEventListener('online', () => { updateOnlineStatus(); oqFlush(); });
         window.addEventListener('offline', updateOnlineStatus);
@@ -400,7 +400,7 @@
             if (!IS_STAGING || document.getElementById('staging-banner')) return;
             const bar = document.createElement('div');
             bar.id = 'staging-banner';
-            bar.textContent = 'STAGING — test environment. This is a separate sandbox; data and payments here do not affect the live site.';
+            bar.textContent = 'TEST COPY — practice only. Anything you do here will not affect your live site or real guests.';
             document.body.appendChild(bar);
             document.body.classList.add('has-staging-banner');
         }
@@ -1143,7 +1143,7 @@
         }
 
         // ---- Settings router: Apple-style index → drill-down sub-pages ----
-        const SETTINGS_TITLES = { enquiries: 'Enquiries', messages: 'Guest messages', notify: 'Notifications', host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Cottages', calendar: 'Calendar sync', cancel: 'Cancellation policy', pricingcoach: 'Pricing coach', payments: 'Payments', guests: 'Guest accounts', analytics: 'Analytics', waitlist: 'Waitlist', newsletter: 'Newsletter', experiences: 'Experiences', content: 'Home page & menu', photos: 'Guest photos', apis: 'API keys', diagnostics: 'System check', testcentre: 'Test centre' };
+        const SETTINGS_TITLES = { enquiries: 'Enquiries', messages: 'Guest messages', notify: 'Notifications', host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Cottages', calendar: 'Calendar sync', cancel: 'Cancellation policy', pricingcoach: 'Pricing coach', payments: 'Payments', guests: 'Guest accounts', analytics: 'Analytics', waitlist: 'Waitlist', newsletter: 'Newsletter', experiences: 'Experiences', content: 'Home page & menu', photos: 'Guest photos', apis: 'Integrations', diagnostics: 'Health check', testcentre: 'Test centre' };
         // Open the separate staging sandbox (where all testing now happens) in a new tab.
         const STAGING_URL = 'https://staging.cottageholidaysblakeney.co.uk/';
         function openStagingSite() { window.open(STAGING_URL, '_blank', 'noopener'); }
@@ -7694,22 +7694,22 @@
         // get one). Safe to re-run; processes in batches, so click again if more remain.
         async function backfillWebp() {
             const msg = document.getElementById('diag-msg');
-            if (msg) { msg.style.color = ''; msg.textContent = 'Generating WebP copies of your photos…'; }
+            if (msg) { msg.style.color = ''; msg.textContent = 'Optimising your photos…'; }
             try {
                 const r = await apiPost('webp-backfill.php', {});
                 if (!msg) return;
-                if (!r.ok) { msg.style.color = '#E57373'; msg.textContent = r.error || 'WebP generation failed.'; return; }
+                if (!r.ok) { msg.style.color = '#E57373'; msg.textContent = r.error || "Couldn't optimise photos."; return; }
                 msg.style.color = '#4CAF50';
                 const more = r.remaining > 0 ? ` ${r.remaining} more to go — click again to continue.` : '';
-                msg.textContent = `Done — created ${r.created} WebP cop${r.created === 1 ? 'y' : 'ies'}`
-                    + ` (${r.skipped} already had one${r.failed ? `, ${r.failed} skipped` : ''}).${more}`;
+                msg.textContent = `Done — optimised ${r.created} photo${r.created === 1 ? '' : 's'}`
+                    + ` (${r.skipped} already done${r.failed ? `, ${r.failed} skipped` : ''}).${more}`;
             } catch (e) { if (msg) { msg.style.color = '#E57373'; msg.textContent = 'Could not run: ' + (e.message || 'error'); } }
         }
 
         async function runMigrations() {
             const out = document.getElementById('migrate-result');
             const msg = document.getElementById('diag-msg');
-            if (msg) { msg.style.color = ''; msg.textContent = 'Running migrations…'; }
+            if (msg) { msg.style.color = ''; msg.textContent = 'Installing updates…'; }
             if (out) out.style.display = 'none';
             try {
                 const r = await fetch(API_BASE + 'migrate.php', { credentials: 'same-origin' });
@@ -7718,8 +7718,8 @@
                 const changed = list.filter(m => /^(applied|re-applied|baselined)/i.test(m.status || ''));
                 if (msg) {
                     msg.style.color = data.ok ? '#4CAF50' : '#E57373';
-                    msg.textContent = !data.ok ? 'Some migrations failed — see below.'
-                        : (changed.length ? `Done — applied ${changed.length} migration(s).` : 'Database already up to date.');
+                    msg.textContent = !data.ok ? "Some updates didn't install — see below."
+                        : (changed.length ? `Done — installed ${changed.length} update${changed.length === 1 ? '' : 's'}.` : 'Everything is already up to date.');
                 }
                 if (out) {
                     out.style.display = 'block';
@@ -7730,7 +7730,7 @@
                 }
                 try { refreshExpPendingBadge(); } catch (e) {}
             } catch (e) {
-                if (msg) { msg.style.color = '#E57373'; msg.textContent = 'Could not run migrations: ' + (e.message || 'error'); }
+                if (msg) { msg.style.color = '#E57373'; msg.textContent = 'Could not install updates: ' + (e.message || 'error'); }
             }
         }
 
@@ -7832,7 +7832,7 @@
                 ['Cross-channel calendar', 'The back-office calendar shows the seeded Airbnb/Vrbo bookings, tagged by platform; the Coach counts them too.'],
                 ['Arrival banner + close button', 'Open “Test booking → Log in as a test guest”, then the homepage shows the floating arrival window for the seeded current stay — try the × to dismiss it.'],
                 ['Pinch-zoom, performance, audit fixes', 'These are global and already live on staging (same code) — no seeding needed.'],
-                ['WebP images', 'Settings → System check → “Generate WebP for photos” (needs uploaded photos to convert).'],
+                ['WebP images', 'Settings → Health check → “Optimise photos for faster loading” (needs uploaded photos to convert).'],
             ];
             return `<div class="rate-prop">
                 <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 12px;">Seeds demo data — sample bookings, Airbnb/Vrbo blocks, searches, reviews, GPS pins and a weekend uplift — so you can try everything we've built recently. All of it is tagged and removable in one click via <strong>Test data → Remove all</strong>.</p>
@@ -10988,7 +10988,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'w5z2q8fk';
+            const BUILD = 'y8d3v6rn';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;

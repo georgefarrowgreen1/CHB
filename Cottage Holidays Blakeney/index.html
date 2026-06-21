@@ -939,11 +939,11 @@
                 </button>
                 <button class="settings-row" onclick="settingsOpen('apis')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 13.5l-5.3 5.3a2 2 0 0 1-2.8-2.8l5.3-5.3"/><circle cx="15.5" cy="8.5" r="5"/><path d="M13.5 10.5l1.5 1.5"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">API keys</span><span class="settings-row-sub">Tide data &amp; other integrations</span></span><span class="settings-row-chev">›</span>
+                    <span class="settings-row-main"><span class="settings-row-label">Integrations</span><span class="settings-row-sub">Tide times &amp; other connected services</span></span><span class="settings-row-chev">›</span>
                 </button>
                 <button class="settings-row" onclick="settingsOpen('diagnostics')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2 5 4-12 2 7h6"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">System check</span><span class="settings-row-sub">Confirm every feature is working &amp; run migrations</span></span><span class="settings-row-chev">›</span>
+                    <span class="settings-row-main"><span class="settings-row-label">Health check</span><span class="settings-row-sub">Check everything's working &amp; install updates</span></span><span class="settings-row-chev">›</span>
                 </button>
                 <button class="settings-row" onclick="openTermsModal(event)">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/><path d="M10 13h6M10 17h6"/></svg></span>
@@ -955,7 +955,7 @@
             <div class="settings-group" id="staging-link-row">
                 <button class="settings-row" onclick="openStagingSite()">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6M10 3v5.2L5.4 17a2 2 0 0 0 1.8 3h9.6a2 2 0 0 0 1.8-3L14 8.2V3"/><path d="M8 14h8"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Test environment ↗</span><span class="settings-row-sub">Open the staging sandbox to test safely</span></span><span class="settings-row-chev">›</span>
+                    <span class="settings-row-main"><span class="settings-row-label">Test copy ↗</span><span class="settings-row-sub">Open a safe practice copy of your site</span></span><span class="settings-row-chev">›</span>
                 </button>
             </div>
             <!-- Test centre — shown on the staging sandbox only (revealed by JS when IS_STAGING) -->
@@ -1027,11 +1027,11 @@
 
             <!-- System check (diagnostics) -->
             <div class="settings-sec" id="sec-diagnostics" style="display:none;">
-                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 14px;">A quick health check of every feature — database tables, migrations and integrations. Green is good; amber is an optional thing that's off; red needs attention.</p>
+                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 14px;">A quick check that everything's working — your data, recent updates and connected services. Green is good; amber is something optional that's switched off; red needs your attention.</p>
                 <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">
                     <button class="btn-glass" style="width:auto;padding:11px 22px;" onclick="loadDiagnostics()">Run checks</button>
-                    <button class="btn-sm btn-edit" onclick="runMigrations()">Run database migrations</button>
-                    <button class="btn-sm btn-edit" onclick="backfillWebp()">Generate WebP for photos</button>
+                    <button class="btn-sm btn-edit" onclick="runMigrations()">Install updates</button>
+                    <button class="btn-sm btn-edit" onclick="backfillWebp()">Optimise photos for faster loading</button>
                     <button class="btn-sm btn-edit" onclick="sendTestEmail()">Send test email</button>
                     <span id="diag-msg" style="font-size:0.82rem;"></span>
                 </div>
@@ -1843,7 +1843,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=56"></script>
+    <script src="app.js?v=57"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
