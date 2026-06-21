@@ -50,8 +50,11 @@ body.guest-app:not(.owner-mode) #guest-tabbar.gt-show-cta #guest-book-cta {
     cursor: pointer; color: #1b1208; background: var(--accent); border: none;
     border-radius: 999px; padding: 14px 30px;
     box-shadow: 0 16px 44px rgba(0, 0, 0, 0.45);
-    transition: transform 0.15s var(--fluid-bezier);
+    transition: transform 0.15s var(--fluid-bezier), filter 0.2s var(--fluid-bezier);
+    animation: gtCtaIn 0.34s var(--spring) both;
 }
+@keyframes gtCtaIn { from { opacity: 0; transform: translateY(10px) scale(0.94); } to { opacity: 1; transform: none; } }
+@media (hover: hover) { body.guest-app:not(.owner-mode) #guest-book-cta:hover { filter: brightness(1.05); } }
 body.guest-app:not(.owner-mode) #guest-book-cta:active { transform: scale(0.96); }
 /* The separate full-width booking bar is replaced by the in-dock CTA on mobile. */
 body.guest-app:not(.owner-mode) #prop-book-bar { display: none !important; }
