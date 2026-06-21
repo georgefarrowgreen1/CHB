@@ -1284,6 +1284,14 @@
         .mo-chase { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; background: rgba(255,167,38,0.10); border: 1px solid rgba(255,167,38,0.35); border-radius: 16px; padding: 14px 16px; margin-top: 12px; }
         .mo-chase .mo-chase-text { flex: 1 1 200px; font-size: 0.9rem; color: var(--text-light); }
         @media (min-width: 760px) { .mo-kpis { grid-template-columns: repeat(4, 1fr); } .mo-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; } .mo-grid2 .mo-card { margin-top: 12px; } }
+        /* Analytics panel: sticky period bar, segmented control, group headings */
+        .ana-pick { position: sticky; top: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 0 12px; margin-bottom: 4px; background: var(--glass-bg); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); border-bottom: 1px solid var(--glass-border); }
+        .ana-seg { display: inline-flex; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); border-radius: 999px; padding: 3px; gap: 2px; }
+        .ana-seg-btn { appearance: none; cursor: pointer; font: inherit; font-size: 0.8rem; padding: 6px 14px; border: 0; border-radius: 999px; background: transparent; color: var(--text-muted); transition: background 0.2s var(--fluid-bezier), color 0.2s var(--fluid-bezier); }
+        .ana-seg-btn.on { background: var(--accent); color: #1b1208; font-weight: 500; }
+        .ana-export { appearance: none; cursor: pointer; font: inherit; font-size: 0.8rem; padding: 6px 13px; border-radius: 999px; border: 1px solid var(--glass-border); background: rgba(255,255,255,0.05); color: var(--text-light); margin-left: auto; }
+        .ana-group-title { font-family: var(--font-serif); font-size: 1.18rem; color: var(--text-light); margin: 24px 0 2px; }
+        .ana-group-title:first-of-type { margin-top: 14px; }
         .exp-tag { display: inline-block; font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.5px; padding: 1px 7px; border-radius: 10px; background: rgba(214,167,133,0.18); color: var(--accent); margin-left: 6px; vertical-align: middle; }
         .exp-receipt img { height: 30px; width: 30px; object-fit: cover; border-radius: 6px; border: 1px solid var(--glass-border); display: block; }
         /* Add-an-expense form: stack the fields full-width on phones so they don't
