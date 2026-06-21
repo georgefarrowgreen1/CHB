@@ -781,6 +781,13 @@
         .pbb-btn { width: auto; padding: 14px 30px; white-space: nowrap; flex-shrink: 0; }
         /* Two-step enquiry modal */
         .enquire-box { position: relative; max-width: 520px; }
+        /* Two-step progress indicator at the top of the enquiry modal. */
+        .enq-progress { display: flex; align-items: center; gap: 10px; margin: 0 40px 16px 0; }
+        .enq-prog-step { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); white-space: nowrap; position: relative; padding-left: 20px; transition: color 0.3s var(--fluid-bezier); }
+        .enq-prog-step::before { content: ""; position: absolute; left: 0; top: 50%; transform: translateY(-50%); width: 12px; height: 12px; border-radius: 50%; border: 2px solid var(--glass-border); background: transparent; transition: background 0.3s var(--fluid-bezier), border-color 0.3s var(--fluid-bezier); }
+        .enq-prog-step.on, .enq-prog-step.done { color: var(--text-light); }
+        .enq-prog-step.on::before, .enq-prog-step.done::before { border-color: var(--accent); background: var(--accent); }
+        .enq-prog-line { flex: 1; height: 2px; background: var(--glass-border); border-radius: 2px; }
         .enq-summary { display: flex; gap: 14px; align-items: center; padding-bottom: 18px; border-bottom: 1px solid var(--glass-border); }
         .enq-summary-img { width: 76px; height: 76px; border-radius: 14px; background-size: cover; background-position: center; background-color: var(--dark-grey); flex-shrink: 0; }
         .enq-summary-name { font-family: var(--font-serif); font-size: 1.2rem; color: var(--text-light); }

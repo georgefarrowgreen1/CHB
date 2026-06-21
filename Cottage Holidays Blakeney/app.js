@@ -7221,7 +7221,14 @@
             const d = document.getElementById('enquire-step-details');
             if (r) r.style.display = '';
             if (d) d.style.display = 'none';
+            setEnqStep(1);
             setEnqMsg('review', ''); setEnqMsg('details', '');
+        }
+        // Light up the two-step progress indicator (1 = Your stay, 2 = Your details).
+        function setEnqStep(n) {
+            const p1 = document.getElementById('enq-prog-1'), p2 = document.getElementById('enq-prog-2');
+            if (p1) p1.classList.toggle('done', n >= 2);
+            if (p2) p2.classList.toggle('on', n >= 2);
         }
         // Inline validation message inside the enquiry popup (replaces blocking
         // glassAlert for the two-step form). step = 'review' | 'details'.
@@ -7248,6 +7255,7 @@
             const d = document.getElementById('enquire-step-details');
             if (r) r.style.display = 'none';
             if (d) d.style.display = '';
+            setEnqStep(2);
             const box = document.querySelector('.enquire-box'); if (box) box.scrollTop = 0;
         }
         function reviewRowHtml(r) {
@@ -10959,7 +10967,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'r9b4k7mt';
+            const BUILD = 't3v8n2hp';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;

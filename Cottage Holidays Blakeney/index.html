@@ -168,7 +168,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=33">
+    <link rel="stylesheet" href="app.css?v=34">
     <!-- Speed up the font fetch (and the jsPDF CDN) by opening the connections early. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -651,6 +651,13 @@
         <div id="enquire-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Enquire about your stay" onclick="if(event.target===this) closeEnquireModal()">
             <div class="modal-box enquire-box glass-panel">
                 <button class="reviews-modal-close" onclick="closeEnquireModal()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+
+                <!-- Two-step progress indicator -->
+                <div class="enq-progress" id="enq-progress" aria-hidden="true">
+                    <span class="enq-prog-step on" id="enq-prog-1">Your stay</span>
+                    <span class="enq-prog-line"></span>
+                    <span class="enq-prog-step" id="enq-prog-2">Your details</span>
+                </div>
 
                 <!-- STEP 1: REVIEW -->
                 <div id="enquire-step-review">
@@ -1834,7 +1841,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=54"></script>
+    <script src="app.js?v=55"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
