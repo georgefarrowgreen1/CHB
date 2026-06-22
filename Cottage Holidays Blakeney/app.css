@@ -2230,13 +2230,13 @@ body:not(.guest-app):not(.owner-mode) #guest-security-modal .modal-box {
 /* Desktop: premium split-screen — a coastal brand panel beside the form. Shared by
    the login modal and the guest "Your details" / "Account & security" modals (any
    .modal-box.auth-split). Mobile & the guest-app full-page view stay single-column. */
-@media (min-width: 900px) {
+@media (min-width: 980px) {
     body:not(.guest-app):not(.owner-mode) .modal-box.auth-split {
-        max-width: 860px; padding: 0; overflow: hidden; display: flex; align-items: stretch;
+        max-width: min(860px, 94vw); padding: 0; overflow: hidden; display: flex; align-items: stretch;
     }
     body:not(.guest-app):not(.owner-mode) .auth-split .auth-brand {
-        display: flex; flex-direction: column; justify-content: space-between; gap: 24px;
-        flex: 0 0 42%; padding: 40px 36px; color: #fff;
+        display: flex; flex-direction: column; justify-content: center; gap: 22px;
+        flex: 0 0 40%; min-width: 0; padding: 44px 38px; color: #fff;
         background: linear-gradient(155deg, rgba(22,17,12,0.30), rgba(22,17,12,0.82)), var(--dark-grey);
         background-image: linear-gradient(155deg, rgba(22,17,12,0.30), rgba(22,17,12,0.82)), url('hero.jpg');
         background-size: cover; background-position: center;
@@ -2245,7 +2245,7 @@ body:not(.guest-app):not(.owner-mode) #guest-security-modal .modal-box {
     .auth-split .auth-brand-copy h2 { font-family: var(--font-serif); font-weight: 400; font-size: 2.1rem; line-height: 1.12; letter-spacing: -0.5px; margin: 0 0 12px; color: #fff; }
     .auth-split .auth-brand-copy p { font-size: 0.95rem; line-height: 1.6; color: rgba(255,255,255,0.86); margin: 0; }
     body:not(.guest-app):not(.owner-mode) .auth-split .auth-form-col {
-        flex: 1 1 58%; padding: 36px 40px; max-height: 88vh; overflow-y: auto;
+        flex: 1 1 60%; min-width: 0; padding: 36px 40px; max-height: 88vh; overflow-y: auto;
     }
 }
 
