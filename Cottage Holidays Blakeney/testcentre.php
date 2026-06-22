@@ -201,11 +201,6 @@ if ($action === 'run_automation') {
         $r = request_booking_payment($b, 'balance', true);
         json_out(['ok' => !empty($r['ok']), 'error' => $r['error'] ?? null]);
     }
-    if ($which === 'checkin_push') {
-        require_once __DIR__ . '/webpush.php';
-        try { notify_guest_email($b['email'], 'Your cottage is ready', 'Your arrival map and key code are now available — tap to open.', './?arrival=1'); } catch (\Throwable $e) {}
-        json_out(['ok' => true, 'note' => 'push sent if the test guest has notifications enabled on a device']);
-    }
     json_out(['error' => 'Unknown automation'], 400);
 }
 

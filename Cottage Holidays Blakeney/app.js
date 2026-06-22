@@ -560,9 +560,6 @@
             updateDockEditVisibility(viewId);
             requestAnimationFrame(moveDockIndicator);
 
-            // Show/hide the homepage arrival banner for this view.
-            try { renderHomeArrival(); } catch (e) {}
-
             // The cottage page's sticky booking bar lives on <body> (so its position:fixed
             // isn't trapped by the page-view transform); show it only on the cottage page.
             try { const bb = document.getElementById('prop-book-bar'); if (bb) bb.style.display = (viewId === 'view-21a') ? 'flex' : 'none'; } catch (e) {}
@@ -2664,8 +2661,6 @@
             // signed in, so re-sync the dock highlight/indicator after the change.
             document.body.classList.toggle('guest-signed-in', !!currentGuest);
             try { if (window.setActiveTab) { const av = document.querySelector('.page-view.active'); if (av) window.setActiveTab(av.id); } } catch (e) {}
-            // Refresh the homepage arrival banner whenever guest login state changes.
-            try { refreshHomeArrival(); } catch (e) {}
         }
 
         // Populate the account "Your details" panel from the logged-in guest.
@@ -3327,17 +3322,7 @@
             els.forEach(el => { el.innerHTML = html; el.style.display = ''; });
         }
 
-        // Homepage arrival banner: shows a mid-stay guest "you're staying at X" with a
-        // Directions button + tide card, on any page except the account view.
-        let homeArrivalStays = [];       // [{propKey, bookingId}] PAID stays whose dates include today
-        let homeArrivalBookingId = null; // the stay currently shown in the banner
-        // Bookings the guest has dismissed the arrival banner for (per booking, so a NEW
-        // stay still shows). Persisted so it stays closed across reloads.
-        let homeArrivalDismissed = (() => {
-            try { return JSON.parse(localStorage.getItem('chb-arrival-dismissed') || '{}') || {}; }
-            catch (e) { return {}; }
-        })();
-        const IC_PIN = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.2-6-10a6 6 0 1 1 12 0c0 4.8-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg>';
+        const IC_PIN ='<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6-5.2-6-10a6 6 0 1 1 12 0c0 4.8-6 10-6 10z"/><circle cx="12" cy="11" r="2.2"/></svg>';
         const IC_LOCK = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>';
         const IC_CHECK = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg>';
 
@@ -3832,67 +3817,6 @@
                     <button class="btn-sm btn-edit" onclick="testOwnerPush()">Send test</button>
                 </div>
             </div>`;
-        }
-        // ----- Homepage arrival banner (logged-in guest, mid-stay) -----
-        // Shows a floating card on any page (except the account page) with a Directions
-        // button + tide card so a mid-stay guest can reach their stay quickly.
-        function renderHomeArrival() {
-            const el = document.getElementById('home-arrival');
-            if (!el) return;
-            const activeViewId = (document.querySelector('.page-view.active') || {}).id;
-            if (!currentGuest || !homeArrivalStays.length || activeViewId === 'view-guest-bookings') {
-                el.classList.remove('show');
-                return;
-            }
-            const s = homeArrivalStays[0];   // usually exactly one current (paid) stay
-            if (homeArrivalDismissed[s.bookingId]) { el.classList.remove('show'); return; }   // guest closed it
-            if (homeArrivalBookingId !== s.bookingId) {   // (re)build only when the stay changes
-                homeArrivalBookingId = s.bookingId;
-                const name = (propertyMeta[s.propKey] && propertyMeta[s.propKey].name) || s.propKey;
-                el.innerHTML = `<div class="home-arrival-card">
-                    <button class="home-arrival-close" onclick="dismissHomeArrival()" aria-label="Dismiss" title="Dismiss">&times;</button>
-                    <div class="home-arrival-text">${IC_PIN} You're staying at <strong>${escapeHtml(name)}</strong></div>
-                    <div id="home-arr-note" class="home-arrival-note"><button class="btn-sm btn-edit" onclick="openCottageDirections('${s.propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6.5-5.5-6.5-10a6.5 6.5 0 0 1 13 0c0 4.5-6.5 10-6.5 10z"/><circle cx="12" cy="11" r="2.2"/></svg> Directions</button><button class="btn-sm btn-edit" style="margin-left:4px;" onclick="openGuestArea()">Open my stay</button></div>
-                    <div class="instay-tides" style="margin-top:10px;"></div>
-                </div>`;
-                try { renderInStayTides(); } catch (e) {}
-            }
-            el.classList.add('show');
-        }
-        // Guest closed the arrival banner — hide it and remember (per booking) so it
-        // stays closed for this stay, while a future stay can still surface its own.
-        function dismissHomeArrival() {
-            if (homeArrivalBookingId != null) {
-                homeArrivalDismissed[homeArrivalBookingId] = 1;
-                try { localStorage.setItem('chb-arrival-dismissed', JSON.stringify(homeArrivalDismissed)); } catch (e) {}
-            }
-            const el = document.getElementById('home-arrival');
-            if (el) el.classList.remove('show');
-        }
-        // Look up the logged-in guest's current stays (today within the booking) and
-        // drive the homepage banner. Safe to call repeatedly.
-        async function refreshHomeArrival() {
-            try {
-                if (!currentGuest) {
-                    homeArrivalStays = []; homeArrivalBookingId = null;
-                    renderHomeArrival();
-                    return;
-                }
-                let rows = [];
-                try { const res = await apiGet('my-bookings.php'); rows = res.bookings || []; }
-                catch (e) { return; }   // leave any existing banner as-is on a transient failure
-                const today = todayDashed();
-                homeArrivalStays = rows
-                    .map(r => ({ propKey: r.prop_key, b: mapBookingFromApi(r) }))
-                    // Only current stays that are PAID IN FULL — the arrival banner is the
-                    // in-trip experience and shouldn't surface until the holiday is paid.
-                    .filter(x => x.b.checkIn <= today && x.b.checkOut >= today && !!(paymentSummary(x.propKey, x.b) || {}).fullyPaid)
-                    .map(x => ({ propKey: x.propKey, bookingId: x.b.id }));
-                if (homeArrivalBookingId && !homeArrivalStays.some(s => s.bookingId === homeArrivalBookingId)) {
-                    homeArrivalBookingId = null;   // previous stay ended — allow a rebuild
-                }
-                renderHomeArrival();
-            } catch (e) { /* never let the banner break the page */ }
         }
 
 
@@ -7960,7 +7884,6 @@
                         <button class="btn-sm btn-edit" onclick="tcAutomation(${b.id},'pre_arrival',this)">Pre-arrival email</button>
                         <button class="btn-sm btn-edit" onclick="tcAutomation(${b.id},'balance_reminder',this)">Balance reminder</button>
                         <button class="btn-sm btn-edit" onclick="tcAutomation(${b.id},'review',this)">Review request</button>
-                        <button class="btn-sm btn-edit" onclick="tcAutomation(${b.id},'checkin_push',this)">Check-in push</button>
                         <button class="btn-sm btn-edit" style="color:#E57373;border-color:rgba(229,115,115,0.4);" onclick="tcDeleteBooking(${b.id})">Delete</button>
                     </div></div>`;
             }).join('');
@@ -11146,7 +11069,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'q9t4k7zm';
+            const BUILD = 'w6r2k9np';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;

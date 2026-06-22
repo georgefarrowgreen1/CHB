@@ -39,9 +39,6 @@ try {
 $results = [];
 foreach ($due as $b) {
     $res = send_arrival_for_booking($b);
-    if (!empty($res['ok'])) {
-        try { notify_guest_email($b['email'], 'Your stay is nearly here', 'Arrival info for your cottage is ready — tap to view your live arrival map and key code.', './?arrival=1'); } catch (\Throwable $e) {}
-    }
     $results[] = [
         'booking' => (int)$b['id'], 'guest' => $b['name'],
         'ok' => !empty($res['ok']), 'error' => $res['error'] ?? null,

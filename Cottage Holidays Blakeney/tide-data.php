@@ -1,7 +1,7 @@
 <?php
 // ============================================================
 //  tide-data.php — shared tide-extremes fetch for Blakeney, used by the public
-//  endpoint (tides.php) and the in-stay tide push (tide-push.php).
+//  endpoint (tides.php).
 //
 //  tide_extremes($start, $days) -> ['ok'=>true, 'extremes'=>[{time,type,height}], 'cached'=>?]
 //                               or ['ok'=>false, 'reason'=>'no_key'|'fetch_failed']
