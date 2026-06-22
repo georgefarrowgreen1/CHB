@@ -661,6 +661,8 @@
                     <span class="enq-prog-step on" id="enq-prog-1">Your stay</span>
                     <span class="enq-prog-line"></span>
                     <span class="enq-prog-step" id="enq-prog-2">Your details</span>
+                    <span class="enq-prog-line" id="enq-prog-line2"></span>
+                    <span class="enq-prog-step" id="enq-prog-3">Account</span>
                 </div>
 
                 <!-- STEP 1: REVIEW -->
@@ -739,6 +741,22 @@
                     <p class="enq-modal-msg" id="enq-msg-details" role="alert"></p>
                     <button class="btn-glass" style="width: 100%; padding: 18px;" id="enq-submit-btn">Send enquiry</button>
                     <a class="btn-glass" id="enq-call-btn" style="width: 100%; padding: 16px; margin-top: 12px; text-align: center; display: block; box-sizing: border-box; text-decoration: none;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.6 3.5l2.1.4 1 3-1.5 1.4a12 12 0 0 0 5 5l1.4-1.5 3 1 .4 2.1a2 2 0 0 1-2 2.3A15.5 15.5 0 0 1 4.3 5.5a2 2 0 0 1 2.3-2z"/></svg> Call to Discuss</a>
+                </div>
+
+                <!-- STEP 3 (only shown to guests who aren't signed in): set a password to
+                     quickly create an account from the details just entered. The enquiry
+                     has already been sent by this point, so this step is entirely optional. -->
+                <div id="enquire-step-account" style="display:none;">
+                    <div class="enq-cancel-note"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg> <span>Enquiry sent — we'll confirm availability by email.</span></div>
+                    <h2 class="section-title" style="font-size:1.5rem;margin:18px 0 6px;text-align:left;">Create your account</h2>
+                    <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 16px;">Set a password to manage this booking, message us, and book faster next time — using the details you just entered.</p>
+                    <label class="modal-label" for="enq-acct-password">Choose a password</label>
+                    <input type="password" class="input-glass" id="enq-acct-password" autocomplete="new-password" placeholder="Create a password">
+                    <p class="enq-modal-msg" id="enq-acct-msg" role="alert"></p>
+                    <button class="btn-glass" id="enq-acct-btn" style="width:100%;padding:16px;" onclick="enquireCreateAccount()">Create account</button>
+                    <div style="text-align:center;margin-top:14px;">
+                        <a onclick="enquireSkipAccount()" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);font-size:0.82rem;">No thanks, maybe later</a>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1862,7 +1880,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=62"></script>
+    <script src="app.js?v=63"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
