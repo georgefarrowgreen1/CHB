@@ -5159,15 +5159,15 @@
         // ---- Trip planner (curated + tide-aware). AI seam: TRIP_PLAN_SOURCE can later
         // switch to a 'tripplan.php' LLM endpoint without changing the UI/markup. ----
         const TRIP_PLAN_SOURCE = 'curated';
-        const TRIP_INTERESTS = [['seals', 'Seals'], ['beach', 'Beaches & coast'], ['walk', 'Walks'], ['dogs', 'Dogs'], ['kids', 'With kids'], ['foodie', 'Food & pubs'], ['rainy', 'Rainy day']];
+        const TRIP_INTERESTS = [['seals', 'Seals'], ['beach', 'Beaches & coast'], ['walk', 'Walks'], ['kids', 'With kids'], ['foodie', 'Food & pubs'], ['rainy', 'Rainy day']];
         const DEFAULT_TRIP_ACTIVITIES = [
             { name: 'Blakeney Point seal trip', blurb: 'Boat trip from Morston Quay to the seal colony — book ahead in season.', tags: ['seals', 'kids'], tide: 'high' },
-            { name: 'Walk out to Blakeney Point', blurb: 'A long shingle walk to the seals and the old lifeboat house (~4 miles round trip).', tags: ['walk', 'dogs'], tide: 'low' },
+            { name: 'Walk out to Blakeney Point', blurb: 'A long shingle walk to the seals and the old lifeboat house (~4 miles round trip).', tags: ['walk'], tide: 'low' },
             { name: 'Crabbing off Blakeney Quay', blurb: 'Drop a line off the quay when the tide is in — a classic with kids.', tags: ['kids', 'seals'], tide: 'high' },
             { name: 'Cley Marshes nature reserve', blurb: 'Norfolk Wildlife Trust reserve with birdwatching hides and a café.', tags: ['walk', 'kids'], tide: 'any' },
-            { name: 'Saltmarsh walk to Morston', blurb: 'Follow the Norfolk Coast Path across the marshes.', tags: ['walk', 'dogs'], tide: 'low' },
-            { name: 'Wells-next-the-Sea beach', blurb: 'Wide sandy beach, colourful beach huts and pinewoods.', tags: ['beach', 'kids', 'dogs'], tide: 'any' },
-            { name: 'Holkham beach & estate', blurb: 'Vast nature-reserve beach backed by woodland.', tags: ['beach', 'dogs', 'walk'], tide: 'any' },
+            { name: 'Saltmarsh walk to Morston', blurb: 'Follow the Norfolk Coast Path across the marshes.', tags: ['walk'], tide: 'low' },
+            { name: 'Wells-next-the-Sea beach', blurb: 'Wide sandy beach, colourful beach huts and pinewoods.', tags: ['beach', 'kids'], tide: 'any' },
+            { name: 'Holkham beach & estate', blurb: 'Vast nature-reserve beach backed by woodland.', tags: ['beach', 'walk'], tide: 'any' },
             { name: 'Wiveton Hall Café & farm shop', blurb: 'Fruit picking and lunch with a view over the marshes.', tags: ['foodie', 'kids'], tide: 'any' },
             { name: 'Blakeney pubs & seafood', blurb: 'Local crab, fish and a pint in the village.', tags: ['foodie'], tide: 'any' },
             { name: 'Cromer pier & crab', blurb: 'Victorian pier and the famous Cromer crab.', tags: ['foodie', 'kids'], tide: 'any' },
@@ -6457,11 +6457,9 @@
             parking: { q: 'Is there parking at the cottage?', key: 'chat-ans-parking',
                 def: "Parking details are in your arrival information, and Blakeney has a large pay-and-display car park down by the quay. Tell us which cottage and we'll give you the specifics." },
             wifi:    { q: 'What is the Wi-Fi like?', key: 'chat-ans-wifi',
-                def: "There's free Wi-Fi throughout the cottage — fine for browsing, email and streaming." },
-            dogs:    { q: 'Are dogs welcome?', key: 'chat-ans-dogs',
-                def: "Some of our cottages are dog-friendly — tell us your dates and which cottage and we'll confirm. Blakeney's beaches and the coast path are wonderful for dogs." }
+                def: "There's free Wi-Fi throughout the cottage — fine for browsing, email and streaming." }
         };
-        const CHAT_FAQ_ORDER = ['checkin', 'parking', 'wifi', 'dogs'];
+        const CHAT_FAQ_ORDER = ['checkin', 'parking', 'wifi'];
         function chatThreadEl() { return document.getElementById('chat-thread'); }
         function chatScroll() { const t = chatThreadEl(); if (t) t.scrollTop = t.scrollHeight; }
         function chatClearEmpty() { const t = chatThreadEl(); const e = t && t.querySelector('.chat-empty'); if (e) e.remove(); }
@@ -7325,7 +7323,7 @@
             return `<div class="faq-row" style="border:1px solid var(--glass-border);border-radius:14px;padding:14px;margin-bottom:10px;background:var(--glass-bg);">
                 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
                     <input type="text" class="input-glass field-sm" placeholder="Emoji" value="${escapeHtml(f.icon || '')}" data-fq="icon" style="width:64px;text-align:center;" maxlength="4">
-                    <input type="text" class="input-glass field-sm" placeholder="Question (e.g. Can we bring a dog?)" value="${escapeHtml(f.q || '')}" data-fq="q" style="flex:1 1 240px;min-width:160px;">
+                    <input type="text" class="input-glass field-sm" placeholder="Question (e.g. What time is check-in?)" value="${escapeHtml(f.q || '')}" data-fq="q" style="flex:1 1 240px;min-width:160px;">
                     <button class="btn-sm btn-delete" onclick="this.closest('.faq-row').remove()" title="Remove question"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
                 </div>
                 <textarea rows="3" class="input-glass field-sm" placeholder="Answer…" data-fq="a">${escapeHtml(f.a || '')}</textarea>
@@ -8591,7 +8589,7 @@
                         'url': origin + '/cottages/' + (COTTAGE_SLUGS[k] || k),
                         'occupancy': { '@type': 'QuantitativeValue', 'maxValue': lim.maxTotal || lim.maxAdults || 2 }
                     });
-                    delete node.petsAllowed;   // we don't allow dogs — never advertise pet-friendly
+                    delete node.petsAllowed;   // no pets allowed — never advertise pet-friendly
                     base.push(node);
                 });
                 data['@graph'] = base;
@@ -11148,7 +11146,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'b4w9m2xt';
+            const BUILD = 'v7c3n8qr';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
