@@ -2217,10 +2217,11 @@ body:not(.guest-app):not(.owner-mode) #guest-security-modal {
 }
 /* On desktop these guest dialogs are centred glass cards (the .glass-panel styling
    gives the frosted background, border and shadow) — just constrain the width so
-   the form reads as a focused card, not bare content floating on the page. */
-body:not(.guest-app):not(.owner-mode) #guest-auth-modal .modal-box,
-body:not(.guest-app):not(.owner-mode) #guest-details-modal .modal-box,
-body:not(.guest-app):not(.owner-mode) #guest-security-modal .modal-box {
+   the form reads as a focused card, not bare content floating on the page. Below the
+   split breakpoint it's a single focused column; the ≥980px rule below shares this
+   exact selector so it cleanly widens to the two-column card (no #id here, or it would
+   out-rank the split rule on specificity and pin the card at 420px). */
+body:not(.guest-app):not(.owner-mode) .modal-box.auth-split {
     max-width: 420px;
 }
 /* The login brand panel only shows on the wide split layout below; on mobile and
@@ -2230,7 +2231,7 @@ body:not(.guest-app):not(.owner-mode) #guest-security-modal .modal-box {
 /* Desktop: premium split-screen — a coastal brand panel beside the form. Shared by
    the login modal and the guest "Your details" / "Account & security" modals (any
    .modal-box.auth-split). Mobile & the guest-app full-page view stay single-column. */
-@media (min-width: 980px) {
+@media (min-width: 900px) {
     body:not(.guest-app):not(.owner-mode) .modal-box.auth-split {
         max-width: min(860px, 94vw); padding: 0; overflow: hidden; display: flex; align-items: stretch;
     }
