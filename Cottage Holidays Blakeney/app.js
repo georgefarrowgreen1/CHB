@@ -8754,6 +8754,42 @@
             }
         });
 
+        // ---- Modal focus management: when a dialog opens, move focus into it; when it
+        //      closes, restore focus to whatever opened it. (Tab-trapping while open is
+        //      handled by the keydown handler above.) Centralised via an observer so the
+        //      many ad-hoc `classList.add('open')` call sites don't each need wiring.
+        (function () {
+            const SEL = '.modal-overlay, #lightbox, #date-picker, .reviews-modal, .chat-widget';
+            let lastTrigger = null;
+            const isOpen = (el) => el.classList.contains('open');
+            const focusInto = (el) => {
+                // Prefer the first real form field; otherwise focus the dialog box itself
+                // (so screen readers announce the dialog) rather than the close button.
+                let target = el.querySelector('input:not([type=hidden]):not([disabled]), textarea:not([disabled]), select:not([disabled])');
+                if (!target || target.offsetParent === null) {
+                    target = el.querySelector('.modal-box, .reviews-modal-box, .terms-modal-box') || el;
+                    if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
+                }
+                try { target.focus({ preventScroll: true }); } catch (e) {}
+            };
+            const onToggle = (el, wasOpen) => {
+                const now = isOpen(el);
+                if (now && !wasOpen) {
+                    const ae = document.activeElement;
+                    if (ae && ae !== document.body && !ae.closest(SEL)) lastTrigger = ae;
+                    setTimeout(() => { if (isOpen(el)) focusInto(el); }, 60);  // after the open transition
+                } else if (!now && wasOpen) {
+                    const t = lastTrigger; lastTrigger = null;
+                    if (t && document.body.contains(t)) { try { t.focus({ preventScroll: true }); } catch (e) {} }
+                }
+            };
+            document.querySelectorAll(SEL).forEach((el) => {
+                let was = isOpen(el);
+                new MutationObserver(() => { const now = isOpen(el); if (now !== was) { onToggle(el, was); was = now; } })
+                    .observe(el, { attributes: true, attributeFilter: ['class'] });
+            });
+        })();
+
         // Phone number for the "Call to Discuss" buttons. The live value is set in
         // Back Office → Settings & Fees and stored with site content; these are just
         // fallbacks used before content loads or if it was never set.
@@ -11107,7 +11143,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'h3v8t5qw';
+            const BUILD = 'd6n4y9bk';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
