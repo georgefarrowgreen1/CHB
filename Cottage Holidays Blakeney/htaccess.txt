@@ -32,6 +32,24 @@ RewriteRule ^cottages(/.*)?$ staging-gate.php [L]
 # fires for the .xml URL regardless of any stale static sitemap.xml file.
 RewriteRule ^sitemap\.xml$ sitemap.php [L]
 
+# ---- Serve smaller WebP images to browsers that support them ----
+# Every uploaded photo gets a same-name ".webp" companion (image-save.php on upload,
+# webp-backfill.php for older ones). When the browser sends "Accept: image/webp" AND
+# that companion exists on disk, transparently serve the .webp instead — the original
+# URL is unchanged, so background-image and <img> alike get the smaller file with no
+# markup change. Browsers without WebP support just get the original jpg/png.
+RewriteCond %{HTTP_ACCEPT} image/webp
+RewriteCond %{REQUEST_FILENAME}\.webp -f
+RewriteRule (?i)^(.+\.(jpe?g|png))$ $1.webp [T=image/webp,L]
+
+# Tell caches/CDNs the image response depends on the Accept header, so a WebP copy is
+# never served to a browser that can't display it (and vice-versa).
+<IfModule mod_headers.c>
+    <FilesMatch "(?i)\.(jpe?g|png|webp)$">
+        Header append Vary Accept
+    </FilesMatch>
+</IfModule>
+
 # ---- Clean per-cottage URLs (SEO) ----
 # Pretty links like /cottages/jollyboat are served by the single-page app
 # (index.html), which reads the path on load and opens that cottage. Only rewrite
