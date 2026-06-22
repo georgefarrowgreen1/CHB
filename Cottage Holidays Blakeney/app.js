@@ -1348,12 +1348,13 @@
             const title = document.getElementById('settings-panel-title'); if (title) title.textContent = SETTINGS_TITLES.accom;
             if (!list) return;
             list.style.display = '';
-            list.innerHTML = `<div class="settings-group">${cottageRowsHtml('settingsOpenAccom')}</div>${accomAddRowHtml()}`;
+            const emptyHint = Object.keys(propertyMeta).length ? '' : '<p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 10px;">No cottages yet — tap “Add accommodation” below to create your first one.</p>';
+            list.innerHTML = emptyHint + `<div class="settings-group">${cottageRowsHtml('settingsOpenAccom')}</div>${accomAddRowHtml()}`;
             // Add a current-month occupancy donut to each cottage (load bookings if needed).
             try {
                 if (!Object.keys(dbBookings).some(k => (dbBookings[k] || []).length)) await loadData();
                 const occ = cottageMonthOccupancy();
-                list.innerHTML = `<div class="settings-group">${Object.keys(propertyMeta).map(k => {
+                list.innerHTML = emptyHint + `<div class="settings-group">${Object.keys(propertyMeta).map(k => {
                     const arch = propertyMeta[k] && propertyMeta[k].archived;
                     const o = occ[k] || { pct: 0, nights: 0, total: 0 };
                     const sub = arch ? 'Hidden from your website (tap to bring back)' : `${o.pct}% booked this month · ${o.nights}/${o.total} nights`;
@@ -1418,10 +1419,10 @@
         // Each cottage's Preferences open as a sub-index of subfolders; each row drills
         // into just that part (rates, house rules, safety, …) — see settingsOpenAccomSec.
         const ACCOM_SECTIONS = [
-            { id: 'web',      label: 'Home page card',    sub: 'How this cottage appears on the home page', ic: '<rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="M3 9h18"/><circle cx="6" cy="6.7" r="0.7" fill="currentColor" stroke="none"/>' },
+            { id: 'rates',    label: 'Rates & fees',      sub: 'Nightly prices, deposit &amp; fee', ic: '<path d="M2 6h20v12H2z"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9v6M18 9v6"/>' },
             { id: 'photos',   label: 'Photos',            sub: 'Gallery images for this cottage', ic: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><circle cx="9" cy="11" r="2"/><path d="M21 17l-5-5-4 4-2-2-4 4"/>' },
             { id: 'text',     label: 'Text & details',    sub: 'Title, description &amp; features', ic: '<path d="M4 6h16M4 12h16M4 18h10"/>' },
-            { id: 'rates',    label: 'Rates & fees',      sub: 'Nightly prices, deposit &amp; fee', ic: '<path d="M2 6h20v12H2z"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9v6M18 9v6"/>' },
+            { id: 'web',      label: 'Home page card',    sub: 'How this cottage appears on the home page', ic: '<rect x="3" y="4.5" width="18" height="15" rx="2"/><path d="M3 9h18"/><circle cx="6" cy="6.7" r="0.7" fill="currentColor" stroke="none"/>' },
             { id: 'house',    label: 'House rules',       sub: 'Check-in/out times, minimum nights &amp; which days guests can arrive', ic: '<path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/>' },
             { id: 'safety',   label: 'Safety &amp; property', sub: 'Safety features guests see (alarms, first aid, etc.)', ic: '<path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/>' },
             { id: 'seasons',  label: 'Seasonal rates',    sub: 'Set different prices for summer, holidays, etc.', ic: '<rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/>' },
@@ -2308,6 +2309,7 @@
                 <button class="btn-sm btn-edit" onclick="accountsOpen('payments')">Chase balances →</button></div>` : '';
 
             el.innerHTML = `
+                <h2 style="font-family:var(--font-serif);font-size:1.3rem;font-weight:400;margin:0 0 12px;">Your money at a glance</h2>
                 <div class="mo-kpis">
                     <div class="mo-kpi"><div class="mo-label">Received · ${taxYearShort(curTY)}</div><div class="mo-value mo-good">${gbp(receivedTY)}</div><div class="mo-sub">this tax year</div></div>
                     <div class="mo-kpi"><div class="mo-label">Net profit · ${taxYearShort(curTY)}</div><div class="mo-value ${netTY < 0 ? 'mo-warn' : ''}">${gbp(netTY)}</div><div class="mo-sub">after ${gbp(expTY)} expenses</div></div>
@@ -6132,7 +6134,8 @@
                 label: propertyMeta[k].name, value: occ[k].nights, max: occ[k].total,
                 valLabel: occ[k].pct + '%', color: `var(--prop-${k})`
             })));
-            el.innerHTML = `<div class="today-grid">
+            el.innerHTML = `<h2 style="font-family:var(--font-serif);font-size:1.3rem;font-weight:400;margin:0 0 12px;">Today &amp; this week</h2>
+                <div class="today-grid">
                 ${card('Arrivals today', arrivals, '', 'calendar')}
                 ${card('Departures today', departures, '', 'calendar')}
                 ${card('Balances due (7 days)', dueSoon, dueSoon.length ? 'color:#FFA726;' : '', 'money')}
@@ -10988,7 +10991,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'a4n7c2js';
+            const BUILD = 'd7g2p5va';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
