@@ -488,7 +488,7 @@
     </main>
 
     <!-- Suggest-an-experience form (guest) -->
-    <div id="exp-suggest-modal" class="modal-overlay pop-modal" onclick="if(event.target===this) closeExperienceSuggest()">
+    <div id="exp-suggest-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Suggest an experience" onclick="if(event.target===this) closeExperienceSuggest()">
         <div class="modal-box glass-panel" style="max-width:480px;">
             <div style="display:flex;justify-content:flex-end;margin:-6px -6px 4px 0;">
                 <button class="reviews-modal-close" onclick="closeExperienceSuggest()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
@@ -1332,7 +1332,7 @@
 
     <!-- ================= GUEST LOGIN / REGISTER ================= -->
     <!-- ================= CUSTOMER LOGIN / REGISTER (floating window) ================= -->
-    <div id="guest-auth-modal" class="modal-overlay pop-modal" onclick="if(event.target===this) closeGuestAuthModal()">
+    <div id="guest-auth-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Sign in or create an account" onclick="if(event.target===this) closeGuestAuthModal()">
         <div class="modal-box glass-panel auth-split">
             <!-- Desktop only: branded coastal panel beside the form (hidden on mobile) -->
             <aside class="auth-brand" aria-hidden="true">
@@ -1426,7 +1426,7 @@
     </main>
 
     <!-- ================= GUEST MESSAGE THREAD (admin reply window) ================= -->
-    <div id="messages-modal" class="modal-overlay pop-modal" onclick="if(event.target===this) closeMessagesModal()">
+    <div id="messages-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-labelledby="messages-modal-title" onclick="if(event.target===this) closeMessagesModal()">
         <div class="modal-box glass-panel" style="max-width:520px;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px;">
                 <h3 id="messages-modal-title" style="font-family:var(--font-serif);font-size:1.4rem;">Messages</h3>
@@ -1479,7 +1479,7 @@
     </div>
 
     <!-- ================= GUEST PHOTO UPLOAD ================= -->
-    <div id="photo-upload-modal" class="modal-overlay pop-modal" onclick="if(event.target===this) closePhotoUpload()">
+    <div id="photo-upload-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Share a photo" onclick="if(event.target===this) closePhotoUpload()">
         <div class="modal-box glass-panel" style="max-width:460px;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:6px;">
                 <h3 style="font-family:var(--font-serif);font-size:1.5rem;">Share a photo</h3>
@@ -1498,7 +1498,7 @@
     </div>
 
     <!-- ================= IN-STAY WELCOME BOOK ================= -->
-    <div id="welcome-modal" class="modal-overlay pop-modal" onclick="if(event.target===this) closeWelcomeModal()">
+    <div id="welcome-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Welcome" onclick="if(event.target===this) closeWelcomeModal()">
         <div class="modal-box glass-panel" style="max-width:520px;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:6px;">
                 <h3 id="welcome-modal-title" style="font-family:var(--font-serif);font-size:1.4rem;">Welcome book</h3>
@@ -1537,7 +1537,7 @@
     </div>
 
     <!-- ================= WAITLIST / NOTIFY ME (guest) ================= -->
-    <div id="waitlist-modal" class="modal-overlay pop-modal" onclick="if(event.target===this) closeWaitlistModal()">
+    <div id="waitlist-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Join the waitlist" onclick="if(event.target===this) closeWaitlistModal()">
         <div class="modal-box glass-panel" style="max-width:460px;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:6px;">
                 <h3 style="font-family:var(--font-serif);font-size:1.5rem;">Notify me</h3>
@@ -1560,7 +1560,7 @@
     </div>
 
     <!-- ================= YOUR DETAILS (floating window) ================= -->
-    <div id="guest-details-modal" class="modal-overlay pop-modal" onclick="if(event.target===this) closeGuestDetailsModal()">
+    <div id="guest-details-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Your details" onclick="if(event.target===this) closeGuestDetailsModal()">
         <div class="modal-box glass-panel" style="max-width:480px;">
             <div style="display:flex;justify-content:flex-end;margin:-6px -6px 4px 0;">
                 <button class="reviews-modal-close" onclick="closeGuestDetailsModal()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
@@ -1586,7 +1586,7 @@
     </div>
 
     <!-- ================= ACCOUNT & SECURITY (floating window) ================= -->
-    <div id="guest-security-modal" class="modal-overlay pop-modal" onclick="if(event.target===this) closeGuestSecurityModal()">
+    <div id="guest-security-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Sign-in &amp; security" onclick="if(event.target===this) closeGuestSecurityModal()">
         <div class="modal-box glass-panel" style="max-width:480px;">
             <div style="display:flex;justify-content:flex-end;margin:-6px -6px 4px 0;">
                 <button class="reviews-modal-close" onclick="closeGuestSecurityModal()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
@@ -1715,7 +1715,7 @@
     </div>
 
     <!-- ADMIN LOGIN MODAL -->
-    <div id="admin-login-modal" class="modal-overlay" onclick="if(event.target===this) closeAdminLogin()">
+    <div id="admin-login-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-label="Owner sign in" onclick="if(event.target===this) closeAdminLogin()">
         <div class="modal-box glass-panel">
             <h2 class="section-title" style="font-size:1.6rem;margin-bottom:6px;" id="admin-login-title">Owner Login</h2>
             <p class="lead" style="font-size:0.85rem;margin-bottom:22px;" id="admin-login-sub">Sign in to manage your bookings.</p>
@@ -1748,7 +1748,7 @@
         </div>
     </div>
 
-    <div id="terms-modal" class="modal-overlay">
+    <div id="terms-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-label="Booking terms and conditions">
         <div class="glass-panel terms-modal-box">
             <div class="terms-modal-head">
                 <div>
@@ -1766,7 +1766,7 @@
         </div>
     </div>
 
-    <div id="edit-modal" class="modal-overlay">
+    <div id="edit-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="modal-title">
         <div class="glass-panel modal-box">
             <h3 id="modal-title" style="font-family: var(--font-serif); font-size: 1.6rem; margin-bottom: 20px;">Edit Booking</h3>
             <input type="hidden" id="modal-record-id">
@@ -1889,7 +1889,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=66"></script>
+    <script src="app.js?v=67"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
