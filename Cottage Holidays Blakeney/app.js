@@ -7236,6 +7236,10 @@
                 rateEl.innerText = cnt ? `★ ${avg.toFixed(2)} · ${cnt} review${cnt === 1 ? '' : 's'}` : 'New · no reviews yet';
             }
             enquireBack();                 // always start on the Review step
+            // The optional "create account" step (3) only applies to guests who aren't
+            // signed in — hide its progress segment for everyone else.
+            const showAcct = !currentGuest;
+            ['enq-prog-3', 'enq-prog-line2'].forEach(id => { const el = document.getElementById(id); if (el) el.style.display = showAcct ? '' : 'none'; });
             applyOccupancyToForm(key);     // ensure steppers/children reflect this cottage's limits
             refreshDateTrigger();
             updateEnquiryPrice();
@@ -7249,16 +7253,19 @@
         function enquireBack() {
             const r = document.getElementById('enquire-step-review');
             const d = document.getElementById('enquire-step-details');
+            const a = document.getElementById('enquire-step-account');
             if (r) r.style.display = '';
             if (d) d.style.display = 'none';
+            if (a) a.style.display = 'none';
             setEnqStep(1);
             setEnqMsg('review', ''); setEnqMsg('details', '');
         }
-        // Light up the two-step progress indicator (1 = Your stay, 2 = Your details).
+        // Light up the progress indicator (1 = Your stay, 2 = Your details, 3 = Account).
         function setEnqStep(n) {
-            const p1 = document.getElementById('enq-prog-1'), p2 = document.getElementById('enq-prog-2');
+            const p1 = document.getElementById('enq-prog-1'), p2 = document.getElementById('enq-prog-2'), p3 = document.getElementById('enq-prog-3');
             if (p1) p1.classList.toggle('done', n >= 2);
             if (p2) p2.classList.toggle('on', n >= 2);
+            if (p3) p3.classList.toggle('on', n >= 3);
         }
         // Inline validation message inside the enquiry popup (replaces blocking
         // glassAlert for the two-step form). step = 'review' | 'details'.
@@ -10413,18 +10420,69 @@
             }
             try { trackEvent('enquiry_submit', propKey); } catch (e) {}
 
-            // Reset the form
-            ['enq-name', 'enq-email', 'enq-phone', 'enq-address', 'enq-postcode', 'enq-checkin', 'enq-checkout', 'enq-message']
-                .forEach(id => { document.getElementById(id).value = ''; });
-            document.getElementById('enq-adults').value = 2;
-            document.getElementById('enq-children').value = 0;
-            if (termsBox) termsBox.checked = false;
-            dpState.start = null; dpState.end = null;
-            refreshDateTrigger();
-            updateEnquiryPrice();
-            autofillGuestEnquiry();   // re-fill + re-lock email/address for a logged-in guest
-            try { closeEnquireModal(); } catch (e) {}
+            // Not signed in? The enquiry is already sent, so offer an optional one-tap
+            // account from the details just entered (step 3). Signed-in guests skip this.
+            const acctStep = document.getElementById('enquire-step-account');
+            if (!currentGuest && acctStep) {
+                __enqAcct = { name, email, phone, address, postcode };
+                const d = document.getElementById('enquire-step-details'); if (d) d.style.display = 'none';
+                acctStep.style.display = '';
+                setEnqStep(3);
+                const am = document.getElementById('enq-acct-msg'); if (am) { am.textContent = ''; am.classList.remove('show'); }
+                const pw = document.getElementById('enq-acct-password'); if (pw) { pw.value = ''; setTimeout(() => { try { pw.focus(); } catch (e) {} }, 80); }
+                return;
+            }
 
+            resetEnquiryForm();
+            try { closeEnquireModal(); } catch (e) {}
+            toast("Enquiry sent — we will be in touch to confirm availability.");
+        }
+        // Stashed details for the optional post-enquiry account creation (step 3).
+        let __enqAcct = null;
+        // Clear the enquiry form back to its defaults.
+        function resetEnquiryForm() {
+            ['enq-name', 'enq-email', 'enq-phone', 'enq-address', 'enq-postcode', 'enq-checkin', 'enq-checkout', 'enq-message']
+                .forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+            const a = document.getElementById('enq-adults'); if (a) a.value = 2;
+            const c = document.getElementById('enq-children'); if (c) c.value = 0;
+            const tb = document.getElementById('enq-terms'); if (tb) tb.checked = false;
+            dpState.start = null; dpState.end = null;
+            try { refreshDateTrigger(); } catch (e) {}
+            try { updateEnquiryPrice(); } catch (e) {}
+            try { autofillGuestEnquiry(); } catch (e) {}   // re-fill + re-lock for a logged-in guest
+        }
+        // Create the guest's account from the details they just used for the enquiry.
+        async function enquireCreateAccount() {
+            const msg = document.getElementById('enq-acct-msg');
+            const setM = (t) => { if (msg) { msg.textContent = t; msg.classList.add('show'); } };
+            const pwd = (document.getElementById('enq-acct-password') || {}).value || '';
+            if (!__enqAcct || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(__enqAcct.email || '')) { setM('We need a valid email to create your account.'); return; }
+            if (pwd.length < 4) { setM('Please choose a password of at least 4 characters.'); return; }
+            const btn = document.getElementById('enq-acct-btn');
+            if (btn) { btn.disabled = true; btn.classList.add('is-busy'); }
+            try {
+                const res = await apiPost('auth.php', { action: 'guest_register', name: __enqAcct.name, email: __enqAcct.email, phone: __enqAcct.phone, address: __enqAcct.address, postcode: __enqAcct.postcode, password: pwd });
+                currentGuest = res.guest;
+                isAuthenticated = false; setAuthUI();   // one role at a time
+                setGuestUI();
+                __enqAcct = null;
+                resetEnquiryForm();
+                try { closeEnquireModal(); } catch (e) {}
+                toast("Enquiry sent and your account is ready — you're signed in.");
+                try { nav('view-guest-bookings'); await renderGuestBookings(); } catch (e) {}
+            } catch (e) {
+                setM(/exist|registered|already/i.test(e && e.message || '')
+                    ? 'You already have an account with this email — close this and sign in.'
+                    : (e && e.message || 'Sorry, your account could not be created.'));
+            } finally {
+                if (btn) { btn.disabled = false; btn.classList.remove('is-busy'); }
+            }
+        }
+        // Skip the optional account step — the enquiry has already been sent.
+        function enquireSkipAccount() {
+            __enqAcct = null;
+            resetEnquiryForm();
+            try { closeEnquireModal(); } catch (e) {}
             toast("Enquiry sent — we will be in touch to confirm availability.");
         }
 
@@ -11053,7 +11111,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'k6r3n9wp';
+            const BUILD = 'q3m8v5tz';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
