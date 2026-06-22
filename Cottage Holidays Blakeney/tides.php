@@ -5,7 +5,7 @@
 //
 //    GET ?start=YYYY-MM-DD&days=1..14  -> { ok, extremes:[{time,type,height}] }
 //
-//  The fetch + caching live in tide-data.php (shared with tide-push.php).
+//  The fetch + caching live in tide-data.php.
 //  Degrades gracefully: { ok:false, reason } when no key / fetch fails.
 // ============================================================
 require_once __DIR__ . '/tide-data.php';

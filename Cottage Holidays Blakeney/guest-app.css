@@ -12,7 +12,6 @@
 /* Hidden by default; the shell only appears for guests on a phone-sized
    viewport or when the site is installed (handled in guest-app.js). */
 #guest-tabbar { display: none; }
-#guest-install-chip { display: none; }
 #guest-msg-fab { display: none; }
 
 /* In the guest shell the top header is removed entirely — navigation lives in
@@ -214,35 +213,9 @@ body.guest-app:not(.owner-mode) .chat-fab { display: none; }
    the in-dock "Check availability" CTA; this is the cottage page's bottom spacing
    so content clears the dock + CTA cluster. */
 body.guest-app:not(.owner-mode) #view-21a { padding-bottom: calc(196px + env(safe-area-inset-bottom, 0px)); }
-/* This floating element defaults to the very bottom (z-index above the dock),
-   so lift it clear of the dock too: the mid-stay arrival banner. */
-body.guest-app:not(.owner-mode) .home-arrival { bottom: calc(98px + env(safe-area-inset-bottom, 0px)); }
 
 /* Subtle app-like page transition (guest shell only; desktop/admin stay instant).
    MUST keep `forwards` — the base .page-view rule is opacity:0, so without it the
    page fades in then reverts to blank when the animation ends. */
 body.guest-app:not(.owner-mode) .page-view.active { animation: gtFade 0.32s var(--fluid-bezier) forwards; }
 @keyframes gtFade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-
-/* "Install app" chip — shown on Android/desktop when the browser offers an
-   install prompt (beforeinstallprompt). iOS uses the existing A2HS hint. */
-body.guest-app:not(.owner-mode) #guest-install-chip.show {
-    display: flex; align-items: center; gap: 10px;
-    position: fixed; left: 12px; right: 12px;
-    bottom: calc(116px + env(safe-area-inset-bottom, 0px));
-    z-index: 1399;
-    padding: 12px 14px; border-radius: 16px;
-    background: rgba(18, 19, 22, 0.9);
-    -webkit-backdrop-filter: blur(13px); backdrop-filter: blur(13px);
-    border: 1px solid var(--glass-highlight);
-    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
-    color: var(--text-light); font-family: var(--font-sans); font-size: 0.86rem;
-    animation: gtFade 0.32s var(--fluid-bezier);
-}
-#guest-install-chip .gic-text { flex: 1; }
-#guest-install-chip button {
-    border: 0; cursor: pointer; border-radius: 10px;
-    font-family: var(--font-sans); font-weight: 600; font-size: 0.82rem;
-}
-#guest-install-chip .gic-go { background: var(--accent); color: #1a191b; padding: 10px 16px; min-height: 44px; }
-#guest-install-chip .gic-x { background: transparent; color: var(--text-muted); font-size: 1.2rem; padding: 8px 12px; min-width: 44px; min-height: 44px; }

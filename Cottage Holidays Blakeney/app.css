@@ -1929,42 +1929,6 @@
         /* Divider before the log out icon, and a red-tinted hover to set it apart. */
         .admin-dock-sep { width: 1px; height: 30px; background: rgba(255,255,255,0.14); margin: 0 5px; flex-shrink: 0; }
 
-        /* ----- Homepage arrival banner (floating, logged-in guest mid-stay) ----- */
-        .home-arrival {
-            position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%);
-            z-index: 1400; display: none; width: max-content; max-width: calc(100vw - 24px);
-        }
-        .home-arrival.show { display: block; }
-        .home-arrival-card {
-            position: relative;
-            display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
-            background: rgba(26,25,27,0.92);
-            backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-            border: 1px solid rgba(255,255,255,0.10);
-            border-radius: 18px; padding: 14px 42px 14px 18px;
-            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
-            max-width: min(440px, calc(100vw - 24px));
-        }
-        .home-arrival-close {
-            position: absolute; top: 6px; right: 8px;
-            width: 26px; height: 26px; padding: 0; line-height: 1;
-            display: flex; align-items: center; justify-content: center;
-            background: transparent; border: none; border-radius: 50%;
-            color: var(--text-muted); font-size: 1.4rem; cursor: pointer;
-            transition: background 0.15s, color 0.15s;
-        }
-        .home-arrival-close:hover { color: var(--text-light); background: rgba(255,255,255,0.10); }
-        .home-arrival-text { font-size: 0.98rem; color: var(--text-light); }
-        .home-arrival-text strong { font-family: var(--font-serif); }
-        .home-arrival-note { font-size: 0.82rem; color: var(--text-muted); display: flex; align-items: center; flex-wrap: wrap; gap: 6px; line-height: 1.45; }
-        .home-arrival .instay-tides { width: 100%; margin-top: 2px !important; }
-        @media (max-width: 620px) {
-            .home-arrival { bottom: 14px; }
-            .home-arrival-card { align-items: stretch; padding: 12px 40px 12px 16px; }
-            .home-arrival-text { text-align: center; }
-            .home-arrival-note { justify-content: center; }
-        }
-
         /* ----- Homepage hero availability search ----- */
         .hero-search { width: 100%; max-width: 540px; margin: 18px auto 14px; display: flex; flex-direction: column; gap: 12px; text-align: left; }
         .hs-field { width: 100%; background: rgba(255,255,255,0.07); border: 1px solid var(--glass-border); border-radius: 16px; padding: 15px 18px; color: var(--text-light); cursor: pointer; box-shadow: 0 2px 14px rgba(0,0,0,0.05); transition: background 0.25s var(--fluid-bezier), border-color 0.25s var(--fluid-bezier), box-shadow 0.25s var(--fluid-bezier); box-sizing: border-box; }

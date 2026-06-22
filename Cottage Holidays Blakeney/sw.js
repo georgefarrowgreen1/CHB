@@ -14,8 +14,8 @@
 //  show (push.php?action=sw_notify) and relays release reloads to open pages.
 //  Keep this file in the SAME folder as index.html.
 // ============================================================
-const CACHE = 'chb-cache-v122';
-const CORE = ['./', 'index.html', 'logo.svg', 'favicon.png', 'apple-touch-icon.png', 'manifest.json', 'app.css?v=52', 'app.js?v=73', 'guest-app.css?v=23', 'guest-app.js?v=12'];
+const CACHE = 'chb-cache-v123';
+const CORE = ['./', 'index.html', 'logo.svg', 'favicon.png', 'apple-touch-icon.png', 'manifest.json', 'app.css?v=53', 'app.js?v=74', 'guest-app.css?v=24', 'guest-app.js?v=13'];
 
 self.addEventListener('install', (event) => {
     self.skipWaiting();
@@ -116,7 +116,7 @@ self.addEventListener('sync', (event) => {
 // ---- Web Push (payload-less; ask the server what THIS device should show) ----
 self.addEventListener('push', (event) => {
     event.waitUntil((async () => {
-        let n = { title: 'Your cottage is ready', body: 'Tap to open your live arrival map and key code.', tag: 'chb-checkin', url: './?arrival=1' };
+        let n = { title: 'Cottage Holidays Blakeney', body: 'You have a new notification — tap to open.', tag: 'chb-guest', url: './' };
         let reload = false;
         try {
             const r = await fetch('push.php?action=sw_notify', { credentials: 'include', cache: 'no-store' });

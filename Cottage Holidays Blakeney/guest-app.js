@@ -114,15 +114,6 @@
         msgDock.appendChild(msgBtn);
         msgWrap.appendChild(msgDock);
         document.body.appendChild(msgWrap);
-
-        var chip = document.createElement('div');
-        chip.id = 'guest-install-chip';
-        chip.innerHTML = '<span class="gic-text">Install the app for faster access &amp; stay notifications.</span>'
-            + '<button class="gic-go" type="button">Install</button>'
-            + '<button class="gic-x" type="button" aria-label="Dismiss">&times;</button>';
-        document.body.appendChild(chip);
-        chip.querySelector('.gic-go').addEventListener('click', promptInstall);
-        chip.querySelector('.gic-x').addEventListener('click', function () { hideInstallChip(true); });
     }
 
     // Slide each dock's white indicator under its current button so it glides
@@ -203,31 +194,6 @@
         document.body.classList.toggle('guest-app', shellApplies());
         try { var av = document.querySelector('.page-view.active'); if (av) setActiveTab(av.id); } catch (e) {}
     }
-
-    // ---- Install prompt (Android/desktop). iOS uses the existing A2HS hint. ----
-    var deferredPrompt = null;
-    window.addEventListener('beforeinstallprompt', function (e) {
-        e.preventDefault();
-        deferredPrompt = e;
-        try { if (localStorage.getItem('chb-install-dismissed') === '1') return; } catch (err) {}
-        var standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
-        if (!standalone) showInstallChip();
-    });
-    window.addEventListener('appinstalled', function () { deferredPrompt = null; hideInstallChip(false); });
-
-    function showInstallChip() { var c = document.getElementById('guest-install-chip'); if (c) c.classList.add('show'); }
-    function hideInstallChip(remember) {
-        var c = document.getElementById('guest-install-chip'); if (c) c.classList.remove('show');
-        if (remember) { try { localStorage.setItem('chb-install-dismissed', '1'); } catch (e) {} }
-    }
-    function promptInstall() {
-        if (!deferredPrompt) { hideInstallChip(false); return; }
-        deferredPrompt.prompt();
-        var p = deferredPrompt.userChoice;
-        var done = function () { deferredPrompt = null; hideInstallChip(false); };
-        if (p && p.finally) p.finally(done); else done();
-    }
-    window.promptInstall = promptInstall;
 
     function init() {
         buildBar();
