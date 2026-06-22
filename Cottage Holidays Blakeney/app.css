@@ -2064,6 +2064,25 @@
         /* While showing search results, widen the availability section so the result
            cards aren't cramped inside the narrower search-panel column. */
         .home-availability.results-mode { max-width: 1160px; }
+        /* ----- Desktop: use the width. Lay the search out as a horizontal bar
+           (mode toggle on top; Dates · Guests · button in a row) instead of a
+           narrow centred column with empty margins either side. Mobile keeps the
+           stacked layout above. ----- */
+        @media (min-width: 900px) {
+            .home-availability { max-width: 1040px; }
+            .home-availability .hero-content { padding: 40px 48px; }
+            .hero-search {
+                max-width: 100%; margin: 20px 0 6px;
+                display: grid; align-items: end; gap: 16px 18px;
+                grid-template-columns: 1.5fr 1fr auto;
+                grid-template-areas: "mode mode mode" "dates guests action" "msg msg msg";
+            }
+            .hero-search .hs-mode { grid-area: mode; justify-self: center; }
+            .hero-search #hs-mode-exact, .hero-search #hs-mode-flex { grid-area: dates; min-width: 0; }
+            .hero-search .hs-guests { grid-area: guests; align-self: end; }
+            .hero-search #hs-search-btn { grid-area: action; width: auto !important; align-self: end; padding: 17px 36px; white-space: nowrap; }
+            .hero-search .hs-msg { grid-area: msg; }
+        }
         .hs-unavail { opacity: 0.7; }
         .hs-banner { background: rgba(255,167,38,0.16); color: #FFB74D; border: 1px solid rgba(255,167,38,0.4); border-radius: 10px; padding: 7px 10px; font-size: 0.76rem; line-height: 1.35; margin-bottom: 12px; text-align: center; }
         .hs-banner-red { background: rgba(229,115,115,0.16); color: #E57373; border-color: rgba(229,115,115,0.4); }
