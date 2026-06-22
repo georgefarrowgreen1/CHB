@@ -114,9 +114,11 @@ if (($in['action'] ?? '') === 'archive' || ($in['action'] ?? '') === 'unarchive'
         } catch (\Throwable $e) {}
     }
     try {
-        db()->prepare('UPDATE properties SET archived_at = ' . ($archiving ? 'NOW()' : 'NULL') . ' WHERE prop_key = ?')->execute([$propKey]);
+        // archived_at is a bound value (UTC timestamp or NULL) rather than concatenated SQL.
+        $archivedAt = $archiving ? gmdate('Y-m-d H:i:s') : null;
+        db()->prepare('UPDATE properties SET archived_at = ? WHERE prop_key = ?')->execute([$archivedAt, $propKey]);
     } catch (\Throwable $e) {
-        json_out(['error' => 'Could not update — run migrations first (Settings → System check → Run migrations).'], 500);
+        json_out(['error' => 'Could not update — please run updates first (Settings → Health check → Install updates).'], 500);
     }
     json_out(['ok' => true, 'archived' => $archiving]);
 }

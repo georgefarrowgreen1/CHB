@@ -40,12 +40,16 @@ if (session_status() === PHP_SESSION_NONE) {
     ]);
     @session_start();
 }
+// Give a logged-in admin a CSRF token in a JS-readable cookie (the token also lives
+// in the session). The admin UI echoes it back in an X-CSRF-Token header on writes;
+// require_admin() checks they match — defence-in-depth on top of SameSite cookies.
+csrf_issue_cookie();
 
 // ---- CORS (only needed if API is on a different origin) ----
 if (ALLOWED_ORIGIN !== '') {
     header('Access-Control-Allow-Origin: ' . ALLOWED_ORIGIN);
     header('Access-Control-Allow-Credentials: true');
-    header('Access-Control-Allow-Headers: Content-Type');
+    header('Access-Control-Allow-Headers: Content-Type, X-CSRF-Token');
     header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
     if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
 }
@@ -65,7 +69,9 @@ function db() {
             ]);
             // Align MySQL NOW()/CURDATE() with UK time (handles BST/GMT via the
             // current Europe/London offset). Ignored silently if not permitted.
-            try { $pdo->exec("SET time_zone = '" . (new DateTime('now', new DateTimeZone('Europe/London')))->format('P') . "'"); } catch (\Throwable $e) {}
+            $tzOffset = (new DateTime('now', new DateTimeZone('Europe/London')))->format('P');
+            if (!preg_match('/^[+-]\d{2}:\d{2}$/', $tzOffset)) $tzOffset = '+00:00';   // validate before use
+            try { $pdo->exec("SET time_zone = '" . $tzOffset . "'"); } catch (\Throwable $e) {}
         } catch (PDOException $e) {
             json_out(['error' => 'Database connection failed'], 500);
         }
@@ -105,9 +111,32 @@ function body() {
 }
 
 // ---- Auth helpers ----
+// CSRF token for the current session (minted on demand, kept server-side).
+function csrf_token() {
+    if (empty($_SESSION['csrf'])) $_SESSION['csrf'] = bin2hex(random_bytes(32));
+    return $_SESSION['csrf'];
+}
+// Mirror the token into a JS-readable cookie so the admin UI can send it back as a
+// header. Only for logged-in admins; no-op once the cookie already matches.
+function csrf_issue_cookie() {
+    if (empty($_SESSION['admin_id']) || headers_sent()) return;
+    $t = csrf_token();
+    if (($_COOKIE['csrf'] ?? '') !== $t) {
+        setcookie('csrf', $t, ['expires' => 0, 'path' => '/', 'secure' => request_is_https(), 'httponly' => false, 'samesite' => 'Lax']);
+        $_COOKIE['csrf'] = $t;
+    }
+}
 function require_admin() {
     if (empty($_SESSION['admin_id'])) {
         json_out(['error' => 'Not authorised'], 401);
+    }
+    // On state-changing requests, require a matching CSRF token (header vs session).
+    $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+    if ($method !== 'GET' && $method !== 'HEAD' && $method !== 'OPTIONS') {
+        $sent = $_SERVER['HTTP_X_CSRF_TOKEN'] ?? '';
+        if (empty($_SESSION['csrf']) || !is_string($sent) || $sent === '' || !hash_equals($_SESSION['csrf'], $sent)) {
+            json_out(['error' => 'Your session needs refreshing — please reload the page and try again.'], 403);
+        }
     }
 }
 function current_guest_id() {
