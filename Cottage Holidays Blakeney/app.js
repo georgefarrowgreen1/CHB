@@ -9939,12 +9939,14 @@
                 try { const s = localStorage.getItem(key); if (s) return decodeEntities(s); } catch (e) {}
                 return fallback;
             };
-            const order = ['21a', 'jollyboat', 'pimpernel'];
+            // Every live cottage (owner-added included), not just the original three.
+            const order = (typeof liveCottageKeys === 'function' && liveCottageKeys().length) ? liveCottageKeys() : ['21a', 'jollyboat', 'pimpernel'];
             const html = order.map(k => {
-                const c = propertyContent[k];
-                if (!c) return '';
-                const title = esc(val(k + '-title', c.title));
-                const desc = esc(val(k + '-desc', c.desc));
+                const c = propertyContent[k] || {};
+                const meta = propertyMeta[k] || {};
+                const title = esc(val(k + '-title', c.title || meta.name || ''));
+                if (!title) return '';
+                const desc = esc(val(k + '-desc', c.desc || ''));
                 const ams = Array.isArray(c.amenities) && c.amenities.length
                     ? ` Features include ${c.amenities.map(esc).join(', ')}.` : '';
                 return `<section><h2>${title} — holiday cottage in Blakeney, Norfolk</h2>`
@@ -9986,7 +9988,8 @@
                 if (biz.telephone || biz.aggregateRating) graph.push(biz);
 
                 const seen = {}; const faqEntities = [];
-                ['21a', 'jollyboat', 'pimpernel'].forEach(k => {
+                const faqKeys = (typeof liveCottageKeys === 'function' && liveCottageKeys().length) ? liveCottageKeys() : ['21a', 'jollyboat', 'pimpernel'];
+                faqKeys.forEach(k => {
                     const list = Array.isArray(siteContent['faqs-' + k]) ? siteContent['faqs-' + k] : [];
                     list.forEach(f => {
                         const q = (f && f.q || '').trim(), a = (f && f.a || '').trim();
@@ -10016,19 +10019,48 @@
             const canonical = document.querySelector('link[rel="canonical"]');
             const ogUrl = document.querySelector('meta[property="og:url"]');
             const ogTitle = document.querySelector('meta[property="og:title"]');
+            const ogDesc = document.querySelector('meta[property="og:description"]');
+            const ogImage = document.querySelector('meta[property="og:image"]');
+            const metaDesc = document.querySelector('meta[name="description"]');
+            // Remember the homepage defaults the first time, so we can restore them on the way out.
+            if (!window.__seoDefaults) {
+                window.__seoDefaults = {
+                    title: DEFAULT_DOC_TITLE,
+                    desc: metaDesc ? metaDesc.getAttribute('content') : '',
+                    ogTitle: ogTitle ? ogTitle.getAttribute('content') : '',
+                    ogDesc: ogDesc ? ogDesc.getAttribute('content') : '',
+                    ogImage: ogImage ? ogImage.getAttribute('content') : ''
+                };
+            }
+            const D = window.__seoDefaults;
             if (!propKey) {
                 document.title = DEFAULT_DOC_TITLE;
                 if (canonical) canonical.setAttribute('href', SITE_ORIGIN + '/');
                 if (ogUrl) ogUrl.setAttribute('content', SITE_ORIGIN + '/');
+                if (ogTitle) ogTitle.setAttribute('content', D.ogTitle);
+                if (metaDesc) metaDesc.setAttribute('content', D.desc);
+                if (ogDesc) ogDesc.setAttribute('content', D.ogDesc);
+                if (ogImage) ogImage.setAttribute('content', D.ogImage);
                 return;
             }
             const meta = propertyMeta[propKey] || {};
+            const content = propertyContent[propKey] || {};
             const url = SITE_ORIGIN + '/cottages/' + COTTAGE_SLUGS[propKey];
             const title = (meta.name || 'Cottage') + ' — Holiday Cottage in Blakeney, Norfolk | Cottage Holidays Blakeney';
+            // Description: this cottage's own text (trimmed for a snippet), else a sensible default.
+            let desc = (content.desc || '').replace(/\s+/g, ' ').trim();
+            if (desc.length > 160) desc = desc.slice(0, 157).trim() + '…';
+            if (!desc) desc = (meta.name || 'A self-catering holiday cottage') + ' in Blakeney, North Norfolk.';
+            // Social image: this cottage's first photo, else its card, made absolute.
+            let img = (Array.isArray(content.images) && content.images[0]) || ('card-' + propKey + '.jpg');
+            if (img && !/^https?:\/\//i.test(img)) img = SITE_ORIGIN + '/' + img.replace(/^\//, '');
             document.title = title;
             if (canonical) canonical.setAttribute('href', url);
             if (ogUrl) ogUrl.setAttribute('content', url);
             if (ogTitle) ogTitle.setAttribute('content', title);
+            if (metaDesc) metaDesc.setAttribute('content', desc);
+            if (ogDesc) ogDesc.setAttribute('content', desc);
+            if (ogImage) ogImage.setAttribute('content', img);
         }
         // Reflect the open cottage in the address bar (push, or replace if already there).
         function syncCottageUrl(propKey) {
@@ -10991,7 +11023,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'd7g2p5va';
+            const BUILD = 'f5j8w3qd';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
