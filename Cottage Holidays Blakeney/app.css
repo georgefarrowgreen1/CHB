@@ -2115,6 +2115,14 @@
 /* Settings index: small section headers that group related folders. */
 .settings-index .settings-section-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1.3px; font-weight: 700; color: var(--text-muted); margin: 22px 6px 8px; }
 .settings-index > .settings-section-label:first-child { margin-top: 2px; }
+        /* "How it works" disclosure — keeps background explanations one tap away so
+           admin panels lead with the controls instead of a wall of text. */
+        .help-disclosure { max-width: 640px; margin: 14px 0 0; }
+        .help-disclosure > summary { cursor: pointer; list-style: none; font-size: 0.82rem; color: var(--accent); display: inline-flex; align-items: center; gap: 6px; padding: 4px 0; -webkit-tap-highlight-color: transparent; }
+        .help-disclosure > summary::-webkit-details-marker { display: none; }
+        .help-disclosure > summary::after { content: "▾"; font-size: 0.7rem; transition: transform 0.2s var(--fluid-bezier); }
+        .help-disclosure[open] > summary::after { transform: rotate(180deg); }
+        .help-disclosure > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
 
 .content-edit-row { display: flex; gap: 12px; align-items: center; margin-bottom: 14px; max-width: 640px; flex-wrap: wrap; }
 /* Per-cottage Photos rows: thumbnail + label + action buttons that reflow neatly

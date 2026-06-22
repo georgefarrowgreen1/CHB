@@ -168,7 +168,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=40">
+    <link rel="stylesheet" href="app.css?v=41">
     <!-- Speed up the font fetch (and the jsPDF CDN) by opening the connections early. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -841,7 +841,7 @@
         <!-- INDEX — ordered by importance: your cottages first, then money & guests,
              then your listing & account, with the legal reference last. -->
         <div id="settings-index" class="settings-index">
-            <div class="settings-section-label">Today</div>
+            <div class="settings-section-label">Bookings &amp; messages</div>
             <div class="settings-group">
                 <button class="settings-row" onclick="settingsOpen('enquiries')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/></svg></span>
@@ -927,7 +927,7 @@
                 </button>
             </div>
 
-            <div class="settings-section-label">Your account &amp; system</div>
+            <div class="settings-section-label">Your account</div>
             <div class="settings-group">
                 <button class="settings-row" onclick="settingsOpen('host')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg></span>
@@ -937,6 +937,10 @@
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Security</span><span class="settings-row-sub">Your password &amp; quick sign-in (Face ID / fingerprint)</span></span><span class="settings-row-chev">›</span>
                 </button>
+            </div>
+
+            <div class="settings-section-label">Advanced &amp; system</div>
+            <div class="settings-group">
                 <button class="settings-row" onclick="settingsOpen('apis')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 13.5l-5.3 5.3a2 2 0 0 1-2.8-2.8l5.3-5.3"/><circle cx="15.5" cy="8.5" r="5"/><path d="M13.5 10.5l1.5 1.5"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Integrations</span><span class="settings-row-sub">Tide times &amp; other connected services</span></span><span class="settings-row-chev">›</span>
@@ -1207,8 +1211,11 @@
                         <span style="color:var(--text-muted);">% of the total</span>
                         <button class="btn-sm btn-edit" onclick="saveDepositPct()">Save</button>
                     </div>
-                    <p style="font-size:0.82rem;color:var(--text-light);margin-top:14px;line-height:1.6;"><strong>Automatic schedule:</strong> when you approve an enquiry the guest is emailed a request for the deposit above. The balance is then auto-requested <strong>30 days before check-in</strong>. If a booking is approved when check-in is already inside 30 days, the guest is asked for the <strong>full amount upfront</strong>.</p>
-                    <p style="font-size:0.8rem;color:var(--text-muted);margin-top:10px;">These reminders are sent automatically overnight — you don't need to do anything. You can also send a payment request by hand anytime from a booking's details. (Taking card payments needs a one-time Square setup by whoever looks after your website — see the setup guide.)</p>
+                    <details class="help-disclosure">
+                        <summary>How payment reminders work</summary>
+                        <p style="font-size:0.82rem;color:var(--text-light);margin-top:8px;line-height:1.6;"><strong>Automatic schedule:</strong> when you approve an enquiry the guest is emailed a request for the deposit above. The balance is then auto-requested <strong>30 days before check-in</strong>. If a booking is approved when check-in is already inside 30 days, the guest is asked for the <strong>full amount upfront</strong>.</p>
+                        <p style="font-size:0.8rem;color:var(--text-muted);margin-top:10px;">These reminders are sent automatically overnight — you don't need to do anything. You can also send a payment request by hand anytime from a booking's details. (Taking card payments needs a one-time Square setup by whoever looks after your website — see the setup guide.)</p>
+                    </details>
                 </div>
             </div>
 
@@ -1843,7 +1850,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=58"></script>
+    <script src="app.js?v=59"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
