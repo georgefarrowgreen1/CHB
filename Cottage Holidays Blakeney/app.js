@@ -174,7 +174,6 @@
         function forceAdminLogout() {
             isAuthenticated = false;
             try { setAuthUI(); } catch (e) {}
-            try { if (typeof isEditMode !== 'undefined' && isEditMode) toggleEditMode(); } catch (e) {}
             // If they're sitting on an admin-only screen, return them to the public site
             // so they're not stuck on a dead dashboard.
             const adminViews = ['view-backoffice', 'view-settings', 'view-accounts'];
@@ -285,7 +284,8 @@
 
         // Built-in file finder: opens the device's file picker (images only),
         // uploads the chosen file to the server, then runs onDone(savedUrl).
-        // Used by the Live Editor image swaps and the gallery add/replace buttons.
+        // Used by the Settings photo/gallery editors (host photo, per-cottage photos,
+        // experiences, homepage content images).
         function pickAndUpload(slot, onDone) {
             const input = document.createElement('input');
             input.type = 'file';
@@ -293,14 +293,11 @@
             input.onchange = async () => {
                 const file = input.files && input.files[0];
                 if (!file) return;
-                const prevHint = document.getElementById('gallery-edit-hint');
-                if (prevHint) prevHint.innerText = isHeic(file) ? 'Converting photo…' : 'Uploading…';
                 try {
                     const url = await apiUpload(file, slot);
                     await onDone(url);
                 } catch (e) {
                     glassAlert('Upload failed: ' + e.message);
-                    if (prevHint) updateGalleryHint();
                 }
             };
             input.click();
@@ -386,7 +383,6 @@
         }
 
         /* --- 1. ROUTING --- */
-        const EDITABLE_VIEWS = ['view-main', 'view-cottages', 'view-21a', 'view-backoffice', 'view-settings', 'view-accounts'];
         // The customer-facing pages whose words/photos the owner edits with the dock
         // "Edit text & photos" button. The button is hidden on the admin tools (Home,
         // Reviews, Money, Settings) so it only appears where there's site content to edit.
@@ -526,12 +522,6 @@
             const target = document.getElementById(viewId);
             if (!target) {
                 console.warn(`nav(): unknown view "${viewId}"`);
-                return;
-            }
-            // While editing, only block navigation to non-editable views.
-            // Save/exit happens via the footer toggle, not nav(), so this no longer traps the user.
-            if (isEditMode && !EDITABLE_VIEWS.includes(viewId)) {
-                glassAlert("Please save your edits first (use the “Save & Exit” button in the footer).");
                 return;
             }
             document.querySelectorAll('.page-view').forEach(v => v.classList.remove('active'));
@@ -797,7 +787,7 @@
             
             track.style.transform = `translateX(${-(galleryState[trackId] * 100)}%)`;
             loadGallerySlides(trackId);
-            if (trackId === 'gallery-21a') { updateGalleryHint(); updateGalleryCount(); }
+            if (trackId === 'gallery-21a') updateGalleryCount();
         }
         // Customer-facing "n / total" photo counter on the mobile gallery carousel
         // (so guests know there are more photos). Hidden when there's 0–1 photo.
@@ -814,8 +804,6 @@
         // ---- Full-screen photo lightbox ----
         let lightboxIndex = 0;
         function openLightbox(i) {
-            // Edit mode has its own photo controls (swap/replace), so don't hijack clicks there.
-            if (document.body.classList.contains('edit-mode')) return;
             const imgs = window.__galleryImages || [];
             if (!imgs.length || !imgs[i]) return;   // ignore empty placeholder slides
             lightboxIndex = i;
@@ -915,7 +903,6 @@
             galleryState['gallery-21a'] = idx;
             track.style.transform = `translateX(${-(idx * 100)}%)`;
             loadGallerySlides('gallery-21a');
-            updateGalleryHint();
             updateGalleryCount();
             renderGalleryGrid(list);
         }
@@ -956,67 +943,6 @@
                 const bg = s.getAttribute('data-bg');
                 if (bg && !s.style.backgroundImage) s.style.backgroundImage = `url('${bg}')`;
             }
-        }
-
-        function updateGalleryHint() {
-            const hint = document.getElementById('gallery-edit-hint');
-            if (!hint) return;
-            const c = propertyContent[activeFrontProperty];
-            const n = (c && c.images) ? c.images.length : 0;
-            const cur = (galleryState['gallery-21a'] || 0) + 1;
-            hint.innerText = n ? `Photo ${Math.min(cur, n)} of ${n}` : 'No photos yet';
-        }
-
-        // --- Gallery editing (edit mode) ---
-        // Add a photo: pick a file, upload it, append to this property's gallery.
-        function addGalleryPhoto() {
-            pickAndUpload(`${activeFrontProperty}-gallery`, async (url) => {
-                const c = propertyContent[activeFrontProperty];
-                c.images = Array.isArray(c.images) ? c.images.slice() : [];
-                c.images.push(url);
-                await savePropertyImages(activeFrontProperty, c.images);
-                galleryState['gallery-21a'] = c.images.length - 1; // jump to the new one
-                renderGallery(c.images);
-            });
-        }
-
-        // Replace the currently shown photo with a newly uploaded one.
-        function replaceGalleryPhoto() {
-            const c = propertyContent[activeFrontProperty];
-            if (!c.images || !c.images.length) { addGalleryPhoto(); return; }
-            const idx = galleryState['gallery-21a'] || 0;
-            pickAndUpload(`${activeFrontProperty}-gallery`, async (url) => {
-                c.images[idx] = url;
-                await savePropertyImages(activeFrontProperty, c.images);
-                renderGallery(c.images);
-            });
-        }
-
-        // Reorder: swap the currently shown photo with its neighbour (direction
-        // -1 = earlier, +1 = later) so galleries aren't stuck in upload order.
-        async function moveGalleryPhoto(direction) {
-            const c = propertyContent[activeFrontProperty];
-            if (!c.images || c.images.length < 2) { glassAlert('Add another photo first to reorder.'); return; }
-            const idx = galleryState['gallery-21a'] || 0;
-            const target = idx + direction;
-            if (target < 0 || target >= c.images.length) return;   // already at the end
-            const tmp = c.images[idx];
-            c.images[idx] = c.images[target];
-            c.images[target] = tmp;
-            galleryState['gallery-21a'] = target;                  // keep the view on the moved photo
-            await savePropertyImages(activeFrontProperty, c.images);
-            renderGallery(c.images);
-        }
-
-        // Remove the currently shown photo.
-        async function removeGalleryPhoto() {
-            const c = propertyContent[activeFrontProperty];
-            if (!c.images || c.images.length <= 1) { glassAlert('A property needs at least one photo.'); return; }
-            if (!await glassConfirm('Remove this photo from the gallery?')) return;
-            const idx = galleryState['gallery-21a'] || 0;
-            c.images.splice(idx, 1);
-            await savePropertyImages(activeFrontProperty, c.images);
-            renderGallery(c.images);
         }
 
         // ---- Per-cottage GPS location for the on-arrival key-code unlock ----
@@ -1080,7 +1006,6 @@
         }
 
         /* --- 3. AUTH & CMS --- */
-        let isEditMode = false;
         let isAuthenticated = false;
         // Admin auth is now handled server-side (api/auth.php). No client password.
 
@@ -4298,153 +4223,11 @@
             }
         }
 
-        async function handleEditToggle() {
-            if (isEditMode) {        // currently editing -> save & exit
-                toggleEditMode();
-                return;
-            }
-            const proceed = () => {
-                // Make sure we're on an editable view BEFORE entering edit mode,
-                // otherwise the nav() guard would trap the user.
-                const activeView = document.querySelector('.page-view.active');
-                if (!activeView || !EDITABLE_VIEWS.includes(activeView.id)) {
-                    nav('view-main');
-                }
-                toggleEditMode();
-            };
-            if (isAuthenticated) {
-                proceed();
-            } else {
-                openAdminLogin('Live Editor', 'Sign in to edit your site content.', () => { proceed(); });
-            }
-        }
-
-        // Force pasted content to plain text, so foreign fonts/colours/sizes from
-        // Word, web pages, etc. can never enter an editable element.
-        function plainTextPaste(e) {
-            e.preventDefault();
-            const text = (e.clipboardData || window.clipboardData).getData('text/plain');
-            // Collapse line breaks/extra whitespace into single spaces
-            const clean = text.replace(/\s+/g, ' ');
-            if (document.queryCommandSupported && document.queryCommandSupported('insertText')) {
-                document.execCommand('insertText', false, clean);
-            } else {
-                const sel = window.getSelection();
-                if (sel && sel.rangeCount) {
-                    sel.deleteFromDocument();
-                    sel.getRangeAt(0).insertNode(document.createTextNode(clean));
-                    sel.collapseToEnd();
-                }
-            }
-        }
-
-        function toggleEditMode() {
-            isEditMode = !isEditMode;
-            const body = document.body;
-            const btn = document.getElementById('editor-toggle');         // legacy footer button (may be absent)
-            const ownerBtn = document.getElementById('owner-edit-btn');   // owner-bar Edit button (removed; may be absent)
-            const dockBtn = document.getElementById('dock-edit-btn');     // floating dock Edit icon
-
-            if(isEditMode) {
-                body.classList.add('edit-mode');
-                if (btn) { btn.innerHTML = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5h11l3 3v11H5z"/><path d="M8 5v5h7V5M8 19v-5h8v5"/></svg> Save & Exit'; btn.classList.add('active-mode'); }
-                if (ownerBtn) { ownerBtn.innerHTML = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5h11l3 3v11H5z"/><path d="M8 5v5h7V5M8 19v-5h8v5"/></svg> <span>Save &amp; Exit</span>'; ownerBtn.classList.add('active-mode'); }
-                if (dockBtn) { dockBtn.classList.add('active-mode'); dockBtn.setAttribute('data-label', 'Save & exit editing'); dockBtn.setAttribute('aria-label', 'Save & exit editing'); dockBtn.setAttribute('title', 'Save & exit editing'); }
-                document.querySelectorAll('[data-edit-text]').forEach(el => {
-                    el.contentEditable = "true";
-                    el.addEventListener('paste', plainTextPaste);
-                });
-            } else {
-                body.classList.remove('edit-mode');
-                if (btn) { btn.innerHTML = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L18.5 9.5a2.5 2.5 0 0 0-3.5-3.5L4.5 16.5 4 20z"/><path d="M13.5 7.5l3 3"/></svg>'; btn.classList.remove('active-mode'); }
-                if (ownerBtn) { ownerBtn.innerHTML = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L18.5 9.5a2.5 2.5 0 0 0-3.5-3.5L4.5 16.5 4 20z"/><path d="M13.5 7.5l3 3"/></svg> <span>Edit site</span>'; ownerBtn.classList.remove('active-mode'); }
-                if (dockBtn) { dockBtn.classList.remove('active-mode'); dockBtn.setAttribute('data-label', 'Edit text & photos'); dockBtn.setAttribute('aria-label', 'Edit text & photos'); dockBtn.setAttribute('title', 'Edit text & photos'); }
-                document.querySelectorAll('[data-edit-text]').forEach(el => {
-                    el.contentEditable = "false";
-                    const key = el.getAttribute('data-edit-text');
-                    if (key) {
-                        // Save PLAIN TEXT only — never innerHTML — so no pasted fonts,
-                        // colours or sizes can override the site's own styling. We KEEP
-                        // line breaks and paragraph spacing the owner adds, but collapse
-                        // runs of spaces/tabs within a line and cap blank lines at one.
-                        let val = (el.innerText || '')
-                            .replace(/\r\n/g, '\n')        // normalise newlines
-                            .replace(/[ \t]+/g, ' ')       // collapse spaces/tabs (not newlines)
-                            .replace(/ *\n */g, '\n')      // trim spaces around line breaks
-                            .replace(/\n{3,}/g, '\n\n')    // cap blank lines at one
-                            .replace(/^\n+|\n+$/g, '')      // trim leading/trailing blank lines
-                            .trim();
-                        el.textContent = val;             // normalise what's on screen now
-                        localStorage.setItem(key, val);   // instant local cache
-                        saveContent(key, val);            // shared, permanent
-                    }
-                });
-            }
-            // Re-render amenity pills so add/remove controls + editability update
-            if (document.getElementById('prop-amenities') &&
-                document.getElementById('view-21a').classList.contains('active')) {
-                renderAmenities(activeFrontProperty);
-            }
-            // Keep the hidden SEO text in sync with any description/title edits
-            try { renderSeoText(); } catch (e) {}
-            // Re-apply (or release) the description clamp as edit mode changes.
-            try { setupPropDescClamp(); } catch (e) {}
-        }
-
         async function logoutStaff() {
             try { await apiPost('auth.php', { action: 'admin_logout' }); } catch (e) {}
             isAuthenticated = false;
             setAuthUI();
-            if(isEditMode) toggleEditMode();
             glassAlert("You have been securely logged out."); nav('view-main');
-        }
-
-        // While in edit mode, block navigation / onclick actions on any editable element
-        // (or its editable ancestor) so it can be edited instead of triggering its action.
-        // Runs in the CAPTURE phase so it fires before inline onclick handlers.
-        document.addEventListener('click', function(e) {
-            if (!isEditMode) return;
-            const editable = e.target.closest('[data-edit-text], [data-edit-img]');
-            if (!editable) return;
-
-            if (editable.hasAttribute('data-edit-img')) {
-                // Images: always intercept (prompt for a new URL)
-                e.preventDefault();
-                e.stopPropagation();
-                swapImage(editable);
-                return;
-            }
-
-            // Editable text: only block if it (or an ancestor) carries a click action,
-            // so navigation/buttons don't fire. Plain text is left alone so the caret
-            // lands where the user clicked.
-            const hasAction = editable.hasAttribute('onclick') ||
-                              editable.closest('[onclick]') ||
-                              editable.closest('a[href]');
-            if (hasAction) {
-                e.preventDefault();
-                e.stopPropagation();
-                editable.focus();
-            }
-        }, true);
-
-        async function swapImage(el) {
-            const key = el.getAttribute('data-edit-img');
-            // Offer the built-in file finder (upload), with a URL option as fallback.
-            const useFile = await glassConfirm("Choose a photo from your device?\n\nOK = pick a file (uploads to your site)\nCancel = paste an image address instead");
-            if (useFile) {
-                pickAndUpload(key || 'image', async (url) => {
-                    el.style.backgroundImage = `url('${url}')`;
-                    if (key) await saveContent(key, url);
-                });
-            } else {
-                const currentImg = el.style.backgroundImage.slice(5, -2).replace(/"/g, "");
-                const newImg = await glassPrompt("Paste image address (URL):", currentImg);
-                if (newImg && newImg !== currentImg) {
-                    el.style.backgroundImage = `url('${newImg}')`;
-                    if (key) saveContent(key, newImg);
-                }
-            }
         }
 
         // Save a single content value (text or image URL) to the backend store,
@@ -4525,7 +4308,6 @@
             if (isAuthenticated) return;        // admin logged in — leave their data alone
             if (document.hidden) return;        // tab not visible — save bandwidth
             if (liveUpdateBusy) return;         // don't overlap a slow tick
-            if (isEditMode) return;             // never refresh mid-edit
             liveUpdateBusy = true;
             try {
                 await Promise.all([
@@ -4874,67 +4656,20 @@
         // Which property the front-end booking page is currently showing
         let activeFrontProperty = '21a';
 
-        // ---- Editable amenity pills (per cottage, add/remove in Live Editor) ----
+        // ---- Amenity pills (per cottage, display-only; edited in Settings) ----
         let activePropAmenities = [];   // working copy for the open property
 
+        // Display-only on the cottage page; the list is edited in Settings.
         function renderAmenities(propKey) {
             const wrap = document.getElementById('prop-amenities');
             if (!wrap) return;
-            let html = activePropAmenities.map((a, i) => `
-                <div class="amenity-pill" data-am-index="${i}">
-                    <span class="amenity-text"
-                          ${isEditMode ? 'contenteditable="true"' : ''}
-                          onblur="editAmenity(${i}, this.innerText)">${escapeHtml(a)}</span>
-                    <button class="amenity-remove" title="Remove" onclick="removeAmenity(${i})">×</button>
+            wrap.innerHTML = activePropAmenities.map(a => `
+                <div class="amenity-pill">
+                    <span class="amenity-text">${escapeHtml(a)}</span>
                 </div>`).join('');
-            // "Add" tile only shows in edit mode
-            html += `<button class="amenity-add" onclick="addAmenity()">＋ Add feature</button>`;
-            wrap.innerHTML = html;
-            // Attach plain-text paste guard to the new editable spans
-            if (isEditMode) {
-                wrap.querySelectorAll('.amenity-text').forEach(el => el.addEventListener('paste', plainTextPaste));
-            }
         }
 
-        function addAmenity() {
-            activePropAmenities.push('New feature');
-            renderAmenities(activeFrontProperty);
-            persistAmenities();
-            // Focus the new pill's text for immediate editing
-            if (isEditMode) {
-                const spans = document.querySelectorAll('#prop-amenities .amenity-text');
-                const last = spans[spans.length - 1];
-                if (last) {
-                    const r = document.createRange(); r.selectNodeContents(last);
-                    const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
-                    last.focus();
-                }
-            }
-        }
-
-        function removeAmenity(i) {
-            activePropAmenities.splice(i, 1);
-            renderAmenities(activeFrontProperty);
-            persistAmenities();
-        }
-
-        function editAmenity(i, text) {
-            const clean = (text || '').replace(/\s+/g, ' ').trim();
-            if (clean === '') { removeAmenity(i); return; }   // empty -> delete the pill
-            activePropAmenities[i] = clean;
-            persistAmenities();
-        }
-
-        function persistAmenities() {
-            const key = 'amenities-' + activeFrontProperty;
-            if (propertyContent[activeFrontProperty]) {
-                propertyContent[activeFrontProperty].amenities = activePropAmenities.slice();
-            }
-            try { localStorage.setItem(key, JSON.stringify(activePropAmenities)); } catch (e) {}
-            saveContent(key, activePropAmenities.slice());
-        }
-
-        // ---- Editable "Safety & property" list (per cottage) — mirrors the amenities pattern ----
+        // ---- "Safety & property" list (per cottage) — mirrors the amenities pattern ----
         const DEFAULT_SAFETY = ['Smoke alarm', 'Carbon monoxide detector', 'First-aid kit available'];
         let activePropSafety = [];
         const IC_SHIELD = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/></svg>';
@@ -7074,13 +6809,11 @@
             ].join('');
         }
         // Airbnb-style "Show more" for the cottage description: clamp to a few lines
-        // and only reveal the toggle when the text actually overflows. Never clamps
-        // in edit mode (the owner needs to see and edit the whole thing).
+        // and only reveal the toggle when the text actually overflows.
         function setupPropDescClamp() {
             const p = document.getElementById('prop-desc');
             const btn = document.getElementById('prop-desc-toggle');
             if (!p || !btn) return;
-            if (isEditMode) { p.classList.remove('clamped'); btn.style.display = 'none'; return; }
             p.classList.add('clamped');
             btn.classList.remove('open');
             btn.textContent = 'Show more';
@@ -8430,10 +8163,6 @@
             }).join('');
             try { renderCardPrices(); } catch (e) {}
             try { renderCardRatings(); } catch (e) {}
-            // Keep inline edit mode working on the freshly-built cards.
-            if (typeof isEditMode !== 'undefined' && isEditMode) {
-                grid.querySelectorAll('[data-edit-text]').forEach(el => { el.contentEditable = 'true'; try { el.addEventListener('paste', plainTextPaste); } catch (e) {} });
-            }
         }
 
         // Homepage cottage cards (above the "Check availability" search): SIMPLIFIED
@@ -8466,10 +8195,6 @@
             }).join('');
             try { renderCardPrices(); } catch (e) {}
             try { renderCardRatings(); } catch (e) {}
-            // Keep inline edit mode working on the freshly-built cards.
-            if (typeof isEditMode !== 'undefined' && isEditMode) {
-                grid.querySelectorAll('[data-edit-text]').forEach(el => { el.contentEditable = 'true'; try { el.addEventListener('paste', plainTextPaste); } catch (e) {} });
-            }
         }
 
         // Regenerate the page's JSON-LD structured data from the live cottage list so
@@ -10091,7 +9816,7 @@
             galleryState['gallery-21a'] = 0;
             renderGallery(c.images);
 
-            // Amenities (editable: add/remove in Live Editor)
+            // Amenities (display-only on the cottage page; edited in Settings)
             activePropAmenities = Array.isArray(c.amenities) ? c.amenities.slice() : [];
             renderAmenities(propKey);
 
@@ -10117,13 +9842,6 @@
             applySavedEdits();
             // Cancellation policy text comes from the per-cottage choice in Settings.
             applyCancellationText(propKey);
-            // Re-enable contentEditable if currently editing
-            if (isEditMode) {
-                document.querySelectorAll('#view-21a [data-edit-text]').forEach(el => {
-                    el.contentEditable = "true";
-                    el.addEventListener('paste', plainTextPaste);
-                });
-            }
 
             // Wire the submit button to this property
             document.getElementById('enq-submit-btn').onclick = () => submitEnquiry(propKey);
@@ -11069,7 +10787,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'w6r2k9np';
+            const BUILD = 'x4j7v2bq';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
