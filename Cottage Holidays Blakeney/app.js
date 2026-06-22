@@ -10846,12 +10846,36 @@
         function expRenderCards() {
             const grid = document.getElementById('exp-grid'); if (!grid) return;
             const list = __expFilter === 'all' ? __experiences : __experiences.filter(x => x.category === __expFilter);
-            grid.innerHTML = list.map(expCardHtml).join('');
+            // First card with a given photo keeps it; later cards that repeat the same
+            // photo (or have none) get a distinct category illustration instead — so the
+            // page never shows the same picture two or three times in a row.
+            const seen = {};
+            grid.innerHTML = list.map(x => {
+                const dup = x.image && seen[x.image];
+                if (x.image) seen[x.image] = 1;
+                return expCardHtml(x, !!dup);
+            }).join('');
         }
-        function expCardHtml(x) {
-            const img = x.image
+        // Deterministic hue (0–359) from a string, so each experience tints differently.
+        function expHue(s) { s = String(s || ''); let h = 0; for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360; return h; }
+        // Simple on-brand line motif per category (fallback = star) for image-less cards.
+        const EXP_CAT_ART = {
+            'Boat trips & wildlife': '<path d="M4 16h16l-2.2 4H6.2z"/><path d="M12 3v9M12 5l6 2.5L12 10"/>',
+            'Walks & nature': '<path d="M12 21v-9"/><path d="M12 12c-3 0-5-2-5-5 3 0 5 2 5 5z"/><path d="M12 11c2.6 0 4.2-1.6 4.2-4.2C13.6 6.8 12 8.4 12 11z"/>',
+            'Beaches & coast': '<circle cx="17" cy="6.5" r="2.6"/><path d="M2 14c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/><path d="M2 18.5c2-2 4-2 6 0s4 2 6 0 4-2 6 0"/>',
+            'Food & drink': '<path d="M6.5 3v7a2 2 0 0 0 4 0V3M8.5 12v9"/><path d="M16 3c-1.4 0-2.4 2-2.4 4.8 0 2.4 1 3.7 2.4 3.7s2.4-1.3 2.4-3.7C18.4 5 17.4 3 16 3zM16 11.5V21"/>',
+            'Family & kids': '<circle cx="12" cy="7" r="3"/><path d="M5 21c0-3.9 3.1-7 7-7s7 3.1 7 7"/>',
+            'Days out & attractions': '<path d="M12 3.5l2.6 5.3 5.9.8-4.3 4.1 1 5.8L12 16.8 6.8 19.5l1-5.8L3.5 9.6l5.9-.8z"/>',
+            'Local shops & markets': '<path d="M4.5 8h15l-1.1 12H5.6z"/><path d="M8.5 8a3.5 3.5 0 0 1 7 0"/>'
+        };
+        function expPlaceholder(x) {
+            const art = EXP_CAT_ART[x.category] || '<path d="M12 3.5l2.6 5.3 5.9.8-4.3 4.1 1 5.8L12 16.8 6.8 19.5l1-5.8L3.5 9.6l5.9-.8z"/>';
+            return `<div class="card-img exp-noimg" style="--exp-h:${expHue(x.title || x.category || '')}"><svg class="exp-art" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${art}</svg></div>`;
+        }
+        function expCardHtml(x, usePlaceholder) {
+            const img = (x.image && !usePlaceholder)
                 ? `<img class="card-img exp-img" width="400" height="260" loading="lazy" decoding="async" src="${escapeHtml(x.image)}" alt="${escapeHtml(x.title)}">`
-                : `<div class="card-img exp-noimg"></div>`;
+                : expPlaceholder(x);
             const cat = x.category ? `<div class="exp-cat-tag">${escapeHtml(x.category)}</div>` : '';
             const link = x.linkUrl
                 ? `<a class="btn-sm btn-edit" href="${escapeHtml(x.linkUrl)}" target="_blank" rel="noopener noreferrer"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M10 5H5v14h14v-5"/></svg> ${escapeHtml(x.linkLabel || 'Find out more')}</a>`
@@ -11029,7 +11053,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'h2c9k4mt';
+            const BUILD = 'k6r3n9wp';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
