@@ -168,7 +168,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=40">
+    <link rel="stylesheet" href="app.css?v=41">
     <!-- Speed up the font fetch (and the jsPDF CDN) by opening the connections early. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1211,8 +1211,11 @@
                         <span style="color:var(--text-muted);">% of the total</span>
                         <button class="btn-sm btn-edit" onclick="saveDepositPct()">Save</button>
                     </div>
-                    <p style="font-size:0.82rem;color:var(--text-light);margin-top:14px;line-height:1.6;"><strong>Automatic schedule:</strong> when you approve an enquiry the guest is emailed a request for the deposit above. The balance is then auto-requested <strong>30 days before check-in</strong>. If a booking is approved when check-in is already inside 30 days, the guest is asked for the <strong>full amount upfront</strong>.</p>
-                    <p style="font-size:0.8rem;color:var(--text-muted);margin-top:10px;">These reminders are sent automatically overnight — you don't need to do anything. You can also send a payment request by hand anytime from a booking's details. (Taking card payments needs a one-time Square setup by whoever looks after your website — see the setup guide.)</p>
+                    <details class="help-disclosure">
+                        <summary>How payment reminders work</summary>
+                        <p style="font-size:0.82rem;color:var(--text-light);margin-top:8px;line-height:1.6;"><strong>Automatic schedule:</strong> when you approve an enquiry the guest is emailed a request for the deposit above. The balance is then auto-requested <strong>30 days before check-in</strong>. If a booking is approved when check-in is already inside 30 days, the guest is asked for the <strong>full amount upfront</strong>.</p>
+                        <p style="font-size:0.8rem;color:var(--text-muted);margin-top:10px;">These reminders are sent automatically overnight — you don't need to do anything. You can also send a payment request by hand anytime from a booking's details. (Taking card payments needs a one-time Square setup by whoever looks after your website — see the setup guide.)</p>
+                    </details>
                 </div>
             </div>
 
