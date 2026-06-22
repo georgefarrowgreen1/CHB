@@ -10402,9 +10402,10 @@
             const submitBtn = document.getElementById('enq-submit-btn');
             const origSubmitLabel = submitBtn ? submitBtn.textContent : '';
             if (submitBtn) { submitBtn.disabled = true; submitBtn.classList.add('is-busy'); submitBtn.textContent = 'Sending…'; }
+            let enqResp = null;
             try {
                 const rr = propertyRates[propKey] || defaultRates[propKey] || {};
-                await apiPost('enquiries.php', {
+                enqResp = await apiPost('enquiries.php', {
                     action: 'submit', prop_key: propKey, name, email, phone, address, postcode,
                     check_in: checkIn, check_out: checkOut,
                     check_in_time: rr.checkInTime || '15:00',
@@ -10425,11 +10426,17 @@
             const acctStep = document.getElementById('enquire-step-account');
             if (!currentGuest && acctStep) {
                 __enqAcct = { name, email, phone, address, postcode };
+                // If this email already has an account, show "sign in" instead of "create".
+                const exists = !!(enqResp && enqResp.account_exists);
+                const newBlk = document.getElementById('enq-acct-new');
+                const existBlk = document.getElementById('enq-acct-existing');
+                if (newBlk) newBlk.style.display = exists ? 'none' : '';
+                if (existBlk) existBlk.style.display = exists ? '' : 'none';
                 const d = document.getElementById('enquire-step-details'); if (d) d.style.display = 'none';
                 acctStep.style.display = '';
                 setEnqStep(3);
                 const am = document.getElementById('enq-acct-msg'); if (am) { am.textContent = ''; am.classList.remove('show'); }
-                const pw = document.getElementById('enq-acct-password'); if (pw) { pw.value = ''; setTimeout(() => { try { pw.focus(); } catch (e) {} }, 80); }
+                if (!exists) { const pw = document.getElementById('enq-acct-password'); if (pw) { pw.value = ''; setTimeout(() => { try { pw.focus(); } catch (e) {} }, 80); } }
                 return;
             }
 
@@ -10477,6 +10484,17 @@
             } finally {
                 if (btn) { btn.disabled = false; btn.classList.remove('is-busy'); }
             }
+        }
+        // Returning guest: close the enquiry modal and open the sign-in modal with their
+        // email prefilled (the enquiry has already been sent).
+        function enquireSignInInstead() {
+            const email = (__enqAcct && __enqAcct.email) || '';
+            __enqAcct = null;
+            resetEnquiryForm();
+            try { closeEnquireModal(); } catch (e) {}
+            try { openGuestAuthModal(); switchGuestTab('login'); } catch (e) {}
+            const f = document.getElementById('login-email'); if (f && email) f.value = email;
+            try { toast("Enquiry sent — sign in to track it."); } catch (e) {}
         }
         // Skip the optional account step — the enquiry has already been sent.
         function enquireSkipAccount() {
@@ -11111,7 +11129,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'q3m8v5tz';
+            const BUILD = 't7w4z2nk';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;

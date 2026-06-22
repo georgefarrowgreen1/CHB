@@ -352,6 +352,39 @@ function send_review_request_email($b) {
     return smtp_send($b['email'], $name, $subject, $text, $html);
 }
 
+// Acknowledge a guest's enquiry by email. $accountExists tailors the closing line:
+// returning guests are pointed to sign in; new guests are invited to create an account.
+function send_enquiry_ack($enq, $accountExists = false) {
+    $email = trim((string)($enq['email'] ?? ''));
+    if ($email === '') return ['ok' => false, 'error' => 'no email'];
+    $name = trim((string)($enq['name'] ?? '')) ?: 'there';
+    $first = explode(' ', $name)[0] ?: 'there';
+    $prop = function_exists('prop_display') ? (prop_display($enq['prop_key'] ?? '')['name'] ?? '') : '';
+    $pretty = fn($d) => $d ? date('D j M Y', strtotime($d)) : '';
+    $dates = trim($pretty($enq['check_in'] ?? '') . ' – ' . $pretty($enq['check_out'] ?? ''), ' –');
+    $url = function_exists('site_base_url') ? site_base_url() : '/';
+    $acctLine = $accountExists
+        ? "You already have an account with us — sign in to track this enquiry and manage your bookings."
+        : "Tip: create an account next time you visit (just set a password) to track this enquiry, message us and book faster.";
+
+    $subject = "We've received your enquiry — Cottage Holidays Blakeney";
+    $text = "Hi {$first},\n\n"
+        . "Thanks for your enquiry" . ($prop ? " about {$prop}" : '') . ($dates ? " for {$dates}" : '') . ".\n"
+        . "We'll check availability and email you back to confirm your dates and price.\n\n"
+        . $acctLine . "\n" . $url . "\n\n"
+        . "Cottage Holidays Blakeney";
+
+    $inner = email_h('Enquiry received')
+        . email_p('Hi ' . email_esc($first) . ', thanks for your enquiry'
+            . ($prop ? ' about <strong style="color:#f4f5f7;">' . email_esc($prop) . '</strong>' : '')
+            . ($dates ? ' for <strong style="color:#f4f5f7;">' . email_esc($dates) . '</strong>' : '') . '.')
+        . email_p("We'll check availability and email you back to confirm your dates and price.", true)
+        . email_note(email_esc($acctLine))
+        . email_btn($url, $accountExists ? 'Sign in' : 'Visit the site');
+    $html = email_shell("We've received your enquiry", $inner);
+    return smtp_send($email, $name, $subject, $text, $html);
+}
+
 function send_booking_emails($b) {
     $out = ['guest' => ['ok' => false, 'error' => 'not attempted'],
             'owner' => ['ok' => false, 'error' => 'not attempted']];
