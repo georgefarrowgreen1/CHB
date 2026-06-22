@@ -168,7 +168,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=48">
+    <link rel="stylesheet" href="app.css?v=49">
     <!-- Speed up the font fetch (and the jsPDF CDN) by opening the connections early. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1561,7 +1561,16 @@
 
     <!-- ================= YOUR DETAILS (floating window) ================= -->
     <div id="guest-details-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Your details" onclick="if(event.target===this) closeGuestDetailsModal()">
-        <div class="modal-box glass-panel" style="max-width:480px;">
+        <div class="modal-box glass-panel auth-split">
+            <!-- Desktop only: branded coastal panel beside the form (hidden on mobile) -->
+            <aside class="auth-brand" aria-hidden="true">
+                <img class="auth-brand-logo" src="logo.svg" alt="">
+                <div class="auth-brand-copy">
+                    <h2>Your account</h2>
+                    <p>Keep your contact details current — we use them for your bookings and to reach you about your stay.</p>
+                </div>
+            </aside>
+            <div class="auth-form-col">
             <div style="display:flex;justify-content:flex-end;margin:-6px -6px 4px 0;">
                 <button class="reviews-modal-close" onclick="closeGuestDetailsModal()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
@@ -1582,12 +1591,22 @@
                 <button class="btn-sm btn-edit" style="width:100%;justify-content:center;" onclick="closeGuestDetailsModal(); openGuestSecurityModal()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="15" cy="9" r="3.6"/><path d="M12.4 11.6L4 20"/><path d="M7 17l2 2M5 19l2 2"/></svg> Account &amp; Security</button>
                 <button class="btn-sm btn-edit" style="width:100%;justify-content:center;color:#E57373;border-color:rgba(229,115,115,0.4);" onclick="closeGuestDetailsModal(); guestLogout()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l-5-5 5-5"/><path d="M5 12h11"/></svg> Log Out</button>
             </div>
+            </div><!-- /.auth-form-col -->
         </div>
     </div>
 
     <!-- ================= ACCOUNT & SECURITY (floating window) ================= -->
     <div id="guest-security-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Sign-in &amp; security" onclick="if(event.target===this) closeGuestSecurityModal()">
-        <div class="modal-box glass-panel" style="max-width:480px;">
+        <div class="modal-box glass-panel auth-split">
+            <!-- Desktop only: branded coastal panel beside the form (hidden on mobile) -->
+            <aside class="auth-brand" aria-hidden="true">
+                <img class="auth-brand-logo" src="logo.svg" alt="">
+                <div class="auth-brand-copy">
+                    <h2>Account &amp; security</h2>
+                    <p>Your password, passkeys and data in one place. Add Face ID or Touch ID for a faster, password-free sign-in next time.</p>
+                </div>
+            </aside>
+            <div class="auth-form-col">
             <div style="display:flex;justify-content:flex-end;margin:-6px -6px 4px 0;">
                 <button class="reviews-modal-close" onclick="closeGuestSecurityModal()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
@@ -1615,6 +1634,7 @@
             <h3 style="font-family:var(--font-serif);font-size:1.1rem;margin:26px 0 6px;color:#E57373;">Delete my account</h3>
             <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:12px;">Erases your login, contact details, messages, reviews and mailing-list entry. Past bookings are kept as legally-required financial records but anonymised. This can't be undone.</p>
             <button class="btn-sm btn-decline" onclick="deleteGuestAccount()">Delete my account</button>
+            </div><!-- /.auth-form-col -->
         </div>
     </div>
 
@@ -1889,7 +1909,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=67"></script>
+    <script src="app.js?v=68"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
