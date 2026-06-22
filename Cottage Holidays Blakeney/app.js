@@ -94,12 +94,18 @@
                 clearTimeout(timer);
             }
         }
+        // CSRF: echo back the token the server set in the (JS-readable) `csrf` cookie.
+        // Harmless on public endpoints; required by require_admin() on admin writes.
+        function csrfHeader() {
+            try { const m = document.cookie.match(/(?:^|;\s*)csrf=([^;]+)/); return m ? { 'X-CSRF-Token': decodeURIComponent(m[1]) } : {}; }
+            catch (e) { return {}; }
+        }
         async function apiPost(endpoint, payload) {
             let res;
             try {
                 res = await fetchWithTimeout(API_BASE + endpoint, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: Object.assign({ 'Content-Type': 'application/json' }, csrfHeader()),
                     credentials: 'include',
                     body: JSON.stringify(payload || {})
                 });
@@ -260,7 +266,7 @@
             if (slot) fd.append('slot', slot);
             let res;
             try {
-                res = await fetchWithTimeout(API_BASE + 'upload.php', { method: 'POST', credentials: 'include', body: fd }, 45000);
+                res = await fetchWithTimeout(API_BASE + 'upload.php', { method: 'POST', headers: csrfHeader(), credentials: 'include', body: fd }, 45000);
             } catch (netErr) {
                 throw new Error(netErr && netErr.name === 'AbortError'
                     ? 'The upload took too long. Please try a smaller image or try again.'
@@ -11023,7 +11029,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'f5j8w3qd';
+            const BUILD = 'h2c9k4mt';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;

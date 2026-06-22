@@ -103,8 +103,9 @@ if ($action === 'delete') {
         $url = $s->fetchColumn();
         db()->prepare('DELETE FROM guest_photos WHERE id = ?')->execute([$id]);
         // Best-effort: remove the file + its webp companion (only inside uploads/).
+        // Rebuild the path from a basename so traversal is impossible by construction.
         if (is_string($url) && strpos($url, 'uploads/') === 0 && strpos($url, '..') === false) {
-            $p = __DIR__ . '/' . $url;
+            $p = __DIR__ . '/uploads/' . basename($url);
             if (is_file($p)) @unlink($p);
             if (is_file($p . '.webp')) @unlink($p . '.webp');
         }

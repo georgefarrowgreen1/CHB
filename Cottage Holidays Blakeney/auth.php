@@ -70,6 +70,7 @@ switch ($action) {
         session_regenerate_id(true);    // new session id on login — prevents session fixation
         $_SESSION['admin_id'] = (int)$row['id'];
         unset($_SESSION['guest_id']);   // one role at a time: signing in as admin ends any guest session
+        csrf_issue_cookie();            // set the CSRF cookie now (session id was just regenerated)
         json_out(['ok' => true]);
     }
 
