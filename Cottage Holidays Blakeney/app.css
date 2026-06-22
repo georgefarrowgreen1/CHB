@@ -2148,6 +2148,18 @@
 /* Settings index: small section headers that group related folders. */
 .settings-index .settings-section-label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 1.3px; font-weight: 700; color: var(--text-muted); margin: 22px 6px 8px; }
 .settings-index > .settings-section-label:first-child { margin-top: 2px; }
+/* Desktop: the Settings & Money landing lists (both .settings-index) are a single
+   narrow 640px column on phones. On a wide screen that leaves the right half empty,
+   so flow the section groups into two balanced columns that fill the page. Each
+   group stays whole (never split across a column) and every label stays glued to
+   the group it heads. Money's graphical overview spans the full width on top.
+   Phones/tablets (<960px) keep the single-column mobile layout untouched. */
+@media (min-width: 960px) {
+    .settings-index { max-width: 1040px; column-count: 2; column-gap: 30px; }
+    .settings-index .settings-group { break-inside: avoid; }
+    .settings-index .settings-section-label { break-after: avoid; margin-top: 4px; }
+    .settings-index .money-overview { column-span: all; margin-bottom: 26px; }
+}
         /* "How it works" disclosure — keeps background explanations one tap away so
            admin panels lead with the controls instead of a wall of text. */
         .help-disclosure { max-width: 640px; margin: 14px 0 0; }
