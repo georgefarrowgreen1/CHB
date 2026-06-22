@@ -4715,7 +4715,6 @@
             try { maybeHandleUnsubscribe(); } catch (e) { console.error(e); } // ?unsub=… → newsletter opt-out
             try { hsRestore(); } catch (e) { console.error(e); }            // restore the visitor's last search
             try { oqFlush(); } catch (e) {}                                  // sync any offline-queued admin writes
-            setTimeout(() => { try { maybeShowInstallHint(); } catch (e) {} }, 2500);
           }
         });
 
@@ -8682,27 +8681,6 @@
             el.addEventListener('click', remove);
             setTimeout(remove, 3600);
         }
-        // One-time hint for iPhone/iPad Safari users to install the PWA (also the only
-        // way Apple allows the check-in push notifications). Hidden once installed/dismissed.
-        function maybeShowInstallHint() {
-            try {
-                if (!isAppleDevice()) return;
-                const standalone = navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
-                if (standalone) return;
-                if (localStorage.getItem('chb-a2hs-dismissed')) return;
-            } catch (e) { return; }
-            if (document.getElementById('a2hs-hint')) return;
-            const el = document.createElement('div');
-            el.id = 'a2hs-hint'; el.className = 'a2hs-hint';
-            el.innerHTML = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M8 8l4-4 4 4"/><path d="M5 12v7a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-7"/></svg>'
-                + '<span>Add to your Home Screen for the best experience &amp; arrival alerts — tap <strong>Share</strong>, then <strong>Add to Home Screen</strong>.</span>'
-                + '<button class="a2hs-x" aria-label="Dismiss">&times;</button>';
-            document.body.appendChild(el);
-            const close = () => { try { localStorage.setItem('chb-a2hs-dismissed', '1'); } catch (e) {} el.classList.remove('show'); setTimeout(() => el.remove(), 460); };
-            el.querySelector('.a2hs-x').addEventListener('click', close);
-            requestAnimationFrame(() => el.classList.add('show'));
-            setTimeout(() => { if (document.body.contains(el)) { el.classList.remove('show'); setTimeout(() => el.remove(), 460); } }, 13000);
-        }
         // Keyboard: Enter = OK, Escape = Cancel (matches native dialog habits)
         document.addEventListener('keydown', (e) => {
             const o = document.getElementById('glass-dialog');
@@ -11129,7 +11107,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'r9k2x6mp';
+            const BUILD = 'h3v8t5qw';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;

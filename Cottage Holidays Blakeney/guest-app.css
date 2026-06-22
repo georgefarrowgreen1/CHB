@@ -214,11 +214,9 @@ body.guest-app:not(.owner-mode) .chat-fab { display: none; }
    the in-dock "Check availability" CTA; this is the cottage page's bottom spacing
    so content clears the dock + CTA cluster. */
 body.guest-app:not(.owner-mode) #view-21a { padding-bottom: calc(196px + env(safe-area-inset-bottom, 0px)); }
-/* These other floating elements default to the very bottom (z-index above the
-   dock), so lift them clear of the dock too: the mid-stay arrival banner and the
-   iOS add-to-home-screen hint. */
+/* This floating element defaults to the very bottom (z-index above the dock),
+   so lift it clear of the dock too: the mid-stay arrival banner. */
 body.guest-app:not(.owner-mode) .home-arrival { bottom: calc(98px + env(safe-area-inset-bottom, 0px)); }
-body.guest-app:not(.owner-mode) .a2hs-hint { bottom: calc(98px + env(safe-area-inset-bottom, 0px)); }
 
 /* Subtle app-like page transition (guest shell only; desktop/admin stay instant).
    MUST keep `forwards` — the base .page-view rule is opacity:0, so without it the

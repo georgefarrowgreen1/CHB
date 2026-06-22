@@ -1521,19 +1521,6 @@
         .toast.toast-mini .ic { width: 18px; height: 18px; flex-shrink: 0; }
         .toast.toast-mini.toast-err .ic { color: #E57373; }
         .toast.toast-mini .ic { color: #4CAF50; }
-        /* iOS 'Add to Home Screen' hint (shown once to non-installed Safari users) */
-        .a2hs-hint { position: fixed; left: 12px; right: 12px; bottom: 14px; z-index: 1600; display: flex; align-items: center; gap: 12px;
-            max-width: 540px; margin: 0 auto; padding: 13px 14px calc(13px + env(safe-area-inset-bottom));
-            background: rgba(26,25,27,0.95); backdrop-filter: blur(20px); -webkit-backdrop-filter: blur(20px);
-            border: 1px solid var(--glass-border); border-radius: 16px; box-shadow: 0 16px 44px rgba(0,0,0,0.55);
-            font-size: 0.84rem; color: var(--text-light); line-height: 1.4;
-            transform: translateY(160%); transition: transform 0.45s var(--fluid-bezier); }
-        .a2hs-hint.show { transform: translateY(0); }
-        .a2hs-hint .ic { width: 22px; height: 22px; flex-shrink: 0; color: var(--text-light); }
-        .a2hs-hint strong { color: #fff; }
-        .a2hs-x { background: none; border: none; color: var(--text-muted); font-size: 1.5rem; line-height: 1; cursor: pointer; flex-shrink: 0; padding: 0 2px; }
-        .a2hs-x:hover { color: var(--text-light); }
-        
         .toggle-btn {
             background: transparent; color: var(--text-muted); padding: 8px 18px; border-radius: 20px; font-weight: 500; cursor: pointer;
             border: 1px solid var(--glass-border); font-size: 0.75rem; text-transform: uppercase; letter-spacing: 1px;
