@@ -1381,7 +1381,8 @@
         .exp-card { position: relative; padding: 0; overflow: hidden; display: flex; flex-direction: column; }
         .exp-card .card-img { height: clamp(150px, 26vw, 200px); margin: 0; border-radius: 0; }
         .exp-card img.card-img { width: 100%; object-fit: cover; display: block; background: rgba(255,255,255,0.04); }
-        .exp-card .exp-noimg { background: linear-gradient(135deg, rgba(214,167,133,0.25), rgba(255,255,255,0.04)); }
+        .exp-card .exp-noimg { display: flex; align-items: center; justify-content: center; background: linear-gradient(150deg, hsl(var(--exp-h, 30) 40% 58% / 0.32), hsl(var(--exp-h, 30) 30% 40% / 0.10)), rgba(255,255,255,0.04); }
+        .exp-card .exp-noimg .exp-art { width: 46px; height: 46px; color: var(--text-light); opacity: 0.5; }
         .exp-card .card-title { margin: 14px 18px 0; }
         .exp-body { margin: 8px 18px 0; font-size: 0.9rem; color: var(--text-muted); line-height: 1.5; white-space: pre-line; }
         .exp-dist { display: flex; align-items: center; gap: 6px; margin: 8px 18px 0; font-size: 0.78rem; color: var(--text-muted); }
