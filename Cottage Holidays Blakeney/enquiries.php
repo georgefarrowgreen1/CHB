@@ -99,7 +99,23 @@ if ($action === 'submit') {
         ]);
     // Wake the owner's devices (best-effort).
     try { require_once __DIR__ . '/webpush.php'; alert_owner('New enquiry', trim(($name ?: 'Someone') . ' · ' . $checkIn . '–' . $checkOut)); } catch (\Throwable $e) {}
-    json_out(['ok' => true]);
+
+    // Does this email already have a guest account? Used to tailor the follow-up so a
+    // returning guest is nudged to sign in rather than create another account.
+    $email = clean($in['email'] ?? '');
+    $accountExists = false;
+    if ($email !== '') {
+        try { $st = db()->prepare('SELECT 1 FROM guests WHERE email = ? LIMIT 1'); $st->execute([$email]); $accountExists = (bool)$st->fetchColumn(); } catch (\Throwable $e) {}
+    }
+    // Acknowledge the enquiry by email (best-effort — never block the enquiry on mail).
+    try {
+        require_once __DIR__ . '/mailer.php';
+        if ($email !== '' && function_exists('send_enquiry_ack')) {
+            send_enquiry_ack(['name' => $name, 'email' => $email, 'prop_key' => $propKey, 'check_in' => $checkIn, 'check_out' => $checkOut], $accountExists);
+        }
+    } catch (\Throwable $e) {}
+
+    json_out(['ok' => true, 'account_exists' => $accountExists]);
 }
 
 // All remaining actions are admin-only
