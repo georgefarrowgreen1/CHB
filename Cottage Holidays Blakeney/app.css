@@ -1971,9 +1971,13 @@
 
         /* ----- Homepage hero availability search ----- */
         .hero-search { width: 100%; max-width: 540px; margin: 18px auto 14px; display: flex; flex-direction: column; gap: 12px; text-align: left; }
-        .hs-field { width: 100%; background: rgba(255,255,255,0.07); border: 1px solid var(--glass-border); border-radius: 16px; padding: 12px 18px; color: var(--text-light); cursor: pointer; transition: background 0.25s var(--fluid-bezier), border-color 0.25s var(--fluid-bezier); box-sizing: border-box; }
+        .hs-field { width: 100%; background: rgba(255,255,255,0.07); border: 1px solid var(--glass-border); border-radius: 16px; padding: 15px 18px; color: var(--text-light); cursor: pointer; box-shadow: 0 2px 14px rgba(0,0,0,0.05); transition: background 0.25s var(--fluid-bezier), border-color 0.25s var(--fluid-bezier), box-shadow 0.25s var(--fluid-bezier); box-sizing: border-box; }
         button.hs-field { font-family: inherit; text-align: left; }
         .hs-field:hover { background: rgba(255,255,255,0.12); }
+        /* Light mode: give the search fields a crisp white surface so they read as
+           solid, premium inputs rather than faint outlines on the pale panel. */
+        body.light-mode .hs-field { background: #fff; border-color: rgba(20,22,34,0.12); box-shadow: 0 3px 16px rgba(20,22,34,0.07); }
+        body.light-mode .hs-field:hover { background: #fff; border-color: var(--accent-soft); }
         .hs-label { display: block; font-size: 0.66rem; text-transform: uppercase; letter-spacing: 1.3px; color: var(--text-muted); margin-bottom: 3px; }
         .hs-value { font-size: 0.98rem; }
         .hs-guests { cursor: default; }
@@ -2005,12 +2009,15 @@
         .hs-chip { flex: 1 1 auto; padding: 9px 8px; border-radius: 12px; border: 1px solid var(--glass-border); background: rgba(255,255,255,0.05); color: var(--text-muted); font-family: inherit; font-size: 0.78rem; cursor: pointer; transition: background 0.2s var(--fluid-bezier), color 0.2s var(--fluid-bezier), border-color 0.2s var(--fluid-bezier), transform 0.15s var(--fluid-bezier); white-space: nowrap; }
         .hs-chip:hover { background: rgba(255,255,255,0.12); }
         .hs-chip:active { transform: scale(0.96); }
-        .hs-chip.is-on { background: rgba(255,255,255,0.18); color: var(--text-light); border-color: rgba(255,255,255,0.32); }
+        .hs-chip.is-on { background: var(--accent); color: #1b1208; border-color: var(--accent); font-weight: 600; }
         /* Flexible search: mode toggle + per-cottage free-date options */
         .hs-mode-pane { display: flex; flex-direction: column; gap: 12px; }
         .hs-mode { display: flex; gap: 6px; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); border-radius: 14px; padding: 4px; }
         .hs-mode-btn { flex: 1 1 0; padding: 9px 14px; border-radius: 10px; border: none; background: transparent; color: var(--text-muted); font-family: inherit; font-size: 0.84rem; cursor: pointer; white-space: nowrap; transition: background 0.2s var(--fluid-bezier), color 0.2s var(--fluid-bezier); }
-        .hs-mode-btn.is-on { background: rgba(255,255,255,0.18); color: var(--text-light); }
+        .hs-mode-btn.is-on { background: var(--accent); color: #1b1208; font-weight: 600; }
+        /* Premium primary CTA: accent-filled, not a pale outline. */
+        #hs-search-btn { background: var(--accent); color: #1b1208; border-color: transparent; font-weight: 600; letter-spacing: 0.5px; padding: 17px; box-shadow: 0 8px 24px var(--accent-soft); }
+        #hs-search-btn:hover { background: var(--accent); color: #1b1208; filter: brightness(1.05); }
         .flex-opts { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
         .flex-opt { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; text-align: left; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--glass-border); background: rgba(255,255,255,0.05); color: var(--text-light); font-family: inherit; cursor: pointer; transition: background 0.2s var(--fluid-bezier), border-color 0.2s var(--fluid-bezier), transform 0.15s var(--fluid-bezier); }
         .flex-opt:hover { background: rgba(255,255,255,0.14); border-color: rgba(255,255,255,0.3); }
@@ -2077,13 +2084,15 @@
                the width without the cramped, ragged three-across bar. */
             .hero-search {
                 max-width: 100%; margin: 22px 0 4px;
-                display: grid; align-items: start; gap: 16px 22px;
+                display: grid; align-items: stretch; gap: 16px 22px;
                 grid-template-columns: 1fr 1fr;
                 grid-template-areas: "mode mode" "dates guests" "action action" "msg msg";
             }
             .hero-search .hs-mode { grid-area: mode; justify-self: center; min-width: 320px; }
             .hero-search #hs-mode-exact, .hero-search #hs-mode-flex { grid-area: dates; min-width: 0; }
-            .hero-search .hs-guests { grid-area: guests; min-width: 0; }
+            /* Equal-height columns, with the Guests field centred so the two sides stay
+               symmetric even though Dates carries the flexibility chips beneath it. */
+            .hero-search .hs-guests { grid-area: guests; min-width: 0; align-self: stretch; display: flex; flex-direction: column; justify-content: center; }
             .hero-search #hs-search-btn { grid-area: action; margin-top: 4px; }
             .hero-search .hs-msg { grid-area: msg; }
         }
