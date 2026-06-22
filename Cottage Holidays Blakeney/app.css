@@ -1616,6 +1616,8 @@
             .action-dd-toggle { display: inline-block; }
         }
         .toggle-btn.active-mode { background: #4CAF50; color: white; border-color: #4CAF50; box-shadow: 0 4px 15px rgba(76, 175, 80, 0.4); }
+        /* Guest Log In / Create Account tabs use the site's rose-gold accent, not green. */
+        .toggle-btn.guest-tab.active-mode { background: var(--accent); color: #1b1208; border-color: var(--accent); box-shadow: 0 4px 15px var(--accent-soft); }
         
         body.edit-mode [data-edit-text] { outline: 2px dashed rgba(255,255,255,0.4); outline-offset: 4px; cursor: text; }
         body.edit-mode [data-edit-text]:focus { background: rgba(255,255,255,0.1); outline: 2px solid white; }
@@ -2007,7 +2009,7 @@
         /* Flexible search: mode toggle + per-cottage free-date options */
         .hs-mode-pane { display: flex; flex-direction: column; gap: 12px; }
         .hs-mode { display: flex; gap: 6px; background: rgba(255,255,255,0.05); border: 1px solid var(--glass-border); border-radius: 14px; padding: 4px; }
-        .hs-mode-btn { flex: 1 1 0; padding: 9px 8px; border-radius: 10px; border: none; background: transparent; color: var(--text-muted); font-family: inherit; font-size: 0.84rem; cursor: pointer; transition: background 0.2s var(--fluid-bezier), color 0.2s var(--fluid-bezier); }
+        .hs-mode-btn { flex: 1 1 0; padding: 9px 14px; border-radius: 10px; border: none; background: transparent; color: var(--text-muted); font-family: inherit; font-size: 0.84rem; cursor: pointer; white-space: nowrap; transition: background 0.2s var(--fluid-bezier), color 0.2s var(--fluid-bezier); }
         .hs-mode-btn.is-on { background: rgba(255,255,255,0.18); color: var(--text-light); }
         .flex-opts { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
         .flex-opt { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; text-align: left; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--glass-border); background: rgba(255,255,255,0.05); color: var(--text-light); font-family: inherit; cursor: pointer; transition: background 0.2s var(--fluid-bezier), border-color 0.2s var(--fluid-bezier), transform 0.15s var(--fluid-bezier); }
@@ -2069,18 +2071,20 @@
            narrow centred column with empty margins either side. Mobile keeps the
            stacked layout above. ----- */
         @media (min-width: 900px) {
-            .home-availability { max-width: 1040px; }
+            .home-availability { max-width: 920px; }
             .home-availability .hero-content { padding: 40px 48px; }
+            /* Two balanced columns (Dates · Guests) with a full-width CTA below — uses
+               the width without the cramped, ragged three-across bar. */
             .hero-search {
-                max-width: 100%; margin: 20px 0 6px;
-                display: grid; align-items: end; gap: 16px 18px;
-                grid-template-columns: 1.5fr 1fr auto;
-                grid-template-areas: "mode mode mode" "dates guests action" "msg msg msg";
+                max-width: 100%; margin: 22px 0 4px;
+                display: grid; align-items: start; gap: 16px 22px;
+                grid-template-columns: 1fr 1fr;
+                grid-template-areas: "mode mode" "dates guests" "action action" "msg msg";
             }
-            .hero-search .hs-mode { grid-area: mode; justify-self: center; }
+            .hero-search .hs-mode { grid-area: mode; justify-self: center; min-width: 320px; }
             .hero-search #hs-mode-exact, .hero-search #hs-mode-flex { grid-area: dates; min-width: 0; }
-            .hero-search .hs-guests { grid-area: guests; align-self: end; }
-            .hero-search #hs-search-btn { grid-area: action; width: auto !important; align-self: end; padding: 17px 36px; white-space: nowrap; }
+            .hero-search .hs-guests { grid-area: guests; min-width: 0; }
+            .hero-search #hs-search-btn { grid-area: action; margin-top: 4px; }
             .hero-search .hs-msg { grid-area: msg; }
         }
         .hs-unavail { opacity: 0.7; }
@@ -2194,12 +2198,13 @@ body:not(.guest-app):not(.owner-mode) #guest-security-modal {
     overflow-y: auto;
     padding: clamp(48px, 8vh, 96px) clamp(16px, 5vw, 32px) clamp(32px, 6vh, 64px);
 }
+/* On desktop these guest dialogs are centred glass cards (the .glass-panel styling
+   gives the frosted background, border and shadow) — just constrain the width so
+   the form reads as a focused card, not bare content floating on the page. */
 body:not(.guest-app):not(.owner-mode) #guest-auth-modal .modal-box,
 body:not(.guest-app):not(.owner-mode) #guest-details-modal .modal-box,
 body:not(.guest-app):not(.owner-mode) #guest-security-modal .modal-box {
-    width: 100%; max-width: 460px; max-height: none; min-height: 0; flex: 0 0 auto;
-    margin: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none;
-    padding: 0;
+    max-width: 420px;
 }
 
         /* ============================================================
