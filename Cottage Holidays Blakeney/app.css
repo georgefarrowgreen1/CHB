@@ -830,6 +830,15 @@
         .pay-msg.show { display: block; }
         .pay-done, .pay-error { text-align: center; padding: 16px 0; }
         .pay-done-tick .ic { width: 64px; height: 64px; color: #4CAF50; }
+        /* Desktop: make use of the wider screen — order summary beside the card form
+           (the narrow single column is kept on phones, where it reads as a clean
+           checkout). pay-head stays full-width above; pay-done/pay-error replace the
+           body and stay centred. */
+        @media (min-width: 760px) {
+            #view-pay .pay-wrap { max-width: 700px; }
+            #view-pay #pay-body { display: grid; grid-template-columns: 0.9fr 1.1fr; gap: 28px; align-items: start; }
+            #view-pay .pay-summary .pay-amount-box { margin-bottom: 0; }
+        }
         /* Enquiry CTAs are for customers; hide them while the owner is signed in. */
         body.owner-mode .prop-book-bar { display: none !important; }
         body.owner-mode #reserve-enquire-btn { display: none; }
