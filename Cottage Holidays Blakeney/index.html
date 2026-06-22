@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=49">
+    <link rel="stylesheet" href="app.css?v=50">
     <!-- Speed up the font fetch (and the jsPDF CDN) by opening the connections early. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -782,19 +782,25 @@
                     <div class="sk-line" style="width:40%;"></div>
                     <div class="sk-line" style="width:100%;height:46px;border-radius:12px;margin-top:14px;"></div>
                 </div>
+                <!-- On desktop these two blocks sit side-by-side (summary | card form);
+                     on mobile they stack in this order (amount, then the form). -->
                 <div id="pay-body" style="display:none;">
-                    <div class="pay-amount-box">
-                        <div class="pay-amount-label" id="pay-kind-label">Deposit due</div>
-                        <div class="pay-amount" id="pay-amount">£0.00</div>
-                        <div class="pay-amount-sub" id="pay-amount-sub"></div>
+                    <div class="pay-summary">
+                        <div class="pay-amount-box">
+                            <div class="pay-amount-label" id="pay-kind-label">Deposit due</div>
+                            <div class="pay-amount" id="pay-amount">£0.00</div>
+                            <div class="pay-amount-sub" id="pay-amount-sub"></div>
+                        </div>
+                        <div class="enq-cancel-note" style="margin-top:16px;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="10" width="18" height="11" rx="2"/><path d="M7 10V7a5 5 0 0 1 10 0v3"/></svg> <span>Secured by Square. We never see or store your card number.</span></div>
                     </div>
-                    <div id="sq-wallets" class="sq-wallets"></div>
-                    <div id="sq-or" class="sq-or" style="display:none;">or pay by card</div>
-                    <div class="enq-field-label">Card details</div>
-                    <div id="sq-card" class="sq-card"></div>
-                    <p class="pay-msg" id="pay-msg" role="alert"></p>
-                    <button type="button" class="btn-glass" id="pay-btn" style="width:100%;padding:16px;margin-top:14px;" onclick="submitPayment()">Pay now</button>
-                    <div class="enq-cancel-note" style="margin-top:16px;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="10" width="18" height="11" rx="2"/><path d="M7 10V7a5 5 0 0 1 10 0v3"/></svg> <span>Secured by Square. We never see or store your card number.</span></div>
+                    <div class="pay-form">
+                        <div id="sq-wallets" class="sq-wallets"></div>
+                        <div id="sq-or" class="sq-or" style="display:none;">or pay by card</div>
+                        <div class="enq-field-label">Card details</div>
+                        <div id="sq-card" class="sq-card"></div>
+                        <p class="pay-msg" id="pay-msg" role="alert"></p>
+                        <button type="button" class="btn-glass" id="pay-btn" style="width:100%;padding:16px;margin-top:14px;" onclick="submitPayment()">Pay now</button>
+                    </div>
                 </div>
                 <div id="pay-done" class="pay-done" style="display:none;">
                     <div class="pay-done-tick"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9"/></svg></div>
@@ -1907,7 +1913,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=69"></script>
+    <script src="app.js?v=70"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
