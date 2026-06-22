@@ -4918,7 +4918,7 @@
             '21a': {
                 title: '21A Westgate Street',
                 desc: 'A premium townhouse experience seamlessly integrating heritage structure with liquid-smooth modern functionality. Designed for extensive family gatherings and grand coastal entertaining.',
-                amenities: ['Fluid Open Architecture', 'Smeg Chef Kitchen', 'Private Walled Garden', 'Dog Friendly Sanctuary'],
+                amenities: ['Fluid Open Architecture', 'Smeg Chef Kitchen', 'Private Walled Garden', 'Heritage Coastal Setting'],
                 images: [
                     '21a-1.jpg',
                     '21a-2.jpg',
@@ -8568,8 +8568,12 @@
                 graph.forEach(n => { if (isCottageNode(n)) existing[n['@id']] = n; });
                 const keys = liveCottageKeys();
                 if (!keys.length) return;
-                // Point the venue's containsPlace at the live cottages.
-                graph.forEach(n => { if (n && Array.isArray(n.containsPlace)) n.containsPlace = keys.map(k => ({ '@id': origin + '/#cottage-' + k })); });
+                // Point the venue's containsPlace at the live cottages, and keep the
+                // advertised room count in step with how many cottages are actually live.
+                graph.forEach(n => {
+                    if (n && Array.isArray(n.containsPlace)) n.containsPlace = keys.map(k => ({ '@id': origin + '/#cottage-' + k }));
+                    if (n && n.numberOfRooms != null) n.numberOfRooms = keys.length;
+                });
                 // Replace the per-cottage Accommodation nodes.
                 const base = graph.filter(n => !isCottageNode(n));
                 keys.forEach(k => {
@@ -8587,6 +8591,7 @@
                         'url': origin + '/cottages/' + (COTTAGE_SLUGS[k] || k),
                         'occupancy': { '@type': 'QuantitativeValue', 'maxValue': lim.maxTotal || lim.maxAdults || 2 }
                     });
+                    delete node.petsAllowed;   // we don't allow dogs — never advertise pet-friendly
                     base.push(node);
                 });
                 data['@graph'] = base;
@@ -11143,7 +11148,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'm5p2w8jc';
+            const BUILD = 'k8q3r7vn';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
