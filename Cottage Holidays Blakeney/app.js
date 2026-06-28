@@ -8655,12 +8655,21 @@
         }
 
         // ===== Homepage hero availability search =====
+        // Guest stepper for the cross-cottage search. Capped to the portfolio limit:
+        // at most 3 guests total and at most 1 child, and a child only alongside ≤2
+        // adults — so the two largest parties are "2 adults + 1 child" or "3 adults".
+        // Increments that would break the rule are simply blocked (nothing is dropped).
         function hsAdjust(field, delta) {
-            const min = field === 'adults' ? 1 : 0;
-            const max = field === 'adults' ? 6 : 4;
-            heroSearch[field] = Math.max(min, Math.min(max, heroSearch[field] + delta));
-            const el = document.getElementById('hs-' + field);
-            if (el) el.innerText = heroSearch[field];
+            const MAX_TOTAL = 3, MAX_CHILDREN = 1;
+            if (field === 'adults') {
+                const cap = Math.min(3, MAX_TOTAL - heroSearch.children);
+                heroSearch.adults = Math.max(1, Math.min(cap, heroSearch.adults + delta));
+            } else {
+                const cap = Math.min(MAX_CHILDREN, MAX_TOTAL - heroSearch.adults);
+                heroSearch.children = Math.max(0, Math.min(cap, heroSearch.children + delta));
+            }
+            const a = document.getElementById('hs-adults'); if (a) a.innerText = heroSearch.adults;
+            const c = document.getElementById('hs-children'); if (c) c.innerText = heroSearch.children;
         }
         // Remember the visitor's last search so it survives a reload / return visit.
         function hsPersist() {
@@ -8678,8 +8687,10 @@
             if (!s) return;
             const today = formatDashed(dpToday0());
             if (s.checkin && s.checkin >= today) { heroSearch.checkin = s.checkin; heroSearch.checkout = s.checkout || null; }
-            if (typeof s.adults === 'number') heroSearch.adults = Math.max(1, Math.min(6, s.adults));
-            if (typeof s.children === 'number') heroSearch.children = Math.max(0, Math.min(4, s.children));
+            if (typeof s.adults === 'number') heroSearch.adults = Math.max(1, Math.min(3, s.adults));
+            if (typeof s.children === 'number') heroSearch.children = Math.max(0, Math.min(1, s.children));
+            // Keep the restored party within the 3-guest total (drop the child if needed).
+            if (heroSearch.adults + heroSearch.children > 3) heroSearch.children = Math.max(0, 3 - heroSearch.adults);
             if (s.cottage) heroSearch.cottage = s.cottage;
             if (typeof s.flex === 'number') heroSearch.flex = s.flex;
             if (typeof s.nights === 'number') heroSearch.nights = Math.max(1, Math.min(14, s.nights));
@@ -9942,10 +9953,18 @@
             const input = document.getElementById('enq-' + field);
             if (!input) return;
             const lim = occupancyLimits[activeFrontProperty] || {};
-            const min = field === 'adults' ? 1 : 0;
-            const max = field === 'adults' ? (lim.maxAdults != null ? lim.maxAdults : 99) : (lim.maxChildren != null ? lim.maxChildren : 99);
+            const maxTotal = lim.maxTotal != null ? lim.maxTotal : 99;
+            const adults = Math.max(0, parseInt((document.getElementById('enq-adults') || {}).value, 10) || 0);
+            const children = Math.max(0, parseInt((document.getElementById('enq-children') || {}).value, 10) || 0);
             let v = (parseInt(input.value, 10) || 0) + delta;
-            v = Math.max(min, Math.min(max, v));
+            if (field === 'adults') {
+                // Cap by this cottage's adult limit AND the total (leaving room for any children).
+                const cap = Math.min(lim.maxAdults != null ? lim.maxAdults : 99, maxTotal - children);
+                v = Math.max(1, Math.min(cap, v));
+            } else {
+                const cap = Math.min(lim.maxChildren != null ? lim.maxChildren : 99, maxTotal - adults);
+                v = Math.max(0, Math.min(cap, v));
+            }
             input.value = v;
             const cnt = document.getElementById('enq-' + field + '-count'); if (cnt) cnt.textContent = v;
             try { onOccupancyInput(); } catch (e) {}
@@ -9962,6 +9981,12 @@
                 // Clamp current values down if they exceed the new property's limits
                 if (aEl && parseInt(aEl.value, 10) > lim.maxAdults) aEl.value = lim.maxAdults;
                 if (cEl && parseInt(cEl.value, 10) > lim.maxChildren) cEl.value = lim.maxChildren;
+                // …and keep the party within the total (trim children first, then adults).
+                if (lim.maxTotal != null && aEl && cEl) {
+                    let a = parseInt(aEl.value, 10) || 0, c = parseInt(cEl.value, 10) || 0;
+                    if (a + c > lim.maxTotal) { c = Math.max(0, lim.maxTotal - a); cEl.value = c; }
+                    if (a + c > lim.maxTotal) { aEl.value = Math.max(1, lim.maxTotal - c); }
+                }
             }
             // Hide the Children field entirely when this cottage allows no children.
             const cField = document.getElementById('enq-children-field');
@@ -10787,7 +10812,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'x4j7v2bq';
+            const BUILD = 'n6r2k9wp';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
