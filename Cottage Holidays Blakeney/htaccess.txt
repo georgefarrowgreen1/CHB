@@ -51,14 +51,17 @@ RewriteRule (?i)^(.+\.(jpe?g|png))$ $1.webp [T=image/webp,L]
 </IfModule>
 
 # ---- Clean per-cottage URLs (SEO) ----
-# Pretty links like /cottages/jollyboat are served by the single-page app
-# (index.html), which reads the path on load and opens that cottage. Only rewrite
-# when the request isn't a real file or folder, and only under /cottages/, so PHP
-# endpoints and static assets are never affected. The app uses <base href="/"> so
-# its relative assets/API calls still resolve to the site root from these URLs.
+# Pretty links like /cottages/jollyboat are served by cottage.php, which returns
+# the single-page app shell (index.html) with that cottage's title, description
+# and social-preview tags injected server-side so crawlers see real content —
+# the app then reads the path on load and renders that cottage as normal. On any
+# problem cottage.php serves index.html untouched. Only rewrite when the request
+# isn't a real file or folder, and only under /cottages/, so PHP endpoints and
+# static assets are never affected. The app uses <base href="/"> so its relative
+# assets/API calls still resolve to the site root from these URLs.
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
-RewriteRule ^cottages(/.*)?$ index.html [L]
+RewriteRule ^cottages(/.*)?$ cottage.php [L]
 
 # ---- Never run scripts out of the uploads/ folder ----
 # Only images are ever stored in uploads/. Even though upload.php validates file
