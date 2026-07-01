@@ -52,6 +52,11 @@ function throttle_record($identifier, $ok) {
 $in     = body();
 $action = $in['action'] ?? '';
 
+// When a login is attempted for an account that doesn't exist, verify against this
+// dummy hash anyway — so the response takes the same time either way and timing
+// can't be used to probe which usernames/emails are registered.
+const AUTH_DUMMY_HASH = '$2y$12$gemBw4PxmOQPgTk4uUpBPuJz/NsKCsE1dO8f8csjOOGJAwJSbCn3W';
+
 switch ($action) {
 
     // ---------------- ADMIN ----------------
@@ -62,7 +67,7 @@ switch ($action) {
         $stmt = db()->prepare('SELECT id, password_hash FROM admins WHERE username = ?');
         $stmt->execute([$username]);
         $row = $stmt->fetch();
-        if (!$row || !password_verify($password, $row['password_hash'])) {
+        if (!password_verify($password, $row['password_hash'] ?? AUTH_DUMMY_HASH) || !$row) {
             throttle_record('admin:' . strtolower($username), false);
             json_out(['error' => 'Incorrect username or password'], 401);
         }
@@ -134,7 +139,7 @@ switch ($action) {
         $stmt = db()->prepare('SELECT id, name, email, phone, address, postcode, password_hash FROM guests WHERE email = ?');
         $stmt->execute([$email]);
         $row = $stmt->fetch();
-        if (!$row || !password_verify($pw, $row['password_hash'])) {
+        if (!password_verify($pw, $row['password_hash'] ?? AUTH_DUMMY_HASH) || !$row) {
             throttle_record('guest:' . $email, false);
             json_out(['error' => 'Email or password not recognised'], 401);
         }
