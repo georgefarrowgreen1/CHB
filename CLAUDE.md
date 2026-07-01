@@ -75,10 +75,15 @@ offline / pre-migration. SEO is dynamic end-to-end: `sitemap.php` (rewritten fro
 the live cottage list, and **`cottage.php`** serves `/cottages/<slug>` (rewrite in
 `htaccess.txt`) — it returns index.html with that cottage's title/meta/og/h1/description
 injected server-side for crawlers (keys `<prop_key>-title/-subtitle/-desc` from the content
-table, falling back to the properties row). cottage.php regex-targets exact markup anchors
-in index.html — smoke-test §6g guards them; if you move that markup, update cottage.php too.
-It's deliberately standalone (own PDO, not db.php — `db()` exits with JSON on failure, which
-would corrupt this HTML route); on ANY error it serves index.html untouched.
+table, falling back to the properties row; og:image = the cottage's first gallery photo;
+unknown slugs return a real 404). **`home.php`** serves `/` the same way, swapping the live
+uploaded hero (content key `hero-bg`) into the LCP preload, og:/twitter:/JSON-LD images and
+the hero element — the static `hero.jpg` does NOT exist on the live host (it 404s), so never
+"fix" references back to it; the auth modals' brand panel gets it via `--hero-img` (set in
+`applyContentOverrides`). Both PHP routes regex-target exact markup anchors in index.html —
+smoke-test §6g/§6h guard them; if you move that markup, update cottage.php/home.php too.
+They're deliberately standalone (own PDO, not db.php — `db()` exits with JSON on failure,
+which would corrupt these HTML routes); on ANY error they serve index.html untouched.
 
 **Data / migrations** — MySQL. Schema in `schema.sql`; changes ship as
 `migration-*.sql` applied by `migrate.php` (admin visit or `?cron=APP_SECRET`, or

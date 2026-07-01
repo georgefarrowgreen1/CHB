@@ -1420,6 +1420,12 @@
             .prop-book-bar, .chat-widget { backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
         }
         .guest-booking { padding: 0; margin-bottom: 25px; overflow: hidden; border-radius: var(--r-lg); }
+        /* Desktop: two-up bookings when there's more than one (a lone card stays
+           full width via auto-fit); the grid gap replaces the card margin. */
+        @media (min-width: 1200px) {
+            #guest-bookings-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(560px, 1fr)); gap: 24px; align-items: start; }
+            #guest-bookings-list .guest-booking { margin-bottom: 0; }
+        }
         .guest-booking-head { display: flex; gap: 22px; align-items: stretch; flex-wrap: wrap; }
         .guest-booking-img { width: 220px; min-height: 180px; background-size: cover; background-position: center; flex-shrink: 0; }
         .guest-booking-body { flex: 1; min-width: 280px; padding: 26px 30px; }
@@ -2200,7 +2206,7 @@ body:not(.guest-app):not(.owner-mode) .modal-box.auth-split {
         display: flex; flex-direction: column; justify-content: center; gap: 22px;
         flex: 0 0 40%; min-width: 0; padding: 44px 38px; color: #fff;
         background: linear-gradient(155deg, rgba(22,17,12,0.30), rgba(22,17,12,0.82)), var(--dark-grey);
-        background-image: linear-gradient(155deg, rgba(22,17,12,0.30), rgba(22,17,12,0.82)), url('hero.jpg');
+        background-image: linear-gradient(155deg, rgba(22,17,12,0.30), rgba(22,17,12,0.82)), var(--hero-img, url('hero.jpg'));
         background-size: cover; background-position: center;
     }
     .auth-split .auth-brand-logo { width: 52px; height: 52px; filter: drop-shadow(0 2px 8px rgba(0,0,0,0.4)); }
