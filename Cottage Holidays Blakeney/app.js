@@ -4296,6 +4296,12 @@
                 const v = siteContent[el.getAttribute('data-edit-img')];
                 if (typeof v === 'string' && v) el.style.backgroundImage = `url('${v}')`;
             });
+            // Expose the live hero to CSS (the auth modals' coastal brand panel uses
+            // var(--hero-img)) — the static hero.jpg doesn't exist on the live host.
+            try {
+                const h = siteContent['hero-bg'];
+                if (typeof h === 'string' && h) document.documentElement.style.setProperty('--hero-img', `url('${h.replace(/['"\\)]/g, '')}')`);
+            } catch (e) {}
         }
 
         // ---- Live background refresh ----
@@ -10814,7 +10820,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'c7f2q8mv';
+            const BUILD = 'g4x8b2kd';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;

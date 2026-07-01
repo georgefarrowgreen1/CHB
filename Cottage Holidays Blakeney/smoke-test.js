@@ -233,6 +233,21 @@ check('viewport-fit=cover present', /viewport-fit=cover/.test(html));
     check('cottage.php SEO injection anchors all present in index.html' + (lost.length ? ' (' + lost.length + ' missing)' : ''), lost.length === 0);
 }
 
+// 6h. home.php injects the LIVE hero into these exact anchors (the static
+// hero.jpg doesn't exist on the live host). Same deal as 6g: if a redesign
+// moves one, update home.php alongside it.
+{
+    const anchors = [
+        /<link rel="preload" as="image" href="hero\.jpg" fetchpriority="high">/,
+        /https:\/\/cottageholidaysblakeney\.co\.uk\/hero\.jpg/,
+        /data-edit-img="hero-bg" style="background-image: url\('hero\.jpg'\);"/,
+        /<meta property="og:image" content="[^"]*"/,
+        /<meta name="twitter:image" content="[^"]*"/,
+    ];
+    const lost = anchors.filter(re => !re.test(html));
+    check('home.php hero injection anchors all present in index.html' + (lost.length ? ' (' + lost.length + ' missing)' : ''), lost.length === 0);
+}
+
 console.log('\n== Summary ==');
 if (failures === 0) { console.log('  ALL CHECKS PASSED ✅\n'); process.exit(0); }
 console.log('  ' + failures + ' CHECK(S) FAILED ❌\n'); process.exit(1);

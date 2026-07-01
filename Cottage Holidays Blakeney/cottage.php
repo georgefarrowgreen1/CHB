@@ -44,6 +44,11 @@ try {
         $st->execute([$slug, $slug]);
         $p = $st->fetch();
 
+        // The lookup ran fine and no live cottage matches: a real 404 (not a "soft
+        // 404" 200), so search engines drop stale/typo'd URLs. Humans still get the
+        // full app shell below and can navigate on.
+        if (!$p) http_response_code(404);
+
         if ($p) {
             // Owner-edited copy lives in the content table under the same keys the
             // front end reads (<prop_key>-title/-subtitle/-desc), JSON-encoded —
@@ -75,6 +80,19 @@ try {
             $canon  = $origin . '/cottages/' . rawurlencode($p['slug'] ?: $key);
             $title  = $name . ' — Holiday Cottage in Blakeney, Norfolk | Cottage Holidays Blakeney';
 
+            // Social preview image: this cottage's first gallery photo (content key
+            // images-<key> is a JSON array of upload paths), falling back to the
+            // live hero — never the static hero.jpg, which 404s on the live host.
+            $ogImg = '';
+            try {
+                $gi = $pdo->prepare('SELECT item_value FROM content WHERE item_key = ?');
+                $gi->execute(['images-' . $key]);
+                $gv = $gi->fetchColumn();
+                if ($gv !== false) { $arr = json_decode((string)$gv, true); if (is_array($arr) && !empty($arr[0]) && is_string($arr[0])) $ogImg = trim($arr[0]); }
+                if ($ogImg === '') { $hv = $cv('hero-bg'); if ($hv !== '') $ogImg = $hv; }
+            } catch (\Throwable $e) {}
+            $safeImg = ($ogImg !== '' && preg_match('#^[a-z0-9/_.\-]+\.(jpe?g|png|webp)$#i', $ogImg)) ? ($origin . '/' . ltrim($ogImg, '/')) : '';
+
             // Replace the first match of $pattern with group1 + escaped text + group2.
             // preg_replace_callback so '$' or '\' in owner copy can never be misread
             // as a backreference; a pattern that no longer matches (markup moved) is
@@ -93,6 +111,12 @@ try {
             $inject('#(<meta property="og:url" content=")[^"]*(")#', $canon);
             $inject('#(<meta name="twitter:title" content=")[^"]*(")#', $name . ' | Cottage Holidays Blakeney');
             $inject('#(<meta name="twitter:description" content=")[^"]*(")#', $metaDesc);
+            if ($safeImg !== '') {
+                $inject('#(<meta property="og:image" content=")[^"]*(")#', $safeImg);
+                $inject('#(<meta name="twitter:image" content=")[^"]*(")#', $safeImg);
+                $inject('#(<meta property="og:image:alt" content=")[^"]*(")#', 'Photo of ' . $name);
+                $inject('#(<meta name="twitter:image:alt" content=")[^"]*(")#', 'Photo of ' . $name);
+            }
 
             // Body: the crawlable page content itself (app.js re-renders these on boot).
             $inject('#(<h1 class="section-title prop-h1" id="prop-title">)(</h1>)#', $name);
