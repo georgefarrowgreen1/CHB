@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=57">
+    <link rel="stylesheet" href="app.css?v=58">
     <!-- Speed up the font fetch (and the jsPDF CDN) by opening the connections early. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -704,7 +704,7 @@
                     </div>
                     <div class="enq-cancel-note"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg> <span>No payment now — we'll confirm your dates &amp; price by email.</span></div>
                     <p class="enq-modal-msg" id="enq-msg-review" role="alert"></p>
-                    <button type="button" class="btn-glass" style="width:100%;padding:16px;margin-top:18px;" onclick="enquireContinue()">Continue</button>
+                    <button type="button" class="btn-glass btn-accent" style="width:100%;padding:16px;margin-top:18px;" onclick="enquireContinue()">Continue</button>
                 </div>
 
                 <!-- STEP 2: YOUR DETAILS -->
@@ -715,12 +715,18 @@
                     <input type="text" class="input-glass" id="enq-name" placeholder="Full name">
                     <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-email">Email</label>
                     <input type="email" class="input-glass" id="enq-email" placeholder="you@email.com">
-                    <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-phone">Phone</label>
-                    <input type="tel" class="input-glass" id="enq-phone" placeholder="Contact number">
+                    <div class="reg-row">
+                        <div>
+                            <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-phone">Phone</label>
+                            <input type="tel" class="input-glass" id="enq-phone" placeholder="Contact number">
+                        </div>
+                        <div>
+                            <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-postcode">Postcode</label>
+                            <input type="text" class="input-glass" id="enq-postcode" placeholder="e.g. NR25 7AB" autocomplete="postal-code">
+                        </div>
+                    </div>
                     <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-address">UK Address</label>
-                    <textarea class="input-glass" id="enq-address" rows="2" placeholder="House name/number, street, town, county" style="resize: vertical;"></textarea>
-                    <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-postcode">Postcode</label>
-                    <input type="text" class="input-glass" id="enq-postcode" placeholder="e.g. NR25 7AB" autocomplete="postal-code" style="margin-bottom: 6px;">
+                    <textarea class="input-glass" id="enq-address" rows="2" placeholder="House name/number, street, town, county" style="resize: vertical; margin-bottom: 6px;"></textarea>
                     <p style="font-size: 0.72rem; color: var(--text-muted); margin: 0 0 18px;">Used only to manage your booking and contact you. See our <a onclick="nav('view-privacy')" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy Policy</a>.</p>
                     <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-message">Message (optional)</label>
                     <textarea class="input-glass" id="enq-message" rows="2" placeholder="Any special requests?" style="resize: vertical;"></textarea>
@@ -729,7 +735,7 @@
                         <span>I have read and accept the <a onclick="openTermsModal(event)">Booking Terms &amp; Conditions</a>.</span>
                     </label>
                     <p class="enq-modal-msg" id="enq-msg-details" role="alert"></p>
-                    <button class="btn-glass" style="width: 100%; padding: 18px;" id="enq-submit-btn">Send enquiry</button>
+                    <button class="btn-glass btn-accent" style="width: 100%; padding: 18px;" id="enq-submit-btn">Send enquiry</button>
                     <a class="btn-glass" id="enq-call-btn" style="width: 100%; padding: 16px; margin-top: 12px; text-align: center; display: block; box-sizing: border-box; text-decoration: none;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.6 3.5l2.1.4 1 3-1.5 1.4a12 12 0 0 0 5 5l1.4-1.5 3 1 .4 2.1a2 2 0 0 1-2 2.3A15.5 15.5 0 0 1 4.3 5.5a2 2 0 0 1 2.3-2z"/></svg> Call to Discuss</a>
                 </div>
 
@@ -745,13 +751,13 @@
                         <label class="modal-label" for="enq-acct-password">Choose a password</label>
                         <input type="password" class="input-glass" id="enq-acct-password" autocomplete="new-password" placeholder="Create a password">
                         <p class="enq-modal-msg" id="enq-acct-msg" role="alert"></p>
-                        <button class="btn-glass" id="enq-acct-btn" style="width:100%;padding:16px;" onclick="enquireCreateAccount()">Create account</button>
+                        <button class="btn-glass btn-accent" id="enq-acct-btn" style="width:100%;padding:16px;" onclick="enquireCreateAccount()">Create account</button>
                     </div>
                     <!-- Returning guest (email already has an account): sign in instead -->
                     <div id="enq-acct-existing" style="display:none;">
                         <h2 class="section-title" style="font-size:1.5rem;margin:18px 0 6px;text-align:left;">Welcome back</h2>
                         <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 16px;">You already have an account with this email — sign in to track this enquiry and manage your bookings.</p>
-                        <button class="btn-glass" style="width:100%;padding:16px;" onclick="enquireSignInInstead()">Sign in</button>
+                        <button class="btn-glass btn-accent" style="width:100%;padding:16px;" onclick="enquireSignInInstead()">Sign in</button>
                     </div>
                     <div style="text-align:center;margin-top:14px;">
                         <a onclick="enquireSkipAccount()" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);font-size:0.82rem;">No thanks, maybe later</a>
@@ -1914,7 +1920,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=80"></script>
+    <script src="app.js?v=81"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
