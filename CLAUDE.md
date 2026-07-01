@@ -68,8 +68,15 @@ occupancy). All payment/booking logic works for any cottage with a row. On the f
 and `renderCottageCards()` rebuilds `#cottages` from the live list; `db.php` `occupancy_limits()`
 + `prop_display()` and the email files (`mailer.php`/`owner-digest.php`/`enquiry-nudge.php`)
 read the rows too. The hardcoded JS maps + PHP fallbacks now only cover the original three
-offline / pre-migration. Known minor gaps: `index.html` JSON-LD and `sitemap.xml` still list
-only the original three (added cottages stay crawlable via their `/cottages/<slug>` links).
+offline / pre-migration. SEO is dynamic end-to-end: `sitemap.php` (rewritten from
+`/sitemap.xml`) and the JSON-LD (`injectStructuredData()` after `loadRates()`) both follow
+the live cottage list, and **`cottage.php`** serves `/cottages/<slug>` (rewrite in
+`htaccess.txt`) — it returns index.html with that cottage's title/meta/og/h1/description
+injected server-side for crawlers (keys `<prop_key>-title/-subtitle/-desc` from the content
+table, falling back to the properties row). cottage.php regex-targets exact markup anchors
+in index.html — smoke-test §6g guards them; if you move that markup, update cottage.php too.
+It's deliberately standalone (own PDO, not db.php — `db()` exits with JSON on failure, which
+would corrupt this HTML route); on ANY error it serves index.html untouched.
 
 **Data / migrations** — MySQL. Schema in `schema.sql`; changes ship as
 `migration-*.sql` applied by `migrate.php` (admin visit or `?cron=APP_SECRET`, or
