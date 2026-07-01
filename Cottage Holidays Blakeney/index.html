@@ -300,7 +300,7 @@
             <div class="grid grid-3" id="home-cottages-grid" style="margin-top: 18px;">
               <a class="card glass-panel" data-prop="21a" href="/cottages/21a-westgate" onclick="return cottageLink(event,'21a')">
                 <div class="card-img-wrap">
-                    <div class="card-img" data-edit-img="card1-img" style="background-image: url('card-21a.jpg');"></div>
+                    <div class="card-img" data-edit-img="card1-img" role="img" aria-label="Photo of 21A Westgate" style="background-image: url('card-21a.jpg');"></div>
                 </div>
                 <div class="cott-head">
                     <div class="card-title" data-edit-text="card1-title">21A Westgate</div>
@@ -309,7 +309,7 @@
               </a>
               <a class="card glass-panel" data-prop="jollyboat" href="/cottages/jollyboat" onclick="return cottageLink(event,'jollyboat')">
                 <div class="card-img-wrap">
-                    <div class="card-img" data-edit-img="card2-img" style="background-image: url('card-jollyboat.jpg');"></div>
+                    <div class="card-img" data-edit-img="card2-img" role="img" aria-label="Photo of Jollyboat" style="background-image: url('card-jollyboat.jpg');"></div>
                 </div>
                 <div class="cott-head">
                     <div class="card-title" data-edit-text="card2-title">Jollyboat</div>
@@ -318,7 +318,7 @@
               </a>
               <a class="card glass-panel" data-prop="pimpernel" href="/cottages/pimpernel" onclick="return cottageLink(event,'pimpernel')">
                 <div class="card-img-wrap">
-                    <div class="card-img" data-edit-img="card3-img" style="background-image: url('card-pimpernel.jpg');"></div>
+                    <div class="card-img" data-edit-img="card3-img" role="img" aria-label="Photo of Pimpernel" style="background-image: url('card-pimpernel.jpg');"></div>
                 </div>
                 <div class="cott-head">
                     <div class="card-title" data-edit-text="card3-title">Pimpernel</div>
@@ -420,7 +420,7 @@
             <div class="grid grid-3" id="cottages" style="margin-top: 18px;">
               <a class="card glass-panel" data-prop="21a" href="/cottages/21a-westgate" onclick="return cottageLink(event,'21a')">
                 <div class="card-img-wrap">
-                    <div class="card-img" data-edit-img="card1-img" style="background-image: url('card-21a.jpg');"></div>
+                    <div class="card-img" data-edit-img="card1-img" role="img" aria-label="Photo of 21A Westgate" style="background-image: url('card-21a.jpg');"></div>
                     <span class="cott-fav" id="cott-fav-21a" hidden></span>
                 </div>
                 <div class="cott-head">
@@ -432,7 +432,7 @@
             </a>
               <a class="card glass-panel" data-prop="jollyboat" href="/cottages/jollyboat" onclick="return cottageLink(event,'jollyboat')">
                 <div class="card-img-wrap">
-                    <div class="card-img" data-edit-img="card2-img" style="background-image: url('card-jollyboat.jpg');"></div>
+                    <div class="card-img" data-edit-img="card2-img" role="img" aria-label="Photo of Jollyboat" style="background-image: url('card-jollyboat.jpg');"></div>
                     <span class="cott-fav" id="cott-fav-jollyboat" hidden></span>
                 </div>
                 <div class="cott-head">
@@ -444,7 +444,7 @@
             </a>
               <a class="card glass-panel" data-prop="pimpernel" href="/cottages/pimpernel" onclick="return cottageLink(event,'pimpernel')">
                 <div class="card-img-wrap">
-                    <div class="card-img" data-edit-img="card3-img" style="background-image: url('card-pimpernel.jpg');"></div>
+                    <div class="card-img" data-edit-img="card3-img" role="img" aria-label="Photo of Pimpernel" style="background-image: url('card-pimpernel.jpg');"></div>
                     <span class="cott-fav" id="cott-fav-pimpernel" hidden></span>
                 </div>
                 <div class="cott-head">
@@ -531,7 +531,7 @@
                 <div class="prop-features" id="prop-features"></div>
                 <div class="prop-divider"></div>
                 <!-- What this place offers (above the long description) -->
-                <h3 class="section-title prop-section-h" data-edit-text="amenities-title">What this place offers</h3>
+                <h2 class="section-title prop-section-h" data-edit-text="amenities-title">What this place offers</h2>
                 <div class="amenities" id="prop-amenities">
                     <!-- amenity pills injected per property -->
                 </div>
@@ -557,7 +557,7 @@
                 </div>
                 <div class="prop-divider"></div>
                 <!-- Things to know (per cottage) — above guest reviews -->
-                <h3 class="section-title prop-section-h">Things to know</h3>
+                <h2 class="section-title prop-section-h">Things to know</h2>
                 <div class="things-grid">
                     <div class="things-col">
                         <div class="things-title">House rules</div>
@@ -576,7 +576,7 @@
                 <!-- Accessibility (per cottage) — owner-editable; helps guests book with
                      confidence and adds useful, indexable detail for search. -->
                 <div class="prop-divider"></div>
-                <h3 class="section-title prop-section-h">Accessibility</h3>
+                <h2 class="section-title prop-section-h">Accessibility</h2>
                 <p class="things-note" id="prop-access" style="max-width:760px;white-space:pre-line;"></p>
 
                 <!-- Guest reviews (below Things to know). The leading divider is hidden
@@ -587,20 +587,20 @@
                 <!-- Guest photos (UGC) — shown only when there are approved photos. -->
                 <div class="prop-divider" id="guest-photos-divider" style="display:none;"></div>
                 <div id="guest-photos-section" style="display:none;">
-                    <h3 class="section-title prop-section-h">Guest photos</h3>
+                    <h2 class="section-title prop-section-h">Guest photos</h2>
                     <p class="things-note" style="text-align:center;margin:-6px auto 16px;max-width:560px;">Real moments shared by guests who've stayed here.</p>
                     <div class="guest-photo-grid" id="guest-photo-grid"></div>
                 </div>
 
                 <div class="prop-divider"></div>
                 <!-- Where you'll be (exact pin) -->
-                <h3 class="section-title prop-section-h">Where you'll be</h3>
+                <h2 class="section-title prop-section-h">Where you'll be</h2>
                 <p class="prop-location-text" id="prop-location">Blakeney, North Norfolk</p>
                 <div id="prop-map" class="prop-map"></div>
 
                 <div class="prop-divider"></div>
                 <!-- Meet your host (one shared profile across all cottages) -->
-                <h3 class="section-title prop-section-h">Meet your host</h3>
+                <h2 class="section-title prop-section-h">Meet your host</h2>
                 <div class="host-card glass-panel">
                     <div class="host-top">
                         <div class="host-photo" id="host-photo"></div>
@@ -1899,7 +1899,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=76"></script>
+    <script src="app.js?v=77"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

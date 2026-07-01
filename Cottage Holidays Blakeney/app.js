@@ -893,8 +893,9 @@
             // neighbours (see loadGallerySlides). Off-screen photos download just in
             // time as the visitor navigates, so opening a cottage is much lighter.
             window.__galleryImages = list;
+            const galName = (propertyMeta[activeFrontProperty] && propertyMeta[activeFrontProperty].name) || 'the cottage';
             track.innerHTML = list.map((src, i) =>
-                `<div class="gallery-slide" id="prop-img-${i}" data-bg="${src}" onclick="openLightbox(${i})"></div>`
+                `<div class="gallery-slide" id="prop-img-${i}" data-bg="${escapeHtml(src)}" role="img" aria-label="Photo ${i + 1} of ${list.length} — ${escapeHtml(galName)}" onclick="openLightbox(${i})"></div>`
             ).join('');
             // Clamp index in case photos were removed
             let idx = galleryState['gallery-21a'] || 0;
@@ -919,8 +920,9 @@
             else if (n === 2) { grid.style.gridTemplateColumns = '1fr 1fr'; grid.style.gridTemplateRows = '1fr'; }
             else { grid.style.gridTemplateColumns = '1fr'; grid.style.gridTemplateRows = '1fr'; }
             const big = n >= 3 ? ' gg-big' : '';
+            const ggName = (propertyMeta[activeFrontProperty] && propertyMeta[activeFrontProperty].name) || 'the cottage';
             let html = imgs.map((src, i) =>
-                `<div class="gg-cell${i === 0 ? big : ''}" style="background-image:url('${src}')" onclick="openLightbox(${i})"></div>`
+                `<div class="gg-cell${i === 0 ? big : ''}" style="background-image:url('${escapeHtml(src)}')" role="img" aria-label="Photo ${i + 1} of ${n} — ${escapeHtml(ggName)}" onclick="openLightbox(${i})"></div>`
             ).join('');
             const total = (Array.isArray(list) ? list.filter(Boolean).length : 0);
             if (total > 5) html += `<button type="button" class="gg-showall" onclick="openLightbox(0)">Show all ${total} photos</button>`;
@@ -4792,7 +4794,7 @@
                     const cap = p.caption ? `<div class="gp-cap">${escapeHtml(p.caption)}</div>` : '';
                     const data = encodeURIComponent(p.url) + '|' + encodeURIComponent(p.caption || '');
                     const label = escapeHtml(p.caption || ('Guest photo at ' + ((propertyMeta[propKey] || {}).name || '')));
-                    return `<div class="guest-photo" role="button" tabindex="0" aria-label="${label}" onclick="openPhotoLightbox('${data}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openPhotoLightbox('${data}')}"><img loading="lazy" src="${escapeHtml(p.url)}" alt="${escapeHtml(p.caption || 'Guest photo')}">${cap}</div>`;
+                    return `<div class="guest-photo" role="button" tabindex="0" aria-label="${label}" onclick="openPhotoLightbox('${data}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openPhotoLightbox('${data}')}"><img loading="lazy" src="${escapeHtml(p.url)}" alt="${label}">${cap}</div>`;
                 }).join('');
                 section.style.display = '';
                 if (divider) divider.style.display = '';
@@ -7074,7 +7076,7 @@
                 ...((d.daily || []).map(r => [r.date, r.views])),
             ];
             const csv = rows.map(r => r.map(q).join(',')).join('\r\n');
-            const today = new Date().toISOString().slice(0, 10);
+            const today = todayDashed();   // UK date, consistent with the analytics data itself
             const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -7789,7 +7791,7 @@
                 const pend = p.status === 'pending';
                 const data = encodeURIComponent(p.url) + '|' + encodeURIComponent(p.caption || '');
                 return `<div style="background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:14px;overflow:hidden;">
-                    <div class="guest-photo" style="aspect-ratio:4/3;border:none;border-radius:0;" onclick="openPhotoLightbox('${data}')"><img loading="lazy" src="${escapeHtml(p.url)}" alt="${escapeHtml(p.caption || 'Guest photo')}"></div>
+                    <div class="guest-photo" style="aspect-ratio:4/3;border:none;border-radius:0;" onclick="openPhotoLightbox('${data}')"><img loading="lazy" src="${escapeHtml(p.url)}" alt="${escapeHtml(p.caption || ('Guest photo at ' + (meta.name || p.prop_key)))}"></div>
                     <div style="padding:9px 11px;">
                         <div style="font-size:0.74rem;color:var(--text-muted);"><span class="prop-tag tag-${p.prop_key}">${escapeHtml(meta.short||meta.name)}</span> ${escapeHtml(p.guest_name||'Guest')}${pend ? ' · <span style="color:#FFB74D;">Pending</span>' : ' · <span style="color:#4CAF50;">Live</span>'}</div>
                         ${p.caption ? `<div style="font-size:0.8rem;margin:6px 0 0;">${escapeHtml(p.caption)}</div>` : ''}
@@ -8150,7 +8152,7 @@
                 const meta = sc[ck.meta] || cottageSleepsLabel(k);
                 return `<a class="card glass-panel" data-prop="${k}" href="/cottages/${escapeHtml(slug)}" onclick="return cottageLink(event,'${k}')">
                     <div class="card-img-wrap">
-                        <div class="card-img" data-edit-img="${ck.img}" style="background-image: url('${escapeHtml(img)}');"></div>
+                        <div class="card-img" data-edit-img="${ck.img}" role="img" aria-label="Photo of ${escapeHtml(title)}" style="background-image: url('${escapeHtml(img)}');"></div>
                         <span class="cott-fav" id="cott-fav-${k}" hidden><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21s-7-4.6-9.3-9C1.4 9 2.7 5.5 6 5.5c2 0 3.2 1.2 4 2.5.8-1.3 2-2.5 4-2.5 3.3 0 4.6 3.5 3.3 6.5C19 16.4 12 21 12 21z"/></svg> Guest favourite</span>
                     </div>
                     <div class="cott-head">
@@ -8183,7 +8185,7 @@
                 const meta = sc[ck.meta] || cottageSleepsLabel(k);
                 return `<a class="card glass-panel" data-prop="${k}" href="/cottages/${escapeHtml(slug)}" onclick="return cottageLink(event,'${k}')">
                     <div class="card-img-wrap">
-                        <div class="card-img" data-edit-img="${ck.img}" style="background-image: url('${escapeHtml(img)}');"></div>
+                        <div class="card-img" data-edit-img="${ck.img}" role="img" aria-label="Photo of ${escapeHtml(title)}" style="background-image: url('${escapeHtml(img)}');"></div>
                     </div>
                     <div class="cott-head">
                         <div class="card-title" data-edit-text="${ck.title}">${escapeHtml(title)}</div>
@@ -8903,7 +8905,7 @@
                 </button>`;
             };
             const card = (key, windows) => `<div class="card glass-panel">
-                <div class="card-img" style="background-image:url('${propImg(key)}');"></div>
+                <div class="card-img" role="img" aria-label="Photo of ${escapeHtml(propertyMeta[key].name)}" style="background-image:url('${propImg(key)}');"></div>
                 <div class="card-title">${escapeHtml(propertyMeta[key].name)}</div>
                 ${windows.length
                     ? `<div class="card-meta">${windows.length} free option${windows.length === 1 ? '' : 's'} in ${escapeHtml(monthName)}</div><div class="flex-opts">${windows.map(w => optRow(key, w)).join('')}</div>`
@@ -8973,7 +8975,7 @@
                 const moved = r.offset ? ` <span style="color:var(--text-muted);">· moved ${Math.abs(r.offset)} day${Math.abs(r.offset) === 1 ? '' : 's'}</span>` : '';
                 return `<div class="card glass-panel">
                     ${banner}
-                    <div class="card-img" style="background-image:url('${propImg(key)}');"></div>
+                    <div class="card-img" role="img" aria-label="Photo of ${escapeHtml(propertyMeta[key].name)}" style="background-image:url('${propImg(key)}');"></div>
                     <div class="card-title">${escapeHtml(propertyMeta[key].name)}</div>
                     <div class="card-meta">${dpPretty(r.ci)} → ${dpPretty(r.co)} · ${nights} night${nights === 1 ? '' : 's'}${moved}</div>
                     <div class="card-price">From ${gbp(r.price.total)}</div>
@@ -8984,7 +8986,7 @@
             // error there). Open the cottage with its date picker ready so they pick free dates.
             const unavailCard = (key, reason) => `<div class="card glass-panel hs-unavail">
                     <div class="hs-banner hs-banner-red">${escapeHtml(reason || 'Not available for these dates')}</div>
-                    <div class="card-img" style="background-image:url('${propImg(key)}');"></div>
+                    <div class="card-img" role="img" aria-label="Photo of ${escapeHtml(propertyMeta[key].name)}" style="background-image:url('${propImg(key)}');"></div>
                     <div class="card-title">${escapeHtml(propertyMeta[key].name)}</div>
                     <div class="card-meta">Pick different dates to book this cottage.</div>
                     <button class="btn-glass" style="width:100%;margin-top:10px;" onclick="startBooking('${key}','','')">Choose other dates</button>
@@ -9016,7 +9018,7 @@
                 } else {
                     title.innerText = `${xName} isn't free for those dates`;
                     html += xr ? unavailCard(X, xr.reason)
-                               : `<div class="card glass-panel hs-unavail"><div class="card-img" style="background-image:url('${propImg(X)}');"></div><div class="card-title">${escapeHtml(xName)}</div><div class="card-meta">Too small for ${party} guest${party === 1 ? '' : 's'}</div></div>`;
+                               : `<div class="card glass-panel hs-unavail"><div class="card-img" role="img" aria-label="Photo of ${escapeHtml(xName)}" style="background-image:url('${propImg(X)}');"></div><div class="card-title">${escapeHtml(xName)}</div><div class="card-meta">Too small for ${party} guest${party === 1 ? '' : 's'}</div></div>`;
                     if (others.length) {
                         html += sub(others.length > 1 ? 'But these are free for your dates' : 'But this one is free for your dates');
                         html += others.map(k => card(k, results[k])).join('');
@@ -10812,7 +10814,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'n6r2k9wp';
+            const BUILD = 'f8t3m6xd';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
