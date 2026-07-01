@@ -212,6 +212,27 @@ check('CSS braces balanced (app.css)', braceBal === 0);
 // 6f. Viewport has cover (landscape fix should not regress).
 check('viewport-fit=cover present', /viewport-fit=cover/.test(html));
 
+// 6g. cottage.php (server-rendered /cottages/<slug> SEO) injects into these exact
+// markup anchors. If a redesign moves one, cottage.php silently degrades to the
+// plain shell — this catches that so the anchor (or cottage.php) gets updated.
+{
+    const anchors = [
+        /<title>.*?<\/title>/s,
+        /<meta name="description" content="[^"]*"/,
+        /<link rel="canonical" href="[^"]*"/,
+        /<meta property="og:title" content="[^"]*"/,
+        /<meta property="og:description" content="[^"]*"/,
+        /<meta property="og:url" content="[^"]*"/,
+        /<meta name="twitter:title" content="[^"]*"/,
+        /<meta name="twitter:description" content="[^"]*"/,
+        /<h1 class="section-title prop-h1" id="prop-title"><\/h1>/,
+        /<p class="prop-subtitle" id="prop-subtitle"><\/p>/,
+        /id="prop-desc"><\/p>/,
+    ];
+    const lost = anchors.filter(re => !re.test(html));
+    check('cottage.php SEO injection anchors all present in index.html' + (lost.length ? ' (' + lost.length + ' missing)' : ''), lost.length === 0);
+}
+
 console.log('\n== Summary ==');
 if (failures === 0) { console.log('  ALL CHECKS PASSED ✅\n'); process.exit(0); }
 console.log('  ' + failures + ' CHECK(S) FAILED ❌\n'); process.exit(1);
