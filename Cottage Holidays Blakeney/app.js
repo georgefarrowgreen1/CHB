@@ -1060,6 +1060,7 @@
         async function openSettings(section) {
             if (!isAuthenticated) { tryAccessBackOffice(); return; }
             nav('view-settings');
+            adminHistPush('view-settings');
             // Load admin-only content (arrival-*, geo-*) so the per-cottage editors and
             // the host fields have their data ready when a row is opened.
             try { const r = await apiPost('content.php', { action: 'get_all' }); adminPrivateContent = r.content || {}; }
@@ -1077,10 +1078,42 @@
         // Open the separate staging sandbox (where all testing now happens) in a new tab.
         const STAGING_URL = 'https://staging.cottageholidaysblakeney.co.uk/';
         function openStagingSite() { window.open(STAGING_URL, '_blank', 'noopener'); }
+        // ---- Admin history: make the browser/hardware Back button walk
+        //      drill-down → index → dashboard instead of dumping the owner onto the
+        //      public homepage. Each admin navigation pushes an entry; the popstate
+        //      handler replays it (guarded by __histReplay so replays don't re-push).
+        let __histReplay = false;
+        function adminHistPush(view, section) {
+            if (__histReplay) return;
+            try { history.pushState({ chbAdmin: { view, section: section || null } }, ''); } catch (e) {}
+        }
         let settingsBackTarget = null;
         // The full Settings drill-down path, so the auto-update reload can restore the
         // exact folder/sub-folder the owner was in: { section, prop, accomSec }.
         let __settingsPath = null;
+        // Type-to-find across the Settings index: filters rows by their label +
+        // description, hides emptied groups and their section labels. The staging-only
+        // Test-centre group keeps whatever visibility the IS_STAGING code gave it.
+        function settingsFilter(q) {
+            q = (q || '').trim().toLowerCase();
+            const idx = document.getElementById('settings-index');
+            if (!idx) return;
+            idx.querySelectorAll('.settings-group').forEach(g => {
+                if (g.id === 'testcentre-row') return;   // staging-only; JS controls it
+                let any = false;
+                g.querySelectorAll('.settings-row').forEach(row => {
+                    const hit = !q || row.textContent.toLowerCase().includes(q);
+                    row.style.display = hit ? '' : 'none';
+                    if (hit) any = true;
+                });
+                g.style.display = any ? '' : 'none';
+            });
+            idx.querySelectorAll('.settings-section-label').forEach(l => {
+                let n = l.nextElementSibling;
+                while (n && !n.classList.contains('settings-group')) n = n.nextElementSibling;
+                l.style.display = (n && n.style.display !== 'none') ? '' : 'none';
+            });
+        }
         function settingsShowIndex() {
             __settingsPath = null;
             const idx = document.getElementById('settings-index'); const panel = document.getElementById('settings-panel');
@@ -1089,6 +1122,7 @@
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
         function settingsOpen(section) {
+            adminHistPush('view-settings', section);
             __settingsPath = section ? { section } : null;
             const idx = document.getElementById('settings-index'); const panel = document.getElementById('settings-panel');
             if (!panel) return;
@@ -1693,6 +1727,7 @@
             const sel = document.getElementById('accounts-year');
             sel.innerHTML = years.map(y => `<option value="${y}">${taxYearShort(y)}  (${taxYearLabel(y)})</option>`).join('');
             nav('view-accounts');
+            adminHistPush('view-accounts');
             // Ensure booking data is loaded (the owner may land here without opening the
             // back office first), then render the payments manager + income report.
             try { if (!Object.keys(dbBookings).some(k => (dbBookings[k] || []).length)) await loadData(); } catch (e) {}
@@ -1727,6 +1762,7 @@
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
         function accountsOpen(section) {
+            adminHistPush('view-accounts', section);
             __accountsSection = section || null;
             const idx = document.getElementById('accounts-index'); const panel = document.getElementById('accounts-panel');
             if (!panel) return;
@@ -4118,9 +4154,9 @@
             if (!isAuthenticated) {
                 // First sign-in lands on the friendly owner home, not straight into the calendar.
                 openAdminLogin('Owner Login', 'Sign in to manage your cottages.', async () => {
-                    nav('view-backoffice'); refreshOwnerHomeBadges();
+                    nav('view-backoffice'); adminHistPush('view-backoffice'); refreshOwnerHomeBadges();
                 });
-            } else { nav('view-backoffice'); await initBackOffice(); }
+            } else { nav('view-backoffice'); adminHistPush('view-backoffice'); await initBackOffice(); }
         }
 
         // ---- Styled admin login modal ----
@@ -5801,6 +5837,13 @@
                     <div class="today-card-list">${items.length ? items.slice(0, 4).map(i => `<div>${i}</div>`).join('') + (items.length > 4 ? `<div style="color:var(--text-muted);">+${items.length - 4} more</div>` : '') : '<span style="color:var(--text-muted);">Nothing</span>'}</div>
                 </div>`;
             };
+            // The two things that need a same-day reply lead the panel: pending
+            // enquiries (already loaded by loadData) and unread guest messages
+            // (fetched async below — the card updates in place when it arrives).
+            const enqItems = (enquiries || []).map(e => {
+                const tag = `<span class="prop-tag tag-${e.propKey}">${propertyMeta[e.propKey] ? propertyMeta[e.propKey].short : e.propKey}</span>`;
+                return `${tag} ${escapeHtml((e.name || '').split(' ')[0])} · ${e.checkIn || ''}`;
+            });
             const occ = cottageMonthOccupancy();
             const occBars = osHBars(Object.keys(propertyMeta).map(k => ({
                 label: propertyMeta[k].name, value: occ[k].nights, max: occ[k].total,
@@ -5808,6 +5851,12 @@
             })));
             el.innerHTML = `<h2 style="font-family:var(--font-serif);font-size:1.3rem;font-weight:400;margin:0 0 12px;">Today &amp; this week</h2>
                 <div class="today-grid">
+                ${card('Enquiries to answer', enqItems, enqItems.length ? 'color:#FFA726;' : '', 'enquiries')}
+                <div class="today-card clickable" id="today-msgs-card" role="button" tabindex="0" onclick="dashGo('messages')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();dashGo('messages')}">
+                    <div class="today-card-label">Unread messages</div>
+                    <div class="today-card-value" id="today-msgs-value">–</div>
+                    <div class="today-card-list" id="today-msgs-list"><span style="color:var(--text-muted);">Checking…</span></div>
+                </div>
                 ${card('Arrivals today', arrivals, '', 'calendar')}
                 ${card('Departures today', departures, '', 'calendar')}
                 ${card('Balances due (7 days)', dueSoon, dueSoon.length ? 'color:#FFA726;' : '', 'money')}
@@ -5817,6 +5866,36 @@
                     <div class="occ-bars" style="margin-top:12px;">${occBars}</div>
                 </div>
             </div>`;
+            // A live one-line summary under the Dashboard title.
+            const sub = document.getElementById('bo-subtitle');
+            if (sub) {
+                const t = dpParse(today);
+                const pretty = t.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+                const bits = [];
+                if (arrivals.length) bits.push(`${arrivals.length} arrival${arrivals.length === 1 ? '' : 's'}`);
+                if (departures.length) bits.push(`${departures.length} departure${departures.length === 1 ? '' : 's'}`);
+                if (enqItems.length) bits.push(`${enqItems.length} enquir${enqItems.length === 1 ? 'y' : 'ies'} waiting`);
+                sub.textContent = pretty + ' — ' + (bits.length ? bits.join(', ') + '.' : 'nothing urgent today.');
+            }
+            refreshTodayMessages();
+        }
+        // Fill the "Unread messages" today-card once the thread list arrives
+        // (best-effort; the card just shows 0 if messages can't load).
+        async function refreshTodayMessages() {
+            const val = document.getElementById('today-msgs-value');
+            const list = document.getElementById('today-msgs-list');
+            if (!val || !list) return;
+            let threads = [];
+            try { const r = await apiPost('messages.php', { action: 'threads', archived: 0 }); threads = r.threads || []; }
+            catch (e) { val.textContent = '0'; list.innerHTML = '<span style="color:var(--text-muted);">Nothing</span>'; return; }
+            const unreadThreads = threads.filter(t => (t.unread || 0) > 0);
+            const unread = unreadThreads.reduce((s, t) => s + (t.unread || 0), 0);
+            val.textContent = unread;
+            val.style.color = unread ? '#FFA726' : '';
+            list.innerHTML = unreadThreads.length
+                ? unreadThreads.slice(0, 4).map(t => `<div>${escapeHtml(t.name || t.email || 'Visitor')} · ${t.unread}</div>`).join('')
+                  + (unreadThreads.length > 4 ? `<div style="color:var(--text-muted);">+${unreadThreads.length - 4} more</div>` : '')
+                : '<span style="color:var(--text-muted);">Nothing</span>';
         }
         // Quick find: filter bookings by guest name/email; click a result to open it.
         function bookingSearch(q) {
@@ -9139,6 +9218,8 @@
         function dashGo(target) {
             try {
                 if (target === 'analytics') { openSettings('analytics'); }
+                else if (target === 'enquiries') { openSettings('enquiries'); }
+                else if (target === 'messages') { openSettings('messages'); }
                 else if (target === 'money') { Promise.resolve(openAccounts()).then(() => { try { accountsOpen('payments'); } catch (e) {} }); }
                 else if (target === 'calendar') {
                     const el = document.querySelector('#view-backoffice .cal-panel') || document.getElementById('cal-body');
@@ -9785,7 +9866,19 @@
             try { openProperty(key); } finally { __suppressRouteSync = false; }
             return true;
         }
-        window.addEventListener('popstate', () => {
+        window.addEventListener('popstate', (ev) => {
+            // Admin locations replay from the recorded state, so Back walks
+            // drill-down → index → dashboard rather than exiting to the homepage.
+            const st = ev.state && ev.state.chbAdmin;
+            if (st && isAuthenticated) {
+                __histReplay = true;
+                try {
+                    if (st.view === 'view-settings') { nav('view-settings'); if (st.section) settingsOpen(st.section); else settingsShowIndex(); }
+                    else if (st.view === 'view-accounts') { nav('view-accounts'); if (st.section) accountsOpen(st.section); else accountsShowIndex(); }
+                    else { nav('view-backoffice'); Promise.resolve(initBackOffice()).catch(() => {}); }
+                } catch (e) {} finally { __histReplay = false; }
+                return;
+            }
             __suppressRouteSync = true;
             try {
                 const m = (location.pathname || '').match(/\/cottages\/([^\/?#]+)/);
@@ -10820,7 +10913,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'g4x8b2kd';
+            const BUILD = 'y3w7r5nc';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;

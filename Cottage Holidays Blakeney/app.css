@@ -1279,7 +1279,7 @@
         @media (min-width: 1024px) {
             .owner-summary, .today-grid { gap: 18px; }
             .owner-summary { grid-template-columns: repeat(4, 1fr); }
-            .today-grid { grid-template-columns: repeat(4, 1fr); }
+            .today-grid { grid-template-columns: repeat(3, 1fr); }
             .os-card { padding: 22px 24px; }
             .os-donut { width: 72px; height: 72px; }
             .os-bar { height: 9px; }

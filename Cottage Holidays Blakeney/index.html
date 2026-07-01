@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=59">
+    <link rel="stylesheet" href="app.css?v=60">
     <!-- Speed up the font fetch (and the jsPDF CDN) by opening the connections early. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -819,6 +819,13 @@
     <!-- ================= UNIFIED BACK OFFICE ================= -->
     <main id="view-backoffice" class="page-view container wide">
 
+        <div class="dashboard-header">
+            <div>
+                <h1 class="section-title" style="margin-bottom: 5px;">Dashboard</h1>
+                <p class="lead" style="text-align: left; margin: 0;" id="bo-subtitle">Everything that needs you today, at a glance.</p>
+            </div>
+        </div>
+
         <div id="today-panel"><!-- JS injects the "today / needs doing" list --></div>
 
         <div class="owner-summary" id="owner-summary"><!-- JS injects summary stats --></div>
@@ -871,6 +878,9 @@
 
         <!-- INDEX — ordered by importance: your cottages first, then money & guests,
              then your listing & account, with the legal reference last. -->
+        <!-- Type-to-find: filters the rows below as you type. -->
+        <input type="search" class="input-glass" id="settings-search" placeholder="Search settings…" autocomplete="off" oninput="settingsFilter(this.value)" style="max-width:640px;margin-bottom:8px;">
+
         <div id="settings-index" class="settings-index">
             <div class="settings-section-label">Bookings &amp; messages</div>
             <div class="settings-group">
@@ -1920,7 +1930,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=82"></script>
+    <script src="app.js?v=83"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
