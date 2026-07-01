@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=54">
+    <link rel="stylesheet" href="app.css?v=55">
     <!-- Speed up the font fetch (and the jsPDF CDN) by opening the connections early. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -347,7 +347,7 @@
                             <span class="hs-value" id="hs-dates">Add your dates</span>
                         </button>
                         <div class="hs-flex" role="group" aria-label="Date flexibility">
-                            <button type="button" class="hs-chip is-on" data-flex="0" onclick="hsSetFlex(0)">Exact dates</button>
+                            <button type="button" class="hs-chip is-on" data-flex="0" onclick="hsSetFlex(0)">&plusmn; 0 days</button>
                             <button type="button" class="hs-chip" data-flex="1" onclick="hsSetFlex(1)">± 1 day</button>
                             <button type="button" class="hs-chip" data-flex="2" onclick="hsSetFlex(2)">± 2 days</button>
                             <button type="button" class="hs-chip" data-flex="3" onclick="hsSetFlex(3)">± 3 days</button>
@@ -625,7 +625,8 @@
                 <div class="pr-price" id="pr-price"></div>
                 <div class="pr-savings" id="pr-savings" style="display:none;"></div>
                 <div class="pr-sub">No payment now — enquire to check your dates &amp; price.</div>
-                <button type="button" id="reserve-enquire-btn" class="btn-glass" style="width:100%;padding:15px;margin-top:16px;" onclick="openEnquireModal()">Check availability</button>
+                <button type="button" id="reserve-enquire-btn" class="btn-glass" style="width:100%;padding:15px;margin-top:16px;" onclick="openEnquireModal()">Enquire now</button>
+                <div class="pr-trust">Book direct &mdash; no booking fees &nbsp;&middot;&nbsp; Personally hosted by the owner</div>
             </aside>
             <!-- The enquiry now lives in the two-step #enquire-modal (opened by "Enquire now"). -->
         </div>
@@ -634,7 +635,7 @@
             <div class="pbb-info">
                 <div class="pbb-price" id="pbb-price"></div>
             </div>
-            <button type="button" class="btn-glass pbb-btn" onclick="openEnquireModal()">Check availability</button>
+            <button type="button" class="btn-glass pbb-btn" onclick="openEnquireModal()">Enquire now</button>
         </div>
 
         <!-- ===== Airbnb-style two-step enquiry: Review your stay → Your details ===== -->
@@ -1880,6 +1881,14 @@
                 </span>
             </button>
         </div>
+        <!-- Quick links: navigation + legal, one slim row. -->
+        <nav class="footer-links" aria-label="Footer">
+            <a onclick="nav('view-main')">Home</a>
+            <a onclick="nav('view-cottages')">Our cottages</a>
+            <a onclick="openAllReviews()">Guest reviews</a>
+            <a onclick="openTermsModal(event)">Booking terms</a>
+            <a onclick="nav('view-privacy')">Privacy</a>
+        </nav>
         <!-- Newsletter opt-in: a direct-booking audience the owner owns. -->
         <div class="footer-newsletter" id="footer-newsletter">
             <p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 8px;">Our occasional Blakeney news &amp; offers — no spam, unsubscribe any time.</p>
@@ -1899,7 +1908,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=77"></script>
+    <script src="app.js?v=78"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

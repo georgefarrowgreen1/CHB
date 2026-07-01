@@ -7202,7 +7202,7 @@
             ]) + emptyNote('Enquiries &amp; bookings are counted by the date they came in.');
             const ev = d.events || {};
             const engagement = funnelBars([
-                { label: 'Clicked “Book / Enquire”', value: ev.book_click || 0 },
+                { label: 'Clicked “Enquire now”', value: ev.book_click || 0 },
                 { label: 'Opened the enquiry form', value: ev.enquiry_open || 0 },
                 { label: 'Sent an enquiry', value: ev.enquiry_submit || 0 },
                 { label: 'Started a payment', value: ev.pay_start || 0 },
@@ -8979,7 +8979,7 @@
                     <div class="card-title">${escapeHtml(propertyMeta[key].name)}</div>
                     <div class="card-meta">${dpPretty(r.ci)} → ${dpPretty(r.co)} · ${nights} night${nights === 1 ? '' : 's'}${moved}</div>
                     <div class="card-price">From ${gbp(r.price.total)}</div>
-                    <button class="btn-glass" style="width:100%;margin-top:10px;" onclick="startBooking('${key}','${r.ci}','${r.co}')">Book / Enquire</button>
+                    <button class="btn-glass" style="width:100%;margin-top:10px;" onclick="startBooking('${key}','${r.ci}','${r.co}')">Enquire now</button>
                 </div>`;
             };
             // Unavailable: never carry the clashing dates into the enquiry form (that would
@@ -10814,7 +10814,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'f8t3m6xd';
+            const BUILD = 'w2y7d4hn';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
