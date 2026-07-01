@@ -17,6 +17,10 @@
             * { animation-duration: 0.01ms !important; animation-iteration-count: 1 !important; transition-duration: 0.01ms !important; scroll-behavior: auto !important; }
         }
         
+        /* Responsive convention: prefer these four canonical breakpoints for NEW
+           rules — 480 (small phone), 640 (phone/phablet), 900 (tablet/desktop),
+           1200 (wide) — instead of adding fresh one-off widths. Existing rules
+           migrate opportunistically when touched. */
         :root {
             --dark-grey: #121316;
             --glass-bg: rgba(255, 255, 255, 0.018);
@@ -571,8 +575,10 @@
 
         /* --- GRID CARDS --- */
         .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 30px; margin-top: 60px; }
-        /* Cottages collection: always three tiles across on desktop (Airbnb-style) */
-        @media (min-width: 760px) { .grid-3 { grid-template-columns: repeat(3, 1fr); } }
+        /* Cottages collection: three tiles across on true desktop (Airbnb-style).
+           Below 960px the base auto-fit grid gives a comfortable 2-up on tablets —
+           forcing 3-up from 760px squeezed cards to ~230px. */
+        @media (min-width: 960px) { .grid-3 { grid-template-columns: repeat(3, 1fr); } }
         .card { padding: 15px; display: flex; flex-direction: column; cursor: pointer;
             transition: background 0.5s var(--fluid-bezier), border-color 0.5s var(--fluid-bezier), transform 0.55s var(--spring), box-shadow 0.5s var(--fluid-bezier); }
         a.card { text-decoration: none; color: var(--text-light); }

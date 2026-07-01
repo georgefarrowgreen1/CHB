@@ -24,6 +24,8 @@ build step**); PHP backend files sit alongside it. App-style guest shell lives i
   (unused). Content is still APPLIED to the page via the `data-edit-*` attributes +
   `applyContentOverrides` (reads `siteContent`), and galleries via `images-<prop>` —
   do NOT remove those; they're the rendering path, not the editing UI.
+- Responsive: prefer the four canonical breakpoints (480 / 640 / 900 / 1200) for new
+  media queries; migrate stray one-off widths opportunistically when touched.
 - Guest mobile shell CSS/JS is gated to `body.guest-app:not(.owner-mode)` so admin
   (`owner-mode`) and desktop are never affected. Keep new shell rules gated the same way.
 - The site deploys from `main`; the repo is cloned fresh each session (ephemeral
