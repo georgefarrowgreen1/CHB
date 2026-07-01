@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=56">
+    <link rel="stylesheet" href="app.css?v=57">
     <!-- Speed up the font fetch (and the jsPDF CDN) by opening the connections early. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1350,11 +1350,8 @@
 
                 <!-- LOGIN -->
                 <div id="guest-login-form">
-                    <div style="display:flex;justify-content:center;margin:2px 0 22px;">
-                        <span role="img" aria-label="Sign in to your account" style="width:74px;height:74px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:rgba(255,255,255,0.06);border:1px solid var(--glass-highlight);color:var(--text-light);">
-                            <svg viewBox="0 0 24 24" width="37" height="37" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M5.5 19.5a6.5 6.5 0 0 1 13 0"/></svg>
-                        </span>
-                    </div>
+                    <h2 class="section-title" style="font-size: 1.8rem; margin-bottom: 8px;">Welcome back</h2>
+                    <p class="lead" style="font-size: 0.85rem; margin-bottom: 20px;">Sign in to manage your stay, messages and bookings.</p>
                     <!-- Passkey: the prominent, primary way in (Face ID / Touch ID / device PIN) -->
                     <div id="passkey-login-wrap" style="display:none;">
                         <button class="btn-glass" style="width:100%;padding:18px;font-size:1rem;" onclick="passkeyLogin()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg> Secure sign in</button>
@@ -1370,7 +1367,7 @@
                     <label class="modal-label" for="login-password">Password</label>
                     <input type="password" class="input-glass" id="login-password" name="password" autocomplete="current-password" placeholder="Your password">
                     <div id="login-error" style="color:#E53935;font-size:0.8rem;margin-bottom:12px;display:none;"></div>
-                    <button class="btn-glass" style="width:100%;padding:16px;" onclick="guestLogin()">Log In</button>
+                    <button class="btn-glass btn-accent" style="width:100%;padding:16px;" onclick="guestLogin()">Log In</button>
                     <div style="text-align:center;margin-top:14px;">
                         <a id="magic-link-cta" onclick="requestMagicLink()" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);font-size:0.82rem;">Email me a sign-in link instead</a>
                         <div id="magic-link-msg" style="display:none;font-size:0.82rem;margin-top:10px;"></div>
@@ -1386,17 +1383,23 @@
                     <input type="text" class="input-glass" id="reg-name" name="name" autocomplete="name" placeholder="Full name">
                     <label class="modal-label" for="reg-email">Email</label>
                     <input type="email" class="input-glass" id="reg-email" name="email" autocomplete="email" autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="email" placeholder="you@email.com">
-                    <label class="modal-label" for="reg-phone">Phone</label>
-                    <input type="tel" class="input-glass" id="reg-phone" name="tel" autocomplete="tel" inputmode="tel" placeholder="Contact number">
+                    <div class="reg-row">
+                        <div>
+                            <label class="modal-label" for="reg-phone">Phone</label>
+                            <input type="tel" class="input-glass" id="reg-phone" name="tel" autocomplete="tel" inputmode="tel" placeholder="Contact number">
+                        </div>
+                        <div>
+                            <label class="modal-label" for="reg-postcode">Postcode</label>
+                            <input type="text" class="input-glass" id="reg-postcode" placeholder="e.g. NR25 7AB" autocomplete="postal-code">
+                        </div>
+                    </div>
                     <label class="modal-label" for="reg-address">UK Address</label>
-                    <textarea class="input-glass" id="reg-address" name="address" autocomplete="street-address" rows="2" placeholder="House name/number, street, town, county" style="resize: vertical;"></textarea>
-                    <label class="modal-label" for="reg-postcode">Postcode</label>
-                    <input type="text" class="input-glass" id="reg-postcode" placeholder="e.g. NR25 7AB" autocomplete="postal-code" style="margin-bottom: 6px;">
+                    <textarea class="input-glass" id="reg-address" name="address" autocomplete="street-address" rows="2" placeholder="House name/number, street, town, county" style="resize: vertical; margin-bottom: 6px;"></textarea>
                     <p style="font-size: 0.72rem; color: var(--text-muted); margin: 0 0 18px;">Used only to manage your bookings and contact you. See our <a onclick="closeGuestAuthModal(); nav('view-privacy')" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy Policy</a>.</p>
                     <label class="modal-label" for="reg-password">Password</label>
                     <input type="password" class="input-glass" id="reg-password" name="new-password" autocomplete="new-password" placeholder="Choose a password">
                     <div id="reg-error" style="color:#E53935;font-size:0.8rem;margin-bottom:12px;display:none;"></div>
-                    <button class="btn-glass" style="width:100%;padding:16px;" onclick="guestRegister()">Create Account</button>
+                    <button class="btn-glass btn-accent" style="width:100%;padding:16px;" onclick="guestRegister()">Create Account</button>
                 </div>
             </div>
             </div><!-- /.auth-form-col -->
@@ -1911,7 +1914,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=79"></script>
+    <script src="app.js?v=80"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
