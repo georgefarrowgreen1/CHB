@@ -44,16 +44,25 @@ $place = trim($town . ($county && strcasecmp($county, $town) !== 0 ? ', ' . $cou
 
 $resp = ['ok' => true, 'valid' => true, 'place' => $place, 'postcode' => (string)($r['postcode'] ?? $pc)];
 
-// Full pick-your-address list — only when the owner has pasted a getAddress.io
-// key in Settings → Integrations (house-level data is licensed; the open data
-// above has none). Soft per-session cap so a scripted visitor can't burn the
-// owner's lookup quota. Failures just omit the list; recognition still works.
+// Full pick-your-address list — only when the owner has pasted an address-lookup
+// key in Settings → Integrations (house-level data is Royal Mail-licensed; the
+// open data above has none). The provider is detected from the key format:
+//   ak_…            -> Ideal Postcodes (pay-as-you-go PAF reseller)
+//   anything else   -> OS Places API (OS Data Hub project key)
+// Soft per-session cap so a scripted visitor can't burn the owner's lookup
+// credit. Failures just omit the list; recognition still works.
 if (isset($_GET['addresses'])) {
     $key = content_value('apikey-address');
     $used = (int)($_SESSION['pc_addr_lookups'] ?? 0);
     if ($key !== '' && $used < 40) {
         $_SESSION['pc_addr_lookups'] = $used + 1;
-        $ch = curl_init('https://api.getaddress.io/find/' . rawurlencode($resp['postcode']) . '?api-key=' . rawurlencode($key));
+        $tidy = function ($s) {   // licensed feeds are UPPERCASE; title-case for display
+            return preg_replace_callback('/[A-Za-z][A-Za-z\']*/u', fn($m) => mb_convert_case(mb_strtolower($m[0]), MB_CASE_TITLE), $s);
+        };
+        $url = (strpos($key, 'ak_') === 0)
+            ? 'https://api.ideal-postcodes.co.uk/v1/postcodes/' . rawurlencode($resp['postcode']) . '?api_key=' . rawurlencode($key)
+            : 'https://api.os.uk/search/places/v1/postcode?postcode=' . rawurlencode($resp['postcode']) . '&key=' . rawurlencode($key);
+        $ch = curl_init($url);
         curl_setopt_array($ch, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 5, CURLOPT_CONNECTTIMEOUT => 3]);
         $araw = curl_exec($ch);
         $ast = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
@@ -61,11 +70,26 @@ if (isset($_GET['addresses'])) {
         if ($ast === 200 && $araw) {
             $ad = json_decode($araw, true);
             $list = [];
-            foreach ((array)($ad['addresses'] ?? []) as $line) {
-                if (!is_string($line)) continue;
-                $parts = array_values(array_filter(array_map('trim', explode(',', $line)), fn($x) => $x !== ''));
-                if ($parts) $list[] = implode(', ', $parts);
-                if (count($list) >= 60) break;
+            if (strpos($key, 'ak_') === 0) {
+                // Ideal Postcodes: result[] rows with line_1/2/3 + post_town.
+                foreach ((array)($ad['result'] ?? []) as $row) {
+                    if (!is_array($row)) continue;
+                    $parts = array_values(array_filter(array_map('trim', [
+                        (string)($row['line_1'] ?? ''), (string)($row['line_2'] ?? ''),
+                        (string)($row['line_3'] ?? ''), $tidy((string)($row['post_town'] ?? '')),
+                    ]), fn($x) => $x !== ''));
+                    if ($parts) $list[] = implode(', ', $parts);
+                    if (count($list) >= 60) break;
+                }
+            } else {
+                // OS Places: results[].DPA.ADDRESS is one UPPERCASE line ending in the postcode.
+                foreach ((array)($ad['results'] ?? []) as $row) {
+                    $line = (string)($row['DPA']['ADDRESS'] ?? '');
+                    if ($line === '') continue;
+                    $line = trim(preg_replace('/,\s*' . preg_quote($resp['postcode'], '/') . '\s*$/i', '', $line));
+                    if ($line !== '') $list[] = $tidy($line);
+                    if (count($list) >= 60) break;
+                }
             }
             if ($list) $resp['addresses'] = $list;
         }
