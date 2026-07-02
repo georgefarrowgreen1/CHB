@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=65">
+    <link rel="stylesheet" href="app.css?v=66">
     <!-- Speed up the font fetch (and the jsPDF CDN) by opening the connections early. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -205,7 +205,7 @@
     </div>
 
     <!-- HEADER -->
-    <header class="glass-panel" style="border-radius: 40px;">
+    <header class="glass-panel">
         <div class="logo" onpointerdown="flareCrown()" onclick="nav('view-main')">
             <img src="logo.svg" alt="Cottage Holidays Blakeney crown logo" class="logo-mark">
             <span class="logo-text" data-edit-text="site-logo">Cottage Holidays Blakeney</span>
@@ -277,7 +277,7 @@
 
         <section class="hero" id="hero">
             <div class="hero-bg" data-edit-img="hero-bg" style="background-image: url('hero.jpg');"></div>
-            <div class="hero-content glass-panel" id="hero-headline-panel" style="border-radius: 30px;">
+            <div class="hero-content glass-panel" id="hero-headline-panel">
                 <p class="hero-kicker" data-edit-text="hero-kicker">Est. 1983 &middot; Book direct with the owner</p>
                 <h1 data-edit-text="hero-title">Liquid Coastal Luxury</h1>
                 <p data-edit-text="hero-sub">Boutique holiday escapes in Blakeney, Norfolk</p>
@@ -346,7 +346,7 @@
 
         <!-- CHECK AVAILABILITY — the search panel + results, relocated below the cottages. -->
         <section class="home-availability" id="home-availability">
-            <div class="hero-content glass-panel" id="hero-search-panel" style="border-radius: 30px;">
+            <div class="hero-content glass-panel" id="hero-search-panel">
                 <p class="section-kicker reveal">Plan your escape</p>
                 <h2 class="section-title text-center reveal" style="margin-bottom: 6px;">Check availability</h2>
                 <p class="text-center" style="color: var(--text-muted); font-size: 0.92rem; margin: 0 auto 6px; max-width: 460px; text-wrap: balance;">Live prices &amp; availability across all our cottages — book direct, no fees.</p>
@@ -1953,7 +1953,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=95"></script>
+    <script src="app.js?v=96"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
