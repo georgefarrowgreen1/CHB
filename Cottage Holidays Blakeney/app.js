@@ -1221,8 +1221,21 @@
             const sig = d.signals || {};
             const intro = `<p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 14px;line-height:1.55;">Pricing ideas from <strong>your own</strong> data — calendar occupancy <strong>across direct + your synced Airbnb &amp; Vrbo bookings</strong>, weekend demand, near-term pace, orphan gaps and what guests search for. These are advice: nothing changes until you tap <strong>Apply</strong>, and your prices stay exactly as set otherwise.</p>`;
             const since = sig.searches60 ? `<p style="font-size:0.78rem;color:var(--text-muted);margin:-4px 0 16px;">Demand from ${sig.searches60} search${sig.searches60 === 1 ? '' : 'es'} in the last 60 days${sig.noResult60 ? ` · ${sig.noResult60} found nothing free` : ''}.</p>` : '';
+            // Demand radar strip: the weeks guests actually searched for, with the
+            // unmet portion flagged in amber — a glance at where interest lands.
+            const radarWeeks = (sig.searchWeeks || []).filter(w => w.count > 0).slice(0, 6)
+                .sort((a, b) => (a.week || '').localeCompare(b.week || ''));
+            const radar = radarWeeks.length ? `
+                <div class="accounts-stat" style="max-width:640px;margin:0 0 16px;">
+                    <div style="font-size:0.68rem;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);margin-bottom:10px;">Demand radar · weeks guests searched for</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:8px;">${radarWeeks.map(w => {
+                        const wc = new Date(String(w.week).replace(' ', 'T')).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+                        const unmet = w.missed > 0;
+                        return `<span style="display:inline-flex;align-items:center;gap:7px;font-size:0.78rem;padding:6px 12px;border-radius:var(--r-pill);background:var(--glass-bg);border:1px solid ${unmet ? 'rgba(255,167,38,0.4)' : 'var(--glass-border)'};" title="${w.count} search${w.count === 1 ? '' : 'es'}${unmet ? ', ' + w.missed + ' found nothing free' : ''}">w/c ${wc} · ${w.count}${unmet ? ` <span style="color:var(--warn-text);font-weight:600;">${w.missed} unmet</span>` : ''}</span>`;
+                    }).join('')}</div>
+                </div>` : '';
             if (!sugg.length) {
-                wrap.innerHTML = intro + since + `<div class="accounts-stat" style="max-width:640px;"><p style="font-size:0.9rem;color:var(--text-light);margin:0;">Nothing to suggest right now — your pricing looks well matched to current demand. Check back as bookings and searches build up.</p></div>`;
+                wrap.innerHTML = intro + since + radar + `<div class="accounts-stat" style="max-width:640px;"><p style="font-size:0.9rem;color:var(--text-light);margin:0;">Nothing to suggest right now — your pricing looks well matched to current demand. Check back as bookings and searches build up.</p></div>`;
                 return;
             }
             const badge = (op) => op
@@ -1241,7 +1254,7 @@
                     ${applyBtn ? `<div style="margin-top:12px;">${applyBtn}</div>` : ''}
                 </div>`;
             };
-            wrap.innerHTML = intro + since + sugg.map(card).join('');
+            wrap.innerHTML = intro + since + radar + sugg.map(card).join('');
         }
         async function applyPricingSuggestion(propKey, field, value, id) {
             if (field !== 'weekendPct' || !propKey) return;
@@ -5269,6 +5282,7 @@
                 try { loadPublicAvailability(); } catch (e) {}
                 try { updateHeritageStats(); } catch (e) {}
                 try { renderGuestWords(); } catch (e) {}
+                try { enquiryResumeShow(); } catch (e) {}
             } catch (e) { /* keep defaults if the API is unavailable */ }
         }
 
@@ -7163,6 +7177,63 @@
             ['pbb-price', 'pr-price'].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = html; });
         }
         // ---- Two-step enquiry modal (Airbnb "Review your stay" → "Your details") ----
+        // ---- Resume an abandoned enquiry (draft lives ONLY in this browser) ----
+        const ENQ_DRAFT_KEY = 'chb-enq-draft';
+        function enquireDraftSave() {
+            try {
+                const g = id => { const el = document.getElementById(id); return el ? el.value : ''; };
+                const draft = { at: Date.now(), prop: activeFrontProperty || '',
+                    name: g('enq-name'), email: g('enq-email'), phone: g('enq-phone'),
+                    postcode: g('enq-postcode'), address: g('enq-address'), message: g('enq-message'),
+                    checkIn: g('enq-checkin'), checkOut: g('enq-checkout'),
+                    adults: g('enq-adults'), children: g('enq-children') };
+                if (!draft.name && !draft.email && !draft.checkIn && !draft.message) { localStorage.removeItem(ENQ_DRAFT_KEY); return; }
+                localStorage.setItem(ENQ_DRAFT_KEY, JSON.stringify(draft));
+            } catch (e) {}
+        }
+        function enquireDraftGet() {
+            try {
+                const d = JSON.parse(localStorage.getItem(ENQ_DRAFT_KEY) || 'null');
+                if (!d || (Date.now() - (d.at || 0)) > 7 * 24 * 3600 * 1000) return null;   // stale after a week
+                return d;
+            } catch (e) { return null; }
+        }
+        function enquireDraftClear() { try { localStorage.removeItem(ENQ_DRAFT_KEY); } catch (e) {} enquiryResumeHide(); }
+        function enquiryResumeHide() { const c = document.getElementById('enquiry-resume'); if (c) c.style.display = 'none'; }
+        function enquiryResumeDismiss() { enquireDraftClear(); }
+        // Show the "pick up where you left off" chip on return visits (public only).
+        function enquiryResumeShow() {
+            if (document.body.classList.contains('owner-mode')) return;
+            const chip = document.getElementById('enquiry-resume');
+            if (!chip) return;
+            const d = enquireDraftGet();
+            if (!d || (!d.email && !d.checkIn && !d.name)) { chip.style.display = 'none'; return; }
+            const nm = (propertyMeta[d.prop] && propertyMeta[d.prop].name) || '';
+            const t = document.getElementById('enquiry-resume-text');
+            if (t) t.textContent = 'Resume your enquiry' + (nm ? ' — ' + nm : '');
+            chip.style.display = '';
+        }
+        function enquiryResumeOpen() {
+            const d = enquireDraftGet();
+            enquiryResumeHide();
+            if (!d) return;
+            const key = (d.prop && propertyMeta[d.prop] && !propertyMeta[d.prop].archived) ? d.prop : (liveCottageKeys()[0] || '');
+            if (!key) return;
+            try { openProperty(key); } catch (e) {}
+            openEnquireModal();
+            // Restore AFTER the modal's own reset.
+            const set = (id, v) => { const el = document.getElementById(id); if (el && v) el.value = v; };
+            ['name', 'email', 'phone', 'postcode', 'address', 'message'].forEach(f => set('enq-' + f, d[f]));
+            set('enq-checkin', d.checkIn); set('enq-checkout', d.checkOut);
+            if (d.adults) set('enq-adults', d.adults);
+            if (d.children) set('enq-children', d.children);
+            try { applyOccupancyToForm(key); refreshDateTrigger(); updateEnquiryPrice(); } catch (e) {}
+        }
+        // Autosave while the visitor types anywhere in the enquiry form.
+        document.addEventListener('input', (e) => {
+            const id = (e.target && e.target.id) || '';
+            if (id.indexOf('enq-') === 0) enquireDraftSave();
+        });
         function openEnquireModal() {
             const key = activeFrontProperty;
             if (!key) return;
@@ -7187,6 +7258,7 @@
             updateEnquiryPrice();
             const m = document.getElementById('enquire-modal');
             if (m) m.classList.add('open');
+            enquiryResumeHide();
         }
         function closeEnquireModal() {
             const m = document.getElementById('enquire-modal');
@@ -10498,6 +10570,7 @@
         }
 
         function updateEnquiryPrice() {
+            try { const m = document.getElementById('enquire-modal'); if (m && m.classList.contains('open')) enquireDraftSave(); } catch (e) {}
             const box = document.getElementById('enq-price-box');
             if (!box) return;
             const checkIn = document.getElementById('enq-checkin').value;
@@ -10721,7 +10794,7 @@
 
             resetEnquiryForm();
             try { closeEnquireModal(); } catch (e) {}
-            toast("Enquiry sent — we will be in touch to confirm availability.");
+            enquireDraftClear(); toast("Enquiry sent — we will be in touch to confirm availability.");
         }
         // Stashed details for the optional post-enquiry account creation (step 3).
         let __enqAcct = null;
@@ -10754,7 +10827,7 @@
                 __enqAcct = null;
                 resetEnquiryForm();
                 try { closeEnquireModal(); } catch (e) {}
-                toast("Enquiry sent and your account is ready — you're signed in.");
+                enquireDraftClear(); toast("Enquiry sent and your account is ready — you're signed in.");
                 try { nav('view-guest-bookings'); await renderGuestBookings(); } catch (e) {}
             } catch (e) {
                 setM(/exist|registered|already/i.test(e && e.message || '')
@@ -10773,14 +10846,14 @@
             try { closeEnquireModal(); } catch (e) {}
             try { openGuestAuthModal(); switchGuestTab('login'); } catch (e) {}
             const f = document.getElementById('login-email'); if (f && email) f.value = email;
-            try { toast("Enquiry sent — sign in to track it."); } catch (e) {}
+            enquireDraftClear(); try { toast("Enquiry sent — sign in to track it."); } catch (e) {}
         }
         // Skip the optional account step — the enquiry has already been sent.
         function enquireSkipAccount() {
             __enqAcct = null;
             resetEnquiryForm();
             try { closeEnquireModal(); } catch (e) {}
-            toast("Enquiry sent — we will be in touch to confirm availability.");
+            enquireDraftClear(); toast("Enquiry sent — we will be in touch to confirm availability.");
         }
 
         // ===================================================================
@@ -10798,6 +10871,8 @@
             refreshInboxBadge();
             const tg = document.getElementById('enq-nudge-toggle');
             if (tg) tg.checked = (siteContent['enquiry-nudge-off'] !== '1');
+            const ag = document.getElementById('anniv-nudge-toggle');
+            if (ag) ag.checked = (siteContent['anniversary-nudge-off'] !== '1');
             const list = document.getElementById('inbox-list');
 
             if (enquiries.length === 0) {
@@ -11433,7 +11508,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'r3n8x5da';
+            const BUILD = 's4p9y6eb';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;

@@ -61,6 +61,7 @@ function chb_send_sample_emails($which = 'all', $prefix = '[SAMPLE] ') {
         'refund'          => ['Refund notice',           fn() => send_refund_email($b)],
         'deposit_return'  => ['Damage deposit return',   fn() => send_deposit_return_email($b)],
         'cancellation'    => ['Booking cancelled',       fn() => send_cancellation_email($b)],
+        'anniversary'     => ['Anniversary re-invite',   fn() => send_anniversary_email($b)],
         'owner_notice'    => ['Owner: payment received', fn() => send_owner_payment_notice(array_merge($b, ['status' => 'deposit']))],
     ];
 
