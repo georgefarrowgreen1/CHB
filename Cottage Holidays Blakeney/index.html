@@ -725,7 +725,8 @@
                         </div>
                         <div>
                             <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-postcode">Postcode</label>
-                            <input type="text" class="input-glass" id="enq-postcode" placeholder="e.g. NR25 7AB" autocomplete="postal-code">
+                            <input type="text" class="input-glass" id="enq-postcode" placeholder="e.g. NR25 7AB" autocomplete="postal-code" autocapitalize="characters" spellcheck="false" style="margin-bottom: 6px;" oninput="postcodeRecognize('enq-postcode','enq-pc-status')" onchange="postcodeRecognize('enq-postcode','enq-pc-status', true)">
+                            <p id="enq-pc-status" role="status" aria-live="polite" style="font-size: 0.75rem; min-height: 1.1em; margin: 0 0 8px;"></p>
                         </div>
                     </div>
                     <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-address">UK Address</label>
@@ -1933,7 +1934,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=88"></script>
+    <script src="app.js?v=89"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
