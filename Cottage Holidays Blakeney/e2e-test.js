@@ -30,6 +30,12 @@ const bookings = [
   { id: 1, prop_key: '21a', name: 'Sarah Pemberton', email: 's@x.com', check_in: d(0), check_out: d(4), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0, payment: 'paid', deposit_paid: 450, agreed_total: 450 },
   { id: 2, prop_key: 'pimpernel', name: 'Emma Wilson', email: 'e@x.com', check_in: d(4), check_out: d(9), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 1, payment: 'deposit', deposit_paid: 150, agreed_total: 640 },
 ];
+// A fully-paid stay that is IN PROGRESS today — exercises the "My Stay" hub
+// (a template bug here once broke the whole My Stays page for mid-stay guests).
+const midStay = { id: 3, prop_key: 'jollyboat', name: 'Guest Tester', email: 'guest@example.com',
+  check_in: d(-2), check_out: d(2), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0,
+  payment: 'paid', deposit_paid: 495, agreed_total: 495, agreed_per_night: 120, agreed_nights: 4,
+  agreed_nightly: 480, agreed_booking_fee: 0, agreed_txn_pct: 3, agreed_txn_fee: 15, agreed_on: d(-30) };
 const enquiries = [
   { id: 11, prop_key: 'jollyboat', name: 'Lucy Grant', email: 'l@x.com', check_in: d(14), check_out: d(18), adults: 2, children: 0, check_in_time: '15:00', check_out_time: '10:00', message: '' },
 ];
@@ -71,6 +77,7 @@ async function waitForServer(url, tries = 40) {
       if (url.includes('content.php') && post.includes('get_all')) return json({ content: {} });
       if (url.includes('content.php')) return json({ content: {} });
       if (url.includes('accounts.php')) return json({ years: [] });
+      if (url.includes('my-bookings.php')) return json({ bookings: [midStay], enquiries: [], completed_stays: 0 });
       return json({ ok: true, bookings: [], enquiries: [], threads: [], photos: [], reviews: [], experiences: [], expenses: [], years: [], content: {}, blocks: [], ranges: [] });
     });
 
@@ -118,6 +125,19 @@ async function waitForServer(url, tries = 40) {
     (await page.locator('#today-panel .today-card').count()) >= 6 ? pass('today panel cards rendered') : fail('today panel incomplete');
     ((await page.locator('#bo-subtitle').textContent()) || '').includes('—') ? pass('live subtitle set') : fail('dashboard subtitle not set');
     (await page.locator('#cal-body .cal-day, #cal-body > *').count()) > 20 ? pass('calendar grid rendered') : fail('calendar grid missing');
+
+    console.log('== 6. Mid-stay guest: My Stays + hub ==');
+    await page.evaluate(async () => {
+      isAuthenticated = false; document.body.classList.remove('owner-mode');
+      currentGuest = { id: 1, name: 'Guest Tester', email: 'guest@example.com' };
+      try { setAuthUI(); } catch (e) {}
+      nav('view-guest-bookings');
+      await renderGuestBookings();
+    });
+    await page.waitForTimeout(800);
+    (await page.locator('.my-stay-hub').count()) === 1 ? pass('in-stay hub rendered') : fail('in-stay hub missing (fully-paid current stay)');
+    (await page.locator('.my-stay-hub .hub-tile').count()) >= 4 ? pass('hub tiles rendered') : fail('hub tiles missing');
+    (await page.locator('#guest-bookings-list .guest-booking').count()) >= 1 ? pass('booking card rendered') : fail('booking card missing');
 
     await browser.close();
   } catch (e) {
