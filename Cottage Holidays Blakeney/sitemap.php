@@ -44,6 +44,9 @@ echo "      <image:caption>Self-catering holiday cottages in Blakeney on the Nor
 echo "    </image:image>\n";
 echo "  </url>\n";
 
+// Things to do (server-rendered for crawlers by experiences-page.php).
+echo "  <url>\n    <loc>{$origin}/experiences</loc>\n    <lastmod>{$today}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.6</priority>\n  </url>\n";
+
 // One entry per live cottage.
 foreach ($cottages as $slug) {
     $loc = $origin . '/cottages/' . $esc($slug);

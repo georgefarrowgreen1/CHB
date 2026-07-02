@@ -118,6 +118,27 @@ try {
                 $inject('#(<meta name="twitter:image:alt" content=")[^"]*(")#', 'Photo of ' . $name);
             }
 
+            // Search-result stars: inject this cottage's real review rating into its
+            // JSON-LD node so Google can show gold stars under the listing. The static
+            // nodes only exist for the original three — no match just skips (added
+            // cottages still get theirs client-side).
+            try {
+                $rs = $pdo->prepare("SELECT COUNT(*) c, AVG(stars) a FROM guest_reviews WHERE prop_key = ? AND status = 'approved'");
+                $rs->execute([$key]);
+                $agg = $rs->fetch();
+                if ($agg && (int)$agg['c'] > 0) {
+                    $frag = json_encode([
+                        '@type' => 'AggregateRating',
+                        'ratingValue' => number_format(min(5, max(1, (float)$agg['a'])), 1),
+                        'reviewCount' => (string)(int)$agg['c'],
+                        'bestRating' => '5', 'worstRating' => '1',
+                    ], JSON_UNESCAPED_SLASHES);
+                    $anchor = '"@id": "' . $origin . '/#cottage-' . $key . '",';
+                    $new = str_replace($anchor, $anchor . "\n          \"aggregateRating\": " . $frag . ',', $out);
+                    if (is_string($new)) $out = $new;
+                }
+            } catch (\Throwable $e) {}
+
             // Body: the crawlable page content itself (app.js re-renders these on boot).
             $inject('#(<h1 class="section-title prop-h1" id="prop-title">)(</h1>)#', $name);
             if ($subtitle !== '') $inject('#(<p class="prop-subtitle" id="prop-subtitle">)(</p>)#', $subtitle);

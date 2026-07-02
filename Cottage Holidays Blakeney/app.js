@@ -4462,6 +4462,7 @@
             try { maybeOpenPayLink(); } catch (e) { console.error(e); }   // ?pay=… → payment view
             try { maybeOpenReviewLink(); } catch (e) { console.error(e); } // ?review=… → My Bookings
             try { maybeOpenCottageRoute(); } catch (e) { console.error(e); } // /cottages/<slug> → that cottage
+            try { if (/^\/experiences\/?$/.test(location.pathname)) nav('view-experiences'); } catch (e) {} // /experiences → the things-to-do view
             try { maybeHandleUnsubscribe(); } catch (e) { console.error(e); } // ?unsub=… → newsletter opt-out
             try { hsRestore(); } catch (e) { console.error(e); }            // restore the visitor's last search
             try { oqFlush(); } catch (e) {}                                  // sync any offline-queued admin writes
@@ -9912,11 +9913,11 @@
             }
             updateRouteSeo(propKey);
         }
-        // Leaving a cottage page: restore the root URL + default SEO (only if we're on one).
+        // Leaving a cottage page (or /experiences): restore the root URL + default SEO.
         function clearCottageUrl() {
-            const onCottage = /\/cottages\//.test(location.pathname || '');
-            if (onCottage && !__suppressRouteSync) { try { history.pushState({}, '', '/'); } catch (e) {} }
-            if (onCottage) updateRouteSeo(null);
+            const onRouted = /\/cottages\//.test(location.pathname || '') || /^\/experiences\/?$/.test(location.pathname || '');
+            if (onRouted && !__suppressRouteSync) { try { history.pushState({}, '', '/'); } catch (e) {} }
+            if (/\/cottages\//.test(location.pathname || '')) updateRouteSeo(null);
         }
         // On first load (or back/forward), open the cottage named in the URL, if any.
         function maybeOpenCottageRoute() {
@@ -9946,6 +9947,7 @@
                 const m = (location.pathname || '').match(/\/cottages\/([^\/?#]+)/);
                 const key = m && SLUG_TO_KEY[(m[1] || '').toLowerCase()];
                 if (key) openProperty(key);
+                else if (/^\/experiences\/?$/.test(location.pathname || '')) nav('view-experiences');
                 else { updateRouteSeo(null); nav('view-main'); }
             } finally { __suppressRouteSync = false; }
         });
@@ -10975,7 +10977,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'm9c4k7pd';
+            const BUILD = 'x4j7v2bq';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
