@@ -1278,6 +1278,13 @@
         .bo-search-hit:hover, .bo-search-hit:focus-visible { background: var(--glass-hover); }
         /* Apple-style grouped Settings index */
         .settings-index { max-width: 640px; }
+        /* "Recent" chips + empty-search note above the index */
+        .settings-recent { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: 640px; margin: 2px 0 14px; }
+        .settings-recent-label { font-size: 0.66rem; letter-spacing: 1.2px; text-transform: uppercase; color: var(--text-muted); margin-right: 2px; }
+        .settings-recent-chip { font-size: 0.78rem; padding: 6px 13px; border-radius: var(--r-pill); cursor: pointer; color: var(--text-light);
+            background: var(--glass-bg); border: 1px solid var(--glass-border); transition: background 0.2s var(--fluid-bezier), border-color 0.2s var(--fluid-bezier); }
+        .settings-recent-chip:hover, .settings-recent-chip:focus-visible { background: var(--glass-hover); border-color: var(--text-muted); }
+        .settings-noresults { font-size: 0.85rem; color: var(--text-muted); margin: 4px 0 14px; }
         /* Keep every Settings folder, sub-folder and drill-down on the same 640px
            content column as the folder index, so navigating in/out stays aligned
            and every panel's content lines up regardless of what it renders. */

@@ -565,7 +565,7 @@
             } else {
                 clearChangeoverToasts();   // toasts are a back-office aid only
             }
-            if (viewId === 'view-settings') { try { renderSquareSettings(); } catch (e) {} }
+            if (viewId === 'view-settings') { try { renderSquareSettings(); } catch (e) {} try { settingsRecentRender(); } catch (e) {} }
             if (viewId === 'view-experiences') { try { renderExperiencesView(); } catch (e) {} }
             if (viewId === 'view-cottages') { try { renderCottagesMap(); } catch (e) {} }
 
@@ -1100,16 +1100,20 @@
         // description, hides emptied groups and their section labels. The staging-only
         // Test-centre group keeps whatever visibility the IS_STAGING code gave it.
         function settingsFilter(q) {
-            q = (q || '').trim().toLowerCase();
+            // Every word must match somewhere in the row's visible text OR its
+            // hidden data-kw synonyms ("backup" → Health check, "ical" → Calendar).
+            const words = (q || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
             const idx = document.getElementById('settings-index');
             if (!idx) return;
+            let total = 0;
             idx.querySelectorAll('.settings-group').forEach(g => {
                 if (g.id === 'testcentre-row') return;   // staging-only; JS controls it
                 let any = false;
                 g.querySelectorAll('.settings-row').forEach(row => {
-                    const hit = !q || row.textContent.toLowerCase().includes(q);
+                    const hay = (row.textContent + ' ' + (row.getAttribute('data-kw') || '')).toLowerCase();
+                    const hit = !words.length || words.every(w => hay.includes(w));
                     row.style.display = hit ? '' : 'none';
-                    if (hit) any = true;
+                    if (hit) { any = true; total++; }
                 });
                 g.style.display = any ? '' : 'none';
             });
@@ -1118,16 +1122,57 @@
                 while (n && !n.classList.contains('settings-group')) n = n.nextElementSibling;
                 l.style.display = (n && n.style.display !== 'none') ? '' : 'none';
             });
+            const nores = document.getElementById('settings-noresults');
+            if (nores) nores.style.display = (words.length && !total) ? '' : 'none';
+            // Recents are browsing furniture — hide them while searching.
+            const rec = document.getElementById('settings-recent');
+            if (rec) rec.style.display = (words.length || !settingsRecentList().length) ? 'none' : '';
+        }
+        // Enter opens the first visible result; Escape clears the search.
+        function settingsSearchKey(ev) {
+            if (ev.key === 'Enter') {
+                ev.preventDefault();
+                const first = document.querySelector('#settings-index .settings-row:not([style*="display: none"])');
+                if (first) first.click();
+            } else if (ev.key === 'Escape') {
+                ev.target.value = ''; settingsFilter('');
+            }
+        }
+        // ---- "Recently used" chips (the sections this owner actually opens) ----
+        function settingsRecentList() {
+            try { return JSON.parse(localStorage.getItem('chb-settings-recent') || '[]'); } catch (e) { return []; }
+        }
+        function settingsRecentRecord(section) {
+            if (!section) return;
+            try {
+                const list = settingsRecentList().filter(k => k !== section);
+                list.unshift(section);
+                localStorage.setItem('chb-settings-recent', JSON.stringify(list.slice(0, 4)));
+            } catch (e) {}
+        }
+        function settingsRecentRender() {
+            const wrap = document.getElementById('settings-recent');
+            if (!wrap) return;
+            const chips = settingsRecentList().map(key => {
+                const row = document.querySelector(`#settings-index .settings-row[onclick*="settingsOpen('${key}')"]`);
+                const label = row && row.querySelector('.settings-row-label');
+                if (!label) return '';
+                return `<button type="button" class="settings-recent-chip" onclick="settingsOpen('${key}')">${escapeHtml(label.textContent.trim())}</button>`;
+            }).filter(Boolean).join('');
+            wrap.innerHTML = chips ? `<span class="settings-recent-label">Recent</span>${chips}` : '';
+            wrap.style.display = chips ? '' : 'none';
         }
         function settingsShowIndex() {
             __settingsPath = null;
             const idx = document.getElementById('settings-index'); const panel = document.getElementById('settings-panel');
             if (panel) panel.style.display = 'none';
             if (idx) idx.style.display = '';
+            settingsRecentRender();
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
         function settingsOpen(section) {
             adminHistPush('view-settings', section);
+            settingsRecentRecord(section);
             __settingsPath = section ? { section } : null;
             const idx = document.getElementById('settings-index'); const panel = document.getElementById('settings-panel');
             if (!panel) return;
@@ -11167,7 +11212,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'k8h3s0yv';
+            const BUILD = 'm9i4t1zw';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
