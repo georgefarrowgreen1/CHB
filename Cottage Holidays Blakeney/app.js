@@ -3249,12 +3249,15 @@
                 }
             });
             const gHdr = (t) => `<h3 style="font-family:var(--font-serif);font-size:1.2rem;font-weight:600;margin:18px 2px 10px;color:var(--text-light);">${t}</h3>`;
+            // Each section's cards sit in their own .gb-grid so the desktop two-up
+            // layout works per section (an odd last card spans the full row).
+            const gGrid = (cards) => `<div class="gb-grid">${cards.join('')}</div>`;
             list.innerHTML = guestPushPromptHtml(hasUpcoming)
                 + loyaltyBannerHtml(completedStays)
                 + (hubCards.length ? gHdr('Your stay') + hubCards.join('') : '')
                 + pendingHtml
-                + (upcomingCards.length ? gHdr('Upcoming stays') + upcomingCards.join('') : '')
-                + (pastCards.length ? gHdr('Past stays') + pastCards.join('') : '');
+                + (upcomingCards.length ? gHdr('Upcoming stays') + gGrid(upcomingCards) : '')
+                + (pastCards.length ? gHdr('Past stays') + gGrid(pastCards) : '');
 
             // Fill any in-stay tide cards (mid-stay guests).
             if (currentStays.length) renderInStayTides();
@@ -11153,7 +11156,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'g4d9n6ur';
+            const BUILD = 'h5e0p7vs';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
