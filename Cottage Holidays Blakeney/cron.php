@@ -39,6 +39,7 @@ $jobs = [
     'enquiry-nudge.php?cron='                  => 'Enquiry follow-ups',
     'owner-digest.php?cron='                   => 'Owner weekly digest (Mondays)',
     'weekly-analytics.php?cron='               => 'Weekly analytics digest (Sundays)',
+    'backup.php?cron='                         => 'Weekly database backup (Mondays)',
 ];
 
 $results = [];

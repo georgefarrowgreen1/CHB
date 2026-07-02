@@ -7524,6 +7524,36 @@
                             </div>`).join('')}
                     </div>
                 </div>`).join('');
+            // Backups: run/download the weekly database dump (also emailed Mondays).
+            body.innerHTML += `
+                <div class="accounts-stat" style="max-width:640px;margin-bottom:14px;">
+                    <div class="label">Backups</div>
+                    <p style="font-size:0.8rem;color:var(--text-muted);margin:8px 0 12px;">A copy of every booking, payment and guest record. Runs automatically each Monday and is emailed to you; the last 8 are kept on the server.</p>
+                    <div id="backup-status" style="font-size:0.82rem;color:var(--text-muted);margin-bottom:12px;">Checking…</div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <button class="btn-sm btn-edit" onclick="runBackupNow(this)">Back up now</button>
+                        <button class="btn-sm btn-edit" onclick="window.open('backup.php?action=download','_blank')">Download latest</button>
+                    </div>
+                </div>`;
+            refreshBackupStatus();
+        }
+        async function refreshBackupStatus() {
+            const el = document.getElementById('backup-status');
+            if (!el) return;
+            try {
+                const r = await apiPost('backup.php', { action: 'status' });
+                const b = (r.backups || [])[0];
+                el.textContent = b ? `Latest: ${b.file} · ${Math.round(b.bytes / 1024)} KB · ${b.at}` : 'No backup stored yet — run one now.';
+            } catch (e) { el.textContent = "Couldn't check backups: " + (e.message || ''); }
+        }
+        async function runBackupNow(btn) {
+            if (btn) { btn.disabled = true; btn.textContent = 'Backing up…'; }
+            try {
+                const r = await apiPost('backup.php', { action: 'run' });
+                toast(r.ok ? `Backup saved (${Math.round((r.bytes || 0) / 1024)} KB)${r.emailed ? ' and emailed to you' : ''}.` : (r.error || 'Backup failed'), r.ok ? undefined : 'error');
+            } catch (e) { toast(e.message || 'Backup failed', 'error'); }
+            if (btn) { btn.disabled = false; btn.textContent = 'Back up now'; }
+            refreshBackupStatus();
         }
         async function sendTestEmail() {
             const msg = document.getElementById('diag-msg');
@@ -10913,7 +10943,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'y3w7r5nc';
+            const BUILD = 'q8d3j6vb';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;

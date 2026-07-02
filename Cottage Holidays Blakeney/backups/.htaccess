@@ -1,0 +1,7 @@
+# backups/ holds gzipped database dumps — never serve anything from here.
+Require all denied
+<IfModule !mod_authz_core.c>
+Order allow,deny
+Deny from all
+</IfModule>
+Options -Indexes
