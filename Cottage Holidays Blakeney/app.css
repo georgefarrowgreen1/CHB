@@ -1371,6 +1371,13 @@
         .accounts-actions { margin-top: 26px; display: flex; gap: 12px; flex-wrap: wrap; }
         .accounts-note { font-size: 0.78rem; color: var(--text-muted); margin-top: 24px; line-height: 1.6; max-width: 720px; }
 
+        /* Homepage live availability: per-card chip + late-availability spotlight */
+        .card-avail { margin-top: 6px; min-height: 1.1em; }
+        .avail-chip { display: inline-flex; align-items: center; gap: 6px; font-size: 0.72rem; color: var(--text-muted); letter-spacing: 0.02em; }
+        .avail-chip.now { color: #7FD68A; }
+        .avail-chip .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+        #late-avail { max-width: 760px; margin: 16px auto 2px; }
+        .late-avail { display: flex; align-items: center; justify-content: center; gap: 12px; flex-wrap: wrap; padding: 12px 18px; border-radius: var(--r-md); background: rgba(214,167,133,0.08); border: 1px solid rgba(214,167,133,0.28); font-size: 0.9rem; color: var(--text-light); text-align: center; }
         /* Guest "My Bookings" cards */
         .guest-tab { background: transparent; }
         /* "My Stay" hub — the in-stay action panel shown at the top of My Stays. */

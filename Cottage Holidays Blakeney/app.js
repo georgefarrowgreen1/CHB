@@ -5182,6 +5182,7 @@
                 try { renderCottageCards(); } catch (e) {}
                 try { renderHomeCottages(); } catch (e) {}
                 try { injectStructuredData(); } catch (e) {}
+                try { loadPublicAvailability(); } catch (e) {}
             } catch (e) { /* keep defaults if the API is unavailable */ }
         }
 
@@ -8253,6 +8254,81 @@
             });
         }
         // Fill each cottage card with its live "from £[couple rate] / night"
+        // ---- Live availability on the homepage ----
+        // One ?all=1 call feeds both the per-card "Next free" chips and the
+        // late-availability spotlight, so the cards read as live inventory and
+        // soon-expiring gaps sell themselves. Everything here is best-effort.
+        let publicAllAvailability = null;
+        async function loadPublicAvailability() {
+            try { const r = await apiGet('availability.php?all=1'); publicAllAvailability = r.props || null; }
+            catch (e) { publicAllAvailability = null; }
+            try { renderCardAvailability(); } catch (e) {}
+            try { renderLateAvailability(); } catch (e) {}
+        }
+        // Free runs of at least minNights within the next `days`, from blocked
+        // ranges (end-exclusive, matching availability.php). Returns
+        // [{start, end (checkout), nights}] in date order.
+        function freeGaps(ranges, days, minNights) {
+            const t0 = dpParse(todayDashed());
+            const blocked = new Set();
+            (ranges || []).forEach(r => {
+                for (let d = dpParse(r.start), end = dpParse(r.end); d < end; d = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1)) {
+                    blocked.add(formatDashed(d));
+                }
+            });
+            const gaps = []; let run = null;
+            for (let i = 0; i < days; i++) {
+                const d = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + i);
+                if (!blocked.has(formatDashed(d))) {
+                    if (!run) run = { start: formatDashed(d), nights: 0 };
+                    run.nights++;
+                    run.end = formatDashed(new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1));
+                } else if (run) { if (run.nights >= minNights) gaps.push(run); run = null; }
+            }
+            if (run && run.nights >= minNights) gaps.push(run);
+            return gaps;
+        }
+        function renderCardAvailability() {
+            if (!publicAllAvailability) return;
+            const today = todayDashed();
+            liveCottageKeys().forEach(k => {
+                if (!(k in publicAllAvailability)) return;
+                const minN = Math.max(1, (propertyRates[k] && propertyRates[k].minNights) || 1);
+                const gaps = freeGaps(publicAllAvailability[k], 60, minN);
+                let html = '';
+                if (gaps.length) {
+                    const g = gaps[0];
+                    const soon = g.start <= formatDashed(new Date(dpParse(today).getFullYear(), dpParse(today).getMonth(), dpParse(today).getDate() + 2));
+                    html = soon
+                        ? `<span class="avail-chip now"><span class="dot"></span>Available now</span>`
+                        : `<span class="avail-chip"><span class="dot"></span>Next free: ${dpPretty(g.start)}</span>`;
+                }
+                ['card-avail-' + k, 'home-card-avail-' + k].forEach(id => { const el = document.getElementById(id); if (el) el.innerHTML = html; });
+            });
+        }
+        // The soonest decent gap across all cottages in the next fortnight —
+        // dates that otherwise quietly expire. Hidden when there's nothing.
+        function renderLateAvailability() {
+            const el = document.getElementById('late-avail');
+            if (!el) return;
+            if (!publicAllAvailability) { el.innerHTML = ''; return; }
+            let best = null;
+            liveCottageKeys().forEach(k => {
+                if (!(k in publicAllAvailability)) return;
+                const minN = Math.max(2, (propertyRates[k] && propertyRates[k].minNights) || 1);
+                const g = freeGaps(publicAllAvailability[k], 14, minN)[0];
+                if (g && (!best || g.start < best.g.start || (g.start === best.g.start && g.nights > best.g.nights))) best = { k, g };
+            });
+            if (!best) { el.innerHTML = ''; return; }
+            const name = (propertyMeta[best.k] && propertyMeta[best.k].name) || best.k;
+            const nights = Math.min(best.g.nights, 7);
+            const co = formatDashed(new Date(dpParse(best.g.start).getFullYear(), dpParse(best.g.start).getMonth(), dpParse(best.g.start).getDate() + nights));
+            el.innerHTML = `<div class="late-avail">
+                <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var(--accent);flex-shrink:0;"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg>
+                <span>Late availability — <strong>${escapeHtml(name)}</strong> is free ${dpPretty(best.g.start)} to ${dpPretty(co)}</span>
+                <button type="button" class="btn-sm btn-edit" onclick="startBooking('${best.k}','${best.g.start}','${co}')">Check dates</button>
+            </div>`;
+        }
         function renderCardPrices() {
             Object.keys(propertyRates).forEach(k => {
                 const html = `from ${gbp(propertyRates[k].coupleRate)} <span>/ night (couple)</span>`;
@@ -8309,6 +8385,7 @@
                     </div>
                     <div class="card-meta" data-edit-text="${ck.meta}">${escapeHtml(meta)}</div>
                     <div class="card-price" id="card-price-${k}"></div>
+                    <div class="card-avail" id="card-avail-${k}"></div>
                 </a>`;
             }).join('');
             try { renderCardPrices(); } catch (e) {}
@@ -8341,6 +8418,7 @@
                     </div>
                     <div class="card-meta" data-edit-text="${ck.meta}">${escapeHtml(meta)}</div>
                     <div class="card-price" id="home-card-price-${k}"></div>
+                    <div class="card-avail" id="home-card-avail-${k}"></div>
                 </a>`;
             }).join('');
             try { renderCardPrices(); } catch (e) {}
@@ -10977,7 +11055,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'x4j7v2bq';
+            const BUILD = 'r6m2t9kf';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
