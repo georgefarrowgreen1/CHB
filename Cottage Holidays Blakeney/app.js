@@ -552,7 +552,12 @@
 
             // The cottage page's sticky booking bar lives on <body> (so its position:fixed
             // isn't trapped by the page-view transform); show it only on the cottage page.
-            try { const bb = document.getElementById('prop-book-bar'); if (bb) bb.style.display = (viewId === 'view-21a') ? 'flex' : 'none'; } catch (e) {}
+            try {
+                const bb = document.getElementById('prop-book-bar');
+                if (bb) bb.style.display = (viewId === 'view-21a') ? 'flex' : 'none';
+                // Lets CSS lift the chat bubble clear of the bar (see .book-bar-open).
+                document.body.classList.toggle('book-bar-open', viewId === 'view-21a');
+            } catch (e) {}
 
             // Refresh the unified back office (calendar + inbox) whenever it's opened
             if (viewId === 'view-backoffice') {
@@ -11148,7 +11153,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'f3c8m5tq';
+            const BUILD = 'g4d9n6ur';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
