@@ -26,6 +26,10 @@ build step**); PHP backend files sit alongside it. App-style guest shell lives i
   do NOT remove those; they're the rendering path, not the editing UI.
 - Responsive: prefer the four canonical breakpoints (480 / 640 / 900 / 1200) for new
   media queries; migrate stray one-off widths opportunistically when touched.
+- **Design system**: `Cottage Holidays Blakeney/DESIGN.md` is the design language —
+  build from the `:root` tokens in app.css (radius `--r-*` incl. `--r-panel`, status
+  `--ok/--warn/--danger`, shadows `--shadow-*`, easings `--fluid-bezier/--spring`);
+  never introduce new raw hex/px/easing values for things a token covers.
 - Guest mobile shell CSS/JS is gated to `body.guest-app:not(.owner-mode)` so admin
   (`owner-mode`) and desktop are never affected. Keep new shell rules gated the same way.
 - The site deploys from `main`; the repo is cloned fresh each session (ephemeral

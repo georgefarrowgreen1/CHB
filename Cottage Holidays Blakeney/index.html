@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=65">
+    <link rel="stylesheet" href="app.css?v=68">
     <!-- Speed up the font fetch (and the jsPDF CDN) by opening the connections early. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -205,7 +205,7 @@
     </div>
 
     <!-- HEADER -->
-    <header class="glass-panel" style="border-radius: 40px;">
+    <header class="glass-panel">
         <div class="logo" onpointerdown="flareCrown()" onclick="nav('view-main')">
             <img src="logo.svg" alt="Cottage Holidays Blakeney crown logo" class="logo-mark">
             <span class="logo-text" data-edit-text="site-logo">Cottage Holidays Blakeney</span>
@@ -277,7 +277,7 @@
 
         <section class="hero" id="hero">
             <div class="hero-bg" data-edit-img="hero-bg" style="background-image: url('hero.jpg');"></div>
-            <div class="hero-content glass-panel" id="hero-headline-panel" style="border-radius: 30px;">
+            <div class="hero-content glass-panel" id="hero-headline-panel">
                 <p class="hero-kicker" data-edit-text="hero-kicker">Est. 1983 &middot; Book direct with the owner</p>
                 <h1 data-edit-text="hero-title">Liquid Coastal Luxury</h1>
                 <p data-edit-text="hero-sub">Boutique holiday escapes in Blakeney, Norfolk</p>
@@ -346,7 +346,7 @@
 
         <!-- CHECK AVAILABILITY — the search panel + results, relocated below the cottages. -->
         <section class="home-availability" id="home-availability">
-            <div class="hero-content glass-panel" id="hero-search-panel" style="border-radius: 30px;">
+            <div class="hero-content glass-panel" id="hero-search-panel">
                 <p class="section-kicker reveal">Plan your escape</p>
                 <h2 class="section-title text-center reveal" style="margin-bottom: 6px;">Check availability</h2>
                 <p class="text-center" style="color: var(--text-muted); font-size: 0.92rem; margin: 0 auto 6px; max-width: 460px; text-wrap: balance;">Live prices &amp; availability across all our cottages — book direct, no fees.</p>
@@ -1551,13 +1551,17 @@
     </button>
     <div id="chat-widget" class="chat-widget" role="dialog" aria-label="Chat with Cottage Holidays Blakeney">
         <div class="chat-widget-head">
-            <div><div class="chat-widget-title">Chat with us</div><div class="chat-widget-sub">We usually reply by email too</div></div>
+            <div class="chat-head-ava" aria-hidden="true"><img src="logo.svg" alt=""></div>
+            <div style="flex:1;min-width:0;"><div class="chat-widget-title">Chat with us</div><div class="chat-widget-sub"><span class="chat-presence-dot" aria-hidden="true"></span>Personally answered by the owner</div></div>
             <button class="reviews-modal-close" onclick="closeChat()" aria-label="Close chat"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
         </div>
         <div class="chat-thread" id="chat-thread"></div>
-        <div id="chat-intro" style="display:none;padding:0 14px;">
-            <input type="text" id="chat-name" aria-label="Your name" class="input-glass field-sm" placeholder="Your name (optional)" style="margin:0 0 8px;">
-            <input type="email" id="chat-email" name="email" autocomplete="email" aria-label="Your email" class="input-glass field-sm" placeholder="Email (so we can reply)" style="margin:0;">
+        <div id="chat-intro" class="chat-intro" style="display:none;">
+            <div class="chat-intro-label">So we can reply</div>
+            <div class="chat-intro-fields">
+                <input type="text" id="chat-name" aria-label="Your name" class="input-glass field-sm" placeholder="Your name (optional)">
+                <input type="email" id="chat-email" name="email" autocomplete="email" aria-label="Your email" class="input-glass field-sm" placeholder="Email">
+            </div>
         </div>
         <div class="chat-quick" id="chat-quick">
             <button type="button" class="chat-chip chat-chip-avail" onclick="chatAvailStart()">Check availability</button>
@@ -1567,8 +1571,8 @@
             <button type="button" class="chat-chip chat-chip-issue" onclick="chatQuick('__issue')">Report an issue</button>
         </div>
         <div class="chat-composer" style="padding:12px 14px 14px;">
-            <textarea id="chat-input" class="input-glass" rows="2" placeholder="Write a message…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat();}"></textarea>
-            <button class="btn-glass" onclick="sendChat()">Send</button>
+            <textarea id="chat-input" class="input-glass" rows="1" placeholder="Write a message…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat();}"></textarea>
+            <button class="chat-send" onclick="sendChat()" aria-label="Send message" title="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="M5.5 11.5 12 5l6.5 6.5"/></svg></button>
         </div>
     </div>
 
@@ -1953,7 +1957,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=95"></script>
+    <script src="app.js?v=98"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

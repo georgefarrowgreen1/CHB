@@ -6130,6 +6130,18 @@
             if (!msgs.length) return `<p class="chat-empty">No messages yet.</p>`;
             return msgs.map(m => `<div class="chat-msg ${m.role === meRole ? 'me' : 'them'}">${escapeHtml(m.body)}<div class="chat-meta">${m.role === 'guest' ? (meRole === 'guest' ? 'You' : 'Guest') : (meRole === 'admin' ? 'You' : 'Host')} · ${fmtMsgTime(m.at)}</div></div>`).join('');
         }
+        // Empty-thread greeting, styled as a received message so the chat opens
+        // looking like a conversation rather than a blank pane (class chat-empty
+        // so chatClearEmpty() removes it when the first real bubble arrives).
+        function chatHelloHtml() {
+            return `<div class="chat-hello chat-empty">
+                <div class="chat-hello-ava" aria-hidden="true"><img src="logo.svg" alt=""></div>
+                <div>
+                    <div class="chat-msg them">Hi! 👋 Ask us anything — about a cottage, your dates, or your stay.</div>
+                    <div class="chat-hello-note">We usually reply within a few hours, by chat and email.</div>
+                </div>
+            </div>`;
+        }
 
         // ---- Floating chat widget (everyone: logged-in guests + anonymous visitors) ----
         function chatGetToken() { try { return localStorage.getItem('chb-chat-token') || ''; } catch (e) { return ''; } }
@@ -6178,12 +6190,11 @@
                 const r = await apiPost('messages.php', payload);
                 const msgs = r.messages || [];
                 __chatSig = chatMsgSig(msgs);
-                thread.innerHTML = msgs.length ? chatBubbles(msgs, 'guest')
-                    : `<p class="chat-empty">Hi! 👋 Ask us anything — about a cottage, your dates, or your stay. We'll reply by email too.</p>`;
+                thread.innerHTML = msgs.length ? chatBubbles(msgs, 'guest') : chatHelloHtml();
                 thread.scrollTop = thread.scrollHeight;
             } catch (e) {
                 // Don't alarm the visitor — show the greeting and let them type.
-                thread.innerHTML = `<p class="chat-empty">Hi! 👋 Ask us anything — about a cottage, your dates, or your stay. We'll reply by email too.</p>`;
+                thread.innerHTML = chatHelloHtml();
             }
         }
         // ---- Background refresh: while the chat is open, quietly poll for new
@@ -11156,7 +11167,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'h5e0p7vs';
+            const BUILD = 'k8h3s0yv';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
