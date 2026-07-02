@@ -1272,7 +1272,13 @@
         .today-card-list { font-size: 0.82rem; color: var(--text-light); display: flex; flex-direction: column; gap: 3px; }
         .today-card-list .prop-tag { margin-right: 4px; }
         /* Back-office booking search */
-        .bo-search { max-width: 720px; margin: 0 auto 22px; }
+        .bo-search { max-width: 720px; margin: 0 0 22px; }
+        /* "Waiting for approval" reads as a slim full-width banner rather than an
+           orphan card leaving two empty grid cells (it appears only when needed). */
+        #today-approve-card { grid-column: 1 / -1; display: flex; align-items: center; gap: 18px; border-color: rgba(255,167,38,0.35); }
+        #today-approve-card .today-card-label { margin: 0; flex-shrink: 0; }
+        #today-approve-card .today-card-value { margin: 0; }
+        #today-approve-card .today-card-list { display: flex; gap: 8px 22px; flex-wrap: wrap; margin: 0 0 0 auto; }
         /* Recent-activity feed rows (dashboard) */
         .act-row { display: flex; align-items: center; gap: 10px; padding: 10px 2px; border-bottom: 1px solid var(--glass-border); font-size: 0.85rem; }
         .act-row:last-child { border-bottom: none; }
@@ -2315,6 +2321,9 @@
     .settings-index .settings-group { break-inside: avoid; }
     .settings-index .settings-section-label { break-after: avoid; margin-top: 4px; }
     .settings-index .money-overview { column-span: all; margin-bottom: 26px; }
+    /* Short sub-lists (the cottage list + staging test centre) read as ONE
+       column — two columns just split a 3-row list from its action row. */
+    #accom-list.settings-index, #testcentre-list.settings-index { column-count: 1; max-width: 640px; }
 }
         /* "How it works" disclosure — keeps background explanations one tap away so
            admin panels lead with the controls instead of a wall of text. */
