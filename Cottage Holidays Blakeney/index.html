@@ -215,7 +215,7 @@
                 <span class="nav-indicator" aria-hidden="true"></span>
                 <li><a onclick="nav('view-main')" data-edit-text="nav-home">Home</a></li>
                 <li><a onclick="nav('view-cottages')" data-edit-text="nav-cottages">Cottages</a></li>
-                <li><a onclick="nav('view-experiences')" data-edit-text="nav-experiences">Experiences</a></li>
+                <li><a href="/experiences" onclick="event.preventDefault(); nav('view-experiences')" data-edit-text="nav-experiences">Experiences</a></li>
             </ul>
         </nav>
         <button class="account-btn" id="account-btn" onclick="openGuestArea()" title="Sign in" aria-label="Sign in / my account">
@@ -247,7 +247,7 @@
     <div class="mobile-nav-overlay" id="mobileMenu">
         <a onclick="toggleMobileMenu(); nav('view-main')" data-edit-text="mnav-home">Home</a>
         <a onclick="toggleMobileMenu(); nav('view-cottages')" data-edit-text="mnav-cottages">Cottages</a>
-        <a onclick="toggleMobileMenu(); nav('view-experiences')" data-edit-text="mnav-experiences">Experiences</a>
+        <a href="/experiences" onclick="event.preventDefault(); toggleMobileMenu(); nav('view-experiences')" data-edit-text="mnav-experiences">Experiences</a>
     </div>
 
     <!-- ================= MAIN VIEW ================= -->
@@ -1930,7 +1930,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=86"></script>
+    <script src="app.js?v=87"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
