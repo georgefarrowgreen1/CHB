@@ -385,6 +385,34 @@ function send_enquiry_ack($enq, $accountExists = false) {
     return smtp_send($email, $name, $subject, $text, $html);
 }
 
+// New-enquiry alert for the owner, with signed one-tap action links. $e carries
+// the enquiry fields + prebuilt approve_url / decline_url (enquiry-action.php).
+function send_owner_enquiry_email($e) {
+    if (!defined('OWNER_NOTIFY_EMAIL') || !OWNER_NOTIFY_EMAIL) return ['ok' => false, 'error' => 'No owner email'];
+    $prop = function_exists('prop_display') ? (prop_display($e['prop_key'] ?? '')['name'] ?? ($e['prop_key'] ?? '')) : ($e['prop_key'] ?? '');
+    $party = (int)($e['adults'] ?? 0) . ' adult' . ((int)($e['adults'] ?? 0) === 1 ? '' : 's')
+           . ((int)($e['children'] ?? 0) ? ' + ' . (int)$e['children'] . ' child' . ((int)$e['children'] === 1 ? '' : 'ren') : '');
+    $subject = 'New enquiry: ' . ($e['name'] ?: 'Someone') . ' — ' . $prop . ', ' . $e['check_in'] . ' to ' . $e['check_out'];
+    $text = "A new enquiry just arrived.\n\n"
+          . "Guest: " . ($e['name'] ?? '—') . " (" . ($e['email'] ?? '—') . ")\n"
+          . "Cottage: {$prop}\n"
+          . "Dates: " . ($e['check_in'] ?? '') . " to " . ($e['check_out'] ?? '') . "\n"
+          . "Party: {$party}\n"
+          . (!empty($e['message']) ? "Message: " . $e['message'] . "\n" : '')
+          . "\nApprove (creates the booking + confirmation & payment emails):\n" . $e['approve_url'] . "\n\n"
+          . "Decline (deletes the enquiry):\n" . $e['decline_url'] . "\n\n"
+          . "Each link opens a confirmation page first — nothing happens until you press the button there.";
+    $inner = email_h('New enquiry')
+        . email_p('<strong style="color:#f4f5f7;">' . email_esc($e['name'] ?? '') . '</strong> would like to stay at <strong style="color:#f4f5f7;">' . email_esc($prop) . '</strong>.')
+        . email_p(email_esc(($e['check_in'] ?? '') . ' to ' . ($e['check_out'] ?? '')) . ' &middot; ' . email_esc($party), true)
+        . (!empty($e['message']) ? email_note(email_esc($e['message'])) : '')
+        . email_btn($e['approve_url'], 'Review & approve')
+        . email_p('<a href="' . email_esc($e['decline_url']) . '" style="color:#8a8f9c;">Decline this enquiry</a>', true)
+        . email_p('Each link opens a confirmation page first — nothing happens until you press the button there.', true);
+    $html = email_shell('New enquiry — ' . $prop, $inner);
+    return smtp_send(OWNER_NOTIFY_EMAIL, 'Owner', $subject, $text, $html);
+}
+
 function send_booking_emails($b) {
     $out = ['guest' => ['ok' => false, 'error' => 'not attempted'],
             'owner' => ['ok' => false, 'error' => 'not attempted']];
