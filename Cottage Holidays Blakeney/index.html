@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=72">
+    <link rel="stylesheet" href="app.css?v=73">
     <!-- Speed up the font fetch (and the jsPDF CDN) by opening the connections early. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1063,7 +1063,8 @@
             <!-- Enquiries -->
             <div class="settings-sec" id="sec-enquiries" style="display:none;">
                 <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 10px;">Pending booking requests from the website. Approve to turn one into a booking, edit the dates, or decline.</p>
-                <label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;color:var(--text-muted);max-width:640px;margin:0 0 16px;"><input type="checkbox" id="enq-nudge-toggle" style="width:auto;margin:0;" onchange="saveContent('enquiry-nudge-off', this.checked ? '' : '1')"> Email a friendly follow-up to enquirers who haven't booked after 2 days</label>
+                <label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;color:var(--text-muted);max-width:640px;margin:0 0 8px;"><input type="checkbox" id="enq-nudge-toggle" style="width:auto;margin:0;" onchange="saveContent('enquiry-nudge-off', this.checked ? '' : '1')"> Email a friendly follow-up to enquirers who haven't booked after 2 days</label>
+                <label style="display:flex;align-items:center;gap:8px;font-size:0.82rem;color:var(--text-muted);max-width:640px;margin:0 0 16px;"><input type="checkbox" id="anniv-nudge-toggle" style="width:auto;margin:0;" onchange="saveContent('anniversary-nudge-off', this.checked ? '' : '1')"> Invite last year's guests back with a one-off email, ~11 months after their stay</label>
                 <div id="inbox-list"><!-- JS injects enquiry cards here --></div>
             </div>
 
@@ -1566,6 +1567,14 @@
     </div>
 
     <!-- ================= FLOATING CHAT (everyone) ================= -->
+    <!-- Resume an abandoned enquiry (shown by enquiryResumeShow when a fresh
+         local draft exists; the draft never leaves this browser). -->
+    <button type="button" id="enquiry-resume" class="enquiry-resume" style="display:none;" onclick="enquiryResumeOpen()">
+        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+        <span id="enquiry-resume-text">Resume your enquiry</span>
+        <span class="er-x" onclick="event.stopPropagation(); enquiryResumeDismiss()" role="button" tabindex="0" aria-label="Dismiss" title="Dismiss">&times;</span>
+    </button>
+
     <button id="chat-fab" class="chat-fab" onclick="toggleChat()" aria-label="Chat with us" title="Chat with us">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.6-.8L3 21l1.9-5.7A8.38 8.38 0 0 1 4 11.5 8.5 8.5 0 0 1 12.5 3 8.38 8.38 0 0 1 21 11.5z"/></svg>
     </button>
@@ -1977,7 +1986,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=103"></script>
+    <script src="app.js?v=104"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

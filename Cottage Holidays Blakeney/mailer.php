@@ -352,6 +352,39 @@ function send_review_request_email($b) {
     return smtp_send($b['email'], $name, $subject, $text, $html);
 }
 
+// Anniversary re-invite: ~11 months after a stay, invite the guest back for the
+// same season next year (sent once per booking by anniversary-nudge.php).
+function send_anniversary_email($b) {
+    if (empty($b['email'])) return ['ok' => false, 'error' => 'No guest email on file'];
+    $accent = prop_display($b['prop_key'] ?? '')['accent'];
+    $esc = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+    $name  = ($b['name'] ?? '') !== '' ? preg_split('/\s+/', trim($b['name']))[0] : 'there';
+    $prop  = $b['prop_name'] ?: 'the cottage';
+    $month = date('F', strtotime($b['check_in'] ?? 'now'));
+    $url   = function_exists('site_base_url') ? site_base_url() : '';
+
+    $subject = "{$month} at {$prop} — fancy a return visit?";
+    $text = "Hi {$name},\n\n"
+          . "Around this time last year you were getting ready for your stay at {$prop} — "
+          . "we hope Blakeney has stayed with you the way it tends to.\n\n"
+          . "The same {$month} weeks are starting to book up again, so if you fancy a return "
+          . "we wanted you to have first pick of the dates. As a returning guest, just mention "
+          . "the returning-guest rate when you enquire and we'll apply it.\n\n"
+          . ($url ? "Check availability: {$url}\n\n" : '')
+          . "Hope to welcome you back,\nCottage Holidays Blakeney\n\n"
+          . "P.S. Prefer not to get the occasional note like this? Just reply and say so.";
+
+    $inner = email_h('Fancy a return visit?')
+        . email_p('Hi ' . $esc($name) . ', around this time last year you were getting ready for your stay at <strong style="color:#f4f5f7;">' . $esc($prop) . '</strong> — we hope Blakeney has stayed with you the way it tends to.')
+        . email_p('The same <strong style="color:#f4f5f7;">' . $esc($month) . '</strong> weeks are starting to book up again, so we wanted you to have first pick of the dates. As a returning guest, just mention the <strong style="color:#f4f5f7;">returning-guest rate</strong> when you enquire and we\'ll apply it.');
+    if ($url) $inner .= email_btn($url, 'Check availability');
+    $inner .= email_p('Hope to welcome you back,<br>Cottage Holidays Blakeney', true)
+        . email_p('Prefer not to get the occasional note like this? Just reply and say so.', true);
+    $html = email_shell($month . ' at ' . $prop, $inner, $accent);
+
+    return smtp_send($b['email'], $b['name'] ?? '', $subject, $text, $html);
+}
+
 // Acknowledge a guest's enquiry by email. $accountExists tailors the closing line:
 // returning guests are pointed to sign in; new guests are invited to create an account.
 function send_enquiry_ack($enq, $accountExists = false) {

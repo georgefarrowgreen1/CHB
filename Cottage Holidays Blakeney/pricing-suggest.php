@@ -188,6 +188,36 @@ foreach ($topNoMonths as $tm) {
     ];
 }
 
+// 6) Week-level demand radar — exact-date searches (found or not) grouped by the
+//    Monday of the week guests wanted. Unmet weeks with a real signal become
+//    suggestion cards: future weeks are actionable now; past weeks inform next year.
+try {
+    $q = db()->prepare("SELECT DATE_SUB(check_in, INTERVAL WEEKDAY(check_in) DAY) wk,
+                               COUNT(*) c, SUM(found = 0) missed
+                        FROM search_log
+                        WHERE created_at >= ? AND check_in IS NOT NULL
+                        GROUP BY wk ORDER BY c DESC LIMIT 8");
+    $q->execute([$since]);
+    $weeks = $q->fetchAll();
+    $signals['searchWeeks'] = array_map(fn($r) => [
+        'week' => $r['wk'], 'count' => (int)$r['c'], 'missed' => (int)$r['missed']], $weeks);
+    foreach ($weeks as $w) {
+        if ((int)$w['missed'] < 3) continue;   // need a real signal, not noise
+        $wc = date('j M', strtotime($w['wk']));
+        $future = $w['wk'] >= date('Y-m-d');
+        $suggestions[] = [
+            'id' => 'radar-' . $w['wk'], 'prop_key' => '', 'prop_name' => '',
+            'severity' => 'opportunity',
+            'title' => 'Demand radar: week of ' . $wc,
+            'detail' => (int)$w['missed'] . ' of ' . (int)$w['c'] . ' searches for the week of ' . $wc
+                . ' found nothing free. ' . ($future
+                    ? 'If any dates that week can be opened (or a booking moved), that\'s demand waiting — the waitlist and newsletter are the quickest way to fill it.'
+                    : 'You were full that week — worth pricing it higher next year, since demand outran supply.'),
+            'apply' => null,
+        ];
+    }
+} catch (\Throwable $e) { /* search_log not migrated yet */ }
+
 // Opportunities first, then info.
 usort($suggestions, fn($a, $b) => ($a['severity'] === 'opportunity' ? 0 : 1) - ($b['severity'] === 'opportunity' ? 0 : 1));
 
