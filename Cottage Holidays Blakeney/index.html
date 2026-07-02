@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=62">
+    <link rel="stylesheet" href="app.css?v=63">
     <!-- Speed up the font fetch (and the jsPDF CDN) by opening the connections early. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -278,17 +278,26 @@
         <section class="hero" id="hero">
             <div class="hero-bg" data-edit-img="hero-bg" style="background-image: url('hero.jpg');"></div>
             <div class="hero-content glass-panel" id="hero-headline-panel" style="border-radius: 30px;">
+                <p class="hero-kicker" data-edit-text="hero-kicker">Est. 1983 &middot; Blakeney, North Norfolk</p>
                 <h1 data-edit-text="hero-title">Liquid Coastal Luxury</h1>
                 <p data-edit-text="hero-sub">Boutique holiday escapes in Blakeney, Norfolk</p>
-                <button type="button" class="btn-glass hero-cta" onclick="scrollToAvailability()">Check availability</button>
+                <button type="button" class="btn-glass btn-accent hero-cta" onclick="scrollToAvailability()">Check availability</button>
             </div>
+            <button type="button" class="hero-scroll-cue" onclick="scrollToAvailability()" aria-label="Scroll down to check availability"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+        </section>
+
+        <!-- Heritage band: the numbers that earn trust, in display serif. The cottage
+             count + guest rating are refreshed from live data (updateHeritageStats). -->
+        <section class="home-heritage reveal" id="home-heritage" aria-label="Cottage Holidays Blakeney in numbers">
+            <div class="heritage-item"><span class="heritage-num">1983</span><span class="heritage-label">Family founded</span></div>
+            <div class="heritage-item"><span class="heritage-num" id="heritage-count">3</span><span class="heritage-label">Cottages in Blakeney</span></div>
+            <div class="heritage-item" id="heritage-rating-item" style="display:none;"><span class="heritage-num" id="heritage-rating"></span><span class="heritage-label">Guest rating</span></div>
         </section>
 
         <!-- TRUST STRIP — factual reassurance points (ordered just under the hero). -->
         <section class="home-trust reveal" id="home-trust" aria-label="Why book with us">
             <div class="trust-strip glass-panel">
                 <div class="trust-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-5.6-7-11a7 7 0 0 1 14 0c0 5.4-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg> In the heart of Blakeney, North Norfolk</div>
-                <div class="trust-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="9" r="5.5"/><path d="M8.5 13.2 7 21l5-2.6 5 2.6-1.5-7.8"/></svg> Founded in 1983</div>
                 <div class="trust-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.2 5.2L20 9l-4 3.6L17 18l-5-2.8L7 18l1-5.4L4 9l5.8-.8z"/></svg> Boutique self-catering</div>
                 <div class="trust-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.6 13.4 12 22l-9-9V3h10z"/><circle cx="7.5" cy="7.5" r="1.5"/></svg> Book direct — no booking fees</div>
                 <div class="trust-item"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg> Personally hosted by the owner</div>
@@ -299,6 +308,7 @@
              renderHomeCottages() rebuilds #home-cottages-grid from the live list; these
              static cards are the no-JS / first-paint fallback for the original three. -->
         <section class="home-cottages reveal" id="home-cottages">
+            <p class="section-kicker reveal">Stay with us</p>
             <h2 class="section-title text-center reveal">Our cottages</h2>
             <!-- Late-availability spotlight: filled by renderLateAvailability() when a
                  cottage has a decent gap in the next fortnight; empty otherwise. -->
@@ -337,6 +347,7 @@
         <!-- CHECK AVAILABILITY — the search panel + results, relocated below the cottages. -->
         <section class="home-availability" id="home-availability">
             <div class="hero-content glass-panel" id="hero-search-panel" style="border-radius: 30px;">
+                <p class="section-kicker reveal">Plan your escape</p>
                 <h2 class="section-title text-center reveal" style="margin-bottom: 6px;">Check availability</h2>
                 <p class="text-center" style="color: var(--text-muted); font-size: 0.92rem; margin: 0 auto 6px; max-width: 460px;">Live prices &amp; availability across all our cottages — book direct, no fees.</p>
                 <div class="hero-search">
@@ -403,6 +414,14 @@
                 </div>
                 <div class="grid" id="hs-results-grid"></div>
             </div>
+        </section>
+
+        <!-- Guest words: one real review at a time, rotating gently. Hidden until
+             approved reviews load (renderGuestWords). -->
+        <section class="home-guestwords reveal" id="home-guestwords" style="display:none;" aria-label="What our guests say">
+            <p class="section-kicker">Words from our guests</p>
+            <blockquote class="guestwords-quote" id="guestwords-quote"></blockquote>
+            <div class="guestwords-meta" id="guestwords-meta"></div>
         </section>
 
         <!-- ALL REVIEWS MODAL (per-cottage "read all reviews") -->
@@ -1934,7 +1953,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=92"></script>
+    <script src="app.js?v=93"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
