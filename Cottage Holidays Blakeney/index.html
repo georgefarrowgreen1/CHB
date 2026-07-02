@@ -1077,8 +1077,8 @@
                 </div>
                 <div class="glass-panel" style="max-width:640px;padding:24px 26px;border-radius:18px;margin-top:16px;">
                     <h3 style="font-family:var(--font-serif);font-size:1.2rem;margin:0 0 6px;">Address lookup</h3>
-                    <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 14px;line-height:1.5;">Lets guests pick their exact house from a dropdown after typing their postcode on the enquiry form. Get a key from <strong>getAddress.io</strong> (small free tier available) and paste it below. Stored encrypted; never shown on the public site. Leave blank and the form keeps its simple postcode recognition.</p>
-                    <label class="modal-label" for="apikey-address-input">getAddress.io API key</label>
+                    <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 14px;line-height:1.5;">Lets guests pick their exact house from a dropdown after typing their postcode on the enquiry form. House-level addresses come from Royal Mail's licensed data, so this needs a key: the simplest is <strong>ideal-postcodes.co.uk</strong> (pay-as-you-go, roughly 3p per lookup, no subscription — keys start "ak_"). An <strong>OS Places API</strong> key from the OS Data Hub works here too. Stored encrypted; never shown on the public site. Leave blank and the form keeps its simple postcode recognition.</p>
+                    <label class="modal-label" for="apikey-address-input">Address lookup API key</label>
                     <input type="text" id="apikey-address-input" class="input-glass" placeholder="paste your key…" autocomplete="off" spellcheck="false" style="font-family:monospace;">
                     <div style="margin-top:12px;display:flex;gap:10px;align-items:center;">
                         <button class="btn-sm btn-edit" onclick="saveApiKey('address')">Save key</button>
@@ -1947,7 +1947,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=90"></script>
+    <script src="app.js?v=91"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
