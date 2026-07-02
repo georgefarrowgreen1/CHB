@@ -4123,6 +4123,37 @@
         function isUkPostcode(text) {
             return /^[A-Za-z]{1,2}\d[A-Za-z\d]?\s*\d[A-Za-z]{2}$/.test((text || '').trim());
         }
+        // ---- Live postcode recognition ----
+        // As the guest types we tidy the format, check it against real UK postcode
+        // data (postcode-lookup.php) and confirm the recognised place back —
+        // "✓ NR25 7AB — Blakeney, Norfolk" — or nudge on a likely typo. Purely
+        // assistive: a failed lookup shows nothing and never blocks the form.
+        function normalizeUkPostcode(v) {
+            const c = (v || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+            if (c.length < 5 || c.length > 7) return (v || '').toUpperCase().trim();
+            return c.slice(0, -3) + ' ' + c.slice(-3);
+        }
+        let __pcTimer = null, __pcSeq = 0;
+        function postcodeRecognize(inputId, statusId, onBlur) {
+            const inp = document.getElementById(inputId);
+            const out = document.getElementById(statusId);
+            if (!inp || !out) return;
+            clearTimeout(__pcTimer);
+            const run = async () => {
+                if (onBlur) { const n = normalizeUkPostcode(inp.value); if (n && n !== inp.value) inp.value = n; }
+                const val = (inp.value || '').trim();
+                if (!isUkPostcode(val)) { out.textContent = ''; return; }
+                const seq = ++__pcSeq;
+                try {
+                    const r = await apiGet('postcode-lookup.php?pc=' + encodeURIComponent(normalizeUkPostcode(val)));
+                    if (seq !== __pcSeq) return;   // superseded by a newer keystroke
+                    if (r.ok && r.valid) { out.style.color = '#7FD68A'; out.textContent = '✓ ' + (r.postcode || val) + (r.place ? ' — ' + r.place : ''); }
+                    else if (r.ok) { out.style.color = '#FFB74D'; out.textContent = "We can't find that postcode — please double-check it."; }
+                    else { out.textContent = ''; }
+                } catch (e) { if (seq === __pcSeq) out.textContent = ''; }
+            };
+            if (onBlur) run(); else __pcTimer = setTimeout(run, 450);
+        }
 
         function autofillGuestEnquiry() {
             const e = document.getElementById('enq-email');
@@ -10289,7 +10320,7 @@
             const email = document.getElementById('enq-email').value.trim();
             const phone = document.getElementById('enq-phone').value.trim();
             const address = document.getElementById('enq-address').value.trim();
-            const postcode = document.getElementById('enq-postcode').value.trim();
+            const postcode = normalizeUkPostcode(document.getElementById('enq-postcode').value);
             const checkIn = document.getElementById('enq-checkin').value;
             const checkOut = document.getElementById('enq-checkout').value;
             const adults = Math.max(1, parseInt(document.getElementById('enq-adults').value, 10) || 0);
@@ -11055,7 +11086,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'r6m2t9kf';
+            const BUILD = 'd7q3w8nc';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
