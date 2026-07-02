@@ -7534,8 +7534,40 @@
                         <button class="btn-sm btn-edit" onclick="runBackupNow(this)">Back up now</button>
                         <button class="btn-sm btn-edit" onclick="window.open('backup.php?action=download','_blank')">Download latest</button>
                     </div>
+                </div>
+                <div class="accounts-stat" style="max-width:640px;margin-bottom:14px;">
+                    <div class="label">Hero image</div>
+                    <p style="font-size:0.8rem;color:var(--text-muted);margin:8px 0 12px;">The homepage photo is the first thing every visitor downloads. If it's a full-resolution upload, one click resizes and re-compresses it (the original is kept, and you can re-upload any time in Website content).</p>
+                    <div id="hero-opt-status" style="font-size:0.82rem;color:var(--text-muted);margin-bottom:12px;">Checking…</div>
+                    <button class="btn-sm btn-edit" id="hero-opt-btn" onclick="optimizeHeroNow(this)" style="display:none;">Optimise hero image</button>
                 </div>`;
             refreshBackupStatus();
+            refreshHeroStatus();
+        }
+        async function refreshHeroStatus() {
+            const el = document.getElementById('hero-opt-status');
+            const btn = document.getElementById('hero-opt-btn');
+            if (!el) return;
+            try {
+                const r = await apiPost('optimize-hero.php', { action: 'status' });
+                if (!r.hero) { el.textContent = 'No uploaded hero found — upload one in Website content.'; return; }
+                const kb = Math.round(r.hero.bytes / 1024);
+                if (r.hero.optimized) { el.textContent = `Current hero: ${kb} KB — already optimised. ✓`; }
+                else {
+                    el.textContent = `Current hero: ${kb} KB — larger than it needs to be (target ~250 KB).`;
+                    if (btn) btn.style.display = '';
+                }
+            } catch (e) { el.textContent = "Couldn't check the hero: " + (e.message || ''); }
+        }
+        async function optimizeHeroNow(btn) {
+            if (btn) { btn.disabled = true; btn.textContent = 'Optimising…'; }
+            try {
+                const r = await apiPost('optimize-hero.php', { action: 'optimize' });
+                if (r.ok) toast(`Hero optimised: ${Math.round(r.before_bytes / 1024)} KB → ${Math.round(r.after_bytes / 1024)} KB${r.webp_bytes ? ` (${Math.round(r.webp_bytes / 1024)} KB as WebP)` : ''}.`);
+                else toast(r.error || "Couldn't optimise the hero.", 'error');
+            } catch (e) { toast(e.message || "Couldn't optimise the hero.", 'error'); }
+            if (btn) { btn.disabled = false; btn.textContent = 'Optimise hero image'; btn.style.display = 'none'; }
+            refreshHeroStatus();
         }
         async function refreshBackupStatus() {
             const el = document.getElementById('backup-status');
@@ -10943,7 +10975,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'q8d3j6vb';
+            const BUILD = 't2n7f4hx';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
