@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=61">
+    <link rel="stylesheet" href="app.css?v=62">
     <!-- Speed up the font fetch (and the jsPDF CDN) by opening the connections early. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -300,6 +300,9 @@
              static cards are the no-JS / first-paint fallback for the original three. -->
         <section class="home-cottages reveal" id="home-cottages">
             <h2 class="section-title text-center reveal">Our cottages</h2>
+            <!-- Late-availability spotlight: filled by renderLateAvailability() when a
+                 cottage has a decent gap in the next fortnight; empty otherwise. -->
+            <div id="late-avail" aria-live="polite"></div>
             <div class="grid grid-3" id="home-cottages-grid" style="margin-top: 18px;">
               <a class="card glass-panel" data-prop="21a" href="/cottages/21a-westgate" onclick="return cottageLink(event,'21a')">
                 <div class="card-img-wrap">
@@ -1930,7 +1933,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=87"></script>
+    <script src="app.js?v=88"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
