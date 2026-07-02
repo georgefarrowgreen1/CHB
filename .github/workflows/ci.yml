@@ -32,3 +32,27 @@ jobs:
       - name: Pricing parity (PHP price_breakdown vs JS fixtures)
         working-directory: "Cottage Holidays Blakeney"
         run: php test-pricing.php
+
+  # Real-browser smoke test: boots the site headless with stubbed APIs and walks
+  # the core guest journeys + admin dashboard. Catches the render/integration
+  # breakage the DOM-shim smoke test can't see. Runs in parallel with `checks`.
+  browser-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Playwright Chromium
+        working-directory: "Cottage Holidays Blakeney"
+        run: |
+          npm init -y > /dev/null
+          npm install --no-audit --no-fund playwright
+          npx playwright install --with-deps chromium
+
+      - name: Browser smoke test
+        working-directory: "Cottage Holidays Blakeney"
+        run: node e2e-test.js

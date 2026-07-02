@@ -14,3 +14,4 @@ Cottage Holidays Blakeney/*.webp
 # Common local cruft
 .DS_Store
 Thumbs.db
+node_modules/
