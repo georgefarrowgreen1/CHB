@@ -1270,20 +1270,22 @@
         }
         // ---- Settings → API keys ----
         function renderApis() {
-            const el = document.getElementById('apikey-tides-input');
-            if (el) el.value = (adminPrivateContent && adminPrivateContent['apikey-tides']) || '';
-            const msg = document.getElementById('apikey-tides-msg'); if (msg) msg.textContent = '';
+            ['tides', 'address'].forEach(which => {
+                const el = document.getElementById('apikey-' + which + '-input');
+                if (el) el.value = (adminPrivateContent && adminPrivateContent['apikey-' + which]) || '';
+                const msg = document.getElementById('apikey-' + which + '-msg'); if (msg) msg.textContent = '';
+            });
         }
         async function saveApiKey(which) {
-            if (which !== 'tides') return;
-            const el = document.getElementById('apikey-tides-input');
-            const msg = document.getElementById('apikey-tides-msg');
+            if (which !== 'tides' && which !== 'address') return;
+            const el = document.getElementById('apikey-' + which + '-input');
+            const msg = document.getElementById('apikey-' + which + '-msg');
             const val = (el && el.value || '').trim();
             try {
-                await apiPost('content.php', { action: 'set', key: 'apikey-tides', value: val });
-                if (adminPrivateContent) adminPrivateContent['apikey-tides'] = val;
-                __tideData = null;   // re-fetch with the new key next time
-                if (msg) { msg.style.color = '#4CAF50'; msg.textContent = val ? 'Saved ✓' : 'Cleared — tide widget hidden.'; }
+                await apiPost('content.php', { action: 'set', key: 'apikey-' + which, value: val });
+                if (adminPrivateContent) adminPrivateContent['apikey-' + which] = val;
+                if (which === 'tides') __tideData = null;   // re-fetch with the new key next time
+                if (msg) { msg.style.color = '#4CAF50'; msg.textContent = val ? 'Saved ✓' : (which === 'tides' ? 'Cleared — tide widget hidden.' : 'Cleared — the form keeps simple postcode recognition.'); }
             } catch (e) { if (msg) { msg.style.color = '#E57373'; msg.textContent = "Couldn't save: " + e.message; } }
         }
         function fillHostFields() {
@@ -4145,16 +4147,33 @@
                 if (!isUkPostcode(val)) { out.textContent = ''; return; }
                 const seq = ++__pcSeq;
                 try {
-                    const r = await apiGet('postcode-lookup.php?pc=' + encodeURIComponent(normalizeUkPostcode(val)));
+                    const r = await apiGet('postcode-lookup.php?pc=' + encodeURIComponent(normalizeUkPostcode(val)) + '&addresses=1');
                     if (seq !== __pcSeq) return;   // superseded by a newer keystroke
                     if (r.ok && r.valid) { out.style.color = '#7FD68A'; out.textContent = '✓ ' + (r.postcode || val) + (r.place ? ' — ' + r.place : ''); }
                     else if (r.ok) { out.style.color = '#FFB74D'; out.textContent = "We can't find that postcode — please double-check it."; }
                     else { out.textContent = ''; }
-                } catch (e) { if (seq === __pcSeq) out.textContent = ''; }
+                    offerAddressPick(r.ok && r.valid ? (r.addresses || null) : null);
+                } catch (e) { if (seq === __pcSeq) { out.textContent = ''; offerAddressPick(null); } }
             };
             if (onBlur) run(); else __pcTimer = setTimeout(run, 450);
         }
 
+        // Show/hide the pick-your-address dropdown (filled when the owner has an
+        // address-lookup key configured and the postcode resolved to real houses).
+        function offerAddressPick(addresses) {
+            const sel = document.getElementById('enq-addr-pick');
+            if (!sel) return;
+            if (!Array.isArray(addresses) || !addresses.length) { sel.style.display = 'none'; sel.innerHTML = ''; return; }
+            sel.innerHTML = '<option value="">Select your address… (' + addresses.length + ' found)</option>'
+                + addresses.map(a => `<option value="${escapeHtml(a)}">${escapeHtml(a)}</option>`).join('');
+            sel.style.display = '';
+        }
+        function pickEnqAddress(sel) {
+            const v = sel && sel.value;
+            if (!v) return;
+            const box = document.getElementById('enq-address');
+            if (box) { box.value = v; try { onOccupancyInput(); } catch (e) {} }
+        }
         function autofillGuestEnquiry() {
             const e = document.getElementById('enq-email');
             if (!currentGuest) {
@@ -11086,7 +11105,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'd7q3w8nc';
+            const BUILD = 'h9s4l2xw';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;

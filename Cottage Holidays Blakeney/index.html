@@ -730,6 +730,9 @@
                         </div>
                     </div>
                     <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-address">UK Address</label>
+                    <!-- Filled by offerAddressPick() when the postcode resolves to real
+                         addresses (needs the address-lookup key in Settings → Integrations). -->
+                    <select id="enq-addr-pick" class="input-glass" style="display:none;margin-bottom:8px;" onchange="pickEnqAddress(this)" aria-label="Select your address"></select>
                     <textarea class="input-glass" id="enq-address" rows="2" placeholder="House name/number, street, town, county" style="resize: vertical; margin-bottom: 6px;"></textarea>
                     <p style="font-size: 0.72rem; color: var(--text-muted); margin: 0 0 18px;">Used only to manage your booking and contact you. See our <a onclick="nav('view-privacy')" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy Policy</a>.</p>
                     <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-message">Message (optional)</label>
@@ -1070,6 +1073,16 @@
                     <div style="margin-top:12px;display:flex;gap:10px;align-items:center;">
                         <button class="btn-sm btn-edit" onclick="saveApiKey('tides')">Save key</button>
                         <span id="apikey-tides-msg" style="font-size:0.82rem;color:#4CAF50;"></span>
+                    </div>
+                </div>
+                <div class="glass-panel" style="max-width:640px;padding:24px 26px;border-radius:18px;margin-top:16px;">
+                    <h3 style="font-family:var(--font-serif);font-size:1.2rem;margin:0 0 6px;">Address lookup</h3>
+                    <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 14px;line-height:1.5;">Lets guests pick their exact house from a dropdown after typing their postcode on the enquiry form. Get a key from <strong>getAddress.io</strong> (small free tier available) and paste it below. Stored encrypted; never shown on the public site. Leave blank and the form keeps its simple postcode recognition.</p>
+                    <label class="modal-label" for="apikey-address-input">getAddress.io API key</label>
+                    <input type="text" id="apikey-address-input" class="input-glass" placeholder="paste your key…" autocomplete="off" spellcheck="false" style="font-family:monospace;">
+                    <div style="margin-top:12px;display:flex;gap:10px;align-items:center;">
+                        <button class="btn-sm btn-edit" onclick="saveApiKey('address')">Save key</button>
+                        <span id="apikey-address-msg" style="font-size:0.82rem;color:#4CAF50;"></span>
                     </div>
                 </div>
             </div>
@@ -1934,7 +1947,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=89"></script>
+    <script src="app.js?v=90"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
