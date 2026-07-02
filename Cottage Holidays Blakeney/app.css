@@ -581,7 +581,11 @@
         .hero h1 { font-family: var(--font-serif); font-size: clamp(2.5rem, 6.4vw, 5.2rem); margin-bottom: 20px; font-weight: 400; line-height: 1.06; letter-spacing: -0.5px; color: var(--text-light); }
         .hero p { font-size: clamp(0.85rem, 2.2vw, 1.2rem); color: var(--text-muted); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 40px; }
 
-        .container { max-width: 1200px; margin: 0 auto; padding: calc(clamp(90px, 12vw, 120px) + env(safe-area-inset-top)) clamp(16px, 4vw, 20px) 60px; }
+        /* width:100% matters: <body> is a flex column, and auto side margins on a
+           flex item disable align-items:stretch — without an explicit width each
+           .container page would shrink to fit-content (the Experiences page really
+           did, collapsing its card grid to one narrow column on tablets). */
+        .container { width: 100%; max-width: 1200px; margin: 0 auto; padding: calc(clamp(90px, 12vw, 120px) + env(safe-area-inset-top)) clamp(16px, 4vw, 20px) 60px; }
         .container.wide { max-width: 1500px; }
         /* iPhone notch / Dynamic Island safe areas. With viewport-fit=cover the page
            background fills the whole screen in landscape; these keep content and the
@@ -602,6 +606,11 @@
            Below 960px the base auto-fit grid gives a comfortable 2-up on tablets —
            forcing 3-up from 760px squeezed cards to ~230px. */
         @media (min-width: 960px) { .grid-3 { grid-template-columns: repeat(3, 1fr); } }
+        /* Tablet window where a 3-card collection sits 2-up: let the odd last card
+           span the full row instead of leaving a lopsided half-width orphan. */
+        @media (min-width: 769px) and (max-width: 959px) {
+            .grid.grid-3 > .card:last-child:nth-child(odd) { grid-column: 1 / -1; }
+        }
         .card { padding: 15px; display: flex; flex-direction: column; cursor: pointer;
             transition: background 0.5s var(--fluid-bezier), border-color 0.5s var(--fluid-bezier), transform 0.55s var(--spring), box-shadow 0.5s var(--fluid-bezier); }
         a.card { text-decoration: none; color: var(--text-light); }
@@ -1148,6 +1157,14 @@
             .chat-widget { right: 10px; bottom: 10px; width: calc(100vw - 20px); max-height: calc(100vh - 80px); }
             .chat-fab { right: 16px; bottom: 16px; }
         }
+        /* Cottage page below 900px shows the fixed bottom booking bar and (between
+           769–899px, where the guest-app shell doesn't apply) the chat bubble is
+           still visible — lift it clear of the bar so they never overlap.
+           body.book-bar-open is toggled by nav(). */
+        @media (max-width: 899px) {
+            body.book-bar-open .chat-fab { bottom: calc(96px + env(safe-area-inset-bottom, 0px)); }
+            body.book-bar-open .chat-widget { bottom: calc(104px + env(safe-area-inset-bottom, 0px)); max-height: calc(100vh - 200px); }
+        }
 
         /* Enquiry cards stacked in the sidebar */
         .enquiry-card {
@@ -1490,6 +1507,9 @@
         @media (min-width: 1200px) {
             #guest-bookings-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(560px, 1fr)); gap: 24px; align-items: start; }
             #guest-bookings-list .guest-booking { margin-bottom: 0; }
+            /* Section headings and notice banners span the full row — only the
+               booking cards themselves sit two-up. */
+            #guest-bookings-list > :not(.guest-booking) { grid-column: 1 / -1; }
         }
         .guest-booking-head { display: flex; gap: 22px; align-items: stretch; flex-wrap: wrap; }
         .guest-booking-img { width: 220px; min-height: 180px; background-size: cover; background-position: center; flex-shrink: 0; }
@@ -1500,10 +1520,15 @@
         .guest-detail-grid .booking-detail-label { font-size: 0.68rem; }
         .guest-status-badge { display:inline-block; font-size:0.68rem; text-transform:uppercase; letter-spacing:1px; padding:4px 12px; border-radius:20px; }
         .guest-price-box { background: rgba(0,0,0,0.2); border: 1px solid var(--glass-border); border-radius: 14px; padding: 16px 18px; max-width: 360px; }
-        /* Desktop: details and price summary side by side so the card uses the
-           width instead of a narrow left column. Stacks on mobile (block). */
+        /* Details and price summary side by side when the CARD is wide enough,
+           stacked otherwise. A container query (not a viewport one) because card
+           width varies independently of the viewport: in the desktop two-up grid
+           each card is ~570px — a viewport test put the 340px price column inside
+           it and the detail grid overflowed underneath. Old browsers without
+           container queries just keep the stacked layout. */
+        .guest-booking-body { container-type: inline-size; }
         .guest-booking-cols { display: block; }
-        @media (min-width: 860px) {
+        @container (min-width: 620px) {
             .guest-booking-cols { display: grid; grid-template-columns: minmax(0, 1fr) 340px; column-gap: 30px; align-items: start; }
             .guest-booking-cols .guest-detail-grid { margin-bottom: 0; }
             .guest-booking-cols .guest-price-box { max-width: none; }
