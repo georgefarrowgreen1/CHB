@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=60">
+    <link rel="stylesheet" href="app.css?v=61">
     <!-- Speed up the font fetch (and the jsPDF CDN) by opening the connections early. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -299,7 +299,7 @@
              renderHomeCottages() rebuilds #home-cottages-grid from the live list; these
              static cards are the no-JS / first-paint fallback for the original three. -->
         <section class="home-cottages reveal" id="home-cottages">
-            <h2 class="section-title text-center">Our cottages</h2>
+            <h2 class="section-title text-center reveal">Our cottages</h2>
             <div class="grid grid-3" id="home-cottages-grid" style="margin-top: 18px;">
               <a class="card glass-panel" data-prop="21a" href="/cottages/21a-westgate" onclick="return cottageLink(event,'21a')">
                 <div class="card-img-wrap">
@@ -334,7 +334,7 @@
         <!-- CHECK AVAILABILITY — the search panel + results, relocated below the cottages. -->
         <section class="home-availability" id="home-availability">
             <div class="hero-content glass-panel" id="hero-search-panel" style="border-radius: 30px;">
-                <h2 class="section-title text-center" style="margin-bottom: 6px;">Check availability</h2>
+                <h2 class="section-title text-center reveal" style="margin-bottom: 6px;">Check availability</h2>
                 <p class="text-center" style="color: var(--text-muted); font-size: 0.92rem; margin: 0 auto 6px; max-width: 460px;">Live prices &amp; availability across all our cottages — book direct, no fees.</p>
                 <div class="hero-search">
                     <!-- Search mode: exact dates (default) or flexible (length + month) -->
@@ -1930,7 +1930,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=85"></script>
+    <script src="app.js?v=86"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
