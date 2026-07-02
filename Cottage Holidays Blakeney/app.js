@@ -1079,7 +1079,7 @@
         }
 
         // ---- Settings router: Apple-style index → drill-down sub-pages ----
-        const SETTINGS_TITLES = { enquiries: 'Enquiries', messages: 'Guest messages', notify: 'Notifications', host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Cottages', calendar: 'Calendar sync', cancel: 'Cancellation policy', pricingcoach: 'Pricing coach', payments: 'Payments', guests: 'Guest accounts', analytics: 'Analytics', waitlist: 'Waitlist', newsletter: 'Newsletter', experiences: 'Experiences', content: 'Home page & menu', photos: 'Guest photos', apis: 'Integrations', diagnostics: 'Health check', testcentre: 'Test centre' };
+        const SETTINGS_TITLES = { enquiries: 'Enquiries', messages: 'Guest messages', notify: 'Notifications', host: 'Profile', reviews: 'Reviews', security: 'Security', accom: 'Cottages', calendar: 'Calendar sync', cancel: 'Cancellation policy', seasongrid: 'Seasonal rates — all cottages', pricingcoach: 'Pricing coach', payments: 'Payments', guests: 'Guest accounts', analytics: 'Analytics', waitlist: 'Waitlist', newsletter: 'Newsletter', experiences: 'Experiences', content: 'Home page & menu', photos: 'Guest photos', apis: 'Integrations', diagnostics: 'Health check', testcentre: 'Test centre' };
         // Open the separate staging sandbox (where all testing now happens) in a new tab.
         const STAGING_URL = 'https://staging.cottageholidaysblakeney.co.uk/';
         function openStagingSite() { window.open(STAGING_URL, '_blank', 'noopener'); }
@@ -1203,6 +1203,7 @@
             else if (section === 'accom') renderAccomList();
             else if (section === 'calendar') renderCalendarList();
             else if (section === 'cancel') renderCancelList();
+            else if (section === 'seasongrid') renderSeasonGrid();
             else if (section === 'pricingcoach') renderPricingCoach();
             window.scrollTo({ top: 0, behavior: 'smooth' });
         }
@@ -5889,6 +5890,7 @@
             renderInbox();
             try { refreshExpPendingBadge(); } catch (e) {}   // pending experience suggestions count
             try { refreshModerationCounts(); } catch (e) {}  // pending reviews/photos (badges + today card)
+            try { loadActivityFeed(); } catch (e) {}        // recent-activity feed (fills in async)
             try { await loadDepositReturns(); } catch (e) {}   // for the deposits-to-return line
             try { renderTodayPanel(); } catch (e) {}
             const sb = document.getElementById('booking-search'); if (sb) { sb.value = ''; bookingSearch(''); }
@@ -8346,6 +8348,139 @@
         function addSeasonRow(k) {
             const wrap = document.getElementById('seasons-' + k);
             if (wrap) wrap.insertAdjacentHTML('beforeend', seasonRowHtml(k, null));
+        }
+        // ---- Season grid: every cottage's seasonal pricing on one screen ----
+        // Rows are date bands (label + start + end) shared across the grid;
+        // columns are the live cottages. A blank cell means that cottage simply
+        // has no seasonal rate for that band (its base rate applies).
+        function seasonGridBands() {
+            const bands = new Map();
+            liveCottageKeys().forEach(k => (propertySeasons[k] || []).forEach(s => {
+                const key = `${s.start_date}|${s.end_date}|${s.label || ''}`;
+                if (!bands.has(key)) bands.set(key, { label: s.label || '', start: s.start_date, end: s.end_date, rates: {} });
+                bands.get(key).rates[k] = parseFloat(s.couple_rate);
+            }));
+            return [...bands.values()].sort((a, b) => (a.start || '').localeCompare(b.start || ''));
+        }
+        function seasonGridRowHtml(b) {
+            const keys = liveCottageKeys();
+            return `
+                <tr class="sg-band">
+                    <td><input type="text" class="input-glass field-sm" value="${escapeHtml(b.label)}" data-sg="label" placeholder="e.g. Summer"></td>
+                    <td><input type="date" class="input-glass field-sm" value="${b.start || ''}" data-sg="start"></td>
+                    <td><input type="date" class="input-glass field-sm" value="${b.end || ''}" data-sg="end"></td>
+                    ${keys.map(k => `<td><input type="number" class="input-glass field-sm sg-rate" min="0" step="1" placeholder="—" value="${b.rates[k] || ''}" data-sg-prop="${k}" title="${escapeHtml(propertyMeta[k].name)} £/night (couple)"></td>`).join('')}
+                    <td><button class="btn-sm btn-delete" onclick="this.closest('tr').remove()" title="Remove this season everywhere"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></td>
+                </tr>`;
+        }
+        function renderSeasonGrid() {
+            const wrap = document.getElementById('season-grid-wrap');
+            if (!wrap) return;
+            const keys = liveCottageKeys();
+            const bands = seasonGridBands();
+            wrap.innerHTML = `
+                <div style="overflow-x:auto;">
+                <table class="sg-table">
+                    <thead><tr>
+                        <th style="min-width:120px;">Season</th><th>From</th><th>Until</th>
+                        ${keys.map(k => `<th style="min-width:86px;"><span class="prop-tag tag-${k}">${propertyMeta[k].short}</span></th>`).join('')}
+                        <th></th>
+                    </tr></thead>
+                    <tbody id="season-grid-body">${bands.map(seasonGridRowHtml).join('')}</tbody>
+                </table>
+                </div>
+                <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;">
+                    <button class="btn-sm btn-edit" onclick="addSeasonGridRow()">+ Add a season</button>
+                    <button class="btn-glass" style="width:auto;padding:11px 24px;" onclick="saveSeasonGrid()">Save all cottages</button>
+                    <span id="season-grid-msg" style="font-size:0.82rem;align-self:center;"></span>
+                </div>
+                <p style="font-size:0.78rem;color:var(--text-muted);margin:12px 0 0;max-width:640px;">Each cell is that cottage's nightly couple rate for the season. Leave a cell blank and the cottage keeps its normal base rate for those dates. Deleting a row removes the season from every cottage when you save.</p>`;
+        }
+        function addSeasonGridRow() {
+            const body = document.getElementById('season-grid-body');
+            if (body) body.insertAdjacentHTML('beforeend', seasonGridRowHtml({ label: '', start: '', end: '', rates: {} }));
+        }
+        async function saveSeasonGrid() {
+            const body = document.getElementById('season-grid-body');
+            if (!body) return;
+            const keys = liveCottageKeys();
+            const perProp = {}; keys.forEach(k => perProp[k] = []);
+            for (const tr of body.querySelectorAll('tr')) {
+                const get = sel => { const el = tr.querySelector(sel); return el ? el.value.trim() : ''; };
+                const label = get('[data-sg="label"]'), start = get('[data-sg="start"]'), end = get('[data-sg="end"]');
+                const rates = keys.map(k => { const el = tr.querySelector(`[data-sg-prop="${k}"]`); return { k, rate: el ? (parseFloat(el.value) || 0) : 0 }; });
+                if (!start && !end && !label && rates.every(r => !r.rate)) continue;   // fully empty row
+                if (!start || !end) { glassAlert(`"${label || 'A season'}" needs both a start and an end date.`); return; }
+                if (end < start) { glassAlert(`"${label || 'A season'}" ends before it starts — check the dates.`); return; }
+                rates.forEach(({ k, rate }) => { if (rate > 0) perProp[k].push({ label, start, end, rate }); });
+            }
+            const msg = document.getElementById('season-grid-msg');
+            try {
+                for (const k of keys) {
+                    await apiPost('rates.php', { action: 'seasons_save', prop_key: k, seasons: perProp[k] });
+                    propertySeasons[k] = perProp[k].map(s => ({ label: s.label, start_date: s.start, end_date: s.end, couple_rate: s.rate }));
+                }
+                renderCardPrices(); updatePropPriceHeading();
+                if (msg) { msg.textContent = 'Saved for all cottages ✓'; msg.style.color = 'var(--ok-text)'; setTimeout(() => { msg.textContent = ''; }, 4000); }
+                toast('Seasonal rates saved for all cottages.');
+            } catch (e) { glassAlert("Couldn't save: " + e.message); }
+        }
+        // ---- Dashboard: recent-activity feed ----
+        function timeAgoLabel(at) {
+            try {
+                const d = new Date(String(at).replace(' ', 'T'));
+                const mins = Math.max(0, Math.round((Date.now() - d.getTime()) / 60000));
+                if (mins < 60) return mins <= 1 ? 'just now' : `${mins} min ago`;
+                const hrs = Math.round(mins / 60);
+                if (hrs < 24) return `${hrs} h ago`;
+                const days = Math.round(hrs / 24);
+                if (days < 8) return days === 1 ? 'yesterday' : `${days} days ago`;
+                return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+            } catch (e) { return ''; }
+        }
+        const ACTIVITY_ICONS = {
+            booking: '<rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/>',
+            payment: '<rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/>',
+            enquiry: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/>',
+            review: '<path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 17.77 6.8 19.5l.99-5.78-4.21-4.1 5.82-.85z"/>',
+            photo: '<rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.2"/><path d="M8 6l1.5-2h5L16 6"/>',
+            signup: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>'
+        };
+        async function loadActivityFeed() {
+            const el = document.getElementById('bo-activity');
+            if (!el) return;
+            let events = [];
+            try { const r = await apiPost('activity.php', { action: 'recent' }); events = r.events || []; }
+            catch (e) { el.innerHTML = ''; return; }
+            if (!events.length) { el.innerHTML = ''; return; }
+            el.innerHTML = `
+                <h2 style="font-family:var(--font-serif);font-size:1.3rem;font-weight:400;margin:26px 0 12px;">Recent activity</h2>
+                <div class="feed-list glass-panel" style="padding:6px 16px;">
+                    ${events.map(ev => `
+                    <div class="act-row">
+                        <span class="act-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ACTIVITY_ICONS[ev.type] || ACTIVITY_ICONS.booking}</svg></span>
+                        ${ev.prop_key && propertyMeta[ev.prop_key] ? `<span class="prop-tag tag-${ev.prop_key}">${propertyMeta[ev.prop_key].short}</span>` : ''}
+                        <span class="act-label">${escapeHtml(ev.label)}</span>
+                        <span class="act-detail">${escapeHtml(ev.detail || '')}</span>
+                        <span class="act-when">${timeAgoLabel(ev.at)}</span>
+                    </div>`).join('')}
+                </div>`;
+        }
+        // ---- Health check: email me a sample of every guest email ----
+        async function sendSampleEmails(btn) {
+            if (!await glassConfirm('Send a [SAMPLE]-marked copy of every guest email (confirmation, arrival info, payment request, receipt, review request…) to your owner inbox?')) return;
+            if (btn) { btn.disabled = true; btn.textContent = 'Sending…'; }
+            const out = document.getElementById('diag-samples');
+            try {
+                const r = await apiPost('email-samples.php', { action: 'send', which: 'all' });
+                if (!r.ok) throw new Error(r.error || 'Sending failed');
+                if (out) out.innerHTML = `<div style="margin:10px 0 4px;color:var(--ok-text);">Sent ${r.sent} sample${r.sent === 1 ? '' : 's'} to ${escapeHtml(r.to)} — check your inbox (subjects start with [SAMPLE]).</div>`
+                    + (r.results || []).filter(x => !x.ok).map(x => `<div style="color:var(--danger);font-size:0.8rem;">${escapeHtml(x.label)}: ${escapeHtml(x.error || 'failed')}</div>`).join('');
+            } catch (e) {
+                if (out) out.innerHTML = `<div style="color:var(--danger);margin:10px 0 4px;">Couldn't send samples: ${escapeHtml(e.message)}</div>`;
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = 'Email me samples'; }
+            }
         }
         async function saveSeasons(k) {
             const wrap = document.getElementById('seasons-' + k);
@@ -11299,7 +11434,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'n0j5u2ax';
+            const BUILD = 'p1k6v3by';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
