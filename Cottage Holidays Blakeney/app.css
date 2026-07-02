@@ -211,6 +211,9 @@
         .grid > .card.rise:nth-child(1) { animation-delay: 0.04s; }
         .grid > .card.rise:nth-child(2) { animation-delay: 0.12s; }
         .grid > .card.rise:nth-child(3) { animation-delay: 0.20s; }
+        .grid > .card.rise:nth-child(4) { animation-delay: 0.28s; }
+        .grid > .card.rise:nth-child(5) { animation-delay: 0.36s; }
+        .grid > .card.rise:nth-child(6) { animation-delay: 0.44s; }
         @media (prefers-reduced-motion: reduce) {
             .page-view.active { animation-duration: 0.001s; }
             .grid > .card.rise { animation: none; opacity: 1; }
@@ -2191,6 +2194,46 @@ body:not(.guest-app):not(.owner-mode) #guest-security-modal {
 body:not(.guest-app):not(.owner-mode) .modal-box.auth-split {
     max-width: 420px;
 }
+/* ---- Lit glass rims (design polish) ----
+   A 1px gradient stroke — brightest along the top edge, warming to a faint
+   rose-gold at the base — drawn in the border ring of the cottage/experience
+   cards and the two hero glass panels. The @supports guard matters: without
+   mask-composite the pseudo would paint a gradient OVER the content, so
+   browsers lacking it simply keep the flat border. */
+@supports ((-webkit-mask-composite: xor) or (mask-composite: exclude)) {
+    .card { position: relative; }
+    .card::before, .hero-content::before {
+        content: ""; position: absolute; inset: 0; border-radius: inherit; padding: 1px;
+        background: linear-gradient(180deg, rgba(255,255,255,0.22), rgba(255,255,255,0.05) 40%, rgba(214,167,133,0.14) 100%);
+        -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+        -webkit-mask-composite: xor;
+        mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+        mask-composite: exclude;
+        pointer-events: none; z-index: 1;
+    }
+    body.light-mode .card::before, body.light-mode .hero-content::before {
+        background: linear-gradient(180deg, rgba(20,22,34,0.16), rgba(20,22,34,0.04) 40%, rgba(214,167,133,0.22) 100%);
+    }
+}
+/* Soft rose-gold aura behind the availability panel, and a warmer card hover. */
+.home-availability .hero-content { box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2), 0 0 70px -22px var(--accent-soft); }
+@media (hover: hover) {
+    .card:hover { box-shadow: 0 15px 45px rgba(0, 0, 0, 0.4), 0 0 44px -18px var(--accent-soft); }
+}
+
+/* ---- Section-title flourish (motion polish) ----
+   Centred homepage titles carry a short gradient rule that draws in as the
+   title scroll-reveals (the .reveal/.in-view system in app.js; static when
+   JS or motion is unavailable, so nothing depends on it). */
+h2.section-title.text-center { position: relative; padding-bottom: 16px; }
+h2.section-title.text-center::after {
+    content: ""; position: absolute; left: 50%; bottom: 0; width: 56px; height: 2px; border-radius: 2px;
+    transform: translateX(-50%);
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+}
+html.js-reveal h2.section-title.text-center.reveal::after { transform: translateX(-50%) scaleX(0); transition: transform 0.8s var(--fluid-bezier) 0.25s; }
+html.js-reveal h2.section-title.text-center.reveal.in-view::after { transform: translateX(-50%) scaleX(1); }
+
 /* The login brand panel only shows on the wide split layout below; on mobile and
    in the guest-app full-page view the form stays single-column (unchanged). */
 .auth-brand { display: none; }
