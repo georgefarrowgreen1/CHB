@@ -524,7 +524,25 @@
             position: absolute; top: 0; left: 0; width: 100%; height: 100%;
             background-size: cover; background-position: center;
             filter: brightness(var(--hero-brightness)); z-index: 1;
+            /* Slow cinematic drift — barely perceptible, keeps the photo alive.
+               (Globally neutralised under prefers-reduced-motion.) */
+            animation: heroDrift 28s ease-in-out infinite alternate;
         }
+        @keyframes heroDrift { from { transform: scale(1); } to { transform: scale(1.07); } }
+        .hero { overflow: hidden; }   /* clip the drifting photo */
+        /* On real screens give the opening its full cinematic height. */
+        @media (min-width: 900px) and (min-height: 700px) {
+            .hero { min-height: clamp(560px, 82vh, 900px); }
+        }
+        .hero-kicker { font-size: 0.74rem; letter-spacing: 2.6px; text-transform: uppercase; color: var(--accent); font-weight: 600; margin: 0 0 14px; }
+        .hero-scroll-cue {
+            position: absolute; left: 50%; bottom: 18px; transform: translateX(-50%); z-index: 3;
+            background: none; border: 0; color: rgba(255,255,255,0.75); cursor: pointer; padding: 10px;
+            animation: cueBob 2.6s ease-in-out infinite; display: none;
+        }
+        .hero-scroll-cue:hover, .hero-scroll-cue:focus-visible { color: #fff; }
+        @keyframes cueBob { 0%, 100% { transform: translateX(-50%) translateY(0); } 50% { transform: translateX(-50%) translateY(7px); } }
+        @media (min-width: 900px) and (min-height: 700px) { .hero-scroll-cue { display: block; } }
         /* Gradient + vignette scrim so the headline panel and CTA stay legible now
            that the photo is shown brighter — adds depth without dimming the image flat. */
         .hero::after {
@@ -542,10 +560,12 @@
         html.js-reveal .reveal { opacity: 0; transform: translateY(22px); transition: opacity 0.7s var(--fluid-bezier), transform 0.7s var(--spring); }
         html.js-reveal .reveal.in-view { opacity: 1; transform: none; }
         @media (prefers-reduced-motion: reduce) { .reveal { opacity: 1 !important; transform: none !important; transition: none !important; } }
-        /* Homepage section order: hero → cottage cards → trust strip → availability. */
+        /* Homepage section order: hero → heritage numbers → cottage cards →
+           trust strip → availability → guest words. (Flex order on #view-main.) */
         .home-cottages { order: 1; }
         .home-trust { order: 2; }
         .home-availability { order: 3; }
+        .home-guestwords { order: 4; }
         /* Trust strip — slim, factual reassurance band under the hero. */
         .home-trust { max-width: 1100px; width: 100%; margin: 0 auto; padding: clamp(8px, 2vw, 16px) clamp(16px, 4vw, 20px) 0; box-sizing: border-box; }
         .trust-strip { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 10px 28px; padding: 15px 22px; border-radius: 18px; }
@@ -558,7 +578,7 @@
         .home-cottages .card-meta { margin-bottom: 0; }
         .home-availability { max-width: 720px; width: 100%; margin: 0 auto; padding: clamp(24px, 4vw, 40px) clamp(16px, 4vw, 20px) 60px; box-sizing: border-box; scroll-margin-top: calc(100px + env(safe-area-inset-top)); }
         .home-availability .hero-content { width: 100%; max-width: 100%; margin: 0 auto; }
-        .hero h1 { font-family: var(--font-serif); font-size: clamp(2.4rem, 6vw, 4.5rem); margin-bottom: 20px; font-weight: 400; line-height: 1.08; letter-spacing: -0.5px; color: var(--text-light); }
+        .hero h1 { font-family: var(--font-serif); font-size: clamp(2.5rem, 6.4vw, 5.2rem); margin-bottom: 20px; font-weight: 400; line-height: 1.06; letter-spacing: -0.5px; color: var(--text-light); }
         .hero p { font-size: clamp(0.85rem, 2.2vw, 1.2rem); color: var(--text-muted); letter-spacing: 2px; text-transform: uppercase; margin-bottom: 40px; }
 
         .container { max-width: 1200px; margin: 0 auto; padding: calc(clamp(90px, 12vw, 120px) + env(safe-area-inset-top)) clamp(16px, 4vw, 20px) 60px; }
@@ -1370,6 +1390,41 @@
         .accounts-empty { text-align: center; padding: 50px 20px; color: var(--text-muted); }
         .accounts-actions { margin-top: 26px; display: flex; gap: 12px; flex-wrap: wrap; }
         .accounts-note { font-size: 0.78rem; color: var(--text-muted); margin-top: 24px; line-height: 1.6; max-width: 720px; }
+
+        /* Editorial kickers: the small-caps accent line above section titles. */
+        .section-kicker { font-size: 0.72rem; letter-spacing: 2.6px; text-transform: uppercase; color: var(--accent); font-weight: 600; text-align: center; margin: 0 0 10px; }
+
+        /* Heritage band: the numbers that earn trust, in display serif. */
+        .home-heritage { display: flex; justify-content: center; align-items: stretch; gap: clamp(28px, 7vw, 84px); padding: 34px 20px 6px; flex-wrap: wrap; }
+        .heritage-item { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+        .heritage-num { font-family: var(--font-serif); font-size: clamp(1.9rem, 4vw, 2.7rem); line-height: 1.1; color: var(--text-light); }
+        .heritage-label { font-size: 0.7rem; letter-spacing: 1.8px; text-transform: uppercase; color: var(--text-muted); }
+
+        /* Guest words: one rotating review in display italic. */
+        .home-guestwords { max-width: 780px; margin: 26px auto 10px; padding: 26px 22px; text-align: center; }
+        .guestwords-quote { font-family: var(--font-serif); font-style: italic; font-weight: 400; font-size: clamp(1.25rem, 2.6vw, 1.65rem); line-height: 1.5; color: var(--text-light); margin: 0 0 14px; transition: opacity 0.6s var(--fluid-bezier); }
+        .guestwords-quote.fading { opacity: 0; }
+        .guestwords-quote::before { content: "\201C"; color: var(--accent); margin-right: 2px; }
+        .guestwords-quote::after { content: "\201D"; color: var(--accent); margin-left: 2px; }
+        .guestwords-meta { font-size: 0.82rem; color: var(--text-muted); letter-spacing: 0.4px; transition: opacity 0.6s var(--fluid-bezier); }
+        .guestwords-meta.fading { opacity: 0; }
+        .guestwords-meta .gw-stars { color: var(--accent); letter-spacing: 2px; }
+
+        /* Card photos settle in gently as they load (fadeInCardImages adds the
+           classes; images stay fully visible if JS never runs). */
+        .card-img.img-fade { opacity: 0; }
+        .card-img.img-fade.img-in { opacity: 1; transition: opacity 0.55s var(--fluid-bezier); }
+
+        /* A light sweep across the accent CTAs on hover — quiet luxury. */
+        @media (hover: hover) {
+            .btn-glass.btn-accent, #hs-search-btn { position: relative; overflow: hidden; }
+            .btn-glass.btn-accent::after, #hs-search-btn::after {
+                content: ""; position: absolute; top: 0; bottom: 0; left: -80%; width: 55%;
+                background: linear-gradient(105deg, transparent, rgba(255,255,255,0.42), transparent);
+                transform: skewX(-18deg); transition: left 0.7s var(--fluid-bezier); pointer-events: none;
+            }
+            .btn-glass.btn-accent:hover::after, #hs-search-btn:hover::after { left: 125%; }
+        }
 
         /* Homepage live availability: per-card chip + late-availability spotlight */
         .card-avail { margin-top: 6px; min-height: 1.1em; }

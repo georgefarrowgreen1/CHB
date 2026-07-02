@@ -5214,6 +5214,8 @@
                 try { renderHomeCottages(); } catch (e) {}
                 try { injectStructuredData(); } catch (e) {}
                 try { loadPublicAvailability(); } catch (e) {}
+                try { updateHeritageStats(); } catch (e) {}
+                try { renderGuestWords(); } catch (e) {}
             } catch (e) { /* keep defaults if the API is unavailable */ }
         }
 
@@ -6768,6 +6770,48 @@
                 const res = await apiGet('reviews.php');
                 publicGuestReviews = Array.isArray(res.reviews) ? res.reviews : [];
             } catch (e) { /* keep last-good reviews on a transient failure */ }
+            try { renderGuestWords(); } catch (e) {}
+            try { updateHeritageStats(); } catch (e) {}
+        }
+        // ---- Homepage guest-words band: one real review at a time ----
+        let __gwTimer = null, __gwIdx = 0;
+        function renderGuestWords() {
+            const sec = document.getElementById('home-guestwords');
+            const q = document.getElementById('guestwords-quote');
+            const meta = document.getElementById('guestwords-meta');
+            if (!sec || !q || !meta) return;
+            const list = allReviews().filter(r => ((r.text || '') + '').trim().length > 20);
+            if (!list.length) { sec.style.display = 'none'; if (__gwTimer) { clearInterval(__gwTimer); __gwTimer = null; } return; }
+            sec.style.display = '';
+            const show = () => {
+                const r = list[__gwIdx % list.length];
+                const text = String(r.text || '').trim();
+                q.textContent = text.length > 220 ? text.slice(0, 217).trimEnd() + '…' : text;
+                const stars = Math.max(1, Math.min(5, parseInt(r.stars) || 5));
+                const propName = r.prop && propertyMeta[r.prop] ? propertyMeta[r.prop].name : '';
+                meta.innerHTML = `<span class="gw-stars">${'★'.repeat(stars)}</span>&nbsp;&nbsp;${escapeHtml(r.name || 'A guest')}${propName ? ' · ' + escapeHtml(propName) : ''}`;
+            };
+            show();
+            if (!__gwTimer && list.length > 1) {
+                __gwTimer = setInterval(() => {
+                    q.classList.add('fading'); meta.classList.add('fading');
+                    setTimeout(() => { __gwIdx++; show(); q.classList.remove('fading'); meta.classList.remove('fading'); }, 620);
+                }, 8500);
+            }
+        }
+        // ---- Heritage band: live cottage count + genuine average rating ----
+        function updateHeritageStats() {
+            try {
+                const cnt = document.getElementById('heritage-count');
+                if (cnt) { const n = liveCottageKeys().length; if (n > 0) cnt.textContent = n; }
+                const ratings = allReviews().map(r => Math.max(1, Math.min(5, parseInt(r.stars) || 5)));
+                if (ratings.length >= 3) {
+                    const avg = ratings.reduce((s, n) => s + n, 0) / ratings.length;
+                    const el = document.getElementById('heritage-rating');
+                    const item = document.getElementById('heritage-rating-item');
+                    if (el && item) { el.textContent = '★ ' + (Math.round(avg * 10) / 10).toFixed(1); item.style.display = ''; }
+                }
+            } catch (e) {}
         }
         // ---- FAQ / house rules (per cottage, shown inside each booking card) ----
         let __faqUid = 0;
@@ -8360,6 +8404,22 @@
                 <button type="button" class="btn-sm btn-edit" onclick="startBooking('${best.k}','${best.g.start}','${co}')">Check dates</button>
             </div>`;
         }
+        // Card photos settle in gently once each image has actually loaded —
+        // otherwise big bg-image jpgs pop in abruptly on real connections.
+        // Images that fail (or a dead JS path) still show via the 2.5s fallback.
+        function fadeInCardImages(root) {
+            (root || document).querySelectorAll('.card-img[style*="background-image"]:not(.img-fade)').forEach(el => {
+                const m = /url\(['"]?([^'")]+)['"]?\)/.exec(el.style.backgroundImage || '');
+                if (!m) return;
+                el.classList.add('img-fade');
+                const done = () => el.classList.add('img-in');
+                const img = new Image();
+                img.onload = done; img.onerror = done;
+                img.src = m[1];
+                if (img.complete) done();
+                setTimeout(done, 2500);
+            });
+        }
         function renderCardPrices() {
             Object.keys(propertyRates).forEach(k => {
                 const html = `from ${gbp(propertyRates[k].coupleRate)} <span>/ night (couple)</span>`;
@@ -8421,6 +8481,7 @@
             }).join('');
             try { renderCardPrices(); } catch (e) {}
             try { renderCardRatings(); } catch (e) {}
+            try { fadeInCardImages(grid); } catch (e) {}
         }
 
         // Homepage cottage cards (above the "Check availability" search): SIMPLIFIED
@@ -8454,6 +8515,7 @@
             }).join('');
             try { renderCardPrices(); } catch (e) {}
             try { renderCardRatings(); } catch (e) {}
+            try { fadeInCardImages(grid); } catch (e) {}
         }
 
         // Regenerate the page's JSON-LD structured data from the live cottage list so
@@ -11086,7 +11148,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'w5n8g3jr';
+            const BUILD = 'f3c8m5tq';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
