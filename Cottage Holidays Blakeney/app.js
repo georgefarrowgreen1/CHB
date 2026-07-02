@@ -5888,6 +5888,7 @@
             renderCalendar();
             renderInbox();
             try { refreshExpPendingBadge(); } catch (e) {}   // pending experience suggestions count
+            try { refreshModerationCounts(); } catch (e) {}  // pending reviews/photos (badges + today card)
             try { await loadDepositReturns(); } catch (e) {}   // for the deposits-to-return line
             try { renderTodayPanel(); } catch (e) {}
             const sb = document.getElementById('booking-search'); if (sb) { sb.value = ''; bookingSearch(''); }
@@ -5937,6 +5938,37 @@
                 label: propertyMeta[k].name, value: occ[k].nights, max: occ[k].total,
                 valLabel: occ[k].pct + '%', color: `var(--prop-${k})`
             })));
+            // Next 7 days at a glance: every arrival/departure, with same-day
+            // changeovers (out + in at the same cottage) flagged — that's the day
+            // the cleaning window is tight.
+            const weekDays = [];
+            for (let i = 0; i < 7; i++) {
+                const dObj = dpParse(today); dObj.setDate(dObj.getDate() + i);
+                const ds = formatDashed(dObj);
+                const ins = [], outs = [], flips = [];
+                Object.keys(dbBookings).forEach(propKey => {
+                    const tag = `<span class="prop-tag tag-${propKey}">${propertyMeta[propKey] ? propertyMeta[propKey].short : propKey}</span>`;
+                    let hasIn = false, hasOut = false;
+                    (dbBookings[propKey] || []).forEach(b => {
+                        const nm = escapeHtml((b.name || '').split(' ')[0]);
+                        if (b.checkIn === ds) { ins.push(`${tag} ${nm}`); hasIn = true; }
+                        if (b.checkOut === ds) { outs.push(`${tag} ${nm}`); hasOut = true; }
+                    });
+                    if (hasIn && hasOut) flips.push(propertyMeta[propKey] ? propertyMeta[propKey].short : propKey);
+                });
+                weekDays.push({
+                    label: dObj.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' }),
+                    isToday: i === 0, ins, outs, flips
+                });
+            }
+            const weekStrip = `<div class="ws-row">${weekDays.map(d => `
+                <div class="ws-day${d.isToday ? ' is-today' : ''}${d.flips.length ? ' has-flip' : ''}">
+                    <div class="ws-date">${d.label}</div>
+                    ${d.flips.length ? `<div class="ws-flip" title="Same-day changeover — checkout and check-in at the same cottage">⇄ ${d.flips.join(' · ')}</div>` : ''}
+                    ${d.outs.map(x => `<div class="ws-item ws-out">← ${x}</div>`).join('')}
+                    ${d.ins.map(x => `<div class="ws-item ws-in">→ ${x}</div>`).join('')}
+                    ${(!d.ins.length && !d.outs.length) ? '<div class="ws-none">—</div>' : ''}
+                </div>`).join('')}</div>`;
             el.innerHTML = `<h2 style="font-family:var(--font-serif);font-size:1.3rem;font-weight:400;margin:0 0 12px;">Today &amp; this week</h2>
                 <div class="today-grid">
                 ${card('Enquiries to answer', enqItems, enqItems.length ? 'color:#FFA726;' : '', 'enquiries')}
@@ -5949,6 +5981,15 @@
                 ${card('Departures today', departures, '', 'calendar')}
                 ${card('Balances due (7 days)', dueSoon, dueSoon.length ? 'color:#FFA726;' : '', 'money')}
                 ${card('Deposits to return', toReturn, toReturn.length ? 'color:#FFA726;' : '', 'money')}
+                <div class="today-card today-approve" id="today-approve-card" style="display:none;" role="button" tabindex="0" onclick="dashGo(this.dataset.go || 'enquiries')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();dashGo(this.dataset.go || 'enquiries')}">
+                    <div class="today-card-label">Waiting for approval</div>
+                    <div class="today-card-value" id="today-approve-value">–</div>
+                    <div class="today-card-list" id="today-approve-list"></div>
+                </div>
+                <div class="today-card week-strip" style="grid-column:1/-1;">
+                    <div class="today-card-label">Next 7 days</div>
+                    ${weekStrip}
+                </div>
                 <div class="today-card occ-by-cottage" style="grid-column:1/-1;">
                     <div class="today-card-label">Occupancy this month · by cottage</div>
                     <div class="occ-bars" style="margin-top:12px;">${occBars}</div>
@@ -5991,19 +6032,37 @@
             if (!out) return;
             q = (q || '').trim().toLowerCase();
             if (q.length < 2) { out.innerHTML = ''; return; }
+            const today = todayDashed();
             const hits = [];
             Object.keys(dbBookings).forEach(propKey => {
                 (dbBookings[propKey] || []).forEach(b => {
-                    if ((b.name || '').toLowerCase().includes(q) || (b.email || '').toLowerCase().includes(q)) hits.push({ propKey, b });
+                    let ref = ''; try { ref = bookingRef(b.id).toLowerCase(); } catch (e) {}
+                    if ((b.name || '').toLowerCase().includes(q) || (b.email || '').toLowerCase().includes(q)
+                        || ref.includes(q) || ref.replace('chb-', '').replace(/^0+/, '').includes(q)) hits.push({ propKey, b });
                 });
             });
-            hits.sort((a, b) => (b.b.checkIn || '').localeCompare(a.b.checkIn || ''));
-            if (!hits.length) { out.innerHTML = `<div class="bo-search-empty">No bookings match “${escapeHtml(q)}”.</div>`; return; }
-            out.innerHTML = hits.slice(0, 12).map(({ propKey, b }) =>
+            // Upcoming stays first (soonest first), then past stays (most recent first).
+            hits.sort((a, b) => {
+                const au = a.b.checkOut >= today, bu = b.b.checkOut >= today;
+                if (au !== bu) return au ? -1 : 1;
+                return au ? (a.b.checkIn || '').localeCompare(b.b.checkIn || '') : (b.b.checkIn || '').localeCompare(a.b.checkIn || '');
+            });
+            // Open enquiries too — the guest the owner is looking for may not be a booking yet.
+            const enqHits = (enquiries || []).filter(e =>
+                (e.name || '').toLowerCase().includes(q) || (e.email || '').toLowerCase().includes(q)).slice(0, 4);
+            if (!hits.length && !enqHits.length) { out.innerHTML = `<div class="bo-search-empty">Nothing matches “${escapeHtml(q)}” — bookings and open enquiries are searched.</div>`; return; }
+            out.innerHTML = hits.slice(0, 10).map(({ propKey, b }) =>
                 `<button class="bo-search-hit" onclick="showDetails('${propKey}', findBookingById('${b.id}'))">
                     <span class="prop-tag tag-${propKey}">${propertyMeta[propKey] ? propertyMeta[propKey].short : propKey}</span>
                     <span>${escapeHtml(b.name)}</span>
-                    <span style="color:var(--text-muted);font-size:0.8rem;">${b.checkIn} → ${b.checkOut}</span>
+                    <span style="color:var(--text-muted);font-size:0.8rem;">${b.checkIn} → ${b.checkOut}${b.checkOut < today ? ' · past' : ''}</span>
+                    <span style="margin-left:auto;color:var(--text-muted);font-size:0.74rem;">${bookingRef(b.id)}</span>
+                </button>`).join('')
+                + enqHits.map(e =>
+                `<button class="bo-search-hit" onclick="dashGo('enquiries')">
+                    <span class="prop-tag" style="background:rgba(255,167,38,0.18);color:var(--warn-text);">Enquiry</span>
+                    <span>${escapeHtml(e.name || e.email || 'Visitor')}</span>
+                    <span style="color:var(--text-muted);font-size:0.8rem;">${e.checkIn || ''}${e.checkIn ? ' → ' + (e.checkOut || '') : ''}</span>
                 </button>`).join('');
         }
         // Owner block: hold dates for maintenance / personal use (no fake booking).
@@ -8093,7 +8152,7 @@
         }
         async function moderatePhoto(id, action) {
             if (action === 'delete' && !await glassConfirm('Delete this photo permanently?')) return;
-            try { await apiPost('photos.php', { action, id }); loadGuestPhotosAdmin(); }
+            try { await apiPost('photos.php', { action, id }); loadGuestPhotosAdmin(); try { refreshModerationCounts(); } catch (e2) {} }
             catch (e) { glassAlert("Couldn't update: " + (e.message || e)); }
         }
         // Populate the Google review link field from saved content.
@@ -8152,6 +8211,7 @@
             try {
                 await apiPost('reviews.php', { action: 'set_status', id, status });
                 await loadGuestReviewModeration();
+                try { refreshModerationCounts(); } catch (e2) {}
                 await loadPublicReviews(); renderReviews();   // refresh the public section
             } catch (e) { glassAlert("Couldn't update: " + e.message); }
         }
@@ -9518,6 +9578,8 @@
                 if (target === 'analytics') { openSettings('analytics'); }
                 else if (target === 'enquiries') { openSettings('enquiries'); }
                 else if (target === 'messages') { openSettings('messages'); }
+                else if (target === 'reviews') { openSettings('reviews'); }
+                else if (target === 'photos') { openSettings('photos'); }
                 else if (target === 'money') { Promise.resolve(openAccounts()).then(() => { try { accountsOpen('payments'); } catch (e) {} }); }
                 else if (target === 'calendar') {
                     const el = document.querySelector('#view-backoffice .cal-panel') || document.getElementById('cal-body');
@@ -11102,6 +11164,31 @@
             }
             if (n > 0) { badge.textContent = n; badge.style.display = ''; } else { badge.style.display = 'none'; }
         }
+        // Pending guest reviews/photos: badge the Settings rows and fill the
+        // dashboard "Waiting for approval" card (hidden when there's nothing).
+        async function refreshModerationCounts() {
+            const setBadge = (id, n) => { const b = document.getElementById(id); if (b) { b.textContent = n; b.style.display = n > 0 ? '' : 'none'; } };
+            let rev = 0, ph = 0;
+            try { const r = await apiPost('reviews.php', { action: 'list_admin' }); rev = (r.reviews || []).filter(x => x.status === 'pending').length; } catch (e) {}
+            try { const r = await apiPost('photos.php', { action: 'list_admin' }); ph = (r.photos || []).filter(x => x.status === 'pending').length; } catch (e) {}
+            setBadge('reviews-pending-badge', rev);
+            setBadge('photos-pending-badge', ph);
+            const cardEl = document.getElementById('today-approve-card');
+            if (cardEl) {
+                const total = rev + ph;
+                if (total > 0) {
+                    cardEl.style.display = '';
+                    cardEl.dataset.go = rev > 0 ? 'reviews' : 'photos';
+                    const val = document.getElementById('today-approve-value');
+                    if (val) { val.textContent = total; val.style.color = 'var(--warn)'; }
+                    const list = document.getElementById('today-approve-list');
+                    if (list) list.innerHTML = [
+                        rev ? `<div>${rev} review${rev === 1 ? '' : 's'} to approve</div>` : '',
+                        ph ? `<div>${ph} guest photo${ph === 1 ? '' : 's'} to approve</div>` : ''
+                    ].join('');
+                } else cardEl.style.display = 'none';
+            }
+        }
         async function loadExperiencesAdmin() {
             const wrap = document.getElementById('exp-admin'); if (!wrap) return;
             wrap.innerHTML = '<p style="color:var(--text-muted);font-size:0.9rem;">Loading…</p>';
@@ -11212,7 +11299,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'm9i4t1zw';
+            const BUILD = 'n0j5u2ax';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;

@@ -1273,6 +1273,23 @@
         .today-card-list .prop-tag { margin-right: 4px; }
         /* Back-office booking search */
         .bo-search { max-width: 720px; margin: 0 auto 22px; }
+        /* "Next 7 days" ops strip: one cell per day; same-day changeovers flagged */
+        .ws-row { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; margin-top: 12px; }
+        .ws-day { background: rgba(255,255,255,0.02); border: 1px solid var(--glass-border); border-radius: var(--r-sm); padding: 8px 9px; min-height: 74px; font-size: 0.76rem; }
+        .ws-day.is-today { border-color: var(--accent-soft); background: rgba(214,167,133,0.06); }
+        .ws-day.has-flip { border-color: rgba(255,167,38,0.45); }
+        .ws-date { font-size: 0.68rem; letter-spacing: 0.8px; text-transform: uppercase; color: var(--text-muted); margin-bottom: 6px; }
+        .ws-day.is-today .ws-date { color: var(--accent); font-weight: 600; }
+        .ws-item { display: flex; align-items: center; gap: 5px; padding: 1px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .ws-item .prop-tag { margin: 0; }
+        .ws-in { color: var(--ok-text); }
+        .ws-out { color: var(--text-muted); }
+        .ws-flip { color: var(--warn-text); font-weight: 600; font-size: 0.7rem; margin-bottom: 4px; }
+        .ws-none { color: var(--text-muted); opacity: 0.5; }
+        @media (max-width: 900px) {
+            .ws-row { grid-template-columns: repeat(7, minmax(96px, 1fr)); overflow-x: auto; scrollbar-width: none; }
+            .ws-row::-webkit-scrollbar { display: none; }
+        }
         .bo-search-empty { font-size: 0.85rem; color: var(--text-muted); padding: 10px 2px; }
         .bo-search-hit { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: var(--r-sm); padding: 10px 12px; margin-top: 8px; color: var(--text-light); cursor: pointer; }
         .bo-search-hit:hover, .bo-search-hit:focus-visible { background: var(--glass-hover); }
