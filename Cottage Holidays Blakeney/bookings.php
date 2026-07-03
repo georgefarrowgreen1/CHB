@@ -122,9 +122,21 @@ function reconcile_booking_payment($bookingId, $b = null) {
 }
 // Refundable damage deposit actually RECEIVED for a booking (rental paid first).
 function damages_collected($b) {
-    $total = ($b['agreed_total'] !== null) ? (($b['price_override'] !== null) ? (float)$b['price_override'] : (float)$b['agreed_total']) : 0.0;
     $held = (float)($b['agreed_booking_fee'] ?? 0);
-    $rental = max(0.0, $total - $held);
+    if ($held <= 0) return 0.0;
+    // Hold-model bookings take the deposit as a SEPARATE Square card authorisation
+    // (hold_* columns), never into the rental ledger — so there is nothing
+    // "collected" here to hand back. Only the legacy flow folded the deposit into
+    // the rental total / deposit_paid.
+    if (in_array($b['hold_status'] ?? 'none', ['authorized', 'captured', 'released', 'expired'], true)) return 0.0;
+    // Pure rental (deposit EXCLUDED) — the same in both eras: legacy folded the
+    // deposit into agreed_total, the current model does not. A price override is a
+    // deliberate rental figure, so it raises the rental floor. Anything paid ABOVE
+    // this is deposit money genuinely sitting in the ledger. Erring low here can
+    // only under-return (safe); the old `total - held` over-returned rental income
+    // as a phantom deposit for every fully-paid modern booking.
+    $rental = (float)($b['agreed_nightly'] ?? 0) + (float)($b['agreed_txn_fee'] ?? 0);
+    if ($b['price_override'] !== null) $rental = max($rental, (float)$b['price_override']);
     $paid = (float)($b['deposit_paid'] ?? 0);
     return round(max(0.0, min($held, $paid - $rental)), 2);
 }
@@ -351,7 +363,10 @@ if ($action === 'set_payment') {
     $id = (int)($in['id'] ?? 0);
     $b = booking_by_id($id);
     if (!$b) json_out(['error' => 'Booking not found'], 404);
-    $total = (float)($b['agreed_total'] ?? 0);
+    // Honour a manual price override as the total (matches reconcile_booking_payment,
+    // pay.php and the JS) so a part-payment against an overridden price reconciles to
+    // the same figure everywhere instead of the un-overridden agreed_total.
+    $total = ($b['price_override'] !== null && $b['price_override'] !== '') ? (float)$b['price_override'] : (float)($b['agreed_total'] ?? 0);
     $status = in_array($in['payment'] ?? '', ['unpaid','deposit','paid']) ? $in['payment'] : $b['payment'];
     $dep = reconcile_deposit($status, $total, $b['deposit_paid'], $in['deposit'] ?? null);
     if ($dep === null) json_out(['error' => "Deposit must be more than £0 and less than the total. Use 'Paid' or 'Unpaid' otherwise."], 400);
