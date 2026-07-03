@@ -20,10 +20,10 @@ build step**); PHP backend files sit alongside it. App-style guest shell lives i
 ## Conventions
 - Owner content editing lives in **Settings**: "Website content" (global homepage/nav
   text + images) and Preferences → [cottage] → Photos / Text (per-cottage). The old
-  inline live editor is retired — `handleEditToggle` / `body.edit-mode` remain dormant
-  (unused). Content is still APPLIED to the page via the `data-edit-*` attributes +
-  `applyContentOverrides` (reads `siteContent`), and galleries via `images-<prop>` —
-  do NOT remove those; they're the rendering path, not the editing UI.
+  inline live editor is fully REMOVED (code + CSS). Content
+  is APPLIED to the page via the `data-edit-*` attributes + `applyContentOverrides`
+  (reads `siteContent`), and galleries via `images-<prop>` — do NOT remove those;
+  they're the rendering path, not an editing UI.
 - Responsive: prefer the four canonical breakpoints (480 / 640 / 900 / 1200) for new
   media queries; migrate stray one-off widths opportunistically when touched.
 - **Design system**: `Cottage Holidays Blakeney/DESIGN.md` is the design language —

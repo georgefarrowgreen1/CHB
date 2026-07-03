@@ -502,16 +502,6 @@
                 if (e.touches && e.touches.length > 1 && !inMap(e.target)) e.preventDefault();
             }, { passive: false });
         })();
-        // Show/hide the dock Edit button for the given view (customer-facing only).
-        function updateDockEditVisibility(viewId) {
-            const btn = document.getElementById('dock-edit-btn');
-            const sep = document.getElementById('dock-edit-sep');
-            const show = CUSTOMER_FACING_VIEWS.includes(viewId);
-            if (btn) btn.style.display = show ? '' : 'none';
-            // Hide the divider too, so it never dangles at the dock's left edge.
-            if (sep) sep.style.display = show ? '' : 'none';
-        }
-
         function nav(viewId, anchorId = null) {
             // A signed-in admin has no customer-facing site — send any such view to
             // the back office (covers deep links, the address bar, stray calls). In
@@ -546,8 +536,6 @@
             // when on a non-admin view such as the public site or the dashboard).
             document.querySelectorAll('.admin-dock-btn[data-view]').forEach(b =>
                 b.classList.toggle('current', b.getAttribute('data-view') === viewId));
-            // The "Edit text & photos" dock button only applies to customer-facing pages.
-            updateDockEditVisibility(viewId);
             requestAnimationFrame(moveDockIndicator);
 
             // The cottage page's sticky booking bar lives on <body> (so its position:fixed
@@ -10503,7 +10491,8 @@
             activePropSafety = Array.isArray(c.safety) ? c.safety.slice() : DEFAULT_SAFETY.slice();
             renderSafety(propKey);
 
-            // Make per-property content edit-mode aware (namespaced keys)
+            // Point this cottage's elements at its namespaced content keys
+            // (data-edit-* is the rendering path applyContentOverrides reads).
             document.getElementById('prop-title').setAttribute('data-edit-text', `${propKey}-title`);
             document.getElementById('prop-desc').setAttribute('data-edit-text', `${propKey}-desc`);
             if (subEl) subEl.setAttribute('data-edit-text', `${propKey}-subtitle`);
@@ -11508,7 +11497,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 's4p9y6eb';
+            const BUILD = 't5q0z7fc';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;

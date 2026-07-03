@@ -74,8 +74,6 @@ tcheck($checks, $tables, 'Features', 'Tide widget cache', ['tide_cache'], 'Tide-
 ccheck($checks, $bcols, 'Migrations', 'Payment schedule & reminders', ['balance_requested_at','balance_reminded_at'], 'Columns present.');
 ccheck($checks, $bcols, 'Migrations', 'Abandoned-payment recovery', ['deposit_requested_at','deposit_reminded_at'], 'Columns present.');
 ccheck($checks, $bcols, 'Migrations', 'Review request email', ['review_request_sent'], 'Column present.');
-ccheck($checks, $bcols, 'Migrations', 'Tide-timed in-stay push', ['tide_push_sent'], 'Column present.');
-ccheck($checks, $bcols, 'Migrations', 'Check-in push', ['checkin_push_sent'], 'Column present.');
 ccheck($checks, $bcols, 'Migrations', 'Pre-arrival emails', ['pre_arrival_sent'], 'Column present.');
 ccheck($checks, $bcols, 'Migrations', 'Locked price snapshot', ['agreed_total','price_override'], 'Columns present.');
 
