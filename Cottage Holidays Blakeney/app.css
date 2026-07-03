@@ -102,6 +102,7 @@
         /* Light-mode fixes for sub-panels/inputs that use a hard-coded dark fill
            (rgba(0,0,0,...)) which doesn't follow the theme tokens. Text colours
            elsewhere use var(--text-light), so they flip automatically. */
+        body.light-mode .chat-widget { background: rgba(248, 248, 250, 0.97); }
         body.light-mode .input-glass,
         body.light-mode .date-range-trigger,
         body.light-mode .rate-field input,

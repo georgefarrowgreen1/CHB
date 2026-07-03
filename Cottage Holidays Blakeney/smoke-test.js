@@ -252,6 +252,29 @@ check('viewport-fit=cover present', /viewport-fit=cover/.test(html));
     check('server-render injection anchors all present in index.html' + (lost.length ? ' (' + lost.length + ' missing)' : ''), lost.length === 0);
 }
 
+console.log('\n== 9. Damage-deposit accounting (damageHeld) ==');
+{
+    const dh = get('damageHeld');
+    if (typeof dh !== 'function') {
+        fail('damageHeld is not defined');
+    } else {
+        // agreedPrice with the current (hold) model: total is RENTAL ONLY, deposit separate.
+        const ap = (over) => ({ total: 480, rentalTotal: 480, damagesDeposit: 75, ...(over || {}) });
+        // 1) Hold-model booking, fully paid: deposit is a Square hold → nothing in the ledger.
+        check('hold-model fully-paid → £0 held (no phantom deposit)',
+            dh('21a', { agreedPrice: ap(), depositPaid: 480, payment: 'paid', holdStatus: 'authorized', dbId: 1 }).held === 0);
+        // 2) No hold placed, fully paid the rental → still nothing collected as deposit.
+        check('no-hold fully-paid rental → £0 held',
+            dh('21a', { agreedPrice: ap(), depositPaid: 480, payment: 'paid', holdStatus: 'none', dbId: 2 }).held === 0);
+        // 3) Legacy booking: total INCLUDED the deposit, guest paid rental+deposit → deposit is held.
+        check('legacy paid rental+deposit → full deposit held',
+            dh('21a', { agreedPrice: { total: 555, rentalTotal: 480, damagesDeposit: 75 }, depositPaid: 555, payment: 'paid', holdStatus: 'none', dbId: 3 }).held === 75);
+        // 4) Legacy, only the rental paid so far → no deposit collected yet.
+        check('legacy rental-only paid → £0 held',
+            dh('21a', { agreedPrice: { total: 555, rentalTotal: 480, damagesDeposit: 75 }, depositPaid: 480, payment: 'deposit', holdStatus: 'none', dbId: 4 }).held === 0);
+    }
+}
+
 console.log('\n== Summary ==');
 if (failures === 0) { console.log('  ALL CHECKS PASSED ✅\n'); process.exit(0); }
 console.log('  ' + failures + ' CHECK(S) FAILED ❌\n'); process.exit(1);

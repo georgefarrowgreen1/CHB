@@ -2189,13 +2189,21 @@
             try { const r = await apiPost('bookings.php', { action: 'deposit_returns' }); damagesReturnedMap = r.returns || {}; }
             catch (e) { damagesReturnedMap = {}; }
         }
+        // Refundable damage deposit ACTUALLY collected into the rental ledger.
+        // MUST stay in lockstep with damages_collected() in bookings.php.
         function damageHeld(propKey, b) {
             const p = b.agreedPrice || priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
             const dep = Math.max(0, p.damagesDeposit || 0);
-            if (dep <= 0) return { collected: 0, returned: 0, held: 0 };
-            const rental = Math.max(0, p.total - dep);
+            if (dep <= 0) return { collected: 0, returned: 0, held: 0, deposit: 0 };
+            // Hold-model bookings hold the deposit as a separate Square card
+            // authorisation (holdStatus), never in the rental ledger — nothing to
+            // return here. Only the legacy flow folded it into deposit_paid.
+            if (['authorized', 'captured', 'released', 'expired'].includes(b.holdStatus || 'none')) return { collected: 0, returned: 0, held: 0, deposit: dep };
+            // Pure rental (deposit excluded); a price override raises the floor.
+            let rental = (p.rentalTotal != null) ? p.rentalTotal : Math.max(0, p.total);
+            if (b.priceOverride != null) rental = Math.max(rental, b.priceOverride);
             const paid = Math.max(0, Number(b.depositPaid) || 0);
-            const collected = (b.payment === 'paid') ? dep : Math.round(Math.max(0, Math.min(dep, paid - rental)) * 100) / 100;
+            const collected = Math.round(Math.max(0, Math.min(dep, paid - rental)) * 100) / 100;
             const returned = Math.round((Number(damagesReturnedMap[b.dbId]) || 0) * 100) / 100;
             const held = Math.round(Math.max(0, collected - returned) * 100) / 100;
             return { collected, returned, held, deposit: dep };
@@ -5486,7 +5494,11 @@
                     Object.keys(dbBookings).forEach(k => { dbBookings[k] = []; });
                     (bookings || []).forEach(row => {
                         const b = mapBookingFromApi(row);
-                        if (dbBookings[row.prop_key]) dbBookings[row.prop_key].push(b);
+                        // Seed the key for owner-added cottages (mirrors the blocks task
+                        // below) — otherwise their bookings are silently dropped from
+                        // the whole back office (calendar, Today, Money, clash checks).
+                        if (!dbBookings[row.prop_key]) dbBookings[row.prop_key] = [];
+                        dbBookings[row.prop_key].push(b);
                     });
                 } catch (e) {
                     Object.keys(dbBookings).forEach(k => { dbBookings[k] = []; });
@@ -5650,7 +5662,7 @@
             const payload = { id: booking.dbId, payment: newStatus };
 
             if (newStatus === 'deposit') {
-                const total = (booking.agreedPrice && booking.agreedPrice.total) || 0;
+                const total = (booking.agreedPrice && booking.agreedPrice.total) || priceBreakdown(propKey, booking.adults || 0, booking.children || 0, booking.checkIn, booking.checkOut).total || 0;
                 const existing = booking.depositPaid > 0 && booking.depositPaid < total ? booking.depositPaid : '';
                 const entered = await glassPrompt(`Deposit amount paid (£). More than £0 and less than ${gbp(total)}:`, existing);
                 if (entered === null) { afterPaymentChange(bookingId); return; }
@@ -5680,7 +5692,7 @@
             if (!booking) return;
             const loc = findBookingLocation(bookingId);
             const propKey = loc ? loc.propKey : '21a';
-            const total = (booking.agreedPrice && booking.agreedPrice.total) || 0;
+            const total = (booking.agreedPrice && booking.agreedPrice.total) || priceBreakdown(propKey, booking.adults || 0, booking.children || 0, booking.checkIn, booking.checkOut).total || 0;
             let dep = Math.max(0, parseFloat(value) || 0);
             if (dep > total) dep = total;
             // Derive status from amount
@@ -10871,11 +10883,12 @@
 
             list.innerHTML = enquiries.map(e => {
                 const meta = propertyMeta[e.propKey];
+                const propName = meta ? meta.name : e.propKey;   // survive a missing/added cottage
                 const msg = e.message ? `<div class="enquiry-msg">“${escapeHtml(e.message)}”</div>` : '';
                 return `
                 <div class="enquiry-card">
                     <div class="enquiry-info">
-                        <span class="prop-tag tag-${e.propKey}">${meta.name}</span>
+                        <span class="prop-tag tag-${e.propKey}">${escapeHtml(propName)}</span>
                         <h3>${escapeHtml(e.name)}</h3>
                         <div class="enquiry-meta">
                             <strong>${e.checkIn}</strong> → <strong>${e.checkOut}</strong><br>
@@ -11497,7 +11510,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 't5q0z7fc';
+            const BUILD = 'v7s2b9he';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
