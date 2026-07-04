@@ -16,8 +16,9 @@ require_once __DIR__ . '/db.php';
 const NOTIFY_MAX = 15;   // a sensible cap so the list can't grow unbounded
 
 function nr_load() {
-    $raw = content_value('notify-emails');
-    $arr = $raw ? json_decode($raw, true) : [];
+    // Array-valued content key → read with content_json() (content_value() would
+    // return '' for an array, making the saved extras vanish on every read).
+    $arr = function_exists('content_json') ? content_json('notify-emails', []) : [];
     if (!is_array($arr)) $arr = [];
     // Clean: valid emails, deduped case-insensitively, primary excluded.
     $primary = (defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL) ? strtolower(OWNER_NOTIFY_EMAIL) : '';

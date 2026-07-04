@@ -47,6 +47,13 @@ if (!function_exists('strip_quoted_reply')) {
             $p = stripos($text, $sep);
             if ($p !== false) $cut = min($cut, $p);
         }
+        // (b2) Outlook top-post: a "From: … / Sent:|Date: … / [To/Cc: …] / Subject: …"
+        //      header block introduces the quoted original with no ">" or attribution.
+        //      The full block is a strong signature (a genuine reply won't contain it),
+        //      so cutting at the "From:" is safe from over-trimming.
+        if (preg_match('/(^|\n)\s*From:\s.+\n\s*(Sent|Date):\s.+\n(\s*(To|Cc):\s.+\n)*\s*Subject:\s/i', $text, $m, PREG_OFFSET_CAPTURE)) {
+            $cut = min($cut, $m[1][1] + strlen($m[1][0]));
+        }
         // (c) Belt-and-braces: the exact FIRST LINE of a quoted copy of one of our
         //     own notification/relay emails — so even an odd client that quotes with
         //     no ">" prefix and no attribution still gets trimmed. Only these two
@@ -114,6 +121,50 @@ if (!function_exists('chat_admin_reply')) {
                 }
             }
         } catch (\Throwable $e) {}
+        return true;
+    }
+}
+
+// Does this reply's From address belong to the thread's own guest? Used to route
+// a GUEST reply-by-email (they were invited to "just reply to this email") into
+// the thread as a guest message instead of dropping it as sender-not-owner.
+if (!function_exists('mailbox_reply_is_guest')) {
+    function mailbox_reply_is_guest($threadId, $fromAddr) {
+        $fromAddr = strtolower(trim((string)$fromAddr));
+        if ($fromAddr === '' || (int)$threadId <= 0) return false;
+        try {
+            $s = db()->prepare('SELECT email FROM chat_threads WHERE id = ?');
+            $s->execute([(int)$threadId]);
+            $em = strtolower(trim((string)$s->fetchColumn()));
+            return $em !== '' && $em === $fromAddr;
+        } catch (\Throwable $e) { return false; }
+    }
+}
+
+// Post a GUEST reply (arrived by email) into the thread + alert the owner, exactly
+// as if the guest had typed it in the website chat. Mirrors messages.php's
+// chat_notify_owner (which we can't include — it runs the endpoint on include).
+if (!function_exists('chat_guest_reply')) {
+    function chat_guest_reply($threadId, $bodyTxt) {
+        $threadId = (int)$threadId;
+        $bodyTxt = mb_substr(trim((string)$bodyTxt), 0, 4000);
+        if ($threadId <= 0 || $bodyTxt === '') return false;
+        db()->prepare("INSERT INTO messages (thread_id, sender_role, body, read_by_admin, read_by_guest) VALUES (?, 'guest', ?, 0, 1)")->execute([$threadId, $bodyTxt]);
+        db()->prepare('UPDATE chat_threads SET updated_at = NOW() WHERE id = ?')->execute([$threadId]);
+        try {
+            $t = db()->prepare('SELECT name, email FROM chat_threads WHERE id = ?'); $t->execute([$threadId]); $th = $t->fetch();
+            require_once __DIR__ . '/mailer.php';
+            if (function_exists('send_owner')) {
+                $replyAddr = function_exists('msg_reply_address') ? msg_reply_address($threadId) : '';
+                $msgId = ($replyAddr && function_exists('msg_reply_token')) ? 'msg.' . msg_reply_token($threadId) : null;
+                $subjTag = ($replyAddr && function_exists('msg_reply_needs_subject_tag') && msg_reply_needs_subject_tag())
+                    ? ' [#' . msg_reply_token($threadId) . ']' : '';
+                $b = "A guest has replied by email to a website chat.\n\nFrom: " . (($th['name'] ?? '') ?: '—') . " (" . (($th['email'] ?? '') ?: 'no email') . ")\n\n\"" . $bodyTxt . "\"\n"
+                   . ($replyAddr ? "\nJust reply to this email and they get it on the website and by email." : '') . "\nOr open the back office → Guest messages to reply.";
+                send_owner('New website message — Cottage Holidays Blakeney' . $subjTag, $b, null, [], $replyAddr ?: null, $msgId);
+            }
+        } catch (\Throwable $e) {}
+        try { require_once __DIR__ . '/webpush.php'; if (function_exists('alert_owner')) alert_owner('New message', mb_substr($bodyTxt, 0, 80)); } catch (\Throwable $e) {}
         return true;
     }
 }
