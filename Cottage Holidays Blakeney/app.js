@@ -2326,6 +2326,54 @@
             const expTY = expensesForYear(curTY).reduce((s, x) => s + (x.amount || 0), 0);
             const netTY = receivedTY - expTY;
             const collectedPct = (receivedUpcoming + owedUpcoming) > 0 ? Math.round(receivedUpcoming / (receivedUpcoming + owedUpcoming) * 100) : (receivedUpcoming > 0 ? 100 : 0);
+            // ---- Year on year (this tax year TO DATE vs last year to the same point) ----
+            // Received cash by payment date, and nights sold by check-in date — both
+            // measured over the same elapsed slice of each tax year so it's like-for-like.
+            const tyStartStr = (y) => `${y}-04-06`;
+            const daysBetween = (a, b) => Math.round((dpParse(b) - dpParse(a)) / 86400000);
+            const addDays = (ds, n) => { const p = dpParse(ds); return formatDashed(new Date(p.getFullYear(), p.getMonth(), p.getDate() + n)); };
+            const elapsed = Math.max(0, daysBetween(tyStartStr(curTY), today));
+            const lastCutoff = addDays(tyStartStr(curTY - 1), elapsed);   // same point last year
+            const yoy = { revThis: 0, revLast: 0, nightsThis: 0, nightsLast: 0 };
+            const inRange = (ds, lo, hi) => ds && ds >= lo && ds <= hi;
+            Object.keys(dbBookings).forEach(propKey => {
+                (dbBookings[propKey] || []).forEach(b => {
+                    const ps = paymentSummary(propKey, b);
+                    const recv = Math.max(0, ps.deposit || 0);
+                    if (recv > 0 && b.paymentDate) {
+                        if (inRange(b.paymentDate, tyStartStr(curTY), today)) yoy.revThis += recv;
+                        else if (inRange(b.paymentDate, tyStartStr(curTY - 1), lastCutoff)) yoy.revLast += recv;
+                    }
+                    const nts = nightsBetween(b.checkIn, b.checkOut) || 0;
+                    if (inRange(b.checkIn, tyStartStr(curTY), today)) yoy.nightsThis += nts;
+                    else if (inRange(b.checkIn, tyStartStr(curTY - 1), lastCutoff)) yoy.nightsLast += nts;
+                });
+            });
+            const yoyPct = (now_, prev) => {
+                if (prev <= 0) return now_ > 0 ? { txt: 'new', cls: 'mo-good' } : { txt: '—', cls: '' };
+                const p = Math.round((now_ - prev) / prev * 100);
+                return { txt: (p >= 0 ? '+' : '') + p + '%', cls: p >= 0 ? 'mo-good' : 'mo-warn' };
+            };
+            const revDelta = yoyPct(yoy.revThis, yoy.revLast);
+            const nightsDelta = yoyPct(yoy.nightsThis, yoy.nightsLast);
+            const yoyCard = `
+                <div class="mo-card mo-yoy">
+                    <div class="mo-card-title">This year vs last · to ${dpParse(today).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</div>
+                    <div class="yoy-grid">
+                        <div class="yoy-metric">
+                            <div class="yoy-label">Received</div>
+                            <div class="yoy-now">${gbp(yoy.revThis)}</div>
+                            <div class="yoy-cmp"><span class="${revDelta.cls}">${revDelta.txt}</span> vs ${gbp(yoy.revLast)} last year</div>
+                        </div>
+                        <div class="yoy-metric">
+                            <div class="yoy-label">Nights stayed</div>
+                            <div class="yoy-now">${yoy.nightsThis}</div>
+                            <div class="yoy-cmp"><span class="${nightsDelta.cls}">${nightsDelta.txt}</span> vs ${yoy.nightsLast} last year</div>
+                        </div>
+                    </div>
+                    <div class="mo-sub" style="margin-top:10px;">${taxYearShort(curTY)} so far against the same window of ${taxYearShort(curTY - 1)}.</div>
+                </div>`;
+
             const cottageMax = Math.max(1, ...Object.values(byCottageTY));
 
             const trendBars = osVBars(months.map(m => ({ label: m.short, short: m.short, value: Math.round(m.received) })), moneyShort);
@@ -2343,6 +2391,7 @@
                     <div class="mo-kpi"><div class="mo-label">Booked · next 90 days</div><div class="mo-value">${gbp(next90)}</div><div class="mo-sub">confirmed arrivals</div></div>
                 </div>
                 ${chase}
+                ${yoyCard}
                 <div class="mo-grid2">
                     <div class="mo-card"><div class="mo-card-title">Received · last 12 months</div>${trendBars || '<div class="mo-sub">No payments recorded yet.</div>'}</div>
                     <div class="mo-card"><div class="mo-card-title">Collected vs outstanding · upcoming</div>
@@ -5904,6 +5953,7 @@
             try { refreshExpPendingBadge(); } catch (e) {}   // pending experience suggestions count
             try { refreshModerationCounts(); } catch (e) {}  // pending reviews/photos (badges + today card)
             try { loadActivityFeed(); } catch (e) {}        // recent-activity feed (fills in async)
+            try { checkCronHealth(); } catch (e) {}          // warn if the daily automation stopped
             try { await loadDepositReturns(); } catch (e) {}   // for the deposits-to-return line
             try { renderTodayPanel(); } catch (e) {}
             const sb = document.getElementById('booking-search'); if (sb) { sb.value = ''; bookingSearch(''); }
@@ -8495,6 +8545,27 @@
                 if (msg) { msg.textContent = 'Saved for all cottages ✓'; msg.style.color = 'var(--ok-text)'; setTimeout(() => { msg.textContent = ''; }, 4000); }
                 toast('Seasonal rates saved for all cottages.');
             } catch (e) { glassAlert("Couldn't save: " + e.message); }
+        }
+        // ---- Dashboard: warn the owner if the daily automation has stopped ----
+        // Reads cron-status.php (stamped by cron.php on every real run). Only the
+        // banner appears, and only when things are genuinely quiet, so a healthy
+        // site shows nothing.
+        async function checkCronHealth() {
+            const el = document.getElementById('cron-alert');
+            if (!el) return;
+            let d;
+            try { d = await apiGet('cron-status.php'); } catch (e) { el.style.display = 'none'; return; }
+            if (!d || !d.stale) { el.style.display = 'none'; return; }
+            const detail = d.everRan
+                ? `last ran ${d.ageHours >= 48 ? Math.round(d.ageHours / 24) + ' days' : Math.round(d.ageHours) + ' hours'} ago`
+                : 'it has never run';
+            el.innerHTML = `
+                <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+                <div>
+                    <strong>Your daily automation looks stopped</strong> — ${detail}. While it's off, pre-arrival emails, balance reminders, guest re-invites and weekly backups won't send.
+                    <div style="margin-top:6px;font-size:0.85rem;">Check the scheduled task at your host still points at <code>cron.php</code>, then open <a onclick="nav('view-settings'); settingsOpen('diagnostics');" style="cursor:pointer;text-decoration:underline;">Health check</a>.</div>
+                </div>`;
+            el.style.display = '';
         }
         // ---- Dashboard: recent-activity feed ----
         function timeAgoLabel(at) {
@@ -11510,7 +11581,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'v7s2b9he';
+            const BUILD = 'w8t3c0if';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;

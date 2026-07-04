@@ -111,6 +111,28 @@ add($checks, 'Integrations', 'Google review link', $gReview !== '' ? 'ok' : 'war
     $gReview !== '' ? 'Set — review emails lead with a Google button.' : 'Not set (optional). Review emails use the on-site form only.',
     $gReview !== '' ? '' : 'Paste your Google "write a review" link in Settings → Reviews.');
 
+// ---- Daily automation heartbeat -----------------------------------------
+// The single most important thing to know is silent: is the daily cron running?
+// If it stops, pre-arrival emails, balance chasers, backups and re-invites all
+// quietly stop with it. cron.php stamps 'cron-last-run' on every real run.
+$cronLast = content_value('cron-last-run');
+$cronTs = $cronLast !== '' ? strtotime($cronLast) : false;
+if ($cronTs === false) {
+    add($checks, 'Automation', 'Daily jobs (cron)', 'warn',
+        'No cron run recorded yet. If you have only just set it up, this clears after the first nightly run.',
+        'Point a DAILY scheduled task at cron.php?cron=APP_SECRET (see the setup notes).');
+} else {
+    $ageH = (time() - $cronTs) / 3600;
+    $when = gmdate('D j M, H:i', $cronTs) . ' UTC';
+    if ($ageH > 36) {
+        add($checks, 'Automation', 'Daily jobs (cron)', 'fail',
+            'Last ran ' . round($ageH) . 'h ago (' . $when . ') — automation looks stopped. Pre-arrival emails, balance chasers, backups & re-invites are paused.',
+            'Check the scheduled task at your host still points at cron.php?cron=APP_SECRET.');
+    } else {
+        add($checks, 'Automation', 'Daily jobs (cron)', 'ok', 'Last ran ' . $when . '.');
+    }
+}
+
 $secretOk = defined('APP_SECRET') && APP_SECRET && APP_SECRET !== 'change-this-to-a-long-random-string' && strlen(APP_SECRET) >= 16;
 add($checks, 'Security', 'APP_SECRET', $secretOk ? 'ok' : 'fail',
     $secretOk ? 'A strong secret is set.' : 'APP_SECRET is the default/too short — cron links, pay tokens and iCal links are guessable.',

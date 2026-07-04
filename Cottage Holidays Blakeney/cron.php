@@ -70,6 +70,29 @@ foreach ($jobs as $path => $label) {
     ];
 }
 
+// Heartbeat: stamp the last successful run so the back office can warn the owner
+// if the daily cron ever stops (Health check + a dashboard banner read this).
+// Only stamp on a real cron invocation, not an admin's manual "run now" click.
+if ($isCron) {
+    try {
+        db()->prepare("INSERT INTO content (item_key, item_value) VALUES ('cron-last-run', ?)
+                       ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = CURRENT_TIMESTAMP")
+            ->execute([json_encode(gmdate('c'))]);
+    } catch (\Throwable $e) { /* never fail the cron over the heartbeat */ }
+
+    // Optional external dead-man's-switch: if the owner set CRON_HEARTBEAT_URL in
+    // config.php (e.g. a free healthchecks.io ping URL), tell it we ran. That
+    // service emails the owner if the ping DOESN'T arrive — the only alert that
+    // still fires when the whole cron is down. Best-effort, short timeout.
+    if (defined('CRON_HEARTBEAT_URL') && CRON_HEARTBEAT_URL) {
+        try {
+            $hb = curl_init(CRON_HEARTBEAT_URL);
+            curl_setopt_array($hb, [CURLOPT_RETURNTRANSFER => true, CURLOPT_TIMEOUT => 8, CURLOPT_NOBODY => true]);
+            curl_exec($hb); curl_close($hb);
+        } catch (\Throwable $e) {}
+    }
+}
+
 json_out([
     'ok'   => true,
     'ran'  => count($results),

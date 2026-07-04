@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=74">
+    <link rel="stylesheet" href="app.css?v=75">
     <!-- Speed up the font fetch (and the jsPDF CDN) by opening the connections early. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -854,6 +854,10 @@
             <input type="search" class="input-glass" id="booking-search" placeholder="Find a booking or enquiry — name, email or booking ref…" autocomplete="off" oninput="bookingSearch(this.value)">
             <div id="booking-search-results"></div>
         </div>
+
+        <!-- Cron dead-man's-switch: shown by checkCronHealth() only when the daily
+             automation has gone quiet. -->
+        <div id="cron-alert" class="cron-alert" style="display:none;" role="alert"></div>
 
         <div id="today-panel"><!-- JS injects the "today / needs doing" list --></div>
 
@@ -1986,7 +1990,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=107"></script>
+    <script src="app.js?v=108"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
