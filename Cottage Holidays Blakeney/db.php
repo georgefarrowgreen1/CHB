@@ -82,7 +82,7 @@ function db()
             ]);
             // Align MySQL NOW()/CURDATE() with UK time (handles BST/GMT via the
             // current Europe/London offset). Ignored silently if not permitted.
-            $tzOffset = new DateTime('now', new DateTimeZone('Europe/London'))->format('P');
+            $tzOffset = (new DateTime('now', new DateTimeZone('Europe/London')))->format('P');
             if (!preg_match('/^[+-]\d{2}:\d{2}$/', $tzOffset)) {
                 $tzOffset = '+00:00';
             } // validate before use
