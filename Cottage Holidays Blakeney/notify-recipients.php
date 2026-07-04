@@ -12,7 +12,6 @@
 //  Admin only. The list is never exposed on the public content feed.
 // ============================================================
 require_once __DIR__ . '/db.php';
-require_admin();
 
 const NOTIFY_MAX = 15;   // a sensible cap so the list can't grow unbounded
 
@@ -39,31 +38,41 @@ function nr_save($list) {
         ->execute([json_encode(array_values($list))]);
 }
 
-$in = body();
-$action = $in['action'] ?? '';
-$primary = (defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL) ? OWNER_NOTIFY_EMAIL : '';
-
-if ($action === 'list') {
-    json_out(['ok' => true, 'primary' => $primary, 'extras' => nr_load(), 'max' => NOTIFY_MAX]);
+// Pure decision for add/remove — no I/O, so it's unit-testable (test-reply.php).
+// Returns ['list'=>[…], 'changed'=>bool, 'error'=>null|string, 'code'=>200|400].
+function nr_apply($action, $email, $list, $primary, $max = NOTIFY_MAX) {
+    $email = trim((string)$email);
+    if ($action === 'add') {
+        if (!filter_var($email, FILTER_VALIDATE_EMAIL)) return ['list' => $list, 'changed' => false, 'error' => "That doesn't look like a valid email address.", 'code' => 400];
+        if ($primary !== '' && strtolower($email) === strtolower($primary)) return ['list' => $list, 'changed' => false, 'error' => "That's already your primary notification address.", 'code' => 400];
+        foreach ($list as $e) if (strtolower($e) === strtolower($email)) return ['list' => $list, 'changed' => false, 'error' => null, 'code' => 200];   // already there
+        if (count($list) >= $max) return ['list' => $list, 'changed' => false, 'error' => 'You can add up to ' . $max . ' extra addresses.', 'code' => 400];
+        $list[] = $email;
+        return ['list' => $list, 'changed' => true, 'error' => null, 'code' => 200];
+    }
+    if ($action === 'remove') {
+        $lc = strtolower($email);
+        $new = array_values(array_filter($list, fn($e) => strtolower($e) !== $lc));
+        return ['list' => $new, 'changed' => count($new) !== count($list), 'error' => null, 'code' => 200];
+    }
+    return ['list' => $list, 'changed' => false, 'error' => 'Unknown action', 'code' => 400];
 }
 
-if ($action === 'add') {
-    $email = trim((string)($in['email'] ?? ''));
-    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) json_out(['ok' => false, 'error' => 'That doesn\'t look like a valid email address.'], 400);
-    if ($primary !== '' && strtolower($email) === strtolower($primary)) json_out(['ok' => false, 'error' => 'That\'s already your primary notification address.'], 400);
-    $list = nr_load();
-    if (count($list) >= NOTIFY_MAX) json_out(['ok' => false, 'error' => 'You can add up to ' . NOTIFY_MAX . ' extra addresses.'], 400);
-    foreach ($list as $e) if (strtolower($e) === strtolower($email)) json_out(['ok' => true, 'extras' => $list]);  // already there
-    $list[] = $email;
-    nr_save($list);
-    json_out(['ok' => true, 'extras' => $list]);
-}
+// ---- Endpoint (admin) — guarded so the file can be included in tests ----
+if (basename($_SERVER['SCRIPT_NAME'] ?? '') === 'notify-recipients.php') {
+    require_admin();
+    $in = body();
+    $action = $in['action'] ?? '';
+    $primary = (defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL) ? OWNER_NOTIFY_EMAIL : '';
 
-if ($action === 'remove') {
-    $email = strtolower(trim((string)($in['email'] ?? '')));
-    $list = array_values(array_filter(nr_load(), fn($e) => strtolower($e) !== $email));
-    nr_save($list);
-    json_out(['ok' => true, 'extras' => $list]);
-}
+    if ($action === 'list') json_out(['ok' => true, 'primary' => $primary, 'extras' => nr_load(), 'max' => NOTIFY_MAX]);
 
-json_out(['error' => 'Unknown action'], 400);
+    if ($action === 'add' || $action === 'remove') {
+        $r = nr_apply($action, $in['email'] ?? '', nr_load(), $primary);
+        if ($r['error']) json_out(['ok' => false, 'error' => $r['error']], $r['code']);
+        if ($r['changed']) nr_save($r['list']);
+        json_out(['ok' => true, 'extras' => $r['list']]);
+    }
+
+    json_out(['error' => 'Unknown action'], 400);
+}

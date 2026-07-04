@@ -3944,8 +3944,39 @@
                     <button type="submit" class="btn-sm btn-edit">Add address</button>
                 </form>
                 <p id="notify-email-msg" style="font-size:0.8rem;margin:8px 0 0;min-height:1em;" aria-live="polite"></p>
+                <div style="margin-top:14px;border-top:1px solid var(--glass-border);padding-top:12px;">
+                    <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:8px;">Reply-by-email: reply to a "new website message" alert and the guest gets it on the website &amp; by email.</div>
+                    <button class="btn-sm btn-edit" onclick="diagnoseReplyEmail(this)">Check reply-by-email</button>
+                    <div id="reply-diag" style="font-size:0.8rem;margin-top:10px;"></div>
+                </div>
             </div>`;
             loadNotifyEmails();
+        }
+        // Read-only check of the zero-setup reply-by-email: does the mailbox
+        // connect, and what did the newest replies do? Nothing is delivered.
+        async function diagnoseReplyEmail(btn) {
+            const box = document.getElementById('reply-diag');
+            if (btn) { btn.disabled = true; btn.textContent = 'Checking…'; }
+            try {
+                const d = await apiGet('mailbox-read.php?debug=1');
+                if (!d.enabled) {
+                    box.innerHTML = `<span style="color:var(--warn-text);">Reply-by-email isn't on yet — set up SMTP email first (or you've set REPLY_INBOX for the webhook route).</span>`;
+                } else {
+                    const st = d.selftest || {};
+                    const head = st.ok
+                        ? `<span style="color:var(--ok-text);">Mailbox connected — reads ${escapeHtml(d.reply_to || '')} via ${escapeHtml(d.host || '')}.</span>`
+                        : `<span style="color:var(--danger);">Couldn't read the mailbox: ${escapeHtml(st.reason || 'unknown')} (${escapeHtml(d.host || '')}). Enable POP3 for the mailbox, or set MAIL_POP_HOST.</span>`;
+                    const msgs = (d.preview && d.preview.messages) || [];
+                    const rmap = { 'delivered': '✓ would post to the guest', 'empty-after-strip': 'reply was empty after removing the quote', 'sender-not-owner': 'from an address not on your list', 'no-thread-token': 'not a reply to a website message' };
+                    const rows = msgs.length ? msgs.map(m =>
+                        `<div style="padding:6px 0;border-top:1px solid var(--glass-border);">
+                            <div><strong>${escapeHtml(m.from || '?')}</strong> — ${escapeHtml(rmap[m.reason] || m.reason || '')}</div>
+                            ${m.strippedPreview ? `<div style="color:var(--text-muted);">“${escapeHtml(m.strippedPreview)}”</div>` : ''}
+                        </div>`).join('') : `<div style="color:var(--text-muted);margin-top:6px;">No recent messages in the mailbox to show.</div>`;
+                    box.innerHTML = head + `<div style="margin-top:8px;">${rows}</div>`;
+                }
+            } catch (e) { box.innerHTML = `<span style="color:var(--danger);">Check failed: ${escapeHtml(e.message || 'error')}</span>`; }
+            finally { if (btn) { btn.disabled = false; btn.textContent = 'Check reply-by-email'; } }
         }
         // ---- Owner email recipients (Settings → Notifications) ----
         async function loadNotifyEmails() {
@@ -11683,7 +11714,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'a2x7g4mn';
+            const BUILD = 'b3y8h5no';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;

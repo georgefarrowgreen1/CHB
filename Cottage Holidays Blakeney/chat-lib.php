@@ -47,15 +47,14 @@ if (!function_exists('strip_quoted_reply')) {
             $p = stripos($text, $sep);
             if ($p !== false) $cut = min($cut, $p);
         }
-        // (c) Belt-and-braces: phrases that ONLY ever appear in a quoted copy of one
-        //     of OUR own notification/relay emails — so even an odd client that quotes
-        //     with no ">" prefix and no attribution still gets trimmed cleanly.
+        // (c) Belt-and-braces: the exact FIRST LINE of a quoted copy of one of our
+        //     own notification/relay emails — so even an odd client that quotes with
+        //     no ">" prefix and no attribution still gets trimmed. Only these two
+        //     unambiguous openers (a real reply would never contain them); the softer
+        //     phrases were dropped so they can't clip a genuine reply.
         foreach ([
             'Someone has sent you a message via the website chat',
             'You have a new message from Cottage Holidays Blakeney',
-            'Just reply to this email',
-            'Or open the back office',
-            'Reply on our website chat',
         ] as $mk) {
             $p = stripos($text, $mk);
             if ($p !== false) $cut = min($cut, $p);

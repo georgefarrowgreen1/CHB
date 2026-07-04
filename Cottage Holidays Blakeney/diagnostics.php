@@ -145,13 +145,19 @@ if ($replyWebhook) {
     $ps = json_decode(content_value('mailbox-poll') ?: '{}', true);
     $err = is_array($ps) ? ($ps['error'] ?? '') : '';
     $when = (is_array($ps) && !empty($ps['at'])) ? gmdate('j M, H:i', (int)$ps['at']) . ' UTC' : 'not yet';
+    $last = (is_array($ps) && isset($ps['last']) && is_array($ps['last'])) ? $ps['last'] : null;
+    $lastLine = '';
+    if ($last) {
+        $rmap = ['delivered' => 'delivered to the guest', 'empty-after-strip' => 'reply was empty after trimming the quote (nothing to send)', 'sender-not-owner' => 'came from an address not on your notification list', 'no-thread-token' => 'was not a reply to a website message'];
+        $lastLine = ' Last reply seen (' . htmlspecialchars($last['from'] ?? '') . '): ' . ($rmap[$last['reason'] ?? ''] ?? ($last['reason'] ?? '')) . '.';
+    }
     if ($err) {
         add($checks, 'Email', 'Reply-by-email (auto)', 'warn',
             'On, but the last mailbox check failed: ' . $err . ' (host ' . mailbox_pop_host() . '). Replies still work from the back office.',
             'Confirm your mailbox allows POP3, or set MAIL_POP_HOST. See SETUP-REPLY-EMAIL.md.');
     } else {
         add($checks, 'Email', 'Reply-by-email (auto)', 'ok',
-            'On — just reply to a "new website message" email and the guest gets it on the website and by email. No setup needed (reads ' . SMTP_USER . ' via ' . mailbox_pop_host() . '; last checked ' . $when . ').');
+            'On — reply to a "new website message" email and the guest gets it on the website and by email. Reads ' . SMTP_USER . ' via ' . mailbox_pop_host() . ' (last checked ' . $when . ').' . $lastLine);
     }
 } else {
     add($checks, 'Email', 'Reply-by-email', 'warn',
