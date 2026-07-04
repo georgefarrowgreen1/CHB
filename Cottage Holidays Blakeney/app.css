@@ -4173,6 +4173,32 @@ body.owner-mode .chat-widget {
   padding: 30px 4px;
   text-align: center;
 }
+/* Severity: warnings and action-needed rows in the activity log */
+.act-row--warn {
+  box-shadow: inset 3px 0 0 var(--warn);
+  padding-left: 8px;
+}
+.act-row--action {
+  box-shadow: inset 3px 0 0 var(--danger);
+  padding-left: 8px;
+}
+.act-sev {
+  font-size: 0.66rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-radius: var(--r-pill);
+  padding: 2px 8px;
+  flex-shrink: 0;
+}
+.act-sev--warn {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 16%, transparent);
+}
+.act-sev--action {
+  color: var(--danger);
+  background: color-mix(in srgb, var(--danger) 16%, transparent);
+}
 /* Season grid (Settings → Seasonal rates — all cottages) */
 .sg-table {
   border-collapse: collapse;

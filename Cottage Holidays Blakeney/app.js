@@ -13011,6 +13011,7 @@ async function loadActivityFeed() {
 // ---- Full activity log page (view-activity-log) ----
 const ACT_LOG_CATS = [
     ['all', 'All'],
+    ['attention', '⚠ Needs attention'],
     ['booking', 'Bookings'],
     ['payment', 'Payments'],
     ['comms', 'Messages & email'],
@@ -13063,17 +13064,19 @@ async function renderActivityLog() {
     list.innerHTML = `
                 <div class="feed-list glass-panel" style="padding:6px 16px;">
                     ${events
-                        .map(
-                            (ev) => `
-                    <div class="act-row">
+                        .map((ev) => {
+                            const sev = ev.severity === 'warn' || ev.severity === 'action' ? ev.severity : '';
+                            return `
+                    <div class="act-row${sev ? ' act-row--' + sev : ''}">
                         <span class="act-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ACTIVITY_ICONS[ev.type] || ACTIVITY_ICONS.other}</svg></span>
                         ${ev.prop_key && propertyMeta[ev.prop_key] ? `<span class="prop-tag tag-${ev.prop_key}">${propertyMeta[ev.prop_key].short}</span>` : ''}
                         <span class="act-label">${escapeHtml(ev.label)}</span>
                         <span class="act-detail">${escapeHtml(ev.detail || '')}</span>
+                        ${sev === 'action' ? '<span class="act-sev act-sev--action">Action</span>' : sev === 'warn' ? '<span class="act-sev act-sev--warn">Check</span>' : ''}
                         ${ev.actor && ev.actor !== 'guest' ? `<span class="act-actor">${escapeHtml(actorLabel(ev.actor))}</span>` : ''}
                         <span class="act-when">${timeAgoLabel(ev.at)}</span>
-                    </div>`,
-                        )
+                    </div>`;
+                        })
                         .join('')}
                 </div>`;
 }
@@ -17234,7 +17237,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'v6x3k8mp';
+    const BUILD = 'w9y4b7nk';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

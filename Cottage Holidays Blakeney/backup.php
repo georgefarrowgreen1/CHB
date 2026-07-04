@@ -141,6 +141,7 @@ if (!$force) {
 
 $res = chb_backup_write($dir);
 if (empty($res['ok'])) {
+    log_activity('system', 'backup.fail', 'Database backup FAILED — ' . ($res['error'] ?? 'unknown error'), ['severity' => 'action', 'entity' => 'backup']);
     json_out(['ok' => false, 'error' => $res['error'] ?? 'Backup failed'], 500);
 }
 

@@ -429,7 +429,23 @@ if ($action === 'add') {
     if ($guestEmail !== '') {
         $emailResult = send_booking_confirmation($newId);
     }
-    log_activity('booking', 'booking.add', 'Booking created — ' . $name, ['prop_key' => $propKey, 'entity' => 'booking', 'entity_id' => (string) $newId, 'meta' => ['detail' => trim($checkIn . ' → ' . $checkOut)]]);
+    // Is this a returning guest? (other bookings on the same email.) Worth surfacing —
+    // repeat customers are the most valuable ones.
+    $priorStays = 0;
+    if ($guestEmail !== '') {
+        try {
+            $pc = db()->prepare('SELECT COUNT(*) FROM bookings WHERE LOWER(email) = LOWER(?) AND id <> ?');
+            $pc->execute([$guestEmail, $newId]);
+            $priorStays = (int) $pc->fetchColumn();
+        } catch (\Throwable $e) {
+        }
+    }
+    log_activity(
+        'booking',
+        $priorStays > 0 ? 'booking.repeat_guest' : 'booking.add',
+        ($priorStays > 0 ? 'Repeat guest booked — ' . $name . ' (' . ($priorStays + 1) . ' stays)' : 'Booking created — ' . $name),
+        ['prop_key' => $propKey, 'entity' => 'booking', 'entity_id' => (string) $newId, 'meta' => ['detail' => trim($checkIn . ' → ' . $checkOut)]],
+    );
     json_out(['ok' => true, 'id' => $newId, 'email' => $emailResult]);
 }
 

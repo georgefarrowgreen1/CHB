@@ -213,11 +213,34 @@ if (($in['action'] ?? '') === 'save') {
     if (!$set) {
         json_out(['error' => 'Nothing to update'], 400);
     }
+    // Note the current nightly rate so we can flag a big (>20%) change — a fat-finger
+    // guard, since the rate drives every quote.
+    $oldRate = 0.0;
+    try {
+        $rs = db()->prepare('SELECT couple_rate FROM properties WHERE prop_key = ?');
+        $rs->execute([$propKey]);
+        $oldRate = (float) $rs->fetchColumn();
+    } catch (\Throwable $e) {
+    }
     $vals[] = $propKey;
     db()
         ->prepare('UPDATE properties SET ' . implode(', ', $set) . ' WHERE prop_key = ?')
         ->execute($vals);
-    log_activity('rates', 'rates.save', 'Cottage settings/rates updated — ' . $propKey, ['prop_key' => $propKey, 'entity' => 'property']);
+    $bigJump =
+        array_key_exists('couple_rate', $in) &&
+        $oldRate > 0 &&
+        abs(max(0, (float) $in['couple_rate']) - $oldRate) / $oldRate > 0.2;
+    $opts = ['prop_key' => $propKey, 'entity' => 'property'];
+    if ($bigJump) {
+        $opts['severity'] = 'warn';
+        $opts['meta'] = ['detail' => '£' . number_format($oldRate, 2) . ' → £' . number_format(max(0, (float) $in['couple_rate']), 2)];
+    }
+    log_activity(
+        'rates',
+        'rates.save',
+        ($bigJump ? 'Nightly rate changed by more than 20% — ' : 'Cottage settings/rates updated — ') . $propKey,
+        $opts,
+    );
     json_out(['ok' => true]);
 }
 

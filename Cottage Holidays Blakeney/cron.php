@@ -73,6 +73,19 @@ foreach ($jobs as $path => $label) {
     ];
 }
 
+// Surface any automation job that failed so it shows in the "Needs attention"
+// stream rather than failing silently in the background.
+foreach ($results as $r) {
+    if (empty($r['ok'])) {
+        log_activity('system', 'cron.job_fail', 'Automation job failed — ' . $r['job'], [
+            'severity' => 'warn',
+            'actor' => $isCron ? 'cron' : 'owner',
+            'entity' => 'cron',
+            'meta' => ['detail' => 'HTTP ' . $r['status']],
+        ]);
+    }
+}
+
 // Heartbeat: stamp the last successful run so the back office can warn the owner
 // if the daily cron ever stops (Health check + a dashboard banner read this).
 // Only stamp on a real cron invocation, not an admin's manual "run now" click.
@@ -109,6 +122,37 @@ if ($isCron) {
         db()->exec(
             'DELETE FROM activity_log WHERE id <= (SELECT cutoff FROM (SELECT id AS cutoff FROM activity_log ORDER BY id DESC LIMIT 1 OFFSET 5000) x)',
         );
+    } catch (\Throwable $e) {
+    }
+
+    // Config drift: config.php is edited out-of-band (host panel/FTP), so changes to
+    // payments (Square live↔sandbox / on-off) or email settings never pass through an
+    // endpoint we could log. Fingerprint them daily and flag any change — the answer
+    // to "why did payments/email stop last week?" belongs in the log.
+    try {
+        $cfg = json_encode([
+            'square' => function_exists('square_enabled') ? (bool) square_enabled() : false,
+            'square_env' =>
+                function_exists('square_api_base') && stripos(square_api_base(), 'sandbox') !== false
+                    ? 'sandbox'
+                    : 'live',
+            'smtp' => defined('SMTP_HOST') ? SMTP_HOST : '',
+            'mail' => defined('MAIL_ENABLED') && MAIL_ENABLED ? 1 : 0,
+        ]);
+        $prevCfg = content_value('config-fingerprint');
+        if ($prevCfg !== '' && $prevCfg !== $cfg) {
+            log_activity('settings', 'config.change', 'Site configuration changed (payments / email settings)', [
+                'actor' => 'system',
+                'severity' => 'warn',
+                'entity' => 'config',
+            ]);
+        }
+        db()
+            ->prepare(
+                "INSERT INTO content (item_key, item_value) VALUES ('config-fingerprint', ?)
+                 ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = CURRENT_TIMESTAMP",
+            )
+            ->execute([json_encode($cfg)]);
     } catch (\Throwable $e) {
     }
 

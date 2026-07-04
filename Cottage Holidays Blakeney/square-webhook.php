@@ -43,6 +43,22 @@ if (strpos($type, 'refund.') === 0) {
     json_out(['ok' => true]);
 }
 
+// Disputes / chargebacks: a guest's bank has pulled a payment back. This needs
+// the owner's attention (evidence deadline, lost funds), so log it prominently.
+if (strpos($type, 'dispute.') === 0) {
+    $d = $event['data']['object']['dispute'] ?? null;
+    if ($d && function_exists('log_activity')) {
+        $amt = isset($d['amount_money']['amount']) ? ' — £' . number_format((int) $d['amount_money']['amount'] / 100, 2) : '';
+        log_activity('payment', 'payment.dispute', 'Card payment DISPUTED' . $amt . ' (' . ($d['reason'] ?? 'chargeback') . ')', [
+            'severity' => 'action',
+            'entity' => 'dispute',
+            'entity_id' => (string) ($d['id'] ?? ''),
+            'meta' => ['detail' => 'state: ' . ($d['state'] ?? '')],
+        ]);
+    }
+    json_out(['ok' => true]);
+}
+
 $payment = $event['data']['object']['payment'] ?? null;
 
 // Only payment events carry what we need; acknowledge anything else so Square

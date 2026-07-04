@@ -74,6 +74,13 @@ function smtp_send(
     $errstr = '';
     $fp = @stream_socket_client("{$transport}:{$port}", $errno, $errstr, $timeout, STREAM_CLIENT_CONNECT, $ctx);
     if (!$fp) {
+        if (function_exists('log_activity')) {
+            log_activity('system', 'email.fail', 'Email could not be sent — mail server unreachable', [
+                'severity' => 'warn',
+                'entity' => 'email',
+                'meta' => ['detail' => 'to ' . $toName . ' · ' . $errstr],
+            ]);
+        }
         return ['ok' => false, 'error' => "Connect failed: {$errstr} ({$errno})"];
     }
     stream_set_timeout($fp, $timeout);
@@ -97,9 +104,16 @@ function smtp_send(
         return (int) substr(ltrim($reply), 0, 3);
     };
 
-    $fail = function ($msg) use ($fp) {
+    $fail = function ($msg) use ($fp, $toName) {
         @fwrite($fp, "QUIT\r\n");
         @fclose($fp);
+        if (function_exists('log_activity')) {
+            log_activity('system', 'email.fail', 'Email failed to send — ' . $toName, [
+                'severity' => 'warn',
+                'entity' => 'email',
+                'meta' => ['detail' => mb_substr((string) $msg, 0, 150)],
+            ]);
+        }
         return ['ok' => false, 'error' => $msg];
     };
 

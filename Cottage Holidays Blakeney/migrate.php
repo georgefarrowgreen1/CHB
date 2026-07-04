@@ -176,6 +176,10 @@ if ($appliedNow) {
     log_activity('system', 'migrate.run', 'Database updates applied (' . count($appliedNow) . ')', ['entity' => 'migration']);
 }
 $failed = array_filter($report, fn($r) => ($r['status'] ?? '') === 'ERROR');
+if ($failed) {
+    $first = reset($failed);
+    log_activity('system', 'migrate.fail', 'Database update FAILED — ' . ($first['file'] ?? ''), ['severity' => 'action', 'entity' => 'migration', 'meta' => ['detail' => mb_substr((string) ($first['error'] ?? ''), 0, 150)]]);
+}
 json_out(
     [
         'ok' => empty($failed),
