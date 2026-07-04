@@ -216,6 +216,12 @@ if ($action === 'charge') {
         } catch (\Throwable $e) {
             /* never let an alert break the response */
         }
+        log_activity(
+            'payment',
+            'payment.declined',
+            'Card ' . $kind . ' declined — £' . number_format($amountDue, 2) . ($b['name'] ? ' · ' . $b['name'] : ''),
+            ['severity' => 'warn', 'actor' => 'guest', 'prop_key' => $b['prop_key'], 'entity' => 'booking', 'entity_id' => (string) $bookingId, 'meta' => ['detail' => mb_substr((string) $detail, 0, 150)]],
+        );
         json_out(['error' => $detail], 402);
     }
 

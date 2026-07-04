@@ -436,8 +436,8 @@ function content_json($key, $default = [])
 // Record one line in the back-office activity log (audit trail of owner/admin
 // actions + site changes). Best-effort and fully guarded: the log is a
 // convenience, so a missing table or a write error must NEVER break the action
-// being logged. $opts may carry prop_key / entity / entity_id / meta (array).
-// Read by activity-log.php.
+// being logged. $opts may carry actor / prop_key / entity / entity_id / meta
+// (array) / severity ('info' | 'warn' | 'action'). Read by activity-log.php.
 function log_activity($category, $action, $summary, $opts = [])
 {
     try {
@@ -450,24 +450,34 @@ function log_activity($category, $action, $summary, $opts = [])
                     : (defined('CHB_CRON') && CHB_CRON
                         ? 'cron'
                         : 'system')));
-        db()
-            ->prepare(
-                'INSERT INTO activity_log (actor, category, action, summary, prop_key, entity, entity_id, meta, ip)
-                 VALUES (?,?,?,?,?,?,?,?,?)',
-            )
-            ->execute([
-                mb_substr((string) $actor, 0, 120),
-                mb_substr((string) $category, 0, 32),
-                mb_substr((string) $action, 0, 64),
-                mb_substr((string) $summary, 0, 255),
-                isset($opts['prop_key']) && $opts['prop_key'] !== '' ? mb_substr((string) $opts['prop_key'], 0, 40) : null,
-                isset($opts['entity']) && $opts['entity'] !== '' ? mb_substr((string) $opts['entity'], 0, 40) : null,
-                isset($opts['entity_id']) && $opts['entity_id'] !== ''
-                    ? mb_substr((string) $opts['entity_id'], 0, 64)
-                    : null,
-                isset($opts['meta']) ? mb_substr((string) json_encode($opts['meta']), 0, 4000) : null,
-                $_SERVER['REMOTE_ADDR'] ?? null,
-            ]);
+        $sev = in_array($opts['severity'] ?? 'info', ['info', 'warn', 'action'], true) ? $opts['severity'] : 'info';
+        $vals = [
+            mb_substr((string) $actor, 0, 120),
+            mb_substr((string) $category, 0, 32),
+            mb_substr((string) $action, 0, 64),
+            mb_substr((string) $summary, 0, 255),
+            isset($opts['prop_key']) && $opts['prop_key'] !== '' ? mb_substr((string) $opts['prop_key'], 0, 40) : null,
+            isset($opts['entity']) && $opts['entity'] !== '' ? mb_substr((string) $opts['entity'], 0, 40) : null,
+            isset($opts['entity_id']) && $opts['entity_id'] !== '' ? mb_substr((string) $opts['entity_id'], 0, 64) : null,
+            isset($opts['meta']) ? mb_substr((string) json_encode($opts['meta']), 0, 4000) : null,
+            $_SERVER['REMOTE_ADDR'] ?? null,
+        ];
+        try {
+            db()
+                ->prepare(
+                    'INSERT INTO activity_log (actor, category, action, summary, prop_key, entity, entity_id, meta, ip, severity)
+                     VALUES (?,?,?,?,?,?,?,?,?,?)',
+                )
+                ->execute([...$vals, $sev]);
+        } catch (\Throwable $eSev) {
+            // severity column not migrated yet — record without it so logging still works.
+            db()
+                ->prepare(
+                    'INSERT INTO activity_log (actor, category, action, summary, prop_key, entity, entity_id, meta, ip)
+                     VALUES (?,?,?,?,?,?,?,?,?)',
+                )
+                ->execute($vals);
+        }
     } catch (\Throwable $e) {
     }
 }

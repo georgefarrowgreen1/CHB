@@ -28,6 +28,7 @@ function activity_business_events($per = 12)
             'at' => $at,
             'prop_key' => $propKey,
             'actor' => 'guest',
+            'severity' => 'info',
         ];
     };
     $per = max(1, min(200, (int) $per));
@@ -166,15 +167,8 @@ function activity_logged_events($limit = 200)
     $limit = max(1, min(1000, (int) $limit));
     $out = [];
     try {
-        foreach (
-            db()
-                ->query(
-                    "SELECT actor, category, action, summary, prop_key, meta, created_at
-                     FROM activity_log ORDER BY id DESC LIMIT $limit",
-                )
-                ->fetchAll()
-            as $r
-        ) {
+        // SELECT * so this tolerates whether the severity column has been migrated yet.
+        foreach (db()->query("SELECT * FROM activity_log ORDER BY id DESC LIMIT $limit")->fetchAll() as $r) {
             $detail = '';
             if (!empty($r['meta'])) {
                 $m = json_decode((string) $r['meta'], true);
@@ -189,6 +183,7 @@ function activity_logged_events($limit = 200)
                 'at' => $r['created_at'],
                 'prop_key' => $r['prop_key'] ?? '',
                 'actor' => $r['actor'] ?: 'system',
+                'severity' => $r['severity'] ?? 'info',
             ];
         }
     } catch (\Throwable $e) {
@@ -207,10 +202,14 @@ function activity_merged($opts = [])
     $events = array_merge(activity_business_events(60), activity_logged_events(400));
 
     if ($category !== '' && $category !== 'all') {
-        // 'business' groups the inbound guest events; otherwise match the type.
+        // 'attention' = only warnings/action-needed (the failures + money-at-risk
+        // stream); 'business' groups the inbound guest events; else match the type.
         $businessTypes = ['booking', 'payment', 'enquiry', 'review', 'photo', 'signup'];
         $events = array_values(
             array_filter($events, function ($e) use ($category, $businessTypes) {
+                if ($category === 'attention') {
+                    return in_array($e['severity'] ?? 'info', ['warn', 'action'], true);
+                }
                 return $category === 'business'
                     ? in_array($e['type'], $businessTypes, true)
                     : $e['type'] === $category;

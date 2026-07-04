@@ -124,6 +124,25 @@ try {
 } catch (\Throwable $e) {
 }
 
+// ---- Activity log: this week's tally + anything that needs attention -----
+$actTotal = 0;
+$actAttention = [];
+try {
+    // SELECT * so this works whether or not the severity column has migrated yet.
+    foreach (
+        db()
+            ->query('SELECT * FROM activity_log WHERE created_at >= (NOW() - INTERVAL 7 DAY) ORDER BY id DESC')
+            ->fetchAll()
+        as $r
+    ) {
+        $actTotal++;
+        if (in_array($r['severity'] ?? 'info', ['warn', 'action'], true) && count($actAttention) < 6) {
+            $actAttention[] = ['summary' => (string) ($r['summary'] ?? ''), 'severity' => $r['severity'] ?? 'info'];
+        }
+    }
+} catch (\Throwable $e) {
+}
+
 // ---- Compose ------------------------------------------------------------
 // Names + accents come from the cottage rows, so any owner-added cottage is labelled correctly.
 $nameOf = fn($k) => prop_display($k)['name'];
@@ -168,6 +187,13 @@ $text =
     ")\n" .
     "  • Pending enquiries: {$pending}\n" .
     ($occPct !== null ? "  • Occupancy (next 30 days): {$occPct}%\n" : '') .
+    "\nACTIVITY THIS WEEK\n" .
+    "  • {$actTotal} logged event" .
+    ($actTotal === 1 ? '' : 's') .
+    "\n" .
+    (count($actAttention)
+        ? "  • Needs attention:\n" . implode("\n", array_map(fn($a) => '     - ' . $a['summary'], $actAttention)) . "\n"
+        : "  • Nothing needs your attention.\n") .
     "\nHave a good week,\nyour website";
 
 $sectionLabel = fn($t) => '<div style="font-family:' .
@@ -216,6 +242,25 @@ $inner =
             $occPct !== null ? ['Occupancy (next 30 days)', $occPct . '%'] : null,
         ]),
     ) .
+    $sectionLabel('Activity this week') .
+    email_rows([['Logged events', (string) $actTotal]]) .
+    (count($actAttention)
+        ? '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0;">' .
+            implode(
+                '',
+                array_map(
+                    fn($a) => '<tr><td style="padding:6px 0;border-bottom:1px solid #2c2f38;font-family:' .
+                        email_sans() .
+                        ';font-size:13px;color:' .
+                        ($a['severity'] === 'action' ? '#e57373' : '#ffb74d') .
+                        ';">⚠ ' .
+                        htmlspecialchars($a['summary']) .
+                        '</td></tr>',
+                    $actAttention,
+                ),
+            ) .
+            '</table>'
+        : email_p('Nothing needs your attention.', true)) .
     email_p('Have a good week.', true);
 $html = email_shell('Your Blakeney week at a glance', $inner, '#D6A785');
 

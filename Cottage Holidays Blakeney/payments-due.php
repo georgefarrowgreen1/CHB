@@ -191,10 +191,41 @@ foreach ($toRecover as $b) {
     }
 }
 
+// Damage-deposit holds that expired before capture: a Square auth lasts ~6 days,
+// so an 'authorized' hold older than that is dead — the owner has lost that
+// safety net and should know. Log once (severity: action) and mark it expired so
+// it isn't re-flagged tomorrow.
+$holdsExpired = 0;
+try {
+    $stale = db()
+        ->query(
+            "SELECT id, name, prop_key, hold_amount FROM bookings
+             WHERE hold_status = 'authorized' AND hold_authorized_at IS NOT NULL
+               AND hold_authorized_at < (NOW() - INTERVAL 6 DAY)",
+        )
+        ->fetchAll();
+    foreach ($stale as $h) {
+        log_activity(
+            'payment',
+            'hold.expired',
+            'Damage-deposit hold EXPIRED uncaptured — £' .
+                number_format((float) ($h['hold_amount'] ?? 0), 2) .
+                ($h['name'] ? ' · ' . $h['name'] : ''),
+            ['severity' => 'action', 'prop_key' => $h['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $h['id']],
+        );
+        db()
+            ->prepare("UPDATE bookings SET hold_status = 'expired' WHERE id = ?")
+            ->execute([(int) $h['id']]);
+        $holdsExpired++;
+    }
+} catch (\Throwable $e) {
+}
+
 json_out([
     'ok' => true,
     'window_days' => $days,
     'found' => count($due),
+    'holds_expired' => $holdsExpired,
     'requested' => $sent,
     'skipped' => $skipped,
     'reminders_sent' => $reminded,

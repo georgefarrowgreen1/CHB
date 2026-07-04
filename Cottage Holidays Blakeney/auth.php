@@ -81,7 +81,22 @@ switch ($action) {
         $row = $stmt->fetch();
         if (!password_verify($password, $row['password_hash'] ?? AUTH_DUMMY_HASH) || !$row) {
             throttle_record('admin:' . strtolower($username), false);
-            log_activity('account', 'admin.login_fail', 'Failed sign-in attempt', ['actor' => 'system', 'meta' => ['detail' => 'username: ' . mb_substr($username, 0, 60)]]);
+            // Collapse a burst: log the first failure, then only at thresholds — so a
+            // brute-force attempt is one or two "Needs attention" rows, not fifty.
+            $fails = 1;
+            try {
+                $fq = db()->prepare(
+                    "SELECT COUNT(*) FROM login_attempts WHERE identifier = ? AND success = 0 AND attempted_at > (NOW() - INTERVAL 15 MINUTE)",
+                );
+                $fq->execute(['admin:' . strtolower($username)]);
+                $fails = (int) $fq->fetchColumn();
+            } catch (\Throwable $e) {
+            }
+            if ($fails === 1) {
+                log_activity('account', 'admin.login_fail', 'Failed sign-in attempt', ['actor' => 'system', 'severity' => 'warn', 'meta' => ['detail' => 'username: ' . mb_substr($username, 0, 60)]]);
+            } elseif (in_array($fails, [5, 15, 30], true)) {
+                log_activity('account', 'admin.login_burst', $fails . ' failed sign-in attempts in 15 min', ['actor' => 'system', 'severity' => 'action', 'meta' => ['detail' => 'username: ' . mb_substr($username, 0, 60)]]);
+            }
             json_out(['error' => 'Incorrect username or password'], 401);
         }
         throttle_record('admin:' . strtolower($username), true);
@@ -89,7 +104,26 @@ switch ($action) {
         $_SESSION['admin_id'] = (int) $row['id'];
         unset($_SESSION['guest_id']); // one role at a time: signing in as admin ends any guest session
         csrf_issue_cookie(); // set the CSRF cookie now (session id was just regenerated)
-        log_activity('account', 'admin.login', 'Owner signed in');
+        // New device/location? Compare a coarse fingerprint (IP + browser) to the
+        // last sign-in; a change is worth flagging (severity: warn). First-ever
+        // sign-in has no prior, so it's just logged normally.
+        $fp = ($_SERVER['REMOTE_ADDR'] ?? '') . '|' . mb_substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 200);
+        $prevFp = content_value('admin-last-login-fp');
+        $isNew = $prevFp !== '' && $prevFp !== $fp;
+        try {
+            db()
+                ->prepare(
+                    "INSERT INTO content (item_key, item_value) VALUES ('admin-last-login-fp', ?)
+                     ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = CURRENT_TIMESTAMP",
+                )
+                ->execute([json_encode($fp)]);
+        } catch (\Throwable $e) {
+        }
+        if ($isNew) {
+            log_activity('account', 'admin.login_new', 'Signed in from a NEW device or location', ['severity' => 'warn', 'meta' => ['detail' => mb_substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 120)]]);
+        } else {
+            log_activity('account', 'admin.login', 'Owner signed in');
+        }
         json_out(['ok' => true]);
 
     case 'admin_logout':
@@ -153,6 +187,7 @@ switch ($action) {
         session_regenerate_id(true); // new session id on login — prevents session fixation
         $_SESSION['guest_id'] = (int) db()->lastInsertId();
         unset($_SESSION['admin_id']); // one role at a time: a guest session ends any admin session
+        log_activity('account', 'guest.register', 'New guest account — ' . $name, ['actor' => 'guest', 'entity' => 'guest', 'entity_id' => (string) $_SESSION['guest_id']]);
         json_out([
             'ok' => true,
             'guest' => [
