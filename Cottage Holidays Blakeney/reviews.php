@@ -67,7 +67,7 @@ if ($action === 'submit') {
     // Best-effort heads-up to the owner (never blocks the submission)
     if (defined('MAIL_ENABLED') && MAIL_ENABLED && defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL !== '') {
         try {
-            smtp_send(OWNER_NOTIFY_EMAIL, 'Owner', 'New guest review awaiting approval',
+            send_owner('New guest review awaiting approval',
                 "A review was submitted by {$guest['name']} for {$propKey} ({$stars}\xE2\x98\x85):\n\n{$text}\n\n"
                 . "Approve or decline it in Settings & Fees -> Guest Reviews.");
         } catch (\Throwable $e) {}

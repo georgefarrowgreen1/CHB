@@ -106,7 +106,7 @@ if ($action === 'suggest') {
     if (defined('MAIL_ENABLED') && MAIL_ENABLED && defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL !== '') {
         try {
             require_once __DIR__ . '/mailer.php';
-            smtp_send(OWNER_NOTIFY_EMAIL, 'Owner', 'New experience suggestion to review',
+            send_owner('New experience suggestion to review',
                 "{$guest['name']} suggested an experience:\n\n{$title}\n\n{$bodyTxt}\n\n"
                 . ($linkUrl ? "Link: {$linkUrl}\n" : '') . ($phone ? "Phone: {$phone}\n" : '')
                 . "\nReview it in Settings -> Experiences.");

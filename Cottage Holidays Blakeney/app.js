@@ -3934,7 +3934,61 @@
                     <button class="btn-sm btn-edit" onclick="enableOwnerPush()">Enable on this device</button>
                     <button class="btn-sm btn-edit" onclick="testOwnerPush()">Send test</button>
                 </div>
+            </div>
+            <div class="accounts-stat" style="max-width:560px;margin-top:16px;">
+                <div class="label">Email recipients</div>
+                <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 12px;">Who gets emailed about new bookings, enquiries, guest messages, payments and reviews. Add a partner or co-host and they're copied on every alert.</p>
+                <div id="notify-emails-list"><p style="font-size:0.82rem;color:var(--text-muted);">Loading…</p></div>
+                <form onsubmit="addNotifyEmail(event)" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+                    <input type="email" id="notify-email-input" class="input-glass field-sm" placeholder="name@example.com" autocomplete="off" style="flex:1;min-width:200px;margin:0;">
+                    <button type="submit" class="btn-sm btn-edit">Add address</button>
+                </form>
+                <p id="notify-email-msg" style="font-size:0.8rem;margin:8px 0 0;min-height:1em;" aria-live="polite"></p>
             </div>`;
+            loadNotifyEmails();
+        }
+        // ---- Owner email recipients (Settings → Notifications) ----
+        async function loadNotifyEmails() {
+            const box = document.getElementById('notify-emails-list');
+            if (!box) return;
+            let d;
+            try { d = await apiPost('notify-recipients.php', { action: 'list' }); }
+            catch (e) { box.innerHTML = `<p style="font-size:0.82rem;color:var(--danger);">Couldn't load the list.</p>`; return; }
+            renderNotifyEmails(d.primary, d.extras || []);
+        }
+        function renderNotifyEmails(primary, extras) {
+            const box = document.getElementById('notify-emails-list');
+            if (!box) return;
+            const primaryRow = primary
+                ? `<div class="notify-row"><span class="notify-addr">${escapeHtml(primary)}</span><span class="notify-primary-tag">Primary</span></div>`
+                : `<div class="notify-row"><span class="notify-addr" style="color:var(--warn-text);">No primary owner email set in config.php</span></div>`;
+            const extraRows = (extras || []).map(e =>
+                `<div class="notify-row"><span class="notify-addr">${escapeHtml(e)}</span><button class="notify-remove" onclick="removeNotifyEmail('${escapeHtml(e).replace(/'/g, "\\'")}')" aria-label="Remove ${escapeHtml(e)}" title="Remove">&times;</button></div>`).join('');
+            box.innerHTML = primaryRow + extraRows;
+        }
+        async function addNotifyEmail(ev) {
+            if (ev) ev.preventDefault();
+            const input = document.getElementById('notify-email-input');
+            const msg = document.getElementById('notify-email-msg');
+            const email = (input.value || '').trim();
+            if (!email) return;
+            if (msg) { msg.textContent = ''; msg.style.color = ''; }
+            try {
+                const d = await apiPost('notify-recipients.php', { action: 'add', email });
+                if (!d.ok) throw new Error(d.error || 'Could not add that address');
+                const list = await apiPost('notify-recipients.php', { action: 'list' });
+                renderNotifyEmails(list.primary, list.extras || []);
+                input.value = '';
+                if (msg) { msg.textContent = 'Added — copied on all owner alerts from now on.'; msg.style.color = 'var(--ok-text)'; }
+            } catch (e) { if (msg) { msg.textContent = e.message; msg.style.color = 'var(--danger)'; } }
+        }
+        async function removeNotifyEmail(email) {
+            if (!await glassConfirm(`Stop sending owner alerts to ${email}?`)) return;
+            try {
+                await apiPost('notify-recipients.php', { action: 'remove', email });
+                const list = await apiPost('notify-recipients.php', { action: 'list' });
+                renderNotifyEmails(list.primary, list.extras || []);
+            } catch (e) { glassAlert("Couldn't remove that address: " + e.message); }
         }
 
 
@@ -11625,7 +11679,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'y0v5e2kh';
+            const BUILD = 'z1w6f3li';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;

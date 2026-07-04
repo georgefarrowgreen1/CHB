@@ -48,9 +48,9 @@ function chat_location() {
 }
 function chat_notify_owner($name, $email, $bodyTxt) {
     try {
-        if (defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL && function_exists('smtp_send')) {
-            require_once __DIR__ . '/mailer.php';
-            smtp_send(OWNER_NOTIFY_EMAIL, 'Owner', 'New website message — Cottage Holidays Blakeney',
+        require_once __DIR__ . '/mailer.php';
+        if (function_exists('send_owner')) {
+            send_owner('New website message — Cottage Holidays Blakeney',
                 "Someone has sent you a message via the website chat.\n\nFrom: " . ($name ?: '—') . " (" . ($email ?: 'no email') . ")\n\n\"" . $bodyTxt . "\"\n\nOpen the back office → Guest messages to reply.");
         }
     } catch (\Throwable $e) {}

@@ -145,7 +145,7 @@ $inner = email_h('Your week at a glance', '#D6A785')
   . email_p('Have a good week.', true);
 $html = email_shell('Your Blakeney week at a glance', $inner, '#D6A785');
 
-$res = smtp_send(OWNER_NOTIFY_EMAIL, 'Owner', $subject, $text, $html);
+$res = send_owner($subject, $text, $html);
 
 if (!empty($res['ok']) || ($res === true)) {
     // Record the send so we don't repeat today (store as JSON so content_value reads it back).

@@ -170,6 +170,46 @@ function smtp_send($toEmail, $toName, $subject, $bodyText, $bodyHtml = null, $at
     return ['ok' => true, 'error' => ''];
 }
 
+// Everyone who should receive owner/admin activity notifications: the primary
+// OWNER_NOTIFY_EMAIL plus any extra addresses added in Settings → Notifications
+// (content 'notify-emails' = JSON array). Deduped case-insensitively, validated,
+// primary first. This is the single source of truth for "who gets alerted".
+function owner_recipients() {
+    $list = [];
+    if (defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL && filter_var(OWNER_NOTIFY_EMAIL, FILTER_VALIDATE_EMAIL)) {
+        $list[] = OWNER_NOTIFY_EMAIL;
+    }
+    if (function_exists('content_value')) {
+        $raw = content_value('notify-emails');
+        if ($raw) {
+            $extra = json_decode($raw, true);
+            if (is_array($extra)) {
+                foreach ($extra as $e) {
+                    $e = trim((string)$e);
+                    if ($e !== '' && filter_var($e, FILTER_VALIDATE_EMAIL)) $list[] = $e;
+                }
+            }
+        }
+    }
+    $seen = []; $out = [];
+    foreach ($list as $e) { $k = strtolower($e); if (!isset($seen[$k])) { $seen[$k] = true; $out[] = $e; } }
+    return $out;
+}
+
+// Send ONE owner/admin notification to every recipient (owner_recipients()).
+// Returns the primary send's result so existing callers keep their {ok,error}
+// contract; copies to the extra addresses are best-effort.
+function send_owner($subject, $text, $html = null, $atts = []) {
+    $rcpts = owner_recipients();
+    if (!$rcpts) return ['ok' => false, 'error' => 'No owner email'];
+    $first = null;
+    foreach ($rcpts as $i => $to) {
+        $r = smtp_send($to, 'Owner', $subject, $text, $html, $atts);
+        if ($i === 0) $first = $r;
+    }
+    return $first ?: ['ok' => false, 'error' => 'No owner email'];
+}
+
 /** Encode a display name safely for a header (handles non-ASCII). */
 function mb_encode_safe($name) {
     if (preg_match('/[^\x20-\x7E]/', $name)) {
@@ -314,7 +354,7 @@ function send_owner_payment_notice($b) {
           . "Type: {$what}\n"
           . "Amount: " . $money($b['amount']) . $statusTxt . "\n\n"
           . "See Money & income for the full picture.\nCottage Holidays Blakeney";
-    return smtp_send(OWNER_NOTIFY_EMAIL, 'Owner', $subject, $text);
+    return send_owner($subject, $text);
 }
 
 // Ask a past guest to leave a review. $b: name, email, prop_key, prop_name, reviewUrl.
@@ -443,7 +483,7 @@ function send_owner_enquiry_email($e) {
         . email_p('<a href="' . email_esc($e['decline_url']) . '" style="color:#8a8f9c;">Decline this enquiry</a>', true)
         . email_p('Each link opens a confirmation page first — nothing happens until you press the button there.', true);
     $html = email_shell('New enquiry — ' . $prop, $inner);
-    return smtp_send(OWNER_NOTIFY_EMAIL, 'Owner', $subject, $text, $html);
+    return send_owner($subject, $text, $html);
 }
 
 function send_booking_emails($b) {
@@ -532,7 +572,7 @@ function send_booking_emails($b) {
         $body .= "Stay: {$nightsTxt}\n";
         $body .= "Guests: {$party}\n";
         $body .= "Total: " . $money($b['total']) . "\n";
-        $out['owner'] = smtp_send(OWNER_NOTIFY_EMAIL, 'Owner', $subject, $body);
+        $out['owner'] = send_owner($subject, $body);
     }
 
     return $out;

@@ -2611,3 +2611,11 @@ html.js-reveal h2.section-title.text-center.reveal.in-view::after { transform: t
             background: linear-gradient(90deg, transparent, var(--season-accent, var(--accent)), transparent);
         }
         body.light-mode .hero-scroll-cue { color: var(--season-accent, var(--sea)); }
+
+        /* Owner email recipients list (Settings → Notifications) */
+        .notify-row { display: flex; align-items: center; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--glass-border); }
+        .notify-row:last-child { border-bottom: none; }
+        .notify-addr { flex: 1; min-width: 0; font-size: 0.9rem; color: var(--text-light); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .notify-primary-tag { font-size: 0.64rem; letter-spacing: 0.6px; text-transform: uppercase; color: var(--text-muted); background: var(--glass-hover); border: 1px solid var(--glass-border); border-radius: var(--r-pill); padding: 3px 10px; flex-shrink: 0; }
+        .notify-remove { width: 28px; height: 28px; flex-shrink: 0; border-radius: 50%; border: 1px solid var(--glass-border); background: transparent; color: var(--text-muted); font-size: 1.1rem; line-height: 1; cursor: pointer; transition: background 0.2s var(--fluid-bezier), color 0.2s var(--fluid-bezier); }
+        .notify-remove:hover { background: rgba(229,115,115,0.14); color: var(--danger); border-color: var(--danger); }
