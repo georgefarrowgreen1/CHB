@@ -75,6 +75,21 @@ if (!function_exists('strip_quoted_reply')) {
     }
 }
 
+// Idempotency guard: is $body already the most recent message in this thread?
+// Used by BOTH inbound paths (POP3 poll + webhook) so a provider retry or a poll
+// race can't post the same reply twice. Back-office sends stay unguarded (those
+// are intentional).
+if (!function_exists('chat_last_message_is')) {
+    function chat_last_message_is($threadId, $body) {
+        try {
+            $s = db()->prepare('SELECT body FROM messages WHERE thread_id = ? ORDER BY id DESC LIMIT 1');
+            $s->execute([(int)$threadId]);
+            $last = $s->fetchColumn();
+            return $last !== false && trim((string)$last) === trim((string)$body);
+        } catch (\Throwable $e) { return false; }
+    }
+}
+
 // Post an owner/admin reply into a thread AND deliver it to the guest: it shows
 // on the website chat (an 'admin' message) and is emailed to the guest. If
 // reply-by-email is configured, the guest's email carries a Reply-To that routes

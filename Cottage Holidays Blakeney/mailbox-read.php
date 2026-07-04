@@ -119,12 +119,19 @@ function pop3_open() {
     fwrite($fp, 'PASS ' . SMTP_PASS . "\r\n"); if (!$ok($line())) { fclose($fp); return ['error' => 'Login failed (check the mailbox allows POP3)']; }
     return ['fp' => $fp];
 }
-function pop3_multiline($fp) {
-    $data = '';
+// Reads a dot-terminated POP3 multiline reply. $clean is set true ONLY if the
+// terminating "." line was reached — a false $clean means the socket timed out
+// or closed mid-reply, so the caller must abort (the stream is now desynced and
+// the data is partial). Body is capped so a huge email can't exhaust memory, but
+// we keep draining to the dot so the stream stays in sync.
+function pop3_multiline($fp, &$clean = null, $maxBytes = 262144) {
+    $data = ''; $clean = false;
     while (($ln = fgets($fp, 8192)) !== false) {
-        if ($ln === ".\r\n" || $ln === ".\n") break;
+        if ($ln === ".\r\n" || $ln === ".\n") { $clean = true; break; }
         if (strlen($ln) > 1 && $ln[0] === '.') $ln = substr($ln, 1);   // un-dot-stuff
-        $data .= $ln;
+        if (strlen($data) < $maxBytes) $data .= $ln;                   // cap memory, keep draining
+        $meta = stream_get_meta_data($fp);
+        if (!empty($meta['timed_out'])) break;                         // timeout → not clean → abort
     }
     return $data;
 }
@@ -139,14 +146,26 @@ function poll_mailbox_replies($force = false, $preview = false) {
     $processed = isset($state['uids']) && is_array($state['uids']) ? $state['uids'] : [];
     if (!$preview && !$force && !empty($state['at']) && (time() - (int)$state['at']) < 90) return ['ok' => true, 'skipped' => 'throttled'];
 
+    // Serialize concurrent polls (a cron run and an inbox-open, or two tabs) so a
+    // reply can never be double-delivered by a race. Non-blocking: if another poll
+    // holds the lock, skip this one. Skipped for the read-only preview.
+    $lock = false;
+    if (!$preview) {
+        try { $st = db()->query("SELECT GET_LOCK('chb_mailbox_poll', 0)"); $lock = ((int)$st->fetchColumn() === 1); }
+        catch (\Throwable $e) { $lock = true; }   // no advisory-lock support → proceed (guard below still applies)
+        if (!$lock) return ['ok' => true, 'skipped' => 'locked'];
+    }
+
     $conn = pop3_open();
-    if (isset($conn['error'])) { if (!$preview) mailbox_poll_save($processed, $conn['error'], null); return ['ok' => false, 'error' => $conn['error']]; }
+    if (isset($conn['error'])) { if (!$preview) { mailbox_poll_save($processed, $conn['error'], null); poll_unlock($lock); } return ['ok' => false, 'error' => $conn['error']]; }
     $fp = $conn['fp'];
     $handled = 0; $seen = 0; $trace = []; $last = null;
     try {
         fwrite($fp, "UIDL\r\n");
-        fgets($fp, 8192);                               // +OK
-        $uidls = pop3_parse_uidl(pop3_multiline($fp));
+        $u = fgets($fp, 8192);                          // +OK / -ERR
+        $uclean = false;
+        $uidls = (is_string($u) && $u !== '' && $u[0] === '+') ? pop3_parse_uidl(pop3_multiline($fp, $uclean)) : [];
+        if (!$uclean) $uidls = [];                      // partial UIDL read → don't act this round
         $known = array_fill_keys($processed, true);
         $allowed = array_map('strtolower', function_exists('owner_recipients') ? owner_recipients() : []);
         krsort($uidls);                                // newest first
@@ -155,8 +174,11 @@ function poll_mailbox_replies($force = false, $preview = false) {
             if (!$preview && isset($known[$uid])) continue;
             if ($seen++ >= ($preview ? 5 : 25)) break;
             fwrite($fp, "RETR {$no}\r\n");
-            fgets($fp, 8192);                           // +OK
-            $raw = pop3_multiline($fp);
+            $ok = fgets($fp, 8192);                      // +OK / -ERR
+            if (!is_string($ok) || $ok === '' || $ok[0] !== '+') break;   // RETR failed → stop cleanly
+            $rclean = false;
+            $raw = pop3_multiline($fp, $rclean);
+            if (!$rclean) break;                        // partial read / desync → stop; uid NOT marked, retry next poll
             $p = parse_email_message($raw);
             $tok = mailbox_token_in($p);
             $tid = msg_reply_verify($tok);
@@ -173,14 +195,21 @@ function poll_mailbox_replies($force = false, $preview = false) {
             if ($last === null && $tid > 0) $last = $info;   // remember the newest of OUR threads
         }
         fwrite($fp, "QUIT\r\n");
-    } catch (\Throwable $e) { if ($preview) return ['ok' => false, 'error' => $e->getMessage()]; }
+    } catch (\Throwable $e) { @fclose($fp); if ($preview) return ['ok' => false, 'error' => $e->getMessage()]; mailbox_poll_save($processed, '', $last); poll_unlock($lock); return ['ok' => false, 'error' => $e->getMessage(), 'handled' => $handled]; }
     @fclose($fp);
     if ($preview) return ['ok' => true, 'messages' => $trace, 'host' => mailbox_pop_host(), 'allowed' => $allowed ?? []];
     mailbox_poll_save($processed, '', $last);
+    poll_unlock($lock);
     return ['ok' => true, 'handled' => $handled, 'last' => $last];
 }
+function poll_unlock($lock) {
+    if (!$lock) return;
+    try { db()->query("SELECT RELEASE_LOCK('chb_mailbox_poll')"); } catch (\Throwable $e) {}
+}
 function mailbox_poll_save($processed, $error, $last) {
-    if (count($processed) > 300) $processed = array_slice($processed, -300);
+    // Keep a large watermark so a busy mailbox can't evict an already-handled
+    // reply's UIDL and re-deliver it (POP3 UIDL re-lists the whole INBOX each poll).
+    if (count($processed) > 2000) $processed = array_slice($processed, -2000);
     $val = ['at' => time(), 'uids' => array_values($processed), 'error' => $error];
     if ($last !== null) { $val['last'] = $last; $val['lastAt'] = time(); }
     else {
@@ -195,15 +224,8 @@ function mailbox_poll_save($processed, $error, $last) {
             ->execute([json_encode($val)]);
     } catch (\Throwable $e) {}
 }
-// Is $body already the most recent message in this thread? (idempotency guard)
-function chat_last_message_is($threadId, $body) {
-    try {
-        $s = db()->prepare('SELECT body FROM messages WHERE thread_id = ? ORDER BY id DESC LIMIT 1');
-        $s->execute([(int)$threadId]);
-        $last = $s->fetchColumn();
-        return $last !== false && trim((string)$last) === trim((string)$body);
-    } catch (\Throwable $e) { return false; }
-}
+// chat_last_message_is() (idempotency guard) lives in chat-lib.php so the webhook
+// (inbound-mail.php) shares it.
 
 // A read-only connection self-test for the Health check: does login work?
 function mailbox_selftest() {

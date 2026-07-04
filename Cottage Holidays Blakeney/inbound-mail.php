@@ -82,5 +82,7 @@ $body = strip_quoted_reply($bodyRaw);
 if ($body === '') { echo 'empty reply'; exit; }
 
 // ---- Post to the website thread + email the guest (shared helper) ----
-chat_admin_reply($threadId, $body);
+// Idempotency: a provider retry (or a double-fire) re-POSTs the same reply, so
+// skip it if it's already the newest message in the thread.
+if (!chat_last_message_is($threadId, $body)) chat_admin_reply($threadId, $body);
 echo 'ok';
