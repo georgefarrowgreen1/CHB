@@ -8072,6 +8072,14 @@ html.js-reveal h2.section-title.text-center.reveal.in-view::after {
 .auth-brand {
   display: none;
 }
+/* The close (×) row: on desktop the negative margins tuck it into the box padding.
+   On the mobile app shell the box has no padding, so those negatives push it past
+   the edge where overflow clips its top-right — the guest-app override neutralises them. */
+.auth-close-row {
+  display: flex;
+  justify-content: flex-end;
+  margin: -6px -6px 8px 0;
+}
 .auth-form-col {
   width: 100%;
 }
