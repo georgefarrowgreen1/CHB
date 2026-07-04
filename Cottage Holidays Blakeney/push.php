@@ -64,15 +64,16 @@ if ($action === 'sw_notify') {
 
 // ---- Admin: subscribe this device for owner alerts / test / release ping ----
 if ($action === 'subscribe_admin' || $action === 'test_admin' || $action === 'unsubscribe_admin') {
-    if (empty($_SESSION['admin_id'])) {
-        json_out(['error' => 'Not authorised'], 401);
-    }
+    require_admin(); // admin session + CSRF token (the inline session check skipped CSRF)
     if ($action === 'subscribe_admin') {
         $sub = $in['subscription'] ?? null;
         if (!is_array($sub) || empty($sub['endpoint'])) {
             json_out(['error' => 'Invalid subscription'], 400);
         }
         $endpoint = (string) $sub['endpoint'];
+        if (!wp_endpoint_allowed($endpoint)) {
+            json_out(['error' => 'Invalid subscription'], 400);
+        }
         try {
             db()
                 ->prepare('DELETE FROM push_subscriptions WHERE endpoint = ?')
@@ -127,6 +128,9 @@ if ($action === 'subscribe') {
         json_out(['error' => 'Invalid subscription'], 400);
     }
     $endpoint = (string) $sub['endpoint'];
+    if (!wp_endpoint_allowed($endpoint)) {
+        json_out(['error' => 'Invalid subscription'], 400);
+    }
     $p256dh = (string) ($sub['keys']['p256dh'] ?? '');
     $auth = (string) ($sub['keys']['auth'] ?? '');
     try {
@@ -172,10 +176,10 @@ if ($action === 'test') {
         json_out(['error' => 'Could not read subscriptions — has migration-push.sql been run?'], 500);
     }
     $sent = 0;
-    $statuses = [];
     foreach ($rows as $sub) {
+        // Don't return upstream HTTP codes to the client — that would make this a
+        // status-code oracle; just count what was delivered and prune dead devices.
         $r = send_webpush($sub['endpoint']);
-        $statuses[] = $r['status'];
         if ($r['ok']) {
             $sent++;
         } elseif (in_array($r['status'], [404, 410], true)) {
@@ -184,7 +188,7 @@ if ($action === 'test') {
                 ->execute([(int) $sub['id']]);
         }
     }
-    json_out(['ok' => true, 'devices' => count($rows), 'sent' => $sent, 'statuses' => $statuses]);
+    json_out(['ok' => true, 'devices' => count($rows), 'sent' => $sent]);
 }
 
 json_out(['error' => 'Unknown action'], 400);

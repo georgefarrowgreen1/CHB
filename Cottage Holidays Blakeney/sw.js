@@ -14,8 +14,20 @@
 //  show (push.php?action=sw_notify) and relays release reloads to open pages.
 //  Keep this file in the SAME folder as index.html.
 // ============================================================
-const CACHE = 'chb-cache-v163';
-const CORE = ['./', 'index.html', 'logo.svg', 'favicon.png', 'apple-touch-icon.png', 'manifest.json', 'app.css?v=78', 'app.js?v=113', 'guest-app.css?v=25', 'guest-app.js?v=13'];
+const CACHE = 'chb-cache-v164';
+const CORE = ['./', 'index.html', 'logo.svg', 'favicon.png', 'apple-touch-icon.png', 'manifest.json', 'app.css?v=79', 'app.js?v=114', 'guest-app.css?v=26', 'guest-app.js?v=14'];
+// uploads/ images live in their own size-capped bucket so galleries stay fast and
+// available offline WITHOUT growing the main cache without bound (every image ever
+// viewed used to accumulate forever in CACHE).
+const IMG_CACHE = 'chb-img-v1';
+const IMG_CACHE_MAX = 80;
+async function trimCache(name, max) {
+    try {
+        const c = await caches.open(name);
+        const keys = await c.keys();
+        for (let i = 0; i < keys.length - max; i++) await c.delete(keys[i]);   // drop oldest first
+    } catch (e) {}
+}
 
 self.addEventListener('install', (event) => {
     self.skipWaiting();
@@ -25,7 +37,7 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
     event.waitUntil((async () => {
         const keys = await caches.keys();
-        await Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)));
+        await Promise.all(keys.filter(k => k !== CACHE && k !== IMG_CACHE).map(k => caches.delete(k)));
         await self.clients.claim();
     })());
 });
@@ -60,7 +72,19 @@ self.addEventListener('fetch', (event) => {
         return;
     }
 
-    // Other same-origin GETs: stale-while-revalidate.
+    // uploads/ images: stale-while-revalidate into the capped image bucket (trimmed
+    // to IMG_CACHE_MAX so it can't grow forever).
+    if (url.pathname.includes('/uploads/')) {
+        event.respondWith((async () => {
+            const c = await caches.open(IMG_CACHE);
+            const cached = await c.match(req);
+            const network = fetch(req).then(async res => { if (res && res.ok) { await c.put(req, res.clone()).catch(() => {}); trimCache(IMG_CACHE, IMG_CACHE_MAX); } return res; }).catch(() => null);
+            return cached || (await network) || Response.error();
+        })());
+        return;
+    }
+
+    // Other same-origin GETs (versioned static assets): stale-while-revalidate.
     event.respondWith((async () => {
         const c = await caches.open(CACHE);
         const cached = await c.match(req);

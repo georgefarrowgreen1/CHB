@@ -134,13 +134,14 @@ async function oqFlush() {
         return;
     }
     __oqFlushing = true;
+    let failed = 0;
     try {
         for (const it of items) {
             try {
                 await apiPost(it.endpoint, it.payload);
             } catch (e) {
-                if (navigator.onLine === false)
-                    break; /* online but rejected — drop it so the queue can't get stuck */
+                if (navigator.onLine === false) break; // offline again — stop, keep the rest queued
+                failed++; // online but the server rejected it — drop so the queue can't wedge, but report
             }
             try {
                 await oqDelete(it.id);
@@ -163,7 +164,13 @@ async function oqFlush() {
     try {
         if (typeof renderMoneyOverview === 'function') renderMoneyOverview();
     } catch (e) {}
-    if (__oqCount === 0) {
+    if (failed > 0) {
+        // A queued change was rejected by the server (e.g. session expired) — never
+        // claim success; tell the owner so they can redo it rather than lose it silently.
+        try {
+            toast(failed + (failed > 1 ? ' changes' : ' change') + " couldn't be saved — please try again.");
+        } catch (e) {}
+    } else if (__oqCount === 0) {
         try {
             toast('Changes saved.');
         } catch (e) {}
@@ -6662,7 +6669,9 @@ function applyContentOverrides(root) {
     });
     root.querySelectorAll('[data-edit-img]').forEach((el) => {
         const v = siteContent[el.getAttribute('data-edit-img')];
-        if (typeof v === 'string' && v) el.style.backgroundImage = `url('${v}')`;
+        // Strip quotes/parens/backslash so a stray char in a stored value can't
+        // break out of the url('…') (same sanitisation as the hero below).
+        if (typeof v === 'string' && v) el.style.backgroundImage = `url('${v.replace(/['"\\)]/g, '')}')`;
     });
     // Expose the live hero to CSS (the auth modals' coastal brand panel uses
     // var(--hero-img)) — the static hero.jpg doesn't exist on the live host.
@@ -6683,7 +6692,7 @@ function applyContentOverrides(root) {
 // churn, so the tick simply no-ops while authenticated.
 let liveUpdateTimer = null;
 let liveUpdateBusy = false;
-const LIVE_UPDATE_MS = 10000; // every ~10s
+const LIVE_UPDATE_MS = 30000; // every ~30s (a marketing site doesn't need tighter; cuts idle polling 3×)
 async function liveUpdateTick() {
     if (isAuthenticated) return; // admin logged in — leave their data alone
     if (document.hidden) return; // tab not visible — save bandwidth
@@ -7412,7 +7421,7 @@ async function renderGuestPhotos(propKey) {
                 const label = escapeHtml(
                     p.caption || 'Guest photo at ' + ((propertyMeta[propKey] || {}).name || ''),
                 );
-                return `<div class="guest-photo" role="button" tabindex="0" aria-label="${label}" onclick="openPhotoLightbox('${data}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openPhotoLightbox('${data}')}"><img loading="lazy" src="${escapeHtml(p.url)}" alt="${label}">${cap}</div>`;
+                return `<div class="guest-photo" role="button" tabindex="0" aria-label="${label}" data-photo="${escapeHtml(data)}" onclick="openPhotoLightbox(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openPhotoLightbox(this)}"><img loading="lazy" src="${escapeHtml(p.url)}" alt="${label}">${cap}</div>`;
             })
             .join('');
         section.style.display = '';
@@ -7422,6 +7431,10 @@ async function renderGuestPhotos(propKey) {
     }
 }
 function openPhotoLightbox(data) {
+    // Accepts the clicked element (data on its escaped data-photo attribute) or,
+    // for backward-compat, a raw "url|caption" string. Reading from the attribute
+    // avoids interpolating guest-supplied text into an inline onclick (XSS).
+    if (data && data.dataset) data = data.dataset.photo || '';
     const [url, cap] = String(data).split('|').map(decodeURIComponent);
     const box = document.getElementById('photo-lightbox');
     const img = document.getElementById('pl-img');
@@ -12456,7 +12469,7 @@ async function loadGuestPhotosAdmin() {
             const pend = p.status === 'pending';
             const data = encodeURIComponent(p.url) + '|' + encodeURIComponent(p.caption || '');
             return `<div style="background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:14px;overflow:hidden;">
-                    <div class="guest-photo" style="aspect-ratio:4/3;border:none;border-radius:0;" onclick="openPhotoLightbox('${data}')"><img loading="lazy" src="${escapeHtml(p.url)}" alt="${escapeHtml(p.caption || 'Guest photo at ' + (meta.name || p.prop_key))}"></div>
+                    <div class="guest-photo" style="aspect-ratio:4/3;border:none;border-radius:0;" data-photo="${escapeHtml(data)}" onclick="openPhotoLightbox(this)"><img loading="lazy" src="${escapeHtml(p.url)}" alt="${escapeHtml(p.caption || 'Guest photo at ' + (meta.name || p.prop_key))}"></div>
                     <div style="padding:9px 11px;">
                         <div style="font-size:0.74rem;color:var(--text-muted);"><span class="prop-tag tag-${p.prop_key}">${escapeHtml(meta.short || meta.name)}</span> ${escapeHtml(p.guest_name || 'Guest')}${pend ? ' · <span style="color:#FFB74D;">Pending</span>' : ' · <span style="color:#4CAF50;">Live</span>'}</div>
                         ${p.caption ? `<div style="font-size:0.8rem;margin:6px 0 0;">${escapeHtml(p.caption)}</div>` : ''}
@@ -17118,7 +17131,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'b3y8h5no';
+    const BUILD = 'k7m2p9qx';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

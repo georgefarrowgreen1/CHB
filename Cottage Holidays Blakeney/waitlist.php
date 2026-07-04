@@ -84,6 +84,7 @@ if (basename($_SERVER['SCRIPT_NAME'] ?? '') === 'waitlist.php') {
     $action = $in['action'] ?? '';
 
     if ($action === 'join') {
+        rate_limit('waitlist', 12); // curb unauthenticated row-flooding (no email sent here)
         $prop = preg_replace('/[^a-z0-9_]/i', '', (string) ($in['prop'] ?? ''));
         $name = substr(clean($in['name'] ?? ''), 0, 120);
         $email = substr(clean($in['email'] ?? ''), 0, 190);

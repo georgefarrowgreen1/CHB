@@ -34,6 +34,7 @@ $action = $in['action'] ?? '';
 
 // ---- Public: subscribe ---------------------------------------------------
 if ($action === 'subscribe') {
+    rate_limit('newsletter', 12); // curb unauthenticated signup flooding
     $email = strtolower(clean($in['email'] ?? ''));
     $name = clean($in['name'] ?? '');
     if (!preg_match('/^[^@\s]+@[^@\s]+\.[^@\s]+$/', $email)) {

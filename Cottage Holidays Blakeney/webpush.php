@@ -97,6 +97,29 @@ function wp_vapid_jwt($audience)
     return $input . '.' . wp_b64url($raw);
 }
 
+// A push endpoint must be HTTPS at a known push-service domain. Clients supply the
+// endpoint, so without this a subscription (or the ?action=test loop) could point
+// curl at an internal/loopback address — a blind SSRF probe. Restricting to the
+// real providers (FCM, Mozilla, Apple, WNS) rules out IP-literal and internal hosts
+// entirely. Used at store time (push.php) and again here as the send chokepoint.
+function wp_endpoint_allowed($endpoint)
+{
+    $u = parse_url((string) $endpoint);
+    if (!$u || ($u['scheme'] ?? '') !== 'https' || empty($u['host'])) {
+        return false;
+    }
+    $host = strtolower($u['host']);
+    foreach (
+        ['googleapis.com', 'push.services.mozilla.com', 'push.apple.com', 'notify.windows.com', 'wns.windows.com']
+        as $suf
+    ) {
+        if ($host === $suf || substr($host, -strlen($suf) - 1) === '.' . $suf) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // Send a payload-less push to one endpoint.
 // Returns ['ok'=>bool, 'status'=>int]; status 404/410 means the subscription is dead.
 function send_webpush($endpoint)
@@ -107,6 +130,9 @@ function send_webpush($endpoint)
     $u = parse_url($endpoint);
     if (!$u || empty($u['scheme']) || empty($u['host'])) {
         return ['ok' => false, 'status' => 0, 'error' => 'bad_endpoint'];
+    }
+    if (!wp_endpoint_allowed($endpoint)) {
+        return ['ok' => false, 'status' => 0, 'error' => 'blocked_endpoint'];
     }
     $jwt = wp_vapid_jwt($u['scheme'] . '://' . $u['host']);
     if ($jwt === false) {
