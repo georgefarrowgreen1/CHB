@@ -110,6 +110,16 @@ if ($action === 'authorize') {
         json_out(['error' => 'A security hold is already in place for this booking.'], 409);
     }
 
+    // Serialise + re-read the hold state under the lock so two concurrent submits
+    // can't both place a Square auth (the pre-lock check above is a stale snapshot).
+    book_lock($b['prop_key']);
+    $hs = db()->prepare('SELECT hold_status FROM bookings WHERE id = ?');
+    $hs->execute([$bookingId]);
+    if (in_array((string) ($hs->fetchColumn() ?: 'none'), ['authorized', 'captured'], true)) {
+        book_unlock($b['prop_key']);
+        json_out(['error' => 'A security hold is already in place for this booking.'], 409);
+    }
+
     $pence = (int) round($holdAmount * 100);
     $ref = 'CHBHOLD-' . str_pad(substr(preg_replace('/\D/', '', (string) $bookingId), -6), 6, '0', STR_PAD_LEFT);
     $res = square_api('POST', '/v2/payments', [
@@ -128,6 +138,7 @@ if ($action === 'authorize') {
         $payment &&
         in_array($payment['status'] ?? '', ['APPROVED', 'AUTHORIZED'], true);
     if (!$ok) {
+        book_unlock($b['prop_key']);
         $detail = $res['body']['errors'][0]['detail'] ?? 'Your card couldn\'t be authorised. Please try another card.';
         json_out(['error' => $detail], 402);
     }
@@ -139,8 +150,10 @@ if ($action === 'authorize') {
             )
             ->execute([$sqId, 'authorized', $holdAmount, $bookingId]);
     } catch (\Throwable $e) {
+        book_unlock($b['prop_key']);
         json_out(['error' => 'Hold authorised but could not be recorded — please contact us.'], 500);
     }
+    book_unlock($b['prop_key']);
     try {
         require_once __DIR__ . '/webpush.php';
         alert_owner('Damage hold placed', '£' . number_format($holdAmount, 2) . ' held · ' . $propName);
@@ -166,10 +179,26 @@ if ($action === 'charge') {
 
     book_lock($b['prop_key']); // serialise so two tabs can't double-charge
 
-    // Re-read deposit_paid under the lock (a concurrent charge may have moved it).
+    // Re-read paid amount under the lock. Take the MAX of the bookings row and the
+    // payments LEDGER (deposit+balance − refunds): the ledger row is written right
+    // after Square confirms, so if a prior charge succeeded at Square but the process
+    // died before the bookings UPDATE, the ledger still has it — this recovers that
+    // and makes the retry compute £0 due instead of charging a second time.
     $fresh = db()->prepare('SELECT deposit_paid FROM bookings WHERE id = ?');
     $fresh->execute([$bookingId]);
-    $nowPaid = round((float) ($fresh->fetchColumn() ?: 0), 2);
+    $bookingPaid = round((float) ($fresh->fetchColumn() ?: 0), 2);
+    $ledgerPaid = 0.0;
+    try {
+        $lp = db()->prepare("SELECT
+                COALESCE(SUM(CASE WHEN kind IN ('deposit','balance') AND status IN ('COMPLETED','APPROVED') THEN amount ELSE 0 END),0)
+              - COALESCE(SUM(CASE WHEN kind = 'refund' THEN amount ELSE 0 END),0)
+            FROM payments WHERE booking_id = ?");
+        $lp->execute([$bookingId]);
+        $ledgerPaid = round(max(0, (float) $lp->fetchColumn()), 2);
+    } catch (\Throwable $e) {
+        // payments table not migrated — fall back to the bookings figure
+    }
+    $nowPaid = round(min($total, max($bookingPaid, $ledgerPaid)), 2);
     $amountDue =
         $kind === 'balance' ? round(max(0, $total - $nowPaid), 2) : round(max(0, $depositAmount - $nowPaid), 2);
     if ($amountDue <= 0) {

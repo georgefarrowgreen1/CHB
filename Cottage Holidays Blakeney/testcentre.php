@@ -34,12 +34,12 @@ const TEST_MARK = '[CHB-TEST]';
 function tc_guest_meta()
 {
     try {
-        $v = content_value('testcentre-guest');
-        if (!$v) {
+        $v = content_json('testcentre-guest', null); // object key — content_value() returns '' for it
+        if (!is_array($v)) {
             return null;
         }
-        $d = json_decode($v, true);
-        if (!is_array($d) || empty($d['id'])) {
+        $d = $v; // already decoded by content_json()
+        if (empty($d['id'])) {
             return null;
         }
         $s = db()->prepare('SELECT id, email FROM guests WHERE id = ?');
@@ -266,11 +266,7 @@ if ($action === 'seed_features') {
 
     // 3) Curated 5★ reviews on k0 → card rating + "Guest favourite" badge.
     try {
-        $cur = content_value('reviews');
-        $arr = $cur ? json_decode($cur, true) : [];
-        if (!is_array($arr)) {
-            $arr = [];
-        }
+        $arr = content_json('reviews', []); // array key — content_value() returns '' and would WIPE curated reviews
         $names = ['Sarah & Tom', 'The Williams family', 'Margaret H', 'James P'];
         $texts = [
             'Spotless, beautifully styled and steps from the quay. We will be back!',
@@ -527,8 +523,7 @@ if ($action === 'purge_data') {
                     ->execute([(float) $prev, $prop]);
             }
             if (!empty($m['reviews'])) {
-                $cur = content_value('reviews');
-                $arr = $cur ? json_decode($cur, true) : [];
+                $arr = content_json('reviews', []); // array key — must not read via content_value() (would blank it)
                 if (is_array($arr)) {
                     $arr = array_values(
                         array_filter($arr, function ($r) {

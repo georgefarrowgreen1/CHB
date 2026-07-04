@@ -44,6 +44,25 @@ try {
 }
 
 $futureQ = db()->prepare('SELECT COUNT(*) FROM bookings WHERE email = ? AND check_in >= CURDATE()');
+
+// Persist the sent map (pruned to the newest ~600 so it never balloons). Called
+// after EACH send — not once at the end — so a fatal part-way through the loop
+// can't lose the record of who was already emailed and re-invite them tomorrow.
+$persist = function () use (&$sent) {
+    if (count($sent) > 600) {
+        $sent = array_slice($sent, -600, null, true);
+    }
+    try {
+        db()
+            ->prepare(
+                'INSERT INTO content (item_key, item_value, updated_at) VALUES (?,?,NOW())
+                       ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = NOW()',
+            )
+            ->execute(['anniv-sent', json_encode($sent)]);
+    } catch (\Throwable $e) {
+    }
+};
+
 $results = [];
 $n = 0;
 foreach ($rows as $b) {
@@ -54,30 +73,18 @@ foreach ($rows as $b) {
     if ((int) $futureQ->fetchColumn() > 0) {
         // they're already coming back
         $sent[$b['id']] = date('Y-m-d') . ' (skipped: rebooked)';
+        $persist();
         continue;
     }
     $d = prop_display($b['prop_key']);
     $b['prop_name'] = $d['name'] ?: $b['prop_key'];
     $r = send_anniversary_email($b);
     $sent[$b['id']] = date('Y-m-d') . (empty($r['ok']) ? ' (failed)' : '');
+    $persist(); // record BEFORE moving on, so a later fatal can't re-send this one
     if (!empty($r['ok'])) {
         $n++;
     }
     $results[] = ['id' => (int) $b['id'], 'ok' => !empty($r['ok']), 'error' => $r['error'] ?? null];
-}
-
-// Persist the sent map (pruned to the newest ~600 entries so it never balloons).
-if (count($sent) > 600) {
-    $sent = array_slice($sent, -600, null, true);
-}
-try {
-    db()
-        ->prepare(
-            'INSERT INTO content (item_key, item_value, updated_at) VALUES (?,?,NOW())
-                   ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = NOW()',
-        )
-        ->execute(['anniv-sent', json_encode($sent)]);
-} catch (\Throwable $e) {
 }
 
 json_out(['ok' => true, 'sent' => $n, 'checked' => count($rows), 'results' => $results]);

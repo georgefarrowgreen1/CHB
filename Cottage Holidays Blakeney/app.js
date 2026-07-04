@@ -125,6 +125,16 @@ async function queueOrPost(endpoint, payload) {
 let __oqFlushing = false;
 async function oqFlush() {
     if (__oqFlushing || navigator.onLine === false) return;
+    // Where Background Sync exists (Chrome/Android), the service worker owns replay
+    // (it fires on reconnect and messages us 'chb-synced' to refresh) — running the
+    // page-side replay too would double-POST every queued write. So defer to the SW
+    // there; iOS/Safari has no SyncManager, so the page stays the sole replayer.
+    if ('serviceWorker' in navigator && 'SyncManager' in window && navigator.serviceWorker.controller) {
+        try {
+            await oqRefreshCount();
+        } catch (e) {}
+        return;
+    }
     let items = [];
     try {
         items = await oqAll();
@@ -141,7 +151,10 @@ async function oqFlush() {
                 await apiPost(it.endpoint, it.payload);
             } catch (e) {
                 if (navigator.onLine === false) break; // offline again — stop, keep the rest queued
-                failed++; // online but the server rejected it — drop so the queue can't wedge, but report
+                // Auth lapsed (session expired) → KEEP the write to retry after re-sign-in;
+                // don't drop it. Other 4xx/5xx are treated as handled so the queue can't wedge.
+                if (e && (e.status === 401 || e.status === 403)) continue;
+                failed++;
             }
             try {
                 await oqDelete(it.id);
@@ -227,15 +240,19 @@ async function apiPost(endpoint, payload) {
         data = text ? JSON.parse(text) : {};
     } catch (e) {
         // Non-JSON response usually means a PHP error page; surface a hint.
-        throw new Error(
+        const err = new Error(
             res.ok
                 ? 'Unexpected server response.'
                 : 'Server error ' + res.status + (text ? ': ' + text.slice(0, 200) : ''),
         );
+        err.status = res.status;
+        throw err;
     }
     if (!res.ok) {
         if (res.status === 401) maybeHandleStaleAdmin();
-        throw new Error(data.error || 'Request failed (' + res.status + ')');
+        const err = new Error(data.error || 'Request failed (' + res.status + ')');
+        err.status = res.status; // let the offline-queue replayer keep 401/403 (re-auth) vs drop other 4xx
+        throw err;
     }
     return data;
 }
@@ -1072,6 +1089,8 @@ function toggleMobileMenu() {
     const menu = document.getElementById('mobileMenu');
     menu.classList.toggle('open');
     const open = menu.classList.contains('open');
+    const tog = document.querySelector('.menu-toggle');
+    if (tog) tog.setAttribute('aria-expanded', open ? 'true' : 'false');
     document.querySelector('.menu-toggle').innerHTML = open
         ? '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>'
         : '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>';
@@ -2477,7 +2496,7 @@ async function loadGuestList() {
                             <td>${escapeHtml(g.name || '')}</td>
                             <td>${escapeHtml(g.email || '')}</td>
                             <td>${(g.created_at || '').split(' ')[0] || '—'}</td>
-                            <td class="num"><button class="btn-sm btn-edit" onclick="resetGuestPassword('${escapeHtml(g.email || '').replace(/'/g, "\\'")}')">Reset password</button></td>
+                            <td class="num"><button class="btn-sm btn-edit" data-email="${escapeHtml(g.email || '')}" onclick="resetGuestPassword(this)">Reset password</button></td>
                         </tr>`,
                             )
                             .join('')}
@@ -2486,6 +2505,9 @@ async function loadGuestList() {
 }
 
 async function resetGuestPassword(email) {
+    // Accept the clicked button (email on its data-email) or a raw string — reading
+    // from the attribute avoids interpolating an apostrophe email into the onclick.
+    if (email && email.dataset) email = email.dataset.email || '';
     if (!isAuthenticated) {
         tryAccessBackOffice();
         return;
@@ -6539,6 +6561,11 @@ async function submitAdminLogin() {
         setAuthUI();
         currentGuest = null;
         setGuestUI(); // one role at a time: drop any guest session
+        // Re-drain any writes that were kept queued because the session had lapsed.
+        try {
+            oqRegisterSync();
+            oqFlush();
+        } catch (e) {}
         const cb = adminLoginOnSuccess;
         closeAdminLogin();
         if (cb) await cb();
@@ -16900,8 +16927,11 @@ function expCardHtml(x, usePlaceholder) {
             ? `<img class="card-img exp-img" width="400" height="260" loading="lazy" decoding="async" src="${escapeHtml(x.image)}" alt="${escapeHtml(x.title)}">`
             : expPlaceholder(x);
     const cat = x.category ? `<div class="exp-cat-tag">${escapeHtml(x.category)}</div>` : '';
-    const link = x.linkUrl
-        ? `<a class="btn-sm btn-edit" href="${escapeHtml(x.linkUrl)}" target="_blank" rel="noopener noreferrer"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M10 5H5v14h14v-5"/></svg> ${escapeHtml(x.linkLabel || 'Find out more')}</a>`
+    // Only allow safe link schemes (block javascript:/data: even though experiences
+    // are admin-moderated — the admin preview would otherwise render it).
+    const safeLink = /^(https?:|tel:|mailto:)/i.test((x.linkUrl || '').trim()) ? x.linkUrl : '';
+    const link = safeLink
+        ? `<a class="btn-sm btn-edit" href="${escapeHtml(safeLink)}" target="_blank" rel="noopener noreferrer"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6M20 4l-9 9M10 5H5v14h14v-5"/></svg> ${escapeHtml(x.linkLabel || 'Find out more')}</a>`
         : '';
     const phone = x.phone
         ? `<a class="btn-sm btn-edit" href="tel:${escapeHtml(String(x.phone).replace(/\s+/g, ''))}"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.6 3.5l2.1.4 1 3-1.5 1.4a12 12 0 0 0 5 5l1.4-1.5 3 1 .4 2.1a2 2 0 0 1-2 2.3A15.5 15.5 0 0 1 4.3 5.5a2 2 0 0 1 2.3-2z"/></svg> Call</a>`
@@ -17254,7 +17284,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'b7d2g5xm';
+    const BUILD = 'c4f8h2qn';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

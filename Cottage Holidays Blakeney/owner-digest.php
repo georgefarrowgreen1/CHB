@@ -100,7 +100,7 @@ try {
 // ---- Occupancy over the next 30 days ------------------------------------
 $occPct = null;
 try {
-    $cottages = (int) db()->query('SELECT COUNT(*) FROM properties')->fetchColumn();
+    $cottages = (int) db()->query('SELECT COUNT(*) FROM properties WHERE archived_at IS NULL')->fetchColumn();
     if ($cottages < 1) {
         $cottages = 3;
     }
