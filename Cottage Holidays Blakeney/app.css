@@ -556,6 +556,7 @@ nav a {
   letter-spacing: 1.5px;
   color: var(--text-muted);
   cursor: pointer;
+  text-decoration: none; /* the Experiences tab is a real <a href> — don't underline it */
   transition: color 0.4s var(--fluid-bezier);
 }
 /* Text tabs get padding so the sliding glass pill can wrap them. */
@@ -5386,9 +5387,18 @@ body.owner-mode .chat-widget {
   }
 }
 
+/* Card footer: price and the live-availability chip share one baseline row
+   (price left, "Next free" right) so the chip has a settled home on wide desktop
+   cards instead of orphaning on its own line. Wraps to stacked if space is tight. */
+.card-foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 4px 18px;
+  flex-wrap: wrap;
+}
 /* Homepage live availability: per-card chip + late-availability spotlight */
 .card-avail {
-  margin-top: 6px;
   min-height: 1.1em;
 }
 .avail-chip {
