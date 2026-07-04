@@ -12,12 +12,19 @@
 //  POST (admin session) -> { ok, webp_supported, scanned, created, skipped, failed, remaining }
 // ============================================================
 require_once __DIR__ . '/db.php';
-require_once __DIR__ . '/image-save.php';   // make_webp_copy()
+require_once __DIR__ . '/image-save.php'; // make_webp_copy()
 
 require_admin();
 
-$res = ['ok' => true, 'webp_supported' => function_exists('imagewebp'),
-        'scanned' => 0, 'created' => 0, 'skipped' => 0, 'failed' => 0, 'remaining' => 0];
+$res = [
+    'ok' => true,
+    'webp_supported' => function_exists('imagewebp'),
+    'scanned' => 0,
+    'created' => 0,
+    'skipped' => 0,
+    'failed' => 0,
+    'remaining' => 0,
+];
 
 if (!$res['webp_supported']) {
     $res['ok'] = false;
@@ -26,22 +33,39 @@ if (!$res['webp_supported']) {
 }
 
 $dir = __DIR__ . '/uploads';
-if (!is_dir($dir)) json_out($res);
+if (!is_dir($dir)) {
+    json_out($res);
+}
 
 @set_time_limit(120);
-$batch = 400;   // cap work per call; re-run to finish a large library
+$batch = 400; // cap work per call; re-run to finish a large library
 $files = glob($dir . '/*.{jpg,jpeg,png,JPG,JPEG,PNG}', GLOB_BRACE) ?: [];
 
 foreach ($files as $path) {
     $res['scanned']++;
-    if (is_file($path . '.webp')) { $res['skipped']++; continue; }          // already done
-    if (($res['created'] + $res['failed']) >= $batch) { $res['remaining']++; continue; }
+    if (is_file($path . '.webp')) {
+        $res['skipped']++;
+        continue;
+    } // already done
+    if ($res['created'] + $res['failed'] >= $batch) {
+        $res['remaining']++;
+        continue;
+    }
     $info = @getimagesize($path);
-    if ($info === false) { $res['failed']++; continue; }
+    if ($info === false) {
+        $res['failed']++;
+        continue;
+    }
     $type = $info[2];
-    if ($type !== IMAGETYPE_JPEG && $type !== IMAGETYPE_PNG) { $res['skipped']++; continue; }
-    if (make_webp_copy($path, $type, $path . '.webp')) $res['created']++;
-    else $res['failed']++;
+    if ($type !== IMAGETYPE_JPEG && $type !== IMAGETYPE_PNG) {
+        $res['skipped']++;
+        continue;
+    }
+    if (make_webp_copy($path, $type, $path . '.webp')) {
+        $res['created']++;
+    } else {
+        $res['failed']++;
+    }
 }
 
 json_out($res);

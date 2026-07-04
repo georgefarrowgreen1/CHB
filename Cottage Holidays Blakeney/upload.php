@@ -14,6 +14,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST' || empty($_FILES['image'])) {
 }
 
 $res = save_uploaded_image($_FILES['image'], $_POST['slot'] ?? '');
-if (!empty($res['error'])) json_out(['error' => $res['error']], $res['code'] ?? 400);
+if (!empty($res['error'])) {
+    json_out(['error' => $res['error']], $res['code'] ?? 400);
+}
 
 json_out(['ok' => true, 'url' => $res['url']]);

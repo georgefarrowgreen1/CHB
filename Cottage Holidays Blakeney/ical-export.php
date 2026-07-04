@@ -16,14 +16,14 @@
 require_once __DIR__ . '/db.php';
 // ical_token() lives in db.php (shared with ical-import.php).
 
-$prop  = isset($_GET['prop']) ? preg_replace('/[^a-z0-9_]/i', '', $_GET['prop']) : '';
+$prop = isset($_GET['prop']) ? preg_replace('/[^a-z0-9_]/i', '', $_GET['prop']) : '';
 $token = isset($_GET['token']) ? $_GET['token'] : '';
 
 if ($prop === '' || !hash_equals(ical_token($prop), $token)) {
     http_response_code(403);
     header('Content-Type: text/plain; charset=utf-8');
-    echo "Forbidden — invalid calendar link.";
-    exit;
+    echo 'Forbidden — invalid calendar link.';
+    exit();
 }
 
 // Fetch confirmed bookings for this property (future + recent past).
@@ -47,9 +47,11 @@ $lines[] = 'METHOD:PUBLISH';
 $lines[] = 'X-WR-CALNAME:CHB ' . strtoupper($prop) . ' Bookings';
 
 foreach ($rows as $r) {
-    $ci = str_replace('-', '', $r['check_in']);   // YYYYMMDD
+    $ci = str_replace('-', '', $r['check_in']); // YYYYMMDD
     $co = str_replace('-', '', $r['check_out']);
-    if ($ci === '' || $co === '') continue;
+    if ($ci === '' || $co === '') {
+        continue;
+    }
     $uid = 'chb-' . $prop . '-' . $r['id'] . '@' . $host;
     $lines[] = 'BEGIN:VEVENT';
     $lines[] = 'UID:' . $uid;

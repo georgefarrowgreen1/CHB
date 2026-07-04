@@ -10,14 +10,20 @@
 //     ['error'=>'message', 'code'=>400|500]     on failure
 // ============================================================
 
-function save_uploaded_image($file, $slot = '', $maxBytes = null) {
-    if ($maxBytes === null) $maxBytes = 8 * 1024 * 1024;   // 8 MB default
+function save_uploaded_image($file, $slot = '', $maxBytes = null)
+{
+    if ($maxBytes === null) {
+        $maxBytes = 8 * 1024 * 1024;
+    } // 8 MB default
 
-    if (!is_array($file)) return ['error' => 'No image received', 'code' => 400];
+    if (!is_array($file)) {
+        return ['error' => 'No image received', 'code' => 400];
+    }
     if (!empty($file['error'])) {
-        $msg = ($file['error'] === UPLOAD_ERR_INI_SIZE || $file['error'] === UPLOAD_ERR_FORM_SIZE)
-            ? 'That image is too large for the server to accept.'
-            : 'Upload failed (error code ' . (int)$file['error'] . ').';
+        $msg =
+            $file['error'] === UPLOAD_ERR_INI_SIZE || $file['error'] === UPLOAD_ERR_FORM_SIZE
+                ? 'That image is too large for the server to accept.'
+                : 'Upload failed (error code ' . (int) $file['error'] . ').';
         return ['error' => $msg, 'code' => 400];
     }
     if (($file['size'] ?? 0) > $maxBytes) {
@@ -26,15 +32,19 @@ function save_uploaded_image($file, $slot = '', $maxBytes = null) {
 
     // Validate it really is an image (by content, not just extension).
     $info = @getimagesize($file['tmp_name']);
-    if ($info === false) return ['error' => 'That file does not appear to be an image.', 'code' => 400];
+    if ($info === false) {
+        return ['error' => 'That file does not appear to be an image.', 'code' => 400];
+    }
     $allowed = [
         IMAGETYPE_JPEG => 'jpg',
-        IMAGETYPE_PNG  => 'png',
-        IMAGETYPE_GIF  => 'gif',
+        IMAGETYPE_PNG => 'png',
+        IMAGETYPE_GIF => 'gif',
         IMAGETYPE_WEBP => 'webp',
     ];
     $type = $info[2];
-    if (!isset($allowed[$type])) return ['error' => 'Please use a JPG, PNG, GIF or WEBP image.', 'code' => 400];
+    if (!isset($allowed[$type])) {
+        return ['error' => 'Please use a JPG, PNG, GIF or WEBP image.', 'code' => 400];
+    }
     $ext = $allowed[$type];
 
     $dir = __DIR__ . '/uploads';
@@ -57,7 +67,9 @@ function save_uploaded_image($file, $slot = '', $maxBytes = null) {
     // JPEG originals before they're served. Applies any EXIF orientation first so
     // the photo still shows the right way up. Done BEFORE the WebP copy so that
     // companion is built from the clean, correctly-oriented image.
-    if ($type === IMAGETYPE_JPEG) strip_jpeg_metadata($dest);
+    if ($type === IMAGETYPE_JPEG) {
+        strip_jpeg_metadata($dest);
+    }
 
     // Optimised WebP companion (served automatically via .htaccess where supported).
     make_webp_copy($dest, $type, $dest . '.webp');
@@ -72,21 +84,36 @@ function save_uploaded_image($file, $slot = '', $maxBytes = null) {
  * and bake in the orientation); otherwise it leaves the file untouched rather than
  * risk dropping the orientation tag and rotating the photo.
  */
-function strip_jpeg_metadata($path) {
-    if (!function_exists('imagecreatefromjpeg') || !function_exists('exif_read_data')) return;
+function strip_jpeg_metadata($path)
+{
+    if (!function_exists('imagecreatefromjpeg') || !function_exists('exif_read_data')) {
+        return;
+    }
     $orientation = 1;
     try {
         $exif = @exif_read_data($path);
-        if (is_array($exif) && !empty($exif['Orientation'])) $orientation = (int)$exif['Orientation'];
-    } catch (\Throwable $e) { /* no readable EXIF — treat as orientation 1 */ }
+        if (is_array($exif) && !empty($exif['Orientation'])) {
+            $orientation = (int) $exif['Orientation'];
+        }
+    } catch (\Throwable $e) {
+        /* no readable EXIF — treat as orientation 1 */
+    }
     $img = @imagecreatefromjpeg($path);
-    if (!$img) return;   // unreadable — leave the original as-is
+    if (!$img) {
+        return;
+    } // unreadable — leave the original as-is
     // Bake in orientation (covers the four values phones actually produce).
-    if ($orientation === 3)      $img = imagerotate($img, 180, 0);
-    elseif ($orientation === 6)  $img = imagerotate($img, -90, 0);   // GD: negative = clockwise
-    elseif ($orientation === 8)  $img = imagerotate($img, 90, 0);
+    if ($orientation === 3) {
+        $img = imagerotate($img, 180, 0);
+    } elseif ($orientation === 6) {
+        $img = imagerotate($img, -90, 0);
+    }
+    // GD: negative = clockwise
+    elseif ($orientation === 8) {
+        $img = imagerotate($img, 90, 0);
+    }
     if ($img) {
-        @imagejpeg($img, $path, 90);   // re-encode drops ALL metadata (incl. orientation)
+        @imagejpeg($img, $path, 90); // re-encode drops ALL metadata (incl. orientation)
         imagedestroy($img);
     }
 }
@@ -95,14 +122,19 @@ function strip_jpeg_metadata($path) {
  * Create an optimised WebP copy of an uploaded JPEG/PNG next to the original.
  * Downscales very large photos (keeping aspect ratio). Best-effort.
  */
-function make_webp_copy($srcPath, $imageType, $webpPath) {
-    if (!function_exists('imagewebp')) return false;
-    if ($imageType !== IMAGETYPE_JPEG && $imageType !== IMAGETYPE_PNG) return false;
+function make_webp_copy($srcPath, $imageType, $webpPath)
+{
+    if (!function_exists('imagewebp')) {
+        return false;
+    }
+    if ($imageType !== IMAGETYPE_JPEG && $imageType !== IMAGETYPE_PNG) {
+        return false;
+    }
 
-    $img = ($imageType === IMAGETYPE_JPEG)
-        ? @imagecreatefromjpeg($srcPath)
-        : @imagecreatefrompng($srcPath);
-    if (!$img) return false;
+    $img = $imageType === IMAGETYPE_JPEG ? @imagecreatefromjpeg($srcPath) : @imagecreatefrompng($srcPath);
+    if (!$img) {
+        return false;
+    }
 
     if ($imageType === IMAGETYPE_PNG) {
         @imagepalettetotruecolor($img);

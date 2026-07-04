@@ -22,10 +22,14 @@ if ($propKey === '') {
 $g = db()->prepare('SELECT email FROM guests WHERE id = ?');
 $g->execute([$_SESSION['guest_id']]);
 $guest = $g->fetch();
-if (!$guest) json_out(['error' => 'Guest not found'], 404);
+if (!$guest) {
+    json_out(['error' => 'Guest not found'], 404);
+}
 
 // Must have a booking at this cottage (any — past, current or upcoming).
-$own = db()->prepare('SELECT 1 FROM bookings WHERE prop_key = ? AND email IS NOT NULL AND LOWER(email) = LOWER(?) LIMIT 1');
+$own = db()->prepare(
+    'SELECT 1 FROM bookings WHERE prop_key = ? AND email IS NOT NULL AND LOWER(email) = LOWER(?) LIMIT 1',
+);
 $own->execute([$propKey, $guest['email']]);
 if (!$own->fetchColumn()) {
     json_out(['error' => 'No booking found for this cottage.'], 403);
@@ -41,4 +45,4 @@ if (!is_array($geo) || !isset($geo['lat'], $geo['lng'])) {
     json_out(['ok' => true, 'lat' => null, 'lng' => null]);
 }
 
-json_out(['ok' => true, 'lat' => (float)$geo['lat'], 'lng' => (float)$geo['lng']]);
+json_out(['ok' => true, 'lat' => (float) $geo['lat'], 'lng' => (float) $geo['lng']]);

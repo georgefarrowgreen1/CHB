@@ -16,7 +16,10 @@ header('X-Robots-Tag: noindex, nofollow');
 // so this file can't be left up and leak internal details.
 $isAdmin = !empty($_SESSION['admin_id']);
 $adminExists = false;
-try { $adminExists = ((int)db()->query('SELECT COUNT(*) c FROM admins')->fetch()['c']) > 0; } catch (Exception $e) {}
+try {
+    $adminExists = ((int) db()->query('SELECT COUNT(*) c FROM admins')->fetch()['c']) > 0;
+} catch (Exception $e) {
+}
 $detailed = $isAdmin || !$adminExists;
 
 if (!$detailed) {
@@ -35,12 +38,12 @@ $report = [
 
 // Session round-trip
 $_SESSION['__health'] = 'ok';
-$report['session_works'] = (($_SESSION['__health'] ?? '') === 'ok');
+$report['session_works'] = ($_SESSION['__health'] ?? '') === 'ok';
 
 try {
     $pdo = db();
     $report['db_connects'] = true;
-    $tables = ['admins','guests','bookings','enquiries','properties','content'];
+    $tables = ['admins', 'guests', 'bookings', 'enquiries', 'properties', 'content'];
     foreach ($tables as $t) {
         try {
             $pdo->query("SELECT 1 FROM `$t` LIMIT 1");
@@ -49,8 +52,14 @@ try {
             $report['tables_present'][$t] = false;
         }
     }
-    try { $report['admin_count'] = (int)$pdo->query('SELECT COUNT(*) c FROM admins')->fetch()['c']; } catch (Exception $e) {}
-    try { $report['properties_count'] = (int)$pdo->query('SELECT COUNT(*) c FROM properties')->fetch()['c']; } catch (Exception $e) {}
+    try {
+        $report['admin_count'] = (int) $pdo->query('SELECT COUNT(*) c FROM admins')->fetch()['c'];
+    } catch (Exception $e) {
+    }
+    try {
+        $report['properties_count'] = (int) $pdo->query('SELECT COUNT(*) c FROM properties')->fetch()['c'];
+    } catch (Exception $e) {
+    }
 } catch (Exception $e) {
     $report['db_error'] = 'connection failed — check config.php credentials';
 }
@@ -66,11 +75,22 @@ if (is_dir($uploadsDir)) {
 
 // Plain-language guidance
 $hints = [];
-if (!$report['db_connects']) $hints[] = 'Database will not connect: re-check the four DB_* values in includes/config.php.';
-if ($report['db_connects'] && in_array(false, $report['tables_present'], true)) $hints[] = 'Some tables are missing: import schema.sql via phpMyAdmin.';
-if ($report['admin_count'] === 0) $hints[] = 'No admin user yet: run setup.php?username=admin&password=YourPass (then delete it).';
-if (!$report['https_detected']) $hints[] = 'HTTPS not detected — if your site IS on https://, logins should still work now, but enable Force HTTPS in IONOS.';
-if (isset($report['uploads_writable']) && !$report['uploads_writable']) $hints[] = 'The uploads/ folder is not writable: set its permissions to 755 (or 775) so photo uploads work.';
+if (!$report['db_connects']) {
+    $hints[] = 'Database will not connect: re-check the four DB_* values in includes/config.php.';
+}
+if ($report['db_connects'] && in_array(false, $report['tables_present'], true)) {
+    $hints[] = 'Some tables are missing: import schema.sql via phpMyAdmin.';
+}
+if ($report['admin_count'] === 0) {
+    $hints[] = 'No admin user yet: run setup.php?username=admin&password=YourPass (then delete it).';
+}
+if (!$report['https_detected']) {
+    $hints[] =
+        'HTTPS not detected — if your site IS on https://, logins should still work now, but enable Force HTTPS in IONOS.';
+}
+if (isset($report['uploads_writable']) && !$report['uploads_writable']) {
+    $hints[] = 'The uploads/ folder is not writable: set its permissions to 755 (or 775) so photo uploads work.';
+}
 $report['next_steps'] = $hints ?: ['Everything looks good. Try logging in, then DELETE health.php.'];
 
 json_out($report);

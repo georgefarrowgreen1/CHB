@@ -22,23 +22,53 @@
     // Home button; My Stays only shows when signed in; Account is folded in (no
     // separate floating button).
     var DOCK = [
-        { key: 'experiences', label: 'Experiences', cls: 'gt-auth', views: ['view-experiences'],
-          icon: '<path d="M12 3l2.1 4.6L19 9l-4 3.3.9 5.1L12 15.9 8.1 17.4 9 12.3 5 9l4.9-1.4z"/>',
-          go: function () { if (window.nav) window.nav('view-experiences'); } },
-        { key: 'cottages', label: 'Cottages', views: ['view-cottages', 'view-21a'],
-          icon: '<path d="M3 18v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6"/><path d="M3 14h18"/><path d="M7 10V7a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3"/>',
-          go: function () { if (window.nav) window.nav('view-cottages'); } },
-        { key: 'home', crown: true, label: 'Home', views: ['view-main'],
-          go: function () { if (window.nav) window.nav('view-main'); } },
-        { key: 'stays', cls: 'gt-stays', label: 'My Stays', views: ['view-guest-bookings'],
-          icon: '<rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/>',
-          go: function () { if (window.openGuestArea) window.openGuestArea(); } },
-        { key: 'account', label: 'Account',
-          icon: '<circle cx="12" cy="8" r="3.6"/><path d="M5.5 19.5a6.5 6.5 0 0 1 13 0"/>',
-          go: function () {
-              if (window.guestAccountTab) window.guestAccountTab();
-              else if (window.openGuestArea) window.openGuestArea();
-          } }
+        {
+            key: 'experiences',
+            label: 'Experiences',
+            cls: 'gt-auth',
+            views: ['view-experiences'],
+            icon: '<path d="M12 3l2.1 4.6L19 9l-4 3.3.9 5.1L12 15.9 8.1 17.4 9 12.3 5 9l4.9-1.4z"/>',
+            go: function () {
+                if (window.nav) window.nav('view-experiences');
+            },
+        },
+        {
+            key: 'cottages',
+            label: 'Cottages',
+            views: ['view-cottages', 'view-21a'],
+            icon: '<path d="M3 18v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6"/><path d="M3 14h18"/><path d="M7 10V7a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3"/>',
+            go: function () {
+                if (window.nav) window.nav('view-cottages');
+            },
+        },
+        {
+            key: 'home',
+            crown: true,
+            label: 'Home',
+            views: ['view-main'],
+            go: function () {
+                if (window.nav) window.nav('view-main');
+            },
+        },
+        {
+            key: 'stays',
+            cls: 'gt-stays',
+            label: 'My Stays',
+            views: ['view-guest-bookings'],
+            icon: '<rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/>',
+            go: function () {
+                if (window.openGuestArea) window.openGuestArea();
+            },
+        },
+        {
+            key: 'account',
+            label: 'Account',
+            icon: '<circle cx="12" cy="8" r="3.6"/><path d="M5.5 19.5a6.5 6.5 0 0 1 13 0"/>',
+            go: function () {
+                if (window.guestAccountTab) window.guestAccountTab();
+                else if (window.openGuestArea) window.openGuestArea();
+            },
+        },
     ];
 
     function makeDockBtn(t) {
@@ -51,8 +81,14 @@
         b.title = t.label;
         b.innerHTML = t.crown
             ? '<img src="logo.svg" alt="Home">'
-            : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + t.icon + '</svg>';
-        b.addEventListener('click', function () { try { t.go(); } catch (e) {} });
+            : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+              t.icon +
+              '</svg>';
+        b.addEventListener('click', function () {
+            try {
+                t.go();
+            } catch (e) {}
+        });
         return b;
     }
 
@@ -70,7 +106,9 @@
         ind.className = 'guest-dock-indicator';
         ind.setAttribute('aria-hidden', 'true');
         dock.appendChild(ind);
-        DOCK.forEach(function (t) { dock.appendChild(makeDockBtn(t)); });
+        DOCK.forEach(function (t) {
+            dock.appendChild(makeDockBtn(t));
+        });
 
         wrap.appendChild(dock);
         // Contextual primary CTA that lives in the menu pill on cottage pages, so
@@ -79,7 +117,9 @@
         cta.type = 'button';
         cta.id = 'guest-book-cta';
         cta.textContent = 'Check availability';
-        cta.addEventListener('click', function () { if (window.openEnquireModal) window.openEnquireModal(); });
+        cta.addEventListener('click', function () {
+            if (window.openEnquireModal) window.openEnquireModal();
+        });
         wrap.insertBefore(cta, dock);
         document.body.appendChild(wrap);
 
@@ -87,7 +127,8 @@
         // the indicator can land zero-width on the page you first arrive on. Re-place
         // it once the image (and the rest of the page) is ready.
         var crownImg = dock.querySelector('.gt-home img');
-        if (crownImg && !crownImg.complete) crownImg.addEventListener('load', moveGuestDockIndicator);
+        if (crownImg && !crownImg.complete)
+            crownImg.addEventListener('load', moveGuestDockIndicator);
         window.addEventListener('load', moveGuestDockIndicator);
 
         // Messages sits on its own at the bottom-left — detached from the menu but
@@ -109,8 +150,11 @@
         msgBtn.setAttribute('data-label', 'Messages');
         msgBtn.setAttribute('aria-label', 'Messages');
         msgBtn.title = 'Messages';
-        msgBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v10H9l-4 4z"/><path d="M8 9h8M8 12h5"/></svg>';
-        msgBtn.addEventListener('click', function () { if (window.toggleChat) window.toggleChat(); });
+        msgBtn.innerHTML =
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v10H9l-4 4z"/><path d="M8 9h8M8 12h5"/></svg>';
+        msgBtn.addEventListener('click', function () {
+            if (window.toggleChat) window.toggleChat();
+        });
         msgDock.appendChild(msgBtn);
         msgWrap.appendChild(msgDock);
         document.body.appendChild(msgWrap);
@@ -127,11 +171,17 @@
             var ind = dock.querySelector('.guest-dock-indicator');
             if (!ind) return;
             var cur = dock.querySelector('.guest-dock-btn.current');
-            if (!cur || cur.offsetParent === null) { ops.push({ ind: ind, hide: true }); return; }
+            if (!cur || cur.offsetParent === null) {
+                ops.push({ ind: ind, hide: true });
+                return;
+            }
             ops.push({ ind: ind, w: cur.offsetWidth, h: cur.offsetHeight, l: cur.offsetLeft });
         });
         ops.forEach(function (o) {
-            if (o.hide) { o.ind.classList.remove('show'); return; }
+            if (o.hide) {
+                o.ind.classList.remove('show');
+                return;
+            }
             o.ind.style.width = o.w + 'px';
             o.ind.style.height = o.h + 'px';
             o.ind.style.left = o.l + 'px';
@@ -143,7 +193,9 @@
     // open overlays rather than page-views, so they don't appear here.
     function keyForView(viewId) {
         var key = null;
-        DOCK.forEach(function (t) { if (t.views && t.views.indexOf(viewId) !== -1) key = t.key; });
+        DOCK.forEach(function (t) {
+            if (t.views && t.views.indexOf(viewId) !== -1) key = t.key;
+        });
         return key;
     }
     // Highlight exactly one menu button (across both docks) for the given key, or
@@ -169,13 +221,18 @@
         wrap.classList.toggle('gt-show-cta', onCottage);
     }
     function setActiveTab(viewId) {
-        __overlayKey = null;                 // navigating to a page clears any overlay highlight
+        __overlayKey = null; // navigating to a page clears any overlay highlight
         applyCurrent(keyForView(viewId));
         refreshBookCta();
     }
-    function setGuestDockOverlay(key) {       // key: 'messages' | 'account' | null
+    function setGuestDockOverlay(key) {
+        // key: 'messages' | 'account' | null
         __overlayKey = key || null;
-        if (__overlayKey) { applyCurrent(__overlayKey); refreshBookCta(); return; }
+        if (__overlayKey) {
+            applyCurrent(__overlayKey);
+            refreshBookCta();
+            return;
+        }
         var av = document.querySelector('.page-view.active');
         applyCurrent(keyForView(av ? av.id : ''));
         refreshBookCta();
@@ -186,13 +243,18 @@
     // The shell applies for an installed PWA or a phone-sized viewport. Admins
     // are filtered out by CSS, so no auth check is needed here.
     function shellApplies() {
-        var standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) || window.navigator.standalone === true;
+        var standalone =
+            (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+            window.navigator.standalone === true;
         var narrow = window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
         return !!(standalone || narrow);
     }
     function updateShell() {
         document.body.classList.toggle('guest-app', shellApplies());
-        try { var av = document.querySelector('.page-view.active'); if (av) setActiveTab(av.id); } catch (e) {}
+        try {
+            var av = document.querySelector('.page-view.active');
+            if (av) setActiveTab(av.id);
+        } catch (e) {}
     }
 
     function init() {

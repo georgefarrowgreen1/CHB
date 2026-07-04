@@ -8,7 +8,7 @@
 // ============================================================
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/pricing.php';
-require_once __DIR__ . '/enquiry-actions.php';   // shared approve/decline logic + email-action tokens
+require_once __DIR__ . '/enquiry-actions.php'; // shared approve/decline logic + email-action tokens
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     require_admin();
@@ -23,25 +23,35 @@ if ($action === 'submit') {
     // Public — anyone can submit an enquiry. Rate-limit per IP to stop floods.
     rate_limit('enquiry', 6, 15);
     $propKey = clean($in['prop_key'] ?? '');
-    if (!get_rate($propKey)) json_out(['error' => 'Unknown property'], 400);
+    if (!get_rate($propKey)) {
+        json_out(['error' => 'Unknown property'], 400);
+    }
     $name = clean($in['name'] ?? '');
     $checkIn = clean($in['check_in'] ?? '');
     $checkOut = clean($in['check_out'] ?? '');
-    if ($name === '' || !$checkIn || !$checkOut) json_out(['error' => 'Name and both dates are required'], 400);
-    if ($checkOut <= $checkIn) json_out(['error' => 'Check-out must be after check-in'], 400);
+    if ($name === '' || !$checkIn || !$checkOut) {
+        json_out(['error' => 'Name and both dates are required'], 400);
+    }
+    if ($checkOut <= $checkIn) {
+        json_out(['error' => 'Check-out must be after check-in'], 400);
+    }
     $address = clean($in['address'] ?? '');
     $postcode = clean($in['postcode'] ?? '');
-    if ($address === '') json_out(['error' => 'Please enter your UK address'], 400);
-    if (!uk_postcode_valid($postcode)) json_out(['error' => 'Please enter a valid UK postcode'], 400);
+    if ($address === '') {
+        json_out(['error' => 'Please enter your UK address'], 400);
+    }
+    if (!uk_postcode_valid($postcode)) {
+        json_out(['error' => 'Please enter a valid UK postcode'], 400);
+    }
 
     // Occupancy limits per property (mirror of the front end; enforced here so
     // the public enquiry form can't be bypassed).
-    $adultsN = max(1, (int)($in['adults'] ?? 2));
-    $childrenN = max(0, (int)($in['children'] ?? 0));
-    $limits = occupancy_limits();   // single source of truth (db.php)
+    $adultsN = max(1, (int) ($in['adults'] ?? 2));
+    $childrenN = max(0, (int) ($in['children'] ?? 0));
+    $limits = occupancy_limits(); // single source of truth (db.php)
     if (isset($limits[$propKey])) {
         $L = $limits[$propKey];
-        if ($adultsN > $L['maxAdults'] || $childrenN > $L['maxChildren'] || ($adultsN + $childrenN) > $L['maxTotal']) {
+        if ($adultsN > $L['maxAdults'] || $childrenN > $L['maxChildren'] || $adultsN + $childrenN > $L['maxTotal']) {
             json_out(['error' => 'That party size is over the limit for this property.'], 400);
         }
     }
@@ -49,7 +59,7 @@ if ($action === 'submit') {
     // Booking rules (min/max nights, arrival days) — mirror of the front end,
     // enforced here so the public form can't be bypassed. Rules are stored in the
     // content table under 'rules-<propKey>' as JSON; fall back to defaults.
-    $nights = (int)round((strtotime($checkOut) - strtotime($checkIn)) / 86400);
+    $nights = (int) round((strtotime($checkOut) - strtotime($checkIn)) / 86400);
     $defaultRules = ['minNights' => 2, 'maxNights' => 0, 'arrivalDays' => []];
     $rules = $defaultRules;
     $rs = db()->prepare('SELECT item_value FROM content WHERE item_key = ?');
@@ -57,23 +67,31 @@ if ($action === 'submit') {
     $rrow = $rs->fetch();
     if ($rrow) {
         $decoded = json_decode($rrow['item_value'], true);
-        if (is_array($decoded)) $rules = array_merge($defaultRules, $decoded);
+        if (is_array($decoded)) {
+            $rules = array_merge($defaultRules, $decoded);
+        }
     }
-    $minN = max(1, (int)$rules['minNights']);
+    $minN = max(1, (int) $rules['minNights']);
     if ($nights < $minN) {
-        json_out(['error' => 'This property has a minimum stay of ' . $minN . ' night' . ($minN === 1 ? '' : 's') . '.'], 400);
+        json_out(
+            ['error' => 'This property has a minimum stay of ' . $minN . ' night' . ($minN === 1 ? '' : 's') . '.'],
+            400,
+        );
     }
-    $maxN = max(0, (int)$rules['maxNights']);
+    $maxN = max(0, (int) $rules['maxNights']);
     if ($maxN > 0 && $nights > $maxN) {
-        json_out(['error' => 'This property has a maximum stay of ' . $maxN . ' night' . ($maxN === 1 ? '' : 's') . '.'], 400);
+        json_out(
+            ['error' => 'This property has a maximum stay of ' . $maxN . ' night' . ($maxN === 1 ? '' : 's') . '.'],
+            400,
+        );
     }
     $arrivalDays = is_array($rules['arrivalDays'] ?? null) ? $rules['arrivalDays'] : [];
     if (count($arrivalDays) > 0) {
-        $arrivalDow = (int)date('w', strtotime($checkIn));  // 0=Sun .. 6=Sat
+        $arrivalDow = (int) date('w', strtotime($checkIn)); // 0=Sun .. 6=Sat
         if (!in_array($arrivalDow, array_map('intval', $arrivalDays), true)) {
-            $dayNames = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+            $dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
             sort($arrivalDays);
-            $names = implode(', ', array_map(fn($i) => $dayNames[(int)$i] ?? '', $arrivalDays));
+            $names = implode(', ', array_map(fn($i) => $dayNames[(int) $i] ?? '', $arrivalDays));
             json_out(['error' => 'Arrivals at this property are only on: ' . $names . '.'], 400);
         }
     }
@@ -88,34 +106,66 @@ if ($action === 'submit') {
     $termsAt = !empty($in['terms_accepted']) ? date('Y-m-d H:i:s') : null;
     $termsVer = $termsAt ? clean($in['terms_version'] ?? '') : null;
 
-    db()->prepare('INSERT INTO enquiries
+    db()
+        ->prepare(
+            'INSERT INTO enquiries
         (prop_key,name,email,phone,address,postcode,check_in,check_out,check_in_time,check_out_time,adults,children,message,terms_accepted_at,terms_version)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        )
         ->execute([
-            $propKey, $name, clean($in['email'] ?? ''), clean($in['phone'] ?? ''), $address, $postcode,
-            $checkIn, $checkOut,
-            clean($in['check_in_time'] ?? '15:00'), clean($in['check_out_time'] ?? '10:00'),
-            $adultsN, $childrenN,
-            clean($in['message'] ?? ''), $termsAt, $termsVer
+            $propKey,
+            $name,
+            clean($in['email'] ?? ''),
+            clean($in['phone'] ?? ''),
+            $address,
+            $postcode,
+            $checkIn,
+            $checkOut,
+            clean($in['check_in_time'] ?? '15:00'),
+            clean($in['check_out_time'] ?? '10:00'),
+            $adultsN,
+            $childrenN,
+            clean($in['message'] ?? ''),
+            $termsAt,
+            $termsVer,
         ]);
-    $enqId = (int)db()->lastInsertId();
+    $enqId = (int) db()->lastInsertId();
     // Wake the owner's devices (best-effort).
-    try { require_once __DIR__ . '/webpush.php'; alert_owner('New enquiry', trim(($name ?: 'Someone') . ' · ' . $checkIn . '–' . $checkOut)); } catch (\Throwable $e) {}
+    try {
+        require_once __DIR__ . '/webpush.php';
+        alert_owner('New enquiry', trim(($name ?: 'Someone') . ' · ' . $checkIn . '–' . $checkOut));
+    } catch (\Throwable $e) {
+    }
 
     // Does this email already have a guest account? Used to tailor the follow-up so a
     // returning guest is nudged to sign in rather than create another account.
     $email = clean($in['email'] ?? '');
     $accountExists = false;
     if ($email !== '') {
-        try { $st = db()->prepare('SELECT 1 FROM guests WHERE email = ? LIMIT 1'); $st->execute([$email]); $accountExists = (bool)$st->fetchColumn(); } catch (\Throwable $e) {}
+        try {
+            $st = db()->prepare('SELECT 1 FROM guests WHERE email = ? LIMIT 1');
+            $st->execute([$email]);
+            $accountExists = (bool) $st->fetchColumn();
+        } catch (\Throwable $e) {
+        }
     }
     // Acknowledge the enquiry by email (best-effort — never block the enquiry on mail).
     try {
         require_once __DIR__ . '/mailer.php';
         if ($email !== '' && function_exists('send_enquiry_ack')) {
-            send_enquiry_ack(['name' => $name, 'email' => $email, 'prop_key' => $propKey, 'check_in' => $checkIn, 'check_out' => $checkOut], $accountExists);
+            send_enquiry_ack(
+                [
+                    'name' => $name,
+                    'email' => $email,
+                    'prop_key' => $propKey,
+                    'check_in' => $checkIn,
+                    'check_out' => $checkOut,
+                ],
+                $accountExists,
+            );
         }
-    } catch (\Throwable $e) {}
+    } catch (\Throwable $e) {
+    }
 
     // Let the owner act straight from their inbox: a notification email with
     // signed one-tap Review/Approve/Decline links (enquiry-action.php shows a
@@ -126,15 +176,31 @@ if ($action === 'submit') {
             $newId = $enqId;
             $base = site_base_url();
             send_owner_enquiry_email([
-                'id' => $newId, 'name' => $name, 'email' => $email, 'prop_key' => $propKey,
-                'check_in' => $checkIn, 'check_out' => $checkOut,
-                'adults' => $adultsN, 'children' => $childrenN,
+                'id' => $newId,
+                'name' => $name,
+                'email' => $email,
+                'prop_key' => $propKey,
+                'check_in' => $checkIn,
+                'check_out' => $checkOut,
+                'adults' => $adultsN,
+                'children' => $childrenN,
                 'message' => clean($in['message'] ?? ''),
-                'approve_url' => $base . 'enquiry-action.php?id=' . $newId . '&a=approve&t=' . enquiry_action_token($newId, 'approve'),
-                'decline_url' => $base . 'enquiry-action.php?id=' . $newId . '&a=decline&t=' . enquiry_action_token($newId, 'decline'),
+                'approve_url' =>
+                    $base .
+                    'enquiry-action.php?id=' .
+                    $newId .
+                    '&a=approve&t=' .
+                    enquiry_action_token($newId, 'approve'),
+                'decline_url' =>
+                    $base .
+                    'enquiry-action.php?id=' .
+                    $newId .
+                    '&a=decline&t=' .
+                    enquiry_action_token($newId, 'decline'),
             ]);
         }
-    } catch (\Throwable $e) {}
+    } catch (\Throwable $e) {
+    }
 
     json_out(['ok' => true, 'account_exists' => $accountExists]);
 }
@@ -143,12 +209,14 @@ if ($action === 'submit') {
 require_admin();
 
 if ($action === 'decline') {
-    json_out(enquiry_decline((int)($in['id'] ?? 0)));
+    json_out(enquiry_decline((int) ($in['id'] ?? 0)));
 }
 
 if ($action === 'approve') {
-    $r = enquiry_approve((int)($in['id'] ?? 0));
-    if (!empty($r['error'])) json_out(['error' => $r['error']], (int)($r['code'] ?? 400));
+    $r = enquiry_approve((int) ($in['id'] ?? 0));
+    if (!empty($r['error'])) {
+        json_out(['error' => $r['error']], (int) ($r['code'] ?? 400));
+    }
     json_out(['ok' => true, 'email' => $r['email'] ?? null, 'payment_request' => $r['payment_request'] ?? null]);
 }
 

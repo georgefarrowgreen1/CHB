@@ -17,13 +17,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $rows = db()->query('SELECT * FROM properties ORDER BY sort_order, name')->fetchAll();
     // Cast numerics for clean JSON
     foreach ($rows as &$r) {
-        $r['couple_rate'] = (float)$r['couple_rate'];
-        $r['extra_adult_rate'] = (float)$r['extra_adult_rate'];
-        $r['child_rate'] = (float)$r['child_rate'];
-        $r['booking_fee'] = (float)$r['booking_fee'];
-        $r['transaction_pct'] = (float)$r['transaction_pct'];
-        if (array_key_exists('weekend_pct', $r)) $r['weekend_pct'] = (float)$r['weekend_pct'];
-        if (array_key_exists('sort_order', $r)) $r['sort_order'] = (int)$r['sort_order'];
+        $r['couple_rate'] = (float) $r['couple_rate'];
+        $r['extra_adult_rate'] = (float) $r['extra_adult_rate'];
+        $r['child_rate'] = (float) $r['child_rate'];
+        $r['booking_fee'] = (float) $r['booking_fee'];
+        $r['transaction_pct'] = (float) $r['transaction_pct'];
+        if (array_key_exists('weekend_pct', $r)) {
+            $r['weekend_pct'] = (float) $r['weekend_pct'];
+        }
+        if (array_key_exists('sort_order', $r)) {
+            $r['sort_order'] = (int) $r['sort_order'];
+        }
         // Surface the archived flag plainly so the front end can hide archived
         // cottages from the public site but still let the admin restore them.
         $r['archived'] = !empty($r['archived_at']);
@@ -32,11 +36,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // Seasonal rates (table may not exist yet — then no seasons key is sent)
     $seasons = [];
     try {
-        foreach (db()->query('SELECT prop_key, label, start_date, end_date, couple_rate FROM rate_seasons ORDER BY start_date, id')->fetchAll() as $s) {
-            $s['couple_rate'] = (float)$s['couple_rate'];
+        foreach (
+            db()
+                ->query(
+                    'SELECT prop_key, label, start_date, end_date, couple_rate FROM rate_seasons ORDER BY start_date, id',
+                )
+                ->fetchAll()
+            as $s
+        ) {
+            $s['couple_rate'] = (float) $s['couple_rate'];
             $seasons[$s['prop_key']][] = $s;
         }
-    } catch (\Throwable $e) {}
+    } catch (\Throwable $e) {
+    }
     json_out(['properties' => $rows, 'seasons' => $seasons, 'occupancy' => occupancy_limits()]);
 }
 
@@ -44,27 +56,39 @@ $in = body();
 if (($in['action'] ?? '') === 'seasons_save') {
     require_admin();
     $propKey = clean($in['prop_key'] ?? '');
-    if (!get_rate_exists($propKey)) json_out(['error' => 'Unknown property'], 400);
+    if (!get_rate_exists($propKey)) {
+        json_out(['error' => 'Unknown property'], 400);
+    }
     $list = is_array($in['seasons'] ?? null) ? $in['seasons'] : [];
     $cleaned = [];
     foreach ($list as $s) {
         $label = clean($s['label'] ?? '');
         $start = clean($s['start'] ?? '');
-        $end   = clean($s['end'] ?? '');
-        $rate  = (float)($s['rate'] ?? 0);
+        $end = clean($s['end'] ?? '');
+        $rate = (float) ($s['rate'] ?? 0);
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $start) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $end)) {
             json_out(['error' => 'Each season needs valid start and end dates'], 400);
         }
-        if ($end < $start) json_out(['error' => 'A season\'s end date is before its start date'], 400);
-        if ($rate <= 0) json_out(['error' => 'Each season needs a couple rate above £0'], 400);
+        if ($end < $start) {
+            json_out(['error' => 'A season\'s end date is before its start date'], 400);
+        }
+        if ($rate <= 0) {
+            json_out(['error' => 'Each season needs a couple rate above £0'], 400);
+        }
         $cleaned[] = [$propKey, mb_substr($label, 0, 100), $start, $end, $rate];
     }
     // Replace-all for this property (simple + predictable)
     try {
-        db()->prepare('DELETE FROM rate_seasons WHERE prop_key = ?')->execute([$propKey]);
+        db()
+            ->prepare('DELETE FROM rate_seasons WHERE prop_key = ?')
+            ->execute([$propKey]);
         if ($cleaned) {
-            $ins = db()->prepare('INSERT INTO rate_seasons (prop_key, label, start_date, end_date, couple_rate) VALUES (?,?,?,?,?)');
-            foreach ($cleaned as $row) $ins->execute($row);
+            $ins = db()->prepare(
+                'INSERT INTO rate_seasons (prop_key, label, start_date, end_date, couple_rate) VALUES (?,?,?,?,?)',
+            );
+            foreach ($cleaned as $row) {
+                $ins->execute($row);
+            }
         }
     } catch (\Throwable $e) {
         json_out(['error' => 'Seasonal rates table missing — run migration-seasons.sql in phpMyAdmin first'], 500);
@@ -79,24 +103,39 @@ if (($in['action'] ?? '') === 'create') {
     // in the cottage's Preferences folders. The row is all the payment/booking
     // logic needs to start working for the new cottage.
     $name = trim(clean($in['name'] ?? ''));
-    $rate = max(0, (float)($in['couple_rate'] ?? 0));
-    if ($name === '') json_out(['error' => 'Please give the accommodation a name'], 400);
-    if ($rate <= 0)   json_out(['error' => 'Please set a nightly couple rate above £0'], 400);
+    $rate = max(0, (float) ($in['couple_rate'] ?? 0));
+    if ($name === '') {
+        json_out(['error' => 'Please give the accommodation a name'], 400);
+    }
+    if ($rate <= 0) {
+        json_out(['error' => 'Please set a nightly couple rate above £0'], 400);
+    }
 
-    $key  = unique_prop_key($name);
+    $key = unique_prop_key($name);
     $slug = unique_prop_slug($name, $key);
     $accent = next_prop_accent();
     // Place it after the existing cottages.
     $ord = 100;
-    try { $ord = (int)db()->query('SELECT COALESCE(MAX(sort_order),0)+10 FROM properties')->fetchColumn(); } catch (\Throwable $e) {}
+    try {
+        $ord = (int) db()->query('SELECT COALESCE(MAX(sort_order),0)+10 FROM properties')->fetchColumn();
+    } catch (\Throwable $e) {
+    }
 
     try {
-        db()->prepare(
-            'INSERT INTO properties (prop_key, name, couple_rate, extra_adult_rate, child_rate, booking_fee, transaction_pct, address, slug, accent, sort_order, max_adults, max_children, max_total)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)'
-        )->execute([$key, $name, $rate, 0, 0, 75, 3, '', $slug, $accent, $ord, 2, 0, 2]);
+        db()
+            ->prepare(
+                'INSERT INTO properties (prop_key, name, couple_rate, extra_adult_rate, child_rate, booking_fee, transaction_pct, address, slug, accent, sort_order, max_adults, max_children, max_total)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+            )
+            ->execute([$key, $name, $rate, 0, 0, 75, 3, '', $slug, $accent, $ord, 2, 0, 2]);
     } catch (\Throwable $e) {
-        json_out(['error' => 'Could not create the cottage — run migrations first (Settings → System check → Run migrations).'], 500);
+        json_out(
+            [
+                'error' =>
+                    'Could not create the cottage — run migrations first (Settings → System check → Run migrations).',
+            ],
+            500,
+        );
     }
     json_out(['ok' => true, 'prop_key' => $key, 'slug' => $slug, 'accent' => $accent]);
 }
@@ -104,21 +143,31 @@ if (($in['action'] ?? '') === 'create') {
 if (($in['action'] ?? '') === 'archive' || ($in['action'] ?? '') === 'unarchive') {
     require_admin();
     $propKey = clean($in['prop_key'] ?? '');
-    if (!get_rate_exists($propKey)) json_out(['error' => 'Unknown property'], 400);
-    $archiving = ($in['action'] === 'archive');
+    if (!get_rate_exists($propKey)) {
+        json_out(['error' => 'Unknown property'], 400);
+    }
+    $archiving = $in['action'] === 'archive';
     // Don't let the owner archive their last live cottage — the public site needs one.
     if ($archiving) {
         try {
-            $live = (int)db()->query('SELECT COUNT(*) FROM properties WHERE archived_at IS NULL')->fetchColumn();
-            if ($live <= 1) json_out(['error' => 'You can’t remove your only live accommodation.'], 400);
-        } catch (\Throwable $e) {}
+            $live = (int) db()->query('SELECT COUNT(*) FROM properties WHERE archived_at IS NULL')->fetchColumn();
+            if ($live <= 1) {
+                json_out(['error' => 'You can’t remove your only live accommodation.'], 400);
+            }
+        } catch (\Throwable $e) {
+        }
     }
     try {
         // archived_at is a bound value (UTC timestamp or NULL) rather than concatenated SQL.
         $archivedAt = $archiving ? gmdate('Y-m-d H:i:s') : null;
-        db()->prepare('UPDATE properties SET archived_at = ? WHERE prop_key = ?')->execute([$archivedAt, $propKey]);
+        db()
+            ->prepare('UPDATE properties SET archived_at = ? WHERE prop_key = ?')
+            ->execute([$archivedAt, $propKey]);
     } catch (\Throwable $e) {
-        json_out(['error' => 'Could not update — please run updates first (Settings → Health check → Install updates).'], 500);
+        json_out(
+            ['error' => 'Could not update — please run updates first (Settings → Health check → Install updates).'],
+            500,
+        );
     }
     json_out(['ok' => true, 'archived' => $archiving]);
 }
@@ -126,66 +175,126 @@ if (($in['action'] ?? '') === 'archive' || ($in['action'] ?? '') === 'unarchive'
 if (($in['action'] ?? '') === 'save') {
     require_admin();
     $propKey = clean($in['prop_key'] ?? '');
-    if (!get_rate_exists($propKey)) json_out(['error' => 'Unknown property'], 400);
-
-    $numeric = ['couple_rate','extra_adult_rate','child_rate','booking_fee','transaction_pct','weekend_pct'];
-    $ints    = ['sort_order','max_adults','max_children','max_total'];
-    $text    = ['address','name','slug','accent','weekend_days'];
-    $set = []; $vals = [];
-    foreach (array_merge($numeric, $ints, $text) as $f) {
-        if (!array_key_exists($f, $in)) continue;
-        if (in_array($f, $numeric, true))      { $set[] = "$f = ?"; $vals[] = max(0, (float)$in[$f]); }
-        else if (in_array($f, $ints, true))    { $set[] = "$f = ?"; $vals[] = max(0, (int)$in[$f]); }
-        else if ($f === 'slug')                { $set[] = "$f = ?"; $vals[] = slugify(clean($in[$f])) ?: $propKey; }
-        else                                   { $set[] = "$f = ?"; $vals[] = clean($in[$f]); }
+    if (!get_rate_exists($propKey)) {
+        json_out(['error' => 'Unknown property'], 400);
     }
-    if (!$set) json_out(['error' => 'Nothing to update'], 400);
+
+    $numeric = ['couple_rate', 'extra_adult_rate', 'child_rate', 'booking_fee', 'transaction_pct', 'weekend_pct'];
+    $ints = ['sort_order', 'max_adults', 'max_children', 'max_total'];
+    $text = ['address', 'name', 'slug', 'accent', 'weekend_days'];
+    $set = [];
+    $vals = [];
+    foreach (array_merge($numeric, $ints, $text) as $f) {
+        if (!array_key_exists($f, $in)) {
+            continue;
+        }
+        if (in_array($f, $numeric, true)) {
+            $set[] = "$f = ?";
+            $vals[] = max(0, (float) $in[$f]);
+        } elseif (in_array($f, $ints, true)) {
+            $set[] = "$f = ?";
+            $vals[] = max(0, (int) $in[$f]);
+        } elseif ($f === 'slug') {
+            $set[] = "$f = ?";
+            $vals[] = slugify(clean($in[$f])) ?: $propKey;
+        } else {
+            $set[] = "$f = ?";
+            $vals[] = clean($in[$f]);
+        }
+    }
+    if (!$set) {
+        json_out(['error' => 'Nothing to update'], 400);
+    }
     $vals[] = $propKey;
-    db()->prepare('UPDATE properties SET ' . implode(', ', $set) . ' WHERE prop_key = ?')->execute($vals);
+    db()
+        ->prepare('UPDATE properties SET ' . implode(', ', $set) . ' WHERE prop_key = ?')
+        ->execute($vals);
     json_out(['ok' => true]);
 }
 
-function get_rate_exists($k) {
+function get_rate_exists($k)
+{
     $s = db()->prepare('SELECT 1 FROM properties WHERE prop_key = ?');
     $s->execute([$k]);
-    return (bool)$s->fetch();
+    return (bool) $s->fetch();
 }
 
 // Lowercase, hyphen-separated, alnum-only slug (e.g. "The Boat House" -> "the-boat-house").
-function slugify($s) {
-    $s = strtolower(trim((string)$s));
+function slugify($s)
+{
+    $s = strtolower(trim((string) $s));
     $s = preg_replace('/[^a-z0-9]+/', '-', $s);
     return trim($s, '-');
 }
 
 // A short, unique prop_key derived from the name (the DB primary key, ≤32 chars).
-function unique_prop_key($name) {
+function unique_prop_key($name)
+{
     $base = preg_replace('/[^a-z0-9]/', '', strtolower($name));
-    if ($base === '') $base = 'cottage';
+    if ($base === '') {
+        $base = 'cottage';
+    }
     $base = substr($base, 0, 24);
-    $key = $base; $n = 2;
-    while (get_rate_exists($key)) { $key = substr($base, 0, 22) . $n; $n++; }
+    $key = $base;
+    $n = 2;
+    while (get_rate_exists($key)) {
+        $key = substr($base, 0, 22) . $n;
+        $n++;
+    }
     return $key;
 }
 
 // A unique URL slug (falls back to the key when the name has no usable letters).
-function unique_prop_slug($name, $key) {
+function unique_prop_slug($name, $key)
+{
     $base = slugify($name) ?: $key;
-    $slug = $base; $n = 2;
+    $slug = $base;
+    $n = 2;
     $exists = function ($s) {
-        try { $q = db()->prepare('SELECT 1 FROM properties WHERE slug = ?'); $q->execute([$s]); return (bool)$q->fetch(); }
-        catch (\Throwable $e) { return false; }
+        try {
+            $q = db()->prepare('SELECT 1 FROM properties WHERE slug = ?');
+            $q->execute([$s]);
+            return (bool) $q->fetch();
+        } catch (\Throwable $e) {
+            return false;
+        }
     };
-    while ($exists($slug)) { $slug = $base . '-' . $n; $n++; }
+    while ($exists($slug)) {
+        $slug = $base . '-' . $n;
+        $n++;
+    }
     return $slug;
 }
 
 // Pick the next accent colour from a palette, preferring one not already in use.
-function next_prop_accent() {
-    $palette = ['#8FB3C7','#7CA982','#9B8FC7','#C7A27C','#C77C9B','#7C9BC7','#A9C77C','#C7B97C','#7CC7B9','#B97CC7'];
+function next_prop_accent()
+{
+    $palette = [
+        '#8FB3C7',
+        '#7CA982',
+        '#9B8FC7',
+        '#C7A27C',
+        '#C77C9B',
+        '#7C9BC7',
+        '#A9C77C',
+        '#C7B97C',
+        '#7CC7B9',
+        '#B97CC7',
+    ];
     $used = [];
-    try { foreach (db()->query('SELECT accent FROM properties')->fetchAll(\PDO::FETCH_COLUMN) as $a) { if ($a) $used[strtoupper($a)] = true; } } catch (\Throwable $e) {}
-    foreach ($palette as $c) { if (!isset($used[strtoupper($c)])) return $c; }
+    try {
+        foreach (db()->query('SELECT accent FROM properties')->fetchAll(\PDO::FETCH_COLUMN) as $a) {
+            if ($a) {
+                $used[strtoupper($a)] = true;
+            }
+        }
+    } catch (\Throwable $e) {
+    }
+    foreach ($palette as $c) {
+        if (!isset($used[strtoupper($c)])) {
+            return $c;
+        }
+    }
     return $palette[count($used) % count($palette)];
 }
 

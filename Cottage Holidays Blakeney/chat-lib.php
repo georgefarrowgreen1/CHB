@@ -10,29 +10,44 @@
 // whether auto reply-by-email applies (SMTP creds present, mail on, and the
 // owner hasn't opted into the REPLY_INBOX webhook route instead).
 if (!function_exists('mailbox_pop_host')) {
-    function mailbox_pop_host() {
-        if (defined('MAIL_POP_HOST') && MAIL_POP_HOST) return MAIL_POP_HOST;
+    function mailbox_pop_host()
+    {
+        if (defined('MAIL_POP_HOST') && MAIL_POP_HOST) {
+            return MAIL_POP_HOST;
+        }
         $h = defined('SMTP_HOST') ? SMTP_HOST : '';
-        if ($h === '') return '';
-        if (stripos($h, 'smtp.') === 0) return 'pop.' . substr($h, 5);
-        if (stripos($h, 'smtp') === 0)  return 'pop' . substr($h, 4);
+        if ($h === '') {
+            return '';
+        }
+        if (stripos($h, 'smtp.') === 0) {
+            return 'pop.' . substr($h, 5);
+        }
+        if (stripos($h, 'smtp') === 0) {
+            return 'pop' . substr($h, 4);
+        }
         return 'pop.' . $h;
     }
 }
 if (!function_exists('mailbox_auto_enabled')) {
-    function mailbox_auto_enabled() {
-        return defined('MAIL_ENABLED') && MAIL_ENABLED
-            && defined('SMTP_USER') && SMTP_USER && defined('SMTP_PASS') && SMTP_PASS
-            && SMTP_PASS !== 'CHANGE_ME'
-            && !(defined('REPLY_INBOX') && REPLY_INBOX);
+    function mailbox_auto_enabled()
+    {
+        return defined('MAIL_ENABLED') &&
+            MAIL_ENABLED &&
+            defined('SMTP_USER') &&
+            SMTP_USER &&
+            defined('SMTP_PASS') &&
+            SMTP_PASS &&
+            SMTP_PASS !== 'CHANGE_ME' &&
+            !(defined('REPLY_INBOX') && REPLY_INBOX);
     }
 }
 
 // Keep only what the owner typed above the quoted history / signature when they
 // reply to a notification email. Pure + unit-tested (test-reply.php).
 if (!function_exists('strip_quoted_reply')) {
-    function strip_quoted_reply($text) {
-        $text = str_replace(["\r\n", "\r"], "\n", (string)$text);
+    function strip_quoted_reply($text)
+    {
+        $text = str_replace(["\r\n", "\r"], "\n", (string) $text);
         $len = strlen($text);
         $cut = $len;
 
@@ -43,15 +58,32 @@ if (!function_exists('strip_quoted_reply')) {
             $cut = min($cut, $m[2][1]);
         }
         // (b) Other client dividers before the quoted original.
-        foreach (["-----Original Message-----", "Begin forwarded message:", "________________________________", "Reply above this line"] as $sep) {
+        foreach (
+            [
+                '-----Original Message-----',
+                'Begin forwarded message:',
+                '________________________________',
+                'Reply above this line',
+            ]
+            as $sep
+        ) {
             $p = stripos($text, $sep);
-            if ($p !== false) $cut = min($cut, $p);
+            if ($p !== false) {
+                $cut = min($cut, $p);
+            }
         }
         // (b2) Outlook top-post: a "From: … / Sent:|Date: … / [To/Cc: …] / Subject: …"
         //      header block introduces the quoted original with no ">" or attribution.
         //      The full block is a strong signature (a genuine reply won't contain it),
         //      so cutting at the "From:" is safe from over-trimming.
-        if (preg_match('/(^|\n)\s*From:\s.+\n\s*(Sent|Date):\s.+\n(\s*(To|Cc):\s.+\n)*\s*Subject:\s/i', $text, $m, PREG_OFFSET_CAPTURE)) {
+        if (
+            preg_match(
+                '/(^|\n)\s*From:\s.+\n\s*(Sent|Date):\s.+\n(\s*(To|Cc):\s.+\n)*\s*Subject:\s/i',
+                $text,
+                $m,
+                PREG_OFFSET_CAPTURE,
+            )
+        ) {
             $cut = min($cut, $m[1][1] + strlen($m[1][0]));
         }
         // (c) Belt-and-braces: the exact FIRST LINE of a quoted copy of one of our
@@ -59,12 +91,17 @@ if (!function_exists('strip_quoted_reply')) {
         //     no ">" prefix and no attribution still gets trimmed. Only these two
         //     unambiguous openers (a real reply would never contain them); the softer
         //     phrases were dropped so they can't clip a genuine reply.
-        foreach ([
-            'Someone has sent you a message via the website chat',
-            'You have a new message from Cottage Holidays Blakeney',
-        ] as $mk) {
+        foreach (
+            [
+                'Someone has sent you a message via the website chat',
+                'You have a new message from Cottage Holidays Blakeney',
+            ]
+            as $mk
+        ) {
             $p = stripos($text, $mk);
-            if ($p !== false) $cut = min($cut, $p);
+            if ($p !== false) {
+                $cut = min($cut, $p);
+            }
         }
         $text = substr($text, 0, $cut);
 
@@ -72,16 +109,31 @@ if (!function_exists('strip_quoted_reply')) {
         $out = [];
         foreach (explode("\n", $text) as $ln) {
             $t = trim($ln);
-            if ($t === '-- ' || $t === '--') break;               // signature delimiter
-            if ($t === '_' || preg_match('/^_{5,}$/', $t)) break;  // divider
+            if ($t === '-- ' || $t === '--') {
+                break;
+            } // signature delimiter
+            if ($t === '_' || preg_match('/^_{5,}$/', $t)) {
+                break;
+            } // divider
             // Common mail-client sign-offs (no "-- " delimiter): "Sent from my
             // iPhone/iPad/Samsung…", "Get Outlook for iOS", "Sent from Mail for
             // Windows", etc. Everything from such a line down is auto-signature.
-            if (preg_match('/^(sent from (my |mail for |outlook|yahoo|samsung|the all-new )|sent using |sent via |get outlook for )/i', $t)) break;
-            if (strpos($t, '>') === 0) continue;                   // quoted line
+            if (
+                preg_match(
+                    '/^(sent from (my |mail for |outlook|yahoo|samsung|the all-new )|sent using |sent via |get outlook for )/i',
+                    $t,
+                )
+            ) {
+                break;
+            }
+            if (strpos($t, '>') === 0) {
+                continue;
+            } // quoted line
             $out[] = $ln;
         }
-        while ($out && trim($out[count($out) - 1]) === '') array_pop($out);
+        while ($out && trim($out[count($out) - 1]) === '') {
+            array_pop($out);
+        }
         return trim(implode("\n", $out));
     }
 }
@@ -91,13 +143,16 @@ if (!function_exists('strip_quoted_reply')) {
 // race can't post the same reply twice. Back-office sends stay unguarded (those
 // are intentional).
 if (!function_exists('chat_last_message_is')) {
-    function chat_last_message_is($threadId, $body) {
+    function chat_last_message_is($threadId, $body)
+    {
         try {
             $s = db()->prepare('SELECT body FROM messages WHERE thread_id = ? ORDER BY id DESC LIMIT 1');
-            $s->execute([(int)$threadId]);
+            $s->execute([(int) $threadId]);
             $last = $s->fetchColumn();
-            return $last !== false && trim((string)$last) === trim((string)$body);
-        } catch (\Throwable $e) { return false; }
+            return $last !== false && trim((string) $last) === trim((string) $body);
+        } catch (\Throwable $e) {
+            return false;
+        }
     }
 }
 
@@ -106,25 +161,51 @@ if (!function_exists('chat_last_message_is')) {
 // reply-by-email is configured, the guest's email carries a Reply-To that routes
 // their reply straight back into this same thread.
 if (!function_exists('chat_admin_reply')) {
-    function chat_admin_reply($threadId, $bodyTxt) {
-        $threadId = (int)$threadId;
-        $bodyTxt = mb_substr(trim((string)$bodyTxt), 0, 4000);
-        if ($threadId <= 0 || $bodyTxt === '') return false;
-        db()->prepare("INSERT INTO messages (thread_id, sender_role, body, read_by_admin, read_by_guest) VALUES (?, 'admin', ?, 1, 0)")->execute([$threadId, $bodyTxt]);
-        db()->prepare('UPDATE chat_threads SET updated_at = NOW() WHERE id = ?')->execute([$threadId]);
+    function chat_admin_reply($threadId, $bodyTxt)
+    {
+        $threadId = (int) $threadId;
+        $bodyTxt = mb_substr(trim((string) $bodyTxt), 0, 4000);
+        if ($threadId <= 0 || $bodyTxt === '') {
+            return false;
+        }
+        db()
+            ->prepare(
+                "INSERT INTO messages (thread_id, sender_role, body, read_by_admin, read_by_guest) VALUES (?, 'admin', ?, 1, 0)",
+            )
+            ->execute([$threadId, $bodyTxt]);
+        db()
+            ->prepare('UPDATE chat_threads SET updated_at = NOW() WHERE id = ?')
+            ->execute([$threadId]);
         try {
-            $t = db()->prepare('SELECT name, email FROM chat_threads WHERE id = ?'); $t->execute([$threadId]); $thread = $t->fetch();
+            $t = db()->prepare('SELECT name, email FROM chat_threads WHERE id = ?');
+            $t->execute([$threadId]);
+            $thread = $t->fetch();
             if ($thread && !empty($thread['email'])) {
                 require_once __DIR__ . '/mailer.php';
                 if (function_exists('smtp_send')) {
                     $replyAddr = function_exists('msg_reply_address') ? msg_reply_address($threadId) : '';
-                    $msgId = ($replyAddr && function_exists('msg_reply_token')) ? 'msg.' . msg_reply_token($threadId) : null;
-                    smtp_send($thread['email'], $thread['name'] ?: 'there', 'A message from Cottage Holidays Blakeney',
-                        "Hello " . ($thread['name'] ?: 'there') . ",\n\nYou have a new message from Cottage Holidays Blakeney:\n\n\"" . $bodyTxt . "\"\n\nReply on our website chat" . ($replyAddr ? ' — or just reply to this email' : '') . ".\nCottage Holidays Blakeney",
-                        null, [], $replyAddr ?: null, $msgId);
+                    $msgId =
+                        $replyAddr && function_exists('msg_reply_token') ? 'msg.' . msg_reply_token($threadId) : null;
+                    smtp_send(
+                        $thread['email'],
+                        $thread['name'] ?: 'there',
+                        'A message from Cottage Holidays Blakeney',
+                        'Hello ' .
+                            ($thread['name'] ?: 'there') .
+                            ",\n\nYou have a new message from Cottage Holidays Blakeney:\n\n\"" .
+                            $bodyTxt .
+                            "\"\n\nReply on our website chat" .
+                            ($replyAddr ? ' — or just reply to this email' : '') .
+                            ".\nCottage Holidays Blakeney",
+                        null,
+                        [],
+                        $replyAddr ?: null,
+                        $msgId,
+                    );
                 }
             }
-        } catch (\Throwable $e) {}
+        } catch (\Throwable $e) {
+        }
         return true;
     }
 }
@@ -133,15 +214,20 @@ if (!function_exists('chat_admin_reply')) {
 // a GUEST reply-by-email (they were invited to "just reply to this email") into
 // the thread as a guest message instead of dropping it as sender-not-owner.
 if (!function_exists('mailbox_reply_is_guest')) {
-    function mailbox_reply_is_guest($threadId, $fromAddr) {
-        $fromAddr = strtolower(trim((string)$fromAddr));
-        if ($fromAddr === '' || (int)$threadId <= 0) return false;
+    function mailbox_reply_is_guest($threadId, $fromAddr)
+    {
+        $fromAddr = strtolower(trim((string) $fromAddr));
+        if ($fromAddr === '' || (int) $threadId <= 0) {
+            return false;
+        }
         try {
             $s = db()->prepare('SELECT email FROM chat_threads WHERE id = ?');
-            $s->execute([(int)$threadId]);
-            $em = strtolower(trim((string)$s->fetchColumn()));
+            $s->execute([(int) $threadId]);
+            $em = strtolower(trim((string) $s->fetchColumn()));
             return $em !== '' && $em === $fromAddr;
-        } catch (\Throwable $e) { return false; }
+        } catch (\Throwable $e) {
+            return false;
+        }
     }
 }
 
@@ -149,26 +235,61 @@ if (!function_exists('mailbox_reply_is_guest')) {
 // as if the guest had typed it in the website chat. Mirrors messages.php's
 // chat_notify_owner (which we can't include — it runs the endpoint on include).
 if (!function_exists('chat_guest_reply')) {
-    function chat_guest_reply($threadId, $bodyTxt) {
-        $threadId = (int)$threadId;
-        $bodyTxt = mb_substr(trim((string)$bodyTxt), 0, 4000);
-        if ($threadId <= 0 || $bodyTxt === '') return false;
-        db()->prepare("INSERT INTO messages (thread_id, sender_role, body, read_by_admin, read_by_guest) VALUES (?, 'guest', ?, 0, 1)")->execute([$threadId, $bodyTxt]);
-        db()->prepare('UPDATE chat_threads SET updated_at = NOW() WHERE id = ?')->execute([$threadId]);
+    function chat_guest_reply($threadId, $bodyTxt)
+    {
+        $threadId = (int) $threadId;
+        $bodyTxt = mb_substr(trim((string) $bodyTxt), 0, 4000);
+        if ($threadId <= 0 || $bodyTxt === '') {
+            return false;
+        }
+        db()
+            ->prepare(
+                "INSERT INTO messages (thread_id, sender_role, body, read_by_admin, read_by_guest) VALUES (?, 'guest', ?, 0, 1)",
+            )
+            ->execute([$threadId, $bodyTxt]);
+        db()
+            ->prepare('UPDATE chat_threads SET updated_at = NOW() WHERE id = ?')
+            ->execute([$threadId]);
         try {
-            $t = db()->prepare('SELECT name, email FROM chat_threads WHERE id = ?'); $t->execute([$threadId]); $th = $t->fetch();
+            $t = db()->prepare('SELECT name, email FROM chat_threads WHERE id = ?');
+            $t->execute([$threadId]);
+            $th = $t->fetch();
             require_once __DIR__ . '/mailer.php';
             if (function_exists('send_owner')) {
                 $replyAddr = function_exists('msg_reply_address') ? msg_reply_address($threadId) : '';
-                $msgId = ($replyAddr && function_exists('msg_reply_token')) ? 'msg.' . msg_reply_token($threadId) : null;
-                $subjTag = ($replyAddr && function_exists('msg_reply_needs_subject_tag') && msg_reply_needs_subject_tag())
-                    ? ' [#' . msg_reply_token($threadId) . ']' : '';
-                $b = "A guest has replied by email to a website chat.\n\nFrom: " . (($th['name'] ?? '') ?: '—') . " (" . (($th['email'] ?? '') ?: 'no email') . ")\n\n\"" . $bodyTxt . "\"\n"
-                   . ($replyAddr ? "\nJust reply to this email and they get it on the website and by email." : '') . "\nOr open the back office → Guest messages to reply.";
-                send_owner('New website message — Cottage Holidays Blakeney' . $subjTag, $b, null, [], $replyAddr ?: null, $msgId);
+                $msgId = $replyAddr && function_exists('msg_reply_token') ? 'msg.' . msg_reply_token($threadId) : null;
+                $subjTag =
+                    $replyAddr && function_exists('msg_reply_needs_subject_tag') && msg_reply_needs_subject_tag()
+                        ? ' [#' . msg_reply_token($threadId) . ']'
+                        : '';
+                $b =
+                    "A guest has replied by email to a website chat.\n\nFrom: " .
+                    ($th['name'] ?? '' ?: '—') .
+                    ' (' .
+                    ($th['email'] ?? '' ?: 'no email') .
+                    ")\n\n\"" .
+                    $bodyTxt .
+                    "\"\n" .
+                    ($replyAddr ? "\nJust reply to this email and they get it on the website and by email." : '') .
+                    "\nOr open the back office → Guest messages to reply.";
+                send_owner(
+                    'New website message — Cottage Holidays Blakeney' . $subjTag,
+                    $b,
+                    null,
+                    [],
+                    $replyAddr ?: null,
+                    $msgId,
+                );
             }
-        } catch (\Throwable $e) {}
-        try { require_once __DIR__ . '/webpush.php'; if (function_exists('alert_owner')) alert_owner('New message', mb_substr($bodyTxt, 0, 80)); } catch (\Throwable $e) {}
+        } catch (\Throwable $e) {
+        }
+        try {
+            require_once __DIR__ . '/webpush.php';
+            if (function_exists('alert_owner')) {
+                alert_owner('New message', mb_substr($bodyTxt, 0, 80));
+            }
+        } catch (\Throwable $e) {
+        }
         return true;
     }
 }

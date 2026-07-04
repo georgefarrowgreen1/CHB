@@ -15,25 +15,36 @@ if (isset($_GET['all'])) {
     $keys = [];
     try {
         $keys = db()->query('SELECT prop_key FROM properties WHERE archived_at IS NULL')->fetchAll(PDO::FETCH_COLUMN);
-    } catch (\Throwable $e) { $keys = ['21a', 'jollyboat', 'pimpernel']; }   // pre-migration fallback
+    } catch (\Throwable $e) {
+        $keys = ['21a', 'jollyboat', 'pimpernel'];
+    } // pre-migration fallback
     $out = [];
     foreach ($keys as $k) {
         $rs = [];
         $s = db()->prepare('SELECT check_in, check_out FROM bookings WHERE prop_key = ? AND check_out >= CURDATE()');
         $s->execute([$k]);
-        foreach ($s->fetchAll() as $r) $rs[] = ['start' => $r['check_in'], 'end' => $r['check_out']];
+        foreach ($s->fetchAll() as $r) {
+            $rs[] = ['start' => $r['check_in'], 'end' => $r['check_out']];
+        }
         try {
-            $s = db()->prepare('SELECT check_in, check_out FROM ical_blocks WHERE prop_key = ? AND check_out >= CURDATE()');
+            $s = db()->prepare(
+                'SELECT check_in, check_out FROM ical_blocks WHERE prop_key = ? AND check_out >= CURDATE()',
+            );
             $s->execute([$k]);
-            foreach ($s->fetchAll() as $r) $rs[] = ['start' => $r['check_in'], 'end' => $r['check_out']];
-        } catch (\Throwable $e) {}
+            foreach ($s->fetchAll() as $r) {
+                $rs[] = ['start' => $r['check_in'], 'end' => $r['check_out']];
+            }
+        } catch (\Throwable $e) {
+        }
         $out[$k] = $rs;
     }
     json_out(['props' => $out]);
 }
 
 $prop = isset($_GET['prop']) ? preg_replace('/[^a-z0-9_]/i', '', $_GET['prop']) : '';
-if ($prop === '') json_out(['ranges' => []]);
+if ($prop === '') {
+    json_out(['ranges' => []]);
+}
 
 $ranges = [];
 
@@ -51,6 +62,8 @@ try {
     foreach ($s->fetchAll() as $r) {
         $ranges[] = ['start' => $r['check_in'], 'end' => $r['check_out']];
     }
-} catch (\Throwable $e) { /* table not migrated yet — ignore */ }
+} catch (\Throwable $e) {
+    /* table not migrated yet — ignore */
+}
 
 json_out(['ranges' => $ranges]);

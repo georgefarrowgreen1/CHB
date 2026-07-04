@@ -16,24 +16,31 @@
 //  ical-import.php?cron=SECRET   (SECRET = APP_SECRET) -> runs sync for all
 // ============================================================
 require_once __DIR__ . '/db.php';
-require_once __DIR__ . '/pricing.php';   // get_rate() for the manual-block property check
+require_once __DIR__ . '/pricing.php'; // get_rate() for the manual-block property check
 
 // ---- helpers ----
 // ical_token() lives in db.php (shared with ical-export.php).
-function feeds_key($prop) { return 'ical-feeds-' . $prop; }
+function feeds_key($prop)
+{
+    return 'ical-feeds-' . $prop;
+}
 
-function get_feeds($prop) {
+function get_feeds($prop)
+{
     $s = db()->prepare('SELECT item_value FROM content WHERE item_key = ?');
     $s->execute([feeds_key($prop)]);
     $row = $s->fetch();
-    if (!$row) return [];
+    if (!$row) {
+        return [];
+    }
     // Feed URLs are encrypted at rest (legacy plaintext passes through).
     $d = json_decode(decrypt_value($row['item_value']), true);
     return is_array($d) ? $d : [];
 }
 
 // Fetch a URL (cURL preferred, falls back to file_get_contents).
-function fetch_url($url) {
+function fetch_url($url)
+{
     if (function_exists('curl_init')) {
         $ch = curl_init($url);
         curl_setopt_array($ch, [
@@ -49,28 +56,42 @@ function fetch_url($url) {
         $body = curl_exec($ch);
         $err = curl_error($ch);
         curl_close($ch);
-        if ($body === false) return ['ok' => false, 'error' => $err ?: 'fetch failed'];
+        if ($body === false) {
+            return ['ok' => false, 'error' => $err ?: 'fetch failed'];
+        }
         return ['ok' => true, 'body' => $body];
     }
     $body = @file_get_contents($url);
-    if ($body === false) return ['ok' => false, 'error' => 'fetch failed'];
+    if ($body === false) {
+        return ['ok' => false, 'error' => 'fetch failed'];
+    }
     return ['ok' => true, 'body' => $body];
 }
 
 // Parse an iCal string into [['uid'=>, 'start'=>'YYYY-MM-DD', 'end'=>'YYYY-MM-DD'], ...]
-function parse_ical($text) {
+function parse_ical($text)
+{
     // Unfold folded lines (continuation lines begin with a space or tab).
     $text = preg_replace("/\r\n[ \t]/", '', $text);
     $text = preg_replace("/\n[ \t]/", '', $text);
     $lines = preg_split("/\r\n|\n|\r/", $text);
-    $events = []; $cur = null;
+    $events = [];
+    $cur = null;
     foreach ($lines as $line) {
-        if (strpos($line, 'BEGIN:VEVENT') === 0) { $cur = ['uid'=>null,'start'=>null,'end'=>null]; continue; }
-        if (strpos($line, 'END:VEVENT') === 0) {
-            if ($cur && $cur['start'] && $cur['end']) $events[] = $cur;
-            $cur = null; continue;
+        if (strpos($line, 'BEGIN:VEVENT') === 0) {
+            $cur = ['uid' => null, 'start' => null, 'end' => null];
+            continue;
         }
-        if ($cur === null) continue;
+        if (strpos($line, 'END:VEVENT') === 0) {
+            if ($cur && $cur['start'] && $cur['end']) {
+                $events[] = $cur;
+            }
+            $cur = null;
+            continue;
+        }
+        if ($cur === null) {
+            continue;
+        }
         if (strpos($line, 'UID') === 0) {
             $cur['uid'] = substr($line, strpos($line, ':') + 1);
         } elseif (strpos($line, 'DTSTART') === 0) {
@@ -83,7 +104,8 @@ function parse_ical($text) {
 }
 
 // Normalise an iCal date/datetime value to YYYY-MM-DD.
-function ical_date($v) {
+function ical_date($v)
+{
     $v = trim($v);
     if (preg_match('/(\d{4})(\d{2})(\d{2})/', $v, $m)) {
         return $m[1] . '-' . $m[2] . '-' . $m[3];
@@ -92,26 +114,36 @@ function ical_date($v) {
 }
 
 // Sync one property's feeds: refresh ical_blocks from all its feed URLs.
-function sync_property($prop) {
+function sync_property($prop)
+{
     $feeds = get_feeds($prop);
     $summary = [];
     foreach ($feeds as $f) {
         $source = preg_replace('/[^a-z0-9_]/i', '', $f['source'] ?? 'feed');
         $url = trim($f['url'] ?? '');
-        if ($url === '') continue;
+        if ($url === '') {
+            continue;
+        }
         $res = fetch_url($url);
-        if (!$res['ok']) { $summary[] = ['source'=>$source, 'ok'=>false, 'error'=>$res['error']]; continue; }
+        if (!$res['ok']) {
+            $summary[] = ['source' => $source, 'ok' => false, 'error' => $res['error']];
+            continue;
+        }
         $events = parse_ical($res['body']);
         // Replace this source's blocks for this property (clean refresh).
-        db()->prepare('DELETE FROM ical_blocks WHERE prop_key = ? AND source = ?')->execute([$prop, $source]);
+        db()
+            ->prepare('DELETE FROM ical_blocks WHERE prop_key = ? AND source = ?')
+            ->execute([$prop, $source]);
         $ins = db()->prepare('INSERT INTO ical_blocks (prop_key, source, uid, check_in, check_out) VALUES (?,?,?,?,?)');
         $count = 0;
         foreach ($events as $e) {
-            if (!$e['start'] || !$e['end'] || $e['end'] <= $e['start']) continue;
+            if (!$e['start'] || !$e['end'] || $e['end'] <= $e['start']) {
+                continue;
+            }
             $ins->execute([$prop, $source, $e['uid'], $e['start'], $e['end']]);
             $count++;
         }
-        $summary[] = ['source'=>$source, 'ok'=>true, 'events'=>$count];
+        $summary[] = ['source' => $source, 'ok' => true, 'events' => $count];
     }
     return $summary;
 }
@@ -119,11 +151,17 @@ function sync_property($prop) {
 // ---- cron entry (no login; protected by secret) ----
 if (isset($_GET['cron'])) {
     header('Content-Type: text/plain; charset=utf-8');
-    if (!hash_equals(APP_SECRET, $_GET['cron'])) { http_response_code(403); echo "Forbidden"; exit; }
+    if (!hash_equals(APP_SECRET, $_GET['cron'])) {
+        http_response_code(403);
+        echo 'Forbidden';
+        exit();
+    }
     $props = db()->query('SELECT prop_key FROM properties')->fetchAll(PDO::FETCH_COLUMN);
-    foreach ($props as $p) { sync_property($p); }
-    echo "Synced " . count($props) . " properties at " . date('Y-m-d H:i:s');
-    exit;
+    foreach ($props as $p) {
+        sync_property($p);
+    }
+    echo 'Synced ' . count($props) . ' properties at ' . date('Y-m-d H:i:s');
+    exit();
 }
 
 // ---- admin actions ----
@@ -133,16 +171,23 @@ require_admin();
 
 if ($action === 'save_feeds') {
     $prop = preg_replace('/[^a-z0-9_]/i', '', $in['prop'] ?? '');
-    if ($prop === '') json_out(['error' => 'Property required'], 400);
+    if ($prop === '') {
+        json_out(['error' => 'Property required'], 400);
+    }
     $feeds = [];
-    foreach (($in['feeds'] ?? []) as $f) {
+    foreach ($in['feeds'] ?? [] as $f) {
         $url = trim($f['url'] ?? '');
         $source = preg_replace('/[^a-z0-9_]/i', '', $f['source'] ?? 'feed');
-        if ($url !== '') $feeds[] = ['source' => $source, 'url' => $url];
+        if ($url !== '') {
+            $feeds[] = ['source' => $source, 'url' => $url];
+        }
     }
     $val = encrypt_value(json_encode($feeds, JSON_UNESCAPED_SLASHES));
-    db()->prepare('INSERT INTO content (item_key, item_value) VALUES (?, ?)
-                   ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = CURRENT_TIMESTAMP')
+    db()
+        ->prepare(
+            'INSERT INTO content (item_key, item_value) VALUES (?, ?)
+                   ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = CURRENT_TIMESTAMP',
+        )
         ->execute([feeds_key($prop), $val]);
     json_out(['ok' => true]);
 }
@@ -154,14 +199,18 @@ if ($action === 'sync') {
     }
     $props = db()->query('SELECT prop_key FROM properties')->fetchAll(PDO::FETCH_COLUMN);
     $all = [];
-    foreach ($props as $p) { $all[$p] = sync_property($p); }
+    foreach ($props as $p) {
+        $all[$p] = sync_property($p);
+    }
     json_out(['ok' => true, 'result' => $all]);
 }
 
 if ($action === 'blocks') {
     // Return every imported external block so the back-office calendar can show
     // them as "taken", colour-coded by property.
-    $rows = db()->query('SELECT id, prop_key, source, check_in, check_out FROM ical_blocks ORDER BY check_in ASC')->fetchAll();
+    $rows = db()
+        ->query('SELECT id, prop_key, source, check_in, check_out FROM ical_blocks ORDER BY check_in ASC')
+        ->fetchAll();
     json_out(['ok' => true, 'blocks' => $rows]);
 }
 
@@ -171,12 +220,21 @@ if ($action === 'add_block') {
     $prop = preg_replace('/[^a-z0-9_]/i', '', $in['prop'] ?? '');
     $checkIn = clean($in['check_in'] ?? '');
     $checkOut = clean($in['check_out'] ?? '');
-    if (!get_rate($prop)) json_out(['error' => 'Unknown property'], 400);
-    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $checkIn) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $checkOut)) json_out(['error' => 'Valid from/to dates are required'], 400);
-    if ($checkOut <= $checkIn) json_out(['error' => 'The end date must be after the start date'], 400);
-    if (dates_clash($prop, $checkIn, $checkOut)) json_out(['error' => 'Those dates overlap an existing booking or block.'], 409);
+    if (!get_rate($prop)) {
+        json_out(['error' => 'Unknown property'], 400);
+    }
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $checkIn) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $checkOut)) {
+        json_out(['error' => 'Valid from/to dates are required'], 400);
+    }
+    if ($checkOut <= $checkIn) {
+        json_out(['error' => 'The end date must be after the start date'], 400);
+    }
+    if (dates_clash($prop, $checkIn, $checkOut)) {
+        json_out(['error' => 'Those dates overlap an existing booking or block.'], 409);
+    }
     $uid = 'owner-' . bin2hex(random_bytes(8));
-    db()->prepare('INSERT INTO ical_blocks (prop_key, source, uid, check_in, check_out) VALUES (?,?,?,?,?)')
+    db()
+        ->prepare('INSERT INTO ical_blocks (prop_key, source, uid, check_in, check_out) VALUES (?,?,?,?,?)')
         ->execute([$prop, 'owner', $uid, $checkIn, $checkOut]);
     json_out(['ok' => true]);
 }
@@ -184,9 +242,13 @@ if ($action === 'add_block') {
 if ($action === 'delete_block') {
     // Remove a single imported block by id. Note: if the booking still exists on
     // the platform's feed, a future sync may re-import it.
-    $id = (int)($in['id'] ?? 0);
-    if ($id <= 0) json_out(['error' => 'A block id is required'], 400);
-    db()->prepare('DELETE FROM ical_blocks WHERE id = ?')->execute([$id]);
+    $id = (int) ($in['id'] ?? 0);
+    if ($id <= 0) {
+        json_out(['error' => 'A block id is required'], 400);
+    }
+    db()
+        ->prepare('DELETE FROM ical_blocks WHERE id = ?')
+        ->execute([$id]);
     json_out(['ok' => true]);
 }
 
@@ -195,11 +257,16 @@ if ($action === 'list') {
     $s = db()->prepare('SELECT COUNT(*) c FROM ical_blocks WHERE prop_key = ?');
     $s->execute([$prop]);
     // Build the absolute export URL for this property's feed.
-    $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+    $scheme = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
     $host = $_SERVER['HTTP_HOST'] ?? '';
-    $dir  = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/');
+    $dir = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/');
     $exportUrl = $scheme . '://' . $host . $dir . '/ical-export.php?prop=' . $prop . '&token=' . ical_token($prop);
-    json_out(['ok' => true, 'feeds' => get_feeds($prop), 'blocks' => (int)$s->fetch()['c'], 'export_url' => $exportUrl]);
+    json_out([
+        'ok' => true,
+        'feeds' => get_feeds($prop),
+        'blocks' => (int) $s->fetch()['c'],
+        'export_url' => $exportUrl,
+    ]);
 }
 
 json_out(['error' => 'Unknown action'], 400);

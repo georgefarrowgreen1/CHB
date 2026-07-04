@@ -16,30 +16,42 @@
 // ============================================================
 
 $html = @file_get_contents(__DIR__ . '/index.html');
-if ($html === false) { http_response_code(404); header('Content-Type: text/plain; charset=utf-8'); exit('Not found'); }
+if ($html === false) {
+    http_response_code(404);
+    header('Content-Type: text/plain; charset=utf-8');
+    exit('Not found');
+}
 
 $out = $html;
 try {
     if (is_file(__DIR__ . '/config.php')) {
         require_once __DIR__ . '/config.php';
-        $pdo = new PDO(
-            'mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=' . DB_CHARSET,
-            DB_USER, DB_PASS,
-            [PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION, PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC, PDO::ATTR_TIMEOUT => 3]
-        );
-        $rows = $pdo->query("SELECT title, body, category, distance FROM experiences
-                             WHERE status = 'published' ORDER BY sort_order, id")->fetchAll();
+        $pdo = new PDO('mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=' . DB_CHARSET, DB_USER, DB_PASS, [
+            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+            PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+            PDO::ATTR_TIMEOUT => 3,
+        ]);
+        $rows = $pdo
+            ->query(
+                "SELECT title, body, category, distance FROM experiences
+                             WHERE status = 'published' ORDER BY sort_order, id",
+            )
+            ->fetchAll();
 
-        $esc = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+        $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
         $origin = 'https://cottageholidaysblakeney.co.uk';
-        $canon  = $origin . '/experiences';
-        $title  = 'Things to do in Blakeney & North Norfolk | Cottage Holidays Blakeney';
-        $metaDesc = 'Hand-picked things to do around Blakeney: seal trips to Blakeney Point, coastal walks, beaches, pubs and food — curated by your hosts'
-                  . ($rows ? ' (' . count($rows) . ' local recommendations)' : '') . '.';
+        $canon = $origin . '/experiences';
+        $title = 'Things to do in Blakeney & North Norfolk | Cottage Holidays Blakeney';
+        $metaDesc =
+            'Hand-picked things to do around Blakeney: seal trips to Blakeney Point, coastal walks, beaches, pubs and food — curated by your hosts' .
+            ($rows ? ' (' . count($rows) . ' local recommendations)' : '') .
+            '.';
 
         $inject = function ($pattern, $text) use (&$out, $esc) {
             $new = preg_replace_callback($pattern, fn($m) => $m[1] . $esc($text) . $m[2], $out, 1);
-            if (is_string($new)) $out = $new;
+            if (is_string($new)) {
+                $out = $new;
+            }
         };
         $inject('#(<title>).*?(</title>)#s', $title);
         $inject('#(<meta name="description" content=")[^"]*(")#', $metaDesc);
@@ -56,17 +68,28 @@ try {
             $cards = '';
             foreach ($rows as $r) {
                 $meta = trim($r['category'] . ($r['distance'] !== '' ? ' · ' . $r['distance'] : ''), ' ·');
-                $cards .= '<div class="card glass-panel"><div class="card-title">' . $esc($r['title']) . '</div>'
-                        . ($meta !== '' ? '<div class="card-meta">' . $esc($meta) . '</div>' : '')
-                        . '<p class="lead" style="font-size:0.9rem;text-align:left;margin:8px 0 0;">' . $esc($r['body']) . '</p></div>';
+                $cards .=
+                    '<div class="card glass-panel"><div class="card-title">' .
+                    $esc($r['title']) .
+                    '</div>' .
+                    ($meta !== '' ? '<div class="card-meta">' . $esc($meta) . '</div>' : '') .
+                    '<p class="lead" style="font-size:0.9rem;text-align:left;margin:8px 0 0;">' .
+                    $esc($r['body']) .
+                    '</p></div>';
             }
             $anchor = '<div id="exp-grid" class="grid grid-3" style="margin-top:18px;"></div>';
-            $new = str_replace($anchor, '<div id="exp-grid" class="grid grid-3" style="margin-top:18px;">' . $cards . '</div>', $out);
-            if (is_string($new)) $out = $new;
+            $new = str_replace(
+                $anchor,
+                '<div id="exp-grid" class="grid grid-3" style="margin-top:18px;">' . $cards . '</div>',
+                $out,
+            );
+            if (is_string($new)) {
+                $out = $new;
+            }
         }
     }
 } catch (\Throwable $e) {
-    $out = $html;   // any hiccup → the untouched shell
+    $out = $html; // any hiccup → the untouched shell
 }
 
 header('Content-Type: text/html; charset=utf-8');

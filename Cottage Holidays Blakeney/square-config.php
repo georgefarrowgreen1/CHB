@@ -9,8 +9,8 @@
 require_once __DIR__ . '/db.php';
 
 json_out([
-    'enabled'       => square_enabled(),
-    'environment'   => defined('SQUARE_ENVIRONMENT') ? SQUARE_ENVIRONMENT : 'sandbox',
-    'applicationId' => (square_enabled() && defined('SQUARE_APPLICATION_ID')) ? SQUARE_APPLICATION_ID : '',
-    'locationId'    => (square_enabled() && defined('SQUARE_LOCATION_ID')) ? SQUARE_LOCATION_ID : '',
+    'enabled' => square_enabled(),
+    'environment' => defined('SQUARE_ENVIRONMENT') ? SQUARE_ENVIRONMENT : 'sandbox',
+    'applicationId' => square_enabled() && defined('SQUARE_APPLICATION_ID') ? SQUARE_APPLICATION_ID : '',
+    'locationId' => square_enabled() && defined('SQUARE_LOCATION_ID') ? SQUARE_LOCATION_ID : '',
 ]);
