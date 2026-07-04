@@ -4124,17 +4124,17 @@ body.owner-mode .chat-widget {
   text-decoration: underline;
 }
 .act-log-controls {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
   margin: 8px 0 18px;
+}
+.act-log-search {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 0 14px;
 }
 .act-log-filters {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
-  flex: 1;
 }
 .act-log-chip {
   font-family: var(--font-sans);
@@ -4155,9 +4155,6 @@ body.owner-mode .chat-widget {
   border-color: var(--accent);
   color: #fff;
 }
-.act-log-search {
-  max-width: 260px;
-}
 .act-actor {
   font-size: 0.7rem;
   color: var(--text-muted);
@@ -4172,6 +4169,43 @@ body.owner-mode .chat-widget {
   font-size: 0.9rem;
   padding: 30px 4px;
   text-align: center;
+}
+/* Full activity-log rows: a two-line list item — the label (which carries the
+   meaning) wraps freely on top, with a muted meta line (detail · who · when)
+   beneath. The dashboard mini-feed keeps its single-line ellipsis layout. */
+.act-log-row {
+  align-items: flex-start;
+}
+.act-log-row .act-ic {
+  margin-top: 1px;
+}
+.act-log-row .act-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.act-log-row .act-line1 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.act-log-row .act-line1 .act-label {
+  white-space: normal;
+  color: var(--text-light);
+}
+.act-log-row .act-line2 {
+  display: flex;
+  align-items: center;
+  gap: 4px 10px;
+  flex-wrap: wrap;
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+.act-log-row .act-when {
+  margin-left: 0;
 }
 /* Severity: warnings and action-needed rows in the activity log */
 .act-row--warn {
