@@ -123,8 +123,8 @@ if ($action === 'status') {
 }
 
 // ---- Run a backup: cron (weekly gate) or admin (forced) ----
-if (!$isCron && empty($_SESSION['admin_id'])) {
-    json_out(['error' => 'Not authorised'], 401);
+if (!$isCron) {
+    require_admin(); // admin session + CSRF for the manual run (cron uses ?cron=SECRET)
 }
 $force = $action === 'run' || !empty($_GET['force']);
 

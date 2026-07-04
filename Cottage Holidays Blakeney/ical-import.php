@@ -38,14 +38,42 @@ function get_feeds($prop)
     return is_array($d) ? $d : [];
 }
 
+// Is this an http(s) URL to a PUBLIC host? Blocks SSRF to internal/loopback/
+// link-local targets (169.254.x, 127.x, 10.x, 192.168.x, …) even though only an
+// admin sets the feed URL — trusted-user SSRF is still worth closing.
+function ical_url_public($url)
+{
+    $u = parse_url((string) $url);
+    if (!$u || !in_array(strtolower($u['scheme'] ?? ''), ['http', 'https'], true) || empty($u['host'])) {
+        return false;
+    }
+    $host = $u['host'];
+    $ip = filter_var($host, FILTER_VALIDATE_IP) ? $host : gethostbyname($host);
+    if (
+        filter_var($ip, FILTER_VALIDATE_IP) &&
+        !filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)
+    ) {
+        return false; // resolves to a private/reserved address
+    }
+    return true;
+}
+
 // Fetch a URL (cURL preferred, falls back to file_get_contents).
 function fetch_url($url)
 {
+    if (!ical_url_public($url)) {
+        return ['ok' => false, 'error' => 'blocked URL'];
+    }
     if (function_exists('curl_init')) {
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 3,
+            // Only ever speak HTTP(S) — and only follow redirects to HTTP(S), so a
+            // feed can't redirect us to file://, gopher://, etc.
+            CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
+            CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
             CURLOPT_TIMEOUT => 20,
             CURLOPT_USERAGENT => 'CHB-Calendar-Sync/1.0',
             // Verify the platform's TLS certificate. These feeds gate the public

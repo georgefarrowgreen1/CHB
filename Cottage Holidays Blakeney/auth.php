@@ -156,6 +156,7 @@ switch ($action) {
 
     // ---------------- GUEST ----------------
     case 'guest_register':
+        rate_limit('register', 10); // curb row-flooding + email-enumeration probing (409 reveals existence)
         $name = clean($in['name'] ?? '');
         $email = strtolower(clean($in['email'] ?? ''));
         $phone = clean($in['phone'] ?? '');

@@ -125,6 +125,7 @@ require_once __DIR__ . '/chat-lib.php';
 // is coming from the floating chat widget (e.g. the owner testing it while also
 // logged in), so let it fall through to the visitor path instead of erroring.
 if ($isAdmin && empty($in['token'])) {
+    require_admin(); // admin session + CSRF token (the inline $isAdmin check skipped CSRF)
     try {
         if ($action === 'thread') {
             $tid = (int) ($in['thread_id'] ?? 0);
