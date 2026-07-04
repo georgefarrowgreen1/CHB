@@ -103,6 +103,7 @@ try {
          WHERE payment <> 'paid'
            AND email IS NOT NULL AND email <> ''
            AND balance_requested_at IS NOT NULL
+           AND balance_requested_at < CURDATE()
            AND check_in >= (CURDATE() + INTERVAL ? DAY)
            AND check_in <= (CURDATE() + INTERVAL ? DAY)
            AND (balance_reminded_at IS NULL OR balance_reminded_at < (NOW() - INTERVAL 3 DAY))",

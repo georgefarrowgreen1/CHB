@@ -64,13 +64,16 @@ foreach ($rows as $e) {
         "Or just reply to this email (or message us on the website) and we'll get your booking confirmed.\n\n" .
         "Warm wishes,\nCottage Holidays Blakeney";
     try {
-        if (function_exists('smtp_send')) {
-            smtp_send($e['email'], $name, $subject, $text);
+        // smtp_send returns ok:false on a soft failure (server down / mail off)
+        // WITHOUT throwing — only mark the nudge sent if it actually went, else
+        // the guest's one-and-only nudge is silently burned.
+        $r = function_exists('smtp_send') ? smtp_send($e['email'], $name, $subject, $text) : ['ok' => false];
+        if (!empty($r['ok'])) {
+            db()
+                ->prepare('UPDATE enquiries SET nudge_sent_at = NOW() WHERE id = ?')
+                ->execute([(int) $e['id']]);
+            $sent++;
         }
-        db()
-            ->prepare('UPDATE enquiries SET nudge_sent_at = NOW() WHERE id = ?')
-            ->execute([(int) $e['id']]);
-        $sent++;
     } catch (\Throwable $ex) {
         /* skip this one, continue with the rest */
     }

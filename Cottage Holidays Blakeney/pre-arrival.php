@@ -25,9 +25,12 @@ if (!$isCron && empty($_SESSION['admin_id'])) {
 $days = defined('PRE_ARRIVAL_DAYS') ? max(1, (int) PRE_ARRIVAL_DAYS) : 3;
 
 try {
+    // A RANGE (not exact day) so a skipped cron day catches up: any upcoming
+    // booking within the next $days that hasn't been emailed yet. The
+    // pre_arrival_sent guard prevents repeats.
     $s = db()->prepare(
         'SELECT * FROM bookings
-         WHERE check_in = DATE_ADD(CURDATE(), INTERVAL ? DAY)
+         WHERE check_in BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL ? DAY)
            AND email <> \'\' AND pre_arrival_sent IS NULL',
     );
     $s->execute([$days]);
@@ -52,12 +55,15 @@ foreach ($due as $b) {
 $reviewDays = defined('REVIEW_REQUEST_DAYS') ? max(1, (int) REVIEW_REQUEST_DAYS) : 2;
 $reviewsSent = 0;
 try {
+    // Range (not exact day) so a missed cron day still catches up, capped at a
+    // week so we never ask about an old stay. review_request_sent prevents repeats.
     $rs = db()->prepare(
         "SELECT b.*, p.name AS property_name FROM bookings b JOIN properties p ON p.prop_key = b.prop_key
-         WHERE b.check_out = DATE_SUB(CURDATE(), INTERVAL ? DAY)
+         WHERE b.check_out <= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+           AND b.check_out >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
            AND b.email <> '' AND b.review_request_sent IS NULL",
     );
-    $rs->execute([$reviewDays]);
+    $rs->execute([$reviewDays, $reviewDays + 7]);
     $toAsk = $rs->fetchAll();
 } catch (\Throwable $e) {
     $toAsk = [];
