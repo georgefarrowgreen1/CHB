@@ -891,7 +891,12 @@ if ($action === 'refund') {
     $gName = $b['name'] ?? ($row['guest_name'] ?? null);
     $gProp = $b['prop_key'] ?? ($row['prop_key'] ?? null);
     book_lock($gProp ?? '');
-    $rr = record_square_refund($bookingId, $sqId, $amount, 'refund', $note, $gName, $gProp);
+    // Refunding a captured DAMAGE deposit must be booked as 'damages_return', not
+    // 'refund' — otherwise reconcile subtracts it from the RENTAL paid figure (which
+    // damages never contributed to) and falsely flips the booking to part-paid. This
+    // is also the correct path for a partial return of a captured hold.
+    $refundKind = $row['kind'] === 'damages' ? 'damages_return' : 'refund';
+    $rr = record_square_refund($bookingId, $sqId, $amount, $refundKind, $note, $gName, $gProp);
     if (empty($rr['ok'])) {
         book_unlock($gProp ?? '');
         json_out(['error' => $rr['error']], 402);
