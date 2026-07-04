@@ -135,8 +135,7 @@ function pop3_multiline($fp) {
 // per-message trace (used by the ?debug view to see exactly what's arriving).
 function poll_mailbox_replies($force = false, $preview = false) {
     if (!mailbox_auto_enabled()) return ['ok' => false, 'skipped' => 'not-enabled'];
-    $state = json_decode(content_value('mailbox-poll') ?: '{}', true);
-    if (!is_array($state)) $state = [];
+    $state = content_json('mailbox-poll', []);   // array-valued key — NOT content_value()
     $processed = isset($state['uids']) && is_array($state['uids']) ? $state['uids'] : [];
     if (!$preview && !$force && !empty($state['at']) && (time() - (int)$state['at']) < 90) return ['ok' => true, 'skipped' => 'throttled'];
 
@@ -168,7 +167,9 @@ function poll_mailbox_replies($force = false, $preview = false) {
             $info = ['from' => $fromAddr, 'subject' => mb_substr($p['subject'], 0, 120), 'tokenFound' => $tok !== '', 'thread' => $tid, 'senderOk' => $senderOk, 'bodyLen' => strlen($p['body']), 'strippedLen' => strlen($body), 'reason' => $reason];
             if ($preview) { $info['strippedPreview'] = mb_substr($body ?: $p['body'], 0, 200); $trace[] = $info; continue; }
             $processed[] = $uid;                        // (live only) mark seen
-            if ($reason === 'delivered') { chat_admin_reply($tid, $body); $handled++; }
+            // Defence-in-depth: even if the watermark ever hiccups, never post a
+            // reply that's already the newest message in the thread.
+            if ($reason === 'delivered' && !chat_last_message_is($tid, $body)) { chat_admin_reply($tid, $body); $handled++; }
             if ($last === null && $tid > 0) $last = $info;   // remember the newest of OUR threads
         }
         fwrite($fp, "QUIT\r\n");
@@ -183,14 +184,25 @@ function mailbox_poll_save($processed, $error, $last) {
     $val = ['at' => time(), 'uids' => array_values($processed), 'error' => $error];
     if ($last !== null) { $val['last'] = $last; $val['lastAt'] = time(); }
     else {
-        $prev = json_decode(content_value('mailbox-poll') ?: '{}', true);
-        if (is_array($prev) && isset($prev['last'])) { $val['last'] = $prev['last']; $val['lastAt'] = $prev['lastAt'] ?? null; }
+        $prev = content_json('mailbox-poll', []);
+        if (isset($prev['last'])) { $val['last'] = $prev['last']; $val['lastAt'] = $prev['lastAt'] ?? null; }
     }
     try {
+        // Stored SINGLE-encoded and read back with content_json() (content_value()
+        // can't return arrays). Do NOT double-encode.
         db()->prepare("INSERT INTO content (item_key, item_value) VALUES ('mailbox-poll', ?)
                        ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = CURRENT_TIMESTAMP")
             ->execute([json_encode($val)]);
     } catch (\Throwable $e) {}
+}
+// Is $body already the most recent message in this thread? (idempotency guard)
+function chat_last_message_is($threadId, $body) {
+    try {
+        $s = db()->prepare('SELECT body FROM messages WHERE thread_id = ? ORDER BY id DESC LIMIT 1');
+        $s->execute([(int)$threadId]);
+        $last = $s->fetchColumn();
+        return $last !== false && trim((string)$last) === trim((string)$body);
+    } catch (\Throwable $e) { return false; }
 }
 
 // A read-only connection self-test for the Health check: does login work?

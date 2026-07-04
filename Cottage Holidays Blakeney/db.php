@@ -307,6 +307,22 @@ function content_value($key) {
     } catch (\Throwable $e) { return ''; }
 }
 
+// Read a content value that stores an ARRAY/object (watermarks, sent-maps).
+// content_value() only ever returns strings/scalars — decoding an array-valued
+// key there yields '' — so those keys MUST be read with this instead. Tolerates
+// a legacy double-encoded value (a JSON string of JSON) by decoding twice.
+function content_json($key, $default = []) {
+    try {
+        $s = db()->prepare('SELECT item_value FROM content WHERE item_key = ?');
+        $s->execute([$key]);
+        $v = $s->fetchColumn();
+        if ($v === false || $v === null || $v === '') return $default;
+        $d = json_decode($v, true);
+        if (is_string($d)) $d = json_decode($d, true);   // unwrap legacy double-encoding
+        return is_array($d) ? $d : $default;
+    } catch (\Throwable $e) { return $default; }
+}
+
 // Token for a property's iCal export feed: unguessable, needs no login, derived
 // one-way from APP_SECRET so nothing secret leaks. Shared by ical-export.php
 // (validates it) and ical-import.php (builds the ready-made feed URL).
