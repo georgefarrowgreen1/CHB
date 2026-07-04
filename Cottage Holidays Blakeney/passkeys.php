@@ -139,6 +139,7 @@ if ($action === 'register_finish') {
         )
         ->execute([$gid, $credId, $pubKey, $label, (int) ($data->signCount ?? 0)]);
     unset($_SESSION['pk_challenge']);
+    log_activity('account', 'passkey.register', 'Passkey added — ' . mb_substr($label, 0, 60), ['actor' => 'guest', 'entity' => 'passkey']);
     json_out(['ok' => true]);
 }
 
@@ -253,6 +254,7 @@ if ($action === 'admin_register_finish') {
         )
         ->execute([$aid, $credId, $data->credentialPublicKey, $label, (int) ($data->signCount ?? 0)]);
     unset($_SESSION['pk_admin_challenge']);
+    log_activity('account', 'passkey.admin_register', 'Admin passkey added — ' . mb_substr($label, 0, 60), ['entity' => 'passkey']);
     json_out(['ok' => true]);
 }
 

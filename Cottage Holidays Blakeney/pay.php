@@ -146,6 +146,12 @@ if ($action === 'authorize') {
         alert_owner('Damage hold placed', '£' . number_format($holdAmount, 2) . ' held · ' . $propName);
     } catch (\Throwable $e) {
     }
+    log_activity(
+        'payment',
+        'hold.authorize',
+        'Damage-deposit hold placed — £' . number_format($holdAmount, 2) . ($b['name'] ? ' · ' . $b['name'] : ''),
+        ['actor' => 'guest', 'prop_key' => $b['prop_key'], 'entity' => 'booking', 'entity_id' => (string) $bookingId],
+    );
     json_out(['ok' => true, 'held' => $holdAmount]);
 }
 
@@ -253,6 +259,13 @@ if ($action === 'charge') {
         ->execute([$newStatus, $newPaid, 'Square card', date('Y-m-d'), $bookingId]);
 
     book_unlock($b['prop_key']);
+
+    log_activity(
+        'payment',
+        'payment.card',
+        ucfirst($kind) . ' paid by card — £' . number_format($amountDue, 2) . ($b['name'] ? ' · ' . $b['name'] : ''),
+        ['actor' => 'guest', 'prop_key' => $b['prop_key'], 'entity' => 'booking', 'entity_id' => (string) $bookingId],
+    );
 
     // Receipt email (best-effort — never fails the payment).
     try {

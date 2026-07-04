@@ -108,6 +108,7 @@ if (basename($_SERVER['SCRIPT_NAME'] ?? '') === 'waitlist.php') {
                     'INSERT INTO waitlist (prop_key, name, email, check_in, check_out, note) VALUES (?,?,?,?,?,?)',
                 )
                 ->execute([$prop, $name, $email, $ci, $co, $note]);
+            log_activity('calendar', 'waitlist.join', 'Waitlist join — ' . ($name ?: 'a guest'), ['actor' => 'guest', 'prop_key' => (string) $prop, 'entity' => 'waitlist']);
             json_out(['ok' => true]);
         } catch (\Throwable $e) {
             json_out(['error' => 'Could not join the waitlist — please try again.'], 500);
@@ -140,6 +141,7 @@ if (basename($_SERVER['SCRIPT_NAME'] ?? '') === 'waitlist.php') {
         db()
             ->prepare('UPDATE waitlist SET notified_at = NOW() WHERE id = ?')
             ->execute([$id]);
+        log_activity('calendar', 'waitlist.notify', 'Waitlist guest notified — ' . ($row['name'] ?? ''), ['prop_key' => $row['prop_key'] ?? '', 'entity' => 'waitlist', 'entity_id' => (string) $id]);
         json_out(['ok' => true]);
     }
 
