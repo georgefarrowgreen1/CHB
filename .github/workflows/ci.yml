@@ -33,6 +33,10 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-pricing.php
 
+      - name: Reply-by-email logic (tokens + quote stripping)
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-reply.php
+
   # Real-browser smoke test: boots the site headless with stubbed APIs and walks
   # the core guest journeys + admin dashboard. Catches the render/integration
   # breakage the DOM-shim smoke test can't see. Runs in parallel with `checks`.

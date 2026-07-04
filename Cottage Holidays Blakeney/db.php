@@ -314,6 +314,29 @@ function ical_token($propKey) {
     return substr(hash_hmac('sha256', 'ical:' . $propKey, APP_SECRET), 0, 24);
 }
 
+// ---- Reply-by-email: signed thread tokens ----
+// A guest-message notification email carries this token in its Reply-To
+// plus-address + Message-ID, so a reply the owner sends can be matched back to
+// the exact conversation (inbound-mail.php verifies it). One-way HMAC — a
+// forged token can't select an arbitrary thread.
+function msg_reply_token($threadId) {
+    $tid = (int)$threadId;
+    return $tid . 'x' . substr(hash_hmac('sha256', 'msg-reply|' . $tid, APP_SECRET), 0, 16);
+}
+function msg_reply_verify($token) {
+    if (!preg_match('/(\d+)x([0-9a-f]{16})/', (string)$token, $m)) return 0;
+    $tid = (int)$m[1];
+    return hash_equals(msg_reply_token($tid), $m[1] . 'x' . $m[2]) ? $tid : 0;
+}
+// The plus-addressed inbound address for a thread, or '' if reply-by-email is
+// not configured (REPLY_INBOX unset) — in which case notifications behave as
+// before (Reply-To = the owner's own address).
+function msg_reply_address($threadId) {
+    if (!defined('REPLY_INBOX') || !REPLY_INBOX || strpos(REPLY_INBOX, '@') === false) return '';
+    [$local, $domain] = explode('@', REPLY_INBOX, 2);
+    return $local . '+' . msg_reply_token($threadId) . '@' . $domain;
+}
+
 // ---- Square online payments helpers ----
 // True only when the owner has switched payments on AND filled in the keys.
 function square_enabled() {

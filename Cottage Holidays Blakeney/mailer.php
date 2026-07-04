@@ -23,7 +23,7 @@ function email_crown_header($bg) {
 /**
  * Low-level: send one email via SMTP. Returns [ok=>bool, error=>string].
  */
-function smtp_send($toEmail, $toName, $subject, $bodyText, $bodyHtml = null, $attachments = []) {
+function smtp_send($toEmail, $toName, $subject, $bodyText, $bodyHtml = null, $attachments = [], $replyTo = null, $messageId = null) {
     if (!defined('MAIL_ENABLED') || !MAIL_ENABLED) {
         return ['ok' => false, 'error' => 'Mail disabled'];
     }
@@ -117,13 +117,18 @@ function smtp_send($toEmail, $toName, $subject, $bodyText, $bodyHtml = null, $at
     $fromDomain = substr(strrchr($from, '@') ?: '@localhost', 1);
     $headers   = "From: " . mb_encode_safe($fromName) . " <{$from}>\r\n";
     $headers  .= "To: " . mb_encode_safe($toName) . " <{$toEmail}>\r\n";
-    $headers  .= "Reply-To: {$from}\r\n";
+    // Reply-To: the caller can override (reply-by-email routes replies to an
+    // inbound mailbox); CR/LF stripped so it can't inject headers.
+    $rt = ($replyTo && filter_var($replyTo, FILTER_VALIDATE_EMAIL)) ? preg_replace('/[\r\n]+/', '', $replyTo) : $from;
+    $headers  .= "Reply-To: {$rt}\r\n";
     $headers  .= "Subject: {$encSubject}\r\n";
     $headers  .= "MIME-Version: 1.0\r\n";
     $headers  .= "Date: " . date('r') . "\r\n";
     // Message-ID is required by many MTAs (incl. IONOS) — a message without one
-    // can be rejected at the end of DATA ("Message not accepted").
-    $headers  .= "Message-ID: <" . bin2hex(random_bytes(12)) . "@{$fromDomain}>\r\n";
+    // can be rejected at the end of DATA ("Message not accepted"). A caller may
+    // pass a token so a reply's In-Reply-To echoes it back to us.
+    $mid = ($messageId !== null && $messageId !== '') ? preg_replace('/[^A-Za-z0-9._+\-]/', '', (string)$messageId) : bin2hex(random_bytes(12));
+    $headers  .= "Message-ID: <{$mid}@{$fromDomain}>\r\n";
 
     // Base64-encode bodies in 76-char lines. This guarantees no line ever exceeds
     // the SMTP limit (which caused "501 line too long" with raw 8-bit HTML), and
@@ -199,12 +204,12 @@ function owner_recipients() {
 // Send ONE owner/admin notification to every recipient (owner_recipients()).
 // Returns the primary send's result so existing callers keep their {ok,error}
 // contract; copies to the extra addresses are best-effort.
-function send_owner($subject, $text, $html = null, $atts = []) {
+function send_owner($subject, $text, $html = null, $atts = [], $replyTo = null, $messageId = null) {
     $rcpts = owner_recipients();
     if (!$rcpts) return ['ok' => false, 'error' => 'No owner email'];
     $first = null;
     foreach ($rcpts as $i => $to) {
-        $r = smtp_send($to, 'Owner', $subject, $text, $html, $atts);
+        $r = smtp_send($to, 'Owner', $subject, $text, $html, $atts, $replyTo, $messageId);
         if ($i === 0) $first = $r;
     }
     return $first ?: ['ok' => false, 'error' => 'No owner email'];
