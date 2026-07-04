@@ -81,6 +81,7 @@ switch ($action) {
         $row = $stmt->fetch();
         if (!password_verify($password, $row['password_hash'] ?? AUTH_DUMMY_HASH) || !$row) {
             throttle_record('admin:' . strtolower($username), false);
+            log_activity('account', 'admin.login_fail', 'Failed sign-in attempt', ['actor' => 'system', 'meta' => ['detail' => 'username: ' . mb_substr($username, 0, 60)]]);
             json_out(['error' => 'Incorrect username or password'], 401);
         }
         throttle_record('admin:' . strtolower($username), true);
@@ -92,6 +93,7 @@ switch ($action) {
         json_out(['ok' => true]);
 
     case 'admin_logout':
+        log_activity('account', 'admin.logout', 'Owner signed out');
         unset($_SESSION['admin_id']);
         json_out(['ok' => true]);
 
@@ -115,6 +117,7 @@ switch ($action) {
         db()
             ->prepare('UPDATE admins SET password_hash = ? WHERE id = ?')
             ->execute([$hash, $_SESSION['admin_id']]);
+        log_activity('account', 'admin.password_change', 'Owner password changed');
         json_out(['ok' => true]);
 
     // ---------------- GUEST ----------------
@@ -211,6 +214,7 @@ switch ($action) {
                     login_token($g['id'], $ts);
                 require_once __DIR__ . '/mailer.php';
                 send_magic_link_email($g, $url);
+                log_activity('account', 'guest.magic_link', 'Magic sign-in link emailed to a guest', ['actor' => 'guest', 'entity' => 'guest', 'entity_id' => (string) $g['id']]);
             }
         }
         // Count EVERY request (pass false so it records an attempt rather than

@@ -18,4 +18,6 @@ if (!empty($res['error'])) {
     json_out(['error' => $res['error']], $res['code'] ?? 400);
 }
 
+$slot = trim((string) ($_POST['slot'] ?? ''));
+log_activity('media', 'image.upload', 'Image uploaded' . ($slot !== '' ? ' — ' . mb_substr($slot, 0, 60) : ''), ['entity' => 'image']);
 json_out(['ok' => true, 'url' => $res['url']]);

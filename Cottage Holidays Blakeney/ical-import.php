@@ -160,6 +160,7 @@ if (isset($_GET['cron'])) {
     foreach ($props as $p) {
         sync_property($p);
     }
+    log_activity('calendar', 'ical.sync', 'External calendars synced (' . count($props) . ' cottages)', ['actor' => 'cron']);
     echo 'Synced ' . count($props) . ' properties at ' . date('Y-m-d H:i:s');
     exit();
 }
@@ -195,13 +196,16 @@ if ($action === 'save_feeds') {
 if ($action === 'sync') {
     $prop = preg_replace('/[^a-z0-9_]/i', '', $in['prop'] ?? '');
     if ($prop !== '') {
-        json_out(['ok' => true, 'result' => sync_property($prop)]);
+        $result = sync_property($prop);
+        log_activity('calendar', 'ical.sync', 'External calendar refreshed', ['prop_key' => $prop, 'entity' => 'ical']);
+        json_out(['ok' => true, 'result' => $result]);
     }
     $props = db()->query('SELECT prop_key FROM properties')->fetchAll(PDO::FETCH_COLUMN);
     $all = [];
     foreach ($props as $p) {
         $all[$p] = sync_property($p);
     }
+    log_activity('calendar', 'ical.sync', 'External calendars refreshed (' . count($props) . ' cottages)', ['entity' => 'ical']);
     json_out(['ok' => true, 'result' => $all]);
 }
 

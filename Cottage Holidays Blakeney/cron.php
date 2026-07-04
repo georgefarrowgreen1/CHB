@@ -88,6 +88,30 @@ if ($isCron) {
         /* never fail the cron over the heartbeat */
     }
 
+    // Activity log: one summary line of what the automation did today (incl. how
+    // many guest emails each job sent), and keep the log bounded to ~5000 rows.
+    try {
+        $sentBits = [];
+        foreach ($results as $r) {
+            if (is_array($r['result']) && !empty($r['result']['sent'])) {
+                $sentBits[] = (int) $r['result']['sent'] . ' ' . preg_replace('/\.php$/', '', $r['script']);
+            }
+        }
+        log_activity(
+            'system',
+            'cron.run',
+            'Daily automation ran' . (count($sentBits) ? ' — sent ' . implode(', ', $sentBits) : ' (' . count($results) . ' jobs)'),
+            ['actor' => 'cron'],
+        );
+    } catch (\Throwable $e) {
+    }
+    try {
+        db()->exec(
+            'DELETE FROM activity_log WHERE id <= (SELECT cutoff FROM (SELECT id AS cutoff FROM activity_log ORDER BY id DESC LIMIT 1 OFFSET 5000) x)',
+        );
+    } catch (\Throwable $e) {
+    }
+
     // Optional external dead-man's-switch: if the owner set CRON_HEARTBEAT_URL in
     // config.php (e.g. a free healthchecks.io ping URL), tell it we ran. That
     // service emails the owner if the ping DOESN'T arrive — the only alert that

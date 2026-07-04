@@ -176,6 +176,14 @@ if (!function_exists('chat_admin_reply')) {
         db()
             ->prepare('UPDATE chat_threads SET updated_at = NOW() WHERE id = ?')
             ->execute([$threadId]);
+        if (function_exists('log_activity')) {
+            log_activity('comms', 'message.reply', 'Replied to a guest chat', [
+                'actor' => 'owner',
+                'entity' => 'thread',
+                'entity_id' => (string) $threadId,
+                'meta' => ['detail' => mb_substr($bodyTxt, 0, 120)],
+            ]);
+        }
         try {
             $t = db()->prepare('SELECT name, email FROM chat_threads WHERE id = ?');
             $t->execute([$threadId]);
@@ -250,6 +258,14 @@ if (!function_exists('chat_guest_reply')) {
         db()
             ->prepare('UPDATE chat_threads SET updated_at = NOW() WHERE id = ?')
             ->execute([$threadId]);
+        if (function_exists('log_activity')) {
+            log_activity('comms', 'message.guest', 'Guest replied by email', [
+                'actor' => 'guest',
+                'entity' => 'thread',
+                'entity_id' => (string) $threadId,
+                'meta' => ['detail' => mb_substr($bodyTxt, 0, 120)],
+            ]);
+        }
         try {
             $t = db()->prepare('SELECT name, email FROM chat_threads WHERE id = ?');
             $t->execute([$threadId]);

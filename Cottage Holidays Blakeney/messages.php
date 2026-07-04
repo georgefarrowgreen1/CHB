@@ -63,6 +63,12 @@ function chat_location()
 }
 function chat_notify_owner($name, $email, $bodyTxt, $threadId = 0)
 {
+    log_activity('comms', 'message.guest', 'New chat message from ' . ($name ?: 'a visitor'), [
+        'actor' => 'guest',
+        'entity' => 'thread',
+        'entity_id' => (string) $threadId,
+        'meta' => ['detail' => mb_substr($bodyTxt, 0, 120)],
+    ]);
     try {
         require_once __DIR__ . '/mailer.php';
         if (function_exists('send_owner')) {

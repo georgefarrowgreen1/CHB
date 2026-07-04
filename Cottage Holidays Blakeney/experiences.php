@@ -234,6 +234,7 @@ if ($action === 'save') {
     } catch (\Throwable $e) {
         json_out(['error' => 'Experiences not ready — run migrate.php (migration-experiences.sql).'], 500);
     }
+    log_activity('media', 'experience.save', 'Experience saved — ' . mb_substr($title, 0, 60), ['entity' => 'experience', 'entity_id' => (string) $id]);
     json_out(['ok' => true, 'id' => $id]);
 }
 

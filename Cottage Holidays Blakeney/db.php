@@ -441,13 +441,15 @@ function content_json($key, $default = [])
 function log_activity($category, $action, $summary, $opts = [])
 {
     try {
-        $actor = !empty($_SESSION['admin_id'])
-            ? 'owner'
-            : (!empty($_SESSION['guest_id'])
-                ? 'guest:' . (int) $_SESSION['guest_id']
-                : (defined('CHB_CRON') && CHB_CRON
-                    ? 'cron'
-                    : 'system'));
+        $actor = isset($opts['actor']) && $opts['actor'] !== ''
+            ? (string) $opts['actor']
+            : (!empty($_SESSION['admin_id'])
+                ? 'owner'
+                : (!empty($_SESSION['guest_id'])
+                    ? 'guest:' . (int) $_SESSION['guest_id']
+                    : (defined('CHB_CRON') && CHB_CRON
+                        ? 'cron'
+                        : 'system')));
         db()
             ->prepare(
                 'INSERT INTO activity_log (actor, category, action, summary, prop_key, entity, entity_id, meta, ip)

@@ -623,6 +623,7 @@ if ($action === 'send_arrival') {
     require_once __DIR__ . '/mailer.php'; // the arrival-email helpers live here
     $res = send_arrival_for_booking($b);
     if (!empty($res['ok'])) {
+        log_activity('comms', 'email.arrival', 'Arrival info emailed — ' . ($b['name'] ?? ''), ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
         json_out(['ok' => true]);
     }
     json_out(['error' => $res['error'] ?? 'Email failed to send'], 500);
@@ -640,6 +641,7 @@ if ($action === 'send_confirmation') {
     }
     $result = send_booking_confirmation($id);
     if (is_array($result) && isset($result['guest']) && !empty($result['guest']['ok'])) {
+        log_activity('comms', 'email.confirmation', 'Confirmation re-sent — ' . ($b['name'] ?? ''), ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
         json_out(['ok' => true, 'email' => $result]);
     }
     $reason = $result['error'] ?? ($result['guest']['error'] ?? 'Unknown mail error');
@@ -667,6 +669,7 @@ if ($action === 'request_payment') {
     require_once __DIR__ . '/mailer.php';
     $res = request_booking_payment($b, $kind);
     if (!empty($res['ok'])) {
+        log_activity('payment', 'payment.request', ucfirst($kind) . ' payment request emailed — ' . ($b['name'] ?? ''), ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
         json_out(['ok' => true, 'amount' => $res['amount']]);
     }
     json_out(['error' => $res['error'] ?? 'Email failed to send'], 200);
@@ -791,6 +794,7 @@ if ($action === 'hold_capture') {
             ->execute([$id, $b['hold_payment_id'], 'damages', $amt, 'COMPLETED', $b['name'], $b['prop_key']]);
     } catch (\Throwable $e) {
     }
+    log_activity('payment', 'hold.capture', 'Damage deposit charged — £' . number_format($amt, 2) . ($b['name'] ? ' · ' . $b['name'] : ''), ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
     json_out(['ok' => true, 'captured' => $amt]);
 }
 
@@ -832,6 +836,7 @@ if ($action === 'hold_release') {
         } catch (\Throwable $e) {
         }
     }
+    log_activity('payment', 'hold.release', 'Damage-deposit hold released — ' . ($b['name'] ?? ''), ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
     json_out(['ok' => true, 'email' => $emailResult]);
 }
 
@@ -970,6 +975,7 @@ if ($action === 'return_deposit') {
             $emailResult = ['ok' => false, 'error' => $e->getMessage()];
         }
     }
+    log_activity('payment', 'deposit.return', 'Damage deposit returned — £' . number_format((float) $amount, 2) . ($b['name'] ? ' · ' . $b['name'] : ''), ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
     json_out(['ok' => true, 'returned' => $amount, 'status' => $status, 'email' => $emailResult]);
 }
 
