@@ -33,16 +33,42 @@ if (!function_exists('mailbox_auto_enabled')) {
 if (!function_exists('strip_quoted_reply')) {
     function strip_quoted_reply($text) {
         $text = str_replace(["\r\n", "\r"], "\n", (string)$text);
+        $len = strlen($text);
+        $cut = $len;
+
+        // (a) The attribution line that precedes a quote — matched across a possible
+        //     line-wrap ("On 4 Jul 2026, at 19:59, Cottage Holidays Blakeney\n
+        //     <bookings@…> wrote:"), which is why the old single-line regex missed it.
+        if (preg_match('/(^|\n)(On .{0,300}?wrote:)/si', $text, $m, PREG_OFFSET_CAPTURE)) {
+            $cut = min($cut, $m[2][1]);
+        }
+        // (b) Other client dividers before the quoted original.
+        foreach (["-----Original Message-----", "Begin forwarded message:", "________________________________", "Reply above this line"] as $sep) {
+            $p = stripos($text, $sep);
+            if ($p !== false) $cut = min($cut, $p);
+        }
+        // (c) Belt-and-braces: phrases that ONLY ever appear in a quoted copy of one
+        //     of OUR own notification/relay emails — so even an odd client that quotes
+        //     with no ">" prefix and no attribution still gets trimmed cleanly.
+        foreach ([
+            'Someone has sent you a message via the website chat',
+            'You have a new message from Cottage Holidays Blakeney',
+            'Just reply to this email',
+            'Or open the back office',
+            'Reply on our website chat',
+        ] as $mk) {
+            $p = stripos($text, $mk);
+            if ($p !== false) $cut = min($cut, $p);
+        }
+        $text = substr($text, 0, $cut);
+
+        // Line cleanup on what's left: drop any ">" quoted lines and the signature.
         $out = [];
         foreach (explode("\n", $text) as $ln) {
             $t = trim($ln);
-            if (preg_match('/^On .+wrote:$/', $t)) break;                 // Gmail/Apple "On … wrote:"
-            if (preg_match('/^-{2,}\s*Original Message\s*-{2,}/i', $t)) break;
-            if (preg_match('/^={2,}\s*Reply above this line/i', $t)) break;
-            if (preg_match('/^_{5,}$/', $t)) break;                        // Outlook divider
-            if ($t === '-- ' || $t === '--') break;                        // signature delimiter
-            if (preg_match('/^(From|Sent|To|Subject):\s/i', $t) && count($out) > 2) break;  // quoted header block
-            if (strpos($t, '>') === 0) continue;                           // drop quoted lines
+            if ($t === '-- ' || $t === '--') break;               // signature delimiter
+            if ($t === '_' || preg_match('/^_{5,}$/', $t)) break;  // divider
+            if (strpos($t, '>') === 0) continue;                   // quoted line
             $out[] = $ln;
         }
         while ($out && trim($out[count($out) - 1]) === '') array_pop($out);

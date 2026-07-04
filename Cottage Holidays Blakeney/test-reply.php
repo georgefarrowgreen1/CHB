@@ -36,6 +36,18 @@ $sig = "Perfect, booked.\n\n-- \nGeorge\nCottage Holidays Blakeney";
 chk('signature stripped', strip_quoted_reply($sig) === "Perfect, booked.");
 $plain = "Just a normal reply with no quote.";
 chk('plain reply untouched', strip_quoted_reply($plain) === $plain);
+// The real-world miss: iOS Mail attribution WRAPPED onto two lines, quote has no ">".
+$iosWrapped = "Sounds great, see you soon!\n\nOn 4 Jul 2026, at 19:59, Cottage Holidays Blakeney\n<bookings\@x.co.uk> wrote:\n\nSomeone has sent you a message via the website chat.\n\nFrom: George (george\@icloud.com)\n\n\"Boo\"\n\nJust reply to this email and the guest gets it on the website and by email.";
+chk('wrapped iOS attribution stripped', strip_quoted_reply($iosWrapped) === "Sounds great, see you soon!");
+// Owner replied with NO added text → whole body is our quoted notification → empty.
+$quoteOnly = "On 4 Jul 2026, at 19:59, Cottage Holidays Blakeney\n<bookings\@x.co.uk> wrote:\n\nSomeone has sent you a message via the website chat.\n\n\"Boo\"\n\nJust reply to this email and the guest gets it on the website and by email.";
+chk('quote-only reply → empty (skipped)', strip_quoted_reply($quoteOnly) === '');
+// No attribution at all, quote not ">"-prefixed → cut at our known phrase.
+$noAttrib = "Yep all good.\n\nSomeone has sent you a message via the website chat.\n\n\"Boo\"";
+chk('our-phrase cut with no attribution', strip_quoted_reply($noAttrib) === "Yep all good.");
+// Guest-side relay quoted back.
+$guestQuote = "Thanks!\n\nYou have a new message from Cottage Holidays Blakeney:\n\n\"see you then\"";
+chk('guest relay phrase cut', strip_quoted_reply($guestQuote) === "Thanks!");
 
 echo "== Zero-setup mailbox parsing ==\n";
 require_once __DIR__ . '/mailbox-read.php';   // endpoint block is basename-guarded → no side effects
