@@ -12,6 +12,9 @@ $build = '';
 // BUILD lives in app.js; fall back to index.html for older deploys.
 foreach (['/app.js', '/index.html'] as $f) {
     $src = @file_get_contents(__DIR__ . $f);
-    if ($src !== false && preg_match("/const BUILD = '([^']+)'/", $src, $m)) { $build = $m[1]; break; }
+    if ($src !== false && preg_match("/const BUILD = '([^']+)'/", $src, $m)) {
+        $build = $m[1];
+        break;
+    }
 }
 echo json_encode(['build' => $build]);

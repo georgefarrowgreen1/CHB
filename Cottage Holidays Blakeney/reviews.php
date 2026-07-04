@@ -14,16 +14,25 @@ require_once __DIR__ . '/mailer.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     try {
-        $rows = db()->query(
-            "SELECT r.prop_key, r.stars, r.review_text, g.name
+        $rows = db()
+            ->query(
+                "SELECT r.prop_key, r.stars, r.review_text, g.name
              FROM guest_reviews r JOIN guests g ON g.id = r.guest_id
-             WHERE r.status = 'approved' ORDER BY r.created_at DESC"
-        )->fetchAll();
-    } catch (\Throwable $e) { $rows = []; }   // table missing — no reviews yet
-    $out = array_map(fn($r) => [
-        'name' => $r['name'], 'stars' => (int)$r['stars'],
-        'text' => $r['review_text'], 'prop' => $r['prop_key'],
-    ], $rows);
+             WHERE r.status = 'approved' ORDER BY r.created_at DESC",
+            )
+            ->fetchAll();
+    } catch (\Throwable $e) {
+        $rows = [];
+    } // table missing — no reviews yet
+    $out = array_map(
+        fn($r) => [
+            'name' => $r['name'],
+            'stars' => (int) $r['stars'],
+            'text' => $r['review_text'],
+            'prop' => $r['prop_key'],
+        ],
+        $rows,
+    );
     json_out(['reviews' => $out]);
 }
 
@@ -33,33 +42,43 @@ $action = $in['action'] ?? '';
 if ($action === 'submit') {
     require_guest();
     $propKey = clean($in['prop_key'] ?? '');
-    $stars = (int)($in['stars'] ?? 0);
-    $text = trim((string)($in['text'] ?? ''));
-    if ($stars < 1 || $stars > 5) json_out(['error' => 'Please choose a star rating'], 400);
-    if (mb_strlen($text) < 10) json_out(['error' => 'Please write at least a sentence or two'], 400);
-    if (mb_strlen($text) > 1000) json_out(['error' => 'Reviews are capped at 1000 characters'], 400);
+    $stars = (int) ($in['stars'] ?? 0);
+    $text = trim((string) ($in['text'] ?? ''));
+    if ($stars < 1 || $stars > 5) {
+        json_out(['error' => 'Please choose a star rating'], 400);
+    }
+    if (mb_strlen($text) < 10) {
+        json_out(['error' => 'Please write at least a sentence or two'], 400);
+    }
+    if (mb_strlen($text) > 1000) {
+        json_out(['error' => 'Reviews are capped at 1000 characters'], 400);
+    }
 
     // Verify the guest has actually COMPLETED a stay at this property
     // (a booking under their email with a check-out in the past).
     $g = db()->prepare('SELECT name, email FROM guests WHERE id = ?');
     $g->execute([$_SESSION['guest_id']]);
     $guest = $g->fetch();
-    if (!$guest) json_out(['error' => 'Account not found'], 404);
+    if (!$guest) {
+        json_out(['error' => 'Account not found'], 404);
+    }
     $s = db()->prepare('SELECT COUNT(*) c FROM bookings
                         WHERE prop_key = ? AND LOWER(email) = LOWER(?) AND check_out <= CURDATE()');
     $s->execute([$propKey, $guest['email']]);
-    if ((int)$s->fetch()['c'] === 0) {
+    if ((int) $s->fetch()['c'] === 0) {
         json_out(['error' => 'Reviews can be left once your stay is complete.'], 403);
     }
 
     // One review per guest per property: insert, or update + back to pending.
     try {
-        db()->prepare(
-            'INSERT INTO guest_reviews (guest_id, prop_key, stars, review_text, status)
+        db()
+            ->prepare(
+                'INSERT INTO guest_reviews (guest_id, prop_key, stars, review_text, status)
              VALUES (?,?,?,?,\'pending\')
              ON DUPLICATE KEY UPDATE stars = VALUES(stars),
-                 review_text = VALUES(review_text), status = \'pending\''
-        )->execute([$_SESSION['guest_id'], $propKey, $stars, $text]);
+                 review_text = VALUES(review_text), status = \'pending\'',
+            )
+            ->execute([$_SESSION['guest_id'], $propKey, $stars, $text]);
     } catch (\Throwable $e) {
         json_out(['error' => 'Reviews table missing — run migration-guest-reviews.sql first'], 500);
     }
@@ -67,10 +86,13 @@ if ($action === 'submit') {
     // Best-effort heads-up to the owner (never blocks the submission)
     if (defined('MAIL_ENABLED') && MAIL_ENABLED && defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL !== '') {
         try {
-            send_owner('New guest review awaiting approval',
-                "A review was submitted by {$guest['name']} for {$propKey} ({$stars}\xE2\x98\x85):\n\n{$text}\n\n"
-                . "Approve or decline it in Settings & Fees -> Guest Reviews.");
-        } catch (\Throwable $e) {}
+            send_owner(
+                'New guest review awaiting approval',
+                "A review was submitted by {$guest['name']} for {$propKey} ({$stars}\xE2\x98\x85):\n\n{$text}\n\n" .
+                    'Approve or decline it in Settings & Fees -> Guest Reviews.',
+            );
+        } catch (\Throwable $e) {
+        }
     }
     json_out(['ok' => true, 'status' => 'pending']);
 }
@@ -81,10 +103,12 @@ if ($action === 'mine') {
         $s = db()->prepare('SELECT prop_key, stars, review_text, status FROM guest_reviews WHERE guest_id = ?');
         $s->execute([$_SESSION['guest_id']]);
         $rows = $s->fetchAll();
-    } catch (\Throwable $e) { $rows = []; }
+    } catch (\Throwable $e) {
+        $rows = [];
+    }
     $out = [];
     foreach ($rows as $r) {
-        $out[$r['prop_key']] = ['stars' => (int)$r['stars'], 'text' => $r['review_text'], 'status' => $r['status']];
+        $out[$r['prop_key']] = ['stars' => (int) $r['stars'], 'text' => $r['review_text'], 'status' => $r['status']];
     }
     json_out(['mine' => $out]);
 }
@@ -93,26 +117,36 @@ require_admin();
 
 if ($action === 'list_admin') {
     try {
-        $rows = db()->query(
-            'SELECT r.id, r.prop_key, r.stars, r.review_text, r.status, r.created_at, g.name, g.email
+        $rows = db()
+            ->query(
+                'SELECT r.id, r.prop_key, r.stars, r.review_text, r.status, r.created_at, g.name, g.email
              FROM guest_reviews r JOIN guests g ON g.id = r.guest_id
-             ORDER BY (r.status = \'pending\') DESC, r.created_at DESC'
-        )->fetchAll();
-    } catch (\Throwable $e) { $rows = []; }
+             ORDER BY (r.status = \'pending\') DESC, r.created_at DESC',
+            )
+            ->fetchAll();
+    } catch (\Throwable $e) {
+        $rows = [];
+    }
     json_out(['reviews' => $rows]);
 }
 
 if ($action === 'set_status') {
-    $id = (int)($in['id'] ?? 0);
+    $id = (int) ($in['id'] ?? 0);
     $status = in_array($in['status'] ?? '', ['approved', 'declined'], true) ? $in['status'] : null;
-    if (!$id || !$status) json_out(['error' => 'Invalid request'], 400);
-    db()->prepare('UPDATE guest_reviews SET status = ? WHERE id = ?')->execute([$status, $id]);
+    if (!$id || !$status) {
+        json_out(['error' => 'Invalid request'], 400);
+    }
+    db()
+        ->prepare('UPDATE guest_reviews SET status = ? WHERE id = ?')
+        ->execute([$status, $id]);
     json_out(['ok' => true]);
 }
 
 if ($action === 'delete') {
-    $id = (int)($in['id'] ?? 0);
-    db()->prepare('DELETE FROM guest_reviews WHERE id = ?')->execute([$id]);
+    $id = (int) ($in['id'] ?? 0);
+    db()
+        ->prepare('DELETE FROM guest_reviews WHERE id = ?')
+        ->execute([$id]);
     json_out(['ok' => true]);
 }
 

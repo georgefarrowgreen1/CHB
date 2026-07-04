@@ -14,52 +14,65 @@
 // Ships to production too, but is never routed to there. If hit on a non-staging
 // host, just send the visitor to the homepage.
 $host = $_SERVER['HTTP_HOST'] ?? '';
-if (!preg_match('/(^|\.)staging\./i', $host)) { header('Location: /'); exit; }
+if (!preg_match('/(^|\.)staging\./i', $host)) {
+    header('Location: /');
+    exit();
+}
 
 @include_once __DIR__ . '/config.php';
-$realm  = 'Staging — authorised access only';
-$user   = defined('STAGING_GATE_USER') ? (string) STAGING_GATE_USER : '';
-$pass   = defined('STAGING_GATE_PASS') ? (string) STAGING_GATE_PASS : '';
+$realm = 'Staging — authorised access only';
+$user = defined('STAGING_GATE_USER') ? (string) STAGING_GATE_USER : '';
+$pass = defined('STAGING_GATE_PASS') ? (string) STAGING_GATE_PASS : '';
 $secret = defined('APP_SECRET') ? (string) APP_SECRET : '';
 $cookieName = 'chb_staging_gate';
 // Cookie token is an HMAC of the username with APP_SECRET — unforgeable, and the
 // password is never stored on the device.
-$cookieVal = ($secret !== '') ? hash_hmac('sha256', 'staging-gate|' . $user, $secret) : '';
+$cookieVal = $secret !== '' ? hash_hmac('sha256', 'staging-gate|' . $user, $secret) : '';
 
 $serve = function () {
     header('Content-Type: text/html; charset=utf-8');
     header('X-Robots-Tag: noindex, nofollow');
     readfile(__DIR__ . '/index.html');
-    exit;
+    exit();
 };
 
 // ---- 1) Form login (fallback when the native dialog doesn't appear) ----------
 $loginError = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $u = (string) ($_POST['u'] ?? ''); $p = (string) ($_POST['p'] ?? '');
+    $u = (string) ($_POST['u'] ?? '');
+    $p = (string) ($_POST['p'] ?? '');
     if ($user !== '' && $cookieVal !== '' && hash_equals($user, $u) && hash_equals($pass, $p)) {
         setcookie($cookieName, $cookieVal, [
-            'expires' => time() + 60 * 60 * 24 * 30, 'path' => '/',
-            'secure' => true, 'httponly' => true, 'samesite' => 'Lax',
+            'expires' => time() + 60 * 60 * 24 * 30,
+            'path' => '/',
+            'secure' => true,
+            'httponly' => true,
+            'samesite' => 'Lax',
         ]);
-        header('Location: /'); exit;   // reload → now authorised via the cookie
+        header('Location: /');
+        exit(); // reload → now authorised via the cookie
     }
     $loginError = 'Wrong username or password — please try again.';
 }
 
 // ---- 2) Already authorised? Basic Auth header OR a valid cookie --------------
 $bu = $_SERVER['PHP_AUTH_USER'] ?? null;
-$bp = $_SERVER['PHP_AUTH_PW']   ?? null;
+$bp = $_SERVER['PHP_AUTH_PW'] ?? null;
 if ($bu === null) {
     $hdr = $_SERVER['HTTP_AUTHORIZATION'] ?? ($_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '');
     if (preg_match('/Basic\s+(.+)/i', $hdr, $m)) {
         $dec = base64_decode($m[1], true);
-        if ($dec !== false && strpos($dec, ':') !== false) { list($bu, $bp) = explode(':', $dec, 2); }
+        if ($dec !== false && strpos($dec, ':') !== false) {
+            [$bu, $bp] = explode(':', $dec, 2);
+        }
     }
 }
-$basicOk  = $user !== '' && is_string($bu) && is_string($bp) && hash_equals($user, $bu) && hash_equals($pass, $bp);
-$cookieOk = $cookieVal !== '' && isset($_COOKIE[$cookieName]) && hash_equals($cookieVal, (string) $_COOKIE[$cookieName]);
-if ($basicOk || $cookieOk) { $serve(); }
+$basicOk = $user !== '' && is_string($bu) && is_string($bp) && hash_equals($user, $bu) && hash_equals($pass, $bp);
+$cookieOk =
+    $cookieVal !== '' && isset($_COOKIE[$cookieName]) && hash_equals($cookieVal, (string) $_COOKIE[$cookieName]);
+if ($basicOk || $cookieOk) {
+    $serve();
+}
 
 // ---- 3) Not authorised → 401 page with a login form + button -----------------
 // Still offer the native Basic dialog (works on desktop); the form covers the rest.
@@ -88,7 +101,9 @@ $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
   <form class="box" method="POST" action="/staging-gate.php">
     <h1>Staging — restricted</h1>
     <p class="sub">This is a private test environment. Authorised access only — sign in to continue.</p>
-    <?php if ($loginError) echo '<p class="err">' . $esc($loginError) . '</p>'; ?>
+    <?php if ($loginError) {
+        echo '<p class="err">' . $esc($loginError) . '</p>';
+    } ?>
     <label for="u">Username</label>
     <input id="u" name="u" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" required>
     <label for="p">Password</label>

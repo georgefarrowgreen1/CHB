@@ -16,7 +16,7 @@
 // ============================================================
 require_once __DIR__ . '/db.php';
 
-$isCron = isset($_GET['cron']) && hash_equals(APP_SECRET, (string)$_GET['cron']);
+$isCron = isset($_GET['cron']) && hash_equals(APP_SECRET, (string) $_GET['cron']);
 if (!$isCron && empty($_SESSION['admin_id'])) {
     json_out(['error' => 'Not authorised'], 401);
 }
@@ -36,7 +36,9 @@ db()->exec('CREATE TABLE IF NOT EXISTS schema_migrations (
 $applied = [];
 if (!$force) {
     $st = db()->query('SELECT filename FROM schema_migrations');
-    foreach ($st->fetchAll() as $r) { $applied[$r['filename']] = true; }
+    foreach ($st->fetchAll() as $r) {
+        $applied[$r['filename']] = true;
+    }
 }
 
 $files = glob(__DIR__ . '/migration-*.sql');
@@ -46,44 +48,75 @@ sort($files);
 // ';' — but only OUTSIDE string literals / quoted identifiers, so semicolons that
 // appear inside seed text (e.g. "...sail daily; check tide times...") don't chop a
 // statement in half. Handles '' / "" doubling and backslash escapes.
-function split_sql($path) {
-    $raw = (string)file_get_contents($path);
-    $raw = preg_replace('!/\*.*?\*/!s', '', $raw);              // block comments
+function split_sql($path)
+{
+    $raw = (string) file_get_contents($path);
+    $raw = preg_replace('!/\*.*?\*/!s', '', $raw); // block comments
     $kept = [];
     foreach (preg_split('/\r?\n/', $raw) as $line) {
         $t = ltrim($line);
-        if ($t === '' || strpos($t, '--') === 0 || strpos($t, '#') === 0) continue;
+        if ($t === '' || strpos($t, '--') === 0 || strpos($t, '#') === 0) {
+            continue;
+        }
         $kept[] = $line;
     }
     $sql = implode("\n", $kept);
-    $parts = []; $buf = ''; $q = ''; $len = strlen($sql);
+    $parts = [];
+    $buf = '';
+    $q = '';
+    $len = strlen($sql);
     for ($i = 0; $i < $len; $i++) {
         $ch = $sql[$i];
-        if ($q !== '') {                                  // inside a quoted string / identifier
+        if ($q !== '') {
+            // inside a quoted string / identifier
             $buf .= $ch;
-            if ($ch === '\\' && $q !== '`' && $i + 1 < $len) { $buf .= $sql[++$i]; }     // backslash escape
+            if ($ch === '\\' && $q !== '`' && $i + 1 < $len) {
+                $buf .= $sql[++$i];
+            }
+            // backslash escape
             elseif ($ch === $q) {
-                if ($i + 1 < $len && $sql[$i + 1] === $q) { $buf .= $sql[++$i]; }         // doubled = literal quote
-                else { $q = ''; }                                                        // string closed
+                if ($i + 1 < $len && $sql[$i + 1] === $q) {
+                    $buf .= $sql[++$i];
+                }
+                // doubled = literal quote
+                else {
+                    $q = '';
+                } // string closed
             }
         } elseif ($ch === ';') {
-            $parts[] = trim($buf); $buf = '';
+            $parts[] = trim($buf);
+            $buf = '';
         } else {
             $buf .= $ch;
-            if ($ch === "'" || $ch === '"' || $ch === '`') { $q = $ch; }                 // string opened
+            if ($ch === "'" || $ch === '"' || $ch === '`') {
+                $q = $ch;
+            } // string opened
         }
     }
-    if (trim($buf) !== '') $parts[] = trim($buf);
+    if (trim($buf) !== '') {
+        $parts[] = trim($buf);
+    }
 
     return array_values(array_filter($parts, fn($s) => $s !== ''));
 }
 
 // MySQL errors that simply mean "this change is already in place".
-function is_idempotent_error($msg) {
+function is_idempotent_error($msg)
+{
     $m = strtolower($msg);
-    foreach (['duplicate column', 'already exists', 'duplicate key name',
-              'multiple primary key', "check that column/key exists"] as $needle) {
-        if (strpos($m, $needle) !== false) return true;
+    foreach (
+        [
+            'duplicate column',
+            'already exists',
+            'duplicate key name',
+            'multiple primary key',
+            'check that column/key exists',
+        ]
+        as $needle
+    ) {
+        if (strpos($m, $needle) !== false) {
+            return true;
+        }
     }
     return false;
 }
@@ -91,7 +124,10 @@ function is_idempotent_error($msg) {
 $report = [];
 foreach ($files as $path) {
     $name = basename($path);
-    if (isset($applied[$name])) { $report[] = ['file' => $name, 'status' => 'already-recorded']; continue; }
+    if (isset($applied[$name])) {
+        $report[] = ['file' => $name, 'status' => 'already-recorded'];
+        continue;
+    }
 
     if ($baseline) {
         $ins = db()->prepare('INSERT INTO schema_migrations (filename, applied_at) VALUES (?, NOW())');
@@ -100,12 +136,20 @@ foreach ($files as $path) {
         continue;
     }
 
-    $hardError = null; $ran = 0; $skipped = 0;
+    $hardError = null;
+    $ran = 0;
+    $skipped = 0;
     foreach (split_sql($path) as $stmt) {
-        try { db()->exec($stmt); $ran++; }
-        catch (\Throwable $e) {
-            if (is_idempotent_error($e->getMessage())) { $skipped++; }
-            else { $hardError = $e->getMessage(); break; }
+        try {
+            db()->exec($stmt);
+            $ran++;
+        } catch (\Throwable $e) {
+            if (is_idempotent_error($e->getMessage())) {
+                $skipped++;
+            } else {
+                $hardError = $e->getMessage();
+                break;
+            }
         }
     }
     if ($hardError) {
@@ -113,15 +157,26 @@ foreach ($files as $path) {
         $report[] = ['file' => $name, 'status' => 'ERROR', 'ran' => $ran, 'error' => $hardError];
         continue;
     }
-    db()->prepare('INSERT INTO schema_migrations (filename, applied_at) VALUES (?, NOW())
-                   ON DUPLICATE KEY UPDATE applied_at = NOW()')
+    db()
+        ->prepare(
+            'INSERT INTO schema_migrations (filename, applied_at) VALUES (?, NOW())
+                   ON DUPLICATE KEY UPDATE applied_at = NOW()',
+        )
         ->execute([$name]);
-    $report[] = ['file' => $name, 'status' => $force ? 're-applied' : 'applied', 'statements_run' => $ran, 'already_present' => $skipped];
+    $report[] = [
+        'file' => $name,
+        'status' => $force ? 're-applied' : 'applied',
+        'statements_run' => $ran,
+        'already_present' => $skipped,
+    ];
 }
 
 $failed = array_filter($report, fn($r) => ($r['status'] ?? '') === 'ERROR');
-json_out([
-    'ok' => empty($failed),
-    'mode' => $baseline ? 'baseline' : ($force ? 'force' : 'apply'),
-    'migrations' => $report,
-], empty($failed) ? 200 : 500);
+json_out(
+    [
+        'ok' => empty($failed),
+        'mode' => $baseline ? 'baseline' : ($force ? 'force' : 'apply'),
+        'migrations' => $report,
+    ],
+    empty($failed) ? 200 : 500,
+);

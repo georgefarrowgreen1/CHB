@@ -13,7 +13,13 @@ header('X-Robots-Tag: noindex, nofollow');
 // text over plain HTTP. Refuse unless the request is HTTPS (proxy-aware — see
 // request_is_https() in db.php). Enable Force HTTPS (deploy step 4) before this step.
 if (!request_is_https()) {
-    json_out(['error' => 'Load this over https:// (not http://) so your password stays encrypted. Enable Force HTTPS in IONOS first.'], 400);
+    json_out(
+        [
+            'error' =>
+                'Load this over https:// (not http://) so your password stays encrypted. Enable Force HTTPS in IONOS first.',
+        ],
+        400,
+    );
 }
 
 $username = clean($_GET['username'] ?? '');
@@ -25,7 +31,7 @@ if ($username === '' || strlen($password) < 12) {
 
 // Refuse if an admin already exists (so this can't be abused to add admins)
 $count = db()->query('SELECT COUNT(*) AS c FROM admins')->fetch()['c'];
-if ((int)$count > 0) {
+if ((int) $count > 0) {
     json_out(['error' => 'An admin already exists. Delete setup.php.'], 403);
 }
 

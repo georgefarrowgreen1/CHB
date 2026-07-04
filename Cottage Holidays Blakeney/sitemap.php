@@ -11,21 +11,28 @@ header('Content-Type: application/xml; charset=UTF-8');
 
 // Single canonical origin (matches the SITE_ORIGIN used for canonicals/JSON-LD).
 $origin = 'https://cottageholidaysblakeney.co.uk';
-$today  = date('Y-m-d');
+$today = date('Y-m-d');
 
 // Live cottages, in display order.
 $cottages = [];
 try {
-    foreach (db()->query('SELECT slug, prop_key FROM properties WHERE archived_at IS NULL ORDER BY sort_order, name')->fetchAll() as $r) {
+    foreach (
+        db()
+            ->query('SELECT slug, prop_key FROM properties WHERE archived_at IS NULL ORDER BY sort_order, name')
+            ->fetchAll()
+        as $r
+    ) {
         $slug = $r['slug'] ?: $r['prop_key'];
-        if ($slug !== '') $cottages[] = $slug;
+        if ($slug !== '') {
+            $cottages[] = $slug;
+        }
     }
 } catch (\Throwable $e) {
     // Pre-migration fallback: the original three.
     $cottages = ['21a-westgate', 'jollyboat', 'pimpernel'];
 }
 
-$esc = fn($s) => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
+$esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
 
 echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
 echo '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"' . "\n";

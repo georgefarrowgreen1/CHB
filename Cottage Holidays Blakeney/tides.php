@@ -13,5 +13,5 @@ header('Content-Type: application/json; charset=utf-8');
 header('Cache-Control: public, max-age=1800');
 
 $start = $_GET['start'] ?? null;
-$days  = $_GET['days'] ?? 2;
+$days = $_GET['days'] ?? 2;
 echo json_encode(tide_extremes($start, $days));

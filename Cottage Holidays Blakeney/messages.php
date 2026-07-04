@@ -25,28 +25,44 @@ $action = $in['action'] ?? '';
 $isAdmin = !empty($_SESSION['admin_id']);
 $guestId = current_guest_id();
 
-function chat_msgs($threadId) {
+function chat_msgs($threadId)
+{
     $s = db()->prepare('SELECT id, sender_role, body, created_at FROM messages WHERE thread_id = ? ORDER BY id ASC');
     $s->execute([$threadId]);
-    return array_map(fn($r) => ['id' => (int)$r['id'], 'role' => $r['sender_role'], 'body' => $r['body'], 'at' => $r['created_at']], $s->fetchAll());
+    return array_map(
+        fn($r) => ['id' => (int) $r['id'], 'role' => $r['sender_role'], 'body' => $r['body'], 'at' => $r['created_at']],
+        $s->fetchAll(),
+    );
 }
-function chat_source($ref) {
-    $ref = trim((string)$ref);
-    if ($ref === '') $ref = $_SERVER['HTTP_REFERER'] ?? '';
-    if ($ref === '') return 'Direct / unknown';
+function chat_source($ref)
+{
+    $ref = trim((string) $ref);
+    if ($ref === '') {
+        $ref = $_SERVER['HTTP_REFERER'] ?? '';
+    }
+    if ($ref === '') {
+        return 'Direct / unknown';
+    }
     $h = parse_url($ref, PHP_URL_HOST);
-    if (!$h) return 'Direct / unknown';
+    if (!$h) {
+        return 'Direct / unknown';
+    }
     $h = strtolower(preg_replace('/^www\./', '', $h));
-    $self = strtolower(preg_replace('/^www\./', '', (string)parse_url('http://' . ($_SERVER['HTTP_HOST'] ?? ''), PHP_URL_HOST)));
-    return ($h === $self) ? 'Direct' : mb_substr($h, 0, 190);
+    $self = strtolower(
+        preg_replace('/^www\./', '', (string) parse_url('http://' . ($_SERVER['HTTP_HOST'] ?? ''), PHP_URL_HOST)),
+    );
+    return $h === $self ? 'Direct' : mb_substr($h, 0, 190);
 }
-function chat_location() {
-    $country = $_SERVER['GEOIP_COUNTRY_NAME'] ?? $_SERVER['HTTP_CF_IPCOUNTRY'] ?? $_SERVER['GEOIP_COUNTRY_CODE'] ?? '';
-    $city = $_SERVER['GEOIP_CITY'] ?? $_SERVER['HTTP_CF_IPCITY'] ?? '';
-    $loc = trim(trim($city) . (($city && $country) ? ', ' : '') . trim($country));
+function chat_location()
+{
+    $country =
+        $_SERVER['GEOIP_COUNTRY_NAME'] ?? ($_SERVER['HTTP_CF_IPCOUNTRY'] ?? ($_SERVER['GEOIP_COUNTRY_CODE'] ?? ''));
+    $city = $_SERVER['GEOIP_CITY'] ?? ($_SERVER['HTTP_CF_IPCITY'] ?? '');
+    $loc = trim(trim($city) . ($city && $country ? ', ' : '') . trim($country));
     return $loc !== '' ? mb_substr($loc, 0, 120) : null;
 }
-function chat_notify_owner($name, $email, $bodyTxt, $threadId = 0) {
+function chat_notify_owner($name, $email, $bodyTxt, $threadId = 0)
+{
     try {
         require_once __DIR__ . '/mailer.php';
         if (function_exists('send_owner')) {
@@ -54,19 +70,44 @@ function chat_notify_owner($name, $email, $bodyTxt, $threadId = 0) {
             // (plus-addressed with the thread token) and echo the token in the
             // Message-ID so the reply's In-Reply-To carries it back to us. The extra
             // line tells the owner they can just reply.
-            $replyAddr = ($threadId > 0 && function_exists('msg_reply_address')) ? msg_reply_address($threadId) : '';
-            $msgId = ($replyAddr && function_exists('msg_reply_token')) ? 'msg.' . msg_reply_token($threadId) : null;
-            $replyHint = $replyAddr ? "\nJust reply to this email and the guest gets it on the website and by email." : '';
+            $replyAddr = $threadId > 0 && function_exists('msg_reply_address') ? msg_reply_address($threadId) : '';
+            $msgId = $replyAddr && function_exists('msg_reply_token') ? 'msg.' . msg_reply_token($threadId) : null;
+            $replyHint = $replyAddr
+                ? "\nJust reply to this email and the guest gets it on the website and by email."
+                : '';
             // Zero-setup (POP3) route matches the token from headers/subject, so tag
             // the subject as a fallback; the webhook route uses the plus-address.
-            $subjTag = ($replyAddr && function_exists('msg_reply_needs_subject_tag') && msg_reply_needs_subject_tag())
-                ? ' [#' . msg_reply_token($threadId) . ']' : '';
-            $body = "Someone has sent you a message via the website chat.\n\nFrom: " . ($name ?: '—') . " (" . ($email ?: 'no email') . ")\n\n\"" . $bodyTxt . "\"\n" . $replyHint . "\nOr open the back office → Guest messages to reply.";
-            send_owner('New website message — Cottage Holidays Blakeney' . $subjTag, $body, null, [], $replyAddr ?: null, $msgId);
+            $subjTag =
+                $replyAddr && function_exists('msg_reply_needs_subject_tag') && msg_reply_needs_subject_tag()
+                    ? ' [#' . msg_reply_token($threadId) . ']'
+                    : '';
+            $body =
+                "Someone has sent you a message via the website chat.\n\nFrom: " .
+                ($name ?: '—') .
+                ' (' .
+                ($email ?: 'no email') .
+                ")\n\n\"" .
+                $bodyTxt .
+                "\"\n" .
+                $replyHint .
+                "\nOr open the back office → Guest messages to reply.";
+            send_owner(
+                'New website message — Cottage Holidays Blakeney' . $subjTag,
+                $body,
+                null,
+                [],
+                $replyAddr ?: null,
+                $msgId,
+            );
         }
-    } catch (\Throwable $e) {}
+    } catch (\Throwable $e) {
+    }
     // Wake the owner's devices (best-effort).
-    try { require_once __DIR__ . '/webpush.php'; alert_owner('New message', ($name ?: 'A visitor') . ': ' . mb_substr($bodyTxt, 0, 80)); } catch (\Throwable $e) {}
+    try {
+        require_once __DIR__ . '/webpush.php';
+        alert_owner('New message', ($name ?: 'A visitor') . ': ' . mb_substr($bodyTxt, 0, 80));
+    } catch (\Throwable $e) {
+    }
 }
 
 // chat_admin_reply() (posts an owner reply to the thread + emails the guest) is
@@ -80,49 +121,92 @@ require_once __DIR__ . '/chat-lib.php';
 if ($isAdmin && empty($in['token'])) {
     try {
         if ($action === 'thread') {
-            $tid = (int)($in['thread_id'] ?? 0);
-            if ($tid <= 0) json_out(['error' => 'thread_id required'], 400);
-            db()->prepare("UPDATE messages SET read_by_admin = 1 WHERE thread_id = ? AND sender_role = 'guest'")->execute([$tid]);
-            $t = db()->prepare('SELECT * FROM chat_threads WHERE id = ?'); $t->execute([$tid]); $thread = $t->fetch() ?: [];
+            $tid = (int) ($in['thread_id'] ?? 0);
+            if ($tid <= 0) {
+                json_out(['error' => 'thread_id required'], 400);
+            }
+            db()
+                ->prepare("UPDATE messages SET read_by_admin = 1 WHERE thread_id = ? AND sender_role = 'guest'")
+                ->execute([$tid]);
+            $t = db()->prepare('SELECT * FROM chat_threads WHERE id = ?');
+            $t->execute([$tid]);
+            $thread = $t->fetch() ?: [];
             // Their bookings (matched by email), if any.
             $bookings = [];
             if (!empty($thread['email'])) {
                 try {
-                    $b = db()->prepare('SELECT prop_key, check_in, check_out, payment FROM bookings WHERE LOWER(email) = LOWER(?) ORDER BY check_in DESC LIMIT 10');
+                    $b = db()->prepare(
+                        'SELECT prop_key, check_in, check_out, payment FROM bookings WHERE LOWER(email) = LOWER(?) ORDER BY check_in DESC LIMIT 10',
+                    );
                     $b->execute([$thread['email']]);
-                    $bookings = array_map(fn($r) => ['prop_key' => $r['prop_key'], 'check_in' => $r['check_in'], 'check_out' => $r['check_out'], 'payment' => $r['payment']], $b->fetchAll());
-                } catch (\Throwable $e) {}
+                    $bookings = array_map(
+                        fn($r) => [
+                            'prop_key' => $r['prop_key'],
+                            'check_in' => $r['check_in'],
+                            'check_out' => $r['check_out'],
+                            'payment' => $r['payment'],
+                        ],
+                        $b->fetchAll(),
+                    );
+                } catch (\Throwable $e) {
+                }
             }
-            json_out(['ok' => true, 'thread' => [
-                'id' => $tid, 'name' => $thread['name'] ?? '', 'email' => $thread['email'] ?? '',
-                'source' => $thread['source'] ?? '', 'location' => $thread['location'] ?? '',
-                'user_agent' => $thread['user_agent'] ?? '', 'is_guest' => !empty($thread['guest_id']),
-                'archived' => !empty($thread['archived']),
-            ], 'bookings' => $bookings, 'messages' => chat_msgs($tid)]);
+            json_out([
+                'ok' => true,
+                'thread' => [
+                    'id' => $tid,
+                    'name' => $thread['name'] ?? '',
+                    'email' => $thread['email'] ?? '',
+                    'source' => $thread['source'] ?? '',
+                    'location' => $thread['location'] ?? '',
+                    'user_agent' => $thread['user_agent'] ?? '',
+                    'is_guest' => !empty($thread['guest_id']),
+                    'archived' => !empty($thread['archived']),
+                ],
+                'bookings' => $bookings,
+                'messages' => chat_msgs($tid),
+            ]);
         }
         if ($action === 'archive' || $action === 'unarchive') {
-            $tid = (int)($in['thread_id'] ?? 0);
-            if ($tid <= 0) json_out(['error' => 'thread_id required'], 400);
-            try { db()->prepare('UPDATE chat_threads SET archived = ? WHERE id = ?')->execute([$action === 'archive' ? 1 : 0, $tid]); }
-            catch (\Throwable $e) { json_out(['error' => 'Run migrate.php to enable archiving.'], 500); }
+            $tid = (int) ($in['thread_id'] ?? 0);
+            if ($tid <= 0) {
+                json_out(['error' => 'thread_id required'], 400);
+            }
+            try {
+                db()
+                    ->prepare('UPDATE chat_threads SET archived = ? WHERE id = ?')
+                    ->execute([$action === 'archive' ? 1 : 0, $tid]);
+            } catch (\Throwable $e) {
+                json_out(['error' => 'Run migrate.php to enable archiving.'], 500);
+            }
             json_out(['ok' => true]);
         }
         if ($action === 'delete') {
-            $tid = (int)($in['thread_id'] ?? 0);
-            if ($tid <= 0) json_out(['error' => 'thread_id required'], 400);
-            db()->prepare('DELETE FROM messages WHERE thread_id = ?')->execute([$tid]);
-            db()->prepare('DELETE FROM chat_threads WHERE id = ?')->execute([$tid]);
+            $tid = (int) ($in['thread_id'] ?? 0);
+            if ($tid <= 0) {
+                json_out(['error' => 'thread_id required'], 400);
+            }
+            db()
+                ->prepare('DELETE FROM messages WHERE thread_id = ?')
+                ->execute([$tid]);
+            db()
+                ->prepare('DELETE FROM chat_threads WHERE id = ?')
+                ->execute([$tid]);
             json_out(['ok' => true]);
         }
         if ($action === 'send') {
-            $tid = (int)($in['thread_id'] ?? 0);
-            $bodyTxt = mb_substr(trim((string)($in['body'] ?? '')), 0, 4000);
-            if ($tid <= 0 || $bodyTxt === '') json_out(['error' => 'A thread and a message are required'], 400);
+            $tid = (int) ($in['thread_id'] ?? 0);
+            $bodyTxt = mb_substr(trim((string) ($in['body'] ?? '')), 0, 4000);
+            if ($tid <= 0 || $bodyTxt === '') {
+                json_out(['error' => 'A thread and a message are required'], 400);
+            }
             chat_admin_reply($tid, $bodyTxt);
             json_out(['ok' => true]);
         }
         if ($action === 'unread') {
-            $c = (int)db()->query("SELECT COUNT(*) FROM messages WHERE sender_role = 'guest' AND read_by_admin = 0")->fetchColumn();
+            $c = (int) db()
+                ->query("SELECT COUNT(*) FROM messages WHERE sender_role = 'guest' AND read_by_admin = 0")
+                ->fetchColumn();
             json_out(['ok' => true, 'count' => $c]);
         }
         // default: list threads (only those with at least one message).
@@ -142,22 +226,40 @@ if ($isAdmin && empty($in['token'])) {
             $rows = $q->fetchAll();
         } catch (\Throwable $e2) {
             // archived column not migrated yet — there are no archived threads.
-            if ($showArchived) json_out(['ok' => true, 'threads' => []]);
+            if ($showArchived) {
+                json_out(['ok' => true, 'threads' => []]);
+            }
             $hasArch = false;
-            $rows = db()->query("SELECT t.id tid, t.guest_id, t.name, t.email, t.source, t.location,
+            $rows = db()
+                ->query(
+                    "SELECT t.id tid, t.guest_id, t.name, t.email, t.source, t.location,
                     COALESCE(MAX(m.created_at), t.created_at) last_at,
                     SUM(m.sender_role = 'guest' AND m.read_by_admin = 0) unread,
                     (SELECT body FROM messages mm WHERE mm.thread_id = t.id ORDER BY mm.id DESC LIMIT 1) last_body
                 FROM chat_threads t JOIN messages m ON m.thread_id = t.id
                 GROUP BY t.id, t.guest_id, t.name, t.email, t.source, t.location
-                ORDER BY last_at DESC")->fetchAll();
+                ORDER BY last_at DESC",
+                )
+                ->fetchAll();
         }
-        json_out(['ok' => true, 'threads' => array_map(fn($r) => [
-            'thread_id' => (int)$r['tid'], 'name' => $r['name'], 'email' => $r['email'],
-            'source' => $r['source'], 'location' => $r['location'], 'is_guest' => !empty($r['guest_id']),
-            'archived' => $hasArch ? (int)($r['archived'] ?? 0) : 0,
-            'last_at' => $r['last_at'], 'unread' => (int)$r['unread'], 'last_body' => mb_substr((string)$r['last_body'], 0, 120),
-        ], $rows)]);
+        json_out([
+            'ok' => true,
+            'threads' => array_map(
+                fn($r) => [
+                    'thread_id' => (int) $r['tid'],
+                    'name' => $r['name'],
+                    'email' => $r['email'],
+                    'source' => $r['source'],
+                    'location' => $r['location'],
+                    'is_guest' => !empty($r['guest_id']),
+                    'archived' => $hasArch ? (int) ($r['archived'] ?? 0) : 0,
+                    'last_at' => $r['last_at'],
+                    'unread' => (int) $r['unread'],
+                    'last_body' => mb_substr((string) $r['last_body'], 0, 120),
+                ],
+                $rows,
+            ),
+        ]);
     } catch (\Throwable $e) {
         json_out(['error' => 'Messages not ready — has migration-chat-threads.sql been run?'], 500);
     }
@@ -167,23 +269,40 @@ if ($isAdmin && empty($in['token'])) {
 if ($guestId) {
     try {
         // Find or create this guest's thread.
-        $s = db()->prepare('SELECT id FROM chat_threads WHERE guest_id = ? LIMIT 1'); $s->execute([$guestId]);
-        $tid = (int)($s->fetchColumn() ?: 0);
+        $s = db()->prepare('SELECT id FROM chat_threads WHERE guest_id = ? LIMIT 1');
+        $s->execute([$guestId]);
+        $tid = (int) ($s->fetchColumn() ?: 0);
         if (!$tid) {
-            $g = db()->prepare('SELECT name, email FROM guests WHERE id = ?'); $g->execute([$guestId]); $gg = $g->fetch() ?: [];
-            db()->prepare('INSERT INTO chat_threads (guest_id, name, email) VALUES (?,?,?)')->execute([$guestId, $gg['name'] ?? '', $gg['email'] ?? '']);
-            $tid = (int)db()->lastInsertId();
+            $g = db()->prepare('SELECT name, email FROM guests WHERE id = ?');
+            $g->execute([$guestId]);
+            $gg = $g->fetch() ?: [];
+            db()
+                ->prepare('INSERT INTO chat_threads (guest_id, name, email) VALUES (?,?,?)')
+                ->execute([$guestId, $gg['name'] ?? '', $gg['email'] ?? '']);
+            $tid = (int) db()->lastInsertId();
         }
         if ($action === 'send') {
-            $bodyTxt = mb_substr(trim((string)($in['body'] ?? '')), 0, 4000);
-            if ($bodyTxt === '') json_out(['error' => 'Type a message first'], 400);
-            db()->prepare("INSERT INTO messages (thread_id, guest_id, sender_role, body, read_by_admin, read_by_guest) VALUES (?, ?, 'guest', ?, 0, 1)")->execute([$tid, $guestId, $bodyTxt]);
-            db()->prepare('UPDATE chat_threads SET updated_at = NOW() WHERE id = ?')->execute([$tid]);
-            $g = db()->prepare('SELECT name, email FROM guests WHERE id = ?'); $g->execute([$guestId]); $gg = $g->fetch() ?: [];
+            $bodyTxt = mb_substr(trim((string) ($in['body'] ?? '')), 0, 4000);
+            if ($bodyTxt === '') {
+                json_out(['error' => 'Type a message first'], 400);
+            }
+            db()
+                ->prepare(
+                    "INSERT INTO messages (thread_id, guest_id, sender_role, body, read_by_admin, read_by_guest) VALUES (?, ?, 'guest', ?, 0, 1)",
+                )
+                ->execute([$tid, $guestId, $bodyTxt]);
+            db()
+                ->prepare('UPDATE chat_threads SET updated_at = NOW() WHERE id = ?')
+                ->execute([$tid]);
+            $g = db()->prepare('SELECT name, email FROM guests WHERE id = ?');
+            $g->execute([$guestId]);
+            $gg = $g->fetch() ?: [];
             chat_notify_owner($gg['name'] ?? '', $gg['email'] ?? '', $bodyTxt, $tid);
             json_out(['ok' => true]);
         }
-        db()->prepare("UPDATE messages SET read_by_guest = 1 WHERE thread_id = ? AND sender_role = 'admin'")->execute([$tid]);
+        db()
+            ->prepare("UPDATE messages SET read_by_guest = 1 WHERE thread_id = ? AND sender_role = 'admin'")
+            ->execute([$tid]);
         json_out(['ok' => true, 'messages' => chat_msgs($tid)]);
     } catch (\Throwable $e) {
         json_out(['error' => 'Messages not ready — has migration-chat-threads.sql been run?'], 500);
@@ -191,41 +310,72 @@ if ($guestId) {
 }
 
 // ---------------- ANONYMOUS VISITOR (token-based) ----------------
-$token = preg_replace('/[^a-f0-9]/i', '', (string)($in['token'] ?? ''));
+$token = preg_replace('/[^a-f0-9]/i', '', (string) ($in['token'] ?? ''));
 if (strlen($token) < 16) {
     // No usable token: only a 'send' that supplies name/email can start a thread.
-    if ($action !== 'send') json_out(['ok' => true, 'messages' => []]);
+    if ($action !== 'send') {
+        json_out(['ok' => true, 'messages' => []]);
+    }
 }
 try {
     $tid = 0;
     if (strlen($token) >= 16) {
-        $s = db()->prepare('SELECT id FROM chat_threads WHERE token = ? LIMIT 1'); $s->execute([$token]);
-        $tid = (int)($s->fetchColumn() ?: 0);
+        $s = db()->prepare('SELECT id FROM chat_threads WHERE token = ? LIMIT 1');
+        $s->execute([$token]);
+        $tid = (int) ($s->fetchColumn() ?: 0);
     }
     if ($action === 'send') {
         // Anonymous visitor chat — rate-limit per IP (a new thread also emails the
         // owner, so this curbs spam/flooding without affecting logged-in guests).
         rate_limit('chat', 20, 10);
-        $bodyTxt = mb_substr(trim((string)($in['body'] ?? '')), 0, 4000);
-        if ($bodyTxt === '') json_out(['error' => 'Type a message first'], 400);
+        $bodyTxt = mb_substr(trim((string) ($in['body'] ?? '')), 0, 4000);
+        if ($bodyTxt === '') {
+            json_out(['error' => 'Type a message first'], 400);
+        }
         if (!$tid) {
             $name = mb_substr(clean($in['name'] ?? ''), 0, 120);
             $email = mb_substr(clean($in['email'] ?? ''), 0, 190);
-            if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) json_out(['error' => 'Please enter a valid email address.'], 400);
-            if (strlen($token) < 16) json_out(['error' => 'Could not start the chat — please reload and try again.'], 400);
-            db()->prepare('INSERT INTO chat_threads (token, name, email, source, location, user_agent) VALUES (?,?,?,?,?,?)')
-                ->execute([$token, $name, $email, chat_source($in['ref'] ?? ''), chat_location(), mb_substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255)]);
-            $tid = (int)db()->lastInsertId();
+            if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                json_out(['error' => 'Please enter a valid email address.'], 400);
+            }
+            if (strlen($token) < 16) {
+                json_out(['error' => 'Could not start the chat — please reload and try again.'], 400);
+            }
+            db()
+                ->prepare(
+                    'INSERT INTO chat_threads (token, name, email, source, location, user_agent) VALUES (?,?,?,?,?,?)',
+                )
+                ->execute([
+                    $token,
+                    $name,
+                    $email,
+                    chat_source($in['ref'] ?? ''),
+                    chat_location(),
+                    mb_substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255),
+                ]);
+            $tid = (int) db()->lastInsertId();
         }
-        db()->prepare("INSERT INTO messages (thread_id, sender_role, body, read_by_admin, read_by_guest) VALUES (?, 'guest', ?, 0, 1)")->execute([$tid, $bodyTxt]);
-        db()->prepare('UPDATE chat_threads SET updated_at = NOW() WHERE id = ?')->execute([$tid]);
-        $t = db()->prepare('SELECT name, email FROM chat_threads WHERE id = ?'); $t->execute([$tid]); $th = $t->fetch() ?: [];
+        db()
+            ->prepare(
+                "INSERT INTO messages (thread_id, sender_role, body, read_by_admin, read_by_guest) VALUES (?, 'guest', ?, 0, 1)",
+            )
+            ->execute([$tid, $bodyTxt]);
+        db()
+            ->prepare('UPDATE chat_threads SET updated_at = NOW() WHERE id = ?')
+            ->execute([$tid]);
+        $t = db()->prepare('SELECT name, email FROM chat_threads WHERE id = ?');
+        $t->execute([$tid]);
+        $th = $t->fetch() ?: [];
         chat_notify_owner($th['name'] ?? '', $th['email'] ?? '', $bodyTxt, $tid);
         json_out(['ok' => true, 'token' => $token]);
     }
     // thread / default
-    if (!$tid) json_out(['ok' => true, 'messages' => []]);
-    db()->prepare("UPDATE messages SET read_by_guest = 1 WHERE thread_id = ? AND sender_role = 'admin'")->execute([$tid]);
+    if (!$tid) {
+        json_out(['ok' => true, 'messages' => []]);
+    }
+    db()
+        ->prepare("UPDATE messages SET read_by_guest = 1 WHERE thread_id = ? AND sender_role = 'admin'")
+        ->execute([$tid]);
     json_out(['ok' => true, 'messages' => chat_msgs($tid)]);
 } catch (\Throwable $e) {
     json_out(['error' => 'Messages not ready — has migration-chat-threads.sql been run?'], 500);

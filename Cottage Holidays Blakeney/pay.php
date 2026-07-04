@@ -14,11 +14,13 @@ require_once __DIR__ . '/pricing.php';
 $in = body();
 $action = $in['action'] ?? '';
 
-if (!square_enabled()) json_out(['error' => 'Online payment is not available right now.'], 503);
+if (!square_enabled()) {
+    json_out(['error' => 'Online payment is not available right now.'], 503);
+}
 
-$bookingId = (int)($in['booking_id'] ?? 0);
-$token     = clean($in['token'] ?? '');
-$kind      = in_array(($in['kind'] ?? 'deposit'), ['deposit', 'balance', 'hold'], true) ? $in['kind'] : 'deposit';
+$bookingId = (int) ($in['booking_id'] ?? 0);
+$token = clean($in['token'] ?? '');
+$kind = in_array($in['kind'] ?? 'deposit', ['deposit', 'balance', 'hold'], true) ? $in['kind'] : 'deposit';
 
 // Validate the pay token before touching anything.
 if ($bookingId <= 0 || !hash_equals(pay_token($bookingId), $token)) {
@@ -30,15 +32,19 @@ $b = (function ($id) {
     $s->execute([$id]);
     return $s->fetch();
 })($bookingId);
-if (!$b) json_out(['error' => 'Booking not found.'], 404);
+if (!$b) {
+    json_out(['error' => 'Booking not found.'], 404);
+}
 
 // Effective total = manual override if set, else the locked agreed total
 // (fall back to a live calc only for legacy rows missing the snapshot).
 $rate = get_rate($b['prop_key']);
 if ($b['agreed_total'] !== null) {
-    $total = ($b['price_override'] !== null) ? (float)$b['price_override'] : (float)$b['agreed_total'];
+    $total = $b['price_override'] !== null ? (float) $b['price_override'] : (float) $b['agreed_total'];
 } else {
-    if (!$rate) json_out(['error' => 'Property not found'], 404);
+    if (!$rate) {
+        json_out(['error' => 'Property not found'], 404);
+    }
     $p = price_breakdown($rate, $b['adults'], $b['children'], $b['check_in'], $b['check_out']);
     $total = $p['total'];
 }
@@ -47,14 +53,14 @@ $total = round($total, 2);
 // Deposit policy: a global percentage in the content table (default 25%).
 $depPct = square_deposit_pct();
 $depositAmount = round($total * ($depPct / 100), 2);
-$alreadyPaid   = round((float)($b['deposit_paid'] ?? 0), 2);
+$alreadyPaid = round((float) ($b['deposit_paid'] ?? 0), 2);
 
 // Refundable damages deposit (taken as a card HOLD, not a charge). Use the frozen
 // snapshot, falling back to a live calc for legacy rows.
-$holdAmount = round((float)($b['agreed_booking_fee'] ?? 0), 2);
+$holdAmount = round((float) ($b['agreed_booking_fee'] ?? 0), 2);
 if ($holdAmount <= 0 && $rate) {
     $pp = price_breakdown($rate, $b['adults'], $b['children'], $b['check_in'], $b['check_out']);
-    $holdAmount = round((float)$pp['damagesDeposit'], 2);
+    $holdAmount = round((float) $pp['damagesDeposit'], 2);
 }
 $holdStatus = $b['hold_status'] ?? 'none';
 
@@ -62,27 +68,26 @@ $holdStatus = $b['hold_status'] ?? 'none';
 if ($kind === 'hold') {
     $amountDue = in_array($holdStatus, ['authorized', 'captured'], true) ? 0.0 : $holdAmount;
 } else {
-    $amountDue = ($kind === 'balance')
-        ? round(max(0, $total - $alreadyPaid), 2)
-        : round(max(0, $depositAmount - $alreadyPaid), 2);
+    $amountDue =
+        $kind === 'balance' ? round(max(0, $total - $alreadyPaid), 2) : round(max(0, $depositAmount - $alreadyPaid), 2);
 }
 
 $propName = $rate['name'] ?? $b['prop_key'];
 
 if ($action === 'summary') {
     json_out([
-        'ok'         => true,
-        'propName'   => $propName,
-        'guestName'  => $b['name'],
-        'checkIn'    => $b['check_in'],
-        'checkOut'   => $b['check_out'],
-        'currency'   => 'GBP',
-        'kind'       => $kind,
-        'total'      => $total,
-        'alreadyPaid'=> $alreadyPaid,
-        'balance'    => round(max(0, $total - $alreadyPaid), 2),
+        'ok' => true,
+        'propName' => $propName,
+        'guestName' => $b['name'],
+        'checkIn' => $b['check_in'],
+        'checkOut' => $b['check_out'],
+        'currency' => 'GBP',
+        'kind' => $kind,
+        'total' => $total,
+        'alreadyPaid' => $alreadyPaid,
+        'balance' => round(max(0, $total - $alreadyPaid), 2),
         'depositPct' => $depPct,
-        'amountDue'  => $amountDue,
+        'amountDue' => $amountDue,
         'holdAmount' => $holdAmount,
         'holdStatus' => $holdStatus,
     ]);
@@ -91,109 +96,160 @@ if ($action === 'summary') {
 // Place a refundable card HOLD for the damages deposit (authorise, do NOT capture).
 // Square holds the funds; the owner later captures (if damage) or releases it.
 if ($action === 'authorize') {
-    if ($kind !== 'hold') json_out(['error' => 'Wrong action for this payment.'], 400);
+    if ($kind !== 'hold') {
+        json_out(['error' => 'Wrong action for this payment.'], 400);
+    }
     $sourceId = clean($in['source_id'] ?? '');
-    if ($sourceId === '') json_out(['error' => 'Missing card details — please try again.'], 400);
-    if ($holdAmount <= 0) json_out(['error' => 'No security deposit is required for this booking.'], 409);
-    if (in_array($holdStatus, ['authorized', 'captured'], true)) json_out(['error' => 'A security hold is already in place for this booking.'], 409);
+    if ($sourceId === '') {
+        json_out(['error' => 'Missing card details — please try again.'], 400);
+    }
+    if ($holdAmount <= 0) {
+        json_out(['error' => 'No security deposit is required for this booking.'], 409);
+    }
+    if (in_array($holdStatus, ['authorized', 'captured'], true)) {
+        json_out(['error' => 'A security hold is already in place for this booking.'], 409);
+    }
 
-    $pence = (int)round($holdAmount * 100);
-    $ref = 'CHBHOLD-' . str_pad(substr(preg_replace('/\D/', '', (string)$bookingId), -6), 6, '0', STR_PAD_LEFT);
+    $pence = (int) round($holdAmount * 100);
+    $ref = 'CHBHOLD-' . str_pad(substr(preg_replace('/\D/', '', (string) $bookingId), -6), 6, '0', STR_PAD_LEFT);
     $res = square_api('POST', '/v2/payments', [
-        'source_id'           => $sourceId,
-        'idempotency_key'     => bin2hex(random_bytes(16)),
-        'amount_money'        => ['amount' => $pence, 'currency' => 'GBP'],
-        'autocomplete'        => false,   // AUTHORISE only — funds held, not captured
-        'location_id'         => SQUARE_LOCATION_ID,
-        'reference_id'        => $ref,
-        'note'                => "Refundable damage hold for {$propName} ({$b['check_in']} to {$b['check_out']})",
+        'source_id' => $sourceId,
+        'idempotency_key' => bin2hex(random_bytes(16)),
+        'amount_money' => ['amount' => $pence, 'currency' => 'GBP'],
+        'autocomplete' => false, // AUTHORISE only — funds held, not captured
+        'location_id' => SQUARE_LOCATION_ID,
+        'reference_id' => $ref,
+        'note' => "Refundable damage hold for {$propName} ({$b['check_in']} to {$b['check_out']})",
         'buyer_email_address' => $b['email'] ?: null,
     ]);
     $payment = $res['body']['payment'] ?? null;
-    $ok = in_array($res['status'], [200, 201], true) && $payment
-        && in_array(($payment['status'] ?? ''), ['APPROVED', 'AUTHORIZED'], true);
+    $ok =
+        in_array($res['status'], [200, 201], true) &&
+        $payment &&
+        in_array($payment['status'] ?? '', ['APPROVED', 'AUTHORIZED'], true);
     if (!$ok) {
         $detail = $res['body']['errors'][0]['detail'] ?? 'Your card couldn\'t be authorised. Please try another card.';
         json_out(['error' => $detail], 402);
     }
-    $sqId = (string)$payment['id'];
+    $sqId = (string) $payment['id'];
     try {
-        db()->prepare('UPDATE bookings SET hold_payment_id = ?, hold_status = ?, hold_amount = ?, hold_authorized_at = NOW() WHERE id = ?')
+        db()
+            ->prepare(
+                'UPDATE bookings SET hold_payment_id = ?, hold_status = ?, hold_amount = ?, hold_authorized_at = NOW() WHERE id = ?',
+            )
             ->execute([$sqId, 'authorized', $holdAmount, $bookingId]);
     } catch (\Throwable $e) {
         json_out(['error' => 'Hold authorised but could not be recorded — please contact us.'], 500);
     }
-    try { require_once __DIR__ . '/webpush.php'; alert_owner('Damage hold placed', '£' . number_format($holdAmount, 2) . ' held · ' . $propName); } catch (\Throwable $e) {}
+    try {
+        require_once __DIR__ . '/webpush.php';
+        alert_owner('Damage hold placed', '£' . number_format($holdAmount, 2) . ' held · ' . $propName);
+    } catch (\Throwable $e) {
+    }
     json_out(['ok' => true, 'held' => $holdAmount]);
 }
 
 if ($action === 'charge') {
     $sourceId = clean($in['source_id'] ?? '');
-    if ($sourceId === '') json_out(['error' => 'Missing card details — please try again.'], 400);
-    if ($amountDue <= 0)  json_out(['error' => 'This booking is already paid in full.'], 409);
+    if ($sourceId === '') {
+        json_out(['error' => 'Missing card details — please try again.'], 400);
+    }
+    if ($amountDue <= 0) {
+        json_out(['error' => 'This booking is already paid in full.'], 409);
+    }
 
-    book_lock($b['prop_key']);   // serialise so two tabs can't double-charge
+    book_lock($b['prop_key']); // serialise so two tabs can't double-charge
 
     // Re-read deposit_paid under the lock (a concurrent charge may have moved it).
     $fresh = db()->prepare('SELECT deposit_paid FROM bookings WHERE id = ?');
     $fresh->execute([$bookingId]);
-    $nowPaid = round((float)($fresh->fetchColumn() ?: 0), 2);
-    $amountDue = ($kind === 'balance')
-        ? round(max(0, $total - $nowPaid), 2)
-        : round(max(0, $depositAmount - $nowPaid), 2);
-    if ($amountDue <= 0) { book_unlock($b['prop_key']); json_out(['error' => 'This booking is already paid in full.'], 409); }
+    $nowPaid = round((float) ($fresh->fetchColumn() ?: 0), 2);
+    $amountDue =
+        $kind === 'balance' ? round(max(0, $total - $nowPaid), 2) : round(max(0, $depositAmount - $nowPaid), 2);
+    if ($amountDue <= 0) {
+        book_unlock($b['prop_key']);
+        json_out(['error' => 'This booking is already paid in full.'], 409);
+    }
 
-    $pence = (int)round($amountDue * 100);
-    $ref = 'CHB-' . str_pad(substr(preg_replace('/\D/', '', (string)$bookingId), -6), 6, '0', STR_PAD_LEFT);
+    $pence = (int) round($amountDue * 100);
+    $ref = 'CHB-' . str_pad(substr(preg_replace('/\D/', '', (string) $bookingId), -6), 6, '0', STR_PAD_LEFT);
     $res = square_api('POST', '/v2/payments', [
-        'source_id'           => $sourceId,
-        'idempotency_key'     => bin2hex(random_bytes(16)),
-        'amount_money'        => ['amount' => $pence, 'currency' => 'GBP'],
-        'location_id'         => SQUARE_LOCATION_ID,
-        'reference_id'        => $ref,
-        'note'                => ucfirst($kind) . " for {$propName} ({$b['check_in']} to {$b['check_out']})",
+        'source_id' => $sourceId,
+        'idempotency_key' => bin2hex(random_bytes(16)),
+        'amount_money' => ['amount' => $pence, 'currency' => 'GBP'],
+        'location_id' => SQUARE_LOCATION_ID,
+        'reference_id' => $ref,
+        'note' => ucfirst($kind) . " for {$propName} ({$b['check_in']} to {$b['check_out']})",
         'buyer_email_address' => $b['email'] ?: null,
     ]);
 
     $payment = $res['body']['payment'] ?? null;
-    $ok = in_array($res['status'], [200, 201], true) && $payment
-        && in_array(($payment['status'] ?? ''), ['COMPLETED', 'APPROVED'], true);
+    $ok =
+        in_array($res['status'], [200, 201], true) &&
+        $payment &&
+        in_array($payment['status'] ?? '', ['COMPLETED', 'APPROVED'], true);
     if (!$ok) {
         book_unlock($b['prop_key']);
-        $detail = $res['body']['errors'][0]['detail'] ?? ($res['body']['error'] ?? 'Payment was declined. Please check your card and try again.');
+        $detail =
+            $res['body']['errors'][0]['detail'] ??
+            ($res['body']['error'] ?? 'Payment was declined. Please check your card and try again.');
         // Best-effort: alert the owner (push) so they can follow up on a failed card payment.
         try {
             require_once __DIR__ . '/webpush.php';
-            alert_owner('Card payment declined',
-                ($b['name'] ?: 'A guest') . ' — ' . $propName . ': ' . ucfirst($kind) . ' £' . number_format($amountDue, 2) . ' was declined.');
-        } catch (\Throwable $e) { /* never let an alert break the response */ }
+            alert_owner(
+                'Card payment declined',
+                ($b['name'] ?: 'A guest') .
+                    ' — ' .
+                    $propName .
+                    ': ' .
+                    ucfirst($kind) .
+                    ' £' .
+                    number_format($amountDue, 2) .
+                    ' was declined.',
+            );
+        } catch (\Throwable $e) {
+            /* never let an alert break the response */
+        }
         json_out(['error' => $detail], 402);
     }
 
     // Reconcile: record the ledger row (idempotent on square_payment_id) and move
     // the booking's headline payment state forward.
-    $sqId = (string)$payment['id'];
+    $sqId = (string) $payment['id'];
     // The processing fee is usually computed later (back-filled by the webhook),
     // but record it now if Square already returned it.
     $fee = null;
     if (!empty($payment['processing_fee']) && is_array($payment['processing_fee'])) {
         $cents = 0;
-        foreach ($payment['processing_fee'] as $pf) { $cents += (int)($pf['amount_money']['amount'] ?? 0); }
+        foreach ($payment['processing_fee'] as $pf) {
+            $cents += (int) ($pf['amount_money']['amount'] ?? 0);
+        }
         $fee = round($cents / 100, 2);
     }
     try {
-        db()->prepare('INSERT IGNORE INTO payments (booking_id, square_payment_id, kind, amount, status, guest_name, prop_key, created_at)
-                       VALUES (?,?,?,?,?,?,?,NOW())')
+        db()
+            ->prepare(
+                'INSERT IGNORE INTO payments (booking_id, square_payment_id, kind, amount, status, guest_name, prop_key, created_at)
+                       VALUES (?,?,?,?,?,?,?,NOW())',
+            )
             ->execute([$bookingId, $sqId, $kind, $amountDue, $payment['status'], $b['name'], $b['prop_key']]);
         if ($fee !== null) {
-            try { db()->prepare('UPDATE payments SET fee = ? WHERE square_payment_id = ?')->execute([$fee, $sqId]); }
-            catch (\Throwable $eFee) { /* fee column not migrated yet — ignore */ }
+            try {
+                db()
+                    ->prepare('UPDATE payments SET fee = ? WHERE square_payment_id = ?')
+                    ->execute([$fee, $sqId]);
+            } catch (\Throwable $eFee) {
+                /* fee column not migrated yet — ignore */
+            }
         }
-    } catch (\Throwable $e) { /* table missing — booking update below still applies */ }
+    } catch (\Throwable $e) {
+        /* table missing — booking update below still applies */
+    }
 
     $newPaid = round(min($total, $nowPaid + $amountDue), 2);
-    $newStatus = ($newPaid >= $total - 0.001) ? 'paid' : ($newPaid > 0 ? 'deposit' : 'unpaid');
-    db()->prepare('UPDATE bookings SET payment=?, deposit_paid=?, payment_method=?, payment_date=? WHERE id=?')
+    $newStatus = $newPaid >= $total - 0.001 ? 'paid' : ($newPaid > 0 ? 'deposit' : 'unpaid');
+    db()
+        ->prepare('UPDATE bookings SET payment=?, deposit_paid=?, payment_method=?, payment_date=? WHERE id=?')
         ->execute([$newStatus, $newPaid, 'Square card', date('Y-m-d'), $bookingId]);
 
     book_unlock($b['prop_key']);
@@ -202,30 +258,51 @@ if ($action === 'charge') {
     try {
         require_once __DIR__ . '/mailer.php';
         send_payment_receipt([
-            'name' => $b['name'], 'email' => $b['email'], 'prop_key' => $b['prop_key'],
-            'prop_name' => $propName, 'ref' => $ref, 'kind' => $kind,
-            'amount' => $amountDue, 'total' => $total, 'paid_so_far' => $newPaid,
-            'balance' => round(max(0, $total - $newPaid), 2), 'fully_paid' => ($newStatus === 'paid'),
+            'name' => $b['name'],
+            'email' => $b['email'],
+            'prop_key' => $b['prop_key'],
+            'prop_name' => $propName,
+            'ref' => $ref,
+            'kind' => $kind,
+            'amount' => $amountDue,
+            'total' => $total,
+            'paid_so_far' => $newPaid,
+            'balance' => round(max(0, $total - $newPaid), 2),
+            'fully_paid' => $newStatus === 'paid',
         ]);
-    } catch (\Throwable $e) {}
+    } catch (\Throwable $e) {
+    }
 
     // Notify the owner that money has landed (best-effort).
     try {
         require_once __DIR__ . '/mailer.php';
         send_owner_payment_notice([
-            'name' => $b['name'], 'prop_key' => $b['prop_key'], 'prop_name' => $propName,
-            'kind' => $kind, 'amount' => $amountDue, 'status' => $newStatus,
+            'name' => $b['name'],
+            'prop_key' => $b['prop_key'],
+            'prop_name' => $propName,
+            'kind' => $kind,
+            'amount' => $amountDue,
+            'status' => $newStatus,
         ]);
-    } catch (\Throwable $e) {}
+    } catch (\Throwable $e) {
+    }
     // Wake the owner's devices (best-effort).
-    try { require_once __DIR__ . '/webpush.php'; alert_owner('Payment received', '£' . number_format($amountDue, 2) . ' · ' . $propName); } catch (\Throwable $e) {}
+    try {
+        require_once __DIR__ . '/webpush.php';
+        alert_owner('Payment received', '£' . number_format($amountDue, 2) . ' · ' . $propName);
+    } catch (\Throwable $e) {
+    }
     // And confirm to the guest on their own device (best-effort, no-op if none).
     try {
-        $msg = ($newStatus === 'paid') ? 'Paid in full — thank you! We look forward to welcoming you.' : 'We\'ve received £' . number_format($amountDue, 2) . ' — thank you.';
+        $msg =
+            $newStatus === 'paid'
+                ? 'Paid in full — thank you! We look forward to welcoming you.'
+                : 'We\'ve received £' . number_format($amountDue, 2) . ' — thank you.';
         notify_guest_email($b['email'], 'Payment received', $msg, './');
-    } catch (\Throwable $e) {}
+    } catch (\Throwable $e) {
+    }
 
-    json_out(['ok' => true, 'status' => $newStatus, 'paid' => $amountDue, 'fullyPaid' => ($newStatus === 'paid')]);
+    json_out(['ok' => true, 'status' => $newStatus, 'paid' => $amountDue, 'fullyPaid' => $newStatus === 'paid']);
 }
 
 json_out(['error' => 'Unknown action'], 400);
