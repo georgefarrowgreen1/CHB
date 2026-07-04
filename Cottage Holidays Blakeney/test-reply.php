@@ -39,6 +39,11 @@ $outlookHdr = "Great, thanks.\n\nFrom: Someone Else\nSent: Friday, 4 July 2026 1
 chk('outlook header block stripped', strip_quoted_reply($outlookHdr) === "Great, thanks.");
 $plain = "Just a normal reply with no quote.";
 chk('plain reply untouched', strip_quoted_reply($plain) === $plain);
+// Mobile / client auto-signatures with no "-- " delimiter.
+chk('"Sent from my iPhone" stripped', strip_quoted_reply("123\nSent from my iPhone") === "123");
+chk('"Sent from my iPad" stripped', strip_quoted_reply("Yes that's fine\n\nSent from my iPad") === "Yes that's fine");
+chk('"Get Outlook for iOS" stripped', strip_quoted_reply("See you then\nGet Outlook for iOS") === "See you then");
+chk('"Sent from Mail for Windows" stripped', strip_quoted_reply("Booked\n\nSent from Mail for Windows") === "Booked");
 // The real-world miss: iOS Mail attribution WRAPPED onto two lines, quote has no ">".
 $iosWrapped = "Sounds great, see you soon!\n\nOn 4 Jul 2026, at 19:59, Cottage Holidays Blakeney\n<bookings\@x.co.uk> wrote:\n\nSomeone has sent you a message via the website chat.\n\nFrom: George (george\@icloud.com)\n\n\"Boo\"\n\nJust reply to this email and the guest gets it on the website and by email.";
 chk('wrapped iOS attribution stripped', strip_quoted_reply($iosWrapped) === "Sounds great, see you soon!");
