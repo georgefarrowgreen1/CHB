@@ -47,18 +47,12 @@ function parse_email_message($raw) {
     };
     $ctype = $h('Content-Type');
     $cte   = strtolower($h('Content-Transfer-Encoding'));
-    // Multipart → dig out the first text/plain section.
-    if (stripos($ctype, 'multipart/') !== false && preg_match('/boundary="?([^";]+)"?/i', $ctype, $bm)) {
-        $parts = preg_split('/--' . preg_quote($bm[1], '/') . '(?:--)?\s*\n/', $body);
-        foreach ($parts as $part) {
-            [$phead, $pbody] = array_pad(explode("\n\n", $part, 2), 2, '');
-            if (stripos($phead, 'text/plain') !== false) {
-                $pcte = preg_match('/Content-Transfer-Encoding:\s*(\S+)/i', $phead, $pm) ? strtolower($pm[1]) : '';
-                $body = mailbox_decode_body($pbody, $pcte);
-                $cte = '';   // already decoded
-                break;
-            }
-        }
+    // Multipart → dig out the text body (recursing through nested containers, e.g.
+    // multipart/mixed → multipart/alternative → text/plain). Returns already-decoded
+    // text (or '' if none) — either beats leaking the raw MIME blob as the "reply".
+    if (stripos($ctype, 'multipart/') !== false) {
+        $extracted = mailbox_extract_text($body, $ctype);
+        if (is_string($extracted)) { $body = $extracted; $cte = ''; }
     }
     $body = mailbox_decode_body($body, $cte);
     return [
@@ -77,6 +71,35 @@ function mailbox_decode_body($body, $cte) {
     return $body;
 }
 
+// Recursively pull the text body out of a multipart container. Prefers text/plain
+// (recursing into nested multipart/*), falls back to text/html flattened to text.
+// Returns decoded text (possibly ''), or null if $ctype isn't parseable multipart.
+function mailbox_extract_text($body, $ctype) {
+    if (stripos($ctype, 'multipart/') === false || !preg_match('/boundary="?([^";]+)"?/i', $ctype, $bm)) return null;
+    $parts = preg_split('/--' . preg_quote($bm[1], '/') . '(?:--)?\s*\n/', (string)$body);
+    $html = '';
+    foreach ($parts as $part) {
+        [$phead, $pbody] = array_pad(explode("\n\n", $part, 2), 2, '');
+        if (trim($phead) === '') continue;
+        // Full Content-Type value (keep its params — a nested boundary lives there).
+        $pct  = preg_match('/Content-Type:\s*(.+)/i', $phead, $cm) ? trim($cm[1]) : '';
+        $pcte = preg_match('/Content-Transfer-Encoding:\s*(\S+)/i', $phead, $pm) ? strtolower($pm[1]) : '';
+        if (stripos($pct, 'multipart/') !== false) {
+            $r = mailbox_extract_text($pbody, $pct);          // nested container (has its own boundary)
+            if (is_string($r) && trim($r) !== '') return $r;
+        } elseif (stripos($pct, 'text/plain') !== false) {
+            return mailbox_decode_body($pbody, $pcte);        // best: plain text
+        } elseif ($html === '' && stripos($pct, 'text/html') !== false) {
+            $html = mailbox_decode_body($pbody, $pcte);        // remember as fallback
+        }
+    }
+    if ($html !== '') {
+        $t = preg_replace('/<(br|\/p|\/div)\b[^>]*>/i', "\n", $html);
+        return trim(html_entity_decode(strip_tags($t), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+    }
+    return '';
+}
+
 // Decode an RFC2047 =?UTF-8?B?…?= subject just enough to read a token inside it.
 function mailbox_decode_subject($s) {
     if (function_exists('iconv_mime_decode')) {
@@ -86,9 +109,11 @@ function mailbox_decode_subject($s) {
     return $s;
 }
 
-// A "Name <addr@x>" or bare address → lowercase address.
+// A "Name <addr@x>" or bare address → lowercase address. Take the LAST <…>
+// group: a spoof like `"a <owner@allowed>" <evil@x>` has the real address last,
+// so picking the first would let it impersonate an allowed sender.
 function mailbox_from_addr($s) {
-    if (preg_match('/<([^>]+)>/', $s, $m)) return strtolower(trim($m[1]));
+    if (preg_match_all('/<([^>]+)>/', (string)$s, $m) && !empty($m[1])) return strtolower(trim(end($m[1])));
     if (preg_match('/([^\s<>]+@[^\s<>]+)/', $s, $m)) return strtolower(trim($m[1]));
     return strtolower(trim((string)$s));
 }
@@ -119,12 +144,19 @@ function pop3_open() {
     fwrite($fp, 'PASS ' . SMTP_PASS . "\r\n"); if (!$ok($line())) { fclose($fp); return ['error' => 'Login failed (check the mailbox allows POP3)']; }
     return ['fp' => $fp];
 }
-function pop3_multiline($fp) {
-    $data = '';
+// Reads a dot-terminated POP3 multiline reply. $clean is set true ONLY if the
+// terminating "." line was reached — a false $clean means the socket timed out
+// or closed mid-reply, so the caller must abort (the stream is now desynced and
+// the data is partial). Body is capped so a huge email can't exhaust memory, but
+// we keep draining to the dot so the stream stays in sync.
+function pop3_multiline($fp, &$clean = null, $maxBytes = 262144) {
+    $data = ''; $clean = false;
     while (($ln = fgets($fp, 8192)) !== false) {
-        if ($ln === ".\r\n" || $ln === ".\n") break;
+        if ($ln === ".\r\n" || $ln === ".\n") { $clean = true; break; }
         if (strlen($ln) > 1 && $ln[0] === '.') $ln = substr($ln, 1);   // un-dot-stuff
-        $data .= $ln;
+        if (strlen($data) < $maxBytes) $data .= $ln;                   // cap memory, keep draining
+        $meta = stream_get_meta_data($fp);
+        if (!empty($meta['timed_out'])) break;                         // timeout → not clean → abort
     }
     return $data;
 }
@@ -139,14 +171,26 @@ function poll_mailbox_replies($force = false, $preview = false) {
     $processed = isset($state['uids']) && is_array($state['uids']) ? $state['uids'] : [];
     if (!$preview && !$force && !empty($state['at']) && (time() - (int)$state['at']) < 90) return ['ok' => true, 'skipped' => 'throttled'];
 
+    // Serialize concurrent polls (a cron run and an inbox-open, or two tabs) so a
+    // reply can never be double-delivered by a race. Non-blocking: if another poll
+    // holds the lock, skip this one. Skipped for the read-only preview.
+    $lock = false;
+    if (!$preview) {
+        try { $st = db()->query("SELECT GET_LOCK('chb_mailbox_poll', 0)"); $lock = ((int)$st->fetchColumn() === 1); }
+        catch (\Throwable $e) { $lock = true; }   // no advisory-lock support → proceed (guard below still applies)
+        if (!$lock) return ['ok' => true, 'skipped' => 'locked'];
+    }
+
     $conn = pop3_open();
-    if (isset($conn['error'])) { if (!$preview) mailbox_poll_save($processed, $conn['error'], null); return ['ok' => false, 'error' => $conn['error']]; }
+    if (isset($conn['error'])) { if (!$preview) { mailbox_poll_save($processed, $conn['error'], null); poll_unlock($lock); } return ['ok' => false, 'error' => $conn['error']]; }
     $fp = $conn['fp'];
     $handled = 0; $seen = 0; $trace = []; $last = null;
     try {
         fwrite($fp, "UIDL\r\n");
-        fgets($fp, 8192);                               // +OK
-        $uidls = pop3_parse_uidl(pop3_multiline($fp));
+        $u = fgets($fp, 8192);                          // +OK / -ERR
+        $uclean = false;
+        $uidls = (is_string($u) && $u !== '' && $u[0] === '+') ? pop3_parse_uidl(pop3_multiline($fp, $uclean)) : [];
+        if (!$uclean) $uidls = [];                      // partial UIDL read → don't act this round
         $known = array_fill_keys($processed, true);
         $allowed = array_map('strtolower', function_exists('owner_recipients') ? owner_recipients() : []);
         krsort($uidls);                                // newest first
@@ -155,32 +199,60 @@ function poll_mailbox_replies($force = false, $preview = false) {
             if (!$preview && isset($known[$uid])) continue;
             if ($seen++ >= ($preview ? 5 : 25)) break;
             fwrite($fp, "RETR {$no}\r\n");
-            fgets($fp, 8192);                           // +OK
-            $raw = pop3_multiline($fp);
+            $ok = fgets($fp, 8192);                      // +OK / -ERR
+            if (!is_string($ok) || $ok === '' || $ok[0] !== '+') break;   // RETR failed → stop cleanly
+            $rclean = false;
+            $raw = pop3_multiline($fp, $rclean);
+            if (!$rclean) break;                        // partial read / desync → stop; uid NOT marked, retry next poll
             $p = parse_email_message($raw);
             $tok = mailbox_token_in($p);
             $tid = msg_reply_verify($tok);
             $fromAddr = mailbox_from_addr($p['from']);
             $senderOk = in_array($fromAddr, $allowed, true);
-            $body = ($tid > 0 && $senderOk) ? strip_quoted_reply($p['body']) : '';
-            $reason = $tid <= 0 ? 'no-thread-token' : (!$senderOk ? 'sender-not-owner' : ($body === '' ? 'empty-after-strip' : 'delivered'));
-            $info = ['from' => $fromAddr, 'subject' => mb_substr($p['subject'], 0, 120), 'tokenFound' => $tok !== '', 'thread' => $tid, 'senderOk' => $senderOk, 'bodyLen' => strlen($p['body']), 'strippedLen' => strlen($body), 'reason' => $reason];
+            $body = ($tid > 0) ? strip_quoted_reply($p['body']) : '';
+            // Route: the owner/co-host → admin reply; the thread's OWN guest (they
+            // were invited to "just reply to this email") → guest message; else drop.
+            $route = 'drop';
+            if ($tid > 0 && $body !== '') {
+                if ($senderOk) $route = 'admin';
+                elseif (mailbox_reply_is_guest($tid, $fromAddr)) $route = 'guest';
+            }
+            $reason = $tid <= 0 ? 'no-thread-token'
+                    : ($body === '' ? 'empty-after-strip'
+                    : ($route === 'admin' ? 'delivered'
+                    : ($route === 'guest' ? 'delivered-guest' : 'sender-not-recognised')));
+            $info = ['from' => $fromAddr, 'subject' => mb_substr($p['subject'], 0, 120), 'tokenFound' => $tok !== '', 'thread' => $tid, 'senderOk' => $senderOk, 'route' => $route, 'bodyLen' => strlen($p['body']), 'strippedLen' => strlen($body), 'reason' => $reason];
             if ($preview) { $info['strippedPreview'] = mb_substr($body ?: $p['body'], 0, 200); $trace[] = $info; continue; }
-            $processed[] = $uid;                        // (live only) mark seen
-            // Defence-in-depth: even if the watermark ever hiccups, never post a
-            // reply that's already the newest message in the thread.
-            if ($reason === 'delivered' && !chat_last_message_is($tid, $body)) { chat_admin_reply($tid, $body); $handled++; }
+            // Deliver, then mark the UID processed ONLY if delivery didn't throw — a
+            // transient DB error must retry next poll, not silently lose the reply.
+            // Idempotency guard: never post a reply that's already the thread's newest
+            // message (covers a watermark hiccup or a webhook+poll overlap).
+            $deliverOk = true;
+            if (($route === 'admin' || $route === 'guest') && !chat_last_message_is($tid, $body)) {
+                try {
+                    if ($route === 'admin') chat_admin_reply($tid, $body); else chat_guest_reply($tid, $body);
+                    $handled++;
+                } catch (\Throwable $e) { $deliverOk = false; }
+            }
+            if ($deliverOk) $processed[] = $uid;             // mark seen only once safely handled
             if ($last === null && $tid > 0) $last = $info;   // remember the newest of OUR threads
         }
         fwrite($fp, "QUIT\r\n");
-    } catch (\Throwable $e) { if ($preview) return ['ok' => false, 'error' => $e->getMessage()]; }
+    } catch (\Throwable $e) { @fclose($fp); if ($preview) return ['ok' => false, 'error' => $e->getMessage()]; mailbox_poll_save($processed, '', $last); poll_unlock($lock); return ['ok' => false, 'error' => $e->getMessage(), 'handled' => $handled]; }
     @fclose($fp);
     if ($preview) return ['ok' => true, 'messages' => $trace, 'host' => mailbox_pop_host(), 'allowed' => $allowed ?? []];
     mailbox_poll_save($processed, '', $last);
+    poll_unlock($lock);
     return ['ok' => true, 'handled' => $handled, 'last' => $last];
 }
+function poll_unlock($lock) {
+    if (!$lock) return;
+    try { db()->query("SELECT RELEASE_LOCK('chb_mailbox_poll')"); } catch (\Throwable $e) {}
+}
 function mailbox_poll_save($processed, $error, $last) {
-    if (count($processed) > 300) $processed = array_slice($processed, -300);
+    // Keep a large watermark so a busy mailbox can't evict an already-handled
+    // reply's UIDL and re-deliver it (POP3 UIDL re-lists the whole INBOX each poll).
+    if (count($processed) > 2000) $processed = array_slice($processed, -2000);
     $val = ['at' => time(), 'uids' => array_values($processed), 'error' => $error];
     if ($last !== null) { $val['last'] = $last; $val['lastAt'] = time(); }
     else {
@@ -195,15 +267,8 @@ function mailbox_poll_save($processed, $error, $last) {
             ->execute([json_encode($val)]);
     } catch (\Throwable $e) {}
 }
-// Is $body already the most recent message in this thread? (idempotency guard)
-function chat_last_message_is($threadId, $body) {
-    try {
-        $s = db()->prepare('SELECT body FROM messages WHERE thread_id = ? ORDER BY id DESC LIMIT 1');
-        $s->execute([(int)$threadId]);
-        $last = $s->fetchColumn();
-        return $last !== false && trim((string)$last) === trim((string)$body);
-    } catch (\Throwable $e) { return false; }
-}
+// chat_last_message_is() (idempotency guard) lives in chat-lib.php so the webhook
+// (inbound-mail.php) shares it.
 
 // A read-only connection self-test for the Health check: does login work?
 function mailbox_selftest() {

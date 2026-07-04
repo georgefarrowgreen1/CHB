@@ -34,6 +34,9 @@ $outlook = "Sounds good, see you then.\r\n\r\n________________________________\r
 chk('outlook divider stripped', strip_quoted_reply($outlook) === "Sounds good, see you then.");
 $sig = "Perfect, booked.\n\n-- \nGeorge\nCottage Holidays Blakeney";
 chk('signature stripped', strip_quoted_reply($sig) === "Perfect, booked.");
+// Outlook top-post: a From:/Sent:/To:/Subject: header block with no ">" or attribution.
+$outlookHdr = "Great, thanks.\n\nFrom: Someone Else\nSent: Friday, 4 July 2026 10:00\nTo: George\nSubject: Re: booking\n\nold quoted text the owner shouldn't leak";
+chk('outlook header block stripped', strip_quoted_reply($outlookHdr) === "Great, thanks.");
 $plain = "Just a normal reply with no quote.";
 chk('plain reply untouched', strip_quoted_reply($plain) === $plain);
 // The real-world miss: iOS Mail attribution WRAPPED onto two lines, quote has no ">".
@@ -59,6 +62,9 @@ chk('pop host derived from smtp host', mailbox_pop_host() !== '' && strpos(mailb
 // From-address extraction
 chk('from "Name <addr>" → addr', mailbox_from_addr('George Farrow <george@icloud.com>') === 'george@icloud.com');
 chk('from bare addr', mailbox_from_addr('george@icloud.com') === 'george@icloud.com');
+// Spoof: a display-name that embeds a fake <owner@…> must not win over the real
+// (last) <evil@…> address — else it could impersonate an allow-listed sender.
+chk('from spoof takes the REAL (last) angle addr', mailbox_from_addr('"a <owner@allowed.com>" <evil@evil.com>') === 'evil@evil.com');
 // A realistic quoted-printable reply, token in In-Reply-To
 $rawQP = "From: George <george@icloud.com>\r\n"
        . "Subject: Re: New website message\r\n"
@@ -79,6 +85,23 @@ $rawMP = "From: a@b.com\r\nSubject: Re: hi [#" . $tok . "]\r\nContent-Type: mult
 $pm = parse_email_message($rawMP);
 chk('multipart text/plain extracted', trim($pm['body']) === 'Hello there plain');
 chk('token found from subject tag', msg_reply_verify(mailbox_token_in($pm)) === 42);
+// Nested multipart/mixed → multipart/alternative → text/plain (reply with an
+// attachment). The outer part is a container, so a non-recursive parser would
+// leak the raw MIME; we must recurse and still pull the plain text.
+$b1 = 'OUT1'; $b2 = 'INN2';
+$rawNest = "From: g@x.com\r\nSubject: Re: hi [#" . $tok . "]\r\nContent-Type: multipart/mixed; boundary=\"$b1\"\r\n\r\n"
+         . "--$b1\r\nContent-Type: multipart/alternative; boundary=\"$b2\"\r\n\r\n"
+         . "--$b2\r\nContent-Type: text/plain\r\n\r\nNested reply text\r\n"
+         . "--$b2\r\nContent-Type: text/html\r\n\r\n<p>Nested reply html</p>\r\n--$b2--\r\n"
+         . "--$b1\r\nContent-Type: application/octet-stream\r\n\r\nBINARYSTUFF\r\n--$b1--\r\n";
+$pn = parse_email_message($rawNest);
+chk('nested multipart text/plain extracted (no MIME leak)', trim($pn['body']) === 'Nested reply text');
+// HTML-only reply → flattened to text (no text/plain part present).
+$b3 = 'ALT3';
+$rawHtml = "From: g@x.com\r\nSubject: Re: hi [#" . $tok . "]\r\nContent-Type: multipart/alternative; boundary=\"$b3\"\r\n\r\n"
+         . "--$b3\r\nContent-Type: text/html\r\n\r\n<div>Sounds good<br>see you then</div>\r\n--$b3--\r\n";
+$ph = parse_email_message($rawHtml);
+chk('html-only reply flattened to text', trim($ph['body']) === "Sounds good\nsee you then");
 
 echo "== Admin notification recipients (add/remove) ==\n";
 require_once __DIR__ . '/notify-recipients.php';   // endpoint block is basename-guarded

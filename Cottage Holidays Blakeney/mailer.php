@@ -184,16 +184,13 @@ function owner_recipients() {
     if (defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL && filter_var(OWNER_NOTIFY_EMAIL, FILTER_VALIDATE_EMAIL)) {
         $list[] = OWNER_NOTIFY_EMAIL;
     }
-    if (function_exists('content_value')) {
-        $raw = content_value('notify-emails');
-        if ($raw) {
-            $extra = json_decode($raw, true);
-            if (is_array($extra)) {
-                foreach ($extra as $e) {
-                    $e = trim((string)$e);
-                    if ($e !== '' && filter_var($e, FILTER_VALIDATE_EMAIL)) $list[] = $e;
-                }
-            }
+    // 'notify-emails' is an ARRAY-valued content key, so it MUST be read with
+    // content_json() — content_value() returns '' for a JSON array, which would
+    // silently drop every extra recipient (and reject co-host reply-by-email).
+    if (function_exists('content_json')) {
+        foreach (content_json('notify-emails', []) as $e) {
+            $e = trim((string)$e);
+            if ($e !== '' && filter_var($e, FILTER_VALIDATE_EMAIL)) $list[] = $e;
         }
     }
     $seen = []; $out = [];

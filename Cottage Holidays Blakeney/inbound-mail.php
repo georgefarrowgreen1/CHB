@@ -54,10 +54,11 @@ if ($bodyRaw === '') {
     }
 }
 
-// A bare "email@x" or a "Name <email@x>" → the address only.
+// A bare "email@x" or a "Name <email@x>" → the address only. Take the LAST <…>
+// group so a `"a <owner@allowed>" <evil@x>` spoof resolves to the real address.
 function inb_addr($s) {
-    if (preg_match('/<([^>]+)>/', $s, $m)) return strtolower(trim($m[1]));
-    return strtolower(trim($s));
+    if (preg_match_all('/<([^>]+)>/', (string)$s, $m) && !empty($m[1])) return strtolower(trim(end($m[1])));
+    return strtolower(trim((string)$s));
 }
 
 // ---- Find the thread token: plus-address, In-Reply-To, or subject ----
@@ -82,5 +83,7 @@ $body = strip_quoted_reply($bodyRaw);
 if ($body === '') { echo 'empty reply'; exit; }
 
 // ---- Post to the website thread + email the guest (shared helper) ----
-chat_admin_reply($threadId, $body);
+// Idempotency: a provider retry (or a double-fire) re-POSTs the same reply, so
+// skip it if it's already the newest message in the thread.
+if (!chat_last_message_is($threadId, $body)) chat_admin_reply($threadId, $body);
 echo 'ok';
