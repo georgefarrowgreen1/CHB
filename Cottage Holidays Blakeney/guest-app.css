@@ -219,3 +219,25 @@ body.guest-app:not(.owner-mode) #view-21a { padding-bottom: calc(196px + env(saf
    page fades in then reverts to blank when the animation ends. */
 body.guest-app:not(.owner-mode) .page-view.active { animation: gtFade 0.32s var(--fluid-bezier) forwards; }
 @keyframes gtFade { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+
+/* ============================================================
+   COASTAL FRESH — light dock. When a guest is in light mode (the default),
+   the floating dock matches the light theme instead of staying dark. Admin
+   (owner-mode) is never light, so its dark dock is untouched; a guest who
+   toggles to dark also keeps the dark dock. Mirrors the desktop refresh.
+   ============================================================ */
+body.light-mode.guest-app:not(.owner-mode) .guest-dock {
+    background: rgba(255, 255, 255, 0.82);
+    border-color: rgba(28, 46, 58, 0.10);
+    box-shadow: 0 16px 44px rgba(30, 54, 72, 0.18);
+}
+/* Icons become ink-slate on the white dock (were white on dark). */
+body.light-mode.guest-app:not(.owner-mode) .guest-dock-btn { color: #1B2A34; }
+body.light-mode.guest-app:not(.owner-mode) .guest-dock-btn:hover,
+body.light-mode.guest-app:not(.owner-mode) .guest-dock-btn:focus-visible { background: rgba(28, 46, 58, 0.08); }
+/* Selection pill switches from white (invisible on a white dock) to the
+   rose-gold brand accent; the current icon stays dark and reads over it. */
+body.light-mode.guest-app:not(.owner-mode) .guest-dock-indicator { background: var(--accent, #C6885E); }
+/* The crown home button is a warm silhouette when current (on the accent pill). */
+body.light-mode.guest-app:not(.owner-mode) .guest-dock-btn.gt-home img { filter: none; }
+body.light-mode.guest-app:not(.owner-mode) .guest-dock-btn.gt-home.current img { filter: brightness(0); }
