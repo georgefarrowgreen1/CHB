@@ -98,7 +98,7 @@ $inner = email_h('Your week online', '#D6A785')
     . email_p('You can switch this weekly email off in Settings.', true);
 $html = email_shell('Your Blakeney week online', $inner, '#D6A785');
 
-$res = smtp_send(OWNER_NOTIFY_EMAIL, 'Owner', $subject, $text, $html);
+$res = send_owner($subject, $text, $html);
 
 if (!empty($res['ok']) || ($res === true)) {
     try {
