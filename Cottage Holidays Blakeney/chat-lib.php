@@ -74,6 +74,10 @@ if (!function_exists('strip_quoted_reply')) {
             $t = trim($ln);
             if ($t === '-- ' || $t === '--') break;               // signature delimiter
             if ($t === '_' || preg_match('/^_{5,}$/', $t)) break;  // divider
+            // Common mail-client sign-offs (no "-- " delimiter): "Sent from my
+            // iPhone/iPad/Samsung…", "Get Outlook for iOS", "Sent from Mail for
+            // Windows", etc. Everything from such a line down is auto-signature.
+            if (preg_match('/^(sent from (my |mail for |outlook|yahoo|samsung|the all-new )|sent using |sent via |get outlook for )/i', $t)) break;
             if (strpos($t, '>') === 0) continue;                   // quoted line
             $out[] = $ln;
         }
