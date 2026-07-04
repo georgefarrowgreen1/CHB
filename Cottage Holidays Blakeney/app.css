@@ -83,21 +83,35 @@
             --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
         }
 
-        /* ---- LIGHT MODE: swap the theme tokens; the rest of the CSS follows ---- */
+        /* ---- COASTAL FRESH (light): the guest default. Warm linen ground, white
+           glass, ink-slate text, rose-gold + sea/sky secondary accents, soft
+           natural shadows. Swaps the theme tokens; the rest of the CSS follows.
+           `.theme-light-boot` on <html> paints it before app.js sets the class,
+           so there is no flash of dark on first load. ---- */
+        html.theme-light-boot body,
         body.light-mode {
-            --dark-grey: #EDEEF2;                      /* page background */
-            --glass-bg: rgba(255, 255, 255, 0.72);     /* frosted light glass — opaque enough to read as a panel */
-            --glass-hover: rgba(255, 255, 255, 0.88);
-            --glass-border: rgba(20, 22, 34, 0.14);
-            --glass-highlight: rgba(20, 22, 34, 0.22);
+            --dark-grey: #F5F1E9;                      /* warm linen / sand page ground */
+            --glass-bg: rgba(255, 255, 255, 0.78);     /* frosted white glass */
+            --glass-hover: rgba(255, 255, 255, 0.92);
+            --glass-border: rgba(28, 46, 58, 0.12);
+            --glass-highlight: rgba(28, 46, 58, 0.20);
             /* Mobile menu: heavily frosted light glass — page shows through, blurred */
-            --mobile-glass: rgba(237, 238, 242, 0.38);
-            --text-light: #1C1E26;                     /* dark text on light */
-            --text-muted: #4C5160;                     /* darker for AA contrast on the light bg */
-            --blob-1: #D6DBEA;
-            --blob-2: #E3E0EC;
-            --blob-3: #DCE6E2;
-            --hero-brightness: 0.78;
+            --mobile-glass: rgba(245, 241, 233, 0.42);
+            --text-light: #1B2A34;                     /* deep ink-slate (coastal, softer than black) */
+            --text-muted: #52646E;                     /* slate — AA on the linen ground */
+            --accent: #C6885E;                         /* a touch deeper rose-gold for contrast on light */
+            --accent-soft: rgba(198, 136, 94, 0.42);
+            /* Secondary coastal accents (used sparingly for freshness) */
+            --sea: #2E8B8B; --sky: #5AA9DE; --seafoam: #DCEBE4;
+            /* Ambient wash: sky / seafoam / sand */
+            --blob-1: #DCEAF2;
+            --blob-2: #EDE6D6;
+            --blob-3: #DCEBE4;
+            --hero-brightness: 0.82;
+            /* Soft, cool-tinted natural shadows — light & airy, not heavy black */
+            --shadow-panel: 0 10px 34px rgba(30, 54, 72, 0.10);
+            --shadow-float: 0 18px 50px rgba(30, 54, 72, 0.20);
+            --shadow-soft: 0 6px 18px rgba(30, 54, 72, 0.12);
         }
         /* Light-mode fixes for sub-panels/inputs that use a hard-coded dark fill
            (rgba(0,0,0,...)) which doesn't follow the theme tokens. Text colours
@@ -2537,3 +2551,47 @@ html.js-reveal h2.section-title.text-center.reveal.in-view::after { transform: t
                         transform 0.35s var(--spring), box-shadow 0.35s var(--fluid-bezier);
         }
         .settings-row:active, .msg-thread-row:active, .bo-search-hit:active { transform: scale(0.997); }
+
+        /* ============================================================
+           COASTAL FRESH — the guest light theme's finishing layer.
+           Scoped to the light theme (default for guests) so the dark theme
+           and all admin views are untouched. Softer hero, airier type,
+           photo-led frameless cards.
+           ============================================================ */
+        /* Softer, cool-tinted hero scrim — the headline sits in a glass panel,
+           so the photo can stay bright and open instead of dimmed. */
+        html.theme-light-boot .hero::after,
+        body.light-mode .hero::after {
+            background:
+                radial-gradient(120% 80% at 50% 24%, transparent 56%, rgba(20,40,54,0.12) 100%),
+                linear-gradient(to top, rgba(20,40,54,0.22), transparent 58%);
+        }
+        html.theme-light-boot .hero-bg,
+        body.light-mode .hero-bg { filter: brightness(var(--hero-brightness)) saturate(1.04); }
+        /* Hero headline panel: near-frameless frosted white, floats on the photo. */
+        body.light-mode #hero-headline-panel { background: rgba(255,255,255,0.66); border-color: rgba(255,255,255,0.6); }
+        body.light-mode .hero-kicker { color: var(--sea); }
+
+        /* --- Airier typography (guest-facing headings/leads only) --- */
+        body.light-mode .hero h1 { letter-spacing: -1px; font-weight: 500; }
+        body.light-mode .hero p { color: var(--text-muted); }
+        body.light-mode .section-title { letter-spacing: -0.4px; }
+        body.light-mode .section-kicker { letter-spacing: 3px; color: var(--sea); }
+        body.light-mode .lead { line-height: 1.75; }
+        body.light-mode .heritage-num { color: var(--text-light); }
+
+        /* --- Photo-led, frameless cards (light) --- */
+        body.light-mode .card {
+            background: #fff; border: 1px solid rgba(28,46,58,0.06);
+            box-shadow: 0 10px 30px rgba(30,54,72,0.08);
+        }
+        @media (hover: hover) {
+            body.light-mode .card:hover { box-shadow: 0 20px 46px rgba(30,54,72,0.16); }
+        }
+        /* The photo fills the card top edge-to-edge; the frame gets out of the way. */
+        body.light-mode .card-img-wrap, body.light-mode .card-img { border-radius: calc(var(--r-panel) - 16px); }
+        body.light-mode .trust-strip { background: rgba(255,255,255,0.66); }
+        /* Warm sand dividers instead of the dark theme's faint white lines. */
+        body.light-mode .prop-divider, body.light-mode .section-title-underline { opacity: 0.9; }
+        /* The lit-rim gradient on cards/hero reads as glare on white — soften it. */
+        body.light-mode .card::before, body.light-mode .hero-content::before { opacity: 0.5; }

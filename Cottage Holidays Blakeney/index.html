@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=75">
+    <link rel="stylesheet" href="app.css?v=76">
     <!-- Speed up the font fetch (and the jsPDF CDN) by opening the connections early. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -177,6 +177,9 @@
     <noscript><link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500&family=Playfair+Display:wght@400;600&display=swap" rel="stylesheet"></noscript>
     <!-- jsPDF is only used for invoices/receipts — defer it so it never blocks first paint. -->
     <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- Apply the theme before first paint (no flash). Coastal-fresh LIGHT is the
+         default for guests; dark is opt-in and forced for admins (set later by JS). -->
+    <script>(function(){try{var p=localStorage.getItem('chb-theme');if(p!=='dark')document.documentElement.classList.add('theme-light-boot');}catch(e){document.documentElement.classList.add('theme-light-boot');}})();</script>
 </head>
 <body>
 
@@ -1990,7 +1993,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=108"></script>
+    <script src="app.js?v=109"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
