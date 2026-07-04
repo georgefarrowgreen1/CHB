@@ -13490,8 +13490,10 @@ function renderCottageCards() {
                         <div class="card-rating" id="card-rating-${k}"></div>
                     </div>
                     <div class="card-meta" data-edit-text="${ck.meta}">${escapeHtml(meta)}</div>
-                    <div class="card-price" id="card-price-${k}"></div>
-                    <div class="card-avail" id="card-avail-${k}"></div>
+                    <div class="card-foot">
+                        <div class="card-price" id="card-price-${k}"></div>
+                        <div class="card-avail" id="card-avail-${k}"></div>
+                    </div>
                 </a>`;
         })
         .join('');
@@ -13532,8 +13534,10 @@ function renderHomeCottages() {
                         <div class="card-rating" id="home-card-rating-${k}"></div>
                     </div>
                     <div class="card-meta" data-edit-text="${ck.meta}">${escapeHtml(meta)}</div>
-                    <div class="card-price" id="home-card-price-${k}"></div>
-                    <div class="card-avail" id="home-card-avail-${k}"></div>
+                    <div class="card-foot">
+                        <div class="card-price" id="home-card-price-${k}"></div>
+                        <div class="card-avail" id="home-card-avail-${k}"></div>
+                    </div>
                 </a>`;
         })
         .join('');
@@ -17250,7 +17254,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'x2z7c4hd';
+    const BUILD = 'y5a9d3rk';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
