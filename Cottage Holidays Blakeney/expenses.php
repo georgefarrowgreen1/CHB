@@ -49,6 +49,7 @@ if ($action === 'add') {
                 'INSERT INTO expenses (category, description, amount, prop_key, recurring, receipt_data, expense_date) VALUES (?,?,?,?,?,?,?)',
             )
             ->execute([$category, $description, $amount, $prop, $recurring, $receiptData, $date]);
+        log_activity('expenses', 'expense.add', 'Expense added — £' . number_format($amount, 2) . ' · ' . $category, ['prop_key' => (string) $prop, 'entity' => 'expense', 'entity_id' => (string) db()->lastInsertId()]);
         json_out(['ok' => true, 'id' => (int) db()->lastInsertId()]);
     } catch (\Throwable $e) {
         // Older DB without the recurring/receipt_data columns — save the core fields.
@@ -110,6 +111,7 @@ if ($action === 'update') {
                 )
                 ->execute([$category, $description, $amount, $prop, $recurring, $date, $id]);
         }
+        log_activity('expenses', 'expense.update', 'Expense edited — £' . number_format($amount, 2) . ' · ' . $category, ['prop_key' => (string) $prop, 'entity' => 'expense', 'entity_id' => (string) $id]);
         json_out(['ok' => true]);
     } catch (\Throwable $e) {
         // Older DB without recurring/receipt_data — update the core fields only.
@@ -134,6 +136,7 @@ if ($action === 'delete') {
     db()
         ->prepare('DELETE FROM expenses WHERE id = ?')
         ->execute([$id]);
+    log_activity('expenses', 'expense.delete', 'Expense deleted', ['entity' => 'expense', 'entity_id' => (string) $id]);
     json_out(['ok' => true]);
 }
 

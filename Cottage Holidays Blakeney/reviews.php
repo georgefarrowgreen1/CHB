@@ -139,6 +139,7 @@ if ($action === 'set_status') {
     db()
         ->prepare('UPDATE guest_reviews SET status = ? WHERE id = ?')
         ->execute([$status, $id]);
+    log_activity('moderation', 'review.' . $status, 'Review ' . ($status === 'approved' ? 'approved' : 'declined'), ['entity' => 'review', 'entity_id' => (string) $id]);
     json_out(['ok' => true]);
 }
 
@@ -147,6 +148,7 @@ if ($action === 'delete') {
     db()
         ->prepare('DELETE FROM guest_reviews WHERE id = ?')
         ->execute([$id]);
+    log_activity('moderation', 'review.delete', 'Review deleted', ['entity' => 'review', 'entity_id' => (string) $id]);
     json_out(['ok' => true]);
 }
 

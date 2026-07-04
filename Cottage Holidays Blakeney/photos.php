@@ -123,6 +123,7 @@ if ($action === 'approve' || $action === 'reject') {
     db()
         ->prepare('UPDATE guest_photos SET status = ? WHERE id = ?')
         ->execute([$status, $id]);
+    log_activity('moderation', 'photo.' . $action, 'Guest photo ' . ($action === 'approve' ? 'approved' : 'rejected'), ['entity' => 'photo', 'entity_id' => (string) $id]);
     json_out(['ok' => true]);
 }
 

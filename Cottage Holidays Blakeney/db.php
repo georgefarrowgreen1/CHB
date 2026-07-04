@@ -433,6 +433,43 @@ function content_json($key, $default = [])
     }
 }
 
+// Record one line in the back-office activity log (audit trail of owner/admin
+// actions + site changes). Best-effort and fully guarded: the log is a
+// convenience, so a missing table or a write error must NEVER break the action
+// being logged. $opts may carry prop_key / entity / entity_id / meta (array).
+// Read by activity-log.php.
+function log_activity($category, $action, $summary, $opts = [])
+{
+    try {
+        $actor = !empty($_SESSION['admin_id'])
+            ? 'owner'
+            : (!empty($_SESSION['guest_id'])
+                ? 'guest:' . (int) $_SESSION['guest_id']
+                : (defined('CHB_CRON') && CHB_CRON
+                    ? 'cron'
+                    : 'system'));
+        db()
+            ->prepare(
+                'INSERT INTO activity_log (actor, category, action, summary, prop_key, entity, entity_id, meta, ip)
+                 VALUES (?,?,?,?,?,?,?,?,?)',
+            )
+            ->execute([
+                mb_substr((string) $actor, 0, 120),
+                mb_substr((string) $category, 0, 32),
+                mb_substr((string) $action, 0, 64),
+                mb_substr((string) $summary, 0, 255),
+                isset($opts['prop_key']) && $opts['prop_key'] !== '' ? mb_substr((string) $opts['prop_key'], 0, 40) : null,
+                isset($opts['entity']) && $opts['entity'] !== '' ? mb_substr((string) $opts['entity'], 0, 40) : null,
+                isset($opts['entity_id']) && $opts['entity_id'] !== ''
+                    ? mb_substr((string) $opts['entity_id'], 0, 64)
+                    : null,
+                isset($opts['meta']) ? mb_substr((string) json_encode($opts['meta']), 0, 4000) : null,
+                $_SERVER['REMOTE_ADDR'] ?? null,
+            ]);
+    } catch (\Throwable $e) {
+    }
+}
+
 // Token for a property's iCal export feed: unguessable, needs no login, derived
 // one-way from APP_SECRET so nothing secret leaks. Shared by ical-export.php
 // (validates it) and ical-import.php (builds the ready-made feed URL).
