@@ -123,5 +123,18 @@ foreach (json_decode($GLOBALS['NR_FAKE'], true) as $e) {
 }
 chk('stored extras clean (dedup + drop invalid + exclude primary)', $clean === ['partner@x.com', 'cohost@x.com']);
 
+echo "== Array-content storage round-trip (watermark bug guard) ==\n";
+// content_value() returns '' for any array-valued key, so array keys (the poll
+// watermark, anniv-sent) MUST store single-encoded and read via content_json().
+// Replicate both decoders (the DB fetch is the only untestable part).
+$cv = function ($stored) { $d = json_decode($stored, true); return is_string($d) ? $d : (is_scalar($d) ? (string)$d : ''); };
+$cj = function ($stored) { if ($stored === '' || $stored === null) return []; $d = json_decode($stored, true); if (is_string($d)) $d = json_decode($d, true); return is_array($d) ? $d : []; };
+$state = ['at' => 111, 'uids' => ['abc', 'def'], 'error' => ''];
+$single = json_encode($state);
+chk('content_value LOSES an array (the bug)', $cv($single) === '');   // documents why we can't use it
+chk('content_json recovers single-encoded array', $cj($single)['uids'] === ['abc', 'def']);
+chk('content_json recovers LEGACY double-encoded array', $cj(json_encode($single))['uids'] === ['abc', 'def']);
+chk('content_json empty → default []', $cj('') === [] && $cj(null) === []);
+
 echo "\n" . ($fail === 0 ? "All reply checks passed.\n" : "$fail CHECK(S) FAILED\n");
 exit($fail ? 1 : 0);

@@ -295,7 +295,7 @@ if ($action === 'purge_data') {
     try { db()->prepare('DELETE FROM search_log WHERE ip_hash = ?')->execute([hash('sha256', TEST_MARK)]); } catch (\Throwable $e) {}
     // Reverse the seed manifest (GPS coords, weekend uplift, curated test reviews).
     try {
-        $m = json_decode(content_value('testcentre-seeded') ?: '{}', true);
+        $m = content_json('testcentre-seeded', []);
         if (is_array($m)) {
             foreach (($m['geo'] ?? []) as $k => $prev) {
                 if ($prev === null) db()->prepare('DELETE FROM content WHERE item_key = ?')->execute(['geo-' . $k]);

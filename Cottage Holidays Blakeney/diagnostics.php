@@ -142,7 +142,7 @@ if ($replyWebhook) {
         'On (inbound route) — replies to a message alert reach the guest on the website and by email, via ' . REPLY_INBOX . '.');
 } elseif (function_exists('mailbox_auto_enabled') && mailbox_auto_enabled()) {
     // Report the LAST poll's outcome (no live socket here, so Health check stays fast).
-    $ps = json_decode(content_value('mailbox-poll') ?: '{}', true);
+    $ps = content_json('mailbox-poll', []);
     $err = is_array($ps) ? ($ps['error'] ?? '') : '';
     $when = (is_array($ps) && !empty($ps['at'])) ? gmdate('j M, H:i', (int)$ps['at']) . ' UTC' : 'not yet';
     $last = (is_array($ps) && isset($ps['last']) && is_array($ps['last'])) ? $ps['last'] : null;

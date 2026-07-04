@@ -21,8 +21,7 @@ if (content_value('anniversary-nudge-off') === '1') json_out(['ok' => true, 'sen
 if (!defined('MAIL_ENABLED') || !MAIL_ENABLED) json_out(['ok' => true, 'sent' => 0, 'mail_off' => true]);
 
 // One re-invite per booking, ever.
-$sent = json_decode(content_value('anniv-sent') ?: '[]', true);
-if (!is_array($sent)) $sent = [];
+$sent = content_json('anniv-sent', []);   // array-valued key — read with content_json()
 
 // Stays whose check-in was 328–340 days ago — a ~2-week window so a missed
 // cron day never silently skips anyone.
