@@ -14,8 +14,8 @@
 //  show (push.php?action=sw_notify) and relays release reloads to open pages.
 //  Keep this file in the SAME folder as index.html.
 // ============================================================
-const CACHE = 'chb-cache-v172';
-const CORE = ['./', 'index.html', 'logo.svg', 'favicon.png', 'apple-touch-icon.png', 'manifest.json', 'app.css?v=86', 'app.js?v=122', 'guest-app.css?v=27', 'guest-app.js?v=14'];
+const CACHE = 'chb-cache-v173';
+const CORE = ['./', 'index.html', 'logo.svg', 'favicon.png', 'apple-touch-icon.png', 'manifest.json', 'app.css?v=86', 'app.js?v=123', 'guest-app.css?v=27', 'guest-app.js?v=14'];
 // uploads/ images live in their own size-capped bucket so galleries stay fast and
 // available offline WITHOUT growing the main cache without bound (every image ever
 // viewed used to accumulate forever in CACHE).
@@ -122,7 +122,11 @@ async function swFlushQueue() {
             // True network failure — stop and let the browser retry the sync later.
             throw e;
         }
-        await swQueueDelete(db, it.id);   // got a response → handled (don't loop on 4xx/5xx)
+        // Session lapsed (401/403) → KEEP the write and retry on a later sync once the
+        // owner re-signs in; don't silently drop it. Any other response is treated as
+        // handled so a genuinely-rejected item can't wedge the queue.
+        if (r && (r.status === 401 || r.status === 403)) continue;
+        await swQueueDelete(db, it.id);
         sent++;
     }
     if (sent) {
