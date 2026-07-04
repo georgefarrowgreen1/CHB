@@ -2595,3 +2595,19 @@ html.js-reveal h2.section-title.text-center.reveal.in-view::after { transform: t
         body.light-mode .prop-divider, body.light-mode .section-title-underline { opacity: 0.9; }
         /* The lit-rim gradient on cards/hero reads as glare on white — soften it. */
         body.light-mode .card::before, body.light-mode .hero-content::before { opacity: 0.5; }
+
+        /* ---- Motion & life (design refresh 2/2) ---- */
+        /* Hero headline panel parallax: rises slightly slower than the page so more
+           of the photo reveals as you scroll. --parallax set by initHeroParallax;
+           0 by default, so no-JS / reduced-motion just sit still. */
+        #hero-headline-panel { transform: translateY(var(--parallax, 0)); will-change: transform; }
+        @media (prefers-reduced-motion: reduce) { #hero-headline-panel { transform: none; } }
+        /* Springier scroll reveals — a touch more travel and spring on the way in. */
+        html.js-reveal .reveal { transform: translateY(26px); transition: opacity 0.8s var(--fluid-bezier), transform 0.9s var(--spring); }
+        /* Seasonal accent (set by applySeasonalAccent) — a subtle secondary tint on
+           the section-title underline + scroll cue, so the site quietly feels current.
+           Falls back to the rose-gold accent where the var isn't set. */
+        h2.section-title.text-center::after {
+            background: linear-gradient(90deg, transparent, var(--season-accent, var(--accent)), transparent);
+        }
+        body.light-mode .hero-scroll-cue { color: var(--season-accent, var(--sea)); }

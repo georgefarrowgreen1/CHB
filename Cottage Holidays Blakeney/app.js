@@ -484,6 +484,48 @@
         }
         if (document.readyState !== 'loading') initScrollReveal();
         else document.addEventListener('DOMContentLoaded', initScrollReveal);
+
+        // ---- Hero parallax: the background drifts slower than the page as you
+        // scroll, giving the opening a sense of depth. Composited (transform) and
+        // rAF-throttled; skipped under reduced-motion. ----
+        function initHeroParallax() {
+            try {
+                if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+                const panel = document.getElementById('hero-headline-panel');
+                if (!panel) return;
+                let ticking = false;
+                const onScroll = () => {
+                    if (ticking) return;
+                    ticking = true;
+                    requestAnimationFrame(() => {
+                        const y = window.scrollY || 0;
+                        // The headline panel rises a touch slower than the page, so more
+                        // of the photo behind it reveals as you scroll — gentle depth.
+                        // (The hero-bg keeps its own slow drift; no transform conflict.)
+                        if (y < 900) panel.style.setProperty('--parallax', (-y * 0.12).toFixed(1) + 'px');
+                        ticking = false;
+                    });
+                };
+                window.addEventListener('scroll', onScroll, { passive: true });
+                onScroll();
+            } catch (e) {}
+        }
+        if (document.readyState !== 'loading') initHeroParallax();
+        else document.addEventListener('DOMContentLoaded', initHeroParallax);
+
+        // ---- Seasonal accent: a subtle secondary tint that shifts with the season,
+        // so the site quietly feels current rather than set-and-forget. Applied only
+        // to small details via a CSS var — the rose-gold brand accent is untouched. ----
+        (function applySeasonalAccent() {
+            try {
+                const m = new Date().getMonth();   // 0=Jan (northern hemisphere)
+                const seasonAccent = (m >= 2 && m <= 4) ? '#7FB069'      // spring — fresh green
+                    : (m >= 5 && m <= 7) ? '#E0A44C'                     // summer — warm gold
+                    : (m >= 8 && m <= 10) ? '#C67B3D'                    // autumn — amber
+                    : '#6E93B3';                                         // winter — slate-blue
+                document.documentElement.style.setProperty('--season-accent', seasonAccent);
+            } catch (e) {}
+        })();
         // Log a homepage availability search + whether it found anything (demand signal).
         function logSearch(info) {
             if (document.body.classList.contains('owner-mode')) return;
@@ -11583,7 +11625,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'x9u4d1jg';
+            const BUILD = 'y0v5e2kh';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
