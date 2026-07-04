@@ -57,8 +57,12 @@ function chat_notify_owner($name, $email, $bodyTxt, $threadId = 0) {
             $replyAddr = ($threadId > 0 && function_exists('msg_reply_address')) ? msg_reply_address($threadId) : '';
             $msgId = ($replyAddr && function_exists('msg_reply_token')) ? 'msg.' . msg_reply_token($threadId) : null;
             $replyHint = $replyAddr ? "\nJust reply to this email and the guest gets it on the website and by email." : '';
+            // Zero-setup (POP3) route matches the token from headers/subject, so tag
+            // the subject as a fallback; the webhook route uses the plus-address.
+            $subjTag = ($replyAddr && function_exists('msg_reply_needs_subject_tag') && msg_reply_needs_subject_tag())
+                ? ' [#' . msg_reply_token($threadId) . ']' : '';
             $body = "Someone has sent you a message via the website chat.\n\nFrom: " . ($name ?: '—') . " (" . ($email ?: 'no email') . ")\n\n\"" . $bodyTxt . "\"\n" . $replyHint . "\nOr open the back office → Guest messages to reply.";
-            send_owner('New website message — Cottage Holidays Blakeney', $body, null, [], $replyAddr ?: null, $msgId);
+            send_owner('New website message — Cottage Holidays Blakeney' . $subjTag, $body, null, [], $replyAddr ?: null, $msgId);
         }
     } catch (\Throwable $e) {}
     // Wake the owner's devices (best-effort).

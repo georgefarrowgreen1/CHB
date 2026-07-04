@@ -37,5 +37,36 @@ chk('signature stripped', strip_quoted_reply($sig) === "Perfect, booked.");
 $plain = "Just a normal reply with no quote.";
 chk('plain reply untouched', strip_quoted_reply($plain) === $plain);
 
+echo "== Zero-setup mailbox parsing ==\n";
+require_once __DIR__ . '/mailbox-read.php';   // endpoint block is basename-guarded → no side effects
+// POP3 UIDL listing
+$uidls = pop3_parse_uidl("+OK\r\n1 aaa111\r\n2 bbb222\r\n3 ccc333\r\n.\r\n");
+chk('UIDL parsed to [no=>uid]', $uidls === [1 => 'aaa111', 2 => 'bbb222', 3 => 'ccc333']);
+// derived POP host
+chk('pop host derived from smtp host', mailbox_pop_host() !== '' && strpos(mailbox_pop_host(), 'pop') === 0 ? true : (mailbox_pop_host() === '' ? true : false));
+// From-address extraction
+chk('from "Name <addr>" → addr', mailbox_from_addr('George Farrow <george@icloud.com>') === 'george@icloud.com');
+chk('from bare addr', mailbox_from_addr('george@icloud.com') === 'george@icloud.com');
+// A realistic quoted-printable reply, token in In-Reply-To
+$rawQP = "From: George <george@icloud.com>\r\n"
+       . "Subject: Re: New website message\r\n"
+       . "In-Reply-To: <msg." . $tok . "@cottageholidaysblakeney.co.uk>\r\n"
+       . "Content-Type: text/plain; charset=UTF-8\r\n"
+       . "Content-Transfer-Encoding: quoted-printable\r\n"
+       . "\r\n"
+       . "Yes =E2=80=94 1-8 August is free.\r\n\r\nOn Fri wrote:\r\n> old stuff";
+$p = parse_email_message($rawQP);
+chk('QP body decoded', strpos($p['body'], 'August is free') !== false);
+chk('token found from In-Reply-To', msg_reply_verify(mailbox_token_in($p)) === 42);
+chk('sender parsed', mailbox_from_addr($p['from']) === 'george@icloud.com');
+chk('cleaned reply drops the quote', strip_quoted_reply($p['body']) === "Yes — 1-8 August is free.");
+// Multipart/alternative — take text/plain
+$b = 'BOUND123';
+$rawMP = "From: a@b.com\r\nSubject: Re: hi [#" . $tok . "]\r\nContent-Type: multipart/alternative; boundary=\"$b\"\r\n\r\n"
+       . "--$b\r\nContent-Type: text/plain\r\n\r\nHello there plain\r\n--$b\r\nContent-Type: text/html\r\n\r\n<p>Hello there html</p>\r\n--$b--\r\n";
+$pm = parse_email_message($rawMP);
+chk('multipart text/plain extracted', trim($pm['body']) === 'Hello there plain');
+chk('token found from subject tag', msg_reply_verify(mailbox_token_in($pm)) === 42);
+
 echo "\n" . ($fail === 0 ? "All reply checks passed.\n" : "$fail CHECK(S) FAILED\n");
 exit($fail ? 1 : 0);

@@ -1,50 +1,55 @@
-# Reply-by-email setup
+# Reply-by-email
 
-Reply to a **"New website message"** notification straight from your inbox and
-your reply reaches the guest **both** ways — in the website chat *and* by email.
-It's optional; until you set it up, notifications behave exactly as before.
+Reply to a **"New website message"** email straight from your inbox and your
+reply reaches the guest **both** ways — in the website chat *and* by email.
+The guest sees it exactly as if you'd typed it in the back office.
 
-## How it works
+## It just works — no setup
 
-1. A guest messages you on the site → you get the usual owner email, but now its
-   **Reply-To** points at a dedicated inbound mailbox, tagged with the
-   conversation.
-2. You hit **Reply**, type, send.
-3. Your mail provider's *inbound route* POSTs the reply to `inbound-mail.php`,
-   which matches it to the conversation, posts it into the website chat, and
-   emails it to the guest.
+As soon as SMTP email is configured (which it already is if you're sending
+booking emails), this is **on automatically**. There's nothing to set up.
 
-Only replies **from one of your owner-notification addresses** are accepted
-(Settings → Notifications), and the webhook needs the secret — so nobody else
-can inject messages.
+How: the notification email's **Reply-To** points at the mailbox the site
+already sends from. When you reply, the site quietly reads that mailbox over
+POP3 (using the same credentials, on the matching `pop.` host) and posts your
+reply into the conversation. It only ever acts on replies **from one of your
+owner-notification addresses** (Settings → Notifications) that match a real
+conversation — everything else in the mailbox is ignored and nothing is
+deleted.
 
-## One-time setup (~10 minutes, free)
+Replies are pulled in whenever you open **Guest messages** in the back office,
+and once a day by the scheduled job. Settings → **Health check** shows a green
+*Reply-by-email (auto)* row, and reports the mailbox host + last check.
 
-1. **Pick an inbound address**, e.g. `reply@yourdomain.co.uk`.
+### If the auto check can't connect
 
-2. **In `config.php`** set:
+Some hosts use a non-standard POP host or need POP3 switched on for the mailbox.
+If Health check shows an amber *Reply-by-email (auto)* row:
+
+- Turn on **POP3** for the mailbox in your email provider's control panel.
+- Or set the read host explicitly in `config.php`:
+  ```php
+  define('MAIL_POP_HOST', 'pop.yourprovider.com');   // default is derived from SMTP_HOST
+  ```
+
+Either way, replying from the back office always works.
+
+## Optional: inbound-route (webhook) instead of polling
+
+Prefer instant delivery (no polling) or a dedicated address? Set a webhook route
+instead — the auto POP3 reader stands down when `REPLY_INBOX` is set.
+
+1. In `config.php`:
    ```php
    define('REPLY_INBOX', 'reply@yourdomain.co.uk');
    define('INBOUND_SECRET', 'a-long-random-string');   // not your APP_SECRET
    ```
-
-3. **Create a free inbound-mail route** for that address that forwards to a
-   webhook (any one of these works):
-   - **ImprovMX** (free) — add your domain, create an alias `reply@` with a
-     *webhook* target of
-     `https://yourdomain.co.uk/inbound-mail.php?key=YOUR_INBOUND_SECRET`.
-   - **Mailgun Routes** — match `reply@yourdomain.co.uk`, action
-     `forward("https://yourdomain.co.uk/inbound-mail.php?key=YOUR_INBOUND_SECRET")`.
-   - **CloudMailin** — point the address at the same URL (it POSTs the parsed mail).
-
-4. **Test:** message yourself from the site's chat, reply to the email you get,
-   then check the reply shows in the back-office thread and arrives in the guest
-   inbox. Settings → Health check shows a green **Reply-by-email** row when
-   `REPLY_INBOX` is set.
+2. Create a free inbound route (ImprovMX / Mailgun Routes / CloudMailin) for
+   that address that forwards to:
+   `https://yourdomain.co.uk/inbound-mail.php?key=YOUR_INBOUND_SECRET`
 
 ## Notes
 
-- Providers post different field names; `inbound-mail.php` accepts the common
-  ones (Mailgun `stripped-text`, SendGrid/CloudMailin `text`, plus raw MIME).
-- It keeps only what you typed above the quoted history / signature.
-- Guests can reply to *their* email too — it routes back into the same thread.
+- Only what you type above the quoted history / signature is sent to the guest.
+- Handles the common reply formats (Gmail, Apple Mail, Outlook), quoted-
+  printable / base64 bodies, and multipart emails.

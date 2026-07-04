@@ -328,13 +328,28 @@ function msg_reply_verify($token) {
     $tid = (int)$m[1];
     return hash_equals(msg_reply_token($tid), $m[1] . 'x' . $m[2]) ? $tid : 0;
 }
-// The plus-addressed inbound address for a thread, or '' if reply-by-email is
-// not configured (REPLY_INBOX unset) — in which case notifications behave as
-// before (Reply-To = the owner's own address).
+// The reply address a message-notification email points at:
+//  1. If REPLY_INBOX is set → its plus-address (the webhook route).
+//  2. Else, zero-setup: the mailbox the site already sends from (MAIL_FROM /
+//     SMTP_USER), which mailbox-read.php polls over POP3. Replies there are
+//     matched by the token in the Message-ID (In-Reply-To) + subject.
+//  3. Else '' → notifications behave as before (Reply-To = owner's own address).
 function msg_reply_address($threadId) {
-    if (!defined('REPLY_INBOX') || !REPLY_INBOX || strpos(REPLY_INBOX, '@') === false) return '';
-    [$local, $domain] = explode('@', REPLY_INBOX, 2);
-    return $local . '+' . msg_reply_token($threadId) . '@' . $domain;
+    if (defined('REPLY_INBOX') && REPLY_INBOX && strpos(REPLY_INBOX, '@') !== false) {
+        [$local, $domain] = explode('@', REPLY_INBOX, 2);
+        return $local . '+' . msg_reply_token($threadId) . '@' . $domain;
+    }
+    if (function_exists('mailbox_auto_enabled') && mailbox_auto_enabled()) {
+        $addr = defined('MAIL_FROM') && MAIL_FROM ? MAIL_FROM : (defined('SMTP_USER') ? SMTP_USER : '');
+        if ($addr && strpos($addr, '@') !== false) return $addr;
+    }
+    return '';
+}
+// True when replies are matched by header/subject token rather than a plus-
+// address (the zero-setup POP3 route) — the notification then also tags the
+// subject so a client that drops In-Reply-To still matches.
+function msg_reply_needs_subject_tag() {
+    return !(defined('REPLY_INBOX') && REPLY_INBOX) && function_exists('mailbox_auto_enabled') && mailbox_auto_enabled();
 }
 
 // ---- Square online payments helpers ----
