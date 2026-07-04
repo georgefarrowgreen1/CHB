@@ -320,6 +320,7 @@ if ($action === 'delete') {
         } catch (\Throwable $e) {
         }
     }
+    log_activity('booking', 'booking.delete', 'Booking deleted' . ($b ? ' — ' . ($b['name'] ?? '') : ''), ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
     json_out(['ok' => true]);
 }
 
@@ -428,6 +429,7 @@ if ($action === 'add') {
     if ($guestEmail !== '') {
         $emailResult = send_booking_confirmation($newId);
     }
+    log_activity('booking', 'booking.add', 'Booking created — ' . $name, ['prop_key' => $propKey, 'entity' => 'booking', 'entity_id' => (string) $newId, 'meta' => ['detail' => trim($checkIn . ' → ' . $checkOut)]]);
     json_out(['ok' => true, 'id' => $newId, 'email' => $emailResult]);
 }
 
@@ -561,6 +563,7 @@ if ($action === 'update') {
     $args[] = $id;
     db()->prepare($sql)->execute($args);
     book_unlock($propKey);
+    log_activity('booking', 'booking.update', 'Booking edited', ['prop_key' => $propKey, 'entity' => 'booking', 'entity_id' => (string) $id]);
     json_out(['ok' => true]);
 }
 
@@ -602,6 +605,7 @@ if ($action === 'set_payment') {
     db()
         ->prepare('UPDATE bookings SET payment=?, deposit_paid=?, payment_method=?, payment_date=? WHERE id=?')
         ->execute([$status, $dep, $method, $date ?: null, $id]);
+    log_activity('payment', 'booking.set_payment', 'Payment status set to ' . $status . ($b['name'] ? ' — ' . $b['name'] : ''), ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
     json_out(['ok' => true]);
 }
 
@@ -894,6 +898,7 @@ if ($action === 'refund') {
             $emailResult = ['ok' => false, 'error' => $e->getMessage()];
         }
     }
+    log_activity('payment', 'booking.refund', 'Refund issued — £' . number_format((float) $amount, 2), ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
     json_out(['ok' => true, 'refunded' => $amount, 'status' => $rec['status'], 'email' => $emailResult]);
 }
 
@@ -1031,6 +1036,12 @@ if ($action === 'cancel') {
         waitlist_notify_freed($b['prop_key'] ?? '', $b['check_in'] ?? '', $b['check_out'] ?? '');
     } catch (\Throwable $e) {
     }
+    log_activity(
+        'booking',
+        'booking.cancel',
+        'Booking cancelled — ' . ($b['name'] ?? '') . ($refundAmount > 0 ? ' (refund £' . number_format((float) $refundAmount, 2) . ')' : ''),
+        ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id],
+    );
     json_out([
         'ok' => true,
         'refunded' => $refundedByCard,

@@ -184,6 +184,7 @@ try {
     $emailErr = $e->getMessage();
 }
 
+log_activity('system', 'backup.run', 'Database backup created (' . number_format($res['bytes'] / 1024, 0) . ' KB)', ['entity' => 'backup']);
 json_out([
     'ok' => true,
     'ran' => true,

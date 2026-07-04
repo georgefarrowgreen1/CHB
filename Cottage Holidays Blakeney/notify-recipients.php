@@ -116,6 +116,12 @@ if (basename($_SERVER['SCRIPT_NAME'] ?? '') === 'notify-recipients.php') {
         }
         if ($r['changed']) {
             nr_save($r['list']);
+            log_activity(
+                'settings',
+                'notify.' . $action,
+                'Notification email ' . ($action === 'add' ? 'added' : 'removed'),
+                ['entity' => 'notify-emails'],
+            );
         }
         json_out(['ok' => true, 'extras' => $r['list']]);
     }

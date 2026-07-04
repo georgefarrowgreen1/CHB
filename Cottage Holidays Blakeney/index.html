@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=79">
+    <link rel="stylesheet" href="app.css?v=80">
     <!-- Speed up the font fetch (and the jsPDF CDN) by opening the connections early. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -904,6 +904,22 @@
         <!-- Recent activity (filled async by loadActivityFeed) -->
         <div id="bo-activity"></div>
 
+    </main>
+
+    <!-- ================= ACTIVITY LOG (full audit trail of changes/actions) ================= -->
+    <main id="view-activity-log" class="page-view container">
+        <span class="back-link" onclick="nav('view-backoffice'); initBackOffice();">← Back to Dashboard</span>
+        <div class="dashboard-header">
+            <div>
+                <h1 class="section-title" style="margin-bottom: 5px;">Activity log</h1>
+                <p class="lead" style="text-align: left; margin: 0;">Every change and action across your site — bookings, payments, edits, moderation and more.</p>
+            </div>
+        </div>
+        <div class="act-log-controls">
+            <div class="act-log-filters" id="act-log-filters"><!-- chips injected by renderActivityLog() --></div>
+            <input type="search" class="input-glass act-log-search" id="act-log-search" placeholder="Search the log…" autocomplete="off" oninput="activityLogSearch(this.value)">
+        </div>
+        <div id="act-log-list"><!-- injected by renderActivityLog() --></div>
     </main>
 
     <!-- ================= SETTINGS (Apple-style grouped index + drill-down) ================= -->
@@ -1993,7 +2009,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=114"></script>
+    <script src="app.js?v=115"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

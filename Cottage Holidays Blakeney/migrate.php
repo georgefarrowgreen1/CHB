@@ -171,6 +171,10 @@ foreach ($files as $path) {
     ];
 }
 
+$appliedNow = array_filter($report, fn($r) => in_array($r['status'] ?? '', ['applied', 're-applied'], true));
+if ($appliedNow) {
+    log_activity('system', 'migrate.run', 'Database updates applied (' . count($appliedNow) . ')', ['entity' => 'migration']);
+}
 $failed = array_filter($report, fn($r) => ($r['status'] ?? '') === 'ERROR');
 json_out(
     [

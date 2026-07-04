@@ -93,6 +93,7 @@ if (($in['action'] ?? '') === 'seasons_save') {
     } catch (\Throwable $e) {
         json_out(['error' => 'Seasonal rates table missing — run migration-seasons.sql in phpMyAdmin first'], 500);
     }
+    log_activity('rates', 'rates.seasons_save', 'Seasonal rates updated (' . count($cleaned) . ')', ['prop_key' => $propKey]);
     json_out(['ok' => true, 'count' => count($cleaned)]);
 }
 
@@ -137,6 +138,7 @@ if (($in['action'] ?? '') === 'create') {
             500,
         );
     }
+    log_activity('rates', 'rates.create', 'Accommodation added — ' . $name, ['prop_key' => $key, 'entity' => 'property']);
     json_out(['ok' => true, 'prop_key' => $key, 'slug' => $slug, 'accent' => $accent]);
 }
 
@@ -169,6 +171,12 @@ if (($in['action'] ?? '') === 'archive' || ($in['action'] ?? '') === 'unarchive'
             500,
         );
     }
+    log_activity(
+        'rates',
+        $archiving ? 'rates.archive' : 'rates.unarchive',
+        ($archiving ? 'Accommodation removed' : 'Accommodation restored') . ' — ' . $propKey,
+        ['prop_key' => $propKey, 'entity' => 'property'],
+    );
     json_out(['ok' => true, 'archived' => $archiving]);
 }
 
@@ -209,6 +217,7 @@ if (($in['action'] ?? '') === 'save') {
     db()
         ->prepare('UPDATE properties SET ' . implode(', ', $set) . ' WHERE prop_key = ?')
         ->execute($vals);
+    log_activity('rates', 'rates.save', 'Cottage settings/rates updated — ' . $propKey, ['prop_key' => $propKey, 'entity' => 'property']);
     json_out(['ok' => true]);
 }
 

@@ -88,6 +88,7 @@ switch ($action) {
         $_SESSION['admin_id'] = (int) $row['id'];
         unset($_SESSION['guest_id']); // one role at a time: signing in as admin ends any guest session
         csrf_issue_cookie(); // set the CSRF cookie now (session id was just regenerated)
+        log_activity('account', 'admin.login', 'Owner signed in');
         json_out(['ok' => true]);
 
     case 'admin_logout':

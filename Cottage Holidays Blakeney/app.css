@@ -4113,6 +4113,66 @@ body.owner-mode .chat-widget {
     display: none;
   }
 }
+/* Activity log page (view-activity-log) */
+.act-full-link {
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  color: var(--accent);
+  cursor: pointer;
+}
+.act-full-link:hover {
+  text-decoration: underline;
+}
+.act-log-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 8px 0 18px;
+}
+.act-log-filters {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  flex: 1;
+}
+.act-log-chip {
+  font-family: var(--font-sans);
+  font-size: 0.8rem;
+  padding: 6px 13px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--glass-border);
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.18s var(--fluid-bezier);
+}
+.act-log-chip:hover {
+  color: var(--text-light);
+}
+.act-log-chip.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+.act-log-search {
+  max-width: 260px;
+}
+.act-actor {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-pill);
+  padding: 2px 8px;
+  flex-shrink: 0;
+}
+.act-log-empty {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  padding: 30px 4px;
+  text-align: center;
+}
 /* Season grid (Settings → Seasonal rates — all cottages) */
 .sg-table {
   border-collapse: collapse;

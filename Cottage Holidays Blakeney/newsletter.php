@@ -137,6 +137,7 @@ if ($action === 'broadcast') {
             $failed++;
         }
     }
+    log_activity('settings', 'newsletter.broadcast', 'Newsletter sent — “' . mb_substr($subject, 0, 80) . '” (' . $sent . ' recipients)', ['entity' => 'newsletter']);
     json_out(['ok' => true, 'sent' => $sent, 'failed' => $failed, 'subscribers' => count($subs)]);
 }
 

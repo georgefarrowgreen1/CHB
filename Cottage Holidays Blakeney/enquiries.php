@@ -209,7 +209,9 @@ if ($action === 'submit') {
 require_admin();
 
 if ($action === 'decline') {
-    json_out(enquiry_decline((int) ($in['id'] ?? 0)));
+    $r = enquiry_decline((int) ($in['id'] ?? 0));
+    log_activity('enquiry', 'enquiry.decline', 'Enquiry declined', ['entity' => 'enquiry', 'entity_id' => (string) (int) ($in['id'] ?? 0)]);
+    json_out($r);
 }
 
 if ($action === 'approve') {
@@ -217,6 +219,7 @@ if ($action === 'approve') {
     if (!empty($r['error'])) {
         json_out(['error' => $r['error']], (int) ($r['code'] ?? 400));
     }
+    log_activity('enquiry', 'enquiry.approve', 'Enquiry approved → booking', ['entity' => 'enquiry', 'entity_id' => (string) (int) ($in['id'] ?? 0)]);
     json_out(['ok' => true, 'email' => $r['email'] ?? null, 'payment_request' => $r['payment_request'] ?? null]);
 }
 

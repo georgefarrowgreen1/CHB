@@ -74,6 +74,7 @@ if ($action === 'set') {
                    ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = CURRENT_TIMESTAMP',
         )
         ->execute([$key, $value]);
+    log_activity('content', 'content.set', 'Website content updated: ' . $key, ['entity' => 'content', 'entity_id' => $key]);
     json_out(['ok' => true]);
 }
 
@@ -82,6 +83,7 @@ if ($action === 'delete') {
     db()
         ->prepare('DELETE FROM content WHERE item_key = ?')
         ->execute([$key]);
+    log_activity('content', 'content.delete', 'Website content removed: ' . $key, ['entity' => 'content', 'entity_id' => $key]);
     json_out(['ok' => true]);
 }
 

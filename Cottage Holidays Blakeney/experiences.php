@@ -246,6 +246,7 @@ if ($action === 'approve') {
     db()
         ->prepare("UPDATE experiences SET status='published', sort_order=? WHERE id=?")
         ->execute([$max + 1, $id]);
+    log_activity('moderation', 'experience.approve', 'Experience published', ['entity' => 'experience', 'entity_id' => (string) $id]);
     json_out(['ok' => true]);
 }
 
@@ -254,6 +255,7 @@ if ($action === 'reject') {
     db()
         ->prepare("UPDATE experiences SET status='rejected' WHERE id=?")
         ->execute([$id]);
+    log_activity('moderation', 'experience.reject', 'Experience rejected', ['entity' => 'experience', 'entity_id' => (string) $id]);
     json_out(['ok' => true]);
 }
 
@@ -262,6 +264,7 @@ if ($action === 'delete') {
     db()
         ->prepare('DELETE FROM experiences WHERE id=?')
         ->execute([$id]);
+    log_activity('moderation', 'experience.delete', 'Experience deleted', ['entity' => 'experience', 'entity_id' => (string) $id]);
     json_out(['ok' => true]);
 }
 

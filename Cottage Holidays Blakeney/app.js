@@ -570,7 +570,7 @@ function mapEnquiryFromApi(row) {
 const CUSTOMER_FACING_VIEWS = ['view-main', 'view-cottages', 'view-21a'];
 // The only views an admin ever sees — everything else is the customer site,
 // which a signed-in admin has no use for (nav() bounces it to the back office).
-const ADMIN_VIEWS = ['view-backoffice', 'view-settings', 'view-accounts'];
+const ADMIN_VIEWS = ['view-backoffice', 'view-settings', 'view-accounts', 'view-activity-log'];
 // Preview-as-guest: opening the site with ?preview=1 renders the customer
 // experience even though an admin is signed in (owner-mode + the admin bounce
 // are suppressed). Read-only — used by the staging Test centre to view the site.
@@ -858,6 +858,11 @@ function nav(viewId, anchorId = null) {
     if (viewId === 'view-experiences') {
         try {
             renderExperiencesView();
+        } catch (e) {}
+    }
+    if (viewId === 'view-activity-log') {
+        try {
+            renderActivityLog();
         } catch (e) {}
     }
     if (viewId === 'view-cottages') {
@@ -12950,6 +12955,15 @@ const ACTIVITY_ICONS = {
     review: '<path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 17.77 6.8 19.5l.99-5.78-4.21-4.1 5.82-.85z"/>',
     photo: '<rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.2"/><path d="M8 6l1.5-2h5L16 6"/>',
     signup: '<rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/>',
+    // Owner/admin action categories (activity log)
+    content: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+    rates: '<path d="M20 12V8H6a2 2 0 0 1 0-4h12v4"/><path d="M4 6v12a2 2 0 0 0 2 2h14v-4"/><path d="M18 12a2 2 0 0 0 0 4h4v-4z"/>',
+    moderation: '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/>',
+    settings:
+        '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
+    system: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v6c0 1.66 3.58 3 8 3s8-1.34 8-3V5"/><path d="M4 11v6c0 1.66 3.58 3 8 3s8-1.34 8-3v-6"/>',
+    account: '<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 12 0v1"/>',
+    other: '<circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/>',
 };
 async function loadActivityFeed() {
     const el = document.getElementById('bo-activity');
@@ -12962,12 +12976,19 @@ async function loadActivityFeed() {
         el.innerHTML = '';
         return;
     }
+    // Always offer the "View full log" entry point, even with no recent business events.
+    const header = `
+                <h2 style="font-family:var(--font-serif);font-size:1.3rem;font-weight:400;margin:26px 0 12px;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;">
+                    Recent activity
+                    <a class="act-full-link" onclick="nav('view-activity-log')">View full log →</a>
+                </h2>`;
     if (!events.length) {
-        el.innerHTML = '';
+        el.innerHTML = header;
         return;
     }
-    el.innerHTML = `
-                <h2 style="font-family:var(--font-serif);font-size:1.3rem;font-weight:400;margin:26px 0 12px;">Recent activity</h2>
+    el.innerHTML =
+        header +
+        `
                 <div class="feed-list glass-panel" style="padding:6px 16px;">
                     ${events
                         .map(
@@ -12982,6 +13003,82 @@ async function loadActivityFeed() {
                         )
                         .join('')}
                 </div>`;
+}
+
+// ---- Full activity log page (view-activity-log) ----
+const ACT_LOG_CATS = [
+    ['all', 'All'],
+    ['booking', 'Bookings'],
+    ['payment', 'Payments'],
+    ['enquiry', 'Enquiries'],
+    ['content', 'Content'],
+    ['rates', 'Rates'],
+    ['moderation', 'Moderation'],
+    ['settings', 'Settings'],
+    ['system', 'System'],
+    ['account', 'Account'],
+];
+const activityLogState = { category: 'all', q: '' };
+let __actLogSearchTimer = null;
+function actorLabel(a) {
+    if (a === 'owner') return 'You';
+    if (a === 'cron') return 'Automatic';
+    if (a === 'system') return 'System';
+    if (a && a.indexOf('guest') === 0) return 'Guest';
+    return a || '';
+}
+async function renderActivityLog() {
+    const list = document.getElementById('act-log-list');
+    const filters = document.getElementById('act-log-filters');
+    if (!list) return;
+    if (filters)
+        filters.innerHTML = ACT_LOG_CATS.map(
+            ([k, label]) =>
+                `<button type="button" class="act-log-chip${activityLogState.category === k ? ' active' : ''}" onclick="activityLogFilter('${k}')">${label}</button>`,
+        ).join('');
+    list.innerHTML = `<div class="act-log-empty">Loading…</div>`;
+    let events = [];
+    try {
+        const r = await apiPost('activity-log.php', {
+            action: 'list',
+            category: activityLogState.category,
+            q: activityLogState.q,
+            limit: 250,
+        });
+        events = r.events || [];
+    } catch (e) {
+        list.innerHTML = `<div class="act-log-empty">Couldn't load the activity log.</div>`;
+        return;
+    }
+    if (!events.length) {
+        list.innerHTML = `<div class="act-log-empty">No matching activity yet.</div>`;
+        return;
+    }
+    list.innerHTML = `
+                <div class="feed-list glass-panel" style="padding:6px 16px;">
+                    ${events
+                        .map(
+                            (ev) => `
+                    <div class="act-row">
+                        <span class="act-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ACTIVITY_ICONS[ev.type] || ACTIVITY_ICONS.other}</svg></span>
+                        ${ev.prop_key && propertyMeta[ev.prop_key] ? `<span class="prop-tag tag-${ev.prop_key}">${propertyMeta[ev.prop_key].short}</span>` : ''}
+                        <span class="act-label">${escapeHtml(ev.label)}</span>
+                        <span class="act-detail">${escapeHtml(ev.detail || '')}</span>
+                        ${ev.actor && ev.actor !== 'guest' ? `<span class="act-actor">${escapeHtml(actorLabel(ev.actor))}</span>` : ''}
+                        <span class="act-when">${timeAgoLabel(ev.at)}</span>
+                    </div>`,
+                        )
+                        .join('')}
+                </div>`;
+}
+function activityLogFilter(cat) {
+    activityLogState.category = cat;
+    renderActivityLog();
+}
+function activityLogSearch(v) {
+    activityLogState.q = v;
+    clearTimeout(__actLogSearchTimer);
+    __actLogSearchTimer = setTimeout(renderActivityLog, 250);
 }
 // ---- Health check: email me a sample of every guest email ----
 async function sendSampleEmails(btn) {
@@ -17131,7 +17228,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'k7m2p9qx';
+    const BUILD = 'r4n8t2wz';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
