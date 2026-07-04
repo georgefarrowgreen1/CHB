@@ -131,57 +131,65 @@ function pop3_multiline($fp) {
 
 // ---- The poll: pull new replies and route them ------------------------------
 // Throttled + watermarked via content 'mailbox-poll' = {at, uids:[…]}.
-function poll_mailbox_replies($force = false) {
+// $preview = true → read-only: don't deliver, don't mark processed, and return a
+// per-message trace (used by the ?debug view to see exactly what's arriving).
+function poll_mailbox_replies($force = false, $preview = false) {
     if (!mailbox_auto_enabled()) return ['ok' => false, 'skipped' => 'not-enabled'];
-    // Throttle: at most once every 90s unless forced (cron passes force).
     $state = json_decode(content_value('mailbox-poll') ?: '{}', true);
     if (!is_array($state)) $state = [];
     $processed = isset($state['uids']) && is_array($state['uids']) ? $state['uids'] : [];
-    if (!$force && !empty($state['at']) && (time() - (int)$state['at']) < 90) return ['ok' => true, 'skipped' => 'throttled'];
+    if (!$preview && !$force && !empty($state['at']) && (time() - (int)$state['at']) < 90) return ['ok' => true, 'skipped' => 'throttled'];
 
     $conn = pop3_open();
-    if (isset($conn['error'])) { mailbox_poll_save($processed, $conn['error']); return ['ok' => false, 'error' => $conn['error']]; }
+    if (isset($conn['error'])) { if (!$preview) mailbox_poll_save($processed, $conn['error'], null); return ['ok' => false, 'error' => $conn['error']]; }
     $fp = $conn['fp'];
-    $handled = 0; $seen = 0;
+    $handled = 0; $seen = 0; $trace = []; $last = null;
     try {
         fwrite($fp, "UIDL\r\n");
-        // First line is the +OK status; then the multiline listing.
-        fgets($fp, 8192);
+        fgets($fp, 8192);                               // +OK
         $uidls = pop3_parse_uidl(pop3_multiline($fp));
         $known = array_fill_keys($processed, true);
         $allowed = array_map('strtolower', function_exists('owner_recipients') ? owner_recipients() : []);
-        // Newest first, cap the work per poll.
-        krsort($uidls);
+        krsort($uidls);                                // newest first
         foreach ($uidls as $no => $uid) {
-            if (isset($known[$uid])) continue;         // already processed
-            if ($seen++ >= 25) break;                  // don't fetch the whole mailbox
-            $processed[] = $uid;                       // mark seen even if we ignore it
+            // In preview we look at the newest few regardless of the watermark.
+            if (!$preview && isset($known[$uid])) continue;
+            if ($seen++ >= ($preview ? 5 : 25)) break;
             fwrite($fp, "RETR {$no}\r\n");
-            fgets($fp, 8192);                          // +OK
+            fgets($fp, 8192);                           // +OK
             $raw = pop3_multiline($fp);
             $p = parse_email_message($raw);
-            $tid = msg_reply_verify(mailbox_token_in($p));
-            if ($tid <= 0) continue;                   // not a reply to one of our threads
-            if (!in_array(mailbox_from_addr($p['from']), $allowed, true)) continue;   // only owner/co-hosts
-            $body = strip_quoted_reply($p['body']);
-            if ($body === '') continue;
-            chat_admin_reply($tid, $body);
-            $handled++;
+            $tok = mailbox_token_in($p);
+            $tid = msg_reply_verify($tok);
+            $fromAddr = mailbox_from_addr($p['from']);
+            $senderOk = in_array($fromAddr, $allowed, true);
+            $body = ($tid > 0 && $senderOk) ? strip_quoted_reply($p['body']) : '';
+            $reason = $tid <= 0 ? 'no-thread-token' : (!$senderOk ? 'sender-not-owner' : ($body === '' ? 'empty-after-strip' : 'delivered'));
+            $info = ['from' => $fromAddr, 'subject' => mb_substr($p['subject'], 0, 120), 'tokenFound' => $tok !== '', 'thread' => $tid, 'senderOk' => $senderOk, 'bodyLen' => strlen($p['body']), 'strippedLen' => strlen($body), 'reason' => $reason];
+            if ($preview) { $info['strippedPreview'] = mb_substr($body ?: $p['body'], 0, 200); $trace[] = $info; continue; }
+            $processed[] = $uid;                        // (live only) mark seen
+            if ($reason === 'delivered') { chat_admin_reply($tid, $body); $handled++; }
+            if ($last === null && $tid > 0) $last = $info;   // remember the newest of OUR threads
         }
         fwrite($fp, "QUIT\r\n");
-    } catch (\Throwable $e) { /* fall through to save + return */ }
+    } catch (\Throwable $e) { if ($preview) return ['ok' => false, 'error' => $e->getMessage()]; }
     @fclose($fp);
-    mailbox_poll_save($processed, $handled ? '' : ($state['error'] ?? ''));
-    return ['ok' => true, 'handled' => $handled];
+    if ($preview) return ['ok' => true, 'messages' => $trace, 'host' => mailbox_pop_host(), 'allowed' => $allowed ?? []];
+    mailbox_poll_save($processed, '', $last);
+    return ['ok' => true, 'handled' => $handled, 'last' => $last];
 }
-function mailbox_poll_save($processed, $error) {
-    // Keep the newest ~300 UIDLs so the watermark can't grow unbounded.
+function mailbox_poll_save($processed, $error, $last) {
     if (count($processed) > 300) $processed = array_slice($processed, -300);
-    $val = json_encode(['at' => time(), 'uids' => array_values($processed), 'error' => $error]);
+    $val = ['at' => time(), 'uids' => array_values($processed), 'error' => $error];
+    if ($last !== null) { $val['last'] = $last; $val['lastAt'] = time(); }
+    else {
+        $prev = json_decode(content_value('mailbox-poll') ?: '{}', true);
+        if (is_array($prev) && isset($prev['last'])) { $val['last'] = $prev['last']; $val['lastAt'] = $prev['lastAt'] ?? null; }
+    }
     try {
         db()->prepare("INSERT INTO content (item_key, item_value) VALUES ('mailbox-poll', ?)
                        ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = CURRENT_TIMESTAMP")
-            ->execute([$val]);
+            ->execute([json_encode($val)]);
     } catch (\Throwable $e) {}
 }
 
@@ -196,10 +204,21 @@ function mailbox_selftest() {
     return ['ok' => true, 'host' => mailbox_pop_host(), 'stat' => trim((string)$stat)];
 }
 
-// ---- Endpoint (admin fire-and-forget + cron) -------------------------------
+// ---- Endpoint (admin fire-and-forget + cron + debug) -----------------------
 if (basename($_SERVER['SCRIPT_NAME'] ?? '') === 'mailbox-read.php') {
     $isCron = isset($_GET['cron']) && defined('APP_SECRET') && hash_equals(APP_SECRET, (string)$_GET['cron']);
     if (!$isCron) require_admin();
+    // Read-only diagnostics: connect + show what the newest messages look like and
+    // why each would (not) be delivered — nothing is delivered or marked processed.
+    if (isset($_GET['debug'])) {
+        json_out([
+            'enabled'  => mailbox_auto_enabled(),
+            'host'     => mailbox_pop_host(),
+            'reply_to' => defined('MAIL_FROM') ? MAIL_FROM : (defined('SMTP_USER') ? SMTP_USER : ''),
+            'selftest' => mailbox_selftest(),
+            'preview'  => poll_mailbox_replies(true, true),
+        ]);
+    }
     // Don't make the admin wait on the mail round-trip.
     if (function_exists('fastcgi_finish_request')) { echo json_encode(['ok' => true, 'queued' => true]); @ob_flush(); @flush(); fastcgi_finish_request(); poll_mailbox_replies($isCron); exit; }
     json_out(poll_mailbox_replies($isCron));

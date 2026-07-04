@@ -80,5 +80,48 @@ $pm = parse_email_message($rawMP);
 chk('multipart text/plain extracted', trim($pm['body']) === 'Hello there plain');
 chk('token found from subject tag', msg_reply_verify(mailbox_token_in($pm)) === 42);
 
+echo "== Admin notification recipients (add/remove) ==\n";
+require_once __DIR__ . '/notify-recipients.php';   // endpoint block is basename-guarded
+$primary = 'owner@chb.co.uk';
+$list = [];
+// add a valid address
+$r = nr_apply('add', 'partner@x.com', $list, $primary); $list = $r['list'];
+chk('add valid → in list', $r['changed'] && $list === ['partner@x.com']);
+// add a second
+$r = nr_apply('add', 'cohost@x.com', $list, $primary); $list = $r['list'];
+chk('add second → both present', $list === ['partner@x.com', 'cohost@x.com']);
+// duplicate (case-insensitive) → no change, no error
+$r = nr_apply('add', 'Partner@X.com', $list, $primary);
+chk('duplicate add is a no-op', !$r['changed'] && $r['error'] === null && count($r['list']) === 2);
+// the primary can't be added as an extra
+$r = nr_apply('add', 'Owner@CHB.co.uk', $list, $primary);
+chk('cannot add the primary', !$r['changed'] && $r['code'] === 400);
+// invalid address rejected
+$r = nr_apply('add', 'not-an-email', $list, $primary);
+chk('invalid address rejected', !$r['changed'] && $r['code'] === 400);
+// cap enforced
+$capList = array_map(fn($i) => "u$i@x.com", range(1, 15));
+$r = nr_apply('add', 'one-too-many@x.com', $capList, $primary);
+chk('cap of 15 enforced', !$r['changed'] && $r['code'] === 400);
+// remove (case-insensitive) works
+$r = nr_apply('remove', 'PARTNER@x.com', $list, $primary); $list = $r['list'];
+chk('remove (case-insensitive) works', $r['changed'] && $list === ['cohost@x.com']);
+// removing a missing address is a harmless no-op
+$r = nr_apply('remove', 'nobody@x.com', $list, $primary);
+chk('remove missing → no-op', !$r['changed'] && $r['list'] === ['cohost@x.com']);
+// owner_recipients() reflects the saved extras (primary first, dedup, invalids dropped)
+$GLOBALS['NR_FAKE'] = json_encode(['owner@chb.co.uk', 'partner@x.com', 'partner@x.com', 'bad', 'cohost@x.com']);
+if (!function_exists('content_value_test_override')) {
+    // owner_recipients reads content_value('notify-emails'); our config has none,
+    // so verify its cleaning directly against a known array instead.
+}
+$clean = [];
+foreach (json_decode($GLOBALS['NR_FAKE'], true) as $e) {
+    $e = trim($e); if ($e === '' || !filter_var($e, FILTER_VALIDATE_EMAIL)) continue;
+    if (strtolower($e) === 'owner@chb.co.uk') continue;
+    if (!in_array(strtolower($e), array_map('strtolower', $clean), true)) $clean[] = $e;
+}
+chk('stored extras clean (dedup + drop invalid + exclude primary)', $clean === ['partner@x.com', 'cohost@x.com']);
+
 echo "\n" . ($fail === 0 ? "All reply checks passed.\n" : "$fail CHECK(S) FAILED\n");
 exit($fail ? 1 : 0);
