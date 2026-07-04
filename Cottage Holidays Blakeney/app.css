@@ -1299,6 +1299,11 @@
         #today-approve-card .today-card-label { margin: 0; flex-shrink: 0; }
         #today-approve-card .today-card-value { margin: 0; }
         #today-approve-card .today-card-list { display: flex; gap: 8px 22px; flex-wrap: wrap; margin: 0 0 0 auto; }
+        /* Cron dead-man's-switch banner (dashboard) */
+        .cron-alert { display: flex; gap: 12px; align-items: flex-start; margin: 0 0 22px; padding: 16px 18px;
+            background: rgba(229,115,115,0.10); border: 1px solid var(--danger); border-radius: var(--r-lg); color: var(--text-light); }
+        .cron-alert .ic { width: 22px; height: 22px; color: var(--danger); flex-shrink: 0; margin-top: 1px; }
+        .cron-alert code { background: rgba(255,255,255,0.08); padding: 1px 6px; border-radius: 5px; font-size: 0.9em; }
         /* Recent-activity feed rows (dashboard) */
         .act-row { display: flex; align-items: center; gap: 10px; padding: 10px 2px; border-bottom: 1px solid var(--glass-border); font-size: 0.85rem; }
         .act-row:last-child { border-bottom: none; }
@@ -1502,6 +1507,14 @@
         .mo-value.mo-good { color: var(--ok); } .mo-value.mo-warn { color: var(--warn); }
         .mo-card { background: var(--glass-bg); border: 1px solid var(--glass-border); border-radius: 18px; padding: 16px 18px; margin-top: 12px; }
         .mo-card-title { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin-bottom: 6px; }
+        /* Year-on-year card */
+        .yoy-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 8px; }
+        .yoy-metric { min-width: 0; }
+        .yoy-label { font-size: 0.72rem; color: var(--text-muted); }
+        .yoy-now { font-family: var(--font-serif); font-size: 1.5rem; line-height: 1.15; margin: 2px 0; }
+        .yoy-cmp { font-size: 0.8rem; color: var(--text-muted); }
+        .yoy-cmp .mo-good { color: #4CAF50; font-weight: 600; }
+        .yoy-cmp .mo-warn { color: var(--warn-text); font-weight: 600; }
         .mo-chase { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; background: rgba(255,167,38,0.10); border: 1px solid rgba(255,167,38,0.35); border-radius: var(--r-md); padding: 14px 16px; margin-top: 12px; }
         .mo-chase .mo-chase-text { flex: 1 1 200px; font-size: 0.9rem; color: var(--text-light); }
         @media (min-width: 769px) { .mo-kpis { grid-template-columns: repeat(4, 1fr); } .mo-grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start; } .mo-grid2 .mo-card { margin-top: 12px; } }
