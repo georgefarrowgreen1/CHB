@@ -46,6 +46,15 @@ define('MAIL_FROM', 'bookings@yourdomain.co.uk');    // usually the same as SMTP
 define('MAIL_FROM_NAME', 'Cottage Holidays Blakeney');
 define('OWNER_NOTIFY_EMAIL', 'sophia@yourdomain.co.uk'); // where YOUR owner copy is sent
 
+// ---- Reply-by-email (optional) ----------------------------------------------
+// Lets you REPLY to a "new website message" notification and have it reach the
+// guest on the website chat AND by email. Set an inbound mailbox address and a
+// secret, then point a free inbound-mail route (ImprovMX / Mailgun / CloudMailin)
+// for that address at:  https://YOURDOMAIN/inbound-mail.php?key=<INBOUND_SECRET>
+// Leave these unset to keep notifications behaving as before. See SETUP-REPLY-EMAIL.md.
+// define('REPLY_INBOX', 'reply@yourdomain.co.uk');
+// define('INBOUND_SECRET', 'a-long-random-string-different-from-APP_SECRET');
+
 // ============================================================
 //  Square online payments (optional). Leave SQUARE_PAYMENTS_ENABLED false
 //  until every value below is filled in — guests then pay a deposit (and later

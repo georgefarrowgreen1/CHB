@@ -133,6 +133,13 @@ if ($cronTs === false) {
     }
 }
 
+// ---- Reply-by-email (optional) ------------------------------------------
+$replyOn = defined('REPLY_INBOX') && REPLY_INBOX && strpos(REPLY_INBOX, '@') !== false;
+add($checks, 'Email', 'Reply-by-email', $replyOn ? 'ok' : 'warn',
+    $replyOn ? 'On — replies to a message alert reach the guest on the website and by email (via ' . REPLY_INBOX . ').'
+             : 'Off (optional). Set REPLY_INBOX + INBOUND_SECRET in config.php and point an inbound-mail route at inbound-mail.php to reply straight from your inbox.',
+    $replyOn ? '' : 'See SETUP-REPLY-EMAIL.md.');
+
 $secretOk = defined('APP_SECRET') && APP_SECRET && APP_SECRET !== 'change-this-to-a-long-random-string' && strlen(APP_SECRET) >= 16;
 add($checks, 'Security', 'APP_SECRET', $secretOk ? 'ok' : 'fail',
     $secretOk ? 'A strong secret is set.' : 'APP_SECRET is the default/too short — cron links, pay tokens and iCal links are guessable.',

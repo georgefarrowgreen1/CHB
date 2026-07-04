@@ -46,17 +46,28 @@ function chat_location() {
     $loc = trim(trim($city) . (($city && $country) ? ', ' : '') . trim($country));
     return $loc !== '' ? mb_substr($loc, 0, 120) : null;
 }
-function chat_notify_owner($name, $email, $bodyTxt) {
+function chat_notify_owner($name, $email, $bodyTxt, $threadId = 0) {
     try {
         require_once __DIR__ . '/mailer.php';
         if (function_exists('send_owner')) {
-            send_owner('New website message — Cottage Holidays Blakeney',
-                "Someone has sent you a message via the website chat.\n\nFrom: " . ($name ?: '—') . " (" . ($email ?: 'no email') . ")\n\n\"" . $bodyTxt . "\"\n\nOpen the back office → Guest messages to reply.");
+            // If reply-by-email is configured, route replies to the inbound mailbox
+            // (plus-addressed with the thread token) and echo the token in the
+            // Message-ID so the reply's In-Reply-To carries it back to us. The extra
+            // line tells the owner they can just reply.
+            $replyAddr = ($threadId > 0 && function_exists('msg_reply_address')) ? msg_reply_address($threadId) : '';
+            $msgId = ($replyAddr && function_exists('msg_reply_token')) ? 'msg.' . msg_reply_token($threadId) : null;
+            $replyHint = $replyAddr ? "\nJust reply to this email and the guest gets it on the website and by email." : '';
+            $body = "Someone has sent you a message via the website chat.\n\nFrom: " . ($name ?: '—') . " (" . ($email ?: 'no email') . ")\n\n\"" . $bodyTxt . "\"\n" . $replyHint . "\nOr open the back office → Guest messages to reply.";
+            send_owner('New website message — Cottage Holidays Blakeney', $body, null, [], $replyAddr ?: null, $msgId);
         }
     } catch (\Throwable $e) {}
     // Wake the owner's devices (best-effort).
     try { require_once __DIR__ . '/webpush.php'; alert_owner('New message', ($name ?: 'A visitor') . ': ' . mb_substr($bodyTxt, 0, 80)); } catch (\Throwable $e) {}
 }
+
+// chat_admin_reply() (posts an owner reply to the thread + emails the guest) is
+// shared with the reply-by-email gateway; it lives in chat-lib.php.
+require_once __DIR__ . '/chat-lib.php';
 
 // ---------------- ADMIN ----------------
 // Admin *tools* never carry a visitor token. If a token is present the request
@@ -103,16 +114,7 @@ if ($isAdmin && empty($in['token'])) {
             $tid = (int)($in['thread_id'] ?? 0);
             $bodyTxt = mb_substr(trim((string)($in['body'] ?? '')), 0, 4000);
             if ($tid <= 0 || $bodyTxt === '') json_out(['error' => 'A thread and a message are required'], 400);
-            db()->prepare("INSERT INTO messages (thread_id, sender_role, body, read_by_admin, read_by_guest) VALUES (?, 'admin', ?, 1, 0)")->execute([$tid, $bodyTxt]);
-            db()->prepare('UPDATE chat_threads SET updated_at = NOW() WHERE id = ?')->execute([$tid]);
-            try {
-                $t = db()->prepare('SELECT name, email FROM chat_threads WHERE id = ?'); $t->execute([$tid]); $thread = $t->fetch();
-                if ($thread && !empty($thread['email']) && function_exists('smtp_send')) {
-                    require_once __DIR__ . '/mailer.php';
-                    smtp_send($thread['email'], $thread['name'] ?: 'there', 'A message from Cottage Holidays Blakeney',
-                        "Hello " . ($thread['name'] ?: 'there') . ",\n\nYou have a new message from Cottage Holidays Blakeney:\n\n\"" . $bodyTxt . "\"\n\nReply on our website chat.\nCottage Holidays Blakeney");
-                }
-            } catch (\Throwable $e) {}
+            chat_admin_reply($tid, $bodyTxt);
             json_out(['ok' => true]);
         }
         if ($action === 'unread') {
@@ -174,7 +176,7 @@ if ($guestId) {
             db()->prepare("INSERT INTO messages (thread_id, guest_id, sender_role, body, read_by_admin, read_by_guest) VALUES (?, ?, 'guest', ?, 0, 1)")->execute([$tid, $guestId, $bodyTxt]);
             db()->prepare('UPDATE chat_threads SET updated_at = NOW() WHERE id = ?')->execute([$tid]);
             $g = db()->prepare('SELECT name, email FROM guests WHERE id = ?'); $g->execute([$guestId]); $gg = $g->fetch() ?: [];
-            chat_notify_owner($gg['name'] ?? '', $gg['email'] ?? '', $bodyTxt);
+            chat_notify_owner($gg['name'] ?? '', $gg['email'] ?? '', $bodyTxt, $tid);
             json_out(['ok' => true]);
         }
         db()->prepare("UPDATE messages SET read_by_guest = 1 WHERE thread_id = ? AND sender_role = 'admin'")->execute([$tid]);
@@ -214,7 +216,7 @@ try {
         db()->prepare("INSERT INTO messages (thread_id, sender_role, body, read_by_admin, read_by_guest) VALUES (?, 'guest', ?, 0, 1)")->execute([$tid, $bodyTxt]);
         db()->prepare('UPDATE chat_threads SET updated_at = NOW() WHERE id = ?')->execute([$tid]);
         $t = db()->prepare('SELECT name, email FROM chat_threads WHERE id = ?'); $t->execute([$tid]); $th = $t->fetch() ?: [];
-        chat_notify_owner($th['name'] ?? '', $th['email'] ?? '', $bodyTxt);
+        chat_notify_owner($th['name'] ?? '', $th['email'] ?? '', $bodyTxt, $tid);
         json_out(['ok' => true, 'token' => $token]);
     }
     // thread / default
