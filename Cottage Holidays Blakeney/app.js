@@ -588,10 +588,12 @@
         function applySavedTheme() {
             let pref = null;
             try { pref = localStorage.getItem('chb-theme'); } catch (e) {}
-            // Admins always use dark mode (their toggle is hidden). The saved
+            // Coastal-fresh LIGHT is the guest default; dark is opt-in (pref==='dark').
+            // Admins always use dark mode (their toggle is hidden); their saved
             // preference is left untouched and re-applied when they sign out.
-            if (pref === 'light' && !isAuthenticated) document.body.classList.add('light-mode');
+            if (pref !== 'dark' && !isAuthenticated) document.body.classList.add('light-mode');
             else document.body.classList.remove('light-mode');
+            try { document.documentElement.classList.remove('theme-light-boot'); } catch (e) {}
             setThemeLabel();
         }
         // Point both "Call to Discuss" buttons at the configured phone number.
@@ -11581,7 +11583,7 @@
         // the file short, the footer keeps showing "—" instead of this number.
         // Bump the value whenever a new version is shipped.
         (function () {
-            const BUILD = 'w8t3c0if';
+            const BUILD = 'x9u4d1jg';
             window.__BUILD = BUILD;   // exposed so the version watcher can detect new releases
             const el = document.getElementById('build-stamp');
             if (el) el.textContent = BUILD;
