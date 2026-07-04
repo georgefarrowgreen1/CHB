@@ -13066,15 +13066,28 @@ async function renderActivityLog() {
                     ${events
                         .map((ev) => {
                             const sev = ev.severity === 'warn' || ev.severity === 'action' ? ev.severity : '';
+                            const propTag =
+                                ev.prop_key && propertyMeta[ev.prop_key]
+                                    ? `<span class="prop-tag tag-${ev.prop_key}">${propertyMeta[ev.prop_key].short}</span>`
+                                    : '';
+                            const badge =
+                                sev === 'action'
+                                    ? '<span class="act-sev act-sev--action">Action</span>'
+                                    : sev === 'warn'
+                                      ? '<span class="act-sev act-sev--warn">Check</span>'
+                                      : '';
+                            const actor =
+                                ev.actor && ev.actor !== 'guest'
+                                    ? `<span class="act-actor">${escapeHtml(actorLabel(ev.actor))}</span>`
+                                    : '';
+                            const detail = ev.detail ? `<span>${escapeHtml(ev.detail)}</span>` : '';
                             return `
-                    <div class="act-row${sev ? ' act-row--' + sev : ''}">
+                    <div class="act-row act-log-row${sev ? ' act-row--' + sev : ''}">
                         <span class="act-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ACTIVITY_ICONS[ev.type] || ACTIVITY_ICONS.other}</svg></span>
-                        ${ev.prop_key && propertyMeta[ev.prop_key] ? `<span class="prop-tag tag-${ev.prop_key}">${propertyMeta[ev.prop_key].short}</span>` : ''}
-                        <span class="act-label">${escapeHtml(ev.label)}</span>
-                        <span class="act-detail">${escapeHtml(ev.detail || '')}</span>
-                        ${sev === 'action' ? '<span class="act-sev act-sev--action">Action</span>' : sev === 'warn' ? '<span class="act-sev act-sev--warn">Check</span>' : ''}
-                        ${ev.actor && ev.actor !== 'guest' ? `<span class="act-actor">${escapeHtml(actorLabel(ev.actor))}</span>` : ''}
-                        <span class="act-when">${timeAgoLabel(ev.at)}</span>
+                        <div class="act-body">
+                            <div class="act-line1">${propTag}<span class="act-label">${escapeHtml(ev.label)}</span>${badge}</div>
+                            <div class="act-line2">${detail}${actor}<span class="act-when">${timeAgoLabel(ev.at)}</span></div>
+                        </div>
                     </div>`;
                         })
                         .join('')}
@@ -17237,7 +17250,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'w9y4b7nk';
+    const BUILD = 'x2z7c4hd';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
