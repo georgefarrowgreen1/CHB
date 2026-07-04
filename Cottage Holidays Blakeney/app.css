@@ -5393,8 +5393,7 @@ body.owner-mode .chat-widget {
 .card-foot {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
-  gap: 4px 18px;
+  gap: 3px 14px;
   flex-wrap: wrap;
 }
 /* Homepage live availability: per-card chip + late-availability spotlight */
@@ -7456,8 +7455,8 @@ body.light-mode .hs-field:hover {
 .cottages-list .cott-head {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 .cottages-list .cott-head .card-title {
   margin-bottom: 0;
