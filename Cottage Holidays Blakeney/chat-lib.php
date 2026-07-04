@@ -5,6 +5,29 @@
 //  and inbound-mail.php (the reply-by-email gateway).
 // ============================================================
 
+// Zero-setup reply-by-email helpers (pure config; the POP3 socket work lives in
+// mailbox-read.php). Derive the mail-read host from the SMTP host, and decide
+// whether auto reply-by-email applies (SMTP creds present, mail on, and the
+// owner hasn't opted into the REPLY_INBOX webhook route instead).
+if (!function_exists('mailbox_pop_host')) {
+    function mailbox_pop_host() {
+        if (defined('MAIL_POP_HOST') && MAIL_POP_HOST) return MAIL_POP_HOST;
+        $h = defined('SMTP_HOST') ? SMTP_HOST : '';
+        if ($h === '') return '';
+        if (stripos($h, 'smtp.') === 0) return 'pop.' . substr($h, 5);
+        if (stripos($h, 'smtp') === 0)  return 'pop' . substr($h, 4);
+        return 'pop.' . $h;
+    }
+}
+if (!function_exists('mailbox_auto_enabled')) {
+    function mailbox_auto_enabled() {
+        return defined('MAIL_ENABLED') && MAIL_ENABLED
+            && defined('SMTP_USER') && SMTP_USER && defined('SMTP_PASS') && SMTP_PASS
+            && SMTP_PASS !== 'CHANGE_ME'
+            && !(defined('REPLY_INBOX') && REPLY_INBOX);
+    }
+}
+
 // Keep only what the owner typed above the quoted history / signature when they
 // reply to a notification email. Pure + unit-tested (test-reply.php).
 if (!function_exists('strip_quoted_reply')) {

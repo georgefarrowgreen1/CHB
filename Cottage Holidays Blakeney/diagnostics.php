@@ -133,12 +133,31 @@ if ($cronTs === false) {
     }
 }
 
-// ---- Reply-by-email (optional) ------------------------------------------
-$replyOn = defined('REPLY_INBOX') && REPLY_INBOX && strpos(REPLY_INBOX, '@') !== false;
-add($checks, 'Email', 'Reply-by-email', $replyOn ? 'ok' : 'warn',
-    $replyOn ? 'On — replies to a message alert reach the guest on the website and by email (via ' . REPLY_INBOX . ').'
-             : 'Off (optional). Set REPLY_INBOX + INBOUND_SECRET in config.php and point an inbound-mail route at inbound-mail.php to reply straight from your inbox.',
-    $replyOn ? '' : 'See SETUP-REPLY-EMAIL.md.');
+// ---- Reply-by-email ------------------------------------------------------
+// Three states: webhook route (REPLY_INBOX), zero-setup POP3 (auto), or off.
+require_once __DIR__ . '/chat-lib.php';
+$replyWebhook = defined('REPLY_INBOX') && REPLY_INBOX && strpos(REPLY_INBOX, '@') !== false;
+if ($replyWebhook) {
+    add($checks, 'Email', 'Reply-by-email', 'ok',
+        'On (inbound route) — replies to a message alert reach the guest on the website and by email, via ' . REPLY_INBOX . '.');
+} elseif (function_exists('mailbox_auto_enabled') && mailbox_auto_enabled()) {
+    // Report the LAST poll's outcome (no live socket here, so Health check stays fast).
+    $ps = json_decode(content_value('mailbox-poll') ?: '{}', true);
+    $err = is_array($ps) ? ($ps['error'] ?? '') : '';
+    $when = (is_array($ps) && !empty($ps['at'])) ? gmdate('j M, H:i', (int)$ps['at']) . ' UTC' : 'not yet';
+    if ($err) {
+        add($checks, 'Email', 'Reply-by-email (auto)', 'warn',
+            'On, but the last mailbox check failed: ' . $err . ' (host ' . mailbox_pop_host() . '). Replies still work from the back office.',
+            'Confirm your mailbox allows POP3, or set MAIL_POP_HOST. See SETUP-REPLY-EMAIL.md.');
+    } else {
+        add($checks, 'Email', 'Reply-by-email (auto)', 'ok',
+            'On — just reply to a "new website message" email and the guest gets it on the website and by email. No setup needed (reads ' . SMTP_USER . ' via ' . mailbox_pop_host() . '; last checked ' . $when . ').');
+    }
+} else {
+    add($checks, 'Email', 'Reply-by-email', 'warn',
+        'Off — set up SMTP email first, and it turns on automatically (reply straight from your inbox).',
+        'See SETUP-REPLY-EMAIL.md.');
+}
 
 $secretOk = defined('APP_SECRET') && APP_SECRET && APP_SECRET !== 'change-this-to-a-long-random-string' && strlen(APP_SECRET) >= 16;
 add($checks, 'Security', 'APP_SECRET', $secretOk ? 'ok' : 'fail',

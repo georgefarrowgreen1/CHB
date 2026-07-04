@@ -38,6 +38,7 @@ $jobs = [
     'payments-due.php?cron='                   => 'Balance requests, chasers & deposit recovery',
     'enquiry-nudge.php?cron='                  => 'Enquiry follow-ups',
     'anniversary-nudge.php?cron='              => 'Anniversary re-invites (past guests)',
+    'mailbox-read.php?cron='                   => 'Reply-by-email: pull emailed replies',
     'owner-digest.php?cron='                   => 'Owner weekly digest (Mondays)',
     'weekly-analytics.php?cron='               => 'Weekly analytics digest (Sundays)',
     'backup.php?cron='                         => 'Weekly database backup (Mondays)',
