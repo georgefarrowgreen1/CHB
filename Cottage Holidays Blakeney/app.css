@@ -3749,9 +3749,12 @@ textarea.input-glass.field-sm {
   min-width: 0;
 }
 .msg-thread-row .mtr-name {
+  display: block;
   font-size: 0.95rem;
+  margin-bottom: 2px;
 }
 .msg-thread-row .mtr-last {
+  display: block;
   font-size: 0.8rem;
   color: var(--text-muted);
   overflow: hidden;
