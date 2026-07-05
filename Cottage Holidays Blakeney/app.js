@@ -9398,11 +9398,34 @@ function fmtMsgTime(at) {
 }
 function chatBubbles(msgs, meRole) {
     if (!msgs.length) return `<p class="chat-empty">No messages yet.</p>`;
+    // Read receipt (owner side only): mark the owner's LATEST reply Read once the
+    // guest has opened the thread since it was sent, so the owner can see whether
+    // the customer has seen it. `seen` is read_by_guest from messages.php.
+    let lastAdminIdx = -1;
+    if (meRole === 'admin') {
+        for (let i = msgs.length - 1; i >= 0; i--) {
+            if (msgs[i].role === 'admin') {
+                lastAdminIdx = i;
+                break;
+            }
+        }
+    }
     return msgs
-        .map(
-            (m) =>
-                `<div class="chat-msg ${m.role === meRole ? 'me' : 'them'}">${escapeHtml(m.body)}<div class="chat-meta">${m.role === 'guest' ? (meRole === 'guest' ? 'You' : 'Guest') : meRole === 'admin' ? 'You' : 'Host'} · ${fmtMsgTime(m.at)}</div></div>`,
-        )
+        .map((m, i) => {
+            const who =
+                m.role === 'guest'
+                    ? meRole === 'guest'
+                        ? 'You'
+                        : 'Guest'
+                    : meRole === 'admin'
+                      ? 'You'
+                      : 'Host';
+            const receipt =
+                i === lastAdminIdx
+                    ? ` · <span class="chat-receipt${m.seen ? ' seen' : ''}">${m.seen ? '✓✓ Read' : '✓ Sent'}</span>`
+                    : '';
+            return `<div class="chat-msg ${m.role === meRole ? 'me' : 'them'}">${escapeHtml(m.body)}<div class="chat-meta">${who} · ${fmtMsgTime(m.at)}${receipt}</div></div>`;
+        })
         .join('');
 }
 // Empty-thread greeting, styled as a received message so the chat opens
@@ -17284,7 +17307,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'e6h0k4sq';
+    const BUILD = 'f7j1m5tu';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
