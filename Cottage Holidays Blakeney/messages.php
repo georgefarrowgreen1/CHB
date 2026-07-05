@@ -72,6 +72,76 @@ function chat_attach_message($messageId, $att)
     } catch (\Throwable $e) {
     }
 }
+// Away auto-reply: acknowledge a guest who messages when the owner isn't around.
+// Gated on the owner's Settings (enabled + message + optional office hours), fires
+// at most once per few hours per thread, and never when the owner has just replied.
+// Deliberately does NOT mark the guest's message read, so the thread still counts
+// as needing a real reply.
+function chat_maybe_autoreply($tid)
+{
+    if ((int) $tid <= 0 || content_value('chat-away-enabled') !== '1') {
+        return;
+    }
+    $msg = trim((string) content_value('chat-away-msg'));
+    if ($msg === '') {
+        return;
+    }
+    // Optional office hours: if BOTH set, only auto-reply OUTSIDE [from, to)
+    // (handles a window that wraps past midnight).
+    $from = (string) content_value('chat-away-from');
+    $to = (string) content_value('chat-away-to');
+    if ($from !== '' && $to !== '') {
+        $h = (int) date('G');
+        $f = (int) $from;
+        $t = (int) $to;
+        $available = $f <= $t ? $h >= $f && $h < $t : $h >= $f || $h < $t;
+        if ($available) {
+            return; // within office hours → owner's around, no auto-reply
+        }
+    }
+    // Cool-down: skip if any admin message (a real reply OR a prior auto-reply)
+    // landed in this thread in the last few hours.
+    try {
+        $c = db()->prepare(
+            "SELECT COUNT(*) FROM messages WHERE thread_id = ? AND sender_role = 'admin' AND created_at >= (NOW() - INTERVAL 4 HOUR)",
+        );
+        $c->execute([(int) $tid]);
+        if ((int) $c->fetchColumn() > 0) {
+            return;
+        }
+    } catch (\Throwable $e) {
+        return;
+    }
+    try {
+        db()
+            ->prepare(
+                "INSERT INTO messages (thread_id, sender_role, body, read_by_admin, read_by_guest) VALUES (?, 'admin', ?, 1, 0)",
+            )
+            ->execute([(int) $tid, mb_substr($msg, 0, 1000)]);
+        db()->prepare('UPDATE chat_threads SET updated_at = NOW() WHERE id = ?')->execute([(int) $tid]);
+    } catch (\Throwable $e) {
+        return;
+    }
+    // Email it too (best-effort) so an away guest gets it in their inbox.
+    try {
+        $t = db()->prepare('SELECT name, email FROM chat_threads WHERE id = ?');
+        $t->execute([(int) $tid]);
+        $th = $t->fetch() ?: [];
+        if (!empty($th['email'])) {
+            require_once __DIR__ . '/mailer.php';
+            if (function_exists('smtp_send')) {
+                $name = $th['name'] ?: 'there';
+                smtp_send(
+                    $th['email'],
+                    $name,
+                    'Cottage Holidays Blakeney',
+                    'Hello ' . $name . ",\n\n" . $msg . "\n\nCottage Holidays Blakeney",
+                );
+            }
+        }
+    } catch (\Throwable $e) {
+    }
+}
 // Is the OTHER party typing right now? $col is a fixed literal — 'admin_typing_at'
 // (the guest is reading) or 'guest_typing_at' (the owner is reading). Isolated so a
 // pre-migration DB (no typing columns yet) just reports false rather than erroring.
@@ -494,6 +564,7 @@ if ($guestId) {
             $g->execute([$guestId]);
             $gg = $g->fetch() ?: [];
             chat_notify_owner($gg['name'] ?? '', $gg['email'] ?? '', $bodyTxt !== '' ? $bodyTxt : '📷 Photo', $tid);
+            chat_maybe_autoreply($tid);
             json_out(['ok' => true]);
         }
         // Guest is polling their thread — pull any emailed owner reply in the background.
@@ -575,6 +646,7 @@ try {
         $t->execute([$tid]);
         $th = $t->fetch() ?: [];
         chat_notify_owner($th['name'] ?? '', $th['email'] ?? '', $bodyTxt !== '' ? $bodyTxt : '📷 Photo', $tid);
+        chat_maybe_autoreply($tid);
         json_out(['ok' => true, 'token' => $token]);
     }
     if ($action === 'typing') {
