@@ -21,6 +21,45 @@ const API_BASE = (function () {
     if (ci !== -1) path = path.slice(0, ci + 1);
     return path; // e.g. "/something/" — PHP files live here
 })();
+// --- Front-end error capture ---
+// Report uncaught JS errors + unhandled promise rejections to the server so the
+// owner sees breakage in the activity log before a guest emails about it. Capped
+// and de-duplicated per page load; the server also rate-limits. Cross-origin
+// "Script error." (no detail, usually a browser extension) is ignored as noise.
+(function () {
+    let sent = 0;
+    const seen = Object.create(null);
+    function reportClientError(msg, where) {
+        try {
+            msg = String(msg || '').trim();
+            if (!msg || msg === 'Script error.' || msg === 'Script error') return;
+            if (sent >= 5) return; // don't flood on a broken page
+            const key = msg.slice(0, 120);
+            if (seen[key]) return;
+            seen[key] = 1;
+            sent++;
+            fetch(API_BASE + 'client-error.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include',
+                keepalive: true,
+                body: JSON.stringify({
+                    message: msg.slice(0, 300),
+                    where: String(where || (location && location.pathname) || '').slice(0, 300),
+                }),
+            }).catch(() => {});
+        } catch (e) {}
+    }
+    window.addEventListener('error', (e) => {
+        if (e && e.message)
+            reportClientError(e.message, (e.filename || '') + (e.lineno ? ':' + e.lineno : ''));
+    });
+    window.addEventListener('unhandledrejection', (e) => {
+        const r = e && e.reason;
+        const m = (r && (r.message || (r.toString && String(r)))) || 'Unhandled promise rejection';
+        reportClientError('Promise: ' + m, (location && location.pathname) || '');
+    });
+})();
 // Connection state + offline action queue. A discrete no-WiFi button appears
 // while disconnected; admin writes attempted offline are saved to IndexedDB
 // (shared with the service worker) and replayed when the connection returns —
@@ -17741,7 +17780,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'q8u2y6gh';
+    const BUILD = 'r9v3z7hi';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
