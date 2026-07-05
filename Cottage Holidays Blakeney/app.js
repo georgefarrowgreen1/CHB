@@ -9396,6 +9396,63 @@ function fmtMsgTime(at) {
         return '';
     }
 }
+// Parse a DB datetime ('YYYY-MM-DD HH:MM:SS') to a Date, or null.
+function msgDate(at) {
+    if (!at) return null;
+    const d = new Date(String(at).replace(' ', 'T'));
+    return isNaN(d) ? null : d;
+}
+// Compact relative time for the inbox list: now / 5m / 3h / Yesterday / 3 Jun.
+function relTime(at) {
+    const d = msgDate(at);
+    if (!d) return '';
+    const now = new Date();
+    const secs = (now - d) / 1000;
+    if (secs < 60) return 'now';
+    if (secs < 3600) return Math.floor(secs / 60) + 'm';
+    const sameDay = d.toDateString() === now.toDateString();
+    if (sameDay) return Math.floor(secs / 3600) + 'h';
+    const y = new Date(now);
+    y.setDate(now.getDate() - 1);
+    if (d.toDateString() === y.toDateString()) return 'Yesterday';
+    return d.toLocaleDateString('en-GB', {
+        day: 'numeric',
+        month: 'short',
+        ...(d.getFullYear() === now.getFullYear() ? {} : { year: '2-digit' }),
+    });
+}
+// Day bucket + label for the in-thread date separators.
+function msgDayKey(at) {
+    const d = msgDate(at);
+    return d ? d.toDateString() : '';
+}
+function dayLabel(at) {
+    const d = msgDate(at);
+    if (!d) return '';
+    const now = new Date();
+    if (d.toDateString() === now.toDateString()) return 'Today';
+    const y = new Date(now);
+    y.setDate(now.getDate() - 1);
+    if (d.toDateString() === y.toDateString()) return 'Yesterday';
+    return d.toLocaleDateString('en-GB', {
+        weekday: 'short',
+        day: 'numeric',
+        month: 'short',
+        ...(d.getFullYear() === now.getFullYear() ? {} : { year: 'numeric' }),
+    });
+}
+// A small colour hue derived from a name/email, so each person's avatar is
+// consistently tinted (helps tell conversations apart at a glance).
+function strHue(s) {
+    let h = 0;
+    s = String(s || '');
+    for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+    return h % 360;
+}
+function avatarInitial(s) {
+    const t = String(s || '').trim();
+    return (t ? t[0] : '?').toUpperCase();
+}
 function chatBubbles(msgs, meRole) {
     if (!msgs.length) return `<p class="chat-empty">No messages yet.</p>`;
     // Read receipt (owner side only): mark the owner's LATEST reply Read once the
@@ -9410,6 +9467,7 @@ function chatBubbles(msgs, meRole) {
             }
         }
     }
+    let prevDay = '';
     return msgs
         .map((m, i) => {
             const who =
@@ -9428,7 +9486,14 @@ function chatBubbles(msgs, meRole) {
                 ? `<a class="chat-attach-link" href="${escapeHtml(m.attachment)}" target="_blank" rel="noopener"><img class="chat-attach" src="${escapeHtml(m.attachment)}" loading="lazy" alt="Photo attachment"></a>`
                 : '';
             const bodyHtml = m.body ? escapeHtml(m.body) : '';
-            return `<div class="chat-msg ${m.role === meRole ? 'me' : 'them'}${m.attachment && !m.body ? ' chat-msg-img' : ''}">${att}${bodyHtml}<div class="chat-meta">${who} · ${fmtMsgTime(m.at)}${receipt}</div></div>`;
+            // Date separator whenever the day changes (Today / Yesterday / Wed 3 Jul).
+            const dk = msgDayKey(m.at);
+            let sep = '';
+            if (dk && dk !== prevDay) {
+                prevDay = dk;
+                sep = `<div class="chat-daysep"><span>${escapeHtml(dayLabel(m.at))}</span></div>`;
+            }
+            return `${sep}<div class="chat-msg ${m.role === meRole ? 'me' : 'them'}${m.attachment && !m.body ? ' chat-msg-img' : ''}">${att}${bodyHtml}<div class="chat-meta">${who} · ${fmtMsgTime(m.at)}${receipt}</div></div>`;
         })
         .join('');
 }
@@ -10098,10 +10163,15 @@ function renderMessagesList() {
                       ' ' +
                       (t.last_body || '')
                   ).toLowerCase();
+                  const nm = t.name || t.email || 'Visitor';
+                  const unread = (t.unread || 0) > 0;
                   return `
-                <button class="msg-thread-row" data-s="${escapeHtml(hay)}" data-needs="${needs ? 1 : 0}" onclick="openMessageThread(${t.thread_id})">
-                    <span class="mtr-main"><span class="mtr-name">${escapeHtml(t.name || t.email || 'Visitor')}${t.is_guest ? '' : ' <span style="font-size:0.66rem;color:var(--text-muted);">· visitor</span>'}${t.unread ? ` <span class="inbox-badge" style="min-width:18px;height:18px;font-size:0.66rem;">${t.unread}</span>` : ''}${needs ? ' <span class="needs-reply-pill">Needs reply</span>' : ''}</span><span class="mtr-last">${escapeHtml(t.last_body || '')}</span></span>
-                    <span class="settings-row-chev" aria-hidden="true">›</span>
+                <button class="msg-thread-row${unread ? ' unread' : ''}" data-s="${escapeHtml(hay)}" data-needs="${needs ? 1 : 0}" onclick="openMessageThread(${t.thread_id})">
+                    <span class="mtr-ava" style="--ava-h:${strHue(nm)};" aria-hidden="true">${escapeHtml(avatarInitial(nm))}</span>
+                    <span class="mtr-main">
+                        <span class="mtr-top"><span class="mtr-name">${escapeHtml(nm)}${t.is_guest ? '' : ' <span class="mtr-tag">visitor</span>'}</span><span class="mtr-time">${unread ? '<span class="mtr-dot" aria-label="unread"></span>' : ''}${escapeHtml(relTime(t.last_at))}</span></span>
+                        <span class="mtr-bot"><span class="mtr-last">${escapeHtml(t.last_body || '')}</span>${needs ? '<span class="needs-reply-pill">Needs reply</span>' : ''}</span>
+                    </span>
                 </button>`;
               })
               .join('') +
@@ -10272,12 +10342,17 @@ async function openMessageThread(threadId) {
         if (title) title.textContent = t.name ? t.name : t.email || 'Message';
         if (ctx) {
             const bk = bookingCtxHtml(r.bookings || []);
-            ctx.innerHTML = `
-                        ${t.email ? `<div class="mc-row"><span class="mc-k">Email</span><span class="mc-v">${escapeHtml(t.email)}</span></div>` : ''}
-                        <div class="mc-row"><span class="mc-k">Came from</span><span class="mc-v">${escapeHtml(t.source || '—')}</span></div>
-                        <div class="mc-row"><span class="mc-k">Location</span><span class="mc-v">${escapeHtml(t.location || 'Unknown')}</span></div>
-                        <div class="mc-row"><span class="mc-k">Account</span><span class="mc-v">${t.is_guest ? 'Registered guest' : 'Website visitor'}</span></div>
-                        ${bk}`;
+            const nBk = (r.bookings || []).length;
+            const summary = `${t.is_guest ? 'Registered guest' : 'Website visitor'}${t.email ? ' · ' + escapeHtml(t.email) : ''}`;
+            ctx.innerHTML = `<details class="msg-ctx-d"${nBk ? ' open' : ''}>
+                        <summary class="msg-ctx-sum"><span class="msg-ctx-sum-txt">${summary}</span>${nBk ? `<span class="msg-ctx-pill">${nBk} booking${nBk > 1 ? 's' : ''}</span>` : ''}<span class="msg-ctx-caret" aria-hidden="true">▾</span></summary>
+                        <div class="msg-ctx-body">
+                            ${t.email ? `<div class="mc-row"><span class="mc-k">Email</span><span class="mc-v">${escapeHtml(t.email)}</span></div>` : ''}
+                            <div class="mc-row"><span class="mc-k">Came from</span><span class="mc-v">${escapeHtml(t.source || '—')}</span></div>
+                            <div class="mc-row"><span class="mc-k">Location</span><span class="mc-v">${escapeHtml(t.location || 'Unknown')}</span></div>
+                            ${bk}
+                        </div>
+                    </details>`;
         }
         if (thread) {
             thread.innerHTML = chatBubbles(r.messages || [], 'admin');
@@ -17662,7 +17737,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'o6s0w4ef';
+    const BUILD = 'p7t1x5fg';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
