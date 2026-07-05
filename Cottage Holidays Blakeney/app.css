@@ -3340,6 +3340,16 @@ textarea.input-glass.field-sm {
   opacity: 0.7;
   margin-top: 4px;
 }
+/* Read receipt on the owner's latest reply: muted "Sent" until the guest opens
+   the thread, then green "Read". */
+.chat-receipt {
+  font-weight: 600;
+  white-space: nowrap;
+}
+.chat-receipt.seen {
+  color: var(--ok);
+  opacity: 0.95;
+}
 .chat-empty {
   font-size: 0.85rem;
   color: var(--text-muted);

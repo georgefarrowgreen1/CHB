@@ -27,10 +27,20 @@ $guestId = current_guest_id();
 
 function chat_msgs($threadId)
 {
-    $s = db()->prepare('SELECT id, sender_role, body, created_at FROM messages WHERE thread_id = ? ORDER BY id ASC');
+    $s = db()->prepare(
+        'SELECT id, sender_role, body, created_at, read_by_guest FROM messages WHERE thread_id = ? ORDER BY id ASC',
+    );
     $s->execute([$threadId]);
     return array_map(
-        fn($r) => ['id' => (int) $r['id'], 'role' => $r['sender_role'], 'body' => $r['body'], 'at' => $r['created_at']],
+        fn($r) => [
+            'id' => (int) $r['id'],
+            'role' => $r['sender_role'],
+            'body' => $r['body'],
+            'at' => $r['created_at'],
+            // Whether the guest has opened the thread since this was sent — drives
+            // the owner-side read receipt on their own replies ('seen').
+            'seen' => (int) $r['read_by_guest'] === 1,
+        ],
         $s->fetchAll(),
     );
 }
