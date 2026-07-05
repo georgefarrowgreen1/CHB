@@ -9918,20 +9918,96 @@ async function loadAdminMessages() {
         badge.classList.toggle('zero', unread === 0);
     }
     if (!list) return;
-    const toggle = `<button class="btn-sm btn-edit" style="margin-bottom:10px;" onclick="toggleArchivedMessages()">${__msgShowArchived ? '← Active conversations' : 'Show archived'}</button>`;
+    __msgThreads = threads;
+    renderMessagesList();
+    renderChatAnswersEditor();
+}
+// Inbox list state: the fetched threads plus the owner's live search term and
+// "Needs reply" filter. Search/filter run over the DOM (show/hide) so typing
+// never rebuilds the list or loses focus; only loadAdminMessages() rebuilds.
+let __msgThreads = [];
+let __msgSearch = '';
+let __msgUnansweredOnly = false;
+// A conversation "needs a reply" when the last message is the guest's and it
+// isn't archived — even if the owner has already read it.
+function msgNeedsReply(t) {
+    return !t.archived && t.last_role === 'guest';
+}
+function renderMessagesList() {
+    const list = document.getElementById('messages-list');
+    if (!list) return;
+    // Preserve focus/caret if a poll rebuilds the list while the owner is searching.
+    const sEl = document.getElementById('msg-search');
+    const hadFocus = sEl && document.activeElement === sEl;
+    const caret = hadFocus ? sEl.selectionStart : null;
+
+    const threads = __msgThreads;
+    const needCount = threads.filter(msgNeedsReply).length;
+    const toggle = `<button class="btn-sm btn-edit" onclick="toggleArchivedMessages()">${__msgShowArchived ? '← Active conversations' : 'Show archived'}</button>`;
+    const controls = threads.length
+        ? `<div class="msg-inbox-controls">
+                <input id="msg-search" class="input-glass field-sm" type="search" placeholder="Search name, email or text…" value="${escapeHtml(__msgSearch)}" oninput="onMsgSearch(this.value)" autocomplete="off">
+                ${needCount && !__msgShowArchived ? `<button id="msg-unanswered" class="msg-filter-chip${__msgUnansweredOnly ? ' on' : ''}" onclick="toggleUnansweredOnly()">Needs reply · ${needCount}</button>` : ''}
+           </div>`
+        : '';
     const rows = threads.length
         ? threads
-              .map(
-                  (t) => `
-                <button class="msg-thread-row" onclick="openMessageThread(${t.thread_id})">
-                    <span class="mtr-main"><span class="mtr-name">${escapeHtml(t.name || t.email || 'Visitor')}${t.is_guest ? '' : ' <span style="font-size:0.66rem;color:var(--text-muted);">· visitor</span>'}${t.unread ? ` <span class="inbox-badge" style="min-width:18px;height:18px;font-size:0.66rem;">${t.unread}</span>` : ''}</span><span class="mtr-last">${escapeHtml(t.last_body || '')}</span></span>
+              .map((t) => {
+                  const needs = msgNeedsReply(t);
+                  const hay = (
+                      (t.name || '') +
+                      ' ' +
+                      (t.email || '') +
+                      ' ' +
+                      (t.last_body || '')
+                  ).toLowerCase();
+                  return `
+                <button class="msg-thread-row" data-s="${escapeHtml(hay)}" data-needs="${needs ? 1 : 0}" onclick="openMessageThread(${t.thread_id})">
+                    <span class="mtr-main"><span class="mtr-name">${escapeHtml(t.name || t.email || 'Visitor')}${t.is_guest ? '' : ' <span style="font-size:0.66rem;color:var(--text-muted);">· visitor</span>'}${t.unread ? ` <span class="inbox-badge" style="min-width:18px;height:18px;font-size:0.66rem;">${t.unread}</span>` : ''}${needs ? ' <span class="needs-reply-pill">Needs reply</span>' : ''}</span><span class="mtr-last">${escapeHtml(t.last_body || '')}</span></span>
                     <span class="settings-row-chev" aria-hidden="true">›</span>
-                </button>`,
-              )
-              .join('')
+                </button>`;
+              })
+              .join('') +
+          `<p id="msg-noresults" class="msg-noresults" style="display:none;">No conversations match.</p>`
         : `<p style="font-size:0.82rem;color:var(--text-muted);">${__msgShowArchived ? 'No archived conversations.' : 'No messages yet.'}</p>`;
-    list.innerHTML = toggle + rows;
-    renderChatAnswersEditor();
+    list.innerHTML = toggle + controls + rows;
+    applyMsgFilter();
+    if (hadFocus) {
+        const s = document.getElementById('msg-search');
+        if (s) {
+            s.focus();
+            try {
+                s.setSelectionRange(caret, caret);
+            } catch (e) {}
+        }
+    }
+}
+function onMsgSearch(v) {
+    __msgSearch = v || '';
+    applyMsgFilter();
+}
+function toggleUnansweredOnly() {
+    __msgUnansweredOnly = !__msgUnansweredOnly;
+    const chip = document.getElementById('msg-unanswered');
+    if (chip) chip.classList.toggle('on', __msgUnansweredOnly);
+    applyMsgFilter();
+}
+// Filter the inbox purely by toggling row visibility (no rebuild → no focus loss).
+function applyMsgFilter() {
+    const list = document.getElementById('messages-list');
+    if (!list) return;
+    const q = __msgSearch.trim().toLowerCase();
+    const rows = list.querySelectorAll('.msg-thread-row');
+    let shown = 0;
+    rows.forEach((row) => {
+        const matchQ = !q || (row.getAttribute('data-s') || '').includes(q);
+        const matchNeeds = !__msgUnansweredOnly || row.getAttribute('data-needs') === '1';
+        const show = matchQ && matchNeeds;
+        row.style.display = show ? '' : 'none';
+        if (show) shown++;
+    });
+    const none = document.getElementById('msg-noresults');
+    if (none) none.style.display = rows.length && shown === 0 ? 'block' : 'none';
 }
 // Owner-editable instant answers for the chat quick chips.
 function renderChatAnswersEditor() {
@@ -17364,7 +17440,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'h9l3p7wx';
+    const BUILD = 'i0m4q8yz';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
