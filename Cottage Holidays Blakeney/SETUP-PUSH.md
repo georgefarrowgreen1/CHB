@@ -1,14 +1,18 @@
-# Web Push — check-in notifications (works with the app closed)
+# Web Push — transactional notifications (works with the app closed)
 
-This sends a guest a notification at their **check-in time** — "Your cottage is
-ready — tap to open your live arrival map and key code" — even if the browser is
-closed. Tapping it opens the site, where the existing GPS flow reveals the live
-map and (within 25m) the key code.
+Web Push lets the site notify the **owner** and **guests** even when the browser
+is closed — used for the transactional alerts the site already sends:
 
-> **Why time-based, not "you're close"?** The web has no way to read a phone's GPS
-> while the browser is closed, so a true geofenced "you're close/arrived" alert
-> can only fire while the tab is open (that already works — see the on-arrival
-> banner). Web Push covers the closed-app case using a *time* trigger instead.
+- **Owner** — new enquiry, new booking/payment, and other back-office alerts
+  (`alert_owner` in `webpush.php`, fired from `enquiries.php`, `pay.php`, etc.).
+- **Guest** — "payment received", "booking confirmed", "balance due" and message
+  replies (`notify_guest` / `guest_ping_set`), fired from the flow that triggered
+  them (no cron needed).
+
+> **On GPS / "you're close" alerts:** the web can't read a phone's GPS while the
+> browser is closed, so any geofenced "you've arrived" logic only works while the
+> tab is open. Web Push covers the closed-app case using the transactional
+> triggers above.
 
 ## One-time setup
 
@@ -23,21 +27,15 @@ empty `VAPID_*` placeholders), set `VAPID_SUBJECT` to your email, save — then
 
 ### 2. Create the database table
 Run the migration once (admin): `https://YOURDOMAIN/migrate.php`
-(applies `migration-push.sql` — the `push_subscriptions` table + a
-`checkin_push_sent` column on `bookings`).
+(applies `migration-push.sql` — the `push_subscriptions` table).
 
-### 3. Add the cron job
-In IONOS, add a job that runs every ~15 minutes:
-```
-https://YOURDOMAIN/push.php?action=send_checkin&cron=YOUR_APP_SECRET
-```
-(`YOUR_APP_SECRET` = the `APP_SECRET` value in `config.php`.) Each booking is
-pushed once, when its check-in time passes.
+No cron job is needed: transactional pushes fire from the action that triggers
+them (a payment, a booking, an enquiry, a message reply).
 
 ## How guests opt in
-Logged-in guests with a current stay see a **"Get alerts"** button on the arrival
-banner (and tapping **"Show now"** also asks). Allowing notifications subscribes
-that device. No VAPID keys configured = the whole feature stays silently off.
+Logged-in guests are offered notifications from the guest area; allowing them
+subscribes that device. No VAPID keys configured = the whole feature stays
+silently off.
 
 ## iPhone / iPad note
 On iOS, Safari only allows Web Push if the guest first **adds the site to their
@@ -47,5 +45,5 @@ browser directly.
 
 ## Files involved
 `sw.js` (service worker), `manifest.json` (installable PWA), `push.php`
-(subscribe/unsubscribe + cron send), `webpush.php` (VAPID sender),
+(subscribe/unsubscribe), `webpush.php` (VAPID sender + owner/guest notify),
 `vapid-keygen.php` (run once, then delete), `migration-push.sql`.

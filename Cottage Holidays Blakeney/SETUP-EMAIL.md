@@ -87,8 +87,6 @@ https://YOURDOMAIN/YOURFOLDER/pre-arrival.php?cron=APP_SECRET
 https://YOURDOMAIN/YOURFOLDER/payments-due.php?cron=APP_SECRET
 https://YOURDOMAIN/YOURFOLDER/enquiry-nudge.php?cron=APP_SECRET
 https://YOURDOMAIN/YOURFOLDER/owner-digest.php?cron=APP_SECRET
-https://YOURDOMAIN/YOURFOLDER/tide-push.php?cron=APP_SECRET
-https://YOURDOMAIN/YOURFOLDER/push.php?action=send_checkin&cron=APP_SECRET
 ```
 
 What each one does:
@@ -101,10 +99,6 @@ What each one does:
 - **enquiry-nudge.php** — a friendly follow-up to enquirers who haven't booked.
 - **owner-digest.php** — your Monday-morning summary email. Self-limits to
   Mondays and at most once a day, so a daily ping is fine.
-- **tide-push.php** — pushes today's Blakeney tide window to guests who are
-  mid-stay and have the app + notifications enabled (once a day per stay).
-- **push.php?action=send_checkin** — the one-time "your cottage is ready" push
-  on check-in day.
 
 > These same URLs are also pinged automatically after every deploy, but a real
 > daily cron is what makes the time-sensitive ones reliable.

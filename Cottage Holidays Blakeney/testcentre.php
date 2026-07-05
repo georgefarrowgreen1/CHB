@@ -294,7 +294,7 @@ if ($action === 'seed_features') {
     }
 
     // 4) Bookings (TEST_MARK in notes → removed by purge): a CURRENT stay for the
-    //    test guest (arrival banner) + two on k1 with a 1-night orphan gap.
+    //    test guest (current in-stay) + two on k1 with a 1-night orphan gap.
     $mkBooking = function ($prop, $name, $ci, $co, $email) {
         db()
             ->prepare(
