@@ -27,6 +27,12 @@ if ($bookingId <= 0 || !hash_equals(pay_token($bookingId), $token)) {
     json_out(['error' => 'This payment link is invalid or has expired.'], 403);
 }
 
+// Rate-limit the money-moving actions per IP so a leaked pay link can't be used
+// to card-test (submit many card tokens). Summary is read-only, so it's exempt.
+if ($action === 'charge' || $action === 'authorize') {
+    rate_limit('pay', 20, 10);
+}
+
 $b = (function ($id) {
     $s = db()->prepare('SELECT * FROM bookings WHERE id = ?');
     $s->execute([$id]);
@@ -121,7 +127,9 @@ if ($action === 'authorize') {
 
     // Serialise + re-read the hold state under the lock so two concurrent submits
     // can't both place a Square auth (the pre-lock check above is a stale snapshot).
-    book_lock($b['prop_key']);
+    if (!book_lock($b['prop_key'])) {
+        json_out(['error' => 'This booking is being processed — please wait a moment and try again.'], 409);
+    }
     $hs = db()->prepare('SELECT hold_status FROM bookings WHERE id = ?');
     $hs->execute([$bookingId]);
     if (in_array((string) ($hs->fetchColumn() ?: 'none'), ['authorized', 'captured'], true)) {
@@ -133,7 +141,7 @@ if ($action === 'authorize') {
     $ref = 'CHBHOLD-' . str_pad(substr(preg_replace('/\D/', '', (string) $bookingId), -6), 6, '0', STR_PAD_LEFT);
     $res = square_api('POST', '/v2/payments', [
         'source_id' => $sourceId,
-        'idempotency_key' => bin2hex(random_bytes(16)),
+        'idempotency_key' => 'chb-h-' . $bookingId . '-' . substr(hash('sha256', $sourceId), 0, 20),
         'amount_money' => ['amount' => $pence, 'currency' => 'GBP'],
         'autocomplete' => false, // AUTHORISE only — funds held, not captured
         'location_id' => SQUARE_LOCATION_ID,
@@ -186,7 +194,11 @@ if ($action === 'charge') {
         json_out(['error' => 'This booking is already paid in full.'], 409);
     }
 
-    book_lock($b['prop_key']); // serialise so two tabs can't double-charge
+    if (!book_lock($b['prop_key'])) {
+        // Couldn't get the per-cottage lock (another charge for this booking is in
+        // flight) — refuse rather than risk a double-charge.
+        json_out(['error' => 'This booking is being processed — please wait a moment and try again.'], 409);
+    }
 
     // Re-read paid amount under the lock. Take the MAX of the bookings row and the
     // payments LEDGER (deposit+balance − refunds): the ledger row is written right
@@ -225,7 +237,10 @@ if ($action === 'charge') {
     $ref = 'CHB-' . str_pad(substr(preg_replace('/\D/', '', (string) $bookingId), -6), 6, '0', STR_PAD_LEFT);
     $res = square_api('POST', '/v2/payments', [
         'source_id' => $sourceId,
-        'idempotency_key' => bin2hex(random_bytes(16)),
+        // Derive the idempotency key from the card token so an accidental resubmit of
+        // the SAME tokenised card collapses at Square into one charge (a genuine
+        // retry with a fresh card gets a fresh token → a new key, as it should).
+        'idempotency_key' => 'chb-c-' . $bookingId . '-' . $kind . '-' . substr(hash('sha256', $sourceId), 0, 20),
         'amount_money' => ['amount' => $pence, 'currency' => 'GBP'],
         'location_id' => SQUARE_LOCATION_ID,
         'reference_id' => $ref,

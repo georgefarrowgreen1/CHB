@@ -146,11 +146,17 @@ function book_lock($propKey)
 {
     $name = 'chb_book_' . preg_replace('/[^a-z0-9_]/i', '', (string) $propKey);
     try {
-        $s = db()->prepare('SELECT GET_LOCK(?, 10)');
+        // Wait longer than the Square API timeout (20s) so the lock can't lapse while
+        // the holder is mid-charge — otherwise a second request could slip past it.
+        $s = db()->prepare('SELECT GET_LOCK(?, 30)');
         $s->execute([$name]);
-        return (int) $s->fetchColumn() === 1;
+        $r = $s->fetchColumn();
+        // 1 = acquired; 0 = genuine timeout (contention) → false; NULL = GET_LOCK not
+        // available on this host → treat as acquired so the flow still proceeds
+        // (best-effort, as before). Callers that care reject only on a real timeout.
+        return $r === null ? true : (int) $r === 1;
     } catch (\Throwable $e) {
-        return false;
+        return true; // GET_LOCK unsupported/unavailable — proceed unprotected (best-effort)
     }
 }
 function book_unlock($propKey)
