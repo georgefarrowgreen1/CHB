@@ -400,24 +400,34 @@ function email_esc($s)
     return htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
 }
 
-// Bulletproof rose-gold button (rounded in Outlook too, via VML).
-function email_btn($href, $label, $accent = '#D6A785', $textColor = '#1a191b')
+// ============================================================
+//  Email design system — LIGHT & COASTAL, to match the website.
+//  Warm sand backdrop, crisp white card, Playfair serif headings, soft
+//  rose-gold accents, generous air. Table-based + Outlook-safe (bgcolor
+//  fallbacks + VML buttons). Palette:
+//    sand backdrop  #ECE5D7   card #FFFFFF   hairline/panel #F3EEE4 / border #E7DFCF
+//    ink #262320    body #57524A   muted #8E877A    accent (rose-gold) #C79A64
+// ============================================================
+
+// Bulletproof rose-gold button (rounded in Outlook too, via VML). Warm tan fill
+// with a deep-brown label — matches the site's buttons and keeps AA contrast.
+function email_btn($href, $label, $accent = '#C79A64', $textColor = '#3A2E1E')
 {
     $h = email_esc($href);
     $l = email_esc($label);
     $sans = email_sans();
-    return '<table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:8px auto 4px;"><tr><td align="center" bgcolor="' .
+    return '<table role="presentation" cellpadding="0" cellspacing="0" align="center" style="margin:22px auto 6px;"><tr><td align="center" bgcolor="' .
         $accent .
-        '" style="border-radius:12px;">' .
+        '" style="border-radius:999px;">' .
         '<!--[if mso]><v:roundrect xmlns:v="urn:schemas-microsoft-com:vml" xmlns:w="urn:schemas-microsoft-com:office:word" href="' .
         $h .
-        '" style="height:46px;v-text-anchor:middle;width:300px;" arcsize="26%" stroke="f" fillcolor="' .
+        '" style="height:50px;v-text-anchor:middle;width:300px;" arcsize="50%" stroke="f" fillcolor="' .
         $accent .
         '"><w:anchorlock/><center style="color:' .
         $textColor .
         ';font-family:' .
         $sans .
-        ';font-size:16px;font-weight:bold;"><![endif]-->' .
+        ';font-size:15px;font-weight:bold;letter-spacing:0.4px;"><![endif]-->' .
         '<a href="' .
         $h .
         '" style="display:inline-block;background:' .
@@ -426,31 +436,31 @@ function email_btn($href, $label, $accent = '#D6A785', $textColor = '#1a191b')
         $textColor .
         ';text-decoration:none;font-family:' .
         $sans .
-        ';font-size:16px;font-weight:700;line-height:46px;padding:0 34px;border-radius:12px;">' .
+        ';font-size:15px;font-weight:700;letter-spacing:0.4px;line-height:50px;padding:0 40px;border-radius:999px;">' .
         $l .
         '</a>' .
         '<!--[if mso]></center></v:roundrect><![endif]--></td></tr></table>';
 }
 
 // Centred amount/stat sub-panel (deposit due, refund, etc.). $amount is pre-formatted.
-function email_amount($label, $amount, $sub = '', $valueColor = '#F4F5F7')
+function email_amount($label, $amount, $sub = '', $valueColor = '#2A2622')
 {
     $sans = email_sans();
     $serif = email_serif();
-    return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;"><tr><td bgcolor="#15161b" style="background:#15161b;border:1px solid #2c2f38;border-radius:14px;padding:18px;text-align:center;">' .
+    return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:22px 0;"><tr><td bgcolor="#FAF6EC" style="background:#FAF6EC;border:1px solid #ECE4D3;border-radius:16px;padding:20px;text-align:center;">' .
         '<div style="font-family:' .
         $sans .
-        ';font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#8a8f9e;">' .
+        ';font-size:11px;letter-spacing:1.6px;text-transform:uppercase;color:#A0987F;">' .
         email_esc($label) .
         '</div>' .
         '<div style="font-family:' .
         $serif .
-        ';font-size:32px;font-weight:700;color:' .
+        ';font-size:34px;font-weight:700;color:' .
         $valueColor .
-        ';padding:6px 0 2px;">' .
+        ';padding:7px 0 2px;">' .
         $amount .
         '</div>' .
-        ($sub !== '' ? '<div style="font-family:' . $sans . ';font-size:12px;color:#8a8f9e;">' . $sub . '</div>' : '') .
+        ($sub !== '' ? '<div style="font-family:' . $sans . ';font-size:12px;color:#A0987F;">' . $sub . '</div>' : '') .
         '</td></tr></table>';
 }
 
@@ -458,25 +468,25 @@ function email_amount($label, $amount, $sub = '', $valueColor = '#F4F5F7')
 function email_rows($rows)
 {
     $sans = email_sans();
-    $out = '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0;">';
+    $out = '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:8px 0;">';
     $n = count($rows);
     $i = 0;
     foreach ($rows as $r) {
         $i++;
-        $bd = $i < $n ? 'border-bottom:1px solid #2c2f38;' : '';
+        $bd = $i < $n ? 'border-bottom:1px solid #EDE6D8;' : '';
         $out .=
-            '<tr><td style="padding:11px 0;' .
+            '<tr><td style="padding:12px 0;' .
             $bd .
             'font-family:' .
             $sans .
-            ';font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#8a8f9e;vertical-align:top;width:40%;">' .
+            ';font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#9A927F;vertical-align:top;width:40%;">' .
             $r[0] .
             '</td>' .
-            '<td align="right" style="padding:11px 0;' .
+            '<td align="right" style="padding:12px 0;' .
             $bd .
             'font-family:' .
             $sans .
-            ';font-size:14px;color:#F4F5F7;vertical-align:top;">' .
+            ';font-size:14px;font-weight:600;color:#2E2A25;vertical-align:top;">' .
             $r[1] .
             '</td></tr>';
     }
@@ -484,15 +494,15 @@ function email_rows($rows)
 }
 
 // Left-accent callout box.
-function email_note($html, $accent = '#D6A785')
+function email_note($html, $accent = '#C79A64')
 {
     $sans = email_sans();
-    return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0;"><tr>' .
-        '<td bgcolor="#15161b" style="background:#15161b;border-left:3px solid ' .
+    return '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:20px 0;"><tr>' .
+        '<td bgcolor="#FAF6EC" style="background:#FAF6EC;border:1px solid #ECE4D3;border-left:3px solid ' .
         $accent .
-        ';border-radius:8px;padding:14px 16px;font-family:' .
+        ';border-radius:10px;padding:15px 18px;font-family:' .
         $sans .
-        ';font-size:13px;color:#c9cdda;line-height:1.7;">' .
+        ';font-size:13px;color:#5A554C;line-height:1.75;">' .
         $html .
         '</td></tr></table>';
 }
@@ -509,7 +519,7 @@ function email_h($text, $accent = '')
             : '';
     return '<h1 style="font-family:' .
         $serif .
-        ';font-size:25px;font-weight:700;color:#F4F5F7;margin:0 0 6px;line-height:1.25;">' .
+        ';font-size:26px;font-weight:700;color:#262320;margin:0 0 6px;line-height:1.3;">' .
         $bar .
         email_esc($text) .
         '</h1>';
@@ -520,51 +530,51 @@ function email_p($html, $muted = false)
 {
     return '<p style="font-family:' .
         email_sans() .
-        ';font-size:14px;color:' .
-        ($muted ? '#a7acbb' : '#d7dae3') .
-        ';line-height:1.7;margin:12px 0 0;">' .
+        ';font-size:15px;color:' .
+        ($muted ? '#8E877A' : '#57524A') .
+        ';line-height:1.75;margin:13px 0 0;">' .
         $html .
         '</p>';
 }
 
 // The full document shell. $inner = card body HTML. $accentBar = top hairline colour.
 // $opts: ['unsubscribe' => url, 'footer' => html]
-function email_shell($preheader, $inner, $accentBar = '#D6A785', $opts = [])
+function email_shell($preheader, $inner, $accentBar = '#C79A64', $opts = [])
 {
     $sans = email_sans();
     $serif = email_serif();
     $unsub = $opts['unsubscribe'] ?? '';
     $footerExtra = $opts['footer'] ?? '';
-    return '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="dark"><meta name="supported-color-schemes" content="dark">' .
-        '<style>@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Montserrat:wght@400;600;700&display=swap");' .
-        'body{margin:0;padding:0;background:#101114;}' .
-        '@media (max-width:600px){.ec-wrap{width:100%!important;}.ec-pad{padding-left:22px!important;padding-right:22px!important;}}' .
+    return '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light"><meta name="supported-color-schemes" content="light">' .
+        '<style>@import url("https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600;700&family=Montserrat:wght@400;500;600;700&display=swap");' .
+        'body{margin:0;padding:0;background:#ECE5D7;}' .
+        '@media (max-width:600px){.ec-wrap{width:100%!important;}.ec-pad{padding-left:24px!important;padding-right:24px!important;}}' .
         '</style></head>' .
-        '<body style="margin:0;padding:0;background:#101114;">' .
+        '<body style="margin:0;padding:0;background:#ECE5D7;">' .
         '<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;">' .
         email_esc($preheader) .
         '</div>' .
-        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#101114" style="background:#101114;background-image:linear-gradient(160deg,#181a20 0%,#101114 55%);"><tr><td align="center" style="padding:30px 12px;">' .
+        '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#ECE5D7" style="background:#ECE5D7;background-image:linear-gradient(170deg,#F2ECE0 0%,#E7DFD0 60%);"><tr><td align="center" style="padding:34px 12px 40px;">' .
         '<table role="presentation" width="600" class="ec-wrap" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">' .
         email_crown_header('') .
-        '<tr><td align="center" style="padding:14px 20px 22px;"><div style="font-family:' .
+        '<tr><td align="center" style="padding:12px 20px 24px;"><div style="font-family:' .
         $serif .
-        ';font-size:20px;color:#F4F5F7;letter-spacing:0.5px;">Cottage Holidays Blakeney</div>' .
+        ';font-size:22px;color:#2A2622;letter-spacing:0.4px;">Cottage Holidays Blakeney</div>' .
         '<div style="font-family:' .
         $sans .
-        ';font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#8a8f9e;padding-top:4px;">North Norfolk Coast</div></td></tr>' .
-        '<tr><td class="ec-pad" bgcolor="#1b1d23" style="background:#1b1d23;border:1px solid #2c2f38;border-top:3px solid ' .
+        ';font-size:11px;letter-spacing:2.5px;text-transform:uppercase;color:#A79E8A;padding-top:5px;">North Norfolk Coast</div></td></tr>' .
+        '<tr><td class="ec-pad" bgcolor="#FFFFFF" style="background:#FFFFFF;border:1px solid #E7DFCF;border-top:3px solid ' .
         $accentBar .
-        ';border-radius:20px;padding:30px 34px;">' .
+        ';border-radius:22px;padding:34px 36px;">' .
         $inner .
         '</td></tr>' .
-        '<tr><td align="center" style="padding:22px 24px 8px;font-family:' .
+        '<tr><td align="center" style="padding:24px 24px 8px;font-family:' .
         $sans .
-        ';font-size:11px;color:#71768a;line-height:1.7;">' .
+        ';font-size:11px;color:#A79E8A;line-height:1.8;">' .
         'Self-catering holiday cottages in Blakeney, North Norfolk &middot; NR25<br>' .
         ($footerExtra !== '' ? $footerExtra . '<br>' : '') .
         ($unsub !== ''
-            ? '<a href="' . email_esc($unsub) . '" style="color:#71768a;text-decoration:underline;">Unsubscribe</a>'
+            ? '<a href="' . email_esc($unsub) . '" style="color:#A79E8A;text-decoration:underline;">Unsubscribe</a>'
             : '') .
         '</td></tr>' .
         '</table></td></tr></table></body></html>';
@@ -626,7 +636,7 @@ function send_review_request_email($b)
         email_p(
             'Hi ' .
                 $esc($name) .
-                ', thank you for staying at <strong style="color:#f4f5f7;">' .
+                ', thank you for staying at <strong style="color:#2A2622;">' .
                 $esc($prop) .
                 '</strong>. We\'d love to hear how it went — a short review really helps other guests (and us).',
         );
@@ -679,14 +689,14 @@ function send_anniversary_email($b)
         email_p(
             'Hi ' .
                 $esc($name) .
-                ', around this time last year you were getting ready for your stay at <strong style="color:#f4f5f7;">' .
+                ', around this time last year you were getting ready for your stay at <strong style="color:#2A2622;">' .
                 $esc($prop) .
                 '</strong> — we hope Blakeney has stayed with you the way it tends to.',
         ) .
         email_p(
-            'The same <strong style="color:#f4f5f7;">' .
+            'The same <strong style="color:#2A2622;">' .
                 $esc($month) .
-                '</strong> weeks are starting to book up again, so we wanted you to have first pick of the dates. As a returning guest, just mention the <strong style="color:#f4f5f7;">returning-guest rate</strong> when you enquire and we\'ll apply it.',
+                '</strong> weeks are starting to book up again, so we wanted you to have first pick of the dates. As a returning guest, just mention the <strong style="color:#2A2622;">returning-guest rate</strong> when you enquire and we\'ll apply it.',
         );
     if ($url) {
         $inner .= email_btn($url, 'Check availability');
@@ -737,8 +747,8 @@ function send_enquiry_ack($enq, $accountExists = false)
             'Hi ' .
                 email_esc($first) .
                 ', thanks for your enquiry' .
-                ($prop ? ' about <strong style="color:#f4f5f7;">' . email_esc($prop) . '</strong>' : '') .
-                ($dates ? ' for <strong style="color:#f4f5f7;">' . email_esc($dates) . '</strong>' : '') .
+                ($prop ? ' about <strong style="color:#2A2622;">' . email_esc($prop) . '</strong>' : '') .
+                ($dates ? ' for <strong style="color:#2A2622;">' . email_esc($dates) . '</strong>' : '') .
                 '.',
         ) .
         email_p("We'll check availability and email you back to confirm your dates and price.", true) .
@@ -792,9 +802,9 @@ function send_owner_enquiry_email($e)
     $inner =
         email_h('New enquiry') .
         email_p(
-            '<strong style="color:#f4f5f7;">' .
+            '<strong style="color:#2A2622;">' .
                 email_esc($e['name'] ?? '') .
-                '</strong> would like to stay at <strong style="color:#f4f5f7;">' .
+                '</strong> would like to stay at <strong style="color:#2A2622;">' .
                 email_esc($prop) .
                 '</strong>.',
         ) .
@@ -870,35 +880,35 @@ function send_booking_emails($b)
             ';font-size:10px;font-weight:700;letter-spacing:1.5px;padding:5px 12px;border-radius:12px;">UPCOMING</span>';
         $pr = fn($l, $v) => '<tr><td style="padding:8px 0;font-family:' .
             $sans .
-            ';font-size:14px;color:#c9cdda;">' .
+            ';font-size:14px;color:#57524A;">' .
             $l .
             '</td><td align="right" style="padding:8px 0;font-family:' .
             $sans .
-            ';font-size:14px;color:#c9cdda;">' .
+            ';font-size:14px;color:#57524A;">' .
             $v .
             '</td></tr>';
         $priceBox =
-            '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0 4px;"><tr><td bgcolor="#15161b" style="background:#15161b;border:1px solid #2c2f38;border-radius:14px;padding:8px 20px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">' .
+            '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0 4px;"><tr><td bgcolor="#FAF6EC" style="background:#FAF6EC;border:1px solid #ECE4D3;border-radius:14px;padding:8px 20px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">' .
             $pr($money($b['per_night']) . ' &times; ' . $nightsTxt, $money($b['nightly'])) .
             $pr('Transaction fee (' . $esc($b['tx_pct']) . '%)', $money($b['tx_fee'])) .
-            '<tr><td colspan="2" style="border-top:1px solid #2c2f38;font-size:0;line-height:0;">&nbsp;</td></tr>' .
+            '<tr><td colspan="2" style="border-top:1px solid #ECE4D3;font-size:0;line-height:0;">&nbsp;</td></tr>' .
             '<tr><td style="padding:12px 0 4px;font-family:' .
             $serif .
-            ';font-size:19px;font-weight:700;color:#F4F5F7;">Total</td><td align="right" style="padding:12px 0 4px;font-family:' .
+            ';font-size:19px;font-weight:700;color:#2A2622;">Total</td><td align="right" style="padding:12px 0 4px;font-family:' .
             $serif .
-            ';font-size:21px;font-weight:700;color:#F4F5F7;">' .
+            ';font-size:21px;font-weight:700;color:#2A2622;">' .
             $money($b['total']) .
             '</td></tr>' .
             $pr(
-                '<span style="color:#8a8f9e;">+ ' . $money($b['damages_deposit']) . ' refundable deposit</span>',
-                '<span style="color:#8a8f9e;">held, not charged</span>',
+                '<span style="color:#A0987F;">+ ' . $money($b['damages_deposit']) . ' refundable deposit</span>',
+                '<span style="color:#A0987F;">held, not charged</span>',
             ) .
             '</table></td></tr></table>';
         $inner =
             email_h($b['prop_name'], $accent) .
             '<div style="font-family:' .
             $sans .
-            ';font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#8a8f9e;margin:2px 0 16px;">Booking ref ' .
+            ';font-size:11px;letter-spacing:1px;text-transform:uppercase;color:#A0987F;margin:2px 0 16px;">Booking ref ' .
             $esc($b['ref']) .
             ' &nbsp;&middot;&nbsp; ' .
             $statusBadge .
@@ -982,15 +992,15 @@ function send_arrival_email($b)
         email_p(
             'Hello ' .
                 htmlspecialchars($name, ENT_QUOTES, 'UTF-8') .
-                ', your stay begins on <strong style="color:#f4f5f7;">' .
+                ', your stay begins on <strong style="color:#2A2622;">' .
                 $inDate .
-                '</strong>. Check-in is from <strong style="color:#f4f5f7;">' .
+                '</strong>. Check-in is from <strong style="color:#2A2622;">' .
                 htmlspecialchars($time, ENT_QUOTES, 'UTF-8') .
                 '</strong>.',
         ) .
         ($addrHtml !== '' ? email_rows([['Address', $addrHtml]]) : '') .
         email_note(
-            'When you arrive, log in to your account on our website and open <strong style="color:#f4f5f7;">My Bookings</strong> to reveal your entry details for the cottage.',
+            'When you arrive, log in to your account on our website and open <strong style="color:#2A2622;">My Bookings</strong> to reveal your entry details for the cottage.',
             $accent,
         ) .
         email_p('We look forward to welcoming you.<br>Cottage Holidays Blakeney', true);
@@ -1070,7 +1080,7 @@ function send_payment_request($b, $payUrl)
         email_p(
             'Hello ' .
                 $esc($name) .
-                ', thank you for booking <strong style="color:#f4f5f7;">' .
+                ', thank you for booking <strong style="color:#2A2622;">' .
                 $esc($prop) .
                 '</strong> (' .
                 $esc($b['check_in']) .
@@ -1155,9 +1165,9 @@ function send_payment_reminder($b, $payUrl)
         email_p(
             'Hello ' .
                 $esc($name) .
-                ', a friendly reminder that the balance for your stay at <strong style="color:#f4f5f7;">' .
+                ', a friendly reminder that the balance for your stay at <strong style="color:#2A2622;">' .
                 $esc($prop) .
-                '</strong> is still outstanding, and your arrival is <strong style="color:#f4f5f7;">' .
+                '</strong> is still outstanding, and your arrival is <strong style="color:#2A2622;">' .
                 $esc($when) .
                 '</strong> (' .
                 $esc($b['check_in']) .
@@ -1212,7 +1222,7 @@ function send_hold_request($b, $url)
         email_amount('Refundable hold', $money($b['amount']), 'held, not charged') .
         email_btn($url, 'Place the card hold') .
         email_p(
-            'This is a <strong style="color:#f4f5f7;">hold, not a charge</strong> — the amount is set aside on your card and released after checkout, provided there\'s no damage.',
+            'This is a <strong style="color:#2A2622;">hold, not a charge</strong> — the amount is set aside on your card and released after checkout, provided there\'s no damage.',
             true,
         ) .
         email_p('Powered by Square — we never see or store your card number.<br>Cottage Holidays Blakeney', true);
@@ -1247,7 +1257,7 @@ function send_hold_released($b)
         email_p(
             'Hello ' .
                 $esc($name) .
-                ', thank you for staying at <strong style="color:#f4f5f7;">' .
+                ', thank you for staying at <strong style="color:#2A2622;">' .
                 $esc($prop) .
                 '</strong>. We\'ve released your refundable security hold.',
         ) .
@@ -1290,7 +1300,7 @@ function send_refund_email($b)
         email_p(
             'Hello ' .
                 $esc($name) .
-                ', we\'ve issued a refund for your booking at <strong style="color:#f4f5f7;">' .
+                ', we\'ve issued a refund for your booking at <strong style="color:#2A2622;">' .
                 $esc($prop) .
                 '</strong>' .
                 (!empty($b['check_in']) ? ' (' . $esc($b['check_in']) . ' to ' . $esc($b['check_out']) . ')' : '') .
@@ -1298,7 +1308,7 @@ function send_refund_email($b)
         ) .
         email_amount('Refund', $money($b['amount']), '', '#D6A785') .
         ($reason !== ''
-            ? email_note('<strong style="color:#f4f5f7;">Reason:</strong> ' . $esc($reason), $accent)
+            ? email_note('<strong style="color:#2A2622;">Reason:</strong> ' . $esc($reason), $accent)
             : '') .
         email_p(
             'It\'s on its way back to the card you paid with. Refunds usually take a few working days to appear, depending on your bank.',
@@ -1343,14 +1353,14 @@ function send_deposit_return_email($b)
         email_p(
             'Hello ' .
                 $esc($name) .
-                ', thank you for staying at <strong style="color:#f4f5f7;">' .
+                ', thank you for staying at <strong style="color:#2A2622;">' .
                 $esc($prop) .
                 '</strong>. We\'re returning your refundable damage deposit.',
         ) .
         email_amount('Deposit returned', $money($b['amount']), '', '#D6A785') .
         ($retained > 0.001
             ? email_note(
-                '<strong style="color:#f4f5f7;">Amount retained:</strong> ' .
+                '<strong style="color:#2A2622;">Amount retained:</strong> ' .
                     $money($retained) .
                     ($reason !== '' ? ' — ' . $esc($reason) : ''),
                 $accent,
@@ -1404,13 +1414,13 @@ function send_cancellation_email($b)
         email_p(
             'Hello ' .
                 $esc($name) .
-                ', your booking at <strong style="color:#f4f5f7;">' .
+                ', your booking at <strong style="color:#2A2622;">' .
                 $esc($prop) .
                 '</strong>' .
                 (!empty($b['check_in']) ? ' (' . $esc($b['check_in']) . ' to ' . $esc($b['check_out']) . ')' : '') .
                 ' has been cancelled.',
         ) .
-        ($reason !== '' ? email_p('<strong style="color:#f4f5f7;">Reason:</strong> ' . $esc($reason), true) : '') .
+        ($reason !== '' ? email_p('<strong style="color:#2A2622;">Reason:</strong> ' . $esc($reason), true) : '') .
         ($refundLine !== '' ? email_note($esc($refundLine)) : '') .
         email_p('If you have any questions, just reply to this email.<br>Cottage Holidays Blakeney', true);
     $html = email_shell('Booking cancelled — ' . $prop, $inner);
@@ -1454,9 +1464,9 @@ function send_payment_receipt($b)
                 $esc($name) .
                 ', thank you — we\'ve received your ' .
                 $what .
-                ' payment of <strong style="color:#f4f5f7;">' .
+                ' payment of <strong style="color:#2A2622;">' .
                 $money($b['amount']) .
-                '</strong> for <strong style="color:#f4f5f7;">' .
+                '</strong> for <strong style="color:#2A2622;">' .
                 $esc($prop) .
                 '</strong>.',
         ) .

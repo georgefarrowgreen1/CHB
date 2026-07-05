@@ -198,7 +198,7 @@ $text =
 
 $sectionLabel = fn($t) => '<div style="font-family:' .
     email_sans() .
-    ';font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#8a8f9e;margin:22px 0 2px;">' .
+    ';font-size:11px;letter-spacing:1.5px;text-transform:uppercase;color:#A0987F;margin:22px 0 2px;">' .
     htmlspecialchars($t) .
     '</div>';
 $arrivalsHtml = $arrivals
@@ -206,14 +206,14 @@ $arrivalsHtml = $arrivals
         implode(
             '',
             array_map(
-                fn($a) => '<tr><td style="padding:7px 0;border-bottom:1px solid #2c2f38;font-family:' .
+                fn($a) => '<tr><td style="padding:7px 0;border-bottom:1px solid #ECE4D3;font-family:' .
                     email_sans() .
-                    ';font-size:14px;color:#d7dae3;">' .
+                    ';font-size:14px;color:#57524A;">' .
                     '<span style="display:inline-block;width:9px;height:9px;border-radius:3px;background:' .
                     $accentOf($a['prop_key']) .
                     ';margin-right:9px;"></span>' .
                     htmlspecialchars($pretty($a['check_in'])) .
-                    ' — <strong style="color:#f4f5f7;">' .
+                    ' — <strong style="color:#2A2622;">' .
                     htmlspecialchars($a['name']) .
                     '</strong> · ' .
                     htmlspecialchars($nameOf($a['prop_key'])) .
@@ -229,7 +229,7 @@ $inner =
     email_p(htmlspecialchars(date('l j F Y')), true) .
     $sectionLabel('The week just gone') .
     email_rows([
-        ['New bookings', $newBookings . ' <span style="color:#a7acbb;">(' . $money($newValue) . ')</span>'],
+        ['New bookings', $newBookings . ' <span style="color:#8E877A;">(' . $money($newValue) . ')</span>'],
         ['Money received', $money($received)],
     ]) .
     $sectionLabel('The week ahead — arrivals') .
@@ -237,7 +237,7 @@ $inner =
     $sectionLabel('To keep an eye on') .
     email_rows(
         array_filter([
-            ['Balances owed', $owedCount . ' <span style="color:#a7acbb;">(' . $money($owedSum) . ')</span>'],
+            ['Balances owed', $owedCount . ' <span style="color:#8E877A;">(' . $money($owedSum) . ')</span>'],
             ['Pending enquiries', (string) $pending],
             $occPct !== null ? ['Occupancy (next 30 days)', $occPct . '%'] : null,
         ]),
@@ -249,7 +249,7 @@ $inner =
             implode(
                 '',
                 array_map(
-                    fn($a) => '<tr><td style="padding:6px 0;border-bottom:1px solid #2c2f38;font-family:' .
+                    fn($a) => '<tr><td style="padding:6px 0;border-bottom:1px solid #ECE4D3;font-family:' .
                         email_sans() .
                         ';font-size:13px;color:' .
                         ($a['severity'] === 'action' ? '#e57373' : '#ffb74d') .
