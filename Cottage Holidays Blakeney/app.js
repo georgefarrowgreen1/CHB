@@ -10170,6 +10170,57 @@ function bookingLine(b) {
     const name = (propertyMeta[b.prop_key] || {}).name || b.prop_key;
     return `${escapeHtml(name)} · ${b.check_in} → ${b.check_out}${b.payment ? ' · ' + escapeHtml(b.payment) : ''}`;
 }
+// Bookings block in the reply modal, with one-tap "Send arrival info / balance
+// link" actions for any upcoming stay (reuses the normal arrival/payment senders).
+function bookingCtxHtml(bookings) {
+    if (!bookings.length) {
+        return `<div class="mc-row"><span class="mc-k">Bookings</span><span class="mc-v">None on file</span></div>`;
+    }
+    const today = new Date().toISOString().slice(0, 10);
+    return bookings
+        .map((b) => {
+            const upcoming = (b.check_out || '') >= today; // stay hasn't ended yet
+            const owed = (b.payment || '') !== 'paid';
+            const actions =
+                upcoming && b.id
+                    ? `<div class="mc-actions">
+                        <button class="btn-sm btn-edit" onclick="chatSendArrival(${b.id})">Send arrival info</button>
+                        ${owed ? `<button class="btn-sm btn-edit" onclick="chatSendBalance(${b.id})">Send balance link</button>` : ''}
+                       </div>`
+                    : '';
+            return `<div class="mc-row"><span class="mc-k">Booking</span><span class="mc-v">${escapeHtml(bookingLine(b))}${actions}</span></div>`;
+        })
+        .join('');
+}
+async function chatSendArrival(bid) {
+    if (!__msgThreadId) return;
+    try {
+        await apiPost('messages.php', {
+            action: 'send_arrival',
+            thread_id: __msgThreadId,
+            booking_id: bid,
+        });
+        toast('Arrival info emailed.');
+        openMessageThread(__msgThreadId); // refresh so the chat note shows
+    } catch (e) {
+        glassAlert("Couldn't send: " + e.message);
+    }
+}
+async function chatSendBalance(bid) {
+    if (!__msgThreadId) return;
+    if (!(await glassConfirm('Email this guest a secure link to pay their balance?'))) return;
+    try {
+        await apiPost('messages.php', {
+            action: 'send_balance',
+            thread_id: __msgThreadId,
+            booking_id: bid,
+        });
+        toast('Balance link emailed.');
+        openMessageThread(__msgThreadId);
+    } catch (e) {
+        glassAlert("Couldn't send: " + e.message);
+    }
+}
 async function openMessageThread(threadId) {
     __msgThreadId = threadId;
     adminClearAttach(); // don't carry a pending photo between conversations
@@ -10188,9 +10239,7 @@ async function openMessageThread(threadId) {
         if (archBtn) archBtn.textContent = __msgThreadArchived ? 'Unarchive' : 'Archive';
         if (title) title.textContent = t.name ? t.name : t.email || 'Message';
         if (ctx) {
-            const bk = (r.bookings || []).length
-                ? `<div class="mc-row"><span class="mc-k">Bookings</span><span class="mc-v">${r.bookings.map(bookingLine).join('<br>')}</span></div>`
-                : `<div class="mc-row"><span class="mc-k">Bookings</span><span class="mc-v">None on file</span></div>`;
+            const bk = bookingCtxHtml(r.bookings || []);
             ctx.innerHTML = `
                         ${t.email ? `<div class="mc-row"><span class="mc-k">Email</span><span class="mc-v">${escapeHtml(t.email)}</span></div>` : ''}
                         <div class="mc-row"><span class="mc-k">Came from</span><span class="mc-v">${escapeHtml(t.source || '—')}</span></div>
@@ -17581,7 +17630,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'k2o6s0ab';
+    const BUILD = 'l3p7t1bc';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
