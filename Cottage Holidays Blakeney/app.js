@@ -4992,7 +4992,7 @@ async function renderGuestBookings() {
     if (currentStays.length) renderInStayTides();
 }
 
-// ---- In-stay "tide of the day" card (My Bookings + home arrival banner) ----
+// ---- In-stay "tide of the day" card (My Bookings + My Stay hub) ----
 async function renderInStayTides() {
     const els = document.querySelectorAll('.instay-tides');
     if (!els.length) return;
@@ -17284,7 +17284,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'd5g9j3rp';
+    const BUILD = 'e6h0k4sq';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
