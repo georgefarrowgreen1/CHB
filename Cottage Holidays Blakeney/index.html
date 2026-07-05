@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=95">
+    <link rel="stylesheet" href="app.css?v=96">
     <!-- Speed up the font fetch (and the jsPDF CDN) by opening the connections early. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -865,6 +865,9 @@
         <div id="today-panel"><!-- JS injects the "today / needs doing" list --></div>
 
         <div class="owner-summary" id="owner-summary"><!-- JS injects summary stats --></div>
+
+        <!-- Occupancy heatmap: all cottages × the next N days at a glance -->
+        <div id="occupancy-heatmap"></div>
 
         <!-- CALENDAR (left) + PENDING ENQUIRIES (right) -->
         <div class="bo-layout">
@@ -2016,7 +2019,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=138"></script>
+    <script src="app.js?v=139"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
