@@ -3490,11 +3490,34 @@ textarea.input-glass.field-sm {
 }
 .chat-composer textarea {
   flex: 1;
+  min-width: 0; /* let it shrink instead of forcing the composer wider than the screen */
   resize: none;
   min-height: 46px;
   max-height: 120px;
   margin: 0;
   border-radius: var(--r-lg);
+}
+/* Owner reply modal: keep it inside the screen. The box is a flex column capped to
+   the *visible* viewport (dvh excludes the iOS toolbar so the composer isn't cut
+   off); only the thread scrolls, the composer stays pinned, and nothing can push
+   the layout sideways. */
+#messages-modal .modal-box {
+  display: flex;
+  flex-direction: column;
+  max-height: 90dvh;
+  overflow: hidden;
+}
+#messages-modal .modal-box > * {
+  flex-shrink: 0;
+}
+#messages-modal .msg-ctx {
+  max-height: 34vh;
+  overflow-y: auto;
+}
+#messages-modal .chat-thread {
+  flex: 1 1 auto;
+  max-height: none;
+  min-height: 90px;
 }
 /* Round accent send button (matches the chat bubble FAB language) */
 .chat-send {
