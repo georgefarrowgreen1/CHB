@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=96">
+    <link rel="stylesheet" href="app.css?v=97">
     <!-- Speed up the font fetch (and the jsPDF CDN) by opening the connections early. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -183,6 +183,8 @@
 </head>
 <body>
 
+    <!-- Keyboard/screen-reader users: jump straight past the nav to the content -->
+    <a href="#view-main" class="skip-link">Skip to content</a>
 
     <!-- LOADING OVERLAY (covers the page until content is ready) -->
     <div id="loading-overlay">
@@ -2019,7 +2021,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=139"></script>
+    <script src="app.js?v=140"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
