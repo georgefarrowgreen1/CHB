@@ -1764,7 +1764,10 @@ function settingsOpen(section) {
     else if (section === 'diagnostics') loadDiagnostics();
     else if (section === 'testcentre') renderTestCentreList();
     else if (section === 'apis') renderApis();
-    else if (section === 'security') loadAdminPasskeys();
+    else if (section === 'security') {
+        loadAdminPasskeys();
+        syncAdmin2faToggle();
+    }
     else if (section === 'payments') renderSquareSettings();
     else if (section === 'accom') renderAccomList();
     else if (section === 'calendar') renderCalendarList();
@@ -4752,6 +4755,10 @@ async function addAdminPasskey() {
         glassAlert("Couldn't add passkey: " + (e.message || e));
     }
 }
+function syncAdmin2faToggle() {
+    const el = document.getElementById('admin-2fa-toggle');
+    if (el) el.checked = siteContent['admin-2fa-enabled'] === '1';
+}
 async function loadAdminPasskeys() {
     const box = document.getElementById('admin-passkey-list');
     if (!box) return;
@@ -6599,6 +6606,9 @@ function closeAdminLogin() {
     document.getElementById('admin-login-modal').classList.remove('open');
     const st = document.getElementById('admin-login-passkey-status');
     if (st) st.style.display = 'none';
+    // Reset the 2FA step so the next open starts at the password form again.
+    const tf = document.getElementById('admin-login-2fa-form');
+    if (tf) tf.style.display = 'none';
     adminLoginOnSuccess = null;
 }
 function adminLoginErr(msg) {
@@ -6614,21 +6624,57 @@ async function submitAdminLogin() {
         return;
     }
     try {
-        await apiPost('auth.php', { action: 'admin_login', username, password });
-        isAuthenticated = true;
-        setAuthUI();
-        currentGuest = null;
-        setGuestUI(); // one role at a time: drop any guest session
-        // Re-drain any writes that were kept queued because the session had lapsed.
-        try {
-            oqRegisterSync();
-            oqFlush();
-        } catch (e) {}
-        const cb = adminLoginOnSuccess;
-        closeAdminLogin();
-        if (cb) await cb();
+        const res = await apiPost('auth.php', { action: 'admin_login', username, password });
+        // New device with 2FA on: password was right, but a code was emailed —
+        // switch the modal to the code-entry step instead of completing the login.
+        if (res && res.twofa) {
+            showAdmin2faStep();
+            return;
+        }
+        await adminLoginSucceeded();
     } catch (e) {
         adminLoginErr('Access denied: ' + e.message);
+    }
+}
+// Shared post-sign-in steps (used by the direct path and after a 2FA code).
+async function adminLoginSucceeded() {
+    isAuthenticated = true;
+    setAuthUI();
+    currentGuest = null;
+    setGuestUI(); // one role at a time: drop any guest session
+    try {
+        oqRegisterSync();
+        oqFlush();
+    } catch (e) {}
+    const cb = adminLoginOnSuccess;
+    closeAdminLogin();
+    if (cb) await cb();
+}
+function showAdmin2faStep() {
+    const pw = document.getElementById('admin-login-pw-form');
+    const ps = document.getElementById('admin-login-passkey-status');
+    const tf = document.getElementById('admin-login-2fa-form');
+    if (pw) pw.style.display = 'none';
+    if (ps) ps.style.display = 'none';
+    if (tf) tf.style.display = 'block';
+    const code = document.getElementById('admin-login-2fa-code');
+    if (code) {
+        code.value = '';
+        setTimeout(() => code.focus(), 60);
+    }
+}
+async function submitAdmin2fa() {
+    const code = (document.getElementById('admin-login-2fa-code').value || '').trim();
+    const remember = !!(document.getElementById('admin-login-2fa-remember') || {}).checked;
+    if (!code) {
+        adminLoginErr('Enter the 6-digit code from your email.');
+        return;
+    }
+    try {
+        await apiPost('auth.php', { action: 'admin_2fa', code, remember });
+        await adminLoginSucceeded();
+    } catch (e) {
+        adminLoginErr(e.message || 'That code was not accepted.');
     }
 }
 async function submitAdminPasskey() {
@@ -17873,7 +17919,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'v3z7d1mn';
+    const BUILD = 'w4a8e2no';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
