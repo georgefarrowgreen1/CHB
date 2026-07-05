@@ -40,14 +40,55 @@ function request_is_https()
 //      silently drops the cookie and logins won't "stick". ----
 if (session_status() === PHP_SESSION_NONE) {
     $secure = request_is_https();
+    // "Stay logged in" — keep the owner AND guests signed in across app/browser
+    // closes, spells of inactivity, and site updates. Without this the cookie was a
+    // browser-session cookie (gone on close) and PHP's default ~24-min idle GC could
+    // expire the session server-side, so a post-deploy reload looked like a logout.
+    // (Logging out still clears the session; login still regenerates the id.)
+    $sess_ttl = 60 * 60 * 24 * 60; // 60 days
+
+    // Store our session files in an app-local, web-denied folder (see sessions/
+    // .htaccess) so the shared host's own GC of the server-default path can't quietly
+    // sign people out. Only switch to it if it's genuinely writable — otherwise stay
+    // on the default path rather than risk breaking login.
+    $sess_dir = __DIR__ . '/sessions';
+    if (!is_dir($sess_dir)) {
+        @mkdir($sess_dir, 0700, true);
+    }
+    // Belt-and-braces: if the folder was created fresh (shipped .htaccess missing),
+    // drop a deny-all .htaccess so session files can never be served over the web.
+    if (is_dir($sess_dir) && !is_file($sess_dir . '/.htaccess')) {
+        @file_put_contents(
+            $sess_dir . '/.htaccess',
+            "<IfModule mod_authz_core.c>\nRequire all denied\n</IfModule>\n<IfModule !mod_authz_core.c>\nOrder allow,deny\nDeny from all\n</IfModule>\n",
+        );
+    }
+    if (is_dir($sess_dir) && is_writable($sess_dir)) {
+        @ini_set('session.save_path', $sess_dir);
+    }
+    @ini_set('session.gc_maxlifetime', (string) $sess_ttl);
+
     session_set_cookie_params([
-        'lifetime' => 0,
+        'lifetime' => $sess_ttl,
         'path' => '/',
         'secure' => $secure, // matches actual scheme (proxy-aware)
         'httponly' => true, // not readable by JavaScript
         'samesite' => 'Lax',
     ]);
     @session_start();
+
+    // Sliding expiry: push the cookie's clock forward on every visit so an active
+    // user never lapses (session_start likewise refreshes the file's mtime, keeping
+    // it clear of GC).
+    if (session_id() !== '' && isset($_COOKIE[session_name()])) {
+        @setcookie(session_name(), session_id(), [
+            'expires' => time() + $sess_ttl,
+            'path' => '/',
+            'secure' => $secure,
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
+    }
 }
 // Give a logged-in admin a CSRF token in a JS-readable cookie (the token also lives
 // in the session). The admin UI echoes it back in an X-CSRF-Token header on writes;
