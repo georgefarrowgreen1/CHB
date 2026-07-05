@@ -9424,7 +9424,11 @@ function chatBubbles(msgs, meRole) {
                 i === lastAdminIdx
                     ? ` · <span class="chat-receipt${m.seen ? ' seen' : ''}">${m.seen ? '✓✓ Read' : '✓ Sent'}</span>`
                     : '';
-            return `<div class="chat-msg ${m.role === meRole ? 'me' : 'them'}">${escapeHtml(m.body)}<div class="chat-meta">${who} · ${fmtMsgTime(m.at)}${receipt}</div></div>`;
+            const att = m.attachment
+                ? `<a class="chat-attach-link" href="${escapeHtml(m.attachment)}" target="_blank" rel="noopener"><img class="chat-attach" src="${escapeHtml(m.attachment)}" loading="lazy" alt="Photo attachment"></a>`
+                : '';
+            const bodyHtml = m.body ? escapeHtml(m.body) : '';
+            return `<div class="chat-msg ${m.role === meRole ? 'me' : 'them'}${m.attachment && !m.body ? ' chat-msg-img' : ''}">${att}${bodyHtml}<div class="chat-meta">${who} · ${fmtMsgTime(m.at)}${receipt}</div></div>`;
         })
         .join('');
 }
@@ -9612,6 +9616,89 @@ function adminTypingPing() {
     __typingLastPing = now;
     apiPost('messages.php', { action: 'typing', thread_id: __msgThreadId }).catch(() => {});
 }
+// ---- Chat image attachments (guest widget + owner thread) ----
+let __chatPendingAttach = null;
+let __adminPendingAttach = null;
+function chatPickImageFile() {
+    return new Promise((resolve) => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = 'image/*,.heic,.heif';
+        input.onchange = () => resolve((input.files && input.files[0]) || null);
+        input.click();
+    });
+}
+async function chatUploadImage(file, forGuest) {
+    file = await ensureUploadable(file); // convert iPhone HEIC → JPEG first
+    const fd = new FormData();
+    fd.append('image', file, file.name || 'photo.jpg');
+    if (forGuest && !currentGuest) {
+        // Anonymous visitor — the upload needs a chat token to authorise.
+        fd.append('token', chatGetToken() || chatNewToken());
+    }
+    const res = await fetchWithTimeout(
+        API_BASE + 'chat-upload.php',
+        { method: 'POST', headers: csrfHeader(), credentials: 'include', body: fd },
+        45000,
+    );
+    const text = await res.text();
+    let data = {};
+    try {
+        data = text ? JSON.parse(text) : {};
+    } catch (e) {}
+    if (!res.ok || !data.url) throw new Error(data.error || 'Upload failed (' + res.status + ')');
+    return data.url;
+}
+function renderChatAttachPreview(hostId, url, onClear) {
+    const host = document.getElementById(hostId);
+    if (!host) return;
+    if (!url) {
+        host.style.display = 'none';
+        host.innerHTML = '';
+        return;
+    }
+    host.style.display = 'flex';
+    host.innerHTML = `<img src="${escapeHtml(url)}" alt=""><span>Photo attached</span><button type="button" class="chat-attach-x" aria-label="Remove photo">✕</button>`;
+    const x = host.querySelector('.chat-attach-x');
+    if (x && onClear) x.onclick = onClear;
+}
+async function chatAttachPhoto() {
+    const file = await chatPickImageFile();
+    if (!file) return;
+    const btn = document.getElementById('chat-attach-btn');
+    if (btn) btn.classList.add('busy');
+    try {
+        __chatPendingAttach = await chatUploadImage(file, true);
+        renderChatAttachPreview('chat-attach-preview', __chatPendingAttach, chatClearAttach);
+    } catch (e) {
+        glassAlert("Couldn't attach that photo: " + e.message);
+    } finally {
+        if (btn) btn.classList.remove('busy');
+    }
+}
+function chatClearAttach() {
+    __chatPendingAttach = null;
+    renderChatAttachPreview('chat-attach-preview', null);
+}
+async function adminAttachPhoto() {
+    if (!__msgThreadId) return;
+    const file = await chatPickImageFile();
+    if (!file) return;
+    const btn = document.getElementById('msg-attach-btn');
+    if (btn) btn.classList.add('busy');
+    try {
+        __adminPendingAttach = await chatUploadImage(file, false);
+        renderChatAttachPreview('msg-attach-preview', __adminPendingAttach, adminClearAttach);
+    } catch (e) {
+        glassAlert("Couldn't attach that photo: " + e.message);
+    } finally {
+        if (btn) btn.classList.remove('busy');
+    }
+}
+function adminClearAttach() {
+    __adminPendingAttach = null;
+    renderChatAttachPreview('msg-attach-preview', null);
+}
 // Returning to the tab with a chat open → refresh straight away (guest widget
 // and, for the owner, the open back-office conversation).
 document.addEventListener('visibilitychange', () => {
@@ -9783,7 +9870,7 @@ function adminCanned(text) {
 async function sendChat() {
     const input = document.getElementById('chat-input');
     const body = ((input && input.value) || '').trim();
-    if (!body) return;
+    if (!body && !__chatPendingAttach) return;
     const loggedIn = !!currentGuest;
     let payload;
     if (loggedIn) {
@@ -9810,6 +9897,7 @@ async function sendChat() {
             ref: document.referrer || '',
         };
     }
+    payload.attachment = __chatPendingAttach || '';
     try {
         const r = await apiPost('messages.php', payload);
         if (r && r.token) {
@@ -9818,6 +9906,7 @@ async function sendChat() {
             } catch (e) {}
         }
         if (input) input.value = '';
+        chatClearAttach();
         const intro = document.getElementById('chat-intro');
         if (intro) intro.style.display = 'none';
         await loadChat();
@@ -10083,6 +10172,7 @@ function bookingLine(b) {
 }
 async function openMessageThread(threadId) {
     __msgThreadId = threadId;
+    adminClearAttach(); // don't carry a pending photo between conversations
     const modal = document.getElementById('messages-modal');
     const title = document.getElementById('messages-modal-title');
     const ctx = document.getElementById('messages-modal-ctx');
@@ -10211,14 +10301,16 @@ async function deleteCurrentThread() {
 async function adminSendMessage() {
     const input = document.getElementById('messages-modal-input');
     const body = ((input && input.value) || '').trim();
-    if (!body || !__msgThreadId) return;
+    if ((!body && !__adminPendingAttach) || !__msgThreadId) return;
     try {
         const res = await queueOrPost('messages.php', {
             action: 'send',
             thread_id: __msgThreadId,
             body,
+            attachment: __adminPendingAttach || '',
         });
         if (input) input.value = '';
+        adminClearAttach();
         if (res && res.queued) {
             toast('Saved offline — your reply will send when you reconnect.');
             return;
@@ -17489,7 +17581,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'j1n5r9za';
+    const BUILD = 'k2o6s0ab';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

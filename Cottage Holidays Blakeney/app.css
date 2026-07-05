@@ -3525,6 +3525,106 @@ textarea.input-glass.field-sm {
 .chat-send:active {
   transform: scale(0.94);
 }
+/* Attach-a-photo button (paperclip) — quiet, sits left of the composer */
+.chat-attach-btn {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  cursor: pointer;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-hover);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    color 0.2s var(--fluid-bezier),
+    background 0.2s var(--fluid-bezier),
+    transform 0.2s var(--spring);
+}
+.chat-attach-btn svg {
+  width: 19px;
+  height: 19px;
+}
+.chat-attach-btn:hover,
+.chat-attach-btn:focus-visible {
+  color: var(--text-light);
+  transform: translateY(-1px);
+}
+.chat-attach-btn:active {
+  transform: scale(0.94);
+}
+.chat-attach-btn.busy {
+  opacity: 0.5;
+  pointer-events: none;
+}
+/* Image in a chat bubble. An explicit width (not just max-width) lets the flex
+   bubble shrink to hug the photo instead of staying full-width with dead space;
+   max-width:100% keeps it inside a narrow bubble/screen. */
+.chat-attach-link {
+  display: block;
+}
+.chat-msg .chat-attach-link {
+  margin-bottom: 6px;
+}
+.chat-attach {
+  display: block;
+  width: 240px;
+  max-width: 100%;
+  height: auto;
+  border-radius: var(--r-sm);
+  cursor: zoom-in;
+}
+/* When a bubble is image-only, tighten the padding around it */
+.chat-msg-img {
+  padding: 5px;
+}
+.chat-msg-img .chat-attach-link {
+  margin-bottom: 3px;
+}
+.chat-msg-img .chat-meta {
+  padding: 0 5px 2px;
+}
+/* "Photo attached" preview chip above the composer, with a remove ✕ */
+.chat-attach-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 7px 10px;
+  background: var(--glass-hover);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-md);
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.chat-attach-preview img {
+  width: 40px;
+  height: 40px;
+  object-fit: cover;
+  border-radius: var(--r-xs, 8px);
+  flex-shrink: 0;
+}
+.chat-attach-preview span {
+  flex: 1;
+}
+.chat-attach-x {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 1px solid var(--glass-border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1;
+}
+.chat-attach-x:hover {
+  color: var(--danger);
+  border-color: var(--danger);
+}
 /* Quick-reply chips: one tidy swipeable row (no ragged wrapping) */
 .chat-quick {
   display: flex;

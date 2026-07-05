@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=89">
+    <link rel="stylesheet" href="app.css?v=90">
     <!-- Speed up the font fetch (and the jsPDF CDN) by opening the connections early. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1527,7 +1527,9 @@
                 <option>Check-in is from 3pm and check-out by 10am.</option>
                 <option>Could you let me know your preferred dates and party size?</option>
             </select>
+            <div id="msg-attach-preview" class="chat-attach-preview" style="display:none;"></div>
             <div class="chat-composer">
+                <button type="button" id="msg-attach-btn" class="chat-attach-btn" onclick="adminAttachPhoto()" aria-label="Attach a photo" title="Attach a photo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
                 <textarea id="messages-modal-input" class="input-glass" rows="2" placeholder="Write a reply…" oninput="adminTypingPing()"></textarea>
                 <button class="btn-glass" onclick="adminSendMessage()">Send</button>
             </div>
@@ -1622,7 +1624,9 @@
             <button type="button" class="chat-chip" onclick="chatFaq('wifi')">Wi-Fi?</button>
             <button type="button" class="chat-chip chat-chip-issue" onclick="chatQuick('__issue')">Report an issue</button>
         </div>
+        <div id="chat-attach-preview" class="chat-attach-preview" style="display:none;"></div>
         <div class="chat-composer" style="padding:12px 14px 14px;">
+            <button type="button" id="chat-attach-btn" class="chat-attach-btn" onclick="chatAttachPhoto()" aria-label="Attach a photo" title="Attach a photo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
             <textarea id="chat-input" class="input-glass" rows="1" placeholder="Write a message…" oninput="chatTypingPing()" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat();}"></textarea>
             <button class="chat-send" onclick="sendChat()" aria-label="Send message" title="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="M5.5 11.5 12 5l6.5 6.5"/></svg></button>
         </div>
@@ -2009,7 +2013,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=130"></script>
+    <script src="app.js?v=131"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

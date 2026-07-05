@@ -161,11 +161,17 @@ if (!function_exists('chat_last_message_is')) {
 // reply-by-email is configured, the guest's email carries a Reply-To that routes
 // their reply straight back into this same thread.
 if (!function_exists('chat_admin_reply')) {
-    function chat_admin_reply($threadId, $bodyTxt)
+    function chat_admin_reply($threadId, $bodyTxt, $attachment = '')
     {
         $threadId = (int) $threadId;
         $bodyTxt = mb_substr(trim((string) $bodyTxt), 0, 4000);
-        if ($threadId <= 0 || $bodyTxt === '') {
+        // Shape-check the attachment defensively (belt-and-braces on top of the
+        // endpoint's own validation); a reply may be image-only.
+        $attachment = trim((string) $attachment);
+        if ($attachment !== '' && !preg_match('#^uploads/[A-Za-z0-9._-]+\.(jpe?g|png|gif|webp)$#i', $attachment)) {
+            $attachment = '';
+        }
+        if ($threadId <= 0 || ($bodyTxt === '' && $attachment === '')) {
             return false;
         }
         db()
@@ -173,15 +179,23 @@ if (!function_exists('chat_admin_reply')) {
                 "INSERT INTO messages (thread_id, sender_role, body, read_by_admin, read_by_guest) VALUES (?, 'admin', ?, 1, 0)",
             )
             ->execute([$threadId, $bodyTxt]);
+        if ($attachment !== '') {
+            // Guarded so a pre-migration DB (no attachment column) still delivers the reply.
+            try {
+                db()->prepare('UPDATE messages SET attachment = ? WHERE id = ?')->execute([$attachment, (int) db()->lastInsertId()]);
+            } catch (\Throwable $e) {
+            }
+        }
         db()
             ->prepare('UPDATE chat_threads SET updated_at = NOW() WHERE id = ?')
             ->execute([$threadId]);
+        $logBody = $bodyTxt !== '' ? $bodyTxt : '📷 Photo';
         if (function_exists('log_activity')) {
             log_activity('comms', 'message.reply', 'Replied to a guest chat', [
                 'actor' => 'owner',
                 'entity' => 'thread',
                 'entity_id' => (string) $threadId,
-                'meta' => ['detail' => mb_substr($bodyTxt, 0, 120)],
+                'meta' => ['detail' => mb_substr($logBody, 0, 120)],
             ]);
         }
         try {
@@ -194,6 +208,10 @@ if (!function_exists('chat_admin_reply')) {
                     $replyAddr = function_exists('msg_reply_address') ? msg_reply_address($threadId) : '';
                     $msgId =
                         $replyAddr && function_exists('msg_reply_token') ? 'msg.' . msg_reply_token($threadId) : null;
+                    $photoLine =
+                        $attachment !== '' && function_exists('site_base_url')
+                            ? "\n\nView photo: " . rtrim(site_base_url(), '/') . '/' . $attachment
+                            : '';
                     smtp_send(
                         $thread['email'],
                         $thread['name'] ?: 'there',
@@ -201,8 +219,10 @@ if (!function_exists('chat_admin_reply')) {
                         'Hello ' .
                             ($thread['name'] ?: 'there') .
                             ",\n\nYou have a new message from Cottage Holidays Blakeney:\n\n\"" .
-                            $bodyTxt .
-                            "\"\n\nReply on our website chat" .
+                            $logBody .
+                            '"' .
+                            $photoLine .
+                            "\n\nReply on our website chat" .
                             ($replyAddr ? ' — or just reply to this email' : '') .
                             ".\nCottage Holidays Blakeney",
                         null,

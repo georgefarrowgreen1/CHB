@@ -14,8 +14,8 @@
 //  show (push.php?action=sw_notify) and relays release reloads to open pages.
 //  Keep this file in the SAME folder as index.html.
 // ============================================================
-const CACHE = 'chb-cache-v180';
-const CORE = ['./', 'index.html', 'logo.svg', 'favicon.png', 'apple-touch-icon.png', 'manifest.json', 'app.css?v=89', 'app.js?v=130', 'guest-app.css?v=27', 'guest-app.js?v=14'];
+const CACHE = 'chb-cache-v181';
+const CORE = ['./', 'index.html', 'logo.svg', 'favicon.png', 'apple-touch-icon.png', 'manifest.json', 'app.css?v=90', 'app.js?v=131', 'guest-app.css?v=27', 'guest-app.js?v=14'];
 // uploads/ images live in their own size-capped bucket so galleries stay fast and
 // available offline WITHOUT growing the main cache without bound (every image ever
 // viewed used to accumulate forever in CACHE).
