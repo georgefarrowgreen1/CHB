@@ -12261,6 +12261,7 @@ async function loadDiagnostics() {
                     <div id="backup-status" style="font-size:0.82rem;color:var(--text-muted);margin-bottom:12px;">Checking…</div>
                     <div style="display:flex;gap:8px;flex-wrap:wrap;">
                         <button class="btn-sm btn-edit" onclick="runBackupNow(this)">Back up now</button>
+                        <button class="btn-sm btn-edit" onclick="verifyBackupNow(this)">Verify latest</button>
                         <button class="btn-sm btn-edit" onclick="window.open('backup.php?action=download','_blank')">Download latest</button>
                     </div>
                 </div>
@@ -12329,6 +12330,26 @@ async function refreshBackupStatus() {
         el.textContent = "Couldn't check backups: " + (e.message || '');
     }
 }
+async function verifyBackupNow(btn) {
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Verifying…';
+    }
+    try {
+        const r = await apiPost('backup.php', { action: 'verify' });
+        if (r.ok)
+            toast(
+                `Backup verified — decompresses cleanly, ${r.tables} tables${r.has_bookings ? ' (bookings present)' : ''}.`,
+            );
+        else toast(r.error || 'Backup verification failed.', 'error');
+    } catch (e) {
+        toast(e.message || "Couldn't verify the backup.", 'error');
+    }
+    if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Verify latest';
+    }
+}
 async function runBackupNow(btn) {
     if (btn) {
         btn.disabled = true;
@@ -12338,9 +12359,9 @@ async function runBackupNow(btn) {
         const r = await apiPost('backup.php', { action: 'run' });
         toast(
             r.ok
-                ? `Backup saved (${Math.round((r.bytes || 0) / 1024)} KB)${r.emailed ? ' and emailed to you' : ''}.`
+                ? `Backup saved (${Math.round((r.bytes || 0) / 1024)} KB)${r.verified ? ' & verified' : ' — but VERIFY FAILED'}${r.emailed ? ', emailed to you' : ''}.`
                 : r.error || 'Backup failed',
-            r.ok ? undefined : 'error',
+            r.ok && r.verified !== false ? undefined : r.ok ? undefined : 'error',
         );
     } catch (e) {
         toast(e.message || 'Backup failed', 'error');
@@ -17852,7 +17873,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'u2y6c0kl';
+    const BUILD = 'v3z7d1mn';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

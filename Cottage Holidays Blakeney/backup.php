@@ -98,6 +98,50 @@ function chb_backup_latest($dir)
     return $all ? end($all) : null;
 }
 
+// ---- Verify a backup is sound WITHOUT a second database (shared hosting has
+//      none to restore into). We fully decompress the dump — which catches a
+//      truncated or corrupt gzip — and confirm it actually contains table
+//      definitions (incl. bookings) and finished writing (the end marker). That's
+//      what makes "we have backups" trustworthy rather than hopeful. ----
+function chb_backup_verify($file)
+{
+    if (!$file || !is_file($file)) {
+        return ['ok' => false, 'error' => 'No backup file to verify.'];
+    }
+    $gz = @gzopen($file, 'rb');
+    if (!$gz) {
+        return ['ok' => false, 'error' => 'Could not open the backup (gzip).'];
+    }
+    $bytes = 0;
+    $tables = 0;
+    $hasBookings = false;
+    $tail = '';
+    while (!gzeof($gz)) {
+        $chunk = gzread($gz, 262144);
+        if ($chunk === false) {
+            gzclose($gz);
+            return ['ok' => false, 'error' => 'Corrupt — the backup would not fully decompress.'];
+        }
+        $bytes += strlen($chunk);
+        $tables += substr_count($chunk, 'CREATE TABLE');
+        if (strpos($chunk, '`bookings`') !== false) {
+            $hasBookings = true;
+        }
+        $tail = substr($tail . $chunk, -200); // keep only the end, to check the marker
+    }
+    gzclose($gz);
+    if ($bytes < 500) {
+        return ['ok' => false, 'error' => 'Backup looks empty (' . $bytes . ' bytes decompressed).'];
+    }
+    if ($tables < 1) {
+        return ['ok' => false, 'error' => 'Backup contains no table definitions.'];
+    }
+    if (strpos($tail, 'SET FOREIGN_KEY_CHECKS=1;') === false) {
+        return ['ok' => false, 'error' => 'Backup looks truncated — the end marker is missing.'];
+    }
+    return ['ok' => true, 'tables' => $tables, 'bytes' => $bytes, 'has_bookings' => $hasBookings];
+}
+
 // ---- Admin: stream the newest dump for download ----
 if ($action === 'download') {
     require_admin();
@@ -122,6 +166,27 @@ if ($action === 'status') {
     json_out(['ok' => true, 'backups' => array_slice($files, 0, 8)]);
 }
 
+// ---- Admin: verify the newest stored backup on demand ----
+if ($action === 'verify') {
+    require_admin();
+    $f = chb_backup_latest($dir);
+    if (!$f) {
+        json_out(['error' => 'No backup stored yet — run one first.'], 404);
+    }
+    $v = chb_backup_verify($f);
+    if (empty($v['ok'])) {
+        log_activity('system', 'backup.verify_fail', 'Backup verification FAILED — ' . ($v['error'] ?? 'unknown'), ['severity' => 'action', 'entity' => 'backup']);
+        json_out(['ok' => false, 'file' => basename($f), 'error' => $v['error'] ?? 'Verification failed']);
+    }
+    json_out([
+        'ok' => true,
+        'file' => basename($f),
+        'tables' => $v['tables'],
+        'bytes' => $v['bytes'],
+        'has_bookings' => $v['has_bookings'],
+    ]);
+}
+
 // ---- Run a backup: cron (weekly gate) or admin (forced) ----
 if (!$isCron) {
     require_admin(); // admin session + CSRF for the manual run (cron uses ?cron=SECRET)
@@ -143,6 +208,13 @@ $res = chb_backup_write($dir);
 if (empty($res['ok'])) {
     log_activity('system', 'backup.fail', 'Database backup FAILED — ' . ($res['error'] ?? 'unknown error'), ['severity' => 'action', 'entity' => 'backup']);
     json_out(['ok' => false, 'error' => $res['error'] ?? 'Backup failed'], 500);
+}
+
+// Verify the dump we just wrote actually decompresses and contains the schema —
+// a backup you can't restore is worse than none, so flag it loudly if not.
+$verify = chb_backup_verify($res['file']);
+if (empty($verify['ok'])) {
+    log_activity('system', 'backup.verify_fail', 'Backup written but verification FAILED — ' . ($verify['error'] ?? 'unknown'), ['severity' => 'action', 'entity' => 'backup']);
 }
 
 try {
@@ -185,12 +257,16 @@ try {
     $emailErr = $e->getMessage();
 }
 
-log_activity('system', 'backup.run', 'Database backup created (' . number_format($res['bytes'] / 1024, 0) . ' KB)', ['entity' => 'backup']);
+$verifyNote = !empty($verify['ok']) ? ' — verified, ' . (int) $verify['tables'] . ' tables' : ' — VERIFY FAILED';
+log_activity('system', 'backup.run', 'Database backup created (' . number_format($res['bytes'] / 1024, 0) . ' KB)' . $verifyNote, ['entity' => 'backup']);
 json_out([
     'ok' => true,
     'ran' => true,
     'file' => basename($res['file']),
     'bytes' => $res['bytes'],
+    'verified' => !empty($verify['ok']),
+    'verify_error' => $verify['error'] ?? null,
+    'tables' => $verify['tables'] ?? null,
     'emailed' => $emailed,
     'email_error' => $emailErr,
 ]);
