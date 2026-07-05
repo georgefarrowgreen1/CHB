@@ -117,13 +117,24 @@ if ($action === 'notify_release') {
     if (!$isCron && empty($_SESSION['admin_id'])) {
         json_out(['error' => 'Not authorised'], 401);
     }
+    // Read the just-deployed build id (same source version.php serves it from).
+    $build = '';
+    foreach (['/app.js', '/index.html'] as $f) {
+        $src = @file_get_contents(__DIR__ . $f);
+        if ($src !== false && preg_match("/const BUILD = '([^']+)'/", $src, $m)) {
+            $build = $m[1];
+            break;
+        }
+    }
+    $summary =
+        'Website update completed — the new version is now live' . ($build !== '' ? ' (build ' . $build . ')' : '');
     if (function_exists('log_activity')) {
-        log_activity('system', 'site.deployed', 'Website update completed — the new version is now live', [
+        log_activity('system', 'site.deployed', $summary, [
             'actor' => $isCron ? 'system' : 'owner',
             'severity' => 'info',
         ]);
     }
-    json_out(['ok' => true, 'logged' => true]);
+    json_out(['ok' => true, 'logged' => true, 'build' => $build]);
 }
 
 // ---- Guest-only: manage this device's subscription ----
