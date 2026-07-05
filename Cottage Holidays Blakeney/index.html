@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=88">
+    <link rel="stylesheet" href="app.css?v=89">
     <!-- Speed up the font fetch (and the jsPDF CDN) by opening the connections early. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1528,7 +1528,7 @@
                 <option>Could you let me know your preferred dates and party size?</option>
             </select>
             <div class="chat-composer">
-                <textarea id="messages-modal-input" class="input-glass" rows="2" placeholder="Write a reply…"></textarea>
+                <textarea id="messages-modal-input" class="input-glass" rows="2" placeholder="Write a reply…" oninput="adminTypingPing()"></textarea>
                 <button class="btn-glass" onclick="adminSendMessage()">Send</button>
             </div>
         </div>
@@ -1623,7 +1623,7 @@
             <button type="button" class="chat-chip chat-chip-issue" onclick="chatQuick('__issue')">Report an issue</button>
         </div>
         <div class="chat-composer" style="padding:12px 14px 14px;">
-            <textarea id="chat-input" class="input-glass" rows="1" placeholder="Write a message…" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat();}"></textarea>
+            <textarea id="chat-input" class="input-glass" rows="1" placeholder="Write a message…" oninput="chatTypingPing()" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat();}"></textarea>
             <button class="chat-send" onclick="sendChat()" aria-label="Send message" title="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="M5.5 11.5 12 5l6.5 6.5"/></svg></button>
         </div>
     </div>
@@ -2009,7 +2009,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=129"></script>
+    <script src="app.js?v=130"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

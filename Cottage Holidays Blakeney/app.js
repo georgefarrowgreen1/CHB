@@ -9520,6 +9520,7 @@ async function loadChat() {
         __chatSig = chatMsgSig(msgs);
         thread.innerHTML = msgs.length ? chatBubbles(msgs, 'guest') : chatHelloHtml();
         thread.scrollTop = thread.scrollHeight;
+        chatSetTyping('chat-thread', !!r.peer_typing);
     } catch (e) {
         // Don't alarm the visitor — show the greeting and let them type.
         thread.innerHTML = chatHelloHtml();
@@ -9555,17 +9556,61 @@ async function chatPoll() {
         const r = await apiPost('messages.php', payload);
         const msgs = r.messages || [];
         const sig = chatMsgSig(msgs);
-        if (sig === __chatSig) return; // nothing new — leave the DOM (and any bot bubbles) alone
-        __chatSig = sig;
-        const thread = document.getElementById('chat-thread');
-        if (thread && msgs.length) {
-            const nearBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 60;
-            thread.innerHTML = chatBubbles(msgs, 'guest');
-            if (nearBottom) thread.scrollTop = thread.scrollHeight; // only autoscroll if they were at the bottom
+        if (sig !== __chatSig) {
+            // Something new — re-render (leaving any instant bot bubbles alone otherwise).
+            __chatSig = sig;
+            const thread = document.getElementById('chat-thread');
+            if (thread && msgs.length) {
+                const nearBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 60;
+                thread.innerHTML = chatBubbles(msgs, 'guest');
+                if (nearBottom) thread.scrollTop = thread.scrollHeight; // only autoscroll if at the bottom
+            }
         }
+        // Typing state updates every tick, independent of message changes.
+        chatSetTyping('chat-thread', !!r.peer_typing);
     } catch (e) {
         /* transient — try again next tick */
     }
+}
+// Show/hide a "typing…" bubble as the last child of a thread container. Used by
+// both the guest widget and the owner's back-office conversation.
+function chatSetTyping(containerId, on) {
+    const c = document.getElementById(containerId);
+    if (!c) return;
+    let el = c.querySelector('.chat-typing');
+    if (on) {
+        if (!el) {
+            el = document.createElement('div');
+            el.className = 'chat-typing';
+            el.setAttribute('aria-label', 'typing');
+            el.innerHTML = '<span></span><span></span><span></span>';
+            c.appendChild(el);
+            const nearBottom = c.scrollHeight - c.scrollTop - c.clientHeight < 90;
+            if (nearBottom) c.scrollTop = c.scrollHeight;
+        }
+    } else if (el) {
+        el.remove();
+    }
+}
+// Tell the server we're composing (throttled) so the other side sees "typing…".
+let __typingLastPing = 0;
+function chatTypingPing() {
+    const now = Date.now();
+    if (now - __typingLastPing < 2500) return;
+    __typingLastPing = now;
+    const loggedIn = !!currentGuest;
+    const token = chatGetToken();
+    if (!loggedIn && !token) return; // no thread yet — nothing to stamp
+    apiPost('messages.php', loggedIn ? { action: 'typing' } : { action: 'typing', token }).catch(
+        () => {},
+    );
+}
+function adminTypingPing() {
+    if (!__msgThreadId) return;
+    const now = Date.now();
+    if (now - __typingLastPing < 2500) return;
+    __typingLastPing = now;
+    apiPost('messages.php', { action: 'typing', thread_id: __msgThreadId }).catch(() => {});
 }
 // Returning to the tab with a chat open → refresh straight away (guest widget
 // and, for the owner, the open back-office conversation).
@@ -10068,6 +10113,7 @@ async function openMessageThread(threadId) {
             thread.scrollTop = thread.scrollHeight;
         }
         __msgThreadSig = adminMsgSig(r.messages || []);
+        chatSetTyping('messages-modal-thread', !!r.peer_typing);
     } catch (e) {
         if (thread) thread.innerHTML = `<p class="chat-empty">Couldn't load this thread.</p>`;
     }
@@ -10111,15 +10157,18 @@ async function adminThreadPoll() {
         const r = await apiPost('messages.php', { action: 'thread', thread_id: __msgThreadId });
         const msgs = r.messages || [];
         const sig = adminMsgSig(msgs);
-        if (sig === __msgThreadSig) return; // nothing changed — leave the DOM alone
-        __msgThreadSig = sig;
-        const thread = document.getElementById('messages-modal-thread');
-        if (thread) {
-            const nearBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 60;
-            thread.innerHTML = chatBubbles(msgs, 'admin');
-            if (nearBottom) thread.scrollTop = thread.scrollHeight; // only autoscroll if already at the bottom
+        if (sig !== __msgThreadSig) {
+            __msgThreadSig = sig;
+            const thread = document.getElementById('messages-modal-thread');
+            if (thread) {
+                const nearBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 60;
+                thread.innerHTML = chatBubbles(msgs, 'admin');
+                if (nearBottom) thread.scrollTop = thread.scrollHeight; // only autoscroll if already at the bottom
+            }
+            loadAdminMessages(); // keep the inbox list/badge in sync if a new guest reply landed
         }
-        loadAdminMessages(); // keep the inbox list/badge in sync if a new guest reply landed
+        // Typing state updates every tick, independent of message changes.
+        chatSetTyping('messages-modal-thread', !!r.peer_typing);
     } catch (e) {
         /* transient — try again next tick */
     }
@@ -17440,7 +17489,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'i0m4q8yz';
+    const BUILD = 'j1n5r9za';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

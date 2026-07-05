@@ -44,6 +44,19 @@ function chat_msgs($threadId)
         $s->fetchAll(),
     );
 }
+// Is the OTHER party typing right now? $col is a fixed literal — 'admin_typing_at'
+// (the guest is reading) or 'guest_typing_at' (the owner is reading). Isolated so a
+// pre-migration DB (no typing columns yet) just reports false rather than erroring.
+function chat_peer_typing($tid, $col)
+{
+    try {
+        return (bool) db()
+            ->query("SELECT ($col >= (NOW() - INTERVAL 8 SECOND)) FROM chat_threads WHERE id = " . (int) $tid)
+            ->fetchColumn();
+    } catch (\Throwable $e) {
+        return false;
+    }
+}
 function chat_source($ref)
 {
     $ref = trim((string) $ref);
@@ -165,6 +178,20 @@ function chat_nudge_mailbox()
 if ($isAdmin && empty($in['token'])) {
     require_admin(); // admin session + CSRF token (the inline $isAdmin check skipped CSRF)
     try {
+        if ($action === 'typing') {
+            // Owner is composing → stamp the thread so the guest's poll shows "typing…".
+            $tid = (int) ($in['thread_id'] ?? 0);
+            if ($tid > 0) {
+                try {
+                    db()
+                        ->prepare('UPDATE chat_threads SET admin_typing_at = NOW() WHERE id = ?')
+                        ->execute([$tid]);
+                } catch (\Throwable $e) {
+                    // typing columns not migrated yet — silently no-op
+                }
+            }
+            json_out(['ok' => true]);
+        }
         if ($action === 'thread') {
             $tid = (int) ($in['thread_id'] ?? 0);
             if ($tid <= 0) {
@@ -210,6 +237,7 @@ if ($isAdmin && empty($in['token'])) {
                 ],
                 'bookings' => $bookings,
                 'messages' => chat_msgs($tid),
+                'peer_typing' => chat_peer_typing($tid, 'guest_typing_at'),
             ]);
         }
         if ($action === 'archive' || $action === 'unarchive') {
@@ -246,6 +274,12 @@ if ($isAdmin && empty($in['token'])) {
                 json_out(['error' => 'A thread and a message are required'], 400);
             }
             chat_admin_reply($tid, $bodyTxt);
+            // Reply sent → clear our typing stamp so the guest doesn't see "typing…"
+            // linger under the message that just arrived.
+            try {
+                db()->prepare('UPDATE chat_threads SET admin_typing_at = NULL WHERE id = ?')->execute([$tid]);
+            } catch (\Throwable $e) {
+            }
             json_out(['ok' => true]);
         }
         if ($action === 'unread') {
@@ -331,6 +365,16 @@ if ($guestId) {
                 ->execute([$guestId, $gg['name'] ?? '', $gg['email'] ?? '']);
             $tid = (int) db()->lastInsertId();
         }
+        if ($action === 'typing') {
+            // Guest is composing → stamp the thread so the owner's poll shows "typing…".
+            try {
+                db()
+                    ->prepare('UPDATE chat_threads SET guest_typing_at = NOW() WHERE id = ?')
+                    ->execute([$tid]);
+            } catch (\Throwable $e) {
+            }
+            json_out(['ok' => true]);
+        }
         if ($action === 'send') {
             $bodyTxt = mb_substr(trim((string) ($in['body'] ?? '')), 0, 4000);
             if ($bodyTxt === '') {
@@ -344,6 +388,10 @@ if ($guestId) {
             db()
                 ->prepare('UPDATE chat_threads SET updated_at = NOW() WHERE id = ?')
                 ->execute([$tid]);
+            try {
+                db()->prepare('UPDATE chat_threads SET guest_typing_at = NULL WHERE id = ?')->execute([$tid]);
+            } catch (\Throwable $e) {
+            }
             $g = db()->prepare('SELECT name, email FROM guests WHERE id = ?');
             $g->execute([$guestId]);
             $gg = $g->fetch() ?: [];
@@ -355,7 +403,11 @@ if ($guestId) {
         db()
             ->prepare("UPDATE messages SET read_by_guest = 1 WHERE thread_id = ? AND sender_role = 'admin'")
             ->execute([$tid]);
-        json_out(['ok' => true, 'messages' => chat_msgs($tid)]);
+        json_out([
+            'ok' => true,
+            'messages' => chat_msgs($tid),
+            'peer_typing' => chat_peer_typing($tid, 'admin_typing_at'),
+        ]);
     } catch (\Throwable $e) {
         json_out(['error' => 'Messages not ready — has migration-chat-threads.sql been run?'], 500);
     }
@@ -415,11 +467,27 @@ try {
         db()
             ->prepare('UPDATE chat_threads SET updated_at = NOW() WHERE id = ?')
             ->execute([$tid]);
+        try {
+            db()->prepare('UPDATE chat_threads SET guest_typing_at = NULL WHERE id = ?')->execute([$tid]);
+        } catch (\Throwable $e) {
+        }
         $t = db()->prepare('SELECT name, email FROM chat_threads WHERE id = ?');
         $t->execute([$tid]);
         $th = $t->fetch() ?: [];
         chat_notify_owner($th['name'] ?? '', $th['email'] ?? '', $bodyTxt, $tid);
         json_out(['ok' => true, 'token' => $token]);
+    }
+    if ($action === 'typing') {
+        // Visitor is composing → stamp the thread so the owner's poll shows "typing…".
+        if ($tid) {
+            try {
+                db()
+                    ->prepare('UPDATE chat_threads SET guest_typing_at = NOW() WHERE id = ?')
+                    ->execute([$tid]);
+            } catch (\Throwable $e) {
+            }
+        }
+        json_out(['ok' => true]);
     }
     // thread / default
     if (!$tid) {
@@ -430,7 +498,11 @@ try {
     db()
         ->prepare("UPDATE messages SET read_by_guest = 1 WHERE thread_id = ? AND sender_role = 'admin'")
         ->execute([$tid]);
-    json_out(['ok' => true, 'messages' => chat_msgs($tid)]);
+    json_out([
+        'ok' => true,
+        'messages' => chat_msgs($tid),
+        'peer_typing' => chat_peer_typing($tid, 'admin_typing_at'),
+    ]);
 } catch (\Throwable $e) {
     json_out(['error' => 'Messages not ready — has migration-chat-threads.sql been run?'], 500);
 }
