@@ -4605,6 +4605,94 @@ body.owner-mode .chat-widget {
   background: color-mix(in srgb, var(--danger) 16%, transparent);
 }
 /* Season grid (Settings → Seasonal rates — all cottages) */
+/* Occupancy heatmap (owner dashboard): a compact booked/free strip per cottage */
+#occupancy-heatmap {
+  margin: 0 0 20px;
+}
+#occupancy-heatmap:empty {
+  display: none;
+}
+.occ-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 9px;
+}
+.occ-title {
+  font-size: 0.7rem;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.occ-pct {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-light);
+}
+.occ-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+.occ-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.occ-name {
+  flex: 0 0 54px;
+  text-align: right;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.occ-cells {
+  display: flex;
+  gap: 2px;
+}
+.occ-cell {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 16px;
+  border-radius: 2px;
+  display: inline-block;
+}
+.occ-free {
+  background: rgba(255, 255, 255, 0.06);
+}
+.occ-booked {
+  background: var(--accent, #d6a785);
+}
+.occ-block {
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(255, 255, 255, 0.13),
+    rgba(255, 255, 255, 0.13) 2px,
+    rgba(255, 255, 255, 0.04) 2px,
+    rgba(255, 255, 255, 0.04) 4px
+  );
+}
+.occ-legend {
+  display: flex;
+  gap: 16px;
+  margin-top: 10px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+.occ-legend span {
+  display: inline-flex;
+  align-items: center;
+}
+.occ-legend i {
+  width: 12px;
+  height: 12px;
+  margin-right: 5px;
+}
 .sg-table {
   border-collapse: collapse;
   /* Size to the columns (dates + a cell per cottage) and scroll inside the

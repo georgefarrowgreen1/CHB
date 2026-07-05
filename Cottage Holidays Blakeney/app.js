@@ -15371,6 +15371,51 @@ function dashGo(target) {
         }
     } catch (e) {}
 }
+// Occupancy heatmap: every cottage × the next N days as one compact strip, so the
+// owner can see how full the diary is at a glance. Reuses the calendar's data
+// (dbBookings/getBookingForDate) + external iCal blocks (dbBlocks/getBlocksForDate).
+function renderOccupancyHeatmap() {
+    const host = document.getElementById('occupancy-heatmap');
+    if (!host) return;
+    const keys = typeof liveCottageKeys === 'function' ? liveCottageKeys() : Object.keys(propertyMeta);
+    if (!keys.length) {
+        host.innerHTML = '';
+        return;
+    }
+    const DAYS = 30;
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+    const dates = [];
+    for (let i = 0; i < DAYS; i++) {
+        const d = new Date(start);
+        d.setDate(start.getDate() + i);
+        dates.push(formatDashed(d));
+    }
+    let filled = 0;
+    const total = keys.length * DAYS;
+    const rows = keys
+        .map((k) => {
+            const meta = propertyMeta[k] || { name: k, short: k };
+            const cells = dates
+                .map((ds) => {
+                    let st = 'free';
+                    if (getBookingForDate(ds, k).status !== 'none') st = 'booked';
+                    else if (typeof getBlocksForDate === 'function' && getBlocksForDate(ds, k).length)
+                        st = 'block';
+                    if (st !== 'free') filled++;
+                    const word = st === 'booked' ? 'Booked' : st === 'block' ? 'Blocked (external)' : 'Free';
+                    return `<span class="occ-cell occ-${st}" title="${escapeHtml(meta.name + ' · ' + ds + ' · ' + word)}"></span>`;
+                })
+                .join('');
+            return `<div class="occ-row"><span class="occ-name" title="${escapeHtml(meta.name)}">${escapeHtml(meta.short || meta.name)}</span><span class="occ-cells">${cells}</span></div>`;
+        })
+        .join('');
+    const pct = total ? Math.round((filled / total) * 100) : 0;
+    host.innerHTML = `
+        <div class="occ-head"><span class="occ-title">Occupancy — next ${DAYS} days</span><span class="occ-pct">${pct}% full</span></div>
+        <div class="occ-grid">${rows}</div>
+        <div class="occ-legend"><span><i class="occ-cell occ-booked"></i>Booked</span><span><i class="occ-cell occ-block"></i>External</span><span><i class="occ-cell occ-free"></i>Free</span></div>`;
+}
 function renderOwnerSummary() {
     const el = document.getElementById('owner-summary');
     if (!el) return;
@@ -15588,6 +15633,7 @@ function cottageMonthOccupancy() {
 
 function renderCalendar() {
     renderOwnerSummary();
+    renderOccupancyHeatmap();
     renderCalUpdated();
     const year = calDate.getFullYear();
     const month = calDate.getMonth();
@@ -17780,7 +17826,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'r9v3z7hi';
+    const BUILD = 's0w4a8ij';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
