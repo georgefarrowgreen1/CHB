@@ -262,7 +262,8 @@ if ($isAdmin && empty($in['token'])) {
             $q = db()->prepare("SELECT t.id tid, t.guest_id, t.name, t.email, t.source, t.location, t.archived,
                     COALESCE(MAX(m.created_at), t.created_at) last_at,
                     SUM(m.sender_role = 'guest' AND m.read_by_admin = 0) unread,
-                    (SELECT body FROM messages mm WHERE mm.thread_id = t.id ORDER BY mm.id DESC LIMIT 1) last_body
+                    (SELECT body FROM messages mm WHERE mm.thread_id = t.id ORDER BY mm.id DESC LIMIT 1) last_body,
+                    (SELECT sender_role FROM messages mr WHERE mr.thread_id = t.id ORDER BY mr.id DESC LIMIT 1) last_role
                 FROM chat_threads t JOIN messages m ON m.thread_id = t.id
                 WHERE t.archived = ?
                 GROUP BY t.id, t.guest_id, t.name, t.email, t.source, t.location, t.archived
@@ -280,7 +281,8 @@ if ($isAdmin && empty($in['token'])) {
                     "SELECT t.id tid, t.guest_id, t.name, t.email, t.source, t.location,
                     COALESCE(MAX(m.created_at), t.created_at) last_at,
                     SUM(m.sender_role = 'guest' AND m.read_by_admin = 0) unread,
-                    (SELECT body FROM messages mm WHERE mm.thread_id = t.id ORDER BY mm.id DESC LIMIT 1) last_body
+                    (SELECT body FROM messages mm WHERE mm.thread_id = t.id ORDER BY mm.id DESC LIMIT 1) last_body,
+                    (SELECT sender_role FROM messages mr WHERE mr.thread_id = t.id ORDER BY mr.id DESC LIMIT 1) last_role
                 FROM chat_threads t JOIN messages m ON m.thread_id = t.id
                 GROUP BY t.id, t.guest_id, t.name, t.email, t.source, t.location
                 ORDER BY last_at DESC",
@@ -301,6 +303,9 @@ if ($isAdmin && empty($in['token'])) {
                     'last_at' => $r['last_at'],
                     'unread' => (int) $r['unread'],
                     'last_body' => mb_substr((string) $r['last_body'], 0, 120),
+                    // Whose message is last — drives the "Needs reply" flag/filter
+                    // in the owner inbox (a guest message left unanswered).
+                    'last_role' => $r['last_role'] ?? '',
                 ],
                 $rows,
             ),

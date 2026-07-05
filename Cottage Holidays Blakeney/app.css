@@ -3614,6 +3614,62 @@ textarea.input-glass.field-sm {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Inbox search + "Needs reply" filter chip */
+.msg-inbox-controls {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 10px 0;
+}
+.msg-inbox-controls #msg-search {
+  flex: 1 1 auto;
+  margin: 0;
+}
+.msg-filter-chip {
+  flex: 0 0 auto;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--glass-border);
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 0.76rem;
+  font-weight: 600;
+  padding: 7px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 0.25s var(--fluid-bezier),
+    color 0.25s var(--fluid-bezier),
+    border-color 0.25s var(--fluid-bezier);
+}
+.msg-filter-chip:hover {
+  color: var(--text-light);
+}
+.msg-filter-chip.on {
+  background: var(--warn);
+  border-color: var(--warn);
+  color: #1a1a1a;
+}
+/* "Needs reply" pill on a thread row (last message is the guest's, unanswered) */
+.needs-reply-pill {
+  display: inline-block;
+  vertical-align: middle;
+  background: rgba(255, 183, 77, 0.16);
+  color: var(--warn);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: 999px;
+  margin-left: 6px;
+}
+.msg-noresults {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 14px 0;
+}
 /* Admin reply-modal context block (where they came from, location, bookings) */
 .msg-ctx {
   background: rgba(255, 255, 255, 0.03);
