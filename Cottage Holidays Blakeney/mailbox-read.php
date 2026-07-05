@@ -236,7 +236,10 @@ function poll_mailbox_replies($force = false, $preview = false)
     }
     $state = content_json('mailbox-poll', []); // array-valued key — NOT content_value()
     $processed = isset($state['uids']) && is_array($state['uids']) ? $state['uids'] : [];
-    if (!$preview && !$force && !empty($state['at']) && time() - (int) $state['at'] < 90) {
+    // Throttle: at most one POP3 fetch per 25s. Low enough that a guest actively
+    // waiting in the chat (their poll nudges this) sees an emailed reply within ~half
+    // a minute, high enough not to hammer the mailbox.
+    if (!$preview && !$force && !empty($state['at']) && time() - (int) $state['at'] < 25) {
         return ['ok' => true, 'skipped' => 'throttled'];
     }
 
