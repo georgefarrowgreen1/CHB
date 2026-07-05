@@ -13305,7 +13305,11 @@ function renderSeasonGrid() {
                         ${keys.map((k) => `<th style="min-width:86px;"><span class="prop-tag tag-${k}">${propertyMeta[k].short}</span></th>`).join('')}
                         <th></th>
                     </tr></thead>
-                    <tbody id="season-grid-body">${bands.map(seasonGridRowHtml).join('')}</tbody>
+                    <tbody id="season-grid-body">${
+                        bands.length
+                            ? bands.map(seasonGridRowHtml).join('')
+                            : seasonGridRowHtml({ label: '', start: '', end: '', rates: {} })
+                    }</tbody>
                 </table>
                 </div>
                 <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;">
@@ -17737,7 +17741,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'p7t1x5fg';
+    const BUILD = 'q8u2y6gh';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
