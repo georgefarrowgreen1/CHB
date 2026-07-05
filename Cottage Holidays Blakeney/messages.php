@@ -120,6 +120,34 @@ function chat_notify_owner($name, $email, $bodyTxt, $threadId = 0)
 // shared with the reply-by-email gateway; it lives in chat-lib.php.
 require_once __DIR__ . '/chat-lib.php';
 
+// Reply-by-email is normally pulled from the mailbox only when the owner opens the
+// back office or by the daily cron — so an owner replying from their phone could sit
+// unseen for hours. When a GUEST is actively in the chat (it polls every ~8s), nudge
+// the mailbox read in the BACKGROUND after we've answered them: poll_mailbox_replies()
+// is throttled + advisory-locked, so this stays cheap (≤1 POP3 fetch per throttle
+// window) yet pulls an emailed reply into the thread within seconds of them looking.
+function chat_nudge_mailbox()
+{
+    static $done = false;
+    if ($done) {
+        return;
+    }
+    $done = true;
+    require_once __DIR__ . '/mailbox-read.php'; // endpoint block is basename-guarded → just defines functions
+    if (!function_exists('mailbox_auto_enabled') || !mailbox_auto_enabled()) {
+        return;
+    }
+    register_shutdown_function(function () {
+        if (function_exists('fastcgi_finish_request')) {
+            @fastcgi_finish_request(); // send the guest their thread first; poll after
+        }
+        try {
+            poll_mailbox_replies();
+        } catch (\Throwable $e) {
+        }
+    });
+}
+
 // ---------------- ADMIN ----------------
 // Admin *tools* never carry a visitor token. If a token is present the request
 // is coming from the floating chat widget (e.g. the owner testing it while also
@@ -307,6 +335,8 @@ if ($guestId) {
             chat_notify_owner($gg['name'] ?? '', $gg['email'] ?? '', $bodyTxt, $tid);
             json_out(['ok' => true]);
         }
+        // Guest is polling their thread — pull any emailed owner reply in the background.
+        chat_nudge_mailbox();
         db()
             ->prepare("UPDATE messages SET read_by_guest = 1 WHERE thread_id = ? AND sender_role = 'admin'")
             ->execute([$tid]);
@@ -380,6 +410,8 @@ try {
     if (!$tid) {
         json_out(['ok' => true, 'messages' => []]);
     }
+    // Active anonymous thread polling → pull any emailed owner reply in the background.
+    chat_nudge_mailbox();
     db()
         ->prepare("UPDATE messages SET read_by_guest = 1 WHERE thread_id = ? AND sender_role = 'admin'")
         ->execute([$tid]);

@@ -66,6 +66,7 @@ async function waitForServer(url, tries = 40) {
     });
 
     // Stub every .php call so no database is needed and responses are deterministic.
+    let chatThreadCalls = 0; // guest chat poll counter — owner "replies" on the 2nd poll
     await page.route(/\.php/, (route) => {
       const url = route.request().url();
       const post = route.request().postData() || '';
@@ -73,7 +74,19 @@ async function waitForServer(url, tries = 40) {
       if (url.includes('rates.php')) return json({ properties: props, seasons: {}, occupancy: { '21a': { maxAdults: 2, maxChildren: 0, maxTotal: 2 }, jollyboat: { maxAdults: 2, maxChildren: 0, maxTotal: 2 }, pimpernel: { maxAdults: 2, maxChildren: 1, maxTotal: 3 } } });
       if (url.includes('bookings.php')) return json({ bookings });
       if (url.includes('enquiries.php')) return json({ enquiries });
-      if (url.includes('messages.php')) return json({ threads: [{ thread_id: 1, name: 'Sarah', unread: 1, last_body: 'Hi' }] });
+      if (url.includes('messages.php')) {
+        let act = ''; try { act = JSON.parse(post || '{}').action || ''; } catch (e) {}
+        if (act === 'send') return json({ ok: true, token: 'chattok0123456789ab' });
+        if (act === 'thread' && !post.includes('thread_id')) {
+          // Guest chat poll: the host has replied by the 2nd poll, so the poll must
+          // ping it into the open thread without a reload (regression guard).
+          chatThreadCalls++;
+          const g = { id: 1, role: 'guest', body: 'Is Jollyboat free in August?', at: d(0) + ' 12:00:00' };
+          const h = { id: 2, role: 'admin', body: 'Yes — 1-8 August is free, shall I pencil you in?', at: d(0) + ' 12:03:00' };
+          return json({ ok: true, messages: chatThreadCalls >= 2 ? [g, h] : [g] });
+        }
+        return json({ threads: [{ thread_id: 1, name: 'Sarah', unread: 1, last_body: 'Hi' }] });
+      }
       if (url.includes('content.php') && post.includes('get_all')) return json({ content: {} });
       if (url.includes('content.php')) return json({ content: {} });
       if (url.includes('accounts.php')) return json({ years: [] });
@@ -138,6 +151,26 @@ async function waitForServer(url, tries = 40) {
     (await page.locator('.my-stay-hub').count()) === 1 ? pass('in-stay hub rendered') : fail('in-stay hub missing (fully-paid current stay)');
     (await page.locator('.my-stay-hub .hub-tile').count()) >= 4 ? pass('hub tiles rendered') : fail('hub tiles missing');
     (await page.locator('#guest-bookings-list .guest-booking').count()) >= 1 ? pass('booking card rendered') : fail('booking card missing');
+
+    console.log('== 7. Guest chat: polls in a host reply (no reload) ==');
+    chatThreadCalls = 0;
+    await page.evaluate(() => { try { closeChat(); } catch (e) {} try { toggleChat(); } catch (e) {} });
+    await page.waitForTimeout(700);
+    (await page.evaluate(() => document.getElementById('chat-widget').classList.contains('open'))) ? pass('chat opened') : fail('chat did not open');
+    {
+      const t1 = (await page.locator('#chat-thread').innerText().catch(() => '')) || '';
+      /Jollyboat free in August/.test(t1) ? pass('guest message shown on open') : fail('guest message missing on open');
+      !/1-8 August is free/.test(t1) ? pass('host reply not shown before it is sent') : fail('host reply shown too early');
+    }
+    // Owner replies → the next background poll (~8s live) must ping it in. Drive the
+    // poll directly rather than wait the interval.
+    (await page.evaluate(() => typeof chatPoll === 'function')) ? pass('chat polling wired') : fail('chatPoll missing');
+    await page.evaluate(() => chatPoll());
+    await page.waitForTimeout(500);
+    {
+      const t2 = (await page.locator('#chat-thread').innerText().catch(() => '')) || '';
+      /1-8 August is free/.test(t2) ? pass('host reply appears via polling') : fail('host reply did not appear after poll');
+    }
 
     await browser.close();
   } catch (e) {
