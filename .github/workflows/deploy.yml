@@ -111,14 +111,12 @@ jobs:
           URL="${SITE_URL:-https://cottageholidaysblakeney.co.uk}"
           echo "Applying migrations…"
           curl -fsS --max-time 60 "$URL/migrate.php?cron=$APP_SECRET" || echo "migrate ping failed (non-fatal)"
-          echo "Notifying owner of release…"
-          curl -fsS --max-time 30 "$URL/push.php?action=notify_release&cron=$APP_SECRET" || echo "release ping failed (non-fatal)"
+          echo "Recording the release in the activity log…"
+          curl -fsS --max-time 30 "$URL/push.php?action=notify_release&cron=$APP_SECRET" || echo "release log failed (non-fatal)"
           echo "Sending any due enquiry follow-ups…"
           curl -fsS --max-time 30 "$URL/enquiry-nudge.php?cron=$APP_SECRET" || echo "enquiry-nudge ping failed (non-fatal)"
           echo "Owner weekly digest (only sends on a Monday, at most once/day)…"
           curl -fsS --max-time 30 "$URL/owner-digest.php?cron=$APP_SECRET" || echo "owner-digest ping failed (non-fatal)"
-          echo "Tide-timed in-stay push (once/day per mid-stay guest)…"
-          curl -fsS --max-time 30 "$URL/tide-push.php?cron=$APP_SECRET" || echo "tide-push ping failed (non-fatal)"
 
   # ---- Staging mirror (optional) -------------------------------------------
   # Deploys the SAME code to a separate staging site (e.g. staging.<domain>) that
