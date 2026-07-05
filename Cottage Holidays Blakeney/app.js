@@ -1377,7 +1377,7 @@ function renderGalleryGrid(list) {
     let html = imgs
         .map(
             (src, i) =>
-                `<div class="gg-cell${i === 0 ? big : ''}" style="background-image:url('${escapeHtml(src)}')" role="img" aria-label="Photo ${i + 1} of ${n} — ${escapeHtml(ggName)}" onclick="openLightbox(${i})"></div>`,
+                `<div class="gg-cell${i === 0 ? big : ''}" style="background-image:url('${escapeHtml(resizedUrl(src, i === 0 ? 1000 : 560))}')" role="img" aria-label="Photo ${i + 1} of ${n} — ${escapeHtml(ggName)}" onclick="openLightbox(${i})"></div>`,
         )
         .join('');
     const total = Array.isArray(list) ? list.filter(Boolean).length : 0;
@@ -1401,7 +1401,26 @@ function loadGallerySlides(trackId) {
         if (!near) continue;
         const s = slides[i];
         const bg = s.getAttribute('data-bg');
-        if (bg && !s.style.backgroundImage) s.style.backgroundImage = `url('${bg}')`;
+        if (bg && !s.style.backgroundImage) {
+            // Load a size that fits this slide (× device pixel ratio) instead of the
+            // full 2000px original — big data/LCP win on phones.
+            const px = (s.clientWidth || 800) * (window.devicePixelRatio || 1);
+            s.style.backgroundImage = `url('${resizedUrl(bg, px)}')`;
+        }
+    }
+}
+// Rewrite an uploads/ image URL to a right-sized WebP via img.php. Leaves external
+// or non-uploads URLs untouched. `w` is the desired CSS-pixel width (already × DPR).
+function resizedUrl(url, w) {
+    try {
+        if (!url || typeof url !== 'string') return url;
+        if (!/^uploads\/[A-Za-z0-9._-]+\.(jpe?g|png|webp)$/i.test(url)) return url;
+        const sizes = [320, 480, 640, 900, 1200, 1600];
+        const target = Math.min(1600, Math.max(320, Math.ceil(w || 900)));
+        const pick = sizes.find((s) => s >= target) || 1600;
+        return API_BASE + 'img.php?src=' + encodeURIComponent(url) + '&w=' + pick;
+    } catch (e) {
+        return url;
     }
 }
 
@@ -17833,7 +17852,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 't1x5b9jk';
+    const BUILD = 'u2y6c0kl';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
