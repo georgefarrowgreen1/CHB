@@ -3767,22 +3767,146 @@ textarea.input-glass.field-sm {
 .msg-thread-row:focus-visible {
   background: var(--glass-hover);
 }
+/* Avatar circle (initial), tinted per person so conversations are easy to tell
+   apart. Hue comes from an inline --ava-h set by the row template. */
+.msg-thread-row .mtr-ava {
+  flex-shrink: 0;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-sans);
+  font-weight: 600;
+  font-size: 1.05rem;
+  color: #fff;
+  background: hsl(var(--ava-h, 210) 34% 42%);
+}
 .msg-thread-row .mtr-main {
   flex: 1;
   min-width: 0;
 }
+.msg-thread-row .mtr-top {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
 .msg-thread-row .mtr-name {
-  display: block;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 0.95rem;
-  margin-bottom: 2px;
+}
+.msg-thread-row.unread .mtr-name {
+  font-weight: 700;
+}
+.msg-thread-row .mtr-tag {
+  font-size: 0.66rem;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+.msg-thread-row .mtr-time {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+.msg-thread-row .mtr-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent, #d6a785);
+}
+.msg-thread-row .mtr-bot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 3px;
 }
 .msg-thread-row .mtr-last {
-  display: block;
+  flex: 1;
+  min-width: 0;
   font-size: 0.8rem;
   color: var(--text-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.msg-thread-row.unread .mtr-last {
+  color: var(--text-light);
+}
+/* In-thread date separator (Today / Yesterday / Wed 3 Jul) */
+.chat-daysep {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 6px 0 2px;
+}
+.chat-daysep span {
+  font-size: 0.68rem;
+  letter-spacing: 0.4px;
+  color: var(--text-muted);
+  background: var(--glass-hover);
+  border: 1px solid var(--glass-border);
+  padding: 3px 12px;
+  border-radius: 999px;
+}
+/* Collapsible "who is this" details in the reply modal */
+.msg-ctx-d {
+  font-size: 0.8rem;
+}
+.msg-ctx-sum {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  list-style: none;
+  color: var(--text-light);
+}
+.msg-ctx-sum::-webkit-details-marker {
+  display: none;
+}
+.msg-ctx-sum-txt {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.msg-ctx-pill {
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--accent, #d6a785);
+  background: rgba(214, 167, 133, 0.14);
+  padding: 2px 9px;
+  border-radius: 999px;
+}
+.msg-ctx-caret {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform 0.2s var(--fluid-bezier);
+}
+.msg-ctx-d[open] .msg-ctx-caret {
+  transform: rotate(180deg);
+}
+.msg-ctx-body {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--glass-border);
+}
+/* Automation settings (Instant answers + Away auto-reply) read as tidy cards. */
+#chat-answers-editor,
+#chat-away-editor {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-panel, 18px);
+  padding: 20px 22px;
 }
 /* Inbox search + "Needs reply" filter chip */
 .msg-inbox-controls {
