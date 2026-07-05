@@ -4946,7 +4946,7 @@ async function renderGuestBookings() {
                                 <div class="price-row"><span>${gbp(p.perNight)} × ${p.nights} night${p.nights === 1 ? '' : 's'}</span><span>${gbp(p.nightly)}</span></div>
                                 <div class="price-row"><span>Transaction fee (${p.transactionPct}%)</span><span>${gbp(p.txFee)}</span></div>
                                 <div class="price-row total"><span>Total</span><span class="price-amount">${gbp(p.total)}</span></div>
-                                ${p.damagesDeposit > 0 ? `<div class="price-row" style="color:var(--text-muted);font-size:0.8rem;"><span>+ ${gbp(p.damagesDeposit)} refundable deposit</span><span>held on arrival, not charged</span></div>` : ''}
+                                ${p.damagesDeposit > 0 ? `<div class="price-row" style="color:var(--text-muted);font-size:0.8rem;"><span>+ ${gbp(p.damagesDeposit)} refundable deposit</span><span>refunded after your stay</span></div>` : ''}
                                 <p style="color:var(--text-muted);font-size:0.75rem;text-align:center;margin:8px 0 0;">Estimate — we'll confirm your dates and final price by email.</p>
                             </div>
                             </div>
@@ -5003,7 +5003,7 @@ async function renderGuestBookings() {
                                 <div class="price-row"><span>${gbp(p.perNight)} × ${p.nights} night${p.nights === 1 ? '' : 's'}</span><span>${gbp(p.nightly)}</span></div>
                                 <div class="price-row"><span>Transaction fee (${p.transactionPct}%)</span><span>${gbp(p.txFee)}</span></div>
                                 <div class="price-row total"><span>Total</span><span class="price-amount">${gbp(p.total)}</span></div>
-                                ${p.damagesDeposit > 0 ? `<div class="price-row" style="color:var(--text-muted);font-size:0.8rem;"><span>+ ${gbp(p.damagesDeposit)} refundable deposit</span><span>held on arrival, not charged</span></div>` : ''}
+                                ${p.damagesDeposit > 0 ? `<div class="price-row" style="color:var(--text-muted);font-size:0.8rem;"><span>+ ${gbp(p.damagesDeposit)} refundable deposit</span><span>refunded after your stay</span></div>` : ''}
                                 ${
                                     ps.deposit > 0
                                         ? `
@@ -17975,7 +17975,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'x5b9f3op';
+    const BUILD = 'y6c0g4pq';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
