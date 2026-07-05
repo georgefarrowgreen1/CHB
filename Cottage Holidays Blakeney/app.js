@@ -9532,7 +9532,7 @@ async function loadChat() {
 let __chatPollTimer = null;
 function chatStartPolling() {
     chatStopPolling();
-    __chatPollTimer = setInterval(chatPoll, 8000); // ping for a host reply every ~8s while open
+    __chatPollTimer = setInterval(chatPoll, 4000); // ping for a host reply every ~4s while open
 }
 function chatStopPolling() {
     if (__chatPollTimer) {
@@ -10016,7 +10016,7 @@ function adminMsgSig(msgs) {
 }
 function adminThreadStartPolling() {
     adminThreadStopPolling();
-    __msgPollTimer = setInterval(adminThreadPoll, 7000);
+    __msgPollTimer = setInterval(adminThreadPoll, 4000);
 }
 function adminThreadStopPolling() {
     if (__msgPollTimer) {
@@ -17364,7 +17364,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'g8k2n6vw';
+    const BUILD = 'h9l3p7wx';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
