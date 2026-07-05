@@ -1438,6 +1438,16 @@ function send_payment_receipt($b)
     $name = $b['name'] ?: 'Guest';
     $prop = $b['prop_name'] ?: 'your cottage';
     $what = $b['kind'] === 'balance' ? 'balance' : 'deposit';
+    // The refundable damage deposit is charged WITH this payment and refunded after
+    // checkout — so the amount actually taken is rental + deposit.
+    $dep = round((float) ($b['deposit_charged'] ?? 0), 2);
+    $paidNow = round((float) $b['amount'] + $dep, 2);
+    $depLine =
+        $dep > 0
+            ? 'This includes a refundable damage deposit of ' .
+                $money($dep) .
+                ", which we'll refund after your stay."
+            : '';
 
     $subject = "Payment received — {$prop}";
     $statusLine = !empty($b['fully_paid'])
@@ -1446,10 +1456,11 @@ function send_payment_receipt($b)
     $text =
         "Hello {$name},\n\n" .
         "Thank you — we've received your {$what} payment of " .
-        $money($b['amount']) .
+        $money($paidNow) .
         " for {$prop}.\n" .
+        ($depLine !== '' ? $depLine . "\n" : '') .
         "Reference: {$b['ref']}\n" .
-        'Paid so far: ' .
+        'Rental paid so far: ' .
         $money($b['paid_so_far']) .
         ' of ' .
         $money($b['total']) .
@@ -1465,15 +1476,19 @@ function send_payment_receipt($b)
                 ', thank you — we\'ve received your ' .
                 $what .
                 ' payment of <strong style="color:#2A2622;">' .
-                $money($b['amount']) .
+                $money($paidNow) .
                 '</strong> for <strong style="color:#2A2622;">' .
                 $esc($prop) .
                 '</strong>.',
         ) .
-        email_rows([
-            ['Reference', $esc($b['ref'])],
-            ['Paid so far', $money($b['paid_so_far']) . ' of ' . $money($b['total'])],
-        ]) .
+        ($depLine !== '' ? email_p($esc($depLine), true) : '') .
+        email_rows(
+            array_filter([
+                ['Reference', $esc($b['ref'])],
+                $dep > 0 ? ['Refundable deposit', $money($dep) . ' (refunded after checkout)'] : null,
+                ['Rental paid so far', $money($b['paid_so_far']) . ' of ' . $money($b['total'])],
+            ]),
+        ) .
         email_p($esc($statusLine), true) .
         email_p('Cottage Holidays Blakeney', true);
     $html = email_shell('Payment received — ' . $prop, $inner);

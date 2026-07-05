@@ -64,6 +64,13 @@ if ($holdAmount <= 0 && $rate) {
 }
 $holdStatus = $b['hold_status'] ?? 'none';
 
+// Refundable damage deposit is now CHARGED upfront (bundled into the guest's first
+// rental payment) and refunded after checkout once the owner approves. It's taken
+// once — only for a fresh booking that hasn't gone down the legacy card-hold route
+// (hold_status 'none'). Tracked on the booking via the reused hold_* columns
+// (hold_status becomes 'charged' → 'returned'/'kept').
+$damagesDue = $holdStatus === 'none' ? $holdAmount : 0.0;
+
 // Amount due for this request, derived from kind (never trusted from the client).
 if ($kind === 'hold') {
     $amountDue = in_array($holdStatus, ['authorized', 'captured'], true) ? 0.0 : $holdAmount;
@@ -88,6 +95,8 @@ if ($action === 'summary') {
         'balance' => round(max(0, $total - $alreadyPaid), 2),
         'depositPct' => $depPct,
         'amountDue' => $amountDue,
+        // The refundable damage deposit bundled into (and charged with) this payment.
+        'damagesDue' => $damagesDue,
         'holdAmount' => $holdAmount,
         'holdStatus' => $holdStatus,
     ]);
@@ -201,12 +210,18 @@ if ($action === 'charge') {
     $nowPaid = round(min($total, max($bookingPaid, $ledgerPaid)), 2);
     $amountDue =
         $kind === 'balance' ? round(max(0, $total - $nowPaid), 2) : round(max(0, $depositAmount - $nowPaid), 2);
-    if ($amountDue <= 0) {
+    // Re-read the deposit state under the lock so a retry can't double-charge it.
+    $freshHold = db()->prepare('SELECT hold_status FROM bookings WHERE id = ?');
+    $freshHold->execute([$bookingId]);
+    $damagesDue = ((string) ($freshHold->fetchColumn() ?: 'none')) === 'none' ? $holdAmount : 0.0;
+    // Charge the rental portion PLUS the refundable deposit (once, upfront).
+    $chargeTotal = round($amountDue + $damagesDue, 2);
+    if ($chargeTotal <= 0) {
         book_unlock($b['prop_key']);
         json_out(['error' => 'This booking is already paid in full.'], 409);
     }
 
-    $pence = (int) round($amountDue * 100);
+    $pence = (int) round($chargeTotal * 100);
     $ref = 'CHB-' . str_pad(substr(preg_replace('/\D/', '', (string) $bookingId), -6), 6, '0', STR_PAD_LEFT);
     $res = square_api('POST', '/v2/payments', [
         'source_id' => $sourceId,
@@ -267,24 +282,41 @@ if ($action === 'charge') {
         }
         $fee = round($cents / 100, 2);
     }
-    try {
-        db()
-            ->prepare(
-                'INSERT IGNORE INTO payments (booking_id, square_payment_id, kind, amount, status, guest_name, prop_key, created_at)
-                       VALUES (?,?,?,?,?,?,?,NOW())',
-            )
-            ->execute([$bookingId, $sqId, $kind, $amountDue, $payment['status'], $b['name'], $b['prop_key']]);
-        if ($fee !== null) {
-            try {
-                db()
-                    ->prepare('UPDATE payments SET fee = ? WHERE square_payment_id = ?')
-                    ->execute([$fee, $sqId]);
-            } catch (\Throwable $eFee) {
-                /* fee column not migrated yet — ignore */
+    // Ledger records the RENTAL portion only (income). The refundable deposit is
+    // tracked separately on the booking via hold_* so it's never counted as rental
+    // and can be refunded in full against this same Square payment later.
+    if ($amountDue > 0) {
+        try {
+            db()
+                ->prepare(
+                    'INSERT IGNORE INTO payments (booking_id, square_payment_id, kind, amount, status, guest_name, prop_key, created_at)
+                           VALUES (?,?,?,?,?,?,?,NOW())',
+                )
+                ->execute([$bookingId, $sqId, $kind, $amountDue, $payment['status'], $b['name'], $b['prop_key']]);
+            if ($fee !== null) {
+                try {
+                    db()
+                        ->prepare('UPDATE payments SET fee = ? WHERE square_payment_id = ?')
+                        ->execute([$fee, $sqId]);
+                } catch (\Throwable $eFee) {
+                    /* fee column not migrated yet — ignore */
+                }
             }
+        } catch (\Throwable $e) {
+            /* table missing — booking update below still applies */
         }
-    } catch (\Throwable $e) {
-        /* table missing — booking update below still applies */
+    }
+    // Mark the refundable deposit as collected (charged), pointing at the Square
+    // payment it rode on so we can refund it after checkout.
+    if ($damagesDue > 0) {
+        try {
+            db()
+                ->prepare(
+                    'UPDATE bookings SET hold_payment_id = ?, hold_status = ?, hold_amount = ?, hold_authorized_at = NOW() WHERE id = ?',
+                )
+                ->execute([$sqId, 'charged', $damagesDue, $bookingId]);
+        } catch (\Throwable $e) {
+        }
     }
 
     $newPaid = round(min($total, $nowPaid + $amountDue), 2);
@@ -298,7 +330,11 @@ if ($action === 'charge') {
     log_activity(
         'payment',
         'payment.card',
-        ucfirst($kind) . ' paid by card — £' . number_format($amountDue, 2) . ($b['name'] ? ' · ' . $b['name'] : ''),
+        ucfirst($kind) .
+            ' paid by card — £' .
+            number_format($amountDue, 2) .
+            ($damagesDue > 0 ? ' + £' . number_format($damagesDue, 2) . ' refundable deposit' : '') .
+            ($b['name'] ? ' · ' . $b['name'] : ''),
         ['actor' => 'guest', 'prop_key' => $b['prop_key'], 'entity' => 'booking', 'entity_id' => (string) $bookingId],
     );
 
@@ -317,6 +353,8 @@ if ($action === 'charge') {
             'paid_so_far' => $newPaid,
             'balance' => round(max(0, $total - $newPaid), 2),
             'fully_paid' => $newStatus === 'paid',
+            // Refundable deposit taken with this payment (refunded after checkout).
+            'deposit_charged' => $damagesDue,
         ]);
     } catch (\Throwable $e) {
     }
