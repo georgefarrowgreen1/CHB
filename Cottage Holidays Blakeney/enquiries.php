@@ -48,12 +48,16 @@ if ($action === 'submit') {
     // the public enquiry form can't be bypassed).
     $adultsN = max(1, (int) ($in['adults'] ?? 2));
     $childrenN = max(0, (int) ($in['children'] ?? 0));
-    $limits = occupancy_limits(); // single source of truth (db.php)
-    if (isset($limits[$propKey])) {
-        $L = $limits[$propKey];
-        if ($adultsN > $L['maxAdults'] || $childrenN > $L['maxChildren'] || $adultsN + $childrenN > $L['maxTotal']) {
-            json_out(['error' => 'That party size is over the limit for this property.'], 400);
-        }
+    $limits = occupancy_limits(); // single source of truth (db.php) — active cottages only
+    // Reject archived/inactive cottages: get_rate() still returns a rate for an
+    // archived prop, but occupancy_limits only lists live ones — so an archived
+    // prop_key would otherwise skip the occupancy check entirely.
+    if (!isset($limits[$propKey])) {
+        json_out(['error' => 'That cottage is not currently taking bookings.'], 400);
+    }
+    $L = $limits[$propKey];
+    if ($adultsN > $L['maxAdults'] || $childrenN > $L['maxChildren'] || $adultsN + $childrenN > $L['maxTotal']) {
+        json_out(['error' => 'That party size is over the limit for this property.'], 400);
     }
 
     // Booking rules (min/max nights, arrival days) — mirror of the front end,

@@ -905,6 +905,29 @@ if ($action === 'refund') {
     // damages never contributed to) and falsely flips the booking to part-paid. This
     // is also the correct path for a partial return of a captured hold.
     $refundKind = $row['kind'] === 'damages' ? 'damages_return' : 'refund';
+    // Cap by what's ACTUALLY still refundable on this booking — not just this row's
+    // original amount — so repeated refunds can't exceed the money taken (and, with
+    // the bundled deposit, can't eat into its Square headroom).
+    $cap = null;
+    if ($refundKind === 'damages_return' && $b) {
+        $cap = round(max(0, damages_collected($b) - damages_returned($bookingId)), 2);
+    } elseif ($refundKind === 'refund') {
+        try {
+            $ns = db()->prepare(
+                "SELECT COALESCE(SUM(CASE WHEN kind IN('deposit','balance') AND status IN('COMPLETED','APPROVED') THEN amount ELSE 0 END),0)
+                       - COALESCE(SUM(CASE WHEN kind='refund' THEN amount ELSE 0 END),0)
+                 FROM payments WHERE booking_id = ?",
+            );
+            $ns->execute([$bookingId]);
+            $cap = round(max(0, (float) $ns->fetchColumn()), 2);
+        } catch (\Throwable $e) {
+            $cap = null;
+        }
+    }
+    if ($cap !== null && $amount > $cap + 0.001) {
+        book_unlock($gProp ?? '');
+        json_out(['error' => 'Only £' . number_format($cap, 2) . ' is still refundable on this booking.'], 400);
+    }
     $rr = record_square_refund($bookingId, $sqId, $amount, $refundKind, $note, $gName, $gProp);
     if (empty($rr['ok'])) {
         book_unlock($gProp ?? '');
@@ -950,19 +973,26 @@ if ($action === 'return_deposit') {
     if (($b['check_out'] ?? '') !== '' && $b['check_out'] > date('Y-m-d')) {
         json_out(['error' => "The guest hasn't checked out yet — refund the deposit after they leave."], 409);
     }
-    $held = round(max(0, damages_collected($b) - damages_returned($id)), 2);
-    if ($held <= 0) {
-        json_out(['error' => 'No damage deposit is being held for this booking.'], 409);
-    }
-    $amount =
+    $reqAmount =
         array_key_exists('amount', $in) && $in['amount'] !== null && $in['amount'] !== ''
             ? round((float) $in['amount'], 2)
-            : $held;
+            : null;
+
+    // Serialise, then re-read the deposit state UNDER the lock: a concurrent refund
+    // or keep records its ledger/hold change first, so the second caller sees the
+    // reduced remaining amount and can't double-return.
+    book_lock($b['prop_key'] ?? '');
+    $b = booking_by_id($id) ?: $b;
+    $held = round(max(0, damages_collected($b) - damages_returned($id)), 2);
+    if ($held <= 0) {
+        book_unlock($b['prop_key'] ?? '');
+        json_out(['error' => 'This deposit has already been settled.'], 409);
+    }
+    $amount = $reqAmount === null ? $held : $reqAmount;
     if ($amount <= 0 || $amount > $held + 0.001) {
+        book_unlock($b['prop_key'] ?? '');
         json_out(['error' => 'Return amount must be between £0 and the held deposit (' . $held . ').'], 400);
     }
-
-    book_lock($b['prop_key'] ?? '');
     // Charge-upfront deposits ride on their own Square payment (hold_payment_id) —
     // refund straight against it. (find_charge_for_refund only sees the rental
     // ledger rows, which may be smaller than the deposit.)
@@ -1040,14 +1070,20 @@ if ($action === 'keep_deposit') {
     if (!$b) {
         json_out(['error' => 'Booking not found'], 404);
     }
+    $note = clean($in['note'] ?? '');
+    // Serialise + re-read under the lock so a concurrent refund/keep can't
+    // double-settle (refund the guest AND book it as kept income).
+    book_lock($b['prop_key'] ?? '');
+    $b = booking_by_id($id) ?: $b;
     if (($b['hold_status'] ?? '') !== 'charged') {
-        json_out(['error' => 'No collected deposit to keep for this booking.'], 409);
+        book_unlock($b['prop_key'] ?? '');
+        json_out(['error' => 'This deposit has already been settled.'], 409);
     }
     $held = round(max(0, damages_collected($b) - damages_returned($id)), 2);
     if ($held <= 0) {
+        book_unlock($b['prop_key'] ?? '');
         json_out(['error' => 'This deposit has already been settled.'], 409);
     }
-    $note = clean($in['note'] ?? '');
     // Record the kept deposit as income (kind 'damages'; excluded from rental status).
     insert_payment_row($id, 'kept-' . bin2hex(random_bytes(8)), 'damages', $held, 'COMPLETED', $b['name'], $b['prop_key'], $note);
     try {
@@ -1056,6 +1092,7 @@ if ($action === 'keep_deposit') {
             ->execute(['kept', $id]);
     } catch (\Throwable $e) {
     }
+    book_unlock($b['prop_key'] ?? '');
     log_activity('payment', 'deposit.kept', 'Damage deposit kept (damage) — £' . number_format($held, 2) . ($b['name'] ? ' · ' . $b['name'] : ''), ['severity' => 'warn', 'prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id, 'meta' => $note !== '' ? ['detail' => $note] : []]);
     json_out(['ok' => true, 'kept' => $held]);
 }
@@ -1094,6 +1131,26 @@ if ($action === 'cancel') {
             $refundedByCard = $refundAmount;
         }
         // No single charge big enough → leave it for a manual refund; still cancel + email.
+    }
+    // Settle the refundable damage deposit / legacy hold BEFORE the row is deleted —
+    // afterwards there's no hold_payment_id to act against. A charged deposit is
+    // refunded to the guest (they aren't staying); a legacy authorised hold is
+    // released. Best-effort — never blocks the cancellation.
+    if (square_enabled()) {
+        $hs = $b['hold_status'] ?? 'none';
+        if ($hs === 'charged' && !empty($b['hold_payment_id'])) {
+            $dep = round(max(0, damages_collected($b) - damages_returned($id)), 2);
+            if ($dep > 0) {
+                book_lock($b['prop_key'] ?? '');
+                record_square_refund($id, $b['hold_payment_id'], $dep, 'damages_return', 'Booking cancelled', $b['name'], $b['prop_key']);
+                book_unlock($b['prop_key'] ?? '');
+            }
+        } elseif ($hs === 'authorized' && !empty($b['hold_payment_id'])) {
+            try {
+                square_api('POST', '/v2/payments/' . rawurlencode($b['hold_payment_id']) . '/cancel', new stdClass());
+            } catch (\Throwable $e) {
+            }
+        }
     }
     $emailResult = null;
     if (!empty($b['email'])) {
