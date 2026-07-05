@@ -1,0 +1,5 @@
+# Keep the folder (and its .htaccess) in git, but never commit the actual
+# session files written here at runtime.
+*
+!.htaccess
+!.gitignore
