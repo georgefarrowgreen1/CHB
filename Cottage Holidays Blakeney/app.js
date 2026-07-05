@@ -10055,6 +10055,7 @@ async function loadAdminMessages() {
     __msgThreads = threads;
     renderMessagesList();
     renderChatAnswersEditor();
+    renderChatAwayEditor();
 }
 // Inbox list state: the fetched threads plus the owner's live search term and
 // "Needs reply" filter. Search/filter run over the DOM (show/hide) so typing
@@ -10062,10 +10063,12 @@ async function loadAdminMessages() {
 let __msgThreads = [];
 let __msgSearch = '';
 let __msgUnansweredOnly = false;
-// A conversation "needs a reply" when the last message is the guest's and it
-// isn't archived — even if the owner has already read it.
+// A conversation "needs a reply" when it isn't archived AND either the last
+// message is the guest's, or there are still-unread guest messages. The unread
+// clause means an automatic away-reply (which posts as an admin message but never
+// marks the guest's message read) doesn't hide a thread that still needs you.
 function msgNeedsReply(t) {
-    return !t.archived && t.last_role === 'guest';
+    return !t.archived && (t.last_role === 'guest' || (t.unread || 0) > 0);
 }
 function renderMessagesList() {
     const list = document.getElementById('messages-list');
@@ -10159,6 +10162,35 @@ function renderChatAnswersEditor() {
                 `<textarea rows="3" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" placeholder="${escapeHtml(f.def)}" onchange="saveContent('${f.key}', this.value)">${escapeHtml(val)}</textarea></div>`
             );
         }).join('');
+}
+// Away / auto-reply settings: enable, message, and optional office hours.
+function renderChatAwayEditor() {
+    const host = document.getElementById('chat-away-editor');
+    if (!host) return;
+    const sc = (k) => (siteContent[k] != null ? String(siteContent[k]) : '');
+    const enabled = sc('chat-away-enabled') === '1';
+    const msgVal = sc('chat-away-msg');
+    const from = sc('chat-away-from');
+    const to = sc('chat-away-to');
+    const inputStyle =
+        'background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);';
+    const hourOpts = (sel) => {
+        let o = `<option value=""${sel === '' ? ' selected' : ''}>—</option>`;
+        for (let h = 0; h < 24; h++) {
+            const hh = String(h).padStart(2, '0');
+            o += `<option value="${hh}"${sel === hh ? ' selected' : ''}>${hh}:00</option>`;
+        }
+        return o;
+    };
+    host.innerHTML =
+        '<h3 style="font-family:var(--font-serif);font-size:1.1rem;margin:0 0 4px;">Away auto-reply</h3>' +
+        '<p style="font-size:0.8rem;color:var(--text-muted);margin:0 0 14px;">Automatically acknowledge a guest who messages when you can’t reply straight away. Sent at most once every few hours per conversation, and never right after you’ve replied.</p>' +
+        `<label style="display:flex;align-items:center;gap:10px;font-size:0.85rem;margin-bottom:14px;cursor:pointer;"><input type="checkbox" ${enabled ? 'checked' : ''} onchange="saveContent('chat-away-enabled', this.checked ? '1' : '')"> Turn on away auto-reply</label>` +
+        `<div style="margin-bottom:14px;"><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Auto-reply message</label>` +
+        `<textarea rows="3" style="width:100%;${inputStyle}resize:vertical;" placeholder="Thanks for your message! We’re not at the desk right now but will reply as soon as we can — usually within a few hours." onchange="saveContent('chat-away-msg', this.value)">${escapeHtml(msgVal)}</textarea></div>` +
+        `<label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Only auto-reply outside these hours (optional)</label>` +
+        `<div style="display:flex;align-items:center;gap:10px;"><select style="${inputStyle}flex:1;" aria-label="Available from" onchange="saveContent('chat-away-from', this.value)">${hourOpts(from)}</select><span style="color:var(--text-muted);font-size:0.8rem;">to</span><select style="${inputStyle}flex:1;" aria-label="Available until" onchange="saveContent('chat-away-to', this.value)">${hourOpts(to)}</select></div>` +
+        `<p style="font-size:0.72rem;color:var(--text-muted);margin:8px 0 0;">e.g. 09:00 to 18:00 — the auto-reply only fires outside that window. Leave both as “—” to auto-reply any time you haven’t just replied.</p>`;
 }
 function toggleArchivedMessages() {
     __msgShowArchived = !__msgShowArchived;
@@ -17630,7 +17662,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'l3p7t1bc';
+    const BUILD = 'm4q8u2cd';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

@@ -1098,6 +1098,9 @@
                 <!-- Instant chat answers: the chat shows these the moment a guest taps a
                      quick-question chip, so common questions answer themselves. -->
                 <div id="chat-answers-editor" style="max-width:640px;margin-top:26px;"></div>
+                <!-- Away / auto-reply: an automatic acknowledgement to a guest who
+                     messages when you're not around. -->
+                <div id="chat-away-editor" style="max-width:640px;margin-top:26px;"></div>
             </div>
 
             <!-- Notifications (owner push) -->
@@ -2013,7 +2016,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=132"></script>
+    <script src="app.js?v=133"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
