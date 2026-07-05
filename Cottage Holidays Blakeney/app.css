@@ -4605,6 +4605,31 @@ body.owner-mode .chat-widget {
   background: color-mix(in srgb, var(--danger) 16%, transparent);
 }
 /* Season grid (Settings → Seasonal rates — all cottages) */
+/* Skip-to-content link: hidden until a keyboard user tabs to it. */
+.skip-link {
+  position: fixed;
+  top: 10px;
+  left: 10px;
+  z-index: 5000;
+  transform: translateY(-160%);
+  background: var(--accent, #d6a785);
+  color: #1a191b;
+  padding: 10px 18px;
+  border-radius: 10px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: transform 0.2s var(--fluid-bezier, ease);
+}
+.skip-link:focus {
+  transform: translateY(0);
+  outline: 3px solid #fff;
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .skip-link {
+    transition: none;
+  }
+}
 /* Occupancy heatmap (owner dashboard): a compact booked/free strip per cottage */
 #occupancy-heatmap {
   margin: 0 0 20px;

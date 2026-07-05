@@ -14239,6 +14239,7 @@ function toast(message, type) {
         stack = document.createElement('div');
         stack.id = 'app-toasts';
         stack.className = 'toast-stack';
+        stack.setAttribute('aria-live', 'polite'); // screen readers announce toasts
         document.body.appendChild(stack);
     }
     const ok = type !== 'error';
@@ -14303,6 +14304,12 @@ const MODAL_CLOSERS = {
     'admin-login-modal': closeAdminLogin,
     'terms-modal': closeTermsModal,
     'edit-modal': closeModal,
+    // Route Esc to these modals' own close functions so their cleanup runs
+    // (e.g. the messages modal stops its live-refresh poll) instead of just
+    // hiding the element via the generic fallback below.
+    'messages-modal': closeMessagesModal,
+    'waitlist-modal': closeWaitlistModal,
+    'trip-modal': closeTripModal,
 };
 function topOpenDialog() {
     const lb = document.getElementById('lightbox');
@@ -17826,7 +17833,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 's0w4a8ij';
+    const BUILD = 't1x5b9jk';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
