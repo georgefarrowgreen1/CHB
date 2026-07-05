@@ -198,11 +198,20 @@ function damages_collected($b)
     if ($held <= 0) {
         return 0.0;
     }
-    // Hold-model bookings take the deposit as a SEPARATE Square card authorisation
-    // (hold_* columns), never into the rental ledger — so there is nothing
-    // "collected" here to hand back. Only the legacy flow folded the deposit into
-    // the rental total / deposit_paid.
-    if (in_array($b['hold_status'] ?? 'none', ['authorized', 'captured', 'released', 'expired'], true)) {
+    $hs = $b['hold_status'] ?? 'none';
+    // New charge-upfront model: the refundable deposit was CHARGED with the booking
+    // and tracked on the booking row (hold_amount). That's exactly what's returnable.
+    if ($hs === 'charged') {
+        return round((float) ($b['hold_amount'] ?? $held), 2);
+    }
+    // Already settled (refunded to the guest, or kept for damage) → nothing to return.
+    if (in_array($hs, ['returned', 'kept'], true)) {
+        return 0.0;
+    }
+    // Legacy card-hold bookings took the deposit as a SEPARATE Square authorisation
+    // (hold_* columns), never into the rental ledger — nothing "collected" to hand
+    // back. Only the oldest flow folded the deposit into the rental total.
+    if (in_array($hs, ['authorized', 'captured', 'released', 'expired'], true)) {
         return 0.0;
     }
     // Pure rental (deposit EXCLUDED) — the same in both eras: legacy folded the
@@ -937,6 +946,10 @@ if ($action === 'return_deposit') {
         json_out(['error' => 'Booking not found'], 404);
     }
     $note = clean($in['note'] ?? '');
+    // Only refund once the guest has actually left.
+    if (($b['check_out'] ?? '') !== '' && $b['check_out'] > date('Y-m-d')) {
+        json_out(['error' => "The guest hasn't checked out yet — refund the deposit after they leave."], 409);
+    }
     $held = round(max(0, damages_collected($b) - damages_returned($id)), 2);
     if ($held <= 0) {
         json_out(['error' => 'No damage deposit is being held for this booking.'], 409);
@@ -950,7 +963,16 @@ if ($action === 'return_deposit') {
     }
 
     book_lock($b['prop_key'] ?? '');
-    $charge = square_enabled() ? find_charge_for_refund($id, $amount) : null;
+    // Charge-upfront deposits ride on their own Square payment (hold_payment_id) —
+    // refund straight against it. (find_charge_for_refund only sees the rental
+    // ledger rows, which may be smaller than the deposit.)
+    $charge = null;
+    if (square_enabled()) {
+        $charge =
+            ($b['hold_status'] ?? '') === 'charged' && !empty($b['hold_payment_id'])
+                ? $b['hold_payment_id']
+                : find_charge_for_refund($id, $amount);
+    }
     if ($charge) {
         $rr = record_square_refund($id, $charge, $amount, 'damages_return', $note, $b['name'], $b['prop_key']);
         if (empty($rr['ok'])) {
@@ -972,6 +994,15 @@ if ($action === 'return_deposit') {
             $note,
         );
         $status = 'MANUAL';
+    }
+    // New model: once the whole deposit is handed back, mark it settled.
+    if (($b['hold_status'] ?? '') === 'charged' && $held - $amount <= 0.001) {
+        try {
+            db()
+                ->prepare('UPDATE bookings SET hold_status = ?, hold_settled_at = NOW() WHERE id = ?')
+                ->execute(['returned', $id]);
+        } catch (\Throwable $e) {
+        }
     }
     book_unlock($b['prop_key'] ?? '');
 
@@ -998,6 +1029,35 @@ if ($action === 'return_deposit') {
     }
     log_activity('payment', 'deposit.return', 'Damage deposit returned — £' . number_format((float) $amount, 2) . ($b['name'] ? ' · ' . $b['name'] : ''), ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
     json_out(['ok' => true, 'returned' => $amount, 'status' => $status, 'email' => $emailResult]);
+}
+
+// Keep a charge-upfront deposit (there WAS damage): don't refund it. Marks the
+// deposit settled and books the kept amount as retained income (a 'damages' ledger
+// row, so it's never confused with rental). No Square call — the money's already in.
+if ($action === 'keep_deposit') {
+    $id = (int) ($in['id'] ?? 0);
+    $b = booking_by_id($id);
+    if (!$b) {
+        json_out(['error' => 'Booking not found'], 404);
+    }
+    if (($b['hold_status'] ?? '') !== 'charged') {
+        json_out(['error' => 'No collected deposit to keep for this booking.'], 409);
+    }
+    $held = round(max(0, damages_collected($b) - damages_returned($id)), 2);
+    if ($held <= 0) {
+        json_out(['error' => 'This deposit has already been settled.'], 409);
+    }
+    $note = clean($in['note'] ?? '');
+    // Record the kept deposit as income (kind 'damages'; excluded from rental status).
+    insert_payment_row($id, 'kept-' . bin2hex(random_bytes(8)), 'damages', $held, 'COMPLETED', $b['name'], $b['prop_key'], $note);
+    try {
+        db()
+            ->prepare('UPDATE bookings SET hold_status = ?, hold_settled_at = NOW() WHERE id = ?')
+            ->execute(['kept', $id]);
+    } catch (\Throwable $e) {
+    }
+    log_activity('payment', 'deposit.kept', 'Damage deposit kept (damage) — £' . number_format($held, 2) . ($b['name'] ? ' · ' . $b['name'] : ''), ['severity' => 'warn', 'prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id, 'meta' => $note !== '' ? ['detail' => $note] : []]);
+    json_out(['ok' => true, 'kept' => $held]);
 }
 
 // Cancel a booking: optional refund (per chosen amount), email the guest, then

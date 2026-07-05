@@ -3341,10 +3341,22 @@ function damageHeld(propKey, b) {
         priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
     const dep = Math.max(0, p.damagesDeposit || 0);
     if (dep <= 0) return { collected: 0, returned: 0, held: 0, deposit: 0 };
-    // Hold-model bookings hold the deposit as a separate Square card
-    // authorisation (holdStatus), never in the rental ledger — nothing to
-    // return here. Only the legacy flow folded it into deposit_paid.
-    if (['authorized', 'captured', 'released', 'expired'].includes(b.holdStatus || 'none'))
+    const st = b.holdStatus || 'none';
+    // New charge-upfront model: the deposit was charged with the booking and is
+    // tracked on the booking (holdAmount) — that's exactly what's returnable.
+    if (st === 'charged') {
+        const collected = Math.round((Number(b.holdAmount) || dep) * 100) / 100;
+        const returned = Math.round((Number(damagesReturnedMap[b.dbId]) || 0) * 100) / 100;
+        return {
+            collected,
+            returned,
+            held: Math.round(Math.max(0, collected - returned) * 100) / 100,
+            deposit: dep,
+        };
+    }
+    // Settled (refunded or kept for damage), or a legacy card hold: nothing in the
+    // rental ledger to return here.
+    if (['returned', 'kept', 'authorized', 'captured', 'released', 'expired'].includes(st))
         return { collected: 0, returned: 0, held: 0, deposit: dep };
     // Pure rental (deposit excluded); a price override raises the floor.
     let rental = p.rentalTotal != null ? p.rentalTotal : Math.max(0, p.total);
@@ -3707,15 +3719,22 @@ function renderMoneyPanel() {
                     ? `<div id="sq-pay-${b.id}" class="sq-pay-history" style="margin-top:10px;font-size:0.82rem;color:var(--text-muted);">Loading payments…</div>`
                     : '';
             const dh = damageHeld(propKey, b);
+            const depLeft = b.checkOut && b.checkOut <= new Date().toISOString().slice(0, 10);
+            const depActions =
+                dh.held > 0
+                    ? depLeft
+                        ? `<button class="btn-sm btn-edit" onclick="returnDeposit('${b.id}')">Approve &amp; refund</button>${b.holdStatus === 'charged' ? `<button class="btn-sm btn-edit" onclick="keepDeposit('${b.id}')">Keep (damage)</button>` : ''}`
+                        : `<span style="color:var(--text-muted);font-size:0.78rem;">refundable after checkout</span>`
+                    : '';
             const depLine =
                 dh.collected > 0
                     ? `<div class="money-deposit">
                         <span>Refundable damage deposit: ${
                             dh.held > 0
-                                ? `<strong>${gbp(dh.held)} held</strong>${dh.returned > 0 ? ` · ${gbp(dh.returned)} returned` : ''}`
+                                ? `<strong>${gbp(dh.held)} collected</strong>${dh.returned > 0 ? ` · ${gbp(dh.returned)} returned` : ''}`
                                 : `<span style="color:#4CAF50;">returned${dh.returned < dh.collected - 0.001 ? ` (${gbp(dh.collected - dh.returned)} retained)` : ''}</span>`
                         }</span>
-                        ${dh.held > 0 ? `<button class="btn-sm btn-edit" onclick="returnDeposit('${b.id}')">Return deposit</button>` : ''}
+                        ${depActions}
                     </div>`
                     : holdControls(b);
             return `
@@ -5200,7 +5219,12 @@ async function openPayView(token, bookingId, kind) {
             token: payState.token,
             kind: payState.kind,
         });
-        payState.amountDue = s.amountDue;
+        // The refundable damage deposit is charged WITH this payment and refunded
+        // after checkout — so the guest pays (and the wallet sheet shows) rental +
+        // deposit. The server computes the same total independently.
+        const dep = Math.round(Number(s.damagesDue || 0) * 100) / 100;
+        const payTotal = Math.round((Number(s.amountDue) + dep) * 100) / 100;
+        payState.amountDue = payTotal;
         const propEl = document.getElementById('pay-prop');
         if (propEl) propEl.textContent = `${s.propName} · ${s.checkIn} → ${s.checkOut}`;
         document.getElementById('pay-kind-label').textContent =
@@ -5209,18 +5233,19 @@ async function openPayView(token, bookingId, kind) {
                 : s.kind === 'balance'
                   ? 'Balance due'
                   : 'Deposit due';
-        document.getElementById('pay-amount').textContent = gbp(s.amountDue);
+        document.getElementById('pay-amount').textContent = gbp(payTotal);
         document.getElementById('pay-amount-sub').textContent =
             s.kind === 'hold'
                 ? 'held, not charged — released after checkout'
-                : s.kind === 'balance'
-                  ? `of ${gbp(s.total)} total`
-                  : `${s.depositPct}% deposit · ${gbp(s.total)} total`;
+                : (s.kind === 'balance'
+                      ? `of ${gbp(s.total)} total`
+                      : `${s.depositPct}% deposit · ${gbp(s.total)} total`) +
+                  (dep > 0 ? ` · incl. ${gbp(dep)} refundable deposit (refunded after checkout)` : '');
         try {
             const pb = document.getElementById('pay-btn');
             if (pb) pb.textContent = s.kind === 'hold' ? 'Place hold' : 'Pay now';
         } catch (e) {}
-        if (!(s.amountDue > 0)) {
+        if (!(payTotal > 0)) {
             showPayError("This booking is already settled — there's nothing left to pay.");
             return;
         }
@@ -5229,7 +5254,7 @@ async function openPayView(token, bookingId, kind) {
         squareCard = await squarePayments.card();
         await squareCard.attach('#sq-card');
         try {
-            await mountWallets(s.amountDue);
+            await mountWallets(payTotal);
         } catch (e) {} // Apple/Google Pay (best-effort)
         if (ld) ld.style.display = 'none';
         document.getElementById('pay-body').style.display = '';
@@ -8824,12 +8849,27 @@ async function copyPayLink(bookingId, kind) {
         glassAlert("Couldn't get the pay link: " + e.message);
     }
 }
-// ---- Refundable damage deposit as a Square card HOLD (admin controls) ----
+// ---- Refundable damage deposit (charged upfront, refunded on approval) ----
 function holdControls(b) {
     if (typeof squareAdminEnabled === 'undefined' || !squareAdminEnabled || !b.email) return '';
     const amt = b.holdAmount || (b.agreedPrice ? b.agreedPrice.damagesDeposit : 0) || 0;
     if (amt <= 0) return '';
     const st = b.holdStatus || 'none';
+    const today = new Date().toISOString().slice(0, 10);
+    const left = b.checkOut && b.checkOut <= today;
+    // New charge-upfront model.
+    if (st === 'charged') {
+        const actions = left
+            ? `<button class="btn-sm btn-edit" onclick="returnDeposit('${b.id}')">Approve &amp; refund</button>
+               <button class="btn-sm btn-edit" onclick="keepDeposit('${b.id}')">Keep (damage)</button>`
+            : `<span style="color:var(--text-muted);font-size:0.78rem;">refundable after checkout</span>`;
+        return `<div class="money-deposit"><span>Damage deposit: <strong>${gbp(amt)} collected</strong></span> ${actions}</div>`;
+    }
+    if (st === 'returned')
+        return `<div class="money-deposit"><span>Damage deposit: <span style="color:#4CAF50;">${gbp(amt)} refunded</span></span></div>`;
+    if (st === 'kept')
+        return `<div class="money-deposit"><span>Damage deposit: <strong style="color:#E57373;">${gbp(amt)} kept</strong> for damage</span></div>`;
+    // Legacy card-hold model — kept working for any in-flight authorised holds.
     if (st === 'authorized')
         return `<div class="money-deposit"><span>Damage hold: <strong>${gbp(amt)} held</strong></span>
                 <button class="btn-sm btn-edit" onclick="releaseHold('${b.id}')">Release</button>
@@ -8839,10 +8879,26 @@ function holdControls(b) {
     if (st === 'released')
         return `<div class="money-deposit"><span>Damage hold: <span style="color:#4CAF50;">released</span></span></div>`;
     if (st === 'expired')
-        return `<div class="money-deposit"><span>Damage hold: expired (auto-released)</span> <button class="btn-sm btn-edit" onclick="requestHold('${b.id}')">Re-request</button></div>`;
-    return `<div class="money-deposit"><span>Refundable damage hold (${gbp(amt)})</span>
-                <button class="btn-sm btn-edit" onclick="requestHold('${b.id}')">Request hold</button>
-                <button class="btn-sm btn-edit" onclick="copyHoldLink('${b.id}')">Copy hold link</button></div>`;
+        return `<div class="money-deposit"><span>Damage hold: expired (auto-released)</span></div>`;
+    // Fresh booking: the deposit is charged automatically with the guest's payment.
+    return `<div class="money-deposit"><span>Refundable deposit ${gbp(amt)} — charged with the guest's payment</span></div>`;
+}
+async function keepDeposit(bookingId) {
+    const booking = findBookingById(bookingId);
+    if (!booking) return;
+    if (
+        !(await glassConfirm(
+            'Keep the damage deposit (there was damage)? The guest will NOT be refunded. This is recorded as retained income.',
+        ))
+    )
+        return;
+    try {
+        const res = await apiPost('bookings.php', { action: 'keep_deposit', id: booking.dbId });
+        toast(`Deposit kept — ${gbp(res.kept)}.`);
+        afterPaymentChange(bookingId);
+    } catch (e) {
+        glassAlert("Couldn't keep the deposit: " + e.message);
+    }
 }
 async function requestHold(bookingId) {
     const booking = findBookingById(bookingId);
@@ -17919,7 +17975,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'w4a8e2no';
+    const BUILD = 'x5b9f3op';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
