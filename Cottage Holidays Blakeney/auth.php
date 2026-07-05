@@ -70,6 +70,90 @@ $action = $in['action'] ?? '';
 // can't be used to probe which usernames/emails are registered.
 const AUTH_DUMMY_HASH = '$2y$12$gemBw4PxmOQPgTk4uUpBPuJz/NsKCsE1dO8f8csjOOGJAwJSbCn3W';
 
+// ---- Admin 2FA: an emailed one-time code on a NOT-yet-trusted device. Opt-in
+// (Settings toggle) AND only active when an owner email + SMTP are configured, so
+// it can never lock the owner out. Trusted devices are remembered ~60 days. ----
+function admin_2fa_active()
+{
+    if (content_value('admin-2fa-enabled') !== '1') {
+        return false;
+    }
+    // Must actually be able to send the code, or we'd lock the owner out.
+    return defined('OWNER_NOTIFY_EMAIL') &&
+        OWNER_NOTIFY_EMAIL &&
+        defined('MAIL_ENABLED') &&
+        MAIL_ENABLED &&
+        defined('SMTP_USER') &&
+        SMTP_USER &&
+        defined('SMTP_PASS') &&
+        SMTP_PASS &&
+        SMTP_PASS !== 'CHANGE_ME';
+}
+function admin_device_trusted()
+{
+    $tok = preg_replace('/[^a-f0-9]/i', '', (string) ($_COOKIE['chb_admin_device'] ?? ''));
+    if (strlen($tok) < 32) {
+        return false;
+    }
+    try {
+        $s = db()->prepare('SELECT id FROM admin_devices WHERE token_hash = ? LIMIT 1');
+        $s->execute([hash('sha256', $tok)]);
+        $id = (int) ($s->fetchColumn() ?: 0);
+        if ($id > 0) {
+            db()->prepare('UPDATE admin_devices SET last_seen = NOW() WHERE id = ?')->execute([$id]);
+            return true;
+        }
+    } catch (\Throwable $e) {
+        // table not migrated yet → treat as untrusted
+    }
+    return false;
+}
+function admin_trust_this_device()
+{
+    try {
+        $tok = bin2hex(random_bytes(20));
+        db()
+            ->prepare('INSERT INTO admin_devices (token_hash, user_agent, last_seen) VALUES (?,?,NOW())')
+            ->execute([hash('sha256', $tok), mb_substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 255)]);
+        setcookie('chb_admin_device', $tok, [
+            'expires' => time() + 60 * 60 * 24 * 60,
+            'path' => '/',
+            'secure' => request_is_https(),
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
+    } catch (\Throwable $e) {
+    }
+}
+// Finish an admin sign-in (shared by the direct path and the post-2FA path).
+function admin_complete_login($uid)
+{
+    session_regenerate_id(true); // new session id on login — prevents session fixation
+    $_SESSION['admin_id'] = (int) $uid;
+    unset($_SESSION['guest_id']); // one role at a time
+    unset($_SESSION['pending_admin_2fa']);
+    csrf_issue_cookie();
+    // New device/location? Coarse fingerprint (IP + browser) vs the last sign-in.
+    $fp = ($_SERVER['REMOTE_ADDR'] ?? '') . '|' . mb_substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 200);
+    $prevFp = content_value('admin-last-login-fp');
+    $isNew = $prevFp !== '' && $prevFp !== $fp;
+    try {
+        db()
+            ->prepare(
+                "INSERT INTO content (item_key, item_value) VALUES ('admin-last-login-fp', ?)
+                 ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = CURRENT_TIMESTAMP",
+            )
+            ->execute([json_encode($fp)]);
+    } catch (\Throwable $e) {
+    }
+    if ($isNew) {
+        log_activity('account', 'admin.login_new', 'Signed in from a NEW device or location', ['severity' => 'warn', 'meta' => ['detail' => mb_substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 120)]]);
+    } else {
+        log_activity('account', 'admin.login', 'Owner signed in');
+    }
+    json_out(['ok' => true]);
+}
+
 switch ($action) {
     // ---------------- ADMIN ----------------
     case 'admin_login':
@@ -100,31 +184,54 @@ switch ($action) {
             json_out(['error' => 'Incorrect username or password'], 401);
         }
         throttle_record('admin:' . strtolower($username), true);
-        session_regenerate_id(true); // new session id on login — prevents session fixation
-        $_SESSION['admin_id'] = (int) $row['id'];
-        unset($_SESSION['guest_id']); // one role at a time: signing in as admin ends any guest session
-        csrf_issue_cookie(); // set the CSRF cookie now (session id was just regenerated)
-        // New device/location? Compare a coarse fingerprint (IP + browser) to the
-        // last sign-in; a change is worth flagging (severity: warn). First-ever
-        // sign-in has no prior, so it's just logged normally.
-        $fp = ($_SERVER['REMOTE_ADDR'] ?? '') . '|' . mb_substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 200);
-        $prevFp = content_value('admin-last-login-fp');
-        $isNew = $prevFp !== '' && $prevFp !== $fp;
-        try {
-            db()
-                ->prepare(
-                    "INSERT INTO content (item_key, item_value) VALUES ('admin-last-login-fp', ?)
-                     ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = CURRENT_TIMESTAMP",
-                )
-                ->execute([json_encode($fp)]);
-        } catch (\Throwable $e) {
+        // Password is right. If 2FA is on and this device isn't trusted, hold the
+        // login and email a one-time code instead of signing in yet.
+        if (admin_2fa_active() && !admin_device_trusted()) {
+            $code = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
+            $_SESSION['pending_admin_2fa'] = [
+                'uid' => (int) $row['id'],
+                'hash' => hash('sha256', $code),
+                'exp' => time() + 600, // 10 minutes
+                'tries' => 0,
+            ];
+            try {
+                require_once __DIR__ . '/mailer.php';
+                if (function_exists('smtp_send')) {
+                    smtp_send(
+                        OWNER_NOTIFY_EMAIL,
+                        'Owner',
+                        'Your sign-in code — Cottage Holidays Blakeney',
+                        "Your one-time sign-in code is: {$code}\n\nIt expires in 10 minutes. If you didn't just try to sign in to your back office, ignore this email and consider changing your password.",
+                    );
+                }
+            } catch (\Throwable $e) {
+            }
+            log_activity('account', 'admin.2fa_sent', 'Sign-in code emailed for a new device', ['actor' => 'system', 'severity' => 'warn']);
+            json_out(['ok' => true, 'twofa' => true]);
         }
-        if ($isNew) {
-            log_activity('account', 'admin.login_new', 'Signed in from a NEW device or location', ['severity' => 'warn', 'meta' => ['detail' => mb_substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 120)]]);
-        } else {
-            log_activity('account', 'admin.login', 'Owner signed in');
+        admin_complete_login($row['id']);
+
+    case 'admin_2fa':
+        // Verify the emailed one-time code and finish the held login.
+        rate_limit('admin2fa', 8, 15);
+        $p = $_SESSION['pending_admin_2fa'] ?? null;
+        if (!is_array($p) || (int) ($p['exp'] ?? 0) < time()) {
+            unset($_SESSION['pending_admin_2fa']);
+            json_out(['error' => 'That code has expired — please sign in again.'], 401);
         }
-        json_out(['ok' => true]);
+        if ((int) ($p['tries'] ?? 0) >= 5) {
+            unset($_SESSION['pending_admin_2fa']);
+            json_out(['error' => 'Too many attempts — please sign in again.'], 429);
+        }
+        $_SESSION['pending_admin_2fa']['tries'] = (int) ($p['tries'] ?? 0) + 1;
+        $code = preg_replace('/\D/', '', (string) ($in['code'] ?? ''));
+        if ($code === '' || !hash_equals((string) ($p['hash'] ?? ''), hash('sha256', $code))) {
+            json_out(['error' => 'Incorrect code — check the email and try again.'], 401);
+        }
+        if (!empty($in['remember'])) {
+            admin_trust_this_device();
+        }
+        admin_complete_login((int) $p['uid']);
 
     case 'admin_logout':
         log_activity('account', 'admin.logout', 'Owner signed out');

@@ -1295,6 +1295,11 @@
                     <button class="btn-sm btn-edit" onclick="addAdminPasskey()">＋ Add a passkey</button>
                     <div id="admin-passkey-list" style="margin-top:14px;"></div>
                 </div>
+                <div class="accounts-stat" style="max-width:640px;margin-top:16px;">
+                    <div class="label">Two-step sign-in</div>
+                    <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 14px;">When on, signing in from a new device also needs a one-time code emailed to your owner address; trusted devices are remembered for 60 days. Needs your owner email set up (Settings → Notifications) — it stays off until then, so you can't be locked out.</p>
+                    <label style="display:flex;align-items:center;gap:10px;font-size:0.9rem;cursor:pointer;"><input type="checkbox" id="admin-2fa-toggle" onchange="saveContent('admin-2fa-enabled', this.checked ? '1' : '')"> Require an email code on new devices</label>
+                </div>
             </div>
 
             <!-- Accommodation preferences (cottage list → per-cottage detail) -->
@@ -1868,6 +1873,16 @@
                 </div>
             </div>
 
+            <!-- 2FA: emailed one-time code for a new device (only shown when required) -->
+            <div id="admin-login-2fa-form" style="display:none;">
+                <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 12px;">We've emailed a 6-digit sign-in code to your owner email. Enter it to finish signing in.</p>
+                <label class="modal-label">Sign-in code</label>
+                <input type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" class="input-glass" id="admin-login-2fa-code" placeholder="123456"
+                       onkeydown="if(event.key==='Enter') submitAdmin2fa()">
+                <label style="display:flex;align-items:center;gap:9px;font-size:0.85rem;margin:12px 0;cursor:pointer;"><input type="checkbox" id="admin-login-2fa-remember" checked> Remember this device (skip the code for 60 days)</label>
+                <button class="btn-glass" style="width:100%;padding:15px;margin-top:2px;" onclick="submitAdmin2fa()">Verify &amp; sign in</button>
+            </div>
+
             <div id="admin-login-error" style="color:#E53935;font-size:0.8rem;margin:12px 0 0;display:none;"></div>
         </div>
     </div>
@@ -2021,7 +2036,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=142"></script>
+    <script src="app.js?v=143"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
