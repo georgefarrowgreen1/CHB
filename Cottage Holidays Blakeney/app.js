@@ -9567,11 +9567,14 @@ async function chatPoll() {
         /* transient — try again next tick */
     }
 }
-// Returning to the tab with the chat open → refresh straight away.
+// Returning to the tab with a chat open → refresh straight away (guest widget
+// and, for the owner, the open back-office conversation).
 document.addEventListener('visibilitychange', () => {
     if (document.hidden) return;
     const w = document.getElementById('chat-widget');
     if (w && w.classList.contains('open')) chatPoll();
+    const mm = document.getElementById('messages-modal');
+    if (mm && mm.classList.contains('open') && typeof adminThreadPoll === 'function') adminThreadPoll();
 });
 // Guest quick-reply chips: common questions send immediately; "Report an
 // issue" prefills a prefix and lets the guest describe it.
@@ -9988,12 +9991,65 @@ async function openMessageThread(threadId) {
             thread.innerHTML = chatBubbles(r.messages || [], 'admin');
             thread.scrollTop = thread.scrollHeight;
         }
+        __msgThreadSig = adminMsgSig(r.messages || []);
     } catch (e) {
         if (thread) thread.innerHTML = `<p class="chat-empty">Couldn't load this thread.</p>`;
     }
     loadAdminMessages(); // clear the unread badge now it's been read
+    adminThreadStartPolling(); // live: pull new guest replies + flip the receipt to "Read"
+}
+// ---- Live refresh of the open conversation: poll every ~7s so a new guest
+//  message appears and the owner's read receipt flips Sent → Read without
+//  reopening. Only re-renders when the thread actually changed (signature keys
+//  off the last message AND the read-state of the owner's latest reply). ----
+let __msgThreadSig = '';
+let __msgPollTimer = null;
+function adminMsgSig(msgs) {
+    let seen = '';
+    for (let i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i].role === 'admin') {
+            seen = msgs[i].seen ? 'r' : 's';
+            break;
+        }
+    }
+    return chatMsgSig(msgs) + ':' + seen;
+}
+function adminThreadStartPolling() {
+    adminThreadStopPolling();
+    __msgPollTimer = setInterval(adminThreadPoll, 7000);
+}
+function adminThreadStopPolling() {
+    if (__msgPollTimer) {
+        clearInterval(__msgPollTimer);
+        __msgPollTimer = null;
+    }
+}
+async function adminThreadPoll() {
+    const modal = document.getElementById('messages-modal');
+    if (!modal || !modal.classList.contains('open') || !__msgThreadId) {
+        adminThreadStopPolling();
+        return;
+    }
+    if (document.hidden) return; // don't poll a backgrounded tab
+    try {
+        const r = await apiPost('messages.php', { action: 'thread', thread_id: __msgThreadId });
+        const msgs = r.messages || [];
+        const sig = adminMsgSig(msgs);
+        if (sig === __msgThreadSig) return; // nothing changed — leave the DOM alone
+        __msgThreadSig = sig;
+        const thread = document.getElementById('messages-modal-thread');
+        if (thread) {
+            const nearBottom = thread.scrollHeight - thread.scrollTop - thread.clientHeight < 60;
+            thread.innerHTML = chatBubbles(msgs, 'admin');
+            if (nearBottom) thread.scrollTop = thread.scrollHeight; // only autoscroll if already at the bottom
+        }
+        loadAdminMessages(); // keep the inbox list/badge in sync if a new guest reply landed
+    } catch (e) {
+        /* transient — try again next tick */
+    }
 }
 function closeMessagesModal() {
+    adminThreadStopPolling();
     const m = document.getElementById('messages-modal');
     if (m) m.classList.remove('open');
     __msgThreadId = null;
@@ -10048,6 +10104,7 @@ async function adminSendMessage() {
             thread.innerHTML = chatBubbles(r.messages || [], 'admin');
             thread.scrollTop = thread.scrollHeight;
         }
+        __msgThreadSig = adminMsgSig(r.messages || []); // so the live poll re-renders only on the guest's next read/reply
         loadAdminMessages();
     } catch (e) {
         glassAlert("Couldn't send: " + e.message);
@@ -17307,7 +17364,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'f7j1m5tu';
+    const BUILD = 'g8k2n6vw';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
