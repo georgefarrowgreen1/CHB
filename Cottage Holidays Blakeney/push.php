@@ -108,14 +108,22 @@ if ($action === 'subscribe_admin' || $action === 'test_admin' || $action === 'un
     json_out(['ok' => true, 'sent' => $sent]);
 }
 
-// ---- New-release ping (called by the deploy workflow, or an admin) ----
+// ---- New-release marker (called by the deploy workflow, or an admin) ----
+// We no longer push a notification for site updates — just record that the deploy
+// completed in the activity log. Open pages still pick up the new build on their
+// own via the client-side version watcher (version.php poll).
 if ($action === 'notify_release') {
     $isCron = isset($_GET['cron']) && hash_equals(APP_SECRET, (string) $_GET['cron']);
     if (!$isCron && empty($_SESSION['admin_id'])) {
         json_out(['error' => 'Not authorised'], 401);
     }
-    $sent = alert_owner('Cottage Holidays Blakeney', 'A new version of your website is now live.', true);
-    json_out(['ok' => true, 'sent' => $sent]);
+    if (function_exists('log_activity')) {
+        log_activity('system', 'site.deployed', 'Website update completed — the new version is now live', [
+            'actor' => $isCron ? 'system' : 'owner',
+            'severity' => 'info',
+        ]);
+    }
+    json_out(['ok' => true, 'logged' => true]);
 }
 
 // ---- Guest-only: manage this device's subscription ----
