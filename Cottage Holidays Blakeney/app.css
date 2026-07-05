@@ -4607,7 +4607,11 @@ body.owner-mode .chat-widget {
 /* Season grid (Settings → Seasonal rates — all cottages) */
 .sg-table {
   border-collapse: collapse;
-  width: 100%;
+  /* Size to the columns (dates + a cell per cottage) and scroll inside the
+     overflow-x wrapper, rather than stretching a few cells apart when there are
+     only one or two rows. */
+  width: auto;
+  min-width: max-content;
 }
 .sg-table th {
   text-align: left;
