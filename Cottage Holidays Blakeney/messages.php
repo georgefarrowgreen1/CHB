@@ -27,9 +27,9 @@ $guestId = current_guest_id();
 
 function chat_msgs($threadId)
 {
-    $s = db()->prepare(
-        'SELECT id, sender_role, body, created_at, read_by_guest FROM messages WHERE thread_id = ? ORDER BY id ASC',
-    );
+    // SELECT * so a pre-migration DB (no `attachment` column yet) still reads
+    // fine — the key is simply absent and defaults to ''.
+    $s = db()->prepare('SELECT * FROM messages WHERE thread_id = ? ORDER BY id ASC');
     $s->execute([$threadId]);
     return array_map(
         fn($r) => [
@@ -40,9 +40,37 @@ function chat_msgs($threadId)
             // Whether the guest has opened the thread since this was sent — drives
             // the owner-side read receipt on their own replies ('seen').
             'seen' => (int) $r['read_by_guest'] === 1,
+            // Optional image attachment (path under uploads/), '' if none.
+            'attachment' => $r['attachment'] ?? '',
         ],
         $s->fetchAll(),
     );
+}
+// Accept an attachment path only if it's one our uploader produced and the file
+// is really on disk — never trust a client-supplied path beyond that shape.
+function chat_valid_attachment($v)
+{
+    $v = trim((string) $v);
+    if ($v === '') {
+        return '';
+    }
+    if (!preg_match('#^uploads/[A-Za-z0-9._-]+\.(jpe?g|png|gif|webp)$#i', $v)) {
+        return '';
+    }
+    return is_file(__DIR__ . '/' . $v) ? $v : '';
+}
+// Set a message's attachment via a guarded UPDATE — kept off the INSERT so the
+// core send never breaks on a DB where the column hasn't migrated yet (there it's
+// simply a silent no-op; the message still sends, just without the image).
+function chat_attach_message($messageId, $att)
+{
+    if ($att === '' || $messageId <= 0) {
+        return;
+    }
+    try {
+        db()->prepare('UPDATE messages SET attachment = ? WHERE id = ?')->execute([$att, $messageId]);
+    } catch (\Throwable $e) {
+    }
 }
 // Is the OTHER party typing right now? $col is a fixed literal — 'admin_typing_at'
 // (the guest is reading) or 'guest_typing_at' (the owner is reading). Isolated so a
@@ -270,10 +298,11 @@ if ($isAdmin && empty($in['token'])) {
         if ($action === 'send') {
             $tid = (int) ($in['thread_id'] ?? 0);
             $bodyTxt = mb_substr(trim((string) ($in['body'] ?? '')), 0, 4000);
-            if ($tid <= 0 || $bodyTxt === '') {
+            $att = chat_valid_attachment($in['attachment'] ?? '');
+            if ($tid <= 0 || ($bodyTxt === '' && $att === '')) {
                 json_out(['error' => 'A thread and a message are required'], 400);
             }
-            chat_admin_reply($tid, $bodyTxt);
+            chat_admin_reply($tid, $bodyTxt, $att);
             // Reply sent → clear our typing stamp so the guest doesn't see "typing…"
             // linger under the message that just arrived.
             try {
@@ -377,7 +406,8 @@ if ($guestId) {
         }
         if ($action === 'send') {
             $bodyTxt = mb_substr(trim((string) ($in['body'] ?? '')), 0, 4000);
-            if ($bodyTxt === '') {
+            $att = chat_valid_attachment($in['attachment'] ?? '');
+            if ($bodyTxt === '' && $att === '') {
                 json_out(['error' => 'Type a message first'], 400);
             }
             db()
@@ -385,6 +415,8 @@ if ($guestId) {
                     "INSERT INTO messages (thread_id, guest_id, sender_role, body, read_by_admin, read_by_guest) VALUES (?, ?, 'guest', ?, 0, 1)",
                 )
                 ->execute([$tid, $guestId, $bodyTxt]);
+            $mid = (int) db()->lastInsertId();
+            chat_attach_message($mid, $att); // guarded: no-op pre-migration
             db()
                 ->prepare('UPDATE chat_threads SET updated_at = NOW() WHERE id = ?')
                 ->execute([$tid]);
@@ -395,7 +427,7 @@ if ($guestId) {
             $g = db()->prepare('SELECT name, email FROM guests WHERE id = ?');
             $g->execute([$guestId]);
             $gg = $g->fetch() ?: [];
-            chat_notify_owner($gg['name'] ?? '', $gg['email'] ?? '', $bodyTxt, $tid);
+            chat_notify_owner($gg['name'] ?? '', $gg['email'] ?? '', $bodyTxt !== '' ? $bodyTxt : '📷 Photo', $tid);
             json_out(['ok' => true]);
         }
         // Guest is polling their thread — pull any emailed owner reply in the background.
@@ -433,7 +465,8 @@ try {
         // owner, so this curbs spam/flooding without affecting logged-in guests).
         rate_limit('chat', 20, 10);
         $bodyTxt = mb_substr(trim((string) ($in['body'] ?? '')), 0, 4000);
-        if ($bodyTxt === '') {
+        $att = chat_valid_attachment($in['attachment'] ?? '');
+        if ($bodyTxt === '' && $att === '') {
             json_out(['error' => 'Type a message first'], 400);
         }
         if (!$tid) {
@@ -464,6 +497,7 @@ try {
                 "INSERT INTO messages (thread_id, sender_role, body, read_by_admin, read_by_guest) VALUES (?, 'guest', ?, 0, 1)",
             )
             ->execute([$tid, $bodyTxt]);
+        chat_attach_message((int) db()->lastInsertId(), $att); // guarded: no-op pre-migration
         db()
             ->prepare('UPDATE chat_threads SET updated_at = NOW() WHERE id = ?')
             ->execute([$tid]);
@@ -474,7 +508,7 @@ try {
         $t = db()->prepare('SELECT name, email FROM chat_threads WHERE id = ?');
         $t->execute([$tid]);
         $th = $t->fetch() ?: [];
-        chat_notify_owner($th['name'] ?? '', $th['email'] ?? '', $bodyTxt, $tid);
+        chat_notify_owner($th['name'] ?? '', $th['email'] ?? '', $bodyTxt !== '' ? $bodyTxt : '📷 Photo', $tid);
         json_out(['ok' => true, 'token' => $token]);
     }
     if ($action === 'typing') {
