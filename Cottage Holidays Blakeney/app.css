@@ -3839,6 +3839,16 @@ textarea.input-glass.field-sm {
 .mc-row .mc-v {
   color: var(--text-light);
 }
+/* One-tap booking actions (arrival info / balance link) under a booking row */
+.mc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 5px;
+}
+.mc-actions .btn-sm {
+  font-size: 0.72rem;
+}
 
 /* "Resume your enquiry" chip (bottom-left, opposite the chat bubble) */
 .enquiry-resume {

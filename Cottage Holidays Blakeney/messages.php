@@ -220,6 +220,71 @@ if ($isAdmin && empty($in['token'])) {
             }
             json_out(['ok' => true]);
         }
+        // Booking-aware one-tap replies: email the guest their arrival info or a
+        // secure balance-payment link (reusing the normal senders), then drop a
+        // note into the conversation so it's on the record.
+        if ($action === 'send_arrival' || $action === 'send_balance') {
+            $tid = (int) ($in['thread_id'] ?? 0);
+            $bid = (int) ($in['booking_id'] ?? 0);
+            if ($tid <= 0 || $bid <= 0) {
+                json_out(['error' => 'A thread and a booking are required'], 400);
+            }
+            require_once __DIR__ . '/mailer.php';
+            require_once __DIR__ . '/pricing.php';
+            $bk = db()->prepare('SELECT * FROM bookings WHERE id = ?');
+            $bk->execute([$bid]);
+            $b = $bk->fetch();
+            if (!$b) {
+                json_out(['error' => 'Booking not found'], 404);
+            }
+            if (empty($b['email'])) {
+                json_out(['error' => 'This booking has no guest email on file.'], 400);
+            }
+            if ($action === 'send_arrival') {
+                $res = send_arrival_for_booking($b);
+                if (empty($res['ok'])) {
+                    json_out(['error' => $res['error'] ?? 'The arrival email failed to send.'], 500);
+                }
+                $note = "📋 I've emailed your arrival information — check-in details, directions and your door code.";
+                log_activity('comms', 'email.arrival', 'Arrival info emailed from chat — ' . ($b['name'] ?? ''), [
+                    'prop_key' => $b['prop_key'] ?? '',
+                    'entity' => 'booking',
+                    'entity_id' => (string) $bid,
+                ]);
+            } else {
+                $res = request_booking_payment($b, 'balance');
+                if (empty($res['ok'])) {
+                    json_out(['error' => $res['error'] ?? 'Could not send the payment link.'], 400);
+                }
+                try {
+                    db()
+                        ->prepare('UPDATE bookings SET balance_requested_at = NOW() WHERE id = ?')
+                        ->execute([$bid]);
+                } catch (\Throwable $e) {
+                }
+                $amt = isset($res['amount']) ? ' of £' . number_format((float) $res['amount'], 2) : '';
+                $note = "💳 I've sent a secure link to pay your balance" . $amt . ' by email.';
+                log_activity('payment', 'email.balance', 'Balance link sent from chat — ' . ($b['name'] ?? ''), [
+                    'prop_key' => $b['prop_key'] ?? '',
+                    'entity' => 'booking',
+                    'entity_id' => (string) $bid,
+                ]);
+            }
+            // Post the note as an admin message (no separate email — the info email
+            // already went). read_by_admin=1 so it doesn't count as unread to us.
+            try {
+                db()
+                    ->prepare(
+                        "INSERT INTO messages (thread_id, sender_role, body, read_by_admin, read_by_guest) VALUES (?, 'admin', ?, 1, 0)",
+                    )
+                    ->execute([$tid, $note]);
+                db()
+                    ->prepare('UPDATE chat_threads SET updated_at = NOW() WHERE id = ?')
+                    ->execute([$tid]);
+            } catch (\Throwable $e) {
+            }
+            json_out(['ok' => true]);
+        }
         if ($action === 'thread') {
             $tid = (int) ($in['thread_id'] ?? 0);
             if ($tid <= 0) {
@@ -236,11 +301,12 @@ if ($isAdmin && empty($in['token'])) {
             if (!empty($thread['email'])) {
                 try {
                     $b = db()->prepare(
-                        'SELECT prop_key, check_in, check_out, payment FROM bookings WHERE LOWER(email) = LOWER(?) ORDER BY check_in DESC LIMIT 10',
+                        'SELECT id, prop_key, check_in, check_out, payment FROM bookings WHERE LOWER(email) = LOWER(?) ORDER BY check_in DESC LIMIT 10',
                     );
                     $b->execute([$thread['email']]);
                     $bookings = array_map(
                         fn($r) => [
+                            'id' => (int) $r['id'],
                             'prop_key' => $r['prop_key'],
                             'check_in' => $r['check_in'],
                             'check_out' => $r['check_out'],
