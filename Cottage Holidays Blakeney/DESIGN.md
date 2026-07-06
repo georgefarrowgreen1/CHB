@@ -14,10 +14,15 @@ page background itself never carries content.
 
 The three signature moves:
 
-1. **Glass panels** — `.glass-panel` (blur, 1px light border, `--shadow-panel`).
-   All primary surfaces are glass: header, hero panels, cards, modals, admin
-   panels. Cards and the hero panels get a gradient rim (`::before`,
-   `border-radius: inherit`) that reads as light catching the top edge.
+1. **Glass panels** — `.glass-panel`. The material follows Apple's **Liquid
+   Glass** (iOS 26 / macOS Tahoe): it doesn't just blur, it lifts saturation +
+   brightness (`--glass-filter`) so colour behind it refracts vividly, and it
+   carries a **specular edge** — a bright catch along the top inner rim plus a
+   faint base shade (`--glass-rim`) that reads as real glass thickness. Both are
+   theme-tuned tokens; build glass from them, never a bare `blur()`. All primary
+   surfaces are glass: header, hero panels, cards, modals, admin panels. Cards
+   and the hero panels additionally get a gradient border rim (`::before`,
+   `border-radius: inherit`) warming to rose-gold at the base.
 2. **One curvature** — `--r-panel` (40px, 28px on phones ≤768) is the header's
    radius and every top-level surface shares it. Nested elements step DOWN the
    scale (`--r-lg` mid cards → `--r-md` fields → `--r-sm` small controls →
@@ -32,6 +37,7 @@ The three signature moves:
 
 | Concern | Tokens |
 | --- | --- |
+| Glass material | `--glass-blur`, `--glass-filter` (blur + saturate + brightness), `--glass-rim` (specular edge) |
 | Radius | `--r-sm` `--r-md` `--r-lg` `--r-panel` `--r-pill` |
 | Type scale | `--fs-h1` `--fs-h2` `--fs-h3` (serif via `--font-serif`) |
 | Accent | `--accent` `--accent-soft` |
