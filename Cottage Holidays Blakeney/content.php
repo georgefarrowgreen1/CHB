@@ -9,33 +9,34 @@
 require_once __DIR__ . '/db.php';
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    // Admin sessions get everything (the Settings UI reads chat-away-*/
+    // admin-2fa-enabled from siteContent). Public visitors get only editor
+    // content — never encrypted secrets or operational/internal keys. This
+    // list-and-skip fails CLOSED against the internal keys below because the
+    // GET always excludes both key classes for the public.
+    $isAdmin = !empty($_SESSION['admin_id']);
     $rows = db()->query('SELECT item_key, item_value FROM content')->fetchAll();
     $out = [];
     foreach ($rows as $r) {
-        // Never expose private/internal keys publicly: iCal feed URLs (secret
-        // calendar links) and per-property arrival info (may contain key-safe
-        // codes etc). Admin reads these via the get_all action below.
-        if (strpos($r['item_key'], 'ical-feeds-') === 0) {
+        $key = $r['item_key'];
+        // Encrypted-at-rest secrets (iCal feed URLs, arrival codes, API keys,
+        // in-stay welcome book): never expose the ciphertext to ANYONE here.
+        // Admin reads + decrypts these via the get_all action below.
+        if (is_private_content_key($key)) {
             continue;
         }
-        if (strpos($r['item_key'], 'arrival-') === 0) {
+        // Operational/internal keys (owner IP/browser, last correspondent,
+        // deployment fingerprint, alert recipients, cron watermarks, away/2FA
+        // toggles): admin only, never public.
+        if (!$isAdmin && is_internal_content_key($key)) {
             continue;
         }
-        if (strpos($r['item_key'], 'apikey-') === 0) {
-            continue;
-        } // secret API keys (e.g. tides)
-        if (strpos($r['item_key'], 'welcome-') === 0) {
-            continue;
-        } // in-stay welcome book (may hold Wi-Fi password etc.)
-        if ($r['item_key'] === 'notify-emails') {
-            continue;
-        } // owner alert recipients — never public
         // Cottage GPS coordinates (geo-<propKey>) ARE exposed publicly so the cottage
         // page can show an exact-pin "Where you'll be" map. They're still used
         // server-side for the on-arrival key-code unlock too.
         // Values are stored as JSON; decode so the client gets real types.
         $decoded = json_decode($r['item_value'], true);
-        $out[$r['item_key']] = $decoded === null && $r['item_value'] !== 'null' ? $r['item_value'] : $decoded;
+        $out[$key] = $decoded === null && $r['item_value'] !== 'null' ? $r['item_value'] : $decoded;
     }
     json_out(['content' => $out]);
 }
