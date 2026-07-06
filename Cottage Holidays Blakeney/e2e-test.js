@@ -158,9 +158,16 @@ async function waitForServer(url, tries = 40) {
         };
       });
     };
-    let ar = await areaShows('inbox');
-    (ar.onSettings && ar.enquiries && !ar.accom && !ar.analytics && !ar.security) ? pass('Inbox area shows only inbox rows') : fail('Inbox area filter wrong: ' + JSON.stringify(ar));
-    ar = await areaShows('cottages');
+    // Inbox is now a dedicated screen (enquiries + messages + approvals).
+    await page.evaluate(() => openInbox());
+    await page.waitForTimeout(500);
+    const inbox = await page.evaluate(() => ({
+        active: (document.querySelector('.page-view.active') || {}).id === 'view-inbox',
+        enq: !!document.getElementById('inbox-list'),
+        msgs: !!document.getElementById('messages-list'),
+    }));
+    (inbox.active && inbox.enq && inbox.msgs) ? pass('Inbox is a dedicated screen (enquiries + messages)') : fail('Inbox screen wrong: ' + JSON.stringify(inbox));
+    let ar = await areaShows('cottages');
     (ar.accom && !ar.enquiries && !ar.analytics && !ar.security) ? pass('Cottages area shows only cottage rows') : fail('Cottages area filter wrong: ' + JSON.stringify(ar));
     ar = await areaShows('marketing');
     (ar.analytics && !ar.accom && !ar.enquiries && !ar.security) ? pass('Marketing area shows only marketing rows') : fail('Marketing area filter wrong: ' + JSON.stringify(ar));
