@@ -139,6 +139,35 @@ async function waitForServer(url, tries = 40) {
     ((await page.locator('#bo-subtitle').textContent()) || '').includes('—') ? pass('live subtitle set') : fail('dashboard subtitle not set');
     (await page.locator('#cal-body .cal-day, #cal-body > *').count()) > 20 ? pass('calendar grid rendered') : fail('calendar grid missing');
 
+    console.log('== 5b. Back-office areas (dock reorg) ==');
+    const areaShows = async (area) => {
+      await page.evaluate((a) => openArea(a), area);
+      await page.waitForTimeout(350);
+      return page.evaluate(() => {
+        const rowVisible = (frag) => {
+          const b = [...document.querySelectorAll('#settings-index .settings-row')]
+            .find((x) => (x.getAttribute('onclick') || '').includes(frag));
+          return !!b && b.offsetParent !== null;
+        };
+        return {
+          onSettings: ((document.querySelector('.page-view.active') || {}).id === 'view-settings'),
+          enquiries: rowVisible("settingsOpen('enquiries')"),
+          accom: rowVisible("settingsOpen('accom')"),
+          analytics: rowVisible("settingsOpen('analytics')"),
+          security: rowVisible("settingsOpen('security')"),
+        };
+      });
+    };
+    let ar = await areaShows('inbox');
+    (ar.onSettings && ar.enquiries && !ar.accom && !ar.analytics && !ar.security) ? pass('Inbox area shows only inbox rows') : fail('Inbox area filter wrong: ' + JSON.stringify(ar));
+    ar = await areaShows('cottages');
+    (ar.accom && !ar.enquiries && !ar.analytics && !ar.security) ? pass('Cottages area shows only cottage rows') : fail('Cottages area filter wrong: ' + JSON.stringify(ar));
+    ar = await areaShows('marketing');
+    (ar.analytics && !ar.accom && !ar.enquiries && !ar.security) ? pass('Marketing area shows only marketing rows') : fail('Marketing area filter wrong: ' + JSON.stringify(ar));
+    ar = await areaShows('settings');
+    (ar.security && !ar.enquiries && !ar.accom && !ar.analytics) ? pass('Settings area shows only settings rows') : fail('Settings area filter wrong: ' + JSON.stringify(ar));
+    await page.evaluate(async () => { nav('view-backoffice'); await initBackOffice(); });
+
     console.log('== 6. Mid-stay guest: My Stays + hub ==');
     await page.evaluate(async () => {
       isAuthenticated = false; document.body.classList.remove('owner-mode');

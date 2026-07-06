@@ -237,14 +237,24 @@
             <!-- The inline "Edit text & photos" live editor is retired and removed: all
                  content is now edited via Settings → Website content and
                  Preferences → [cottage] → Photos / Text. -->
-            <button class="admin-dock-btn" data-view="view-backoffice" data-label="Home" aria-label="Home" title="Home" onclick="tryAccessBackOffice()">
+            <button class="admin-dock-btn" data-view="view-backoffice" data-label="Today" aria-label="Today" title="Today" onclick="tryAccessBackOffice()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18"/><path d="M8 2.5v4M16 2.5v4"/></svg>
                 <span class="admin-dock-badge" id="dock-badge-enquiries" style="display:none;">0</span>
+            </button>
+            <button class="admin-dock-btn" data-view="view-settings" data-area="inbox" data-label="Inbox" aria-label="Inbox" title="Inbox" onclick="openArea('inbox')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/></svg>
+                <span class="admin-dock-badge" id="dock-badge-inbox" style="display:none;">0</span>
             </button>
             <button class="admin-dock-btn" data-view="view-accounts" data-label="Money" aria-label="Money" title="Money" onclick="openAccounts()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><text x="12" y="16.2" font-size="11" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="Georgia, serif">&#163;</text></svg>
             </button>
-            <button class="admin-dock-btn" data-view="view-settings" data-label="Settings" aria-label="Settings" title="Settings" onclick="openSettings()">
+            <button class="admin-dock-btn" data-view="view-settings" data-area="cottages" data-label="Cottages" aria-label="Cottages" title="Cottages" onclick="openArea('cottages')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/></svg>
+            </button>
+            <button class="admin-dock-btn" data-view="view-settings" data-area="marketing" data-label="Marketing" aria-label="Marketing" title="Marketing" onclick="openArea('marketing')">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11v2a1 1 0 0 0 1 1h2l4 4V6L6 10H4a1 1 0 0 0-1 1z"/><path d="M14 8a4 4 0 0 1 0 8"/></svg>
+            </button>
+            <button class="admin-dock-btn" data-view="view-settings" data-area="settings" data-label="Settings" aria-label="Settings" title="Settings" onclick="openArea('settings')">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             </button>
         </nav>
@@ -950,8 +960,8 @@
         <p id="settings-noresults" class="settings-noresults" style="display:none;">Nothing matches — try another word, or browse below.</p>
 
         <div id="settings-index" class="settings-index">
-            <div class="settings-section-label">Bookings &amp; messages</div>
-            <div class="settings-group">
+            <div class="settings-section-label" data-area="inbox">Inbox</div>
+            <div class="settings-group" data-area="inbox">
                 <button class="settings-row" data-kw="booking requests inbox approve decline reply" onclick="settingsOpen('enquiries')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Enquiries</span><span class="settings-row-sub">Booking requests waiting for your reply</span></span>
@@ -962,14 +972,10 @@
                     <span class="settings-row-main"><span class="settings-row-label">Guest messages</span><span class="settings-row-sub">Live chats from your website</span></span>
                     <span class="inbox-badge zero" id="messages-badge" style="margin-right:8px;">0</span><span class="settings-row-chev">›</span>
                 </button>
-                <button class="settings-row" data-kw="push alerts phone device notifications" onclick="settingsOpen('notify')">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Notifications</span><span class="settings-row-sub">Get phone alerts for new bookings &amp; messages</span></span><span class="settings-row-chev">›</span>
-                </button>
             </div>
 
-            <div class="settings-section-label">Cottages &amp; booking</div>
-            <div class="settings-group">
+            <div class="settings-section-label" data-area="cottages">Cottages</div>
+            <div class="settings-group" data-area="cottages">
                 <button class="settings-row" data-kw="rates prices fees nightly rules occupancy photos text add remove accommodation property min nights" onclick="settingsOpen('accom')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Cottages</span><span class="settings-row-sub">Each cottage's rates, fees, rules, photos &amp; text — add or remove a cottage</span></span><span class="settings-row-chev">›</span>
@@ -986,18 +992,14 @@
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 7.5l15 9M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Cancellation policy</span><span class="settings-row-sub">The refund terms guests see, per cottage</span></span><span class="settings-row-chev">›</span>
                 </button>
-                <button class="settings-row" data-kw="square card deposit damage hold balance money invoice" onclick="settingsOpen('payments')">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Payments</span><span class="settings-row-sub">Card payments (Square) &amp; your deposit policy</span></span><span class="settings-row-chev">›</span>
-                </button>
                 <button class="settings-row" data-kw="revenue demand suggestions discounts gaps occupancy smart pricing" onclick="settingsOpen('pricingcoach')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8"/><path d="M21 7v5h-5"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Pricing coach</span><span class="settings-row-sub">Smart pricing ideas from your bookings &amp; demand</span></span><span class="settings-row-chev">›</span>
                 </button>
             </div>
 
-            <div class="settings-section-label">Website &amp; content</div>
-            <div class="settings-group">
+            <div class="settings-section-label" data-area="marketing">Website &amp; content</div>
+            <div class="settings-group" data-area="marketing">
                 <button class="settings-row" data-kw="hero banner images text logo site name navigation menu labels seo homepage" onclick="settingsOpen('content')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h10"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Home page &amp; menu</span><span class="settings-row-sub">Hero banner, menu labels &amp; site name</span></span><span class="settings-row-chev">›</span>
@@ -1016,8 +1018,8 @@
                 </button>
             </div>
 
-            <div class="settings-section-label">Guests &amp; marketing</div>
-            <div class="settings-group">
+            <div class="settings-section-label" data-area="marketing">Guests &amp; marketing</div>
+            <div class="settings-group" data-area="marketing">
                 <button class="settings-row" data-kw="users accounts password reset lookup email login" onclick="settingsOpen('guests')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 5.5a3 3 0 0 1 0 5.8M21 19a5.5 5.5 0 0 0-4-5.3"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Guest accounts</span><span class="settings-row-sub">Look up a guest &amp; reset their password</span></span><span class="settings-row-chev">›</span>
@@ -1036,8 +1038,20 @@
                 </button>
             </div>
 
-            <div class="settings-section-label">Your account</div>
-            <div class="settings-group">
+            <div class="settings-section-label" data-area="settings">Notifications &amp; payments</div>
+            <div class="settings-group" data-area="settings">
+                <button class="settings-row" data-kw="push alerts phone device notifications" onclick="settingsOpen('notify')">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Notifications</span><span class="settings-row-sub">Get phone alerts for new bookings &amp; messages</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" data-kw="square card deposit damage hold balance money invoice" onclick="settingsOpen('payments')">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Payments</span><span class="settings-row-sub">Card payments (Square) &amp; your deposit policy</span></span><span class="settings-row-chev">›</span>
+                </button>
+            </div>
+
+            <div class="settings-section-label" data-area="settings">Your account</div>
+            <div class="settings-group" data-area="settings">
                 <button class="settings-row" data-kw="bio about phone contact host profile picture" onclick="settingsOpen('host')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Profile</span><span class="settings-row-sub">Your host bio &amp; contact number</span></span><span class="settings-row-chev">›</span>
@@ -1048,8 +1062,8 @@
                 </button>
             </div>
 
-            <div class="settings-section-label">Advanced &amp; system</div>
-            <div class="settings-group">
+            <div class="settings-section-label" data-area="settings">Advanced &amp; system</div>
+            <div class="settings-group" data-area="settings">
                 <button class="settings-row" data-kw="api keys tide times connected services" onclick="settingsOpen('apis')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 13.5l-5.3 5.3a2 2 0 0 1-2.8-2.8l5.3-5.3"/><circle cx="15.5" cy="8.5" r="5"/><path d="M13.5 10.5l1.5 1.5"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Integrations</span><span class="settings-row-sub">Tide times &amp; other connected services</span></span><span class="settings-row-chev">›</span>
@@ -1064,22 +1078,22 @@
                 </button>
             </div>
 
-            <div class="settings-section-label">Testing</div>
-            <div class="settings-group" id="staging-link-row">
+            <div class="settings-section-label" data-area="settings">Testing</div>
+            <div class="settings-group" data-area="settings" id="staging-link-row">
                 <button class="settings-row" data-kw="staging sandbox practice preview" onclick="openStagingSite()">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6M10 3v5.2L5.4 17a2 2 0 0 0 1.8 3h9.6a2 2 0 0 0 1.8-3L14 8.2V3"/><path d="M8 14h8"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Test copy ↗</span><span class="settings-row-sub">Open a safe practice copy of your site</span></span><span class="settings-row-chev">›</span>
                 </button>
             </div>
             <!-- Test centre — shown on the staging sandbox only (revealed by JS when IS_STAGING) -->
-            <div class="settings-group" id="testcentre-row" style="display:none;">
+            <div class="settings-group" data-area="settings" id="testcentre-row" style="display:none;">
                 <button class="settings-row" data-kw="staging sandbox preview sample data" onclick="settingsOpen('testcentre')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6M10 3v5.2L5.4 17a2 2 0 0 0 1.8 3h9.6a2 2 0 0 0 1.8-3L14 8.2V3"/><path d="M8 14h8"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Test centre</span><span class="settings-row-sub">Preview, sample emails, test bookings &amp; data</span></span><span class="settings-row-chev">›</span>
                 </button>
             </div>
             <!-- Always last: sign out -->
-            <div class="settings-group">
+            <div class="settings-group" data-area="settings">
                 <button class="settings-row settings-row-logout" data-kw="sign out exit" onclick="logoutStaff()">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h3.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H15"/><path d="M10 12h9"/><path d="M16 8.5l3.5 3.5L16 15.5"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Log out</span></span>
@@ -2049,7 +2063,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=158"></script>
+    <script defer src="app.js?v=159"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

@@ -883,9 +883,15 @@ function nav(viewId, anchorId = null) {
 
     // Accentuate which admin section the dock is currently showing (clears
     // when on a non-admin view such as the public site or the dashboard).
-    document
-        .querySelectorAll('.admin-dock-btn[data-view]')
-        .forEach((b) => b.classList.toggle('current', b.getAttribute('data-view') === viewId));
+    // Non-area buttons (Today, Money) highlight by their view. Area buttons
+    // (Inbox/Cottages/Marketing/Settings, all view-settings) are handled by
+    // syncDockArea() so only the ACTIVE area lights up, not all four.
+    document.querySelectorAll('.admin-dock-btn[data-view]').forEach((b) => {
+        if (b.hasAttribute('data-area')) return;
+        b.classList.toggle('current', b.getAttribute('data-view') === viewId);
+    });
+    if (viewId === 'view-settings') syncDockArea();
+    else document.querySelectorAll('.admin-dock-btn[data-area]').forEach((b) => b.classList.remove('current'));
     requestAnimationFrame(moveDockIndicator);
 
     // The cottage page's sticky booking bar lives on <body> (so its position:fixed
@@ -1618,6 +1624,57 @@ async function openSettings(section) {
     else settingsShowIndex();
 }
 
+// ---- Back-office AREAS: the admin sections hub (view-settings) is split into
+// task-based areas reached from the dock — Inbox, Cottages, Marketing, Settings.
+// Each area shows only its own groups of the shared section index; the section
+// panels (#sec-…) and the settingsOpen() router are unchanged. ----
+const ADMIN_AREAS = {
+    inbox: { title: 'Inbox', sub: 'Enquiries and guest messages' },
+    cottages: { title: 'Cottages', sub: 'Rates, photos, text, calendars and rules' },
+    marketing: { title: 'Marketing', sub: 'Website, reviews, guests and outreach' },
+    settings: { title: 'Settings', sub: 'Account, notifications, payments and system' },
+};
+// Which area each section belongs to (keeps the header/dock right on a deep-link).
+const SECTION_AREA = {
+    enquiries: 'inbox', messages: 'inbox',
+    accom: 'cottages', seasongrid: 'cottages', calendar: 'cottages', cancel: 'cottages', pricingcoach: 'cottages',
+    content: 'marketing', experiences: 'marketing', reviews: 'marketing', photos: 'marketing',
+    guests: 'marketing', newsletter: 'marketing', waitlist: 'marketing', analytics: 'marketing',
+    notify: 'settings', payments: 'settings', host: 'settings', security: 'settings',
+    apis: 'settings', diagnostics: 'settings', testcentre: 'settings',
+};
+let currentAdminArea = 'settings';
+async function openArea(area) {
+    currentAdminArea = ADMIN_AREAS[area] ? area : 'settings';
+    await openSettings(); // opens view-settings + shows the index
+    applyAreaFilter();
+    syncDockArea();
+}
+// Show only the active area's groups + set the header; called on open and on
+// returning from a drill-down panel.
+function applyAreaFilter() {
+    const idx = document.getElementById('settings-index');
+    if (!idx) return;
+    idx.querySelectorAll('.settings-group, .settings-section-label').forEach((el) => {
+        if (el.id === 'testcentre-row') return; // staging-only; JS controls its display
+        const a = el.getAttribute('data-area');
+        el.style.display = !a || a === currentAdminArea ? '' : 'none';
+    });
+    const meta = ADMIN_AREAS[currentAdminArea];
+    const h = document.querySelector('#view-settings .dashboard-header h1');
+    const p = document.querySelector('#view-settings .dashboard-header .lead');
+    if (meta && h) h.textContent = meta.title;
+    if (meta && p) p.textContent = meta.sub;
+    const s = document.getElementById('settings-search');
+    if (s) s.placeholder = 'Search ' + (meta ? meta.title.toLowerCase() : 'settings') + '…';
+}
+function syncDockArea() {
+    document
+        .querySelectorAll('.admin-dock-btn[data-area]')
+        .forEach((b) => b.classList.toggle('current', b.getAttribute('data-area') === currentAdminArea));
+    requestAnimationFrame(moveDockIndicator);
+}
+
 // ---- Settings router: Apple-style index → drill-down sub-pages ----
 const SETTINGS_TITLES = {
     enquiries: 'Enquiries',
@@ -1675,6 +1732,12 @@ function settingsFilter(q) {
     let total = 0;
     idx.querySelectorAll('.settings-group').forEach((g) => {
         if (g.id === 'testcentre-row') return; // staging-only; JS controls it
+        // Search stays within the current area — other areas have their own tab.
+        const ga = g.getAttribute('data-area');
+        if (ga && ga !== currentAdminArea) {
+            g.style.display = 'none';
+            return;
+        }
         let any = false;
         g.querySelectorAll('.settings-row').forEach((row) => {
             const hay = (row.textContent + ' ' + (row.getAttribute('data-kw') || '')).toLowerCase();
@@ -1750,10 +1813,13 @@ function settingsShowIndex() {
     const panel = document.getElementById('settings-panel');
     if (panel) panel.style.display = 'none';
     if (idx) idx.style.display = '';
+    applyAreaFilter(); // restore the current area's rows + header
     settingsRecentRender();
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 function settingsOpen(section) {
+    // Keep the header + dock on the right area when a section is deep-linked.
+    if (SECTION_AREA[section]) currentAdminArea = SECTION_AREA[section];
     adminHistPush('view-settings', section);
     settingsRecentRecord(section);
     __settingsPath = section ? { section } : null;
@@ -18131,7 +18197,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'b6f2h9wq';
+    const BUILD = 'c4m8p1zt';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
