@@ -956,7 +956,7 @@ if ($action === 'refund') {
             $emailResult = ['ok' => false, 'error' => $e->getMessage()];
         }
     }
-    log_activity('payment', 'booking.refund', 'Refund issued — £' . number_format((float) $amount, 2), ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
+    log_activity('payment', 'booking.refund', 'Refund issued — £' . number_format((float) $amount, 2), ['prop_key' => $gProp ?? '', 'entity' => 'booking', 'entity_id' => (string) $bookingId]);
     json_out(['ok' => true, 'refunded' => $amount, 'status' => $rec['status'], 'email' => $emailResult]);
 }
 
