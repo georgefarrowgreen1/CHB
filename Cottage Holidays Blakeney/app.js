@@ -626,7 +626,7 @@ function mapEnquiryFromApi(row) {
 const CUSTOMER_FACING_VIEWS = ['view-main', 'view-cottages', 'view-21a'];
 // The only views an admin ever sees — everything else is the customer site,
 // which a signed-in admin has no use for (nav() bounces it to the back office).
-const ADMIN_VIEWS = ['view-backoffice', 'view-settings', 'view-accounts', 'view-activity-log'];
+const ADMIN_VIEWS = ['view-backoffice', 'view-inbox', 'view-settings', 'view-accounts', 'view-activity-log'];
 // Preview-as-guest: opening the site with ?preview=1 renders the customer
 // experience even though an admin is signed in (owner-mode + the admin bounce
 // are suppressed). Read-only — used by the staging Test centre to view the site.
@@ -908,6 +908,11 @@ function nav(viewId, anchorId = null) {
         initBackOffice();
     } else {
         clearChangeoverToasts(); // toasts are a back-office aid only
+    }
+    if (viewId === 'view-inbox') {
+        try {
+            renderInboxScreen();
+        } catch (e) {}
     }
     if (viewId === 'view-settings') {
         try {
@@ -1575,7 +1580,7 @@ function exitPreview() {
 // ---- Owner navigation helpers ----
 // Enquiries now live in Settings → Enquiries.
 async function openEnquiriesView() {
-    openSettings('enquiries');
+    openInbox();
 }
 // Keep the dock's pending-enquiries count badge live.
 async function refreshOwnerHomeBadges() {
@@ -1629,14 +1634,12 @@ async function openSettings(section) {
 // Each area shows only its own groups of the shared section index; the section
 // panels (#sec-…) and the settingsOpen() router are unchanged. ----
 const ADMIN_AREAS = {
-    inbox: { title: 'Inbox', sub: 'Enquiries and guest messages' },
     cottages: { title: 'Cottages', sub: 'Rates, photos, text, calendars and rules' },
     marketing: { title: 'Marketing', sub: 'Website, reviews, guests and outreach' },
     settings: { title: 'Settings', sub: 'Account, notifications, payments and system' },
 };
 // Which area each section belongs to (keeps the header/dock right on a deep-link).
 const SECTION_AREA = {
-    enquiries: 'inbox', messages: 'inbox',
     accom: 'cottages', seasongrid: 'cottages', calendar: 'cottages', cancel: 'cottages',
     content: 'marketing', experiences: 'marketing', reviews: 'marketing', photos: 'marketing',
     guests: 'marketing', newsletter: 'marketing', waitlist: 'marketing', analytics: 'marketing',
@@ -1675,10 +1678,43 @@ function syncDockArea() {
     requestAnimationFrame(moveDockIndicator);
 }
 
+// ---- Inbox: a dedicated back-office screen combining enquiries, guest messages
+// and things awaiting approval (was buried as two rows under Settings). ----
+async function openInbox() {
+    if (!isAuthenticated) {
+        tryAccessBackOffice();
+        return;
+    }
+    nav('view-inbox'); // nav() calls renderInboxScreen() for us
+    adminHistPush('view-inbox');
+}
+// Fill the Inbox screen — also called from nav() so a history/back restore repaints it.
+async function renderInboxScreen() {
+    try {
+        await loadData();
+    } catch (e) {}
+    try {
+        renderInbox();
+    } catch (e) {}
+    try {
+        refreshInboxBadge();
+    } catch (e) {}
+    try {
+        await loadAdminMessages();
+    } catch (e) {}
+    try {
+        renderChatAnswersEditor();
+    } catch (e) {}
+    try {
+        renderChatAwayEditor();
+    } catch (e) {}
+    try {
+        refreshModerationCounts();
+    } catch (e) {}
+}
+
 // ---- Settings router: Apple-style index → drill-down sub-pages ----
 const SETTINGS_TITLES = {
-    enquiries: 'Enquiries',
-    messages: 'Guest messages',
     notify: 'Notifications',
     host: 'Profile',
     reviews: 'Reviews',
@@ -1833,9 +1869,7 @@ function settingsOpen(section) {
     const title = document.getElementById('settings-panel-title');
     if (title) title.textContent = SETTINGS_TITLES[section] || 'Settings';
     settingsBackTarget = () => settingsShowIndex();
-    if (section === 'enquiries') renderInbox();
-    else if (section === 'messages') loadAdminMessages();
-    else if (section === 'notify') renderNotifySettings();
+    if (section === 'notify') renderNotifySettings();
     else if (section === 'host') fillHostFields();
     else if (section === 'reviews') loadGuestReviewModeration();
     else if (section === 'photos') loadGuestPhotosAdmin();
@@ -15689,10 +15723,8 @@ function dashGo(target) {
     try {
         if (target === 'analytics') {
             openSettings('analytics');
-        } else if (target === 'enquiries') {
-            openSettings('enquiries');
-        } else if (target === 'messages') {
-            openSettings('messages');
+        } else if (target === 'enquiries' || target === 'messages') {
+            openInbox();
         } else if (target === 'reviews') {
             openSettings('reviews');
         } else if (target === 'photos') {
@@ -16568,7 +16600,9 @@ window.addEventListener('popstate', (ev) => {
     if (st && isAuthenticated) {
         __histReplay = true;
         try {
-            if (st.view === 'view-settings') {
+            if (st.view === 'view-inbox') {
+                nav('view-inbox'); // nav() repaints the inbox screen
+            } else if (st.view === 'view-settings') {
                 nav('view-settings');
                 if (st.section) settingsOpen(st.section);
                 else settingsShowIndex();
@@ -17219,11 +17253,18 @@ function enquireSkipAccount() {
 //  INBOX
 // ===================================================================
 function refreshInboxBadge() {
-    const badge = document.getElementById('inbox-badge');
-    if (!badge) return;
     const n = enquiries.length;
-    badge.innerText = n;
-    badge.classList.toggle('zero', n === 0);
+    const badge = document.getElementById('inbox-badge');
+    if (badge) {
+        badge.innerText = n;
+        badge.classList.toggle('zero', n === 0);
+    }
+    // Dock Inbox pip.
+    const dock = document.getElementById('dock-badge-inbox');
+    if (dock) {
+        dock.textContent = n;
+        dock.style.display = n > 0 ? '' : 'none';
+    }
 }
 
 function renderInbox() {
@@ -17991,6 +18032,19 @@ async function refreshModerationCounts() {
     } catch (e) {}
     setBadge('reviews-pending-badge', rev);
     setBadge('photos-pending-badge', ph);
+    // Inbox screen "awaiting approval" block (deep-links to the Marketing panels).
+    const approvals = document.getElementById('inbox-approvals');
+    if (approvals) {
+        approvals.innerHTML =
+            rev + ph > 0
+                ? `<div class="glass-panel" style="padding:14px 16px;border-left:3px solid var(--warn);">
+                       <strong style="font-size:0.9rem;">${rev + ph} awaiting your approval</strong>
+                       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
+                           ${rev ? `<button class="btn-sm btn-edit" onclick="dashGo('reviews')">${rev} review${rev === 1 ? '' : 's'} →</button>` : ''}
+                           ${ph ? `<button class="btn-sm btn-edit" onclick="dashGo('photos')">${ph} photo${ph === 1 ? '' : 's'} →</button>` : ''}
+                       </div></div>`
+                : '';
+    }
     const cardEl = document.getElementById('today-approve-card');
     if (cardEl) {
         const total = rev + ph;
@@ -18199,7 +18253,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'd7q3v9hb';
+    const BUILD = 'f8w4k2mp';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
