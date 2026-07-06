@@ -619,6 +619,93 @@ switch ($action) {
             ->execute([$hash, $row['id']]);
         json_out(['ok' => true]);
 
+    // Guest CRM: aggregate BOOKINGS (everyone who actually stayed, account or not)
+    // by email into a lifetime-value view — stays, total spend, first/last stay,
+    // favourite cottage, repeat flag — ranked best-first so the owner can see and
+    // target their most valuable, most loyal guests.
+    case 'guest_crm':
+        require_admin();
+        $rows = db()
+            ->query(
+                "SELECT LOWER(email) email, name, prop_key, check_in,
+                        COALESCE(price_override, agreed_total, 0) val
+                 FROM bookings WHERE email IS NOT NULL AND email <> ''",
+            )
+            ->fetchAll();
+        $acct = [];
+        foreach (db()->query('SELECT LOWER(email) email FROM guests')->fetchAll() as $a) {
+            $acct[$a['email']] = true;
+        }
+        $g = [];
+        foreach ($rows as $r) {
+            $e = $r['email'];
+            if (!isset($g[$e])) {
+                $g[$e] = ['email' => $e, 'name' => '', 'stays' => 0, 'ltv' => 0.0, 'last' => '', 'first' => '', 'props' => []];
+            }
+            $g[$e]['stays']++;
+            $g[$e]['ltv'] += (float) $r['val'];
+            if ($r['check_in'] > $g[$e]['last']) {
+                $g[$e]['last'] = $r['check_in'];
+            }
+            if ($g[$e]['first'] === '' || $r['check_in'] < $g[$e]['first']) {
+                $g[$e]['first'] = $r['check_in'];
+            }
+            if ($r['name']) {
+                $g[$e]['name'] = $r['name'];
+            }
+            $p = $r['prop_key'];
+            $g[$e]['props'][$p] = ($g[$e]['props'][$p] ?? 0) + 1;
+        }
+        $out = [];
+        foreach ($g as $e => $d) {
+            arsort($d['props']);
+            $out[] = [
+                'email' => $e,
+                'name' => $d['name'],
+                'stays' => $d['stays'],
+                'ltv' => round($d['ltv'], 2),
+                'last_stay' => $d['last'],
+                'first_stay' => $d['first'],
+                'fav_prop' => array_key_first($d['props']),
+                'repeat' => $d['stays'] > 1,
+                'has_account' => isset($acct[$e]),
+            ];
+        }
+        // Best guests first: lifetime value, then stay count.
+        usort($out, fn($a, $b) => $b['ltv'] <=> $a['ltv'] ?: $b['stays'] <=> $a['stays']);
+        json_out(['guests' => $out]);
+
+    // One-tap "invite back": send the returning-guest re-invite to a past guest,
+    // referencing their most recent stay.
+    case 'guest_reinvite':
+        require_admin();
+        $email = strtolower(clean($in['email'] ?? ''));
+        if ($email === '') {
+            json_out(['error' => 'Guest email is required'], 400);
+        }
+        $s = db()->prepare(
+            'SELECT name, prop_key, check_in FROM bookings WHERE LOWER(email) = ? ORDER BY check_in DESC LIMIT 1',
+        );
+        $s->execute([$email]);
+        $b = $s->fetch();
+        if (!$b) {
+            json_out(['error' => 'No past booking found for that guest'], 404);
+        }
+        require_once __DIR__ . '/mailer.php';
+        $d = function_exists('prop_display') ? prop_display($b['prop_key']) : ['name' => $b['prop_key']];
+        $r = send_anniversary_email([
+            'email' => $email,
+            'name' => $b['name'],
+            'prop_key' => $b['prop_key'],
+            'prop_name' => $d['name'] ?: $b['prop_key'],
+            'check_in' => $b['check_in'],
+        ]);
+        if (empty($r['ok'])) {
+            json_out(['error' => $r['error'] ?? 'Could not send the email'], 400);
+        }
+        log_activity('guest', 'guest.reinvite', 'Re-invited past guest', ['entity' => 'guest', 'meta' => ['email' => $email]]);
+        json_out(['ok' => true]);
+
     default:
         json_out(['error' => 'Unknown action'], 400);
 }
