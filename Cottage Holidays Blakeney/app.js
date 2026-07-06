@@ -1795,24 +1795,26 @@ async function renderInboxScreen() {
 }
 // Chat automation drill-downs (instant answers / away reply) live in their own
 // sub-folders off the Inbox rather than sprawling down the messages tab.
+const INBOX_SUBS = { answers: 'inbox-sub-answers', away: 'inbox-sub-away', enq: 'inbox-sub-enq' };
 function inboxSub(which) {
     const main = document.getElementById('inbox-main');
-    const ans = document.getElementById('inbox-sub-answers');
-    const away = document.getElementById('inbox-sub-away');
     if (main) main.style.display = 'none';
-    if (ans) ans.style.display = which === 'answers' ? '' : 'none';
-    if (away) away.style.display = which === 'away' ? '' : 'none';
+    Object.entries(INBOX_SUBS).forEach(([key, id]) => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = key === which ? '' : 'none';
+    });
     try {
         if (which === 'answers') renderChatAnswersEditor();
-        else renderChatAwayEditor();
+        else if (which === 'away') renderChatAwayEditor();
+        // 'enq' is static toggles — their checked state is set by renderInbox().
     } catch (e) {}
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 function inboxSubClose() {
-    const ans = document.getElementById('inbox-sub-answers');
-    const away = document.getElementById('inbox-sub-away');
-    if (ans) ans.style.display = 'none';
-    if (away) away.style.display = 'none';
+    Object.values(INBOX_SUBS).forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = 'none';
+    });
     const main = document.getElementById('inbox-main');
     if (main) main.style.display = '';
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -18358,7 +18360,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'j2n6c8vq';
+    const BUILD = 'k9d3r7bf';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
