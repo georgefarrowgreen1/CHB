@@ -275,6 +275,29 @@ console.log('\n== 9. Damage-deposit accounting (damageHeld) ==');
     }
 }
 
+console.log('\n== 10. Design-system & recent-fix contracts ==');
+{
+    // Liquid Glass MATERIAL (Apple iOS 26 / Tahoe): the primitive must lift
+    // saturation (not a flat frost) and carry the specular edge, and every glass
+    // surface must build from the tokens — so a redesign can't silently drop the look.
+    check('--glass-filter token lifts saturation (app.css)', /--glass-filter:\s*blur\([^;]*saturate/.test(cssText));
+    check('--glass-rim specular-edge token defined', /--glass-rim:\s*inset/.test(cssText));
+    const gp = cssText.match(/\.glass-panel\s*\{[^}]*\}/);
+    check('.glass-panel uses var(--glass-filter)', !!gp && /var\(--glass-filter\)/.test(gp[0]));
+    check('.glass-panel uses var(--glass-rim)', !!gp && /var\(--glass-rim\)/.test(gp[0]));
+    check('.btn-glass carries the specular rim', /\.btn-glass\s*\{[^}]*var\(--glass-rim\)/.test(cssText));
+
+    // Perf: the hero is a one-shot settle, never a perpetual drift (that made the
+    // frosted panels re-blur every frame while idle — the mobile GPU/battery fix).
+    check('hero drift is not infinite (perf regression guard)', !/heroDrift[^;{]*infinite/.test(cssText));
+
+    // SEO: the footer carries REAL crawlable /cottages/ links, rebuilt from the
+    // live list, with the SPA-nav helpers that keep them clickable in-app.
+    check('footer has real /cottages/ crawlable links', /href="\/cottages\//.test(html));
+    check('renderFooterCottages defined (live footer links)', /function renderFooterCottages\b/.test(appScript));
+    check('routeLink defined (footer SPA nav)', /function routeLink\b/.test(appScript));
+}
+
 console.log('\n== Summary ==');
 if (failures === 0) { console.log('  ALL CHECKS PASSED ✅\n'); process.exit(0); }
 console.log('  ' + failures + ' CHECK(S) FAILED ❌\n'); process.exit(1);

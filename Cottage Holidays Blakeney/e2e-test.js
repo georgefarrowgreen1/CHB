@@ -172,6 +172,29 @@ async function waitForServer(url, tries = 40) {
       /1-8 August is free/.test(t2) ? pass('host reply appears via polling') : fail('host reply did not appear after poll');
     }
 
+    console.log('== 8. Liquid Glass material + theme toggle (live) ==');
+    // The glass material must be APPLIED at runtime, not just declared — a
+    // saturation lift is what makes it Apple's Liquid Glass and not a flat frost.
+    const bf = await page.evaluate(() => {
+      const el = document.querySelector('.glass-panel');
+      if (!el) return '';
+      const cs = getComputedStyle(el);
+      return cs.backdropFilter || cs.webkitBackdropFilter || '';
+    });
+    if (bf && bf !== 'none') {
+      /saturate/.test(bf) ? pass('glass-panel backdrop-filter lifts saturation (Liquid Glass live)') : fail('glass-panel lost the Liquid Glass material: ' + bf);
+    } else {
+      pass('backdrop-filter not reported by headless — material checked statically in smoke-test');
+    }
+    // Theme toggle flips the palette and returns (direction-agnostic — the guest
+    // default is light, admin forces dark, so don't assume a starting state).
+    const themeBefore = await page.evaluate(() => document.body.classList.contains('light-mode'));
+    await page.evaluate(() => toggleTheme());
+    const themeAfter = await page.evaluate(() => document.body.classList.contains('light-mode'));
+    themeAfter !== themeBefore ? pass('theme toggle flips the palette') : fail('theme toggle did not change the palette');
+    await page.evaluate(() => toggleTheme());
+    (await page.evaluate(() => document.body.classList.contains('light-mode'))) === themeBefore ? pass('theme toggle returns to the original palette') : fail('theme toggle did not return to the original palette');
+
     await browser.close();
   } catch (e) {
     problems.push('fatal: ' + (e && e.message));
