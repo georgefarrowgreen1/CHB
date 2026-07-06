@@ -197,11 +197,23 @@ if (($in['action'] ?? '') === 'save') {
             continue;
         }
         if (in_array($f, $numeric, true)) {
+            $v = max(0, (float) $in[$f]);
+            // Last-minute discount can't exceed the engine's 90% cap — clamp at save
+            // so the stored value never silently diverges from what guests are charged.
+            if ($f === 'lastmin_pct') {
+                $v = min(90.0, $v);
+            }
             $set[] = "$f = ?";
-            $vals[] = max(0, (float) $in[$f]);
+            $vals[] = $v;
         } elseif (in_array($f, $ints, true)) {
+            $v = max(0, (int) $in[$f]);
+            // A sane ceiling on the last-minute window (a "discount" for a booking
+            // 99999 days out would be permanent).
+            if ($f === 'lastmin_days') {
+                $v = min(60, $v);
+            }
             $set[] = "$f = ?";
-            $vals[] = max(0, (int) $in[$f]);
+            $vals[] = $v;
         } elseif ($f === 'slug') {
             $set[] = "$f = ?";
             $vals[] = slugify(clean($in[$f])) ?: $propKey;

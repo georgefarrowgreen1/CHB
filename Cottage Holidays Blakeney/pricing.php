@@ -73,7 +73,10 @@ function last_minute_factor($checkIn, $today, $pct, $days)
     if ($pct <= 0 || $days <= 0) {
         return 1.0;
     }
-    $lead = (int) floor((strtotime($checkIn) - strtotime($today)) / 86400);
+    // Parse both dates at UTC midnight so the day-count is DST-immune and matches
+    // app.js's lastMinuteFactor() exactly (it uses `T00:00:00Z`). Using local time
+    // here would drift a day across the spring clock change (a 23-hour "day").
+    $lead = (int) floor((strtotime($checkIn . ' UTC') - strtotime($today . ' UTC')) / 86400);
     if ($lead < 0 || $lead > $days) {
         return 1.0;
     }
