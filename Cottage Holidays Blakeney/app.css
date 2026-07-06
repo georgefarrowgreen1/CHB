@@ -1177,16 +1177,19 @@ body.light-mode ::-webkit-scrollbar-thumb {
   background-position: center;
   filter: brightness(var(--hero-brightness));
   z-index: 1;
-  /* Slow cinematic drift — barely perceptible, keeps the photo alive.
-               (Globally neutralised under prefers-reduced-motion.) */
-  animation: heroDrift 28s ease-in-out infinite alternate;
+  /* One-time cinematic settle on load, then FULLY static. A perpetual drift kept
+     the frosted hero panels (backdrop-filter) re-blurring every frame while the
+     photo behind them moved — a constant GPU/battery cost on mobile even when
+     idle. Now the blur only recomputes on scroll. (Neutralised under
+     prefers-reduced-motion.) */
+  animation: heroDrift 7s ease-out both;
 }
 @keyframes heroDrift {
   from {
-    transform: scale(1);
+    transform: scale(1.06);
   }
   to {
-    transform: scale(1.07);
+    transform: scale(1);
   }
 }
 .hero {
