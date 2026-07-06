@@ -2562,25 +2562,52 @@ async function loadGuestList() {
     const guests = res.guests || [];
     if (guests.length === 0) {
         box.innerHTML =
-            '<p style="color:var(--text-muted);font-size:0.85rem;">No guest accounts yet.</p>';
+            '<p style="color:var(--text-muted);font-size:0.85rem;">No guest bookings yet.</p>';
         return;
     }
+    // Repeat-guest rate for a quick loyalty read.
+    const repeats = guests.filter((g) => g.repeat).length;
+    const repeatPct = Math.round((repeats / guests.length) * 100);
+    const propName = (k) => (propertyMeta[k] && propertyMeta[k].name) || k || '—';
     box.innerHTML = `
+                <p style="color:var(--text-muted);font-size:0.82rem;margin:0 0 10px;">${guests.length} past guest${guests.length === 1 ? '' : 's'} · ${repeatPct}% have stayed more than once · ranked by lifetime spend</p>
                 <table class="accounts-table">
-                    <thead><tr><th>Name</th><th>Email</th><th>Joined</th><th></th></tr></thead>
+                    <thead><tr><th>Guest</th><th class="num">Stays</th><th class="num">Lifetime spend</th><th>Last stay</th><th>Favourite</th><th></th></tr></thead>
                     <tbody>
                         ${guests
                             .map(
                                 (g) => `<tr>
-                            <td>${escapeHtml(g.name || '')}</td>
-                            <td>${escapeHtml(g.email || '')}</td>
-                            <td>${(g.created_at || '').split(' ')[0] || '—'}</td>
-                            <td class="num"><button class="btn-sm btn-edit" data-email="${escapeHtml(g.email || '')}" onclick="resetGuestPassword(this)">Reset password</button></td>
+                            <td>${escapeHtml(g.name || '—')}${g.repeat ? ' <span class="chip-mini" style="background:var(--accent-soft);color:#1a191b;border-radius:var(--r-pill);padding:1px 7px;font-size:0.68rem;font-weight:600;">Returning</span>' : ''}<br><span style="color:var(--text-muted);font-size:0.76rem;">${escapeHtml(g.email || '')}</span></td>
+                            <td class="num">${g.stays}</td>
+                            <td class="num">${gbp(g.ltv || 0)}</td>
+                            <td>${g.last_stay || '—'}</td>
+                            <td>${escapeHtml(propName(g.fav_prop))}</td>
+                            <td class="num" style="white-space:nowrap;">
+                                <button class="btn-sm btn-edit" data-email="${escapeHtml(g.email || '')}" onclick="reinviteGuest(this)" title="Email this guest a returning-guest invitation">Invite back</button>
+                                ${g.has_account ? `<button class="btn-sm btn-edit" data-email="${escapeHtml(g.email || '')}" onclick="resetGuestPassword(this)">Reset password</button>` : ''}
+                            </td>
                         </tr>`,
                             )
                             .join('')}
                     </tbody>
                 </table>`;
+}
+// One-tap "invite back": email a past guest the returning-guest re-invitation.
+async function reinviteGuest(btn) {
+    const email = btn.getAttribute('data-email') || '';
+    if (!email) return;
+    if (!(await glassConfirm(`Send a returning-guest invitation to ${email}?`))) return;
+    btn.disabled = true;
+    const original = btn.textContent;
+    btn.textContent = 'Sending…';
+    try {
+        await apiPost('auth.php', { action: 'guest_reinvite', email });
+        btn.textContent = 'Invited ✓';
+    } catch (e) {
+        btn.disabled = false;
+        btn.textContent = original;
+        glassAlert("Couldn't send the invitation: " + e.message);
+    }
 }
 
 async function resetGuestPassword(email) {
@@ -18071,7 +18098,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'v4d8j2xh';
+    const BUILD = 'n8p5r2gk';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
