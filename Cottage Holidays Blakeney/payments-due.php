@@ -67,6 +67,19 @@ foreach ($due as $b) {
             );
         } catch (\Throwable $e) {
         }
+        // Optional SMS nudge (no-op unless configured + the guest opted in).
+        try {
+            require_once __DIR__ . '/sms.php';
+            sms_notify_booking(
+                $b,
+                'Cottage Holidays Blakeney: the balance' .
+                    (isset($res['amount']) ? ' of £' . number_format((float) $res['amount'], 2) : '') .
+                    ' for your ' .
+                    $b['check_in'] .
+                    ' stay is now due — please check your email for the secure payment link.',
+            );
+        } catch (\Throwable $e) {
+        }
         $sent++;
         $report[] = ['id' => (int) $b['id'], 'status' => 'requested', 'amount' => $res['amount'] ?? null];
     } else {

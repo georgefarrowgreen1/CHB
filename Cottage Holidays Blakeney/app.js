@@ -16931,6 +16931,8 @@ async function submitEnquiry(propKey) {
             message,
             terms_accepted: true,
             terms_version: TERMS_VERSION,
+            sms_opt_in:
+                document.getElementById('enq-sms-optin') && document.getElementById('enq-sms-optin').checked ? 1 : 0,
         });
     } catch (e) {
         setEnqMsg('details', "Sorry, your enquiry couldn't be sent: " + e.message);
@@ -18098,7 +18100,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'n8p5r2gk';
+    const BUILD = 'q9w6t3fm';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

@@ -113,8 +113,8 @@ if ($action === 'submit') {
     db()
         ->prepare(
             'INSERT INTO enquiries
-        (prop_key,name,email,phone,address,postcode,check_in,check_out,check_in_time,check_out_time,adults,children,message,terms_accepted_at,terms_version)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+        (prop_key,name,email,phone,address,postcode,check_in,check_out,check_in_time,check_out_time,adults,children,message,terms_accepted_at,terms_version,sms_opt_in)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
         )
         ->execute([
             $propKey,
@@ -132,6 +132,8 @@ if ($action === 'submit') {
             clean($in['message'] ?? ''),
             $termsAt,
             $termsVer,
+            // SMS consent only counts if they actually left a number to text.
+            !empty($in['sms_opt_in']) && clean($in['phone'] ?? '') !== '' ? 1 : 0,
         ]);
     $enqId = (int) db()->lastInsertId();
     // Wake the owner's devices (best-effort).
