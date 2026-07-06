@@ -1658,11 +1658,16 @@ async function openArea(area) {
 function applyAreaFilter() {
     const idx = document.getElementById('settings-index');
     if (!idx) return;
-    idx.querySelectorAll('.settings-group, .settings-section-label').forEach((el) => {
+    idx.querySelectorAll('.settings-group, .settings-section-label, .area-overview').forEach((el) => {
         if (el.id === 'testcentre-row') return; // staging-only; JS controls its display
         const a = el.getAttribute('data-area');
         el.style.display = !a || a === currentAdminArea ? '' : 'none';
     });
+    // Lead each area with its key numbers (the "important parts first" overview).
+    try {
+        if (currentAdminArea === 'cottages') renderCottagesOverview();
+        else if (currentAdminArea === 'marketing') renderMarketingOverview();
+    } catch (e) {}
     const meta = ADMIN_AREAS[currentAdminArea];
     const h = document.querySelector('#view-settings .dashboard-header h1');
     const p = document.querySelector('#view-settings .dashboard-header .lead');
@@ -1676,6 +1681,84 @@ function syncDockArea() {
         .querySelectorAll('.admin-dock-btn[data-area]')
         .forEach((b) => b.classList.toggle('current', b.getAttribute('data-area') === currentAdminArea));
     requestAnimationFrame(moveDockIndicator);
+}
+
+// ---- Area overviews: lead each area with its key numbers (iOS-Settings style —
+// the important parts first, then the detail sub-folders below). ----
+function renderCottagesOverview() {
+    const el = document.getElementById('cottages-overview');
+    if (!el) return;
+    const keys = typeof liveCottageKeys === 'function' ? liveCottageKeys() : [];
+    if (!keys.length) {
+        el.innerHTML = '';
+        return;
+    }
+    let occ = {};
+    try {
+        occ = cottageMonthOccupancy();
+    } catch (e) {}
+    const monthName = new Date().toLocaleDateString('en-GB', { month: 'long' });
+    const card = (k) => {
+        const meta = propertyMeta[k] || {};
+        const r = propertyRates[k] || defaultRates[k] || {};
+        const pct = (occ[k] && occ[k].pct) || 0;
+        const accent = meta.accent || 'var(--accent)';
+        return `<button class="glass-panel area-ov-card" onclick="settingsOpen('accom')" style="text-align:left;padding:15px 16px;cursor:pointer;">
+            <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;">
+                <span style="font-weight:600;">${escapeHtml(meta.name || k)}</span>
+                <span style="font-size:0.78rem;color:var(--text-muted);white-space:nowrap;">from ${gbp(r.coupleRate || 0)}/night</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:0.8rem;">
+                <span style="color:var(--text-muted);">${pct}% booked in ${monthName}</span><span class="settings-row-chev">›</span>
+            </div>
+            <div style="height:6px;border-radius:999px;background:rgba(128,128,128,0.18);margin-top:8px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:${accent};border-radius:999px;"></div></div>
+        </button>`;
+    };
+    el.innerHTML =
+        `<div class="settings-section-label" style="display:block;">This month</div>
+         <div class="area-ov-grid">${keys.map(card).join('')}</div>`;
+}
+async function renderMarketingOverview() {
+    const el = document.getElementById('marketing-overview');
+    if (!el) return;
+    const tiles = [
+        ['approvals', 'Awaiting approval'],
+        ['subs', 'Subscribers'],
+        ['wait', 'On the waitlist'],
+    ];
+    el.innerHTML =
+        `<div class="settings-section-label" style="display:block;">At a glance</div>
+         <div class="area-ov-grid">${tiles
+             .map(
+                 ([id, label]) =>
+                     `<div class="glass-panel" style="padding:15px 16px;"><div id="mkt-ov-${id}" style="font-family:var(--font-serif);font-size:1.6rem;line-height:1;">…</div><div style="font-size:0.74rem;color:var(--text-muted);margin-top:6px;">${label}</div></div>`,
+             )
+             .join('')}</div>`;
+    const set = (id, v) => {
+        const e = document.getElementById('mkt-ov-' + id);
+        if (e) e.textContent = v;
+    };
+    try {
+        const a = await apiPost('reviews.php', { action: 'list_admin' });
+        const b = await apiPost('photos.php', { action: 'list_admin' });
+        const rev = (a.reviews || []).filter((x) => x.status === 'pending').length;
+        const ph = (b.photos || []).filter((x) => x.status === 'pending').length;
+        set('approvals', rev + ph);
+    } catch (e) {
+        set('approvals', '—');
+    }
+    try {
+        const r = await apiGet('newsletter.php');
+        set('subs', r.count != null ? r.count : (r.subscribers || []).length);
+    } catch (e) {
+        set('subs', '—');
+    }
+    try {
+        const r = await apiPost('waitlist.php', { action: 'list' });
+        set('wait', (r.waitlist || []).length);
+    } catch (e) {
+        set('wait', '—');
+    }
 }
 
 // ---- Inbox: a dedicated back-office screen combining enquiries, guest messages
@@ -18253,7 +18336,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'f8w4k2mp';
+    const BUILD = 'h5r9t3xw';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

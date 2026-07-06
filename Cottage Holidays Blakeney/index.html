@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=103">
+    <link rel="stylesheet" href="app.css?v=104">
     <!-- Speed up the font fetch (and the jsPDF CDN) by opening the connections early. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -985,7 +985,11 @@
         <p id="settings-noresults" class="settings-noresults" style="display:none;">Nothing matches — try another word, or browse below.</p>
 
         <div id="settings-index" class="settings-index">
-            <div class="settings-section-label" data-area="cottages">Cottages</div>
+            <!-- Cottages area: lead with each cottage's key numbers, then the detail sub-folders -->
+            <div id="cottages-overview" data-area="cottages" class="area-overview"></div>
+            <!-- Marketing area: lead with the key marketing numbers, then the detail sub-folders -->
+            <div id="marketing-overview" data-area="marketing" class="area-overview"></div>
+            <div class="settings-section-label" data-area="cottages">Manage each cottage</div>
             <div class="settings-group" data-area="cottages">
                 <button class="settings-row" data-kw="rates prices fees nightly rules occupancy photos text add remove accommodation property min nights" onclick="settingsOpen('accom')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/></svg></span>
@@ -2058,7 +2062,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=161"></script>
+    <script defer src="app.js?v=162"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
