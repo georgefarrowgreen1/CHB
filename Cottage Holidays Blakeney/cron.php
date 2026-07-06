@@ -103,6 +103,37 @@ if ($isCron) {
         /* never fail the cron over the heartbeat */
     }
 
+    // Rolling uptime record for the public /status page: one entry per UTC day —
+    // 'ok' when every job ran clean, 'warn' when any failed. A day with NO entry
+    // means the cron never ran (site or automation down) and /status shows it as
+    // a gap; that absence is the signal, so only a real cron run writes here.
+    try {
+        $day = gmdate('Y-m-d');
+        $allOk = true;
+        foreach ($results as $r) {
+            if (empty($r['ok'])) {
+                $allOk = false;
+                break;
+            }
+        }
+        $hist = json_decode(content_value('uptime-history') ?: '[]', true);
+        if (!is_array($hist)) {
+            $hist = [];
+        }
+        // A failure earlier in the day sticks — a later clean re-run doesn't hide it.
+        $hist[$day] = ($hist[$day] ?? '') === 'warn' ? 'warn' : ($allOk ? 'ok' : 'warn');
+        ksort($hist);
+        $hist = array_slice($hist, -40, null, true); // keep a little over the 30 shown
+        db()
+            ->prepare(
+                "INSERT INTO content (item_key, item_value) VALUES ('uptime-history', ?)
+                 ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = CURRENT_TIMESTAMP",
+            )
+            ->execute([json_encode($hist)]);
+    } catch (\Throwable $e) {
+        /* history is a nicety; never fail the cron over it */
+    }
+
     // Activity log: one summary line of what the automation did today (incl. how
     // many guest emails each job sent), and keep the log bounded to ~5000 rows.
     try {
