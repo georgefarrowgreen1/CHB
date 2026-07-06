@@ -15408,6 +15408,15 @@ function renderHeroResults(results, tooSmall) {
         title.innerText = availKeys.length
             ? `Available for your dates${flexNote}`
             : `No cottages free for those dates${flexNote}`;
+        // Genuine scarcity: some — but not all — cottages that fit the party are
+        // free for these exact dates. Truthful, never manufactured.
+        if (availKeys.length && availKeys.length < fitKeys.length) {
+            const msg =
+                availKeys.length === 1
+                    ? 'Only 1 cottage left for your dates — book soon'
+                    : `${availKeys.length} of ${fitKeys.length} cottages still free for your dates`;
+            html += `<div class="hs-scarcity" style="grid-column:1/-1;text-align:center;background:var(--accent-soft);color:#1a191b;border-radius:var(--r-pill);padding:8px 16px;font-size:0.82rem;font-weight:600;margin-bottom:2px;">${msg}</div>`;
+        }
         html += availKeys.map((k) => card(k, results[k])).join('');
         html += fitKeys
             .filter((k) => !results[k].available)
@@ -18100,7 +18109,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'x7n4b9td';
+    const BUILD = 'z3k7m1qv';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
