@@ -1,12 +1,15 @@
 <?php
 // ============================================================
 //  anniversary-nudge.php — invite last year's guests back, once.
-//  Runs daily via cron.php. Finds bookings whose check-in was ~11 months
-//  ago (a month before their "anniversary", when the same weeks for next
-//  year start to book) and sends ONE warm re-invite per booking, skipping
-//  guests who already have a future booking. Sent-tracking lives in the
-//  content table ('anniv-sent': {booking_id: date}) so nobody is emailed
-//  twice, even across re-runs.
+//  Runs daily via cron.php. Sends ONE warm re-invite per past booking, timed
+//  SMARTLY to each guest's own booking-window: it lands the invite ~2 weeks
+//  before the point (relative to next year's same dates) at which that guest
+//  historically started looking — i.e. their check-in-minus-lead-time. A guest
+//  who books 3 months ahead is invited ~3 months before the dates; a last-minute
+//  booker is invited much closer in, so the nudge arrives when they'd actually
+//  act rather than a blanket 11 months out. Skips guests who already have a
+//  future booking. Sent-tracking lives in the content table ('anniv-sent':
+//  {booking_id: date}) so nobody is emailed twice, even across re-runs.
 //
 //  Owner opt-out: content key 'anniversary-nudge-off' = '1'.
 //  Run: https://YOURDOMAIN/anniversary-nudge.php?cron=APP_SECRET
@@ -29,15 +32,18 @@ if (!defined('MAIL_ENABLED') || !MAIL_ENABLED) {
 // One re-invite per booking, ever.
 $sent = content_json('anniv-sent', []); // array-valued key — read with content_json()
 
-// Stays whose check-in was 328–340 days ago — a ~2-week window so a missed
-// cron day never silently skips anyone.
+// Widen the candidate window to the whole run-up to each stay's anniversary
+// (30–360 days ago); the exact send day is computed per booking from its lead
+// time below. `booked` = when the booking was made (agreed_on, else the row's
+// created date) — the basis for that guest's lead time.
 $rows = [];
 try {
-    $q = db()->query("SELECT id, prop_key, name, email, check_in, check_out
+    $q = db()->query("SELECT id, prop_key, name, email, check_in, check_out,
+                             COALESCE(agreed_on, DATE(created_at)) AS booked
                       FROM bookings
                       WHERE email IS NOT NULL AND email <> ''
-                        AND check_in BETWEEN DATE_SUB(CURDATE(), INTERVAL 340 DAY)
-                                         AND DATE_SUB(CURDATE(), INTERVAL 328 DAY)");
+                        AND check_in BETWEEN DATE_SUB(CURDATE(), INTERVAL 360 DAY)
+                                         AND DATE_SUB(CURDATE(), INTERVAL 30 DAY)");
     $rows = $q->fetchAll();
 } catch (\Throwable $e) {
     json_out(['ok' => false, 'error' => 'Could not read bookings']);
@@ -65,10 +71,26 @@ $persist = function () use (&$sent) {
 
 $results = [];
 $n = 0;
+$today = strtotime(date('Y-m-d'));
+$emailedThisRun = []; // don't double-invite a guest who has two past stays in-window
 foreach ($rows as $b) {
     if (isset($sent[$b['id']])) {
         continue;
     } // already invited
+    // Smart timing: land the invite ~2 weeks before this guest would start
+    // looking for next year's same dates — i.e. anniversary minus their lead time.
+    $checkIn = strtotime($b['check_in']);
+    $booked = strtotime($b['booked'] ?: $b['check_in']);
+    $lead = max(7, min(300, (int) round(($checkIn - $booked) / 86400)));
+    $target = strtotime('+1 year', $checkIn) - ($lead + 14) * 86400;
+    // A ~2-week send window so a missed cron day never skips anyone.
+    if ($today < $target || $today > $target + 13 * 86400) {
+        continue; // not this guest's moment yet (or already past it)
+    }
+    $emailKey = strtolower($b['email']);
+    if (isset($emailedThisRun[$emailKey])) {
+        continue;
+    }
     $futureQ->execute([$b['email']]);
     if ((int) $futureQ->fetchColumn() > 0) {
         // they're already coming back
@@ -86,6 +108,7 @@ foreach ($rows as $b) {
         // stops a later fatal from re-sending this one.
         $sent[$b['id']] = date('Y-m-d');
         $persist();
+        $emailedThisRun[$emailKey] = 1;
         $n++;
     }
     $results[] = ['id' => (int) $b['id'], 'ok' => !empty($r['ok']), 'error' => $r['error'] ?? null];
