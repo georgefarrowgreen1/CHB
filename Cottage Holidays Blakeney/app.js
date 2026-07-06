@@ -8201,6 +8201,9 @@ async function loadRates() {
             renderCottageCards();
         } catch (e) {}
         try {
+            renderFooterCottages();
+        } catch (e) {}
+        try {
             renderHomeCottages();
         } catch (e) {}
         try {
@@ -14321,6 +14324,10 @@ function injectStructuredData() {
                         '@type': 'QuantitativeValue',
                         maxValue: lim.maxTotal || lim.maxAdults || 2,
                     },
+                    // Standard changeover times (mirrors the enquiry-form defaults) —
+                    // richer VacationRental data for Google's rich results.
+                    checkinTime: '15:00',
+                    checkoutTime: '10:00',
                 },
             );
             if (img) node.image = img;
@@ -16476,6 +16483,33 @@ function cottageLink(e, key) {
     openProperty(key);
     return false;
 }
+// Same idea as cottageLink for view-based routes (Home, Experiences): the anchor
+// carries a REAL href (crawlable + open-in-new-tab works), but an ordinary click
+// is intercepted for in-app SPA navigation.
+function routeLink(e, viewId) {
+    if (e && (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button)) return true;
+    if (e) e.preventDefault();
+    nav(viewId);
+    return false;
+}
+// Rebuild the footer's cottage links from the LIVE cottage list (owner-added
+// included, archived dropped), each a real /cottages/<slug> URL — so crawlers see
+// a proper internal-link graph to the indexable cottage pages, not just JS views.
+// The static markup lists the original three as a no-JS fallback.
+function renderFooterCottages() {
+    const wrap = document.getElementById('footer-cottage-links');
+    if (!wrap) return;
+    const keys = typeof liveCottageKeys === 'function' && liveCottageKeys().length ? liveCottageKeys() : [];
+    if (!keys.length) return; // no live list yet → keep the static fallback
+    wrap.innerHTML = keys
+        .map((k) => {
+            const meta = propertyMeta[k] || {};
+            const slug = COTTAGE_SLUGS[k] || k;
+            const name = meta.name || k;
+            return `<a href="/cottages/${escapeHtml(slug)}" onclick="return cottageLink(event,'${k}')">${escapeHtml(name)}</a>`;
+        })
+        .join('');
+}
 // Open a cottage's dedicated page, populating it from that property's content + rates
 function openProperty(propKey) {
     // A cottage the owner added has rates but maybe no hardcoded content yet —
@@ -18037,7 +18071,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 't2k9m5wc';
+    const BUILD = 'v4d8j2xh';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
