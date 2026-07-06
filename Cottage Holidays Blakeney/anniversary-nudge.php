@@ -79,9 +79,13 @@ foreach ($rows as $b) {
     $d = prop_display($b['prop_key']);
     $b['prop_name'] = $d['name'] ?: $b['prop_key'];
     $r = send_anniversary_email($b);
-    $sent[$b['id']] = date('Y-m-d') . (empty($r['ok']) ? ' (failed)' : '');
-    $persist(); // record BEFORE moving on, so a later fatal can't re-send this one
     if (!empty($r['ok'])) {
+        // Only mark as invited on a REAL send. A soft mail failure must not burn
+        // the re-invite — leave it unrecorded so tomorrow's run retries it
+        // (mirrors enquiry-nudge.php). Recording on success BEFORE moving on still
+        // stops a later fatal from re-sending this one.
+        $sent[$b['id']] = date('Y-m-d');
+        $persist();
         $n++;
     }
     $results[] = ['id' => (int) $b['id'], 'ok' => !empty($r['ok']), 'error' => $r['error'] ?? null];

@@ -39,6 +39,20 @@ $stream = function ($file, $ctype, $maxAge = 31536000) {
     exit();
 };
 
+// Correct content-type when we fall back to streaming the ORIGINAL — src may be a
+// .png or .webp, so a hardcoded image/jpeg would mislabel it. The extension is
+// trustworthy here (the src regex above already validated it).
+$origType = function () use ($src) {
+    if (preg_match('/\.png$/i', $src)) {
+        return 'image/png';
+    }
+    if (preg_match('/\.webp$/i', $src)) {
+        return 'image/webp';
+    }
+
+    return 'image/jpeg';
+};
+
 $cacheDir = __DIR__ . '/uploads/cache';
 if (!is_dir($cacheDir)) {
     @mkdir($cacheDir, 0755, true);
@@ -58,7 +72,7 @@ if (!function_exists('imagecreatetruecolor') || !function_exists('imagewebp')) {
 
 $info = @getimagesize($path);
 if (!$info) {
-    $stream($path, 'image/jpeg', 86400);
+    $stream($path, $origType(), 86400);
 }
 [$srcW, $srcH, $type] = [$info[0], $info[1], $info[2]];
 
@@ -71,7 +85,7 @@ if ($type === IMAGETYPE_JPEG) {
     $im = @imagecreatefromwebp($path);
 }
 if (!$im || $srcW < 1) {
-    $stream($path, 'image/jpeg', 86400);
+    $stream($path, $origType(), 86400);
 }
 
 $targetW = min($w, $srcW);
@@ -90,4 +104,4 @@ if (is_file($cacheFile)) {
     $stream($cacheFile, 'image/webp');
 }
 // Generation failed — fall back to the original.
-$stream($path, 'image/jpeg', 86400);
+$stream($path, $origType(), 86400);

@@ -448,8 +448,13 @@ if ($isAdmin && empty($in['token'])) {
             json_out(['ok' => true]);
         }
         if ($action === 'unread') {
+            // Only count unread in NON-archived threads — the thread list hides
+            // archived ones, so counting them left the badge lit with no visible
+            // thread to clear. (INNER JOIN also drops any legacy thread-less
+            // message, which the thread list can't show either — consistent.)
             $c = (int) db()
-                ->query("SELECT COUNT(*) FROM messages WHERE sender_role = 'guest' AND read_by_admin = 0")
+                ->query("SELECT COUNT(*) FROM messages m JOIN chat_threads t ON t.id = m.thread_id
+                         WHERE m.sender_role = 'guest' AND m.read_by_admin = 0 AND t.archived = 0")
                 ->fetchColumn();
             json_out(['ok' => true, 'count' => $c]);
         }

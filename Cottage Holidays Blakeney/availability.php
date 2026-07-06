@@ -41,7 +41,7 @@ if (isset($_GET['all'])) {
     json_out(['props' => $out]);
 }
 
-$prop = isset($_GET['prop']) ? preg_replace('/[^a-z0-9_]/i', '', $_GET['prop']) : '';
+$prop = isset($_GET['prop']) ? preg_replace('/[^a-z0-9_]/i', '', (string) $_GET['prop']) : '';
 if ($prop === '') {
     json_out(['ranges' => []]);
 }

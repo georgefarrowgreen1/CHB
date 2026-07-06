@@ -16,7 +16,7 @@
 require_once __DIR__ . '/db.php';
 // ical_token() lives in db.php (shared with ical-import.php).
 
-$prop = isset($_GET['prop']) ? preg_replace('/[^a-z0-9_]/i', '', $_GET['prop']) : '';
+$prop = isset($_GET['prop']) ? preg_replace('/[^a-z0-9_]/i', '', (string) $_GET['prop']) : '';
 $token = isset($_GET['token']) ? $_GET['token'] : '';
 
 if ($prop === '' || !hash_equals(ical_token($prop), $token)) {
