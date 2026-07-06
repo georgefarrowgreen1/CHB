@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=104">
+    <link rel="stylesheet" href="app.css?v=105">
     <!-- Speed up the font fetch (and the jsPDF CDN) by opening the connections early. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -877,6 +877,9 @@
         <!-- Cron dead-man's-switch: shown by checkCronHealth() only when the daily
              automation has gone quiet. -->
         <div id="cron-alert" class="cron-alert" style="display:none;" role="alert"></div>
+
+        <!-- Always-on automation health pill (green when healthy, amber when quiet). -->
+        <button id="cron-pill" class="cron-pill" style="display:none;" onclick="nav('view-settings'); settingsOpen('diagnostics');" title="Open Health check"></button>
 
         <div id="today-panel"><!-- JS injects the "today / needs doing" list --></div>
 
@@ -2098,7 +2101,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=165"></script>
+    <script defer src="app.js?v=166"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

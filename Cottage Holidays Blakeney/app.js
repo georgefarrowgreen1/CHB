@@ -13902,13 +13902,32 @@ async function saveSeasonGrid() {
 // site shows nothing.
 async function checkCronHealth() {
     const el = document.getElementById('cron-alert');
+    const pill = document.getElementById('cron-pill');
     if (!el) return;
     let d;
     try {
         d = await apiGet('cron-status.php');
     } catch (e) {
         el.style.display = 'none';
+        if (pill) pill.style.display = 'none';
         return;
+    }
+    // Always-on pill: positive confirmation when healthy, amber when quiet — so a
+    // stopped automation is obvious at a glance, not only via the loud banner.
+    if (pill && d) {
+        const ago = !d.everRan
+            ? 'never run'
+            : d.ageHours >= 48
+              ? Math.round(d.ageHours / 24) + ' days ago'
+              : d.ageHours >= 1.5
+                ? Math.round(d.ageHours) + ' h ago'
+                : 'just now';
+        const ok = !d.stale;
+        pill.className = 'cron-pill ' + (ok ? 'ok' : 'warn');
+        pill.innerHTML =
+            `<span class="cron-pill-dot"></span>` +
+            (ok ? `Automation healthy · ran ${ago}` : `Automation quiet · ${ago}`);
+        pill.style.display = '';
     }
     if (!d || !d.stale) {
         el.style.display = 'none';
@@ -18394,7 +18413,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'p2m8x4qc';
+    const BUILD = 't7w9k2rn';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
