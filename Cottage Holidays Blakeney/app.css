@@ -120,6 +120,9 @@ textarea:focus-visible,
   --glass-filter: blur(var(--glass-blur)) saturate(180%) brightness(1.04);
   --glass-rim: inset 0 1px 0 0 rgba(255, 255, 255, 0.16),
     inset 0 -1px 0 0 rgba(0, 0, 0, 0.06);
+  /* Glass control hover: brighten the translucent glass (Apple's Liquid Glass
+               controls stay glassy and lift — they don't flip to a solid slab). */
+  --btn-hover: rgba(255, 255, 255, 0.14);
   /* Heading scale: h1 page titles, h2 section headings, h3 sub-headings. */
   --fs-h1: clamp(1.9rem, 5vw, 3rem);
   --fs-h2: 1.5rem;
@@ -171,6 +174,8 @@ body.light-mode {
   --glass-filter: blur(var(--glass-blur)) saturate(150%) brightness(1.02);
   --glass-rim: inset 0 1px 0 0 rgba(255, 255, 255, 0.85),
     inset 0 -1px 0 0 rgba(30, 54, 72, 0.05);
+  /* Brighter white glass on hover for the light theme's white controls. */
+  --btn-hover: rgba(255, 255, 255, 0.72);
 }
 /* Light-mode fixes for sub-panels/inputs that use a hard-coded dark fill
            (rgba(0,0,0,...)) which doesn't follow the theme tokens. Text colours
@@ -723,15 +728,18 @@ nav a:hover {
     box-shadow 0.4s var(--fluid-bezier);
   display: inline-block;
 }
+/* Liquid Glass hover: the glass brightens and lifts but stays translucent (Apple's
+   controls don't invert to a solid fill). Text stays the readable body colour. */
 .btn-glass:hover {
-  background: var(--text-light);
-  color: var(--dark-grey);
+  background: var(--btn-hover);
+  border-color: var(--glass-highlight);
+  color: var(--text-light);
 }
-/* Springy press + a hint of lift + soft shadow on hover for a tactile feel. */
+/* Springy press + a hint of lift + the specular rim on hover for a tactile feel. */
 @media (hover: hover) {
   .btn-glass:hover {
     transform: translateY(-1px);
-    box-shadow: var(--shadow-soft);
+    box-shadow: var(--shadow-soft), var(--glass-rim);
   }
 }
 .btn-glass:active {
