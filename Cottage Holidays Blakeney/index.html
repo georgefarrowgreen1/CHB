@@ -175,8 +175,9 @@
          until the fonts arrive); the noscript keeps styled text for no-JS visitors. -->
     <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500&family=Playfair+Display:wght@400;600&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
     <noscript><link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@300;400;500&family=Playfair+Display:wght@400;600&display=swap" rel="stylesheet"></noscript>
-    <!-- jsPDF is only used for invoices/receipts — defer it so it never blocks first paint. -->
-    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <!-- jsPDF (invoices/receipts, owner-only) is loaded ON DEMAND by ensureJsPdf()
+         in app.js — never downloaded on a normal guest/page load. The cdnjs
+         preconnect above keeps that on-demand fetch fast. -->
     <!-- Apply the theme before first paint (no flash). Coastal-fresh LIGHT is the
          default for guests; dark is opt-in and forced for admins (set later by JS). -->
     <script>(function(){try{var p=localStorage.getItem('chb-theme');if(p!=='dark')document.documentElement.classList.add('theme-light-boot');}catch(e){document.documentElement.classList.add('theme-light-boot');}})();</script>
@@ -2036,7 +2037,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script src="app.js?v=146"></script>
+    <script defer src="app.js?v=147"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

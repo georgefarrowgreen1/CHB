@@ -4034,10 +4034,33 @@ function exportAccountsCSV() {
     a.remove();
     URL.revokeObjectURL(url);
 }
+// jsPDF is a ~100KB owner-only library (invoices / year-end statements). Load it
+// ON DEMAND the first time the owner exports a PDF, rather than on every page
+// load, so guests never pay for it. Promise-cached so it loads at most once.
+let __jspdfPromise = null;
+function ensureJsPdf() {
+    if (window.jspdf && window.jspdf.jsPDF) return Promise.resolve();
+    if (__jspdfPromise) return __jspdfPromise;
+    __jspdfPromise = new Promise((resolve, reject) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+        s.async = true;
+        s.onload = () => resolve();
+        s.onerror = () => {
+            __jspdfPromise = null; // allow a retry on the next attempt
+            reject(new Error('jsPDF failed to load'));
+        };
+        document.head.appendChild(s);
+    });
+    return __jspdfPromise;
+}
+
 // Year-end income statement (PDF) for the selected UK tax year.
-function downloadYearStatement(startYear) {
-    if (!window.jspdf || !window.jspdf.jsPDF) {
-        glassAlert('The PDF tool is still loading — please try again in a moment.');
+async function downloadYearStatement(startYear) {
+    try {
+        await ensureJsPdf();
+    } catch (e) {
+        glassAlert("The PDF tool couldn't load — please check your connection and try again.");
         return;
     }
     const rep = accountsReport && accountsReport.year === startYear ? accountsReport : null;
@@ -6327,9 +6350,11 @@ async function sendConfirmationEmail(bookingId) {
     }
 }
 
-function downloadInvoice(bookingId) {
-    if (!window.jspdf || !window.jspdf.jsPDF) {
-        glassAlert('The invoice tool is still loading — please try again in a moment.');
+async function downloadInvoice(bookingId) {
+    try {
+        await ensureJsPdf();
+    } catch (e) {
+        glassAlert("The invoice tool couldn't load — please check your connection and try again.");
         return;
     }
     // Find the booking: prefer the guest cache (guest view), else admin data.
@@ -18006,7 +18031,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'h9m2x7kt';
+    const BUILD = 'p3v8k1rq';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
