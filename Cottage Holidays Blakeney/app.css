@@ -110,6 +110,16 @@ textarea:focus-visible,
   --shadow-panel: 0 8px 32px rgba(0, 0, 0, 0.2);
   --shadow-float: 0 12px 40px rgba(0, 0, 0, 0.45);
   --shadow-soft: 0 6px 18px rgba(0, 0, 0, 0.28);
+  /* Liquid-glass MATERIAL (Apple iOS 26 / macOS Tahoe language): the glass
+               isn't a flat frost — it blurs AND lifts saturation/brightness so colour
+               behind it refracts vividly, and it carries a specular edge (a bright
+               catch along the top inner rim + a faint base shade) that reads as real
+               glass thickness. Both are tokens so every glass surface stays consistent
+               and both themes can tune them. */
+  --glass-blur: 24px;
+  --glass-filter: blur(var(--glass-blur)) saturate(180%) brightness(1.04);
+  --glass-rim: inset 0 1px 0 0 rgba(255, 255, 255, 0.16),
+    inset 0 -1px 0 0 rgba(0, 0, 0, 0.06);
   /* Heading scale: h1 page titles, h2 section headings, h3 sub-headings. */
   --fs-h1: clamp(1.9rem, 5vw, 3rem);
   --fs-h2: 1.5rem;
@@ -156,6 +166,11 @@ body.light-mode {
   --shadow-panel: 0 10px 34px rgba(30, 54, 72, 0.1);
   --shadow-float: 0 18px 50px rgba(30, 54, 72, 0.2);
   --shadow-soft: 0 6px 18px rgba(30, 54, 72, 0.12);
+  /* Liquid-glass material, tuned for white glass on the linen ground: a crisp
+               bright top lip reads as the glass edge; a hair less saturation than dark. */
+  --glass-filter: blur(var(--glass-blur)) saturate(150%) brightness(1.02);
+  --glass-rim: inset 0 1px 0 0 rgba(255, 255, 255, 0.85),
+    inset 0 -1px 0 0 rgba(30, 54, 72, 0.05);
 }
 /* Light-mode fixes for sub-panels/inputs that use a hard-coded dark fill
            (rgba(0,0,0,...)) which doesn't follow the theme tokens. Text colours
@@ -320,11 +335,11 @@ select,
 /* --- LIQUID GLASS UTILITIES --- */
 .glass-panel {
   background: var(--glass-bg);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: var(--glass-filter);
+  -webkit-backdrop-filter: var(--glass-filter);
   border: 1px solid var(--glass-border);
   border-radius: var(--r-panel);
-  box-shadow: var(--shadow-panel);
+  box-shadow: var(--shadow-panel), var(--glass-rim);
   transition:
     background 0.5s var(--fluid-bezier),
     border-color 0.5s var(--fluid-bezier),
@@ -332,13 +347,13 @@ select,
     box-shadow 0.5s var(--fluid-bezier);
 }
 /* Lift on hover only for devices with a true pointer, so the effect doesn't
-           "stick" after a tap on touchscreens. */
+           "stick" after a tap on touchscreens. The specular rim rides along. */
 @media (hover: hover) {
   .glass-panel:hover {
     background: var(--glass-hover);
     border-color: var(--glass-highlight);
     transform: translateY(-5px);
-    box-shadow: 0 15px 45px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 15px 45px rgba(0, 0, 0, 0.4), var(--glass-rim);
   }
 }
 /* Touch feedback: a gentle press instead of a sticky hover */
