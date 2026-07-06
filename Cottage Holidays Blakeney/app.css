@@ -97,6 +97,15 @@ textarea:focus-visible,
   --r-lg: 22px;
   --r-panel: 40px;
   --r-pill: 999px;
+  /* Spacing scale — one rhythm for section padding, stack gaps and insets.
+               Prefer these over ad-hoc px so vertical rhythm stays consistent, the same
+               way the radius / shadow / type scales work. Steps roughly 1.5×. */
+  --space-1: 8px;
+  --space-2: 16px;
+  --space-3: 24px;
+  --space-4: 40px;
+  --space-5: 64px;
+  --space-6: 96px;
   /* Status colours — use these (not raw hex) for paid/available/warning/
                error states so the palette stays consistent and theme-tunable.
                The -text variants are the lighter tints that stay readable on glass. */
@@ -1193,7 +1202,7 @@ body.light-mode ::-webkit-scrollbar-thumb {
   overflow: hidden;
   position: relative;
   margin-bottom: 0;
-  padding: calc(116px + env(safe-area-inset-top)) 0 40px; /* clear the floating header (+ notch) */
+  padding: calc(116px + env(safe-area-inset-top)) 0 var(--space-4); /* clear the floating header (+ notch) */
 }
 .hero-bg {
   position: absolute;
@@ -1334,7 +1343,7 @@ html.js-reveal .reveal.in-view {
   max-width: 1200px;
   width: 100%;
   margin: 0 auto;
-  padding: clamp(8px, 2vw, 16px) clamp(16px, 4vw, 20px) 0;
+  padding: clamp(var(--space-1), 2vw, var(--space-2)) clamp(var(--space-2), 4vw, 20px) 0;
   box-sizing: border-box;
 }
 .trust-strip {
@@ -1373,7 +1382,7 @@ html.js-reveal .reveal.in-view {
   max-width: 1200px;
   width: 100%;
   margin: 0 auto;
-  padding: clamp(20px, 4vw, 40px) clamp(16px, 4vw, 20px) clamp(40px, 6vw, 64px);
+  padding: clamp(var(--space-3), 4vw, var(--space-4)) clamp(var(--space-2), 4vw, 20px) clamp(var(--space-4), 6vw, var(--space-5));
   box-sizing: border-box;
 }
 .home-cottages .card-meta {
@@ -1383,7 +1392,7 @@ html.js-reveal .reveal.in-view {
   max-width: 720px;
   width: 100%;
   margin: 0 auto;
-  padding: clamp(24px, 4vw, 40px) clamp(16px, 4vw, 20px) 60px;
+  padding: clamp(var(--space-3), 4vw, var(--space-4)) clamp(var(--space-2), 4vw, 20px) var(--space-5);
   box-sizing: border-box;
   scroll-margin-top: calc(100px + env(safe-area-inset-top));
 }
@@ -1417,7 +1426,7 @@ html.js-reveal .reveal.in-view {
   width: 100%;
   max-width: 1200px;
   margin: 0 auto;
-  padding: calc(clamp(90px, 12vw, 120px) + env(safe-area-inset-top)) clamp(16px, 4vw, 20px) 60px;
+  padding: calc(clamp(90px, 12vw, 120px) + env(safe-area-inset-top)) clamp(16px, 4vw, 20px) var(--space-5);
 }
 .container.wide {
   max-width: 1500px;
@@ -1464,8 +1473,8 @@ html.js-reveal .reveal.in-view {
 .grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-  gap: 30px;
-  margin-top: 60px;
+  gap: var(--space-3);
+  margin-top: var(--space-5);
 }
 /* Cottages collection: three tiles across on true desktop (Airbnb-style).
            Below 960px the base auto-fit grid gives a comfortable 2-up on tablets —
