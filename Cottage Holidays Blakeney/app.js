@@ -1377,13 +1377,31 @@ function renderGalleryGrid(list) {
     let html = imgs
         .map(
             (src, i) =>
-                `<div class="gg-cell${i === 0 ? big : ''}" style="background-image:url('${escapeHtml(resizedUrl(src, i === 0 ? 1000 : 560))}')" role="img" aria-label="Photo ${i + 1} of ${n} — ${escapeHtml(ggName)}" onclick="openLightbox(${i})"></div>`,
+                `<div class="gg-cell${i === 0 ? big : ''}" style="background-image:url('${escapeHtml(resizedUrl(src, i === 0 ? 1000 : 560))}')" role="button" tabindex="0" aria-label="Photo ${i + 1} of ${n} — ${escapeHtml(ggName)}" onclick="openLightbox(${i})" onkeydown="ggKey(event, ${i})"></div>`,
         )
         .join('');
     const total = Array.isArray(list) ? list.filter(Boolean).length : 0;
     if (total > 5)
         html += `<button type="button" class="gg-showall" onclick="openLightbox(0)">Show all ${total} photos</button>`;
     grid.innerHTML = html;
+}
+// Keyboard support for the gallery grid cells (role="button", tabindex="0"):
+// open the lightbox on Enter/Space, matching a click.
+function ggKey(e, i) {
+    if (e && (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar')) {
+        e.preventDefault();
+        openLightbox(i);
+    }
+}
+// Skip link: <base href="/"> makes a bare "#view-main" resolve to "/#view-main"
+// (a full navigation home on SSR deep routes), so move focus in JS instead.
+function skipToContent(e) {
+    if (e) e.preventDefault();
+    const el = document.getElementById('view-main');
+    if (!el) return;
+    if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1');
+    el.focus();
+    if (el.scrollIntoView) el.scrollIntoView();
 }
 
 // Paint the current slide and its immediate neighbours; leave the rest
@@ -10969,7 +10987,7 @@ function accomSectionHtml(k, sec) {
                     <div><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Sent to guests a few days before check-in (directions, key collection, wifi…). Kept private — never shown on the site. Also revealed on a guest's account when they're at the cottage (see Location).</label><textarea rows="5" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" onchange="saveContent('arrival-${k}', this.value)">${escapeHtml(adminPrivateContent['arrival-' + k] || '')}</textarea></div>`;
         case 'location':
             return `
-                    <div style="margin-bottom:14px;"><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Address (shown to guests)</label><textarea rows="2" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" onchange="updateRateText('${k}','address',this.value)">${r.address || ''}</textarea></div>
+                    <div style="margin-bottom:14px;"><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Address (shown to guests)</label><textarea rows="2" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" onchange="updateRateText('${k}','address',this.value)">${escapeHtml(r.address || '')}</textarea></div>
                     <div class="rule-divider">Key-code unlock location</div>
                     <div>
                         <label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">The cottage's GPS spot. When a guest with a current booking is within 25m of here, the arrival info unlocks on their account page. Stand at the cottage and tap the button.</label>
@@ -14243,6 +14261,11 @@ function injectStructuredData() {
                 n.containsPlace = keys.map((k) => ({ '@id': origin + '/#cottage-' + k }));
             if (n && n.numberOfRooms != null) n.numberOfRooms = keys.length;
         });
+        // The live hero (uploaded) as an absolute URL — the static hero.jpg 404s
+        // on the live host, so never emit it in structured data.
+        const absUrl = (p) =>
+            p ? (/^https?:\/\//.test(p) ? p : origin + '/' + String(p).replace(/^\/+/, '')) : '';
+        const heroImg = (siteContent && typeof siteContent['hero-bg'] === 'string' && siteContent['hero-bg']) || '';
         // Replace the per-cottage Accommodation nodes.
         const base = graph.filter((n) => !isCottageNode(n));
         keys.forEach((k) => {
@@ -14250,11 +14273,13 @@ function injectStructuredData() {
             const prev = existing[id] || {};
             const meta = propertyMeta[k] || {};
             const lim = occupancyLimits[k] || {};
+            // This cottage's first gallery photo, else the live hero — never hero.jpg.
+            const gal = (siteContent && Array.isArray(siteContent['images-' + k]) && siteContent['images-' + k]) || [];
+            const img = absUrl(gal.find((x) => typeof x === 'string' && x) || heroImg);
             const node = Object.assign(
                 {
                     '@type': ['Accommodation', 'VacationRental'],
                     '@id': id,
-                    image: origin + '/hero.jpg',
                     containedInPlace: { '@type': 'Place', name: 'Blakeney, Norfolk' },
                 },
                 prev,
@@ -14267,6 +14292,8 @@ function injectStructuredData() {
                     },
                 },
             );
+            if (img) node.image = img;
+            else delete node.image; // no real image → omit rather than emit a 404
             delete node.petsAllowed; // no pets allowed — never advertise pet-friendly
             base.push(node);
         });
@@ -17082,10 +17109,14 @@ async function declineEnquiry(enqId) {
 async function approveEnquiry(enqId) {
     const enq = enquiries.find((e) => e.id === enqId);
     if (!enq) return;
+    // Guard against a cottage that's been archived/removed since the enquiry —
+    // propertyMeta[propKey] can be undefined, and a throw here after the server
+    // has already confirmed would show a false "couldn't approve" error.
+    const propName = (propertyMeta[enq.propKey] && propertyMeta[enq.propKey].name) || enq.propKey || 'the cottage';
     if (hasDateClash(enq.propKey, enq.checkIn, enq.checkOut)) {
         if (
             !(await glassConfirm(
-                `Heads up: these dates clash with an existing booking or an imported Airbnb/Vrbo block at ${propertyMeta[enq.propKey].name}. Approve anyway?`,
+                `Heads up: these dates clash with an existing booking or an imported Airbnb/Vrbo block at ${propName}. Approve anyway?`,
             ))
         )
             return;
@@ -17096,7 +17127,7 @@ async function approveEnquiry(enqId) {
         renderInbox();
         renderCalendar();
         showChangeoverToasts();
-        let note = `Booking confirmed for ${enq.name} at ${propertyMeta[enq.propKey].name}. It's now on the calendar.`;
+        let note = `Booking confirmed for ${enq.name} at ${propName}. It's now on the calendar.`;
         const em = res && res.email;
         if (em && em.guest) {
             if (em.guest.ok) note += `\n\nA confirmation email was sent to ${enq.email}.`;
@@ -17975,7 +18006,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'y6c0g4pq';
+    const BUILD = 'h9m2x7kt';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

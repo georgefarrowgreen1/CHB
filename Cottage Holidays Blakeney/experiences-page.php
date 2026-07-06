@@ -87,6 +87,23 @@ try {
                 $out = $new;
             }
         }
+
+        // Swap the static hero.jpg (404 on the live host) for the uploaded hero:
+        // fixes the fetchpriority="high" preload firing at a 404 AND gives this
+        // page a real og:image/twitter:image (it set no image of its own, so it
+        // was inheriting the broken static hero.jpg).
+        $hs = $pdo->prepare("SELECT item_value FROM content WHERE item_key = 'hero-bg'");
+        $hs->execute();
+        $hv = $hs->fetchColumn();
+        $hero = '';
+        if ($hv !== false) {
+            $hd = json_decode((string) $hv, true);
+            if (is_string($hd)) {
+                $hero = trim($hd);
+            }
+        }
+        require_once __DIR__ . '/hero-shell.php';
+        $out = inject_live_hero($out, $hero, $origin);
     }
 } catch (\Throwable $e) {
     $out = $html; // any hiccup → the untouched shell
