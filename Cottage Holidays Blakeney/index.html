@@ -992,10 +992,6 @@
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 7.5l15 9M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Cancellation policy</span><span class="settings-row-sub">The refund terms guests see, per cottage</span></span><span class="settings-row-chev">›</span>
                 </button>
-                <button class="settings-row" data-kw="revenue demand suggestions discounts gaps occupancy smart pricing" onclick="settingsOpen('pricingcoach')">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8"/><path d="M21 7v5h-5"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Pricing coach</span><span class="settings-row-sub">Smart pricing ideas from your bookings &amp; demand</span></span><span class="settings-row-chev">›</span>
-                </button>
             </div>
 
             <div class="settings-section-label" data-area="marketing">Website &amp; content</div>
@@ -1218,10 +1214,6 @@
             </div>
 
             <!-- Pricing coach (data-driven suggestions; apply is opt-in) -->
-            <div class="settings-sec" id="sec-pricingcoach" style="display:none;">
-                <div id="pricingcoach-body"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
-            </div>
-
             <!-- Reviews (moderation) -->
             <div class="settings-sec" id="sec-reviews" style="display:none;">
                 <div class="accounts-stat" style="max-width:640px;">
@@ -1404,6 +1396,12 @@
                     <span class="settings-row-main"><span class="settings-row-label">Expenses</span><span class="settings-row-sub">Receipts, categories &amp; recurring costs</span></span><span class="settings-row-chev">›</span>
                 </button>
             </div>
+            <div class="settings-group">
+                <button class="settings-row" onclick="accountsOpen('pricingcoach')">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8"/><path d="M21 7v5h-5"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Pricing coach</span><span class="settings-row-sub">Smart pricing ideas from your bookings &amp; demand</span></span><span class="settings-row-chev">›</span>
+                </button>
+            </div>
         </div>
 
         <!-- DRILL-DOWN PANEL -->
@@ -1436,6 +1434,11 @@
             <!-- Expenses manager -->
             <div class="accounts-sec" id="asec-expenses" style="display:none;">
                 <div id="expenses-body"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
+            </div>
+
+            <!-- Pricing coach (revenue tool) -->
+            <div class="accounts-sec" id="asec-pricingcoach" style="display:none;">
+                <div id="pricingcoach-body"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
             </div>
         </div>
     </main>
@@ -2063,7 +2066,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=159"></script>
+    <script defer src="app.js?v=160"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

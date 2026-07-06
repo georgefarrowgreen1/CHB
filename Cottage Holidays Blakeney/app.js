@@ -1637,7 +1637,7 @@ const ADMIN_AREAS = {
 // Which area each section belongs to (keeps the header/dock right on a deep-link).
 const SECTION_AREA = {
     enquiries: 'inbox', messages: 'inbox',
-    accom: 'cottages', seasongrid: 'cottages', calendar: 'cottages', cancel: 'cottages', pricingcoach: 'cottages',
+    accom: 'cottages', seasongrid: 'cottages', calendar: 'cottages', cancel: 'cottages',
     content: 'marketing', experiences: 'marketing', reviews: 'marketing', photos: 'marketing',
     guests: 'marketing', newsletter: 'marketing', waitlist: 'marketing', analytics: 'marketing',
     notify: 'settings', payments: 'settings', host: 'settings', security: 'settings',
@@ -1687,7 +1687,6 @@ const SETTINGS_TITLES = {
     calendar: 'Calendar sync',
     cancel: 'Cancellation policy',
     seasongrid: 'Seasonal rates — all cottages',
-    pricingcoach: 'Pricing coach',
     payments: 'Payments',
     guests: 'Guest accounts',
     analytics: 'Analytics',
@@ -2834,6 +2833,7 @@ const ACCOUNTS_TITLES = {
     recent: 'Recent payments',
     income: 'Income & tax',
     expenses: 'Expenses',
+    pricingcoach: 'Pricing coach',
 };
 let allExpenses = []; // cached expense rows (client buckets by tax year)
 async function loadExpenses() {
@@ -2884,6 +2884,8 @@ function accountsOpen(section) {
             renderAccounts();
         } else if (section === 'expenses') {
             renderExpenses();
+        } else if (section === 'pricingcoach') {
+            renderPricingCoach();
         }
     } catch (e) {}
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -18197,7 +18199,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'c4m8p1zt';
+    const BUILD = 'd7q3v9hb';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
