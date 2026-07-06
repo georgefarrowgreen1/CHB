@@ -8193,6 +8193,8 @@ async function loadRates() {
                 transactionPct: parseFloat(p.transaction_pct),
                 weekendPct: parseFloat(p.weekend_pct) || 0,
                 weekendDays: p.weekend_days || '5,6',
+                lastminPct: parseFloat(p.lastmin_pct) || 0,
+                lastminDays: parseInt(p.lastmin_days) || 0,
                 address: p.address || '',
                 // Booking rules aren't stored in the rates table; carry the
                 // defaults here so loadContent can layer any saved overrides on top.
@@ -8297,7 +8299,20 @@ function nightlyRateFor(dateStr, r, seasons) {
     return pct > 0 ? base * (1 + pct / 100) : base;
 }
 
-function priceBreakdown(propKey, adults, children, checkIn, checkOut, depositOverride) {
+// Last-minute discount multiplier: pct% off the nightly rental when check-in is
+// within `days` days of `today` (both 0 = off). MUST mirror last_minute_factor()
+// in pricing.php exactly (lockstep, guarded by the pricing tests).
+function lastMinuteFactor(checkIn, today, pct, days) {
+    pct = parseFloat(pct) || 0;
+    days = parseInt(days) || 0;
+    if (pct <= 0 || days <= 0) return 1;
+    const lead = Math.floor(
+        (new Date(checkIn + 'T00:00:00Z').getTime() - new Date(today + 'T00:00:00Z').getTime()) / 86400000,
+    );
+    if (lead < 0 || lead > days) return 1;
+    return 1 - Math.min(90, pct) / 100; // never discount more than 90%
+}
+function priceBreakdown(propKey, adults, children, checkIn, checkOut, depositOverride, today) {
     const r = propertyRates[propKey] ||
         defaultRates[propKey] || {
             coupleRate: 0,
@@ -8318,7 +8333,9 @@ function priceBreakdown(propKey, adults, children, checkIn, checkOut, depositOve
         const d = new Date(t + i * 86400000).toISOString().slice(0, 10);
         nightly += nightlyRateFor(d, r, seasons) + extrasPerNight;
     }
-    nightly = Math.round(nightly * 100) / 100;
+    // Last-minute discount on the nightly rental (never the held damages deposit).
+    const lmToday = today || new Date().toISOString().slice(0, 10);
+    nightly = Math.round(nightly * lastMinuteFactor(checkIn, lmToday, r.lastminPct, r.lastminDays) * 100) / 100;
     const perNight =
         nights > 0 ? Math.round((nightly / nights) * 100) / 100 : r.coupleRate + extrasPerNight;
     // Refundable damages deposit: held, NOT income. Per-booking override allowed,
@@ -10973,6 +10990,9 @@ function accomSectionHtml(k, sec) {
                     <div class="rate-field"><label>Standard damages deposit (£)</label><input type="number" min="0" step="5" value="${r.damagesDeposit}" onchange="updateRate('${k}','damagesDeposit',this.value)"></div>
                     <div class="rate-field"><label>Transaction fee (%)</label><input type="number" min="0" step="0.1" value="${r.transactionPct}" onchange="updateRate('${k}','transactionPct',this.value)"></div>
                     <div class="rate-field"><label>Weekend uplift (%) — Fri &amp; Sat <span style="opacity:0.7;">(0 = off)</span></label><input type="number" min="0" max="200" step="1" value="${r.weekendPct || 0}" onchange="updateRate('${k}','weekendPct',this.value)" placeholder="e.g. 20"></div>
+                    <div class="rate-field"><label>Last-minute discount (%) <span style="opacity:0.7;">(0 = off)</span></label><input type="number" min="0" max="90" step="1" value="${r.lastminPct || 0}" onchange="updateRate('${k}','lastminPct',this.value)" placeholder="e.g. 15"></div>
+                    <div class="rate-field"><label>…for stays starting within (days)</label><input type="number" min="0" max="60" step="1" value="${r.lastminDays || 0}" onchange="updateRate('${k}','lastminDays',this.value)" placeholder="e.g. 10"></div>
+                    <p style="font-size:0.72rem;color:var(--text-muted);margin:4px 0 8px;">Automatically takes the % off the nightly rate for any stay whose check-in is within this many days — a hands-off way to fill near-term gaps. Both 0 to turn off.</p>
                     <div class="rate-field"><label>Airbnb/OTA price for comparison (£/night, optional)</label><input type="number" min="0" step="1" value="${siteContent['ota-price-' + k] != null ? siteContent['ota-price-' + k] : ''}" placeholder="e.g. 165" onchange="saveLocalContent('ota-price-${k}', this.value)"></div>
                     <p style="font-size:0.72rem;color:var(--text-muted);margin:4px 0 0;">If set and higher than your couple rate, a "Save £X/night booking direct" badge shows on the cottage page.</p>`;
         case 'house':
@@ -13931,6 +13951,8 @@ const RATE_FIELD_MAP = {
     damagesDeposit: 'booking_fee',
     transactionPct: 'transaction_pct',
     weekendPct: 'weekend_pct',
+    lastminPct: 'lastmin_pct',
+    lastminDays: 'lastmin_days',
     address: 'address',
 };
 async function saveRateField(propKey, field, value) {
@@ -18109,7 +18131,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'z3k7m1qv';
+    const BUILD = 'b6f2h9wq';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

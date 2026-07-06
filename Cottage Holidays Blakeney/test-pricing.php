@@ -90,6 +90,26 @@ $rateWkEmpty = [
 $pwe = price_breakdown($rateWkEmpty, 2, 0, '2026-01-02', '2026-01-04', null, []); // Fri + Sat, but no weekend days set
 chk('weekend_days="" applies no uplift => 200', approxEq($pwe['nightly'], 200));
 
+// Last-minute discount — pure factor (mirrors lastMinuteFactor() in app.js).
+chk('lastmin: within window → 0.8 (20% off)', approxEq(last_minute_factor('2026-01-03', '2026-01-01', 20, 10), 0.8));
+chk('lastmin: outside window → 1.0', approxEq(last_minute_factor('2026-01-20', '2026-01-01', 20, 10), 1.0));
+chk('lastmin: past check-in → 1.0', approxEq(last_minute_factor('2025-12-31', '2026-01-01', 20, 10), 1.0));
+chk('lastmin: 0% → 1.0 (off)', approxEq(last_minute_factor('2026-01-03', '2026-01-01', 0, 10), 1.0));
+chk('lastmin: 0 days → 1.0 (off)', approxEq(last_minute_factor('2026-01-03', '2026-01-01', 20, 0), 1.0));
+chk('lastmin: capped at 90% off', approxEq(last_minute_factor('2026-01-03', '2026-01-01', 99, 10), 0.1));
+// Full breakdown with a last-minute stay (deterministic via explicit $today).
+$rateLM = [
+    'prop_key' => 'lm', 'couple_rate' => 100, 'extra_adult_rate' => 0, 'child_rate' => 0,
+    'booking_fee' => 0, 'transaction_pct' => 3, 'weekend_pct' => 0, 'weekend_days' => '',
+    'lastmin_pct' => 20, 'lastmin_days' => 10,
+];
+$plm = price_breakdown($rateLM, 2, 0, '2026-01-03', '2026-01-05', null, [], '2026-01-01'); // 2 nights, 2 days out
+chk('lastmin breakdown: nightly 200 → 160 (20% off)', approxEq($plm['nightly'], 160));
+chk('lastmin breakdown: txFee 3% of 160 = 4.80', approxEq($plm['txFee'], 4.8));
+chk('lastmin breakdown: total = 164.80', approxEq($plm['total'], 164.8));
+$plmOut = price_breakdown($rateLM, 2, 0, '2026-02-01', '2026-02-03', null, [], '2026-01-01'); // 31 days out — no discount
+chk('lastmin breakdown: outside window unchanged = 200', approxEq($plmOut['nightly'], 200));
+
 echo "\n";
 if ($fail) {
     fwrite(STDERR, "$fail pricing check(s) FAILED — JS and PHP pricing may have diverged.\n");

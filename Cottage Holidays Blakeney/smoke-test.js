@@ -121,6 +121,17 @@ else {
     // Empty weekendDays must mean "no weekend days" (parity with PHP), NOT a fallback to Fri/Sat.
     check('weekendDays="" applies no uplift (parity)', approx(nrf('2026-01-03', { coupleRate: 100, weekendPct: 20, weekendDays: '' }, []), 100));
 }
+// Last-minute discount factor — pure helper, MUST match last_minute_factor() in pricing.php.
+const lmf = get('lastMinuteFactor');
+if (typeof lmf !== 'function') { fail('lastMinuteFactor is not defined'); }
+else {
+    check('lastmin: within window → 0.8 (20% off)', approx(lmf('2026-01-03', '2026-01-01', 20, 10), 0.8));
+    check('lastmin: outside window → 1.0', approx(lmf('2026-01-20', '2026-01-01', 20, 10), 1.0));
+    check('lastmin: past check-in → 1.0', approx(lmf('2025-12-31', '2026-01-01', 20, 10), 1.0));
+    check('lastmin: 0% → 1.0 (off)', approx(lmf('2026-01-03', '2026-01-01', 0, 10), 1.0));
+    check('lastmin: 0 days → 1.0 (off)', approx(lmf('2026-01-03', '2026-01-01', 20, 0), 1.0));
+    check('lastmin: capped at 90% off', approx(lmf('2026-01-03', '2026-01-01', 99, 10), 0.1));
+}
 
 console.log('\n== 3. UK postcode validation ==');
 const hp = get('hasUkPostcode');
