@@ -549,7 +549,14 @@ switch ($action) {
     // features. Refuses on any non-staging host. Reuses the owner-email guest (so
     // Test-centre test bookings appear in My Stays), creating it if needed.
     case 'staging_guest_session':
-        if (!preg_match('/(^|\.)staging\./i', $_SERVER['HTTP_HOST'] ?? '')) {
+        // Gate on a SERVER-SIDE constant (defined only in the staging config.php),
+        // NOT the client-controlled Host header: otherwise a spoofed
+        // `Host: staging.…` sent to production could mint a credential-less guest
+        // session bound to the owner-email guest. Host check kept as belt-and-braces.
+        if (
+            !(defined('STAGING_SANDBOX') && STAGING_SANDBOX) ||
+            !preg_match('/(^|\.)staging\./i', $_SERVER['HTTP_HOST'] ?? '')
+        ) {
             json_out(['error' => 'Not available'], 403);
         }
         if (!empty($_SESSION['guest_id'])) {

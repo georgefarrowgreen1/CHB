@@ -433,6 +433,32 @@ function is_private_content_key($key)
         strpos($key, 'welcome-') === 0;
 }
 
+// Operational/internal content keys: written by server code (never the content
+// editor), and several carry owner-only data — owner IP + browser
+// (admin-last-login-fp), the last email correspondent (mailbox-poll), the
+// deployment fingerprint (config-fingerprint), alert recipients (notify-emails),
+// cron/digest watermarks, and the owner-only away-reply + 2FA toggles. The public
+// GET in content.php must never return these; admin sessions still get them (the
+// Settings UI reads chat-away-*/admin-2fa-enabled from siteContent).
+function is_internal_content_key($key)
+{
+    if (strpos($key, 'chat-away-') === 0) {
+        return true;
+    }
+    return in_array($key, [
+        'notify-emails',
+        'admin-2fa-enabled',
+        'admin-last-login-fp',
+        'mailbox-poll',
+        'config-fingerprint',
+        'anniv-sent',
+        'cron-last-run',
+        'owner-digest-last',
+        'analytics-digest-last',
+        'backup-last-week',
+    ], true);
+}
+
 // Read a single content value as a plain string (decrypting private keys), '' if unset.
 // Used server-side (e.g. tides.php reads the owner-pasted tide API key).
 function content_value($key)

@@ -82,3 +82,10 @@ define('PAYMENT_BALANCE_DAYS', 30);
 // every ~3 days), then stops a few days before arrival.
 define('PAYMENT_REMINDER_FROM_DAYS', 14);
 define('PAYMENT_REMINDER_STOP_DAYS', 3);
+
+// Staging sandbox marker. LEAVE THIS UNSET on production. Define it (true) ONLY
+// in the staging /staging/config.php: it unlocks the frictionless test-guest
+// session used by the staging Test centre. The gate is this server-side constant
+// — never the request Host header — so a spoofed `Host: staging.…` sent to
+// production can't mint a credential-less guest session.
+// define('STAGING_SANDBOX', true);

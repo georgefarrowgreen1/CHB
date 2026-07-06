@@ -20,6 +20,11 @@ if ($pc === '' || strlen($pc) > 10) {
     json_out(['ok' => false]);
 }
 
+// Public, unauthenticated outbound proxy — rate-limit per IP so it can't be
+// used as a free request amplifier against api.postcodes.io / our sockets.
+// Generous enough for a real user typing a postcode on the enquiry form.
+rate_limit('postcode', 60, 10);
+
 $ch = curl_init('https://api.postcodes.io/postcodes/' . rawurlencode($pc));
 curl_setopt_array($ch, [
     CURLOPT_RETURNTRANSFER => true,

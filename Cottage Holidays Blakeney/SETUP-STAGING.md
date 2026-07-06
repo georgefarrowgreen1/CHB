@@ -46,7 +46,15 @@ define('SQUARE_LOCATION_ID', 'L…sandbox location…');
 // --- Email: send only to you while testing (or turn off) ---
 define('MAIL_ENABLED', true);                 // or false to silence all email
 define('OWNER_NOTIFY_EMAIL', 'georgefarrowgreen@icloud.com');
+
+// --- Mark this as the staging sandbox (production MUST NOT set this) ---
+define('STAGING_SANDBOX', true);              // unlocks the Test-centre guest session
 ```
+
+> **Important:** `STAGING_SANDBOX` is the security boundary for the frictionless
+> test-guest login — it must be defined **only** here, never in the production
+> `config.php`. The endpoint refuses unless this constant is set, so a spoofed
+> `Host: staging.…` header sent to production can't unlock a guest session.
 
 The deploy never overwrites `config.php`, so staging keeps these settings forever.
 

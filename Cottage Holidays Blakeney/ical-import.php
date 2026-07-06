@@ -48,12 +48,41 @@ function ical_url_public($url)
         return false;
     }
     $host = $u['host'];
-    $ip = filter_var($host, FILTER_VALIDATE_IP) ? $host : gethostbyname($host);
-    if (
-        filter_var($ip, FILTER_VALIDATE_IP) &&
-        !filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)
-    ) {
-        return false; // resolves to a private/reserved address
+    // Collect EVERY address this host resolves to (IPv4 + IPv6). A bare IP is
+    // checked as-is. If nothing resolves, fail CLOSED — an unresolvable or
+    // IPv6-only name must never skip the private-range check (the old
+    // gethostbyname-only path let those through).
+    $ips = [];
+    if (filter_var($host, FILTER_VALIDATE_IP)) {
+        $ips[] = $host;
+    } else {
+        foreach ((array) @dns_get_record($host, DNS_A) as $r) {
+            if (!empty($r['ip'])) {
+                $ips[] = $r['ip'];
+            }
+        }
+        foreach ((array) @dns_get_record($host, DNS_AAAA) as $r) {
+            if (!empty($r['ipv6'])) {
+                $ips[] = $r['ipv6'];
+            }
+        }
+        if (!$ips) {
+            $g = gethostbyname($host); // fallback where dns_get_record is unavailable
+            if ($g !== $host) {
+                $ips[] = $g;
+            }
+        }
+    }
+    if (!$ips) {
+        return false; // could not resolve — refuse rather than trust cURL's own lookup
+    }
+    foreach ($ips as $ip) {
+        if (
+            !filter_var($ip, FILTER_VALIDATE_IP) ||
+            !filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)
+        ) {
+            return false; // unparseable, private, or reserved — refuse
+        }
     }
     return true;
 }
@@ -64,16 +93,25 @@ function fetch_url($url)
     if (!ical_url_public($url)) {
         return ['ok' => false, 'error' => 'blocked URL'];
     }
-    if (function_exists('curl_init')) {
-        $ch = curl_init($url);
+    if (!function_exists('curl_init')) {
+        $body = @file_get_contents($url);
+        if ($body === false) {
+            return ['ok' => false, 'error' => 'fetch failed'];
+        }
+        return ['ok' => true, 'body' => $body];
+    }
+    // Follow redirects MANUALLY so EVERY hop is re-validated against the SSRF
+    // allow-check. cURL's own FOLLOWLOCATION only validated the first URL — a
+    // public host answering "302 → http://169.254.169.254/…" would be followed
+    // to an internal target with no IP re-check.
+    $current = $url;
+    for ($hop = 0; ; $hop++) {
+        $ch = curl_init($current);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_MAXREDIRS => 3,
-            // Only ever speak HTTP(S) — and only follow redirects to HTTP(S), so a
-            // feed can't redirect us to file://, gopher://, etc.
+            CURLOPT_FOLLOWLOCATION => false, // we follow by hand, re-validating each hop
+            // Only ever speak HTTP(S), so a feed can't send us to file://, gopher://, etc.
             CURLOPT_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
-            CURLOPT_REDIR_PROTOCOLS => CURLPROTO_HTTP | CURLPROTO_HTTPS,
             CURLOPT_TIMEOUT => 20,
             CURLOPT_USERAGENT => 'CHB-Calendar-Sync/1.0',
             // Verify the platform's TLS certificate. These feeds gate the public
@@ -82,18 +120,25 @@ function fetch_url($url)
             CURLOPT_SSL_VERIFYHOST => 2,
         ]);
         $body = curl_exec($ch);
+        $code = (int) curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        $redir = (string) curl_getinfo($ch, CURLINFO_REDIRECT_URL); // absolute, relative Locations resolved
         $err = curl_error($ch);
         curl_close($ch);
         if ($body === false) {
             return ['ok' => false, 'error' => $err ?: 'fetch failed'];
         }
+        if ($code >= 300 && $code < 400 && $redir !== '') {
+            if ($hop >= 3) {
+                return ['ok' => false, 'error' => 'too many redirects'];
+            }
+            if (!ical_url_public($redir)) {
+                return ['ok' => false, 'error' => 'blocked redirect'];
+            }
+            $current = $redir;
+            continue;
+        }
         return ['ok' => true, 'body' => $body];
     }
-    $body = @file_get_contents($url);
-    if ($body === false) {
-        return ['ok' => false, 'error' => 'fetch failed'];
-    }
-    return ['ok' => true, 'body' => $body];
 }
 
 // Parse an iCal string into [['uid'=>, 'start'=>'YYYY-MM-DD', 'end'=>'YYYY-MM-DD'], ...]
@@ -179,7 +224,7 @@ function sync_property($prop)
 // ---- cron entry (no login; protected by secret) ----
 if (isset($_GET['cron'])) {
     header('Content-Type: text/plain; charset=utf-8');
-    if (!hash_equals(APP_SECRET, $_GET['cron'])) {
+    if (!hash_equals(APP_SECRET, (string) ($_GET['cron'] ?? ''))) {
         http_response_code(403);
         echo 'Forbidden';
         exit();
