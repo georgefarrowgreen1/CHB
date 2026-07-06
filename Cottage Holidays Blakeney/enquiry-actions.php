@@ -62,8 +62,8 @@ function enquiry_approve($id)
             'INSERT INTO bookings
         (prop_key,name,email,phone,address,postcode,check_in,check_out,check_in_time,check_out_time,adults,children,notes,payment,
          agreed_total,agreed_per_night,agreed_nights,agreed_nightly,agreed_booking_fee,agreed_txn_pct,agreed_txn_fee,agreed_on,
-         terms_accepted_at,terms_version)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+         terms_accepted_at,terms_version,sms_opt_in)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
         )
         ->execute([
             $e['prop_key'],
@@ -90,6 +90,7 @@ function enquiry_approve($id)
             $today,
             $e['terms_accepted_at'] ?? null,
             $e['terms_version'] ?? null,
+            $e['sms_opt_in'] ?? 0,
         ]);
     $bookingId = db()->lastInsertId();
     db()

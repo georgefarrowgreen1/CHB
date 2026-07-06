@@ -83,6 +83,15 @@ define('PAYMENT_BALANCE_DAYS', 30);
 define('PAYMENT_REMINDER_FROM_DAYS', 14);
 define('PAYMENT_REMINDER_STOP_DAYS', 3);
 
+// --- Optional transactional SMS (balance reminders + pre-arrival nudges) ---
+// OFF by default. Set SMS_ENABLED = true and fill the Twilio values to switch it
+// on; only guests who ticked "text me booking updates" on their enquiry are ever
+// texted, and only about their own booking. See SETUP-SMS.md.
+define('SMS_ENABLED', false);
+define('TWILIO_SID', '');     // Twilio Account SID (starts AC…)
+define('TWILIO_TOKEN', '');   // Twilio Auth Token — SECRET
+define('TWILIO_FROM', '');    // your Twilio number in E.164, e.g. +447700900000
+
 // Staging sandbox marker. LEAVE THIS UNSET on production. Define it (true) ONLY
 // in the staging /staging/config.php: it unlocks the frictionless test-guest
 // session used by the staging Test centre. The gate is this server-side constant

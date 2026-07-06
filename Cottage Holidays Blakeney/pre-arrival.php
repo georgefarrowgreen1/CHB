@@ -42,6 +42,18 @@ try {
 $results = [];
 foreach ($due as $b) {
     $res = send_arrival_for_booking($b);
+    // Optional SMS nudge to check the arrival email (never puts key codes in a
+    // text). No-op unless SMS is configured and the guest opted in.
+    try {
+        require_once __DIR__ . '/sms.php';
+        sms_notify_booking(
+            $b,
+            'Cottage Holidays Blakeney: your stay starts ' .
+                $b['check_in'] .
+                '. We\'ve emailed your arrival info, directions and key details — see you soon!',
+        );
+    } catch (\Throwable $e) {
+    }
     $results[] = [
         'booking' => (int) $b['id'],
         'guest' => $b['name'],
