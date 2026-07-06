@@ -4516,7 +4516,7 @@ body.owner-mode .chat-widget {
   background: rgba(255, 255, 255, 0.04);
   color: var(--text-muted);
   cursor: pointer;
-  transition: all 0.18s var(--fluid-bezier);
+  transition: background-color 0.18s var(--fluid-bezier), color 0.18s var(--fluid-bezier), border-color 0.18s var(--fluid-bezier);
 }
 .act-log-chip:hover {
   color: var(--text-light);
@@ -5037,7 +5037,7 @@ body.owner-mode .chat-widget {
   justify-content: center;
   border: 1.5px solid var(--glass-border);
   color: transparent;
-  transition: all 0.25s var(--fluid-bezier);
+  transition: background-color 0.25s var(--fluid-bezier), border-color 0.25s var(--fluid-bezier), color 0.25s var(--fluid-bezier);
 }
 .cancel-card-check .ic {
   width: 16px;
