@@ -1703,14 +1703,15 @@ function renderCottagesOverview() {
         const r = propertyRates[k] || defaultRates[k] || {};
         const pct = (occ[k] && occ[k].pct) || 0;
         const accent = meta.accent || 'var(--accent)';
+        // Stacked layout: name, then price, then occupancy — nothing sits on one
+        // squeezed row, so a long cottage name can't push the price off the card.
         return `<button class="glass-panel area-ov-card" onclick="settingsOpen('accom')" style="text-align:left;padding:15px 16px;cursor:pointer;">
-            <div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;">
-                <span style="font-weight:600;">${escapeHtml(meta.name || k)}</span>
-                <span style="font-size:0.78rem;color:var(--text-muted);white-space:nowrap;">from ${gbp(r.coupleRate || 0)}/night</span>
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
+                <span style="font-weight:600;line-height:1.25;">${escapeHtml(meta.name || k)}</span>
+                <span class="settings-row-chev" style="flex-shrink:0;">›</span>
             </div>
-            <div style="display:flex;justify-content:space-between;align-items:center;margin-top:10px;font-size:0.8rem;">
-                <span style="color:var(--text-muted);">${pct}% booked in ${monthName}</span><span class="settings-row-chev">›</span>
-            </div>
+            <div style="font-size:0.78rem;color:var(--text-muted);margin-top:3px;">from £${Math.round(r.coupleRate || 0)}/night</div>
+            <div style="font-size:0.8rem;color:var(--text-muted);margin-top:10px;">${pct}% booked in ${monthName}</div>
             <div style="height:6px;border-radius:999px;background:rgba(128,128,128,0.18);margin-top:8px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:${accent};border-radius:999px;"></div></div>
         </button>`;
     };
@@ -1786,14 +1787,35 @@ async function renderInboxScreen() {
         await loadAdminMessages();
     } catch (e) {}
     try {
-        renderChatAnswersEditor();
-    } catch (e) {}
-    try {
-        renderChatAwayEditor();
+        inboxSubClose(); // always land on the inbox itself, not a sub-folder
     } catch (e) {}
     try {
         refreshModerationCounts();
     } catch (e) {}
+}
+// Chat automation drill-downs (instant answers / away reply) live in their own
+// sub-folders off the Inbox rather than sprawling down the messages tab.
+function inboxSub(which) {
+    const main = document.getElementById('inbox-main');
+    const ans = document.getElementById('inbox-sub-answers');
+    const away = document.getElementById('inbox-sub-away');
+    if (main) main.style.display = 'none';
+    if (ans) ans.style.display = which === 'answers' ? '' : 'none';
+    if (away) away.style.display = which === 'away' ? '' : 'none';
+    try {
+        if (which === 'answers') renderChatAnswersEditor();
+        else renderChatAwayEditor();
+    } catch (e) {}
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+function inboxSubClose() {
+    const ans = document.getElementById('inbox-sub-answers');
+    const away = document.getElementById('inbox-sub-away');
+    if (ans) ans.style.display = 'none';
+    if (away) away.style.display = 'none';
+    const main = document.getElementById('inbox-main');
+    if (main) main.style.display = '';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 // ---- Settings router: Apple-style index → drill-down sub-pages ----
@@ -18336,7 +18358,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'h5r9t3xw';
+    const BUILD = 'j2n6c8vq';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
