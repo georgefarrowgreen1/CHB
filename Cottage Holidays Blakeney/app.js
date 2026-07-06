@@ -3729,7 +3729,7 @@ async function cancelBooking(bookingId) {
     const propKey = loc ? loc.propKey : '21a';
     const ps = paymentSummary(propKey, booking);
     const entered = await glassPrompt(
-        `Cancel this booking. Refund amount (£) to the guest — 0 for none. Received so far: ${gbp(ps.deposit)}:`,
+        `Cancel this booking. Rental refund (£) to the guest — 0 for none. Received so far: ${gbp(ps.deposit)}. (Any refundable damage deposit is returned automatically — don't add it here.)`,
         String(ps.deposit || 0),
     );
     if (entered === null) return;
@@ -3755,7 +3755,8 @@ async function cancelBooking(bookingId) {
         });
         toast(
             'Booking cancelled.' +
-                (r.manual_refund ? " Couldn't auto-refund — please refund manually." : ''),
+                (r.deposit_refunded > 0 ? ` Damage deposit of ${gbp(r.deposit_refunded)} refunded automatically.` : '') +
+                (r.manual_refund ? " Couldn't auto-refund the rental — please refund that amount manually (the deposit is already done)." : ''),
         );
         try {
             closeDetailsModal();
@@ -11497,22 +11498,12 @@ function allReviews() {
     return guest.concat(curated);
 }
 function renderReviews() {
+    // The homepage/per-cottage review SECTIONS were replaced by renderGuestWords()
+    // and #prop-reviews; the only live job left here is refreshing the cottage-card
+    // star ratings (social proof), so callers keep invoking this when reviews change.
     try {
         renderCardRatings();
-    } catch (e) {} // social proof on the cottage cards (runs even with no reviews)
-    const sec = document.getElementById('reviews-section');
-    const list = document.getElementById('reviews-list');
-    if (!sec || !list) return;
-    const reviews = allReviews();
-    if (!reviews.length) {
-        sec.style.display = 'none';
-        return;
-    }
-    // Home page shows only the 3 latest
-    list.innerHTML = reviews.slice(0, 3).map(reviewCardHtml).join('');
-    const moreWrap = document.getElementById('reviews-more-wrap');
-    if (moreWrap) moreWrap.style.display = reviews.length > 3 ? '' : 'none';
-    sec.style.display = '';
+    } catch (e) {}
 }
 function openAllReviews(propKey) {
     const m = document.getElementById('reviews-modal');
@@ -13704,31 +13695,6 @@ function bulkImportReviews() {
     );
     wrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
-// Quick-add helper: build a review from the compact form, drop it into the
-// editor as a new row, then clear the form ready for the next one.
-function quickAddReview() {
-    const text = (document.getElementById('qa-text').value || '').trim();
-    if (!text) {
-        glassAlert('Please paste the review text first.');
-        return;
-    }
-    const r = {
-        name: (document.getElementById('qa-name').value || '').trim(),
-        stars: parseInt(document.getElementById('qa-stars').value) || 5,
-        prop: document.getElementById('qa-prop').value || '',
-        source: document.getElementById('qa-source').value || '',
-        text,
-    };
-    const wrap = document.getElementById('reviews-editor');
-    if (wrap) wrap.insertAdjacentHTML('beforeend', reviewRowHtml(r));
-    // Clear the form for the next entry
-    document.getElementById('qa-name').value = '';
-    document.getElementById('qa-stars').value = '5';
-    document.getElementById('qa-prop').value = '';
-    document.getElementById('qa-source').value = '';
-    document.getElementById('qa-text').value = '';
-    document.getElementById('qa-name').focus();
-}
 async function saveReviews() {
     const wrap = document.getElementById('reviews-editor');
     if (!wrap) return;
@@ -15252,24 +15218,10 @@ function hsRestore() {
         disp.innerText = heroSearch.checkout
             ? `${dpPretty(heroSearch.checkin)} → ${dpPretty(heroSearch.checkout)}`
             : `${dpPretty(heroSearch.checkin)} — pick check-out`;
-    if (heroSearch.cottage && heroSearch.cottage !== 'any') {
-        const opt = document.querySelector(
-            '#hs-cottage-menu .hs-opt[data-key="' + heroSearch.cottage + '"]',
-        );
-        // The saved cottage may have since been removed/archived — restoring it
-        // would silently filter every search to zero. Fall back to "any" instead.
-        if (!opt) {
-            heroSearch.cottage = 'any';
-        } else {
-            const lbl = document.getElementById('hs-cottage-label');
-            if (lbl) lbl.innerText = opt.textContent.trim();
-            document
-                .querySelectorAll('#hs-cottage-menu .hs-opt')
-                .forEach((o) =>
-                    o.classList.toggle('is-sel', o.getAttribute('data-key') === heroSearch.cottage),
-                );
-        }
-    }
+    // The hero search no longer has a per-cottage filter (the dropdown was removed),
+    // so any saved cottage selection is normalised back to "any" — restoring a stale
+    // (possibly archived) key would otherwise silently filter every search to zero.
+    heroSearch.cottage = 'any';
 }
 function openHeroDatePicker() {
     dpMode = 'search';
@@ -15279,40 +15231,6 @@ function openHeroDatePicker() {
     dpState.view = new Date(seed.getFullYear(), seed.getMonth(), 1);
     renderDatePicker();
     document.getElementById('date-picker').classList.add('open');
-}
-function hsSetCottage(v) {
-    heroSearch.cottage = v;
-    hsMaybeRerun();
-}
-// Custom (on-brand) cottage dropdown — replaces the native <select> menu.
-function toggleCottageMenu(e) {
-    if (e) e.stopPropagation();
-    const wrap = document.getElementById('hs-cottage-wrap');
-    if (!wrap) return;
-    const open = wrap.classList.toggle('open');
-    const btn = document.getElementById('hs-cottage-btn');
-    if (btn) btn.setAttribute('aria-expanded', open ? 'true' : 'false');
-    if (open) setTimeout(() => document.addEventListener('click', closeCottageMenu), 0);
-    else document.removeEventListener('click', closeCottageMenu);
-}
-function closeCottageMenu(e) {
-    const wrap = document.getElementById('hs-cottage-wrap');
-    if (!wrap) return;
-    if (e && wrap.contains(e.target)) return; // clicks inside are handled by the options
-    wrap.classList.remove('open');
-    const btn = document.getElementById('hs-cottage-btn');
-    if (btn) btn.setAttribute('aria-expanded', 'false');
-    document.removeEventListener('click', closeCottageMenu);
-}
-function chooseCottage(key, label) {
-    heroSearch.cottage = key;
-    const lbl = document.getElementById('hs-cottage-label');
-    if (lbl) lbl.innerText = label;
-    document
-        .querySelectorAll('#hs-cottage-menu .hs-opt')
-        .forEach((o) => o.classList.toggle('is-sel', o.getAttribute('data-key') === key));
-    closeCottageMenu();
-    hsMaybeRerun();
 }
 function hsSetFlex(n) {
     heroSearch.flex = n;
@@ -17476,8 +17394,8 @@ function renderInbox() {
                         <span class="prop-tag tag-${e.propKey}">${escapeHtml(propName)}</span>
                         <h3>${escapeHtml(e.name)}${repeat}</h3>
                         <div class="enquiry-meta">
-                            <strong>${e.checkIn}</strong> → <strong>${e.checkOut}</strong><br>
-                            Party: ${escapeHtml(e.guests)} · Received ${e.received}
+                            <strong>${escapeHtml(e.checkIn)}</strong> → <strong>${escapeHtml(e.checkOut)}</strong><br>
+                            Party: ${escapeHtml(e.guests)} · Received ${escapeHtml(e.received)}
                             ${e.email ? '<br><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/></svg> ' + escapeHtml(e.email) : ''}
                             ${e.phone ? '<br><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.6 3.5l2.1.4 1 3-1.5 1.4a12 12 0 0 0 5 5l1.4-1.5 3 1 .4 2.1a2 2 0 0 1-2 2.3A15.5 15.5 0 0 1 4.3 5.5a2 2 0 0 1 2.3-2z"/></svg>' + escapeHtml(e.phone) : ''}
                             ${e.address || e.postcode ? '<br><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-7 8 7"/><path d="M6 10v9h12v-9"/></svg> <span style="white-space:pre-wrap;">' + escapeHtml([e.address, e.postcode].filter(Boolean).join(', ')) + '</span>' : ''}
@@ -18436,7 +18354,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'v4h6p8dz';
+    const BUILD = 'w5j2n7fk';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

@@ -22,8 +22,16 @@ if ($provided === '' && !empty($_SERVER['PATH_INFO'])) {
     $provided = ltrim((string) $_SERVER['PATH_INFO'], '/');
 }
 $isCron = $provided !== '' && hash_equals(APP_SECRET, $provided);
-if (!$isCron && empty($_SESSION['admin_id'])) {
-    json_out(['error' => 'Not authorised'], 401);
+if (!$isCron) {
+    // A manual run by a signed-in admin must be a POST so require_admin() enforces
+    // the CSRF token — otherwise a GET <img>/link in the owner's browser could fire
+    // the whole automation (guest emails and all) via their session. The automated
+    // loopback cron authorises with the secret above and is unaffected; an owner can
+    // still run it in a browser via cron.php?cron=SECRET.
+    require_admin();
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+        json_out(['error' => 'Run this from the back office, or use the cron URL with your secret.'], 405);
+    }
 }
 
 // Build an absolute base URL to this folder from the current request, so the
@@ -116,7 +124,10 @@ if ($isCron) {
                 break;
             }
         }
-        $hist = json_decode(content_value('uptime-history') ?: '[]', true);
+        // Stores a date→state MAP (JSON object) — must be read with content_json();
+        // content_value() returns '' for a non-scalar, which would reset the history
+        // every run and leave /status showing only the current day.
+        $hist = content_json('uptime-history', []);
         if (!is_array($hist)) {
             $hist = [];
         }

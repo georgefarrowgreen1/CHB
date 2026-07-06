@@ -1061,6 +1061,19 @@ function send_payment_request($b, $payUrl)
     $prop = $b['prop_name'] ?: 'your cottage';
     $what = $b['kind'] === 'balance' ? 'remaining balance' : 'deposit';
 
+    // When the refundable deposit rides this payment (first payment), state the true
+    // amount the card will be charged today so the emailed figure matches checkout.
+    $damages = round((float) ($b['damages'] ?? 0), 2);
+    $chargedToday = round((float) $b['amount'] + $damages, 2);
+    $depositLineText =
+        $damages > 0
+            ? "\n\nThis payment also includes a refundable security deposit of " .
+                $money($damages) .
+                ' (returned after checkout), so ' .
+                $money($chargedToday) .
+                ' will be charged to your card today.'
+            : '';
+
     $subject = "Pay your {$what} — {$prop}";
     $text =
         "Hello {$name},\n\n" .
@@ -1069,6 +1082,7 @@ function send_payment_request($b, $payUrl)
         $money($b['amount']) .
         " securely by card here:\n" .
         $payUrl .
+        $depositLineText .
         "\n\n" .
         'The full stay total is ' .
         $money($b['total']) .
@@ -1089,6 +1103,16 @@ function send_payment_request($b, $payUrl)
                 ').',
         ) .
         email_amount(ucfirst($what) . ' due', $money($b['amount']), 'of ' . $money($b['total']) . ' total') .
+        ($damages > 0
+            ? email_p(
+                'This payment also includes a <strong>' .
+                    $money($damages) .
+                    '</strong> refundable security deposit (returned after checkout), so <strong>' .
+                    $money($chargedToday) .
+                    '</strong> will be charged to your card today.',
+                true,
+            )
+            : '') .
         email_btn($payUrl, 'Pay securely by card') .
         email_p('Powered by Square — we never see or store your card number.', true) .
         email_p('Any questions? Just reply to this email.<br>Cottage Holidays Blakeney', true);
@@ -1116,6 +1140,18 @@ function request_booking_payment($b, $kind, $reminder = false)
     }
     $payUrl = site_base_url() . 'index.html?pay=' . pay_token($b['id']) . '&b=' . (int) $b['id'] . '&k=' . $kind;
     $rate = get_rate($b['prop_key']);
+    // The refundable damage deposit is CHARGED with the guest's first rental payment
+    // (only while hold_status is 'none') and returned after checkout. Mirror pay.php's
+    // derivation so the email states the full amount the card will be charged, not
+    // just the rental portion. Zero once the deposit has already ridden a payment.
+    $damages = 0.0;
+    if (($b['hold_status'] ?? 'none') === 'none') {
+        $damages = round((float) ($b['agreed_booking_fee'] ?? 0), 2);
+        if ($damages <= 0 && $rate) {
+            $pp = price_breakdown($rate, $b['adults'], $b['children'], $b['check_in'], $b['check_out']);
+            $damages = round((float) ($pp['damagesDeposit'] ?? 0), 2);
+        }
+    }
     $payload = [
         'name' => $b['name'],
         'email' => $b['email'],
@@ -1126,6 +1162,7 @@ function request_booking_payment($b, $kind, $reminder = false)
         'kind' => $kind,
         'amount' => $amt['due'],
         'total' => $amt['total'],
+        'damages' => $damages,
     ];
     $res = $reminder ? send_payment_reminder($payload, $payUrl) : send_payment_request($payload, $payUrl);
     $res['amount'] = $amt['due'];
