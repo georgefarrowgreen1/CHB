@@ -191,6 +191,11 @@ function sync_property($prop)
 {
     $feeds = get_feeds($prop);
     $summary = [];
+    // Blocks that existed BEFORE this refresh. When an Airbnb/Vrbo reservation is
+    // cancelled its block simply vanishes from the feed, so we diff old vs. new to
+    // spot the freed dates and notify the waitlist — an external cancellation
+    // becomes a direct-booking opportunity.
+    $oldRanges = [];
     foreach ($feeds as $f) {
         $source = preg_replace('/[^a-z0-9_]/i', '', $f['source'] ?? 'feed');
         $url = trim($f['url'] ?? '');
@@ -203,6 +208,16 @@ function sync_property($prop)
             continue;
         }
         $events = parse_ical($res['body']);
+        // Snapshot this source's current blocks (only for feeds we actually refresh,
+        // so a failed fetch above never looks like a cancellation).
+        try {
+            $os = db()->prepare('SELECT check_in, check_out FROM ical_blocks WHERE prop_key = ? AND source = ?');
+            $os->execute([$prop, $source]);
+            foreach ($os->fetchAll() as $ob) {
+                $oldRanges[] = [$ob['check_in'], $ob['check_out']];
+            }
+        } catch (\Throwable $e) {
+        }
         // Replace this source's blocks for this property (clean refresh).
         db()
             ->prepare('DELETE FROM ical_blocks WHERE prop_key = ? AND source = ?')
@@ -217,6 +232,30 @@ function sync_property($prop)
             $count++;
         }
         $summary[] = ['source' => $source, 'ok' => true, 'events' => $count];
+    }
+    // After every feed is rebuilt, notify the waitlist for any previously-blocked
+    // range that is now genuinely free (dates_clash re-checks bookings + all feeds,
+    // so a date still held elsewhere won't false-notify). Only future ranges.
+    if ($oldRanges) {
+        try {
+            require_once __DIR__ . '/waitlist.php';
+            $today = date('Y-m-d');
+            $seen = [];
+            foreach ($oldRanges as [$ci, $co]) {
+                if (!$ci || !$co || $co <= $today) {
+                    continue;
+                }
+                $key = $ci . '|' . $co;
+                if (isset($seen[$key])) {
+                    continue;
+                }
+                $seen[$key] = 1;
+                if (!dates_clash($prop, $ci, $co)) {
+                    waitlist_notify_freed($prop, $ci, $co);
+                }
+            }
+        } catch (\Throwable $e) {
+        }
     }
     return $summary;
 }
