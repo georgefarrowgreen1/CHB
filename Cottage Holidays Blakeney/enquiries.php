@@ -32,6 +32,12 @@ if ($action === 'submit') {
     if ($name === '' || !$checkIn || !$checkOut) {
         json_out(['error' => 'Name and both dates are required'], 400);
     }
+    // Reject malformed dates up front — otherwise a non-ISO value slips past the
+    // string comparison below and reaches strtotime(), yielding a nonsense night
+    // count. A clean 400 is clearer than odd downstream behaviour.
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $checkIn) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $checkOut)) {
+        json_out(['error' => 'Please provide valid dates (YYYY-MM-DD).'], 400);
+    }
     if ($checkOut <= $checkIn) {
         json_out(['error' => 'Check-out must be after check-in'], 400);
     }

@@ -51,6 +51,17 @@ Single-operator holiday-let PWA. No framework, no build step.
 - Routing is `nav()` toggling `.page-view.active`; per-view init lives in `nav()`
   (e.g. `view-experiences` → `renderExperiencesView()`). No router lib.
 
+**Back-office IA** — the admin dock (`body.owner-mode`) has 6 buttons, each a task
+area, not a settings dump: **Today** (`view-backoffice`, `dock-badge-enquiries` pip),
+**Inbox** (`openInbox()` → `view-inbox`; `inboxSub()` sub-folders via `INBOX_SUBS`;
+`dock-badge-inbox` pip), **Money** (`openAccounts()` → `view-accounts`; `accountsOpen(id)`
+→ `#asec-<id>`, incl. the pricing coach), and **Cottages / Marketing / Settings**
+(`openArea('cottages'|'marketing'|'settings')` → `view-settings`). `view-settings` is a
+single index filtered per area by `applyAreaFilter()` (`SECTION_AREA`/`ADMIN_AREAS`); a
+row opens via `settingsOpen(id)` → `#sec-<id>`. `ADMIN_VIEWS` is the canonical
+admin-screen list (used by `nav()`/`forceAdminLogout()`) — keep it complete. The two
+dock pips both show `enquiries.length` and are synced from `refreshInboxBadge()`.
+
 **Backend** — flat PHP in the same folder, each a small JSON endpoint. Helpers in
 `db.php`: `db()` (lazy PDO), `body()`, `json_out()`, `clean()`, `require_admin()`,
 `require_guest()`, `site_base_url()`, `content_value()`. Key endpoints: `auth.php`

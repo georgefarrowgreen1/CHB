@@ -87,12 +87,12 @@ RewriteRule (?i)^uploads/.*\.(php|php[0-9]?|phtml|phps|pht|pl|py|cgi|sh|lua|asp|
 
 # ---- Protect sensitive files from being downloaded as text ----
 # config.php holds your DB password; schema.sql and the .md guide shouldn't be public.
-<FilesMatch "(^config\.php$|\.sql$|\.md$)">
+<FilesMatch "(^config\.php$|\.sql(\.gz)?$|\.md$)">
     Require all denied
 </FilesMatch>
 
 # Fallback for older Apache (2.2) where "Require" isn't available
-<FilesMatch "(^config\.php$|\.sql$|\.md$)">
+<FilesMatch "(^config\.php$|\.sql(\.gz)?$|\.md$)">
     Order allow,deny
     Deny from all
 </FilesMatch>
