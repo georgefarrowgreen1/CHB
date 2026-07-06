@@ -4471,6 +4471,39 @@ body.owner-mode .chat-widget {
   border-radius: 5px;
   font-size: 0.9em;
 }
+/* Always-on automation health pill (dashboard) — green healthy / amber quiet. */
+.cron-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 18px;
+  padding: 7px 14px;
+  border-radius: var(--r-pill);
+  border: 1px solid transparent;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 550;
+  cursor: pointer;
+  background: rgba(76, 175, 80, 0.12);
+  color: var(--ok);
+  border-color: rgba(76, 175, 80, 0.3);
+  transition: filter var(--fluid-bezier, ease) 0.2s;
+}
+.cron-pill:hover {
+  filter: brightness(1.06);
+}
+.cron-pill.warn {
+  background: rgba(255, 167, 38, 0.14);
+  color: var(--warn);
+  border-color: rgba(255, 167, 38, 0.35);
+}
+.cron-pill-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: currentColor;
+  flex-shrink: 0;
+}
 /* Recent-activity feed rows (dashboard) */
 .act-row {
   display: flex;
