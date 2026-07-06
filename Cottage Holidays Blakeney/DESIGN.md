@@ -39,6 +39,7 @@ The three signature moves:
 | --- | --- |
 | Glass material | `--glass-blur`, `--glass-filter` (blur + saturate + brightness), `--glass-rim` (specular edge) |
 | Radius | `--r-sm` `--r-md` `--r-lg` `--r-panel` `--r-pill` |
+| Spacing | `--space-1`…`--space-6` (8/16/24/40/64/96) — section padding, stack gaps, insets |
 | Type scale | `--fs-h1` `--fs-h2` `--fs-h3` (serif via `--font-serif`) |
 | Accent | `--accent` `--accent-soft` |
 | Status | `--ok` / `--ok-text`, `--warn` / `--warn-text`, `--danger` (`-text` tints for text on dark glass) |
