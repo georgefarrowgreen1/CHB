@@ -2010,10 +2010,19 @@
                 </span>
             </button>
         </div>
-        <!-- Quick links: navigation + legal, one slim row. -->
+        <!-- Quick links: navigation + legal, one slim row. Home / cottages /
+             experiences carry REAL hrefs (crawlable internal links to the
+             server-rendered pages) but click through in-app; the cottage links
+             are rebuilt from the live list by renderFooterCottages() — the static
+             three are the no-JS fallback. -->
         <nav class="footer-links" aria-label="Footer">
-            <a onclick="nav('view-main')">Home</a>
-            <a onclick="nav('view-cottages')">Our cottages</a>
+            <a href="/" onclick="return routeLink(event,'view-main')">Home</a>
+            <span id="footer-cottage-links" style="display:contents">
+                <a href="/cottages/21a-westgate" onclick="return cottageLink(event,'21a')">21A Westgate Street</a>
+                <a href="/cottages/jollyboat" onclick="return cottageLink(event,'jollyboat')">Jollyboat</a>
+                <a href="/cottages/pimpernel" onclick="return cottageLink(event,'pimpernel')">Pimpernel</a>
+            </span>
+            <a href="/experiences" onclick="return routeLink(event,'view-experiences')">Things to do</a>
             <a onclick="openAllReviews()">Guest reviews</a>
             <a onclick="openTermsModal(event)">Booking terms</a>
             <a onclick="nav('view-privacy')">Privacy</a>
@@ -2037,7 +2046,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=152"></script>
+    <script defer src="app.js?v=153"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
