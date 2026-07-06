@@ -63,14 +63,32 @@ function nightly_rate_for($date, $rate, $seasons)
     return $pct > 0 ? $base * (1 + $pct / 100) : $base;
 }
 
+// Last-minute discount multiplier: PCT% off the nightly rental when check-in is
+// within DAYS days of TODAY (both 0 = off). Returns 1.0 (no discount) otherwise.
+// MUST mirror lastMinuteFactor() in app.js exactly (lockstep, guarded by tests).
+function last_minute_factor($checkIn, $today, $pct, $days)
+{
+    $pct = (float) $pct;
+    $days = (int) $days;
+    if ($pct <= 0 || $days <= 0) {
+        return 1.0;
+    }
+    $lead = (int) floor((strtotime($checkIn) - strtotime($today)) / 86400);
+    if ($lead < 0 || $lead > $days) {
+        return 1.0;
+    }
+    return 1 - min(90.0, $pct) / 100; // never discount more than 90%
+}
+
 // $rate is a properties row. Returns the full breakdown.
 // $depositOverride: optional per-booking damages deposit (null = use property standard).
 // $seasons: optional pre-fetched seasonal rates (null = fetch from DB).
 // The refundable damages deposit is HELD, not income: it is excluded from the
 // rental subtotal and from the transaction-fee calculation, but added to the
 // total the guest pays upfront.
-function price_breakdown($rate, $adults, $children, $checkIn, $checkOut, $depositOverride = null, $seasons = null)
+function price_breakdown($rate, $adults, $children, $checkIn, $checkOut, $depositOverride = null, $seasons = null, $today = null)
 {
+    $today = $today ?: date('Y-m-d');
     $nights = nights_between($checkIn, $checkOut);
     $extraAdults = max(0, (int) $adults - 2);
     $extrasPerNight = $extraAdults * (float) $rate['extra_adult_rate'] + (int) $children * (float) $rate['child_rate'];
@@ -85,7 +103,11 @@ function price_breakdown($rate, $adults, $children, $checkIn, $checkOut, $deposi
         $d = date('Y-m-d', strtotime($checkIn . ' +' . $i . ' days'));
         $nightly += nightly_rate_for($d, $rate, $seasons) + $extrasPerNight;
     }
-    $nightly = round($nightly, 2);
+    // Last-minute discount on the nightly rental (never the held damages deposit).
+    $nightly = round(
+        $nightly * last_minute_factor($checkIn, $today, $rate['lastmin_pct'] ?? 0, $rate['lastmin_days'] ?? 0),
+        2,
+    );
     // Average per-night figure (for display and the agreed snapshot).
     $perNight = $nights > 0 ? round($nightly / $nights, 2) : (float) $rate['couple_rate'] + $extrasPerNight;
     // Damages deposit: per-booking override if given, else the property standard

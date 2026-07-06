@@ -187,8 +187,8 @@ if (($in['action'] ?? '') === 'save') {
         json_out(['error' => 'Unknown property'], 400);
     }
 
-    $numeric = ['couple_rate', 'extra_adult_rate', 'child_rate', 'booking_fee', 'transaction_pct', 'weekend_pct'];
-    $ints = ['sort_order', 'max_adults', 'max_children', 'max_total'];
+    $numeric = ['couple_rate', 'extra_adult_rate', 'child_rate', 'booking_fee', 'transaction_pct', 'weekend_pct', 'lastmin_pct'];
+    $ints = ['sort_order', 'max_adults', 'max_children', 'max_total', 'lastmin_days'];
     $text = ['address', 'name', 'slug', 'accent', 'weekend_days'];
     $set = [];
     $vals = [];
