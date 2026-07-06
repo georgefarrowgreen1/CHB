@@ -268,7 +268,7 @@ if (isset($_GET['cron'])) {
         echo 'Forbidden';
         exit();
     }
-    $props = db()->query('SELECT prop_key FROM properties')->fetchAll(PDO::FETCH_COLUMN);
+    $props = db()->query('SELECT prop_key FROM properties WHERE archived_at IS NULL')->fetchAll(PDO::FETCH_COLUMN);
     foreach ($props as $p) {
         sync_property($p);
     }
@@ -312,7 +312,7 @@ if ($action === 'sync') {
         log_activity('calendar', 'ical.sync', 'External calendar refreshed', ['prop_key' => $prop, 'entity' => 'ical']);
         json_out(['ok' => true, 'result' => $result]);
     }
-    $props = db()->query('SELECT prop_key FROM properties')->fetchAll(PDO::FETCH_COLUMN);
+    $props = db()->query('SELECT prop_key FROM properties WHERE archived_at IS NULL')->fetchAll(PDO::FETCH_COLUMN);
     $all = [];
     foreach ($props as $p) {
         $all[$p] = sync_property($p);
@@ -373,7 +373,7 @@ if ($action === 'list') {
     $s = db()->prepare('SELECT COUNT(*) c FROM ical_blocks WHERE prop_key = ?');
     $s->execute([$prop]);
     // Build the absolute export URL for this property's feed.
-    $scheme = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off' ? 'https' : 'http';
+    $scheme = request_is_https() ? 'https' : 'http'; // proxy-aware (IONOS terminates TLS upstream)
     $host = $_SERVER['HTTP_HOST'] ?? '';
     $dir = rtrim(dirname($_SERVER['SCRIPT_NAME'] ?? ''), '/');
     $exportUrl = $scheme . '://' . $host . $dir . '/ical-export.php?prop=' . $prop . '&token=' . ical_token($prop);

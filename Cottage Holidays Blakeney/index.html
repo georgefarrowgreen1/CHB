@@ -1855,7 +1855,7 @@
 
     <!-- GOOD TO KNOW (FAQ) MODAL — top-level so it's never hidden by a page view -->
     <!-- BOOKING DETAILS MODAL (opens when a calendar booking is clicked) -->
-    <div id="details-modal" class="reviews-modal">
+    <div id="details-modal" class="reviews-modal" role="dialog" aria-modal="true" aria-labelledby="details-modal-title">
         <div class="reviews-modal-box glass-panel" style="max-width:620px;">
             <div class="reviews-modal-head">
                 <h2 class="section-title" id="details-modal-title" style="margin:0;font-size:1.5rem;">Guest Details</h2>
@@ -1865,7 +1865,7 @@
         </div>
     </div>
 
-    <div id="faq-modal" class="reviews-modal">
+    <div id="faq-modal" class="reviews-modal" role="dialog" aria-modal="true" aria-labelledby="faq-modal-title">
         <div class="reviews-modal-box glass-panel">
             <div class="reviews-modal-head">
                 <h2 class="section-title" id="faq-modal-title" style="margin:0;font-size:1.5rem;">Good to Know</h2>
@@ -2098,7 +2098,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=164"></script>
+    <script defer src="app.js?v=165"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

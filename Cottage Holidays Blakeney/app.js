@@ -351,9 +351,8 @@ function forceAdminLogout() {
     } catch (e) {}
     // If they're sitting on an admin-only screen, return them to the public site
     // so they're not stuck on a dead dashboard.
-    const adminViews = ['view-backoffice', 'view-settings', 'view-accounts'];
     const active = (document.querySelector('.page-view.active') || {}).id;
-    if (adminViews.includes(active)) {
+    if (ADMIN_VIEWS.includes(active)) {
         try {
             nav('view-main');
         } catch (e) {}
@@ -1648,8 +1647,16 @@ const SECTION_AREA = {
 };
 let currentAdminArea = 'settings';
 async function openArea(area) {
+    if (!isAuthenticated) {
+        tryAccessBackOffice();
+        return;
+    }
     currentAdminArea = ADMIN_AREAS[area] ? area : 'settings';
     await openSettings(); // opens view-settings + shows the index
+    // Drop any leftover search text so the new area opens on its full index, not
+    // filtered by a query the owner typed in the area they just left.
+    const sBox = document.getElementById('settings-search');
+    if (sBox) sBox.value = '';
     applyAreaFilter();
     syncDockArea();
 }
@@ -1750,7 +1757,8 @@ async function renderMarketingOverview() {
     }
     try {
         const r = await apiGet('newsletter.php');
-        set('subs', r.count != null ? r.count : (r.subscribers || []).length);
+        // newsletter.php returns {active,total,recent} — use the active count.
+        set('subs', r.active != null ? r.active : r.total != null ? r.total : '—');
     } catch (e) {
         set('subs', '—');
     }
@@ -1907,9 +1915,12 @@ function settingsFilter(q) {
 function settingsSearchKey(ev) {
     if (ev.key === 'Enter') {
         ev.preventDefault();
-        const first = document.querySelector(
-            '#settings-index .settings-row:not([style*="display: none"])',
-        );
+        // Pick the first row that's ACTUALLY visible — a row can be display:'' at
+        // its own level yet sit inside an area-hidden group (offsetParent === null),
+        // and clicking that would jump to a section in another area.
+        const first = Array.from(
+            document.querySelectorAll('#settings-index .settings-row'),
+        ).find((r) => r.style.display !== 'none' && r.offsetParent !== null);
         if (first) first.click();
     } else if (ev.key === 'Escape') {
         ev.target.value = '';
@@ -1961,7 +1972,12 @@ function settingsShowIndex() {
 }
 function settingsOpen(section) {
     // Keep the header + dock on the right area when a section is deep-linked.
-    if (SECTION_AREA[section]) currentAdminArea = SECTION_AREA[section];
+    if (SECTION_AREA[section]) {
+        currentAdminArea = SECTION_AREA[section];
+        try {
+            syncDockArea();
+        } catch (e) {}
+    }
     adminHistPush('view-settings', section);
     settingsRecentRecord(section);
     __settingsPath = section ? { section } : null;
@@ -1972,7 +1988,12 @@ function settingsOpen(section) {
     panel.style.display = '';
     panel.querySelectorAll('.settings-sec').forEach((s) => (s.style.display = 'none'));
     const sec = document.getElementById('sec-' + section);
-    if (sec) sec.style.display = '';
+    // Unknown/typo section — don't show an empty panel; fall back to the index.
+    if (!sec) {
+        settingsShowIndex();
+        return;
+    }
+    sec.style.display = '';
     const title = document.getElementById('settings-panel-title');
     if (title) title.textContent = SETTINGS_TITLES[section] || 'Settings';
     settingsBackTarget = () => settingsShowIndex();
@@ -1997,7 +2018,6 @@ function settingsOpen(section) {
     else if (section === 'calendar') renderCalendarList();
     else if (section === 'cancel') renderCancelList();
     else if (section === 'seasongrid') renderSeasonGrid();
-    else if (section === 'pricingcoach') renderPricingCoach();
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 function settingsBack() {
@@ -15213,13 +15233,19 @@ function hsRestore() {
         const opt = document.querySelector(
             '#hs-cottage-menu .hs-opt[data-key="' + heroSearch.cottage + '"]',
         );
-        const lbl = document.getElementById('hs-cottage-label');
-        if (opt && lbl) lbl.innerText = opt.textContent.trim();
-        document
-            .querySelectorAll('#hs-cottage-menu .hs-opt')
-            .forEach((o) =>
-                o.classList.toggle('is-sel', o.getAttribute('data-key') === heroSearch.cottage),
-            );
+        // The saved cottage may have since been removed/archived — restoring it
+        // would silently filter every search to zero. Fall back to "any" instead.
+        if (!opt) {
+            heroSearch.cottage = 'any';
+        } else {
+            const lbl = document.getElementById('hs-cottage-label');
+            if (lbl) lbl.innerText = opt.textContent.trim();
+            document
+                .querySelectorAll('#hs-cottage-menu .hs-opt')
+                .forEach((o) =>
+                    o.classList.toggle('is-sel', o.getAttribute('data-key') === heroSearch.cottage),
+                );
+        }
     }
 }
 function openHeroDatePicker() {
@@ -15274,7 +15300,7 @@ function hsSetFlex(n) {
 }
 // If results are already on screen, re-run when a filter changes so it stays live.
 function hsMaybeRerun() {
-    const sec = document.getElementById('hero-results');
+    const sec = document.getElementById('hero-results-wrap');
     if (sec && sec.style.display !== 'none' && heroSearch.checkin && heroSearch.checkout)
         runHeroSearch();
 }
@@ -17372,6 +17398,14 @@ function refreshInboxBadge() {
         dock.textContent = n;
         dock.style.display = n > 0 ? '' : 'none';
     }
+    // The Today pip shows the same pending-enquiries count — keep it in step here
+    // too so it can't lag behind the Inbox pip (this runs from far more places than
+    // refreshOwnerHomeBadges does).
+    const today = document.getElementById('dock-badge-enquiries');
+    if (today) {
+        today.textContent = n;
+        today.style.display = n > 0 ? 'flex' : 'none';
+    }
 }
 
 function renderInbox() {
@@ -18360,7 +18394,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'k9d3r7bf';
+    const BUILD = 'p2m8x4qc';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

@@ -28,14 +28,17 @@ function wl_prop_name($prop)
     }
     return $prop;
 }
+// Returns smtp_send's result (['ok'=>bool,...]) so the caller only marks an entry
+// notified when the email actually went — a soft mail failure must NOT burn the
+// re-invite (mirrors enquiry-nudge.php / anniversary-nudge.php).
 function wl_send($row)
 {
     if (empty($row['email']) || !function_exists('smtp_send')) {
-        return;
+        return ['ok' => false, 'error' => 'no mailer'];
     }
     $name = wl_prop_name($row['prop_key']);
     $dates = $row['check_in'] && $row['check_out'] ? " for {$row['check_in']} to {$row['check_out']}" : '';
-    smtp_send(
+    return smtp_send(
         $row['email'],
         $row['name'] ?: 'there',
         "Good news — availability at {$name}",
@@ -52,6 +55,17 @@ function waitlist_notify_freed($prop, $from, $to)
     if (!$prop) {
         return 0;
     }
+    // Don't fire "a space has opened" if the range is still covered by another
+    // booking or an OTA block — protects callers (bookings delete/cancel) that
+    // don't pre-check, so guests aren't emailed a falsehood (and burned).
+    if ($from && $to) {
+        try {
+            if (function_exists('dates_clash') && dates_clash($prop, $from, $to)) {
+                return 0;
+            }
+        } catch (\Throwable $e) {
+        }
+    }
     try {
         $s = db()->prepare("SELECT * FROM waitlist WHERE prop_key = ? AND notified_at IS NULL AND (
                 check_in IS NULL OR check_out IS NULL OR (check_in < ? AND check_out > ?))");
@@ -63,14 +77,19 @@ function waitlist_notify_freed($prop, $from, $to)
         require_once __DIR__ . '/mailer.php';
         $n = 0;
         foreach ($rows as $w) {
+            $r = ['ok' => false];
             try {
-                wl_send($w);
+                $r = wl_send($w);
             } catch (\Throwable $e) {
             }
-            db()
-                ->prepare('UPDATE waitlist SET notified_at = NOW() WHERE id = ?')
-                ->execute([$w['id']]);
-            $n++;
+            // Only mark as notified on a REAL send — a soft mail failure leaves the
+            // entry so a later run retries it (dates that freed up aren't silently lost).
+            if (!empty($r['ok'])) {
+                db()
+                    ->prepare('UPDATE waitlist SET notified_at = NOW() WHERE id = ?')
+                    ->execute([$w['id']]);
+                $n++;
+            }
         }
         return $n;
     } catch (\Throwable $e) {
@@ -133,10 +152,14 @@ if (basename($_SERVER['SCRIPT_NAME'] ?? '') === 'waitlist.php') {
         if (!$row) {
             json_out(['error' => 'Entry not found'], 404);
         }
+        $r = ['ok' => false, 'error' => 'send failed'];
         try {
             require_once __DIR__ . '/mailer.php';
-            wl_send($row);
+            $r = wl_send($row);
         } catch (\Throwable $e) {
+        }
+        if (empty($r['ok'])) {
+            json_out(['error' => $r['error'] ?? 'Could not send the email'], 400);
         }
         db()
             ->prepare('UPDATE waitlist SET notified_at = NOW() WHERE id = ?')
