@@ -1640,7 +1640,7 @@
         <div id="chat-attach-preview" class="chat-attach-preview" style="display:none;"></div>
         <div class="chat-composer" style="padding:12px 14px 14px;">
             <button type="button" id="chat-attach-btn" class="chat-attach-btn" onclick="chatAttachPhoto()" aria-label="Attach a photo" title="Attach a photo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
-            <textarea id="chat-input" class="input-glass" rows="1" placeholder="Write a message…" oninput="chatTypingPing()" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat();}"></textarea>
+            <textarea id="chat-input" class="input-glass" rows="1" aria-label="Write a message" placeholder="Write a message…" oninput="chatTypingPing()" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat();}"></textarea>
             <button class="chat-send" onclick="sendChat()" aria-label="Send message" title="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="M5.5 11.5 12 5l6.5 6.5"/></svg></button>
         </div>
     </div>
@@ -1876,14 +1876,14 @@
             <!-- 2FA: emailed one-time code for a new device (only shown when required) -->
             <div id="admin-login-2fa-form" style="display:none;">
                 <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 12px;">We've emailed a 6-digit sign-in code to your owner email. Enter it to finish signing in.</p>
-                <label class="modal-label">Sign-in code</label>
+                <label class="modal-label" for="admin-login-2fa-code">Sign-in code</label>
                 <input type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" class="input-glass" id="admin-login-2fa-code" placeholder="123456"
                        onkeydown="if(event.key==='Enter') submitAdmin2fa()">
                 <label style="display:flex;align-items:center;gap:9px;font-size:0.85rem;margin:12px 0;cursor:pointer;"><input type="checkbox" id="admin-login-2fa-remember" checked> Remember this device (skip the code for 60 days)</label>
                 <button class="btn-glass" style="width:100%;padding:15px;margin-top:2px;" onclick="submitAdmin2fa()">Verify &amp; sign in</button>
             </div>
 
-            <div id="admin-login-error" style="color:#E53935;font-size:0.8rem;margin:12px 0 0;display:none;"></div>
+            <div id="admin-login-error" role="alert" style="color:#E53935;font-size:0.8rem;margin:12px 0 0;display:none;"></div>
         </div>
     </div>
 
