@@ -703,6 +703,11 @@ nav a:hover {
 .btn-glass {
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--glass-highlight);
+  /* Specular edge, matching the glass panels — a bright top lip that reads as
+     glass. Deliberately NO backdrop-filter here: buttons appear in long lists
+     (admin tables, chat replies) and a blur layer per button would cost more
+     than it's worth; the rim gives the Liquid-Glass edge cheaply. */
+  box-shadow: var(--glass-rim);
   padding: 12px 28px;
   border-radius: 30px;
   color: var(--text-light);
