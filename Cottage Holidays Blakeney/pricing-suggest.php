@@ -261,6 +261,90 @@ foreach ($props as $p) {
             'apply' => null,
         ];
     }
+
+    // 4b) Demand-based nightly rate: filling fast across the next 90 days with
+    // nights still to sell is a classic sign the flat rate is below what the
+    // market will pay. Advisory only — the base rate is a deliberate decision.
+    if ($occ90 >= 70 && $occ90 < 100 && $base > 0) {
+        $newBase = (int) (ceil(($base * 1.1) / 5) * 5); // +~10%, tidy £5 step
+        if ($newBase > $base) {
+            $suggestions[] = [
+                'id' => 'baseup-' . $k,
+                'prop_key' => $k,
+                'prop_name' => $name,
+                'severity' => 'opportunity',
+                'title' => 'Strong demand — consider raising ' . $name . '’s nightly rate',
+                'detail' =>
+                    'Your next 90 days are ' .
+                    $occ90 .
+                    '% booked' .
+                    $chan .
+                    ' with nights still open — usually a sign the rate is below what guests will pay. Nudging the couple rate from ' .
+                    money($base) .
+                    ' to about ' .
+                    money($newBase) .
+                    '/night would capture more from the remaining nights and future bookings. Change it in Cottages → ' .
+                    $name .
+                    ' → Rates.',
+                'apply' => null,
+            ];
+        }
+    }
+
+    // 4c) Seasonal auto-draft: what this cottage ACTUALLY booked per night in peak
+    // season (Jul–Aug) last year vs its flat base. If peak ADR ran well above base
+    // and no summer season is set for the coming year, draft one (specific £).
+    try {
+        $ss = db()->prepare("SELECT AVG(agreed_nightly) a, COUNT(*) c FROM bookings
+                WHERE prop_key = ? AND agreed_nightly > 0
+                  AND MONTH(check_in) IN (7,8)
+                  AND check_in >= DATE_SUB(CURDATE(), INTERVAL 400 DAY) AND check_in < CURDATE()");
+        $ss->execute([$k]);
+        $row = $ss->fetch();
+        $peakAdr = $row ? (float) $row['a'] : 0;
+        $peakN = $row ? (int) $row['c'] : 0;
+        // Skip if a summer season is already configured for the coming summer.
+        $hasSeason = false;
+        $yr = (int) date('Y') + ((int) date('n') >= 7 ? 1 : 0);
+        try {
+            $hs = db()->prepare(
+                'SELECT 1 FROM rate_seasons WHERE prop_key = ? AND start_date <= ? AND end_date >= ? LIMIT 1',
+            );
+            $hs->execute([$k, "$yr-08-01", "$yr-07-01"]);
+            $hasSeason = (bool) $hs->fetchColumn();
+        } catch (\Throwable $e) {
+        }
+        if ($peakN >= 2 && $base > 0 && $peakAdr > $base * 1.08 && !$hasSeason) {
+            $sugRate = (int) (round($peakAdr / 5) * 5);
+            $suggestions[] = [
+                'id' => 'season-summer-' . $k,
+                'prop_key' => $k,
+                'prop_name' => $name,
+                'severity' => 'opportunity',
+                'title' => 'Draft a summer season for ' . $name,
+                'detail' =>
+                    'Last July–August ' .
+                    $name .
+                    ' actually booked at about ' .
+                    money($peakAdr) .
+                    '/night across ' .
+                    $peakN .
+                    ' stay' .
+                    ($peakN === 1 ? '' : 's') .
+                    ', well above its ' .
+                    money($base) .
+                    ' base. A Jul–Aug ' .
+                    $yr .
+                    ' season rate around ' .
+                    money($sugRate) .
+                    ' locks that peak in without hand-editing weekends. Add it in Cottages → ' .
+                    $name .
+                    ' → Rates → Seasons.',
+                'apply' => null,
+            ];
+        }
+    } catch (\Throwable $e) {
+    }
 }
 
 // 5) Unmet demand from search_log — a month people search but rarely find free.
