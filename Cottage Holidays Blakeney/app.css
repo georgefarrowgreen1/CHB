@@ -4882,6 +4882,28 @@ body.owner-mode .chat-widget {
 .settings-index {
   max-width: 640px;
 }
+/* Area overview — the "important parts first" summary that leads Cottages &
+   Marketing (occupancy / key numbers) before the detail sub-folders. */
+.area-ov-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px;
+  margin-bottom: var(--space-3);
+}
+.area-ov-card {
+  display: block;
+  width: 100%;
+  color: var(--text-light);
+  transition:
+    background 0.4s var(--fluid-bezier),
+    transform 0.4s var(--spring);
+}
+@media (hover: hover) {
+  .area-ov-card:hover {
+    background: var(--glass-hover);
+    transform: translateY(-2px);
+  }
+}
 /* "Recent" chips + empty-search note above the index */
 .settings-recent {
   display: flex;
