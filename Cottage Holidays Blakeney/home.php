@@ -46,30 +46,11 @@ try {
             }
         }
 
-        // Only rewrite when the owner has an uploaded hero and the path is a safe
-        // site-relative image (defence in depth — these are server-generated names).
-        if ($hero !== '' && preg_match('#^[a-z0-9/_.\-]+\.(jpe?g|png|webp)$#i', $hero)) {
-            $origin = 'https://cottageholidaysblakeney.co.uk';
-            $heroAbs = $origin . '/' . ltrim($hero, '/');
-            // Absolute references: og:image, twitter:image and the JSON-LD images.
-            $out = str_replace($origin . '/hero.jpg', $heroAbs, $out);
-            // The LCP preload — the single biggest first-paint win on the page.
-            $out = str_replace(
-                '<link rel="preload" as="image" href="hero.jpg" fetchpriority="high">',
-                '<link rel="preload" as="image" href="' .
-                    htmlspecialchars($hero, ENT_QUOTES) .
-                    '" fetchpriority="high">',
-                $out,
-            );
-            // The hero element itself (no flash of a missing image before JS runs).
-            $out = str_replace(
-                'data-edit-img="hero-bg" style="background-image: url(\'hero.jpg\');"',
-                'data-edit-img="hero-bg" style="background-image: url(\'' .
-                    htmlspecialchars($hero, ENT_QUOTES) .
-                    '\');"',
-                $out,
-            );
-        }
+        // Swap the static hero.jpg (which 404s on the live host) for the owner's
+        // uploaded hero — the LCP preload, the hero element, and the absolute
+        // og/twitter/JSON-LD image URLs. Shared with cottage.php / experiences.
+        require_once __DIR__ . '/hero-shell.php';
+        $out = inject_live_hero($out, $hero, 'https://cottageholidaysblakeney.co.uk');
     }
 } catch (\Throwable $e) {
     $out = $html; // any hiccup → the untouched shell, exactly as before this file existed

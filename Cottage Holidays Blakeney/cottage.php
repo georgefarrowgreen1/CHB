@@ -184,6 +184,13 @@ try {
                 $inject('#(<p class="prop-subtitle" id="prop-subtitle">)(</p>)#', $subtitle);
             }
             $inject('#(id="prop-desc">)(</p>)#', $desc);
+
+            // Swap the static hero.jpg (404 on the live host) for the uploaded hero:
+            // fixes the fetchpriority="high" preload firing at a 404 and the JSON-LD
+            // images. og:image/twitter:image were already set to the gallery photo
+            // above, so those aren't affected.
+            require_once __DIR__ . '/hero-shell.php';
+            $out = inject_live_hero($out, $cv('hero-bg'), $origin);
         }
     }
 } catch (\Throwable $e) {

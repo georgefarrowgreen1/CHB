@@ -38,17 +38,28 @@ echo '<?xml version="1.0" encoding="UTF-8"?>' . "\n";
 echo '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"' . "\n";
 echo '        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">' . "\n";
 
-// Home page (with the hero image).
+// The homepage hero. index.html's static hero.jpg 404s on the live host, so use
+// the owner's uploaded hero (content 'hero-bg'); omit the image entry entirely if
+// none is set rather than list a 404.
+$heroImg = '';
+$hb = content_value('hero-bg');
+if ($hb !== '' && preg_match('#^[a-z0-9/_.\-]+\.(jpe?g|png|webp)$#i', $hb)) {
+    $heroImg = $origin . '/' . ltrim($hb, '/');
+}
+
+// Home page (with the hero image, when set).
 echo "  <url>\n";
 echo "    <loc>{$origin}/</loc>\n";
 echo "    <lastmod>{$today}</lastmod>\n";
 echo "    <changefreq>weekly</changefreq>\n";
 echo "    <priority>1.0</priority>\n";
-echo "    <image:image>\n";
-echo "      <image:loc>{$origin}/hero.jpg</image:loc>\n";
-echo "      <image:title>Holiday cottages in Blakeney, North Norfolk</image:title>\n";
-echo "      <image:caption>Self-catering holiday cottages in Blakeney on the North Norfolk coast.</image:caption>\n";
-echo "    </image:image>\n";
+if ($heroImg !== '') {
+    echo "    <image:image>\n";
+    echo '      <image:loc>' . $esc($heroImg) . "</image:loc>\n";
+    echo "      <image:title>Holiday cottages in Blakeney, North Norfolk</image:title>\n";
+    echo "      <image:caption>Self-catering holiday cottages in Blakeney on the North Norfolk coast.</image:caption>\n";
+    echo "    </image:image>\n";
+}
 echo "  </url>\n";
 
 // Things to do (server-rendered for crawlers by experiences-page.php).
