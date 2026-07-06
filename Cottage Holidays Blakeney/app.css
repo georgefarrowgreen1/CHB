@@ -4226,6 +4226,27 @@ body.owner-mode .chat-widget {
   font-size: 1.2rem;
   margin-bottom: 6px;
 }
+/* "Returning guest" pill on an enquiry whose email matches past stays. */
+.repeat-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  vertical-align: middle;
+  margin-left: 8px;
+  padding: 2px 9px;
+  border-radius: var(--r-pill);
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  background: rgba(76, 175, 80, 0.13);
+  color: var(--ok);
+  border: 1px solid rgba(76, 175, 80, 0.28);
+}
+.repeat-badge .ic {
+  width: 12px;
+  height: 12px;
+}
 .enquiry-meta {
   font-size: 0.8rem;
   color: var(--text-muted);

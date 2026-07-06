@@ -615,6 +615,10 @@ function mapEnquiryFromApi(row) {
         termsAcceptedAt: row.terms_accepted_at || '',
         termsVersion: row.terms_version || '',
         received: (row.created_at || '').split(' ')[0] || '',
+        // Repeat-guest recognition (server-computed from past bookings by email).
+        priorStays: parseInt(row.prior_stays, 10) || 0,
+        lastStayEnd: row.last_stay_end || '',
+        lastStayProp: row.last_stay_prop || '',
     };
 }
 
@@ -17427,6 +17431,24 @@ function refreshInboxBadge() {
     }
 }
 
+// A small "returning guest" pill for an enquiry whose email matches one or more
+// COMPLETED past bookings (computed server-side in enquiries.php). Empty for
+// first-time guests, so it only ever adds signal.
+function repeatGuestBadge(e) {
+    const n = (e && e.priorStays) || 0;
+    if (n < 1) return '';
+    let last = '';
+    if (e.lastStayEnd) {
+        const d = new Date(e.lastStayEnd + 'T00:00:00');
+        if (!isNaN(d.getTime())) {
+            last = ' · last ' + d.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
+        }
+    }
+    const text = 'Returning guest' + (n > 1 ? ` · ${n} stays` : '') + last;
+    const tip = `Matched by email to ${n} completed booking${n === 1 ? '' : 's'}`;
+    return ` <span class="repeat-badge" title="${escapeHtml(tip)}"><svg class="ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 17.77 6.8 19.5l.99-5.78-4.21-4.1 5.82-.85z"/></svg>${escapeHtml(text)}</span>`;
+}
+
 function renderInbox() {
     refreshInboxBadge();
     const tg = document.getElementById('enq-nudge-toggle');
@@ -17447,11 +17469,12 @@ function renderInbox() {
             const msg = e.message
                 ? `<div class="enquiry-msg">“${escapeHtml(e.message)}”</div>`
                 : '';
+            const repeat = repeatGuestBadge(e);
             return `
                 <div class="enquiry-card">
                     <div class="enquiry-info">
                         <span class="prop-tag tag-${e.propKey}">${escapeHtml(propName)}</span>
-                        <h3>${escapeHtml(e.name)}</h3>
+                        <h3>${escapeHtml(e.name)}${repeat}</h3>
                         <div class="enquiry-meta">
                             <strong>${e.checkIn}</strong> → <strong>${e.checkOut}</strong><br>
                             Party: ${escapeHtml(e.guests)} · Received ${e.received}
@@ -18413,7 +18436,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 't7w9k2rn';
+    const BUILD = 'v4h6p8dz';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
