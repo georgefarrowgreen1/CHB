@@ -11506,10 +11506,16 @@ function enquiryResumeOpen() {
         updateEnquiryPrice();
     } catch (e) {}
 }
-// Autosave while the visitor types anywhere in the enquiry form.
+// Autosave while the visitor types anywhere in the enquiry form. Debounced so the
+// synchronous localStorage write doesn't run on every keystroke (that can add
+// input latency while typing, especially on mobile).
+let __enqDraftTimer = null;
 document.addEventListener('input', (e) => {
     const id = (e.target && e.target.id) || '';
-    if (id.indexOf('enq-') === 0) enquireDraftSave();
+    if (id.indexOf('enq-') === 0) {
+        clearTimeout(__enqDraftTimer);
+        __enqDraftTimer = setTimeout(enquireDraftSave, 400);
+    }
 });
 function openEnquireModal() {
     const key = activeFrontProperty;
@@ -18031,7 +18037,7 @@ async function expMove(id, dir) {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'p3v8k1rq';
+    const BUILD = 'w5b2n8dj';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
