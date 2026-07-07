@@ -1484,7 +1484,7 @@ async function renderAccounts() {
                     <button class="btn-sm btn-edit" onclick="accountsOpen('expenses')">Manage expenses</button>
                 </div>
                 <div class="accounts-note" style="margin-top:12px;">
-                    ${heldDeposits > 0 ? gbp(heldDeposits) + ' in refundable damages deposits is held separately and is <strong>not</strong> income. ' : ''}
+                    ${heldDeposits > 0 ? gbp(heldDeposits) + ' collected as refundable damages deposits — returned after checkout, <strong>not</strong> income. ' : ''}
                     Income is money received, allocated to the UK tax year by each payment's recorded date; expenses by their date. A record-keeping aid, not formal accounting advice.
                     ${undated.count > 0 ? `<br>${undated.count} payment(s) totalling ${gbp((undated.total || 0) + (undated.held || 0))} have no payment date recorded, so they aren't counted in any tax year — add a payment date on the booking to include them.` : ''}
                 </div>`;
@@ -2051,7 +2051,7 @@ async function returnDeposit(bookingId) {
     const propKey = loc ? loc.propKey : '21a';
     const dh = damageHeld(propKey, booking);
     if (dh.held <= 0) {
-        glassAlert('No damage deposit is being held for this booking.');
+        glassAlert('No damage deposit has been collected for this booking.');
         return;
     }
     const entered = await glassPrompt(
@@ -2733,7 +2733,7 @@ async function downloadYearStatement(startYear) {
     if (held > 0) {
         doc.setFontSize(9);
         doc.setTextColor(120);
-        doc.text(`(${gbp(held)} refundable damage deposits held — not income)`, left, y);
+        doc.text(`(${gbp(held)} refundable damage deposits collected — not income)`, left, y);
         doc.setTextColor(0);
         doc.setFontSize(10);
         y += 18;
@@ -7187,7 +7187,7 @@ function openEnquiryEmail(enqId) {
         try {
             const p = priceBreakdown(enq.propKey, enq.adults, enq.children, enq.checkIn, enq.checkOut);
             if (p && p.total) {
-                priceRow = `<div class="enq-ctx-row"><span class="enq-ctx-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg></span><span class="enq-ctx-txt"><strong>${gbp(p.total)}</strong><span class="enq-ctx-mut"> · ${p.nights} night${p.nights === 1 ? '' : 's'} × ${gbp(p.perNight)}${p.damagesDeposit ? ` · +${gbp(p.damagesDeposit)} deposit held` : ''}</span></span></div>`;
+                priceRow = `<div class="enq-ctx-row"><span class="enq-ctx-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg></span><span class="enq-ctx-txt"><strong>${gbp(p.total)}</strong><span class="enq-ctx-mut"> · ${p.nights} night${p.nights === 1 ? '' : 's'} × ${gbp(p.perNight)}${p.damagesDeposit ? ` · +${gbp(p.damagesDeposit)} refundable deposit` : ''}</span></span></div>`;
             }
         } catch (e) {}
         const initial = (enq.name || enq.email || '?').trim().charAt(0).toUpperCase();

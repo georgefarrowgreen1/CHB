@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 5;
+const ADMIN_BUNDLE_V = 6;
 let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
@@ -5320,7 +5320,7 @@ const paymentMeta = {
 // coupleRate covers the first 2 adults, per night.
 // extraAdultRate is per additional adult (beyond 2), per night.
 // childRate is per child, per night.
-// damagesDeposit is a refundable amount held per booking (NOT income).
+// damagesDeposit is a refundable amount collected per booking (NOT income).
 // transactionPct is a % applied to the nightly rental total only.
 const RATES_STORE_KEY = 'nn-property-rates';
 const defaultRates = {
@@ -5589,10 +5589,10 @@ function priceBreakdown(propKey, adults, children, checkIn, checkOut, depositOve
             ? parseFloat(depositOverride)
             : r.damagesDeposit;
     const damagesDeposit = nights > 0 ? Math.max(0, depBase) || 0 : 0;
-    // Transaction fee applies to rental income only (not the held deposit).
+    // Transaction fee applies to rental income only (not the refundable deposit).
     const txFee = Math.round(nightly * (r.transactionPct / 100) * 100) / 100;
-    // The damages deposit is taken as a separate card HOLD near arrival (authorised,
-    // not captured), so it is NOT part of the total the guest is charged.
+    // The damages deposit is CHARGED together with the guest's first payment and
+    // refunded after checkout, so it is NOT part of the rental total here.
     const rentalTotal = nightly + txFee;
     const total = rentalTotal;
     return {
@@ -11027,7 +11027,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'n6k1c8vz';
+    const BUILD = 'p8s2j5wm';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
