@@ -6265,7 +6265,10 @@ async function checkCronHealth() {
     if (!el) return;
     let d;
     try {
-        d = await apiGet('cron-status.php');
+        // loadData's admin-bootstrap round-trip stashes the cron status (it runs
+        // just before this on the dashboard), so no extra request is needed;
+        // fetch directly only when it's absent.
+        d = window.__cronStatusPre || (await apiGet('cron-status.php'));
     } catch (e) {
         el.style.display = 'none';
         if (pill) pill.style.display = 'none';

@@ -310,10 +310,22 @@ function send_booking_confirmation($bookingId)
     }
 }
 
+// The admin GET payload, as a function so admin-bootstrap.php can serve the
+// SAME data in its combined back-office boot response. Caller must require_admin.
+function bookings_admin_payload()
+{
+    return ['bookings' => db()->query('SELECT * FROM bookings ORDER BY check_in ASC')->fetchAll()];
+}
+
+// When admin-bootstrap.php includes this file for the payload helper, stop
+// before the HTTP routing — routes below run only when this file IS the request.
+if (basename($_SERVER['SCRIPT_NAME'] ?? '') !== 'bookings.php') {
+    return;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     require_admin();
-    $rows = db()->query('SELECT * FROM bookings ORDER BY check_in ASC')->fetchAll();
-    json_out(['bookings' => $rows]);
+    json_out(bookings_admin_payload());
 }
 
 require_admin();
