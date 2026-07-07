@@ -1235,18 +1235,27 @@
             </div>
 
             <div class="settings-sec" id="sec-diagnostics" style="display:none;">
-                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 14px;">A quick check that everything's working — your data, recent updates and connected services. Green is good; amber is something optional that's switched off; red needs your attention.</p>
+                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 14px;">Green is good; amber is something optional that's switched off; red needs your attention.</p>
                 <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">
                     <button class="btn-glass" style="width:auto;padding:11px 22px;" onclick="loadDiagnostics()">Run checks</button>
                     <button class="btn-sm btn-edit" onclick="runMigrations()">Install updates</button>
-                    <button class="btn-sm btn-edit" onclick="backfillWebp()">Optimise photos for faster loading</button>
-                    <button class="btn-sm btn-edit" onclick="sendTestEmail()">Send test email</button>
-                    <button class="btn-sm btn-edit" onclick="sendSampleEmails(this)">Email me samples</button>
                     <span id="diag-msg" style="font-size:0.82rem;"></span>
                 </div>
-                <div id="diag-samples" style="font-size:0.82rem;"></div>
                 <div id="migrate-result" style="display:none;font-size:0.82rem;margin-bottom:16px;"></div>
+                <!-- Health status leads; the occasional maintenance tools sit under a disclosure. -->
                 <div id="diagnostics-body"></div>
+                <details class="help-disclosure" style="margin-top:18px;max-width:640px;">
+                    <summary>More tools</summary>
+                    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px;">
+                        <button class="btn-sm btn-edit" onclick="backfillWebp()">Optimise photos for faster loading</button>
+                        <button class="btn-sm btn-edit" onclick="sendTestEmail()">Send test email</button>
+                        <button class="btn-sm btn-edit" onclick="sendSampleEmails(this)">Email me samples</button>
+                        <button class="btn-sm btn-edit" onclick="diagnoseReplyEmail(this)">Check reply-by-email</button>
+                    </div>
+                    <p style="font-size:0.8rem;color:var(--text-muted);margin:10px 0 0;">Reply-by-email: reply to a "new website message" alert and the guest gets it on the website &amp; by email.</p>
+                    <div id="diag-samples" style="font-size:0.82rem;margin-top:8px;"></div>
+                    <div id="reply-diag" style="font-size:0.8rem;margin-top:10px;"></div>
+                </details>
             </div>
 
             <!-- Test centre (staging only): preview, sample emails, test booking, test data -->
@@ -2259,7 +2268,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=213"></script>
+    <script defer src="app.js?v=214"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

@@ -3180,11 +3180,6 @@ function renderNotifySettings() {
                     <button type="submit" class="btn-sm btn-edit">Add address</button>
                 </form>
                 <p id="notify-email-msg" style="font-size:0.8rem;margin:8px 0 0;min-height:1em;" aria-live="polite"></p>
-                <div style="margin-top:14px;border-top:1px solid var(--glass-border);padding-top:12px;">
-                    <div style="font-size:0.8rem;color:var(--text-muted);margin-bottom:8px;">Reply-by-email: reply to a "new website message" alert and the guest gets it on the website &amp; by email.</div>
-                    <button class="btn-sm btn-edit" onclick="diagnoseReplyEmail(this)">Check reply-by-email</button>
-                    <div id="reply-diag" style="font-size:0.8rem;margin-top:10px;"></div>
-                </div>
             </div>`;
     loadNotifyEmails();
 }
