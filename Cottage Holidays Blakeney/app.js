@@ -9462,6 +9462,61 @@ function closeDetailsModal() {
     if (m) m.classList.remove('open');
 }
 
+// A glanceable status strip for the booking details modal: rental payment,
+// refundable-deposit state, and whether arrival info has gone out — so "what's
+// outstanding on this booking?" is answerable at a glance. All from fields
+// already on the booking (no admin globals — keeps app.js self-contained).
+function bookingStatusStrip(b, ps, p) {
+    const chips = [];
+    if (ps.fullyPaid) chips.push(['ok', 'Paid in full']);
+    else if (ps.deposit > 0) chips.push(['warn', `${gbp(ps.balance)} balance due`]);
+    else chips.push(['danger', `Unpaid · ${gbp(ps.balance)} due`]);
+
+    const dep = Math.max(0, (p && p.damagesDeposit) || 0);
+    const st = b.holdStatus || 'none';
+    const ret = Number(b.damagesReturned) || 0;
+    const depAmt = Number(b.holdAmount) || dep;
+    if (dep > 0 || st !== 'none') {
+        if (st === 'returned' || (st === 'charged' && ret >= depAmt - 0.01)) chips.push(['ok', 'Deposit refunded']);
+        else if (st === 'kept') chips.push(['warn', 'Deposit kept (damage)']);
+        else if (st === 'charged') chips.push(ret > 0.01 ? ['ok', `Deposit ${gbp(ret)} refunded`] : ['ok', 'Deposit paid']);
+        else if (['authorized', 'captured'].includes(st)) chips.push(['ok', 'Deposit held']);
+    }
+    if (b.preArrivalSent) chips.push(['ok', 'Arrival info sent']);
+
+    return `<div class="bk-status">${chips
+        .map(([c, t]) => `<span class="bk-chip ${c}"><span class="bk-dot"></span>${escapeHtml(t)}</span>`)
+        .join('')}</div>`;
+}
+// Save the owner-only staff note from the booking details modal (its own
+// lightweight endpoint so a note never touches dates/price/payment).
+async function saveBookingNote(bookingId) {
+    const b = findBookingById(bookingId);
+    if (!b) return;
+    const ta = document.getElementById('bk-notes-' + bookingId);
+    if (!ta) return;
+    const notes = ta.value;
+    const btn = document.getElementById('bk-notes-save-' + bookingId);
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Saving…';
+    }
+    try {
+        await apiPost('bookings.php', { action: 'set_notes', id: b.dbId, notes });
+        b.notes = notes.slice(0, 2000);
+        try {
+            toast('Note saved.');
+        } catch (e) {}
+    } catch (e) {
+        glassAlert("Couldn't save the note: " + e.message);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Save note';
+        }
+    }
+}
+
 function buildDetailHtml(propKey, b, titlePrefix = null) {
     const meta = propertyMeta[propKey];
     const title = titlePrefix
@@ -9513,6 +9568,7 @@ function buildDetailHtml(propKey, b, titlePrefix = null) {
     return `
                 ${title}
                 <span class="prop-tag tag-${propKey}">${meta.name}</span>
+                ${bookingStatusStrip(b, ps, p)}
                 <div class="detail-grid">
                     <div class="booking-detail-item">
                         <span class="booking-detail-label">Guest Name</span>
@@ -9555,8 +9611,9 @@ function buildDetailHtml(propKey, b, titlePrefix = null) {
                         </div>
                     </div>
                     <div class="booking-detail-item" style="grid-column: 1 / -1;">
-                        <span class="booking-detail-label">Staff Notes</span>
-                        <span class="booking-detail-value" style="font-size: 0.9rem; color: var(--text-muted);">${b.notes ? escapeHtml(b.notes) : '—'}</span>
+                        <span class="booking-detail-label">Staff notes <span style="font-weight:400;color:var(--text-muted);text-transform:none;letter-spacing:0;">· private, only you see these</span></span>
+                        <textarea id="bk-notes-${b.id}" class="input-glass" rows="2" maxlength="2000" placeholder="Add a private note — arriving late, allergies, paid cash for extras…" style="margin-top:6px;resize:vertical;font-size:0.9rem;">${b.notes ? escapeHtml(b.notes) : ''}</textarea>
+                        <div style="display:flex;justify-content:flex-end;margin-top:6px;"><button class="btn-sm btn-edit" id="bk-notes-save-${b.id}" onclick="saveBookingNote('${b.id}')">Save note</button></div>
                     </div>
                 </div>
                 ${priceBlock}
@@ -11116,7 +11173,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 's5c9n3xw';
+    const BUILD = 't8h2k5qp';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

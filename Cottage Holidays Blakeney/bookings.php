@@ -626,6 +626,26 @@ if ($action === 'update') {
     json_out(['ok' => true]);
 }
 
+// Lightweight save of the owner-only staff note (from the booking details modal).
+// Separate from 'update' so a quick note doesn't touch dates/price/payment.
+if ($action === 'set_notes') {
+    $id = (int) ($in['id'] ?? 0);
+    $b = booking_by_id($id);
+    if (!$b) {
+        json_out(['error' => 'Booking not found'], 404);
+    }
+    $notes = mb_substr(clean($in['notes'] ?? ''), 0, 2000);
+    db()
+        ->prepare('UPDATE bookings SET notes = ? WHERE id = ?')
+        ->execute([$notes, $id]);
+    log_activity('booking', 'booking.note', 'Booking note updated — ' . ($b['name'] ?? ''), [
+        'entity' => 'booking',
+        'entity_id' => (string) $id,
+        'prop_key' => $b['prop_key'] ?? '',
+    ]);
+    json_out(['ok' => true, 'notes' => $notes]);
+}
+
 if ($action === 'set_payment') {
     $id = (int) ($in['id'] ?? 0);
     $b = booking_by_id($id);
