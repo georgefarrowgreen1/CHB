@@ -667,7 +667,7 @@ async function renderPricingCoach() {
     }
     const sugg = Array.isArray(d.suggestions) ? d.suggestions : [];
     const sig = d.signals || {};
-    const intro = `<p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 14px;line-height:1.55;">Pricing ideas from <strong>your own</strong> data — calendar occupancy <strong>across direct + your synced Airbnb &amp; Vrbo bookings</strong>, weekend demand, near-term pace, orphan gaps and what guests search for. These are advice: nothing changes until you tap <strong>Apply</strong>, and your prices stay exactly as set otherwise.</p>`;
+    const intro = `<p style="font-size:0.82rem;color:var(--text-muted);max-width:640px;margin:0 0 14px;line-height:1.5;">Ideas from your own bookings &amp; demand — nothing changes until you tap <strong>Apply</strong>.</p>`;
     const since = sig.searches60
         ? `<p style="font-size:0.78rem;color:var(--text-muted);margin:-4px 0 16px;">Demand from ${sig.searches60} search${sig.searches60 === 1 ? '' : 'es'} in the last 60 days${sig.noResult60 ? ` · ${sig.noResult60} found nothing free` : ''}.</p>`
         : '';
@@ -2014,9 +2014,10 @@ function renderExpenses() {
 
     wrap.innerHTML = `
                 ${chart}
-                <div class="accounts-stat" style="max-width:680px;">
-                    <div class="label">Add an expense</div>
-                    <div class="exp-add-form" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:12px;align-items:flex-end;">
+                <details class="exp-add-details" id="exp-add-details">
+                  <summary class="exp-add-summary">＋ Add an expense</summary>
+                  <div class="accounts-stat" style="max-width:680px;margin-top:10px;">
+                    <div class="exp-add-form" style="display:flex;gap:10px;flex-wrap:wrap;margin-top:4px;align-items:flex-end;">
                         <div><label class="modal-label">Date</label><input type="date" id="exp-date" class="input-glass field-sm" value="${today}" style="margin:0;"></div>
                         <div><label class="modal-label">Category</label><select id="exp-cat" class="input-glass field-sm" style="margin:0;">${EXPENSE_CATS.map((c) => `<option>${c}</option>`).join('')}</select></div>
                         <div><label class="modal-label">Amount (£)</label><input type="number" min="0" step="0.01" id="exp-amount" class="input-glass field-sm" placeholder="0.00" style="margin:0;width:110px;"></div>
@@ -2028,7 +2029,8 @@ function renderExpenses() {
                         <button class="btn-sm exp-clear-btn" type="button" onclick="clearExpenseForm()">Clear</button>
                     </div>
                     <div id="exp-receipt-card"></div>
-                </div>
+                  </div>
+                </details>
                 <div class="feed-list" style="max-width:680px;margin-top:8px;">${list}</div>`;
 }
 // Load an existing expense back into the form to edit it.
@@ -2058,6 +2060,8 @@ function editExpense(id) {
     renderReceiptCard(__lastReceipt);
     const addBtn = document.querySelector('.exp-add-btn');
     if (addBtn) addBtn.textContent = 'Update';
+    const dt = document.getElementById('exp-add-details');
+    if (dt) dt.open = true; // reveal the (collapsed) form so the edit is visible
     const form = document.querySelector('.exp-add-form');
     if (form) form.scrollIntoView({ behavior: 'smooth', block: 'center' });
     const amt = document.getElementById('exp-amount');
@@ -2495,30 +2499,32 @@ function renderMoneyOverview() {
             color: `var(--prop-${k})`,
         })),
     );
-    const chase =
+    // The one figure that needs action — what you're owed — leads, with the
+    // "chase" CTA folded into its own tile (no separate duplicate banner).
+    const chaseCta =
         owedUpcoming > 0.5
-            ? `<div class="mo-chase">
-                <div class="mo-chase-text">You're owed <strong>${gbp(owedUpcoming)}</strong> across ${owedCount} upcoming booking${owedCount === 1 ? '' : 's'}.</div>
-                <button class="btn-sm btn-edit" onclick="accountsOpen('payments')">Chase balances →</button></div>`
+            ? `<button class="btn-sm btn-edit mo-kpi-cta" onclick="event.stopPropagation();accountsOpen('payments')">Chase balances →</button>`
             : '';
 
     el.innerHTML = `
                 <h2 style="font-family:var(--font-serif);font-size:1.3rem;font-weight:400;margin:0 0 12px;">Your money at a glance</h2>
                 <div class="mo-kpis">
+                    <div class="mo-kpi mo-kpi-lead"><div class="mo-label">Outstanding</div><div class="mo-value ${owedUpcoming > 0 ? 'mo-warn' : 'mo-good'}">${gbp(owedUpcoming)}</div><div class="mo-sub">${owedCount} unpaid · upcoming</div>${chaseCta}</div>
                     <div class="mo-kpi"><div class="mo-label">Received · ${taxYearShort(curTY)}</div><div class="mo-value mo-good">${gbp(receivedTY)}</div><div class="mo-sub">this tax year</div></div>
                     <div class="mo-kpi"><div class="mo-label">Net profit · ${taxYearShort(curTY)}</div><div class="mo-value ${netTY < 0 ? 'mo-warn' : ''}">${gbp(netTY)}</div><div class="mo-sub">after ${gbp(expTY)} expenses</div></div>
-                    <div class="mo-kpi"><div class="mo-label">Outstanding</div><div class="mo-value ${owedUpcoming > 0 ? 'mo-warn' : 'mo-good'}">${gbp(owedUpcoming)}</div><div class="mo-sub">${owedCount} unpaid · upcoming</div></div>
                     <div class="mo-kpi"><div class="mo-label">Booked · next 90 days</div><div class="mo-value">${gbp(next90)}</div><div class="mo-sub">confirmed arrivals</div></div>
                 </div>
-                ${chase}
-                ${yoyCard}
-                <div class="mo-grid2">
-                    <div class="mo-card"><div class="mo-card-title">Received · last 12 months</div>${trendBars || '<div class="mo-sub">No payments recorded yet.</div>'}</div>
-                    <div class="mo-card"><div class="mo-card-title">Collected vs outstanding · upcoming</div>
-                        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:8px;">${osDonut(collectedPct, 'var(--accent)')}
-                            <div class="mo-sub" style="font-size:0.8rem;">${gbp(receivedUpcoming)} collected<br>of ${gbp(receivedUpcoming + owedUpcoming)} due</div></div>
-                        <div class="mo-card-title" style="margin-top:16px;">Received by cottage · ${taxYearShort(curTY)}</div>${cottageBars || '<div class="mo-sub">No income yet.</div>'}</div>
-                </div>`;
+                <details class="mo-trends">
+                    <summary>Trends &amp; history</summary>
+                    ${yoyCard}
+                    <div class="mo-grid2">
+                        <div class="mo-card"><div class="mo-card-title">Received · last 12 months</div>${trendBars || '<div class="mo-sub">No payments recorded yet.</div>'}</div>
+                        <div class="mo-card"><div class="mo-card-title">Collected vs outstanding · upcoming</div>
+                            <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-top:8px;">${osDonut(collectedPct, 'var(--accent)')}
+                                <div class="mo-sub" style="font-size:0.8rem;">${gbp(receivedUpcoming)} collected<br>of ${gbp(receivedUpcoming + owedUpcoming)} due</div></div>
+                            <div class="mo-card-title" style="margin-top:16px;">Received by cottage · ${taxYearShort(curTY)}</div>${cottageBars || '<div class="mo-sub">No income yet.</div>'}</div>
+                    </div>
+                </details>`;
 }
 // Per-booking payments & balances manager (top of the Money & income view).
 // Upcoming + current stays, with manual reconcile + Square request/refund.

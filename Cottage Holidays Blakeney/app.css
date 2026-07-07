@@ -5987,21 +5987,44 @@ body.owner-mode .chat-widget {
   color: var(--warn-text);
   font-weight: 600;
 }
-.mo-chase {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  flex-wrap: wrap;
-  background: rgba(255, 167, 38, 0.1);
-  border: 1px solid rgba(255, 167, 38, 0.35);
-  border-radius: var(--r-md);
-  padding: 14px 16px;
-  margin-top: 12px;
+/* The lead KPI (Outstanding) carries a subtle accent + its own chase CTA. */
+.mo-kpi-lead {
+  border-color: rgba(255, 167, 38, 0.35);
+  background: rgba(255, 167, 38, 0.06);
 }
-.mo-chase .mo-chase-text {
-  flex: 1 1 200px;
-  font-size: 0.9rem;
-  color: var(--text-light);
+.mo-kpi-cta {
+  margin-top: 10px;
+}
+/* Retrospective charts tuck under a disclosure so the landing leads with the
+   actionable KPIs, not a wall of history. */
+.mo-trends {
+  margin-top: 14px;
+}
+.mo-trends > summary,
+.exp-add-details > summary {
+  cursor: pointer;
+  list-style: none;
+  font-size: 0.82rem;
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+  -webkit-tap-highlight-color: transparent;
+}
+.mo-trends > summary::-webkit-details-marker,
+.exp-add-details > summary::-webkit-details-marker {
+  display: none;
+}
+.mo-trends > summary::after,
+.exp-add-details > summary::after {
+  content: "▾";
+  font-size: 0.7rem;
+  transition: transform 0.2s var(--fluid-bezier);
+}
+.mo-trends[open] > summary::after,
+.exp-add-details[open] > summary::after {
+  transform: rotate(180deg);
 }
 @media (min-width: 769px) {
   .mo-kpis {
