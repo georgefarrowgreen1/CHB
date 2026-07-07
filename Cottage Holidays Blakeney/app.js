@@ -4661,7 +4661,7 @@ function occupancyHint(propKey) {
 // intro/title) and rendered both in the on-screen modal and the PDF.
 // Update TERMS_VERSION whenever the wording materially changes, so the
 // acceptance recorded against each booking reflects which version was agreed.
-const TERMS_VERSION = '2026-06b';
+const TERMS_VERSION = '2026-07a';
 const TERMS_BUSINESS = 'Sophia Farrow, Forest Edge, Mill Road, Edingthorpe, Norfolk, NR28 9SJ';
 const termsSections = [
     {
@@ -4676,8 +4676,8 @@ const termsSections = [
             'Balance due date: 4 weeks before your arrival date.',
             'Security deposit: £50–100 held before arrival in case of damage, and returned afterwards.',
             'House Rules: a short separate document we send with your confirmation; it forms part of these terms.',
-            'Permitted pets: any animal we’ve agreed you can bring (registered assistance animals are always welcome).',
-            'Group: you and everyone — and any animals — staying or visiting under your booking.',
+            'Permitted pets: any animal the owner has agreed in writing you may bring.',
+            'Group: you and everyone staying or visiting under your booking.',
             'We/us: ' + TERMS_BUSINESS + '.',
             'You: the person making the booking, who must be 18 or over and is responsible for the whole Group.',
             'Website: cottageholidaysblakeney.co.uk.',
@@ -4712,11 +4712,10 @@ const termsSections = [
     {
         h: '4. Pets',
         p: [
-            'Only pets we’ve agreed to, or registered assistance animals, may stay.',
-            'If pets we haven’t agreed to are brought along, we can ask you to leave.',
-            'We can refuse, or ask you to leave with no refund, if a pet is a nuisance or danger to others.',
-            'You’re responsible for any damage or parasites caused by your pets.',
-            'We can’t be held responsible for allergies caused by pets from a previous stay.',
+            'No pets of any kind may stay at, or visit, the property unless the owner has given written permission in advance.',
+            'If any pet is brought to the property without the owner’s prior written permission, we may ask you and your Group to leave without a refund.',
+            'If, when preparing or cleaning the property after your stay, we find evidence that a pet has been present without our permission, you will be liable for the reasonable cost of any additional or specialist cleaning required to return the property to its usual standard.',
+            'Where a pet has been agreed, you remain responsible for any damage or parasites it causes, and we cannot be held responsible for allergies arising from pets during a previous stay.',
         ],
     },
     {
@@ -11564,7 +11563,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'g8k3p6vn';
+    const BUILD = 'h2v6t9kr';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
