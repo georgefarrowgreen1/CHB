@@ -291,6 +291,122 @@ function inboxSubClose() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
+// ---- Bookings: a browsable list of every confirmed booking (dock → Bookings) ----
+let __bookingsFilter = 'upcoming';
+let __bookingsSearch = '';
+async function openBookings() {
+    if (!isAuthenticated) {
+        tryAccessBackOffice();
+        return;
+    }
+    // Make sure bookings are loaded before the list renders.
+    try {
+        if (!Object.keys(dbBookings).some((k) => (dbBookings[k] || []).length)) await loadData();
+    } catch (e) {}
+    nav('view-bookings'); // nav() calls renderBookings()
+    adminHistPush('view-bookings');
+}
+function bookingsSetFilter(f) {
+    __bookingsFilter = f;
+    document
+        .querySelectorAll('#bookings-filters [data-bfilter]')
+        .forEach((b) => b.classList.toggle('is-on', b.getAttribute('data-bfilter') === f));
+    renderBookings();
+}
+function bookingsSetSearch(v) {
+    __bookingsSearch = String(v || '')
+        .trim()
+        .toLowerCase();
+    renderBookings();
+}
+function renderBookings() {
+    const list = document.getElementById('bookings-list');
+    if (!list) return;
+    const today = todayDashed();
+    let rows = [];
+    Object.keys(dbBookings).forEach((propKey) => {
+        (dbBookings[propKey] || []).forEach((b) => rows.push({ propKey, b }));
+    });
+    const q = __bookingsSearch;
+    if (q) {
+        rows = rows.filter(({ b }) => {
+            const ref = (typeof bookingRef === 'function' ? bookingRef(b.id) : '').toLowerCase();
+            return (
+                (b.name || '').toLowerCase().includes(q) ||
+                (b.email || '').toLowerCase().includes(q) ||
+                ref.includes(q) ||
+                ref.replace('chb-', '').includes(q)
+            );
+        });
+    }
+    const f = __bookingsFilter;
+    rows = rows.filter(({ propKey, b }) => {
+        if (f === 'upcoming') return (b.checkOut || '') >= today;
+        if (f === 'past') return (b.checkOut || '') < today;
+        if (f === 'needspay') return !paymentSummary(propKey, b).fullyPaid && (b.checkOut || '') >= today;
+        return true; // 'all'
+    });
+    rows.sort((a, b) =>
+        f === 'past'
+            ? (b.b.checkIn || '').localeCompare(a.b.checkIn || '')
+            : (a.b.checkIn || '').localeCompare(b.b.checkIn || ''),
+    );
+    const sum = document.getElementById('bookings-summary');
+    if (sum) {
+        const label =
+            { upcoming: 'upcoming', past: 'past', needspay: 'needing payment', all: 'in total' }[f] || '';
+        sum.textContent = rows.length ? `${rows.length} booking${rows.length === 1 ? '' : 's'} ${label}` : '';
+    }
+    if (!rows.length) {
+        list.innerHTML = `<div class="bo-search-empty" style="padding:24px 0;color:var(--text-muted);">No bookings ${q ? 'match your search' : 'to show here'}.</div>`;
+        return;
+    }
+    list.innerHTML = rows.map(({ propKey, b }) => bookingListRow(propKey, b, today)).join('');
+}
+function bookingListRow(propKey, b, today) {
+    const meta = propertyMeta[propKey] || { name: propKey };
+    const p =
+        b.agreedPrice || priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
+    const ps = paymentSummary(propKey, b);
+    const gt = displayGrand(p, ps, b.holdStatus);
+    const payLabel = gt.fullyPaid ? 'Paid' : gt.paid > 0 ? 'Part-paid' : 'Unpaid';
+    const payClass = gt.fullyPaid ? 'ok' : gt.paid > 0 ? 'warn' : 'danger';
+    const past = (b.checkOut || '') < today;
+    const balanceBit = !gt.fullyPaid ? ` · ${gbp(gt.balance)} due` : '';
+    const st = b.holdStatus || 'none';
+    let depChip = '';
+    if (st === 'returned') depChip = '<span class="bk-chip ok"><span class="bk-dot"></span>Deposit refunded</span>';
+    else if (st === 'kept') depChip = '<span class="bk-chip warn"><span class="bk-dot"></span>Deposit kept</span>';
+    else if (gt.dep > 0)
+        depChip = `<span class="bk-chip ok"><span class="bk-dot"></span>Deposit ${gt.paid > 0 ? 'charged' : 'included'}</span>`;
+    const emailBtn = b.email
+        ? `<button class="btn-sm btn-edit" onclick="openBookingEmail('${b.id}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/></svg> Email</button>`
+        : '';
+    return `
+        <div class="money-row glass-panel${!past && !gt.fullyPaid ? ' due-soon' : ''}">
+            <div class="money-row-head">
+                <div><span class="prop-tag tag-${propKey}">${escapeHtml(meta.name)}</span>
+                    <strong style="margin-left:8px;">${escapeHtml(b.name || 'Guest')}</strong>
+                    <span style="color:var(--text-muted);margin-left:8px;font-size:0.85rem;">${b.checkIn} → ${b.checkOut}${past ? ' · past' : ''}</span></div>
+                <span class="money-status"><span class="bk-chip ${payClass}"><span class="bk-dot"></span>${payLabel}${balanceBit}</span></span>
+            </div>
+            <div class="money-figures">
+                <span>Total<strong>${gbp(gt.total)}</strong></span>
+                <span>Received<strong style="color:#4CAF50;">${gbp(gt.paid)}</strong></span>
+                <span>${gt.fullyPaid ? 'Settled' : 'Balance'}<strong>${gbp(gt.fullyPaid ? 0 : gt.balance)}</strong></span>
+                <span>Guests<strong>${escapeHtml(b.guests || (b.adults || 0) + ' adults')}</strong></span>
+            </div>
+            ${depChip ? `<div style="margin:2px 0 8px;">${depChip}</div>` : ''}
+            <div class="money-actions">
+                <button class="btn-sm btn-edit" onclick="showDetails('${propKey}', findBookingById('${b.id}'))">View details</button>
+                ${emailBtn}
+                <button class="btn-sm btn-edit" onclick="openEditBooking('${b.id}')">Edit</button>
+                <button class="btn-sm btn-edit" onclick="downloadInvoice('${b.id}')">Invoice</button>
+                <button class="btn-sm btn-edit" onclick="addBookingToCalendar('${b.id}')">Add to calendar</button>
+            </div>
+        </div>`;
+}
+
 // ---- Settings router: Apple-style index → drill-down sub-pages ----
 const SETTINGS_TITLES = {
     notify: 'Notifications',
@@ -7328,8 +7444,10 @@ function renderInbox() {
         .join('');
 }
 
-// ---- Email an enquirer straight from the Inbox (house style + details attached) ----
-let __enqEmailTarget = null;
+// ---- Email a guest straight from the Inbox / Bookings (house style + details attached) ----
+// One shared composer (#enq-email-modal). __composeTarget carries which kind of
+// record we're emailing so sendEnquiryEmail() posts to the right endpoint.
+let __composeTarget = null;
 function openEnquiryEmail(enqId) {
     const enq = enquiries.find((e) => e.id === enqId);
     if (!enq) return;
@@ -7337,7 +7455,7 @@ function openEnquiryEmail(enqId) {
         glassAlert('This enquiry has no email address.');
         return;
     }
-    __enqEmailTarget = enq;
+    __composeTarget = { kind: 'enquiry', enq };
     const propName = (propertyMeta[enq.propKey] && propertyMeta[enq.propKey].name) || enq.propKey;
     // Key details, visible while writing: who + cottage + dates + party + phone
     // + the price the site quoted + their original message — everything needed
@@ -7379,17 +7497,17 @@ function openEnquiryEmail(enqId) {
 function closeEnquiryEmailModal() {
     const m = document.getElementById('enq-email-modal');
     if (m) m.classList.remove('open');
-    __enqEmailTarget = null;
+    __composeTarget = null;
 }
 async function sendEnquiryEmail() {
-    const enq = __enqEmailTarget;
-    if (!enq) return;
+    const t = __composeTarget;
+    if (!t) return;
     const body = (document.getElementById('enq-email-body') || {}).value || '';
     const subject = (document.getElementById('enq-email-subject') || {}).value || '';
     const msgEl = document.getElementById('enq-email-msg');
-    const note = (t) => {
+    const note = (m) => {
         if (msgEl) {
-            msgEl.textContent = t;
+            msgEl.textContent = m;
             msgEl.classList.add('show');
         }
     };
@@ -7403,14 +7521,15 @@ async function sendEnquiryEmail() {
         btn.textContent = 'Sending…';
     }
     try {
-        await apiPost('enquiries.php', {
+        const rec = t.kind === 'booking' ? t.b : t.enq;
+        await apiPost(t.kind === 'booking' ? 'bookings.php' : 'enquiries.php', {
             action: 'email_guest',
-            id: enq.dbId,
+            id: rec.dbId,
             subject: subject.trim(),
             message: body.trim(),
         });
         closeEnquiryEmailModal();
-        toast(`Email sent to ${enq.name || enq.email}.`);
+        toast(`Email sent to ${rec.name || rec.email}.`);
     } catch (e) {
         note("Couldn't send: " + e.message);
     } finally {
@@ -7419,6 +7538,58 @@ async function sendEnquiryEmail() {
             btn.textContent = 'Send email';
         }
     }
+}
+// Compose a free-text email to a confirmed booking's guest (Bookings page).
+// Reuses the enquiry composer; the booking details + price ride along.
+function openBookingEmail(bookingId) {
+    const b = typeof findBookingById === 'function' ? findBookingById(bookingId) : null;
+    const loc = typeof findBookingLocation === 'function' ? findBookingLocation(bookingId) : null;
+    if (!b || !loc) return;
+    if (!b.email) {
+        glassAlert('This booking has no email address on file.');
+        return;
+    }
+    __composeTarget = { kind: 'booking', b, propKey: loc.propKey };
+    const propName = (propertyMeta[loc.propKey] && propertyMeta[loc.propKey].name) || loc.propKey;
+    const ctx = document.getElementById('enq-email-context');
+    if (ctx) {
+        let priceRow = '';
+        try {
+            const p =
+                b.agreedPrice ||
+                priceBreakdown(loc.propKey, b.adults, b.children, b.checkIn, b.checkOut);
+            const ps = paymentSummary(loc.propKey, b);
+            const gt = displayGrand(p, ps, b.holdStatus);
+            const status = gt.fullyPaid
+                ? 'Paid in full'
+                : gt.paid > 0
+                  ? `${gbp(gt.balance)} balance due`
+                  : `${gbp(gt.balance)} due`;
+            priceRow = `<div class="enq-ctx-row"><span class="enq-ctx-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg></span><span class="enq-ctx-txt"><strong>${gbp(gt.total)}</strong><span class="enq-ctx-mut"> · ${status} · ${bookingRef(b.id)}</span></span></div>`;
+        } catch (e) {}
+        const initial = (b.name || b.email || '?').trim().charAt(0).toUpperCase();
+        ctx.innerHTML = `
+            <div class="enq-ctx-who">
+                <span class="enq-ctx-avatar">${escapeHtml(initial)}</span>
+                <span class="enq-ctx-name">${escapeHtml(b.name || 'Guest')}<span class="enq-ctx-mut" style="display:block;font-weight:400;">${escapeHtml(b.email)}</span></span>
+                <span class="prop-tag tag-${loc.propKey}" style="margin-left:auto;flex-shrink:0;">${escapeHtml(propName)}</span>
+            </div>
+            <div class="enq-ctx-row"><span class="enq-ctx-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></span><span class="enq-ctx-txt"><strong>${escapeHtml(b.checkIn)}</strong>&nbsp;→&nbsp;<strong>${escapeHtml(b.checkOut)}</strong></span></div>
+            <div class="enq-ctx-row"><span class="enq-ctx-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 12 0v1"/></svg></span><span class="enq-ctx-txt">${escapeHtml(b.guests || '')}${b.phone ? `<span class="enq-ctx-mut"> · ${escapeHtml(b.phone)}</span>` : ''}</span></div>
+            ${priceRow}`;
+    }
+    const subj = document.getElementById('enq-email-subject');
+    if (subj) subj.value = `Your booking — ${propName}, ${b.checkIn} to ${b.checkOut}`;
+    const body = document.getElementById('enq-email-body');
+    if (body) body.value = '';
+    const msg = document.getElementById('enq-email-msg');
+    if (msg) {
+        msg.textContent = '';
+        msg.classList.remove('show');
+    }
+    const m = document.getElementById('enq-email-modal');
+    if (m) m.classList.add('open');
+    if (body) setTimeout(() => body.focus(), 150);
 }
 
 async function declineEnquiry(enqId) {

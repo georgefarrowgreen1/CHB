@@ -727,6 +727,50 @@ if ($action === 'send_confirmation') {
     json_out(['error' => 'Email not sent: ' . $reason, 'email' => $result], 200);
 }
 
+// Free-text email to a booking's guest, with the booking details riding along
+// underneath (mirrors enquiries.php 'email_guest'; the composer is shared).
+if ($action === 'email_guest') {
+    require_admin();
+    $id = (int) ($in['id'] ?? 0);
+    $b = booking_by_id($id);
+    if (!$b) {
+        json_out(['error' => 'Booking not found'], 404);
+    }
+    if (empty($b['email'])) {
+        json_out(['error' => 'This booking has no guest email on file.'], 400);
+    }
+    $message = trim((string) ($in['message'] ?? ''));
+    if ($message === '') {
+        json_out(['error' => 'Please write a message first.'], 400);
+    }
+    $message = mb_substr($message, 0, 5000);
+    $subject = mb_substr(clean($in['subject'] ?? ''), 0, 150);
+    $priceEst = null;
+    try {
+        $rate = get_rate($b['prop_key']);
+        if ($rate) {
+            $priceEst = price_breakdown($rate, (int) $b['adults'], (int) $b['children'], $b['check_in'], $b['check_out']);
+        }
+    } catch (\Throwable $e) {
+    }
+    require_once __DIR__ . '/mailer.php';
+    $r = ['ok' => false, 'error' => 'send failed'];
+    try {
+        $r = send_enquiry_reply_email(array_merge($b, ['price' => $priceEst]), $subject, $message, 'booking');
+    } catch (\Throwable $e) {
+        $r = ['ok' => false, 'error' => $e->getMessage()];
+    }
+    if (empty($r['ok'])) {
+        json_out(['error' => $r['error'] ?? 'Could not send the email'], 400);
+    }
+    log_activity('comms', 'booking.email', 'Emailed guest — ' . ($b['name'] ?: $b['email']), [
+        'entity' => 'booking',
+        'entity_id' => (string) $id,
+        'prop_key' => $b['prop_key'] ?? '',
+    ]);
+    json_out(['ok' => true]);
+}
+
 // ---- Square online payments (admin side) ----------------------------------
 // (square_deposit_pct, booking_amount_due live in pricing.php; site_base_url in db.php.)
 

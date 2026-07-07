@@ -175,6 +175,24 @@ async function waitForServer(url, tries = 40) {
     (ar.security && !ar.enquiries && !ar.accom && !ar.analytics) ? pass('Settings area shows only settings rows') : fail('Settings area filter wrong: ' + JSON.stringify(ar));
     await page.evaluate(async () => { nav('view-backoffice'); await initBackOffice(); });
 
+    console.log('== 5c. Bookings page (dedicated list + filters + email) ==');
+    await page.evaluate(async () => { isAuthenticated = true; document.body.classList.add('owner-mode'); await openBookings(); });
+    await page.waitForTimeout(500);
+    (await page.evaluate(() => (document.querySelector('.page-view.active') || {}).id)) === 'view-bookings' ? pass('bookings view active') : fail('bookings view did not open');
+    (await page.locator('#bookings-list .money-row').count()) === 2 ? pass('upcoming bookings listed (2)') : fail('bookings list count wrong: ' + (await page.locator('#bookings-list .money-row').count()));
+    (await page.locator('#bookings-list .money-row button', { hasText: 'Email' }).count()) >= 1 ? pass('email action present on rows') : fail('email action missing');
+    await page.evaluate(() => bookingsSetFilter('needspay'));
+    await page.waitForTimeout(200);
+    (await page.locator('#bookings-list .money-row').count()) === 1 ? pass('Needs-payment filter → 1 booking') : fail('needs-payment filter wrong: ' + (await page.locator('#bookings-list .money-row').count()));
+    await page.evaluate(() => { bookingsSetFilter('all'); bookingsSetSearch('sarah'); });
+    await page.waitForTimeout(200);
+    (await page.locator('#bookings-list .money-row').count()) === 1 ? pass('search "sarah" → 1 booking') : fail('search wrong: ' + (await page.locator('#bookings-list .money-row').count()));
+    await page.evaluate(() => { bookingsSetSearch(''); openBookingEmail('b1'); });
+    await page.waitForTimeout(300);
+    (await page.evaluate(() => document.getElementById('enq-email-modal').classList.contains('open'))) ? pass('booking email composer opens') : fail('booking email composer did not open');
+    ((await page.locator('#enq-email-subject').inputValue()) || '').includes('Your booking') ? pass('composer prefilled for the booking') : fail('composer subject not prefilled');
+    await page.evaluate(() => closeEnquiryEmailModal());
+
     console.log('== 6. Mid-stay guest: My Stays + hub ==');
     await page.evaluate(async () => {
       isAuthenticated = false; document.body.classList.remove('owner-mode');
