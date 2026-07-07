@@ -2386,6 +2386,26 @@ async function guestLogout() {
     nav('view-main');
 }
 
+// ---- Guest price box: ONE renderer for the itemised price on My-Stays cards
+// (pending enquiries and confirmed bookings), so the two can't drift. Guards
+// partial price data — a manually-added booking may carry only a total, so a
+// missing nightly/fee line is SKIPPED rather than rendered as "£NaN".
+function guestPriceBoxHtml(p, o) {
+    const fin = (n) => typeof n === 'number' && isFinite(n);
+    const rows = [];
+    if (fin(p.perNight) && fin(p.nights) && fin(p.nightly))
+        rows.push(`<div class="price-row"><span>${gbp(p.perNight)} × ${p.nights} night${p.nights === 1 ? '' : 's'}</span><span>${gbp(p.nightly)}</span></div>`);
+    if (fin(p.txFee) && fin(p.transactionPct))
+        rows.push(`<div class="price-row"><span>Transaction fee (${p.transactionPct}%)</span><span>${gbp(p.txFee)}</span></div>`);
+    if (o.dep > 0)
+        rows.push(`<div class="price-row"><span>Refundable damages deposit</span><span>${gbp(o.dep)}</span></div>`);
+    rows.push(`<div class="price-row total"><span>Total${o.dep > 0 ? ' (incl. deposit)' : ''}</span><span class="price-amount">${gbp(o.total)}</span></div>`);
+    if (o.extraRows) rows.push(o.extraRows);
+    if (o.dep > 0)
+        rows.push(`<p style="color:var(--text-muted);font-size:0.73rem;margin:6px 0 0;">Includes the ${gbp(o.dep)} refundable damages deposit — refunded after your stay.</p>`);
+    if (o.note) rows.push(o.note);
+    return `<div class="guest-price-box">${rows.join('')}</div>`;
+}
 async function renderGuestBookings() {
     const list = document.getElementById('guest-bookings-list');
     const welcome = document.getElementById('guest-welcome');
@@ -2500,14 +2520,11 @@ async function renderGuestBookings() {
                                 <div class="booking-detail-item"><span class="booking-detail-label">Status</span><span class="booking-detail-value" style="font-size:1rem;color:#FFB74D;">Awaiting confirmation</span></div>
                                 <div class="booking-detail-item" style="grid-column:1/-1;"><span class="booking-detail-label">Address</span><span class="booking-detail-value" style="font-size:0.95rem;">${escapeHtml(addr || 'Address available on confirmation.')}</span></div>
                             </div>
-                            <div class="guest-price-box">
-                                <div class="price-row"><span>${gbp(p.perNight)} × ${p.nights} night${p.nights === 1 ? '' : 's'}</span><span>${gbp(p.nightly)}</span></div>
-                                <div class="price-row"><span>Transaction fee (${p.transactionPct}%)</span><span>${gbp(p.txFee)}</span></div>
-                                ${p.damagesDeposit > 0 ? `<div class="price-row"><span>Refundable damages deposit</span><span>${gbp(p.damagesDeposit)}</span></div>` : ''}
-                                <div class="price-row total"><span>Total${p.damagesDeposit > 0 ? ' (incl. deposit)' : ''}</span><span class="price-amount">${gbp(displayGrandTotal(p.total, p, 'none'))}</span></div>
-                                ${p.damagesDeposit > 0 ? `<p style="color:var(--text-muted);font-size:0.75rem;margin:6px 0 0;">Includes the ${gbp(p.damagesDeposit)} refundable damages deposit — refunded after your stay.</p>` : ''}
-                                <p style="color:var(--text-muted);font-size:0.75rem;text-align:center;margin:8px 0 0;">Estimate — we'll confirm your dates and final price by email.</p>
-                            </div>
+                            ${guestPriceBoxHtml(p, {
+                                dep: p.damagesDeposit || 0,
+                                total: displayGrandTotal(p.total, p, 'none'),
+                                note: `<p style="color:var(--text-muted);font-size:0.75rem;text-align:center;margin:8px 0 0;">Estimate — we'll confirm your dates and final price by email.</p>`,
+                            })}
                             </div>
                             <div class="card-actions">
                                 <button class="btn-sm btn-edit" onclick="openTermsModal(event, '${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h9a3 3 0 0 1 3 3v13H9a3 3 0 0 1-3-3z"/><path d="M6 17h12"/></svg> Terms</button>
@@ -2560,20 +2577,16 @@ async function renderGuestBookings() {
                                 <div class="booking-detail-item"><span class="booking-detail-label">Payment</span><span class="booking-detail-value" style="font-size:1rem;color:${pay.color};">${pay.label}</span></div>
                                 <div class="booking-detail-item" style="grid-column:1/-1;"><span class="booking-detail-label">Address</span><span class="booking-detail-value" style="font-size:0.95rem;">${escapeHtml(addr || 'Address available on confirmation.')}</span></div>
                             </div>
-                            <div class="guest-price-box">
-                                <div class="price-row"><span>${gbp(p.perNight)} × ${p.nights} night${p.nights === 1 ? '' : 's'}</span><span>${gbp(p.nightly)}</span></div>
-                                <div class="price-row"><span>Transaction fee (${p.transactionPct}%)</span><span>${gbp(p.txFee)}</span></div>
-                                ${gt.dep > 0 ? `<div class="price-row"><span>Refundable damages deposit</span><span>${gbp(gt.dep)}</span></div>` : ''}
-                                <div class="price-row total"><span>Total${gt.dep > 0 ? ' (incl. deposit)' : ''}</span><span class="price-amount">${gbp(gt.total)}</span></div>
-                                ${
+                            ${guestPriceBoxHtml(p, {
+                                dep: gt.dep,
+                                total: gt.total,
+                                extraRows:
                                     gt.paid > 0
                                         ? `
                                 <div class="price-row" style="color:#4CAF50;"><span>Paid${b.paymentMethod ? ' (' + escapeHtml(b.paymentMethod) + ')' : ''}${b.paymentDate ? ' on ' + b.paymentDate : ''}</span><span>− ${gbp(gt.paid)}</span></div>
                                 <div class="price-row total"><span>${gt.fullyPaid ? 'Paid in full' : 'Balance due'}</span><span class="price-amount" style="${gt.fullyPaid ? 'color:#4CAF50;' : ''}">${gbp(gt.fullyPaid ? gt.total : gt.balance)}</span></div>`
-                                        : ''
-                                }
-                                ${gt.dep > 0 ? `<p style="color:var(--text-muted);font-size:0.72rem;margin:6px 0 0;">Includes the ${gbp(gt.dep)} refundable damages deposit — refunded after your stay.</p>` : ''}
-                            </div>
+                                        : '',
+                            })}
                             </div>
                             <div class="card-actions">
                                 ${upcoming && !gt.fullyPaid && payToken ? `<button class="btn-glass btn-sm" style="background:rgba(76,175,80,0.22);border-color:var(--booked-border);" onclick="openPayView('${payToken}', ${b.dbId}, 'balance')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay balance ${gbp(gt.balance)}</button>` : ''}
@@ -2644,7 +2657,7 @@ async function renderInStayTides() {
     if (!els.length) return;
     let data;
     try {
-        data = await apiGet('tides.php?start=' + todayDashed() + '&days=1');
+        data = await loadTideData(); // shared cache with the Experiences panel
     } catch (e) {
         els.forEach((el) => (el.style.display = 'none'));
         return;
@@ -4904,6 +4917,12 @@ const DEFAULT_ACCESS =
 // ---- Tide widget (Blakeney) — fetched once from tides.php, cached in-memory.
 // Hidden entirely unless an API key is configured (Settings → API keys). ----
 let __tideData = null;
+// ONE fetch for tide data (2 days covers both consumers) — the Experiences
+// panel and the in-stay strip are just two formatters over the same cache.
+async function loadTideData() {
+    if (!__tideData) __tideData = await apiGet('tides.php?start=' + todayDashed() + '&days=2');
+    return __tideData;
+}
 async function renderTides() {
     const card = document.getElementById('exp-tides-col');
     const body = document.getElementById('exp-tides-body');
@@ -4912,7 +4931,7 @@ async function renderTides() {
         card.style.display = 'none';
     };
     try {
-        if (!__tideData) __tideData = await apiGet('tides.php?start=' + todayDashed() + '&days=2');
+        await loadTideData();
         if (!__tideData || !__tideData.ok || !Array.isArray(__tideData.extremes)) {
             hide();
             return;
@@ -8178,36 +8197,42 @@ function injectPropColors() {
 // Rebuild the cottage grid from the live property list so cottages the owner
 // ADDS appear and ones they ARCHIVE disappear — without hardcoding three cards.
 // The original three keep their legacy data-edit keys (saved card edits survive).
-function renderCottageCards() {
-    const grid = document.getElementById('cottages');
-    if (!grid) return;
-    const keys = liveCottageKeys();
-    if (!keys.length) return; // never blank the grid if the list hasn't loaded
+// ONE card template for BOTH cottage grids — the homepage teaser grid and the
+// Cottages page differ only in element-id prefix (avoids duplicate ids when
+// both grids exist) and whether the "Guest favourite" badge can show. A single
+// builder means the two grids can never drift apart.
+function cottageCardHtml(k, idPrefix, withFav) {
     const sc = typeof siteContent === 'object' && siteContent ? siteContent : {};
-    grid.innerHTML = keys
-        .map((k) => {
-            const ck = cardKeys(k);
-            const slug = COTTAGE_SLUGS[k] || k;
-            const img = sc[ck.img] || 'card-' + k + '.jpg';
-            const title = sc[ck.title] || (propertyMeta[k] && propertyMeta[k].name) || k;
-            const meta = sc[ck.meta] || cottageSleepsLabel(k);
-            return `<a class="card glass-panel" data-prop="${k}" href="/cottages/${escapeHtml(slug)}" onclick="return cottageLink(event,'${k}')">
+    const ck = cardKeys(k);
+    const slug = COTTAGE_SLUGS[k] || k;
+    const img = sc[ck.img] || 'card-' + k + '.jpg';
+    const title = sc[ck.title] || (propertyMeta[k] && propertyMeta[k].name) || k;
+    const meta = sc[ck.meta] || cottageSleepsLabel(k);
+    const fav = withFav
+        ? `<span class="cott-fav" id="cott-fav-${k}" hidden><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21s-7-4.6-9.3-9C1.4 9 2.7 5.5 6 5.5c2 0 3.2 1.2 4 2.5.8-1.3 2-2.5 4-2.5 3.3 0 4.6 3.5 3.3 6.5C19 16.4 12 21 12 21z"/></svg> Guest favourite</span>`
+        : '';
+    return `<a class="card glass-panel" data-prop="${k}" href="/cottages/${escapeHtml(slug)}" onclick="return cottageLink(event,'${k}')">
                     <div class="card-img-wrap">
                         <div class="card-img" data-edit-img="${ck.img}" role="img" aria-label="Photo of ${escapeHtml(title)}" style="background-image: url('${escapeHtml(img)}');"></div>
-                        <span class="cott-fav" id="cott-fav-${k}" hidden><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21s-7-4.6-9.3-9C1.4 9 2.7 5.5 6 5.5c2 0 3.2 1.2 4 2.5.8-1.3 2-2.5 4-2.5 3.3 0 4.6 3.5 3.3 6.5C19 16.4 12 21 12 21z"/></svg> Guest favourite</span>
+                        ${fav}
                     </div>
                     <div class="cott-head">
                         <div class="card-title" data-edit-text="${ck.title}">${escapeHtml(title)}</div>
-                        <div class="card-rating" id="card-rating-${k}"></div>
+                        <div class="card-rating" id="${idPrefix}card-rating-${k}"></div>
                     </div>
                     <div class="card-meta" data-edit-text="${ck.meta}">${escapeHtml(meta)}</div>
                     <div class="card-foot">
-                        <div class="card-price" id="card-price-${k}"></div>
-                        <div class="card-avail" id="card-avail-${k}"></div>
+                        <div class="card-price" id="${idPrefix}card-price-${k}"></div>
+                        <div class="card-avail" id="${idPrefix}card-avail-${k}"></div>
                     </div>
                 </a>`;
-        })
-        .join('');
+}
+function renderCottageGrid(gridId, idPrefix, withFav) {
+    const grid = document.getElementById(gridId);
+    if (!grid) return;
+    const keys = liveCottageKeys();
+    if (!keys.length) return; // never blank the grid if the list hasn't loaded
+    grid.innerHTML = keys.map((k) => cottageCardHtml(k, idPrefix, withFav)).join('');
     try {
         renderCardPrices();
     } catch (e) {}
@@ -8218,49 +8243,14 @@ function renderCottageCards() {
         fadeInCardImages(grid);
     } catch (e) {}
 }
+function renderCottageCards() {
+    renderCottageGrid('cottages', '', true);
+}
 
-// Homepage cottage cards (above the "Check availability" search): SIMPLIFIED
-// versions of the cottages-page cards — photo + name + subtitle only, no live
-// price / rating / "guest favourite" (so no duplicate ids with #cottages). Same
-// data sources as renderCottageCards(); clicking opens the cottage.
+// Homepage cottage cards: same template via renderCottageGrid, with home-
+// prefixed ids so both grids can coexist (no "Guest favourite" badge here).
 function renderHomeCottages() {
-    const grid = document.getElementById('home-cottages-grid');
-    if (!grid) return;
-    const keys = liveCottageKeys();
-    if (!keys.length) return; // never blank the static fallback before the list loads
-    const sc = typeof siteContent === 'object' && siteContent ? siteContent : {};
-    grid.innerHTML = keys
-        .map((k) => {
-            const ck = cardKeys(k);
-            const slug = COTTAGE_SLUGS[k] || k;
-            const img = sc[ck.img] || 'card-' + k + '.jpg';
-            const title = sc[ck.title] || (propertyMeta[k] && propertyMeta[k].name) || k;
-            const meta = sc[ck.meta] || cottageSleepsLabel(k);
-            return `<a class="card glass-panel" data-prop="${k}" href="/cottages/${escapeHtml(slug)}" onclick="return cottageLink(event,'${k}')">
-                    <div class="card-img-wrap">
-                        <div class="card-img" data-edit-img="${ck.img}" role="img" aria-label="Photo of ${escapeHtml(title)}" style="background-image: url('${escapeHtml(img)}');"></div>
-                    </div>
-                    <div class="cott-head">
-                        <div class="card-title" data-edit-text="${ck.title}">${escapeHtml(title)}</div>
-                        <div class="card-rating" id="home-card-rating-${k}"></div>
-                    </div>
-                    <div class="card-meta" data-edit-text="${ck.meta}">${escapeHtml(meta)}</div>
-                    <div class="card-foot">
-                        <div class="card-price" id="home-card-price-${k}"></div>
-                        <div class="card-avail" id="home-card-avail-${k}"></div>
-                    </div>
-                </a>`;
-        })
-        .join('');
-    try {
-        renderCardPrices();
-    } catch (e) {}
-    try {
-        renderCardRatings();
-    } catch (e) {}
-    try {
-        fadeInCardImages(grid);
-    } catch (e) {}
+    renderCottageGrid('home-cottages-grid', 'home-', false);
 }
 
 // Regenerate the page's JSON-LD structured data from the live cottage list so
@@ -11577,7 +11567,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'xa27qbhx';
+    const BUILD = 'wz783fbj';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
