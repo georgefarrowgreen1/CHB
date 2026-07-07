@@ -3837,6 +3837,9 @@ function updateTodayAllClear() {
     const anyVisible = [...grid.querySelectorAll('.today-card')].some(
         (c) => c.style.display !== 'none',
     );
+    // Collapse the (otherwise empty) grid when nothing needs the owner, so its
+    // bottom margin doesn't leave a gap above the "All clear" line.
+    grid.style.display = anyVisible ? '' : 'none';
     ac.style.display = anyVisible ? 'none' : 'block';
 }
 // Quick find: filter bookings by guest name/email; click a result to open it.
