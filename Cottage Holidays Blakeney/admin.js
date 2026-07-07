@@ -7513,6 +7513,7 @@ function openEnquiryEmail(enqId) {
         return;
     }
     __composeTarget = { kind: 'enquiry', enq };
+    backToComposeEdit();
     const propName = (propertyMeta[enq.propKey] && propertyMeta[enq.propKey].name) || enq.propKey;
     // Key details, visible while writing: who + cottage + dates + party + phone
     // + the price the site quoted + their original message — everything needed
@@ -7554,7 +7555,64 @@ function openEnquiryEmail(enqId) {
 function closeEnquiryEmailModal() {
     const m = document.getElementById('enq-email-modal');
     if (m) m.classList.remove('open');
+    backToComposeEdit(); // reset to the compose view for next time
     __composeTarget = null;
+}
+// Toggle the composer back from the preview to the editing view.
+function backToComposeEdit() {
+    const pv = document.getElementById('enq-email-preview');
+    const ed = document.getElementById('enq-email-edit');
+    if (pv) pv.style.display = 'none';
+    if (ed) ed.style.display = '';
+}
+// Render the exact email the guest will receive, in an iframe, before sending.
+// Built server-side (build_enquiry_reply_email) so the preview can't drift from
+// what actually goes out.
+async function previewComposedEmail() {
+    const t = __composeTarget;
+    if (!t) return;
+    const body = (document.getElementById('enq-email-body') || {}).value || '';
+    const subject = (document.getElementById('enq-email-subject') || {}).value || '';
+    const msgEl = document.getElementById('enq-email-msg');
+    const note = (m) => {
+        if (msgEl) {
+            msgEl.textContent = m;
+            msgEl.classList.add('show');
+        }
+    };
+    if (!body.trim()) {
+        note('Write a message first to preview it.');
+        return;
+    }
+    const btn = document.getElementById('enq-email-preview-btn');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Loading…';
+    }
+    try {
+        const rec = t.kind === 'booking' ? t.b : t.enq;
+        const r = await apiPost(t.kind === 'booking' ? 'bookings.php' : 'enquiries.php', {
+            action: 'email_preview',
+            id: rec.dbId,
+            subject: subject.trim(),
+            message: body.trim(),
+        });
+        const frame = document.getElementById('enq-email-preview-frame');
+        if (frame)
+            frame.srcdoc =
+                r && r.html
+                    ? r.html
+                    : '<p style="font-family:sans-serif;padding:24px;color:#57524a;">Preview unavailable.</p>';
+        document.getElementById('enq-email-edit').style.display = 'none';
+        document.getElementById('enq-email-preview').style.display = '';
+    } catch (e) {
+        note("Couldn't build the preview: " + (e && e.message ? e.message : e));
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Preview';
+        }
+    }
 }
 async function sendEnquiryEmail() {
     const t = __composeTarget;
@@ -7615,6 +7673,7 @@ function openBookingEmail(bookingId) {
         return;
     }
     __composeTarget = { kind: 'booking', b, propKey: loc.propKey };
+    backToComposeEdit();
     const propName = (propertyMeta[loc.propKey] && propertyMeta[loc.propKey].name) || loc.propKey;
     const ctx = document.getElementById('enq-email-context');
     if (ctx) {

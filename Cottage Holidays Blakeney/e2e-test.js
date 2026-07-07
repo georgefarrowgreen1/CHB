@@ -74,6 +74,7 @@ async function waitForServer(url, tries = 40) {
       if (url.includes('rates.php')) return json({ properties: props, seasons: {}, occupancy: { '21a': { maxAdults: 2, maxChildren: 0, maxTotal: 2 }, jollyboat: { maxAdults: 2, maxChildren: 0, maxTotal: 2 }, pimpernel: { maxAdults: 2, maxChildren: 1, maxTotal: 3 } } });
       if (url.includes('bookings.php')) {
         let act = ''; try { act = JSON.parse(post || '{}').action || ''; } catch (e) {}
+        if (act === 'email_preview') return json({ ok: true, subject: 'Your booking — 21A Westgate', html: '<!doctype html><html><body style="font-family:sans-serif"><h1>About your booking</h1><p data-preview="1">Parking is on the street out front.</p></body></html>' });
         if (act === 'email_logs') return json({ logs: { '1': [
           { action: 'email.confirmation', summary: 'Confirmation re-sent — Sarah Pemberton', at: d(0) + ' 09:15:00', subject: '', body: '' },
           { action: 'email.receipt', summary: 'Payment receipt emailed — £450.00 · Sarah Pemberton', at: d(0) + ' 09:40:00', subject: '', body: '' },
@@ -211,6 +212,15 @@ async function waitForServer(url, tries = 40) {
     await page.waitForTimeout(300);
     (await page.evaluate(() => document.getElementById('enq-email-modal').classList.contains('open'))) ? pass('booking email composer opens') : fail('booking email composer did not open');
     ((await page.locator('#enq-email-subject').inputValue()) || '').includes('Your booking') ? pass('composer prefilled for the booking') : fail('composer subject not prefilled');
+    // Preview before sending: type a message, hit Preview → the email renders in the iframe.
+    await page.fill('#enq-email-body', 'Parking is on the street out front.');
+    await page.evaluate(() => previewComposedEmail());
+    await page.waitForTimeout(400);
+    (await page.evaluate(() => document.getElementById('enq-email-preview').style.display !== 'none' && document.getElementById('enq-email-edit').style.display === 'none')) ? pass('preview view shows before sending') : fail('preview view did not show');
+    ((await page.frameLocator('#enq-email-preview-frame').locator('[data-preview="1"]').textContent().catch(() => '')) || '').includes('Parking') ? pass('preview iframe renders the built email') : fail('preview iframe empty');
+    await page.evaluate(() => backToComposeEdit());
+    await page.waitForTimeout(150);
+    (await page.evaluate(() => document.getElementById('enq-email-edit').style.display !== 'none')) ? pass('back to editing works') : fail('back-to-edit failed');
     await page.evaluate(() => closeEnquiryEmailModal());
 
     console.log('== 6. Mid-stay guest: My Stays + hub ==');

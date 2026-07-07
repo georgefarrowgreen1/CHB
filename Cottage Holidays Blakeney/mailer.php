@@ -762,14 +762,12 @@ function send_enquiry_ack($enq, $accountExists = false)
 // owner writes the message; the guest's enquiry details ride along underneath
 // (cottage, dates, times, party, estimated price) in the house email style.
 // Replies come back to the site address (smtp_send's default Reply-To).
-function send_enquiry_reply_email($e, $subject, $message, $ctx = 'enquiry')
+// Build the branded reply email (subject + text + HTML) WITHOUT sending it, so the
+// same output can be shown as a live preview in the composer and then sent. Single
+// source of truth for both the preview endpoint and send_enquiry_reply_email().
+function build_enquiry_reply_email($e, $subject, $message, $ctx = 'enquiry')
 {
-    // $ctx: 'enquiry' (default) or 'booking' — only changes the wording, so the
-    // same branded composer serves both the inbox and the bookings page.
     $noun = $ctx === 'booking' ? 'booking' : 'enquiry';
-    if (empty($e['email'])) {
-        return ['ok' => false, 'error' => 'No guest email on this ' . $noun];
-    }
     $prop = function_exists('prop_display')
         ? prop_display($e['prop_key'] ?? '')['name'] ?? ($e['prop_key'] ?? '')
         : $e['prop_key'] ?? '';
@@ -836,7 +834,19 @@ function send_enquiry_reply_email($e, $subject, $message, $ctx = 'enquiry')
         email_p('Just reply to this email to reach us.<br>Cottage Holidays Blakeney', true);
     $html = email_shell($subject, $inner, $accent);
 
-    return smtp_send($e['email'], $name, $subject, $text, $html);
+    return ['email' => $e['email'] ?? '', 'name' => $name, 'subject' => $subject, 'text' => $text, 'html' => $html];
+}
+// Send the branded reply email (owner writes the message; the guest's details
+// ride along underneath). Builds via build_enquiry_reply_email() so the sent
+// email is byte-identical to the composer preview.
+function send_enquiry_reply_email($e, $subject, $message, $ctx = 'enquiry')
+{
+    $noun = $ctx === 'booking' ? 'booking' : 'enquiry';
+    if (empty($e['email'])) {
+        return ['ok' => false, 'error' => 'No guest email on this ' . $noun];
+    }
+    $m = build_enquiry_reply_email($e, $subject, $message, $ctx);
+    return smtp_send($m['email'], $m['name'], $m['subject'], $m['text'], $m['html']);
 }
 
 // New-enquiry alert for the owner, with signed one-tap action links. $e carries
