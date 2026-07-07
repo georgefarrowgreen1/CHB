@@ -142,6 +142,7 @@ try {
 }
 
 // ---- 4. Orphaned payment rows (flag only — never delete money records) -----
+// ---- 5. Monthly digest into the activity log --------------------------------
 try {
     $orphans = (int) db()
         ->query('SELECT COUNT(*) FROM payments p LEFT JOIN bookings b ON b.id = p.booking_id WHERE b.id IS NULL')
@@ -157,6 +158,29 @@ try {
         ]);
     }
     $state['orphan_payments'] = $orphans;
+
+    // Monthly rollup: fixes are counted in this state as they happen (immune to
+    // the activity log's 5000-row trim), and when the month rolls over the
+    // finished month gets ONE summary line in the log — so the quiet
+    // maintenance stays visible without emailing anyone.
+    $curMonth = date('Y-m');
+    $stMonth = (string) ($state['month'] ?? '');
+    $stFixes = (int) ($state['month_fixes'] ?? 0);
+    if ($stMonth !== '' && $stMonth !== $curMonth) {
+        $label = date('F Y', strtotime($stMonth . '-01'));
+        log_activity(
+            'system',
+            'selfrepair.digest',
+            $stFixes > 0
+                ? 'Self-repair: quietly fixed ' . $stFixes . ' thing' . ($stFixes === 1 ? '' : 's') . ' in ' . $label
+                : 'Self-repair: nothing needed fixing in ' . $label,
+            ['actor' => $actor, 'entity' => 'selfrepair'],
+        );
+        $stFixes = 0;
+    }
+    $state['month'] = $curMonth;
+    $state['month_fixes'] = $stFixes + count($fixed);
+
     db()
         ->prepare(
             "INSERT INTO content (item_key, item_value) VALUES ('self-repair-state', ?)
