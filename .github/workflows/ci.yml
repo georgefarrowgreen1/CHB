@@ -53,6 +53,11 @@ jobs:
       - name: Install Playwright Chromium
         working-directory: "Cottage Holidays Blakeney"
         run: |
+          # The hosted runner's Microsoft/Azure apt repos intermittently serve an
+          # unsigned InRelease ("NOSPLIT"), which fails `--with-deps`' apt-get and
+          # kills the whole browser-test. We don't need those repos, so drop them
+          # (and add apt retries) before the install.
+          sudo rm -f /etc/apt/sources.list.d/*microsoft*.list /etc/apt/sources.list.d/*azure*.list 2>/dev/null || true
           npm init -y > /dev/null
           npm install --no-audit --no-fund playwright
           npx playwright install --with-deps chromium
