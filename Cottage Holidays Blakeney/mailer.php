@@ -785,7 +785,7 @@ function send_enquiry_reply_email($e, $subject, $message)
         ? $money($p['total']) .
             ' (' . (int) $p['nights'] . ' night' . ((int) $p['nights'] === 1 ? '' : 's') .
             ' × ' . $money($p['perNight'] ?? 0) . ')' .
-            (!empty($p['damagesDeposit']) ? ' + ' . $money($p['damagesDeposit']) . ' refundable deposit' : '')
+            (!empty($p['damagesDeposit']) ? ' + ' . $money($p['damagesDeposit']) . ' refundable deposit (refunded after your stay)' : '')
         : '';
     $times = 'Arrive ' . (($e['check_in_time'] ?? '') ?: '15:00') . ' · leave ' . (($e['check_out_time'] ?? '') ?: '10:00');
 
@@ -865,7 +865,7 @@ function send_owner_enquiry_email($e)
         ? $money($p['total']) .
             ' (' . (int) $p['nights'] . ' night' . ((int) $p['nights'] === 1 ? '' : 's') .
             ' × ' . $money($p['perNight'] ?? ($p['nights'] ? $p['nightly'] / max(1, $p['nights']) : 0)) . ')' .
-            (!empty($p['damagesDeposit']) ? ' + ' . $money($p['damagesDeposit']) . ' refundable deposit (held separately)' : '')
+            (!empty($p['damagesDeposit']) ? ' + ' . $money($p['damagesDeposit']) . ' refundable deposit (charged with the first payment, refunded after the stay)' : '')
         : '';
     $times = ($e['check_in_time'] ?? '') !== '' || ($e['check_out_time'] ?? '') !== ''
         ? 'Arrive ' . ($e['check_in_time'] ?: '15:00') . ' · leave ' . ($e['check_out_time'] ?: '10:00')
@@ -987,7 +987,7 @@ function send_booking_emails($b)
         $body .=
             'Plus a refundable security deposit of ' .
             $money($b['damages_deposit']) .
-            ", held on your card near arrival (not charged) and released after checkout.\n\n";
+            ", charged together with your first payment and refunded in full after checkout (provided there's no damage).\n\n";
         $body .= "If you have any questions, just reply to this email.\nCottage Holidays Blakeney\n";
 
         // HTML version — "Midnight Glass" shell + the booking "stay ticket".
@@ -1021,7 +1021,7 @@ function send_booking_emails($b)
             '</td></tr>' .
             $pr(
                 '<span style="color:#A0987F;">+ ' . $money($b['damages_deposit']) . ' refundable deposit</span>',
-                '<span style="color:#A0987F;">held, not charged</span>',
+                '<span style="color:#A0987F;">refunded after your stay</span>',
             ) .
             '</table></td></tr></table>';
         $inner =

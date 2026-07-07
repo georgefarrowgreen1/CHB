@@ -129,13 +129,16 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   JS side and `test-pricing.php` the PHP side against the SAME fixtures — keep both
   green when touching pricing.
 - **`total` is RENTAL ONLY** (nightly + txn). The refundable damages deposit is returned
-  by the price model as `damagesDeposit` but is NOT in `total` — it's taken as a separate
-  Square card **HOLD** (authorise → capture/release), never charged with the booking.
-  Lifecycle: `pay.php` `authorize` (autocomplete:false) places it; `bookings.php`
-  `hold_request`/`hold_link`/`hold_capture`/`hold_release` drive it; state lives in
-  `bookings.hold_*` (migration-damage-hold.sql). Square auths last ~6 days, so the hold is
-  placed near check-in and auto-releases on long stays. Legacy bookings that collected the
-  deposit the old way still use `damageHeld()`/`return_deposit`.
+  by the price model as `damagesDeposit` but is NOT in `total`. Current model: it is
+  **CHARGED together with the guest's first payment** (`pay.php` bundles `damagesDue`
+  when `hold_status='none'` → `'charged'`) and **refunded after checkout** via
+  `bookings.php` `return_deposit` (or `keep_deposit` when there was damage →
+  `'returned'`/`'kept'`); state lives in the reused `bookings.hold_*` columns. Wording
+  everywhere (guest + admin) says "charged with your first payment, refunded after your
+  stay" — NOT "held". A LEGACY Square card **HOLD** flow (authorise → capture/release;
+  `hold_request`/`hold_link`/`hold_capture`/`hold_release`, ?hold= pay screen + emails)
+  still exists for old bookings — only there is "held, not charged" wording correct.
+  self-repair marks `authorized` rows older than Square's ~6-day auth window `expired`.
 - Offscreen `.page-view`s are `display:none`, so their CSS background-images aren't
   fetched until shown (built-in lazy-loading). The hero is the LCP image
   (`fetchpriority="high"` preload) — keep it prioritised, not deferred.

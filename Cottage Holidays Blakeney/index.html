@@ -1835,7 +1835,7 @@
                 <p style="color:var(--text-muted);margin:0 0 18px;">We use your details to respond to your enquiry, manage your booking, contact you about your stay, and keep records required for our business and tax purposes. Our lawful bases are performance of a contract (your booking) and our legitimate interests in running the business and preventing fraud. Your home address is collected as a standard requirement for holiday-let bookings (guest identification and our terms).</p>
 
                 <h3 style="font-family:var(--font-serif);margin:0 0 8px;">Who we share it with</h3>
-                <p style="color:var(--text-muted);margin:0 0 18px;">We do not sell your data. It is handled by our website host, our email provider, and our payment processor (Square — for card payments and the refundable security hold) so we can store your booking, send confirmations and take payment. If you booked through a platform such as Airbnb or Vrbo, that booking is governed by their own privacy policies. We only disclose information where legally required.</p>
+                <p style="color:var(--text-muted);margin:0 0 18px;">We do not sell your data. It is handled by our website host, our email provider, and our payment processor (Square — for card payments, including the refundable damages deposit) so we can store your booking, send confirmations and take payment. If you booked through a platform such as Airbnb or Vrbo, that booking is governed by their own privacy policies. We only disclose information where legally required.</p>
 
                 <h3 style="font-family:var(--font-serif);margin:0 0 8px;">How long we keep it</h3>
                 <p style="color:var(--text-muted);margin:0 0 18px;">We keep booking records for as long as needed to run the business and meet UK tax and legal obligations (generally up to 6 years). You can delete your account at any time from your account page. When you do, we erase your login, contact details, messages, reviews and mailing-list entry; the booking and payment records we’re legally required to keep are anonymised — your dates and amounts remain, but your name and contact details are removed.</p>
@@ -2075,7 +2075,7 @@
                 <option value="paid">Paid in Full</option>
             </select>
 
-            <label class="modal-label">Refundable damages deposit (£) — held, not income</label>
+            <label class="modal-label">Refundable damages deposit (£) — charged with the first payment, refunded after the stay; not income</label>
             <input type="number" class="input-glass" id="modal-damages-deposit" min="0" step="5" placeholder="e.g. 75" oninput="updateModalPrice()">
 
             <label class="modal-label">Override total price (£) — optional</label>
@@ -2140,7 +2140,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=181"></script>
+    <script defer src="app.js?v=182"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
