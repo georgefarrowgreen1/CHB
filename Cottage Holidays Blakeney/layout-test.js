@@ -49,6 +49,13 @@ const enquiries = [
   { id: 11, prop_key: 'jollyboat', name: 'Lucy Grant-Worthington', email: 'lucy.grant.worthington@example.com', phone: '07700 900123', address: '14 Extraordinarily Long Street Name, Little Snoring', postcode: 'NR21 0AB', check_in: d(14), check_out: d(18), adults: 2, children: 0, check_in_time: '15:00', check_out_time: '10:00', message: 'We would love to bring our very well behaved cocker spaniel if at all possible please — happy to pay extra.' },
 ];
 
+// A fully-paid stay in progress TODAY — makes My Stays render both the booking
+// card and the in-stay "My Stay hub".
+const midStay = { id: 3, prop_key: 'jollyboat', name: 'Guest Tester', email: 'guest@example.com',
+  check_in: d(-2), check_out: d(2), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0,
+  payment: 'paid', deposit_paid: 495, agreed_total: 495, agreed_per_night: 120, agreed_nights: 4,
+  agreed_nightly: 480, agreed_booking_fee: 0, agreed_txn_pct: 3, agreed_txn_fee: 15, agreed_on: d(-30) };
+
 const WIDTHS = [
   { name: 'phone', width: 390, height: 844 },
   { name: 'tablet', width: 768, height: 1024 },
@@ -134,6 +141,7 @@ async function waitForServer(url, tries = 40) {
       if (url.includes('bookings.php')) return json({ bookings });
       if (url.includes('enquiries.php')) return json({ enquiries });
       if (url.includes('accounts.php')) return json({ years: [] });
+      if (url.includes('my-bookings.php')) return json({ bookings: [midStay], enquiries: [], completed_stays: 0 });
       return json({ ok: true, bookings: [], enquiries: [], threads: [], photos: [], reviews: [], experiences, content: {}, blocks: [], ranges: [] });
     });
     page.on('pageerror', (e) => problems.push(`pageerror @${tag}: ` + e.message));
@@ -159,13 +167,22 @@ async function waitForServer(url, tries = 40) {
     await waitForServer(`http://127.0.0.1:${PORT}/index.html`);
     const browser = await chromium.launch(process.env.CHB_CHROMIUM ? { executablePath: process.env.CHB_CHROMIUM } : {});
 
-    // ---- Public views at every width ----
+    // ---- Public + signed-in GUEST views at every width. The mid-stay guest
+    // exercises the My Stays page with the in-stay hub; the modal/overlay
+    // states (enquire, sign-in, chat) are measured open, where phone-width
+    // overhang bugs hide. ----
     for (const vp of WIDTHS) {
       const page = await newPage(browser, vp, vp.name);
       await walkViews(page, [
         { key: 'home', open: null, mustSee: ['#hero', '#home-cottages-grid .card'] },
         { key: 'cottage', open: "openProperty('21a')", mustSee: ['#prop-title', '#prop-avail-cal'] },
         { key: 'experiences', open: "nav('view-experiences')", mustSee: ['#exp-grid'] },
+        { key: 'cottages-list', open: "nav('view-cottages')", mustSee: ['#cottages .card'] },
+        { key: 'privacy', open: "nav('view-privacy')", mustSee: ['#view-privacy'] },
+        { key: 'enquire-modal', open: "(async () => { openProperty('21a'); await new Promise(r => setTimeout(r, 300)); openEnquireModal(); })()", mustSee: ['#enquire-modal .modal-box'] },
+        { key: 'auth-modal', open: "(() => { closeEnquireModal(); openGuestAuthModal(); })()", mustSee: ['#guest-auth-modal .modal-box'] },
+        { key: 'chat-open', open: "(() => { closeGuestAuthModal(); try { closeChat(); } catch (e) {} toggleChat(); })()", mustSee: ['#chat-widget .chat-thread'] },
+        { key: 'my-stays', open: "(async () => { try { closeChat(); } catch (e) {} currentGuest = { id: 1, name: 'Guest Tester', email: 'guest@example.com' }; try { setAuthUI(); } catch (e) {} nav('view-guest-bookings'); await renderGuestBookings(); })()", mustSee: ['#guest-bookings-list .guest-booking', '.my-stay-hub'] },
       ], vp.name, vp.width);
       await page.close();
     }
