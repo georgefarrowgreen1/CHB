@@ -5102,6 +5102,20 @@ body.owner-mode .chat-widget {
   border-radius: 2px;
   display: inline-block;
 }
+/* On phones/tablets the fixed 30 cells run a few px past the edge (a stray
+   sideways scroll). Let them flex-fill the row so all 30 days always fit the
+   screen; desktop keeps the fixed 9px look. */
+@media (max-width: 640px) {
+  .occ-cells {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+  .occ-cell {
+    flex: 1 1 0;
+    width: auto;
+    min-width: 0;
+  }
+}
 .occ-free {
   background: rgba(255, 255, 255, 0.06);
 }
