@@ -762,10 +762,13 @@ function send_enquiry_ack($enq, $accountExists = false)
 // owner writes the message; the guest's enquiry details ride along underneath
 // (cottage, dates, times, party, estimated price) in the house email style.
 // Replies come back to the site address (smtp_send's default Reply-To).
-function send_enquiry_reply_email($e, $subject, $message)
+function send_enquiry_reply_email($e, $subject, $message, $ctx = 'enquiry')
 {
+    // $ctx: 'enquiry' (default) or 'booking' — only changes the wording, so the
+    // same branded composer serves both the inbox and the bookings page.
+    $noun = $ctx === 'booking' ? 'booking' : 'enquiry';
     if (empty($e['email'])) {
-        return ['ok' => false, 'error' => 'No guest email on this enquiry'];
+        return ['ok' => false, 'error' => 'No guest email on this ' . $noun];
     }
     $prop = function_exists('prop_display')
         ? prop_display($e['prop_key'] ?? '')['name'] ?? ($e['prop_key'] ?? '')
@@ -789,12 +792,12 @@ function send_enquiry_reply_email($e, $subject, $message)
         : '';
     $times = 'Arrive ' . (($e['check_in_time'] ?? '') ?: '15:00') . ' · leave ' . (($e['check_out_time'] ?? '') ?: '10:00');
 
-    $subject = trim((string) $subject) ?: 'Your enquiry — ' . $prop;
+    $subject = trim((string) $subject) ?: 'Your ' . $noun . ' — ' . $prop;
 
     $text =
         "Hello {$name},\n\n" .
         trim((string) $message) .
-        "\n\n---\nYour enquiry details\n" .
+        "\n\n---\nYour {$noun} details\n" .
         "Cottage: {$prop}\n" .
         'Dates: ' . ($e['check_in'] ?? '') . ' to ' . ($e['check_out'] ?? '') . "\n" .
         $times . "\n" .
@@ -823,10 +826,10 @@ function send_enquiry_reply_email($e, $subject, $message)
     $kv('Est. price', $priceLine);
 
     $inner =
-        email_h('About your enquiry', $accent) .
+        email_h('About your ' . $noun, $accent) .
         email_p('Hello ' . email_esc($name) . ',') .
         email_p($msgHtml) .
-        email_p('<strong style="color:#2A2622;">Your enquiry details</strong>', true) .
+        email_p('<strong style="color:#2A2622;">Your ' . $noun . ' details</strong>', true) .
         '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:2px 0 14px;border-collapse:collapse;">' .
         $kvRows .
         '</table>' .

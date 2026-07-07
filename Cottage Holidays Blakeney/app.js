@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 12;
+const ADMIN_BUNDLE_V = 13;
 let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
@@ -24,7 +24,7 @@ function loadAdminBundle() {
     });
     return __adminBundlePromise;
 }
-["accountsBack","accountsOpen","accountsShowIndex","activityLogSearch","addAdminPasskey","addReviewRow","afterPaymentChange","autoSyncIcalBlocks","backfillWebp","bookingSearch","bulkImportReviews","cancelBooking","changeAdminPassword","changeMonth","inboxSub","inboxSubClose","initBackOffice","loadAdminMessages","loadDiagnostics","loadGuestList","logoutStaff","openAccounts","openAddBooking","openArea","openBlockDates","openInbox","openSettings","openStagingSite","refreshModerationCounts","renderAccounts","renderActivityLog","renderCalendar","renderExpenses","renderInbox","renderMoneyOverview","renderSquareSettings","runMigrations","saveApiKey","saveContactPhone","saveContent","saveDepositPct","saveGoogleReviewUrl","saveHostText","saveReviews","sendBroadcast","sendSampleEmails","sendTestEmail","settingsBack","settingsFilter","settingsOpen","settingsOpenAccom","settingsOpenAccomSec","settingsOpenCalendar","settingsOpenCancel","settingsRecentRender","settingsSearchKey","settingsShowIndex","tryAccessBackOffice","uploadHostPhoto"].forEach((n) => {
+["accountsBack","accountsOpen","accountsShowIndex","activityLogSearch","addAdminPasskey","addReviewRow","afterPaymentChange","autoSyncIcalBlocks","backfillWebp","bookingSearch","bookingsSetFilter","bookingsSetSearch","bulkImportReviews","cancelBooking","changeAdminPassword","changeMonth","inboxSub","inboxSubClose","initBackOffice","loadAdminMessages","loadDiagnostics","loadGuestList","logoutStaff","openAccounts","openAddBooking","openArea","openBlockDates","openBookings","openBookingEmail","openInbox","openSettings","openStagingSite","refreshModerationCounts","renderAccounts","renderActivityLog","renderBookings","renderCalendar","renderExpenses","renderInbox","renderMoneyOverview","renderSquareSettings","runMigrations","saveApiKey","saveContactPhone","saveContent","saveDepositPct","saveGoogleReviewUrl","saveHostText","saveReviews","sendBroadcast","sendSampleEmails","sendTestEmail","settingsBack","settingsFilter","settingsOpen","settingsOpenAccom","settingsOpenAccomSec","settingsOpenCalendar","settingsOpenCancel","settingsRecentRender","settingsSearchKey","settingsShowIndex","tryAccessBackOffice","uploadHostPhoto"].forEach((n) => {
     const stub = (...a) =>
         loadAdminBundle().then(() => {
             const fn = window[n];
@@ -722,7 +722,7 @@ function mapEnquiryFromApi(row) {
 const CUSTOMER_FACING_VIEWS = ['view-main', 'view-cottages', 'view-21a'];
 // The only views an admin ever sees — everything else is the customer site,
 // which a signed-in admin has no use for (nav() bounces it to the back office).
-const ADMIN_VIEWS = ['view-backoffice', 'view-inbox', 'view-settings', 'view-accounts', 'view-activity-log'];
+const ADMIN_VIEWS = ['view-backoffice', 'view-bookings', 'view-inbox', 'view-settings', 'view-accounts', 'view-activity-log'];
 // Preview-as-guest: opening the site with ?preview=1 renders the customer
 // experience even though an admin is signed in (owner-mode + the admin bounce
 // are suppressed). Read-only — used by the staging Test centre to view the site.
@@ -1008,6 +1008,11 @@ function nav(viewId, anchorId = null) {
     if (viewId === 'view-inbox') {
         try {
             renderInboxScreen();
+        } catch (e) {}
+    }
+    if (viewId === 'view-bookings') {
+        try {
+            renderBookings();
         } catch (e) {}
     }
     if (viewId === 'view-settings') {
@@ -11554,7 +11559,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'z8k4r7dq';
+    const BUILD = 'a3m9p6tw';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
