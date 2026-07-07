@@ -4367,6 +4367,48 @@ body.owner-mode .chat-widget {
   color: var(--danger);
   border-color: rgba(229, 115, 115, 0.3);
 }
+/* Per-booking "Emails sent" log (Bookings page). */
+.bk-email-log {
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--glass-border);
+  font-size: 0.82rem;
+}
+.bk-email-log-title {
+  display: block;
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 6px;
+}
+.bk-email-log-empty {
+  color: var(--text-muted);
+}
+.bk-email-log-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+}
+.bk-email-log-what {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-light);
+}
+.bk-email-log-what .ic {
+  width: 15px;
+  height: 15px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.bk-email-log-when {
+  color: var(--text-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
 /* Inbox sort control (soonest stay / newest / cottage). */
 .inbox-sort {
   display: flex;
