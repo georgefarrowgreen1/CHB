@@ -2348,8 +2348,10 @@ function renderMoneyPanel() {
             const badge = dueSoon
                 ? `<span class="money-badge">${days < 0 ? 'In progress · unpaid' : days === 0 ? 'Arrives today · unpaid' : 'Due soon · ' + days + 'd'}</span>`
                 : '';
+            // Collect-payment controls only apply while money is still owed — a
+            // paid-in-full booking has nothing to request or link to, so drop them.
             const sqBtns =
-                squareAdminEnabled && b.email
+                squareAdminEnabled && b.email && !ps.fullyPaid
                     ? `
                         <button class="btn-sm btn-edit" onclick="requestPayment('${b.id}','deposit')">Request deposit</button>
                         <button class="btn-sm btn-edit" onclick="requestPayment('${b.id}','balance')">Request full balance</button>
@@ -2402,8 +2404,12 @@ function renderMoneyPanel() {
                                 )
                                 .join('')}
                         </select>
-                        <input type="number" min="0" step="0.01" class="input-glass field-sm money-dep" title="Record amount received (£)"
-                               value="${b.depositPaid != null ? b.depositPaid : 0}" onchange="updateDeposit('${b.id}', this.value)">
+                        ${
+                            ps.fullyPaid
+                                ? ''
+                                : `<input type="number" min="0" step="0.01" class="input-glass field-sm money-dep" title="Record amount received (£)"
+                               value="${b.depositPaid != null ? b.depositPaid : 0}" onchange="updateDeposit('${b.id}', this.value)">`
+                        }
                         <button class="btn-sm btn-edit" onclick="downloadInvoice('${b.id}')" title="Download an invoice / receipt PDF">Invoice (PDF)</button>
                     </div>
                     ${history}
