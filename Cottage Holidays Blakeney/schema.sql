@@ -17,6 +17,7 @@ CREATE TABLE IF NOT EXISTS properties (
     address         TEXT          NULL,
     -- Dynamic accommodations (owner can add/remove): see migration-accommodations.sql
     archived_at     DATETIME      NULL,                 -- NULL = live; set = removed (soft-archived, history kept)
+    unlisted        TINYINT(1)    NOT NULL DEFAULT 0,   -- 1 = private: bookable in the back office, hidden from the public site
     slug            VARCHAR(80)   NULL,                  -- pretty URL segment /cottages/<slug>
     accent          VARCHAR(16)   NULL,                  -- hex accent colour for swatches/tags/bars
     sort_order      INT           NOT NULL DEFAULT 100,  -- display order of the cottage cards

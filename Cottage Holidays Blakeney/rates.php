@@ -34,8 +34,17 @@ function rates_public_payload()
         // Surface the archived flag plainly so the front end can hide archived
         // cottages from the public site but still let the admin restore them.
         $r['archived'] = !empty($r['archived_at']);
+        // "Unlisted" (private) cottages are managed in the back office but hidden
+        // from the public site. Surface the flag for the admin front end.
+        $r['unlisted'] = !empty($r['unlisted']);
     }
     unset($r);
+    // Never send unlisted (private) cottages to a NON-admin visitor — they must
+    // not exist on the public site at all. The admin client still receives them
+    // (flagged) so the calendar / money / booking picker can manage them.
+    if (empty($_SESSION['admin_id'])) {
+        $rows = array_values(array_filter($rows, fn($r) => empty($r['unlisted'])));
+    }
     // Seasonal rates (table may not exist yet — then no seasons key is sent)
     $seasons = [];
     try {
@@ -128,6 +137,8 @@ if (($in['action'] ?? '') === 'create') {
     $key = unique_prop_key($name);
     $slug = unique_prop_slug($name, $key);
     $accent = next_prop_accent();
+    // Private/unlisted: bookable in the back office, never shown on the site.
+    $unlisted = !empty($in['unlisted']) ? 1 : 0;
     // Place it after the existing cottages.
     $ord = 100;
     try {
@@ -138,10 +149,10 @@ if (($in['action'] ?? '') === 'create') {
     try {
         db()
             ->prepare(
-                'INSERT INTO properties (prop_key, name, couple_rate, extra_adult_rate, child_rate, booking_fee, transaction_pct, address, slug, accent, sort_order, max_adults, max_children, max_total)
-             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                'INSERT INTO properties (prop_key, name, couple_rate, extra_adult_rate, child_rate, booking_fee, transaction_pct, address, slug, accent, sort_order, max_adults, max_children, max_total, unlisted)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
             )
-            ->execute([$key, $name, $rate, 0, 0, 75, 3, '', $slug, $accent, $ord, 2, 0, 2]);
+            ->execute([$key, $name, $rate, 0, 0, 75, 3, '', $slug, $accent, $ord, 2, 0, 2, $unlisted]);
     } catch (\Throwable $e) {
         json_out(
             [
@@ -151,8 +162,44 @@ if (($in['action'] ?? '') === 'create') {
             500,
         );
     }
-    log_activity('rates', 'rates.create', 'Accommodation added — ' . $name, ['prop_key' => $key, 'entity' => 'property']);
-    json_out(['ok' => true, 'prop_key' => $key, 'slug' => $slug, 'accent' => $accent]);
+    log_activity('rates', 'rates.create', ($unlisted ? 'Private accommodation added' : 'Accommodation added') . ' — ' . $name, ['prop_key' => $key, 'entity' => 'property']);
+    json_out(['ok' => true, 'prop_key' => $key, 'slug' => $slug, 'accent' => $accent, 'unlisted' => (bool) $unlisted]);
+}
+
+// Toggle a cottage's PRIVATE (unlisted) state — hides it from the public site
+// while keeping it fully bookable in the back office. Its own action (like
+// archive) so it never rides the field-by-field 'save'.
+if (($in['action'] ?? '') === 'set_unlisted') {
+    require_admin();
+    $propKey = clean($in['prop_key'] ?? '');
+    if (!get_rate_exists($propKey)) {
+        json_out(['error' => 'Unknown property'], 400);
+    }
+    $unlisted = !empty($in['unlisted']) ? 1 : 0;
+    // Don't let the owner hide their last PUBLIC cottage — the website needs one.
+    if ($unlisted) {
+        try {
+            $pub = (int) db()
+                ->query('SELECT COUNT(*) FROM properties WHERE archived_at IS NULL AND unlisted = 0')
+                ->fetchColumn();
+            if ($pub <= 1) {
+                json_out(['error' => 'You can’t make your only public cottage private — the website needs at least one.'], 400);
+            }
+        } catch (\Throwable $e) {
+        }
+    }
+    try {
+        db()
+            ->prepare('UPDATE properties SET unlisted = ? WHERE prop_key = ?')
+            ->execute([$unlisted, $propKey]);
+    } catch (\Throwable $e) {
+        json_out(
+            ['error' => 'Could not update — please run updates first (Settings → Health check → Install updates).'],
+            500,
+        );
+    }
+    log_activity('rates', 'rates.unlisted', ($unlisted ? 'Cottage made private' : 'Cottage made public') . ' — ' . $propKey, ['prop_key' => $propKey, 'entity' => 'property']);
+    json_out(['ok' => true, 'unlisted' => (bool) $unlisted]);
 }
 
 if (($in['action'] ?? '') === 'archive' || ($in['action'] ?? '') === 'unarchive') {

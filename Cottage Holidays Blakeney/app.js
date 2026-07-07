@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 9;
+const ADMIN_BUNDLE_V = 10;
 let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
@@ -5466,7 +5466,22 @@ const STATIC_COLOR_KEYS = { '21a': 1, jollyboat: 1, pimpernel: 1 };
 const LEGACY_CARD_N = { '21a': 1, jollyboat: 2, pimpernel: 3 };
 
 // Live (non-archived) cottage keys in display order — what the public site shows.
+// The PUBLIC cottage set: live (non-archived) AND not private (unlisted). Every
+// public surface — the #cottages grid, footer, JSON-LD, hero search, SEO text —
+// goes through this, so an unlisted cottage never shows on the site even on the
+// owner's own device. Admin surfaces (calendar, money, booking picker) use the
+// full propertyMeta / propertyList instead, so private cottages stay operable.
 function liveCottageKeys() {
+    if (propertyList && propertyList.length) {
+        return propertyList.filter((p) => !p.archived && !p.unlisted).map((p) => p.prop_key);
+    }
+    return Object.keys(propertyMeta).filter(
+        (k) => !(propertyMeta[k] && (propertyMeta[k].archived || propertyMeta[k].unlisted)),
+    );
+}
+// Cottages that can be BOOKED in the back office: live (non-archived), private
+// or public alike. Used to populate the Add/Edit-booking cottage picker.
+function bookableCottageKeys() {
     if (propertyList && propertyList.length) {
         return propertyList.filter((p) => !p.archived).map((p) => p.prop_key);
     }
@@ -5514,6 +5529,7 @@ async function loadRates(pre) {
             accent: p.accent || '',
             sort_order: p.sort_order || 100,
             archived: !!p.archived,
+            unlisted: !!p.unlisted, // private cottage — hidden from the public site
         }));
         (properties || []).forEach((p) => {
             const k = p.prop_key;
@@ -5548,6 +5564,7 @@ async function loadRates(pre) {
                 accent: p.accent || existing.accent || '#8FB3C7',
                 slug: p.slug || k,
                 archived: !!p.archived,
+                unlisted: !!p.unlisted,
             };
             if (!propertyContent[k])
                 propertyContent[k] = { title: p.name || k, desc: '', amenities: [], images: [] };
@@ -10598,9 +10615,32 @@ function closeModal() {
     document.getElementById('modal-error').style.display = 'none';
 }
 
+// Rebuild the Add/Edit-booking cottage picker from the live property list so the
+// owner can book ANY of their cottages — including owner-added and PRIVATE
+// (unlisted) ones — not just the three hardcoded in the markup. Private cottages
+// are labelled so they're distinguishable. `selectedKey` is force-included even
+// if archived, so editing an old booking on a removed cottage still works. Falls
+// back to the static <option>s if the rates haven't loaded yet.
+function populateBookingPropertySelect(selectedKey) {
+    const sel = document.getElementById('modal-property');
+    if (!sel) return;
+    const keys =
+        typeof bookableCottageKeys === 'function' ? bookableCottageKeys() : [];
+    if (selectedKey && !keys.includes(selectedKey)) keys.unshift(selectedKey);
+    if (!keys.length) return; // rates not loaded — keep the static fallback options
+    sel.innerHTML = keys
+        .map((k) => {
+            const meta = propertyMeta[k] || {};
+            const name = meta.name || k;
+            const priv = meta.unlisted ? ' (private)' : '';
+            return `<option value="${escapeHtml(k)}">${escapeHtml(name)}${priv}</option>`;
+        })
+        .join('');
+}
 // Small helpers to read/write the modal field set
 function setModalFields(f) {
-    document.getElementById('modal-property').value = f.propKey || '21a';
+    populateBookingPropertySelect(f.propKey || '');
+    document.getElementById('modal-property').value = f.propKey || (document.getElementById('modal-property').options[0] || {}).value || '21a';
     document.getElementById('modal-name').value = f.name || '';
     document.getElementById('modal-email').value = f.email || '';
     document.getElementById('modal-phone').value = f.phone || '';
@@ -11173,7 +11213,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'w6r2t8mk';
+    const BUILD = 'p4n9x2qd';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

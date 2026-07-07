@@ -46,7 +46,7 @@ try {
 
         // Match by slug, falling back to prop_key (pre-migration cottages have no slug).
         $st = $pdo->prepare('SELECT prop_key, name, slug, max_total FROM properties
-                             WHERE (slug = ? OR prop_key = ?) AND archived_at IS NULL LIMIT 1');
+                             WHERE (slug = ? OR prop_key = ?) AND archived_at IS NULL AND unlisted = 0 LIMIT 1');
         $st->execute([$slug, $slug]);
         $p = $st->fetch();
 
