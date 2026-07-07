@@ -18,9 +18,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // most recent one ended. Lets the inbox badge returning guests. Cached per email
     // so duplicate emails across enquiries don't re-query.
     try {
+        // Plain equality is already case-insensitive under the table's *_ci collation,
+        // and (unlike LOWER(email)=...) it can use idx_email.
         $histStmt = db()->prepare(
             'SELECT check_out, prop_key FROM bookings
-             WHERE LOWER(email) = LOWER(?) AND email <> \'\' AND check_out < CURDATE()
+             WHERE email = ? AND email <> \'\' AND check_out < CURDATE()
              ORDER BY check_out DESC',
         );
         $cache = [];
