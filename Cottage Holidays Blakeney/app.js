@@ -10615,55 +10615,74 @@ function closeModal() {
     document.getElementById('modal-error').style.display = 'none';
 }
 
-// Fill the Property box's autocomplete list from the live property list so the
-// owner can book ANY of their cottages — including owner-added and PRIVATE
-// (unlisted) ones. The field is a free-text combobox: pick a suggestion, or type
-// a brand-new name (which becomes a new private cottage on save — see saveModal).
-// `selectedKey` is force-included even if archived, so editing an old booking on
-// a removed cottage still lists it. Falls back to the static <option>s if the
-// rates haven't loaded yet.
+// Rebuild the Property <select> from the live property list so the owner can pick
+// ANY of their cottages — including owner-added and PRIVATE (unlisted) ones — from
+// a reliable native dropdown. A trailing "➕ New property…" option lets them add a
+// brand-new one by name (revealed input → created as a private cottage on save;
+// see onModalPropertyChange / saveModal). `selectedKey` is force-included even if
+// archived, so editing an old booking on a removed cottage still lists it. Falls
+// back to the static <option>s if the rates haven't loaded yet.
 function populateBookingPropertySelect(selectedKey) {
-    const list = document.getElementById('modal-property-list');
-    if (!list) return;
+    const sel = document.getElementById('modal-property');
+    if (!sel) return;
     const keys =
         typeof bookableCottageKeys === 'function' ? bookableCottageKeys() : [];
-    if (selectedKey && !keys.includes(selectedKey)) keys.unshift(selectedKey);
-    if (!keys.length) return; // rates not loaded — keep the static fallback options
-    list.innerHTML = keys
-        .map((k) => {
-            const meta = propertyMeta[k] || {};
-            const name = meta.name || k;
-            const priv = meta.unlisted ? ' — private' : '';
-            // datalist option: value fills the box, the text is a hint shown in
-            // the dropdown (marks private cottages).
-            return `<option value="${escapeHtml(name)}">${escapeHtml(name)}${priv}</option>`;
-        })
-        .join('');
-}
-// Resolve the Property box's free text to a real cottage prop_key. Matches an
-// existing cottage by exact key or (trimmed, case-insensitively) by name —
-// including archived ones, so editing an old booking still resolves. Returns ''
-// when the text names a cottage that doesn't exist yet; saveModal then offers to
-// create it as a private cottage.
-function resolveModalPropKey(raw) {
-    const v = String(raw || '').trim();
-    if (!v) return '';
-    if (propertyMeta[v]) return v; // typed an exact prop_key
-    const lc = v.toLowerCase();
-    for (const k of Object.keys(propertyMeta)) {
-        const nm = ((propertyMeta[k] && propertyMeta[k].name) || '').trim().toLowerCase();
-        if (nm && nm === lc) return k;
+    if (selectedKey && selectedKey !== '__new__' && !keys.includes(selectedKey))
+        keys.unshift(selectedKey);
+    const newOpt = '<option value="__new__">➕ New property…</option>';
+    if (!keys.length) {
+        // rates not loaded — keep the static fallback cottages, just ensure the
+        // "New property…" option is present.
+        if (!sel.querySelector('option[value="__new__"]'))
+            sel.insertAdjacentHTML('beforeend', newOpt);
+        return;
     }
-    return '';
+    sel.innerHTML =
+        keys
+            .map((k) => {
+                const meta = propertyMeta[k] || {};
+                const name = meta.name || k;
+                const priv = meta.unlisted ? ' (private)' : '';
+                return `<option value="${escapeHtml(k)}">${escapeHtml(name)}${priv}</option>`;
+            })
+            .join('') + newOpt;
+}
+// The Property box resolves to either an existing cottage key, or a brand-new
+// name typed into the revealed "New property name" input.
+function currentModalProperty() {
+    const sel = document.getElementById('modal-property');
+    if (!sel) return { key: '', newName: '' };
+    if (sel.value === '__new__') {
+        const nu = document.getElementById('modal-property-new');
+        return { key: '', newName: nu ? nu.value.trim() : '' };
+    }
+    return { key: sel.value, newName: '' };
+}
+// Show/hide the "New property name" input when "➕ New property…" is (de)selected.
+function onModalPropertyChange() {
+    const sel = document.getElementById('modal-property');
+    const nu = document.getElementById('modal-property-new');
+    const isNew = sel && sel.value === '__new__';
+    if (nu) {
+        nu.style.display = isNew ? 'block' : 'none';
+        if (isNew) nu.focus();
+        else nu.value = '';
+    }
+    updateModalPrice();
 }
 // Small helpers to read/write the modal field set
 function setModalFields(f) {
     populateBookingPropertySelect(f.propKey || '');
-    // The box shows the cottage NAME (free-text combobox). Blank for a new Add so
-    // the owner can type or pick; the booking's cottage name when editing.
-    document.getElementById('modal-property').value = f.propKey
-        ? (propertyMeta[f.propKey] || {}).name || f.propKey
-        : '';
+    const sel = document.getElementById('modal-property');
+    const nu = document.getElementById('modal-property-new');
+    if (nu) {
+        nu.style.display = 'none';
+        nu.value = '';
+    }
+    // Select the booking's cottage; for a new Add default to the first real
+    // cottage (never the trailing "New property…" entry).
+    sel.value = f.propKey || (sel.options[0] ? sel.options[0].value : '');
+    if (sel.value === '__new__' && sel.options.length > 1) sel.value = sel.options[0].value;
     document.getElementById('modal-name').value = f.name || '';
     document.getElementById('modal-email').value = f.email || '';
     document.getElementById('modal-phone').value = f.phone || '';
@@ -10694,8 +10713,8 @@ function setModalFields(f) {
 function updateModalPrice() {
     const box = document.getElementById('modal-price-box');
     if (!box) return;
-    const propRaw = document.getElementById('modal-property').value;
-    const propKey = resolveModalPropKey(propRaw);
+    const cur = currentModalProperty();
+    const propKey = cur.key;
     const checkIn = document.getElementById('modal-checkin').value;
     const checkOut = document.getElementById('modal-checkout').value;
     const adults = Math.max(1, parseInt(document.getElementById('modal-adults').value, 10) || 0);
@@ -10707,13 +10726,13 @@ function updateModalPrice() {
         box.innerHTML = `<p style="color: var(--text-muted); font-size: 0.85rem; text-align: center; margin: 0;">Enter valid dates to see the total.</p>`;
         return;
     }
-    // A name that isn't an existing cottage yet → it'll be created as a private
-    // cottage on save; there's no rate to price against until then.
+    // "New property…" chosen → it'll be created as a private cottage on save;
+    // there's no rate to price against until then.
     if (!propKey) {
-        const nm = String(propRaw || '').trim();
+        const nm = cur.newName;
         box.innerHTML = nm
             ? `<p style="color: var(--text-muted); font-size: 0.85rem; text-align: center; margin: 0;">“${escapeHtml(nm)}” will be created as a new private cottage — you'll set its nightly rate when you save, then the total appears here.</p>`
-            : `<p style="color: var(--text-muted); font-size: 0.85rem; text-align: center; margin: 0;">Choose or type a property.</p>`;
+            : `<p style="color: var(--text-muted); font-size: 0.85rem; text-align: center; margin: 0;">Type the new property's name to continue.</p>`;
         return;
     }
     const depEl = document.getElementById('modal-damages-deposit');
@@ -10781,8 +10800,8 @@ function togglePaymentField(show) {
 async function saveModal() {
     const mode = document.getElementById('modal-mode').value;
     const id = document.getElementById('modal-record-id').value;
-    const propRaw = document.getElementById('modal-property').value;
-    let propKey = resolveModalPropKey(propRaw);
+    const cur = currentModalProperty();
+    let propKey = cur.key;
     const name = document.getElementById('modal-name').value.trim();
     const email = document.getElementById('modal-email').value.trim();
     const phone = document.getElementById('modal-phone').value.trim();
@@ -10825,9 +10844,9 @@ async function saveModal() {
     // booking still gets full pricing / occupancy / money — same as a listed
     // cottage, just hidden from the public website.
     if (!propKey) {
-        const nm = String(propRaw || '').trim();
+        const nm = cur.newName;
         if (!nm) {
-            showErr('Choose or type a property.');
+            showErr('Choose a property, or pick “New property…” and type a name.');
             return;
         }
         if (
@@ -10843,11 +10862,20 @@ async function saveModal() {
             showErr('Enter a nightly couple rate above £0 for the new cottage.');
             return;
         }
+        // Per-child nightly rate (optional). Occupancy caps are left at defaults
+        // for the owner to set later per cottage.
+        const childStr = await glassPrompt(
+            `Price per child per night at “${nm}” (£) — leave blank for none:`,
+            '',
+        );
+        if (childStr === null) return;
+        const childRate = childStr.trim() === '' ? 0 : Math.max(0, parseFloat(childStr) || 0);
         try {
             const res = await apiPost('rates.php', {
                 action: 'create',
                 name: nm,
                 couple_rate: rate,
+                child_rate: childRate,
                 unlisted: 1,
             });
             if (!res || !res.prop_key) {
@@ -11290,7 +11318,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'r3t8w5np';
+    const BUILD = 'v6b2k9wq';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
