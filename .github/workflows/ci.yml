@@ -60,3 +60,22 @@ jobs:
       - name: Browser smoke test
         working-directory: "Cottage Holidays Blakeney"
         run: node e2e-test.js
+
+      # Design-regression gate: layout invariants (no horizontal overflow, no
+      # content cut off past the right edge, key content rendered) at phone /
+      # tablet / desktop widths on the public views. Deterministic — no pixel
+      # diffs, so no cross-machine font flakiness.
+      - name: Layout regression gate
+        working-directory: "Cottage Holidays Blakeney"
+        run: node layout-test.js
+
+      # The gate also screenshots every view×width — kept as an artifact so a
+      # reviewer can eyeball the design straight from the PR checks page.
+      - name: Upload layout screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: layout-shots
+          path: "Cottage Holidays Blakeney/layout-shots/"
+          if-no-files-found: ignore
+          retention-days: 14
