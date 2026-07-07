@@ -7158,7 +7158,7 @@ function renderInbox() {
                     </div>
                     <div class="enquiry-actions">
                         <button class="btn-sm btn-approve" onclick="approveEnquiry('${e.id}')">✓ Approve</button>
-                        <button class="btn-sm btn-edit" onclick="openEditEnquiry('${e.id}')">Edit / Move</button>
+                        <button class="btn-sm btn-edit" onclick="openEditEnquiry('${e.id}')">View Details</button>
                         ${e.email ? `<button class="btn-sm btn-edit" onclick="openEnquiryEmail('${e.id}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/></svg> Email</button>` : ''}
                         <button class="btn-sm btn-decline" onclick="declineEnquiry('${e.id}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg> Decline</button>
                     </div>
