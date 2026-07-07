@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 4;
+const ADMIN_BUNDLE_V = 5;
 let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
@@ -5780,11 +5780,16 @@ async function loadData() {
     } catch (e) {}
     window.__cronStatusPre = (ab && ab.cron) || null;
 
-    const ratesTask = loadRates(ab && ab.rates);
+    // Shape-check each part (not just truthiness) so a malformed combined
+    // payload cleanly falls back to the individual endpoint.
+    const ratesTask = loadRates(ab && ab.rates && Array.isArray(ab.rates.properties) ? ab.rates : null);
 
     const bookingsTask = (async () => {
         try {
-            const { bookings } = (ab && ab.bookings) || (await apiGet('bookings.php'));
+            const { bookings } =
+                ab && ab.bookings && Array.isArray(ab.bookings.bookings)
+                    ? ab.bookings
+                    : await apiGet('bookings.php');
             Object.keys(dbBookings).forEach((k) => {
                 dbBookings[k] = [];
             });
@@ -5805,7 +5810,10 @@ async function loadData() {
 
     const enquiriesTask = (async () => {
         try {
-            const { enquiries: rows } = (ab && ab.enquiries) || (await apiGet('enquiries.php'));
+            const { enquiries: rows } =
+                ab && ab.enquiries && Array.isArray(ab.enquiries.enquiries)
+                    ? ab.enquiries
+                    : await apiGet('enquiries.php');
             enquiries = (rows || []).map(mapEnquiryFromApi);
         } catch (e) {
             enquiries = [];
@@ -5816,7 +5824,10 @@ async function loadData() {
     // Admin-only; if not logged in this 403s and we just keep them empty.
     const blocksTask = (async () => {
         try {
-            const r = (ab && ab.blocks) || (await apiPost('ical-import.php', { action: 'blocks' }));
+            const r =
+                ab && ab.blocks && Array.isArray(ab.blocks.blocks)
+                    ? ab.blocks
+                    : await apiPost('ical-import.php', { action: 'blocks' });
             Object.keys(dbBlocks).forEach((k) => {
                 dbBlocks[k] = [];
             });
@@ -11016,7 +11027,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'm2f7u4hx';
+    const BUILD = 'n6k1c8vz';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
