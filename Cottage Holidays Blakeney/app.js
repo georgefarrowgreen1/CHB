@@ -80,6 +80,11 @@ const API_BASE = (function () {
             if (/^(?!https?:\/\/)[a-z][a-z0-9.+-]*:\/\//i.test(src)) return; // iabjs://, gap://, chrome-extension://…
             if (/webkit-masked-url/i.test(src)) return; // Safari extension-injected
             if (/Java (object|bridge|exception)/i.test(msg)) return; // Android webview bridge died
+            // iOS in-app browsers (Facebook/Instagram WKWebView) inject scripts that
+            // poke window.webkit.messageHandlers — our code never touches that API,
+            // so any such error is theirs. (iOS injections report the PAGE url as
+            // the source, so the scheme check above can't catch them.)
+            if (/webkit\.messageHandlers/i.test(msg)) return;
             if (sent >= 5) return; // don't flood on a broken page
             const key = msg.slice(0, 120);
             if (seen[key]) return;
@@ -10962,7 +10967,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'a9f5r2kx';
+    const BUILD = 'c3n8w5jt';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
