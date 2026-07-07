@@ -17,6 +17,18 @@ if ($msg === '') {
 }
 $where = trim((string) ($in['where'] ?? ''));
 
+// Third-party noise (mirrors the client-side filter, for visitors still running
+// a cached older app.js): errors from scripts INJECTED by in-app browsers
+// (iabjs:// — Instagram/Facebook Android webviews), browser extensions and
+// native bridges aren't site breakage — keep them out of "Needs attention".
+$noise =
+    preg_match('~^(?!https?://)[a-z][a-z0-9.+-]*://~i', $where) === 1 || // iabjs://, gap://, chrome-extension://…
+    stripos($where, 'webkit-masked-url') !== false ||
+    preg_match('/Java (object|bridge|exception)/i', $msg) === 1;
+if ($noise) {
+    json_out(['ok' => true, 'ignored' => true]);
+}
+
 log_activity('system', 'client.error', 'Front-end error: ' . mb_substr($msg, 0, 160), [
     'severity' => 'warn',
     'meta' => [
