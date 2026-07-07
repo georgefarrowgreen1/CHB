@@ -10615,49 +10615,72 @@ function closeModal() {
     document.getElementById('modal-error').style.display = 'none';
 }
 
-// New-property setup dialog: opened from saveModal when a booking is being made
-// for a brand-new (private) cottage, so its pricing/deposit/fee are captured
-// BEFORE the booking is created (so the booking's locked price snapshot is right)
-// — no need to leave the booking flow. Returns a Promise of the field values, or
-// null if cancelled.
-let __newPropResolve = null;
-function promptNewProperty(name) {
-    return new Promise((resolve) => {
-        __newPropResolve = resolve;
-        const sub = document.getElementById('newprop-sub');
-        if (sub)
-            sub.textContent = `Prices for “${name}”. You can change these later in Settings → Preferences.`;
-        // Sensible starting points (blank rates, standard deposit/fee).
-        document.getElementById('newprop-couple').value = '';
-        document.getElementById('newprop-extra-adult').value = '';
-        document.getElementById('newprop-child').value = '';
-        document.getElementById('newprop-deposit').value = '75';
-        document.getElementById('newprop-txn').value = '3';
-        const err = document.getElementById('newprop-error');
-        if (err) err.style.display = 'none';
-        document.getElementById('newprop-modal').classList.add('open');
-        setTimeout(() => {
-            const c = document.getElementById('newprop-couple');
-            if (c) c.focus();
-        }, 50);
-    });
+// ===== Custom (brand-new property) booking wizard =====
+// A booking for a property that doesn't exist yet is a 3-step flow so the owner
+// never has to leave the booking screen or open Preferences:
+//   Step 1  the booking modal (guest + stay details)            → "Next →"
+//   Step 2  #newprop-modal  (rates, deposit, fee, override)     → "Review booking →"
+//   Step 3  #overview-modal (full summary + payment status)     → "Confirm booking"
+// Pricing-dependent fields are hidden on step 1 (there's no rate to price against
+// until step 2), the deposit/override live on step 2, and the price only shows on
+// the overview once the rates are set.
+let __customBooking = null; // { name, setup:{...} } carried across the steps
+
+// Numbers from an input id: blank -> 0, never negative.
+function __numField(id) {
+    const el = document.getElementById(id);
+    const v = el ? String(el.value || '').trim() : '';
+    return v === '' ? 0 : Math.max(0, parseFloat(v) || 0);
 }
-function newPropClose(result) {
-    document.getElementById('newprop-modal').classList.remove('open');
-    const r = __newPropResolve;
-    __newPropResolve = null;
-    if (r) r(result);
+
+// Step 1: is the booking modal currently building a brand-new property?
+function isCustomPropertyMode() {
+    const sel = document.getElementById('modal-property');
+    const mode = document.getElementById('modal-mode');
+    return !!(sel && sel.value === '__new__' && mode && mode.value === 'add');
 }
-function newPropCancel() {
-    newPropClose(null);
-}
-function newPropConfirm() {
-    const num = (id) => {
+// Show/hide the pricing-dependent step-1 fields and relabel Save → Next for the
+// custom flow (they move to steps 2/3). Called on property change + modal open.
+function applyModalPropertyMode() {
+    const custom = isCustomPropertyMode();
+    const setDisp = (id, show) => {
         const el = document.getElementById(id);
-        const v = el ? el.value.trim() : '';
-        return v === '' ? 0 : Math.max(0, parseFloat(v) || 0);
+        if (el) el.style.display = show ? '' : 'none';
     };
-    const couple = num('newprop-couple');
+    setDisp('modal-price-box', !custom);
+    setDisp('modal-payment-group', !custom);
+    setDisp('modal-deposit-group', !custom);
+    setDisp('modal-override-group', !custom);
+    const btn = document.getElementById('modal-save-btn');
+    if (btn) btn.textContent = custom ? 'Next →' : 'Save';
+}
+
+// Step 2: open the "Set up new property" page (reset to sensible defaults, or the
+// values already entered if the owner stepped back from the overview).
+function openCustomSetup(name) {
+    const s = (__customBooking && __customBooking.setup) || null;
+    const sub = document.getElementById('newprop-sub');
+    if (sub)
+        sub.textContent = `Prices for “${name}”. You can change these later in Settings → Preferences.`;
+    document.getElementById('newprop-couple').value = s ? s.couple || '' : '';
+    document.getElementById('newprop-extra-adult').value = s ? s.extraAdult || '' : '';
+    document.getElementById('newprop-child').value = s ? s.child || '' : '';
+    document.getElementById('newprop-deposit').value = s ? s.deposit : '75';
+    document.getElementById('newprop-txn').value = s ? s.txnPct : '3';
+    document.getElementById('newprop-override').value = s && s.override ? s.override : '';
+    const err = document.getElementById('newprop-error');
+    if (err) err.style.display = 'none';
+    __customBooking = { name, setup: s };
+    document.getElementById('overview-modal').classList.remove('open');
+    document.getElementById('newprop-modal').classList.add('open');
+    setTimeout(() => {
+        const c = document.getElementById('newprop-couple');
+        if (c) c.focus();
+    }, 50);
+}
+// Step 2 → 3: validate the rates and move to the overview.
+function customSetupNext() {
+    const couple = __numField('newprop-couple');
     const err = document.getElementById('newprop-error');
     if (!(couple > 0)) {
         if (err) {
@@ -10666,13 +10689,142 @@ function newPropConfirm() {
         }
         return;
     }
-    newPropClose({
+    __customBooking.setup = {
         couple,
-        extraAdult: num('newprop-extra-adult'),
-        child: num('newprop-child'),
-        deposit: num('newprop-deposit'),
-        txnPct: num('newprop-txn'),
-    });
+        extraAdult: __numField('newprop-extra-adult'),
+        child: __numField('newprop-child'),
+        deposit: __numField('newprop-deposit'),
+        txnPct: __numField('newprop-txn'),
+        override: __numField('newprop-override'),
+    };
+    document.getElementById('newprop-modal').classList.remove('open');
+    openCustomOverview();
+}
+// Cancel the whole custom flow (from step 2). The booking modal stays open behind
+// so the owner can change the property or details.
+function newPropCancel() {
+    document.getElementById('newprop-modal').classList.remove('open');
+    document.getElementById('overview-modal').classList.remove('open');
+    __customBooking = null;
+}
+// Step 3: build the review summary (property, guest, stay, price) and show it.
+function openCustomOverview() {
+    const s = __customBooking.setup;
+    const name = __customBooking.name;
+    const g = (id) => (document.getElementById(id) || {}).value || '';
+    const adults = Math.max(1, parseInt(g('modal-adults'), 10) || 0);
+    const children = Math.max(0, parseInt(g('modal-children'), 10) || 0);
+    const checkIn = g('modal-checkin');
+    const checkOut = g('modal-checkout');
+    // Preview the price against the rates just entered, without creating the
+    // cottage yet (a temp propertyRates entry; priceBreakdown reads that map).
+    propertyRates['__preview__'] = {
+        coupleRate: s.couple,
+        extraAdultRate: s.extraAdult,
+        childRate: s.child,
+        damagesDeposit: s.deposit,
+        transactionPct: s.txnPct,
+    };
+    let priceRows = '';
+    try {
+        const p = priceBreakdown('__preview__', adults, children, checkIn, checkOut, null);
+        const override = s.override > 0 ? s.override : null;
+        const totalRow =
+            override !== null
+                ? `<div class="price-row" style="opacity:0.6;"><span>Calculated total</span><span style="text-decoration:line-through;">${gbp(p.total)}</span></div>
+                   <div class="price-row total"><span>Override total</span><span class="price-amount">${gbp(override)}</span></div>`
+                : `<div class="price-row total"><span>Total</span><span class="price-amount">${gbp(p.total)}</span></div>`;
+        priceRows = `
+            <div class="price-row"><span>${p.nights} night${p.nights === 1 ? '' : 's'}</span><span>${gbp(p.nightly)}</span></div>
+            <div class="price-row"><span>Transaction fee (${p.transactionPct}%)</span><span>${gbp(p.txFee)}</span></div>
+            <div class="price-row"><span>Refundable damages deposit</span><span>${gbp(p.damagesDeposit)}</span></div>
+            ${totalRow}`;
+    } catch (e) {
+        priceRows = `<div class="price-row"><span>Total</span><span>Enter valid dates to price</span></div>`;
+    }
+    delete propertyRates['__preview__'];
+    const row = (label, val) =>
+        val
+            ? `<div class="ov-row"><span class="ov-k">${escapeHtml(label)}</span><span class="ov-v">${escapeHtml(val)}</span></div>`
+            : '';
+    const party = `${adults} adult${adults === 1 ? '' : 's'}${children ? ` · ${children} child${children === 1 ? '' : 'ren'}` : ''}`;
+    const dates = checkIn && checkOut ? `${dpPretty(checkIn)} → ${dpPretty(checkOut)}` : '—';
+    document.getElementById('overview-body').innerHTML = `
+        <div class="ov-card">
+            ${row('Property', name + ' (new · private)')}
+            ${row('Guest', g('modal-name'))}
+            ${row('Email', g('modal-email'))}
+            ${row('Phone', g('modal-phone'))}
+            ${row('Dates', dates)}
+            ${row('Guests', party)}
+        </div>
+        <div class="price-box" style="margin-top:14px;">${priceRows}</div>`;
+    document.getElementById('overview-payment').value = 'unpaid';
+    const err = document.getElementById('overview-error');
+    if (err) err.style.display = 'none';
+    document.getElementById('overview-modal').classList.add('open');
+}
+// Step 3 → 2: go back to editing the property's pricing.
+function customOverviewBack() {
+    document.getElementById('overview-modal').classList.remove('open');
+    openCustomSetup(__customBooking.name);
+}
+// Step 3 confirm: create the private cottage with the setup values (sized to this
+// booking's party), then reuse the normal booking-save path by writing the
+// resolved key + deposit/override/payment back onto the (still-open) booking
+// modal and calling saveModal() again — now with a real property, so it skips the
+// wizard and follows the standard add flow.
+async function confirmCustomBooking() {
+    const s = __customBooking.setup;
+    const nm = __customBooking.name;
+    const g = (id) => (document.getElementById(id) || {}).value || '';
+    const adults = Math.max(1, parseInt(g('modal-adults'), 10) || 0);
+    const children = Math.max(0, parseInt(g('modal-children'), 10) || 0);
+    const err = document.getElementById('overview-error');
+    const showErr = (m) => {
+        if (err) {
+            err.textContent = m;
+            err.style.display = 'block';
+        }
+    };
+    let key = '';
+    try {
+        const res = await apiPost('rates.php', {
+            action: 'create',
+            name: nm,
+            couple_rate: s.couple,
+            extra_adult_rate: s.extraAdult,
+            child_rate: s.child,
+            booking_fee: s.deposit,
+            transaction_pct: s.txnPct,
+            max_adults: Math.max(1, adults),
+            max_children: Math.max(0, children),
+            max_total: Math.max(1, adults + children),
+            unlisted: 1,
+        });
+        if (!res || !res.prop_key) {
+            showErr('Could not create the cottage — please try again.');
+            return;
+        }
+        key = res.prop_key;
+        await loadRates();
+        if (typeof toast === 'function') toast(`Created private cottage “${nm}”.`);
+    } catch (e) {
+        showErr("Couldn't create the cottage: " + (e && e.message ? e.message : e));
+        return;
+    }
+    // Hand the booking back to the standard save path with the real property.
+    const payment = document.getElementById('overview-payment').value;
+    populateBookingPropertySelect(key);
+    document.getElementById('modal-property').value = key;
+    applyModalPropertyMode(); // reveals the (now-relevant) payment field etc.
+    document.getElementById('modal-damages-deposit').value = ''; // cottage default applies
+    document.getElementById('modal-price-override').value = s.override > 0 ? s.override : '';
+    document.getElementById('modal-payment').value = payment;
+    document.getElementById('overview-modal').classList.remove('open');
+    document.getElementById('newprop-modal').classList.remove('open');
+    __customBooking = null;
+    await saveModal();
 }
 
 // Rebuild the Property <select> from the live property list so the owner can pick
@@ -10728,6 +10880,7 @@ function onModalPropertyChange() {
         if (isNew) nu.focus();
         else nu.value = '';
     }
+    applyModalPropertyMode(); // custom → hide pricing fields, relabel Save → Next
     updateModalPrice();
 }
 // Small helpers to read/write the modal field set
@@ -10766,6 +10919,7 @@ function setModalFields(f) {
                   : '';
     const ovEl = document.getElementById('modal-price-override');
     if (ovEl) ovEl.value = f.priceOverride != null ? f.priceOverride : '';
+    applyModalPropertyMode(); // sync pricing-field visibility + Save/Next label
     updateModalPrice();
 }
 
@@ -10899,47 +11053,19 @@ async function saveModal() {
         return;
     }
 
-    // Resolve the Property box. A name that isn't one of the owner's cottages yet
-    // becomes a NEW PRIVATE cottage. Its pricing/deposit/fee are captured in the
-    // in-flow "Set up new property" dialog (no need to leave the booking page) and
-    // the cottage is created BEFORE the booking, so the booking's locked price
-    // snapshot uses the final rates. Occupancy caps are left at defaults for the
-    // owner to set later per cottage.
+    // Property box resolves to a brand-new name → hand off to the custom-booking
+    // wizard (step 2: set up pricing → step 3: review → confirm). The wizard
+    // creates the private cottage then re-enters saveModal with a real key, so the
+    // block below is skipped on that second pass and the standard add flow runs.
     if (!propKey) {
         const nm = cur.newName;
         if (!nm) {
             showErr('Choose a property, or pick “New property…” and type a name.');
             return;
         }
-        const setup = await promptNewProperty(nm);
-        if (!setup) return; // cancelled the setup
-        try {
-            const res = await apiPost('rates.php', {
-                action: 'create',
-                name: nm,
-                couple_rate: setup.couple,
-                extra_adult_rate: setup.extraAdult,
-                child_rate: setup.child,
-                booking_fee: setup.deposit,
-                transaction_pct: setup.txnPct,
-                // Size the new cottage to this booking's party so it fits with no
-                // "over limit" prompt and no trip into Preferences to set caps.
-                max_adults: Math.max(1, adults),
-                max_children: Math.max(0, children),
-                max_total: Math.max(1, adults + children),
-                unlisted: 1,
-            });
-            if (!res || !res.prop_key) {
-                showErr('Could not create the cottage — please try again.');
-                return;
-            }
-            propKey = res.prop_key;
-            await loadRates(); // so propertyMeta / occupancy / pricing know about it
-            if (typeof toast === 'function') toast(`Created private cottage “${nm}”.`);
-        } catch (e) {
-            showErr("Couldn't create the cottage: " + (e && e.message ? e.message : e));
-            return;
-        }
+        __customBooking = { name: nm, setup: null };
+        openCustomSetup(nm);
+        return;
     }
 
     // Occupancy limit — owner can override with confirmation (e.g. a cot, an exception)
@@ -11369,7 +11495,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'x2f7q5vn';
+    const BUILD = 'y5h8t3wm';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
