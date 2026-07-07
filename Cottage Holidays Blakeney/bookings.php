@@ -735,6 +735,29 @@ if ($action === 'send_confirmation') {
     json_out(['error' => 'Email not sent: ' . $reason, 'email' => $result], 200);
 }
 
+// Build the branded email HTML for the composer's live preview (no send).
+if ($action === 'email_preview') {
+    require_admin();
+    $id = (int) ($in['id'] ?? 0);
+    $b = booking_by_id($id);
+    if (!$b) {
+        json_out(['error' => 'Booking not found'], 404);
+    }
+    $message = mb_substr(trim((string) ($in['message'] ?? '')), 0, 5000);
+    $subject = mb_substr(clean($in['subject'] ?? ''), 0, 150);
+    $priceEst = null;
+    try {
+        $rate = get_rate($b['prop_key']);
+        if ($rate) {
+            $priceEst = price_breakdown($rate, (int) $b['adults'], (int) $b['children'], $b['check_in'], $b['check_out']);
+        }
+    } catch (\Throwable $e) {
+    }
+    require_once __DIR__ . '/mailer.php';
+    $m = build_enquiry_reply_email(array_merge($b, ['price' => $priceEst]), $subject, $message, 'booking');
+    json_out(['ok' => true, 'html' => $m['html'], 'subject' => $m['subject']]);
+}
+
 // Free-text email to a booking's guest, with the booking details riding along
 // underneath (mirrors enquiries.php 'email_guest'; the composer is shared).
 if ($action === 'email_guest') {

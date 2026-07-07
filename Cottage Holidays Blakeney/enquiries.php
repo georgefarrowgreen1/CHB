@@ -317,6 +317,31 @@ if ($action === 'approve') {
 // Email the enquirer directly from the Inbox: the owner's message, sent in the
 // house email style with the enquiry's details (cottage/dates/times/party/
 // estimated price) attached underneath. Replies come back to the site inbox.
+// Build the branded email HTML for the composer's live preview (no send).
+if ($action === 'email_preview') {
+    require_admin();
+    $id = (int) ($in['id'] ?? 0);
+    $s = db()->prepare('SELECT * FROM enquiries WHERE id = ?');
+    $s->execute([$id]);
+    $row = $s->fetch();
+    if (!$row) {
+        json_out(['error' => 'Enquiry not found'], 404);
+    }
+    $message = mb_substr(trim((string) ($in['message'] ?? '')), 0, 5000);
+    $subject = mb_substr(clean($in['subject'] ?? ''), 0, 150);
+    $priceEst = null;
+    try {
+        $rate = get_rate($row['prop_key']);
+        if ($rate) {
+            $priceEst = price_breakdown($rate, (int) $row['adults'], (int) $row['children'], $row['check_in'], $row['check_out']);
+        }
+    } catch (\Throwable $e) {
+    }
+    require_once __DIR__ . '/mailer.php';
+    $m = build_enquiry_reply_email(array_merge($row, ['price' => $priceEst]), $subject, $message, 'enquiry');
+    json_out(['ok' => true, 'html' => $m['html'], 'subject' => $m['subject']]);
+}
+
 if ($action === 'email_guest') {
     $id = (int) ($in['id'] ?? 0);
     $s = db()->prepare('SELECT * FROM enquiries WHERE id = ?');

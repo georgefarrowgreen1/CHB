@@ -1921,15 +1921,30 @@
                 <button class="reviews-modal-close" onclick="closeEnquiryEmailModal()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
             <div class="reviews-modal-body" style="display:block;">
-                <!-- Key enquiry details, visible while writing (filled by openEnquiryEmail). -->
-                <div class="enq-ctx" id="enq-email-context"></div>
-                <label class="modal-label" for="enq-email-subject">Subject</label>
-                <input type="text" class="input-glass" id="enq-email-subject" maxlength="150">
-                <label class="modal-label" for="enq-email-body">Message</label>
-                <textarea class="input-glass" id="enq-email-body" rows="6" maxlength="5000" placeholder="Write your message…" style="resize:vertical;"></textarea>
-                <p style="font-size:0.75rem;color:var(--text-muted);margin:6px 0 14px;">Sent in the site's email design with these details attached underneath. Their reply comes back to your inbox.</p>
-                <p class="enq-modal-msg" id="enq-email-msg" role="alert"></p>
-                <button class="btn-glass btn-accent" id="enq-email-send" style="width:100%;padding:14px;" onclick="sendEnquiryEmail()">Send email</button>
+                <!-- Compose view -->
+                <div id="enq-email-edit">
+                    <!-- Key details, visible while writing (filled by openEnquiryEmail/openBookingEmail). -->
+                    <div class="enq-ctx" id="enq-email-context"></div>
+                    <label class="modal-label" for="enq-email-subject">Subject</label>
+                    <input type="text" class="input-glass" id="enq-email-subject" maxlength="150">
+                    <label class="modal-label" for="enq-email-body">Message</label>
+                    <textarea class="input-glass" id="enq-email-body" rows="6" maxlength="5000" placeholder="Write your message…" style="resize:vertical;"></textarea>
+                    <p style="font-size:0.75rem;color:var(--text-muted);margin:6px 0 14px;">Sent in the site's email design with these details attached underneath. Their reply comes back to your inbox.</p>
+                    <p class="enq-modal-msg" id="enq-email-msg" role="alert"></p>
+                    <div style="display:flex;gap:10px;">
+                        <button class="toggle-btn" id="enq-email-preview-btn" style="flex:1;padding:14px;" onclick="previewComposedEmail()">Preview</button>
+                        <button class="btn-glass btn-accent" id="enq-email-send" style="flex:1;padding:14px;" onclick="sendEnquiryEmail()">Send email</button>
+                    </div>
+                </div>
+                <!-- Preview view (the exact email the guest will receive) -->
+                <div id="enq-email-preview" style="display:none;">
+                    <p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 10px;">This is exactly what your guest will receive.</p>
+                    <iframe id="enq-email-preview-frame" title="Email preview" sandbox="allow-same-origin" style="width:100%;height:440px;border:1px solid var(--glass-border);border-radius:12px;background:#ECE5D7;"></iframe>
+                    <div style="display:flex;gap:10px;margin-top:14px;">
+                        <button class="toggle-btn" style="flex:1;padding:14px;" onclick="backToComposeEdit()">← Back to editing</button>
+                        <button class="btn-glass btn-accent" style="flex:1;padding:14px;" onclick="sendEnquiryEmail()">Send email</button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
@@ -2248,7 +2263,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=199"></script>
+    <script defer src="app.js?v=200"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
