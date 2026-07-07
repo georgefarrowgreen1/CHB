@@ -154,8 +154,9 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   `php test-pricing.php`.
 - `.github/workflows/ci.yml` runs `php -l` on every PHP, `node smoke-test.js`,
   `php test-pricing.php`, `php test-reply.php`, the real-browser `node e2e-test.js`,
-  and the design gate `node layout-test.js` (layout invariants at 390/768/1280 —
-  no horizontal overflow, no content cut off, key content rendered; screenshots
+  and the design gate `node layout-test.js` (layout invariants — no horizontal
+  overflow, no content cut off, key content rendered — on the public views at
+  390/768/1280 AND the six back-office screens at phone width; screenshots
   uploaded as the `layout-shots` CI artifact) on each PR — merge only on green.
   `deploy.yml` SFTP-deploys `main` to IONOS (never deletes remote files; preserves
   `config.php` + `uploads/`).
