@@ -8072,7 +8072,7 @@ function renderCardAvailability() {
                 );
             html = soon
                 ? `<span class="avail-chip now"><span class="dot"></span>Available now</span>`
-                : `<span class="avail-chip"><span class="dot"></span>Next free: ${dpPretty(g.start)}</span>`;
+                : `<span class="avail-chip"><span class="dot"></span>Available from ${dpPretty(g.start)}</span>`;
         }
         ['card-avail-' + k, 'home-card-avail-' + k].forEach((id) => {
             const el = document.getElementById(id);
@@ -11563,7 +11563,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'h2v6t9kr';
+    const BUILD = 'j4w8r2mp';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
