@@ -15,6 +15,8 @@ build step**); PHP backend files sit alongside it. App-style guest shell lives i
 - Bump `CACHE` in `sw.js`, and the `?v=` query on whichever of `app.css` / `app.js` /
   `guest-app.css` / `guest-app.js` you changed — in BOTH `index.html` and the `sw.js`
   CORE list.
+- If **`admin.js`** changed, bump `ADMIN_BUNDLE_V` (top of app.js, in the facade) —
+  that's its cache-buster; admin.js has no `<script>` tag and is NOT in sw.js CORE.
 - Run `node smoke-test.js` and `php test-pricing.php` — must pass (CI runs both).
 
 ## Conventions
@@ -44,8 +46,21 @@ Single-operator holiday-let PWA. No framework, no build step.
   `body.guest-app` classes drive what shows. Links `app.css`, then `app.js`, then
   `guest-app.js`.
 - `app.css` — the main stylesheet (was the inline `<style>`).
-- `app.js` — the whole app: all the page logic + globals that inline `onclick`s call.
-  `const BUILD` (last statement) is the version stamp. Loads before `guest-app.js`.
+- `app.js` — the PUBLIC app (guest site + shared helpers + auth) as globals that
+  inline `onclick`s call. `const BUILD` (last statement) is the version stamp.
+  Loads before `guest-app.js`.
+- `admin.js` — the owner back office, split out so guests never download it.
+  Fetched on demand by `loadAdminBundle()` (facade at the top of app.js): eagerly
+  from `setAuthUI()` on any owner sign-in / session restore, lazily via the
+  generated **stub list** (async `window.*` stubs that load the bundle then
+  delegate; admin.js's footer publishes the real fns over them and sets
+  `__ADMIN_LOADED`). Rules: admin.js may use any app.js global; app.js/guest-app.js
+  must NOT reference admin names except via the stub list; shared state stays in
+  app.js; nothing admin runs on public boot (a stub call there would make every
+  guest fetch the bundle — see the `__ADMIN_LOADED` guard in
+  `loadSquareAdminConfig`). smoke-test.js §1 enforces the facade contract
+  (evaluates both files, all stubs replaced) and 6a/6c check handlers + that
+  admin.js stays OUT of the sw.js CORE precache.
 - `guest-app.js` / `guest-app.css` — the mobile app shell only (the floating dock,
   full-page overlays, install chip). Loaded with `?v=` and gated as above.
 - Routing is `nav()` toggling `.page-view.active`; per-view init lives in `nav()`
