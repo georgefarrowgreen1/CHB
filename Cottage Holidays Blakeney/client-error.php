@@ -24,7 +24,11 @@ $where = trim((string) ($in['where'] ?? ''));
 $noise =
     preg_match('~^(?!https?://)[a-z][a-z0-9.+-]*://~i', $where) === 1 || // iabjs://, gap://, chrome-extension://…
     stripos($where, 'webkit-masked-url') !== false ||
-    preg_match('/Java (object|bridge|exception)/i', $msg) === 1;
+    preg_match('/Java (object|bridge|exception)/i', $msg) === 1 ||
+    // iOS in-app browsers (Facebook/Instagram WKWebView) inject scripts that poke
+    // window.webkit.messageHandlers — our code never touches that API, and iOS
+    // injections report the PAGE url as the source, so the scheme check misses them.
+    stripos($msg, 'webkit.messageHandlers') !== false;
 if ($noise) {
     json_out(['ok' => true, 'ignored' => true]);
 }
