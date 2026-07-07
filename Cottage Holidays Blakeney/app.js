@@ -71,6 +71,15 @@ const API_BASE = (function () {
         try {
             msg = String(msg || '').trim();
             if (!msg || msg === 'Script error.' || msg === 'Script error') return;
+            // Third-party noise: scripts INJECTED into the page by Android/iOS
+            // in-app browsers (Instagram/Facebook webviews report as iabjs://…),
+            // browser extensions and native bridges throw errors we can't fix —
+            // e.g. "Error invoking postMessage: Java object is gone". Don't
+            // report them; they'd spam the owner's "Needs attention" stream.
+            const src = String(where || '');
+            if (/^(?!https?:\/\/)[a-z][a-z0-9.+-]*:\/\//i.test(src)) return; // iabjs://, gap://, chrome-extension://…
+            if (/webkit-masked-url/i.test(src)) return; // Safari extension-injected
+            if (/Java (object|bridge|exception)/i.test(msg)) return; // Android webview bridge died
             if (sent >= 5) return; // don't flood on a broken page
             const key = msg.slice(0, 120);
             if (seen[key]) return;
@@ -10953,7 +10962,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'z2q7c4hw';
+    const BUILD = 'a9f5r2kx';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
