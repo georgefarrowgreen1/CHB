@@ -612,6 +612,11 @@
                         <span><span class="avail-dot avail-free"></span> Available</span>
                         <span><span class="avail-dot avail-taken"></span> Booked</span>
                     </div>
+                    <!-- Waitlist as a first-class action — not only buried in sold-out
+                         search results. Prefilled with this cottage. -->
+                    <div style="text-align:center;margin-top:10px;">
+                        <a style="font-size:0.8rem;color:var(--accent);cursor:pointer;text-decoration:underline;text-underline-offset:3px;" onclick="openWaitlistModal({ prop: activeFrontProperty })">Dates booked? Get notified if they become available</a>
+                    </div>
                 </div>
                 <div class="prop-divider"></div>
                 <!-- Things to know (per cottage) — above guest reviews -->
@@ -2294,11 +2299,11 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=220"></script>
+    <script defer src="app.js?v=221"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
-    <script defer src="guest-app.js?v=14"></script>
+    <script defer src="guest-app.js?v=15"></script>
 
 </body>
 </html>
