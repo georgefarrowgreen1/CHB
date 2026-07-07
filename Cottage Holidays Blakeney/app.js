@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 11;
+const ADMIN_BUNDLE_V = 12;
 let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
@@ -2506,8 +2506,9 @@ async function renderGuestBookings() {
                             <div class="guest-price-box">
                                 <div class="price-row"><span>${gbp(p.perNight)} × ${p.nights} night${p.nights === 1 ? '' : 's'}</span><span>${gbp(p.nightly)}</span></div>
                                 <div class="price-row"><span>Transaction fee (${p.transactionPct}%)</span><span>${gbp(p.txFee)}</span></div>
-                                <div class="price-row total"><span>Total</span><span class="price-amount">${gbp(p.total)}</span></div>
-                                ${p.damagesDeposit > 0 ? `<div class="price-row" style="color:var(--text-muted);font-size:0.8rem;"><span>+ ${gbp(p.damagesDeposit)} refundable deposit</span><span>refunded after your stay</span></div>` : ''}
+                                ${p.damagesDeposit > 0 ? `<div class="price-row"><span>Refundable damages deposit</span><span>${gbp(p.damagesDeposit)}</span></div>` : ''}
+                                <div class="price-row total"><span>Total${p.damagesDeposit > 0 ? ' (incl. deposit)' : ''}</span><span class="price-amount">${gbp(displayGrandTotal(p.total, p, 'none'))}</span></div>
+                                ${p.damagesDeposit > 0 ? `<p style="color:var(--text-muted);font-size:0.75rem;margin:6px 0 0;">Includes the ${gbp(p.damagesDeposit)} refundable damages deposit — refunded after your stay.</p>` : ''}
                                 <p style="color:var(--text-muted);font-size:0.75rem;text-align:center;margin:8px 0 0;">Estimate — we'll confirm your dates and final price by email.</p>
                             </div>
                             </div>
@@ -2535,6 +2536,8 @@ async function renderGuestBookings() {
             b.agreedPrice ||
             priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
         const ps = paymentSummary(propKey, b);
+        // Deposit folded into the shown total/paid/balance until it's refunded.
+        const gt = displayGrand(p, ps, b.holdStatus);
         // Derive the label from the reconciled summary so it can never
         // contradict the balance shown below or on the PDF.
         const payState = ps.fullyPaid ? 'paid' : ps.deposit > 0 ? 'deposit' : 'unpaid';
@@ -2563,19 +2566,20 @@ async function renderGuestBookings() {
                             <div class="guest-price-box">
                                 <div class="price-row"><span>${gbp(p.perNight)} × ${p.nights} night${p.nights === 1 ? '' : 's'}</span><span>${gbp(p.nightly)}</span></div>
                                 <div class="price-row"><span>Transaction fee (${p.transactionPct}%)</span><span>${gbp(p.txFee)}</span></div>
-                                <div class="price-row total"><span>Total</span><span class="price-amount">${gbp(p.total)}</span></div>
-                                ${p.damagesDeposit > 0 ? `<div class="price-row" style="color:var(--text-muted);font-size:0.8rem;"><span>+ ${gbp(p.damagesDeposit)} refundable deposit</span><span>refunded after your stay</span></div>` : ''}
+                                ${gt.dep > 0 ? `<div class="price-row"><span>Refundable damages deposit</span><span>${gbp(gt.dep)}</span></div>` : ''}
+                                <div class="price-row total"><span>Total${gt.dep > 0 ? ' (incl. deposit)' : ''}</span><span class="price-amount">${gbp(gt.total)}</span></div>
                                 ${
-                                    ps.deposit > 0
+                                    gt.paid > 0
                                         ? `
-                                <div class="price-row" style="color:#4CAF50;"><span>Paid${b.paymentMethod ? ' (' + escapeHtml(b.paymentMethod) + ')' : ''}${b.paymentDate ? ' on ' + b.paymentDate : ''}</span><span>− ${gbp(ps.deposit)}</span></div>
-                                <div class="price-row total"><span>${ps.fullyPaid ? 'Paid in full' : 'Balance due'}</span><span class="price-amount" style="${ps.fullyPaid ? 'color:#4CAF50;' : ''}">${gbp(ps.fullyPaid ? ps.total : ps.balance)}</span></div>`
+                                <div class="price-row" style="color:#4CAF50;"><span>Paid${b.paymentMethod ? ' (' + escapeHtml(b.paymentMethod) + ')' : ''}${b.paymentDate ? ' on ' + b.paymentDate : ''}</span><span>− ${gbp(gt.paid)}</span></div>
+                                <div class="price-row total"><span>${gt.fullyPaid ? 'Paid in full' : 'Balance due'}</span><span class="price-amount" style="${gt.fullyPaid ? 'color:#4CAF50;' : ''}">${gbp(gt.fullyPaid ? gt.total : gt.balance)}</span></div>`
                                         : ''
                                 }
+                                ${gt.dep > 0 ? `<p style="color:var(--text-muted);font-size:0.72rem;margin:6px 0 0;">Includes the ${gbp(gt.dep)} refundable damages deposit — refunded after your stay.</p>` : ''}
                             </div>
                             </div>
                             <div class="card-actions">
-                                ${upcoming && !ps.fullyPaid && payToken ? `<button class="btn-glass btn-sm" style="background:rgba(76,175,80,0.22);border-color:var(--booked-border);" onclick="openPayView('${payToken}', ${b.dbId}, 'balance')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay balance ${gbp(ps.balance)}</button>` : ''}
+                                ${upcoming && !gt.fullyPaid && payToken ? `<button class="btn-glass btn-sm" style="background:rgba(76,175,80,0.22);border-color:var(--booked-border);" onclick="openPayView('${payToken}', ${b.dbId}, 'balance')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay balance ${gbp(gt.balance)}</button>` : ''}
                                 <button class="btn-sm btn-edit" onclick="downloadInvoice('${b.id}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v10M8 11l4 4 4-4M5 19h14"/></svg> Invoice</button>
                                 <button class="btn-sm btn-edit" onclick="addBookingToCalendar('${b.id}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg> Add to Calendar</button>
                                 <button class="btn-sm btn-edit" onclick="openTermsModal(event, '${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h9a3 3 0 0 1 3 3v13H9a3 3 0 0 1-3-3z"/><path d="M6 17h12"/></svg> Terms</button>
@@ -2819,12 +2823,13 @@ async function openPayView(token, bookingId, kind) {
                   ? 'Balance due'
                   : 'Deposit due';
         document.getElementById('pay-amount').textContent = gbp(payTotal);
+        const grandTotalRef = Math.round((Number(s.total) + dep) * 100) / 100;
         document.getElementById('pay-amount-sub').textContent =
             s.kind === 'hold'
                 ? 'held, not charged — released after checkout'
                 : (s.kind === 'balance'
-                      ? `of ${gbp(s.total)} total`
-                      : `${s.depositPct}% deposit · ${gbp(s.total)} total`) +
+                      ? `of ${gbp(grandTotalRef)} total`
+                      : `${s.depositPct}% deposit · ${gbp(grandTotalRef)} total`) +
                   (dep > 0 ? ` · incl. ${gbp(dep)} refundable deposit (refunded after checkout)` : '');
         try {
             const pb = document.getElementById('pay-btn');
@@ -3786,6 +3791,8 @@ async function downloadInvoice(bookingId) {
         b.agreedPrice ||
         priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
     const ps = paymentSummary(propKey, b);
+    // Deposit folded into the shown total/paid until it's refunded.
+    const gt = displayGrand(p, ps, b.holdStatus || 'none');
 
     // Refundable damages deposit — amount + human status for its own invoice
     // section. It's now CHARGED with the guest's first payment and refunded
@@ -3884,10 +3891,14 @@ async function downloadInvoice(bookingId) {
     y += 18;
     rowLR(`Transaction fee (${p.transactionPct}%)`, gbp(p.txFee), y);
     y += 18;
+    if (gt.dep > 0) {
+        rowLR('Refundable damages deposit', gbp(gt.dep), y);
+        y += 18;
+    }
     y += 4;
     line(y);
     y += 20;
-    rowLR('Total', gbp(p.total), y, true);
+    rowLR(gt.dep > 0 ? 'Total (incl. deposit)' : 'Total', gbp(gt.total), y, true);
     y += 28;
 
     // Refundable damages deposit — its OWN section (never part of the rental
@@ -3916,14 +3927,14 @@ async function downloadInvoice(bookingId) {
     doc.text('Payments', left, y);
     y += 20;
     doc.setFontSize(10);
-    if (ps.deposit > 0) {
+    if (gt.paid > 0) {
         const how = b.paymentMethod ? ` via ${b.paymentMethod}` : '';
         const when = b.paymentDate ? ` on ${b.paymentDate}` : '';
-        rowLR(`Amount paid${how}${when}`, '- ' + gbp(ps.deposit), y);
+        rowLR(`Amount paid${how}${when}`, '- ' + gbp(gt.paid), y);
         y += 18;
         rowLR(
-            ps.fullyPaid ? 'Paid in full' : 'Balance due',
-            gbp(ps.fullyPaid ? ps.total : ps.balance),
+            gt.fullyPaid ? 'Paid in full' : 'Balance due',
+            gbp(gt.fullyPaid ? gt.total : gt.balance),
             y,
             true,
         );
@@ -3931,7 +3942,7 @@ async function downloadInvoice(bookingId) {
     } else {
         rowLR('Amount paid', gbp(0), y);
         y += 18;
-        rowLR('Balance due', gbp(ps.balance), y, true);
+        rowLR('Balance due', gbp(gt.balance), y, true);
         y += 18;
     }
 
@@ -5712,6 +5723,37 @@ function priceBreakdown(propKey, adults, children, checkIn, checkOut, depositOve
         total,
         extraAdults,
     };
+}
+
+// DISPLAY-ONLY: the refundable damage deposit is CHARGED with the guest's first
+// payment and refunded after the stay, so what the guest actually pays includes
+// it — until it's refunded. These helpers fold it into figures SHOWN to people;
+// they never touch the price model (priceBreakdown.total / agreed_total / what
+// pay.php charges all stay rental-only). `holdStatus` omitted = a fresh quote
+// (not yet refunded → deposit counts).
+function depositRefunded(holdStatus) {
+    const st = holdStatus || 'none';
+    return st === 'returned' || st === 'released';
+}
+// The deposit amount to fold into a shown total (0 once refunded).
+function displayDepositAmt(p, holdStatus) {
+    return depositRefunded(holdStatus) ? 0 : Math.max(0, (p && p.damagesDeposit) || 0);
+}
+// A shown total = a rental figure + the not-yet-refunded deposit.
+function displayGrandTotal(rentalTotal, p, holdStatus) {
+    return Math.round((((rentalTotal != null ? rentalTotal : (p && p.total) || 0)) + displayDepositAmt(p, holdStatus)) * 100) / 100;
+}
+// For a booking WITH a paid/balance ledger: fold the deposit into BOTH the total
+// and (once any payment is taken, the deposit is charged too) the paid figure, so
+// the balance-due number is unchanged while the headline total shows the deposit.
+// `ps` = paymentSummary (rental total + rental paid). Refunded → deposit drops out.
+function displayGrand(p, ps, holdStatus) {
+    const dep = displayDepositAmt(p, holdStatus);
+    const total = Math.round((ps.total + dep) * 100) / 100;
+    const chargedDep = ps.deposit > 0 || ps.fullyPaid ? dep : 0; // charged with the first payment
+    const paid = Math.round((ps.deposit + chargedDep) * 100) / 100;
+    const balance = Math.round((total - paid) * 100) / 100;
+    return { dep, total, paid, balance, fullyPaid: ps.fullyPaid || balance <= 0.001 };
 }
 
 // Freeze the agreed price onto a booking at the moment it is created or its
@@ -9564,11 +9606,14 @@ function buildDetailHtml(propKey, b, titlePrefix = null) {
         }
     }
     const ps = paymentSummary(propKey, b);
+    // Fold the refundable deposit into the shown total/paid until it's refunded
+    // (the balance-due figure is unchanged).
+    const gt = displayGrand(p, ps, b.holdStatus);
     const depositRows =
-        ps.deposit > 0
+        gt.paid > 0
             ? `
-                        <div class="price-row" style="color:#4CAF50;"><span>Deposit paid</span><span>− ${gbp(ps.deposit)}</span></div>
-                        <div class="price-row total"><span>${ps.fullyPaid ? 'Paid in full' : 'Balance due'}</span><span class="price-amount" style="${ps.fullyPaid ? 'color:#4CAF50;' : ''}">${gbp(ps.fullyPaid ? ps.total : ps.balance)}</span></div>`
+                        <div class="price-row" style="color:#4CAF50;"><span>Paid</span><span>− ${gbp(gt.paid)}</span></div>
+                        <div class="price-row total"><span>${gt.fullyPaid ? 'Paid in full' : 'Balance due'}</span><span class="price-amount" style="${gt.fullyPaid ? 'color:#4CAF50;' : ''}">${gbp(gt.fullyPaid ? gt.total : gt.balance)}</span></div>`
             : '';
     const priceBlock = `
                 <div style="margin-top: 20px; max-width: 380px;">
@@ -9576,8 +9621,8 @@ function buildDetailHtml(propKey, b, titlePrefix = null) {
                     <div class="price-box" style="margin-bottom: 0;">
                         <div class="price-row"><span>${gbp(p.perNight)} × ${p.nights} night${p.nights === 1 ? '' : 's'} (${adults}A${children > 0 ? ', ' + children + 'C' : ''})</span><span>${gbp(p.nightly)}</span></div>
                         <div class="price-row"><span>Transaction fee (${p.transactionPct}%)</span><span>${gbp(p.txFee)}</span></div>
-                        <div class="price-row"><span>Refundable damages deposit</span><span>${gbp(p.damagesDeposit)}</span></div>
-                        <div class="price-row total"><span>Total</span><span class="price-amount">${gbp(p.total)}</span></div>
+                        ${gt.dep > 0 ? `<div class="price-row"><span>Refundable damages deposit</span><span>${gbp(gt.dep)}</span></div>` : ''}
+                        <div class="price-row total"><span>Total${gt.dep > 0 ? ' (incl. deposit)' : ''}</span><span class="price-amount">${gbp(gt.total)}</span></div>
                         ${depositRows}
                     </div>
                     ${agreedNote}${rateDiffNote}
@@ -10174,9 +10219,9 @@ function updateEnquiryPrice() {
         extras.push(`${p.extraAdults} extra adult${p.extraAdults === 1 ? '' : 's'}`);
     if (children > 0) extras.push(`${children} child${children === 1 ? '' : 'ren'}`);
     box.innerHTML = `
-                <div class="price-row total" style="border-top:none;padding-top:0;"><span>From</span><span><span class="price-amount">${gbp(p.rentalTotal)}</span> <span style="font-size:0.7rem;color:var(--text-muted);font-weight:400;">*fees inc</span></span></div>
-                <div class="price-row" style="margin-top:12px;"><span>Refundable damages deposit</span><span>${gbp(p.damagesDeposit)}</span></div>
-                <p style="color: var(--text-muted); font-size: 0.78rem; text-align: center; margin: 10px 0 0; line-height: 1.45;">Subject to change before booking has been confirmed — we will contact you to give an accurate price.</p>
+                <div class="price-row total" style="border-top:none;padding-top:0;"><span>From</span><span><span class="price-amount">${gbp(displayGrandTotal(p.rentalTotal, p, 'none'))}</span> <span style="font-size:0.7rem;color:var(--text-muted);font-weight:400;">*fees inc</span></span></div>
+                ${p.damagesDeposit > 0 ? `<div class="price-row" style="margin-top:12px;"><span>Incl. refundable damages deposit</span><span>${gbp(p.damagesDeposit)}</span></div>` : ''}
+                <p style="color: var(--text-muted); font-size: 0.78rem; text-align: center; margin: 10px 0 0; line-height: 1.45;">${p.damagesDeposit > 0 ? "The deposit is refunded after your stay. " : ''}Subject to change before booking has been confirmed — we will contact you to give an accurate price.</p>
             `;
     try {
         updateBookBar();
@@ -10729,15 +10774,18 @@ function openCustomOverview() {
     try {
         const p = priceBreakdown('__preview__', adults, children, checkIn, checkOut, null);
         const override = s.override > 0 ? s.override : null;
+        // New booking → deposit not yet refunded → folded into the total so the
+        // lines add up to what the guest actually pays now.
+        const dep = displayDepositAmt(p, 'none');
         const totalRow =
             override !== null
-                ? `<div class="price-row" style="opacity:0.6;"><span>Calculated total</span><span style="text-decoration:line-through;">${gbp(p.total)}</span></div>
-                   <div class="price-row total"><span>Override total</span><span class="price-amount">${gbp(override)}</span></div>`
-                : `<div class="price-row total"><span>Total</span><span class="price-amount">${gbp(p.total)}</span></div>`;
+                ? `<div class="price-row" style="opacity:0.6;"><span>Calculated total</span><span style="text-decoration:line-through;">${gbp(displayGrandTotal(p.total, p, 'none'))}</span></div>
+                   <div class="price-row total"><span>Total${dep > 0 ? ' (incl. deposit)' : ''}</span><span class="price-amount">${gbp(displayGrandTotal(override, p, 'none'))}</span></div>`
+                : `<div class="price-row total"><span>Total${dep > 0 ? ' (incl. deposit)' : ''}</span><span class="price-amount">${gbp(displayGrandTotal(p.total, p, 'none'))}</span></div>`;
         priceRows = `
             <div class="price-row"><span>${p.nights} night${p.nights === 1 ? '' : 's'}</span><span>${gbp(p.nightly)}</span></div>
             <div class="price-row"><span>Transaction fee (${p.transactionPct}%)</span><span>${gbp(p.txFee)}</span></div>
-            <div class="price-row"><span>Refundable damages deposit</span><span>${gbp(p.damagesDeposit)}</span></div>
+            ${dep > 0 ? `<div class="price-row"><span>Refundable damages deposit</span><span>${gbp(dep)}</span></div>` : ''}
             ${totalRow}`;
     } catch (e) {
         priceRows = `<div class="price-row"><span>Total</span><span>Enter valid dates to price</span></div>`;
@@ -10959,16 +11007,27 @@ function updateModalPrice() {
     const perNightLabel = `Couple${extras.length ? ' + ' + extras.join(' + ') : ''}`;
     const ovEl = document.getElementById('modal-price-override');
     const override = ovEl && ovEl.value !== '' ? Math.max(0, parseFloat(ovEl.value) || 0) : null;
+    // Deposit is charged with the first payment & refunded after the stay → show it
+    // inside the total until it's been refunded (for an edit, use the booking's state).
+    let holdSt = 'none';
+    if (document.getElementById('modal-mode').value === 'booking') {
+        const bk =
+            typeof findBookingById === 'function'
+                ? findBookingById(document.getElementById('modal-record-id').value)
+                : null;
+        if (bk) holdSt = bk.holdStatus || 'none';
+    }
+    const depAmt = displayDepositAmt(p, holdSt);
     let rows = `
                 <div class="price-row"><span>${perNightLabel} × ${p.nights} night${p.nights === 1 ? '' : 's'}</span><span>${gbp(p.nightly)}</span></div>
                 <div class="price-row"><span>Transaction fee (${p.transactionPct}%)</span><span>${gbp(p.txFee)}</span></div>
-                <div class="price-row"><span>Refundable damages deposit</span><span>${gbp(p.damagesDeposit)}</span></div>`;
+                ${depAmt > 0 ? `<div class="price-row"><span>Refundable damages deposit</span><span>${gbp(depAmt)}</span></div>` : ''}`;
     if (override !== null) {
         rows += `
-                <div class="price-row" style="opacity:0.6;"><span>Calculated total</span><span style="text-decoration:line-through;">${gbp(p.total)}</span></div>
-                <div class="price-row total"><span>Override total</span><span class="price-amount">${gbp(override)}</span></div>`;
+                <div class="price-row" style="opacity:0.6;"><span>Calculated total</span><span style="text-decoration:line-through;">${gbp(displayGrandTotal(p.total, p, holdSt))}</span></div>
+                <div class="price-row total"><span>Total${depAmt > 0 ? ' (incl. deposit)' : ''}</span><span class="price-amount">${gbp(displayGrandTotal(override, p, holdSt))}</span></div>`;
     } else {
-        rows += `<div class="price-row total"><span>Total</span><span class="price-amount">${gbp(p.total)}</span></div>`;
+        rows += `<div class="price-row total"><span>Total${depAmt > 0 ? ' (incl. deposit)' : ''}</span><span class="price-amount">${gbp(displayGrandTotal(p.total, p, holdSt))}</span></div>`;
     }
     box.innerHTML = rows;
 }
@@ -11495,7 +11554,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'y5h8t3wm';
+    const BUILD = 'z8k4r7dq';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
