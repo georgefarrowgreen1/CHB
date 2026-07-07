@@ -368,6 +368,20 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
         const ht = fs.readFileSync(path.join(path.dirname(HTML_PATH), 'htaccess.txt'), 'utf8');
         check('CSP frame-src allows https: (3DS issuer iframes)', /frame-src https:;/.test(ht));
     } catch (e) { fail('htaccess.txt unreadable for CSP check'); }
+
+    // Invoice deposit status: the guest invoice must state the refundable deposit
+    // was PAID and, after checkout, REFUNDED (per the charge-upfront model).
+    const dis = get('depositInvoiceStatus');
+    if (typeof dis !== 'function') { fail('depositInvoiceStatus is not defined'); }
+    else {
+        check('deposit charged → "Paid … refunded after your stay"', /Paid.*refunded in full after your stay/i.test(dis(75, 'charged', 0, '')));
+        check('deposit returned → "Refunded in full on <date>"', dis(75, 'returned', 75, '2026-07-18') === 'Refunded in full on 2026-07-18.');
+        check('deposit fully returned while still charged → refunded', /Refunded in full/i.test(dis(75, 'charged', 75, '')));
+        check('deposit partially returned → "£X of £Y refunded"', /£40\.00 of £75\.00 refunded/.test(dis(75, 'charged', 40, '')));
+        check('deposit kept → "Retained … for damage"', /Retained.*damage/i.test(dis(75, 'kept', 0, '')));
+        check('legacy hold → "Held on your card"', /Held on your card/i.test(dis(75, 'authorized', 0, '')));
+        check('no deposit → empty status', dis(0, 'none', 0, '') === '');
+    }
 }
 
 console.log('\n== Summary ==');

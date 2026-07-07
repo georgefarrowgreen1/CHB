@@ -23,11 +23,33 @@ $stmt = db()->prepare(
 $stmt->execute([$guest['email']]);
 $bookings = $stmt->fetchAll();
 
+// How much of each booking's refundable damages deposit has been refunded to the
+// guest (sum of 'damages_return' ledger rows) — so the invoice can show "Refunded"
+// with the exact amount, not just the hold_status flag (which can't express a
+// partial return). One grouped query for all this guest's bookings.
+$returnedByBooking = [];
+try {
+    $ids = array_map(fn($b) => (int) $b['id'], $bookings);
+    if ($ids) {
+        $ph = implode(',', array_fill(0, count($ids), '?'));
+        $rs = db()->prepare(
+            "SELECT booking_id, COALESCE(SUM(amount),0) t FROM payments
+             WHERE kind = 'damages_return' AND booking_id IN ($ph) GROUP BY booking_id",
+        );
+        $rs->execute($ids);
+        foreach ($rs->fetchAll() as $row) {
+            $returnedByBooking[(int) $row['booking_id']] = round((float) $row['t'], 2);
+        }
+    }
+} catch (\Throwable $e) {
+}
+
 // Attach a login-free pay token to each booking so the guest can pay an
 // outstanding balance straight from My Bookings (only their own bookings).
 $sqOn = square_enabled();
 foreach ($bookings as &$bk) {
     $bk['pay_token'] = $sqOn ? pay_token((int) $bk['id']) : null;
+    $bk['damages_returned'] = $returnedByBooking[(int) $bk['id']] ?? 0;
 }
 unset($bk);
 

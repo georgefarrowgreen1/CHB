@@ -654,6 +654,8 @@ function mapBookingFromApi(row) {
         termsVersion: row.terms_version || '',
         holdStatus: row.hold_status || 'none',
         holdAmount: parseFloat(row.hold_amount) || 0,
+        holdSettledAt: row.hold_settled_at || '',
+        damagesReturned: parseFloat(row.damages_returned) || 0,
     };
     if (row.agreed_total != null) {
         const nightly = parseFloat(row.agreed_nightly) || 0;
@@ -3665,6 +3667,32 @@ function closeTermsModal() {
     document.getElementById('terms-modal').classList.remove('open');
 }
 
+// The one-line status shown under the refundable-deposit figure on the invoice.
+// Pure (given amount/state) so it's unit-tested. States mirror the hold_* model:
+// 'charged' = paid with the booking; 'returned'/full = refunded; 'kept' = retained
+// for damage; legacy card-hold statuses keep the "held on your card" wording.
+function depositInvoiceStatus(depAmt, holdStatus, returnedAmt, settledDate) {
+    if (!(depAmt > 0)) return '';
+    const returned = Math.round((Number(returnedAmt) || 0) * 100) / 100;
+    const when = settledDate ? ' on ' + settledDate : '';
+    const st = holdStatus || 'none';
+    if (st === 'returned' || (st === 'charged' && returned >= depAmt - 0.01)) {
+        return 'Refunded in full' + when + '.';
+    }
+    if (st === 'kept') return 'Retained after checkout for damage or loss.';
+    if (st === 'charged') {
+        return returned > 0.01
+            ? `${gbp(returned)} of ${gbp(depAmt)} refunded${when}. Balance refundable after your stay.`
+            : 'Paid — refunded in full after your stay, provided there is no damage.';
+    }
+    if (['authorized', 'captured', 'released', 'expired'].includes(st)) {
+        return st === 'released' || st === 'expired'
+            ? 'The hold on your card has been released.'
+            : 'Held on your card (not charged) — released after checkout.';
+    }
+    return 'Charged with your first payment and refunded after your stay.';
+}
+
 // Generate and download a PDF invoice for one booking
 let guestBookingsCache = []; // {propKey, booking, address} for the logged-in guest
 
@@ -3758,6 +3786,17 @@ async function downloadInvoice(bookingId) {
         priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
     const ps = paymentSummary(propKey, b);
 
+    // Refundable damages deposit — amount + human status for its own invoice
+    // section. It's now CHARGED with the guest's first payment and refunded
+    // after checkout, so the invoice must show it paid and, later, refunded.
+    const depAmt = Math.max(0, Math.round((p.damagesDeposit || 0) * 100) / 100);
+    const depStatus = depositInvoiceStatus(
+        depAmt,
+        b.holdStatus || 'none',
+        Number(b.damagesReturned) || 0,
+        b.holdSettledAt ? String(b.holdSettledAt).split(' ')[0] : '',
+    );
+
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'pt', format: 'a4' });
     const W = doc.internal.pageSize.getWidth();
@@ -3844,13 +3883,31 @@ async function downloadInvoice(bookingId) {
     y += 18;
     rowLR(`Transaction fee (${p.transactionPct}%)`, gbp(p.txFee), y);
     y += 18;
-    rowLR('Refundable damages deposit', gbp(p.damagesDeposit), y);
-    y += 18;
     y += 4;
     line(y);
     y += 20;
     rowLR('Total', gbp(p.total), y, true);
-    y += 22;
+    y += 28;
+
+    // Refundable damages deposit — its OWN section (never part of the rental
+    // total, since it's never rental income), showing the amount and its live
+    // status: paid with the booking and, after checkout, refunded.
+    if (depAmt > 0) {
+        doc.setFont('helvetica', 'bold');
+        doc.setFontSize(12);
+        doc.text('Refundable damages deposit', left, y);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+        doc.text(gbp(depAmt), right, y, { align: 'right' });
+        y += 18;
+        doc.setTextColor(90);
+        const stLines = doc.splitTextToSize(depStatus, right - left);
+        doc.text(stLines, left, y);
+        doc.setTextColor(0);
+        y += stLines.length * 13 + 8;
+        line(y);
+        y += 24;
+    }
 
     // Payments
     doc.setFont('helvetica', 'bold');
@@ -11058,7 +11115,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'q4x8b2ln';
+    const BUILD = 'r7d3m6ky';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
