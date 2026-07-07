@@ -1300,6 +1300,43 @@ if ($action === 'cancel') {
     ]);
 }
 
+// Per-booking log of emails sent to the guest (Bookings page → each booking).
+// Reads the activity log: comms.* (confirmation / arrival / free-text message)
+// plus payment.request (the pay-link email). Keyed by booking id (string).
+if ($action === 'email_logs') {
+    require_admin();
+    try {
+        $rows = db()
+            ->query(
+                "SELECT entity_id, action, summary, created_at
+                   FROM activity_log
+                  WHERE entity = 'booking'
+                    AND (category = 'comms' OR action = 'payment.request')
+               ORDER BY created_at DESC
+                  LIMIT 3000",
+            )
+            ->fetchAll();
+        $map = [];
+        foreach ($rows as $r) {
+            $id = (string) ($r['entity_id'] ?? '');
+            if ($id === '') {
+                continue;
+            }
+            if (!isset($map[$id])) {
+                $map[$id] = [];
+            }
+            $map[$id][] = [
+                'action' => $r['action'],
+                'summary' => $r['summary'],
+                'at' => $r['created_at'],
+            ];
+        }
+        json_out(['logs' => $map]);
+    } catch (\Throwable $e) {
+        json_out(['logs' => []]);
+    }
+}
+
 // Per-booking damage-deposit returns, summed (Money & income dashboard).
 if ($action === 'deposit_returns') {
     try {

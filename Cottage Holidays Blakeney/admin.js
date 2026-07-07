@@ -294,17 +294,47 @@ function inboxSubClose() {
 // ---- Bookings: a browsable list of every confirmed booking (dock → Bookings) ----
 let __bookingsFilter = 'upcoming';
 let __bookingsSearch = '';
+// Per-booking email history, keyed by booking dbId → [{action,summary,at}].
+let bookingEmailLogs = {};
+async function loadBookingEmailLogs() {
+    try {
+        const r = await apiPost('bookings.php', { action: 'email_logs' });
+        bookingEmailLogs = r && r.logs ? r.logs : {};
+    } catch (e) {
+        bookingEmailLogs = {};
+    }
+}
 async function openBookings() {
     if (!isAuthenticated) {
         tryAccessBackOffice();
         return;
     }
-    // Make sure bookings are loaded before the list renders.
+    // Make sure bookings + their email history are loaded before the list renders.
     try {
         if (!Object.keys(dbBookings).some((k) => (dbBookings[k] || []).length)) await loadData();
     } catch (e) {}
+    await loadBookingEmailLogs();
     nav('view-bookings'); // nav() calls renderBookings()
     adminHistPush('view-bookings');
+}
+// Friendly label for a logged email action.
+function emailLogLabel(action) {
+    return (
+        {
+            'email.confirmation': 'Booking confirmation',
+            'email.arrival': 'Arrival info',
+            'booking.email': 'Message',
+            'payment.request': 'Payment request',
+        }[action] || 'Email'
+    );
+}
+// 'YYYY-MM-DD HH:MM:SS' → 'D Mon YYYY · HH:MM'.
+function fmtLogWhen(at) {
+    if (!at) return '';
+    const m = String(at).match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/);
+    if (!m) return String(at);
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    return `${parseInt(m[3], 10)} ${months[parseInt(m[2], 10) - 1]} ${m[1]} · ${m[4]}:${m[5]}`;
 }
 function bookingsSetFilter(f) {
     __bookingsFilter = f;
@@ -404,7 +434,22 @@ function bookingListRow(propKey, b, today) {
                 <button class="btn-sm btn-edit" onclick="downloadInvoice('${b.id}')">Invoice</button>
                 <button class="btn-sm btn-edit" onclick="addBookingToCalendar('${b.id}')">Add to calendar</button>
             </div>
+            ${bookingEmailLogHtml(b)}
         </div>`;
+}
+// The "Emails sent" history block shown under a booking on the Bookings page.
+function bookingEmailLogHtml(b) {
+    const logs = (bookingEmailLogs && bookingEmailLogs[b.dbId]) || [];
+    if (!logs.length) {
+        return `<div class="bk-email-log"><span class="bk-email-log-title">Emails sent</span><span class="bk-email-log-empty">None yet</span></div>`;
+    }
+    const rows = logs
+        .map(
+            (l) =>
+                `<div class="bk-email-log-row"><span class="bk-email-log-what"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/></svg>${escapeHtml(emailLogLabel(l.action))}</span><span class="bk-email-log-when">${escapeHtml(fmtLogWhen(l.at))}</span></div>`,
+        )
+        .join('');
+    return `<div class="bk-email-log"><span class="bk-email-log-title">Emails sent (${logs.length})</span>${rows}</div>`;
 }
 
 // ---- Settings router: Apple-style index → drill-down sub-pages ----
@@ -7530,6 +7575,14 @@ async function sendEnquiryEmail() {
         });
         closeEnquiryEmailModal();
         toast(`Email sent to ${rec.name || rec.email}.`);
+        // Refresh the per-booking email log so the new send appears immediately.
+        if (t.kind === 'booking') {
+            try {
+                await loadBookingEmailLogs();
+                if ((document.querySelector('.page-view.active') || {}).id === 'view-bookings')
+                    renderBookings();
+            } catch (e) {}
+        }
     } catch (e) {
         note("Couldn't send: " + e.message);
     } finally {

@@ -72,7 +72,14 @@ async function waitForServer(url, tries = 40) {
       const post = route.request().postData() || '';
       const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
       if (url.includes('rates.php')) return json({ properties: props, seasons: {}, occupancy: { '21a': { maxAdults: 2, maxChildren: 0, maxTotal: 2 }, jollyboat: { maxAdults: 2, maxChildren: 0, maxTotal: 2 }, pimpernel: { maxAdults: 2, maxChildren: 1, maxTotal: 3 } } });
-      if (url.includes('bookings.php')) return json({ bookings });
+      if (url.includes('bookings.php')) {
+        let act = ''; try { act = JSON.parse(post || '{}').action || ''; } catch (e) {}
+        if (act === 'email_logs') return json({ logs: { '1': [
+          { action: 'email.confirmation', summary: 'Confirmation re-sent — Sarah Pemberton', at: d(0) + ' 09:15:00' },
+          { action: 'booking.email', summary: 'Emailed guest — Sarah Pemberton', at: d(0) + ' 10:20:00' },
+        ] } });
+        return json({ bookings });
+      }
       if (url.includes('enquiries.php')) return json({ enquiries });
       if (url.includes('messages.php')) {
         let act = ''; try { act = JSON.parse(post || '{}').action || ''; } catch (e) {}
@@ -187,6 +194,12 @@ async function waitForServer(url, tries = 40) {
     await page.evaluate(() => { bookingsSetFilter('all'); bookingsSetSearch('sarah'); });
     await page.waitForTimeout(200);
     (await page.locator('#bookings-list .money-row').count()) === 1 ? pass('search "sarah" → 1 booking') : fail('search wrong: ' + (await page.locator('#bookings-list .money-row').count()));
+    // Per-booking email log: Sarah's booking has 2 logged emails; the other has none.
+    (await page.locator('#bookings-list .bk-email-log-row').count()) === 2 ? pass('email log lists sent emails (2)') : fail('email log wrong count: ' + (await page.locator('#bookings-list .bk-email-log-row').count()));
+    ((await page.locator('#bookings-list .bk-email-log-when').first().textContent()) || '').match(/\d{1,2} \w{3} \d{4}/) ? pass('email log shows a formatted date') : fail('email log date not formatted');
+    await page.evaluate(() => { bookingsSetSearch('emma'); });
+    await page.waitForTimeout(200);
+    (await page.locator('#bookings-list .bk-email-log-empty').count()) === 1 ? pass('booking with no emails shows "None yet"') : fail('empty email log missing');
     await page.evaluate(() => { bookingsSetSearch(''); openBookingEmail('b1'); });
     await page.waitForTimeout(300);
     (await page.evaluate(() => document.getElementById('enq-email-modal').classList.contains('open'))) ? pass('booking email composer opens') : fail('booking email composer did not open');
