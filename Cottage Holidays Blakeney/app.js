@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 1;
+const ADMIN_BUNDLE_V = 2;
 let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
@@ -5766,14 +5766,25 @@ function persistEnquiries() {
 // Admin-only data (full bookings/enquiries) requires an admin session;
 // if not logged in those fetches simply yield empty lists.
 async function loadData() {
-    // These four reads are independent, so fetch them in parallel rather than
-    // one-after-another. Each task handles its own errors and resets its own
-    // state on failure, so one failing endpoint never blocks the others.
-    const ratesTask = loadRates();
+    // ONE admin-bootstrap round-trip covers all four reads below (plus cron
+    // status, stashed on window for the dashboard cron-health pill in admin.js)
+    // — on shared hosting each request is
+    // its own PHP process + DB connection, so this is the difference between
+    // one and five per back-office screen. Each task still falls back to its
+    // own endpoint if the combined payload fails or misses its part, and
+    // handles its own errors so nothing blocks anything else.
+    let ab = null;
+    try {
+        ab = await apiGet('admin-bootstrap.php');
+        if (!ab || !ab.ok) ab = null;
+    } catch (e) {}
+    window.__cronStatusPre = (ab && ab.cron) || null;
+
+    const ratesTask = loadRates(ab && ab.rates);
 
     const bookingsTask = (async () => {
         try {
-            const { bookings } = await apiGet('bookings.php');
+            const { bookings } = (ab && ab.bookings) || (await apiGet('bookings.php'));
             Object.keys(dbBookings).forEach((k) => {
                 dbBookings[k] = [];
             });
@@ -5794,7 +5805,7 @@ async function loadData() {
 
     const enquiriesTask = (async () => {
         try {
-            const { enquiries: rows } = await apiGet('enquiries.php');
+            const { enquiries: rows } = (ab && ab.enquiries) || (await apiGet('enquiries.php'));
             enquiries = (rows || []).map(mapEnquiryFromApi);
         } catch (e) {
             enquiries = [];
@@ -5805,7 +5816,7 @@ async function loadData() {
     // Admin-only; if not logged in this 403s and we just keep them empty.
     const blocksTask = (async () => {
         try {
-            const r = await apiPost('ical-import.php', { action: 'blocks' });
+            const r = (ab && ab.blocks) || (await apiPost('ical-import.php', { action: 'blocks' }));
             Object.keys(dbBlocks).forEach((k) => {
                 dbBlocks[k] = [];
             });
@@ -11005,7 +11016,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'h5v1b8mq';
+    const BUILD = 'j3w6e9tk';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

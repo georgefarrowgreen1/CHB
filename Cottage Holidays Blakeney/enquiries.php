@@ -10,8 +10,10 @@ require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/pricing.php';
 require_once __DIR__ . '/enquiry-actions.php'; // shared approve/decline logic + email-action tokens
 
-if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    require_admin();
+// The admin GET payload, as a function so admin-bootstrap.php can serve the
+// SAME data in its combined back-office boot response. Caller must require_admin.
+function enquiries_admin_payload()
+{
     $rows = db()->query('SELECT * FROM enquiries ORDER BY created_at ASC')->fetchAll();
     // Repeat-guest recognition: tag each enquiry with how many COMPLETED stays the
     // same email has already had (matched case-insensitively), plus when/where the
@@ -50,7 +52,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     } catch (\Throwable $e) {
         /* history is a nicety; never block the enquiry list over it */
     }
-    json_out(['enquiries' => $rows]);
+    return ['enquiries' => $rows];
+}
+
+// When admin-bootstrap.php includes this file for the payload helper, stop
+// before the HTTP routing — routes below run only when this file IS the request.
+if (basename($_SERVER['SCRIPT_NAME'] ?? '') !== 'enquiries.php') {
+    return;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    require_admin();
+    json_out(enquiries_admin_payload());
 }
 
 $in = body();
