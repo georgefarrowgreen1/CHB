@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=121">
+    <link rel="stylesheet" href="app.css?v=122">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -976,6 +976,12 @@
                     <p class="lead" style="text-align: left; margin: 0;">Every confirmed booking — payment status, guest emails and more.</p>
                 </div>
             </div>
+            <!-- The same actions as the dashboard calendar, so adding a booking or
+                 blocking dates doesn't require leaving this screen. -->
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px;">
+                <button class="btn-glass cal-add-btn" style="grid-column:auto;justify-self:start;" onclick="openAddBooking()">+ Add Booking</button>
+                <button class="btn-glass cal-add-btn" style="grid-column:auto;justify-self:start;background:rgba(255,255,255,0.06);" onclick="openBlockDates()">Block dates</button>
+            </div>
             <div class="bo-search" style="margin-top:4px;">
                 <input type="search" class="input-glass" id="bookings-search" placeholder="Find a booking — guest name, email or reference…" autocomplete="off" oninput="bookingsSetSearch(this.value)">
             </div>
@@ -1026,19 +1032,19 @@
         </div>
         <!-- Sub-folder: Instant chat answers -->
         <div id="inbox-sub-answers" style="display:none;">
-            <span class="back-link" onclick="inboxSubClose()">‹ Inbox</span>
+            <span class="back-link" onclick="inboxSubClose()">‹ Back</span>
             <h1 class="section-title" style="text-align:left;font-size:1.6rem;margin:6px 0 18px;">Instant chat answers</h1>
             <div id="chat-answers-editor" style="max-width:640px;"></div>
         </div>
         <!-- Sub-folder: Away auto-reply -->
         <div id="inbox-sub-away" style="display:none;">
-            <span class="back-link" onclick="inboxSubClose()">‹ Inbox</span>
+            <span class="back-link" onclick="inboxSubClose()">‹ Back</span>
             <h1 class="section-title" style="text-align:left;font-size:1.6rem;margin:6px 0 18px;">Away auto-reply</h1>
             <div id="chat-away-editor" style="max-width:640px;"></div>
         </div>
         <!-- Sub-folder: Follow-up emails (enquiry automation) -->
         <div id="inbox-sub-enq" style="display:none;">
-            <span class="back-link" onclick="inboxSubClose()">‹ Inbox</span>
+            <span class="back-link" onclick="inboxSubClose()">‹ Back</span>
             <h1 class="section-title" style="text-align:left;font-size:1.6rem;margin:6px 0 10px;">Follow-up emails</h1>
             <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 16px;">Gentle automatic emails that chase interest without you lifting a finger.</p>
             <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;color:var(--text-light);max-width:640px;margin:0 0 14px;"><input type="checkbox" id="enq-nudge-toggle" style="width:auto;margin:0;" onchange="saveContent('enquiry-nudge-off', this.checked ? '' : '1')"> Email a friendly follow-up to enquirers who haven't booked after 2 days</label>
@@ -2288,7 +2294,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=217"></script>
+    <script defer src="app.js?v=218"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

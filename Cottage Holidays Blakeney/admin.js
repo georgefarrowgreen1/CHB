@@ -268,6 +268,7 @@ async function openInbox() {
 // sub-folders off the Inbox rather than sprawling down the messages tab.
 const INBOX_SUBS = { answers: 'inbox-sub-answers', away: 'inbox-sub-away', enq: 'inbox-sub-enq' };
 function inboxSub(which) {
+    adminHistPush('view-inbox', null, { inboxSub: which });
     const main = document.getElementById('inbox-main');
     if (main) main.style.display = 'none';
     Object.entries(INBOX_SUBS).forEach(([key, id]) => {
@@ -491,10 +492,16 @@ const STAGING_URL = 'https://staging.cottageholidaysblakeney.co.uk/';
 function openStagingSite() {
     window.open(STAGING_URL, '_blank', 'noopener');
 }
-function adminHistPush(view, section) {
+function adminHistPush(view, section, path) {
     if (__histReplay) return;
     try {
-        history.pushState({ chbAdmin: { view, section: section || null } }, '');
+        // Record the full location — view, section, active dock area and any
+        // deep drill-down path — so hardware/browser Back can replay it level
+        // by level (drill-down → section → index → dashboard), matching the
+        // on-screen "‹ Back" instead of skipping straight out of the area.
+        const st = { view, section: section || null, area: typeof currentAdminArea !== 'undefined' ? currentAdminArea : null };
+        if (path) Object.assign(st, path);
+        history.pushState({ chbAdmin: st }, '');
     } catch (e) {}
 }
 let settingsBackTarget = null;
@@ -1135,6 +1142,7 @@ const ACCOM_SECTIONS = [
     },
 ];
 function settingsOpenAccom(k) {
+    adminHistPush('view-settings', 'accom', { prop: k });
     const list = document.getElementById('accom-list');
     const detail = document.getElementById('accom-detail');
     if (list) list.style.display = 'none';
@@ -1188,6 +1196,7 @@ function settingsOpenAccom(k) {
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 function settingsOpenAccomSec(k, sec) {
+    adminHistPush('view-settings', 'accom', { prop: k, accomSec: sec });
     const detail = document.getElementById('accom-detail');
     if (detail) {
         detail.style.display = '';
@@ -1218,6 +1227,7 @@ function renderCalendarList() {
     if (title) title.textContent = SETTINGS_TITLES.calendar;
 }
 async function settingsOpenCalendar(k) {
+    adminHistPush('view-settings', 'calendar', { prop: k });
     const list = document.getElementById('calendar-list');
     const detail = document.getElementById('calendar-detail');
     if (list) list.style.display = 'none';
@@ -1276,6 +1286,7 @@ function cancelPickerHtml(propKey) {
     return `<p style="font-size:0.85rem;color:var(--text-muted);max-width:560px;margin:0 0 16px;">Choose the cancellation policy guests see on the <strong>${escapeHtml(propertyMeta[propKey].name)}</strong> page.</p><div class="cancel-cards" role="radiogroup" aria-label="Cancellation policy">${cards}</div>`;
 }
 function settingsOpenCancel(propKey) {
+    adminHistPush('view-settings', 'cancel', { prop: propKey });
     const list = document.getElementById('cancel-list');
     const detail = document.getElementById('cancel-detail');
     if (list) list.style.display = 'none';
@@ -3676,11 +3687,8 @@ async function initBackOffice() {
     renderCalendar();
     renderInbox();
     try {
-        refreshExpPendingBadge();
-    } catch (e) {} // pending experience suggestions count
-    try {
         refreshModerationCounts();
-    } catch (e) {} // pending reviews/photos (badges + today card)
+    } catch (e) {} // pending reviews/photos/experiences (badges + today card)
     try {
         loadActivityFeed();
     } catch (e) {} // recent-activity feed (fills in async)
@@ -3777,7 +3785,7 @@ function renderTodayPanel() {
     if (dueSoon.length)
         actionTiles.push(card('Balances due (7 days)', dueSoon, 'color:#FFA726;', 'money'));
     if (toReturn.length)
-        actionTiles.push(card('Deposits to return', toReturn, 'color:#FFA726;', 'money'));
+        actionTiles.push(card('Deposits to return', toReturn, 'color:#FFA726;', 'deposits'));
     el.innerHTML = `<h2 style="font-family:var(--font-serif);font-size:1.3rem;font-weight:400;margin:0 0 12px;">Today &amp; this week</h2>
                 <div class="today-grid">
                 ${actionTiles.join('')}
@@ -6804,19 +6812,33 @@ function getBookingForDate(dateStr, property) {
 
 // Dashboard cards are shortcuts: jump to the relevant tool when tapped.
 function dashGo(target) {
+    // Land the owner ON the thing the tile counted, not just the right page.
+    const scrollTo = (sel) =>
+        setTimeout(() => {
+            const el = document.querySelector(sel);
+            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 350);
     try {
         if (target === 'analytics') {
             openSettings('analytics');
-        } else if (target === 'enquiries' || target === 'messages') {
+        } else if (target === 'enquiries') {
             openInbox();
+        } else if (target === 'messages') {
+            // The messages list sits below the enquiries — scroll to it.
+            Promise.resolve(openInbox()).then(() => scrollTo('#messages-list'));
         } else if (target === 'reviews') {
             openSettings('reviews');
         } else if (target === 'photos') {
             openSettings('photos');
-        } else if (target === 'money') {
+        } else if (target === 'experiences') {
+            openSettings('experiences');
+        } else if (target === 'money' || target === 'deposits') {
             Promise.resolve(openAccounts()).then(() => {
                 try {
                     accountsOpen('payments');
+                    // "Deposits to return" is its own queue at the top of the
+                    // payments screen; balances live in the rows below it.
+                    if (target === 'deposits') scrollTo('#deposits-due');
                 } catch (e) {}
             });
         } else if (target === 'calendar') {
@@ -6824,6 +6846,9 @@ function dashGo(target) {
                 document.querySelector('#view-backoffice .cal-panel') ||
                 document.getElementById('cal-body');
             if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        } else {
+            // Unknown target — never a silent no-op; the dashboard is home.
+            nav('view-backoffice');
         }
     } catch (e) {}
 }
@@ -7732,7 +7757,8 @@ async function refreshModerationCounts() {
         }
     };
     let rev = 0,
-        ph = 0;
+        ph = 0,
+        exp = 0;
     try {
         const r = await apiPost('reviews.php', { action: 'list_admin' });
         rev = (r.reviews || []).filter((x) => x.status === 'pending').length;
@@ -7741,28 +7767,39 @@ async function refreshModerationCounts() {
         const r = await apiPost('photos.php', { action: 'list_admin' });
         ph = (r.photos || []).filter((x) => x.status === 'pending').length;
     } catch (e) {}
+    try {
+        const r = await apiPost('experiences.php', { action: 'list_admin' });
+        exp = (r.experiences || []).filter((x) => x.status === 'pending').length;
+    } catch (e) {}
     setBadge('reviews-pending-badge', rev);
     setBadge('photos-pending-badge', ph);
+    setBadge('exp-pending-badge', exp);
     // (Approvals surface in exactly TWO places: the Today "Waiting for approval"
     // card — the pointer — and Marketing's "To approve" rows — the action. The
     // old Inbox callout was a third copy and is gone.)
     const cardEl = document.getElementById('today-approve-card');
     if (cardEl) {
-        const total = rev + ph;
+        const total = rev + ph + exp;
         if (total > 0) {
             cardEl.style.display = '';
-            cardEl.dataset.go = rev > 0 ? 'reviews' : 'photos';
+            cardEl.dataset.go = rev > 0 ? 'reviews' : ph > 0 ? 'photos' : 'experiences';
             const val = document.getElementById('today-approve-value');
             if (val) {
                 val.textContent = total;
                 val.style.color = 'var(--warn)';
             }
+            // Each pending type is its OWN link — photos/experiences shouldn't
+            // be unreachable until the reviews queue is empty.
+            const line = (n, label, go) =>
+                n
+                    ? `<div><a class="approve-line" onclick="event.stopPropagation();dashGo('${go}')">${n} ${label}${n === 1 ? '' : 's'} to approve →</a></div>`
+                    : '';
             const list = document.getElementById('today-approve-list');
             if (list)
-                list.innerHTML = [
-                    rev ? `<div>${rev} review${rev === 1 ? '' : 's'} to approve</div>` : '',
-                    ph ? `<div>${ph} guest photo${ph === 1 ? '' : 's'} to approve</div>` : '',
-                ].join('');
+                list.innerHTML =
+                    line(rev, 'review', 'reviews') +
+                    line(ph, 'guest photo', 'photos') +
+                    line(exp, 'experience suggestion', 'experiences');
         } else cardEl.style.display = 'none';
     }
     try {
