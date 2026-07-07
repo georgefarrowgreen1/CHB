@@ -237,16 +237,45 @@ if ($action === 'submit') {
         if (function_exists('send_owner_enquiry_email')) {
             $newId = $enqId;
             $base = site_base_url();
+            // Full context for the owner's inbox: the price the site quoted
+            // (estimate — approval snapshots the real figures) and whether this
+            // email has completed stays before (returning guest).
+            $priceEst = null;
+            try {
+                $rate = get_rate($propKey);
+                if ($rate) {
+                    $priceEst = price_breakdown($rate, $adultsN, $childrenN, $checkIn, $checkOut);
+                }
+            } catch (\Throwable $e) {
+            }
+            $priorStays = 0;
+            try {
+                if ($email !== '') {
+                    $ps = db()->prepare(
+                        "SELECT COUNT(*) FROM bookings WHERE email = ? AND email <> '' AND check_out < CURDATE()",
+                    );
+                    $ps->execute([$email]);
+                    $priorStays = (int) $ps->fetchColumn();
+                }
+            } catch (\Throwable $e) {
+            }
             send_owner_enquiry_email([
                 'id' => $newId,
                 'name' => $name,
                 'email' => $email,
+                'phone' => clean($in['phone'] ?? ''),
+                'address' => $address,
+                'postcode' => $postcode,
                 'prop_key' => $propKey,
                 'check_in' => $checkIn,
                 'check_out' => $checkOut,
+                'check_in_time' => clean($in['check_in_time'] ?? '15:00'),
+                'check_out_time' => clean($in['check_out_time'] ?? '10:00'),
                 'adults' => $adultsN,
                 'children' => $childrenN,
                 'message' => clean($in['message'] ?? ''),
+                'price' => $priceEst,
+                'prior_stays' => $priorStays,
                 'approve_url' =>
                     $base .
                     'enquiry-action.php?id=' .
