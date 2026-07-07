@@ -756,14 +756,22 @@ async function renderAccomList() {
             `<div class="settings-group">${Object.keys(propertyMeta)
                 .map((k) => {
                     const arch = propertyMeta[k] && propertyMeta[k].archived;
+                    const priv = propertyMeta[k] && propertyMeta[k].unlisted;
                     const o = occ[k] || { pct: 0, nights: 0, total: 0 };
                     const sub = arch
                         ? 'Hidden from your website (tap to bring back)'
-                        : `${o.pct}% booked this month · ${o.nights}/${o.total} nights`;
+                        : priv
+                          ? `Private · ${o.pct}% booked this month · ${o.nights}/${o.total} nights`
+                          : `${o.pct}% booked this month · ${o.nights}/${o.total} nights`;
+                    const badge = arch
+                        ? ' <span style="font-size:0.7rem;color:var(--text-muted);font-weight:600;">· removed</span>'
+                        : priv
+                          ? ' <span style="font-size:0.7rem;color:var(--text-muted);font-weight:600;">· private</span>'
+                          : '';
                     return `
                     <button class="settings-row" onclick="settingsOpenAccom('${k}')" ${arch ? 'style="opacity:0.55;"' : ''}>
                         <span class="settings-row-ic"><span class="legend-swatch swatch-${k}" style="width:16px;height:16px;border-radius:5px;"></span></span>
-                        <span class="settings-row-main"><span class="settings-row-label">${escapeHtml(propertyMeta[k].name)}${arch ? ' <span style="font-size:0.7rem;color:var(--text-muted);font-weight:600;">· removed</span>' : ''}</span><span class="settings-row-sub">${sub}</span></span>
+                        <span class="settings-row-main"><span class="settings-row-label">${escapeHtml(propertyMeta[k].name)}${badge}</span><span class="settings-row-sub">${sub}</span></span>
                         ${arch ? '<span class="settings-row-chev" style="margin-left:10px;">›</span>' : osMiniDonut(o.pct, 'var(--prop-' + k + ')') + '<span class="settings-row-chev" style="margin-left:10px;">›</span>'}
                     </button>`;
                 })
@@ -802,18 +810,46 @@ async function addAccommodationPrompt() {
         glassAlert('Please enter a nightly couple rate above £0.');
         return;
     }
+    // Private (unlisted): a cottage you manage bookings/payments for but that
+    // never appears on your public website.
+    const unlisted = await glassConfirm(
+        `Should "${String(name).trim()}" be PRIVATE?\n\nPrivate cottages don't appear on your website — but you can still take bookings and payments for them from the back office.\n\nOK = private · Cancel = list it publicly`,
+    );
     try {
         const res = await apiPost('rates.php', {
             action: 'create',
             name: String(name).trim(),
             couple_rate: rate,
+            unlisted: unlisted ? 1 : 0,
         });
         await loadRates();
         await renderAccomList();
         if (res && res.prop_key) settingsOpenAccom(res.prop_key); // drop straight into "fill in"
-        toast(`Added "${String(name).trim()}" — now add its photos & details.`);
+        toast(
+            unlisted
+                ? `Added private cottage "${String(name).trim()}" — book it from the calendar or Add booking.`
+                : `Added "${String(name).trim()}" — now add its photos & details.`,
+        );
     } catch (e) {
         glassAlert("Couldn't add the accommodation: " + (e && e.message ? e.message : e));
+    }
+}
+// Toggle a cottage's private (unlisted) state from its Preferences detail.
+async function setAccommodationPrivate(k, makePrivate) {
+    const name = (propertyMeta[k] && propertyMeta[k].name) || k;
+    if (makePrivate) {
+        const ok = await glassConfirm(
+            `Make "${name}" private?\n\nIt will be removed from your public website, but its bookings, payments and history are kept and you can still take new bookings for it in the back office.`,
+        );
+        if (!ok) return;
+    }
+    try {
+        await apiPost('rates.php', { action: 'set_unlisted', prop_key: k, unlisted: makePrivate ? 1 : 0 });
+        await loadRates();
+        await renderAccomList();
+        toast(makePrivate ? `"${name}" is now private (off the website).` : `"${name}" is now public on your website.`);
+    } catch (e) {
+        glassAlert("Couldn't update it: " + (e && e.message ? e.message : e));
     }
 }
 async function archiveAccommodation(k) {
@@ -925,6 +961,25 @@ function settingsOpenAccom(k) {
     if (detail) {
         detail.style.display = '';
         const arch = propertyMeta[k] && propertyMeta[k].archived;
+        const priv = propertyMeta[k] && propertyMeta[k].unlisted;
+        // Private (unlisted) toggle — only meaningful while the cottage is live
+        // (archived cottages are already hidden). Making it public/private never
+        // touches bookings, payments or history.
+        const privateRow = arch
+            ? ''
+            : priv
+              ? `<div class="settings-group" style="margin-top:14px;">
+                        <button class="settings-row" onclick="setAccommodationPrivate('${k}', false)">
+                            <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></span>
+                            <span class="settings-row-main"><span class="settings-row-label">List on the website</span><span class="settings-row-sub">This cottage is private — show it publicly so guests can find and enquire</span></span><span class="settings-row-chev">›</span>
+                        </button>
+                    </div>`
+              : `<div class="settings-group" style="margin-top:14px;">
+                        <button class="settings-row" onclick="setAccommodationPrivate('${k}', true)">
+                            <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c6.5 0 10 7 10 7a13.2 13.2 0 0 1-2.16 3.19M6.6 6.6C3.6 8.3 2 12 2 12s3.5 7 10 7a9.3 9.3 0 0 0 5.4-1.6M1 1l22 22M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg></span>
+                            <span class="settings-row-main"><span class="settings-row-label">Make private</span><span class="settings-row-sub">Hide from the website but keep booking &amp; taking payments in the back office</span></span><span class="settings-row-chev">›</span>
+                        </button>
+                    </div>`;
         const removeRow = arch
             ? `<div class="settings-group" style="margin-top:14px;">
                         <button class="settings-row" onclick="restoreAccommodation('${k}')">

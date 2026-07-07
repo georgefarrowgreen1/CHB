@@ -18,7 +18,7 @@ $cottages = [];
 try {
     foreach (
         db()
-            ->query('SELECT slug, prop_key FROM properties WHERE archived_at IS NULL ORDER BY sort_order, name')
+            ->query('SELECT slug, prop_key FROM properties WHERE archived_at IS NULL AND unlisted = 0 ORDER BY sort_order, name')
             ->fetchAll()
         as $r
     ) {

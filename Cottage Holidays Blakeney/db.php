@@ -297,7 +297,7 @@ function occupancy_limits()
     try {
         // Only live (non-archived) cottages constrain the public enquiry form.
         $rows = db()
-            ->query('SELECT prop_key, max_adults, max_children, max_total FROM properties WHERE archived_at IS NULL')
+            ->query('SELECT prop_key, max_adults, max_children, max_total FROM properties WHERE archived_at IS NULL AND unlisted = 0')
             ->fetchAll();
         foreach ($rows as $row) {
             $limits[$row['prop_key']] = [
