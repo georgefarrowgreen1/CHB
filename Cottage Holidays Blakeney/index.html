@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=110">
+    <link rel="stylesheet" href="app.css?v=111">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -2070,19 +2070,25 @@
                 <p style="color: var(--text-muted); font-size: 0.85rem; text-align: center; margin: 0;">Enter dates to see the total.</p>
             </div>
 
-            <label class="modal-label">Payment Status</label>
-            <select class="input-glass" id="modal-payment">
-                <option value="unpaid">Unpaid</option>
-                <option value="deposit">Deposit Paid</option>
-                <option value="paid">Paid in Full</option>
-            </select>
+            <div id="modal-payment-group">
+                <label class="modal-label">Payment Status</label>
+                <select class="input-glass" id="modal-payment">
+                    <option value="unpaid">Unpaid</option>
+                    <option value="deposit">Deposit Paid</option>
+                    <option value="paid">Paid in Full</option>
+                </select>
+            </div>
 
-            <label class="modal-label">Refundable damages deposit (£) — charged with the first payment, refunded after the stay; not income</label>
-            <input type="number" class="input-glass" id="modal-damages-deposit" min="0" step="5" placeholder="e.g. 75" oninput="updateModalPrice()">
+            <div id="modal-deposit-group">
+                <label class="modal-label">Refundable damages deposit (£) — charged with the first payment, refunded after the stay; not income</label>
+                <input type="number" class="input-glass" id="modal-damages-deposit" min="0" step="5" placeholder="e.g. 75" oninput="updateModalPrice()">
+            </div>
 
-            <label class="modal-label">Override total price (£) — optional</label>
-            <input type="number" class="input-glass" id="modal-price-override" min="0" step="0.01" placeholder="Leave blank to use calculated price" oninput="updateModalPrice()">
-            <p style="font-size:0.72rem;color:var(--text-muted);margin:-12px 0 18px;">Set a custom total for this booking only. The customer enquiry form still uses the Settings &amp; Fees prices.</p>
+            <div id="modal-override-group">
+                <label class="modal-label">Override total price (£) — optional</label>
+                <input type="number" class="input-glass" id="modal-price-override" min="0" step="0.01" placeholder="Leave blank to use calculated price" oninput="updateModalPrice()">
+                <p style="font-size:0.72rem;color:var(--text-muted);margin:-12px 0 18px;">Set a custom total for this booking only. The customer enquiry form still uses the Settings &amp; Fees prices.</p>
+            </div>
 
             <label class="modal-label">Staff Notes</label>
             <textarea class="input-glass" id="modal-notes" rows="2" style="resize: vertical;"></textarea>
@@ -2090,7 +2096,7 @@
             <div id="modal-error" style="color: #E53935; font-size: 0.8rem; margin-bottom: 15px; display: none;"></div>
 
             <div style="display: flex; gap: 12px; margin-top: 10px;">
-                <button class="btn-glass" style="flex: 1;" onclick="saveModal()">Save</button>
+                <button class="btn-glass" style="flex: 1;" id="modal-save-btn" onclick="saveModal()">Save</button>
                 <button class="toggle-btn" style="flex: 1;" onclick="closeModal()">Cancel</button>
             </div>
         </div>
@@ -2128,11 +2134,43 @@
                 </div>
             </div>
 
+            <label class="modal-label">Override total price (£) — optional</label>
+            <input type="number" min="0" step="0.01" inputmode="decimal" class="input-glass" id="newprop-override" placeholder="Leave blank to use the calculated price">
+            <p style="font-size: 0.72rem; color: var(--text-muted); margin: -12px 0 4px;">Set a custom total for this booking only.</p>
+
             <div id="newprop-error" style="color: #E53935; font-size: 0.8rem; margin: 12px 0 0; display: none;"></div>
 
             <div style="display: flex; gap: 12px; margin-top: 18px;">
-                <button class="btn-glass" style="flex: 1;" onclick="newPropConfirm()">Create &amp; continue</button>
+                <button class="btn-glass" style="flex: 1;" onclick="customSetupNext()">Review booking →</button>
                 <button class="toggle-btn" style="flex: 1;" onclick="newPropCancel()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Custom booking: final overview before confirming (property, guest, dates,
+         price breakdown + payment status). Confirm creates the private cottage
+         then saves the booking; Back returns to the setup page. -->
+    <div id="overview-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="overview-title">
+        <div class="glass-panel modal-box">
+            <h3 id="overview-title" style="font-family: var(--font-serif); font-size: 1.6rem; margin-bottom: 6px;">Review booking</h3>
+            <p style="font-size: 0.82rem; color: var(--text-muted); margin: 0 0 18px;">Check everything below, then confirm.</p>
+
+            <div id="overview-body"><!-- built by openCustomOverview() --></div>
+
+            <div id="overview-payment-group" style="margin-top: 4px;">
+                <label class="modal-label">Payment Status</label>
+                <select class="input-glass" id="overview-payment">
+                    <option value="unpaid">Unpaid</option>
+                    <option value="deposit">Deposit Paid</option>
+                    <option value="paid">Paid in Full</option>
+                </select>
+            </div>
+
+            <div id="overview-error" style="color: #E53935; font-size: 0.8rem; margin: 12px 0 0; display: none;"></div>
+
+            <div style="display: flex; gap: 12px; margin-top: 18px;">
+                <button class="btn-glass" style="flex: 1;" onclick="confirmCustomBooking()">Confirm booking</button>
+                <button class="toggle-btn" style="flex: 1;" onclick="customOverviewBack()">← Back</button>
             </div>
         </div>
     </div>
@@ -2183,7 +2221,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=194"></script>
+    <script defer src="app.js?v=195"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

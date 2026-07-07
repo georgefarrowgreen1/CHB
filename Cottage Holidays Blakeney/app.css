@@ -3267,6 +3267,34 @@ textarea.input-glass.field-sm {
   font-family: var(--font-serif);
   font-size: 1.5rem;
 }
+/* Custom-booking review summary (overview modal) */
+.ov-card {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid var(--glass-border);
+  border-radius: 14px;
+  padding: 14px 18px;
+}
+.ov-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 16px;
+  font-size: 0.9rem;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--glass-border);
+}
+.ov-row:last-child {
+  border-bottom: none;
+}
+.ov-k {
+  color: var(--text-muted);
+  flex: 0 0 auto;
+}
+.ov-v {
+  color: var(--text-light);
+  text-align: right;
+  word-break: break-word;
+}
 .booking-detail-item {
   margin-bottom: 15px;
   border-bottom: 1px solid var(--glass-border);
