@@ -86,6 +86,25 @@ const API_BASE = (function () {
             // the source, so the scheme check above can't catch them.)
             if (/webkit\.messageHandlers/i.test(msg)) return;
             if (sent >= 5) return; // don't flood on a broken page
+            // Self-repair: a half-updated cache after a deploy (stale app.js
+            // beside fresh HTML, or vice versa) surfaces as OUR OWN code being
+            // "not defined". Purge every cache and reload ONCE per tab — the
+            // service worker serves HTML network-first, so the reload pulls a
+            // coherent build and the error stops existing. The report still
+            // goes out below (prefixed, keepalive survives the reload) so the
+            // activity log shows it happened.
+            let healing = false;
+            try {
+                if (
+                    /(is not defined|is not a function|undefined is not an object)/.test(msg) &&
+                    /(^$|app\.js|admin\.js|guest-app\.js|index\.html)/.test(src.split('?')[0]) &&
+                    !sessionStorage.getItem('chb-healed')
+                ) {
+                    sessionStorage.setItem('chb-healed', '1');
+                    healing = true;
+                    msg = '[self-heal: cache purged + reloaded] ' + msg;
+                }
+            } catch (e) {}
             const key = msg.slice(0, 120);
             if (seen[key]) return;
             seen[key] = 1;
@@ -106,6 +125,15 @@ const API_BASE = (function () {
                     view: ((document.querySelector('.page-view.active') || {}).id || '').slice(0, 40),
                 }),
             }).catch(() => {});
+            if (healing) {
+                const purge =
+                    'caches' in window
+                        ? caches.keys().then((ks) => Promise.all(ks.map((k) => caches.delete(k))))
+                        : Promise.resolve();
+                purge
+                    .catch(() => {})
+                    .then(() => setTimeout(() => location.reload(), 350));
+            }
         } catch (e) {}
     }
     window.addEventListener('error', (e) => {
@@ -10977,7 +11005,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'd6m1v9sp';
+    const BUILD = 'e4k7y2qn';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

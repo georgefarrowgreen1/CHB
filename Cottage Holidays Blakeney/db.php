@@ -464,6 +464,7 @@ function is_internal_content_key($key)
         'conflict-audit-state',
         'uptime-history',
         'error-alert-last',
+        'self-repair-state',
     ], true);
 }
 

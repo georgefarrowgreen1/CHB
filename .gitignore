@@ -15,3 +15,6 @@ Cottage Holidays Blakeney/*.webp
 .DS_Store
 Thumbs.db
 node_modules/
+
+# Layout-gate screenshots (regenerated per run; uploaded as a CI artifact).
+Cottage Holidays Blakeney/layout-shots/

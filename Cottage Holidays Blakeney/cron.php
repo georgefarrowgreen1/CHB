@@ -46,6 +46,7 @@ $secret = rawurlencode(APP_SECRET);
 $jobs = [
     'ical-import.php?cron=' => 'Airbnb/Vrbo calendar sync (avoid double-bookings)',
     'conflict-audit.php?cron=' => 'Double-booking safety check',
+    'self-repair.php?cron=' => 'Self-repair (state checks & safe fixes)',
     'pre-arrival.php?cron=' => 'Pre-arrival & review emails',
     'payments-due.php?cron=' => 'Balance requests, chasers & deposit recovery',
     'enquiry-nudge.php?cron=' => 'Enquiry follow-ups',

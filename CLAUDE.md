@@ -149,8 +149,25 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   banner. Staging post-deploy is migrate-only (never fires owner notify/digest/nudge).
 
 ## Testing / CI
-- Before shipping: `node smoke-test.js` (loads index.html in a shim; pricing,
-  postcode, occupancy, structural checks) and `php test-pricing.php`.
-- `.github/workflows/ci.yml` runs `php -l` on every PHP, `node smoke-test.js`, and
-  `php test-pricing.php` on each PR — merge only on green. `deploy.yml` SFTP-deploys
-  `main` to IONOS (never deletes remote files; preserves `config.php` + `uploads/`).
+- Before shipping: `node smoke-test.js` (loads index.html + admin.js in a shim;
+  pricing, postcode, occupancy, structural + facade-stub checks) and
+  `php test-pricing.php`.
+- `.github/workflows/ci.yml` runs `php -l` on every PHP, `node smoke-test.js`,
+  `php test-pricing.php`, `php test-reply.php`, the real-browser `node e2e-test.js`,
+  and the design gate `node layout-test.js` (layout invariants at 390/768/1280 —
+  no horizontal overflow, no content cut off, key content rendered; screenshots
+  uploaded as the `layout-shots` CI artifact) on each PR — merge only on green.
+  `deploy.yml` SFTP-deploys `main` to IONOS (never deletes remote files; preserves
+  `config.php` + `uploads/`).
+
+## Self-repair & error reporting
+- Errors: client capture (app.js, third-party webview noise filtered, sends
+  stack/build/view) + server capture (db.php exception/shutdown handlers) both
+  land in the activity log as warn ("Needs attention" + weekly digest), deduped
+  1h, with an owner push at most every 6h. A stale-cache signature ("… is not
+  defined" from our own assets) triggers a ONE-per-tab cache purge + reload
+  (self-heal) before reporting.
+- `self-repair.php` (daily via cron.php) fixes safe state drift — dead gallery
+  references, card-hold auths past Square's window, missing slug/accent — and
+  FLAGS ambiguous things (orphaned payment rows) without touching them. Never
+  auto-change production code; code fixes go through PRs + CI like everything else.
