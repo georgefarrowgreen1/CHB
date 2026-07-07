@@ -7159,11 +7159,83 @@ function renderInbox() {
                     <div class="enquiry-actions">
                         <button class="btn-sm btn-approve" onclick="approveEnquiry('${e.id}')">✓ Approve</button>
                         <button class="btn-sm btn-edit" onclick="openEditEnquiry('${e.id}')">Edit / Move</button>
+                        ${e.email ? `<button class="btn-sm btn-edit" onclick="openEnquiryEmail('${e.id}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/></svg> Email</button>` : ''}
                         <button class="btn-sm btn-decline" onclick="declineEnquiry('${e.id}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg> Decline</button>
                     </div>
                 </div>`;
         })
         .join('');
+}
+
+// ---- Email an enquirer straight from the Inbox (house style + details attached) ----
+let __enqEmailTarget = null;
+function openEnquiryEmail(enqId) {
+    const enq = enquiries.find((e) => e.id === enqId);
+    if (!enq) return;
+    if (!enq.email) {
+        glassAlert('This enquiry has no email address.');
+        return;
+    }
+    __enqEmailTarget = enq;
+    const propName = (propertyMeta[enq.propKey] && propertyMeta[enq.propKey].name) || enq.propKey;
+    const to = document.getElementById('enq-email-to');
+    if (to) to.textContent = `To ${enq.name || 'the guest'} <${enq.email}>`;
+    const subj = document.getElementById('enq-email-subject');
+    if (subj) subj.value = `Your enquiry — ${propName}, ${enq.checkIn} to ${enq.checkOut}`;
+    const body = document.getElementById('enq-email-body');
+    if (body) body.value = '';
+    const msg = document.getElementById('enq-email-msg');
+    if (msg) {
+        msg.textContent = '';
+        msg.classList.remove('show');
+    }
+    const m = document.getElementById('enq-email-modal');
+    if (m) m.classList.add('open');
+    if (body) setTimeout(() => body.focus(), 150);
+}
+function closeEnquiryEmailModal() {
+    const m = document.getElementById('enq-email-modal');
+    if (m) m.classList.remove('open');
+    __enqEmailTarget = null;
+}
+async function sendEnquiryEmail() {
+    const enq = __enqEmailTarget;
+    if (!enq) return;
+    const body = (document.getElementById('enq-email-body') || {}).value || '';
+    const subject = (document.getElementById('enq-email-subject') || {}).value || '';
+    const msgEl = document.getElementById('enq-email-msg');
+    const note = (t) => {
+        if (msgEl) {
+            msgEl.textContent = t;
+            msgEl.classList.add('show');
+        }
+    };
+    if (!body.trim()) {
+        note('Please write a message first.');
+        return;
+    }
+    const btn = document.getElementById('enq-email-send');
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Sending…';
+    }
+    try {
+        await apiPost('enquiries.php', {
+            action: 'email_guest',
+            id: enq.dbId,
+            subject: subject.trim(),
+            message: body.trim(),
+        });
+        closeEnquiryEmailModal();
+        toast(`Email sent to ${enq.name || enq.email}.`);
+    } catch (e) {
+        note("Couldn't send: " + e.message);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Send email';
+        }
+    }
 }
 
 async function declineEnquiry(enqId) {

@@ -1885,6 +1885,27 @@
         </div>
     </div>
 
+    <!-- Email an enquirer from the Inbox (admin) — sent in the house email style
+         with the enquiry's details attached (enquiries.php action email_guest). -->
+    <div id="enq-email-modal" class="reviews-modal" role="dialog" aria-modal="true" aria-labelledby="enq-email-title">
+        <div class="reviews-modal-box glass-panel" style="max-width:560px;">
+            <div class="reviews-modal-head">
+                <h2 class="section-title" id="enq-email-title" style="margin:0;font-size:1.5rem;">Email guest</h2>
+                <button class="reviews-modal-close" onclick="closeEnquiryEmailModal()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+            </div>
+            <div class="reviews-modal-body" style="display:block;">
+                <p id="enq-email-to" style="font-size:0.85rem;color:var(--text-muted);margin:0 0 14px;"></p>
+                <label class="modal-label" for="enq-email-subject">Subject</label>
+                <input type="text" class="input-glass" id="enq-email-subject" maxlength="150">
+                <label class="modal-label" for="enq-email-body">Message</label>
+                <textarea class="input-glass" id="enq-email-body" rows="6" maxlength="5000" placeholder="Write your message…" style="resize:vertical;"></textarea>
+                <p style="font-size:0.75rem;color:var(--text-muted);margin:6px 0 14px;">Sent in the site's email design with their enquiry details (dates, party, price) attached underneath. Their reply comes back to your inbox.</p>
+                <p class="enq-modal-msg" id="enq-email-msg" role="alert"></p>
+                <button class="btn-glass btn-accent" id="enq-email-send" style="width:100%;padding:14px;" onclick="sendEnquiryEmail()">Send email</button>
+            </div>
+        </div>
+    </div>
+
     <div id="faq-modal" class="reviews-modal" role="dialog" aria-modal="true" aria-labelledby="faq-modal-title">
         <div class="reviews-modal-box glass-panel">
             <div class="reviews-modal-head">
@@ -2118,7 +2139,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=178"></script>
+    <script defer src="app.js?v=179"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
