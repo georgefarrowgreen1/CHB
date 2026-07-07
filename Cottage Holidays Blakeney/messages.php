@@ -237,6 +237,28 @@ function chat_notify_owner($name, $email, $bodyTxt, $threadId = 0)
     }
 }
 
+// Notify the owner of a new guest message AFTER the guest has been told their
+// message was sent. The owner email + web push can each be slow, and making the
+// guest wait on them risks a host gateway timeout (a 500) even though the message
+// was already saved. So we flush the guest's response first (fastcgi_finish_request)
+// and do the notify + any auto-reply in the background. Mirrors chat_nudge_mailbox.
+function chat_notify_owner_deferred($name, $email, $bodyTxt, $tid)
+{
+    register_shutdown_function(function () use ($name, $email, $bodyTxt, $tid) {
+        if (function_exists('fastcgi_finish_request')) {
+            @fastcgi_finish_request();
+        }
+        try {
+            chat_notify_owner($name, $email, $bodyTxt, $tid);
+        } catch (\Throwable $e) {
+        }
+        try {
+            chat_maybe_autoreply($tid);
+        } catch (\Throwable $e) {
+        }
+    });
+}
+
 // chat_admin_reply() (posts an owner reply to the thread + emails the guest) is
 // shared with the reply-by-email gateway; it lives in chat-lib.php.
 require_once __DIR__ . '/chat-lib.php';
@@ -568,8 +590,7 @@ if ($guestId) {
             $g = db()->prepare('SELECT name, email FROM guests WHERE id = ?');
             $g->execute([$guestId]);
             $gg = $g->fetch() ?: [];
-            chat_notify_owner($gg['name'] ?? '', $gg['email'] ?? '', $bodyTxt !== '' ? $bodyTxt : '📷 Photo', $tid);
-            chat_maybe_autoreply($tid);
+            chat_notify_owner_deferred($gg['name'] ?? '', $gg['email'] ?? '', $bodyTxt !== '' ? $bodyTxt : '📷 Photo', $tid);
             json_out(['ok' => true]);
         }
         // Guest is polling their thread — pull any emailed owner reply in the background.
@@ -650,8 +671,7 @@ try {
         $t = db()->prepare('SELECT name, email FROM chat_threads WHERE id = ?');
         $t->execute([$tid]);
         $th = $t->fetch() ?: [];
-        chat_notify_owner($th['name'] ?? '', $th['email'] ?? '', $bodyTxt !== '' ? $bodyTxt : '📷 Photo', $tid);
-        chat_maybe_autoreply($tid);
+        chat_notify_owner_deferred($th['name'] ?? '', $th['email'] ?? '', $bodyTxt !== '' ? $bodyTxt : '📷 Photo', $tid);
         json_out(['ok' => true, 'token' => $token]);
     }
     if ($action === 'typing') {
