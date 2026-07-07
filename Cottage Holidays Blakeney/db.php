@@ -134,6 +134,11 @@ function db()
         } catch (PDOException $e) {
             json_out(['error' => 'Database connection failed'], 500);
         }
+        // Lets the error-capture handlers (end of this file) know a connection
+        // EXISTS — they must never be the first db() caller, because a failed
+        // connect json_out+exits, which inside a shutdown handler would corrupt
+        // whatever response is already on the wire.
+        $GLOBALS['__chb_db_up'] = true;
     }
     return $pdo;
 }
@@ -456,6 +461,9 @@ function is_internal_content_key($key)
         'owner-digest-last',
         'analytics-digest-last',
         'backup-last-week',
+        'conflict-audit-state',
+        'uptime-history',
+        'error-alert-last',
     ], true);
 }
 
@@ -711,3 +719,89 @@ function dates_clash($propKey, $checkIn, $checkOut, $ignoreId = null)
         return false;
     }
 }
+
+// ---- Server-side error capture --------------------------------------------
+// display_errors is off, so an uncaught exception or fatal in any endpoint was
+// a blank 500 the owner never heard about. These handlers put it in the
+// activity log (severity warn → the "Needs attention" stream + weekly digest)
+// and nudge the owner's devices — deduped and throttled so a hot loop can't
+// flood either. Logging is skipped entirely if this request never reached the
+// database (a failed connect inside a handler would corrupt the response).
+function chb_log_server_error($kind, $msg, $file, $line)
+{
+    static $loggedThisRequest = 0;
+    if ($loggedThisRequest >= 3) {
+        return; // one broken request must not spam the log
+    }
+    if (empty($GLOBALS['__chb_db_up'])) {
+        return; // DB never connected — nothing safe to do
+    }
+    $loggedThisRequest++;
+    try {
+        $script = basename((string) ($_SERVER['SCRIPT_NAME'] ?? 'php'));
+        $summary = mb_substr('Server error in ' . $script . ' — ' . trim((string) $msg), 0, 255);
+        // Dedup: the same error within the last hour is logged once, however
+        // many visitors hit the broken page.
+        try {
+            $s = db()->prepare(
+                "SELECT 1 FROM activity_log WHERE action = 'server.error' AND summary = ?
+                   AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR) LIMIT 1",
+            );
+            $s->execute([$summary]);
+            if ($s->fetchColumn()) {
+                return;
+            }
+        } catch (\Throwable $e) {
+        }
+        log_activity('system', 'server.error', $summary, [
+            'actor' => 'system',
+            'severity' => 'warn',
+            'entity' => 'server',
+            'meta' => ['detail' => $kind . ' at ' . basename((string) $file) . ':' . (int) $line],
+        ]);
+        chb_maybe_alert_owner_error($summary);
+    } catch (\Throwable $e) {
+        /* the error handler must never error the request further */
+    }
+}
+
+// Push "Site error detected" to the owner's devices — at most one per 6 hours
+// (a reporting aid, not a pager; the log keeps every deduped occurrence).
+function chb_maybe_alert_owner_error($summary)
+{
+    try {
+        $last = content_value('error-alert-last');
+        if ($last !== '' && strtotime($last) !== false && time() - strtotime($last) < 6 * 3600) {
+            return;
+        }
+        db()
+            ->prepare(
+                "INSERT INTO content (item_key, item_value) VALUES ('error-alert-last', ?)
+                 ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = CURRENT_TIMESTAMP",
+            )
+            ->execute([json_encode(gmdate('c'))]);
+        require_once __DIR__ . '/webpush.php';
+        if (function_exists('alert_owner')) {
+            alert_owner('Site error detected', mb_substr((string) $summary, 0, 120));
+        }
+    } catch (\Throwable $e) {
+    }
+}
+
+set_exception_handler(function ($e) {
+    chb_log_server_error(get_class($e), $e->getMessage(), $e->getFile(), $e->getLine());
+    // Only shape the response when nothing has been sent — non-JSON endpoints
+    // (sitemap XML, iCal, backup download) mid-stream just get the log entry.
+    if (!headers_sent()) {
+        http_response_code(500);
+        header('Content-Type: application/json; charset=utf-8');
+        echo json_encode(['error' => 'Something went wrong on our side — please try again.']);
+    }
+});
+
+register_shutdown_function(function () {
+    $err = error_get_last();
+    if ($err && in_array($err['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
+        chb_log_server_error('Fatal', $err['message'], $err['file'], $err['line']);
+    }
+});
