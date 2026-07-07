@@ -67,7 +67,7 @@ const API_BASE = (function () {
 (function () {
     let sent = 0;
     const seen = Object.create(null);
-    function reportClientError(msg, where) {
+    function reportClientError(msg, where, stack) {
         try {
             msg = String(msg || '').trim();
             if (!msg || msg === 'Script error.' || msg === 'Script error') return;
@@ -98,18 +98,28 @@ const API_BASE = (function () {
                 body: JSON.stringify({
                     message: msg.slice(0, 300),
                     where: String(where || (location && location.pathname) || '').slice(0, 300),
+                    // Triage context: which release, which screen, and the top
+                    // of the stack — the difference between "something broke"
+                    // and a report the owner (or a developer) can act on.
+                    stack: String(stack || '').slice(0, 500),
+                    build: String(window.__BUILD || ''),
+                    view: ((document.querySelector('.page-view.active') || {}).id || '').slice(0, 40),
                 }),
             }).catch(() => {});
         } catch (e) {}
     }
     window.addEventListener('error', (e) => {
         if (e && e.message)
-            reportClientError(e.message, (e.filename || '') + (e.lineno ? ':' + e.lineno : ''));
+            reportClientError(
+                e.message,
+                (e.filename || '') + (e.lineno ? ':' + e.lineno : ''),
+                e.error && e.error.stack,
+            );
     });
     window.addEventListener('unhandledrejection', (e) => {
         const r = e && e.reason;
         const m = (r && (r.message || (r.toString && String(r)))) || 'Unhandled promise rejection';
-        reportClientError('Promise: ' + m, (location && location.pathname) || '');
+        reportClientError('Promise: ' + m, (location && location.pathname) || '', r && r.stack);
     });
 })();
 // Connection state + offline action queue. A discrete no-WiFi button appears
@@ -10967,7 +10977,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'c3n8w5jt';
+    const BUILD = 'd6m1v9sp';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

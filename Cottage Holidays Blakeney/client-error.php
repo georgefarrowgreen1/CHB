@@ -33,11 +33,35 @@ if ($noise) {
     json_out(['ok' => true, 'ignored' => true]);
 }
 
-log_activity('system', 'client.error', 'Front-end error: ' . mb_substr($msg, 0, 160), [
+$summary = 'Front-end error: ' . mb_substr($msg, 0, 160);
+
+// Cross-visitor dedup: the same error within the last hour is logged once,
+// however many visitors hit the broken page (each page load already self-caps,
+// but a popular broken page would still stack identical rows without this).
+try {
+    $s = db()->prepare(
+        "SELECT 1 FROM activity_log WHERE action = 'client.error' AND summary = ?
+           AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR) LIMIT 1",
+    );
+    $s->execute([mb_substr($summary, 0, 255)]);
+    if ($s->fetchColumn()) {
+        json_out(['ok' => true, 'deduped' => true]);
+    }
+} catch (\Throwable $e) {
+}
+
+log_activity('system', 'client.error', $summary, [
     'severity' => 'warn',
     'meta' => [
         'detail' => $where !== '' ? mb_substr($where, 0, 200) : '',
         'ua' => mb_substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 200),
+        // Triage context from the reporter (all optional, size-capped).
+        'stack' => mb_substr(trim((string) ($in['stack'] ?? '')), 0, 500),
+        'build' => mb_substr(trim((string) ($in['build'] ?? '')), 0, 20),
+        'view' => mb_substr(trim((string) ($in['view'] ?? '')), 0, 40),
     ],
 ]);
+// Nudge the owner's devices about site breakage (throttled to one push per 6h
+// in chb_maybe_alert_owner_error — a reporting aid, not a pager).
+chb_maybe_alert_owner_error($summary);
 json_out(['ok' => true]);
