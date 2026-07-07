@@ -129,11 +129,18 @@ if (($in['action'] ?? '') === 'create') {
     $rate = max(0, (float) ($in['couple_rate'] ?? 0));
     // Optional at create time (the Add-Booking "new property" setup sends these;
     // Settings → Add accommodation sends only name + couple rate → defaults).
-    // Occupancy caps are always left at defaults and filled in later per cottage.
     $extraAdult = max(0, (float) ($in['extra_adult_rate'] ?? 0));
     $childRate = max(0, (float) ($in['child_rate'] ?? 0));
     $deposit = array_key_exists('booking_fee', $in) ? max(0, (float) $in['booking_fee']) : 75;
     $txnPct = array_key_exists('transaction_pct', $in) ? max(0, (float) $in['transaction_pct']) : 3;
+    // Occupancy caps: default sleeps-2, but the Add-Booking flow passes the
+    // booking's own party so a one-off cottage fits its booking with no extra
+    // "over limit" prompt and no trip into the cottage's Preferences.
+    $maxAdults = array_key_exists('max_adults', $in) ? max(1, (int) $in['max_adults']) : 2;
+    $maxChildren = array_key_exists('max_children', $in) ? max(0, (int) $in['max_children']) : 0;
+    $maxTotal = array_key_exists('max_total', $in)
+        ? max(1, (int) $in['max_total'])
+        : $maxAdults + $maxChildren;
     if ($name === '') {
         json_out(['error' => 'Please give the accommodation a name'], 400);
     }
@@ -159,7 +166,7 @@ if (($in['action'] ?? '') === 'create') {
                 'INSERT INTO properties (prop_key, name, couple_rate, extra_adult_rate, child_rate, booking_fee, transaction_pct, address, slug, accent, sort_order, max_adults, max_children, max_total, unlisted)
              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
             )
-            ->execute([$key, $name, $rate, $extraAdult, $childRate, $deposit, $txnPct, '', $slug, $accent, $ord, 2, 0, 2, $unlisted]);
+            ->execute([$key, $name, $rate, $extraAdult, $childRate, $deposit, $txnPct, '', $slug, $accent, $ord, $maxAdults, $maxChildren, $maxTotal, $unlisted]);
     } catch (\Throwable $e) {
         json_out(
             [
