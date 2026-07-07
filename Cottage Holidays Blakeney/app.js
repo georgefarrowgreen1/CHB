@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 16;
+const ADMIN_BUNDLE_V = 17;
 let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
@@ -1026,6 +1026,9 @@ function nav(viewId, anchorId = null) {
     if (viewId === 'view-experiences') {
         try {
             renderExperiencesView();
+        } catch (e) {}
+        try {
+            renderExpArea();
         } catch (e) {}
     }
     if (viewId === 'view-activity-log') {
@@ -4904,19 +4907,17 @@ function openHostEditor() {
     openSettings('host');
 }
 
-// ---- Local guide (dark skies + car-free) + book-direct savings badge ----
+// ---- Dark-skies note (Experiences page) + accessibility + savings badge ----
 const DEFAULT_DARKSKIES =
     "North Norfolk has some of England's darkest skies. On a clear night, step outside and look up — you can often see the Milky Way. Give your eyes 15 minutes to adjust and bring a blanket.";
-const DEFAULT_CARFREE =
-    "You can reach us car-free: train to Sheringham, then the Coasthopper bus along the coast to Blakeney. The Norfolk Coast Path runs through the village, so it's an easy base for walking to Cley, Morston and Wells.";
 const DEFAULT_ACCESS =
     "Please ask us before you book if you have specific access needs — we're happy to talk through the layout. Tell us about parking distance, steps or stairs, doorway widths, ground-floor sleeping and bathroom facilities so we can confirm the cottage is right for you.";
 // ---- Tide widget (Blakeney) — fetched once from tides.php, cached in-memory.
 // Hidden entirely unless an API key is configured (Settings → API keys). ----
 let __tideData = null;
 async function renderTides() {
-    const card = document.getElementById('prop-tides-col');
-    const body = document.getElementById('prop-tides-body');
+    const card = document.getElementById('exp-tides-col');
+    const body = document.getElementById('exp-tides-body');
     if (!card || !body) return;
     const hide = () => {
         card.style.display = 'none';
@@ -4951,14 +4952,18 @@ async function renderTides() {
         hide();
     }
 }
+// Dark-skies note + live tide times now live on the Experiences page (moved off
+// the cottage pages). The dark-skies blurb is site-wide (one shared note).
+function renderExpArea() {
+    const dkEl = document.getElementById('exp-darkskies');
+    if (dkEl) dkEl.textContent = siteContent['darkskies'] || DEFAULT_DARKSKIES;
+    try {
+        renderTides();
+    } catch (e) {}
+}
 function renderLocalGuide(propKey) {
-    const dk = siteContent['darkskies-' + propKey] || DEFAULT_DARKSKIES;
-    const cf = siteContent['carfree-' + propKey] || DEFAULT_CARFREE;
+    // Accessibility note + book-direct savings badge stay on the cottage page.
     const ac = siteContent['access-' + propKey] || DEFAULT_ACCESS;
-    const dkEl = document.getElementById('prop-darkskies');
-    if (dkEl) dkEl.textContent = dk;
-    const cfEl = document.getElementById('prop-carfree');
-    if (cfEl) cfEl.textContent = cf;
     const acEl = document.getElementById('prop-access');
     if (acEl) acEl.textContent = ac;
     // Book-direct savings badge: only when the owner set a higher OTA price.
@@ -10137,9 +10142,6 @@ function openProperty(propKey) {
         renderGuestPhotos(propKey);
     } catch (e) {}
     try {
-        renderTides();
-    } catch (e) {}
-    try {
         renderLocationMap(propKey);
     } catch (e) {}
     try {
@@ -11563,7 +11565,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'j4w8r2mp';
+    const BUILD = 'k6p2r9wm';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
