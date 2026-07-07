@@ -170,22 +170,29 @@ async function waitForServer(url, tries = 40) {
       await page.close();
     }
 
-    // ---- Back office at PHONE width (where the owner actually works, and
-    // where overhang bugs have bitten before). Admin auth is faked the same
-    // way e2e-test.js does; the facade stubs fetch admin.js from the local
-    // server, so this also exercises the real split-bundle load. ----
-    {
-      const vp = WIDTHS[0]; // phone
-      const page = await newPage(browser, vp, 'admin-phone');
-      await walkViews(page, [
-        { key: 'admin-today', open: "(async () => { isAuthenticated = true; document.body.classList.add('owner-mode'); nav('view-backoffice'); await initBackOffice(); })()", mustSee: ['#today-panel', '#cal-body'] },
-        { key: 'admin-bookings', open: '(async () => { await openBookings(); })()', mustSee: ['#bookings-list'] },
-        { key: 'admin-inbox', open: '(async () => { await openInbox(); })()', mustSee: ['#inbox-list', '#messages-list'] },
-        { key: 'admin-money', open: '(async () => { await openAccounts(); })()', mustSee: ['#accounts-index'] },
-        { key: 'admin-cottages', open: "(async () => { await openArea('cottages'); })()", mustSee: ['#settings-index'] },
-        { key: 'admin-marketing', open: "(async () => { await openArea('marketing'); })()", mustSee: ['#settings-index'] },
-        { key: 'admin-settings', open: "(async () => { await openArea('settings'); })()", mustSee: ['#settings-index'] },
-      ], vp.name, vp.width);
+    // ---- Back office at EVERY width (the owner works from phone, iPad and
+    // laptop alike). Admin auth is faked the same way e2e-test.js does; the
+    // facade stubs fetch admin.js from the local server, so this also
+    // exercises the real split-bundle load. Includes the key drill-down
+    // screens (payments manager, seasonal grid, reviews, health check,
+    // cottage editor) — that's where overhang bugs hide. ----
+    const ADMIN_VIEWS = [
+      { key: 'admin-today', open: "(async () => { isAuthenticated = true; document.body.classList.add('owner-mode'); nav('view-backoffice'); await initBackOffice(); })()", mustSee: ['#today-panel', '#cal-body'] },
+      { key: 'admin-bookings', open: '(async () => { await openBookings(); })()', mustSee: ['#bookings-list'] },
+      { key: 'admin-inbox', open: '(async () => { await openInbox(); })()', mustSee: ['#inbox-list', '#messages-list'] },
+      { key: 'admin-money', open: '(async () => { await openAccounts(); })()', mustSee: ['#accounts-index'] },
+      { key: 'admin-money-payments', open: "(async () => { await openAccounts(); accountsOpen('payments'); })()", mustSee: ['#money-panel'] },
+      { key: 'admin-cottages', open: "(async () => { await openArea('cottages'); })()", mustSee: ['#settings-index'] },
+      { key: 'admin-accom', open: "(async () => { await openArea('cottages'); settingsOpen('accom'); })()", mustSee: ['#sec-accom'] },
+      { key: 'admin-seasongrid', open: "(async () => { await openArea('cottages'); settingsOpen('seasongrid'); })()", mustSee: ['#sec-seasongrid'] },
+      { key: 'admin-marketing', open: "(async () => { await openArea('marketing'); })()", mustSee: ['#settings-index'] },
+      { key: 'admin-reviews', open: "(async () => { await openArea('marketing'); settingsOpen('reviews'); })()", mustSee: ['#sec-reviews'] },
+      { key: 'admin-settings', open: "(async () => { await openArea('settings'); })()", mustSee: ['#settings-index'] },
+      { key: 'admin-health', open: "(async () => { await openArea('settings'); settingsOpen('diagnostics'); })()", mustSee: ['#sec-diagnostics'] },
+    ];
+    for (const vp of WIDTHS) {
+      const page = await newPage(browser, vp, 'admin-' + vp.name);
+      await walkViews(page, ADMIN_VIEWS, vp.name, vp.width);
       await page.close();
     }
     await browser.close();

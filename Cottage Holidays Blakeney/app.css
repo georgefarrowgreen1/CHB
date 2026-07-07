@@ -430,7 +430,13 @@ select,
 }
 .page-view.active {
   display: block;
-  animation: fluidFadeIn 0.7s var(--fluid-bezier) forwards;
+  /* The visible state is the BASE state — the entrance animation is purely
+     decorative. Never rely on `forwards` fill to reach visibility: if the
+     animation is skipped (reduced-motion overrides, test harnesses, odd
+     browsers) the page must still show. */
+  opacity: 1;
+  transform: none;
+  animation: fluidFadeIn 0.7s var(--fluid-bezier);
 }
 @keyframes fluidFadeIn {
   from {
@@ -455,8 +461,10 @@ select,
   }
 }
 .grid > .card.rise {
-  opacity: 0;
-  animation: cardRise 0.7s var(--spring) forwards;
+  /* Visible base state; the rise keyframes provide the entrance while they
+     run. No `forwards` dependency (see .page-view.active). */
+  opacity: 1;
+  animation: cardRise 0.7s var(--spring) backwards;
 }
 .grid > .card.rise:nth-child(1) {
   animation-delay: 0.04s;
@@ -998,8 +1006,9 @@ body.light-mode ::-webkit-scrollbar-thumb {
 }
 .datepicker-pop.open {
   display: flex;
-  animation: fluidFadeIn 0.35s var(--fluid-bezier) forwards;
-  opacity: 0;
+  /* Visible base state; entrance animation is decorative (no forwards fill). */
+  opacity: 1;
+  animation: fluidFadeIn 0.35s var(--fluid-bezier);
 }
 .datepicker-card {
   width: 100%;
@@ -2067,8 +2076,9 @@ a.card {
 }
 .photo-lightbox.open {
   display: flex;
-  animation: fluidFadeIn 0.35s var(--fluid-bezier) forwards;
-  opacity: 0;
+  /* Visible base state; entrance animation is decorative (no forwards fill). */
+  opacity: 1;
+  animation: fluidFadeIn 0.35s var(--fluid-bezier);
 }
 .photo-lightbox img {
   max-width: 92vw;
@@ -6855,8 +6865,9 @@ body.owner-mode .chat-widget {
 }
 .modal-overlay.open {
   display: flex;
-  animation: fluidFadeIn 0.4s var(--fluid-bezier) forwards;
-  opacity: 0;
+  /* Visible base state; entrance animation is decorative (no forwards fill). */
+  opacity: 1;
+  animation: fluidFadeIn 0.4s var(--fluid-bezier);
 }
 .modal-box {
   width: 100%;

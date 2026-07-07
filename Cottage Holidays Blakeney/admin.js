@@ -592,8 +592,10 @@ function settingsShowIndex() {
     __settingsPath = null;
     const idx = document.getElementById('settings-index');
     const panel = document.getElementById('settings-panel');
+    const chrome = document.getElementById('settings-chrome');
     if (panel) panel.style.display = 'none';
     if (idx) idx.style.display = '';
+    if (chrome) chrome.style.display = ''; // area header/search return with the index
     applyAreaFilter(); // restore the current area's rows + header
     settingsRecentRender();
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -613,6 +615,10 @@ function settingsOpen(section) {
     const panel = document.getElementById('settings-panel');
     if (!panel) return;
     if (idx) idx.style.display = 'none';
+    // Hide the area chrome (back link, big title, search) while drilled in — the
+    // section shows ONE back link + its own title instead of two stacked headers.
+    const chrome = document.getElementById('settings-chrome');
+    if (chrome) chrome.style.display = 'none';
     panel.style.display = '';
     panel.querySelectorAll('.settings-sec').forEach((s) => (s.style.display = 'none'));
     const sec = document.getElementById('sec-' + section);
@@ -1608,8 +1614,10 @@ function accountsShowIndex() {
     __accountsSection = null;
     const idx = document.getElementById('accounts-index');
     const panel = document.getElementById('accounts-panel');
+    const chrome = document.getElementById('accounts-chrome');
     if (panel) panel.style.display = 'none';
     if (idx) idx.style.display = '';
+    if (chrome) chrome.style.display = '';
     try {
         renderMoneyOverview();
     } catch (e) {}
@@ -1622,6 +1630,9 @@ function accountsOpen(section) {
     const panel = document.getElementById('accounts-panel');
     if (!panel) return;
     if (idx) idx.style.display = 'none';
+    // One back link while drilled in (see settingsOpen).
+    const chrome = document.getElementById('accounts-chrome');
+    if (chrome) chrome.style.display = 'none';
     panel.style.display = '';
     panel.querySelectorAll('.accounts-sec').forEach((s) => (s.style.display = 'none'));
     const sec = document.getElementById('asec-' + section);
@@ -2561,7 +2572,7 @@ function renderMoneyPanel() {
         ? 'Email the guest a secure card link with <strong>Request deposit</strong> / <strong>Request full balance</strong>, or record a manual payment (bank transfer, cash) with the controls on each row.'
         : 'Square card payments are off — set them up in Settings to email pay links. You can still record manual payments (bank transfer, cash) below.';
     if (!rows.length) {
-        el.innerHTML = `<h3 class="accounts-section-title">Payments &amp; balances</h3><div class="accounts-empty">No upcoming or current bookings.</div>`;
+        el.innerHTML = `<div class="accounts-empty">No upcoming or current bookings.</div>`;
         return;
     }
     const owedText = owed.length
@@ -2658,8 +2669,7 @@ function renderMoneyPanel() {
                 </div>`;
         })
         .join('');
-    el.innerHTML = `<h3 class="accounts-section-title">Payments &amp; balances</h3>
-                ${owedBanner}
+    el.innerHTML = `${owedBanner}
                 <p style="font-size:0.82rem;color:var(--text-muted);margin:8px 0 16px;max-width:640px;">${intro}</p>${cards}`;
     if (squareAdminEnabled)
         rows.forEach(({ b }) => {

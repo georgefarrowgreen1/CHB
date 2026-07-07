@@ -160,13 +160,13 @@
     <link rel="apple-touch-icon" href="apple-touch-icon.png?v=3">
     <!-- Installable PWA + Web Push (arrival check-in notifications) -->
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="guest-app.css?v=27">
+    <link rel="stylesheet" href="guest-app.css?v=28">
     <meta name="theme-color" content="#121316">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=120">
+    <link rel="stylesheet" href="app.css?v=121">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -1048,6 +1048,10 @@
     </main>
 
     <main id="view-settings" class="page-view container">
+        <!-- Area-level chrome (back link, title, search, recent) — hidden while a
+             drill-down section is open so the section leads with ONE back link
+             and its own title, not two stacked headers. -->
+        <div id="settings-chrome">
         <span class="back-link" onclick="nav('view-backoffice'); initBackOffice();">← Back to Dashboard</span>
         <div class="dashboard-header">
             <div>
@@ -1063,6 +1067,7 @@
         <input type="search" class="input-glass" id="settings-search" placeholder="Search settings — try &quot;backup&quot;, &quot;rates&quot; or &quot;password&quot;…" autocomplete="off" oninput="settingsFilter(this.value)" onkeydown="settingsSearchKey(event)" style="max-width:640px;margin-bottom:8px;">
         <div id="settings-recent" class="settings-recent" style="display:none;"></div>
         <p id="settings-noresults" class="settings-noresults" style="display:none;">Nothing matches — try another word, or browse below.</p>
+        </div>
 
         <div id="settings-index" class="settings-index">
             <!-- Cottages area: lead with each cottage's key numbers, then the detail sub-folders -->
@@ -1462,12 +1467,16 @@
 
     <!-- ================= MONEY (Apple-style grouped index + drill-down) ================= -->
     <main id="view-accounts" class="page-view container">
+        <!-- Area-level chrome — hidden while a drill-down section is open (see
+             #settings-chrome for the rationale). -->
+        <div id="accounts-chrome">
         <span class="back-link" onclick="nav('view-backoffice'); initBackOffice();">← Back to Dashboard</span>
         <div class="dashboard-header">
             <div>
                 <h1 class="section-title" style="margin-bottom: 5px;">Money</h1>
                 <p class="lead" style="text-align: left; margin: 0;">Request deposits and balances, reconcile payments, and review your income.</p>
             </div>
+        </div>
         </div>
 
         <!-- INDEX -->
@@ -2280,7 +2289,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=215"></script>
+    <script defer src="app.js?v=216"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
