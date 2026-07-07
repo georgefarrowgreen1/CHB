@@ -314,4 +314,51 @@ if ($action === 'approve') {
     json_out(['ok' => true, 'email' => $r['email'] ?? null, 'payment_request' => $r['payment_request'] ?? null]);
 }
 
+// Email the enquirer directly from the Inbox: the owner's message, sent in the
+// house email style with the enquiry's details (cottage/dates/times/party/
+// estimated price) attached underneath. Replies come back to the site inbox.
+if ($action === 'email_guest') {
+    $id = (int) ($in['id'] ?? 0);
+    $s = db()->prepare('SELECT * FROM enquiries WHERE id = ?');
+    $s->execute([$id]);
+    $row = $s->fetch();
+    if (!$row) {
+        json_out(['error' => 'Enquiry not found'], 404);
+    }
+    if (empty($row['email'])) {
+        json_out(['error' => 'This enquiry has no email address.'], 400);
+    }
+    $message = trim((string) ($in['message'] ?? ''));
+    if ($message === '') {
+        json_out(['error' => 'Please write a message first.'], 400);
+    }
+    $message = mb_substr($message, 0, 5000);
+    $subject = mb_substr(clean($in['subject'] ?? ''), 0, 150);
+    // Same estimate the site quoted (approval still snapshots the real figures).
+    $priceEst = null;
+    try {
+        $rate = get_rate($row['prop_key']);
+        if ($rate) {
+            $priceEst = price_breakdown($rate, (int) $row['adults'], (int) $row['children'], $row['check_in'], $row['check_out']);
+        }
+    } catch (\Throwable $e) {
+    }
+    require_once __DIR__ . '/mailer.php';
+    $r = ['ok' => false, 'error' => 'send failed'];
+    try {
+        $r = send_enquiry_reply_email(array_merge($row, ['price' => $priceEst]), $subject, $message);
+    } catch (\Throwable $e) {
+        $r = ['ok' => false, 'error' => $e->getMessage()];
+    }
+    if (empty($r['ok'])) {
+        json_out(['error' => $r['error'] ?? 'Could not send the email'], 400);
+    }
+    log_activity('comms', 'enquiry.email', 'Emailed enquirer — ' . ($row['name'] ?: $row['email']), [
+        'entity' => 'enquiry',
+        'entity_id' => (string) $id,
+        'prop_key' => $row['prop_key'] ?? '',
+    ]);
+    json_out(['ok' => true]);
+}
+
 json_out(['error' => 'Unknown action'], 400);

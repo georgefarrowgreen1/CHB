@@ -758,6 +758,84 @@ function send_enquiry_ack($enq, $accountExists = false)
     return smtp_send($email, $name, $subject, $text, $html);
 }
 
+// Owner's direct reply to an enquirer, sent from the back office Inbox. The
+// owner writes the message; the guest's enquiry details ride along underneath
+// (cottage, dates, times, party, estimated price) in the house email style.
+// Replies come back to the site address (smtp_send's default Reply-To).
+function send_enquiry_reply_email($e, $subject, $message)
+{
+    if (empty($e['email'])) {
+        return ['ok' => false, 'error' => 'No guest email on this enquiry'];
+    }
+    $prop = function_exists('prop_display')
+        ? prop_display($e['prop_key'] ?? '')['name'] ?? ($e['prop_key'] ?? '')
+        : $e['prop_key'] ?? '';
+    $accent = function_exists('prop_display') ? prop_display($e['prop_key'] ?? '')['accent'] ?? '#C79A64' : '#C79A64';
+    $name = $e['name'] ?: 'Guest';
+    $party =
+        (int) ($e['adults'] ?? 0) .
+        ' adult' .
+        ((int) ($e['adults'] ?? 0) === 1 ? '' : 's') .
+        ((int) ($e['children'] ?? 0)
+            ? ' + ' . (int) $e['children'] . ' child' . ((int) $e['children'] === 1 ? '' : 'ren')
+            : '');
+    $p = is_array($e['price'] ?? null) ? $e['price'] : null;
+    $money = fn($n) => '£' . number_format((float) $n, 2);
+    $priceLine = $p
+        ? $money($p['total']) .
+            ' (' . (int) $p['nights'] . ' night' . ((int) $p['nights'] === 1 ? '' : 's') .
+            ' × ' . $money($p['perNight'] ?? 0) . ')' .
+            (!empty($p['damagesDeposit']) ? ' + ' . $money($p['damagesDeposit']) . ' refundable deposit' : '')
+        : '';
+    $times = 'Arrive ' . (($e['check_in_time'] ?? '') ?: '15:00') . ' · leave ' . (($e['check_out_time'] ?? '') ?: '10:00');
+
+    $subject = trim((string) $subject) ?: 'Your enquiry — ' . $prop;
+
+    $text =
+        "Hello {$name},\n\n" .
+        trim((string) $message) .
+        "\n\n---\nYour enquiry details\n" .
+        "Cottage: {$prop}\n" .
+        'Dates: ' . ($e['check_in'] ?? '') . ' to ' . ($e['check_out'] ?? '') . "\n" .
+        $times . "\n" .
+        "Party: {$party}\n" .
+        ($priceLine !== '' ? 'Estimated price: ' . $priceLine . "\n" : '') .
+        "\nJust reply to this email to reach us.\nCottage Holidays Blakeney";
+
+    // Owner-typed message: escape, then preserve their line breaks.
+    $msgHtml = nl2br(email_esc(trim((string) $message)));
+    $kvRows = '';
+    $kv = function ($label, $value) use (&$kvRows) {
+        if ($value === '' || $value === null) {
+            return;
+        }
+        $kvRows .=
+            '<tr><td style="padding:4px 14px 4px 0;color:#8a8377;font-size:13px;white-space:nowrap;vertical-align:top;">' .
+            email_esc($label) .
+            '</td><td style="padding:4px 0;color:#2A2622;font-size:14px;">' .
+            email_esc($value) .
+            '</td></tr>';
+    };
+    $kv('Cottage', $prop);
+    $kv('Dates', ($e['check_in'] ?? '') . ' to ' . ($e['check_out'] ?? ''));
+    $kv('Times', $times);
+    $kv('Party', $party);
+    $kv('Est. price', $priceLine);
+
+    $inner =
+        email_h('About your enquiry', $accent) .
+        email_p('Hello ' . email_esc($name) . ',') .
+        email_p($msgHtml) .
+        email_p('<strong style="color:#2A2622;">Your enquiry details</strong>', true) .
+        '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:2px 0 14px;border-collapse:collapse;">' .
+        $kvRows .
+        '</table>' .
+        email_p('Just reply to this email to reach us.<br>Cottage Holidays Blakeney', true);
+    $html = email_shell($subject, $inner, $accent);
+
+    return smtp_send($e['email'], $name, $subject, $text, $html);
+}
+
 // New-enquiry alert for the owner, with signed one-tap action links. $e carries
 // the enquiry fields + prebuilt approve_url / decline_url (enquiry-action.php).
 function send_owner_enquiry_email($e)
