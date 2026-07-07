@@ -517,6 +517,23 @@
             <p style="font-size:1.15rem;font-weight:600;margin:0 0 6px;">Experiences coming soon</p>
             <p style="font-size:0.9rem;color:var(--text-muted);margin:0;">We're putting together our favourite local spots. Know a great one? Suggest it below.</p>
         </div>
+
+        <!-- Area info (moved here from the cottage pages): a dark-skies note plus
+             the live Blakeney tide times. Tide card stays hidden until tides.php
+             returns data (renderTides reveals it). -->
+        <div class="prop-divider"></div>
+        <h2 class="section-title" style="text-align:left;margin:6px 0 12px;">Good to know</h2>
+        <div class="things-grid" style="margin-bottom:24px;">
+            <div class="things-col">
+                <div class="things-title">Dark skies &amp; stargazing</div>
+                <p class="things-note" id="exp-darkskies" style="white-space:pre-line;"></p>
+            </div>
+            <div class="things-col" id="exp-tides-col" style="display:none;">
+                <div class="things-title">Tide times (Blakeney)</div>
+                <div class="things-note" id="exp-tides-body"></div>
+            </div>
+        </div>
+
         <div class="exp-suggest glass-panel">
             <div>
                 <h3 style="font-family:var(--font-serif);font-size:1.2rem;margin:0 0 4px;">Know a great local spot?</h3>
@@ -622,26 +639,6 @@
                 <div class="prop-divider"></div>
                 <h2 class="section-title prop-section-h">Accessibility</h2>
                 <p class="things-note" id="prop-access" style="max-width:760px;white-space:pre-line;"></p>
-
-                <!-- Local guide (per cottage): dark-skies + car-free notes are owner-
-                     editable (renderLocalGuide); the tide-times card is data-driven and
-                     stays hidden until tides.php returns data (renderTides reveals it). -->
-                <div class="prop-divider"></div>
-                <h2 class="section-title prop-section-h">Local guide</h2>
-                <div class="things-grid">
-                    <div class="things-col">
-                        <div class="things-title">Dark skies &amp; stargazing</div>
-                        <p class="things-note" id="prop-darkskies" style="white-space:pre-line;"></p>
-                    </div>
-                    <div class="things-col">
-                        <div class="things-title">Getting here car-free</div>
-                        <p class="things-note" id="prop-carfree" style="white-space:pre-line;"></p>
-                    </div>
-                    <div class="things-col" id="prop-tides-col" style="display:none;">
-                        <div class="things-title">Tide times (Blakeney)</div>
-                        <div class="things-note" id="prop-tides-body"></div>
-                    </div>
-                </div>
 
                 <!-- Guest reviews (below Things to know). The leading divider is hidden
                      together with the section when this cottage has no reviews yet. -->
@@ -2263,7 +2260,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=205"></script>
+    <script defer src="app.js?v=206"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

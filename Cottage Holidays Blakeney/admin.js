@@ -1110,8 +1110,8 @@ const ACCOM_SECTIONS = [
     },
     {
         id: 'local',
-        label: 'Local guide',
-        sub: 'Notes about your area — parking, accessibility, nature',
+        label: 'Area & access',
+        sub: 'Dark-skies note (shown on Experiences) and this cottage’s accessibility',
         ic: '<circle cx="12" cy="12" r="9"/><path d="M15 9l-4.2 1.8L9 15l4.2-1.8z"/>',
     },
     {
@@ -4553,8 +4553,7 @@ function accomSectionHtml(k, sec) {
                     </div>`;
         case 'local':
             return `
-                    <div style="margin-bottom:14px;"><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Dark skies / stargazing note — shown on the cottage page.</label><textarea rows="3" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" onchange="saveLocalContent('darkskies-${k}', this.value)">${escapeHtml(siteContent['darkskies-' + k] || DEFAULT_DARKSKIES)}</textarea></div>
-                    <div style="margin-bottom:14px;"><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Getting here car-free — shown on the cottage page.</label><textarea rows="3" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" onchange="saveLocalContent('carfree-${k}', this.value)">${escapeHtml(siteContent['carfree-' + k] || DEFAULT_CARFREE)}</textarea></div>
+                    <div style="margin-bottom:14px;"><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Dark skies / stargazing note — shown on the Experiences page (one shared note across the whole site).</label><textarea rows="3" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" onchange="saveLocalContent('darkskies', this.value)">${escapeHtml(siteContent['darkskies'] || DEFAULT_DARKSKIES)}</textarea></div>
                     <div><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Accessibility — steps, parking distance, ground-floor sleeping, bathroom layout. Shown on the cottage page.</label><textarea rows="4" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" onchange="saveLocalContent('access-${k}', this.value)">${escapeHtml(siteContent['access-' + k] || DEFAULT_ACCESS)}</textarea></div>`;
         case 'faq':
             return `
