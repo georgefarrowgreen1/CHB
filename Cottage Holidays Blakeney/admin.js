@@ -632,6 +632,7 @@ function settingsOpen(section) {
     else if (section === 'analytics') loadAnalytics();
     else if (section === 'waitlist') loadWaitlist();
     else if (section === 'newsletter') loadNewsletter();
+    else if (section === 'guests') loadGuestList();
     else if (section === 'experiences') loadExperiencesAdmin();
     else if (section === 'content') loadContentEditor();
     else if (section === 'diagnostics') loadDiagnostics();
