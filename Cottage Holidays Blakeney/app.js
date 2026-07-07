@@ -10615,6 +10615,66 @@ function closeModal() {
     document.getElementById('modal-error').style.display = 'none';
 }
 
+// New-property setup dialog: opened from saveModal when a booking is being made
+// for a brand-new (private) cottage, so its pricing/deposit/fee are captured
+// BEFORE the booking is created (so the booking's locked price snapshot is right)
+// — no need to leave the booking flow. Returns a Promise of the field values, or
+// null if cancelled.
+let __newPropResolve = null;
+function promptNewProperty(name) {
+    return new Promise((resolve) => {
+        __newPropResolve = resolve;
+        const sub = document.getElementById('newprop-sub');
+        if (sub)
+            sub.textContent = `Prices for “${name}”. You can change these later in Settings → Preferences.`;
+        // Sensible starting points (blank rates, standard deposit/fee).
+        document.getElementById('newprop-couple').value = '';
+        document.getElementById('newprop-extra-adult').value = '';
+        document.getElementById('newprop-child').value = '';
+        document.getElementById('newprop-deposit').value = '75';
+        document.getElementById('newprop-txn').value = '3';
+        const err = document.getElementById('newprop-error');
+        if (err) err.style.display = 'none';
+        document.getElementById('newprop-modal').classList.add('open');
+        setTimeout(() => {
+            const c = document.getElementById('newprop-couple');
+            if (c) c.focus();
+        }, 50);
+    });
+}
+function newPropClose(result) {
+    document.getElementById('newprop-modal').classList.remove('open');
+    const r = __newPropResolve;
+    __newPropResolve = null;
+    if (r) r(result);
+}
+function newPropCancel() {
+    newPropClose(null);
+}
+function newPropConfirm() {
+    const num = (id) => {
+        const el = document.getElementById(id);
+        const v = el ? el.value.trim() : '';
+        return v === '' ? 0 : Math.max(0, parseFloat(v) || 0);
+    };
+    const couple = num('newprop-couple');
+    const err = document.getElementById('newprop-error');
+    if (!(couple > 0)) {
+        if (err) {
+            err.textContent = 'Enter a nightly couple rate above £0.';
+            err.style.display = 'block';
+        }
+        return;
+    }
+    newPropClose({
+        couple,
+        extraAdult: num('newprop-extra-adult'),
+        child: num('newprop-child'),
+        deposit: num('newprop-deposit'),
+        txnPct: num('newprop-txn'),
+    });
+}
+
 // Rebuild the Property <select> from the live property list so the owner can pick
 // ANY of their cottages — including owner-added and PRIVATE (unlisted) ones — from
 // a reliable native dropdown. A trailing "➕ New property…" option lets them add a
@@ -10840,42 +10900,28 @@ async function saveModal() {
     }
 
     // Resolve the Property box. A name that isn't one of the owner's cottages yet
-    // becomes a NEW PRIVATE cottage (they're asked for a nightly rate) so the
-    // booking still gets full pricing / occupancy / money — same as a listed
-    // cottage, just hidden from the public website.
+    // becomes a NEW PRIVATE cottage. Its pricing/deposit/fee are captured in the
+    // in-flow "Set up new property" dialog (no need to leave the booking page) and
+    // the cottage is created BEFORE the booking, so the booking's locked price
+    // snapshot uses the final rates. Occupancy caps are left at defaults for the
+    // owner to set later per cottage.
     if (!propKey) {
         const nm = cur.newName;
         if (!nm) {
             showErr('Choose a property, or pick “New property…” and type a name.');
             return;
         }
-        if (
-            !(await glassConfirm(
-                `“${nm}” isn't one of your cottages yet.\n\nCreate it as a PRIVATE cottage — hidden from your website but bookable here — and use it for this booking?`,
-            ))
-        )
-            return;
-        const rateStr = await glassPrompt(`Nightly price for a couple at “${nm}” (£):`, '');
-        if (rateStr === null) return;
-        const rate = parseFloat(rateStr);
-        if (!(rate > 0)) {
-            showErr('Enter a nightly couple rate above £0 for the new cottage.');
-            return;
-        }
-        // Per-child nightly rate (optional). Occupancy caps are left at defaults
-        // for the owner to set later per cottage.
-        const childStr = await glassPrompt(
-            `Price per child per night at “${nm}” (£) — leave blank for none:`,
-            '',
-        );
-        if (childStr === null) return;
-        const childRate = childStr.trim() === '' ? 0 : Math.max(0, parseFloat(childStr) || 0);
+        const setup = await promptNewProperty(nm);
+        if (!setup) return; // cancelled the setup
         try {
             const res = await apiPost('rates.php', {
                 action: 'create',
                 name: nm,
-                couple_rate: rate,
-                child_rate: childRate,
+                couple_rate: setup.couple,
+                extra_adult_rate: setup.extraAdult,
+                child_rate: setup.child,
+                booking_fee: setup.deposit,
+                transaction_pct: setup.txnPct,
                 unlisted: 1,
             });
             if (!res || !res.prop_key) {
@@ -11318,7 +11364,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'v6b2k9wq';
+    const BUILD = 'w9d4m2xk';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

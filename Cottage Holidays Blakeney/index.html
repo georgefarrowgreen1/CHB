@@ -2096,6 +2096,47 @@
         </div>
     </div>
 
+    <!-- New-property setup: shown when Add Booking creates a brand-new (private)
+         cottage, so its pricing/deposit/fee can be set without leaving booking. -->
+    <div id="newprop-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-labelledby="newprop-title">
+        <div class="glass-panel modal-box">
+            <h3 id="newprop-title" style="font-family: var(--font-serif); font-size: 1.6rem; margin-bottom: 6px;">Set up new property</h3>
+            <p id="newprop-sub" style="font-size: 0.82rem; color: var(--text-muted); margin: 0 0 18px;">These prices apply to this cottage. You can change them later in Settings → Preferences.</p>
+
+            <label class="modal-label">Nightly price — couple (£)</label>
+            <input type="number" min="0" step="1" inputmode="decimal" class="input-glass" id="newprop-couple" placeholder="e.g. 120" oninput="updateModalPrice()">
+
+            <div style="display: flex; gap: 15px;">
+                <div style="flex: 1;">
+                    <label class="modal-label">Extra adult / night (£)</label>
+                    <input type="number" min="0" step="1" inputmode="decimal" class="input-glass" id="newprop-extra-adult" placeholder="0">
+                </div>
+                <div style="flex: 1;">
+                    <label class="modal-label">Per child / night (£)</label>
+                    <input type="number" min="0" step="1" inputmode="decimal" class="input-glass" id="newprop-child" placeholder="0">
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 15px;">
+                <div style="flex: 1;">
+                    <label class="modal-label">Refundable damage deposit (£)</label>
+                    <input type="number" min="0" step="1" inputmode="decimal" class="input-glass" id="newprop-deposit" placeholder="75">
+                </div>
+                <div style="flex: 1;">
+                    <label class="modal-label">Transaction fee (%)</label>
+                    <input type="number" min="0" step="0.1" inputmode="decimal" class="input-glass" id="newprop-txn" placeholder="3">
+                </div>
+            </div>
+
+            <div id="newprop-error" style="color: #E53935; font-size: 0.8rem; margin: 12px 0 0; display: none;"></div>
+
+            <div style="display: flex; gap: 12px; margin-top: 18px;">
+                <button class="btn-glass" style="flex: 1;" onclick="newPropConfirm()">Create &amp; continue</button>
+                <button class="toggle-btn" style="flex: 1;" onclick="newPropCancel()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
     <!-- FOOTER -->
     <footer class="site-footer">
         <div class="footer-controls">
@@ -2142,7 +2183,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=192"></script>
+    <script defer src="app.js?v=193"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
