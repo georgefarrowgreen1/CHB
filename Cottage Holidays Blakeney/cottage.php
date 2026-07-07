@@ -86,7 +86,7 @@ try {
                     $name .
                     ' — self-catering holiday cottage in Blakeney on the North Norfolk coast' .
                     ($sleeps ? ', sleeping up to ' . $sleeps : '') .
-                    '. Near the quay, the coastal path and Blakeney Point. Book directly with the owner — no booking fees.';
+                    '. Near the quay, the coastal path and Blakeney Point. Book directly with the owner.';
             }
             $metaDesc = mb_strlen($desc) > 158 ? rtrim(mb_substr($desc, 0, 155)) . '…' : $desc;
 
