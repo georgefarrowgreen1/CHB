@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 6;
+const ADMIN_BUNDLE_V = 7;
 let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
@@ -707,6 +707,7 @@ function mapEnquiryFromApi(row) {
         termsAcceptedAt: row.terms_accepted_at || '',
         termsVersion: row.terms_version || '',
         received: (row.created_at || '').split(' ')[0] || '',
+        receivedAt: row.created_at || '', // full timestamp for the "age" label
         // Repeat-guest recognition (server-computed from past bookings by email).
         priorStays: parseInt(row.prior_stays, 10) || 0,
         lastStayEnd: row.last_stay_end || '',
@@ -11115,7 +11116,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'r7d3m6ky';
+    const BUILD = 's5c9n3xw';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

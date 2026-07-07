@@ -7121,6 +7121,54 @@ function repeatGuestBadge(e) {
     return ` <span class="repeat-badge" title="${escapeHtml(tip)}"><svg class="ic" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 17.77 6.8 19.5l.99-5.78-4.21-4.1 5.82-.85z"/></svg>${escapeHtml(text)}</span>`;
 }
 
+// Availability of an enquiry's dates, checked client-side against the same data
+// the approval clash-guard uses (own bookings + imported OTA blocks). Returns a
+// chip descriptor so the owner sees free/clash BEFORE deciding, not only at Approve.
+function enquiryAvailability(e) {
+    if (!e.checkIn || !e.checkOut || !e.propKey) return null;
+    const bk = (dbBookings[e.propKey] || []).find(
+        (b) => e.checkIn < b.checkOut && e.checkOut > b.checkIn,
+    );
+    if (bk) return { free: false, text: 'Clashes with ' + ((bk.name || '').split(' ')[0] || 'a booking') };
+    const bl = (dbBlocks[e.propKey] || []).find(
+        (x) => e.checkIn < x.checkOut && e.checkOut > x.checkIn,
+    );
+    if (bl) return { free: false, text: 'Clashes with ' + (bl.source || 'an external') + ' block' };
+    return { free: true, text: 'Dates free' };
+}
+// Whole days since the enquiry arrived (for the age label + stale highlight).
+function enquiryAgeDays(e) {
+    const raw = e.receivedAt || e.received;
+    if (!raw) return 0;
+    const t = new Date(String(raw).replace(' ', 'T')).getTime();
+    if (isNaN(t)) return 0;
+    return Math.max(0, Math.floor((Date.now() - t) / 86400000));
+}
+const ENQUIRY_STALE_DAYS = 3; // amber-flag enquiries waiting longer than this
+let inboxSort = 'soonest'; // soonest arrival | newest | cottage
+function setInboxSort(v) {
+    inboxSort = v;
+    try {
+        renderInbox();
+    } catch (e) {}
+}
+function sortedEnquiries() {
+    const list = enquiries.slice();
+    const nm = (e) => (propertyMeta[e.propKey] ? propertyMeta[e.propKey].name : e.propKey) || '';
+    if (inboxSort === 'newest') {
+        list.sort((a, b) => String(b.receivedAt || b.received).localeCompare(String(a.receivedAt || a.received)));
+    } else if (inboxSort === 'cottage') {
+        list.sort((a, b) => nm(a).localeCompare(nm(b)) || String(a.checkIn).localeCompare(String(b.checkIn)));
+    } else {
+        // soonest arrival first, then most recently received
+        list.sort(
+            (a, b) =>
+                String(a.checkIn).localeCompare(String(b.checkIn)) ||
+                String(b.receivedAt || b.received).localeCompare(String(a.receivedAt || a.received)),
+        );
+    }
+    return list;
+}
 function renderInbox() {
     refreshInboxBadge();
     const tg = document.getElementById('enq-nudge-toggle');
@@ -7134,22 +7182,57 @@ function renderInbox() {
         return;
     }
 
-    list.innerHTML = enquiries
-        .map((e) => {
-            const meta = propertyMeta[e.propKey];
-            const propName = meta ? meta.name : e.propKey; // survive a missing/added cottage
-            const msg = e.message
-                ? `<div class="enquiry-msg">“${escapeHtml(e.message)}”</div>`
-                : '';
-            const repeat = repeatGuestBadge(e);
-            return `
-                <div class="enquiry-card">
+    // Sort control — only worth showing with more than one enquiry.
+    const sortBar =
+        enquiries.length > 1
+            ? `<div class="inbox-sort">Sort:${[
+                  ['soonest', 'Soonest stay'],
+                  ['newest', 'Newest'],
+                  ['cottage', 'Cottage'],
+              ]
+                  .map(
+                      ([k, lbl]) =>
+                          `<button type="button" class="inbox-sort-btn${inboxSort === k ? ' is-on' : ''}" onclick="setInboxSort('${k}')">${lbl}</button>`,
+                  )
+                  .join('')}</div>`
+            : '';
+
+    list.innerHTML =
+        sortBar +
+        sortedEnquiries()
+            .map((e) => {
+                const meta = propertyMeta[e.propKey];
+                const propName = meta ? meta.name : e.propKey; // survive a missing/added cottage
+                const msg = e.message
+                    ? `<div class="enquiry-msg">“${escapeHtml(e.message)}”</div>`
+                    : '';
+                const repeat = repeatGuestBadge(e);
+                // Availability chip (free / clash) from already-loaded data.
+                const av = enquiryAvailability(e);
+                const availChip = av
+                    ? `<span class="avail-chip ${av.free ? 'free' : 'clash'}">${escapeHtml(av.text)}</span>`
+                    : '';
+                // Estimated price the site would quote (approval snapshots the real one).
+                let priceChip = '';
+                try {
+                    const pr = priceBreakdown(e.propKey, e.adults, e.children, e.checkIn, e.checkOut);
+                    if (pr && pr.total) priceChip = ` · est. ${gbp(pr.total)}`;
+                } catch (err) {}
+                // Age + stale highlight.
+                const days = enquiryAgeDays(e);
+                const stale = days >= ENQUIRY_STALE_DAYS;
+                const ageLabel = timeAgoLabel(e.receivedAt || e.received) || e.received;
+                const staleChip = stale
+                    ? `<span class="avail-chip warn" title="Waiting ${days} days">${days}d waiting</span>`
+                    : '';
+                return `
+                <div class="enquiry-card${stale ? ' enquiry-stale' : ''}">
                     <div class="enquiry-info">
-                        <span class="prop-tag tag-${e.propKey}">${escapeHtml(propName)}</span>
+                        <span class="prop-tag tag-${e.propKey}">${escapeHtml(propName)}</span>${availChip}${staleChip}
                         <h3>${escapeHtml(e.name)}${repeat}</h3>
                         <div class="enquiry-meta">
-                            <strong>${escapeHtml(e.checkIn)}</strong> → <strong>${escapeHtml(e.checkOut)}</strong><br>
-                            Party: ${escapeHtml(e.guests)} · Received ${escapeHtml(e.received)}
+                            <strong>${escapeHtml(e.checkIn)}</strong> → <strong>${escapeHtml(e.checkOut)}</strong>${priceChip}<br>
+                            Party: ${escapeHtml(e.guests)} · Received ${escapeHtml(ageLabel)}
                             ${e.email ? '<br><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/></svg> ' + escapeHtml(e.email) : ''}
                             ${e.phone ? '<br><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.6 3.5l2.1.4 1 3-1.5 1.4a12 12 0 0 0 5 5l1.4-1.5 3 1 .4 2.1a2 2 0 0 1-2 2.3A15.5 15.5 0 0 1 4.3 5.5a2 2 0 0 1 2.3-2z"/></svg>' + escapeHtml(e.phone) : ''}
                             ${e.address || e.postcode ? '<br><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-7 8 7"/><path d="M6 10v9h12v-9"/></svg> <span style="white-space:pre-wrap;">' + escapeHtml([e.address, e.postcode].filter(Boolean).join(', ')) + '</span>' : ''}
