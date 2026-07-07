@@ -387,8 +387,8 @@ body.guest-app:not(.owner-mode) #view-21a {
 }
 
 /* Subtle app-like page transition (guest shell only; desktop/admin stay instant).
-   MUST keep `forwards` — the base .page-view rule is opacity:0, so without it the
-   page fades in then reverts to blank when the animation ends. */
+   .page-view.active's base state is opacity:1 (app.css), so `forwards` here is
+   just belt-and-braces — visibility never depends on the animation running. */
 body.guest-app:not(.owner-mode) .page-view.active {
   animation: gtFade 0.32s var(--fluid-bezier) forwards;
 }
