@@ -471,6 +471,14 @@ if ($action === 'add') {
     $guestEmail = clean($in['email'] ?? '');
     if ($guestEmail !== '') {
         $emailResult = send_booking_confirmation($newId);
+        // Record the confirmation so it shows in the Bookings page email log.
+        if (is_array($emailResult) && !empty($emailResult['guest']['ok'])) {
+            log_activity('comms', 'email.confirmation', 'Booking confirmation emailed — ' . $name, [
+                'prop_key' => $propKey,
+                'entity' => 'booking',
+                'entity_id' => (string) $newId,
+            ]);
+        }
     }
     // Is this a returning guest? (other bookings on the same email.) Worth surfacing —
     // repeat customers are the most valuable ones.
@@ -767,6 +775,8 @@ if ($action === 'email_guest') {
         'entity' => 'booking',
         'entity_id' => (string) $id,
         'prop_key' => $b['prop_key'] ?? '',
+        // Keep the message so the Bookings page email log can show what was sent.
+        'meta' => ['subject' => $subject, 'body' => mb_substr($message, 0, 3000)],
     ]);
     json_out(['ok' => true]);
 }
@@ -1308,7 +1318,7 @@ if ($action === 'email_logs') {
     try {
         $rows = db()
             ->query(
-                "SELECT entity_id, action, summary, created_at
+                "SELECT entity_id, action, summary, meta, created_at
                    FROM activity_log
                   WHERE entity = 'booking'
                     AND (category = 'comms' OR action = 'payment.request')
@@ -1325,10 +1335,21 @@ if ($action === 'email_logs') {
             if (!isset($map[$id])) {
                 $map[$id] = [];
             }
+            // Free-text messages carry the subject/body in meta (JSON); templated
+            // emails (confirmation/arrival/pay request) have none.
+            $meta = [];
+            if (!empty($r['meta'])) {
+                $decoded = json_decode((string) $r['meta'], true);
+                if (is_array($decoded)) {
+                    $meta = $decoded;
+                }
+            }
             $map[$id][] = [
                 'action' => $r['action'],
                 'summary' => $r['summary'],
                 'at' => $r['created_at'],
+                'subject' => isset($meta['subject']) ? (string) $meta['subject'] : '',
+                'body' => isset($meta['body']) ? (string) $meta['body'] : '',
             ];
         }
         json_out(['logs' => $map]);

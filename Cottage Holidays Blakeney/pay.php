@@ -356,7 +356,7 @@ if ($action === 'charge') {
     // Receipt email (best-effort — never fails the payment).
     try {
         require_once __DIR__ . '/mailer.php';
-        send_payment_receipt([
+        $receipt = send_payment_receipt([
             'name' => $b['name'],
             'email' => $b['email'],
             'prop_key' => $b['prop_key'],
@@ -371,6 +371,15 @@ if ($action === 'charge') {
             // Refundable deposit taken with this payment (refunded after checkout).
             'deposit_charged' => $damagesDue,
         ]);
+        // Record the receipt so it shows in the Bookings page email log.
+        if (is_array($receipt) && !empty($receipt['ok'])) {
+            log_activity(
+                'comms',
+                'email.receipt',
+                'Payment receipt emailed — £' . number_format($amountDue, 2) . ($b['name'] ? ' · ' . $b['name'] : ''),
+                ['actor' => 'guest', 'prop_key' => $b['prop_key'], 'entity' => 'booking', 'entity_id' => (string) $bookingId],
+            );
+        }
     } catch (\Throwable $e) {
     }
 
