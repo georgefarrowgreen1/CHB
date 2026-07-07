@@ -77,6 +77,14 @@ jobs:
             find "$OUT/uploads" -type f ! -name '.htaccess' ! -name 'README.txt' -delete
           fi
 
+          # Precompressed brotli beside every js/css (the host negotiates only
+          # gzip; .htaccess serves these to brotli-capable browsers — ~15%
+          # smaller than gzip). sw.js is skipped: it must stay no-cache and an
+          # immutable stale sw.js.br would freeze service-worker updates.
+          sudo apt-get install -y -qq brotli > /dev/null
+          find "$OUT" -maxdepth 1 \( -name '*.js' -o -name '*.css' \) ! -name 'sw.js' -exec brotli -f -q 11 -k {} \;
+          echo "Brotli twins:"; ls -la "$OUT"/*.br || true
+
           echo "Staged files:"; ls -la "$OUT"
 
       - name: Upload via SFTP (lftp mirror)
@@ -178,6 +186,10 @@ jobs:
           if [ -d "$OUT/uploads" ]; then
             find "$OUT/uploads" -type f ! -name '.htaccess' ! -name 'README.txt' -delete
           fi
+          # Precompressed brotli beside every js/css (same as the live deploy;
+          # sw.js skipped — it must stay no-cache).
+          sudo apt-get install -y -qq brotli > /dev/null
+          find "$OUT" -maxdepth 1 \( -name '*.js' -o -name '*.css' \) ! -name 'sw.js' -exec brotli -f -q 11 -k {} \;
 
       - name: Upload to staging via SFTP (lftp mirror)
         if: steps.chk.outputs.configured == 'true'

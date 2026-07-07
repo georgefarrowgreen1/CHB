@@ -14,10 +14,10 @@
 //  show (push.php?action=sw_notify) and relays release reloads to open pages.
 //  Keep this file in the SAME folder as index.html.
 // ============================================================
-const CACHE = 'chb-cache-v225';
+const CACHE = 'chb-cache-v226';
 // admin.js is deliberately NOT precached — it's the owner-only bundle, fetched on
 // demand by loadAdminBundle() (app.js) and cached at runtime like any static asset.
-const CORE = ['./', 'index.html', 'logo.svg', 'favicon.png', 'apple-touch-icon.png', 'manifest.json', 'app.css?v=106', 'app.js?v=175', 'guest-app.css?v=27', 'guest-app.js?v=14'];
+const CORE = ['./', 'index.html', 'logo.svg', 'favicon.png', 'apple-touch-icon.png', 'manifest.json', 'app.css?v=106', 'app.js?v=176', 'guest-app.css?v=27', 'guest-app.js?v=14'];
 // uploads/ images live in their own size-capped bucket so galleries stay fast and
 // available offline WITHOUT growing the main cache without bound (every image ever
 // viewed used to accumulate forever in CACHE).
@@ -40,6 +40,13 @@ self.addEventListener('activate', (event) => {
     event.waitUntil((async () => {
         const keys = await caches.keys();
         await Promise.all(keys.filter(k => k !== CACHE && k !== IMG_CACHE).map(k => caches.delete(k)));
+        // Navigation preload: without this, a cold navigation must BOOT this
+        // worker before the HTML request even starts. With it, the browser fires
+        // the network request in parallel and hands us the response below —
+        // typically 50-200ms faster first paint on mobile.
+        try {
+            if (self.registration.navigationPreload) await self.registration.navigationPreload.enable();
+        } catch (e) {}
         await self.clients.claim();
     })());
 });
@@ -61,9 +68,11 @@ self.addEventListener('fetch', (event) => {
 
     if (isNav) {
         // Network-first: fresh HTML when online, cached shell when offline.
+        // Prefer the navigation-preload response (already in flight, see
+        // activate) over starting a new fetch.
         event.respondWith((async () => {
             try {
-                const res = await fetch(req);
+                const res = (await event.preloadResponse) || (await fetch(req));
                 if (res && res.ok) { const c = await caches.open(CACHE); c.put('index.html', res.clone()).catch(() => {}); }
                 return res;
             } catch (e) {
