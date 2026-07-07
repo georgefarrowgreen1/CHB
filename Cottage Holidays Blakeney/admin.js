@@ -2396,7 +2396,10 @@ function renderMoneyPanel() {
                     ${depLine}
                     <div class="money-actions">
                         ${sqBtns}
-                        <select class="input-glass field-sm" onchange="updatePaymentStatus('${b.id}', this.value)" title="Payment status">
+                        ${
+                            ps.fullyPaid
+                                ? ''
+                                : `<select class="input-glass field-sm" onchange="updatePaymentStatus('${b.id}', this.value)" title="Payment status">
                             ${Object.keys(paymentMeta)
                                 .map(
                                     (k) =>
@@ -2404,10 +2407,7 @@ function renderMoneyPanel() {
                                 )
                                 .join('')}
                         </select>
-                        ${
-                            ps.fullyPaid
-                                ? ''
-                                : `<input type="number" min="0" step="0.01" class="input-glass field-sm money-dep" title="Record amount received (£)"
+                        <input type="number" min="0" step="0.01" class="input-glass field-sm money-dep" title="Record amount received (£)"
                                value="${b.depositPaid != null ? b.depositPaid : 0}" onchange="updateDeposit('${b.id}', this.value)">`
                         }
                         <button class="btn-sm btn-edit" onclick="downloadInvoice('${b.id}')" title="Download an invoice / receipt PDF">Invoice (PDF)</button>
