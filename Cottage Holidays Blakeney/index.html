@@ -2007,12 +2007,13 @@
             <input type="hidden" id="modal-mode">
 
             <label class="modal-label">Property</label>
-            <input class="input-glass" id="modal-property" list="modal-property-list" autocomplete="off" placeholder="Pick a cottage — or type a new name for a private one" oninput="updateModalPrice()">
-            <datalist id="modal-property-list">
-                <option value="21A Westgate"></option>
-                <option value="Jollyboat"></option>
-                <option value="Pimpernel"></option>
-            </datalist>
+            <select class="input-glass" id="modal-property" onchange="onModalPropertyChange()">
+                <option value="21a">21A Westgate</option>
+                <option value="jollyboat">Jollyboat</option>
+                <option value="pimpernel">Pimpernel</option>
+                <option value="__new__">➕ New property…</option>
+            </select>
+            <input class="input-glass" id="modal-property-new" autocomplete="off" placeholder="New property name" oninput="updateModalPrice()" style="display:none;margin-top:10px;">
 
             <label class="modal-label">Guest Name</label>
             <input type="text" class="input-glass" id="modal-name">
@@ -2141,7 +2142,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=191"></script>
+    <script defer src="app.js?v=192"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
