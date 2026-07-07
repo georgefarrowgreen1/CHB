@@ -2445,6 +2445,19 @@ a.card {
   padding-left: 20px;
   transition: color 0.3s var(--fluid-bezier);
 }
+/* Narrow phones: the three labels + connectors must FIT, never clip — shrink
+   the type and tuck the gaps instead of cutting off "Account". */
+@media (max-width: 480px) {
+  .enq-progress {
+    gap: 6px;
+    margin-right: 34px;
+  }
+  .enq-prog-step {
+    font-size: 0.6rem;
+    letter-spacing: 0.5px;
+    padding-left: 16px;
+  }
+}
 .enq-prog-step::before {
   content: "";
   position: absolute;
