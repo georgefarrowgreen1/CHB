@@ -4109,15 +4109,24 @@ function renderMessagesList() {
     const hadFocus = sEl && document.activeElement === sEl;
     const caret = hadFocus ? sEl.selectionStart : null;
 
-    const threads = __msgThreads;
+    // Threads that need a reply float to the top (stable within each group, so
+    // the server's recency order is preserved otherwise).
+    const threads = __msgThreads
+        .slice()
+        .sort((a, b) => (msgNeedsReply(b) ? 1 : 0) - (msgNeedsReply(a) ? 1 : 0));
     const needCount = threads.filter(msgNeedsReply).length;
-    const toggle = `<button class="btn-sm btn-edit" onclick="toggleArchivedMessages()">${__msgShowArchived ? '← Active conversations' : 'Show archived'}</button>`;
-    const controls = threads.length
-        ? `<div class="msg-inbox-controls">
-                <input id="msg-search" class="input-glass field-sm" type="search" placeholder="Search name, email or text…" value="${escapeHtml(__msgSearch)}" oninput="onMsgSearch(this.value)" autocomplete="off">
-                ${needCount && !__msgShowArchived ? `<button id="msg-unanswered" class="msg-filter-chip${__msgUnansweredOnly ? ' on' : ''}" onclick="toggleUnansweredOnly()">Needs reply · ${needCount}</button>` : ''}
-           </div>`
-        : '';
+    // The archived toggle is a low-frequency control, so it sits at the end of
+    // the controls row (after search), not in a prime slot above it.
+    const toggle = `<button class="btn-sm msg-archived-toggle" onclick="toggleArchivedMessages()">${__msgShowArchived ? '← Active conversations' : 'Show archived'}</button>`;
+    const controls = `<div class="msg-inbox-controls">
+                ${
+                    threads.length
+                        ? `<input id="msg-search" class="input-glass field-sm" type="search" placeholder="Search name, email or text…" value="${escapeHtml(__msgSearch)}" oninput="onMsgSearch(this.value)" autocomplete="off">
+                ${needCount && !__msgShowArchived ? `<button id="msg-unanswered" class="msg-filter-chip${__msgUnansweredOnly ? ' on' : ''}" onclick="toggleUnansweredOnly()">Needs reply · ${needCount}</button>` : ''}`
+                        : ''
+                }
+                ${toggle}
+           </div>`;
     const rows = threads.length
         ? threads
               .map((t) => {
@@ -4135,7 +4144,7 @@ function renderMessagesList() {
                 <button class="msg-thread-row${unread ? ' unread' : ''}" data-s="${escapeHtml(hay)}" data-needs="${needs ? 1 : 0}" onclick="openMessageThread(${t.thread_id})">
                     <span class="mtr-ava" style="--ava-h:${strHue(nm)};" aria-hidden="true">${escapeHtml(avatarInitial(nm))}</span>
                     <span class="mtr-main">
-                        <span class="mtr-top"><span class="mtr-name">${escapeHtml(nm)}${t.is_guest ? '' : ' <span class="mtr-tag">visitor</span>'}</span><span class="mtr-time">${unread ? '<span class="mtr-dot" aria-label="unread"></span>' : ''}${escapeHtml(relTime(t.last_at))}</span></span>
+                        <span class="mtr-top"><span class="mtr-name">${escapeHtml(nm)}${t.is_guest ? '' : ' <span class="mtr-tag">visitor</span>'}</span><span class="mtr-time">${escapeHtml(relTime(t.last_at))}</span></span>
                         <span class="mtr-bot"><span class="mtr-last">${escapeHtml(t.last_body || '')}</span>${needs ? '<span class="needs-reply-pill">Needs reply</span>' : ''}</span>
                     </span>
                 </button>`;
@@ -4143,7 +4152,7 @@ function renderMessagesList() {
               .join('') +
           `<p id="msg-noresults" class="msg-noresults" style="display:none;">No conversations match.</p>`
         : `<p style="font-size:0.82rem;color:var(--text-muted);">${__msgShowArchived ? 'No archived conversations.' : 'No messages yet.'}</p>`;
-    list.innerHTML = toggle + controls + rows;
+    list.innerHTML = controls + rows;
     applyMsgFilter();
     if (hadFocus) {
         const s = document.getElementById('msg-search');
@@ -7376,6 +7385,14 @@ function sortedEnquiries() {
                 String(b.receivedAt || b.received).localeCompare(String(a.receivedAt || a.received)),
         );
     }
+    // Long-waiting enquiries float to the top of whatever order is chosen, so an
+    // old unanswered one can't sink below an imminent-stay request (stable sort
+    // keeps the sub-order within each group).
+    list.sort(
+        (a, b) =>
+            (enquiryAgeDays(b) >= ENQUIRY_STALE_DAYS ? 1 : 0) -
+            (enquiryAgeDays(a) >= ENQUIRY_STALE_DAYS ? 1 : 0),
+    );
     return list;
 }
 function renderInbox() {
@@ -7442,9 +7459,6 @@ function renderInbox() {
                         <div class="enquiry-meta">
                             <strong>${escapeHtml(e.checkIn)}</strong> → <strong>${escapeHtml(e.checkOut)}</strong>${priceChip}<br>
                             Party: ${escapeHtml(e.guests)} · Received ${escapeHtml(ageLabel)}
-                            ${e.email ? '<br><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/></svg> ' + escapeHtml(e.email) : ''}
-                            ${e.phone ? '<br><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.6 3.5l2.1.4 1 3-1.5 1.4a12 12 0 0 0 5 5l1.4-1.5 3 1 .4 2.1a2 2 0 0 1-2 2.3A15.5 15.5 0 0 1 4.3 5.5a2 2 0 0 1 2.3-2z"/></svg>' + escapeHtml(e.phone) : ''}
-                            ${e.address || e.postcode ? '<br><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11l8-7 8 7"/><path d="M6 10v9h12v-9"/></svg> <span style="white-space:pre-wrap;">' + escapeHtml([e.address, e.postcode].filter(Boolean).join(', ')) + '</span>' : ''}
                         </div>
                         ${msg}
                     </div>
