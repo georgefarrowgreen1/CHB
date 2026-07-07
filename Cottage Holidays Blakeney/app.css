@@ -3941,12 +3941,6 @@ textarea.input-glass.field-sm {
   font-size: 0.72rem;
   color: var(--text-muted);
 }
-.msg-thread-row .mtr-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--accent, #d6a785);
-}
 .msg-thread-row .mtr-bot {
   display: flex;
   align-items: center;
@@ -4063,6 +4057,22 @@ textarea.input-glass.field-sm {
 }
 .msg-filter-chip:hover {
   color: var(--text-light);
+}
+/* Archived toggle: subordinate to search — muted, sits at the end of the row. */
+.msg-archived-toggle {
+  flex: 0 0 auto;
+  background: transparent;
+  border: 1px solid var(--glass-border);
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  padding: 7px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.msg-archived-toggle:hover {
+  color: var(--text-light);
+  border-color: var(--glass-highlight);
 }
 .msg-filter-chip.on {
   background: var(--warn);
