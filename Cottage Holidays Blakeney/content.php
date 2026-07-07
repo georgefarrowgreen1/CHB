@@ -8,7 +8,10 @@
 // ============================================================
 require_once __DIR__ . '/db.php';
 
-if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+// The GET payload, as a function so bootstrap.php can serve the SAME data in
+// its combined first-paint response without duplicating this logic.
+function content_public_payload()
+{
     // Admin sessions get everything (the Settings UI reads chat-away-*/
     // admin-2fa-enabled from siteContent). Public visitors get only editor
     // content — never encrypted secrets or operational/internal keys. This
@@ -38,7 +41,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $decoded = json_decode($r['item_value'], true);
         $out[$key] = $decoded === null && $r['item_value'] !== 'null' ? $r['item_value'] : $decoded;
     }
-    json_out(['content' => $out]);
+    return ['content' => $out];
+}
+
+// When bootstrap.php includes this file for the payload helper, stop before the
+// HTTP routing — the routes below run only when this file IS the request.
+if (basename($_SERVER['SCRIPT_NAME'] ?? '') !== 'content.php') {
+    return;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    json_out(content_public_payload());
 }
 
 $in = body();

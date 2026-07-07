@@ -15,6 +15,7 @@ Disallow: /pre-arrival.php
 Disallow: /track.php
 Disallow: /upload.php
 Disallow: /availability.php
+Disallow: /bootstrap.php
 Disallow: /rates.php
 Disallow: /pricing.php
 Disallow: /payments-due.php
