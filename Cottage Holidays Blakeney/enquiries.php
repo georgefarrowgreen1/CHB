@@ -13,6 +13,41 @@ require_once __DIR__ . '/enquiry-actions.php'; // shared approve/decline logic +
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     require_admin();
     $rows = db()->query('SELECT * FROM enquiries ORDER BY created_at ASC')->fetchAll();
+    // Repeat-guest recognition: tag each enquiry with how many COMPLETED stays the
+    // same email has already had (matched case-insensitively), plus when/where the
+    // most recent one ended. Lets the inbox badge returning guests. Cached per email
+    // so duplicate emails across enquiries don't re-query.
+    try {
+        $histStmt = db()->prepare(
+            'SELECT check_out, prop_key FROM bookings
+             WHERE LOWER(email) = LOWER(?) AND email <> \'\' AND check_out < CURDATE()
+             ORDER BY check_out DESC',
+        );
+        $cache = [];
+        foreach ($rows as &$r) {
+            $email = trim((string) ($r['email'] ?? ''));
+            if ($email === '') {
+                $r['prior_stays'] = 0;
+                continue;
+            }
+            $key = strtolower($email);
+            if (!array_key_exists($key, $cache)) {
+                $histStmt->execute([$email]);
+                $past = $histStmt->fetchAll();
+                $cache[$key] = [
+                    'prior_stays' => count($past),
+                    'last_stay_end' => $past ? $past[0]['check_out'] : null,
+                    'last_stay_prop' => $past ? $past[0]['prop_key'] : null,
+                ];
+            }
+            $r['prior_stays'] = $cache[$key]['prior_stays'];
+            $r['last_stay_end'] = $cache[$key]['last_stay_end'];
+            $r['last_stay_prop'] = $cache[$key]['last_stay_prop'];
+        }
+        unset($r);
+    } catch (\Throwable $e) {
+        /* history is a nicety; never block the enquiry list over it */
+    }
     json_out(['enquiries' => $rows]);
 }
 

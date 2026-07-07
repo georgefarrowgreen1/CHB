@@ -22,8 +22,16 @@ if ($provided === '' && !empty($_SERVER['PATH_INFO'])) {
     $provided = ltrim((string) $_SERVER['PATH_INFO'], '/');
 }
 $isCron = $provided !== '' && hash_equals(APP_SECRET, $provided);
-if (!$isCron && empty($_SESSION['admin_id'])) {
-    json_out(['error' => 'Not authorised'], 401);
+if (!$isCron) {
+    // A manual run by a signed-in admin must be a POST so require_admin() enforces
+    // the CSRF token — otherwise a GET <img>/link in the owner's browser could fire
+    // the whole automation (guest emails and all) via their session. The automated
+    // loopback cron authorises with the secret above and is unaffected; an owner can
+    // still run it in a browser via cron.php?cron=SECRET.
+    require_admin();
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+        json_out(['error' => 'Run this from the back office, or use the cron URL with your secret.'], 405);
+    }
 }
 
 // Build an absolute base URL to this folder from the current request, so the
@@ -101,6 +109,40 @@ if ($isCron) {
             ->execute([json_encode(gmdate('c'))]);
     } catch (\Throwable $e) {
         /* never fail the cron over the heartbeat */
+    }
+
+    // Rolling uptime record for the public /status page: one entry per UTC day —
+    // 'ok' when every job ran clean, 'warn' when any failed. A day with NO entry
+    // means the cron never ran (site or automation down) and /status shows it as
+    // a gap; that absence is the signal, so only a real cron run writes here.
+    try {
+        $day = gmdate('Y-m-d');
+        $allOk = true;
+        foreach ($results as $r) {
+            if (empty($r['ok'])) {
+                $allOk = false;
+                break;
+            }
+        }
+        // Stores a date→state MAP (JSON object) — must be read with content_json();
+        // content_value() returns '' for a non-scalar, which would reset the history
+        // every run and leave /status showing only the current day.
+        $hist = content_json('uptime-history', []);
+        if (!is_array($hist)) {
+            $hist = [];
+        }
+        // A failure earlier in the day sticks — a later clean re-run doesn't hide it.
+        $hist[$day] = ($hist[$day] ?? '') === 'warn' ? 'warn' : ($allOk ? 'ok' : 'warn');
+        ksort($hist);
+        $hist = array_slice($hist, -40, null, true); // keep a little over the 30 shown
+        db()
+            ->prepare(
+                "INSERT INTO content (item_key, item_value) VALUES ('uptime-history', ?)
+                 ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = CURRENT_TIMESTAMP",
+            )
+            ->execute([json_encode($hist)]);
+    } catch (\Throwable $e) {
+        /* history is a nicety; never fail the cron over it */
     }
 
     // Activity log: one summary line of what the automation did today (incl. how

@@ -27,6 +27,8 @@ RewriteCond %{HTTP_HOST} (^|\.)staging\. [NC]
 RewriteRule ^cottages(/.*)?$ staging-gate.php [L]
 RewriteCond %{HTTP_HOST} (^|\.)staging\. [NC]
 RewriteRule ^experiences/?$ staging-gate.php [L]
+RewriteCond %{HTTP_HOST} (^|\.)staging\. [NC]
+RewriteRule ^status/?$ staging-gate.php [L]
 
 # ---- Homepage via home.php (live hero + social-preview image injected) ----
 # The owner's hero is an uploaded photo (content table); the static index.html

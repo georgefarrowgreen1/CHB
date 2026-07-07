@@ -29,6 +29,7 @@ try {
 } catch (\Throwable $e) {
 }
 
+$pdo = null;
 if ($configLoaded) {
     try {
         if (defined('DB_HOST')) {
@@ -43,6 +44,7 @@ if ($configLoaded) {
         }
     } catch (\Throwable $e) {
         $dbUp = false;
+        $pdo = null;
     }
 
     // Card payments: Square switched on AND credentials present (mirrors
@@ -57,6 +59,41 @@ if ($configLoaded) {
 
     // Email: turned on AND an SMTP host set.
     $emailOn = defined('MAIL_ENABLED') && MAIL_ENABLED && defined('SMTP_HOST') && SMTP_HOST !== '';
+}
+
+// ---- 30-day uptime strip -------------------------------------------------
+// cron.php stamps one entry per UTC day it actually ran ('ok' / 'warn'); a
+// missing day means the automation (or the whole site) was down. Render the
+// last 30 days oldest→newest. No history yet (fresh install / DB down) → the
+// strip is simply hidden rather than showing a wall of grey.
+$uptimeDays = [];
+$uptimeUp = 0;
+$uptimeKnown = 0;
+if ($pdo) {
+    try {
+        $s = $pdo->prepare("SELECT item_value FROM content WHERE item_key = 'uptime-history'");
+        $s->execute();
+        $raw = $s->fetchColumn();
+        $hist = $raw !== false ? json_decode((string) $raw, true) : null;
+        if (is_array($hist) && $hist) {
+            for ($i = 29; $i >= 0; $i--) {
+                $day = gmdate('Y-m-d', time() - $i * 86400);
+                $state = $hist[$day] ?? 'none';
+                if (!in_array($state, ['ok', 'warn'], true)) {
+                    $state = 'none';
+                }
+                $uptimeDays[] = ['day' => $day, 'state' => $state];
+                if ($state !== 'none') {
+                    $uptimeKnown++;
+                }
+                if ($state === 'ok') {
+                    $uptimeUp++;
+                }
+            }
+        }
+    } catch (\Throwable $e) {
+        $uptimeDays = [];
+    }
 }
 
 // The site is "online" simply because this script ran. Bookings/enquiries need
@@ -121,6 +158,14 @@ function status_esc($s)
   .name { font-weight: 550; font-size: 0.92rem; }
   .desc { font-size: 0.8rem; color: #8a8377; margin-top: 1px; }
   .txt { flex: 1; min-width: 0; }
+  .uptime { margin-top: 18px; padding-top: 16px; border-top: 1px solid rgba(0,0,0,0.06); }
+  .uptime-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 8px; }
+  .uptime-title { font-size: 0.82rem; font-weight: 550; }
+  .uptime-count { font-size: 0.76rem; color: #8a8377; }
+  .uptime-strip { display: flex; gap: 3px; }
+  .uptime-strip span { flex: 1; height: 22px; border-radius: 4px; background: rgba(0,0,0,0.08); }
+  .uptime-strip .u-ok { background: #34a853; }
+  .uptime-strip .u-warn { background: #e0a020; }
   .foot { margin-top: 20px; font-size: 0.78rem; color: #a49c8d; text-align: center; }
   .foot a { color: #8a7a55; }
   @media (prefers-color-scheme: dark) {
@@ -130,6 +175,11 @@ function status_esc($s)
     li { border-color: rgba(255,255,255,0.07); }
     .overall.ok { background: rgba(52,168,83,0.14); color: #6bd188; }
     .overall.bad { background: rgba(224,160,32,0.14); color: #e6b74e; }
+    .uptime { border-color: rgba(255,255,255,0.07); }
+    .uptime-count { color: #9a9080; }
+    .uptime-strip span { background: rgba(255,255,255,0.1); }
+    .uptime-strip .u-ok { background: #34a853; }
+    .uptime-strip .u-warn { background: #e0a020; }
   }
 </style>
 </head>
@@ -152,6 +202,19 @@ function status_esc($s)
       </li>
       <?php endforeach; ?>
     </ul>
+    <?php if ($uptimeDays): ?>
+    <div class="uptime">
+      <div class="uptime-head">
+        <span class="uptime-title">Last 30 days</span>
+        <span class="uptime-count"><?= (int) $uptimeUp ?> of <?= (int) $uptimeKnown ?> recorded days healthy</span>
+      </div>
+      <div class="uptime-strip" aria-label="Daily health, oldest to newest">
+        <?php foreach ($uptimeDays as $d): ?>
+        <span class="<?= $d['state'] === 'ok' ? 'u-ok' : ($d['state'] === 'warn' ? 'u-warn' : '') ?>" title="<?= status_esc($d['day'] . ' — ' . ($d['state'] === 'ok' ? 'healthy' : ($d['state'] === 'warn' ? 'ran with failures' : 'no record'))) ?>"></span>
+        <?php endforeach; ?>
+      </div>
+    </div>
+    <?php endif; ?>
     <div class="foot">
       Checked <?= status_esc($checkedAt) ?> · <a href="/">Back to the website</a>
     </div>

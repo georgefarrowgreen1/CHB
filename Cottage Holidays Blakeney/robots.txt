@@ -30,6 +30,13 @@ Disallow: /square-webhook.php
 Disallow: /setup.php
 Disallow: /migrate.php
 Disallow: /vapid-keygen.php
+Disallow: /cron.php
+Disallow: /cron-status.php
+Disallow: /conflict-audit.php
+Disallow: /backup.php
+Disallow: /diagnostics.php
+Disallow: /status.php
+Disallow: /status
 
 # Let crawlers fetch the JSON-LD review/FAQ data sources implicitly via the page;
 # reviews.php is a thin JSON feed, so keep it out of the index too.

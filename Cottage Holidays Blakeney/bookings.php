@@ -199,19 +199,23 @@ function damages_collected($b)
         return 0.0;
     }
     $hs = $b['hold_status'] ?? 'none';
-    // New charge-upfront model: the refundable deposit was CHARGED with the booking
-    // and tracked on the booking row (hold_amount). That's exactly what's returnable.
-    if ($hs === 'charged') {
+    // The full deposit amount is actual money the business now holds and can hand
+    // back in two cases: 'charged' (charge-upfront model — taken with the booking)
+    // and 'captured' (card-hold model — the authorisation was completed, which
+    // inserts a 'damages' ledger row for the full hold_amount). Both are the excess
+    // that hold_capture's own comment says to "refund via the normal refund flow"
+    // when the damage was less than the deposit. damages_returned() then shrinks
+    // this as returns are made, so repeated refunds can't exceed what was taken.
+    if ($hs === 'charged' || $hs === 'captured') {
         return round((float) ($b['hold_amount'] ?? $held), 2);
     }
     // Already settled (refunded to the guest, or kept for damage) → nothing to return.
     if (in_array($hs, ['returned', 'kept'], true)) {
         return 0.0;
     }
-    // Legacy card-hold bookings took the deposit as a SEPARATE Square authorisation
-    // (hold_* columns), never into the rental ledger — nothing "collected" to hand
-    // back. Only the oldest flow folded the deposit into the rental total.
-    if (in_array($hs, ['authorized', 'captured', 'released', 'expired'], true)) {
+    // Uncaptured card-hold states took nothing into the ledger — an authorisation
+    // that's still pending, was released, or expired holds no money to hand back.
+    if (in_array($hs, ['authorized', 'released', 'expired'], true)) {
         return 0.0;
     }
     // Pure rental (deposit EXCLUDED) — the same in both eras: legacy folded the
@@ -1111,6 +1115,7 @@ if ($action === 'cancel') {
             ? round((float) $in['refund_amount'], 2)
             : 0.0;
     $refundedByCard = 0.0;
+    $depositRefunded = 0.0; // refundable damage deposit auto-returned below (reported back)
     if ($refundAmount > 0 && square_enabled()) {
         $charge = find_charge_for_refund($id, $refundAmount);
         if ($charge) {
@@ -1142,8 +1147,11 @@ if ($action === 'cancel') {
             $dep = round(max(0, damages_collected($b) - damages_returned($id)), 2);
             if ($dep > 0) {
                 book_lock($b['prop_key'] ?? '');
-                record_square_refund($id, $b['hold_payment_id'], $dep, 'damages_return', 'Booking cancelled', $b['name'], $b['prop_key']);
+                $depRr = record_square_refund($id, $b['hold_payment_id'], $dep, 'damages_return', 'Booking cancelled', $b['name'], $b['prop_key']);
                 book_unlock($b['prop_key'] ?? '');
+                if (!empty($depRr['ok'])) {
+                    $depositRefunded = $dep;
+                }
             }
         } elseif ($hs === 'authorized' && !empty($b['hold_payment_id'])) {
             try {
@@ -1189,6 +1197,10 @@ if ($action === 'cancel') {
     json_out([
         'ok' => true,
         'refunded' => $refundedByCard,
+        // The refundable damage deposit is returned on its OWN Square payment here —
+        // report it so the owner isn't left thinking they must refund it by hand (and
+        // double-return it) when the rental refund couldn't be auto-matched.
+        'deposit_refunded' => $depositRefunded,
         'manual_refund' => $refundAmount > $refundedByCard + 0.001,
         'email' => $emailResult,
     ]);

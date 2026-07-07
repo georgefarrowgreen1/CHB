@@ -19,8 +19,14 @@
 require_once __DIR__ . '/db.php';
 
 $isCron = isset($_GET['cron']) && hash_equals(APP_SECRET, (string) $_GET['cron']);
-if (!$isCron && empty($_SESSION['admin_id'])) {
-    json_out(['error' => 'Not authorised'], 401);
+if (!$isCron) {
+    // A signed-in admin's manual run must be a POST so require_admin() enforces the
+    // CSRF token — a GET <img>/link in the owner's browser must not be able to fire
+    // it. The loopback cron authorises with the secret above and is unaffected.
+    require_admin();
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+        json_out(['error' => 'Run this from the back office, or use the cron URL with your secret.'], 405);
+    }
 }
 
 // Two half-open date ranges [aIn,aOut) and [bIn,bOut) overlap iff each starts
@@ -106,14 +112,12 @@ foreach ($props as $p) {
 }
 
 // Load the previously-seen signatures so a standing conflict isn't re-logged
-// every night. content_value() returns '' when unset.
-$prevRaw = content_value('conflict-audit-state');
-$prev = [];
-if ($prevRaw !== '') {
-    $decoded = json_decode($prevRaw, true);
-    if (is_array($decoded)) {
-        $prev = $decoded;
-    }
+// every night. This key stores a JSON ARRAY, so it MUST be read with
+// content_json() — content_value() returns '' for any non-scalar value, which
+// would make the dedup set always empty and re-log every conflict daily.
+$prev = content_json('conflict-audit-state', []);
+if (!is_array($prev)) {
+    $prev = [];
 }
 $prevSet = array_fill_keys($prev, true);
 
