@@ -2004,6 +2004,7 @@ function openGuestAuthModal() {
     const m = document.getElementById('guest-auth-modal');
     if (m) {
         m.classList.remove('closing');
+        overlayHistPush(); // Back closes this overlay
         m.classList.add('open');
     }
     try {
@@ -2017,6 +2018,7 @@ function openGuestAuthModal() {
 function closeGuestAuthModal() {
     const m = document.getElementById('guest-auth-modal');
     if (!m || !m.classList.contains('open')) return;
+    overlayHistConsume(); // eat the overlay's history entry (no-op if Back closed it)
     // Play the fade-out, then actually hide it (animation lasts 0.35s).
     m.classList.add('closing');
     try {
@@ -2610,9 +2612,11 @@ async function renderGuestBookings() {
         // .instay-tides element keeps its class so renderInStayTides() fills it.
         // All tiles reuse existing functions.
         // The "My Stay" hub (directions, welcome book…) is the in-trip
-        // experience — only surface it once the holiday is paid in full. An
-        // unpaid current stay still shows in the list below with a Pay button.
-        if (currentStay && ps.fullyPaid) {
+        // experience — shown for ANY current stay. A guest who still owes a
+        // balance is already at the cottage; withholding directions and the
+        // welcome book helps nobody (the Pay button still shows on the
+        // booking card below).
+        if (currentStay) {
             const nightsLeft = Math.max(0, nightsBetween(todayStr, b.checkOut));
             hubCards.push(`
                     <div class="glass-panel my-stay-hub">
@@ -2639,13 +2643,22 @@ async function renderGuestBookings() {
     // Each section's cards sit in their own .gb-grid so the desktop two-up
     // layout works per section (an odd last card spans the full row).
     const gGrid = (cards) => `<div class="gb-grid">${cards.join('')}</div>`;
+    // No stays at all: a clear next step instead of an empty page.
+    const emptyState =
+        !hubCards.length && !pendingHtml && !upcomingCards.length && !pastCards.length
+            ? `<div class="glass-panel" style="text-align:center;padding:34px 22px;">
+                    <p style="margin:0 0 16px;color:var(--text-muted);">No stays yet — your bookings and enquiries will appear here.</p>
+                    <button class="btn-glass" onclick="nav('view-cottages')">Browse the cottages</button>
+               </div>`
+            : '';
     list.innerHTML =
         guestPushPromptHtml(hasUpcoming) +
         loyaltyBannerHtml(completedStays) +
         (hubCards.length ? gHdr('Your stay') + hubCards.join('') : '') +
         pendingHtml +
         (upcomingCards.length ? gHdr('Upcoming stays') + gGrid(upcomingCards) : '') +
-        (pastCards.length ? gHdr('Past stays') + gGrid(pastCards) : '');
+        (pastCards.length ? gHdr('Past stays') + gGrid(pastCards) : '') +
+        emptyState;
 
     // Fill any in-stay tide cards (mid-stay guests).
     if (currentStays.length) renderInStayTides();
@@ -3677,10 +3690,14 @@ function openTermsModal(ev, propKey) {
         ev.stopPropagation();
     }
     renderTerms(propKey); // undefined → the active cottage
+    overlayHistPush(); // Back closes this overlay
     document.getElementById('terms-modal').classList.add('open');
 }
 function closeTermsModal() {
-    document.getElementById('terms-modal').classList.remove('open');
+    const m = document.getElementById('terms-modal');
+    if (!m || !m.classList.contains('open')) return;
+    overlayHistConsume(); // eat the overlay's history entry (no-op if Back closed it)
+    m.classList.remove('open');
 }
 
 // The one-line status shown under the refundable-deposit figure on the invoice.
@@ -6516,6 +6533,7 @@ function toggleChat() {
         closeChat();
         return;
     }
+    overlayHistPush(); // Back closes this overlay
     w.classList.add('open');
     document.getElementById('chat-fab').classList.add('hidden');
     try {
@@ -6526,6 +6544,8 @@ function toggleChat() {
 }
 function closeChat() {
     const w = document.getElementById('chat-widget');
+    if (w && w.classList.contains('open'))
+        overlayHistConsume(); // eat the overlay's history entry (no-op if Back closed it)
     if (w) w.classList.remove('open');
     const f = document.getElementById('chat-fab');
     if (f) f.classList.remove('hidden');
@@ -6981,11 +7001,14 @@ function openWaitlistModal(prefill) {
         msg.textContent = '';
         msg.classList.remove('show');
     }
+    overlayHistPush(); // Back closes this overlay
     document.getElementById('waitlist-modal').classList.add('open');
 }
 function closeWaitlistModal() {
     const m = document.getElementById('waitlist-modal');
-    if (m) m.classList.remove('open');
+    if (!m || !m.classList.contains('open')) return;
+    overlayHistConsume(); // eat the overlay's history entry (no-op if Back closed it)
+    m.classList.remove('open');
 }
 async function submitWaitlist() {
     const v = (id) => (document.getElementById(id) || {}).value;
@@ -7828,12 +7851,15 @@ function openEnquireModal() {
     refreshDateTrigger();
     updateEnquiryPrice();
     const m = document.getElementById('enquire-modal');
+    overlayHistPush(); // Back closes this overlay
     if (m) m.classList.add('open');
     enquiryResumeHide();
 }
 function closeEnquireModal() {
     const m = document.getElementById('enquire-modal');
-    if (m) m.classList.remove('open');
+    if (!m || !m.classList.contains('open')) return; // defensive close of an already-closed modal — no history side-effects
+    overlayHistConsume(); // eat the overlay's history entry (no-op if Back closed it)
+    m.classList.remove('open');
 }
 function enquireBack() {
     const r = document.getElementById('enquire-step-review');
@@ -9939,7 +9965,58 @@ function maybeOpenCottageRoute() {
     }
     return true;
 }
+// ---- Overlay ↔ browser-Back integration ----------------------------------
+// The five guest overlays (enquiry, waitlist, terms, sign-in, chat) push a
+// history entry when they open, so Back CLOSES the overlay instead of
+// navigating the page underneath it (the classic stranded-modal bug on
+// mobile). Closing via the X consumes that entry silently.
+let __overlayClosing = false;
+function overlayHistPush() {
+    try {
+        // If the top entry is already an overlay entry (e.g. a just-closed
+        // overlay whose history.back() hasn't landed yet, or one overlay
+        // replacing another), REUSE it rather than stacking a second — pushing
+        // during an in-flight back() races and can strand navigation.
+        if (history.state && history.state.chbOverlay) return;
+        history.pushState(Object.assign({}, history.state || {}, { chbOverlay: true }), '');
+    } catch (e) {}
+}
+function overlayHistConsume() {
+    if (history.state && history.state.chbOverlay) {
+        __overlayClosing = true;
+        try {
+            history.back();
+        } catch (e) {
+            __overlayClosing = false;
+        }
+    }
+}
+// Close the top-most open guest overlay; true if one was closed.
+function closeTopOverlay() {
+    const open = (id) => {
+        const el = document.getElementById(id);
+        return el && el.classList.contains('open');
+    };
+    if (open('enquire-modal')) { closeEnquireModal(); return true; }
+    if (open('waitlist-modal')) { closeWaitlistModal(); return true; }
+    if (open('guest-auth-modal')) { closeGuestAuthModal(); return true; }
+    if (open('terms-modal')) { closeTermsModal(); return true; }
+    if (open('chat-widget')) { closeChat(); return true; }
+    return false;
+}
 window.addEventListener('popstate', (ev) => {
+    // A programmatic history.back() from an overlay's own close button — the
+    // overlay is already closed; swallow the event.
+    if (__overlayClosing) {
+        __overlayClosing = false;
+        return;
+    }
+    // An overlay is open: Back closes IT and stays on the page beneath (the
+    // overlay's history entry carried the same URL, so nothing else moves).
+    if (closeTopOverlay()) return;
+    // A stale overlay entry (overlay was closed via its X): swallow it rather
+    // than replaying the underlying view.
+    if (ev.state && ev.state.chbOverlay) return;
     // Admin locations replay from the recorded state, so Back walks
     // drill-down → index → dashboard rather than exiting to the homepage.
     const st = ev.state && ev.state.chbAdmin;
@@ -10492,6 +10569,13 @@ async function submitEnquiry(propKey) {
     } catch (e) {}
     enquireDraftClear();
     toast('Enquiry sent — we will be in touch to confirm availability.');
+    // Signed-in guests land on My Stays where the new enquiry card is waiting —
+    // a real confirmation surface instead of a toast over the cottage page.
+    if (currentGuest) {
+        try {
+            openGuestArea();
+        } catch (e) {}
+    }
 }
 // Stashed details for the optional post-enquiry account creation (step 3).
 let __enqAcct = null;
@@ -10617,7 +10701,7 @@ function enquireSkipAccount() {
         closeEnquireModal();
     } catch (e) {}
     enquireDraftClear();
-    toast('Enquiry sent — we will be in touch to confirm availability.');
+    toast("Enquiry sent — we'll confirm availability and your price by email.");
 }
 
 // ===================================================================
@@ -11567,7 +11651,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'wz783fbj';
+    const BUILD = '54fhvj4j';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

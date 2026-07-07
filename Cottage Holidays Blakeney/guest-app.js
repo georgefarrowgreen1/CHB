@@ -24,8 +24,10 @@
     var DOCK = [
         {
             key: 'experiences',
-            label: 'Experiences',
-            cls: 'gt-auth',
+            // Always visible — browsing "things to do" is a core signed-OUT job
+            // (it was auth-gated, leaving logged-out phone visitors no way to
+            // reach it except the footer). Label matches the nav + footer.
+            label: 'Things to do',
             views: ['view-experiences'],
             icon: '<path d="M12 3l2.1 4.6L19 9l-4 3.3.9 5.1L12 15.9 8.1 17.4 9 12.3 5 9l4.9-1.4z"/>',
             go: function () {
