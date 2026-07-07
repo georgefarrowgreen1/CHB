@@ -314,7 +314,25 @@ function send_booking_confirmation($bookingId)
 // SAME data in its combined back-office boot response. Caller must require_admin.
 function bookings_admin_payload()
 {
-    return ['bookings' => db()->query('SELECT * FROM bookings ORDER BY check_in ASC')->fetchAll()];
+    $rows = db()->query('SELECT * FROM bookings ORDER BY check_in ASC')->fetchAll();
+    // Attach the refunded-deposit total per booking (for the invoice's deposit
+    // status when an owner downloads it). One grouped query, best-effort.
+    try {
+        $ret = [];
+        foreach (
+            db()->query(
+                "SELECT booking_id, COALESCE(SUM(amount),0) t FROM payments WHERE kind = 'damages_return' GROUP BY booking_id",
+            ) as $r
+        ) {
+            $ret[(int) $r['booking_id']] = round((float) $r['t'], 2);
+        }
+        foreach ($rows as &$bk) {
+            $bk['damages_returned'] = $ret[(int) $bk['id']] ?? 0;
+        }
+        unset($bk);
+    } catch (\Throwable $e) {
+    }
+    return ['bookings' => $rows];
 }
 
 // When admin-bootstrap.php includes this file for the payload helper, stop
