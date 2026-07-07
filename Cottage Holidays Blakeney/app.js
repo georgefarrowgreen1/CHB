@@ -2729,9 +2729,31 @@ function loadSquareSdk(env) {
     });
     return __squareSdkLoader;
 }
-const payState = { token: '', bookingId: 0, kind: 'deposit', amountDue: 0 };
+const payState = { token: '', bookingId: 0, kind: 'deposit', amountDue: 0, guestName: '' };
 let squarePayments = null,
     squareCard = null;
+// Strong Customer Authentication (UK/EU banks): passing these details to
+// card.tokenize() lets Square run the 3-D Secure check against the REAL amount
+// and buyer, so the bank can approve the charge. Without them UK issuers
+// decline with CARD_DECLINED_VERIFICATION_REQUIRED (seen live). Wallets
+// (Apple/Google Pay) do SCA inside the wallet sheet and don't take these.
+function payVerificationDetails() {
+    const parts = String(payState.guestName || '')
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+    const contact = { countryCode: 'GB' };
+    if (parts.length) contact.givenName = parts[0];
+    if (parts.length > 1) contact.familyName = parts.slice(1).join(' ');
+    return {
+        amount: Number(payState.amountDue || 0).toFixed(2),
+        currencyCode: 'GBP',
+        intent: 'CHARGE',
+        customerInitiated: true,
+        sellerKeyedIn: false,
+        billingContact: contact,
+    };
+}
 function setPayMsg(text) {
     const el = document.getElementById('pay-msg');
     if (!el) return;
@@ -2779,10 +2801,12 @@ async function openPayView(token, bookingId, kind) {
         });
         // The refundable damage deposit is charged WITH this payment and refunded
         // after checkout — so the guest pays (and the wallet sheet shows) rental +
-        // deposit. The server computes the same total independently.
-        const dep = Math.round(Number(s.damagesDue || 0) * 100) / 100;
+        // deposit. The server computes the same total independently. On the LEGACY
+        // ?hold= screen the amount IS the deposit — don't add it twice.
+        const dep = s.kind === 'hold' ? 0 : Math.round(Number(s.damagesDue || 0) * 100) / 100;
         const payTotal = Math.round((Number(s.amountDue) + dep) * 100) / 100;
         payState.amountDue = payTotal;
+        payState.guestName = s.guestName || '';
         const propEl = document.getElementById('pay-prop');
         if (propEl) propEl.textContent = `${s.propName} · ${s.checkIn} → ${s.checkOut}`;
         document.getElementById('pay-kind-label').textContent =
@@ -2938,7 +2962,9 @@ async function submitPayment() {
         btn.textContent = 'Processing…';
     }
     try {
-        const result = await squareCard.tokenize();
+        // SCA: tokenize WITH verification details so the bank's 3-D Secure
+        // check runs here (Square shows the challenge if the issuer asks).
+        const result = await squareCard.tokenize(payVerificationDetails());
         if (result.status !== 'OK') {
             const m =
                 (result.errors && result.errors[0] && result.errors[0].message) ||
@@ -2947,7 +2973,12 @@ async function submitPayment() {
         }
         await payWithToken(result.token);
     } catch (e) {
-        setPayMsg(e.message || 'Payment failed. Please try again.');
+        const raw = String((e && e.message) || '');
+        setPayMsg(
+            /verification|3.?d.?s|timed out/i.test(raw)
+                ? "Your bank's verification step didn't complete. Please try again — if your bank shows an approval prompt (app or SMS), confirm it and retry."
+                : raw || 'Payment failed. Please try again.',
+        );
     } finally {
         if (btn) {
             btn.disabled = false;
@@ -11027,7 +11058,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'p8s2j5wm';
+    const BUILD = 'q4x8b2ln';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

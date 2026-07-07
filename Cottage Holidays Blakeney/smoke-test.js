@@ -345,6 +345,29 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
     check('footer has real /cottages/ crawlable links', /href="\/cottages\//.test(html));
     check('renderFooterCottages defined (live footer links)', /function renderFooterCottages\b/.test(appScript));
     check('routeLink defined (footer SPA nav)', /function routeLink\b/.test(appScript));
+
+    // SCA (3-D Secure) contract: UK banks decline card charges made without
+    // buyer verification (CARD_DECLINED_VERIFICATION_REQUIRED, seen live), so
+    // the card tokenize MUST pass verification details, and those details must
+    // carry the amount/intent Square needs to run the bank check.
+    check('card tokenize passes SCA verification details', /squareCard\.tokenize\(payVerificationDetails\(\)\)/.test(appScript));
+    const pvd = get('payVerificationDetails');
+    if (typeof pvd !== 'function') { fail('payVerificationDetails is not defined'); }
+    else {
+        // payState is a top-level const (lexical, not on the vm global) — set it
+        // from inside the context, exactly as page code would.
+        vm.runInContext("payState.amountDue = 556.2; payState.guestName = 'Richard Berry';", ctx);
+        const vd = pvd();
+        check('SCA details: amount matches the charge (556.20)', vd.amount === '556.20');
+        check('SCA details: intent CHARGE + GBP + customer-initiated', vd.intent === 'CHARGE' && vd.currencyCode === 'GBP' && vd.customerInitiated === true);
+        check('SCA details: billing contact carries the guest name + GB', vd.billingContact && vd.billingContact.givenName === 'Richard' && vd.billingContact.familyName === 'Berry' && vd.billingContact.countryCode === 'GB');
+    }
+    // 3DS bank iframes come from unpredictable issuer domains — the CSP must
+    // allow any https: frame or the verification times out (seen live).
+    try {
+        const ht = fs.readFileSync(path.join(path.dirname(HTML_PATH), 'htaccess.txt'), 'utf8');
+        check('CSP frame-src allows https: (3DS issuer iframes)', /frame-src https:;/.test(ht));
+    } catch (e) { fail('htaccess.txt unreadable for CSP check'); }
 }
 
 console.log('\n== Summary ==');
