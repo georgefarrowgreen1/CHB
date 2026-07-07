@@ -157,6 +157,37 @@ RewriteRule (?i)^uploads/.*\.(php|php[0-9]?|phtml|phps|pht|pl|py|cgi|sh|lua|asp|
     AddOutputFilterByType BROTLI_COMPRESS text/html text/css text/javascript application/javascript application/json image/svg+xml
 </IfModule>
 
+# ---- Precompressed brotli (deploy.yml generates .br beside every js/css) ----
+# The live host negotiates only gzip (mod_brotli is off), so deploy ships
+# pre-compressed .br files (~15% smaller than gzip) and these rules serve them
+# to brotli-capable browsers. sw.js is EXCLUDED — it must stay no-cache and a
+# stale immutable sw.js.br would freeze updates. No-op until the .br files
+# exist (the -f check), so a manual FTP upload without them still works.
+RewriteCond %{HTTP:Accept-Encoding} \bbr\b
+RewriteCond %{REQUEST_URI} !/sw\.js$
+RewriteCond %{REQUEST_FILENAME}\.br -f
+RewriteRule ^(.+)\.(js|css)$ $1.$2.br [L]
+<IfModule mod_headers.c>
+    <FilesMatch "(?i)\.js\.br$">
+        ForceType application/javascript
+        Header set Content-Encoding br
+        Header set Vary "Accept-Encoding"
+        Header set Cache-Control "public, max-age=31536000, immutable"
+        Header unset Set-Cookie
+        SetEnv no-gzip 1
+        SetEnv no-brotli 1
+    </FilesMatch>
+    <FilesMatch "(?i)\.css\.br$">
+        ForceType text/css
+        Header set Content-Encoding br
+        Header set Vary "Accept-Encoding"
+        Header set Cache-Control "public, max-age=31536000, immutable"
+        Header unset Set-Cookie
+        SetEnv no-gzip 1
+        SetEnv no-brotli 1
+    </FilesMatch>
+</IfModule>
+
 # ---- Long-cache versioned static assets ----
 # CSS/JS/fonts are cache-busted with ?v=… (and the service worker), so they can be
 # cached effectively forever. This turns repeat visits into instant, no-network
