@@ -89,6 +89,38 @@ try {
     process.exit(1);
 }
 
+// The owner back office lives in admin.js (fetched on demand by loadAdminBundle;
+// facade stubs in app.js cover any call that lands first). Evaluate it in the
+// SAME context, exactly like the browser does, so (a) a load-time throw fails
+// CI and (b) the behavioural checks below see the full app.
+let adminScript = '';
+try { adminScript = fs.readFileSync(path.join(path.dirname(HTML_PATH), 'admin.js'), 'utf8'); } catch (e) {}
+if (adminScript) {
+    try {
+        vm.runInContext(adminScript, ctx, { filename: 'admin.js', timeout: 5000 });
+        pass('admin bundle evaluated without throwing');
+        check('admin bundle sets __ADMIN_LOADED', sandbox.window.__ADMIN_LOADED === true);
+        // Facade contract: every stub target must now be a REAL function on window
+        // (a stub left in place would recurse forever at runtime).
+        const stubSrc = appScript.match(/^\[(.*)\]\.forEach\(\(n\) => \{/m);
+        if (stubSrc) {
+            const stubNames = JSON.parse('[' + stubSrc[1] + ']');
+            const unreplaced = stubNames.filter((n) => {
+                const f = sandbox.window[n];
+                return typeof f !== 'function' || f.__adminStub;
+            });
+            check(`all ${stubNames.length} facade stubs replaced by real admin functions`, unreplaced.length === 0);
+            if (unreplaced.length) console.log('    still stubs: ' + unreplaced.join(', '));
+        } else {
+            fail('facade stub list not found in app.js');
+        }
+    } catch (e) {
+        fail('admin bundle threw on load: ' + e.message);
+    }
+} else {
+    fail('admin.js missing (owner back office bundle)');
+}
+
 const get = (n) => ctx[n] || sandbox[n];
 
 console.log('\n== 2. Pricing engine (priceBreakdown) ==');
@@ -172,7 +204,10 @@ else {
 
 console.log('\n== 6. Structural integrity (raw HTML) ==');
 // 6a. Every onclick handler references a function that exists (catches deleted/renamed fns).
-const definedFns = new Set([...appScript.matchAll(/function\s+([A-Za-z_$][\w$]*)\s*\(/g)].map(m => m[1]));
+// The back office lives in admin.js (with facade stubs in app.js), so a handler is
+// "defined" if it exists in EITHER file — both are evaluated into the same global
+// scope in the browser, and the stubs cover any pre-load click.
+const definedFns = new Set([...(appScript + '\n' + adminScript).matchAll(/function\s+([A-Za-z_$][\w$]*)\s*\(/g)].map(m => m[1]));
 const JS_BUILTINS = new Set(['if', 'for', 'while', 'return', 'event', 'this', 'window', 'document', 'console',
     'alert', 'confirm', 'prompt', 'Math', 'Date', 'JSON', 'Number', 'String', 'Boolean', 'Array', 'Object',
     'parseInt', 'parseFloat', 'location', 'setTimeout', 'true', 'false', 'null', 'undefined', 'typeof', 'new']);
@@ -204,6 +239,9 @@ try {
         if (inHtml !== inSw) drift.push(`${a} (index.html v${inHtml} vs sw.js v${inSw})`);
     });
     check('sw.js precache ?v= matches index.html' + (drift.length ? ' — drift: ' + drift.join(', ') : ''), drift.length === 0);
+    // admin.js is owner-only and loaded on demand — precaching it would make every
+    // guest download the back office and defeat the split.
+    check('admin.js is NOT in the sw.js CORE precache list', !/CORE = \[[^\]]*admin\.js/.test(sw));
 } catch (e) { check('sw.js precache version check ran (' + e.message + ')', false); }
 
 // 6d. JSON-LD structured data parses.
