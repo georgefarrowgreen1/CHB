@@ -7384,7 +7384,7 @@ function enquiryAvailability(e) {
         (x) => e.checkIn < x.checkOut && e.checkOut > x.checkIn,
     );
     if (bl) return { free: false, text: 'Clashes with ' + (bl.source || 'an external') + ' block' };
-    return { free: true, text: 'Dates free' };
+    return { free: true, text: 'Dates available' };
 }
 // Whole days since the enquiry arrived (for the age label + stale highlight).
 function enquiryAgeDays(e) {

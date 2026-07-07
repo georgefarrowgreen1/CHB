@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 17;
+const ADMIN_BUNDLE_V = 18;
 let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
@@ -6858,7 +6858,7 @@ async function chatAvailRun(uid) {
     const span = `${dpPretty(ci)} → ${dpPretty(co)}`;
     if (clash) {
         chatBot(
-            `Sorry — ${escapeHtml(name)} isn't free for ${span}; those dates overlap an existing booking. Try different dates, or I can let you know if they free up.` +
+            `Sorry — ${escapeHtml(name)} isn't available for ${span}; those dates overlap an existing booking. Try different dates, or I can let you know if they become available.` +
                 `<div class="chat-bot-actions"><button type="button" class="btn-glass" onclick="chatAvailNotify('${prop}','${ci}','${co}')">Notify me</button></div>`,
         );
     } else {
@@ -7003,7 +7003,7 @@ async function submitWaitlist() {
             check_out: v('wl-checkout'),
         });
         closeWaitlistModal();
-        toast("You're on the waitlist — we'll email you if those dates free up.");
+        toast("You're on the waitlist — we'll email you if those dates become available.");
     } catch (e) {
         show(e.message || 'Could not join the waitlist.');
     }
@@ -8122,7 +8122,7 @@ function renderLateAvailability() {
     );
     el.innerHTML = `<div class="late-avail">
                 <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var(--accent);flex-shrink:0;"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg>
-                <span>Late availability — <strong>${escapeHtml(name)}</strong> is free ${dpPretty(best.g.start)} to ${dpPretty(co)}</span>
+                <span>Late availability — <strong>${escapeHtml(name)}</strong> is available ${dpPretty(best.g.start)} to ${dpPretty(co)}</span>
                 <button type="button" class="btn-sm btn-edit" onclick="startBooking('${best.k}','${best.g.start}','${co}')">Check dates</button>
             </div>`;
 }
@@ -9192,7 +9192,7 @@ function renderFlexResults(results, tooSmall, nights, ym) {
                     windows.length
                         ? `<div class="card-meta">${windows.length} free option${windows.length === 1 ? '' : 's'} in ${escapeHtml(monthName)}</div><div class="flex-opts">${windows.map((w) => optRow(key, w)).join('')}</div>`
                         : `<div class="card-meta">No ${nightsLbl} gap in ${escapeHtml(monthName)} — try another month.</div>
-                       <button class="btn-glass" style="width:100%;margin-top:10px;" onclick="openWaitlistModal({prop:'${key}',checkIn:'',checkOut:''})">Notify me if dates free up</button>`
+                       <button class="btn-glass" style="width:100%;margin-top:10px;" onclick="openWaitlistModal({prop:'${key}',checkIn:'',checkOut:''})">Notify me if dates become available</button>`
                 }
             </div>`;
     const fitKeys = Object.keys(results);
@@ -9300,7 +9300,7 @@ function renderHeroResults(results, tooSmall) {
         // When the match isn't the exact requested dates (a ±flex shift), flag it
         // clearly so the guest knows before they proceed. Dates shown ARE available.
         const banner = r.offset
-            ? `<div class="hs-banner">Your dates (${reqRange}) aren't free here — these are the closest available.</div>`
+            ? `<div class="hs-banner">Your dates (${reqRange}) aren't available here — these are the closest we have.</div>`
             : '';
         const moved = r.offset
             ? ` <span style="color:var(--text-muted);">· moved ${Math.abs(r.offset)} day${Math.abs(r.offset) === 1 ? '' : 's'}</span>`
@@ -9379,13 +9379,13 @@ function renderHeroResults(results, tooSmall) {
             if (others.length) {
                 html += sub(
                     others.length > 1
-                        ? 'But these are free for your dates'
-                        : 'But this one is free for your dates',
+                        ? 'But these are available for your dates'
+                        : 'But this one is available for your dates',
                 );
                 html += others.map((k) => card(k, results[k])).join('');
             } else {
                 html += noneMsg(
-                    'No other cottage is free for those dates either — try different dates or widen the flexibility.',
+                    'No other cottage is available for those dates either — try different dates or widen the flexibility.',
                 );
             }
         }
@@ -9395,7 +9395,7 @@ function renderHeroResults(results, tooSmall) {
                 <p style="color:var(--text-muted);font-size:0.88rem;margin-bottom:12px;">Can't see what you're looking for?</p>
                 <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
                     <button type="button" class="btn-glass btn-glass-ghost" onclick="backToSearch()">Change your search</button>
-                    <button type="button" class="btn-glass" onclick="openWaitlistModal({prop:'${wlProp}',checkIn:'${heroSearch.checkin || ''}',checkOut:'${heroSearch.checkout || ''}'})">Notify me if dates free up</button>
+                    <button type="button" class="btn-glass" onclick="openWaitlistModal({prop:'${wlProp}',checkIn:'${heroSearch.checkin || ''}',checkOut:'${heroSearch.checkout || ''}'})">Notify me if dates become available</button>
                 </div>
             </div>`;
     grid.innerHTML = html;
@@ -11565,7 +11565,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'k6p2r9wm';
+    const BUILD = 'm3t7v9kq';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
