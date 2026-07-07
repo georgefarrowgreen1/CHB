@@ -4293,6 +4293,80 @@ body.owner-mode .chat-widget {
   width: 12px;
   height: 12px;
 }
+/* Compose-email sheet: key enquiry details pinned above the message box. */
+.enq-ctx {
+  background: rgba(128, 128, 128, 0.08);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-lg);
+  padding: 14px 16px;
+  margin: 0 0 18px;
+}
+.enq-ctx-who {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 12px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--glass-border);
+}
+.enq-ctx-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-serif);
+  font-size: 1.05rem;
+  background: rgba(199, 154, 100, 0.18);
+  color: var(--accent);
+  border: 1px solid rgba(199, 154, 100, 0.3);
+}
+.enq-ctx-name {
+  font-weight: 600;
+  font-size: 0.92rem;
+  line-height: 1.35;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.enq-ctx-row {
+  display: flex;
+  align-items: flex-start;
+  font-size: 0.85rem;
+  padding: 3px 0;
+}
+.enq-ctx-txt {
+  flex: 1;
+  min-width: 0; /* wrapped lines stay aligned after the icon column */
+}
+.enq-ctx-ic {
+  width: 22px;
+  margin-top: 2px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  display: inline-flex;
+}
+.enq-ctx-ic .ic {
+  width: 14px;
+  height: 14px;
+}
+.enq-ctx-mut {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+.enq-ctx-quote {
+  margin-top: 10px;
+  padding: 8px 12px;
+  border-left: 2px solid var(--accent);
+  background: rgba(128, 128, 128, 0.06);
+  border-radius: 0 var(--r-sm) var(--r-sm) 0;
+  font-size: 0.82rem;
+  font-style: italic;
+  color: var(--text-muted);
+  max-height: 84px;
+  overflow-y: auto;
+}
 .enquiry-meta {
   font-size: 0.8rem;
   color: var(--text-muted);

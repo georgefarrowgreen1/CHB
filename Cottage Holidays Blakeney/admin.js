@@ -7178,8 +7178,30 @@ function openEnquiryEmail(enqId) {
     }
     __enqEmailTarget = enq;
     const propName = (propertyMeta[enq.propKey] && propertyMeta[enq.propKey].name) || enq.propKey;
-    const to = document.getElementById('enq-email-to');
-    if (to) to.textContent = `To ${enq.name || 'the guest'} <${enq.email}>`;
+    // Key details, visible while writing: who + cottage + dates + party + phone
+    // + the price the site quoted + their original message — everything needed
+    // to reply without closing the sheet.
+    const ctx = document.getElementById('enq-email-context');
+    if (ctx) {
+        let priceRow = '';
+        try {
+            const p = priceBreakdown(enq.propKey, enq.adults, enq.children, enq.checkIn, enq.checkOut);
+            if (p && p.total) {
+                priceRow = `<div class="enq-ctx-row"><span class="enq-ctx-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg></span><span class="enq-ctx-txt"><strong>${gbp(p.total)}</strong><span class="enq-ctx-mut"> · ${p.nights} night${p.nights === 1 ? '' : 's'} × ${gbp(p.perNight)}${p.damagesDeposit ? ` · +${gbp(p.damagesDeposit)} deposit held` : ''}</span></span></div>`;
+            }
+        } catch (e) {}
+        const initial = (enq.name || enq.email || '?').trim().charAt(0).toUpperCase();
+        ctx.innerHTML = `
+            <div class="enq-ctx-who">
+                <span class="enq-ctx-avatar">${escapeHtml(initial)}</span>
+                <span class="enq-ctx-name">${escapeHtml(enq.name || 'Guest')}<span class="enq-ctx-mut" style="display:block;font-weight:400;">${escapeHtml(enq.email)}</span></span>
+                <span class="prop-tag tag-${enq.propKey}" style="margin-left:auto;flex-shrink:0;">${escapeHtml(propName)}</span>
+            </div>
+            <div class="enq-ctx-row"><span class="enq-ctx-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></span><span class="enq-ctx-txt"><strong>${escapeHtml(enq.checkIn)}</strong>&nbsp;→&nbsp;<strong>${escapeHtml(enq.checkOut)}</strong></span></div>
+            <div class="enq-ctx-row"><span class="enq-ctx-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 12 0v1"/></svg></span><span class="enq-ctx-txt">${escapeHtml(enq.guests)}${enq.phone ? `<span class="enq-ctx-mut"> · ${escapeHtml(enq.phone)}</span>` : ''}</span></div>
+            ${priceRow}
+            ${enq.message ? `<div class="enq-ctx-quote">“${escapeHtml(enq.message)}”</div>` : ''}`;
+    }
     const subj = document.getElementById('enq-email-subject');
     if (subj) subj.value = `Your enquiry — ${propName}, ${enq.checkIn} to ${enq.checkOut}`;
     const body = document.getElementById('enq-email-body');
