@@ -10375,6 +10375,11 @@ async function submitEnquiry(propKey) {
         setEnqMsg('details', 'Please enter a valid UK postcode.');
         return;
     }
+    if (!message) {
+        setEnqMsg('details', 'Please tell us a little about your party before sending your enquiry.');
+        document.getElementById('enq-message').focus();
+        return;
+    }
     if (checkOut <= checkIn) {
         setEnqMsg('details', 'Your check-out date must be after your check-in date.');
         return;
@@ -11559,7 +11564,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'e2n7t4kq';
+    const BUILD = 'f5r9m3wt';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

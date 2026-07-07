@@ -130,6 +130,20 @@ async function waitForServer(url, tries = 40) {
     await page.evaluate(() => enquireContinue());
     await page.waitForTimeout(300);
     ((await page.locator('#enq-msg-review').textContent()) || '').trim() ? pass('missing-dates validation shows') : fail('no validation message');
+    // The "about your party" field is required — submitting without it is blocked.
+    (await page.locator('#enq-message').getAttribute('required')) !== null ? pass('party field is required') : fail('party field not marked required');
+    ((await page.locator('#enq-message').getAttribute('placeholder')) || '').includes('little bit about our guests') ? pass('party field placeholder set') : fail('party placeholder wrong');
+    await page.evaluate(() => {
+      document.getElementById('enq-name').value = 'Test Guest';
+      document.getElementById('enq-checkin').value = '2026-08-10';
+      document.getElementById('enq-checkout').value = '2026-08-13';
+      document.getElementById('enq-address').value = '1 Test Street';
+      document.getElementById('enq-postcode').value = 'NR25 7AB';
+      document.getElementById('enq-message').value = '';
+      submitEnquiry('jollyboat');
+    });
+    await page.waitForTimeout(250);
+    ((await page.locator('#enq-msg-details').textContent()) || '').toLowerCase().includes('party') ? pass('blocks submit when party info is empty') : fail('empty party field not blocked');
     await page.evaluate(() => closeEnquireModal());
 
     console.log('== 4. Login modal ==');
