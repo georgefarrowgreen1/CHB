@@ -127,9 +127,13 @@ if (($in['action'] ?? '') === 'create') {
     // logic needs to start working for the new cottage.
     $name = trim(clean($in['name'] ?? ''));
     $rate = max(0, (float) ($in['couple_rate'] ?? 0));
-    // Optional at create time: a per-child nightly rate (occupancy caps are left
-    // at defaults and filled in later per cottage). Absent/blank -> 0.
+    // Optional at create time (the Add-Booking "new property" setup sends these;
+    // Settings → Add accommodation sends only name + couple rate → defaults).
+    // Occupancy caps are always left at defaults and filled in later per cottage.
+    $extraAdult = max(0, (float) ($in['extra_adult_rate'] ?? 0));
     $childRate = max(0, (float) ($in['child_rate'] ?? 0));
+    $deposit = array_key_exists('booking_fee', $in) ? max(0, (float) $in['booking_fee']) : 75;
+    $txnPct = array_key_exists('transaction_pct', $in) ? max(0, (float) $in['transaction_pct']) : 3;
     if ($name === '') {
         json_out(['error' => 'Please give the accommodation a name'], 400);
     }
@@ -155,7 +159,7 @@ if (($in['action'] ?? '') === 'create') {
                 'INSERT INTO properties (prop_key, name, couple_rate, extra_adult_rate, child_rate, booking_fee, transaction_pct, address, slug, accent, sort_order, max_adults, max_children, max_total, unlisted)
              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
             )
-            ->execute([$key, $name, $rate, 0, $childRate, 75, 3, '', $slug, $accent, $ord, 2, 0, 2, $unlisted]);
+            ->execute([$key, $name, $rate, $extraAdult, $childRate, $deposit, $txnPct, '', $slug, $accent, $ord, 2, 0, 2, $unlisted]);
     } catch (\Throwable $e) {
         json_out(
             [
