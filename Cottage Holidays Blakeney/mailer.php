@@ -777,20 +777,35 @@ function send_owner_enquiry_email($e)
             : '');
     $subject =
         'New enquiry: ' . ($e['name'] ?: 'Someone') . ' — ' . $prop . ', ' . $e['check_in'] . ' to ' . $e['check_out'];
+
+    // Full booking context so the owner can decide (and reply) straight from the
+    // inbox without opening the back office: contact, address, times, the price
+    // the site quoted, and whether this guest has stayed before.
+    $p = is_array($e['price'] ?? null) ? $e['price'] : null;
+    $money = fn($n) => '£' . number_format((float) $n, 2);
+    $priceLine = $p
+        ? $money($p['total']) .
+            ' (' . (int) $p['nights'] . ' night' . ((int) $p['nights'] === 1 ? '' : 's') .
+            ' × ' . $money($p['perNight'] ?? ($p['nights'] ? $p['nightly'] / max(1, $p['nights']) : 0)) . ')' .
+            (!empty($p['damagesDeposit']) ? ' + ' . $money($p['damagesDeposit']) . ' refundable deposit (held separately)' : '')
+        : '';
+    $times = ($e['check_in_time'] ?? '') !== '' || ($e['check_out_time'] ?? '') !== ''
+        ? 'Arrive ' . ($e['check_in_time'] ?: '15:00') . ' · leave ' . ($e['check_out_time'] ?: '10:00')
+        : '';
+    $addr = trim(implode(', ', array_filter([trim((string) ($e['address'] ?? '')), trim((string) ($e['postcode'] ?? ''))])));
+    $prior = (int) ($e['prior_stays'] ?? 0);
+
     $text =
         "A new enquiry just arrived.\n\n" .
-        'Guest: ' .
-        ($e['name'] ?? '—') .
-        ' (' .
-        ($e['email'] ?? '—') .
-        ")\n" .
+        'Guest: ' . ($e['name'] ?? '—') . ($prior > 0 ? ' — RETURNING GUEST (' . $prior . ' past stay' . ($prior === 1 ? '' : 's') . ')' : '') . "\n" .
+        'Email: ' . ($e['email'] ?? '—') . "\n" .
+        (!empty($e['phone']) ? 'Phone: ' . $e['phone'] . "\n" : '') .
+        ($addr !== '' ? 'Address: ' . $addr . "\n" : '') .
         "Cottage: {$prop}\n" .
-        'Dates: ' .
-        ($e['check_in'] ?? '') .
-        ' to ' .
-        ($e['check_out'] ?? '') .
-        "\n" .
+        'Dates: ' . ($e['check_in'] ?? '') . ' to ' . ($e['check_out'] ?? '') . "\n" .
+        ($times !== '' ? $times . "\n" : '') .
         "Party: {$party}\n" .
+        ($priceLine !== '' ? 'Estimated price: ' . $priceLine . "\n" : '') .
         (!empty($e['message']) ? 'Message: ' . $e['message'] . "\n" : '') .
         "\nApprove (creates the booking + confirmation & payment emails):\n" .
         $e['approve_url'] .
@@ -799,6 +814,27 @@ function send_owner_enquiry_email($e)
         $e['decline_url'] .
         "\n\n" .
         'Each link opens a confirmation page first — nothing happens until you press the button there.';
+
+    // Detail rows for the HTML version (label + value per line, muted labels).
+    $kvRows = '';
+    $kv = function ($label, $value) use (&$kvRows) {
+        if ($value === '' || $value === null) {
+            return;
+        }
+        $kvRows .=
+            '<tr><td style="padding:4px 14px 4px 0;color:#8a8377;font-size:13px;white-space:nowrap;vertical-align:top;">' .
+            email_esc($label) .
+            '</td><td style="padding:4px 0;color:#2A2622;font-size:14px;">' .
+            $value .
+            '</td></tr>';
+    };
+    $kv('Email', email_esc($e['email'] ?? ''));
+    $kv('Phone', email_esc($e['phone'] ?? ''));
+    $kv('Address', email_esc($addr));
+    $kv('Times', email_esc($times));
+    $kv('Party', email_esc($party));
+    $kv('Est. price', email_esc($priceLine));
+
     $inner =
         email_h('New enquiry') .
         email_p(
@@ -808,10 +844,16 @@ function send_owner_enquiry_email($e)
                 email_esc($prop) .
                 '</strong>.',
         ) .
+        ($prior > 0
+            ? email_note('★ Returning guest — ' . $prior . ' completed stay' . ($prior === 1 ? '' : 's') . ' before this.')
+            : '') .
         email_p(
             email_esc(($e['check_in'] ?? '') . ' to ' . ($e['check_out'] ?? '')) . ' &middot; ' . email_esc($party),
             true,
         ) .
+        ($kvRows !== ''
+            ? '<table role="presentation" cellpadding="0" cellspacing="0" style="margin:6px 0 14px;border-collapse:collapse;">' . $kvRows . '</table>'
+            : '') .
         (!empty($e['message']) ? email_note(email_esc($e['message'])) : '') .
         email_btn($e['approve_url'], 'Review & approve') .
         email_p(
