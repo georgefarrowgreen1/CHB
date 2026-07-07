@@ -179,6 +179,7 @@ async function waitForServer(url, tries = 40) {
       const page = await newPage(browser, vp, 'admin-phone');
       await walkViews(page, [
         { key: 'admin-today', open: "(async () => { isAuthenticated = true; document.body.classList.add('owner-mode'); nav('view-backoffice'); await initBackOffice(); })()", mustSee: ['#today-panel', '#cal-body'] },
+        { key: 'admin-bookings', open: '(async () => { await openBookings(); })()', mustSee: ['#bookings-list'] },
         { key: 'admin-inbox', open: '(async () => { await openInbox(); })()', mustSee: ['#inbox-list', '#messages-list'] },
         { key: 'admin-money', open: '(async () => { await openAccounts(); })()', mustSee: ['#accounts-index'] },
         { key: 'admin-cottages', open: "(async () => { await openArea('cottages'); })()", mustSee: ['#settings-index'] },
