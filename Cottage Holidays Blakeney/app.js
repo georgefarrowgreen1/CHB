@@ -10922,6 +10922,11 @@ async function saveModal() {
                 child_rate: setup.child,
                 booking_fee: setup.deposit,
                 transaction_pct: setup.txnPct,
+                // Size the new cottage to this booking's party so it fits with no
+                // "over limit" prompt and no trip into Preferences to set caps.
+                max_adults: Math.max(1, adults),
+                max_children: Math.max(0, children),
+                max_total: Math.max(1, adults + children),
                 unlisted: 1,
             });
             if (!res || !res.prop_key) {
@@ -11364,7 +11369,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'w9d4m2xk';
+    const BUILD = 'x2f7q5vn';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
