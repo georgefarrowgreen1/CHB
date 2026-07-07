@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=117">
+    <link rel="stylesheet" href="app.css?v=118">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -880,14 +880,18 @@
 
         <div class="dashboard-header">
             <div>
-                <h1 class="section-title" style="margin-bottom: 5px;">Dashboard</h1>
-                <p class="lead" style="text-align: left; margin: 0;" id="bo-subtitle">Everything that needs you today, at a glance.</p>
+                <h1 class="section-title" style="margin: 0;">Dashboard</h1>
             </div>
         </div>
 
-        <!-- Find anything: bookings by name/email/ref + open enquiries. -->
-        <div class="bo-search">
-            <input type="search" class="input-glass" id="booking-search" placeholder="Find a booking or enquiry — name, email or booking ref…" autocomplete="off" oninput="bookingSearch(this.value)">
+        <!-- Find anything: bookings by name/email/ref + open enquiries. Collapsed
+             to a slim pill by default; expands to the full input on tap. -->
+        <div class="bo-search" id="bo-search">
+            <button type="button" class="bo-search-toggle" id="bo-search-toggle" onclick="toggleBoSearch()" title="Find a booking or enquiry" aria-label="Find a booking or enquiry">
+                <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+                <span>Find a booking or enquiry</span>
+            </button>
+            <input type="search" class="input-glass" id="booking-search" placeholder="Find a booking or enquiry — name, email or booking ref…" autocomplete="off" oninput="bookingSearch(this.value)" onkeydown="if(event.key==='Escape'){toggleBoSearch()}">
             <div id="booking-search-results"></div>
         </div>
 
@@ -917,8 +921,8 @@
                 </div>
 
                 <div class="cal-updated">
-                    <span id="cal-updated-text">External calendars: checking…</span>
-                    <button class="cal-refresh-btn" id="cal-refresh-btn" onclick="autoSyncIcalBlocks(true)" title="Refresh external bookings now"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-1.9 5.3"/><path d="M20 5v6h-6"/></svg> Refresh now</button>
+                    <span id="cal-updated-text"></span>
+                    <button class="cal-refresh-btn" id="cal-refresh-btn" onclick="autoSyncIcalBlocks(true)" title="Refresh external bookings now" aria-label="Refresh external bookings now"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-1.9 5.3"/><path d="M20 5v6h-6"/></svg></button>
                 </div>
 
                 <div class="glass-panel cal-panel">
@@ -2258,7 +2262,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=210"></script>
+    <script defer src="app.js?v=211"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

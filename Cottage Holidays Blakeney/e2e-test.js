@@ -168,7 +168,16 @@ async function waitForServer(url, tries = 40) {
       const allClearShown = !!ac && ac.style.display !== 'none';
       return visibleCards > 0 || allClearShown;
     })) ? pass('today panel rendered (action tiles or all-clear)') : fail('today panel incomplete');
-    ((await page.locator('#bo-subtitle').textContent()) || '').includes('—') ? pass('live subtitle set') : fail('dashboard subtitle not set');
+    // Compact search: collapsed to a pill by default; expands on toggle.
+    (await page.evaluate(() => {
+      const w = document.getElementById('bo-search');
+      if (!w) return false;
+      const collapsed = !w.classList.contains('open');
+      toggleBoSearch();
+      const opened = w.classList.contains('open') && getComputedStyle(document.getElementById('booking-search')).display !== 'none';
+      toggleBoSearch();
+      return collapsed && opened;
+    })) ? pass('compact search toggles') : fail('compact search broken');
     (await page.locator('#cal-body .cal-day, #cal-body > *').count()) > 20 ? pass('calendar grid rendered') : fail('calendar grid missing');
 
     console.log('== 5b. Back-office areas (dock reorg) ==');

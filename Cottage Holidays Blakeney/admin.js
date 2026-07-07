@@ -3684,6 +3684,8 @@ async function initBackOffice() {
         sb.value = '';
         bookingSearch('');
     }
+    const bsw = document.getElementById('bo-search');
+    if (bsw) bsw.classList.remove('open'); // reset to the compact pill on each visit
     showChangeoverToasts();
     // Quietly refresh external (Airbnb/Vrbo) bookings in the background so
     // cancelled or moved dates drop off on their own. Non-blocking + throttled.
@@ -3777,25 +3779,6 @@ function renderTodayPanel() {
                 </div>
                 </div>
                 <div id="today-allclear" class="today-allclear" style="display:${actionTiles.length ? 'none' : 'block'};"><span class="today-allclear-tick">✓</span> All clear — nothing needs you today.</div>`;
-    // A live one-line summary under the Dashboard title.
-    const sub = document.getElementById('bo-subtitle');
-    if (sub) {
-        const t = dpParse(today);
-        const pretty = t.toLocaleDateString('en-GB', {
-            weekday: 'long',
-            day: 'numeric',
-            month: 'long',
-        });
-        const bits = [];
-        if (arrivals.length)
-            bits.push(`${arrivals.length} arrival${arrivals.length === 1 ? '' : 's'}`);
-        if (departures.length)
-            bits.push(`${departures.length} departure${departures.length === 1 ? '' : 's'}`);
-        if (enqItems.length)
-            bits.push(`${enqItems.length} enquir${enqItems.length === 1 ? 'y' : 'ies'} waiting`);
-        sub.textContent =
-            pretty + ' — ' + (bits.length ? bits.join(', ') + '.' : 'nothing urgent today.');
-    }
     refreshTodayMessages();
 }
 // Fill the "Unread messages" today-card once the thread list arrives
@@ -3841,6 +3824,21 @@ function updateTodayAllClear() {
     // bottom margin doesn't leave a gap above the "All clear" line.
     grid.style.display = anyVisible ? '' : 'none';
     ac.style.display = anyVisible ? 'none' : 'block';
+}
+// Compact dashboard search: a slim icon/label pill by default that expands to
+// the full input on tap (and collapses + clears on Escape / re-tap).
+function toggleBoSearch() {
+    const w = document.getElementById('bo-search');
+    if (!w) return;
+    const open = w.classList.toggle('open');
+    const inp = document.getElementById('booking-search');
+    if (!inp) return;
+    if (open) {
+        inp.focus();
+    } else {
+        inp.value = '';
+        bookingSearch('');
+    }
 }
 // Quick find: filter bookings by guest name/email; click a result to open it.
 function bookingSearch(q) {
@@ -4002,16 +4000,19 @@ function renderCalUpdated() {
     const el = document.getElementById('cal-updated-text');
     if (!el) return;
     if (icalSyncing) {
-        el.textContent = 'External calendars: updating…';
+        el.textContent = 'Syncing…';
         return;
     }
     let last = 0;
     try {
         last = parseInt(localStorage.getItem(ICAL_LAST_SYNC_KEY) || '0', 10);
     } catch (e) {}
-    el.textContent = last
-        ? 'External calendars last updated ' + formatRelativeTime(last)
-        : 'External calendars: not synced yet';
+    // Stay quiet when the sync is recent — surface a note only when it's never
+    // run or has gone stale (>12h). The refresh icon is always available.
+    if (!last) el.textContent = 'External calendars not synced yet';
+    else if (Date.now() - last > 12 * 3600 * 1000)
+        el.textContent = 'External calendars updated ' + formatRelativeTime(last);
+    else el.textContent = '';
 }
 // Compact relative time for the inbox list: now / 5m / 3h / Yesterday / 3 Jun.
 function relTime(at) {
@@ -6471,22 +6472,24 @@ async function checkCronHealth() {
         if (pill) pill.style.display = 'none';
         return;
     }
-    // Always-on pill: positive confirmation when healthy, amber when quiet — so a
-    // stopped automation is obvious at a glance, not only via the loud banner.
+    // Exception-only pill: healthy automation stays hidden (a green "all fine"
+    // badge is just noise); it appears amber only when the daily job has gone
+    // quiet. A hard failure still raises the loud banner below.
     if (pill && d) {
-        const ago = !d.everRan
-            ? 'never run'
-            : d.ageHours >= 48
-              ? Math.round(d.ageHours / 24) + ' days ago'
-              : d.ageHours >= 1.5
-                ? Math.round(d.ageHours) + ' h ago'
-                : 'just now';
-        const ok = !d.stale;
-        pill.className = 'cron-pill ' + (ok ? 'ok' : 'warn');
-        pill.innerHTML =
-            `<span class="cron-pill-dot"></span>` +
-            (ok ? `Automation healthy · ran ${ago}` : `Automation quiet · ${ago}`);
-        pill.style.display = '';
+        if (d.stale) {
+            const ago = !d.everRan
+                ? 'never run'
+                : d.ageHours >= 48
+                  ? Math.round(d.ageHours / 24) + ' days ago'
+                  : d.ageHours >= 1.5
+                    ? Math.round(d.ageHours) + ' h ago'
+                    : 'just now';
+            pill.className = 'cron-pill warn';
+            pill.innerHTML = `<span class="cron-pill-dot"></span>Automation quiet · ${ago}`;
+            pill.style.display = '';
+        } else {
+            pill.style.display = 'none';
+        }
     }
     if (!d || !d.stale) {
         el.style.display = 'none';

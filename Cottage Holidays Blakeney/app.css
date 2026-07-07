@@ -3058,9 +3058,20 @@ textarea.input-glass.field-sm {
   border: 1px solid var(--glass-border);
   color: var(--text-muted);
   cursor: pointer;
-  font-size: 0.72rem;
-  padding: 5px 12px;
-  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px;
+  border-radius: 50%;
+}
+.cal-refresh-btn .ic {
+  width: 15px;
+  height: 15px;
+}
+/* When there's nothing to say (recent sync) the text is empty — don't let the
+   flex gap leave a phantom offset; the lone refresh icon just centres. */
+.cal-updated:has(#cal-updated-text:empty) {
+  gap: 0;
 }
 .cal-refresh-btn:hover {
   color: var(--text-light);
@@ -4765,6 +4776,42 @@ body.owner-mode .chat-widget {
 .bo-search {
   max-width: 720px;
   margin: 0 0 22px;
+}
+/* Collapsed to a slim pill; the full input appears when .open (toggleBoSearch). */
+.bo-search-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition:
+    color 0.2s var(--fluid-bezier),
+    border-color 0.2s var(--fluid-bezier),
+    background 0.2s var(--fluid-bezier);
+}
+.bo-search-toggle:hover {
+  color: var(--text-light);
+  border-color: var(--glass-highlight);
+  background: var(--glass-hover);
+}
+.bo-search-toggle .ic {
+  width: 16px;
+  height: 16px;
+}
+.bo-search #booking-search {
+  display: none;
+}
+.bo-search.open .bo-search-toggle {
+  display: none;
+}
+.bo-search.open #booking-search {
+  display: block;
 }
 /* "Waiting for approval" reads as a slim full-width banner rather than an
            orphan card leaving two empty grid cells (it appears only when needed). */
