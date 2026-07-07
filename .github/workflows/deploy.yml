@@ -96,7 +96,10 @@ jobs:
           REMOTE: ${{ secrets.IONOS_REMOTE_PATH }}
         run: |
           set -e
-          sudo apt-get update -qq && sudo apt-get install -y lftp
+          # Drop the flaky Microsoft/Azure apt repos (they intermittently serve an
+          # unsigned InRelease that fails apt-get update) — we only need lftp.
+          sudo rm -f /etc/apt/sources.list.d/*microsoft*.list /etc/apt/sources.list.d/*azure*.list 2>/dev/null || true
+          sudo apt-get update -qq -o Acquire::Retries=3 && sudo apt-get install -y lftp
           PORT="${PORT:-22}"
           REMOTE="${REMOTE:-/}"
           # mirror -R = push local->remote, recursively (includes dotfiles like .htaccess).
@@ -203,7 +206,10 @@ jobs:
           REMOTE: ${{ secrets.STAGING_REMOTE_PATH }}
         run: |
           set -e
-          sudo apt-get update -qq && sudo apt-get install -y lftp
+          # Drop the flaky Microsoft/Azure apt repos (they intermittently serve an
+          # unsigned InRelease that fails apt-get update) — we only need lftp.
+          sudo rm -f /etc/apt/sources.list.d/*microsoft*.list /etc/apt/sources.list.d/*azure*.list 2>/dev/null || true
+          sudo apt-get update -qq -o Acquire::Retries=3 && sudo apt-get install -y lftp
           PORT="${PORT:-22}"
           REMOTE="${REMOTE:-/}"
           lftp -u "$USERNAME" --env-password "sftp://$HOST:$PORT" -e "set sftp:auto-confirm yes; set net:max-retries 3; set net:reconnect-interval-base 5; mirror -R --verbose --no-perms --parallel=2 ./deploy/ \"$REMOTE\"; bye"
