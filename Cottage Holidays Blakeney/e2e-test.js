@@ -75,8 +75,9 @@ async function waitForServer(url, tries = 40) {
       if (url.includes('bookings.php')) {
         let act = ''; try { act = JSON.parse(post || '{}').action || ''; } catch (e) {}
         if (act === 'email_logs') return json({ logs: { '1': [
-          { action: 'email.confirmation', summary: 'Confirmation re-sent — Sarah Pemberton', at: d(0) + ' 09:15:00' },
-          { action: 'booking.email', summary: 'Emailed guest — Sarah Pemberton', at: d(0) + ' 10:20:00' },
+          { action: 'email.confirmation', summary: 'Confirmation re-sent — Sarah Pemberton', at: d(0) + ' 09:15:00', subject: '', body: '' },
+          { action: 'email.receipt', summary: 'Payment receipt emailed — £450.00 · Sarah Pemberton', at: d(0) + ' 09:40:00', subject: '', body: '' },
+          { action: 'booking.email', summary: 'Emailed guest — Sarah Pemberton', at: d(0) + ' 10:20:00', subject: 'Your booking — 21A Westgate', body: 'Hi Sarah,\nParking is on the street out front. See you soon!' },
         ] } });
         return json({ bookings });
       }
@@ -194,9 +195,15 @@ async function waitForServer(url, tries = 40) {
     await page.evaluate(() => { bookingsSetFilter('all'); bookingsSetSearch('sarah'); });
     await page.waitForTimeout(200);
     (await page.locator('#bookings-list .money-row').count()) === 1 ? pass('search "sarah" → 1 booking') : fail('search wrong: ' + (await page.locator('#bookings-list .money-row').count()));
-    // Per-booking email log: Sarah's booking has 2 logged emails; the other has none.
-    (await page.locator('#bookings-list .bk-email-log-row').count()) === 2 ? pass('email log lists sent emails (2)') : fail('email log wrong count: ' + (await page.locator('#bookings-list .bk-email-log-row').count()));
+    // Per-booking email log: Sarah's booking has 3 logged emails (incl. a payment receipt); the other has none.
+    (await page.locator('#bookings-list .bk-email-log-row').count()) === 3 ? pass('email log lists sent emails (3)') : fail('email log wrong count: ' + (await page.locator('#bookings-list .bk-email-log-row').count()));
     ((await page.locator('#bookings-list .bk-email-log-when').first().textContent()) || '').match(/\d{1,2} \w{3} \d{4}/) ? pass('email log shows a formatted date') : fail('email log date not formatted');
+    (await page.locator('#bookings-list .bk-email-log-what', { hasText: 'Payment receipt' }).count()) === 1 ? pass('payment receipt appears in the log') : fail('payment receipt not shown in log');
+    // The free-text message is expandable and reveals its body.
+    (await page.locator('#bookings-list details.bk-email-log-item').count()) === 1 ? pass('free-text message is expandable') : fail('expandable message missing');
+    await page.locator('#bookings-list details.bk-email-log-item > summary').first().click();
+    await page.waitForTimeout(150);
+    ((await page.locator('#bookings-list .bk-email-log-msg').first().textContent()) || '').includes('Parking is on the street') ? pass('expanding shows the message body') : fail('message body not revealed');
     await page.evaluate(() => { bookingsSetSearch('emma'); });
     await page.waitForTimeout(200);
     (await page.locator('#bookings-list .bk-email-log-empty').count()) === 1 ? pass('booking with no emails shows "None yet"') : fail('empty email log missing');

@@ -4409,6 +4409,40 @@ body.owner-mode .chat-widget {
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
+/* Expandable free-text message: reveals the subject + body that was sent. */
+.bk-email-log-item > summary {
+  list-style: none;
+  cursor: pointer;
+}
+.bk-email-log-item > summary::-webkit-details-marker {
+  display: none;
+}
+.bk-email-log-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.bk-email-log-chev {
+  color: var(--text-muted);
+  transition: transform 0.2s var(--fluid-bezier, ease);
+}
+.bk-email-log-item[open] > summary .bk-email-log-chev {
+  transform: rotate(90deg);
+}
+.bk-email-log-subj {
+  font-weight: 600;
+  color: var(--text-light);
+  font-size: 0.82rem;
+  margin: 4px 0 2px;
+}
+.bk-email-log-msg {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  padding: 2px 0 8px;
+  white-space: normal;
+  word-break: break-word;
+}
 /* Inbox sort control (soonest stay / newest / cottage). */
 .inbox-sort {
   display: flex;

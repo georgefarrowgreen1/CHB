@@ -322,6 +322,7 @@ function emailLogLabel(action) {
     return (
         {
             'email.confirmation': 'Booking confirmation',
+            'email.receipt': 'Payment receipt',
             'email.arrival': 'Arrival info',
             'booking.email': 'Message',
             'payment.request': 'Payment request',
@@ -443,11 +444,22 @@ function bookingEmailLogHtml(b) {
     if (!logs.length) {
         return `<div class="bk-email-log"><span class="bk-email-log-title">Emails sent</span><span class="bk-email-log-empty">None yet</span></div>`;
     }
+    const icon =
+        '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/></svg>';
     const rows = logs
-        .map(
-            (l) =>
-                `<div class="bk-email-log-row"><span class="bk-email-log-what"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/></svg>${escapeHtml(emailLogLabel(l.action))}</span><span class="bk-email-log-when">${escapeHtml(fmtLogWhen(l.at))}</span></div>`,
-        )
+        .map((l) => {
+            const what = `<span class="bk-email-log-what">${icon}${escapeHtml(emailLogLabel(l.action))}</span>`;
+            const when = `<span class="bk-email-log-when">${escapeHtml(fmtLogWhen(l.at))}</span>`;
+            // A free-text message carries a body → make it expandable to read it.
+            if (l.body) {
+                const subj = l.subject
+                    ? `<div class="bk-email-log-subj">${escapeHtml(l.subject)}</div>`
+                    : '';
+                const body = `<div class="bk-email-log-msg">${escapeHtml(l.body).replace(/\n/g, '<br>')}</div>`;
+                return `<details class="bk-email-log-item"><summary class="bk-email-log-row">${what}<span class="bk-email-log-right">${when}<span class="bk-email-log-chev">›</span></span></summary>${subj}${body}</details>`;
+            }
+            return `<div class="bk-email-log-row">${what}${when}</div>`;
+        })
         .join('');
     return `<div class="bk-email-log"><span class="bk-email-log-title">Emails sent (${logs.length})</span>${rows}</div>`;
 }
