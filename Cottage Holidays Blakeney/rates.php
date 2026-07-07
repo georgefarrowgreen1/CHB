@@ -13,7 +13,10 @@
 // ============================================================
 require_once __DIR__ . '/db.php';
 
-if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+// The public GET payload, as a function so bootstrap.php can serve the SAME data
+// in its combined first-paint response without duplicating this logic.
+function rates_public_payload()
+{
     $rows = db()->query('SELECT * FROM properties ORDER BY sort_order, name')->fetchAll();
     // Cast numerics for clean JSON
     foreach ($rows as &$r) {
@@ -49,7 +52,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         }
     } catch (\Throwable $e) {
     }
-    json_out(['properties' => $rows, 'seasons' => $seasons, 'occupancy' => occupancy_limits()]);
+    return ['properties' => $rows, 'seasons' => $seasons, 'occupancy' => occupancy_limits()];
+}
+
+// When bootstrap.php includes this file for the payload helper, stop before the
+// HTTP routing — the routes below run only when this file IS the request.
+if (basename($_SERVER['SCRIPT_NAME'] ?? '') !== 'rates.php') {
+    return;
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'GET') {
+    json_out(rates_public_payload());
 }
 
 $in = body();

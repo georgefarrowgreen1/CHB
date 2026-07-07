@@ -1493,7 +1493,12 @@ function setAuthUI() {
     // Owner signed in (any path: password, passkey, 2FA, session restore) →
     // start fetching the admin bundle now so the back office opens instantly.
     // Fire-and-forget: the facade stubs cover any call that beats the load.
+    // Also remember this is an owner device ('chb-owner') so FUTURE visits can
+    // warm the bundle during idle time before they even tap sign-in.
     if (isAuthenticated) {
+        try {
+            localStorage.setItem('chb-owner', '1');
+        } catch (e) {}
         try {
             loadAdminBundle().catch(() => {});
         } catch (e) {}
@@ -4029,9 +4034,10 @@ let siteContent = {};
 
 // Load shared content (text edits, image swaps, galleries) from the backend
 // and apply it, so every visitor sees the owner's edits — not just the editor.
-async function loadContent() {
+async function loadContent(pre) {
     try {
-        const res = await apiGet('content.php');
+        // `pre` = this endpoint's payload already fetched via bootstrap.php.
+        const res = pre || (await apiGet('content.php'));
         siteContent = res.content || {};
     } catch (e) {
         return;
@@ -4102,16 +4108,32 @@ function applyContentOverrides(root) {
 let liveUpdateTimer = null;
 let liveUpdateBusy = false;
 const LIVE_UPDATE_MS = 30000; // every ~30s (a marketing site doesn't need tighter; cuts idle polling 3×)
+// One combined fetch of the public first-paint data (rates + content + reviews
+// + Square config). Returns null on any failure so callers fall back to the
+// individual endpoints — never worse than the old four-call pattern. The
+// response is ETagged server-side, so a poll of an unchanged site is a ~0-byte
+// 304 the browser answers from its HTTP cache.
+async function fetchBootstrap() {
+    try {
+        const b = await apiGet('bootstrap.php');
+        return b && b.ok ? b : null;
+    } catch (e) {
+        return null;
+    }
+}
 async function liveUpdateTick() {
     if (isAuthenticated) return; // admin logged in — leave their data alone
     if (document.hidden) return; // tab not visible — save bandwidth
     if (liveUpdateBusy) return; // don't overlap a slow tick
     liveUpdateBusy = true;
     try {
+        // One round-trip instead of three; each loader still falls back to its
+        // own endpoint if the combined payload is missing its part.
+        const boot = await fetchBootstrap();
         await Promise.all([
-            loadRates().catch(() => {}),
-            loadContent().catch(() => {}),
-            loadPublicReviews().catch(() => {}),
+            loadRates(boot && boot.rates).catch(() => {}),
+            loadContent(boot && boot.content).catch(() => {}),
+            loadPublicReviews(boot && boot.reviews).catch(() => {}),
         ]);
         // Re-render the same public bits the initial boot does (data-only loaders
         // above don't touch the DOM themselves), so changes show up live.
@@ -4185,13 +4207,17 @@ window.addEventListener('DOMContentLoaded', async () => {
             const saved = localStorage.getItem(el.getAttribute('data-edit-img'));
             if (saved) el.style.backgroundImage = `url('${saved}')`;
         });
-        // Load live data from the backend. Each is wrapped so one failing
-        // never blocks the others or stops the page from revealing.
+        // Load live data from the backend — ONE bootstrap round-trip covers all
+        // four parts (rates/content/reviews/Square config). Each loader is still
+        // wrapped so one failing never blocks the others or stops the page from
+        // revealing, and each falls back to its own endpoint if the combined
+        // payload is unavailable or missing its part.
+        const boot = await fetchBootstrap();
         await Promise.all([
-            loadRates().catch((e) => console.error('loadRates', e)),
-            loadContent().catch((e) => console.error('loadContent', e)),
-            loadPublicReviews().catch((e) => console.error('loadPublicReviews', e)),
-            loadSquareAdminConfig().catch((e) => console.error('loadSquareAdminConfig', e)),
+            loadRates(boot && boot.rates).catch((e) => console.error('loadRates', e)),
+            loadContent(boot && boot.content).catch((e) => console.error('loadContent', e)),
+            loadPublicReviews(boot && boot.reviews).catch((e) => console.error('loadPublicReviews', e)),
+            loadSquareAdminConfig(boot && boot.square).catch((e) => console.error('loadSquareAdminConfig', e)),
         ]);
         try {
             renderCardPrices();
@@ -4271,6 +4297,23 @@ window.addEventListener('DOMContentLoaded', async () => {
         } catch (e) {
             console.error(e);
         }
+        // Owner devices ('chb-owner' set on any past sign-in): warm the admin
+        // bundle in the background during idle time, so tapping sign-in later
+        // opens the back office instantly. Low priority (prefetch), only when
+        // not already signed in (setAuthUI eager-loads it for real then).
+        try {
+            if (localStorage.getItem('chb-owner') === '1' && !isAuthenticated && !window.__ADMIN_LOADED) {
+                const warmAdmin = () => {
+                    const l = document.createElement('link');
+                    l.rel = 'prefetch';
+                    l.as = 'script';
+                    l.href = 'admin.js?v=' + ADMIN_BUNDLE_V;
+                    document.head.appendChild(l);
+                };
+                if ('requestIdleCallback' in window) requestIdleCallback(warmAdmin, { timeout: 5000 });
+                else setTimeout(warmAdmin, 2500);
+            }
+        } catch (e) {}
         try {
             if (currentGuest && 'Notification' in window && Notification.permission === 'granted')
                 enableArrivalPush();
@@ -5309,9 +5352,10 @@ function cottageSleepsLabel(k) {
 function persistRates() {
     /* rates are saved per-field via updateRate -> API */
 }
-async function loadRates() {
+async function loadRates(pre) {
     try {
-        const res = await apiGet('rates.php');
+        // `pre` = this endpoint's payload already fetched via bootstrap.php.
+        const res = pre || (await apiGet('rates.php'));
         const properties = res.properties;
         // Seasonal rates per property (may be absent if migration not run)
         propertySeasons = res.seasons || {};
@@ -5890,9 +5934,10 @@ async function updatePaymentField(bookingId, field, value) {
 
 // ---- Square online payments (admin) ----
 let squareAdminEnabled = false;
-async function loadSquareAdminConfig() {
+async function loadSquareAdminConfig(pre) {
     try {
-        const c = await apiGet('square-config.php');
+        // `pre` = this endpoint's payload already fetched via bootstrap.php.
+        const c = pre || (await apiGet('square-config.php'));
         squareAdminEnabled = !!c.enabled;
     } catch (e) {
         squareAdminEnabled = false;
@@ -7060,9 +7105,10 @@ async function accomRemovePhoto(k, i) {
 
 // ---- Guest reviews: public renderer + Settings editor ----
 let publicGuestReviews = []; // approved guest-submitted reviews
-async function loadPublicReviews() {
+async function loadPublicReviews(pre) {
     try {
-        const res = await apiGet('reviews.php');
+        // `pre` = this endpoint's payload already fetched via bootstrap.php.
+        const res = pre || (await apiGet('reviews.php'));
         publicGuestReviews = Array.isArray(res.reviews) ? res.reviews : [];
     } catch (e) {
         /* keep last-good reviews on a transient failure */
@@ -10907,7 +10953,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'x8b3t6mv';
+    const BUILD = 'z2q7c4hw';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
