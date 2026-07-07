@@ -6717,7 +6717,11 @@ function dashGo(target) {
 function renderOccupancyHeatmap() {
     const host = document.getElementById('occupancy-heatmap');
     if (!host) return;
-    const keys = typeof liveCottageKeys === 'function' ? liveCottageKeys() : Object.keys(propertyMeta);
+    // Show every BOOKABLE cottage — including private (unlisted) ones — so the
+    // owner sees their real availability at a glance and can spot a private let
+    // right next to the public cottages (they're marked with a padlock).
+    const keys =
+        typeof bookableCottageKeys === 'function' ? bookableCottageKeys() : Object.keys(propertyMeta);
     if (!keys.length) {
         host.innerHTML = '';
         return;
@@ -6736,6 +6740,7 @@ function renderOccupancyHeatmap() {
     const rows = keys
         .map((k) => {
             const meta = propertyMeta[k] || { name: k, short: k };
+            const priv = !!meta.unlisted;
             const cells = dates
                 .map((ds) => {
                     let st = 'free';
@@ -6747,7 +6752,12 @@ function renderOccupancyHeatmap() {
                     return `<span class="occ-cell occ-${st}" title="${escapeHtml(meta.name + ' · ' + ds + ' · ' + word)}"></span>`;
                 })
                 .join('');
-            return `<div class="occ-row"><span class="occ-name" title="${escapeHtml(meta.name)}">${escapeHtml(meta.short || meta.name)}</span><span class="occ-cells">${cells}</span></div>`;
+            // A private cottage gets a small padlock inside the fixed-width name
+            // cell (overflow-hidden, so it never affects the row width/layout).
+            const lock = priv
+                ? '<svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:2px;opacity:0.75;" aria-hidden="true"><rect x="4" y="10.5" width="16" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg>'
+                : '';
+            return `<div class="occ-row"><span class="occ-name" title="${escapeHtml(meta.name + (priv ? ' (private)' : ''))}">${lock}${escapeHtml(meta.short || meta.name)}</span><span class="occ-cells">${cells}</span></div>`;
         })
         .join('');
     const pct = total ? Math.round((filled / total) * 100) : 0;
