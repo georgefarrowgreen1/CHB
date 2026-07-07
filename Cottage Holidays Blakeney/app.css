@@ -4855,6 +4855,18 @@ body.owner-mode .chat-widget {
   flex-wrap: wrap;
   margin: 0 0 0 auto;
 }
+/* Per-type links inside the "Waiting for approval" card — each pending type
+   (reviews / photos / experiences) navigates to its own queue. */
+.approve-line {
+  color: var(--text-light);
+  text-decoration: underline;
+  text-decoration-color: var(--glass-highlight);
+  text-underline-offset: 3px;
+  cursor: pointer;
+}
+.approve-line:hover {
+  color: var(--accent);
+}
 /* "All clear" line — shown in place of the action tiles when nothing needs the
    owner today (see updateTodayAllClear). A quiet, reassuring full-width note. */
 .today-allclear {

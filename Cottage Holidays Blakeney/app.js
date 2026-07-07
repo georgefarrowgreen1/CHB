@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 27;
+const ADMIN_BUNDLE_V = 28;
 let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
@@ -9958,14 +9958,37 @@ window.addEventListener('popstate', (ev) => {
         try {
             if (st.view === 'view-inbox') {
                 nav('view-inbox'); // nav() repaints the inbox screen
+                // Restore the exact level: a sub-folder if one was open, else
+                // make sure the main list shows (Back out of a sub-folder).
+                if (st.inboxSub) inboxSub(st.inboxSub);
+                else inboxSubClose();
             } else if (st.view === 'view-settings') {
                 nav('view-settings');
-                if (st.section) settingsOpen(st.section);
-                else settingsShowIndex();
+                // Restore the dock area first so the index/section shows the
+                // right area's rows and highlight.
+                if (st.area) {
+                    currentAdminArea = st.area;
+                    try { syncDockArea(); } catch (e) {}
+                }
+                if (st.section) {
+                    settingsOpen(st.section);
+                    // Walk back down any deep drill-down (cottage editor,
+                    // per-cottage calendar/cancellation) that was open.
+                    if (st.prop && st.section === 'accom') {
+                        settingsOpenAccom(st.prop);
+                        if (st.accomSec) settingsOpenAccomSec(st.prop, st.accomSec);
+                    } else if (st.prop && st.section === 'calendar') {
+                        Promise.resolve(settingsOpenCalendar(st.prop)).catch(() => {});
+                    } else if (st.prop && st.section === 'cancel') {
+                        settingsOpenCancel(st.prop);
+                    }
+                } else settingsShowIndex();
             } else if (st.view === 'view-accounts') {
                 nav('view-accounts');
                 if (st.section) accountsOpen(st.section);
                 else accountsShowIndex();
+            } else if (st.view === 'view-bookings') {
+                Promise.resolve(openBookings()).catch(() => {});
             } else {
                 nav('view-backoffice');
                 Promise.resolve(initBackOffice()).catch(() => {});
@@ -11554,7 +11577,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'rkbbppw5';
+    const BUILD = 'sl4bwj9i';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
