@@ -3750,91 +3750,33 @@ function renderTodayPanel() {
         const tag = `<span class="prop-tag tag-${e.propKey}">${propertyMeta[e.propKey] ? propertyMeta[e.propKey].short : e.propKey}</span>`;
         return `${tag} ${escapeHtml((e.name || '').split(' ')[0])} · ${e.checkIn || ''}`;
     });
-    const occ = cottageMonthOccupancy();
-    const occBars = osHBars(
-        Object.keys(propertyMeta).map((k) => ({
-            label: propertyMeta[k].name,
-            value: occ[k].nights,
-            max: occ[k].total,
-            valLabel: occ[k].pct + '%',
-            color: `var(--prop-${k})`,
-        })),
-    );
-    // Next 7 days at a glance: every arrival/departure, with same-day
-    // changeovers (out + in at the same cottage) flagged — that's the day
-    // the cleaning window is tight.
-    const weekDays = [];
-    for (let i = 0; i < 7; i++) {
-        const dObj = dpParse(today);
-        dObj.setDate(dObj.getDate() + i);
-        const ds = formatDashed(dObj);
-        const ins = [],
-            outs = [],
-            flips = [];
-        Object.keys(dbBookings).forEach((propKey) => {
-            const tag = `<span class="prop-tag tag-${propKey}">${propertyMeta[propKey] ? propertyMeta[propKey].short : propKey}</span>`;
-            let hasIn = false,
-                hasOut = false;
-            (dbBookings[propKey] || []).forEach((b) => {
-                const nm = escapeHtml((b.name || '').split(' ')[0]);
-                if (b.checkIn === ds) {
-                    ins.push(`${tag} ${nm}`);
-                    hasIn = true;
-                }
-                if (b.checkOut === ds) {
-                    outs.push(`${tag} ${nm}`);
-                    hasOut = true;
-                }
-            });
-            if (hasIn && hasOut)
-                flips.push(propertyMeta[propKey] ? propertyMeta[propKey].short : propKey);
-        });
-        weekDays.push({
-            label: dObj.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' }),
-            isToday: i === 0,
-            ins,
-            outs,
-            flips,
-        });
-    }
-    const weekStrip = `<div class="ws-row">${weekDays
-        .map(
-            (d) => `
-                <div class="ws-day${d.isToday ? ' is-today' : ''}${d.flips.length ? ' has-flip' : ''}">
-                    <div class="ws-date">${d.label}</div>
-                    ${d.flips.length ? `<div class="ws-flip" title="Same-day changeover — checkout and check-in at the same cottage">⇄ ${d.flips.join(' · ')}</div>` : ''}
-                    ${d.outs.map((x) => `<div class="ws-item ws-out">← ${x}</div>`).join('')}
-                    ${d.ins.map((x) => `<div class="ws-item ws-in">→ ${x}</div>`).join('')}
-                    ${!d.ins.length && !d.outs.length ? '<div class="ws-none">—</div>' : ''}
-                </div>`,
-        )
-        .join('')}</div>`;
+    // Only surface the things that actually need you today — a wall of zeros is
+    // noise. Non-zero action tiles are rendered; when there are none (and no
+    // unread messages / nothing to approve) the "All clear" line shows instead.
+    const actionTiles = [];
+    if (enqItems.length)
+        actionTiles.push(card('Enquiries to answer', enqItems, 'color:#FFA726;', 'enquiries'));
+    if (arrivals.length) actionTiles.push(card('Arrivals today', arrivals, '', 'calendar'));
+    if (departures.length) actionTiles.push(card('Departures today', departures, '', 'calendar'));
+    if (dueSoon.length)
+        actionTiles.push(card('Balances due (7 days)', dueSoon, 'color:#FFA726;', 'money'));
+    if (toReturn.length)
+        actionTiles.push(card('Deposits to return', toReturn, 'color:#FFA726;', 'money'));
     el.innerHTML = `<h2 style="font-family:var(--font-serif);font-size:1.3rem;font-weight:400;margin:0 0 12px;">Today &amp; this week</h2>
                 <div class="today-grid">
-                ${card('Enquiries to answer', enqItems, enqItems.length ? 'color:#FFA726;' : '', 'enquiries')}
-                <div class="today-card clickable" id="today-msgs-card" role="button" tabindex="0" onclick="dashGo('messages')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();dashGo('messages')}">
+                ${actionTiles.join('')}
+                <div class="today-card clickable" id="today-msgs-card" style="display:none;" role="button" tabindex="0" onclick="dashGo('messages')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();dashGo('messages')}">
                     <div class="today-card-label">Unread messages</div>
                     <div class="today-card-value" id="today-msgs-value">–</div>
-                    <div class="today-card-list" id="today-msgs-list"><span style="color:var(--text-muted);">Checking…</span></div>
+                    <div class="today-card-list" id="today-msgs-list"></div>
                 </div>
-                ${card('Arrivals today', arrivals, '', 'calendar')}
-                ${card('Departures today', departures, '', 'calendar')}
-                ${card('Balances due (7 days)', dueSoon, dueSoon.length ? 'color:#FFA726;' : '', 'money')}
-                ${card('Deposits to return', toReturn, toReturn.length ? 'color:#FFA726;' : '', 'money')}
                 <div class="today-card today-approve" id="today-approve-card" style="display:none;" role="button" tabindex="0" onclick="dashGo(this.dataset.go || 'enquiries')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();dashGo(this.dataset.go || 'enquiries')}">
                     <div class="today-card-label">Waiting for approval</div>
                     <div class="today-card-value" id="today-approve-value">–</div>
                     <div class="today-card-list" id="today-approve-list"></div>
                 </div>
-                <div class="today-card week-strip" style="grid-column:1/-1;">
-                    <div class="today-card-label">Next 7 days</div>
-                    ${weekStrip}
                 </div>
-                <div class="today-card occ-by-cottage" style="grid-column:1/-1;">
-                    <div class="today-card-label">Occupancy this month · by cottage</div>
-                    <div class="occ-bars" style="margin-top:12px;">${occBars}</div>
-                </div>
-            </div>`;
+                <div id="today-allclear" class="today-allclear" style="display:${actionTiles.length ? 'none' : 'block'};"><span class="today-allclear-tick">✓</span> All clear — nothing needs you today.</div>`;
     // A live one-line summary under the Dashboard title.
     const sub = document.getElementById('bo-subtitle');
     if (sub) {
@@ -3859,31 +3801,43 @@ function renderTodayPanel() {
 // Fill the "Unread messages" today-card once the thread list arrives
 // (best-effort; the card just shows 0 if messages can't load).
 async function refreshTodayMessages() {
+    const card = document.getElementById('today-msgs-card');
     const val = document.getElementById('today-msgs-value');
     const list = document.getElementById('today-msgs-list');
-    if (!val || !list) return;
+    if (!card || !val || !list) return;
     let threads = [];
     try {
         const r = await apiPost('messages.php', { action: 'threads', archived: 0 });
         threads = r.threads || [];
     } catch (e) {
-        val.textContent = '0';
-        list.innerHTML = '<span style="color:var(--text-muted);">Nothing</span>';
+        card.style.display = 'none';
+        updateTodayAllClear();
         return;
     }
     const unreadThreads = threads.filter((t) => (t.unread || 0) > 0);
     const unread = unreadThreads.reduce((s, t) => s + (t.unread || 0), 0);
+    // Only show the tile when there's actually something unread.
+    card.style.display = unread > 0 ? '' : 'none';
     val.textContent = unread;
     val.style.color = unread ? '#FFA726' : '';
-    list.innerHTML = unreadThreads.length
-        ? unreadThreads
-              .slice(0, 4)
-              .map((t) => `<div>${escapeHtml(t.name || t.email || 'Visitor')} · ${t.unread}</div>`)
-              .join('') +
-          (unreadThreads.length > 4
-              ? `<div style="color:var(--text-muted);">+${unreadThreads.length - 4} more</div>`
-              : '')
-        : '<span style="color:var(--text-muted);">Nothing</span>';
+    list.innerHTML = unreadThreads
+        .slice(0, 4)
+        .map((t) => `<div>${escapeHtml(t.name || t.email || 'Visitor')} · ${t.unread}</div>`)
+        .join('') +
+        (unreadThreads.length > 4
+            ? `<div style="color:var(--text-muted);">+${unreadThreads.length - 4} more</div>`
+            : '');
+    updateTodayAllClear();
+}
+// Show the "All clear" line only when no action tile is visible in the Today grid.
+function updateTodayAllClear() {
+    const grid = document.querySelector('#today-panel .today-grid');
+    const ac = document.getElementById('today-allclear');
+    if (!grid || !ac) return;
+    const anyVisible = [...grid.querySelectorAll('.today-card')].some(
+        (c) => c.style.display !== 'none',
+    );
+    ac.style.display = anyVisible ? 'none' : 'block';
 }
 // Quick find: filter bookings by guest name/email; click a result to open it.
 function bookingSearch(q) {
@@ -7007,22 +6961,15 @@ function renderOwnerSummary() {
 
     const paidFrac =
         received + outstanding > 0 ? received / (received + outstanding) : received > 0 ? 1 : 0;
+    // Slim money/at-a-glance row (occupancy lives in the heatmap below; website
+    // visits live in Marketing → Analytics — neither belongs on the ops summary).
     el.innerHTML = `
-                <div class="os-card clickable" role="button" tabindex="0" onclick="dashGo('analytics')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();dashGo('analytics')}" title="View visitor analytics"><div class="os-label">Visits this week</div>
-                    <div class="os-value" id="os-visits">—</div>
-                    <svg class="os-spark" id="os-visits-spark" viewBox="0 0 100 36" preserveAspectRatio="none" aria-hidden="true"></svg>
-                    <div class="os-sub" id="os-visits-sub">last 7 days</div></div>
-                <div class="os-card clickable" role="button" tabindex="0" onclick="dashGo('calendar')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();dashGo('calendar')}" title="See the calendar"><div class="os-label">Occupancy (${monthName})</div>
-                    <div class="os-donut-row">${osDonut(occ, 'var(--accent)')}
-                        <div class="os-donut-meta"><div class="os-sub" style="margin-top:0;">${nightsThisMonth} of ${totalRoomNights}<br>cottage-nights</div></div>
-                    </div></div>
-                <div class="os-card clickable" role="button" tabindex="0" onclick="dashGo('money')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();dashGo('money')}" title="Open Money — payments & balances"><div class="os-label">Received</div>
+                <div class="os-card clickable" role="button" tabindex="0" onclick="dashGo('money')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();dashGo('money')}" title="Open Money — payments & balances"><div class="os-label">Received (${monthName})</div>
                     <div class="os-value os-good">${gbp(received)}</div>
                     <div class="os-bar"><span style="width:${Math.round(paidFrac * 100)}%;"></span></div>
                     <div class="os-sub">${outstanding > 0.001 ? gbp(outstanding) + ' outstanding · ' + unpaidUpcoming + ' unpaid' : 'All upcoming stays paid'}</div></div>
                 <div class="os-card clickable" role="button" tabindex="0" onclick="dashGo('calendar')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();dashGo('calendar')}" title="See upcoming arrivals on the calendar"><div class="os-label">Arrivals (next 30 days)</div>
                     <div class="os-value">${arrivals30}</div><div class="os-sub">guests checking in</div></div>`;
-    refreshHomeVisits();
 }
 // Radial donut gauge (inline SVG) for a 0–100 percentage.
 function osDonut(pct, color) {
@@ -7871,6 +7818,9 @@ async function refreshModerationCounts() {
                 ].join('');
         } else cardEl.style.display = 'none';
     }
+    try {
+        updateTodayAllClear();
+    } catch (e) {}
 }
 async function loadExperiencesAdmin() {
     const wrap = document.getElementById('exp-admin');

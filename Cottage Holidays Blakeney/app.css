@@ -4788,6 +4788,32 @@ body.owner-mode .chat-widget {
   flex-wrap: wrap;
   margin: 0 0 0 auto;
 }
+/* "All clear" line — shown in place of the action tiles when nothing needs the
+   owner today (see updateTodayAllClear). A quiet, reassuring full-width note. */
+.today-allclear {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 20px;
+  background: rgba(67, 160, 71, 0.08);
+  border: 1px solid rgba(67, 160, 71, 0.28);
+  border-radius: var(--r-lg);
+  color: var(--text-muted);
+  font-size: 0.98rem;
+}
+.today-allclear-tick {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--ok);
+  color: #fff;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
 /* Cron dead-man's-switch banner (dashboard) */
 .cron-alert {
   display: flex;

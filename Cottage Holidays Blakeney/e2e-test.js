@@ -158,7 +158,16 @@ async function waitForServer(url, tries = 40) {
     console.log('== 5. Admin dashboard renders ==');
     await page.evaluate(async () => { isAuthenticated = true; document.body.classList.add('owner-mode'); nav('view-backoffice'); await initBackOffice(); });
     await page.waitForTimeout(1200);
-    (await page.locator('#today-panel .today-card').count()) >= 6 ? pass('today panel cards rendered') : fail('today panel incomplete');
+    // Today panel now hides zero tiles: it shows the non-zero action cards, or a
+    // single "All clear" line when nothing needs the owner. Either is a valid render.
+    (await page.evaluate(() => {
+      const grid = document.querySelector('#today-panel .today-grid');
+      const ac = document.getElementById('today-allclear');
+      if (!grid) return false;
+      const visibleCards = [...grid.querySelectorAll('.today-card')].filter((c) => c.style.display !== 'none').length;
+      const allClearShown = !!ac && ac.style.display !== 'none';
+      return visibleCards > 0 || allClearShown;
+    })) ? pass('today panel rendered (action tiles or all-clear)') : fail('today panel incomplete');
     ((await page.locator('#bo-subtitle').textContent()) || '').includes('—') ? pass('live subtitle set') : fail('dashboard subtitle not set');
     (await page.locator('#cal-body .cal-day, #cal-body > *').count()) > 20 ? pass('calendar grid rendered') : fail('calendar grid missing');
 
