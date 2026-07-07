@@ -10615,32 +10615,55 @@ function closeModal() {
     document.getElementById('modal-error').style.display = 'none';
 }
 
-// Rebuild the Add/Edit-booking cottage picker from the live property list so the
+// Fill the Property box's autocomplete list from the live property list so the
 // owner can book ANY of their cottages — including owner-added and PRIVATE
-// (unlisted) ones — not just the three hardcoded in the markup. Private cottages
-// are labelled so they're distinguishable. `selectedKey` is force-included even
-// if archived, so editing an old booking on a removed cottage still works. Falls
-// back to the static <option>s if the rates haven't loaded yet.
+// (unlisted) ones. The field is a free-text combobox: pick a suggestion, or type
+// a brand-new name (which becomes a new private cottage on save — see saveModal).
+// `selectedKey` is force-included even if archived, so editing an old booking on
+// a removed cottage still lists it. Falls back to the static <option>s if the
+// rates haven't loaded yet.
 function populateBookingPropertySelect(selectedKey) {
-    const sel = document.getElementById('modal-property');
-    if (!sel) return;
+    const list = document.getElementById('modal-property-list');
+    if (!list) return;
     const keys =
         typeof bookableCottageKeys === 'function' ? bookableCottageKeys() : [];
     if (selectedKey && !keys.includes(selectedKey)) keys.unshift(selectedKey);
     if (!keys.length) return; // rates not loaded — keep the static fallback options
-    sel.innerHTML = keys
+    list.innerHTML = keys
         .map((k) => {
             const meta = propertyMeta[k] || {};
             const name = meta.name || k;
-            const priv = meta.unlisted ? ' (private)' : '';
-            return `<option value="${escapeHtml(k)}">${escapeHtml(name)}${priv}</option>`;
+            const priv = meta.unlisted ? ' — private' : '';
+            // datalist option: value fills the box, the text is a hint shown in
+            // the dropdown (marks private cottages).
+            return `<option value="${escapeHtml(name)}">${escapeHtml(name)}${priv}</option>`;
         })
         .join('');
+}
+// Resolve the Property box's free text to a real cottage prop_key. Matches an
+// existing cottage by exact key or (trimmed, case-insensitively) by name —
+// including archived ones, so editing an old booking still resolves. Returns ''
+// when the text names a cottage that doesn't exist yet; saveModal then offers to
+// create it as a private cottage.
+function resolveModalPropKey(raw) {
+    const v = String(raw || '').trim();
+    if (!v) return '';
+    if (propertyMeta[v]) return v; // typed an exact prop_key
+    const lc = v.toLowerCase();
+    for (const k of Object.keys(propertyMeta)) {
+        const nm = ((propertyMeta[k] && propertyMeta[k].name) || '').trim().toLowerCase();
+        if (nm && nm === lc) return k;
+    }
+    return '';
 }
 // Small helpers to read/write the modal field set
 function setModalFields(f) {
     populateBookingPropertySelect(f.propKey || '');
-    document.getElementById('modal-property').value = f.propKey || (document.getElementById('modal-property').options[0] || {}).value || '21a';
+    // The box shows the cottage NAME (free-text combobox). Blank for a new Add so
+    // the owner can type or pick; the booking's cottage name when editing.
+    document.getElementById('modal-property').value = f.propKey
+        ? (propertyMeta[f.propKey] || {}).name || f.propKey
+        : '';
     document.getElementById('modal-name').value = f.name || '';
     document.getElementById('modal-email').value = f.email || '';
     document.getElementById('modal-phone').value = f.phone || '';
@@ -10671,7 +10694,8 @@ function setModalFields(f) {
 function updateModalPrice() {
     const box = document.getElementById('modal-price-box');
     if (!box) return;
-    const propKey = document.getElementById('modal-property').value;
+    const propRaw = document.getElementById('modal-property').value;
+    const propKey = resolveModalPropKey(propRaw);
     const checkIn = document.getElementById('modal-checkin').value;
     const checkOut = document.getElementById('modal-checkout').value;
     const adults = Math.max(1, parseInt(document.getElementById('modal-adults').value, 10) || 0);
@@ -10681,6 +10705,15 @@ function updateModalPrice() {
     );
     if (!checkIn || !checkOut || checkOut <= checkIn) {
         box.innerHTML = `<p style="color: var(--text-muted); font-size: 0.85rem; text-align: center; margin: 0;">Enter valid dates to see the total.</p>`;
+        return;
+    }
+    // A name that isn't an existing cottage yet → it'll be created as a private
+    // cottage on save; there's no rate to price against until then.
+    if (!propKey) {
+        const nm = String(propRaw || '').trim();
+        box.innerHTML = nm
+            ? `<p style="color: var(--text-muted); font-size: 0.85rem; text-align: center; margin: 0;">“${escapeHtml(nm)}” will be created as a new private cottage — you'll set its nightly rate when you save, then the total appears here.</p>`
+            : `<p style="color: var(--text-muted); font-size: 0.85rem; text-align: center; margin: 0;">Choose or type a property.</p>`;
         return;
     }
     const depEl = document.getElementById('modal-damages-deposit');
@@ -10748,7 +10781,8 @@ function togglePaymentField(show) {
 async function saveModal() {
     const mode = document.getElementById('modal-mode').value;
     const id = document.getElementById('modal-record-id').value;
-    const propKey = document.getElementById('modal-property').value;
+    const propRaw = document.getElementById('modal-property').value;
+    let propKey = resolveModalPropKey(propRaw);
     const name = document.getElementById('modal-name').value.trim();
     const email = document.getElementById('modal-email').value.trim();
     const phone = document.getElementById('modal-phone').value.trim();
@@ -10784,6 +10818,49 @@ async function saveModal() {
     if (checkOut <= checkIn) {
         showErr('Check-out must be after check-in.');
         return;
+    }
+
+    // Resolve the Property box. A name that isn't one of the owner's cottages yet
+    // becomes a NEW PRIVATE cottage (they're asked for a nightly rate) so the
+    // booking still gets full pricing / occupancy / money — same as a listed
+    // cottage, just hidden from the public website.
+    if (!propKey) {
+        const nm = String(propRaw || '').trim();
+        if (!nm) {
+            showErr('Choose or type a property.');
+            return;
+        }
+        if (
+            !(await glassConfirm(
+                `“${nm}” isn't one of your cottages yet.\n\nCreate it as a PRIVATE cottage — hidden from your website but bookable here — and use it for this booking?`,
+            ))
+        )
+            return;
+        const rateStr = await glassPrompt(`Nightly price for a couple at “${nm}” (£):`, '');
+        if (rateStr === null) return;
+        const rate = parseFloat(rateStr);
+        if (!(rate > 0)) {
+            showErr('Enter a nightly couple rate above £0 for the new cottage.');
+            return;
+        }
+        try {
+            const res = await apiPost('rates.php', {
+                action: 'create',
+                name: nm,
+                couple_rate: rate,
+                unlisted: 1,
+            });
+            if (!res || !res.prop_key) {
+                showErr('Could not create the cottage — please try again.');
+                return;
+            }
+            propKey = res.prop_key;
+            await loadRates(); // so propertyMeta / occupancy / pricing know about it
+            if (typeof toast === 'function') toast(`Created private cottage “${nm}”.`);
+        } catch (e) {
+            showErr("Couldn't create the cottage: " + (e && e.message ? e.message : e));
+            return;
+        }
     }
 
     // Occupancy limit — owner can override with confirmation (e.g. a cot, an exception)
@@ -11213,7 +11290,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'k7m2v9xb';
+    const BUILD = 'r3t8w5np';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
