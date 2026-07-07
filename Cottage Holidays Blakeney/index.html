@@ -1089,6 +1089,18 @@
                 </button>
             </div>
 
+            <div class="settings-section-label" data-area="marketing">To approve</div>
+            <div class="settings-group" data-area="marketing">
+                <button class="settings-row" data-kw="stars ratings testimonials airbnb import approve moderate" onclick="settingsOpen('reviews')">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 17.77 6.8 19.5l.99-5.78-4.21-4.1 5.82-.85z"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Reviews <span id="reviews-pending-badge" style="display:none;background:#E5533C;color:#fff;font-size:0.62rem;font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:middle;"></span></span><span class="settings-row-sub">Approve guest reviews &amp; import reviews from Airbnb</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" data-kw="ugc pictures gallery approve moderate guest photos" onclick="settingsOpen('photos')">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.2"/><path d="M8 6l1.5-2h5L16 6"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Guest photos <span id="photos-pending-badge" style="display:none;background:#E5533C;color:#fff;font-size:0.62rem;font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:middle;"></span></span><span class="settings-row-sub">Approve photos guests share</span></span><span class="settings-row-chev">›</span>
+                </button>
+            </div>
+
             <div class="settings-section-label" data-area="marketing">Website &amp; content</div>
             <div class="settings-group" data-area="marketing">
                 <button class="settings-row" data-kw="hero banner images text logo site name navigation menu labels seo homepage" onclick="settingsOpen('content')">
@@ -1098,14 +1110,6 @@
                 <button class="settings-row" data-kw="things to do local guide attractions suggestions moderate" onclick="settingsOpen('experiences')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15.6 8.4l-2.1 5.1-5.1 2.1 2.1-5.1z"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Experiences <span id="exp-pending-badge" style="display:none;background:#E5533C;color:#fff;font-size:0.62rem;font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:middle;"></span></span><span class="settings-row-sub">Local things to do &amp; approve guest suggestions</span></span><span class="settings-row-chev">›</span>
-                </button>
-                <button class="settings-row" data-kw="stars ratings testimonials airbnb import approve moderate" onclick="settingsOpen('reviews')">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 17.77 6.8 19.5l.99-5.78-4.21-4.1 5.82-.85z"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Reviews <span id="reviews-pending-badge" style="display:none;background:#E5533C;color:#fff;font-size:0.62rem;font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:middle;"></span></span><span class="settings-row-sub">Approve guest reviews &amp; import reviews from Airbnb</span></span><span class="settings-row-chev">›</span>
-                </button>
-                <button class="settings-row" data-kw="ugc pictures gallery approve moderate guest photos" onclick="settingsOpen('photos')">
-                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.2"/><path d="M8 6l1.5-2h5L16 6"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Guest photos <span id="photos-pending-badge" style="display:none;background:#E5533C;color:#fff;font-size:0.62rem;font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:middle;"></span></span><span class="settings-row-sub">Approve photos guests share</span></span><span class="settings-row-chev">›</span>
                 </button>
             </div>
 
@@ -1228,7 +1232,7 @@
                 </div>
             </div>
 
-            <!-- System check (diagnostics) -->
+            <!-- Seasonal rates — all cottages in one grid -->
             <div class="settings-sec" id="sec-seasongrid" style="display:none;">
                 <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 14px;">Set seasonal nightly rates for every cottage side by side. The same date bands apply across the row; each cottage gets its own price.</p>
                 <div id="season-grid-wrap"></div>
@@ -1305,11 +1309,15 @@
                     <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 12px;">Guests can write a review from their account once a stay is complete. Nothing appears on the site until you approve it here.</p>
                     <div id="guest-review-moderation"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
 
+                    <!-- Import + Google-link are occasional setup tasks, tucked under a
+                         disclosure so the "approve" queue above leads. -->
+                    <details class="help-disclosure" style="margin-top:22px;">
+                      <summary>Import reviews &amp; Google review link</summary>
                     <!-- Imported reviews: paste reviews from Airbnb / Vrbo / Booking.com /
                          Google (your own genuine reviews from other platforms). Each is
                          shown on the cottage page tagged with its source and counts toward
                          that cottage's rating. Stored in siteContent.reviews. -->
-                    <div style="margin-top:26px;border-top:1px solid var(--glass-border);padding-top:18px;">
+                    <div style="margin-top:14px;">
                         <h3 style="font-family:var(--font-serif);font-size:1.15rem;margin:0 0 6px;">Add reviews from Airbnb &amp; other sites</h3>
                         <p style="font-size:0.78rem;color:var(--text-muted);margin:2px 0 12px;line-height:1.5;">Copy your reviews from your Airbnb (or Vrbo / Booking.com / Google) host dashboard and paste them below. Pick the cottage and where they came from, then paste — each one is added as an editable row that you check and save. They appear on that cottage's page tagged with the source and count toward its rating.</p>
                         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
@@ -1340,6 +1348,7 @@
                             <span id="google-review-url-msg" style="font-size:0.8rem;"></span>
                         </div>
                     </div>
+                    </details>
                 </div>
             </div>
 
@@ -1405,7 +1414,11 @@
 
             <!-- Calendar sync (cottage list → per-cottage detail) -->
             <div class="settings-sec" id="sec-calendar" style="display:none;">
-                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 16px;">Share booked dates between this site and Airbnb/Vrbo, per cottage. <strong>To send your dates out:</strong> copy the link below into Airbnb/Vrbo. <strong>To bring their dates in:</strong> paste their calendar links here. Calendars refresh every few hours, so on very busy days a date could briefly show free on both sites before it catches up.</p>
+                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 10px;">Share booked dates with Airbnb/Vrbo, per cottage — copy your link out, paste theirs in.</p>
+                <details class="help-disclosure" style="max-width:640px;margin:0 0 16px;">
+                    <summary>How it works</summary>
+                    <p style="font-size:0.82rem;color:var(--text-muted);margin-top:8px;line-height:1.55;"><strong>Send your dates out:</strong> copy the link below into Airbnb/Vrbo. <strong>Bring their dates in:</strong> paste their calendar links here. Calendars refresh every few hours, so on very busy days a date could briefly show free on both sites before it catches up.</p>
+                </details>
                 <div id="calendar-list" class="settings-index"></div>
                 <div id="calendar-detail" style="display:none;"></div>
             </div>
@@ -1440,8 +1453,7 @@
                 <div class="accounts-stat" style="max-width:640px;">
                     <div class="label">Reset a guest's password</div>
                     <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 16px;">If a guest is locked out, set a new password for them here, then tell them the new password so they can log in and change it.</p>
-                    <button class="btn-sm btn-edit" onclick="loadGuestList()">Show Guest Accounts</button>
-                    <div id="guest-admin-list" style="margin-top:16px;"></div>
+                    <div id="guest-admin-list" style="margin-top:4px;"><p style="font-size:0.82rem;color:var(--text-muted);">Loading…</p></div>
                 </div>
             </div>
 
@@ -2268,7 +2280,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=214"></script>
+    <script defer src="app.js?v=215"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
