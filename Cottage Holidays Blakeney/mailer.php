@@ -981,13 +981,23 @@ function send_booking_emails($b)
         $body .= "Party: {$party}\n";
         $body .= "Payment: {$paymentLabel}\n";
         $body .= "Address: {$b['address']}\n\n";
+        // The refundable deposit is charged with the first payment & refunded after
+        // the stay, so it's part of the total the guest pays until then.
+        $depAmt = round((float) ($b['damages_deposit'] ?? 0), 2);
+        $grandTotal = round((float) $b['total'] + $depAmt, 2);
         $body .= $money($b['per_night']) . " x {$nightsTxt}: " . $money($b['nightly']) . "\n";
         $body .= "Transaction fee ({$b['tx_pct']}%): " . $money($b['tx_fee']) . "\n";
-        $body .= 'Total: ' . $money($b['total']) . "\n";
-        $body .=
-            'Plus a refundable security deposit of ' .
-            $money($b['damages_deposit']) .
-            ", charged together with your first payment and refunded in full after checkout (provided there's no damage).\n\n";
+        if ($depAmt > 0) {
+            $body .= 'Refundable damages deposit: ' . $money($depAmt) . "\n";
+        }
+        $body .= 'Total: ' . $money($grandTotal) . ($depAmt > 0 ? ' (incl. deposit)' : '') . "\n";
+        if ($depAmt > 0) {
+            $body .=
+                'Includes a refundable security deposit of ' .
+                $money($depAmt) .
+                ", charged together with your first payment and refunded in full after checkout (provided there's no damage).\n";
+        }
+        $body .= "\n";
         $body .= "If you have any questions, just reply to this email.\nCottage Holidays Blakeney\n";
 
         // HTML version — "Midnight Glass" shell + the booking "stay ticket".
@@ -1011,18 +1021,21 @@ function send_booking_emails($b)
             '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:18px 0 4px;"><tr><td bgcolor="#FAF6EC" style="background:#FAF6EC;border:1px solid #ECE4D3;border-radius:14px;padding:8px 20px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0">' .
             $pr($money($b['per_night']) . ' &times; ' . $nightsTxt, $money($b['nightly'])) .
             $pr('Transaction fee (' . $esc($b['tx_pct']) . '%)', $money($b['tx_fee'])) .
+            ($depAmt > 0 ? $pr('Refundable damages deposit', $money($depAmt)) : '') .
             '<tr><td colspan="2" style="border-top:1px solid #ECE4D3;font-size:0;line-height:0;">&nbsp;</td></tr>' .
             '<tr><td style="padding:12px 0 4px;font-family:' .
             $serif .
-            ';font-size:19px;font-weight:700;color:#2A2622;">Total</td><td align="right" style="padding:12px 0 4px;font-family:' .
+            ';font-size:19px;font-weight:700;color:#2A2622;">Total' . ($depAmt > 0 ? ' <span style="font-size:12px;font-weight:400;color:#A0987F;">(incl. deposit)</span>' : '') . '</td><td align="right" style="padding:12px 0 4px;font-family:' .
             $serif .
             ';font-size:21px;font-weight:700;color:#2A2622;">' .
-            $money($b['total']) .
+            $money($grandTotal) .
             '</td></tr>' .
-            $pr(
-                '<span style="color:#A0987F;">+ ' . $money($b['damages_deposit']) . ' refundable deposit</span>',
-                '<span style="color:#A0987F;">refunded after your stay</span>',
-            ) .
+            ($depAmt > 0
+                ? $pr(
+                    '<span style="color:#A0987F;">incl. ' . $money($depAmt) . ' refundable deposit</span>',
+                    '<span style="color:#A0987F;">refunded after your stay</span>',
+                )
+                : '') .
             '</table></td></tr></table>';
         $inner =
             email_h($b['prop_name'], $accent) .
@@ -1068,7 +1081,8 @@ function send_booking_emails($b)
         $body .= "Check out: {$b['check_out']} ({$b['check_out_time']})\n";
         $body .= "Stay: {$nightsTxt}\n";
         $body .= "Guests: {$party}\n";
-        $body .= 'Total: ' . $money($b['total']) . "\n";
+        $ownerDep = round((float) ($b['damages_deposit'] ?? 0), 2);
+        $body .= 'Total: ' . $money(round((float) $b['total'] + $ownerDep, 2)) . ($ownerDep > 0 ? ' (incl. deposit)' : '') . "\n";
         $out['owner'] = send_owner($subject, $body);
     }
 
@@ -1185,6 +1199,8 @@ function send_payment_request($b, $payUrl)
     // amount the card will be charged today so the emailed figure matches checkout.
     $damages = round((float) ($b['damages'] ?? 0), 2);
     $chargedToday = round((float) $b['amount'] + $damages, 2);
+    // Full stay total includes the refundable deposit while it's still being charged.
+    $stayTotalGrand = round((float) $b['total'] + $damages, 2);
     $depositLineText =
         $damages > 0
             ? "\n\nThis payment also includes a refundable security deposit of " .
@@ -1205,7 +1221,8 @@ function send_payment_request($b, $payUrl)
         $depositLineText .
         "\n\n" .
         'The full stay total is ' .
-        $money($b['total']) .
+        $money($stayTotalGrand) .
+        ($damages > 0 ? ' (including the refundable deposit)' : '') .
         ". You can reply to this email with any questions.\n\n" .
         'Cottage Holidays Blakeney';
 
@@ -1222,7 +1239,7 @@ function send_payment_request($b, $payUrl)
                 $esc($b['check_out']) .
                 ').',
         ) .
-        email_amount(ucfirst($what) . ' due', $money($b['amount']), 'of ' . $money($b['total']) . ' total') .
+        email_amount(ucfirst($what) . ' due', $money($b['amount']), 'of ' . $money($stayTotalGrand) . ' total') .
         ($damages > 0
             ? email_p(
                 'This payment also includes a <strong>' .

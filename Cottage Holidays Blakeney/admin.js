@@ -2395,6 +2395,13 @@ function renderMoneyPanel() {
                 </div></div>`;
     const cards = rows
         .map(({ propKey, b, ps }) => {
+            // Deposit folded into the shown Total/Received/Balance until refunded
+            // (the precise deposit ledger still shows below in depLine). Revenue
+            // aggregates above stay rental-only — a deposit isn't income.
+            const pForGrand =
+                b.agreedPrice ||
+                priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
+            const gt = displayGrand(pForGrand, ps, b.holdStatus);
             const meta = paymentMeta[b.payment] || { label: '—', dot: '#888' };
             const ci = dpParse(b.checkIn),
                 t0 = dpParse(today);
@@ -2444,9 +2451,9 @@ function renderMoneyPanel() {
                         <span class="money-status"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${meta.dot};"></span> ${meta.label}</span>
                     </div>
                     <div class="money-figures">
-                        <span>Total<strong>${gbp(ps.total)}</strong></span>
-                        <span>Received<strong style="color:#4CAF50;">${gbp(ps.deposit)}</strong></span>
-                        <span>${ps.fullyPaid ? 'Settled' : 'Balance due'}<strong>${gbp(ps.fullyPaid ? 0 : ps.balance)}</strong></span>
+                        <span>Total${gt.dep > 0 ? ' <span style="color:var(--text-muted);font-weight:400;font-size:0.72rem;">(incl. deposit)</span>' : ''}<strong>${gbp(gt.total)}</strong></span>
+                        <span>Received<strong style="color:#4CAF50;">${gbp(gt.paid)}</strong></span>
+                        <span>${gt.fullyPaid ? 'Settled' : 'Balance due'}<strong>${gbp(gt.fullyPaid ? 0 : gt.balance)}</strong></span>
                     </div>
                     ${depLine}
                     <div class="money-actions">
