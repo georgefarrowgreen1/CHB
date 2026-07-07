@@ -1490,17 +1490,6 @@ function ggKey(e, i) {
         openLightbox(i);
     }
 }
-// Skip link: <base href="/"> makes a bare "#view-main" resolve to "/#view-main"
-// (a full navigation home on SSR deep routes), so move focus in JS instead.
-function skipToContent(e) {
-    if (e) e.preventDefault();
-    const el = document.getElementById('view-main');
-    if (!el) return;
-    if (!el.hasAttribute('tabindex')) el.setAttribute('tabindex', '-1');
-    el.focus();
-    if (el.scrollIntoView) el.scrollIntoView();
-}
-
 // Paint the current slide and its immediate neighbours; leave the rest
 // unpainted until they're navigated to. Cheap to call repeatedly.
 function loadGallerySlides(trackId) {
@@ -11565,7 +11554,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'zropcz27';
+    const BUILD = 'jkfl6ee6';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
