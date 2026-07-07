@@ -952,7 +952,7 @@ async function renderAccomList() {
                     <button class="settings-row" onclick="settingsOpenAccom('${k}')" ${arch ? 'style="opacity:0.55;"' : ''}>
                         <span class="settings-row-ic"><span class="legend-swatch swatch-${k}" style="width:16px;height:16px;border-radius:5px;"></span></span>
                         <span class="settings-row-main"><span class="settings-row-label">${escapeHtml(propertyMeta[k].name)}${badge}</span><span class="settings-row-sub">${sub}</span></span>
-                        ${arch ? '<span class="settings-row-chev" style="margin-left:10px;">›</span>' : osMiniDonut(o.pct, 'var(--prop-' + k + ')') + '<span class="settings-row-chev" style="margin-left:10px;">›</span>'}
+                        <span class="settings-row-chev" style="margin-left:10px;">›</span>
                     </button>`;
                 })
                 .join('')}</div>${accomAddRowHtml()}`;
@@ -2260,7 +2260,9 @@ function renderDepositsDue() {
     Object.keys(dbBookings).forEach((propKey) => {
         (dbBookings[propKey] || []).forEach((b) => {
             const dh = damageHeld(propKey, b);
-            if (dh.held > 0 && (b.checkOut || '') < today) rows.push({ propKey, b, dh });
+            // <= today: a stay that ended TODAY is ready to handle here too (this
+            // queue is the one place deposits are returned or kept).
+            if (dh.held > 0 && (b.checkOut || '') <= today) rows.push({ propKey, b, dh });
         });
     });
     if (!rows.length) {
@@ -2279,7 +2281,7 @@ function renderDepositsDue() {
                             <span style="color:var(--text-muted);margin-left:8px;font-size:0.85rem;">left ${b.checkOut}</span></div>
                         <span class="money-status">${gbp(dh.held)} held</span>
                     </div>
-                    <div class="money-actions"><button class="btn-sm btn-edit" onclick="returnDeposit('${b.id}')">Return deposit</button></div>
+                    <div class="money-actions"><button class="btn-sm btn-edit" onclick="returnDeposit('${b.id}')">Return deposit</button>${b.holdStatus === 'charged' ? `<button class="btn-sm btn-edit" onclick="keepDeposit('${b.id}')">Keep (damage)</button>` : ''}</div>
                 </div>`,
         )
         .join('');
@@ -2619,7 +2621,7 @@ function renderMoneyPanel() {
             const depActions =
                 dh.held > 0
                     ? depLeft
-                        ? `<button class="btn-sm btn-edit" onclick="returnDeposit('${b.id}')">Approve &amp; refund</button>${b.holdStatus === 'charged' ? `<button class="btn-sm btn-edit" onclick="keepDeposit('${b.id}')">Keep (damage)</button>` : ''}`
+                        ? `<span style="color:var(--text-muted);font-size:0.78rem;">return or keep it in “Deposits to return” above</span>`
                         : `<span style="color:var(--text-muted);font-size:0.78rem;">refundable after checkout</span>`
                     : '';
             const depLine =
@@ -4502,13 +4504,22 @@ function accomSectionHtml(k, sec) {
                         <button class="btn-sm btn-edit" onclick="accomSaveSafety('${k}')">Save</button>
                     </div>`;
         case 'seasons':
+            // Read-only here: seasonal pricing has ONE editor — the all-cottage
+            // grid — so two editors can't drift apart. This just shows what
+            // applies to this cottage and links to the grid.
             return `
-                    <label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:10px;">Couple / night for a date range (overrides the standard couple rate while active).</label>
-                    <div id="seasons-${k}">${(propertySeasons[k] || []).map((s, si) => seasonRowHtml(k, s)).join('') || ''}</div>
-                    <div style="display:flex;gap:10px;margin-top:8px;">
-                        <button class="btn-sm btn-edit" onclick="addSeasonRow('${k}')">＋ Add season</button>
-                        <button class="btn-sm btn-edit" onclick="saveSeasons('${k}')">Save seasons</button>
-                    </div>`;
+                    <label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:10px;">Higher (or lower) nightly rates for date ranges — school summer, Christmas… Edited for all cottages together in one grid.</label>
+                    ${
+                        (propertySeasons[k] || []).length
+                            ? (propertySeasons[k] || [])
+                                  .map(
+                                      (s) =>
+                                          `<div style="font-size:0.85rem;color:var(--text-light);margin-bottom:6px;">${escapeHtml(s.label || 'Season')} · ${escapeHtml(s.start_date || '')} → ${escapeHtml(s.end_date || '')} · <strong>${s.couple_rate ? gbp(s.couple_rate) + '/night' : 'base rate'}</strong></div>`,
+                                  )
+                                  .join('')
+                            : '<p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 8px;">No seasonal rates set for this cottage.</p>'
+                    }
+                    <button class="btn-sm btn-edit" style="margin-top:6px;" onclick="settingsOpen('seasongrid')">Edit seasonal rates — all cottages →</button>`;
         case 'arrival':
             return `
                     <div><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Sent to guests a few days before check-in (directions, key collection, wifi…). Kept private — never shown on the site. Also revealed on a guest's account when they're at the cottage (see Location).</label><textarea rows="5" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" onchange="saveContent('arrival-${k}', this.value)">${escapeHtml(adminPrivateContent['arrival-' + k] || '')}</textarea></div>`;
@@ -6333,20 +6344,6 @@ async function saveReviews() {
 }
 
 // ---- Seasonal rates editor (Settings) ----
-function seasonRowHtml(k, s) {
-    s = s || { label: '', start_date: '', end_date: '', couple_rate: '' };
-    return `<div class="season-row" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:8px;">
-                <input type="text" class="input-glass field-sm" placeholder="Label (e.g. Summer peak)" value="${escapeHtml(s.label || '')}" data-sf="label" style="flex:1 1 150px;min-width:120px;">
-                <input type="date" class="input-glass field-sm" value="${s.start_date || ''}" data-sf="start">
-                <input type="date" class="input-glass field-sm" value="${s.end_date || ''}" data-sf="end">
-                <input type="number" class="input-glass field-sm" min="1" step="1" placeholder="£/night" value="${s.couple_rate || ''}" data-sf="rate" title="Couple rate per night" style="width:90px;">
-                <button class="btn-sm btn-delete" onclick="this.closest('.season-row').remove()" title="Remove season"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-            </div>`;
-}
-function addSeasonRow(k) {
-    const wrap = document.getElementById('seasons-' + k);
-    if (wrap) wrap.insertAdjacentHTML('beforeend', seasonRowHtml(k, null));
-}
 // ---- Season grid: every cottage's seasonal pricing on one screen ----
 // Rows are date bands (label + start + end) shared across the grid;
 // columns are the live cottages. A blank cell means that cottage simply
@@ -6733,47 +6730,6 @@ async function sendSampleEmails(btn) {
         }
     }
 }
-async function saveSeasons(k) {
-    const wrap = document.getElementById('seasons-' + k);
-    if (!wrap) return;
-    const seasons = [];
-    for (const row of wrap.querySelectorAll('.season-row')) {
-        const get = (f) => {
-            const el = row.querySelector(`[data-sf="${f}"]`);
-            return el ? el.value.trim() : '';
-        };
-        const label = get('label'),
-            start = get('start'),
-            end = get('end'),
-            rate = parseFloat(get('rate'));
-        if (!start && !end && !rate && !label) continue; // fully empty row — skip
-        if (!start || !end || !(rate > 0)) {
-            glassAlert('Each season needs a start date, an end date and a couple rate above £0.');
-            return;
-        }
-        if (end < start) {
-            glassAlert(`"${label || 'A season'}" ends before it starts — check the dates.`);
-            return;
-        }
-        seasons.push({ label, start, end, rate });
-    }
-    try {
-        await apiPost('rates.php', { action: 'seasons_save', prop_key: k, seasons });
-        // Refresh local copy so prices use the new seasons immediately
-        propertySeasons[k] = seasons.map((s) => ({
-            label: s.label,
-            start_date: s.start,
-            end_date: s.end,
-            couple_rate: s.rate,
-        }));
-        renderCardPrices();
-        updatePropPriceHeading();
-        toast('Seasonal rates saved.');
-    } catch (e) {
-        glassAlert("Couldn't save seasons: " + e.message);
-    }
-}
-
 async function updateRateText(propKey, field, value) {
     if (!propertyRates[propKey]) propertyRates[propKey] = Object.assign({}, defaultRates[propKey]);
     propertyRates[propKey][field] = value;
@@ -6932,25 +6888,11 @@ function renderOwnerSummary() {
     const todayStr = todayDashed();
     const now = new Date();
     const in30 = formatDashed(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 30));
-    const monthStart = formatDashed(new Date(now.getFullYear(), now.getMonth(), 1));
-    const monthEnd = formatDashed(new Date(now.getFullYear(), now.getMonth() + 1, 0));
 
     let arrivals30 = 0,
         received = 0,
         outstanding = 0,
         unpaidUpcoming = 0;
-    // Occupancy counts each occupied cottage-night once, so a direct booking
-    // and an Airbnb/Vrbo block on the same night never double-count.
-    const occupiedNights = new Set();
-    const addNights = (propKey, checkIn, checkOut) => {
-        let d = dpParse(checkIn),
-            end = dpParse(checkOut);
-        if (!d || !end) return;
-        for (; d < end; d.setDate(d.getDate() + 1)) {
-            const ds = formatDashed(d);
-            if (ds >= monthStart && ds <= monthEnd) occupiedNights.add(propKey + '|' + ds);
-        }
-    };
     Object.keys(dbBookings).forEach((propKey) => {
         (dbBookings[propKey] || []).forEach((b) => {
             const ps = paymentSummary(propKey, b);
@@ -6963,16 +6905,13 @@ function renderOwnerSummary() {
                 outstanding += ps.balance;
                 if (!ps.fullyPaid) unpaidUpcoming++;
             }
-            addNights(propKey, b.checkIn, b.checkOut);
         });
     });
-    // Include imported Airbnb / Vrbo blocks in occupancy AND in the next-30-day
-    // arrivals count — a guest checking in via an external platform is still an
-    // arrival to prepare for. Compared on a normalised dashed date so it works
-    // whatever format the import stored.
+    // Include imported Airbnb / Vrbo blocks in the next-30-day arrivals count —
+    // a guest checking in via an external platform is still an arrival to
+    // prepare for. (Occupancy itself lives in the 30-day heatmap below.)
     Object.keys(dbBlocks).forEach((propKey) => {
         (dbBlocks[propKey] || []).forEach((bl) => {
-            addNights(propKey, bl.checkIn, bl.checkOut);
             const ci = dpParse(bl.checkIn);
             if (ci) {
                 const ds = formatDashed(ci);
@@ -6980,10 +6919,6 @@ function renderOwnerSummary() {
             }
         });
     });
-    const nightsThisMonth = occupiedNights.size;
-    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
-    const totalRoomNights = daysInMonth * Object.keys(dbBookings).length;
-    const occ = totalRoomNights ? Math.round((nightsThisMonth / totalRoomNights) * 100) : 0;
     const monthName = now.toLocaleDateString('en-GB', { month: 'long' });
 
     const paidFrac =
@@ -7054,16 +6989,6 @@ async function refreshHomeVisits() {
 }
 
 // ---- Reusable mini-chart helpers (inline SVG/CSS, no library) ----
-function osMiniDonut(pct, color) {
-    pct = Math.max(0, Math.min(100, Math.round(pct || 0)));
-    const R = 15,
-        C = 2 * Math.PI * R,
-        dash = ((C * pct) / 100).toFixed(1);
-    return `<svg viewBox="0 0 40 40" style="width:42px;height:42px;flex-shrink:0;" role="img" aria-label="${pct}%">
-                <circle cx="20" cy="20" r="${R}" fill="none" stroke="rgba(255,255,255,0.10)" stroke-width="5"/>
-                <circle cx="20" cy="20" r="${R}" fill="none" stroke="${color}" stroke-width="5" stroke-linecap="round" stroke-dasharray="${dash} ${C.toFixed(1)}" transform="rotate(-90 20 20)"/>
-                <text x="20" y="24" text-anchor="middle" font-size="10" fill="var(--text-light)">${pct}</text></svg>`;
-}
 function moneyShort(v) {
     v = +v || 0;
     return v >= 1000 ? '£' + (v / 1000).toFixed(v >= 10000 ? 0 : 1) + 'k' : '£' + Math.round(v);
@@ -7818,19 +7743,9 @@ async function refreshModerationCounts() {
     } catch (e) {}
     setBadge('reviews-pending-badge', rev);
     setBadge('photos-pending-badge', ph);
-    // Inbox screen "awaiting approval" block (deep-links to the Marketing panels).
-    const approvals = document.getElementById('inbox-approvals');
-    if (approvals) {
-        approvals.innerHTML =
-            rev + ph > 0
-                ? `<div class="glass-panel" style="padding:14px 16px;border-left:3px solid var(--warn);">
-                       <strong style="font-size:0.9rem;">${rev + ph} awaiting your approval</strong>
-                       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
-                           ${rev ? `<button class="btn-sm btn-edit" onclick="dashGo('reviews')">${rev} review${rev === 1 ? '' : 's'} →</button>` : ''}
-                           ${ph ? `<button class="btn-sm btn-edit" onclick="dashGo('photos')">${ph} photo${ph === 1 ? '' : 's'} →</button>` : ''}
-                       </div></div>`
-                : '';
-    }
+    // (Approvals surface in exactly TWO places: the Today "Waiting for approval"
+    // card — the pointer — and Marketing's "To approve" rows — the action. The
+    // old Inbox callout was a third copy and is gone.)
     const cardEl = document.getElementById('today-approve-card');
     if (cardEl) {
         const total = rev + ph;

@@ -998,11 +998,10 @@
             <div class="dashboard-header">
                 <div>
                     <h1 class="section-title" style="margin-bottom: 5px;">Inbox</h1>
-                    <p class="lead" style="text-align: left; margin: 0;">Enquiries, guest messages and things to approve.</p>
+                    <p class="lead" style="text-align: left; margin: 0;">Enquiries &amp; guest messages from your website.</p>
                 </div>
             </div>
-            <!-- Awaiting approval (pending reviews / photos) — filled by refreshModerationCounts() -->
-            <div id="inbox-approvals" style="margin-bottom: 6px;"></div>
+            <!-- (Approvals live in Marketing → "To approve"; the Today card points there.) -->
             <!-- Enquiries -->
             <h2 class="accounts-section-title" style="margin-top: 6px;">Enquiries <span class="inbox-badge" id="inbox-badge">0</span></h2>
             <div id="inbox-list"><!-- JS injects enquiry cards here --></div>
@@ -2289,7 +2288,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=216"></script>
+    <script defer src="app.js?v=217"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
