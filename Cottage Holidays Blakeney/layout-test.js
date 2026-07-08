@@ -13,12 +13,16 @@
 //  CI artifact so a human can eyeball the design without pulling the branch.
 //
 //  Run locally:  node layout-test.js   (same setup as e2e-test.js)
+//  Safari pass:  CHB_ENGINE=webkit node layout-test.js — the same gate in
+//  WebKit, which sizes native form controls differently (iOS date inputs
+//  ignore min-width:0), so it catches iPhone-only overlaps Chromium can't.
+//  CI runs both engines.
 //
 //  The back office is checked too — at PHONE width only, because that's where
 //  the owner actually manages the site (and where overhang bugs have bitten
 //  before): Today, Inbox, Money and all three settings areas.
 // ============================================================
-const { chromium } = require('playwright');
+const { chromium, webkit } = require('playwright');
 const { spawn } = require('child_process');
 const http = require('http');
 const fs = require('fs');
@@ -26,7 +30,10 @@ const path = require('path');
 
 const PORT = 8253;
 const dir = __dirname;
-const SHOTS = path.join(dir, 'layout-shots');
+// WebKit shots go in a subfolder so the two engine passes don't overwrite
+// each other inside the shared layout-shots CI artifact.
+const SHOTS = path.join(dir, 'layout-shots',
+  process.env.CHB_ENGINE === 'webkit' ? 'webkit' : '');
 
 const props = [
   { prop_key: '21a', name: '21A Westgate', slug: '21a-westgate', couple_rate: 130, extra_adult_rate: 42, child_rate: 25, booking_fee: 75, transaction_pct: 3, weekend_pct: 0, weekend_days: '5,6', max_adults: 2, max_children: 0, max_total: 2, sort_order: 1 },
@@ -165,7 +172,14 @@ async function waitForServer(url, tries = 40) {
 
   try {
     await waitForServer(`http://127.0.0.1:${PORT}/index.html`);
-    const browser = await chromium.launch(process.env.CHB_CHROMIUM ? { executablePath: process.env.CHB_CHROMIUM } : {});
+    // Engine: Chromium by default; CHB_ENGINE=webkit runs the SAME gate in
+    // WebKit (Safari's engine). iOS lays out native form controls differently,
+    // so the WebKit pass catches iPhone-only overlaps Chromium can't see.
+    const useWebkit = process.env.CHB_ENGINE === 'webkit';
+    const browser = useWebkit
+      ? await webkit.launch({})
+      : await chromium.launch(process.env.CHB_CHROMIUM ? { executablePath: process.env.CHB_CHROMIUM } : {});
+    console.log('== Engine: ' + (useWebkit ? 'WebKit' : 'Chromium') + ' ==');
 
     // ---- Public + signed-in GUEST views at every width. The mid-stay guest
     // exercises the My Stays page with the in-stay hub; the modal/overlay
