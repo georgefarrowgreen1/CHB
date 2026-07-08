@@ -65,6 +65,27 @@ function clash_message($propKey, $checkIn, $checkOut, $ignoreId = null)
     }
     return '';
 }
+// Soft email-deliverability warning for a booking's guest address. Returns an
+// ['email_warn'=>true, 'message'=>…, 'suggest'=>…] payload the client can act
+// on (confirm / use suggestion / override), or null when the address is fine
+// or empty (a booking with no email is allowed — it just gets no emails).
+function booking_email_warning($email)
+{
+    $email = trim((string) $email);
+    if ($email === '') {
+        return null; // no address on file — nothing to warn about
+    }
+    $chk = email_deliverability($email);
+    if (!empty($chk['ok'])) {
+        return null;
+    }
+    if (($chk['reason'] ?? '') === 'format') {
+        return ['email_warn' => true, 'message' => '“' . $email . '” doesn’t look like a valid email address.', 'suggest' => null];
+    }
+    $msg = '“' . $email . '” may not receive email — its domain (' . substr(strrchr($email, '@'), 1) . ') has no mail server.';
+    return ['email_warn' => true, 'message' => $msg, 'suggest' => $chk['suggest'] ?? null];
+}
+
 // Reconcile a deposit amount against a chosen status + total. Returns float or null(invalid).
 function reconcile_deposit($status, $total, $currentDep, $proposedDep)
 {
@@ -383,6 +404,16 @@ if ($action === 'add') {
         json_out(['error' => 'Check-out must be after check-in'], 400);
     }
 
+    // Email deliverability warning (soft): a mistyped domain (e.g. ntl-world.com)
+    // means the guest never gets their confirmation. Warn — with a suggested
+    // correction where we can find one — unless override_email:true is sent.
+    if (empty($in['override_email'])) {
+        $emailWarn = booking_email_warning($in['email'] ?? '');
+        if ($emailWarn) {
+            json_out($emailWarn);
+        }
+    }
+
     // Date-clash warning (soft): if these dates overlap an existing booking or an
     // imported platform (Airbnb/Vrbo) block, return a clash notice so the owner
     // can confirm. Sending override_clash:true proceeds anyway.
@@ -516,6 +547,15 @@ if ($action === 'update') {
     $checkOut = clean($in['check_out'] ?? $b['check_out']);
     if ($checkOut <= $checkIn) {
         json_out(['error' => 'Check-out must be after check-in'], 400);
+    }
+
+    // Email deliverability warning — only when the address actually CHANGED, so
+    // editing an old booking's other fields never re-nags about a legacy email.
+    if (empty($in['override_email']) && array_key_exists('email', $in) && trim((string) $in['email']) !== trim((string) ($b['email'] ?? ''))) {
+        $emailWarn = booking_email_warning($in['email'] ?? '');
+        if ($emailWarn) {
+            json_out($emailWarn);
+        }
     }
 
     // Date-clash warning (soft) — ignore this booking's own dates. Confirm with

@@ -383,6 +383,95 @@ function uk_postcode_valid($s)
     return (bool) preg_match('/^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i', trim((string) $s));
 }
 
+// Does a domain have somewhere to deliver mail? True if it has an MX record
+// (or, as a fallback, an A/AAAA record — RFC 5321 implicit MX). Cached per
+// request. A "@ntl-world.com"-style dead domain returns false here.
+function domain_accepts_mail($domain)
+{
+    static $cache = [];
+    $domain = strtolower(trim((string) $domain));
+    if ($domain === '') {
+        return false;
+    }
+    if (array_key_exists($domain, $cache)) {
+        return $cache[$domain];
+    }
+    $ok = false;
+    if (function_exists('checkdnsrr')) {
+        $ok = @checkdnsrr($domain, 'MX') || @checkdnsrr($domain, 'A') || @checkdnsrr($domain, 'AAAA');
+    }
+    return $cache[$domain] = $ok;
+}
+
+// Is the resolver even reachable? If a lookup for a domain we KNOW is live
+// fails, DNS is broken/unavailable here — so deliverability checks must
+// fail-open rather than cry wolf on every address. Cached per request.
+function dns_resolver_working()
+{
+    static $w = null;
+    if ($w === null) {
+        $w = function_exists('checkdnsrr') ? (@checkdnsrr('gmail.com', 'MX') ?: false) : false;
+    }
+    return $w;
+}
+
+// "Smart" email check used before saving/sending to a recipient. Returns:
+//   ['ok' => true]                                       deliverable (or DNS unavailable → fail-open)
+//   ['ok' => false, 'reason' => 'format']                not a valid address shape
+//   ['ok' => false, 'reason' => 'no_mail',
+//    'suggest' => 'jo@ntlworld.com'|null]                domain has no mail server; suggest is a
+//                                                         near-miss domain that DOES, if one is found
+// Fails OPEN when the resolver is down so a flaky host never blocks real sends.
+function email_deliverability($email)
+{
+    $email = trim((string) $email);
+    if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        return ['ok' => false, 'reason' => 'format'];
+    }
+    $at = strrpos($email, '@');
+    $local = substr($email, 0, $at);
+    $domain = strtolower(substr($email, $at + 1));
+
+    if (!dns_resolver_working()) {
+        return ['ok' => true]; // can't check reliably — don't false-alarm
+    }
+    if (domain_accepts_mail($domain)) {
+        return ['ok' => true];
+    }
+
+    // No mail server for this domain. Try obvious corrections and, if one of
+    // them CAN receive mail, suggest it (this is what catches ntl-world.com →
+    // ntlworld.com). Only a candidate that actually resolves is ever offered.
+    $candidates = [];
+    if (strpos($domain, '-') !== false) {
+        $candidates[] = str_replace('-', '', $domain); // ntl-world.com → ntlworld.com
+    }
+    // Common domain/TLD typos.
+    $typos = [
+        'gmial.com' => 'gmail.com', 'gmai.com' => 'gmail.com', 'gmail.co' => 'gmail.com',
+        'gmail.con' => 'gmail.com', 'gnail.com' => 'gmail.com', 'googlemail.co' => 'googlemail.com',
+        'hotmial.com' => 'hotmail.com', 'hotmal.com' => 'hotmail.com', 'hotmail.co' => 'hotmail.com',
+        'hotmail.con' => 'hotmail.com', 'outlok.com' => 'outlook.com', 'outlook.co' => 'outlook.com',
+        'yahooo.com' => 'yahoo.com', 'yaho.com' => 'yahoo.com', 'yahoo.co' => 'yahoo.com',
+        'iclould.com' => 'icloud.com', 'icloud.co' => 'icloud.com', 'iclod.com' => 'icloud.com',
+        'ntl-world.com' => 'ntlworld.com', 'btinternet.co' => 'btinternet.com',
+    ];
+    if (isset($typos[$domain])) {
+        $candidates[] = $typos[$domain];
+    }
+    // Bare ".con" / ".cmo" → ".com".
+    $candidates[] = preg_replace('/\.(con|cmo|comm|cim)$/', '.com', $domain);
+
+    $suggest = null;
+    foreach (array_unique($candidates) as $cand) {
+        if ($cand !== '' && $cand !== $domain && domain_accepts_mail($cand)) {
+            $suggest = $local . '@' . $cand;
+            break;
+        }
+    }
+    return ['ok' => false, 'reason' => 'no_mail', 'suggest' => $suggest];
+}
+
 // ---- At-rest encryption for secrets-like values (AES-256-GCM) ----
 // Used for content values that contain secrets (arrival info with key-safe
 // codes, private iCal feed URLs). Key is derived from APP_SECRET.
