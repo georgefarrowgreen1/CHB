@@ -1048,6 +1048,9 @@ function send_booking_emails($b)
                 $money($depAmt) .
                 ", charged together with your first payment and refunded in full after checkout (provided there's no damage).\n";
         }
+        if (!empty($b['invoice_url'])) {
+            $body .= "\nView or download your invoice: " . $b['invoice_url'] . "\n";
+        }
         $body .= "\n";
         $body .= "If you have any questions, just reply to this email.\nCottage Holidays Blakeney\n";
 
@@ -1106,6 +1109,7 @@ function send_booking_emails($b)
                 ['Address', $esc($b['address'])],
             ]) .
             $priceBox .
+            (!empty($b['invoice_url']) ? email_btn($b['invoice_url'], 'View your invoice', $accent, '#ffffff') : '') .
             email_p('Any questions? Just reply to this email — we look forward to welcoming you.', true);
         $html = email_shell('Your booking at ' . $b['prop_name'] . ' is confirmed', $inner, $accent);
 
