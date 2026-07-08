@@ -69,6 +69,52 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 $in = body();
 $action = $in['action'] ?? '';
 
+if ($action === 'draft') {
+    // Public — the enquiry form quietly saves a server-side draft once the
+    // visitor has typed a valid email, so an abandoned enquiry can get ONE
+    // "pick up where you left off" email (enquiry-nudge.php). Deliberately
+    // minimal: only what that email needs — no address/postcode/message.
+    // One row per email (upsert); a real submission below deletes it.
+    rate_limit('enqdraft', 30, 15);
+    $email = strtolower(clean($in['email'] ?? ''));
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($email) > 190) {
+        json_out(['ok' => true]); // silently ignore — never surface errors in the form
+    }
+    $propKey = clean($in['prop_key'] ?? '');
+    if (!get_rate($propKey)) {
+        json_out(['ok' => true]);
+    }
+    $checkIn = clean($in['check_in'] ?? '');
+    $checkOut = clean($in['check_out'] ?? '');
+    $dateOk = fn($d) => preg_match('/^\d{4}-\d{2}-\d{2}$/', $d);
+    if (!$dateOk($checkIn) || !$dateOk($checkOut) || $checkOut <= $checkIn) {
+        $checkIn = null;
+        $checkOut = null;
+    }
+    try {
+        db()
+            ->prepare(
+                'INSERT INTO enquiry_drafts (email, prop_key, name, check_in, check_out, adults, children)
+                 VALUES (?,?,?,?,?,?,?)
+                 ON DUPLICATE KEY UPDATE prop_key = VALUES(prop_key), name = VALUES(name),
+                   check_in = VALUES(check_in), check_out = VALUES(check_out),
+                   adults = VALUES(adults), children = VALUES(children)',
+            )
+            ->execute([
+                $email,
+                $propKey,
+                mb_substr(clean($in['name'] ?? ''), 0, 120),
+                $checkIn,
+                $checkOut,
+                max(1, min(99, (int) ($in['adults'] ?? 2))),
+                max(0, min(99, (int) ($in['children'] ?? 0))),
+            ]);
+    } catch (\Throwable $e) {
+        /* pre-migration or DB hiccup — the draft is a nicety, never an error */
+    }
+    json_out(['ok' => true]);
+}
+
 if ($action === 'submit') {
     // Public — anyone can submit an enquiry. Rate-limit per IP to stop floods.
     rate_limit('enquiry', 6, 15);
@@ -192,6 +238,14 @@ if ($action === 'submit') {
             !empty($in['sms_opt_in']) && clean($in['phone'] ?? '') !== '' ? 1 : 0,
         ]);
     $enqId = (int) db()->lastInsertId();
+    // A real enquiry supersedes any abandoned-draft rescue for this email.
+    try {
+        $draftEmail = strtolower(clean($in['email'] ?? ''));
+        if ($draftEmail !== '') {
+            db()->prepare('DELETE FROM enquiry_drafts WHERE email = ?')->execute([$draftEmail]);
+        }
+    } catch (\Throwable $e) {
+    }
     // Wake the owner's devices (best-effort).
     try {
         require_once __DIR__ . '/webpush.php';

@@ -7808,7 +7808,38 @@ function enquireDraftSave() {
             return;
         }
         localStorage.setItem(ENQ_DRAFT_KEY, JSON.stringify(draft));
+        enquireDraftSync(draft);
     } catch (e) {}
+}
+// Server-side copy of the draft, so an abandoned enquiry can get ONE gentle
+// "pick up where you left off" email (enquiry-nudge.php). Only once there's
+// real intent — a valid email AND chosen dates — and only the fields that
+// email needs (no address/postcode/message). Fire-and-forget: a failure must
+// never surface in the form. A successful submit deletes the server row.
+let __enqSyncTimer = null;
+let __enqSyncedSig = '';
+function enquireDraftSync(draft) {
+    if (document.body.classList.contains('owner-mode')) return;
+    const email = (draft.email || '').trim().toLowerCase();
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return;
+    if (!draft.prop || !draft.checkIn || !draft.checkOut) return;
+    const payload = {
+        action: 'draft',
+        email,
+        prop_key: draft.prop,
+        name: (draft.name || '').trim(),
+        check_in: draft.checkIn,
+        check_out: draft.checkOut,
+        adults: parseInt(draft.adults, 10) || 2,
+        children: parseInt(draft.children, 10) || 0,
+    };
+    const sig = JSON.stringify(payload);
+    if (sig === __enqSyncedSig) return;
+    clearTimeout(__enqSyncTimer);
+    __enqSyncTimer = setTimeout(() => {
+        __enqSyncedSig = sig;
+        apiPost('enquiries.php', payload).catch(() => {});
+    }, 2500);
 }
 function enquireDraftGet() {
     try {
@@ -7823,6 +7854,13 @@ function enquireDraftClear() {
     try {
         localStorage.removeItem(ENQ_DRAFT_KEY);
     } catch (e) {}
+    // Cancel any queued save AND server sync — after a successful submit the
+    // server has just deleted the draft row, and a late save (typed <400ms
+    // before submitting) would re-save + re-sync it, quietly re-creating the
+    // row (and earning the guest a phantom "finish your enquiry" email).
+    clearTimeout(__enqDraftTimer);
+    clearTimeout(__enqSyncTimer);
+    __enqSyncedSig = '';
     enquiryResumeHide();
 }
 function enquiryResumeHide() {
@@ -11725,7 +11763,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'j6d4a1px';
+    const BUILD = 'j6e2r5qw';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

@@ -1052,7 +1052,7 @@
             <span class="back-link" onclick="inboxSubClose()">‹ Back</span>
             <h1 class="section-title" style="text-align:left;font-size:1.6rem;margin:6px 0 10px;">Follow-up emails</h1>
             <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 16px;">Gentle automatic emails that chase interest without you lifting a finger.</p>
-            <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;color:var(--text-light);max-width:640px;margin:0 0 14px;"><input type="checkbox" id="enq-nudge-toggle" style="width:auto;margin:0;" onchange="saveContent('enquiry-nudge-off', this.checked ? '' : '1')"> Email a friendly follow-up to enquirers who haven't booked after 2 days</label>
+            <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;color:var(--text-light);max-width:640px;margin:0 0 14px;"><input type="checkbox" id="enq-nudge-toggle" style="width:auto;margin:0;" onchange="saveContent('enquiry-nudge-off', this.checked ? '' : '1')"> Email a friendly follow-up to enquirers who haven't booked after 2 days, plus a one-off "finish your enquiry" note to visitors who started one but never sent it</label>
             <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;color:var(--text-light);max-width:640px;margin:0 0 14px;"><input type="checkbox" id="anniv-nudge-toggle" style="width:auto;margin:0;" onchange="saveContent('anniversary-nudge-off', this.checked ? '' : '1')"> Invite last year's guests back with a one-off email, timed to how far ahead they book</label>
         </div>
     </main>
@@ -2299,7 +2299,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=224"></script>
+    <script defer src="app.js?v=225"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
