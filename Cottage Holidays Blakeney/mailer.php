@@ -104,17 +104,23 @@ function smtp_send(
         return (int) substr(ltrim($reply), 0, 3);
     };
 
-    $fail = function ($msg) use ($fp, $toName) {
+    // $reply (optional) is the server's raw response line. Include a trimmed,
+    // single-line copy in the error + log so a rejection tells us WHY (e.g.
+    // "550 relaying denied", "452 too many recipients", a rate-limit notice)
+    // instead of just which step failed.
+    $fail = function ($msg, $reply = '') use ($fp, $toName) {
         @fwrite($fp, "QUIT\r\n");
         @fclose($fp);
+        $detail = trim(preg_replace('/\s+/', ' ', (string) $reply));
+        $full = $detail !== '' ? $msg . ' — ' . $detail : $msg;
         if (function_exists('log_activity')) {
             log_activity('system', 'email.fail', 'Email failed to send — ' . $toName, [
                 'severity' => 'warn',
                 'entity' => 'email',
-                'meta' => ['detail' => mb_substr((string) $msg, 0, 150)],
+                'meta' => ['detail' => mb_substr($full, 0, 200)],
             ]);
         }
-        return ['ok' => false, 'error' => $msg];
+        return ['ok' => false, 'error' => mb_substr($full, 0, 200)];
     };
 
     // Greeting
@@ -168,19 +174,22 @@ function smtp_send(
     // Envelope
     $from = MAIL_FROM;
     $cmd("MAIL FROM:<{$from}>");
-    if ($code($read()) !== 250) {
-        return $fail('MAIL FROM rejected');
+    $mfReply = $read();
+    if ($code($mfReply) !== 250) {
+        return $fail('MAIL FROM rejected', $mfReply);
     }
     $cmd("RCPT TO:<{$toEmail}>");
-    $rc = $code($read());
+    $rcptReply = $read();
+    $rc = $code($rcptReply);
     if ($rc !== 250 && $rc !== 251) {
-        return $fail('RCPT TO rejected');
+        return $fail('RCPT TO rejected', $rcptReply);
     }
 
     // Data
     $cmd('DATA');
-    if ($code($read()) !== 354) {
-        return $fail('DATA not accepted');
+    $dataReply = $read();
+    if ($code($dataReply) !== 354) {
+        return $fail('DATA not accepted', $dataReply);
     }
 
     $fromName = defined('MAIL_FROM_NAME') ? MAIL_FROM_NAME : $from;
