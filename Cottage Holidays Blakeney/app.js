@@ -11299,6 +11299,42 @@ function togglePaymentField(show) {
     if (notesLabel) notesLabel.innerText = show ? 'Staff Notes' : 'Guest Message';
 }
 
+// Save a booking (add/update) through the soft warnings the server can raise:
+// first the smart email-deliverability check (offer the suggested correction,
+// or let the owner save as-typed), then the date-clash check. Returns the
+// final server response, or null if the owner cancelled at a prompt. Mutates
+// `payload.email` if the owner accepts a suggested correction so any follow-up
+// (e.g. the updated-confirmation email) uses the corrected address.
+async function saveBookingGuarded(action, payload, clashPrompt) {
+    const extra = {};
+    let res = await apiPost('bookings.php', { action, ...payload });
+    // Email deliverability.
+    if (res && res.email_warn) {
+        if (res.suggest) {
+            const useIt = await glassConfirm(
+                res.message +
+                    `\n\nDid you mean ${res.suggest}?\n\nOK = use ${res.suggest}\nCancel = keep ${payload.email}`,
+            );
+            if (useIt) {
+                payload.email = res.suggest; // corrected address re-validates cleanly
+            } else {
+                extra.override_email = true; // keep as typed, proceed
+            }
+        } else {
+            if (!(await glassConfirm(res.message + '\n\nSave the booking anyway?'))) return null;
+            extra.override_email = true;
+        }
+        res = await apiPost('bookings.php', { action, ...payload, ...extra });
+    }
+    // Date clash.
+    if (res && res.clash) {
+        if (!(await glassConfirm(res.message + '\n\n' + clashPrompt))) return null;
+        extra.override_clash = true;
+        res = await apiPost('bookings.php', { action, ...payload, ...extra });
+    }
+    return res;
+}
+
 async function saveModal() {
     const mode = document.getElementById('modal-mode').value;
     const id = document.getElementById('modal-record-id').value;
@@ -11473,29 +11509,14 @@ async function saveModal() {
     try {
         let addRes = null;
         if (mode === 'add') {
-            addRes = await apiPost('bookings.php', { action: 'add', ...payload });
-            // Soft clash warning: confirm, then retry with override.
-            if (addRes && addRes.clash) {
-                if (!(await glassConfirm(addRes.message + '\n\nAdd this booking anyway?'))) return;
-                addRes = await apiPost('bookings.php', {
-                    action: 'add',
-                    ...payload,
-                    override_clash: true,
-                });
-            }
+            addRes = await saveBookingGuarded('add', payload, 'Add this booking anyway?');
+            if (addRes === null) return; // owner cancelled at a warning
         } else {
             const loc = findBookingLocation(id);
             if (!loc) return;
             payload.id = dbBookings[loc.propKey][loc.idx].dbId;
-            let upRes = await apiPost('bookings.php', { action: 'update', ...payload });
-            if (upRes && upRes.clash) {
-                if (!(await glassConfirm(upRes.message + '\n\nSave these changes anyway?'))) return;
-                await apiPost('bookings.php', {
-                    action: 'update',
-                    ...payload,
-                    override_clash: true,
-                });
-            }
+            const upRes = await saveBookingGuarded('update', payload, 'Save these changes anyway?');
+            if (upRes === null) return;
             // Offer to email the guest the updated details (e.g. after a date change)
             if (
                 payload.email &&
@@ -11783,7 +11804,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'j6g2p5rk';
+    const BUILD = 'j6g4t7mn';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
