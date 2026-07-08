@@ -1,8 +1,8 @@
 <?php
 // ============================================================
-//  ical-export.php — publishes a property's confirmed bookings as an
-//  iCalendar (.ics) feed, so Airbnb / Vrbo can import it and block those
-//  dates on their side.
+//  ical-export.php — publishes a property's confirmed bookings AND the
+//  owner's manual blocks as an iCalendar (.ics) feed, so Airbnb / Vrbo /
+//  Booking.com can import it and block those dates on their side.
 //
 //  URL:  ical-export.php?prop=21a&token=XXXX
 //  The token is derived from APP_SECRET + prop key, so the feed isn't
@@ -46,22 +46,39 @@ $lines[] = 'CALSCALE:GREGORIAN';
 $lines[] = 'METHOD:PUBLISH';
 $lines[] = 'X-WR-CALNAME:CHB ' . strtoupper($prop) . ' Bookings';
 
-foreach ($rows as $r) {
-    $ci = str_replace('-', '', $r['check_in']); // YYYYMMDD
-    $co = str_replace('-', '', $r['check_out']);
+$addEvent = function ($uid, $checkIn, $checkOut, $summary) use (&$lines, $now) {
+    $ci = str_replace('-', '', $checkIn); // YYYYMMDD
+    $co = str_replace('-', '', $checkOut);
     if ($ci === '' || $co === '') {
-        continue;
+        return;
     }
-    $uid = 'chb-' . $prop . '-' . $r['id'] . '@' . $host;
     $lines[] = 'BEGIN:VEVENT';
     $lines[] = 'UID:' . $uid;
     $lines[] = 'DTSTAMP:' . $now;
     $lines[] = 'DTSTART;VALUE=DATE:' . $ci;
     $lines[] = 'DTEND;VALUE=DATE:' . $co;
-    $lines[] = 'SUMMARY:Booked';
+    $lines[] = 'SUMMARY:' . $summary;
     $lines[] = 'STATUS:CONFIRMED';
     $lines[] = 'TRANSP:OPAQUE';
     $lines[] = 'END:VEVENT';
+};
+
+foreach ($rows as $r) {
+    $addEvent('chb-' . $prop . '-' . $r['id'] . '@' . $host, $r['check_in'], $r['check_out'], 'Booked');
+}
+
+// Owner manual blocks (maintenance / personal use) must block the platforms
+// too — otherwise Airbnb/Vrbo keep selling dates the owner has closed here.
+// Only source='owner' is exported: echoing IMPORTED platform blocks back into
+// the platforms' own imports would breed circular phantom blocks.
+try {
+    $bl = db()->prepare("SELECT id, check_in, check_out FROM ical_blocks WHERE prop_key = ? AND source = 'owner' ORDER BY check_in ASC");
+    $bl->execute([$prop]);
+    foreach ($bl->fetchAll() as $r) {
+        $addEvent('chb-block-' . $prop . '-' . $r['id'] . '@' . $host, $r['check_in'], $r['check_out'], 'Not available');
+    }
+} catch (\Throwable $e) {
+    // Pre-migration host without ical_blocks — the feed still serves bookings.
 }
 
 $lines[] = 'END:VCALENDAR';

@@ -450,6 +450,9 @@ function is_internal_content_key($key)
     if (strpos($key, 'chat-away-') === 0) {
         return true;
     }
+    if (strpos($key, 'ical-status-') === 0) {
+        return true; // per-cottage feed sync health (ical-import.php) — owner-only
+    }
     return in_array($key, [
         'notify-emails',
         'admin-2fa-enabled',
