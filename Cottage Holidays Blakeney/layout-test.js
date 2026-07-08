@@ -182,7 +182,8 @@ async function waitForServer(url, tries = 40) {
         { key: 'enquire-modal', open: "(async () => { openProperty('21a'); await new Promise(r => setTimeout(r, 300)); openEnquireModal(); })()", mustSee: ['#enquire-modal .modal-box'] },
         { key: 'auth-modal', open: "(() => { closeEnquireModal(); openGuestAuthModal(); })()", mustSee: ['#guest-auth-modal .modal-box'] },
         { key: 'chat-open', open: "(() => { closeGuestAuthModal(); try { closeChat(); } catch (e) {} toggleChat(); })()", mustSee: ['#chat-widget .chat-thread'] },
-        { key: 'my-stays', open: "(async () => { try { closeChat(); } catch (e) {} currentGuest = { id: 1, name: 'Guest Tester', email: 'guest@example.com' }; try { setAuthUI(); } catch (e) {} nav('view-guest-bookings'); await renderGuestBookings(); })()", mustSee: ['#guest-bookings-list .guest-booking', '.my-stay-hub'] },
+        { key: 'waitlist-modal', open: "(() => { try { closeChat(); } catch (e) {} openWaitlistModal({ prop: '21a' }); })()", mustSee: ['#waitlist-modal .modal-box', '#wl-checkout'] },
+        { key: 'my-stays', open: "(async () => { try { closeWaitlistModal(); } catch (e) {} try { closeChat(); } catch (e) {} currentGuest = { id: 1, name: 'Guest Tester', email: 'guest@example.com' }; try { setAuthUI(); } catch (e) {} nav('view-guest-bookings'); await renderGuestBookings(); })()", mustSee: ['#guest-bookings-list .guest-booking', '.my-stay-hub'] },
       ], vp.name, vp.width);
       await page.close();
     }
