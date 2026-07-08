@@ -12,27 +12,47 @@ let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
     if (__adminBundlePromise) return __adminBundlePromise;
-    __adminBundlePromise = new Promise((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = 'admin.js?v=' + ADMIN_BUNDLE_V;
-        s.onload = () => resolve();
-        s.onerror = () => {
-            __adminBundlePromise = null; // allow a retry on flaky networks
-            reject(new Error('Could not load the admin tools — check your connection and try again.'));
-        };
-        document.head.appendChild(s);
-    });
+    // Retry the fetch a couple of times before giving up: one dropped request
+    // (patchy mobile signal, or the brief window while a deploy is uploading)
+    // must not leave the owner with dead buttons.
+    const attempt = (triesLeft) =>
+        new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = 'admin.js?v=' + ADMIN_BUNDLE_V;
+            s.onload = () => resolve();
+            s.onerror = () => {
+                s.remove();
+                if (triesLeft > 0) {
+                    setTimeout(() => attempt(triesLeft - 1).then(resolve, reject), triesLeft === 2 ? 1200 : 2500);
+                } else {
+                    __adminBundlePromise = null; // allow a fresh try on the next tap
+                    reject(new Error('Could not load the admin tools — check your connection and try again.'));
+                }
+            };
+            document.head.appendChild(s);
+        });
+    __adminBundlePromise = attempt(2);
     return __adminBundlePromise;
 }
 ["accountsBack","accountsOpen","accountsShowIndex","activityLogSearch","addAdminPasskey","addReviewRow","afterPaymentChange","autoSyncIcalBlocks","backfillWebp","bookingSearch","bookingsSetFilter","bookingsSetSearch","bulkImportReviews","cancelBooking","changeAdminPassword","changeMonth","inboxSub","inboxSubClose","initBackOffice","loadAdminMessages","loadDiagnostics","loadGuestList","logoutStaff","openAccounts","openAddBooking","openArea","openBlockDates","openBookings","openBookingEmail","openInbox","openSettings","openStagingSite","refreshModerationCounts","renderAccounts","renderActivityLog","renderBookings","renderCalendar","renderExpenses","renderInbox","renderMoneyOverview","renderSquareSettings","runMigrations","saveApiKey","saveContactPhone","saveContent","saveDepositPct","saveGoogleReviewUrl","saveHostText","saveReviews","sendBroadcast","sendSampleEmails","sendTestEmail","settingsBack","settingsFilter","settingsOpen","settingsOpenAccom","settingsOpenAccomSec","settingsOpenCalendar","settingsOpenCancel","settingsRecentRender","settingsSearchKey","settingsShowIndex","tryAccessBackOffice","uploadHostPhoto"].forEach((n) => {
     const stub = (...a) =>
-        loadAdminBundle().then(() => {
-            const fn = window[n];
-            if (typeof fn !== 'function' || fn.__adminStub) {
-                throw new Error('admin.js loaded but ' + n + ' is missing');
-            }
-            return fn(...a);
-        });
+        loadAdminBundle()
+            .catch((e) => {
+                // Surface the failure on screen — a tapped admin button must
+                // never just die silently — then rethrow so the error capture
+                // still logs it to Needs attention.
+                try {
+                    toast(e.message, 'error');
+                } catch (_) {}
+                throw e;
+            })
+            .then(() => {
+                const fn = window[n];
+                if (typeof fn !== 'function' || fn.__adminStub) {
+                    throw new Error('admin.js loaded but ' + n + ' is missing');
+                }
+                return fn(...a);
+            });
     stub.__adminStub = true;
     window[n] = stub;
 });
@@ -11763,7 +11783,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'j6f8c3sy';
+    const BUILD = 'j6f9k2tv';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
