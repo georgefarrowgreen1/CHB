@@ -26,6 +26,22 @@ function email_crown_header($bg)
 //  a small status array so the caller can log but not fail on email errors.
 // ============================================================
 
+// ---- Email preview (back office) ----
+// Turn on capture, call any send_* function, then take() the messages it built.
+// smtp_send short-circuits into the capture buffer instead of connecting, so we
+// get the EXACT bytes that would have been sent — no duplicated templates, no
+// SMTP, no side effects.
+function mail_preview_start()
+{
+    $GLOBALS['__mail_preview'] = [];
+}
+function mail_preview_take()
+{
+    $c = isset($GLOBALS['__mail_preview']) && is_array($GLOBALS['__mail_preview']) ? $GLOBALS['__mail_preview'] : [];
+    unset($GLOBALS['__mail_preview']);
+    return $c;
+}
+
 /**
  * Low-level: send one email via SMTP. Returns [ok=>bool, error=>string].
  */
@@ -41,6 +57,19 @@ function smtp_send(
 ) {
     if (!defined('MAIL_ENABLED') || !MAIL_ENABLED) {
         return ['ok' => false, 'error' => 'Mail disabled'];
+    }
+    // Preview mode: capture the fully-built message instead of sending it, so the
+    // back office can show the owner exactly what a templated email looks like
+    // (booking confirmation, arrival info, payment request) — no send, no SMTP.
+    if (isset($GLOBALS['__mail_preview']) && is_array($GLOBALS['__mail_preview'])) {
+        $GLOBALS['__mail_preview'][] = [
+            'to' => (string) $toEmail,
+            'name' => (string) $toName,
+            'subject' => (string) $subject,
+            'text' => (string) $bodyText,
+            'html' => $bodyHtml !== null ? (string) $bodyHtml : '',
+        ];
+        return ['ok' => true, 'preview' => true];
     }
     // Defence-in-depth: strip any CR/LF from the recipient so it can never inject
     // extra SMTP commands (RCPT TO) or email headers. Addresses are also validated

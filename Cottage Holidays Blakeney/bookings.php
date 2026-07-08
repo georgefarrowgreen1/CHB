@@ -1421,6 +1421,65 @@ if ($action === 'email_logs') {
     }
 }
 
+// Regenerate a templated email exactly as it was/would be sent to the guest, so
+// the owner can READ it from the booking's email log. Reuses the real builders
+// via mail-preview capture (no send, no side effects). Supported kinds:
+// email.confirmation, email.arrival, payment.request.
+if ($action === 'email_preview') {
+    require_admin();
+    $id = (int) ($in['id'] ?? 0);
+    $b = booking_by_id($id);
+    if (!$b) {
+        json_out(['error' => 'Booking not found'], 404);
+    }
+    $kind = preg_replace('/[^a-z._]/', '', strtolower((string) ($in['kind'] ?? '')));
+    require_once __DIR__ . '/mailer.php';
+    if (!function_exists('mail_preview_start')) {
+        json_out(['error' => 'Preview isn’t available on this version.'], 200);
+    }
+    mail_preview_start();
+    try {
+        if ($kind === 'email.arrival') {
+            // Build the payload the way send_arrival_for_booking does, but call the
+            // pure sender directly so we DON'T stamp pre_arrival_sent on a preview.
+            $pp = db()->prepare('SELECT name, address FROM properties WHERE prop_key = ?');
+            $pp->execute([$b['prop_key']]);
+            $prop = $pp->fetch() ?: ['name' => $b['prop_key'], 'address' => ''];
+            send_arrival_email([
+                'prop_key' => $b['prop_key'],
+                'prop_name' => $prop['name'],
+                'name' => $b['name'],
+                'email' => $b['email'],
+                'check_in' => $b['check_in'],
+                'check_out' => $b['check_out'],
+                'check_in_time' => $b['check_in_time'] ?? '15:00',
+                'address' => $prop['address'],
+            ]);
+        } elseif ($kind === 'payment.request') {
+            request_booking_payment($b, 'balance'); // no side effects — just builds a signed link
+        } else {
+            send_booking_confirmation($id); // email.confirmation (default)
+        }
+    } catch (\Throwable $e) {
+        // fall through — an empty capture becomes the "no preview" response below
+    }
+    $caps = mail_preview_take();
+    $pick = null;
+    foreach ($caps as $c) {
+        if (!empty($b['email']) && strcasecmp($c['to'], (string) $b['email']) === 0) {
+            $pick = $c; // the guest copy (confirmation also builds an owner copy)
+            break;
+        }
+    }
+    if (!$pick && $caps) {
+        $pick = $caps[0];
+    }
+    if (!$pick) {
+        json_out(['error' => 'That email can’t be previewed (it may need Square on, or there’s nothing left to pay).'], 200);
+    }
+    json_out(['ok' => true, 'subject' => $pick['subject'], 'html' => $pick['html'], 'text' => $pick['text']]);
+}
+
 // Per-booking damage-deposit returns, summed (Money & income dashboard).
 if ($action === 'deposit_returns') {
     try {
