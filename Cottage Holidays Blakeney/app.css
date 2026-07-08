@@ -78,6 +78,12 @@ select,
 textarea {
   font-family: inherit;
   font-size: inherit;
+  /* Form controls never dictate layout width: they shrink with their
+     container instead of punching out of it. Native intrinsic widths (iOS
+     date pickers, selects) are the classic cause of phone overlaps — an
+     explicit width/min-width on a specific control still wins over this. */
+  min-width: 0;
+  max-width: 100%;
 }
 /* Consistent, on-brand keyboard focus ring across interactive elements
            (mouse/touch users never see it — only keyboard navigation does). */
