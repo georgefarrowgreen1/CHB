@@ -162,6 +162,7 @@ async function waitForServer(url, tries = 40) {
       if (url.includes('enquiries.php')) return json({ enquiries });
       if (url.includes('accounts.php')) return json({ years: [] });
       if (url.includes('ical-import.php')) return json(icalList);
+      if (url.includes('diagnostics.php')) return json({ ok: true, summary: { ok: 12, warn: 1, fail: 0 }, checks: [], mail_ready: true });
       if (url.includes('my-bookings.php')) return json({ bookings: [midStay], enquiries: [], completed_stays: 0 });
       return json({ ok: true, bookings: [], enquiries: [], threads: [], photos: [], reviews: [], experiences, content: {}, blocks: [], ranges: [] });
     });

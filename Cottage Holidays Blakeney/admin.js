@@ -3809,6 +3809,9 @@ async function initBackOffice() {
         checkCronHealth();
     } catch (e) {} // warn if the daily automation stopped
     try {
+        checkSystemHealth();
+    } catch (e) {} // one-glance systems-health rollup pill
+    try {
         await loadDepositReturns();
     } catch (e) {} // for the deposits-to-return line
     try {
@@ -6644,6 +6647,62 @@ async function checkCronHealth() {
                     <div style="margin-top:6px;font-size:0.85rem;">Check the scheduled task at your host still points at <code>cron.php</code>, then open <a onclick="nav('view-settings'); settingsOpen('diagnostics');" style="cursor:pointer;text-decoration:underline;">Health check</a>.</div>
                 </div>`;
     el.style.display = '';
+}
+// ---- Dashboard: one-glance systems-health pill ----
+// Rolls up the full Health check (diagnostics.php: DB, mail, Square, cron,
+// backup, migrations, error rate …) into a single dashboard signal so trouble
+// surfaces without visiting System check. Green = all clear; amber = something
+// needs a look; red = a hard failure. Tap opens the full Health check. Cached
+// for the session so the (heavier) diagnostics scan runs at most once per visit.
+async function checkSystemHealth() {
+    const pill = document.getElementById('health-pill');
+    if (!pill) return;
+    let d;
+    try {
+        const cached = sessionStorage.getItem('chb-health');
+        d = cached ? JSON.parse(cached) : null;
+    } catch (e) {}
+    if (!d) {
+        try {
+            const r = await apiGet('diagnostics.php');
+            d = r && r.summary ? r.summary : null;
+            if (d) {
+                try {
+                    sessionStorage.setItem('chb-health', JSON.stringify(d));
+                } catch (e) {}
+            }
+        } catch (e) {
+            pill.style.display = 'none';
+            return;
+        }
+    }
+    if (!d) {
+        pill.style.display = 'none';
+        return;
+    }
+    const fail = d.fail || 0;
+    const warn = d.warn || 0;
+    if (fail > 0) {
+        pill.className = 'cron-pill danger';
+        pill.innerHTML = `<span class="cron-pill-dot"></span>${fail} system issue${fail === 1 ? '' : 's'} — tap to check`;
+    } else if (warn > 0) {
+        pill.className = 'cron-pill warn';
+        pill.innerHTML = `<span class="cron-pill-dot"></span>${warn} thing${warn === 1 ? '' : 's'} need${warn === 1 ? 's' : ''} a look`;
+    } else {
+        pill.className = 'cron-pill ok';
+        pill.innerHTML = `<span class="cron-pill-dot"></span>All systems healthy`;
+    }
+    pill.style.display = '';
+}
+// Recompute the health pill after an action that could change it (e.g. running
+// migrations) — clears the per-session cache first.
+function refreshSystemHealth() {
+    try {
+        sessionStorage.removeItem('chb-health');
+    } catch (e) {}
+    try {
+        checkSystemHealth();
+    } catch (e) {}
 }
 // ---- Dashboard: recent-activity feed ----
 function timeAgoLabel(at) {
