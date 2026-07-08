@@ -82,6 +82,12 @@ function booking_email_warning($email)
     if (($chk['reason'] ?? '') === 'format') {
         return ['email_warn' => true, 'message' => '“' . $email . '” doesn’t look like a valid email address.', 'suggest' => null];
     }
+    if (($chk['reason'] ?? '') === 'disposable') {
+        return ['email_warn' => true, 'message' => '“' . $email . '” is a temporary / throwaway address — you may not be able to reach the guest later. Ask for a permanent email if you can.', 'suggest' => null];
+    }
+    if (($chk['reason'] ?? '') === 'typo') {
+        return ['email_warn' => true, 'message' => '“' . $email . '” looks like a common misspelling — mail could go to the wrong place.', 'suggest' => $chk['suggest'] ?? null];
+    }
     $msg = '“' . $email . '” may not receive email — its domain (' . substr(strrchr($email, '@'), 1) . ') has no mail server.';
     return ['email_warn' => true, 'message' => $msg, 'suggest' => $chk['suggest'] ?? null];
 }

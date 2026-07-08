@@ -432,6 +432,40 @@ function email_deliverability($email)
     $local = substr($email, 0, $at);
     $domain = strtolower(substr($email, $at + 1));
 
+    // Disposable / throwaway addresses are technically deliverable but useless
+    // for a booking (the guest can't be reached later). Flag them regardless of
+    // MX. Checked BEFORE the MX short-circuit because these domains DO accept mail.
+    if (is_disposable_email_domain($domain)) {
+        return ['ok' => false, 'reason' => 'disposable', 'suggest' => null];
+    }
+
+    // Known misspellings of the big providers. These fire EVEN when the typo
+    // domain resolves — many (gmial.com, hotmial.co.uk, yahooo.com, iclould.com)
+    // are registered typosquatters WITH mail servers, so a guest's mail silently
+    // lands there instead of their real inbox. A pure MX check can't catch that;
+    // this curated map can. Only unambiguous misspellings of major providers.
+    $known = [
+        'gmial.com' => 'gmail.com', 'gmai.com' => 'gmail.com', 'gmal.com' => 'gmail.com',
+        'gnail.com' => 'gmail.com', 'gmail.co' => 'gmail.com', 'gmail.con' => 'gmail.com',
+        'gmail.cm' => 'gmail.com', 'googlemail.co' => 'googlemail.com',
+        'hotmial.com' => 'hotmail.com', 'hotmal.com' => 'hotmail.com', 'hotmai.com' => 'hotmail.com',
+        'hotmail.con' => 'hotmail.com', 'hotmial.co.uk' => 'hotmail.co.uk', 'hotmai.co.uk' => 'hotmail.co.uk',
+        'yahooo.com' => 'yahoo.com', 'yaho.com' => 'yahoo.com', 'yahoo.con' => 'yahoo.com',
+        'yahooo.co.uk' => 'yahoo.co.uk', 'yaho.co.uk' => 'yahoo.co.uk',
+        'iclould.com' => 'icloud.com', 'iclod.com' => 'icloud.com', 'icloud.con' => 'icloud.com',
+        'icloud.co' => 'icloud.com', 'outlok.com' => 'outlook.com', 'outllok.com' => 'outlook.com',
+        'outlook.con' => 'outlook.com', 'ntl-world.com' => 'ntlworld.com', 'ntlwrld.com' => 'ntlworld.com',
+        'ntlworld.co' => 'ntlworld.com', 'btinternet.co' => 'btinternet.com', 'btintenet.com' => 'btinternet.com',
+        'sky.co' => 'sky.com', 'live.co' => 'live.com',
+    ];
+    if (isset($known[$domain])) {
+        $corr = $known[$domain];
+        // Offer it if we can't check DNS (high-confidence map) or the correction resolves.
+        if (!dns_resolver_working() || domain_accepts_mail($corr)) {
+            return ['ok' => false, 'reason' => 'typo', 'suggest' => $local . '@' . $corr];
+        }
+    }
+
     if (!dns_resolver_working()) {
         return ['ok' => true]; // can't check reliably — don't false-alarm
     }
@@ -439,37 +473,76 @@ function email_deliverability($email)
         return ['ok' => true];
     }
 
-    // No mail server for this domain. Try obvious corrections and, if one of
-    // them CAN receive mail, suggest it (this is what catches ntl-world.com →
-    // ntlworld.com). Only a candidate that actually resolves is ever offered.
+    // No mail server for this domain — almost always a typo. Build correction
+    // candidates and suggest the first that CAN actually receive mail (only a
+    // resolving candidate is ever offered, so a real address is never nagged).
     $candidates = [];
     if (strpos($domain, '-') !== false) {
         $candidates[] = str_replace('-', '', $domain); // ntl-world.com → ntlworld.com
     }
-    // Common domain/TLD typos.
-    $typos = [
-        'gmial.com' => 'gmail.com', 'gmai.com' => 'gmail.com', 'gmail.co' => 'gmail.com',
-        'gmail.con' => 'gmail.com', 'gnail.com' => 'gmail.com', 'googlemail.co' => 'googlemail.com',
-        'hotmial.com' => 'hotmail.com', 'hotmal.com' => 'hotmail.com', 'hotmail.co' => 'hotmail.com',
-        'hotmail.con' => 'hotmail.com', 'outlok.com' => 'outlook.com', 'outlook.co' => 'outlook.com',
-        'yahooo.com' => 'yahoo.com', 'yaho.com' => 'yahoo.com', 'yahoo.co' => 'yahoo.com',
-        'iclould.com' => 'icloud.com', 'icloud.co' => 'icloud.com', 'iclod.com' => 'icloud.com',
-        'ntl-world.com' => 'ntlworld.com', 'btinternet.co' => 'btinternet.com',
+    // Bare TLD typos (.con/.cmo/.co → .com; .cok → .co.uk handled via fuzzy list).
+    $candidates[] = preg_replace('/\.(con|cmo|comm|cim|vom|som)$/', '.com', $domain);
+    $candidates[] = preg_replace('/\.co$/', '.com', $domain);
+
+    // Fuzzy match against the domains guests actually use: if the typo is within
+    // a small edit distance of a known provider, offer that provider. This
+    // generalises far beyond a fixed typo table (gmial/gmai/gmal/gnail/gmail.con
+    // … all collapse to gmail.com; iclould→icloud, ntlwrld→ntlworld, etc.).
+    $common = [
+        'gmail.com', 'googlemail.com', 'outlook.com', 'outlook.co.uk', 'hotmail.com',
+        'hotmail.co.uk', 'live.com', 'live.co.uk', 'msn.com', 'yahoo.com', 'yahoo.co.uk',
+        'ymail.com', 'icloud.com', 'me.com', 'mac.com', 'aol.com', 'btinternet.com',
+        'ntlworld.com', 'virginmedia.com', 'sky.com', 'talktalk.net', 'protonmail.com',
+        'proton.me', 'gmx.com', 'gmx.co.uk',
     ];
-    if (isset($typos[$domain])) {
-        $candidates[] = $typos[$domain];
+    foreach ($common as $c) {
+        if ($c === $domain) {
+            continue;
+        }
+        // Distance scaled to length: allow 1 edit for short domains, 2 for longer.
+        $max = strlen($c) >= 10 ? 2 : 1;
+        if (levenshtein($domain, $c) <= $max) {
+            $candidates[] = $c;
+        }
     }
-    // Bare ".con" / ".cmo" → ".com".
-    $candidates[] = preg_replace('/\.(con|cmo|comm|cim)$/', '.com', $domain);
 
     $suggest = null;
-    foreach (array_unique($candidates) as $cand) {
+    foreach (array_values(array_unique($candidates)) as $cand) {
         if ($cand !== '' && $cand !== $domain && domain_accepts_mail($cand)) {
             $suggest = $local . '@' . $cand;
             break;
         }
     }
     return ['ok' => false, 'reason' => 'no_mail', 'suggest' => $suggest];
+}
+
+// Known disposable / temporary-inbox providers. Not exhaustive (it can't be),
+// but it catches the ones people actually reach for. Match the exact domain or
+// any subdomain of it.
+function is_disposable_email_domain($domain)
+{
+    static $set = null;
+    if ($set === null) {
+        $set = array_flip([
+            'mailinator.com', 'guerrillamail.com', 'guerrillamail.info', 'sharklasers.com',
+            '10minutemail.com', '10minutemail.net', 'tempmail.com', 'temp-mail.org',
+            'tempmailo.com', 'throwawaymail.com', 'yopmail.com', 'getnada.com', 'nada.email',
+            'dispostable.com', 'trashmail.com', 'maildrop.cc', 'mailnesia.com', 'fakeinbox.com',
+            'mintemail.com', 'mohmal.com', 'emailondeck.com', 'spamgourmet.com', 'mailcatch.com',
+            'moakt.com', 'tempinbox.com', 'burnermail.io', 'inboxbear.com', 'harakirimail.com',
+        ]);
+    }
+    $domain = strtolower(trim((string) $domain));
+    if (isset($set[$domain])) {
+        return true;
+    }
+    // A subdomain of a listed provider (e.g. foo.guerrillamail.com) also counts.
+    foreach (array_keys($set) as $d) {
+        if (substr($domain, -(strlen($d) + 1)) === '.' . $d) {
+            return true;
+        }
+    }
+    return false;
 }
 
 // ---- At-rest encryption for secrets-like values (AES-256-GCM) ----
