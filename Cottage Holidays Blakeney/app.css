@@ -4906,6 +4906,23 @@ body.owner-mode .chat-widget {
   font-size: 0.8rem;
   font-weight: 700;
 }
+/* Waitlist modal date pair: date inputs have an intrinsic min-width and flex
+   items default to min-width:auto, so without these the check-out field
+   punches out of the modal on phones. min-width:0 lets them shrink; the
+   1 1 140px basis wraps them into a stack on ultra-narrow screens. */
+.wl-dates {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.wl-dates > div {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+.wl-dates input[type="date"] {
+  width: 100%;
+  min-width: 0;
+}
 /* Cron dead-man's-switch banner (dashboard) */
 .cron-alert {
   display: flex;

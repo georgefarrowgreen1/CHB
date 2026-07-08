@@ -293,9 +293,16 @@ body.guest-app:not(.owner-mode) #guest-msg-fab {
 
 /* Clear the floating dock so document/footer content is never hidden behind it.
    The dock is ~104px tall (button + padding + 20px gap) on its largest size, so
-   keep a comfortable margin below all page content and the footer. */
+   keep a comfortable margin below all page content and the footer. This BODY
+   padding sits below the footer, so it's the only clearance needed — per-view
+   padding on top of it just creates a void between content and footer. */
 body.guest-app:not(.owner-mode) {
   padding-bottom: calc(124px + env(safe-area-inset-bottom, 0px));
+}
+/* Cottage pages add the "Check availability" pill above the dock, so the
+   cluster is taller — give the footer a little more room only then. */
+body.guest-app:not(.owner-mode).book-bar-open {
+  padding-bottom: calc(180px + env(safe-area-inset-bottom, 0px));
 }
 
 /* On mobile the footer is pared back to just the dark/light toggle, the
@@ -378,14 +385,6 @@ body.guest-app:not(.owner-mode) .account-btn {
 body.guest-app:not(.owner-mode) .chat-fab {
   display: none;
 }
-/* On mobile the cottage booking bar is a floating pill pinned to the BOTTOM, just
-   above the dock. On mobile the separate bar is hidden (see above) and replaced by
-   the in-dock "Check availability" CTA; this is the cottage page's bottom spacing
-   so content clears the dock + CTA cluster. */
-body.guest-app:not(.owner-mode) #view-21a {
-  padding-bottom: calc(196px + env(safe-area-inset-bottom, 0px));
-}
-
 /* Subtle app-like page transition (guest shell only; desktop/admin stay instant).
    .page-view.active's base state is opacity:1 (app.css), so `forwards` here is
    just belt-and-braces — visibility never depends on the animation running. */
