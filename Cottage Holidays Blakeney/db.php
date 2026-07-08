@@ -736,6 +736,13 @@ function pay_token($bookingId)
 {
     return substr(hash_hmac('sha256', 'pay:' . (int) $bookingId, APP_SECRET), 0, 32);
 }
+// Unguessable, login-free token for a booking's guest invoice page (invoice.php).
+// Same one-way HMAC as pay_token but a distinct purpose so the two links can't be
+// swapped; leaks nothing if seen.
+function invoice_token($bookingId)
+{
+    return substr(hash_hmac('sha256', 'invoice:' . (int) $bookingId, APP_SECRET), 0, 32);
+}
 // Unguessable token for a passwordless email sign-in link. Binds a guest id to
 // an issue-time so it expires (checked in auth.php), and leaks nothing if seen —
 // same one-way HMAC idea as pay_token. The timestamp travels in the link too.

@@ -325,6 +325,8 @@ function send_booking_confirmation($bookingId)
             'damages_deposit' => $deposit,
             'payment' => $b['payment'],
             'ref' => $ref,
+            // Signed link to the guest-viewable HTML invoice (invoice.php).
+            'invoice_url' => site_base_url() . 'invoice.php?b=' . (int) $bookingId . '&token=' . invoice_token((int) $bookingId),
         ]);
     } catch (\Throwable $ex) {
         return ['error' => 'Mail step skipped: ' . $ex->getMessage()];
