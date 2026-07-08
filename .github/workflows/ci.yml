@@ -37,6 +37,16 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-reply.php
 
+      # Static "undefined reference" gate for the front-end JS — catches typo'd /
+      # missing functions and variables (the "X is not defined" runtime errors)
+      # before they ship, which php -l's JS equivalent (node --check) can't see.
+      - name: JS static check (ESLint no-undef)
+        working-directory: "Cottage Holidays Blakeney"
+        run: |
+          npm init -y > /dev/null 2>&1
+          npm install --no-audit --no-fund eslint globals
+          node lint-js.js
+
   # Real-browser smoke test: boots the site headless with stubbed APIs and walks
   # the core guest journeys + admin dashboard. Catches the render/integration
   # breakage the DOM-shim smoke test can't see. Runs in parallel with `checks`.
