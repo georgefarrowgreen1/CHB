@@ -149,7 +149,77 @@ const API_BASE = (function () {
         const m = (r && (r.message || (r.toString && String(r)))) || 'Unhandled promise rejection';
         reportClientError('Promise: ' + m, (location && location.pathname) || '', r && r.stack);
     });
+    // Narrow hook for the layout sentinel below — same pipeline (activity log,
+    // dedupe, rate limits), so layout bugs surface exactly like JS errors.
+    window.__reportLayoutIssue = (msg) => reportClientError(msg, 'layout-sentinel', '');
 })();
+
+// --- Layout sentinel: the page checks ITSELF for overlap/overhang bugs ---
+// CI measures every screen in Chromium, but some engines lay out differently
+// (iOS Safari's intrinsic form-control widths, for one). So on real devices,
+// after each view settles, the page measures its own layout: any content
+// element poking past the right edge of the viewport — the classic phone
+// overlap — is reported to the owner's activity log via the error pipeline
+// (one report per view+offender per session; server dedupes further).
+// Same exclusion rules as layout-test.js MEASURE: fixed elements, fully
+// off-canvas slide-ins, decorative empties and anything inside a clipped or
+// horizontally-scrollable container are all fine by design.
+function layoutSentinelRun() {
+    try {
+        if (!window.__reportLayoutIssue) return;
+        const view = (document.querySelector('.page-view.active') || {}).id || 'unknown';
+        const vw = window.innerWidth;
+        const isClippedOrScrollable = (el) => {
+            let a = el.parentElement;
+            while (a && a !== document.body) {
+                const o = getComputedStyle(a).overflowX;
+                if (o === 'hidden' || o === 'clip' || o === 'auto' || o === 'scroll') return true;
+                a = a.parentElement;
+            }
+            return false;
+        };
+        const report = (msg) => {
+            const key = 'chb-lay-' + view + '-' + msg.slice(0, 60);
+            try {
+                if (sessionStorage.getItem(key)) return;
+                sessionStorage.setItem(key, '1');
+            } catch (e) {}
+            window.__reportLayoutIssue(msg);
+        };
+        const pageOver = document.documentElement.scrollWidth - vw;
+        if (pageOver > 8) report(`Layout: page ${pageOver}px wider than the ${vw}px screen on ${view}`);
+        const els = document.querySelectorAll('.page-view.active *, .modal-overlay.open *');
+        let checked = 0;
+        for (const el of els) {
+            if (++checked > 2500) break; // stay cheap on huge pages
+            const cs = getComputedStyle(el);
+            if (cs.display === 'none' || cs.visibility === 'hidden' || cs.position === 'fixed') continue;
+            const b = el.getBoundingClientRect();
+            if (b.width === 0 || b.height === 0) continue;
+            if (b.right <= vw + 8) continue; // 8px tolerance — sub-pixel/zoom noise
+            if (b.left >= vw - 2) continue; // fully off-canvas = intentional slide-in
+            const hasContent =
+                /^(A|BUTTON|INPUT|SELECT|TEXTAREA|IMG)$/.test(el.tagName) ||
+                (el.childElementCount === 0 && (el.textContent || '').trim() !== '');
+            if (!hasContent) continue;
+            if (isClippedOrScrollable(el)) continue;
+            const who = el.id ? '#' + el.id : el.tagName.toLowerCase() + '.' + String(el.className).split(' ')[0];
+            report(`Layout: ${who} overhangs the screen (right=${Math.round(b.right)}, vw=${vw}) on ${view}`);
+            break; // one offender per pass is enough to flag the screen
+        }
+    } catch (e) {}
+}
+let __laySentinelT = null;
+function layoutSentinelSchedule() {
+    clearTimeout(__laySentinelT);
+    // Wait for entrance animations + async fills to settle, then measure when
+    // the browser is idle so this never costs a frame.
+    __laySentinelT = setTimeout(() => {
+        if ('requestIdleCallback' in window) requestIdleCallback(layoutSentinelRun, { timeout: 3000 });
+        else layoutSentinelRun();
+    }, 1600);
+}
+window.addEventListener('load', layoutSentinelSchedule);
 // Connection state + offline action queue. A discrete no-WiFi button appears
 // while disconnected; admin writes attempted offline are saved to IndexedDB
 // (shared with the service worker) and replayed when the connection returns —
@@ -1060,6 +1130,10 @@ function nav(viewId, anchorId = null) {
     } else {
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }
+    // Every view change re-arms the layout sentinel (see its definition above).
+    try {
+        layoutSentinelSchedule();
+    } catch (e) {}
 }
 
 // ---- Light / dark theme toggle ----
@@ -11651,7 +11725,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'fbkqj8qn';
+    const BUILD = 'j6d4a1px';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
