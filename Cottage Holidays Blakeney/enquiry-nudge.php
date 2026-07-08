@@ -1,8 +1,11 @@
 <?php
 // ============================================================
-//  enquiry-nudge.php — sends ONE gentle follow-up email to guests whose enquiry
-//  has been pending for a couple of days (and whose dates are still in the
-//  future), then records nudge_sent_at so they're never nudged twice.
+//  enquiry-nudge.php — the two "don't lose the booking" emails, one each:
+//   1) Follow-up: guests whose SUBMITTED enquiry has been pending a couple of
+//      days (dates still in the future) — records nudge_sent_at, never twice.
+//   2) Rescue: visitors who typed a valid email into the enquiry form but never
+//      sent it (enquiry_drafts, saved by enquiries.php 'draft') — one email a
+//      few hours later, records nudged_at, never twice.
 //
 //  Run daily (alongside the other crons):
 //    https://YOURDOMAIN/enquiry-nudge.php?cron=APP_SECRET
@@ -79,4 +82,87 @@ foreach ($rows as $e) {
     }
 }
 
-json_out(['ok' => true, 'sent' => $sent, 'candidates' => count($rows)]);
+// ---- Abandoned-enquiry rescue ------------------------------------------------
+// Visitors who typed a valid email into the enquiry form but never pressed send
+// leave a row in enquiry_drafts (enquiries.php 'draft'). Send ONE "pick up where
+// you left off" email once the draft is a few hours old — but only while it's
+// still fresh (≤3 days) and only if no real enquiry arrived from that email in
+// the meantime. nudged_at guarantees a single email ever, even if they come back
+// and keep editing the draft. Same owner switch as the follow-up above.
+$rescued = 0;
+$drafts = [];
+try {
+    $drafts = db()
+        ->query(
+            "SELECT * FROM enquiry_drafts
+        WHERE nudged_at IS NULL
+          AND updated_at <= (NOW() - INTERVAL 3 HOUR)
+          AND updated_at >= (NOW() - INTERVAL 3 DAY)
+          AND (check_in IS NULL OR check_in >= CURDATE())",
+        )
+        ->fetchAll();
+} catch (\Throwable $e) {
+    /* table missing pre-migration — the follow-up section above still ran */
+}
+
+foreach ($drafts as $d) {
+    try {
+        // They enquired (same email, after the draft appeared)? Nothing to rescue.
+        $q = db()->prepare('SELECT 1 FROM enquiries WHERE email = ? AND created_at >= ? LIMIT 1');
+        $q->execute([$d['email'], $d['created_at']]);
+        if ($q->fetchColumn()) {
+            db()->prepare('DELETE FROM enquiry_drafts WHERE id = ?')->execute([(int) $d['id']]);
+            continue;
+        }
+        // Approved enquiries become bookings (the enquiry row goes away) — treat a
+        // booking from this email for the drafted dates as "already sorted" too.
+        if ($d['check_in']) {
+            $q = db()->prepare('SELECT 1 FROM bookings WHERE email = ? AND check_in = ? LIMIT 1');
+            $q->execute([$d['email'], $d['check_in']]);
+            if ($q->fetchColumn()) {
+                db()->prepare('DELETE FROM enquiry_drafts WHERE id = ?')->execute([(int) $d['id']]);
+                continue;
+            }
+        }
+
+        $rate = get_rate($d['prop_key']);
+        $propName = $rate['name'] ?? '' ?: $d['prop_key'];
+        $name = $d['name'] ?: 'there';
+        $base = function_exists('site_base_url') ? site_base_url() : '';
+        $slug = prop_display($d['prop_key'])['slug'];
+        $link = $base ? $base . ($slug ? 'cottages/' . $slug : '') : '';
+        $dates = $d['check_in'] && $d['check_out'] ? ' for ' . $d['check_in'] . ' to ' . $d['check_out'] : '';
+        $subject = 'Finish your ' . $propName . ' enquiry?';
+        $text =
+            'Hello ' .
+            $name .
+            ",\n\n" .
+            'It looks like you were part-way through an enquiry about ' .
+            $propName .
+            $dates .
+            " and didn't quite finish. No pressure at all — if you'd still like to stay, " .
+            "you can pick up where you left off here:\n" .
+            ($link ? $link . "\n\n" : "\n") .
+            "Your details are saved in the form on this device, so it only takes a moment. " .
+            "Or just reply to this email and we'll happily sort it out for you.\n\n" .
+            "Warm wishes,\nCottage Holidays Blakeney";
+        // Like the follow-up above: only mark it sent if it actually went, or the
+        // one-and-only rescue email is silently burned on a mail hiccup.
+        $r = function_exists('smtp_send') ? smtp_send($d['email'], $name, $subject, $text) : ['ok' => false];
+        if (!empty($r['ok'])) {
+            db()->prepare('UPDATE enquiry_drafts SET nudged_at = NOW() WHERE id = ?')->execute([(int) $d['id']]);
+            $rescued++;
+        }
+    } catch (\Throwable $ex) {
+        /* skip this one, continue with the rest */
+    }
+}
+
+// Housekeeping: drafts are transient by design — purge anything untouched for
+// 30 days (nudged or not) so abandoned contact details don't accumulate.
+try {
+    db()->exec("DELETE FROM enquiry_drafts WHERE updated_at < (NOW() - INTERVAL 30 DAY)");
+} catch (\Throwable $e) {
+}
+
+json_out(['ok' => true, 'sent' => $sent + $rescued, 'nudged' => $sent, 'rescued' => $rescued, 'candidates' => count($rows) + count($drafts)]);
