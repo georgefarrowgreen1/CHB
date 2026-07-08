@@ -440,6 +440,67 @@ function bookingListRow(propKey, b, today) {
         </div>`;
 }
 // The "Emails sent" history block shown under a booking on the Bookings page.
+// Templated emails whose content can be regenerated for preview (server
+// email_preview action). Free-text "Message" logs already show inline.
+const EMAIL_PREVIEWABLE = ['email.confirmation', 'email.arrival', 'payment.request'];
+// Fetch a faithful regeneration of a templated email and show it.
+async function openEmailPreview(bookingDbId, kind, btn) {
+    const original = btn ? btn.textContent : '';
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Loading…';
+    }
+    try {
+        const r = await apiPost('bookings.php', { action: 'email_preview', id: bookingDbId, kind });
+        if (!r || !r.ok) throw new Error((r && r.error) || 'No preview available.');
+        showEmailPreview(r.subject || '(no subject)', r.html || '', r.text || '');
+    } catch (e) {
+        glassAlert("Couldn't load the email: " + e.message);
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = original;
+        }
+    }
+}
+// Render an email's HTML inside a sandboxed iframe (isolates its styles from the
+// app and blocks any script), with the subject shown above it.
+function showEmailPreview(subject, html, text) {
+    let ov = document.getElementById('email-preview-overlay');
+    if (!ov) {
+        ov = document.createElement('div');
+        ov.id = 'email-preview-overlay';
+        ov.className = 'modal-overlay';
+        ov.innerHTML = `<div class="modal-box email-preview-box">
+                <button class="modal-x" type="button" aria-label="Close" onclick="closeEmailPreview()">×</button>
+                <div class="email-preview-subject" id="email-preview-subject"></div>
+                <iframe id="email-preview-frame" class="email-preview-frame" title="Email preview" sandbox=""></iframe>
+            </div>`;
+        document.body.appendChild(ov);
+        ov.addEventListener('click', (e) => {
+            if (e.target === ov) closeEmailPreview();
+        });
+    }
+    document.getElementById('email-preview-subject').textContent = subject;
+    const f = document.getElementById('email-preview-frame');
+    f.srcdoc =
+        html && html.trim()
+            ? html
+            : '<pre style="font:14px system-ui,sans-serif;white-space:pre-wrap;word-break:break-word;padding:16px;margin:0;">' +
+              escapeHtml(text || '(empty)') +
+              '</pre>';
+    ov.classList.add('open');
+    document.addEventListener('keydown', emailPreviewEsc);
+}
+function emailPreviewEsc(e) {
+    if (e.key === 'Escape') closeEmailPreview();
+}
+function closeEmailPreview() {
+    const ov = document.getElementById('email-preview-overlay');
+    if (ov) ov.classList.remove('open');
+    document.removeEventListener('keydown', emailPreviewEsc);
+}
+
 function bookingEmailLogHtml(b) {
     const logs = (bookingEmailLogs && bookingEmailLogs[b.dbId]) || [];
     if (!logs.length) {
@@ -458,6 +519,11 @@ function bookingEmailLogHtml(b) {
                     : '';
                 const body = `<div class="bk-email-log-msg">${escapeHtml(l.body).replace(/\n/g, '<br>')}</div>`;
                 return `<details class="bk-email-log-item"><summary class="bk-email-log-row">${what}<span class="bk-email-log-right">${when}<span class="bk-email-log-toggle"></span></span></summary>${subj}${body}</details>`;
+            }
+            // Templated emails store no body, but we can regenerate them on demand
+            // — offer a "Show email" button that opens a faithful preview.
+            if (EMAIL_PREVIEWABLE.includes(l.action)) {
+                return `<div class="bk-email-log-row">${what}<span class="bk-email-log-right">${when}<button type="button" class="bk-email-log-view" onclick="openEmailPreview(${b.dbId},'${l.action}',this)">Show email</button></span></div>`;
             }
             return `<div class="bk-email-log-row">${what}${when}</div>`;
         })

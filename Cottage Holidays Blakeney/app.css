@@ -4496,6 +4496,53 @@ body.owner-mode .chat-widget {
 .bk-email-log-item[open] > summary .bk-email-log-toggle::after {
   content: 'Hide email';
 }
+/* "Show email" button on templated log rows (opens a regenerated preview). */
+.bk-email-log-view {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-pill, 999px);
+  background: transparent;
+  color: var(--text-light);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s var(--fluid-bezier, ease), border-color 0.15s var(--fluid-bezier, ease);
+}
+.bk-email-log-view:hover:not(:disabled) {
+  background: var(--glass-hover, rgba(255, 255, 255, 0.06));
+  border-color: var(--text-muted);
+}
+.bk-email-log-view:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+/* Email preview overlay: subject bar + a sandboxed iframe of the email. */
+.email-preview-box {
+  display: flex;
+  flex-direction: column;
+  width: min(680px, 100%);
+  max-height: 88vh;
+  padding: 0;
+  overflow: hidden;
+}
+.email-preview-subject {
+  font-weight: 600;
+  color: var(--text-light);
+  padding: 18px 48px 14px 20px;
+  border-bottom: 1px solid var(--glass-border);
+  word-break: break-word;
+}
+.email-preview-frame {
+  flex: 1;
+  width: 100%;
+  min-height: 50vh;
+  border: 0;
+  background: #fff;
+}
 .bk-email-log-subj {
   font-weight: 600;
   color: var(--text-light);
