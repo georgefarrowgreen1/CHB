@@ -4472,12 +4472,29 @@ body.owner-mode .chat-widget {
   align-items: center;
   gap: 8px;
 }
-.bk-email-log-chev {
-  color: var(--text-muted);
-  transition: transform 0.2s var(--fluid-bezier, ease);
+/* Explicit "Show email" / "Hide email" button (clearer than a bare chevron).
+   Native <details> toggles it; the label swaps via [open]. */
+.bk-email-log-toggle {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-pill, 999px);
+  color: var(--text-light);
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: background 0.15s var(--fluid-bezier, ease), border-color 0.15s var(--fluid-bezier, ease);
 }
-.bk-email-log-item[open] > summary .bk-email-log-chev {
-  transform: rotate(90deg);
+.bk-email-log-item > summary:hover .bk-email-log-toggle {
+  background: var(--glass-hover, rgba(255, 255, 255, 0.06));
+  border-color: var(--text-muted);
+}
+.bk-email-log-toggle::after {
+  content: 'Show email';
+}
+.bk-email-log-item[open] > summary .bk-email-log-toggle::after {
+  content: 'Hide email';
 }
 .bk-email-log-subj {
   font-weight: 600;
