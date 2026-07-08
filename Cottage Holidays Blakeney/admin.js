@@ -457,7 +457,7 @@ function bookingEmailLogHtml(b) {
                     ? `<div class="bk-email-log-subj">${escapeHtml(l.subject)}</div>`
                     : '';
                 const body = `<div class="bk-email-log-msg">${escapeHtml(l.body).replace(/\n/g, '<br>')}</div>`;
-                return `<details class="bk-email-log-item"><summary class="bk-email-log-row">${what}<span class="bk-email-log-right">${when}<span class="bk-email-log-chev">›</span></span></summary>${subj}${body}</details>`;
+                return `<details class="bk-email-log-item"><summary class="bk-email-log-row">${what}<span class="bk-email-log-right">${when}<span class="bk-email-log-toggle"></span></span></summary>${subj}${body}</details>`;
             }
             return `<div class="bk-email-log-row">${what}${when}</div>`;
         })
