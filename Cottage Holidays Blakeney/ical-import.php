@@ -1,8 +1,8 @@
 <?php
 // ============================================================
-//  ical-import.php — pulls external iCal feeds (Airbnb / Vrbo) and stores
-//  their blocked date ranges in ical_blocks, so the public booking form
-//  treats those dates as unavailable.
+//  ical-import.php — pulls external iCal feeds (Airbnb / Vrbo / Booking.com)
+//  and stores their blocked date ranges in ical_blocks, so the public booking
+//  form treats those dates as unavailable.
 //
 //  POST {action:'save_feeds', prop, feeds:[{source,url}, ...]}  (admin)
 //      -> save the feed URLs for a property (stored in content table)
@@ -137,6 +137,12 @@ function fetch_url($url)
             $current = $redir;
             continue;
         }
+        // An error page is NOT a calendar: without this check a 404/500 body
+        // would parse to zero events and wipe the source's blocks — silently
+        // reopening dates that are booked on the platform.
+        if ($code >= 400) {
+            return ['ok' => false, 'error' => 'HTTP ' . $code];
+        }
         return ['ok' => true, 'body' => $body];
     }
 }
@@ -207,6 +213,14 @@ function sync_property($prop)
             $summary[] = ['source' => $source, 'ok' => false, 'error' => $res['error']];
             continue;
         }
+        // Same protection as the HTTP-status check: a 200 that isn't actually
+        // iCal (login page, HTML error, moved link) must keep the existing
+        // blocks, not replace them with nothing. A real feed with zero events
+        // still contains BEGIN:VCALENDAR, so "all dates free" passes through.
+        if (stripos($res['body'], 'BEGIN:VCALENDAR') === false) {
+            $summary[] = ['source' => $source, 'ok' => false, 'error' => 'not a calendar feed — check the link'];
+            continue;
+        }
         $events = parse_ical($res['body']);
         // Snapshot this source's current blocks (only for feeds we actually refresh,
         // so a failed fetch above never looks like a cancellation).
@@ -257,7 +271,64 @@ function sync_property($prop)
         } catch (\Throwable $e) {
         }
     }
+    ical_record_status($prop, $summary);
     return $summary;
+}
+
+// Persist a per-feed health snapshot (owner-only content key, see
+// is_internal_content_key) so the back office can show "checked X ago /
+// failing since Y" — and nudge the owner when a feed KEEPS failing. A dead
+// feed means the imported availability quietly goes stale, which is exactly
+// how a double-booking happens; the daily cron discards sync_property()'s
+// summary, so without this nobody would ever know.
+function ical_record_status($prop, $summary)
+{
+    try {
+        $key = 'ical-status-' . $prop;
+        $prev = content_json($key, []);
+        $prevSources = is_array($prev['sources'] ?? null) ? $prev['sources'] : [];
+        $now = date('Y-m-d H:i:s');
+        $sources = [];
+        foreach ($summary as $r) {
+            $src = $r['source'];
+            $fails = $r['ok'] ? 0 : (int) ($prevSources[$src]['fails'] ?? 0) + 1;
+            $sources[$src] = [
+                'ok' => (bool) $r['ok'],
+                'fails' => $fails,
+                'at' => $now,
+                // Keep the last good figures through a failure, so the UI can
+                // say "still using the 4 ranges from Tuesday".
+                'events' => $r['ok'] ? (int) $r['events'] : (int) ($prevSources[$src]['events'] ?? 0),
+                'ok_at' => $r['ok'] ? $now : (string) ($prevSources[$src]['ok_at'] ?? ''),
+                'error' => $r['ok'] ? '' : mb_substr((string) $r['error'], 0, 160),
+            ];
+            // Alert on the SECOND consecutive failure (platforms hiccup; one
+            // blip self-heals tomorrow), then re-nudge weekly while broken.
+            if ($fails === 2 || ($fails > 2 && ($fails - 2) % 7 === 0)) {
+                $name = prop_display($prop)['name'];
+                log_activity(
+                    'calendar',
+                    'ical.feed.failing',
+                    ucfirst($src) . ' calendar feed for ' . $name . ' has failed ' . $fails . ' syncs in a row (' . $sources[$src]['error'] . ') — its imported availability is stale',
+                    ['severity' => 'warn', 'prop_key' => $prop, 'entity' => 'ical'],
+                );
+                try {
+                    require_once __DIR__ . '/webpush.php';
+                    alert_owner('Calendar sync failing', $name . ': the ' . $src . ' link isn\'t working — check it in Settings → Calendar sync.');
+                } catch (\Throwable $e) {
+                }
+            }
+        }
+        $val = json_encode(['at' => $now, 'sources' => $sources], JSON_UNESCAPED_SLASHES);
+        db()
+            ->prepare(
+                'INSERT INTO content (item_key, item_value) VALUES (?, ?)
+                       ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = CURRENT_TIMESTAMP',
+            )
+            ->execute([$key, $val]);
+    } catch (\Throwable $e) {
+        // Status is best-effort — never let bookkeeping break the sync itself.
+    }
 }
 
 // ---- cron entry (no login; protected by secret) ----
@@ -382,6 +453,7 @@ if ($action === 'list') {
         'feeds' => get_feeds($prop),
         'blocks' => (int) $s->fetch()['c'],
         'export_url' => $exportUrl,
+        'status' => content_json('ical-status-' . $prop, []),
     ]);
 }
 

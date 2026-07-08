@@ -1323,22 +1323,70 @@ function setCancelPolicy(propKey, polKey) {
 function syncProps() {
     return liveCottageKeys().map((k) => [k, (propertyMeta[k] || {}).name || k]);
 }
-// The Airbnb/Vrbo sync box markup for ONE cottage.
+// The platform feed slots offered per cottage. `source` is the key stored
+// with each feed URL (and used by ical-import.php to group blocks).
+const SYNC_SOURCES = [
+    { source: 'airbnb', name: 'Airbnb', placeholder: 'Airbnb iCal link (https://www.airbnb.com/calendar/ical/...)' },
+    { source: 'vrbo', name: 'Vrbo', placeholder: 'Vrbo iCal link (http://www.vrbo.com/icalendar/...)' },
+    { source: 'bookingcom', name: 'Booking.com', placeholder: 'Booking.com iCal link (https://admin.booking.com/... .ics)' },
+];
+// "3h" → "3h ago", but "Yesterday"/"now"/"3 Jun" read fine bare.
+function agoLabel(at) {
+    const t = relTime(at);
+    return /^\d+[mh]$/.test(t) ? t + ' ago' : t;
+}
+// One line of feed health under each import input, from the server-side
+// status snapshot (written on every sync, cron or manual).
+function feedStatusHtml(s) {
+    if (!s || !s.at) return '';
+    if (s.ok)
+        return `<div style="font-size:0.72rem;color:var(--text-muted);margin:-2px 0 8px;">Synced ${agoLabel(s.at)} · ${s.events} booked range${s.events === 1 ? '' : 's'}</div>`;
+    return `<div style="font-size:0.72rem;color:var(--warn);margin:-2px 0 8px;">⚠ Not syncing (${escapeHtml(s.error || 'error')})${s.ok_at ? ' — still using the dates from ' + agoLabel(s.ok_at) : ''}</div>`;
+}
+// The channel-sync box markup for ONE cottage.
 function calendarPropBoxHtml(key, label, data) {
     const feeds = data.feeds || [];
-    const airbnb = feeds.find((f) => f.source === 'airbnb');
-    const vrbo = feeds.find((f) => f.source === 'vrbo');
+    const status = (data.status && data.status.sources) || {};
+    const inputs = SYNC_SOURCES.map((p) => {
+        const f = feeds.find((x) => x.source === p.source);
+        return `<input class="input-glass" id="sync-${p.source}-${key}" onblur="saveSyncFeeds('${key}', true)" placeholder="${p.placeholder}" value="${escapeHtml(f ? f.url : '')}" style="font-size:0.8rem;margin-bottom:8px;">${feedStatusHtml(f && f.url ? status[p.source] : null)}`;
+    }).join('');
     return `<div style="border:1px solid var(--glass-border);border-radius:12px;padding:16px;">
-                    <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px;">Export — paste this into Airbnb &amp; Vrbo</div>
-                    <input class="input-glass" readonly onclick="this.select()" value="${escapeHtml(data.export_url || '')}" style="font-size:0.8rem;margin-bottom:14px;">
+                    <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px;">Export — paste this into each platform's calendar import</div>
+                    <div style="display:flex;gap:8px;margin-bottom:14px;">
+                        <input class="input-glass" readonly id="sync-export-${key}" onclick="this.select()" value="${escapeHtml(data.export_url || '')}" style="font-size:0.8rem;flex:1;min-width:0;">
+                        <button class="btn-sm btn-edit" onclick="copyIcalExport('${key}')" style="flex-shrink:0;">Copy</button>
+                    </div>
                     <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px;">Import — paste the platform calendar links here</div>
-                    <input class="input-glass" id="sync-airbnb-${key}" onblur="saveSyncFeeds('${key}', true)" placeholder="Airbnb iCal link (https://www.airbnb.com/calendar/ical/...)" value="${escapeHtml(airbnb ? airbnb.url : '')}" style="font-size:0.8rem;margin-bottom:8px;">
-                    <input class="input-glass" id="sync-vrbo-${key}" onblur="saveSyncFeeds('${key}', true)" placeholder="Vrbo iCal link (http://www.vrbo.com/icalendar/...)" value="${escapeHtml(vrbo ? vrbo.url : '')}" style="font-size:0.8rem;margin-bottom:10px;">
-                    <button class="btn-sm btn-edit" onclick="saveSyncFeeds('${key}')">Save links</button>
-                    <button class="btn-sm btn-edit" onclick="runSync('${key}')">Sync now</button>
-                    <span style="font-size:0.8rem;color:var(--text-muted);margin-left:8px;">${data.blocks || 0} imported blocked range${data.blocks === 1 ? '' : 's'}</span>
-                    <div style="font-size:0.72rem;color:var(--text-muted);margin-top:8px;">Links save automatically as you type, and are kept on the server — they stay put across devices and logins.</div>
+                    ${inputs}
+                    <div style="margin-top:2px;">
+                        <button class="btn-sm btn-edit" onclick="saveSyncFeeds('${key}')">Save links</button>
+                        <button class="btn-sm btn-edit" onclick="runSync('${key}')">Sync now</button>
+                        <span style="font-size:0.8rem;color:var(--text-muted);margin-left:8px;">${data.blocks || 0} imported blocked range${data.blocks === 1 ? '' : 's'}</span>
+                    </div>
+                    <div style="font-size:0.72rem;color:var(--text-muted);margin-top:8px;">Links save automatically as you type, and are kept on the server — they stay put across devices and logins. Feeds refresh themselves daily; you'll get an alert if one stops working.</div>
                 </div>`;
+}
+// Copy the export feed URL (mirrors the copyPayLink idiom).
+async function copyIcalExport(key) {
+    const el = document.getElementById('sync-export-' + key);
+    const url = el ? el.value : '';
+    if (!url) return;
+    let copied = false;
+    try {
+        await navigator.clipboard.writeText(url);
+        copied = true;
+    } catch (e) {
+        /* clipboard blocked */
+    }
+    if (copied) toast('Calendar link copied — paste it into the platform.');
+    else {
+        if (el) {
+            el.focus();
+            el.select();
+        }
+        await glassAlert('Copy this calendar link:\n\n' + url);
+    }
 }
 // Load + render one cottage's sync box into #calendar-detail (Settings).
 async function loadCalendarSyncProp(key) {
@@ -1380,13 +1428,12 @@ async function loadCalendarSync() {
 // by the explicit "Save links" button (with a confirmation). quiet=true
 // suppresses the popup so auto-save isn't intrusive.
 async function saveSyncFeeds(key, quiet) {
-    const a = document.getElementById('sync-airbnb-' + key);
-    const v = document.getElementById('sync-vrbo-' + key);
-    if (!a || !v) return;
-    const feeds = [
-        { source: 'airbnb', url: (a.value || '').trim() },
-        { source: 'vrbo', url: (v.value || '').trim() },
-    ];
+    const feeds = [];
+    for (const p of SYNC_SOURCES) {
+        const el = document.getElementById('sync-' + p.source + '-' + key);
+        if (!el) return; // box not rendered — nothing to save
+        feeds.push({ source: p.source, url: (el.value || '').trim() });
+    }
     try {
         await apiPost('ical-import.php', { action: 'save_feeds', prop: key, feeds });
         if (!quiet) toast('Calendar links saved.');

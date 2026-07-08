@@ -56,6 +56,19 @@ const enquiries = [
   { id: 11, prop_key: 'jollyboat', name: 'Lucy Grant-Worthington', email: 'lucy.grant.worthington@example.com', phone: '07700 900123', address: '14 Extraordinarily Long Street Name, Little Snoring', postcode: 'NR21 0AB', check_in: d(14), check_out: d(18), adults: 2, children: 0, check_in_time: '15:00', check_out_time: '10:00', message: 'We would love to bring our very well behaved cocker spaniel if at all possible please — happy to pay extra.' },
 ];
 
+// Channel-sync stub: one healthy feed and one FAILING feed, so the calendar
+// sync box renders both the "synced" and "not syncing" status lines.
+const icalList = {
+  ok: true,
+  feeds: [{ source: 'airbnb', url: 'https://www.airbnb.com/calendar/ical/1234.ics' }, { source: 'vrbo', url: 'https://www.vrbo.com/icalendar/5678.ics' }],
+  blocks: 3,
+  export_url: 'https://cottageholidaysblakeney.co.uk/ical-export.php?prop=21a&token=abcdef0123456789abcdef01',
+  status: { at: d(0) + ' 06:00:00', sources: {
+    airbnb: { ok: true, fails: 0, at: d(0) + ' 06:00:00', events: 3, ok_at: d(0) + ' 06:00:00', error: '' },
+    vrbo: { ok: false, fails: 3, at: d(0) + ' 06:00:00', events: 2, ok_at: d(-3) + ' 06:00:00', error: 'HTTP 404' },
+  } },
+};
+
 // A fully-paid stay in progress TODAY — makes My Stays render both the booking
 // card and the in-stay "My Stay hub".
 const midStay = { id: 3, prop_key: 'jollyboat', name: 'Guest Tester', email: 'guest@example.com',
@@ -148,6 +161,7 @@ async function waitForServer(url, tries = 40) {
       if (url.includes('bookings.php')) return json({ bookings });
       if (url.includes('enquiries.php')) return json({ enquiries });
       if (url.includes('accounts.php')) return json({ years: [] });
+      if (url.includes('ical-import.php')) return json(icalList);
       if (url.includes('my-bookings.php')) return json({ bookings: [midStay], enquiries: [], completed_stays: 0 });
       return json({ ok: true, bookings: [], enquiries: [], threads: [], photos: [], reviews: [], experiences, content: {}, blocks: [], ranges: [] });
     });
@@ -217,6 +231,7 @@ async function waitForServer(url, tries = 40) {
       { key: 'admin-cottages', open: "(async () => { await openArea('cottages'); })()", mustSee: ['#settings-index'] },
       { key: 'admin-accom', open: "(async () => { await openArea('cottages'); settingsOpen('accom'); })()", mustSee: ['#sec-accom'] },
       { key: 'admin-seasongrid', open: "(async () => { await openArea('cottages'); settingsOpen('seasongrid'); })()", mustSee: ['#sec-seasongrid'] },
+      { key: 'admin-calendar-sync', open: "(async () => { await openArea('cottages'); settingsOpen('calendar'); await settingsOpenCalendar('21a'); })()", mustSee: ['#sync-export-21a', '#sync-airbnb-21a', '#sync-bookingcom-21a'] },
       { key: 'admin-marketing', open: "(async () => { await openArea('marketing'); })()", mustSee: ['#settings-index'] },
       { key: 'admin-reviews', open: "(async () => { await openArea('marketing'); settingsOpen('reviews'); })()", mustSee: ['#sec-reviews'] },
       { key: 'admin-settings', open: "(async () => { await openArea('settings'); })()", mustSee: ['#settings-index'] },

@@ -1096,7 +1096,7 @@
                 </button>
                 <button class="settings-row" data-kw="ical airbnb vrbo booking.com sync import export block dates feed" onclick="settingsOpen('calendar')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Calendar sync</span><span class="settings-row-sub">Keep dates in step with Airbnb &amp; Vrbo</span></span><span class="settings-row-chev">›</span>
+                    <span class="settings-row-main"><span class="settings-row-label">Calendar sync</span><span class="settings-row-sub">Keep dates in step with Airbnb, Vrbo &amp; Booking.com</span></span><span class="settings-row-chev">›</span>
                 </button>
                 <button class="settings-row" data-kw="refund policy terms flexible strict" onclick="settingsOpen('cancel')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 7.5l15 9M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z"/></svg></span>
@@ -1429,10 +1429,10 @@
 
             <!-- Calendar sync (cottage list → per-cottage detail) -->
             <div class="settings-sec" id="sec-calendar" style="display:none;">
-                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 10px;">Share booked dates with Airbnb/Vrbo, per cottage — copy your link out, paste theirs in.</p>
+                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 10px;">Share booked dates with Airbnb, Vrbo &amp; Booking.com, per cottage — copy your link out, paste theirs in.</p>
                 <details class="help-disclosure" style="max-width:640px;margin:0 0 16px;">
                     <summary>How it works</summary>
-                    <p style="font-size:0.82rem;color:var(--text-muted);margin-top:8px;line-height:1.55;"><strong>Send your dates out:</strong> copy the link below into Airbnb/Vrbo. <strong>Bring their dates in:</strong> paste their calendar links here. Calendars refresh every few hours, so on very busy days a date could briefly show free on both sites before it catches up.</p>
+                    <p style="font-size:0.82rem;color:var(--text-muted);margin-top:8px;line-height:1.55;"><strong>Send your dates out:</strong> copy the link below into each platform. <strong>Bring their dates in:</strong> paste their calendar links here. Calendars refresh every few hours, so on very busy days a date could briefly show free on both sites before it catches up.</p>
                 </details>
                 <div id="calendar-list" class="settings-index"></div>
                 <div id="calendar-detail" style="display:none;"></div>
@@ -2299,7 +2299,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=225"></script>
+    <script defer src="app.js?v=226"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
