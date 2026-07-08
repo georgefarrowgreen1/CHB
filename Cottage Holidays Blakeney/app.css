@@ -4922,6 +4922,21 @@ body.owner-mode .chat-widget {
 .wl-dates input[type="date"] {
   width: 100%;
   min-width: 0;
+  /* iOS Safari sizes date inputs from their shadow DOM and ignores
+     min-width:0 — strip the native appearance so the box obeys the layout,
+     and keep the tap-target height that appearance:none would collapse. */
+  -webkit-appearance: none;
+  appearance: none;
+  min-height: 50px;
+  max-width: 100%;
+}
+/* Phones: two side-by-side native date pickers never fit comfortably — stack
+   them like the name/email fields below. */
+@media (max-width: 480px) {
+  .wl-dates {
+    flex-direction: column;
+    gap: 0;
+  }
 }
 /* Cron dead-man's-switch banner (dashboard) */
 .cron-alert {
