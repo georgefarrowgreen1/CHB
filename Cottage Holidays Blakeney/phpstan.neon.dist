@@ -1,0 +1,22 @@
+# PHPStan config (dev/CI only, never deployed).
+# Static analysis over the flat PHP endpoints: catches calls to undefined
+# functions, undefined variables/constants, wrong argument counts and similar —
+# the class of bug `php -l` (syntax only) can't see. Starts at a conservative
+# level; raise it over time. The committed phpstan-baseline.neon makes it accept
+# the pre-existing findings and fail only on NEW problems.
+includes:
+    - phpstan-baseline.neon
+parameters:
+    level: 1
+    paths:
+        - .
+    # Dev/CI-only files that aren't part of the deployed app.
+    excludePaths:
+        - node_modules
+    # config.php defines the app constants (DB_*, APP_SECRET, SMTP_*, SQUARE_* …);
+    # scanning it means those are known everywhere without a stub.
+    scanFiles:
+        - config.php
+    # Don't fail the run if a listed ignore no longer matches (keeps the baseline
+    # forgiving as code is fixed).
+    reportUnmatchedIgnoredErrors: false
