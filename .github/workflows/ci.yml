@@ -50,7 +50,7 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Install Playwright Chromium
+      - name: Install Playwright browsers (Chromium + WebKit)
         working-directory: "Cottage Holidays Blakeney"
         run: |
           # The hosted runner's Microsoft/Azure apt repos intermittently serve an
@@ -60,7 +60,7 @@ jobs:
           sudo rm -f /etc/apt/sources.list.d/*microsoft*.list /etc/apt/sources.list.d/*azure*.list 2>/dev/null || true
           npm init -y > /dev/null
           npm install --no-audit --no-fund playwright
-          npx playwright install --with-deps chromium
+          npx playwright install --with-deps chromium webkit
 
       - name: Browser smoke test
         working-directory: "Cottage Holidays Blakeney"
@@ -72,6 +72,16 @@ jobs:
       # diffs, so no cross-machine font flakiness.
       - name: Layout regression gate
         working-directory: "Cottage Holidays Blakeney"
+        run: node layout-test.js
+
+      # Same gate in WebKit (Safari's engine). iOS lays out native form
+      # controls from shadow DOM and ignores some shrink rules, so phone-only
+      # overlaps can exist that Chromium can't reproduce — this pass catches
+      # them in CI before they reach a real iPhone.
+      - name: Layout regression gate (WebKit)
+        working-directory: "Cottage Holidays Blakeney"
+        env:
+          CHB_ENGINE: webkit
         run: node layout-test.js
 
       # The gate also screenshots every view×width — kept as an artifact so a
