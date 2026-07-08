@@ -1,0 +1,102 @@
+# PHPStan baseline — pre-existing findings at the current level, accepted so the
+# gate enforces only NEW problems. Regenerate with:
+#   phpstan analyse -c phpstan.neon.dist --generate-baseline=phpstan-baseline.neon
+# Whittle these down over time (most are "variable assigned inside a try/if then
+# used after" — a real hardening opportunity, just not a blocker today).
+parameters:
+	ignoreErrors:
+		-
+			message: '#^Variable \$props might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: conflict-audit.php
+
+		-
+			message: '#^Variable \$rows might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: enquiry-nudge.php
+
+		-
+			message: '#^Variable \$rows might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: experiences.php
+
+		-
+			message: '#^Variable \$allowed on left side of \?\? always exists and is not nullable\.$#'
+			identifier: nullCoalesce.variable
+			count: 1
+			path: mailbox-read.php
+
+		-
+			message: '#^Variable \$active might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: newsletter.php
+
+		-
+			message: '#^Variable \$recent might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: newsletter.php
+
+		-
+			message: '#^Variable \$subs might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: newsletter.php
+
+		-
+			message: '#^Variable \$total might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: newsletter.php
+
+		-
+			message: '#^Instantiated class lbuchs\\WebAuthn\\WebAuthn not found\.$#'
+			identifier: class.notFound
+			count: 1
+			path: passkeys.php
+
+		-
+			message: '#^Variable \$data might not be defined\.$#'
+			identifier: variable.undefined
+			count: 8
+			path: passkeys.php
+
+		-
+			message: '#^Variable \$due might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: payments-due.php
+
+		-
+			message: '#^Variable \$rows might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: photos.php
+
+		-
+			message: '#^Variable \$due might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: pre-arrival.php
+
+		-
+			message: '#^Variable \$since might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: pricing-suggest.php
+
+		-
+			message: '#^Variable \$rows might not be defined\.$#'
+			identifier: variable.undefined
+			count: 1
+			path: push.php
+
+		-
+			message: '#^Variable \$a might not be defined\.$#'
+			identifier: variable.undefined
+			count: 3
+			path: weekly-analytics.php

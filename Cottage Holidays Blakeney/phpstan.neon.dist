@@ -2,8 +2,10 @@
 # Static analysis over the flat PHP endpoints: catches calls to undefined
 # functions, undefined variables/constants, wrong argument counts and similar —
 # the class of bug `php -l` (syntax only) can't see. Starts at a conservative
-# level; raise it over time. A committed phpstan-baseline.neon (if present) makes
-# it accept pre-existing patterns and fail only on NEW problems.
+# level; raise it over time. The committed phpstan-baseline.neon makes it accept
+# the pre-existing findings and fail only on NEW problems.
+includes:
+    - phpstan-baseline.neon
 parameters:
     level: 1
     paths:
