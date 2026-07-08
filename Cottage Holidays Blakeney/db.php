@@ -623,6 +623,8 @@ function is_internal_content_key($key)
         'config-fingerprint',
         'anniv-sent',
         'cron-last-run',
+        'cron-watchdog-seen',
+        'cron-alert-sent',
         'owner-digest-last',
         'analytics-digest-last',
         'backup-last-week',
@@ -677,6 +679,59 @@ function content_json($key, $default = [])
         return is_array($d) ? $d : $default;
     } catch (\Throwable $e) {
         return $default;
+    }
+}
+
+// Store a scalar content value (json-encoded, matching content_value()'s read).
+function content_set_scalar($key, $val)
+{
+    db()
+        ->prepare(
+            'INSERT INTO content (item_key, item_value) VALUES (?, ?)
+                   ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = CURRENT_TIMESTAMP',
+        )
+        ->execute([$key, json_encode($val)]);
+}
+
+// Dead-man's-switch for the daily cron. The dashboard banner only shows when the
+// owner opens the back office; this pushes them an alert even while they're away.
+// It can't run from cron (cron being dead is the thing we're detecting), so it
+// piggybacks on ordinary PUBLIC traffic — throttled to one real check per 6h, so
+// it costs a single content read on almost every call. Fires at most once/24h.
+function cron_watchdog_maybe_alert()
+{
+    try {
+        $seen = content_value('cron-watchdog-seen');
+        if ($seen !== '' && strtotime($seen) !== false && time() - strtotime($seen) < 6 * 3600) {
+            return; // checked recently — stay cheap
+        }
+        content_set_scalar('cron-watchdog-seen', gmdate('c'));
+
+        $last = content_value('cron-last-run');
+        if ($last === '' || strtotime($last) === false) {
+            return; // never run yet (fresh install / pre-heartbeat) — don't cry wolf
+        }
+        $ageHours = (time() - strtotime($last)) / 3600;
+        if ($ageHours <= 36) {
+            return; // healthy (a daily job should reappear within ~26h)
+        }
+        $alerted = content_value('cron-alert-sent');
+        if ($alerted !== '' && strtotime($alerted) !== false && time() - strtotime($alerted) < 24 * 3600) {
+            return; // already nudged in the last day
+        }
+        require_once __DIR__ . '/webpush.php';
+        alert_owner(
+            'Automation stopped',
+            'Your daily automation hasn’t run in ' . round($ageHours) . 'h — pre-arrival emails, balance chasers, calendar sync and backups are paused. Check the scheduled task at your host points at cron.php.',
+        );
+        content_set_scalar('cron-alert-sent', gmdate('c'));
+        log_activity('system', 'cron.watchdog', 'Daily automation has not run in ' . round($ageHours) . 'h — owner alerted', [
+            'severity' => 'warn',
+            'entity' => 'cron',
+            'actor' => 'system',
+        ]);
+    } catch (\Throwable $e) {
+        // Watchdog is best-effort — never let it disturb the page that triggered it.
     }
 }
 

@@ -51,7 +51,13 @@ if (basename($_SERVER['SCRIPT_NAME'] ?? '') !== 'content.php') {
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    json_out(content_public_payload());
+    // Public traffic doubles as the cron dead-man's-switch heartbeat: if the daily
+    // automation has silently stopped, this pushes the owner an alert even when
+    // they're not in the back office. Throttled + best-effort (see db.php); runs
+    // after building the payload so it can never delay or break the response.
+    $payload = content_public_payload();
+    cron_watchdog_maybe_alert();
+    json_out($payload);
 }
 
 $in = body();
