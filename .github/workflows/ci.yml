@@ -47,6 +47,15 @@ jobs:
           npm install --no-audit --no-fund eslint globals
           node lint-js.js
 
+      # PHP static analysis — catches undefined functions/constants/variables and
+      # wrong argument counts across every endpoint, far beyond php -l's syntax
+      # check. A committed phpstan-baseline.neon (if present) scopes it to NEW code.
+      - name: PHP static analysis (PHPStan)
+        working-directory: "Cottage Holidays Blakeney"
+        run: |
+          curl -sSL https://github.com/phpstan/phpstan/releases/download/2.2.5/phpstan.phar -o /tmp/phpstan.phar
+          php /tmp/phpstan.phar analyse -c phpstan.neon.dist --no-progress --error-format=table
+
   # Real-browser smoke test: boots the site headless with stubbed APIs and walks
   # the core guest journeys + admin dashboard. Catches the render/integration
   # breakage the DOM-shim smoke test can't see. Runs in parallel with `checks`.
