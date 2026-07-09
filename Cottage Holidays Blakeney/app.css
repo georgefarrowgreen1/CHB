@@ -5478,19 +5478,6 @@ body.owner-mode .chat-widget {
   gap: 7px;
   white-space: nowrap;
 }
-.money-figures {
-  display: flex;
-  gap: 22px;
-  flex-wrap: wrap;
-  margin: 12px 0;
-  font-size: 0.85rem;
-  color: var(--text-muted);
-}
-.money-figures strong {
-  color: var(--text-light);
-  font-size: 1rem;
-  margin-left: 4px;
-}
 .money-actions {
   display: flex;
   gap: 8px;
@@ -6161,17 +6148,6 @@ body.owner-mode .chat-widget {
 }
 .money-row.due-soon {
   border-color: rgba(255, 167, 38, 0.5);
-}
-.money-badge {
-  display: inline-block;
-  margin-left: 8px;
-  padding: 2px 9px;
-  border-radius: 10px;
-  font-size: 0.7rem;
-  font-weight: 600;
-  background: rgba(255, 167, 38, 0.18);
-  color: var(--warn-text);
-  vertical-align: middle;
 }
 /* Recent payments feed */
 .feed-list {

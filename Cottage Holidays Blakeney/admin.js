@@ -872,6 +872,7 @@ function renderBookingHub() {
             <div class="bhub-btn-row">
                 ${!gt.fullyPaid ? `<button class="btn-sm btn-edit" onclick="recordPayment('${b.id}')">Record payment</button>` : ''}
                 ${!gt.fullyPaid && squareAdminEnabled && b.email ? `<button class="btn-sm btn-edit" onclick="requestPayment('${b.id}','${gt.paid > 0 ? 'balance' : 'deposit'}')">Request ${gt.paid > 0 ? 'balance' : 'deposit'} by card</button>` : ''}
+                ${!gt.fullyPaid && squareAdminEnabled && b.email ? `<button class="btn-sm btn-edit" onclick="copyPayLink('${b.id}','balance')">Copy pay link</button>` : ''}
                 <button class="btn-sm btn-edit" onclick="downloadInvoice('${b.id}')">Invoice (PDF)</button>
             </div>
             ${payHistory}
@@ -3112,8 +3113,8 @@ function renderMoneyPanel() {
               ? 100
               : 0;
     const intro = squareAdminEnabled
-        ? 'Email the guest a secure card link with <strong>Request deposit</strong> / <strong>Request full balance</strong>, or record a manual payment (bank transfer, cash) with the controls on each row.'
-        : 'Square card payments are off — set them up in Settings to email pay links. You can still record manual payments (bank transfer, cash) below.';
+        ? 'Tap a booking to handle its money on the booking hub — request card payments, record bank transfers, return the damage deposit and download invoices all live there.'
+        : 'Tap a booking to handle its money on the booking hub. Square card payments are off — set them up in Settings to email pay links; recording manual payments (bank transfer, cash) works regardless.';
     if (!rows.length) {
         el.innerHTML = `<div class="accounts-empty">No upcoming or current bookings.</div>`;
         return;
@@ -3127,88 +3128,45 @@ function renderMoneyPanel() {
                 <div style="min-width:0;">${owedText}
                     <div class="os-sub" style="margin-top:4px;">${gbp(receivedTotal)} collected of ${gbp(receivedTotal + owedTotal)} due on upcoming stays</div>
                 </div></div>`;
+    // Find-rows, not action cards: the booking hub's Money card is the ONE
+    // place a booking's money is handled (request/record/refund/invoice/
+    // history all live there) — each row here just locates and opens it.
     const cards = rows
         .map(({ propKey, b, ps }) => {
-            // Deposit folded into the shown Total/Received/Balance until refunded
-            // (the precise deposit ledger still shows below in depLine). Revenue
-            // aggregates above stay rental-only — a deposit isn't income.
+            const meta = propertyMeta[propKey] || { name: propKey };
             const pForGrand =
                 b.agreedPrice ||
                 priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
             const gt = displayGrand(pForGrand, ps, b.holdStatus);
-            const meta = paymentMeta[b.payment] || { label: '—', dot: '#888' };
+            const payLabel = gt.fullyPaid ? 'Paid' : gt.paid > 0 ? 'Part-paid' : 'Unpaid';
+            const payClass = gt.fullyPaid ? 'ok' : gt.paid > 0 ? 'warn' : 'danger';
             const ci = dpParse(b.checkIn),
                 t0 = dpParse(today);
             const days = ci && t0 ? Math.round((ci - t0) / 86400000) : 99;
             const dueSoon = !ps.fullyPaid && days <= 7; // within a week, today, or already started
-            const badge = dueSoon
-                ? `<span class="money-badge">${days < 0 ? 'In progress · unpaid' : days === 0 ? 'Arrives today · unpaid' : 'Due soon · ' + days + 'd'}</span>`
+            const dueChip = dueSoon
+                ? `<span class="bk-chip danger"><span class="bk-dot"></span>${days < 0 ? 'In progress' : days === 0 ? 'Arrives today' : 'Arrives in ' + days + 'd'}</span>`
                 : '';
-            // Collect-payment controls only apply while money is still owed — a
-            // paid-in-full booking has nothing to request or link to, so drop them.
-            const sqBtns =
-                squareAdminEnabled && b.email && !ps.fullyPaid
-                    ? `
-                        <button class="btn-sm btn-edit" onclick="requestPayment('${b.id}','deposit')">Request deposit</button>
-                        <button class="btn-sm btn-edit" onclick="requestPayment('${b.id}','balance')">Request full balance</button>
-                        <button class="btn-sm btn-edit" onclick="copyPayLink('${b.id}','balance')">Copy pay link</button>`
-                    : '';
-            const history =
-                squareAdminEnabled && b.email
-                    ? `<div id="sq-pay-${b.id}" class="sq-pay-history" style="margin-top:10px;font-size:0.82rem;color:var(--text-muted);">Loading payments…</div>`
-                    : '';
             const dh = damageHeld(propKey, b);
-            const depLeft = b.checkOut && b.checkOut <= new Date().toISOString().slice(0, 10);
-            const depActions =
-                dh.held > 0
-                    ? depLeft
-                        ? `<span style="color:var(--text-muted);font-size:0.78rem;">return or keep it in “Deposits to return” above</span>`
-                        : `<span style="color:var(--text-muted);font-size:0.78rem;">refundable after checkout</span>`
-                    : '';
-            const depLine =
-                dh.collected > 0
-                    ? `<div class="money-deposit">
-                        <span>Refundable damage deposit: ${
-                            dh.held > 0
-                                ? `<strong>${gbp(dh.held)} collected</strong>${dh.returned > 0 ? ` · ${gbp(dh.returned)} returned` : ''}`
-                                : `<span style="color:#4CAF50;">returned${dh.returned < dh.collected - 0.001 ? ` (${gbp(dh.collected - dh.returned)} retained)` : ''}</span>`
-                        }</span>
-                        ${depActions}
-                    </div>`
-                    : holdControls(b);
+            const depBit = dh.held > 0 ? ` · ${gbp(dh.held)} deposit held` : '';
             return `
-                <div class="money-row glass-panel${dueSoon ? ' due-soon' : ''}">
-                    <div class="money-row-head">
-                        <div><span class="prop-tag tag-${propKey}">${propertyMeta[propKey] ? propertyMeta[propKey].name : propKey}</span>
-                            <strong style="margin-left:8px;">${escapeHtml(b.name)}</strong>
-                            <span style="color:var(--text-muted);margin-left:8px;font-size:0.85rem;">${fmtDate(b.checkIn)} → ${fmtDate(b.checkOut)}</span> ${badge}</div>
-                        <span class="money-status"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${meta.dot};"></span> ${meta.label}</span>
-                    </div>
-                    <div class="money-figures">
-                        <span>Total${gt.dep > 0 ? ' <span style="color:var(--text-muted);font-weight:400;font-size:0.72rem;">(incl. deposit)</span>' : ''}<strong>${gbp(gt.total)}</strong></span>
-                        <span>Received<strong style="color:#4CAF50;">${gbp(gt.paid)}</strong></span>
-                        <span>${gt.fullyPaid ? 'Settled' : 'Balance due'}<strong>${gbp(gt.fullyPaid ? 0 : gt.balance)}</strong></span>
-                    </div>
-                    ${depLine}
-                    <div class="money-actions">
-                        ${sqBtns}
-                        ${
-                            ps.fullyPaid
-                                ? ''
-                                : `<button class="btn-sm btn-edit" onclick="recordPayment('${b.id}')" title="Record money received — amount, date and method together">Record payment</button>`
-                        }
-                        <button class="btn-sm btn-edit" onclick="downloadInvoice('${b.id}')" title="Download an invoice / receipt PDF">Invoice (PDF)</button>
-                    </div>
-                    ${history}
-                </div>`;
+                <button type="button" class="bk-row glass-panel pay-${payClass}" data-bkid="${b.id}" onclick="openBookingHub('${b.id}')">
+                    <span class="bk-row-body">
+                        <span class="bk-row-top">
+                            <span class="prop-tag tag-${propKey}">${escapeHtml(meta.name)}</span>
+                            <span class="bk-chip ${payClass}"><span class="bk-dot"></span>${payLabel}${gt.fullyPaid ? '' : ' · ' + gbp(gt.balance) + ' due'}</span>
+                            ${dueChip}
+                        </span>
+                        <strong class="bk-row-name">${escapeHtml(b.name || 'Guest')}</strong>
+                        <span class="bk-row-dates">${fmtStayRange(b.checkIn, b.checkOut)} · ${gbp(gt.paid)} of ${gbp(gt.total)} received${depBit}</span>
+                    </span>
+                    <span class="bk-row-arrow" aria-hidden="true">›</span>
+                </button>`;
         })
         .join('');
     el.innerHTML = `${owedBanner}
-                <p style="font-size:0.82rem;color:var(--text-muted);margin:8px 0 16px;max-width:640px;">${intro}</p>${cards}`;
-    if (squareAdminEnabled)
-        rows.forEach(({ b }) => {
-            if (b.email) loadBookingPayments(b.id);
-        });
+                <p style="font-size:0.82rem;color:var(--text-muted);margin:8px 0 16px;max-width:640px;">${intro}</p>
+                <div class="bk-list">${cards}</div>`;
 }
 // Recent Square transactions across all bookings (deposits, balances, refunds).
 async function renderMoneyFeed() {
