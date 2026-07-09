@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 47;
+const ADMIN_BUNDLE_V = 48;
 let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
@@ -2667,8 +2667,8 @@ async function renderGuestBookings() {
                             <div class="guest-ref">Booking ref ${bookingRef(b.id)}</div>
                             <div class="guest-booking-cols">
                             <div class="guest-detail-grid">
-                                <div class="booking-detail-item"><span class="booking-detail-label">Check In</span><span class="booking-detail-value" style="font-size:1rem;">${b.checkIn} · ${b.checkInTime || '15:00'}</span></div>
-                                <div class="booking-detail-item"><span class="booking-detail-label">Check Out</span><span class="booking-detail-value" style="font-size:1rem;">${b.checkOut} · ${b.checkOutTime || '10:00'}</span></div>
+                                <div class="booking-detail-item"><span class="booking-detail-label">Check In</span><span class="booking-detail-value" style="font-size:1rem;">${fmtDate(b.checkIn)} · ${b.checkInTime || '15:00'}</span></div>
+                                <div class="booking-detail-item"><span class="booking-detail-label">Check Out</span><span class="booking-detail-value" style="font-size:1rem;">${fmtDate(b.checkOut)} · ${b.checkOutTime || '10:00'}</span></div>
                                 <div class="booking-detail-item"><span class="booking-detail-label">Party</span><span class="booking-detail-value" style="font-size:1rem;">${escapeHtml(b.guests || '')}</span></div>
                                 <div class="booking-detail-item"><span class="booking-detail-label">Payment</span><span class="booking-detail-value" style="font-size:1rem;color:${pay.color};">${pay.label}</span></div>
                                 <div class="booking-detail-item" style="grid-column:1/-1;"><span class="booking-detail-label">Address</span><span class="booking-detail-value" style="font-size:0.95rem;">${escapeHtml(addr || 'Address available on confirmation.')}</span></div>
@@ -2679,7 +2679,7 @@ async function renderGuestBookings() {
                                 extraRows:
                                     gt.paid > 0
                                         ? `
-                                <div class="price-row" style="color:#4CAF50;"><span>Paid${b.paymentMethod ? ' (' + escapeHtml(b.paymentMethod) + ')' : ''}${b.paymentDate ? ' on ' + b.paymentDate : ''}</span><span>− ${gbp(gt.paid)}</span></div>
+                                <div class="price-row" style="color:#4CAF50;"><span>Paid${b.paymentMethod ? ' (' + escapeHtml(b.paymentMethod) + ')' : ''}${b.paymentDate ? ' on ' + fmtDate(b.paymentDate) : ''}</span><span>− ${gbp(gt.paid)}</span></div>
                                 <div class="price-row total"><span>${gt.fullyPaid ? 'Paid in full' : 'Balance due'}</span><span class="price-amount" style="${gt.fullyPaid ? 'color:#4CAF50;' : ''}">${gbp(gt.fullyPaid ? gt.total : gt.balance)}</span></div>`
                                         : '',
                             })}
@@ -2718,7 +2718,7 @@ async function renderGuestBookings() {
                             <span class="legend-swatch swatch-${propKey}"></span>
                             <div>
                                 <div class="hub-title">You're staying at <strong>${escapeHtml(meta.name)}</strong></div>
-                                <div class="hub-sub">Until ${b.checkOut} · ${b.checkOutTime || '10:00'} · ${nightsLeft} night${nightsLeft === 1 ? '' : 's'} left</div>
+                                <div class="hub-sub">Until ${fmtDate(b.checkOut)} · ${b.checkOutTime || '10:00'} · ${nightsLeft} night${nightsLeft === 1 ? '' : 's'} left</div>
                             </div>
                         </div>
                         <div class="instay-tides" style="margin-top:12px;"></div>
@@ -2932,7 +2932,7 @@ async function openPayView(token, bookingId, kind) {
         payState.amountDue = payTotal;
         payState.guestName = s.guestName || '';
         const propEl = document.getElementById('pay-prop');
-        if (propEl) propEl.textContent = `${s.propName} · ${s.checkIn} → ${s.checkOut}`;
+        if (propEl) propEl.textContent = `${s.propName} · ${fmtDate(s.checkIn)} → ${fmtDate(s.checkOut)}`;
         document.getElementById('pay-kind-label').textContent =
             s.kind === 'hold'
                 ? 'Refundable security hold'
@@ -3990,9 +3990,9 @@ async function downloadInvoice(bookingId) {
     const addrLines = doc.splitTextToSize(address || 'Address provided on confirmation.', 300);
     doc.text(addrLines, right, y, { align: 'right' });
     y += addrLines.length * 14 + 6;
-    rowLR('Check in', `${b.checkIn}  ·  ${b.checkInTime || '15:00'}`, y);
+    rowLR('Check in', `${fmtDate(b.checkIn)}  ·  ${b.checkInTime || '15:00'}`, y);
     y += 18;
-    rowLR('Check out', `${b.checkOut}  ·  ${b.checkOutTime || '10:00'}`, y);
+    rowLR('Check out', `${fmtDate(b.checkOut)}  ·  ${b.checkOutTime || '10:00'}`, y);
     y += 18;
     rowLR('Nights', String(p.nights), y);
     y += 18;
@@ -4050,7 +4050,7 @@ async function downloadInvoice(bookingId) {
     doc.setFontSize(10);
     if (gt.paid > 0) {
         const how = b.paymentMethod ? ` via ${b.paymentMethod}` : '';
-        const when = b.paymentDate ? ` on ${b.paymentDate}` : '';
+        const when = b.paymentDate ? ` on ${fmtDate(b.paymentDate)}` : '';
         rowLR(`Amount paid${how}${when}`, '- ' + gbp(gt.paid), y);
         y += 18;
         rowLR(
@@ -8503,6 +8503,12 @@ function updatePropPriceHeading() {
     el.innerText = `From ${gbp(r.coupleRate)} / night`;
 }
 
+// 'YYYY-MM-DD' → 'DD/MM/YYYY' — the UK display format used EVERYWHERE a raw
+// date reaches the screen or an email subject (storage/API stay ISO).
+function fmtDate(iso) {
+    const m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    return m ? `${m[3]}/${m[2]}/${m[1]}` : String(iso || '');
+}
 function formatDashed(dateObj) {
     const y = dateObj.getFullYear();
     const m = String(dateObj.getMonth() + 1).padStart(2, '0');
@@ -11899,7 +11905,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'j6q5d1gn';
+    const BUILD = 'j6q6e2ho';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

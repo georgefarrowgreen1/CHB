@@ -1069,7 +1069,7 @@ function build_enquiry_reply_email($e, $subject, $message, $ctx = 'enquiry')
         trim((string) $message) .
         "\n\n---\nYour {$noun} details\n" .
         "Cottage: {$prop}\n" .
-        'Dates: ' . ($e['check_in'] ?? '') . ' to ' . ($e['check_out'] ?? '') . "\n" .
+        'Dates: ' . uk_date($e['check_in'] ?? '') . ' to ' . uk_date($e['check_out'] ?? '') . "\n" .
         $times . "\n" .
         "Party: {$party}\n" .
         ($priceLine !== '' ? ($noun === 'booking' ? 'Price: ' : 'Estimated price: ') . $priceLine . "\n" : '') .
@@ -1090,7 +1090,7 @@ function build_enquiry_reply_email($e, $subject, $message, $ctx = 'enquiry')
             '</td></tr>';
     };
     $kv('Cottage', $prop);
-    $kv('Dates', ($e['check_in'] ?? '') . ' to ' . ($e['check_out'] ?? ''));
+    $kv('Dates', uk_date($e['check_in'] ?? '') . ' to ' . uk_date($e['check_out'] ?? ''));
     $kv('Times', $times);
     $kv('Party', $party);
     // A confirmed booking's price is settled — "Price"; an enquiry is still a quote.
@@ -1182,7 +1182,7 @@ function send_owner_enquiry_email($e)
             ? ' + ' . (int) $e['children'] . ' child' . ((int) $e['children'] === 1 ? '' : 'ren')
             : '');
     $subject =
-        'New enquiry: ' . ($e['name'] ?: 'Someone') . ' — ' . $prop . ', ' . $e['check_in'] . ' to ' . $e['check_out'];
+        'New enquiry: ' . ($e['name'] ?: 'Someone') . ' — ' . $prop . ', ' . uk_date($e['check_in']) . ' to ' . uk_date($e['check_out']);
 
     // Full booking context so the owner can decide (and reply) straight from the
     // inbox without opening the back office: contact, address, times, the price
@@ -1208,7 +1208,7 @@ function send_owner_enquiry_email($e)
         (!empty($e['phone']) ? 'Phone: ' . $e['phone'] . "\n" : '') .
         ($addr !== '' ? 'Address: ' . $addr . "\n" : '') .
         "Cottage: {$prop}\n" .
-        'Dates: ' . ($e['check_in'] ?? '') . ' to ' . ($e['check_out'] ?? '') . "\n" .
+        'Dates: ' . uk_date($e['check_in'] ?? '') . ' to ' . uk_date($e['check_out'] ?? '') . "\n" .
         ($times !== '' ? $times . "\n" : '') .
         "Party: {$party}\n" .
         ($priceLine !== '' ? 'Estimated price: ' . $priceLine . "\n" : '') .
@@ -1254,7 +1254,7 @@ function send_owner_enquiry_email($e)
             ? email_note('★ Returning guest — ' . $prior . ' completed stay' . ($prior === 1 ? '' : 's') . ' before this.')
             : '') .
         email_p(
-            email_esc(($e['check_in'] ?? '') . ' to ' . ($e['check_out'] ?? '')) . ' &middot; ' . email_esc($party),
+            email_esc(uk_date($e['check_in'] ?? '') . ' to ' . uk_date($e['check_out'] ?? '')) . ' &middot; ' . email_esc($party),
             true,
         ) .
         ($kvRows !== ''
@@ -1304,8 +1304,8 @@ function send_booking_emails($b)
         $body = "Dear {$b['name']},\n\n";
         $body .= "Good news — your booking at {$b['prop_name']} is confirmed.\n\n";
         $body .= "Booking reference: {$b['ref']}\n";
-        $body .= "Check in:  {$b['check_in']} from {$b['check_in_time']}\n";
-        $body .= "Check out: {$b['check_out']} by {$b['check_out_time']}\n";
+        $body .= "Check in:  " . uk_date($b['check_in']) . " from {$b['check_in_time']}\n";
+        $body .= "Check out: " . uk_date($b['check_out']) . " by {$b['check_out_time']}\n";
         $body .= "Party: {$party}\n";
         $body .= "Payment: {$paymentLabel}\n";
         $body .= "Address: {$b['address']}\n\n";
@@ -1396,8 +1396,8 @@ function send_booking_emails($b)
             '</div>' .
             email_p('Dear ' . $esc($b['name']) . ', good news — your stay is confirmed. Here are the details:') .
             email_rows([
-                ['Check in', $esc($b['check_in']) . ' &middot; ' . $esc($b['check_in_time'])],
-                ['Check out', $esc($b['check_out']) . ' &middot; ' . $esc($b['check_out_time'])],
+                ['Check in', $esc(uk_date($b['check_in'])) . ' &middot; ' . $esc($b['check_in_time'])],
+                ['Check out', $esc(uk_date($b['check_out'])) . ' &middot; ' . $esc($b['check_out_time'])],
                 ['Party', $esc($party)],
                 ['Payment', '<span style="color:' . $paymentColor . ';font-weight:600;">' . $paymentLabel . '</span>'],
                 ['Address', $esc($b['address'])],
@@ -1421,15 +1421,15 @@ function send_booking_emails($b)
     // Skipped on a payment re-send (skip_owner) so the owner isn't re-pinged with
     // "new booking" each time a payment is recorded.
     if (empty($b['skip_owner']) && defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL) {
-        $subject = "New confirmed booking — {$b['prop_name']} ({$b['check_in']})";
+        $subject = "New confirmed booking — {$b['prop_name']} (" . uk_date($b['check_in']) . ")";
         $body = "A booking has just been confirmed.\n\n";
         $body .= "Reference: {$b['ref']}\n";
         $body .= "Property: {$b['prop_name']}\n";
         $body .= "Guest: {$b['name']}\n";
         $body .= 'Email: ' . ($b['email'] ?: '—') . "\n";
         $body .= 'Phone: ' . ($b['phone'] ?? '—') . "\n";
-        $body .= "Check in:  {$b['check_in']} ({$b['check_in_time']})\n";
-        $body .= "Check out: {$b['check_out']} ({$b['check_out_time']})\n";
+        $body .= "Check in:  " . uk_date($b['check_in']) . " ({$b['check_in_time']})\n";
+        $body .= "Check out: " . uk_date($b['check_out']) . " ({$b['check_out_time']})\n";
         $body .= "Stay: {$nightsTxt}\n";
         $body .= "Guests: {$party}\n";
         $ownerDep = round((float) ($b['damages_deposit'] ?? 0), 2);
@@ -1574,7 +1574,7 @@ function send_payment_request($b, $payUrl)
     $subject = "Pay your {$what} — {$prop}";
     $text =
         "Hello {$name},\n\n" .
-        "Thank you for booking {$prop} ({$b['check_in']} to {$b['check_out']}).\n\n" .
+        "Thank you for booking {$prop} (" . uk_date($b['check_in']) . " to " . uk_date($b['check_out']) . ").\n\n" .
         "To secure your stay, please pay your {$what} of " .
         $money($b['amount']) .
         " securely by card here:\n" .
@@ -1595,9 +1595,9 @@ function send_payment_request($b, $payUrl)
                 ', thank you for booking <strong style="color:#2A2622;">' .
                 $esc($prop) .
                 '</strong> (' .
-                $esc($b['check_in']) .
+                $esc(uk_date($b['check_in'])) .
                 ' to ' .
-                $esc($b['check_out']) .
+                $esc(uk_date($b['check_out'])) .
                 ').',
         ) .
         email_amount(ucfirst($what) . ' due', $money($b['amount']), 'of ' . $money($stayTotalGrand) . ' total') .
@@ -1686,7 +1686,7 @@ function send_payment_reminder($b, $payUrl)
     $text =
         "Hello {$name},\n\n" .
         "Just a friendly reminder that the balance for your stay at {$prop} is still outstanding, " .
-        "and your arrival is {$when} ({$b['check_in']}).\n\n" .
+        "and your arrival is {$when} (" . uk_date($b['check_in']) . ").\n\n" .
         'Please pay the remaining ' .
         $money($b['amount']) .
         " securely by card here:\n" .
@@ -1705,7 +1705,7 @@ function send_payment_reminder($b, $payUrl)
                 '</strong> is still outstanding, and your arrival is <strong style="color:#2A2622;">' .
                 $esc($when) .
                 '</strong> (' .
-                $esc($b['check_in']) .
+                $esc(uk_date($b['check_in'])) .
                 ').',
         ) .
         email_amount('Balance due', $money($b['amount'])) .
@@ -1733,7 +1733,7 @@ function send_hold_request($b, $url)
     $subject = "Secure your stay — refundable card hold for {$prop}";
     $text =
         "Hello {$name},\n\n" .
-        "Ahead of your stay at {$prop} ({$b['check_in']} to {$b['check_out']}), please place the refundable " .
+        "Ahead of your stay at {$prop} (" . uk_date($b['check_in']) . " to " . uk_date($b['check_out']) . "), please place the refundable " .
         'security hold of ' .
         $money($b['amount']) .
         " on your card here:\n" .
@@ -1749,9 +1749,9 @@ function send_hold_request($b, $url)
             'Hello ' .
                 $esc($name) .
                 ', ahead of your stay (' .
-                $esc($b['check_in']) .
+                $esc(uk_date($b['check_in'])) .
                 ' to ' .
-                $esc($b['check_out']) .
+                $esc(uk_date($b['check_out'])) .
                 ') please place the refundable security hold on your card.',
         ) .
         email_amount('Refundable hold', $money($b['amount']), 'held, not charged') .
@@ -1823,7 +1823,7 @@ function send_refund_email($b)
         "We've issued a refund of " .
         $money($b['amount']) .
         " for your booking at {$prop}" .
-        (!empty($b['check_in']) ? " ({$b['check_in']} to {$b['check_out']})" : '') .
+        (!empty($b['check_in']) ? " (" . uk_date($b['check_in']) . " to " . uk_date($b['check_out']) . ")" : '') .
         ".\n\n" .
         ($reason !== '' ? "Reason: {$reason}\n\n" : '') .
         "It's been sent back to the card you paid with. Refunds usually take a few working days " .
@@ -1838,7 +1838,7 @@ function send_refund_email($b)
                 ', we\'ve issued a refund for your booking at <strong style="color:#2A2622;">' .
                 $esc($prop) .
                 '</strong>' .
-                (!empty($b['check_in']) ? ' (' . $esc($b['check_in']) . ' to ' . $esc($b['check_out']) . ')' : '') .
+                (!empty($b['check_in']) ? ' (' . $esc(uk_date($b['check_in'])) . ' to ' . $esc(uk_date($b['check_out'])) . ')' : '') .
                 '.',
         ) .
         email_amount('Refund', $money($b['amount']), '', '#D6A785') .
@@ -1938,7 +1938,7 @@ function send_cancellation_email($b)
     $text =
         "Hello {$name},\n\n" .
         "Your booking at {$prop}" .
-        (!empty($b['check_in']) ? " ({$b['check_in']} to {$b['check_out']})" : '') .
+        (!empty($b['check_in']) ? " (" . uk_date($b['check_in']) . " to " . uk_date($b['check_out']) . ")" : '') .
         " has been cancelled.\n\n" .
         ($reason !== '' ? "Reason: {$reason}\n\n" : '') .
         ($refundLine !== '' ? $refundLine . "\n\n" : '') .
@@ -1952,7 +1952,7 @@ function send_cancellation_email($b)
                 ', your booking at <strong style="color:#2A2622;">' .
                 $esc($prop) .
                 '</strong>' .
-                (!empty($b['check_in']) ? ' (' . $esc($b['check_in']) . ' to ' . $esc($b['check_out']) . ')' : '') .
+                (!empty($b['check_in']) ? ' (' . $esc(uk_date($b['check_in'])) . ' to ' . $esc(uk_date($b['check_out'])) . ')' : '') .
                 ' has been cancelled.',
         ) .
         ($reason !== '' ? email_p('<strong style="color:#2A2622;">Reason:</strong> ' . $esc($reason), true) : '') .

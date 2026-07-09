@@ -58,9 +58,9 @@ foreach ($rows as $e) {
         'Thanks for your enquiry about ' .
         $propName .
         ' for ' .
-        $e['check_in'] .
+        uk_date($e['check_in']) .
         ' to ' .
-        $e['check_out'] .
+        uk_date($e['check_out']) .
         ".\n\n" .
         "We're still holding those dates for you. " .
         ($link ? "You can pick up where you left off here:\n" . $link . "\n\n" : '') .
@@ -74,7 +74,7 @@ foreach ($rows as $e) {
         $accent = prop_display($e['prop_key'])['accent'];
         $inner =
             email_h('Still thinking it over?') .
-            email_p('Hello ' . $esc($name) . ', thanks for your enquiry about <strong style="color:#2A2622;">' . $esc($propName) . '</strong> for ' . $esc($e['check_in']) . ' to ' . $esc($e['check_out']) . '.') .
+            email_p('Hello ' . $esc($name) . ', thanks for your enquiry about <strong style="color:#2A2622;">' . $esc($propName) . '</strong> for ' . $esc(uk_date($e['check_in'])) . ' to ' . $esc(uk_date($e['check_out'])) . '.') .
             email_p("We're still holding those dates for you.") .
             ($link ? email_btn($link, 'Pick up where you left off', $accent, '#ffffff') : '') .
             email_p("Or just reply to this email (or message us on the website) and we'll get your booking confirmed.", true);
@@ -151,7 +151,7 @@ foreach ($drafts as $d) {
         $base = function_exists('site_base_url') ? site_base_url() : '';
         $slug = prop_display($d['prop_key'])['slug'];
         $link = $base ? $base . ($slug ? 'cottages/' . $slug : '') : '';
-        $dates = $d['check_in'] && $d['check_out'] ? ' for ' . $d['check_in'] . ' to ' . $d['check_out'] : '';
+        $dates = $d['check_in'] && $d['check_out'] ? ' for ' . uk_date($d['check_in']) . ' to ' . uk_date($d['check_out']) : '';
         $subject = 'Finish your ' . $propName . ' enquiry?';
         $text =
             'Hello ' .

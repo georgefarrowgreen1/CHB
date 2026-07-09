@@ -800,7 +800,7 @@ function renderBookingHub() {
                     <span class="prop-tag tag-${propKey}">${escapeHtml(meta.name)}</span>
                     ${ref ? `<span class="bhub-ref">${escapeHtml(ref)}</span>` : ''}
                     <h1 class="bhub-name">${escapeHtml(b.name || 'Guest')}</h1>
-                    <div class="bhub-sub">${b.checkIn}${b.checkInTime ? ' · ' + b.checkInTime : ''} → ${b.checkOut}${b.checkOutTime ? ' · ' + b.checkOutTime : ''} · ${nights} night${nights === 1 ? '' : 's'} · ${escapeHtml(b.guests || '')}${past ? ' · past stay' : ''}</div>
+                    <div class="bhub-sub">${fmtDate(b.checkIn)}${b.checkInTime ? ' · ' + b.checkInTime : ''} → ${fmtDate(b.checkOut)}${b.checkOutTime ? ' · ' + b.checkOutTime : ''} · ${nights} night${nights === 1 ? '' : 's'} · ${escapeHtml(b.guests || '')}${past ? ' · past stay' : ''}</div>
                     ${changeover}
                 </div>
                 <div class="bhub-actions">
@@ -900,7 +900,7 @@ function renderBookingHub() {
               .slice(0, 6)
               .map(
                   ({ pk, x }) =>
-                      `<button class="bhub-stay-row" onclick="openBookingHub('${x.id}')"><span class="prop-tag tag-${pk}">${escapeHtml((propertyMeta[pk] || { name: pk }).name)}</span><span>${x.checkIn} → ${x.checkOut}</span><span class="bhub-mut">open →</span></button>`,
+                      `<button class="bhub-stay-row" onclick="openBookingHub('${x.id}')"><span class="prop-tag tag-${pk}">${escapeHtml((propertyMeta[pk] || { name: pk }).name)}</span><span>${fmtDate(x.checkIn)} → ${fmtDate(x.checkOut)}</span><span class="bhub-mut">open →</span></button>`,
               )
               .join('')
         : '';
@@ -2802,7 +2802,7 @@ function renderDepositsDue() {
                     <div class="money-row-head">
                         <div><span class="prop-tag tag-${propKey}">${propertyMeta[propKey] ? propertyMeta[propKey].name : propKey}</span>
                             <strong style="margin-left:8px;">${escapeHtml(b.name)}</strong>
-                            <span style="color:var(--text-muted);margin-left:8px;font-size:0.85rem;">left ${b.checkOut}</span></div>
+                            <span style="color:var(--text-muted);margin-left:8px;font-size:0.85rem;">left ${fmtDate(b.checkOut)}</span></div>
                         <span class="money-status">${gbp(dh.held)} held</span>
                     </div>
                     <div class="money-actions"><button class="btn-sm btn-edit" onclick="returnDeposit('${b.id}')">Return deposit</button>${b.holdStatus === 'charged' ? `<button class="btn-sm btn-edit" onclick="keepDeposit('${b.id}')">Keep (damage)</button>` : ''}</div>
@@ -3170,7 +3170,7 @@ function renderMoneyPanel() {
                     <div class="money-row-head">
                         <div><span class="prop-tag tag-${propKey}">${propertyMeta[propKey] ? propertyMeta[propKey].name : propKey}</span>
                             <strong style="margin-left:8px;">${escapeHtml(b.name)}</strong>
-                            <span style="color:var(--text-muted);margin-left:8px;font-size:0.85rem;">${b.checkIn} → ${b.checkOut}</span> ${badge}</div>
+                            <span style="color:var(--text-muted);margin-left:8px;font-size:0.85rem;">${fmtDate(b.checkIn)} → ${fmtDate(b.checkOut)}</span> ${badge}</div>
                         <span class="money-status"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${meta.dot};"></span> ${meta.label}</span>
                     </div>
                     <div class="money-figures">
@@ -5458,7 +5458,7 @@ async function loadWaitlist() {
         .map((w) => {
             const name = (propertyMeta[w.prop_key] || {}).name || w.prop_key;
             const dates =
-                w.check_in && w.check_out ? `${w.check_in} → ${w.check_out}` : 'Any dates';
+                w.check_in && w.check_out ? `${fmtDate(w.check_in)} → ${fmtDate(w.check_out)}` : 'Any dates';
             const notified = w.notified_at
                 ? `<span style="color:#4CAF50;">Notified ${escapeHtml(String(w.notified_at).slice(0, 10))}</span>`
                 : '<span style="color:var(--text-muted);">Waiting</span>';
@@ -6047,7 +6047,7 @@ async function tcRenderBooking() {
             const name = (propertyMeta[b.prop_key] || {}).name || b.prop_key;
             return `<div class="accounts-stat" style="max-width:640px;margin-bottom:12px;">
                     <div class="label">${escapeHtml(name)} · #${b.id} <span style="background:#E5533C;color:#fff;font-size:0.6rem;font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;">TEST</span></div>
-                    <div style="font-size:0.85rem;color:var(--text-muted);margin:4px 0 10px;">${escapeHtml(b.check_in)} → ${escapeHtml(b.check_out)} · ${gbp(b.agreed_total || 0)}</div>
+                    <div style="font-size:0.85rem;color:var(--text-muted);margin:4px 0 10px;">${escapeHtml(fmtDate(b.check_in))} → ${escapeHtml(fmtDate(b.check_out))} · ${gbp(b.agreed_total || 0)}</div>
                     <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:6px;">Payments &amp; emails</div>
                     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
                         <button class="btn-sm btn-edit" onclick="tcPay(${b.id},'deposit',this)">Pay deposit ↗</button>
@@ -6282,7 +6282,7 @@ async function tcRenderData() {
             const name = (propertyMeta[b.prop_key] || {}).name || b.prop_key;
             return `
                 <div class="settings-row" style="cursor:default;">
-                    <span class="settings-row-main"><span class="settings-row-label">${escapeHtml(name)} · #${b.id}</span><span class="settings-row-sub">${escapeHtml(b.check_in)} → ${escapeHtml(b.check_out)} · ${gbp(b.agreed_total || 0)}${b.payments ? ` · ${b.payments} payment${b.payments === 1 ? '' : 's'}` : ''}</span></span>
+                    <span class="settings-row-main"><span class="settings-row-label">${escapeHtml(name)} · #${b.id}</span><span class="settings-row-sub">${escapeHtml(fmtDate(b.check_in))} → ${escapeHtml(fmtDate(b.check_out))} · ${gbp(b.agreed_total || 0)}${b.payments ? ` · ${b.payments} payment${b.payments === 1 ? '' : 's'}` : ''}</span></span>
                     <button class="btn-sm btn-edit" style="color:#E57373;border-color:rgba(229,115,115,0.4);" onclick="tcDeleteData('booking',${b.id})">Remove</button>
                 </div>`;
         })
@@ -6291,7 +6291,7 @@ async function tcRenderData() {
         .map(
             (e) => `
                 <div class="settings-row" style="cursor:default;">
-                    <span class="settings-row-main"><span class="settings-row-label">Enquiry · #${e.id}</span><span class="settings-row-sub">${escapeHtml(e.check_in || '')} → ${escapeHtml(e.check_out || '')}</span></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Enquiry · #${e.id}</span><span class="settings-row-sub">${escapeHtml(fmtDate(e.check_in) || '')} → ${escapeHtml(fmtDate(e.check_out) || '')}</span></span>
                     <button class="btn-sm btn-edit" style="color:#E57373;border-color:rgba(229,115,115,0.4);" onclick="tcDeleteData('enquiry',${e.id})">Remove</button>
                 </div>`,
         )
@@ -7256,7 +7256,7 @@ function renderCalendar() {
             const dot = `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${payColor};margin-right:5px;vertical-align:middle;"></span>`;
             const firstName = dayData.booking.name.split(' ')[0];
             const _pm = paymentMeta[dayData.booking.payment] || {};
-            bar.title = `${propertyMeta[propKey].name} — ${dayData.booking.name} · ${dayData.booking.checkIn} → ${dayData.booking.checkOut}${_pm.label ? ' · ' + _pm.label : ''}`;
+            bar.title = `${propertyMeta[propKey].name} — ${dayData.booking.name} · ${fmtDate(dayData.booking.checkIn)} → ${fmtDate(dayData.booking.checkOut)}${_pm.label ? ' · ' + _pm.label : ''}`;
 
             // Read-only pills: the calendar is an at-a-glance overview only.
             // Opening/acting on bookings happens on the Bookings dashboard
@@ -7294,7 +7294,7 @@ function renderCalendar() {
                             ? bl.source.charAt(0).toUpperCase() + bl.source.slice(1)
                             : 'External';
                 bar.innerHTML = `${IC_LOCK}<span class="bb-code">${meta.short}</span><span class="bb-name"> ${arrow} ${escapeHtml(srcName.toUpperCase())}</span>`;
-                bar.title = `${meta.name} — ${srcName} booking (${bl.checkIn} to ${bl.checkOut})`;
+                bar.title = `${meta.name} — ${srcName} booking (${fmtDate(bl.checkIn)} to ${fmtDate(bl.checkOut)})`;
                 dayBars.push(bar);
             });
         });
@@ -7457,7 +7457,7 @@ function renderInbox() {
                         <span class="prop-tag tag-${e.propKey}">${escapeHtml(propName)}</span>${availChip}${staleChip}
                         <h3>${escapeHtml(e.name)}${repeat}</h3>
                         <div class="enquiry-meta">
-                            <strong>${escapeHtml(e.checkIn)}</strong> → <strong>${escapeHtml(e.checkOut)}</strong>${priceChip}<br>
+                            <strong>${escapeHtml(fmtDate(e.checkIn))}</strong> → <strong>${escapeHtml(fmtDate(e.checkOut))}</strong>${priceChip}<br>
                             Party: ${escapeHtml(e.guests)} · Received ${escapeHtml(ageLabel)}
                         </div>
                         ${msg}
@@ -7508,13 +7508,13 @@ function openEnquiryEmail(enqId) {
                 <span class="enq-ctx-name">${escapeHtml(enq.name || 'Guest')}<span class="enq-ctx-mut" style="display:block;font-weight:400;">${escapeHtml(enq.email)}</span></span>
                 <span class="prop-tag tag-${enq.propKey}" style="margin-left:auto;flex-shrink:0;">${escapeHtml(propName)}</span>
             </div>
-            <div class="enq-ctx-row"><span class="enq-ctx-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></span><span class="enq-ctx-txt"><strong>${escapeHtml(enq.checkIn)}</strong>&nbsp;→&nbsp;<strong>${escapeHtml(enq.checkOut)}</strong></span></div>
+            <div class="enq-ctx-row"><span class="enq-ctx-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></span><span class="enq-ctx-txt"><strong>${escapeHtml(fmtDate(enq.checkIn))}</strong>&nbsp;→&nbsp;<strong>${escapeHtml(fmtDate(enq.checkOut))}</strong></span></div>
             <div class="enq-ctx-row"><span class="enq-ctx-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 12 0v1"/></svg></span><span class="enq-ctx-txt">${escapeHtml(enq.guests)}${enq.phone ? `<span class="enq-ctx-mut"> · ${escapeHtml(enq.phone)}</span>` : ''}</span></div>
             ${priceRow}
             ${enq.message ? `<div class="enq-ctx-quote">“${escapeHtml(enq.message)}”</div>` : ''}`;
     }
     const subj = document.getElementById('enq-email-subject');
-    if (subj) subj.value = `Your enquiry — ${propName}, ${enq.checkIn} to ${enq.checkOut}`;
+    if (subj) subj.value = `Your enquiry — ${propName}, ${fmtDate(enq.checkIn)} to ${fmtDate(enq.checkOut)}`;
     const body = document.getElementById('enq-email-body');
     if (body) body.value = '';
     const msg = document.getElementById('enq-email-msg');
@@ -7735,12 +7735,12 @@ function openBookingEmail(bookingId) {
                 <span class="enq-ctx-name">${escapeHtml(b.name || 'Guest')}<span class="enq-ctx-mut" style="display:block;font-weight:400;">${escapeHtml(b.email)}</span></span>
                 <span class="prop-tag tag-${loc.propKey}" style="margin-left:auto;flex-shrink:0;">${escapeHtml(propName)}</span>
             </div>
-            <div class="enq-ctx-row"><span class="enq-ctx-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></span><span class="enq-ctx-txt"><strong>${escapeHtml(b.checkIn)}</strong>&nbsp;→&nbsp;<strong>${escapeHtml(b.checkOut)}</strong></span></div>
+            <div class="enq-ctx-row"><span class="enq-ctx-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></span><span class="enq-ctx-txt"><strong>${escapeHtml(fmtDate(b.checkIn))}</strong>&nbsp;→&nbsp;<strong>${escapeHtml(fmtDate(b.checkOut))}</strong></span></div>
             <div class="enq-ctx-row"><span class="enq-ctx-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 12 0v1"/></svg></span><span class="enq-ctx-txt">${escapeHtml(b.guests || '')}${b.phone ? `<span class="enq-ctx-mut"> · ${escapeHtml(b.phone)}</span>` : ''}</span></div>
             ${priceRow}`;
     }
     const subj = document.getElementById('enq-email-subject');
-    if (subj) subj.value = `Your booking — ${propName}, ${b.checkIn} to ${b.checkOut}`;
+    if (subj) subj.value = `Your booking — ${propName}, ${fmtDate(b.checkIn)} to ${fmtDate(b.checkOut)}`;
     const body = document.getElementById('enq-email-body');
     if (body) body.value = '';
     const msg = document.getElementById('enq-email-msg');

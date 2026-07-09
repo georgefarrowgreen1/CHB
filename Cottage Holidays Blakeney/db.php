@@ -394,6 +394,12 @@ function uk_postcode_present($s)
     return (bool) preg_match('/\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i', (string) $s);
 }
 // True if the whole value IS a UK postcode (used for the dedicated postcode field).
+// 'YYYY-MM-DD' → 'DD/MM/YYYY' — the UK display format used wherever a date
+// reaches a guest or the owner (screens, emails, invoices). Storage stays ISO.
+function uk_date($iso)
+{
+    return preg_match('/^(\d{4})-(\d{2})-(\d{2})/', (string) $iso, $m) ? "{$m[3]}/{$m[2]}/{$m[1]}" : (string) $iso;
+}
 function uk_postcode_valid($s)
 {
     return (bool) preg_match('/^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i', trim((string) $s));

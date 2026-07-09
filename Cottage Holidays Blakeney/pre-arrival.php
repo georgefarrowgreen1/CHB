@@ -60,7 +60,7 @@ foreach ($due as $b) {
             sms_notify_booking(
                 $b,
                 'Cottage Holidays Blakeney: your stay starts ' .
-                    $b['check_in'] .
+                    uk_date($b['check_in']) .
                     '. We\'ve emailed your arrival info, directions and key details — see you soon!',
             );
         } catch (\Throwable $e) {

@@ -88,7 +88,7 @@ foreach ($due as $b) {
                 'Cottage Holidays Blakeney: the balance' .
                     (isset($res['amount']) ? ' of £' . number_format((float) $res['amount'], 2) : '') .
                     ' for your ' .
-                    $b['check_in'] .
+                    uk_date($b['check_in']) .
                     ' stay is now due — please check your email for the secure payment link.',
             );
         } catch (\Throwable $e) {
