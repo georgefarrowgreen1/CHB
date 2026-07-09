@@ -327,6 +327,8 @@ function emailLogLabel(action) {
             'email.arrival': 'Arrival info',
             'booking.email': 'Message',
             'payment.request': 'Payment request',
+            'email.review': 'Review request',
+            'email.anniversary': 'Return invite',
         }[action] || 'Email'
     );
 }

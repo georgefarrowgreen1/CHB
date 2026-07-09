@@ -134,6 +134,15 @@ function enquiry_approve($id)
     } catch (\Throwable $ex) {
         $emailResult = ['error' => 'Mail step skipped: ' . $ex->getMessage()];
     }
+    // Visible in the per-booking email log (the approval's confirmation was
+    // previously invisible there — only the manual re-send button logged).
+    if (is_array($emailResult) && !empty($emailResult['guest']['ok'])) {
+        log_activity('comms', 'email.confirmation', 'Booking confirmation emailed — ' . ($e['name'] ?? ''), [
+            'prop_key' => $e['prop_key'] ?? '',
+            'entity' => 'booking',
+            'entity_id' => (string) $bookingId,
+        ]);
+    }
 
     // Best-effort: push the guest "booking confirmed" if they have an account +
     // a subscribed device. Never blocks the approval (no-op without either).
@@ -164,6 +173,14 @@ function enquiry_approve($id)
                 $withinWindow = $daysToCheckIn < payment_balance_days();
                 $kind = $withinWindow ? 'balance' : 'deposit';
                 $paymentRequest = request_booking_payment($bk, $kind);
+                if (!empty($paymentRequest['ok'])) {
+                    // Visible in the per-booking email log.
+                    log_activity('payment', 'payment.request', ucfirst($kind) . ' payment request emailed — ' . ($e['name'] ?? ''), [
+                        'prop_key' => $e['prop_key'] ?? '',
+                        'entity' => 'booking',
+                        'entity_id' => (string) $bookingId,
+                    ]);
+                }
                 // If we asked for everything now, mark the balance as already requested
                 // so the scheduled job never double-asks.
                 if (!empty($paymentRequest['ok']) && $withinWindow) {

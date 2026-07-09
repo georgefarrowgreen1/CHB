@@ -376,6 +376,8 @@ if ($action === 'charge') {
                 'fully_paid' => $newStatus === 'paid',
                 // Refundable deposit taken with this payment (refunded after checkout).
                 'deposit_charged' => $damagesDue,
+                // Signed link to the guest invoice — reflects this payment.
+                'invoice_url' => site_base_url() . 'invoice.php?b=' . (int) $bookingId . '&token=' . invoice_token((int) $bookingId),
             ]);
             // Record the receipt so it shows in the Bookings page email log.
             if (is_array($receipt) && !empty($receipt['ok'])) {
