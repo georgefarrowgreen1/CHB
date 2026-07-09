@@ -275,7 +275,9 @@ function damages_returned($bookingId)
 // owner notification. Uses the booking's locked (agreed) figures so the email
 // always matches what's on the booking. Never throws — returns the mailer result
 // array (or an ['error'=>...] note) so callers can surface it without failing.
-function send_booking_confirmation($bookingId)
+// $guestOnly = true suppresses the owner "new booking" notification — used when
+// RE-sending after a payment is recorded, so the owner isn't re-pinged each time.
+function send_booking_confirmation($bookingId, $guestOnly = false)
 {
     try {
         $b = booking_by_id((int) $bookingId);
@@ -309,6 +311,19 @@ function send_booking_confirmation($bookingId)
         }
         $ref = 'CHB-' . str_pad(substr(preg_replace('/\D/', '', (string) $bookingId), -6), 6, '0', STR_PAD_LEFT);
 
+        // Paid-so-far / balance for the confirmation. MUST mirror the JS
+        // displayGrand()/depositCharged() (app.js) so the email agrees with the
+        // invoice + My Stays: the refundable deposit is only "paid" when actually
+        // collected (Square → hold_status 'charged'/'captured'/'kept'); a manual
+        // cash/bank payment leaves it 'none', so it isn't counted.
+        $holdStatus = $b['hold_status'] ?? 'none';
+        $depAmt = in_array($holdStatus, ['returned', 'released'], true) ? 0.0 : (float) $deposit;
+        $grand = round($total + $depAmt, 2);
+        $rentalPaid = $b['payment'] === 'paid' ? $total : min($total, (float) ($b['deposit_paid'] ?? 0));
+        $chargedDep = in_array($holdStatus, ['charged', 'captured', 'kept'], true) ? $depAmt : 0.0;
+        $paidSoFar = round($rentalPaid + $chargedDep, 2);
+        $balanceDue = round(max(0, $grand - $paidSoFar), 2);
+
         return send_booking_emails([
             'name' => $b['name'],
             'email' => $b['email'],
@@ -331,6 +346,13 @@ function send_booking_confirmation($bookingId)
             'damages_deposit' => $deposit,
             'payment' => $b['payment'],
             'ref' => $ref,
+            // Payment state so the confirmation reflects money received (shown only
+            // when something has been paid; a fresh unpaid booking omits it).
+            'paid_so_far' => $paidSoFar,
+            'balance_due' => $balanceDue,
+            'grand_total' => $grand,
+            // Suppress the owner copy on a re-send after a payment.
+            'skip_owner' => $guestOnly,
             // Signed link to the guest-viewable HTML invoice (invoice.php).
             'invoice_url' => site_base_url() . 'invoice.php?b=' . (int) $bookingId . '&token=' . invoice_token((int) $bookingId),
         ]);
@@ -774,7 +796,10 @@ if ($action === 'send_confirmation') {
     if (empty($b['email'])) {
         json_out(['error' => 'This booking has no guest email on file.'], 400);
     }
-    $result = send_booking_confirmation($id);
+    // guest_only:true → re-send just the guest confirmation (no owner re-ping);
+    // used when confirming a recorded payment.
+    $guestOnly = !empty($in['guest_only']);
+    $result = send_booking_confirmation($id, $guestOnly);
     if (is_array($result) && isset($result['guest']) && !empty($result['guest']['ok'])) {
         log_activity('comms', 'email.confirmation', 'Confirmation re-sent — ' . ($b['name'] ?? ''), ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
         json_out(['ok' => true, 'email' => $result]);
