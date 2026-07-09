@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 36;
+const ADMIN_BUNDLE_V = 37;
 let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
@@ -34,7 +34,7 @@ function loadAdminBundle() {
     __adminBundlePromise = attempt(2);
     return __adminBundlePromise;
 }
-["accountsBack","accountsOpen","accountsShowIndex","activityLogSearch","addAdminPasskey","addReviewRow","afterPaymentChange","autoSyncIcalBlocks","backfillWebp","bookingSearch","bookingsSetFilter","bookingsSetSearch","bulkImportReviews","cancelBooking","changeAdminPassword","changeMonth","inboxSub","inboxSubClose","initBackOffice","loadAdminMessages","loadDiagnostics","loadGuestList","logoutStaff","openAccounts","openAddBooking","openArea","openBlockDates","openBookings","openBookingEmail","openInbox","openSettings","openStagingSite","refreshModerationCounts","renderAccounts","renderActivityLog","renderBookings","renderCalendar","renderExpenses","renderInbox","renderMoneyOverview","requestPayment","renderSquareSettings","runMigrations","saveApiKey","saveContactPhone","saveContent","saveDepositPct","saveGoogleReviewUrl","saveHostText","saveReviews","sendBroadcast","sendSampleEmails","sendTestEmail","settingsBack","settingsFilter","settingsOpen","settingsOpenAccom","settingsOpenAccomSec","settingsOpenCalendar","settingsOpenCancel","settingsRecentRender","settingsSearchKey","settingsShowIndex","tryAccessBackOffice","uploadHostPhoto"].forEach((n) => {
+["accountsBack","accountsOpen","accountsShowIndex","activityLogSearch","addAdminPasskey","addReviewRow","afterPaymentChange","autoSyncIcalBlocks","backfillWebp","bookingSearch","bookingsSetFilter","bookingsSetSearch","bulkImportReviews","cancelBooking","changeAdminPassword","changeMonth","inboxSub","inboxSubClose","initBackOffice","loadAdminMessages","loadDiagnostics","loadGuestList","logoutStaff","offerUpdatedConfirmationEmail","openAccounts","openAddBooking","openArea","openBlockDates","openBookings","openBookingEmail","openInbox","openSettings","openStagingSite","refreshModerationCounts","renderAccounts","renderActivityLog","renderBookings","renderCalendar","renderExpenses","renderInbox","renderMoneyOverview","requestPayment","renderSquareSettings","runMigrations","saveApiKey","saveContactPhone","saveContent","saveDepositPct","saveGoogleReviewUrl","saveHostText","saveReviews","sendBroadcast","sendSampleEmails","sendTestEmail","settingsBack","settingsFilter","settingsOpen","settingsOpenAccom","settingsOpenAccomSec","settingsOpenCalendar","settingsOpenCancel","settingsRecentRender","settingsSearchKey","settingsShowIndex","tryAccessBackOffice","uploadHostPhoto"].forEach((n) => {
     const stub = (...a) =>
         loadAdminBundle()
             .catch((e) => {
@@ -8545,26 +8545,59 @@ function glassDialog(opts) {
             const o = document.getElementById('glass-dialog');
             const msg = document.getElementById('glass-dialog-msg');
             const inp = document.getElementById('glass-dialog-input');
+            const fields = document.getElementById('glass-dialog-fields');
             const cancel = document.getElementById('glass-dialog-cancel');
             if (!o) {
-                resolve(opts.type === 'prompt' ? null : opts.type !== 'confirm');
+                resolve(opts.type === 'prompt' || opts.type === 'form' ? null : opts.type !== 'confirm');
                 return;
             }
             msg.innerText = opts.message || '';
             inp.style.display = opts.type === 'prompt' ? 'block' : 'none';
             inp.type = opts.password ? 'password' : 'text';
             inp.value = opts.def != null ? String(opts.def) : '';
+            // 'form': several labelled inputs on ONE dialog (vs. chained prompts).
+            const isForm = opts.type === 'form' && Array.isArray(opts.fields);
+            if (fields) {
+                if (isForm) {
+                    fields.innerHTML = opts.fields
+                        .map(
+                            (f) =>
+                                `<label class="modal-label" for="gdf-${f.id}">${escapeHtml(f.label || '')}</label>` +
+                                `<input class="input-glass" id="gdf-${f.id}" type="${f.type || 'text'}"` +
+                                (f.min != null ? ` min="${f.min}"` : '') +
+                                (f.step != null ? ` step="${f.step}"` : '') +
+                                ` placeholder="${escapeHtml(f.placeholder || '')}">`,
+                        )
+                        .join('');
+                    opts.fields.forEach((f) => {
+                        const el = document.getElementById('gdf-' + f.id);
+                        if (el) el.value = f.value != null ? String(f.value) : '';
+                    });
+                }
+                fields.style.display = isForm ? 'block' : 'none';
+                if (!isForm) fields.innerHTML = '';
+            }
             cancel.style.display = opts.type === 'alert' ? 'none' : 'inline-block';
             __glassDlgResolve = (ok) => {
+                let formVals = null;
+                if (isForm && ok) {
+                    formVals = {};
+                    opts.fields.forEach((f) => {
+                        const el = document.getElementById('gdf-' + f.id);
+                        formVals[f.id] = el ? el.value : '';
+                    });
+                }
                 o.classList.remove('open');
                 __glassDlgResolve = null;
                 if (opts.type === 'prompt') resolve(ok ? inp.value : null);
+                else if (opts.type === 'form') resolve(ok ? formVals : null);
                 else if (opts.type === 'confirm') resolve(!!ok);
                 else resolve(true);
             };
             o.classList.add('open');
             setTimeout(() => {
-                (opts.type === 'prompt' ? inp : document.getElementById('glass-dialog-ok')).focus();
+                const first = isForm && fields ? fields.querySelector('input') : null;
+                (opts.type === 'prompt' ? inp : first || document.getElementById('glass-dialog-ok')).focus();
             }, 60);
         });
     const p = __glassDlgQueue.then(run);
@@ -8585,6 +8618,11 @@ function glassConfirm(message) {
 }
 function glassPrompt(message, def, opts) {
     return glassDialog({ type: 'prompt', message, def, password: !!(opts && opts.password) });
+}
+// Several labelled inputs on one dialog. fields: [{id,label,type,value,min,step,
+// placeholder}]. Resolves {id:value,…} on OK, null on Cancel.
+function glassForm(message, fields) {
+    return glassDialog({ type: 'form', message, fields });
 }
 // Lightweight non-blocking toast for success/info confirmations (vs. glassAlert,
 // which blocks with an OK button — kept for errors & destructive confirms).
@@ -11474,6 +11512,9 @@ async function saveModal() {
             await loadData();
             closeModal();
             renderInbox();
+            // Same convention as every other save: a success toast (this path
+            // previously finished silently).
+            toast('Enquiry updated.');
         } catch (e) {
             showErr(e.message);
         }
@@ -11544,28 +11585,21 @@ async function saveModal() {
             payload.id = dbBookings[loc.propKey][loc.idx].dbId;
             const upRes = await saveBookingGuarded('update', payload, 'Save these changes anyway?');
             if (upRes === null) return;
-            // Offer to email the guest the updated details (e.g. after a date change)
-            if (
-                payload.email &&
-                (await glassConfirm(
-                    `Booking updated. Email ${payload.email} an updated confirmation?`,
-                ))
-            ) {
-                try {
-                    // guest_only: this is an owner edit — re-send to the guest only,
-                    // don't ping the owner with a "new booking confirmed" email.
-                    await apiPost('bookings.php', { action: 'send_confirmation', id: payload.id, guest_only: true });
-                    toast('Updated confirmation sent.');
-                } catch (e) {
-                    glassAlert("Saved, but the email didn't send: " + e.message);
-                }
-            }
         }
         await loadData();
         closeModal();
         renderCalendar();
         clearDetails();
         showChangeoverToasts();
+        if (mode !== 'add') {
+            toast('Booking updated.');
+            // Offer to email the guest the updated details (e.g. after a date
+            // change) — the SAME ask the money row uses, so wording never forks.
+            if (payload.email) {
+                const freshB = Object.values(dbBookings).flat().find((x) => x.dbId === payload.id);
+                if (freshB) await offerUpdatedConfirmationEmail(freshB.id);
+            }
+        }
         if (mode === 'add' && addRes) {
             // Show the owner their new booking straight away (no hunting the
             // calendar) and confirm what happened with a non-blocking toast —
@@ -11623,6 +11657,7 @@ async function deleteBooking(bookingId) {
         renderCalendar();
         clearDetails();
         showChangeoverToasts();
+        toast('Booking deleted.');
     } catch (e) {
         glassAlert("Couldn't delete: " + e.message);
     }
@@ -11861,7 +11896,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'j6n4q7vc';
+    const BUILD = 'j6p2r8wd';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

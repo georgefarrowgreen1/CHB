@@ -117,7 +117,14 @@ if ($action === 'draft') {
 
 if ($action === 'submit') {
     // Public — anyone can submit an enquiry. Rate-limit per IP to stop floods.
-    rate_limit('enquiry', 6, 15);
+    // The admin "Edit / Move Enquiry" screen also lands here (decline + resubmit):
+    // for that, skip the rate limit and — below — the guest acknowledgement and
+    // owner alert, so editing an enquiry never re-sends "we received your
+    // enquiry" to the guest or re-pings the owner about their own edit.
+    $isAdminEdit = !empty($_SESSION['admin_id']);
+    if (!$isAdminEdit) {
+        rate_limit('enquiry', 6, 15);
+    }
     $propKey = clean($in['prop_key'] ?? '');
     if (!get_rate($propKey)) {
         json_out(['error' => 'Unknown property'], 400);
@@ -267,11 +274,13 @@ if ($action === 'submit') {
         }
     } catch (\Throwable $e) {
     }
-    // Wake the owner's devices (best-effort).
-    try {
-        require_once __DIR__ . '/webpush.php';
-        alert_owner('New enquiry', trim(($name ?: 'Someone') . ' · ' . $checkIn . '–' . $checkOut));
-    } catch (\Throwable $e) {
+    // Wake the owner's devices (best-effort) — not for the owner's own edit.
+    if (!$isAdminEdit) {
+        try {
+            require_once __DIR__ . '/webpush.php';
+            alert_owner('New enquiry', trim(($name ?: 'Someone') . ' · ' . $checkIn . '–' . $checkOut));
+        } catch (\Throwable $e) {
+        }
     }
 
     // Does this email already have a guest account? Used to tailor the follow-up so a
@@ -290,6 +299,12 @@ if ($action === 'submit') {
     // enquiry is already saved, so the guest shouldn't wait on two SMTP
     // handshakes — on a slow mail day that blocked the public form long enough
     // to risk a host gateway timeout. Both sends stay best-effort.
+    // Skipped entirely for an admin edit — the guest already got their
+    // acknowledgement when they originally enquired, and the owner doesn't
+    // need an email about an enquiry they just edited themselves.
+    if ($isAdminEdit) {
+        json_out(['ok' => true, 'account_exists' => $accountExists]);
+    }
     require_once __DIR__ . '/mailer.php';
     $ackName = $name;
     $ackEmail = $email;
@@ -393,12 +408,20 @@ if ($action === 'decline') {
 }
 
 if ($action === 'approve') {
-    $r = enquiry_approve((int) ($in['id'] ?? 0));
+    // Optional agreed price (parity with the manual add's price override).
+    $r = enquiry_approve((int) ($in['id'] ?? 0), $in['price_override'] ?? null);
     if (!empty($r['error'])) {
         json_out(['error' => $r['error']], (int) ($r['code'] ?? 400));
     }
     log_activity('enquiry', 'enquiry.approve', 'Enquiry approved → booking', ['entity' => 'enquiry', 'entity_id' => (string) (int) ($in['id'] ?? 0)]);
-    json_out(['ok' => true, 'email' => $r['email'] ?? null, 'payment_request' => $r['payment_request'] ?? null]);
+    json_out([
+        'ok' => true,
+        'email' => $r['email'] ?? null,
+        'payment_request' => $r['payment_request'] ?? null,
+        // Deliverability heads-up (enquiry_approve already computes it; it was
+        // previously dropped here so only the one-tap email route showed it).
+        'email_check' => $r['email_check'] ?? null,
+    ]);
 }
 
 // Email the enquirer directly from the Inbox: the owner's message, sent in the

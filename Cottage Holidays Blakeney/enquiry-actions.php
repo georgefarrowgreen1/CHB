@@ -29,9 +29,15 @@ function enquiry_decline($id)
     return ['ok' => true];
 }
 
-function enquiry_approve($id)
+// $priceOverride: optional agreed total (£) negotiated with the guest — parity
+// with the manual Add Booking's "Override total price". Null/blank/≤0 = standard.
+function enquiry_approve($id, $priceOverride = null)
 {
     $id = (int) $id;
+    $priceOverride =
+        $priceOverride !== null && $priceOverride !== '' && (float) $priceOverride > 0
+            ? round((float) $priceOverride, 2)
+            : null;
     $stmt = db()->prepare('SELECT * FROM enquiries WHERE id = ?');
     $stmt->execute([$id]);
     $e = $stmt->fetch();
@@ -64,6 +70,10 @@ function enquiry_approve($id)
         ];
     }
     $p = price_breakdown($rate, $e['adults'], $e['children'], $e['check_in'], $e['check_out']);
+    // Agreed-price parity with the manual add: the override becomes the agreed
+    // total AND is stored in price_override, so confirmation emails, the payment
+    // request (booking_amount_due) and the money views all follow the same figure.
+    $agreedTotal = $priceOverride !== null ? $priceOverride : $p['total'];
     $today = date('Y-m-d');
 
     db()
@@ -71,8 +81,8 @@ function enquiry_approve($id)
             'INSERT INTO bookings
         (prop_key,name,email,phone,address,postcode,check_in,check_out,check_in_time,check_out_time,adults,children,notes,payment,
          agreed_total,agreed_per_night,agreed_nights,agreed_nightly,agreed_booking_fee,agreed_txn_pct,agreed_txn_fee,agreed_on,
-         terms_accepted_at,terms_version,sms_opt_in)
-        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+         terms_accepted_at,terms_version,sms_opt_in,price_override)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
         )
         ->execute([
             $e['prop_key'],
@@ -89,7 +99,7 @@ function enquiry_approve($id)
             $e['children'],
             $e['message'] ?: 'Approved from enquiry inbox.',
             'unpaid',
-            $p['total'],
+            $agreedTotal,
             $p['perNight'],
             $p['nights'],
             $p['nightly'],
@@ -100,6 +110,7 @@ function enquiry_approve($id)
             $e['terms_accepted_at'] ?? null,
             $e['terms_version'] ?? null,
             $e['sms_opt_in'] ?? 0,
+            $priceOverride,
         ]);
     $bookingId = db()->lastInsertId();
     db()
@@ -109,11 +120,18 @@ function enquiry_approve($id)
 
     // A booking was born — record it like the manual-add path does, so the
     // audit trail covers bookings however they're created.
-    log_activity('booking', 'booking.add', 'Booking created from enquiry — ' . ($e['name'] ?? ''), [
-        'prop_key' => $e['prop_key'] ?? '',
-        'entity' => 'booking',
-        'entity_id' => (string) $bookingId,
-    ]);
+    log_activity(
+        'booking',
+        'booking.add',
+        'Booking created from enquiry — ' .
+            ($e['name'] ?? '') .
+            ($priceOverride !== null ? ' (agreed price £' . number_format($priceOverride, 2) . ')' : ''),
+        [
+            'prop_key' => $e['prop_key'] ?? '',
+            'entity' => 'booking',
+            'entity_id' => (string) $bookingId,
+        ],
+    );
 
     // Heads-up (non-blocking): enquiry emails are validated at submit NOW, but
     // older enquiries weren't — flag an undeliverable-looking address so the
@@ -157,7 +175,7 @@ function enquiry_approve($id)
             'tx_fee' => $p['txFee'],
             'adults' => $e['adults'],
             'children' => $e['children'],
-            'total' => $p['total'],
+            'total' => $agreedTotal,
             'damages_deposit' => $p['damagesDeposit'] ?? 0,
             'payment' => 'unpaid',
             'ref' => $ref,

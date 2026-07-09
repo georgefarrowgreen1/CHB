@@ -2780,16 +2780,7 @@ function renderMoneyPanel() {
                         ${
                             ps.fullyPaid
                                 ? ''
-                                : `<select class="input-glass field-sm" onchange="updatePaymentStatus('${b.id}', this.value)" title="Payment status">
-                            ${Object.keys(paymentMeta)
-                                .map(
-                                    (k) =>
-                                        `<option value="${k}" ${b.payment === k ? 'selected' : ''}>${paymentMeta[k].label}</option>`,
-                                )
-                                .join('')}
-                        </select>
-                        <input type="number" min="0" step="0.01" class="input-glass field-sm money-dep" title="Record amount received (£)"
-                               value="${b.depositPaid != null ? b.depositPaid : 0}" onchange="updateDeposit('${b.id}', this.value)">`
+                                : `<button class="btn-sm btn-edit" onclick="recordPayment('${b.id}')" title="Record money received — amount, date and method together">Record payment</button>`
                         }
                         <button class="btn-sm btn-edit" onclick="downloadInvoice('${b.id}')" title="Download an invoice / receipt PDF">Invoice (PDF)</button>
                     </div>
@@ -3527,105 +3518,15 @@ function getBlocksForDate(dateStr, propKey) {
     return (dbBlocks[propKey] || []).filter((bl) => dateStr >= bl.checkIn && dateStr < bl.checkOut);
 }
 
-async function updatePaymentStatus(bookingId, newStatus) {
+// ONE way to record money on a booking (was a status <select> AND an amount box,
+// each driving its own chain of pop-up prompts): a single glass form — amount,
+// date, method together — matching the Add/Edit modal's inline payment fields.
+// Status derives from the amount: £0 = unpaid, everything = paid, else deposit.
+async function recordPayment(bookingId) {
     const booking = findBookingById(bookingId);
     if (!booking) return;
-    const loc = findBookingLocation(bookingId);
-    const propKey = loc ? loc.propKey : '21a';
-    const payload = { id: booking.dbId, payment: newStatus };
-
-    if (newStatus === 'deposit') {
-        const total =
-            (booking.agreedPrice && booking.agreedPrice.total) ||
-            priceBreakdown(
-                propKey,
-                booking.adults || 0,
-                booking.children || 0,
-                booking.checkIn,
-                booking.checkOut,
-            ).total ||
-            0;
-        const existing =
-            booking.depositPaid > 0 && booking.depositPaid < total ? booking.depositPaid : '';
-        const entered = await glassPrompt(
-            `Deposit amount paid (£). More than £0 and less than ${gbp(total)}:`,
-            existing,
-        );
-        if (entered === null) {
-            afterPaymentChange(bookingId);
-            return;
-        }
-        payload.deposit = Math.max(0, parseFloat(entered) || 0);
-    }
-    if (newStatus === 'deposit' || newStatus === 'paid') {
-        const d = await glassPrompt(
-            'Payment date (YYYY-MM-DD):',
-            booking.paymentDate || todayDashed(),
-        );
-        if (d === null) {
-            afterPaymentChange(bookingId);
-            return;
-        }
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(d.trim())) {
-            glassAlert('A valid payment date is required.');
-            afterPaymentChange(bookingId);
-            return;
-        }
-        payload.payment_date = d.trim();
-        const m = await glassPrompt('Payment method (optional):', booking.paymentMethod || '');
-        payload.payment_method = m === null ? '' : m.trim();
-    }
-
-    try {
-        await apiPost('bookings.php', { action: 'set_payment', ...payload });
-        await loadData();
-        renderCalendar();
-        const fresh = findBookingById(bookingId);
-        if (fresh) afterPaymentChange(bookingId);
-        await offerPaymentConfirmationEmail(bookingId);
-    } catch (e) {
-        glassAlert("Couldn't update payment: " + e.message);
-        afterPaymentChange(bookingId);
-    }
-}
-
-// After a payment is recorded, offer to email the guest an UPDATED booking
-// confirmation reflecting the money received + remaining balance. Guest-only
-// (no owner re-ping). Skips silently when there's no email or nothing paid.
-async function offerPaymentConfirmationEmail(bookingId) {
-    const b = findBookingById(bookingId);
-    if (!b || !b.email) return;
     const loc = findBookingLocation(bookingId);
     const propKey = loc ? loc.propKey : activeFrontProperty;
-    let gt;
-    try {
-        const p =
-            b.agreedPrice ||
-            priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
-        gt = displayGrand(p, paymentSummary(propKey, b), b.holdStatus || 'none');
-    } catch (e) {
-        return;
-    }
-    if (!(gt.paid > 0)) return; // nothing recorded as paid — nothing to confirm
-    const statusLine = gt.fullyPaid
-        ? `${gbp(gt.paid)} paid — paid in full`
-        : `${gbp(gt.paid)} paid · ${gbp(gt.balance)} balance remaining`;
-    if (!(await glassConfirm(`Email ${b.name || 'the guest'} an updated booking confirmation?\n\nIt will show ${statusLine}.`)))
-        return;
-    try {
-        await apiPost('bookings.php', { action: 'send_confirmation', id: b.dbId, guest_only: true });
-        toast('Updated confirmation sent.');
-    } catch (e) {
-        glassAlert("Saved, but the email didn't send: " + e.message);
-    }
-}
-
-// Staff records how much deposit has been paid; status auto-syncs server-side.
-async function updateDeposit(bookingId, value) {
-    const booking = findBookingById(bookingId);
-    if (!booking) return;
-    const loc = findBookingLocation(bookingId);
-    const propKey = loc ? loc.propKey : '21a';
     const total =
         (booking.agreedPrice && booking.agreedPrice.total) ||
         priceBreakdown(
@@ -3636,9 +3537,31 @@ async function updateDeposit(bookingId, value) {
             booking.checkOut,
         ).total ||
         0;
-    let dep = Math.max(0, parseFloat(value) || 0);
+    const vals = await glassForm(
+        `Record a payment from ${booking.name || 'the guest'}.\nRental total ${gbp(total)} — enter the total received so far (rental only, not the damage deposit).`,
+        [
+            {
+                id: 'amount',
+                label: 'Total received so far (£)',
+                type: 'number',
+                min: 0,
+                step: 0.01,
+                value: booking.depositPaid > 0 ? booking.depositPaid : '',
+                placeholder: 'e.g. 100',
+            },
+            { id: 'date', label: 'Payment date', type: 'date', value: booking.paymentDate || todayDashed() },
+            {
+                id: 'method',
+                label: 'Payment method (optional)',
+                type: 'text',
+                value: booking.paymentMethod || '',
+                placeholder: 'Card / Bank transfer / Cash …',
+            },
+        ],
+    );
+    if (vals === null) return;
+    let dep = Math.max(0, parseFloat(vals.amount) || 0);
     if (dep > total) dep = total;
-    // Derive status from amount
     let status;
     if (dep <= 0.001) status = 'unpaid';
     else if (dep >= total - 0.001) status = 'paid';
@@ -3647,32 +3570,62 @@ async function updateDeposit(bookingId, value) {
     const payload = { id: booking.dbId, payment: status };
     if (status === 'deposit') payload.deposit = Math.round(dep * 100) / 100;
     if (dep > 0.001) {
-        const d = await glassPrompt(
-            'Payment date (YYYY-MM-DD):',
-            booking.paymentDate || todayDashed(),
-        );
-        if (d === null) {
-            afterPaymentChange(bookingId);
-            return;
-        }
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(d.trim())) {
+        const d = (vals.date || '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) {
             glassAlert('A valid payment date is required.');
-            afterPaymentChange(bookingId);
             return;
         }
-        payload.payment_date = d.trim();
-        payload.payment_method = booking.paymentMethod || '';
+        payload.payment_date = d;
+        payload.payment_method = (vals.method || '').trim();
     }
     try {
         await apiPost('bookings.php', { action: 'set_payment', ...payload });
         await loadData();
         renderCalendar();
-        const fresh = findBookingById(bookingId);
-        if (fresh) afterPaymentChange(bookingId);
-        await offerPaymentConfirmationEmail(bookingId);
-    } catch (e) {
-        glassAlert("Couldn't update deposit: " + e.message);
         afterPaymentChange(bookingId);
+        toast(
+            dep > 0.001
+                ? `Payment recorded — ${gbp(dep)} received${status === 'paid' ? ' (paid in full)' : ''}.`
+                : 'Marked as unpaid.',
+        );
+        if (dep > 0.001) await offerUpdatedConfirmationEmail(bookingId);
+    } catch (e) {
+        glassAlert("Couldn't record the payment: " + e.message);
+        afterPaymentChange(bookingId);
+    }
+}
+
+// After a booking changes (payment recorded, dates edited …), offer to email the
+// guest an UPDATED confirmation. Guest-only (no owner re-ping). ONE shared ask —
+// the modal save and the money row both come here, so the wording never forks.
+// Skips silently when there's no email on file.
+async function offerUpdatedConfirmationEmail(bookingId) {
+    const b = findBookingById(bookingId);
+    if (!b || !b.email) return;
+    const loc = findBookingLocation(bookingId);
+    const propKey = loc ? loc.propKey : activeFrontProperty;
+    let gt = null;
+    try {
+        const p =
+            b.agreedPrice ||
+            priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
+        gt = displayGrand(p, paymentSummary(propKey, b), b.holdStatus || 'none');
+    } catch (e) {}
+    const statusLine =
+        gt && gt.paid > 0
+            ? gt.fullyPaid
+                ? `${gbp(gt.paid)} paid — paid in full`
+                : `${gbp(gt.paid)} paid · ${gbp(gt.balance)} balance remaining`
+            : null;
+    const q =
+        `Email ${b.name || 'the guest'} an updated booking confirmation?` +
+        (statusLine ? `\n\nIt will show ${statusLine}.` : '');
+    if (!(await glassConfirm(q))) return;
+    try {
+        await apiPost('bookings.php', { action: 'send_confirmation', id: b.dbId, guest_only: true });
+        toast('Updated confirmation sent.');
+    } catch (e) {
+        glassAlert("Saved, but the email didn't send: " + e.message);
     }
 }
 function renderSquareSettings() {
@@ -7601,11 +7554,18 @@ function renderInbox() {
                 const availChip = av
                     ? `<span class="avail-chip ${av.free ? 'free' : 'clash'}">${escapeHtml(av.text)}</span>`
                     : '';
-                // Estimated price the site would quote (approval snapshots the real one).
+                // Price the approval will use. Tappable: sets an agreed (negotiated)
+                // total for this enquiry — parity with the manual add's override.
                 let priceChip = '';
                 try {
                     const pr = priceBreakdown(e.propKey, e.adults, e.children, e.checkIn, e.checkOut);
-                    if (pr && pr.total) priceChip = ` · est. ${gbp(pr.total)}`;
+                    const label =
+                        e.priceOverride != null
+                            ? `agreed ${gbp(e.priceOverride)}`
+                            : pr && pr.total > 0
+                              ? `est. ${gbp(pr.total)}`
+                              : 'set price';
+                    priceChip = ` · <button type="button" class="price-adjust${e.priceOverride != null ? ' is-set' : ''}" onclick="setEnquiryPrice('${e.id}')" title="Set an agreed price for this booking (used by the confirmation and payment request)">${label} <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20l4.5-1 11-11a2.1 2.1 0 0 0-3-3l-11 11L4 20z"/></svg></button>`;
                 } catch (err) {}
                 // Age + stale highlight.
                 const days = enquiryAgeDays(e);
@@ -7924,9 +7884,47 @@ async function declineEnquiry(enqId) {
         await apiPost('enquiries.php', { action: 'decline', id: enq.dbId });
         await loadData();
         renderInbox();
+        toast(`Enquiry declined — ${enq.name || 'guest'} removed from the inbox.`);
     } catch (e) {
         glassAlert("Couldn't decline: " + e.message);
     }
+}
+
+// Set a negotiated total for an enquiry BEFORE approving it — the same "override
+// total price" the manual Add Booking modal has. Held client-side on the enquiry
+// and sent with the approve, which snapshots it as the agreed price.
+async function setEnquiryPrice(enqId) {
+    const enq = enquiries.find((e) => e.id === enqId);
+    if (!enq) return;
+    let std = null;
+    try {
+        const p = priceBreakdown(enq.propKey, enq.adults, enq.children, enq.checkIn, enq.checkOut);
+        std = p && p.total ? p.total : null;
+    } catch (e) {}
+    const vals = await glassForm(
+        `Agreed price for ${enq.name || 'this enquiry'}${std ? ` — the standard price is ${gbp(std)}` : ''}.\nApproving will use this figure for the confirmation email and payment request. Leave blank to charge the standard price.`,
+        [
+            {
+                id: 'price',
+                label: 'Agreed total (£)',
+                type: 'number',
+                min: 0,
+                step: 0.01,
+                value: enq.priceOverride != null ? enq.priceOverride : '',
+                placeholder: std ? `Standard: ${gbp(std)}` : 'e.g. 400',
+            },
+        ],
+    );
+    if (vals === null) return;
+    const raw = String(vals.price || '').trim();
+    const n = Math.round((parseFloat(raw) || 0) * 100) / 100;
+    enq.priceOverride = raw !== '' && n > 0 ? n : null;
+    renderInbox();
+    toast(
+        enq.priceOverride != null
+            ? `Agreed price set — approving will charge ${gbp(enq.priceOverride)}.`
+            : 'Standard price will be used.',
+    );
 }
 
 async function approveEnquiry(enqId) {
@@ -7945,7 +7943,9 @@ async function approveEnquiry(enqId) {
             return;
     }
     try {
-        const res = await apiPost('enquiries.php', { action: 'approve', id: enq.dbId });
+        const req = { action: 'approve', id: enq.dbId };
+        if (enq.priceOverride != null) req.price_override = enq.priceOverride;
+        const res = await apiPost('enquiries.php', req);
         await loadData();
         renderInbox();
         renderCalendar();
@@ -7969,6 +7969,7 @@ async function approveEnquiry(enqId) {
         } else {
             toast(
                 `Booked: ${enq.name} at ${propName}` +
+                    (enq.priceOverride != null ? ` · agreed ${gbp(enq.priceOverride)}` : '') +
                     (guestOk ? ' · confirmation sent' : '') +
                     (payOk ? ` · payment request sent (${gbp(res.payment_request.amount || 0)})` : ''),
             );
@@ -8276,7 +8277,7 @@ async function expMove(id, dir) {
     }
 }
 // Publish the facade-stubbed entry points (see app.js loadAdminBundle).
-[accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingSearch, bulkImportReviews, cancelBooking, changeAdminPassword, changeMonth, inboxSub, inboxSubClose, initBackOffice, loadAdminMessages, loadDiagnostics, loadGuestList, logoutStaff, openAccounts, openAddBooking, openArea, openBlockDates, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveDepositPct, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsRecentRender, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
+[accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingSearch, bulkImportReviews, cancelBooking, changeAdminPassword, changeMonth, inboxSub, inboxSubClose, initBackOffice, loadAdminMessages, loadDiagnostics, loadGuestList, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveDepositPct, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsRecentRender, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
     window[f.name] = f;
 });
 window.__ADMIN_LOADED = true;
