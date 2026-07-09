@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 37;
+const ADMIN_BUNDLE_V = 38;
 let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
@@ -34,7 +34,7 @@ function loadAdminBundle() {
     __adminBundlePromise = attempt(2);
     return __adminBundlePromise;
 }
-["accountsBack","accountsOpen","accountsShowIndex","activityLogSearch","addAdminPasskey","addReviewRow","afterPaymentChange","autoSyncIcalBlocks","backfillWebp","bookingSearch","bookingsSetFilter","bookingsSetSearch","bulkImportReviews","cancelBooking","changeAdminPassword","changeMonth","inboxSub","inboxSubClose","initBackOffice","loadAdminMessages","loadDiagnostics","loadGuestList","logoutStaff","offerUpdatedConfirmationEmail","openAccounts","openAddBooking","openArea","openBlockDates","openBookings","openBookingEmail","openInbox","openSettings","openStagingSite","refreshModerationCounts","renderAccounts","renderActivityLog","renderBookings","renderCalendar","renderExpenses","renderInbox","renderMoneyOverview","requestPayment","renderSquareSettings","runMigrations","saveApiKey","saveContactPhone","saveContent","saveDepositPct","saveGoogleReviewUrl","saveHostText","saveReviews","sendBroadcast","sendSampleEmails","sendTestEmail","settingsBack","settingsFilter","settingsOpen","settingsOpenAccom","settingsOpenAccomSec","settingsOpenCalendar","settingsOpenCancel","settingsRecentRender","settingsSearchKey","settingsShowIndex","tryAccessBackOffice","uploadHostPhoto"].forEach((n) => {
+["accountsBack","accountsOpen","accountsShowIndex","activityLogSearch","addAdminPasskey","addReviewRow","afterPaymentChange","autoSyncIcalBlocks","backfillWebp","bookingHubBack","bookingSearch","bookingsSetFilter","bookingsSetSearch","bulkImportReviews","cancelBooking","changeAdminPassword","changeMonth","inboxSub","inboxSubClose","initBackOffice","loadAdminMessages","loadDiagnostics","loadGuestList","logoutStaff","offerUpdatedConfirmationEmail","openAccounts","openAddBooking","openArea","openBlockDates","openBookings","openBookingEmail","openBookingHub","openInbox","openSettings","openStagingSite","refreshModerationCounts","renderAccounts","renderActivityLog","renderBookings","renderCalendar","renderExpenses","renderInbox","renderMoneyOverview","requestPayment","renderSquareSettings","runMigrations","saveApiKey","saveContactPhone","saveContent","saveDepositPct","saveGoogleReviewUrl","saveHostText","saveReviews","sendBroadcast","sendSampleEmails","sendTestEmail","settingsBack","settingsFilter","settingsOpen","settingsOpenAccom","settingsOpenAccomSec","settingsOpenCalendar","settingsOpenCancel","settingsRecentRender","settingsSearchKey","settingsShowIndex","tryAccessBackOffice","uploadHostPhoto"].forEach((n) => {
     const stub = (...a) =>
         loadAdminBundle()
             .catch((e) => {
@@ -812,7 +812,7 @@ function mapEnquiryFromApi(row) {
 const CUSTOMER_FACING_VIEWS = ['view-main', 'view-cottages', 'view-21a'];
 // The only views an admin ever sees — everything else is the customer site,
 // which a signed-in admin has no use for (nav() bounces it to the back office).
-const ADMIN_VIEWS = ['view-backoffice', 'view-bookings', 'view-inbox', 'view-settings', 'view-accounts', 'view-activity-log'];
+const ADMIN_VIEWS = ['view-backoffice', 'view-bookings', 'view-booking-hub', 'view-inbox', 'view-settings', 'view-accounts', 'view-activity-log'];
 // Preview-as-guest: opening the site with ?preview=1 renders the customer
 // experience even though an admin is signed in (owner-mode + the admin bounce
 // are suppressed). Read-only — used by the staging Test centre to view the site.
@@ -9689,27 +9689,13 @@ function refreshDateTrigger() {
     }
 }
 
+// One home per booking: every calendar day, list row and search hit lands on
+// the booking HUB (a full admin screen — admin.js renderBookingHub), which
+// replaced the old cramped details modal. The modal shell (#details-modal)
+// remains only for external iCal blocks.
 function showDetails(propKey, booking1, booking2 = null) {
-    const panel = document.getElementById('booking-details-content');
-    if (!panel) return;
-    let html = buildDetailHtml(propKey, booking1, booking2 ? 'Leaving Guest' : null);
-    if (booking2) {
-        html += `<div style="margin: 20px 0; text-align: center; color: #FFA726; font-weight: bold; font-size: 0.8rem; text-transform: uppercase;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4l9 16H3z"/><path d="M12 10v4"/><circle cx="12" cy="17.4" r="0.6" fill="currentColor" stroke="none"/></svg> Same-Day Changeover</div>`;
-        html += buildDetailHtml(propKey, booking2, 'Arriving Guest');
-    }
-    panel.innerHTML = html;
-    if (squareAdminEnabled) {
-        try {
-            if (booking1 && booking1.email) loadBookingPayments(booking1.id);
-        } catch (e) {}
-        try {
-            if (booking2 && booking2.email) loadBookingPayments(booking2.id);
-        } catch (e) {}
-    }
-    const t = document.getElementById('details-modal-title');
-    if (t) t.innerText = 'Guest Details';
-    const m = document.getElementById('details-modal');
-    if (m) m.classList.add('open');
+    if (!booking1) return;
+    window.openBookingHub(booking1.id, booking2 ? booking2.id : null);
 }
 function closeDetailsModal() {
     const m = document.getElementById('details-modal');
@@ -9769,127 +9755,6 @@ async function saveBookingNote(bookingId) {
             btn.textContent = 'Save note';
         }
     }
-}
-
-function buildDetailHtml(propKey, b, titlePrefix = null) {
-    const meta = propertyMeta[propKey];
-    const title = titlePrefix
-        ? `<h4 style="color: var(--text-muted); margin-bottom: 10px; font-size: 0.85rem; text-transform: uppercase;">${titlePrefix}</h4>`
-        : '';
-    const inTime = b.checkInTime ? ` · ${b.checkInTime}` : '';
-    const outTime = b.checkOutTime ? ` · ${b.checkOutTime}` : '';
-    const emailVal = b.email
-        ? `<a href="mailto:${escapeHtml(b.email)}" style="color: var(--text-light);">${escapeHtml(b.email)}</a>`
-        : '<span style="color: var(--text-muted);">—</span>';
-    const phoneVal = b.phone
-        ? `<a href="tel:${escapeHtml(b.phone)}" style="color: var(--text-light);">${escapeHtml(b.phone)}</a>`
-        : '<span style="color: var(--text-muted);">—</span>';
-    const adults = b.adults != null ? b.adults : 0;
-    const children = b.children != null ? b.children : 0;
-    // Use the AGREED price snapshot if present (so rate changes don't alter
-    // an existing booking). Fall back to a live calc for legacy bookings.
-    const p = b.agreedPrice || priceBreakdown(propKey, adults, children, b.checkIn, b.checkOut);
-    const agreedNote = b.agreedPrice
-        ? `<div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 6px;">Agreed price${b.agreedPrice.agreedOn ? ' · ' + b.agreedPrice.agreedOn : ''} — locked at the rates in effect when booked.</div>`
-        : '';
-    // If current rates would now produce a different total, note it for staff.
-    let rateDiffNote = '';
-    if (b.agreedPrice) {
-        const live = priceBreakdown(propKey, adults, children, b.checkIn, b.checkOut);
-        if (Math.abs(live.total - b.agreedPrice.total) > 0.001) {
-            rateDiffNote = `<div style="font-size: 0.7rem; color: #FFA726; margin-top: 4px;">At today's rates this stay would be ${gbp(live.total)}.</div>`;
-        }
-    }
-    const ps = paymentSummary(propKey, b);
-    // Fold the refundable deposit into the shown total/paid until it's refunded
-    // (the balance-due figure is unchanged).
-    const gt = displayGrand(p, ps, b.holdStatus);
-    const depositRows =
-        gt.paid > 0
-            ? `
-                        <div class="price-row" style="color:#4CAF50;"><span>Paid</span><span>− ${gbp(gt.paid)}</span></div>
-                        <div class="price-row total"><span>${gt.fullyPaid ? 'Paid in full' : 'Balance due'}</span><span class="price-amount" style="${gt.fullyPaid ? 'color:#4CAF50;' : ''}">${gbp(gt.fullyPaid ? gt.total : gt.balance)}</span></div>`
-            : '';
-    const priceBlock = `
-                <div style="margin-top: 20px; max-width: 380px;">
-                    <span class="booking-detail-label" style="margin-bottom: 8px;">Price</span>
-                    <div class="price-box" style="margin-bottom: 0;">
-                        <div class="price-row"><span>${gbp(p.perNight)} × ${p.nights} night${p.nights === 1 ? '' : 's'} (${adults}A${children > 0 ? ', ' + children + 'C' : ''})</span><span>${gbp(p.nightly)}</span></div>
-                        <div class="price-row"><span>Transaction fee (${p.transactionPct}%)</span><span>${gbp(p.txFee)}</span></div>
-                        ${gt.dep > 0 ? `<div class="price-row"><span>Refundable damages deposit</span><span>${gbp(gt.dep)}</span></div>` : ''}
-                        <div class="price-row total"><span>Total${gt.dep > 0 ? ' (incl. deposit)' : ''}</span><span class="price-amount">${gbp(gt.total)}</span></div>
-                        ${depositRows}
-                    </div>
-                    ${agreedNote}${rateDiffNote}
-                </div>`;
-    return `
-                ${title}
-                <span class="prop-tag tag-${propKey}">${meta.name}</span>
-                ${bookingStatusStrip(b, ps, p)}
-                <div class="detail-grid">
-                    <div class="booking-detail-item">
-                        <span class="booking-detail-label">Guest Name</span>
-                        <span class="booking-detail-value">${escapeHtml(b.name)}</span>
-                    </div>
-                    <div class="booking-detail-item">
-                        <span class="booking-detail-label">Party Size</span>
-                        <span class="booking-detail-value" style="font-size: 1rem;">${escapeHtml(b.guests)}</span>
-                    </div>
-                    <div class="booking-detail-item">
-                        <span class="booking-detail-label">Email</span>
-                        <span class="booking-detail-value" style="font-size: 0.95rem;">${emailVal}</span>
-                    </div>
-                    <div class="booking-detail-item">
-                        <span class="booking-detail-label">Phone</span>
-                        <span class="booking-detail-value" style="font-size: 0.95rem;">${phoneVal}</span>
-                    </div>
-                    <div class="booking-detail-item" style="grid-column:1/-1;">
-                        <span class="booking-detail-label">Home Address</span>
-                        <span class="booking-detail-value" style="font-size: 0.95rem; white-space: pre-wrap;">${b.address || b.postcode ? escapeHtml([b.address, b.postcode].filter(Boolean).join(', ')) : '<span style="color: var(--text-muted);">—</span>'}</span>
-                    </div>
-                    <div class="booking-detail-item" style="grid-column:1/-1;">
-                        <span class="booking-detail-label">Terms &amp; Conditions</span>
-                        <span class="booking-detail-value" style="font-size: 0.9rem;">${b.termsAcceptedAt ? '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg> Accepted ' + escapeHtml(b.termsAcceptedAt) + (b.termsVersion ? ' (v' + escapeHtml(b.termsVersion) + ')' : '') : '— not recorded'}</span>
-                    </div>
-                    <div class="booking-detail-item">
-                        <span class="booking-detail-label">Check In</span>
-                        <span class="booking-detail-value" style="font-size: 1rem;">${b.checkIn}${inTime}</span>
-                    </div>
-                    <div class="booking-detail-item">
-                        <span class="booking-detail-label">Check Out</span>
-                        <span class="booking-detail-value" style="font-size: 1rem;">${b.checkOut}${outTime}</span>
-                    </div>
-                    <div class="booking-detail-item" style="grid-column:1/-1;">
-                        <span class="booking-detail-label">Payment</span>
-                        <div style="display:flex;align-items:center;gap:10px;margin-top:4px;flex-wrap:wrap;">
-                            <span style="display:inline-block;width:12px;height:12px;border-radius:50%;flex-shrink:0;background:${paymentMeta[b.payment] ? paymentMeta[b.payment].dot : '#888'};"></span>
-                            <span class="booking-detail-value" style="font-size:0.95rem;">${paymentMeta[b.payment] ? paymentMeta[b.payment].label : '—'}${b.depositPaid > 0 ? ` · ${gbp(b.depositPaid)} received` : ''}</span>
-                            <button class="btn-sm btn-edit" style="margin-left:auto;" onclick="closeDetailsModal(); openAccounts();">Manage payment →</button>
-                        </div>
-                    </div>
-                    <div class="booking-detail-item" style="grid-column: 1 / -1;">
-                        <span class="booking-detail-label">Staff notes <span style="font-weight:400;color:var(--text-muted);text-transform:none;letter-spacing:0;">· private, only you see these</span></span>
-                        <textarea id="bk-notes-${b.id}" class="input-glass" rows="2" maxlength="2000" placeholder="Add a private note — arriving late, allergies, paid cash for extras…" style="margin-top:6px;resize:vertical;font-size:0.9rem;">${b.notes ? escapeHtml(b.notes) : ''}</textarea>
-                        <div style="display:flex;justify-content:flex-end;margin-top:6px;"><button class="btn-sm btn-edit" id="bk-notes-save-${b.id}" onclick="saveBookingNote('${b.id}')">Save note</button></div>
-                    </div>
-                </div>
-                ${priceBlock}
-                <div style="display: flex; gap: 10px; margin-top: 20px; max-width: 320px;">
-                    <button class="btn-sm btn-edit" style="flex:1;" onclick="openEditBooking('${b.id}')">Edit / Move</button>
-                    <button class="btn-sm btn-decline" style="flex:1;" onclick="cancelBooking('${b.id}')">Cancel &amp; refund</button>
-                </div>
-                <div style="margin-top: 8px; max-width: 320px;">
-                    <button class="btn-sm btn-decline" style="width:100%;opacity:.85;" onclick="deleteBooking('${b.id}')">Delete (no refund / mistaken entry)</button>
-                </div>
-                ${
-                    b.email
-                        ? `<div style="margin-top: 12px; max-width: 320px;">
-                    <button class="btn-sm btn-edit" style="width:100%;" onclick="sendConfirmationEmail('${b.id}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/></svg> Send confirmation email</button>
-                    <button class="btn-sm btn-edit" style="width:100%;margin-top:8px;" onclick="sendArrivalInfo('${b.id}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 4L3 11l7 2.5L13 20l3-7z"/><path d="M10 13.5L21 4"/></svg> Send arrival info${b.preArrivalSent ? ' (sent ✓)' : ''}</button>
-                </div>`
-                        : ''
-                }
-            `;
 }
 
 // ===================================================================
@@ -10237,6 +10102,8 @@ window.addEventListener('popstate', (ev) => {
                 else accountsShowIndex();
             } else if (st.view === 'view-bookings') {
                 Promise.resolve(openBookings()).catch(() => {});
+            } else if (st.view === 'view-booking-hub' && st.hubBooking) {
+                Promise.resolve(window.openBookingHub(st.hubBooking)).catch(() => {});
             } else {
                 nav('view-backoffice');
                 Promise.resolve(initBackOffice()).catch(() => {});
@@ -11262,8 +11129,70 @@ function setModalFields(f) {
     updateModalPrice();
 }
 
+// ---- Live availability inside the Add/Edit modal ----
+// Six weeks around the chosen dates with this cottage's booked days (own
+// bookings) and imported platform blocks (Airbnb/Vrbo) marked, so a clash is
+// visible BEFORE saving instead of only as the server's warning afterwards.
+// Display-only, from data already loaded — the server stays the authority.
+function updateModalAvailability() {
+    const el = document.getElementById('modal-availability');
+    if (!el) return;
+    const hide = () => {
+        el.style.display = 'none';
+        el.innerHTML = '';
+    };
+    if (!isAuthenticated) return hide();
+    const cur = currentModalProperty();
+    const propKey = cur.key;
+    if (!propKey || !propertyMeta[propKey]) return hide();
+    const ci = document.getElementById('modal-checkin').value;
+    const co = document.getElementById('modal-checkout').value;
+    // The booking being edited must not shade itself as a conflict.
+    const mode = (document.getElementById('modal-mode') || {}).value;
+    const selfId = mode === 'booking' ? (document.getElementById('modal-record-id') || {}).value : null;
+    const bookings = (dbBookings[propKey] || []).filter((b) => b.id !== selfId);
+    const blocks = dbBlocks[propKey] || [];
+    const dayState = (d) => {
+        for (const b of bookings) if (d >= b.checkIn && d < b.checkOut) return { kind: 'booked', who: b.name || 'a booking' };
+        for (const bl of blocks) if (d >= bl.checkIn && d < bl.checkOut) return { kind: 'external', who: (bl.source || 'external') + ' import' };
+        return null;
+    };
+    // Grid: 6 weeks starting on the Monday of the week holding check-in (or today).
+    const anchorIso = /^\d{4}-\d{2}-\d{2}$/.test(ci) ? ci : todayDashed();
+    const anchor = new Date(anchorIso + 'T00:00:00Z');
+    const start = new Date(anchor.getTime() - ((anchor.getUTCDay() + 6) % 7) * 86400000);
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    let cells = '';
+    let clashWith = null;
+    for (let i = 0; i < 42; i++) {
+        const dt = new Date(start.getTime() + i * 86400000);
+        const iso = dt.toISOString().slice(0, 10);
+        const st = dayState(iso);
+        const inRange = ci && co && iso >= ci && iso < co;
+        if (inRange && st && !clashWith) clashWith = st.who;
+        const cls = ['mav-day'];
+        if (st) cls.push(st.kind === 'booked' ? 'is-booked' : 'is-external');
+        if (inRange) cls.push('is-sel');
+        // Show the month on the 1st (and the first cell) so the strip stays readable.
+        const label = dt.getUTCDate() === 1 || i === 0 ? `${dt.getUTCDate()} ${months[dt.getUTCMonth()]}` : String(dt.getUTCDate());
+        cells += `<span class="${cls.join(' ')}" title="${iso}${st ? ' — ' + escapeHtml(st.who) : ' — free'}">${label}</span>`;
+    }
+    const dows = ['Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa', 'Su'].map((d) => `<span class="mav-dow">${d}</span>`).join('');
+    el.innerHTML = `
+        <div class="mav-head">
+            <span class="modal-label" style="margin:0;">Availability — ${escapeHtml(propertyMeta[propKey].name || propKey)}</span>
+            <span class="mav-legend"><span class="mav-key is-booked"></span>booked<span class="mav-key is-external"></span>imported<span class="mav-key is-sel"></span>this stay</span>
+        </div>
+        <div class="mav-grid">${dows}${cells}</div>
+        ${clashWith ? `<div class="mav-clash">These dates overlap ${escapeHtml(clashWith)} — you'll be asked to confirm at save.</div>` : ''}`;
+    el.style.display = 'block';
+}
+
 // Live total inside the Add/Edit modal
 function updateModalPrice() {
+    try {
+        updateModalAvailability();
+    } catch (e) {}
     const box = document.getElementById('modal-price-box');
     if (!box) return;
     const cur = currentModalProperty();
@@ -11658,6 +11587,9 @@ async function deleteBooking(bookingId) {
         clearDetails();
         showChangeoverToasts();
         toast('Booking deleted.');
+        // If we were ON the deleted booking's hub screen, it no longer exists.
+        const hub = document.getElementById('view-booking-hub');
+        if (hub && hub.classList.contains('active')) window.openBookings();
     } catch (e) {
         glassAlert("Couldn't delete: " + e.message);
     }
@@ -11896,7 +11828,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'j6p2r8wd';
+    const BUILD = 'j6p5t3xe';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
