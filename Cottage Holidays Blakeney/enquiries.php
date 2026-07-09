@@ -137,6 +137,27 @@ if ($action === 'submit') {
     if ($checkOut <= $checkIn) {
         json_out(['error' => 'Check-out must be after check-in'], 400);
     }
+    // The email was previously stored with NO validation at all — a typo'd
+    // address sailed through submit, approval and the confirmation send before
+    // anyone noticed (see the ntl-world.com incident). Validate the format and
+    // run the smart deliverability check; a dead domain with an obvious fix gets
+    // a "did you mean" message the form shows inline. Deliverability fails OPEN
+    // (DNS trouble never blocks a real guest); disposable addresses are allowed
+    // here — an enquiry is transactional, not marketing.
+    $enqEmail = clean($in['email'] ?? '');
+    if ($enqEmail !== '') {
+        $chk = email_deliverability($enqEmail);
+        if (empty($chk['ok']) && ($chk['reason'] ?? '') === 'format') {
+            json_out(['error' => 'That email address doesn’t look right — please check it.'], 400);
+        }
+        if (empty($chk['ok']) && in_array($chk['reason'] ?? '', ['no_mail', 'typo'], true) && !empty($chk['suggest'])) {
+            json_out(['error' => 'That email looks mistyped — did you mean ' . $chk['suggest'] . '?'], 400);
+        }
+        if (empty($chk['ok']) && ($chk['reason'] ?? '') === 'no_mail') {
+            json_out(['error' => 'That email domain can’t receive mail — please check the part after the @.'], 400);
+        }
+    }
+
     $address = clean($in['address'] ?? '');
     $postcode = clean($in['postcode'] ?? '');
     if ($address === '') {

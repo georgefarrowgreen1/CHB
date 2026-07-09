@@ -11337,6 +11337,12 @@ async function saveBookingGuarded(action, payload, clashPrompt) {
         }
         res = await apiPost('bookings.php', { action, ...payload, ...extra });
     }
+    // Occupancy (party over the property's normal limit) — deliberate confirm.
+    if (res && res.occupancy_warn) {
+        if (!(await glassConfirm(res.message + '\n\nSave anyway (e.g. a cot or an agreed exception)?'))) return null;
+        extra.override_occupancy = true;
+        res = await apiPost('bookings.php', { action, ...payload, ...extra });
+    }
     // Date clash.
     if (res && res.clash) {
         if (!(await glassConfirm(res.message + '\n\n' + clashPrompt))) return null;
@@ -11403,18 +11409,9 @@ async function saveModal() {
         return;
     }
 
-    // Occupancy limit — owner can override with confirmation (e.g. a cot, an exception)
-    const occErr = checkOccupancy(propKey, adults, children);
-    if (occErr) {
-        if (
-            !(await glassConfirm(
-                occErr + '\n\nThis is over the normal limit for this property. Save anyway?',
-            ))
-        ) {
-            showErr(occErr);
-            return;
-        }
-    }
+    // Occupancy + date-clash checks now live SERVER-SIDE only (bookings.php
+    // occupancy_warn/clash, confirmed via saveBookingGuarded) — the old client
+    // pre-checks here asked the same questions a second time.
 
     // ----- Enquiry edit -----
     if (mode === 'enquiry') {
@@ -11449,14 +11446,8 @@ async function saveModal() {
     }
 
     // ----- Booking add / edit -----
-    if (hasDateClash(propKey, checkIn, checkOut, mode === 'booking' ? id : null)) {
-        if (
-            !(await glassConfirm(
-                `These dates clash with an existing booking or an imported Airbnb/Vrbo block at ${propertyMeta[propKey].name}. Save anyway?`,
-            ))
-        )
-            return;
-    }
+    // (Clash detection happens server-side under the per-property lock; the
+    // guarded save prompts once with the authoritative answer.)
 
     // If the status is "deposit", we need an amount. Ask for it (the server
     // also validates 0 < amount < total).
@@ -11817,7 +11808,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'j6k5r9tm';
+    const BUILD = 'j6m2w4hx';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

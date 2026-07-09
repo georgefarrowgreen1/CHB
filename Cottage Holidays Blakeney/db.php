@@ -371,6 +371,22 @@ function prop_display($key)
     return $fallback[$key] ?? ['name' => $key, 'accent' => '#8FB3C7', 'slug' => $key];
 }
 
+// Is this cottage archived (removed from the site)? The public enquiry form
+// already rejects archived cottages; the booking-creation paths (manual add,
+// enquiry approval) must too — get_rate() alone happily returns a rate for one.
+// Tolerates the pre-migration schema (no column → not archived).
+function prop_is_archived($propKey)
+{
+    try {
+        $s = db()->prepare('SELECT archived_at FROM properties WHERE prop_key = ?');
+        $s->execute([$propKey]);
+        $row = $s->fetch();
+        return $row && !empty($row['archived_at']);
+    } catch (\Throwable $e) {
+        return false;
+    }
+}
+
 // True if the text contains a UK postcode (used where a postcode sits inside a
 // free-text address).
 function uk_postcode_present($s)
