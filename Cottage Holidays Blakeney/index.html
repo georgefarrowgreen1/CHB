@@ -889,27 +889,8 @@
             </div>
         </div>
 
-        <!-- Find anything: bookings by name/email/ref + open enquiries. Collapsed
-             to a slim pill by default; expands to the full input on tap. -->
-        <div class="bo-search" id="bo-search">
-            <button type="button" class="bo-search-toggle" id="bo-search-toggle" onclick="toggleBoSearch()" title="Find a booking or enquiry" aria-label="Find a booking or enquiry">
-                <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-                <span>Find a booking or enquiry</span>
-            </button>
-            <input type="search" class="input-glass" id="booking-search" placeholder="Find a booking or enquiry — name, email or booking ref…" autocomplete="off" oninput="bookingSearch(this.value)" onkeydown="if(event.key==='Escape'){toggleBoSearch()}">
-            <div id="booking-search-results"></div>
-        </div>
-
-        <!-- Cron dead-man's-switch: shown by checkCronHealth() only when the daily
-             automation has gone quiet. -->
-        <div id="cron-alert" class="cron-alert" style="display:none;" role="alert"></div>
-
-        <!-- Always-on automation health pill (green when healthy, amber when quiet). -->
-        <button id="cron-pill" class="cron-pill" style="display:none;" onclick="nav('view-settings'); settingsOpen('diagnostics');" title="Open Health check"></button>
-
-        <!-- Systems-health rollup (DB, mail, Square, cron, backup, migrations, errors):
-             one tap opens the full Health check. Filled by checkSystemHealth(). -->
-        <button id="health-pill" class="cron-pill" style="display:none;" onclick="nav('view-settings'); settingsOpen('diagnostics');" title="Open Health check"></button>
+        <!-- (The dashboard search moved to the Bookings page; the health /
+             needs-a-look pills moved to Settings.) -->
 
         <div id="today-panel"><!-- JS injects the "today / needs doing" list --></div>
 
@@ -948,11 +929,8 @@
             </div>
         </div>
 
-        <!-- At-a-glance money + occupancy (below the calendar — the day-to-day
-             work leads; these are the "how am I doing" summary). -->
-        <div class="owner-summary" id="owner-summary"><!-- JS injects summary stats --></div>
-        <!-- Occupancy heatmap: all cottages × the next N days at a glance -->
-        <div id="occupancy-heatmap"></div>
+        <!-- (The money/arrivals summary cards + occupancy heatmap were removed —
+             Money owns the figures, the calendar shows occupancy.) -->
 
         <!-- The Recent-activity feed moved to Settings → Activity log, so the
              phone dashboard stays a short, do-things page. -->
@@ -1091,6 +1069,17 @@
                 <p class="lead" style="text-align: left; margin: 0;">Manage your host profile, cottages, payments and account.</p>
             </div>
         </div>
+
+        <!-- Cron dead-man's-switch: shown by checkCronHealth() only when the daily
+             automation has gone quiet. -->
+        <div id="cron-alert" class="cron-alert" style="display:none;" role="alert"></div>
+
+        <!-- Always-on automation health pill (green when healthy, amber when quiet). -->
+        <button id="cron-pill" class="cron-pill" style="display:none;" onclick="settingsOpen('diagnostics');" title="Open Health check"></button>
+
+        <!-- Systems-health rollup (DB, mail, Square, cron, backup, migrations, errors):
+             one tap opens the full Health check. Filled by checkSystemHealth(). -->
+        <button id="health-pill" class="cron-pill" style="display:none;" onclick="settingsOpen('diagnostics');" title="Open Health check"></button>
 
         <!-- INDEX — ordered by importance: your cottages first, then money & guests,
              then your listing & account, with the legal reference last. -->
@@ -2345,7 +2334,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=243"></script>
+    <script defer src="app.js?v=244"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
