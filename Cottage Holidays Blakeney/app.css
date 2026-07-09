@@ -3085,6 +3085,7 @@ textarea.input-glass.field-sm {
   font-size: clamp(1.4rem, 4vw, 2rem);
   width: clamp(160px, 40vw, 240px);
   text-align: center;
+  white-space: nowrap; /* "September 2026" must never wrap under the arrows */
 }
 
 /* Property legend */
@@ -8185,8 +8186,15 @@ p.lead[data-edit-text] {
   }
   .cal-month-nav {
     justify-content: space-between;
+    gap: 12px;
     width: 100%;
     max-width: 300px;
+  }
+  /* Size the serif title so even the longest month + year stays on one line
+     between the arrows on a small phone. */
+  .cal-month-title {
+    font-size: clamp(1.05rem, 4.5vw, 1.35rem);
+    width: auto;
   }
   .cal-legend {
     gap: 14px;
