@@ -76,9 +76,9 @@ $summary =
     '<br>' .
     $esc($prop) .
     '<br>' .
-    $esc($e['check_in']) .
+    $esc(uk_date($e['check_in'])) .
     ' &rarr; ' .
-    $esc($e['check_out']) .
+    $esc(uk_date($e['check_out'])) .
     '<br>' .
     (int) $e['adults'] .
     ' adult' .
