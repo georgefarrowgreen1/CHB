@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 40;
+const ADMIN_BUNDLE_V = 41;
 let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
@@ -11576,10 +11576,28 @@ async function saveModal() {
     }
 }
 
+// Mirror of the server's delete guard (bookings.php 'delete'): a booking that
+// has taken money — any rental payment recorded, or a live card hold / charged
+// damage deposit — must go through Cancel & refund, never Delete.
+function bookingHasMoney(b) {
+    return (
+        !!b &&
+        ((parseFloat(b.depositPaid) || 0) > 0.001 ||
+            ['authorized', 'charged', 'captured'].includes(b.holdStatus || 'none'))
+    );
+}
 async function deleteBooking(bookingId) {
-    if (!(await glassConfirm('Delete this booking permanently?'))) return;
     const b = findBookingById(bookingId);
     if (!b) return;
+    // The hub only shows Delete on money-free bookings; this guard covers every
+    // other path with the same rule (the server enforces it regardless).
+    if (bookingHasMoney(b)) {
+        glassAlert(
+            'This booking has taken money — use “Cancel & refund” instead, which refunds the guest and lets them know. Delete is only for junk/test rows.',
+        );
+        return;
+    }
+    if (!(await glassConfirm('Delete this booking permanently?'))) return;
     try {
         await apiPost('bookings.php', { action: 'delete', id: b.dbId });
         await loadData();
@@ -11835,7 +11853,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'j6p7w4zg';
+    const BUILD = 'j6p8x2ah';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

@@ -764,7 +764,14 @@ function renderBookingHub() {
                     ${b.email ? `<button class="btn-sm btn-edit" onclick="openBookingEmail('${b.id}')">Email guest</button>` : ''}
                     <button class="btn-sm btn-edit" onclick="addBookingToCalendar('${b.id}')">Add to calendar</button>
                     <button class="btn-sm btn-decline" onclick="cancelBooking('${b.id}')">Cancel &amp; refund</button>
-                    <button class="btn-sm btn-decline" style="opacity:.8;" onclick="deleteBooking('${b.id}')" title="Only for junk/test rows — cancelling is the right way to end a real booking">Delete</button>
+                    ${
+                        // Delete exists ONLY while no money is on the booking (same
+                        // rule the server enforces): once anything has been paid or
+                        // a card hold is live, Cancel & refund is the only way out.
+                        bookingHasMoney(b)
+                            ? ''
+                            : `<button class="btn-sm btn-decline" style="opacity:.8;" onclick="deleteBooking('${b.id}')" title="Only for junk/test rows — cancelling is the right way to end a real booking">Delete</button>`
+                    }
                 </div>
             </div>
             ${hubPipelineHtml(propKey, b, gt, dh)}
