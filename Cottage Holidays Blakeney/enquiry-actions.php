@@ -127,6 +127,9 @@ function enquiry_approve($id)
             'damages_deposit' => $p['damagesDeposit'] ?? 0,
             'payment' => 'unpaid',
             'ref' => $ref,
+            // The approval page reports the GUEST result; the owner copy goes
+            // out after the response instead of blocking the confirmation page.
+            'defer_owner' => true,
         ]);
     } catch (\Throwable $ex) {
         $emailResult = ['error' => 'Mail step skipped: ' . $ex->getMessage()];

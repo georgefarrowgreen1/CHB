@@ -31,6 +31,25 @@ function email_crown_header($bg)
 // smtp_send short-circuits into the capture buffer instead of connecting, so we
 // get the EXACT bytes that would have been sent — no duplicated templates, no
 // SMTP, no side effects.
+// Run $fn AFTER the HTTP response has been flushed to the client — the same
+// pattern chat uses (messages.php chat_notify_owner_deferred): the visitor
+// isn't kept waiting on SMTP handshakes, and a slow mail server can't gateway-
+// timeout a request whose real work (the DB write) is already committed.
+// Without fastcgi_finish_request (CLI/cron) it still runs at shutdown, i.e.
+// exactly where the code sat before — never earlier, never skipped.
+function mail_after_response($fn)
+{
+    register_shutdown_function(function () use ($fn) {
+        if (function_exists('fastcgi_finish_request')) {
+            @fastcgi_finish_request();
+        }
+        try {
+            $fn();
+        } catch (\Throwable $e) {
+        }
+    });
+}
+
 function mail_preview_start()
 {
     $GLOBALS['__mail_preview'] = [];
@@ -1401,7 +1420,17 @@ function send_booking_emails($b)
         $body .= "Guests: {$party}\n";
         $ownerDep = round((float) ($b['damages_deposit'] ?? 0), 2);
         $body .= 'Total: ' . $money(round((float) $b['total'] + $ownerDep, 2)) . ($ownerDep > 0 ? ' (incl. deposit)' : '') . "\n";
-        $out['owner'] = send_owner($subject, $body);
+        if (!empty($b['defer_owner'])) {
+            // The caller only needs the GUEST result (that's what the UI shows);
+            // the owner copy can go out after the response has been flushed, so
+            // the save isn't kept waiting on a second SMTP handshake.
+            mail_after_response(function () use ($subject, $body) {
+                send_owner($subject, $body);
+            });
+            $out['owner'] = ['ok' => true, 'deferred' => true];
+        } else {
+            $out['owner'] = send_owner($subject, $body);
+        }
     }
 
     return $out;
