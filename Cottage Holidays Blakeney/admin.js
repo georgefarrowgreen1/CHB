@@ -3580,9 +3580,41 @@ async function updatePaymentStatus(bookingId, newStatus) {
         renderCalendar();
         const fresh = findBookingById(bookingId);
         if (fresh) afterPaymentChange(bookingId);
+        await offerPaymentConfirmationEmail(bookingId);
     } catch (e) {
         glassAlert("Couldn't update payment: " + e.message);
         afterPaymentChange(bookingId);
+    }
+}
+
+// After a payment is recorded, offer to email the guest an UPDATED booking
+// confirmation reflecting the money received + remaining balance. Guest-only
+// (no owner re-ping). Skips silently when there's no email or nothing paid.
+async function offerPaymentConfirmationEmail(bookingId) {
+    const b = findBookingById(bookingId);
+    if (!b || !b.email) return;
+    const loc = findBookingLocation(bookingId);
+    const propKey = loc ? loc.propKey : activeFrontProperty;
+    let gt;
+    try {
+        const p =
+            b.agreedPrice ||
+            priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
+        gt = displayGrand(p, paymentSummary(propKey, b), b.holdStatus || 'none');
+    } catch (e) {
+        return;
+    }
+    if (!(gt.paid > 0)) return; // nothing recorded as paid — nothing to confirm
+    const statusLine = gt.fullyPaid
+        ? `${gbp(gt.paid)} paid — paid in full`
+        : `${gbp(gt.paid)} paid · ${gbp(gt.balance)} balance remaining`;
+    if (!(await glassConfirm(`Email ${b.name || 'the guest'} an updated booking confirmation?\n\nIt will show ${statusLine}.`)))
+        return;
+    try {
+        await apiPost('bookings.php', { action: 'send_confirmation', id: b.dbId, guest_only: true });
+        toast('Updated confirmation sent.');
+    } catch (e) {
+        glassAlert("Saved, but the email didn't send: " + e.message);
     }
 }
 
@@ -3635,6 +3667,7 @@ async function updateDeposit(bookingId, value) {
         renderCalendar();
         const fresh = findBookingById(bookingId);
         if (fresh) afterPaymentChange(bookingId);
+        await offerPaymentConfirmationEmail(bookingId);
     } catch (e) {
         glassAlert("Couldn't update deposit: " + e.message);
         afterPaymentChange(bookingId);

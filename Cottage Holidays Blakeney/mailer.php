@@ -1048,6 +1048,14 @@ function send_booking_emails($b)
                 $money($depAmt) .
                 ", charged together with your first payment and refunded in full after checkout (provided there's no damage).\n";
         }
+        // Payment state (only once something has been paid) so a re-sent
+        // confirmation reflects a recorded deposit/payment.
+        $paidNow = round((float) ($b['paid_so_far'] ?? 0), 2);
+        $balNow = round((float) ($b['balance_due'] ?? 0), 2);
+        if ($paidNow > 0) {
+            $body .= "\nPaid so far: " . $money($paidNow) . "\n";
+            $body .= ($balNow > 0.001 ? 'Balance remaining: ' . $money($balNow) : 'Paid in full — thank you!') . "\n";
+        }
         if (!empty($b['invoice_url'])) {
             $body .= "\nView or download your invoice: " . $b['invoice_url'] . "\n";
         }
@@ -1090,6 +1098,15 @@ function send_booking_emails($b)
                     '<span style="color:#A0987F;">refunded after your stay</span>',
                 )
                 : '') .
+            // Payment state — shown only once a payment is recorded, so a re-sent
+            // confirmation reflects the deposit/balance.
+            ($paidNow > 0
+                ? '<tr><td colspan="2" style="border-top:1px solid #ECE4D3;font-size:0;line-height:0;">&nbsp;</td></tr>' .
+                    $pr('Paid so far', '<span style="color:#2E7D32;font-weight:600;">' . $money($paidNow) . '</span>') .
+                    ($balNow > 0.001
+                        ? $pr('<strong>Balance remaining</strong>', '<strong>' . $money($balNow) . '</strong>')
+                        : $pr('<strong style="color:#2E7D32;">Paid in full</strong>', '<strong style="color:#2E7D32;">&#10003;</strong>'))
+                : '') .
             '</table></td></tr></table>';
         $inner =
             email_h($b['prop_name'], $accent) .
@@ -1124,7 +1141,9 @@ function send_booking_emails($b)
     }
 
     // ---- Owner notification ----
-    if (defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL) {
+    // Skipped on a payment re-send (skip_owner) so the owner isn't re-pinged with
+    // "new booking" each time a payment is recorded.
+    if (empty($b['skip_owner']) && defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL) {
         $subject = "New confirmed booking — {$b['prop_name']} ({$b['check_in']})";
         $body = "A booking has just been confirmed.\n\n";
         $body .= "Reference: {$b['ref']}\n";
