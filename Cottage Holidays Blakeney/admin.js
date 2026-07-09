@@ -439,8 +439,9 @@ function bookingListRow(propKey, b, today) {
     const payClass = gt.fullyPaid ? 'ok' : gt.paid > 0 ? 'warn' : 'danger';
     const past = (b.checkOut || '') < today;
     const balanceBit = !gt.fullyPaid ? ` · ${gbp(gt.balance)} due` : '';
+    // Traffic-light edge on every row: red unpaid · amber part-paid · green paid.
     return `
-        <button type="button" class="bk-row glass-panel${!past && !gt.fullyPaid ? ' due-soon' : ''}${b.id === __hubBookingId ? ' is-open' : ''}" data-bkid="${b.id}" onclick="openBookingHub('${b.id}')">
+        <button type="button" class="bk-row glass-panel pay-${payClass}${b.id === __hubBookingId ? ' is-open' : ''}" data-bkid="${b.id}" onclick="openBookingHub('${b.id}')">
             <span class="bk-row-body">
                 <span class="bk-row-top">
                     <span class="prop-tag tag-${propKey}">${escapeHtml(meta.name)}</span>
@@ -796,7 +797,6 @@ function renderBookingHub() {
                 </div>
                 <div class="bhub-actions">
                     <button class="btn-sm btn-edit" onclick="openEditBooking('${b.id}')">Edit / Move</button>
-                    ${b.email ? `<button class="btn-sm btn-edit" onclick="openBookingEmail('${b.id}')">Email guest</button>` : ''}
                     <button class="btn-sm btn-edit" onclick="addBookingToCalendar('${b.id}')">Add to calendar</button>
                     <button class="btn-sm btn-decline" onclick="cancelBooking('${b.id}')">Cancel &amp; refund</button>
                     ${
@@ -853,7 +853,6 @@ function renderBookingHub() {
             <div class="bhub-btn-row">
                 ${!gt.fullyPaid ? `<button class="btn-sm btn-edit" onclick="recordPayment('${b.id}')">Record payment</button>` : ''}
                 ${!gt.fullyPaid && squareAdminEnabled && b.email ? `<button class="btn-sm btn-edit" onclick="requestPayment('${b.id}','${gt.paid > 0 ? 'balance' : 'deposit'}')">Request ${gt.paid > 0 ? 'balance' : 'deposit'} by card</button>` : ''}
-                ${b.email && gt.paid > 0 ? `<button class="btn-sm btn-edit" onclick="offerUpdatedConfirmationEmail('${b.id}')">Email updated confirmation</button>` : ''}
                 <button class="btn-sm btn-edit" onclick="downloadInvoice('${b.id}')">Invoice (PDF)</button>
             </div>
             ${payHistory}
@@ -868,6 +867,7 @@ function renderBookingHub() {
                     ? `<div class="bhub-btn-row" style="margin-top:0;">
                         <button class="btn-sm btn-edit" onclick="sendConfirmationEmail('${b.id}')">Send confirmation</button>
                         <button class="btn-sm btn-edit" onclick="sendArrivalInfo('${b.id}')">Send arrival info${b.preArrivalSent ? ' (sent ✓)' : ''}</button>
+                        ${gt.paid > 0 ? `<button class="btn-sm btn-edit" onclick="offerUpdatedConfirmationEmail('${b.id}')">Email updated confirmation</button>` : ''}
                         <button class="btn-sm btn-edit" onclick="openBookingEmail('${b.id}')">Write an email</button>
                     </div>`
                     : '<div class="bhub-mut">No guest email on file — add one via Edit / Move to send anything.</div>'
