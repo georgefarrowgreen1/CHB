@@ -416,6 +416,8 @@ if ($action === 'approve') {
     log_activity('enquiry', 'enquiry.approve', 'Enquiry approved → booking', ['entity' => 'enquiry', 'entity_id' => (string) (int) ($in['id'] ?? 0)]);
     json_out([
         'ok' => true,
+        // The new booking's id — the inbox jumps straight to its hub.
+        'booking_id' => $r['booking_id'] ?? null,
         'email' => $r['email'] ?? null,
         'payment_request' => $r['payment_request'] ?? null,
         // Deliverability heads-up (enquiry_approve already computes it; it was

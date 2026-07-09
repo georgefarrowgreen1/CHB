@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 48;
+const ADMIN_BUNDLE_V = 49;
 let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
@@ -34,7 +34,7 @@ function loadAdminBundle() {
     __adminBundlePromise = attempt(2);
     return __adminBundlePromise;
 }
-["accountsBack","accountsOpen","accountsShowIndex","activityLogSearch","addAdminPasskey","addReviewRow","afterPaymentChange","autoSyncIcalBlocks","backfillWebp","bookingHubBack","bookingsSetFilter","bookingsSetSearch","bulkImportReviews","cancelBooking","changeAdminPassword","changeMonth","inboxSub","inboxSubClose","initBackOffice","loadAdminMessages","loadDiagnostics","loadGuestList","logoutStaff","offerUpdatedConfirmationEmail","openAccounts","openAddBooking","openArea","openBlockDates","openBookings","openBookingEmail","openBookingHub","openInbox","openSettings","openStagingSite","refreshModerationCounts","renderAccounts","renderActivityLog","renderBookings","renderCalendar","renderExpenses","renderInbox","renderMoneyOverview","requestPayment","renderSquareSettings","runMigrations","saveApiKey","saveContactPhone","saveContent","saveDepositPct","saveGoogleReviewUrl","saveHostText","saveReviews","sendBroadcast","sendSampleEmails","sendTestEmail","settingsBack","settingsFilter","settingsOpen","settingsOpenAccom","settingsOpenAccomSec","settingsOpenCalendar","settingsOpenCancel","settingsRecentRender","settingsSearchKey","settingsShowIndex","tryAccessBackOffice","uploadHostPhoto"].forEach((n) => {
+["accountsBack","accountsOpen","accountsShowIndex","activityLogSearch","addAdminPasskey","addReviewRow","afterPaymentChange","autoSyncIcalBlocks","backfillWebp","bookingHubBack","bookingsSetFilter","bookingsSetSearch","bulkImportReviews","cancelBooking","changeAdminPassword","changeMonth","inboxSub","inboxSubClose","initBackOffice","loadAdminMessages","loadDiagnostics","loadGuestList","logoutStaff","offerUpdatedConfirmationEmail","openAccounts","openAddBooking","openArea","openBlockDates","openBookings","openBookingEmail","openBookingHub","openEnquiryHub","enquiryHubBack","openInbox","openSettings","openStagingSite","refreshModerationCounts","renderAccounts","renderActivityLog","renderBookings","renderCalendar","renderExpenses","renderInbox","renderMoneyOverview","requestPayment","renderSquareSettings","runMigrations","saveApiKey","saveContactPhone","saveContent","saveDepositPct","saveGoogleReviewUrl","saveHostText","saveReviews","sendBroadcast","sendSampleEmails","sendTestEmail","settingsBack","settingsFilter","settingsOpen","settingsOpenAccom","settingsOpenAccomSec","settingsOpenCalendar","settingsOpenCancel","settingsRecentRender","settingsSearchKey","settingsShowIndex","tryAccessBackOffice","uploadHostPhoto"].forEach((n) => {
     const stub = (...a) =>
         loadAdminBundle()
             .catch((e) => {
@@ -812,7 +812,7 @@ function mapEnquiryFromApi(row) {
 const CUSTOMER_FACING_VIEWS = ['view-main', 'view-cottages', 'view-21a'];
 // The only views an admin ever sees — everything else is the customer site,
 // which a signed-in admin has no use for (nav() bounces it to the back office).
-const ADMIN_VIEWS = ['view-backoffice', 'view-bookings', 'view-booking-hub', 'view-inbox', 'view-settings', 'view-accounts', 'view-activity-log'];
+const ADMIN_VIEWS = ['view-backoffice', 'view-bookings', 'view-booking-hub', 'view-inbox', 'view-enquiry-hub', 'view-settings', 'view-accounts', 'view-activity-log'];
 // Preview-as-guest: opening the site with ?preview=1 renders the customer
 // experience even though an admin is signed in (owner-mode + the admin bounce
 // are suppressed). Read-only — used by the staging Test centre to view the site.
@@ -10141,6 +10141,8 @@ window.addEventListener('popstate', (ev) => {
                 Promise.resolve(openBookings()).catch(() => {});
             } else if (st.view === 'view-booking-hub' && st.hubBooking) {
                 Promise.resolve(window.openBookingHub(st.hubBooking)).catch(() => {});
+            } else if (st.view === 'view-enquiry-hub' && st.enqHub) {
+                Promise.resolve(window.openEnquiryHub(st.enqHub)).catch(() => {});
             } else {
                 nav('view-backoffice');
                 Promise.resolve(initBackOffice()).catch(() => {});
@@ -11905,7 +11907,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'j6q6e2ho';
+    const BUILD = 'j6q7f3ip';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

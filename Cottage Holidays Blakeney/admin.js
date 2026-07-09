@@ -279,6 +279,8 @@ function inboxSub(which) {
     adminHistPush('view-inbox', null, { inboxSub: which });
     const main = document.getElementById('inbox-main');
     if (main) main.style.display = 'none';
+    const pane = document.getElementById('inbox-detail-pane');
+    if (pane) pane.style.display = 'none';
     Object.entries(INBOX_SUBS).forEach(([key, id]) => {
         const el = document.getElementById(id);
         if (el) el.style.display = key === which ? '' : 'none';
@@ -295,6 +297,8 @@ function inboxSubClose() {
         const el = document.getElementById(id);
         if (el) el.style.display = 'none';
     });
+    const pane = document.getElementById('inbox-detail-pane');
+    if (pane) pane.style.display = '';
     const main = document.getElementById('inbox-main');
     if (main) main.style.display = '';
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -7416,61 +7420,195 @@ function renderInbox() {
                   .join('')}</div>`
             : '';
 
+    // Compact index rows (same anatomy as the Bookings dashboard) — the whole
+    // row opens the enquiry HUB, which owns the detail + every action.
     list.innerHTML =
         sortBar +
         sortedEnquiries()
             .map((e) => {
                 const meta = propertyMeta[e.propKey];
                 const propName = meta ? meta.name : e.propKey; // survive a missing/added cottage
-                const msg = e.message
-                    ? `<div class="enquiry-msg">“${escapeHtml(e.message)}”</div>`
-                    : '';
-                const repeat = repeatGuestBadge(e);
-                // Availability chip (free / clash) from already-loaded data.
                 const av = enquiryAvailability(e);
-                const availChip = av
-                    ? `<span class="avail-chip ${av.free ? 'free' : 'clash'}">${escapeHtml(av.text)}</span>`
-                    : '';
-                // Price the approval will use. Tappable: sets an agreed (negotiated)
-                // total for this enquiry — parity with the manual add's override.
-                let priceChip = '';
-                try {
-                    const pr = priceBreakdown(e.propKey, e.adults, e.children, e.checkIn, e.checkOut);
-                    const label =
-                        e.priceOverride != null
-                            ? `agreed ${gbp(e.priceOverride)}`
-                            : pr && pr.total > 0
-                              ? `est. ${gbp(pr.total)}`
-                              : 'set price';
-                    priceChip = ` · <button type="button" class="price-adjust${e.priceOverride != null ? ' is-set' : ''}" onclick="setEnquiryPrice('${e.id}')" title="Set an agreed price for this booking (used by the confirmation and payment request)">${label} <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20l4.5-1 11-11a2.1 2.1 0 0 0-3-3l-11 11L4 20z"/></svg></button>`;
-                } catch (err) {}
-                // Age + stale highlight.
                 const days = enquiryAgeDays(e);
                 const stale = days >= ENQUIRY_STALE_DAYS;
-                const ageLabel = timeAgoLabel(e.receivedAt || e.received) || e.received;
-                const staleChip = stale
-                    ? `<span class="avail-chip warn" title="Waiting ${days} days">${days}d waiting</span>`
-                    : '';
+                let priceLabel = '';
+                try {
+                    const pr = priceBreakdown(e.propKey, e.adults, e.children, e.checkIn, e.checkOut);
+                    priceLabel =
+                        e.priceOverride != null
+                            ? ` · agreed ${gbp(e.priceOverride)}`
+                            : pr && pr.total > 0
+                              ? ` · est. ${gbp(pr.total)}`
+                              : '';
+                } catch (err) {}
+                const chip = av
+                    ? `<span class="bk-chip ${av.free ? 'ok' : 'danger'}"><span class="bk-dot"></span>${escapeHtml(av.text)}${stale ? ` · ${days}d waiting` : ''}</span>`
+                    : `<span class="bk-chip warn"><span class="bk-dot"></span>${stale ? `${days}d waiting` : 'New enquiry'}</span>`;
                 return `
-                <div class="enquiry-card${stale ? ' enquiry-stale' : ''}">
-                    <div class="enquiry-info">
-                        <span class="prop-tag tag-${e.propKey}">${escapeHtml(propName)}</span>${availChip}${staleChip}
-                        <h3>${escapeHtml(e.name)}${repeat}</h3>
-                        <div class="enquiry-meta">
-                            <strong>${escapeHtml(fmtDate(e.checkIn))}</strong> → <strong>${escapeHtml(fmtDate(e.checkOut))}</strong>${priceChip}<br>
-                            Party: ${escapeHtml(e.guests)} · Received ${escapeHtml(ageLabel)}
-                        </div>
-                        ${msg}
-                    </div>
-                    <div class="enquiry-actions">
-                        <button class="btn-sm btn-approve" onclick="approveEnquiry('${e.id}')">✓ Approve</button>
-                        <button class="btn-sm btn-edit" onclick="openEditEnquiry('${e.id}')">View Details</button>
-                        ${e.email ? `<button class="btn-sm btn-edit" onclick="openEnquiryEmail('${e.id}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/></svg> Email</button>` : ''}
-                        <button class="btn-sm btn-decline" onclick="declineEnquiry('${e.id}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg> Decline</button>
-                    </div>
-                </div>`;
+                <button type="button" class="bk-row glass-panel${stale ? ' pay-warn' : ''}${e.id === __enqHubId ? ' is-open' : ''}" data-enqid="${e.id}" onclick="openEnquiryHub('${e.id}')">
+                    <span class="bk-row-body">
+                        <span class="bk-row-top">
+                            <span class="prop-tag tag-${e.propKey}">${escapeHtml(propName)}</span>
+                            ${chip}
+                        </span>
+                        <strong class="bk-row-name">${escapeHtml(e.name)}${(e.priorStays || 0) > 0 ? ' ★' : ''}</strong>
+                        <span class="bk-row-dates">${fmtStayRange(e.checkIn, e.checkOut)} · ${escapeHtml(e.guests)}${priceLabel}</span>
+                    </span>
+                    <span class="bk-row-arrow" aria-hidden="true">›</span>
+                </button>`;
         })
         .join('');
+    // Wide split: keep the docked pane in sync; open the first enquiry when
+    // nothing is selected yet so the workspace never sits with an empty pane.
+    // ONLY while the Inbox is the active view — renderInbox() also runs from
+    // the dashboard init, and auto-selecting there would navigate away.
+    if (inboxSplitWide() && (document.querySelector('.page-view.active') || {}).id === 'view-inbox') {
+        const listNow = sortedEnquiries();
+        if (__enqHubId && !enquiries.find((x) => x.id === __enqHubId)) __enqHubId = null;
+        if (!__enqHubId && listNow.length) {
+            openEnquiryHub(listNow[0].id);
+            return;
+        }
+        markInboxSelection();
+    }
+}
+
+// ==================================================================
+//  ENQUIRY HUB — ONE home per enquiry (view-enquiry-hub / docked pane).
+//  Mirrors the booking hub: the index rows are for finding, this is for
+//  reading + acting (approve, edit, email, decline, agreed price).
+// ==================================================================
+let __enqHubId = null;
+function inboxSplitWide() {
+    return !!(document.getElementById('inbox-detail-pane') && window.matchMedia('(min-width: 1200px)').matches);
+}
+function markInboxSelection() {
+    document
+        .querySelectorAll('#inbox-list .bk-row')
+        .forEach((r) => r.classList.toggle('is-open', r.getAttribute('data-enqid') === __enqHubId));
+    const empty = document.getElementById('inbox-detail-empty');
+    const pane = document.getElementById('inbox-detail-pane');
+    const content = document.getElementById('enquiry-hub-content');
+    if (inboxSplitWide() && __enqHubId && pane && content && content.parentElement !== pane) {
+        pane.appendChild(content);
+        renderEnquiryHub();
+    }
+    if (empty && pane) empty.style.display = __enqHubId && content && content.parentElement === pane ? 'none' : '';
+}
+async function openEnquiryHub(enqId) {
+    if (!isAuthenticated) {
+        tryAccessBackOffice();
+        return;
+    }
+    let e = enquiries.find((x) => x.id === enqId);
+    if (!e) {
+        try {
+            await loadData();
+        } catch (err) {}
+        e = enquiries.find((x) => x.id === enqId);
+    }
+    if (!e) {
+        toast('That enquiry is no longer here.', 'error');
+        openInbox();
+        return;
+    }
+    __enqHubId = enqId;
+    const content = document.getElementById('enquiry-hub-content');
+    const prev = document.querySelector('.page-view.active');
+    if (inboxSplitWide()) {
+        const pane = document.getElementById('inbox-detail-pane');
+        if (content && pane && content.parentElement !== pane) pane.appendChild(content);
+        if (!prev || prev.id !== 'view-inbox') {
+            nav('view-inbox');
+            adminHistPush('view-inbox');
+        }
+        markInboxSelection();
+    } else {
+        const home = document.getElementById('view-enquiry-hub');
+        if (content && home && content.parentElement !== home) home.appendChild(content);
+        const alreadyHere = prev && prev.id === 'view-enquiry-hub';
+        nav('view-enquiry-hub');
+        if (!alreadyHere) adminHistPush('view-enquiry-hub', null, { enqHub: enqId });
+        window.scrollTo({ top: 0 });
+    }
+    renderEnquiryHub();
+}
+function enquiryHubBack() {
+    openInbox();
+}
+function renderEnquiryHub() {
+    const el = document.getElementById('enquiry-hub-content');
+    if (!el) return;
+    const e = enquiries.find((x) => x.id === __enqHubId);
+    if (!e) {
+        el.innerHTML = '<div class="hub-empty" style="margin-top:30px;">This enquiry is no longer here.</div>';
+        return;
+    }
+    const meta = propertyMeta[e.propKey] || { name: e.propKey };
+    const av = enquiryAvailability(e);
+    const days = enquiryAgeDays(e);
+    const stale = days >= ENQUIRY_STALE_DAYS;
+    const ageRaw = timeAgoLabel(e.receivedAt || e.received) || e.received || '';
+    const agePart = ageRaw && !/invalid/i.test(String(ageRaw)) ? ` · received ${escapeHtml(String(ageRaw))}` : '';
+    let priceLine = '';
+    try {
+        const pr = priceBreakdown(e.propKey, e.adults, e.children, e.checkIn, e.checkOut);
+        const std = pr && pr.total > 0 ? pr.total : null;
+        priceLine =
+            e.priceOverride != null
+                ? `Agreed price <strong>${gbp(e.priceOverride)}</strong>${std ? ` <span class="bhub-mut" style="margin:0;">(standard ${gbp(std)})</span>` : ''}`
+                : std
+                  ? `Site price <strong>${gbp(std)}</strong>`
+                  : 'Price unavailable';
+    } catch (err) {
+        priceLine = 'Price unavailable';
+    }
+    const chips =
+        (av ? `<span class="bk-chip ${av.free ? 'ok' : 'danger'}"><span class="bk-dot"></span>${escapeHtml(av.text)}</span>` : '') +
+        (stale ? `<span class="bk-chip warn" style="margin-left:6px;"><span class="bk-dot"></span>${days}d waiting</span>` : '');
+    // The one next step, spelled out like the booking hub's next-action box.
+    const next = av && !av.free
+        ? { text: 'These dates now clash with another booking — adjust the dates (Edit) or decline.', cls: '' }
+        : { text: `Free to approve — this creates the booking, emails the confirmation${e.email ? ' and requests the deposit by card' : ''}.`, cls: ' is-clear' };
+    const contact = (label, val) =>
+        `<div class="booking-detail-item"><span class="booking-detail-label">${label}</span><span class="booking-detail-value" style="font-size:0.95rem;">${val || '<span class="bhub-mut" style="margin:0;">—</span>'}</span></div>`;
+    el.innerHTML = `
+        <div class="bhub-head glass-panel">
+            <div class="bhub-head-top">
+                <div>
+                    <span class="prop-tag tag-${e.propKey}">${escapeHtml(meta.name)}</span>
+                    <h1 class="bhub-name">${escapeHtml(e.name || 'Guest')}</h1>
+                    <div class="bhub-sub">${fmtStayRange(e.checkIn, e.checkOut)} · ${escapeHtml(e.guests)}${agePart}</div>
+                    <div style="margin-top:8px;">${chips}</div>
+                </div>
+                <div class="bhub-actions">
+                    <button class="btn-sm btn-approve" onclick="approveEnquiry('${e.id}')">✓ Approve booking</button>
+                    <button class="btn-sm btn-edit" onclick="openEditEnquiry('${e.id}')">Edit / Move</button>
+                    ${e.email ? `<button class="btn-sm btn-edit" onclick="openEnquiryEmail('${e.id}')">Email guest</button>` : ''}
+                    <button class="btn-sm btn-decline" onclick="declineEnquiry('${e.id}')">Decline</button>
+                </div>
+            </div>
+            <div class="bhub-next${next.cls}"><span class="bhub-next-text">${next.text}</span></div>
+        </div>
+        <div class="bhub-grid">
+            <section class="bhub-card glass-panel">
+                <h3 class="bhub-card-title">Message &amp; contact</h3>
+                ${e.message ? `<div class="enq-ctx-quote" style="margin:0 0 14px;">“${escapeHtml(e.message)}”</div>` : '<div class="bhub-mut" style="margin:0 0 14px;">No message left.</div>'}
+                <div class="detail-grid" style="margin-top:0;">
+                    ${contact('Email', e.email ? `<a href="mailto:${escapeHtml(e.email)}" style="color:var(--text-light);">${escapeHtml(e.email)}</a>` : '')}
+                    ${contact('Phone', e.phone ? `<a href="tel:${escapeHtml(e.phone)}" style="color:var(--text-light);">${escapeHtml(e.phone)}</a>` : '')}
+                    <div class="booking-detail-item" style="grid-column:1/-1;"><span class="booking-detail-label">Home address</span><span class="booking-detail-value" style="font-size:0.95rem;white-space:pre-wrap;">${e.address || e.postcode ? escapeHtml([e.address, e.postcode].filter(Boolean).join(', ')) : '<span class="bhub-mut" style="margin:0;">—</span>'}</span></div>
+                </div>
+            </section>
+            <section class="bhub-card glass-panel">
+                <h3 class="bhub-card-title">Price &amp; history</h3>
+                <div style="font-size:0.95rem;">${priceLine}</div>
+                <div class="bhub-btn-row" style="margin-top:10px;">
+                    <button class="btn-sm btn-edit" onclick="setEnquiryPrice('${e.id}')">${e.priceOverride != null ? 'Change agreed price' : 'Set an agreed price'}</button>
+                </div>
+                <div style="margin-top:16px;">${repeatGuestBadge(e) || '<span class="bhub-mut" style="margin:0;">First-time guest (no completed stays on this email).</span>'}</div>
+            </section>
+        </div>`;
 }
 
 // ---- Email a guest straight from the Inbox / Bookings (house style + details attached) ----
@@ -7759,8 +7897,16 @@ async function declineEnquiry(enqId) {
     if (!enq) return;
     try {
         await apiPost('enquiries.php', { action: 'decline', id: enq.dbId });
+        if (__enqHubId === enqId) __enqHubId = null;
         await loadData();
-        renderInbox();
+        // Standalone hub screen for the declined enquiry → back to the Inbox
+        // (the wide pane re-selects the next enquiry via renderInbox()).
+        const hubView = document.getElementById('view-enquiry-hub');
+        if (hubView && hubView.classList.contains('active')) {
+            openInbox();
+        } else {
+            renderInbox();
+        }
         toast(`Enquiry declined — ${enq.name || 'guest'} removed from the inbox.`);
     } catch (e) {
         glassAlert("Couldn't decline: " + e.message);
@@ -7797,6 +7943,11 @@ async function setEnquiryPrice(enqId) {
     const n = Math.round((parseFloat(raw) || 0) * 100) / 100;
     enq.priceOverride = raw !== '' && n > 0 ? n : null;
     renderInbox();
+    if (__enqHubId === enqId) {
+        try {
+            renderEnquiryHub();
+        } catch (e) {}
+    }
     toast(
         enq.priceOverride != null
             ? `Agreed price set — approving will charge ${gbp(enq.priceOverride)}.`
@@ -7850,6 +8001,13 @@ async function approveEnquiry(enqId) {
                     (guestOk ? ' · confirmation sent' : '') +
                     (payOk ? ` · payment request sent (${gbp(res.payment_request.amount || 0)})` : ''),
             );
+            // Land the owner on the booking this enquiry just became.
+            if (__enqHubId === enqId) __enqHubId = null;
+            if (res.booking_id) {
+                try {
+                    openBookingHub('b' + res.booking_id);
+                } catch (e) {}
+            }
         }
     } catch (e) {
         glassAlert("Couldn't approve: " + e.message);
@@ -8125,7 +8283,7 @@ async function expMove(id, dir) {
     }
 }
 // Publish the facade-stubbed entry points (see app.js loadAdminBundle).
-[accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, bulkImportReviews, cancelBooking, changeAdminPassword, changeMonth, inboxSub, inboxSubClose, initBackOffice, loadAdminMessages, loadDiagnostics, loadGuestList, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveDepositPct, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsRecentRender, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
+[accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, bulkImportReviews, cancelBooking, changeAdminPassword, changeMonth, inboxSub, inboxSubClose, initBackOffice, loadAdminMessages, loadDiagnostics, loadGuestList, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveDepositPct, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsRecentRender, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
     window[f.name] = f;
 });
 window.__ADMIN_LOADED = true;
