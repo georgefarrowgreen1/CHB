@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 41;
+const ADMIN_BUNDLE_V = 42;
 let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
@@ -9689,13 +9689,13 @@ function refreshDateTrigger() {
     }
 }
 
-// One home per booking: every calendar day, list row and search hit lands on
-// the booking HUB (a full admin screen — admin.js renderBookingHub), which
-// replaced the old cramped details modal. The modal shell (#details-modal)
-// remains only for external iCal blocks.
-function showDetails(propKey, booking1, booking2 = null) {
+// One home per booking: every list row and search hit lands on the booking
+// HUB (a full admin screen — admin.js renderBookingHub), which replaced the
+// old cramped details modal. The calendar is a read-only overview — nothing
+// on it is clickable. The #details-modal shell remains only for iCal blocks.
+function showDetails(propKey, booking1) {
     if (!booking1) return;
-    window.openBookingHub(booking1.id, booking2 ? booking2.id : null);
+    window.openBookingHub(booking1.id);
 }
 function closeDetailsModal() {
     const m = document.getElementById('details-modal');
@@ -11853,7 +11853,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'j6p8x2ah';
+    const BUILD = 'j6p9y5bi';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

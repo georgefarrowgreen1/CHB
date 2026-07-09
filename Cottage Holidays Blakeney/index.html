@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=134">
+    <link rel="stylesheet" href="app.css?v=135">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -954,14 +954,14 @@
         <!-- Occupancy heatmap: all cottages × the next N days at a glance -->
         <div id="occupancy-heatmap"></div>
 
-        <!-- Recent activity (filled async by loadActivityFeed) -->
-        <div id="bo-activity"></div>
+        <!-- The Recent-activity feed moved to Settings → Activity log, so the
+             phone dashboard stays a short, do-things page. -->
 
     </main>
 
     <!-- ================= ACTIVITY LOG (full audit trail of changes/actions) ================= -->
     <main id="view-activity-log" class="page-view container">
-        <span class="back-link" onclick="nav('view-backoffice'); initBackOffice();">← Back to Dashboard</span>
+        <span class="back-link" onclick="openArea('settings');">← Back to Settings</span>
         <div class="dashboard-header">
             <div>
                 <h1 class="section-title" style="margin-bottom: 5px;">Activity log</h1>
@@ -1199,6 +1199,10 @@
                 <button class="settings-row" data-kw="api keys tide times connected services" onclick="settingsOpen('apis')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 13.5l-5.3 5.3a2 2 0 0 1-2.8-2.8l5.3-5.3"/><circle cx="15.5" cy="8.5" r="5"/><path d="M13.5 10.5l1.5 1.5"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Integrations</span><span class="settings-row-sub">Tide times &amp; other connected services</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" data-kw="activity log audit history events changes actions recent" onclick="nav('view-activity-log')">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Activity log</span><span class="settings-row-sub">Every change &amp; action — bookings, payments, edits</span></span><span class="settings-row-chev">›</span>
                 </button>
                 <button class="settings-row" data-kw="system check updates migrations backup database export version email test" onclick="settingsOpen('diagnostics')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2 5 4-12 2 7h6"/></svg></span>
@@ -2348,7 +2352,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=240"></script>
+    <script defer src="app.js?v=241"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
