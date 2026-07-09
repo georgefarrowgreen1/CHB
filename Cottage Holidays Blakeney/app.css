@@ -5760,6 +5760,92 @@ body.owner-mode .chat-widget {
   color: var(--text-muted);
 }
 
+/* ---- Bookings dashboard: master–detail split (≥1200px) ----
+   Left: the compact bookings index. Right: the SELECTED booking's hub, docked
+   (the shared #booking-hub-content node re-parents in). Below 1200px the pane
+   hides and the hub opens as its own screen — the phone flow is unchanged. */
+#bookings-detail-pane {
+  display: none;
+}
+@media (min-width: 1200px) {
+  .bk-split {
+    display: grid;
+    grid-template-columns: minmax(340px, 420px) minmax(0, 1fr);
+    gap: 22px;
+    align-items: start;
+  }
+  #bookings-detail-pane {
+    display: block;
+    position: sticky;
+    top: 16px;
+    max-height: calc(100vh - 32px);
+    overflow-y: auto;
+    min-width: 0;
+    padding-right: 2px;
+  }
+  /* Inside the pane the hub reads as one column of cards. */
+  #bookings-detail-pane .bhub-grid {
+    grid-template-columns: 1fr;
+  }
+  #bookings-detail-pane .bhub-head {
+    margin-top: 0;
+  }
+}
+#bookings-detail-empty {
+  padding: 40px 24px;
+  border-radius: var(--r-panel);
+  border: 1px dashed var(--glass-border);
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  text-align: center;
+}
+/* Compact index row — the whole row opens the booking hub. */
+.bk-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  margin-bottom: 10px;
+  padding: 14px 16px;
+  border-radius: var(--r-panel);
+  color: var(--text-light);
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+.bk-row.due-soon {
+  border-left: 3px solid var(--warn);
+}
+.bk-row.is-open {
+  border-color: rgba(255, 255, 255, 0.35);
+  background: rgba(255, 255, 255, 0.08);
+}
+.bk-row-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.bk-row-name {
+  font-size: 0.95rem;
+}
+.bk-row-dates {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+.bk-row-side {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.bk-row-arrow {
+  color: var(--text-muted);
+  font-size: 1.1rem;
+}
+
 /* ---- Booking hub (view-booking-hub): one screen per booking ---- */
 .bhub-head {
   padding: 22px 24px;

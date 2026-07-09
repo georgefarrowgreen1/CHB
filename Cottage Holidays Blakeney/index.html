@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=132">
+    <link rel="stylesheet" href="app.css?v=133">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -977,6 +977,11 @@
 
     <!-- ================= BOOKINGS (dedicated back-office screen) ================= -->
     <main id="view-bookings" class="page-view container">
+        <!-- ≥1200px this is a master–detail dashboard: the index rows on the
+             left, the SELECTED booking's hub docked on the right (the shared
+             #booking-hub-content node is re-parented into the pane). Narrower
+             screens keep the two-step list → hub flow. -->
+        <div class="bk-split">
         <div id="bookings-main">
             <span class="back-link" onclick="nav('view-backoffice'); initBackOffice();">← Back to Dashboard</span>
             <div class="dashboard-header">
@@ -1002,6 +1007,10 @@
             </div>
             <div id="bookings-summary" style="font-size:0.85rem;color:var(--text-muted);margin:2px 0 12px;"></div>
             <div id="bookings-list"><!-- JS injects booking rows here --></div>
+        </div>
+        <aside id="bookings-detail-pane" aria-label="Selected booking">
+            <div id="bookings-detail-empty">Select a booking on the left — everything about it (money, emails, guest, history) appears here.</div>
+        </aside>
         </div>
     </main>
 
@@ -2339,7 +2348,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=237"></script>
+    <script defer src="app.js?v=238"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
