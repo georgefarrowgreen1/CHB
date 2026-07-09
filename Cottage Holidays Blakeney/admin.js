@@ -310,11 +310,11 @@ async function openBookings() {
         tryAccessBackOffice();
         return;
     }
-    // Make sure bookings + their email history are loaded before the list renders.
+    // Make sure bookings are loaded before the list renders. (Per-booking email
+    // history now loads on demand when a hub opens — the index doesn't show it.)
     try {
         if (!Object.keys(dbBookings).some((k) => (dbBookings[k] || []).length)) await loadData();
     } catch (e) {}
-    await loadBookingEmailLogs();
     nav('view-bookings'); // nav() calls renderBookings()
     adminHistPush('view-bookings');
 }
@@ -393,10 +393,26 @@ function renderBookings() {
     }
     if (!rows.length) {
         list.innerHTML = `<div class="bo-search-empty" style="padding:24px 0;color:var(--text-muted);">No bookings ${q ? 'match your search' : 'to show here'}.</div>`;
+        if (bookingsSplitWide()) markBookingsSelection();
         return;
     }
     list.innerHTML = rows.map(({ propKey, b }) => bookingListRow(propKey, b, today)).join('');
+    // Wide split: keep the docked pane in sync — drop a selection whose booking
+    // is gone, and open the first listed booking when nothing is selected yet
+    // so the dashboard never sits with an empty pane.
+    if (bookingsSplitWide()) {
+        if (__hubBookingId && !findBookingById(__hubBookingId)) __hubBookingId = null;
+        if (!__hubBookingId) {
+            openBookingHub(rows[0].b.id);
+            return;
+        }
+        markBookingsSelection();
+    }
 }
+// Compact tappable index row — who / where / when / money state. Everything
+// else (actions, email log, ledger, history) lives on the booking hub, which
+// the whole row opens: on wide screens into the docked pane alongside this
+// list, on phones as its own screen.
 function bookingListRow(propKey, b, today) {
     const meta = propertyMeta[propKey] || { name: propKey };
     const p =
@@ -407,39 +423,32 @@ function bookingListRow(propKey, b, today) {
     const payClass = gt.fullyPaid ? 'ok' : gt.paid > 0 ? 'warn' : 'danger';
     const past = (b.checkOut || '') < today;
     const balanceBit = !gt.fullyPaid ? ` · ${gbp(gt.balance)} due` : '';
-    const st = b.holdStatus || 'none';
-    let depChip = '';
-    if (st === 'returned') depChip = '<span class="bk-chip ok"><span class="bk-dot"></span>Deposit refunded</span>';
-    else if (st === 'kept') depChip = '<span class="bk-chip warn"><span class="bk-dot"></span>Deposit kept</span>';
-    else if (gt.dep > 0)
-        depChip = `<span class="bk-chip ok"><span class="bk-dot"></span>Deposit ${gt.paid > 0 ? 'charged' : 'included'}</span>`;
-    const emailBtn = b.email
-        ? `<button class="btn-sm btn-edit" onclick="openBookingEmail('${b.id}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/></svg> Email</button>`
-        : '';
     return `
-        <div class="money-row glass-panel${!past && !gt.fullyPaid ? ' due-soon' : ''}">
-            <div class="money-row-head">
-                <div><span class="prop-tag tag-${propKey}">${escapeHtml(meta.name)}</span>
-                    <strong style="margin-left:8px;">${escapeHtml(b.name || 'Guest')}</strong>
-                    <span style="color:var(--text-muted);margin-left:8px;font-size:0.85rem;">${b.checkIn} → ${b.checkOut}${past ? ' · past' : ''}</span></div>
-                <span class="money-status"><span class="bk-chip ${payClass}"><span class="bk-dot"></span>${payLabel}${balanceBit}</span></span>
-            </div>
-            <div class="money-figures">
-                <span>Total<strong>${gbp(gt.total)}</strong></span>
-                <span>Received<strong style="color:#4CAF50;">${gbp(gt.paid)}</strong></span>
-                <span>${gt.fullyPaid ? 'Settled' : 'Balance'}<strong>${gbp(gt.fullyPaid ? 0 : gt.balance)}</strong></span>
-                <span>Guests<strong>${escapeHtml(b.guests || (b.adults || 0) + ' adults')}</strong></span>
-            </div>
-            ${depChip ? `<div style="margin:2px 0 8px;">${depChip}</div>` : ''}
-            <div class="money-actions">
-                <button class="btn-sm btn-edit" onclick="showDetails('${propKey}', findBookingById('${b.id}'))">View details</button>
-                ${emailBtn}
-                <button class="btn-sm btn-edit" onclick="openEditBooking('${b.id}')">Edit</button>
-                <button class="btn-sm btn-edit" onclick="downloadInvoice('${b.id}')">Invoice</button>
-                <button class="btn-sm btn-edit" onclick="addBookingToCalendar('${b.id}')">Add to calendar</button>
-            </div>
-            ${bookingEmailLogHtml(b)}
-        </div>`;
+        <button type="button" class="bk-row glass-panel${!past && !gt.fullyPaid ? ' due-soon' : ''}${b.id === __hubBookingId ? ' is-open' : ''}" data-bkid="${b.id}" onclick="openBookingHub('${b.id}')">
+            <span class="bk-row-main">
+                <span class="prop-tag tag-${propKey}">${escapeHtml(meta.name)}</span>
+                <strong class="bk-row-name">${escapeHtml(b.name || 'Guest')}</strong>
+                <span class="bk-row-dates">${b.checkIn} → ${b.checkOut}${past ? ' · past' : ''} · ${escapeHtml(b.guests || (b.adults || 0) + ' adults')}</span>
+            </span>
+            <span class="bk-row-side">
+                <span class="bk-chip ${payClass}"><span class="bk-dot"></span>${payLabel}${balanceBit}</span>
+                <span class="bk-row-arrow" aria-hidden="true">›</span>
+            </span>
+        </button>`;
+}
+// Wide-screen master–detail: is the docked hub pane in play?
+function bookingsSplitWide() {
+    return !!(document.getElementById('bookings-detail-pane') && window.matchMedia('(min-width: 1200px)').matches);
+}
+// Highlight the open booking's row + toggle the pane's empty state.
+function markBookingsSelection() {
+    document
+        .querySelectorAll('#bookings-list .bk-row')
+        .forEach((r) => r.classList.toggle('is-open', r.getAttribute('data-bkid') === __hubBookingId));
+    const empty = document.getElementById('bookings-detail-empty');
+    const pane = document.getElementById('bookings-detail-pane');
+    const content = document.getElementById('booking-hub-content');
+    if (empty && pane) empty.style.display = __hubBookingId && content && content.parentElement === pane ? 'none' : '';
 }
 // The "Emails sent" history block shown under a booking on the Bookings page.
 // Templated emails whose content can be regenerated for preview (server
@@ -567,10 +576,25 @@ async function openBookingHub(bookingId, changeoverWithId = null) {
     if (prev && prev.id !== 'view-booking-hub') __hubReturnView = prev.id;
     __hubBookingId = bookingId;
     __hubChangeoverId = changeoverWithId || null;
-    nav('view-booking-hub');
-    if (!alreadyHere) adminHistPush('view-booking-hub', null, { hubBooking: bookingId });
+    const content = document.getElementById('booking-hub-content');
+    if (bookingsSplitWide()) {
+        // Master–detail: dock the hub beside the bookings index (the shared
+        // #booking-hub-content node re-parents into the pane) — no page swap.
+        const pane = document.getElementById('bookings-detail-pane');
+        if (content && content.parentElement !== pane) pane.appendChild(content);
+        if (!prev || prev.id !== 'view-bookings') {
+            nav('view-bookings'); // nav() renders the index (selection already set)
+            adminHistPush('view-bookings');
+        }
+        markBookingsSelection();
+    } else {
+        const home = document.getElementById('view-booking-hub');
+        if (content && home && content.parentElement !== home) home.appendChild(content);
+        nav('view-booking-hub');
+        if (!alreadyHere) adminHistPush('view-booking-hub', null, { hubBooking: bookingId });
+        window.scrollTo({ top: 0 });
+    }
     renderBookingHub();
-    window.scrollTo({ top: 0 });
 
     // Async enrichments — each fills its own card when it lands (guarded so a
     // slow response never paints over a different booking's hub).
@@ -2817,9 +2841,12 @@ async function cancelBooking(bookingId) {
         } catch (e) {}
         await loadData();
         renderCalendar();
-        // A cancelled booking's row is gone — leave its hub screen if we're on it.
+        // A cancelled booking's row is gone — leave its hub screen if we're on
+        // it, or refresh the index + docked pane on the bookings dashboard.
         const hub = document.getElementById('view-booking-hub');
         if (hub && hub.classList.contains('active')) window.openBookings();
+        const bkView = document.getElementById('view-bookings');
+        if (bkView && bkView.classList.contains('active')) renderBookings();
         if (
             document.getElementById('view-accounts') &&
             document.getElementById('view-accounts').classList.contains('active')

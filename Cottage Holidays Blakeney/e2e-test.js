@@ -216,30 +216,39 @@ async function waitForServer(url, tries = 40) {
     (ar.security && !ar.enquiries && !ar.accom && !ar.analytics) ? pass('Settings area shows only settings rows') : fail('Settings area filter wrong: ' + JSON.stringify(ar));
     await page.evaluate(async () => { nav('view-backoffice'); await initBackOffice(); });
 
-    console.log('== 5c. Bookings page (dedicated list + filters + email) ==');
+    console.log('== 5c. Bookings dashboard (index + docked hub + filters + email) ==');
     await page.evaluate(async () => { isAuthenticated = true; document.body.classList.add('owner-mode'); await openBookings(); });
-    await page.waitForTimeout(500);
+    await page.waitForTimeout(700);
     (await page.evaluate(() => (document.querySelector('.page-view.active') || {}).id)) === 'view-bookings' ? pass('bookings view active') : fail('bookings view did not open');
-    (await page.locator('#bookings-list .money-row').count()) === 2 ? pass('upcoming bookings listed (2)') : fail('bookings list count wrong: ' + (await page.locator('#bookings-list .money-row').count()));
-    (await page.locator('#bookings-list .money-row button', { hasText: 'Email' }).count()) >= 1 ? pass('email action present on rows') : fail('email action missing');
+    (await page.locator('#bookings-list .bk-row').count()) === 2 ? pass('upcoming bookings listed (2)') : fail('bookings list count wrong: ' + (await page.locator('#bookings-list .bk-row').count()));
+    // At 1280px this is a master–detail dashboard: the first booking's hub
+    // auto-docks in the right-hand pane and its row highlights.
+    (await page.evaluate(() => !!document.querySelector('#bookings-detail-pane #booking-hub-content .bhub-head'))) ? pass('selected booking\'s hub docked in the pane') : fail('hub not docked in the pane');
+    (await page.locator('#bookings-list .bk-row.is-open').count()) === 1 ? pass('selected row highlighted') : fail('row highlight missing');
     await page.evaluate(() => bookingsSetFilter('needspay'));
     await page.waitForTimeout(200);
-    (await page.locator('#bookings-list .money-row').count()) === 1 ? pass('Needs-payment filter → 1 booking') : fail('needs-payment filter wrong: ' + (await page.locator('#bookings-list .money-row').count()));
+    (await page.locator('#bookings-list .bk-row').count()) === 1 ? pass('Needs-payment filter → 1 booking') : fail('needs-payment filter wrong: ' + (await page.locator('#bookings-list .bk-row').count()));
     await page.evaluate(() => { bookingsSetFilter('all'); bookingsSetSearch('sarah'); });
     await page.waitForTimeout(200);
-    (await page.locator('#bookings-list .money-row').count()) === 1 ? pass('search "sarah" → 1 booking') : fail('search wrong: ' + (await page.locator('#bookings-list .money-row').count()));
-    // Per-booking email log: Sarah's booking has 3 logged emails (incl. a payment receipt); the other has none.
-    (await page.locator('#bookings-list .bk-email-log-row').count()) === 3 ? pass('email log lists sent emails (3)') : fail('email log wrong count: ' + (await page.locator('#bookings-list .bk-email-log-row').count()));
-    ((await page.locator('#bookings-list .bk-email-log-when').first().textContent()) || '').match(/\d{1,2} \w{3} \d{4}/) ? pass('email log shows a formatted date') : fail('email log date not formatted');
-    (await page.locator('#bookings-list .bk-email-log-what', { hasText: 'Payment receipt' }).count()) === 1 ? pass('payment receipt appears in the log') : fail('payment receipt not shown in log');
+    (await page.locator('#bookings-list .bk-row').count()) === 1 ? pass('search "sarah" → 1 booking') : fail('search wrong: ' + (await page.locator('#bookings-list .bk-row').count()));
+    // Per-booking email history now lives on the hub: open Sarah's row → her
+    // hub fills the pane with 3 logged emails (incl. a payment receipt).
+    await page.locator('#bookings-list .bk-row').first().click();
+    await page.waitForTimeout(700);
+    (await page.locator('#hub-email-log .bk-email-log-row').count()) === 3 ? pass('hub email log lists sent emails (3)') : fail('email log wrong count: ' + (await page.locator('#hub-email-log .bk-email-log-row').count()));
+    ((await page.locator('#hub-email-log .bk-email-log-when').first().textContent()) || '').match(/\d{1,2} \w{3} \d{4}/) ? pass('email log shows a formatted date') : fail('email log date not formatted');
+    (await page.locator('#hub-email-log .bk-email-log-what', { hasText: 'Payment receipt' }).count()) === 1 ? pass('payment receipt appears in the log') : fail('payment receipt not shown in log');
     // The free-text message is expandable and reveals its body.
-    (await page.locator('#bookings-list details.bk-email-log-item').count()) === 1 ? pass('free-text message is expandable') : fail('expandable message missing');
-    await page.locator('#bookings-list details.bk-email-log-item > summary').first().click();
+    (await page.locator('#hub-email-log details.bk-email-log-item').count()) === 1 ? pass('free-text message is expandable') : fail('expandable message missing');
+    await page.locator('#hub-email-log details.bk-email-log-item > summary').first().click();
     await page.waitForTimeout(150);
-    ((await page.locator('#bookings-list .bk-email-log-msg').first().textContent()) || '').includes('Parking is on the street') ? pass('expanding shows the message body') : fail('message body not revealed');
+    ((await page.locator('#hub-email-log .bk-email-log-msg').first().textContent()) || '').includes('Parking is on the street') ? pass('expanding shows the message body') : fail('message body not revealed');
+    // A booking with no emails shows "None yet" on ITS hub.
     await page.evaluate(() => { bookingsSetSearch('emma'); });
     await page.waitForTimeout(200);
-    (await page.locator('#bookings-list .bk-email-log-empty').count()) === 1 ? pass('booking with no emails shows "None yet"') : fail('empty email log missing');
+    await page.locator('#bookings-list .bk-row').first().click();
+    await page.waitForTimeout(700);
+    (await page.locator('#hub-email-log .bk-email-log-empty').count()) === 1 ? pass('booking with no emails shows "None yet"') : fail('empty email log missing');
     await page.evaluate(() => { bookingsSetSearch(''); openBookingEmail('b1'); });
     await page.waitForTimeout(300);
     (await page.evaluate(() => document.getElementById('enq-email-modal').classList.contains('open'))) ? pass('booking email composer opens') : fail('booking email composer did not open');

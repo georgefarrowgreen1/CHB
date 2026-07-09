@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 38;
+const ADMIN_BUNDLE_V = 39;
 let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
@@ -11587,9 +11587,16 @@ async function deleteBooking(bookingId) {
         clearDetails();
         showChangeoverToasts();
         toast('Booking deleted.');
-        // If we were ON the deleted booking's hub screen, it no longer exists.
+        // If we were ON the deleted booking's hub screen, it no longer exists —
+        // and on the bookings dashboard, refresh the index + docked pane.
         const hub = document.getElementById('view-booking-hub');
         if (hub && hub.classList.contains('active')) window.openBookings();
+        const bkView = document.getElementById('view-bookings');
+        if (bkView && bkView.classList.contains('active')) {
+            try {
+                window.renderBookings();
+            } catch (e) {}
+        }
     } catch (e) {
         glassAlert("Couldn't delete: " + e.message);
     }
@@ -11828,7 +11835,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'j6p5t3xe';
+    const BUILD = 'j6p6v1yf';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
