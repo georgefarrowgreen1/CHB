@@ -3213,24 +3213,20 @@ textarea.input-glass.field-sm {
   gap: 3px;
   margin-top: 2px;
 }
+/* Calendar pills are a read-only overview (no click affordance) — bookings
+   are opened from the Bookings dashboard / search, external blocks from the
+   Bookings page's External section. */
 .booking-bar {
   font-size: 0.66rem;
   padding: 3px 8px;
   border-radius: var(--r-pill);
-  cursor: pointer;
+  cursor: default;
   font-weight: 500;
   color: var(--text-light);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   border-left: 3px solid;
-  transition:
-    transform 0.2s var(--fluid-bezier),
-    filter 0.2s ease;
-}
-.booking-bar:hover {
-  filter: brightness(1.25);
-  transform: translateX(1px);
 }
 .booking-bar .bb-code {
   font-weight: 600;
@@ -5845,6 +5841,17 @@ body.owner-mode .chat-widget {
   color: var(--text-muted);
   font-size: 1.1rem;
 }
+/* Imported Airbnb/Vrbo blocks listed under the bookings index. */
+.bk-blocks-title {
+  margin: 22px 0 10px;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-muted);
+}
+.bk-row-ext {
+  opacity: 0.9;
+}
 
 /* ---- Booking hub (view-booking-hub): one screen per booking ---- */
 .bhub-head {
@@ -5886,13 +5893,33 @@ body.owner-mode .chat-widget {
   cursor: pointer;
   border: 1px solid rgba(255, 167, 38, 0.32);
 }
-/* Stage strip: Booked → Deposit → Paid → Arrival → Stay → Deposit back */
-.bhub-pipe {
+/* Journey window: previous (done) › NOW › next — a dynamic three-pill view
+   of the booking's stage, instead of the whole strip squeezed in at once. */
+.bhub-pipe3 {
   display: flex;
-  align-items: center;
+  align-items: flex-end;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
   margin: 18px 0 0;
+}
+.pipe3-col {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.pipe3-cap {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  padding-left: 6px;
+  white-space: nowrap;
+}
+.pipe3-arrow {
+  color: var(--text-muted);
+  padding-bottom: 5px;
+  flex-shrink: 0;
 }
 .pipe-step {
   display: inline-flex;
@@ -5928,12 +5955,6 @@ body.owner-mode .chat-widget {
 }
 .pipe-step.is-now .pipe-dot {
   background: var(--warn);
-}
-.pipe-link {
-  width: 12px;
-  height: 1px;
-  background: var(--glass-border);
-  flex-shrink: 0;
 }
 /* The single surfaced next action */
 .bhub-next {
@@ -6069,19 +6090,20 @@ body.owner-mode .chat-widget {
     text-align: center;
     white-space: normal;
   }
-  .bhub-pipe {
+  /* Keep the Done › Now › Next window on ONE line (scrolls if ever tight). */
+  .bhub-pipe3 {
     flex-wrap: nowrap;
     overflow-x: auto;
-    padding-bottom: 4px;
+    padding-bottom: 2px;
     -webkit-overflow-scrolling: touch;
     scrollbar-width: none;
   }
-  .bhub-pipe::-webkit-scrollbar {
+  .bhub-pipe3::-webkit-scrollbar {
     display: none;
   }
-  .bhub-pipe .pipe-step {
+  .bhub-pipe3 .pipe-step {
     white-space: nowrap;
-    flex-shrink: 0;
+    padding: 4px 10px;
   }
   .bhub-next {
     flex-direction: column;

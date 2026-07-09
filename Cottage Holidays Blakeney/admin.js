@@ -391,12 +391,17 @@ function renderBookings() {
             { upcoming: 'upcoming', past: 'past', needspay: 'needing payment', all: 'in total' }[f] || '';
         sum.textContent = rows.length ? `${rows.length} booking${rows.length === 1 ? '' : 's'} ${label}` : '';
     }
+    // Imported platform blocks ride along under the live filters (not under
+    // search or the money-focused ones — they're availability, not guests).
+    const blocksHtml = (f === 'upcoming' || f === 'all') && !q ? externalBlocksHtml(today) : '';
     if (!rows.length) {
-        list.innerHTML = `<div class="bo-search-empty" style="padding:24px 0;color:var(--text-muted);">No bookings ${q ? 'match your search' : 'to show here'}.</div>`;
+        list.innerHTML =
+            `<div class="bo-search-empty" style="padding:24px 0;color:var(--text-muted);">No bookings ${q ? 'match your search' : 'to show here'}.</div>` +
+            blocksHtml;
         if (bookingsSplitWide()) markBookingsSelection();
         return;
     }
-    list.innerHTML = rows.map(({ propKey, b }) => bookingListRow(propKey, b, today)).join('');
+    list.innerHTML = rows.map(({ propKey, b }) => bookingListRow(propKey, b, today)).join('') + blocksHtml;
     // Wide split: keep the docked pane in sync — drop a selection whose booking
     // is gone, and open the first listed booking when nothing is selected yet
     // so the dashboard never sits with an empty pane.
@@ -436,6 +441,51 @@ function bookingListRow(propKey, b, today) {
             </span>
         </button>`;
 }
+// External (Airbnb/Vrbo) imported blocks as index rows — the calendar shows
+// them read-only, so THIS is where they're opened (view details / remove).
+function externalBlocksHtml(today) {
+    const items = [];
+    Object.keys(dbBlocks).forEach((pk) =>
+        (dbBlocks[pk] || []).forEach((bl) => {
+            if ((bl.checkOut || '') >= today) items.push({ pk, bl });
+        }),
+    );
+    if (!items.length) return '';
+    items.sort((a, z) => (a.bl.checkIn || '').localeCompare(z.bl.checkIn || ''));
+    const srcName = (s) =>
+        s === 'airbnb' ? 'Airbnb' : s === 'vrbo' ? 'Vrbo' : s ? s.charAt(0).toUpperCase() + s.slice(1) : 'External';
+    return (
+        `<div class="bk-blocks-title">External bookings — imported from other platforms</div>` +
+        items
+            .map(({ pk, bl }) => {
+                const meta = propertyMeta[pk] || { name: pk };
+                return `
+        <button type="button" class="bk-row glass-panel bk-row-ext" onclick="showBlockDetailsById(${Number(bl.id)})">
+            <span class="bk-row-main">
+                <span class="prop-tag tag-${pk}">${escapeHtml(meta.name)}</span>
+                <strong class="bk-row-name">${escapeHtml(srcName(bl.source))}</strong>
+                <span class="bk-row-dates">${bl.checkIn} → ${bl.checkOut}</span>
+            </span>
+            <span class="bk-row-side">
+                <span class="bk-chip warn"><span class="bk-dot"></span>External</span>
+                <span class="bk-row-arrow" aria-hidden="true">›</span>
+            </span>
+        </button>`;
+            })
+            .join('')
+    );
+}
+// Look an imported block up by id (the row can't carry the object) → details modal.
+function showBlockDetailsById(id) {
+    for (const pk of Object.keys(dbBlocks)) {
+        const bl = (dbBlocks[pk] || []).find((x) => Number(x.id) === Number(id));
+        if (bl) {
+            showBlockDetails(pk, bl);
+            return;
+        }
+    }
+    toast('That external booking is no longer here.', 'error');
+}
 // Wide-screen master–detail: is the docked hub pane in play?
 function bookingsSplitWide() {
     return !!(document.getElementById('bookings-detail-pane') && window.matchMedia('(min-width: 1200px)').matches);
@@ -448,6 +498,13 @@ function markBookingsSelection() {
     const empty = document.getElementById('bookings-detail-empty');
     const pane = document.getElementById('bookings-detail-pane');
     const content = document.getElementById('booking-hub-content');
+    // A booking is selected but its hub is still parented in the standalone
+    // view (the window grew since it was opened there) — dock + re-render so
+    // the wide dashboard's pane is never empty.
+    if (bookingsSplitWide() && __hubBookingId && pane && content && content.parentElement !== pane) {
+        pane.appendChild(content);
+        renderBookingHub();
+    }
     if (empty && pane) empty.style.display = __hubBookingId && content && content.parentElement === pane ? 'none' : '';
 }
 // The "Emails sent" history block shown under a booking on the Bookings page.
@@ -551,10 +608,9 @@ function bookingEmailLogHtml(b) {
 //  row and search hit routes here (app.js showDetails → openBookingHub).
 // ==================================================================
 let __hubBookingId = null;
-let __hubChangeoverId = null;
 let __hubReturnView = 'view-bookings';
 
-async function openBookingHub(bookingId, changeoverWithId = null) {
+async function openBookingHub(bookingId) {
     if (!isAuthenticated) {
         tryAccessBackOffice();
         return;
@@ -575,7 +631,6 @@ async function openBookingHub(bookingId, changeoverWithId = null) {
     const alreadyHere = prev && prev.id === 'view-booking-hub' && __hubBookingId === bookingId;
     if (prev && prev.id !== 'view-booking-hub') __hubReturnView = prev.id;
     __hubBookingId = bookingId;
-    __hubChangeoverId = changeoverWithId || null;
     const content = document.getElementById('booking-hub-content');
     if (bookingsSplitWide()) {
         // Master–detail: dock the hub beside the bookings index (the shared
@@ -669,12 +724,22 @@ function hubPipelineHtml(propKey, b, gt, dh) {
             done: ['returned', 'kept'].includes(b.holdStatus || '') || (dh.collected > 0 && dh.held <= 0.001),
         });
     }
-    const strip = stages
-        .map(
-            (s) =>
-                `<span class="pipe-step${s.done ? ' is-done' : ''}${s.now ? ' is-now' : ''}"><span class="pipe-dot"></span>${escapeHtml(s.label)}</span>`,
-        )
-        .join('<span class="pipe-link"></span>');
+    // A dynamic three-pill window — where this booking has been, where it IS,
+    // and what comes next — instead of the whole journey squeezed into one
+    // strip (which needed swiping on phones and buried the current stage).
+    const pill = (s, cls) => `<span class="pipe-step ${cls}"><span class="pipe-dot"></span>${escapeHtml(s.label)}</span>`;
+    const col = (cap, inner) => `<div class="pipe3-col"><span class="pipe3-cap">${cap}</span>${inner}</div>`;
+    const arrow = '<span class="pipe3-arrow" aria-hidden="true">›</span>';
+    const curIdx = stages.findIndex((s) => !s.done);
+    let strip;
+    if (curIdx === -1) {
+        // Journey complete — the last stage says so.
+        strip = col('All done', pill(stages[stages.length - 1], 'is-done'));
+    } else {
+        const parts = [col('Done', pill(stages[curIdx - 1], 'is-done')), arrow, col(`Now · ${curIdx + 1} of ${stages.length}`, pill(stages[curIdx], 'is-now'))];
+        if (stages[curIdx + 1]) parts.push(arrow, col('Next', pill(stages[curIdx + 1], '')));
+        strip = parts.join('');
+    }
 
     // ONE next action, derived from state — the answer to "what does this
     // booking need from me?" without reading the whole screen.
@@ -710,7 +775,7 @@ function hubPipelineHtml(propKey, b, gt, dh) {
     const nextHtml = next
         ? `<div class="bhub-next"><span class="bhub-next-text">${next.text}</span><button class="btn-glass bhub-next-btn" onclick="${next.onclick}">${next.btn}</button></div>`
         : `<div class="bhub-next is-clear"><span class="bhub-next-text">All set — nothing needs doing on this booking right now.</span></div>`;
-    return `<div class="bhub-pipe">${strip}</div>${nextHtml}`;
+    return `<div class="bhub-pipe3">${strip}</div>${nextHtml}`;
 }
 
 function renderBookingHub() {
@@ -740,13 +805,17 @@ function renderBookingHub() {
     const nights = fin(p.nights) && p.nights > 0 ? p.nights : Math.max(1, Math.round((new Date(b.checkOut) - new Date(b.checkIn)) / 864e5));
     const ref = typeof bookingRef === 'function' ? bookingRef(b.id) : '';
 
-    // Same-day changeover companion (from the calendar's changeover cells).
+    // Same-day changeover companions, DERIVED from the data (not from how the
+    // hub was opened) — another booking in this cottage arriving the day this
+    // one leaves, or leaving the day this one arrives.
     let changeover = '';
-    if (__hubChangeoverId) {
-        const other = findBookingById(__hubChangeoverId);
-        if (other)
-            changeover = `<button class="bk-chip warn bhub-changeover" onclick="openBookingHub('${other.id}')" title="Open the other side of this changeover"><span class="bk-dot"></span>Same-day changeover with ${escapeHtml(other.name || 'another guest')} →</button>`;
-    }
+    (dbBookings[propKey] || []).forEach((o) => {
+        if (o.id === b.id) return;
+        if (o.checkIn === b.checkOut)
+            changeover += `<button class="bk-chip warn bhub-changeover" onclick="openBookingHub('${o.id}')" title="Open the other side of this changeover"><span class="bk-dot"></span>Same-day changeover — ${escapeHtml(o.name || 'the next guest')} arrives as this guest leaves →</button>`;
+        else if (o.checkOut === b.checkIn)
+            changeover += `<button class="bk-chip warn bhub-changeover" onclick="openBookingHub('${o.id}')" title="Open the other side of this changeover"><span class="bk-dot"></span>Same-day changeover — ${escapeHtml(o.name || 'the previous guest')} leaves as this guest arrives →</button>`;
+    });
 
     // ---- Header ----
     const header = `
@@ -7682,39 +7751,27 @@ function renderCalendar() {
             const _pm = paymentMeta[dayData.booking.payment] || {};
             bar.title = `${propertyMeta[propKey].name} — ${dayData.booking.name} · ${dayData.booking.checkIn} → ${dayData.booking.checkOut}${_pm.label ? ' · ' + _pm.label : ''}`;
 
+            // Read-only pills: the calendar is an at-a-glance overview only.
+            // Opening/acting on bookings happens on the Bookings dashboard
+            // (rows → hub) and via the dashboard search.
             if (dayData.status === 'check-in') {
                 bar.innerHTML = `${dot}<span class="bb-code">${short}</span><span class="bb-name"> ▶ ${escapeHtml(firstName)}</span>`;
-                bar.onclick = (e) => {
-                    e.stopPropagation();
-                    showDetails(propKey, dayData.booking);
-                };
             } else if (dayData.status === 'check-out') {
                 bar.innerHTML = `${dot}<span class="bb-code">${short}</span><span class="bb-name"> ◀ ${escapeHtml(firstName)}</span>`;
-                bar.onclick = (e) => {
-                    e.stopPropagation();
-                    showDetails(propKey, dayData.booking);
-                };
             } else if (dayData.status === 'changeover') {
                 bar.classList.add('changeover-bar');
                 bar.innerHTML = `${dot}<span class="bb-code">${short}</span><span class="bb-name"> ⟷ Changeover</span>`;
-                bar.onclick = (e) => {
-                    e.stopPropagation();
-                    showDetails(propKey, dayData.booking, dayData.nextBooking);
-                };
             } else {
                 // booked (mid-stay)
                 bar.innerHTML = `${dot}<span class="bb-code">${short}</span><span class="bb-name"> · ${escapeHtml(firstName)}</span>`;
-                bar.onclick = (e) => {
-                    e.stopPropagation();
-                    showDetails(propKey, dayData.booking);
-                };
             }
 
             dayBars.push(bar);
         });
 
         // External (Airbnb/Vrbo) blocks — show the dates as taken, colour-coded
-        // by property, with the platform name. Click to view/remove.
+        // by property, with the platform name. View/remove lives on the
+        // Bookings page's "External bookings" section.
         Object.keys(dbBlocks).forEach((propKey) => {
             getBlocksForDate(dateStr, propKey).forEach((bl) => {
                 const meta = propertyMeta[propKey] || { name: propKey, short: propKey };
@@ -7730,11 +7787,7 @@ function renderCalendar() {
                             ? bl.source.charAt(0).toUpperCase() + bl.source.slice(1)
                             : 'External';
                 bar.innerHTML = `${IC_LOCK}<span class="bb-code">${meta.short}</span><span class="bb-name"> ${arrow} ${escapeHtml(srcName.toUpperCase())}</span>`;
-                bar.title = `${meta.name} — ${srcName} booking (${bl.checkIn} to ${bl.checkOut}). Click for details.`;
-                bar.onclick = (e) => {
-                    e.stopPropagation();
-                    showBlockDetails(propKey, bl);
-                };
+                bar.title = `${meta.name} — ${srcName} booking (${bl.checkIn} to ${bl.checkOut})`;
                 dayBars.push(bar);
             });
         });
