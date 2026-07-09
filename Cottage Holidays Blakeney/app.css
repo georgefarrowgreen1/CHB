@@ -1115,6 +1115,12 @@ body.light-mode ::-webkit-scrollbar-thumb {
   cursor: not-allowed;
   text-decoration: line-through;
 }
+/* Admin mode (Add/Edit Booking): taken nights are a cue, not a wall — the
+   owner can still pick them (deliberate overlaps confirm at save). */
+#date-picker.dp-admin .dp-day.dp-booked {
+  cursor: pointer;
+  opacity: 0.5;
+}
 .dp-day.dp-today {
   border-color: var(--glass-border);
   font-weight: 600;
