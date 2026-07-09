@@ -625,6 +625,7 @@ function is_internal_content_key($key)
         'cron-last-run',
         'cron-watchdog-seen',
         'cron-alert-sent',
+        'email-optout',
         'owner-digest-last',
         'analytics-digest-last',
         'backup-last-week',
@@ -870,6 +871,36 @@ function pay_token($bookingId)
 function invoice_token($bookingId)
 {
     return substr(hash_hmac('sha256', 'invoice:' . (int) $bookingId, APP_SECRET), 0, 32);
+}
+// ---- Marketing-email opt-out (anniversary re-invites etc.) ----------------
+// Past guests aren't newsletter subscribers, so they need their own one-click
+// unsubscribe: a signed link (email-optout.php) adds their address to a small
+// suppression list in the content table; marketing-ish senders check it.
+function email_optout_token($email)
+{
+    return substr(hash_hmac('sha256', 'optout:' . strtolower(trim((string) $email)), APP_SECRET), 0, 32);
+}
+function email_optout_has($email)
+{
+    $email = strtolower(trim((string) $email));
+    return $email !== '' && in_array($email, content_json('email-optout', []), true);
+}
+function email_optout_add($email)
+{
+    $email = strtolower(trim((string) $email));
+    if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        return false;
+    }
+    $list = content_json('email-optout', []);
+    if (in_array($email, $list, true)) {
+        return true; // idempotent
+    }
+    $list[] = $email;
+    if (count($list) > 2000) {
+        $list = array_slice($list, -2000); // bounded — never balloons
+    }
+    content_set_scalar('email-optout', $list);
+    return true;
 }
 // Unguessable token for a passwordless email sign-in link. Binds a guest id to
 // an issue-time so it expires (checked in auth.php), and leaks nothing if seen —

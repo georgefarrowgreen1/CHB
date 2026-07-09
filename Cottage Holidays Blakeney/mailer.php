@@ -930,6 +930,14 @@ function send_anniversary_email($b)
     $month = date('F', strtotime($b['check_in'] ?? 'now'));
     $url = function_exists('site_base_url') ? site_base_url() : '';
 
+    // Real one-click unsubscribe (this is a marketing-ish email): a signed
+    // email-optout.php link in the footer + RFC 8058 headers so mail clients
+    // show their own Unsubscribe control. anniversary-nudge.php skips anyone
+    // on the suppression list before ever calling this.
+    $unsub = $url && function_exists('email_optout_token')
+        ? $url . 'email-optout.php?e=' . rawurlencode($b['email']) . '&t=' . email_optout_token($b['email'])
+        : '';
+
     $subject = "{$month} at {$prop} — fancy a return visit?";
     $text =
         "Hi {$name},\n\n" .
@@ -940,7 +948,9 @@ function send_anniversary_email($b)
         "the returning-guest rate when you enquire and we'll apply it.\n\n" .
         ($url ? "Check availability: {$url}\n\n" : '') .
         "Hope to welcome you back,\nCottage Holidays Blakeney\n\n" .
-        'P.S. Prefer not to get the occasional note like this? Just reply and say so.';
+        ($unsub
+            ? "Prefer not to get the occasional note like this? Unsubscribe in one tap: {$unsub}"
+            : 'P.S. Prefer not to get the occasional note like this? Just reply and say so.');
 
     $inner =
         email_h('Fancy a return visit?') .
@@ -959,12 +969,16 @@ function send_anniversary_email($b)
     if ($url) {
         $inner .= email_btn($url, 'Check availability');
     }
-    $inner .=
-        email_p('Hope to welcome you back,<br>Cottage Holidays Blakeney', true) .
-        email_p('Prefer not to get the occasional note like this? Just reply and say so.', true);
+    $inner .= email_p('Hope to welcome you back,<br>Cottage Holidays Blakeney', true);
+    $inner .= $unsub
+        ? email_p('Prefer not to get the occasional note like this? <a href="' . email_esc($unsub) . '" style="color:#A79E8A;text-decoration:underline;">Unsubscribe in one tap</a>.', true)
+        : email_p('Prefer not to get the occasional note like this? Just reply and say so.', true);
     $html = email_shell($month . ' at ' . $prop, $inner, $accent);
 
-    return smtp_send($b['email'], $b['name'] ?? '', $subject, $text, $html);
+    $headers = $unsub
+        ? ['List-Unsubscribe' => '<' . $unsub . '>', 'List-Unsubscribe-Post' => 'List-Unsubscribe=One-Click']
+        : [];
+    return smtp_send($b['email'], $b['name'] ?? '', $subject, $text, $html, [], null, null, $headers);
 }
 
 // Acknowledge a guest's enquiry by email. $accountExists tailors the closing line:
@@ -1987,7 +2001,9 @@ function send_payment_receipt($b)
         $money($b['total']) .
         ".\n" .
         $statusLine .
-        "\n\n" .
+        "\n" .
+        (!empty($b['invoice_url']) ? "\nView or download your updated invoice: {$b['invoice_url']}\n" : '') .
+        "\n" .
         'Cottage Holidays Blakeney';
     $inner =
         email_h('Payment received') .
@@ -2011,6 +2027,9 @@ function send_payment_receipt($b)
             ]),
         ) .
         email_p($esc($statusLine), true) .
+        // The invoice always reflects the money just received — link it from the
+        // receipt too, not only the original confirmation.
+        (!empty($b['invoice_url']) ? email_btn($b['invoice_url'], 'View your invoice') : '') .
         email_p('Cottage Holidays Blakeney', true);
     $html = email_shell('Payment received — ' . $prop, $inner);
 

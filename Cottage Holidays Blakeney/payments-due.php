@@ -94,6 +94,13 @@ foreach ($due as $b) {
         } catch (\Throwable $e) {
         }
         $sent++;
+        // 'payment.request' is picked up by the per-booking email log.
+        log_activity('payment', 'payment.request', 'Balance requested — £' . number_format((float) ($res['amount'] ?? 0), 2) . ($b['name'] ? ' · ' . $b['name'] : ''), [
+            'actor' => 'cron',
+            'prop_key' => $b['prop_key'] ?? '',
+            'entity' => 'booking',
+            'entity_id' => (string) $b['id'],
+        ]);
         $report[] = ['id' => (int) $b['id'], 'status' => 'requested', 'amount' => $res['amount'] ?? null];
     } else {
         // Already stamped above. 'Nothing left to pay.' (settled since) keeps the
@@ -162,6 +169,12 @@ foreach ($toRemind as $b) {
         } catch (\Throwable $e) {
         }
         $reminded++;
+        log_activity('payment', 'payment.request', 'Balance reminder emailed — £' . number_format((float) ($res['amount'] ?? 0), 2) . ($b['name'] ? ' · ' . $b['name'] : ''), [
+            'actor' => 'cron',
+            'prop_key' => $b['prop_key'] ?? '',
+            'entity' => 'booking',
+            'entity_id' => (string) $b['id'],
+        ]);
         $remReport[] = ['id' => (int) $b['id'], 'status' => 'reminded', 'amount' => $res['amount'] ?? null];
     }
     // 'Nothing left to pay.' (settled since the request) keeps the stamp — stop reminding.
@@ -193,25 +206,34 @@ try {
 } // columns not migrated yet
 
 foreach ($toRecover as $b) {
+    // Stamp-before-send (same reasoning as the passes above: a duplicate
+    // money-chaser is worse than a missed cycle). Clean failures un-stamp.
+    try {
+        db()
+            ->prepare('UPDATE bookings SET deposit_reminded_at = NOW() WHERE id = ?')
+            ->execute([(int) $b['id']]);
+    } catch (\Throwable $e) {
+    }
     $res = request_booking_payment($b, 'deposit', true); // reminder = true
-    if (!empty($res['ok'])) {
+    if (empty($res['ok']) && strpos($res['error'] ?? '', 'Message not accepted') !== 0 && ($res['error'] ?? '') !== 'Nothing left to pay.') {
         try {
             db()
-                ->prepare('UPDATE bookings SET deposit_reminded_at = NOW() WHERE id = ?')
-                ->execute([(int) $b['id']]);
-        } catch (\Throwable $e) {
-        }
-        $recovered++;
-        $recReport[] = ['id' => (int) $b['id'], 'status' => 'recovered', 'amount' => $res['amount'] ?? null];
-    } elseif (($res['error'] ?? '') === 'Nothing left to pay.') {
-        // Paid since (status not yet flipped, or edge case) — stop chasing.
-        try {
-            db()
-                ->prepare('UPDATE bookings SET deposit_reminded_at = NOW() WHERE id = ?')
+                ->prepare('UPDATE bookings SET deposit_reminded_at = NULL WHERE id = ?')
                 ->execute([(int) $b['id']]);
         } catch (\Throwable $e) {
         }
     }
+    if (!empty($res['ok'])) {
+        $recovered++;
+        log_activity('payment', 'payment.request', 'Deposit chased — £' . number_format((float) ($res['amount'] ?? 0), 2) . ($b['name'] ? ' · ' . $b['name'] : ''), [
+            'actor' => 'cron',
+            'prop_key' => $b['prop_key'] ?? '',
+            'entity' => 'booking',
+            'entity_id' => (string) $b['id'],
+        ]);
+        $recReport[] = ['id' => (int) $b['id'], 'status' => 'recovered', 'amount' => $res['amount'] ?? null];
+    }
+    // 'Nothing left to pay.' (paid since) keeps the stamp — stop chasing.
 }
 
 // Damage-deposit holds that expired before capture: a Square auth lasts ~6 days,

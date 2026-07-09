@@ -66,16 +66,36 @@ foreach ($rows as $e) {
         ($link ? "You can pick up where you left off here:\n" . $link . "\n\n" : '') .
         "Or just reply to this email (or message us on the website) and we'll get your booking confirmed.\n\n" .
         "Warm wishes,\nCottage Holidays Blakeney";
+    // House email design (this and the rescue below were the only guest emails
+    // still going out as bare plain text).
+    $html = null;
+    if (function_exists('email_shell')) {
+        $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
+        $accent = prop_display($e['prop_key'])['accent'];
+        $inner =
+            email_h('Still thinking it over?') .
+            email_p('Hello ' . $esc($name) . ', thanks for your enquiry about <strong style="color:#2A2622;">' . $esc($propName) . '</strong> for ' . $esc($e['check_in']) . ' to ' . $esc($e['check_out']) . '.') .
+            email_p("We're still holding those dates for you.") .
+            ($link ? email_btn($link, 'Pick up where you left off', $accent, '#ffffff') : '') .
+            email_p("Or just reply to this email (or message us on the website) and we'll get your booking confirmed.", true);
+        $html = email_shell('Still thinking about your Blakeney stay?', $inner, $accent);
+    }
     try {
         // smtp_send returns ok:false on a soft failure (server down / mail off)
         // WITHOUT throwing — only mark the nudge sent if it actually went, else
         // the guest's one-and-only nudge is silently burned.
-        $r = function_exists('smtp_send') ? smtp_send($e['email'], $name, $subject, $text) : ['ok' => false];
+        $r = function_exists('smtp_send') ? smtp_send($e['email'], $name, $subject, $text, $html) : ['ok' => false];
         if (!empty($r['ok'])) {
             db()
                 ->prepare('UPDATE enquiries SET nudge_sent_at = NOW() WHERE id = ?')
                 ->execute([(int) $e['id']]);
             $sent++;
+            log_activity('comms', 'enquiry.nudge', 'Enquiry follow-up emailed — ' . ($e['name'] ?: $e['email']), [
+                'actor' => 'cron',
+                'prop_key' => $e['prop_key'] ?? '',
+                'entity' => 'enquiry',
+                'entity_id' => (string) $e['id'],
+            ]);
         }
     } catch (\Throwable $ex) {
         /* skip this one, continue with the rest */
@@ -146,12 +166,30 @@ foreach ($drafts as $d) {
             "Your details are saved in the form on this device, so it only takes a moment. " .
             "Or just reply to this email and we'll happily sort it out for you.\n\n" .
             "Warm wishes,\nCottage Holidays Blakeney";
+        // House email design (was bare plain text, like the follow-up above).
+        $html = null;
+        if (function_exists('email_shell')) {
+            $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
+            $accent = prop_display($d['prop_key'])['accent'];
+            $inner =
+                email_h('Finish your enquiry?') .
+                email_p('Hello ' . $esc($name) . ', it looks like you were part-way through an enquiry about <strong style="color:#2A2622;">' . $esc($propName) . '</strong>' . $esc($dates) . " and didn't quite finish.") .
+                email_p("No pressure at all — if you'd still like to stay, you can pick up where you left off in one tap. Your details are saved in the form on this device, so it only takes a moment.") .
+                ($link ? email_btn($link, 'Pick up where you left off', $accent, '#ffffff') : '') .
+                email_p("Or just reply to this email and we'll happily sort it out for you.", true);
+            $html = email_shell('Finish your ' . $propName . ' enquiry?', $inner, $accent);
+        }
         // Like the follow-up above: only mark it sent if it actually went, or the
         // one-and-only rescue email is silently burned on a mail hiccup.
-        $r = function_exists('smtp_send') ? smtp_send($d['email'], $name, $subject, $text) : ['ok' => false];
+        $r = function_exists('smtp_send') ? smtp_send($d['email'], $name, $subject, $text, $html) : ['ok' => false];
         if (!empty($r['ok'])) {
             db()->prepare('UPDATE enquiry_drafts SET nudged_at = NOW() WHERE id = ?')->execute([(int) $d['id']]);
             $rescued++;
+            log_activity('comms', 'enquiry.rescue', 'Abandoned-enquiry rescue emailed — ' . ($d['name'] ?: $d['email']), [
+                'actor' => 'cron',
+                'prop_key' => $d['prop_key'] ?? '',
+                'entity' => 'enquiry',
+            ]);
         }
     } catch (\Throwable $ex) {
         /* skip this one, continue with the rest */

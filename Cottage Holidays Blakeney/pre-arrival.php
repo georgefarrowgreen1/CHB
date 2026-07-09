@@ -47,6 +47,14 @@ foreach ($due as $b) {
     // the due window and the guest would get a daily text pointing at an email
     // that never arrived. No-op unless SMS is configured and the guest opted in.
     if (!empty($res['ok'])) {
+        // Visible in the per-booking email log (previously only the MANUAL
+        // "send arrival info" button logged; the daily cron send was invisible).
+        log_activity('comms', 'email.arrival', 'Arrival info emailed — ' . ($b['name'] ?? ''), [
+            'actor' => 'cron',
+            'prop_key' => $b['prop_key'] ?? '',
+            'entity' => 'booking',
+            'entity_id' => (string) $b['id'],
+        ]);
         try {
             require_once __DIR__ . '/sms.php';
             sms_notify_booking(
@@ -107,6 +115,13 @@ if ($toAsk) {
                     ->execute([(int) $b['id']]);
             } catch (\Throwable $e) {
             }
+            // Visible in the per-booking email log.
+            log_activity('comms', 'email.review', 'Review request emailed — ' . ($b['name'] ?? ''), [
+                'actor' => 'cron',
+                'prop_key' => $b['prop_key'] ?? '',
+                'entity' => 'booking',
+                'entity_id' => (string) $b['id'],
+            ]);
             try {
                 notify_guest_email(
                     $b['email'],

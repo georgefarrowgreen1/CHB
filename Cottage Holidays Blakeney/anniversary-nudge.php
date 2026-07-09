@@ -91,6 +91,12 @@ foreach ($rows as $b) {
     if (isset($emailedThisRun[$emailKey])) {
         continue;
     }
+    // Honour the one-click unsubscribe (email-optout.php suppression list).
+    if (function_exists('email_optout_has') && email_optout_has($b['email'])) {
+        $sent[$b['id']] = date('Y-m-d') . ' (skipped: opted out)';
+        $persist();
+        continue;
+    }
     $futureQ->execute([$b['email']]);
     if ((int) $futureQ->fetchColumn() > 0) {
         // they're already coming back
@@ -110,6 +116,13 @@ foreach ($rows as $b) {
         $persist();
         $emailedThisRun[$emailKey] = 1;
         $n++;
+        // Visible in the per-booking email log (entity booking + category comms).
+        log_activity('comms', 'email.anniversary', 'Return-invite emailed — ' . ($b['name'] ?: $b['email']), [
+            'actor' => 'cron',
+            'prop_key' => $b['prop_key'] ?? '',
+            'entity' => 'booking',
+            'entity_id' => (string) $b['id'],
+        ]);
     }
     $results[] = ['id' => (int) $b['id'], 'ok' => !empty($r['ok']), 'error' => $r['error'] ?? null];
 }
