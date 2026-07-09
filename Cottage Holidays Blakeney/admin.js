@@ -414,10 +414,25 @@ function renderBookings() {
         markBookingsSelection();
     }
 }
-// Compact tappable index row — who / where / when / money state. Everything
-// else (actions, email log, ledger, history) lives on the booking hub, which
-// the whole row opens: on wide screens into the docked pane alongside this
-// list, on phones as its own screen.
+// '2026-08-27','2026-08-30' → '27–30 Aug 2026' (human, and short enough that
+// the index rows never wrap mid-date).
+function fmtStayRange(ci, co) {
+    const parse = (s) => {
+        const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        return m ? { y: +m[1], mo: +m[2], d: +m[3] } : null;
+    };
+    const a = parse(ci),
+        b = parse(co);
+    if (!a || !b) return `${ci} → ${co}`;
+    const M = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    if (a.y === b.y && a.mo === b.mo) return `${a.d}–${b.d} ${M[a.mo - 1]} ${a.y}`;
+    if (a.y === b.y) return `${a.d} ${M[a.mo - 1]} – ${b.d} ${M[b.mo - 1]} ${a.y}`;
+    return `${a.d} ${M[a.mo - 1]} ${a.y} – ${b.d} ${M[b.mo - 1]} ${b.y}`;
+}
+// Compact tappable index row — who / where / when / money state, in a fixed
+// three-line anatomy (tag + status chip · name · dates) so every row is the
+// SAME shape with nothing wrapping oddly. Everything else (actions, email
+// log, ledger, history) lives on the booking hub, which the whole row opens.
 function bookingListRow(propKey, b, today) {
     const meta = propertyMeta[propKey] || { name: propKey };
     const p =
@@ -430,15 +445,15 @@ function bookingListRow(propKey, b, today) {
     const balanceBit = !gt.fullyPaid ? ` · ${gbp(gt.balance)} due` : '';
     return `
         <button type="button" class="bk-row glass-panel${!past && !gt.fullyPaid ? ' due-soon' : ''}${b.id === __hubBookingId ? ' is-open' : ''}" data-bkid="${b.id}" onclick="openBookingHub('${b.id}')">
-            <span class="bk-row-main">
-                <span class="prop-tag tag-${propKey}">${escapeHtml(meta.name)}</span>
+            <span class="bk-row-body">
+                <span class="bk-row-top">
+                    <span class="prop-tag tag-${propKey}">${escapeHtml(meta.name)}</span>
+                    <span class="bk-chip ${payClass}"><span class="bk-dot"></span>${payLabel}${balanceBit}</span>
+                </span>
                 <strong class="bk-row-name">${escapeHtml(b.name || 'Guest')}</strong>
-                <span class="bk-row-dates">${b.checkIn} → ${b.checkOut}${past ? ' · past' : ''} · ${escapeHtml(b.guests || (b.adults || 0) + ' adults')}</span>
+                <span class="bk-row-dates">${fmtStayRange(b.checkIn, b.checkOut)} · ${escapeHtml(b.guests || (b.adults || 0) + ' adults')}${past ? ' · past' : ''}</span>
             </span>
-            <span class="bk-row-side">
-                <span class="bk-chip ${payClass}"><span class="bk-dot"></span>${payLabel}${balanceBit}</span>
-                <span class="bk-row-arrow" aria-hidden="true">›</span>
-            </span>
+            <span class="bk-row-arrow" aria-hidden="true">›</span>
         </button>`;
 }
 // External (Airbnb/Vrbo) imported blocks as index rows — the calendar shows
@@ -461,15 +476,15 @@ function externalBlocksHtml(today) {
                 const meta = propertyMeta[pk] || { name: pk };
                 return `
         <button type="button" class="bk-row glass-panel bk-row-ext" onclick="showBlockDetailsById(${Number(bl.id)})">
-            <span class="bk-row-main">
-                <span class="prop-tag tag-${pk}">${escapeHtml(meta.name)}</span>
-                <strong class="bk-row-name">${escapeHtml(srcName(bl.source))}</strong>
-                <span class="bk-row-dates">${bl.checkIn} → ${bl.checkOut}</span>
+            <span class="bk-row-body">
+                <span class="bk-row-top">
+                    <span class="prop-tag tag-${pk}">${escapeHtml(meta.name)}</span>
+                    <span class="bk-chip warn"><span class="bk-dot"></span>External</span>
+                </span>
+                <strong class="bk-row-name">${escapeHtml(srcName(bl.source))} booking</strong>
+                <span class="bk-row-dates">${fmtStayRange(bl.checkIn, bl.checkOut)}</span>
             </span>
-            <span class="bk-row-side">
-                <span class="bk-chip warn"><span class="bk-dot"></span>External</span>
-                <span class="bk-row-arrow" aria-hidden="true">›</span>
-            </span>
+            <span class="bk-row-arrow" aria-hidden="true">›</span>
         </button>`;
             })
             .join('')
@@ -4221,9 +4236,6 @@ async function initBackOffice() {
         refreshModerationCounts();
     } catch (e) {} // pending reviews/photos/experiences (badges + today card)
     try {
-        loadActivityFeed();
-    } catch (e) {} // recent-activity feed (fills in async)
-    try {
         checkCronHealth();
     } catch (e) {} // warn if the daily automation stopped
     try {
@@ -7158,46 +7170,6 @@ const ACTIVITY_ICONS = {
     media: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9" r="1.6"/><path d="M21 16l-5-5L5 20"/>',
     other: '<circle cx="12" cy="12" r="9"/><path d="M12 8h.01M11 12h1v4h1"/>',
 };
-async function loadActivityFeed() {
-    const el = document.getElementById('bo-activity');
-    if (!el) return;
-    let events = [];
-    try {
-        const r = await apiPost('activity.php', { action: 'recent' });
-        events = r.events || [];
-    } catch (e) {
-        el.innerHTML = '';
-        return;
-    }
-    // Always offer the "View full log" entry point, even with no recent business events.
-    const header = `
-                <h2 style="font-family:var(--font-serif);font-size:1.3rem;font-weight:400;margin:26px 0 12px;display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;">
-                    Recent activity
-                    <a class="act-full-link" onclick="nav('view-activity-log')">View full log →</a>
-                </h2>`;
-    if (!events.length) {
-        el.innerHTML = header;
-        return;
-    }
-    el.innerHTML =
-        header +
-        `
-                <div class="feed-list glass-panel" style="padding:6px 16px;">
-                    ${events
-                        .map(
-                            (ev) => `
-                    <div class="act-row">
-                        <span class="act-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ACTIVITY_ICONS[ev.type] || ACTIVITY_ICONS.booking}</svg></span>
-                        ${ev.prop_key && propertyMeta[ev.prop_key] ? `<span class="prop-tag tag-${ev.prop_key}">${propertyMeta[ev.prop_key].short}</span>` : ''}
-                        <span class="act-label">${escapeHtml(ev.label)}</span>
-                        <span class="act-detail">${escapeHtml(ev.detail || '')}</span>
-                        <span class="act-when">${timeAgoLabel(ev.at)}</span>
-                    </div>`,
-                        )
-                        .join('')}
-                </div>`;
-}
-
 // ---- Full activity log page (view-activity-log) ----
 const ACT_LOG_CATS = [
     ['all', 'All'],
