@@ -5867,18 +5867,29 @@ function depositRefunded(holdStatus) {
 function displayDepositAmt(p, holdStatus) {
     return depositRefunded(holdStatus) ? 0 : Math.max(0, (p && p.damagesDeposit) || 0);
 }
+// Has the refundable damages deposit actually been COLLECTED? It rides on a
+// Square payment (pay.php sets hold_status 'charged'; legacy card-holds settle
+// to 'captured'; 'kept' = collected and retained after damage). For a MANUAL
+// payment (cash/bank) the owner records only the rental amount and hold_status
+// stays 'none' — the deposit was NOT taken, so it must not count as "paid".
+function depositCharged(holdStatus) {
+    const st = holdStatus || 'none';
+    return st === 'charged' || st === 'captured' || st === 'kept';
+}
 // A shown total = a rental figure + the not-yet-refunded deposit.
 function displayGrandTotal(rentalTotal, p, holdStatus) {
     return Math.round((((rentalTotal != null ? rentalTotal : (p && p.total) || 0)) + displayDepositAmt(p, holdStatus)) * 100) / 100;
 }
-// For a booking WITH a paid/balance ledger: fold the deposit into BOTH the total
-// and (once any payment is taken, the deposit is charged too) the paid figure, so
-// the balance-due number is unchanged while the headline total shows the deposit.
+// For a booking WITH a paid/balance ledger: fold the deposit into the shown
+// total, and into the PAID figure ONLY when it was genuinely collected (a Square
+// payment charges it alongside the first rental payment → hold_status 'charged').
+// A manually-recorded cash/bank payment leaves hold_status 'none', so the deposit
+// is NOT counted as paid — otherwise a £100 cash deposit would show as £150 paid.
 // `ps` = paymentSummary (rental total + rental paid). Refunded → deposit drops out.
 function displayGrand(p, ps, holdStatus) {
     const dep = displayDepositAmt(p, holdStatus);
     const total = Math.round((ps.total + dep) * 100) / 100;
-    const chargedDep = ps.deposit > 0 || ps.fullyPaid ? dep : 0; // charged with the first payment
+    const chargedDep = depositCharged(holdStatus) ? dep : 0; // only if actually collected
     const paid = Math.round((ps.deposit + chargedDep) * 100) / 100;
     const balance = Math.round((total - paid) * 100) / 100;
     return { dep, total, paid, balance, fullyPaid: ps.fullyPaid || balance <= 0.001 };
@@ -11804,7 +11815,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'j6h5w8bp';
+    const BUILD = 'j6j3n6dw';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
