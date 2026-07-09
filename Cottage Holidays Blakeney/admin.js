@@ -785,7 +785,11 @@ function renderBookingHub() {
             ${gt.dep > 0 ? `<div class="price-row"><span>Refundable damages deposit</span><span>${gbp(gt.dep)}</span></div>` : ''}
             <div class="price-row total"><span>Total${gt.dep > 0 ? ' (incl. deposit)' : ''}</span><span class="price-amount">${gbp(gt.total)}</span></div>
             ${gt.paid > 0 ? `<div class="price-row" style="color:#4CAF50;"><span>Received</span><span>− ${gbp(gt.paid)}</span></div>` : ''}
-            <div class="price-row total"><span>${gt.fullyPaid ? 'Paid in full' : 'Balance due'}</span><span class="price-amount" style="${gt.fullyPaid ? 'color:#4CAF50;' : ''}">${gbp(gt.fullyPaid ? 0 : gt.balance)}</span></div>
+            ${
+                gt.fullyPaid
+                    ? `<div class="price-row total" style="color:#4CAF50;"><span>Paid in full</span><span class="price-amount" style="color:#4CAF50;">✓</span></div>`
+                    : `<div class="price-row total"><span>Balance due</span><span class="price-amount">${gbp(gt.balance)}</span></div>`
+            }
         </div>${agreedNote}`;
     const depositLine =
         dh.collected > 0
