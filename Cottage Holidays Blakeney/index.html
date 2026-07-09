@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=130">
+    <link rel="stylesheet" href="app.css?v=131">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -2018,6 +2018,9 @@
     <div id="glass-dialog" role="dialog" aria-modal="true" aria-labelledby="glass-dialog-msg">
         <div class="glass-dialog-box glass-panel">
             <div class="glass-dialog-msg" id="glass-dialog-msg"></div>
+            <!-- Multi-field form mode (glassForm): labelled inputs on ONE dialog,
+                 so recording a payment isn't three pop-ups in a row. -->
+            <div class="glass-dialog-fields" id="glass-dialog-fields" style="display:none;"></div>
             <input type="text" class="input-glass glass-dialog-input" id="glass-dialog-input" style="display:none;">
             <div class="glass-dialog-btns">
                 <button class="btn-sm btn-edit" id="glass-dialog-cancel" style="display:none;" onclick="glassDialogResolve(false)">Cancel</button>
@@ -2106,12 +2109,12 @@
             <label class="modal-label">Guest Name</label>
             <input type="text" class="input-glass" id="modal-name">
 
-            <div style="display: flex; gap: 15px;">
-                <div style="flex: 1;">
+            <div class="modal-2col">
+                <div>
                     <label class="modal-label">Email</label>
                     <input type="email" class="input-glass" id="modal-email" placeholder="guest@email.com">
                 </div>
-                <div style="flex: 1;">
+                <div>
                     <label class="modal-label">Phone</label>
                     <input type="tel" class="input-glass" id="modal-phone" placeholder="07…">
                 </div>
@@ -2122,33 +2125,33 @@
             <label class="modal-label" for="modal-postcode">Postcode</label>
             <input type="text" class="input-glass" id="modal-postcode" placeholder="e.g. NR25 7AB">
 
-            <div style="display: flex; gap: 15px;">
-                <div style="flex: 1;">
+            <div class="modal-2col">
+                <div>
                     <label class="modal-label">Check In</label>
                     <input type="date" class="input-glass" id="modal-checkin" oninput="updateModalPrice()">
                 </div>
-                <div style="width: 130px;">
+                <div class="modal-col-narrow">
                     <label class="modal-label">In Time</label>
                     <input type="time" class="input-glass" id="modal-checkin-time" value="15:00">
                 </div>
             </div>
-            <div style="display: flex; gap: 15px;">
-                <div style="flex: 1;">
+            <div class="modal-2col">
+                <div>
                     <label class="modal-label">Check Out</label>
                     <input type="date" class="input-glass" id="modal-checkout" oninput="updateModalPrice()">
                 </div>
-                <div style="width: 130px;">
+                <div class="modal-col-narrow">
                     <label class="modal-label">Out Time</label>
                     <input type="time" class="input-glass" id="modal-checkout-time" value="10:00">
                 </div>
             </div>
 
-            <div style="display: flex; gap: 15px;">
-                <div style="flex: 1;">
+            <div class="modal-2col">
+                <div>
                     <label class="modal-label">Adults</label>
                     <input type="number" class="input-glass" id="modal-adults" min="1" value="2" oninput="updateModalPrice()">
                 </div>
-                <div style="flex: 1;">
+                <div>
                     <label class="modal-label">Children</label>
                     <input type="number" class="input-glass" id="modal-children" min="0" value="0" oninput="updateModalPrice()">
                 </div>
@@ -2167,12 +2170,12 @@
                 </select>
                 <!-- Inline payment details (were 3 sequential pop-up prompts after Save). -->
                 <div id="modal-payment-details" style="display:none;">
-                    <div style="display:flex;gap:15px;flex-wrap:wrap;">
-                        <div id="modal-deposit-amount-wrap" style="flex:1;min-width:130px;">
+                    <div class="modal-2col">
+                        <div id="modal-deposit-amount-wrap">
                             <label class="modal-label" for="modal-deposit-amount">Amount paid (£)</label>
                             <input type="number" class="input-glass" id="modal-deposit-amount" min="0" step="0.01" placeholder="e.g. 100">
                         </div>
-                        <div style="flex:1;min-width:130px;">
+                        <div>
                             <label class="modal-label" for="modal-payment-date">Payment date</label>
                             <input type="date" class="input-glass" id="modal-payment-date">
                         </div>
@@ -2324,7 +2327,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=235"></script>
+    <script defer src="app.js?v=236"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

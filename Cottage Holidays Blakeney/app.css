@@ -949,6 +949,17 @@ body.light-mode ::-webkit-scrollbar-thumb {
   margin-top: 16px;
   margin-bottom: 0 !important;
 }
+/* glassForm mode: labelled inputs stacked inside the dialog. */
+.glass-dialog-fields {
+  margin-top: 14px;
+  text-align: left;
+}
+.glass-dialog-fields .modal-label {
+  margin-top: 10px;
+}
+.glass-dialog-fields .input-glass {
+  margin-bottom: 0;
+}
 .glass-dialog-btns {
   display: flex;
   gap: 12px;
@@ -4378,6 +4389,31 @@ body.owner-mode .chat-widget {
   color: var(--warn);
   border-color: rgba(255, 167, 38, 0.32);
 }
+/* Tappable price on an inbox enquiry: opens the agreed-price form. Styled as
+   the text it replaces (est. £x) with a pencil, so the line stays glanceable. */
+.price-adjust {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 3px;
+}
+.price-adjust .ic {
+  width: 12px;
+  height: 12px;
+  opacity: 0.7;
+}
+.price-adjust.is-set {
+  color: var(--ok);
+  font-weight: 600;
+}
 /* Glanceable booking status strip (details modal): payment / deposit / arrival. */
 .bk-status {
   display: flex;
@@ -5709,14 +5745,6 @@ body.owner-mode .chat-widget {
   flex-wrap: wrap;
   align-items: center;
 }
-.money-actions .field-sm {
-  width: auto;
-  min-width: 120px;
-  margin: 0;
-}
-.money-actions .money-dep {
-  width: 130px;
-}
 .money-deposit {
   display: flex;
   align-items: center;
@@ -6072,11 +6100,6 @@ body.owner-mode .chat-widget {
     overflow-x: auto;
     white-space: nowrap;
     -webkit-overflow-scrolling: touch;
-  }
-  .money-actions .field-sm,
-  .money-actions .money-dep {
-    flex: 1 1 auto;
-    min-width: 0;
   }
   .money-row-head {
     gap: 6px;
@@ -7092,6 +7115,26 @@ body.owner-mode .chat-widget {
   color: var(--text-muted);
   display: block;
   margin-bottom: 5px;
+}
+/* Paired fields in the Add/Edit Booking modal (email+phone, date+time, adults+
+   children). Replaces fixed 130px inline columns that cramped narrow phones:
+   columns shrink gracefully and the narrow (time) column keeps a sane minimum. */
+.modal-2col {
+  display: flex;
+  gap: 15px;
+}
+.modal-2col > div {
+  flex: 1 1 0;
+  min-width: 0;
+}
+.modal-2col > .modal-col-narrow {
+  flex: 0 1 130px;
+  min-width: 96px;
+}
+@media (max-width: 480px) {
+  .modal-2col {
+    gap: 10px;
+  }
 }
 
 /* --- FOOTER & EDITOR UI --- */
