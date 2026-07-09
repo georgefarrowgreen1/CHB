@@ -5859,17 +5859,6 @@ body.owner-mode .chat-widget {
   font-size: 1.1rem;
   flex-shrink: 0;
 }
-/* Imported Airbnb/Vrbo blocks listed under the bookings index. */
-.bk-blocks-title {
-  margin: 22px 0 10px;
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: var(--text-muted);
-}
-.bk-row-ext {
-  opacity: 0.9;
-}
 
 /* ---- Booking hub (view-booking-hub): one screen per booking ---- */
 .bhub-head {
