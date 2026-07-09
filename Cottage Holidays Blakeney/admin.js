@@ -276,6 +276,7 @@ async function openInbox() {
 // sub-folders off the Inbox rather than sprawling down the messages tab.
 const INBOX_SUBS = { answers: 'inbox-sub-answers', away: 'inbox-sub-away', enq: 'inbox-sub-enq' };
 function inboxSub(which) {
+    __inboxSubStamp++;
     adminHistPush('view-inbox', null, { inboxSub: which });
     const main = document.getElementById('inbox-main');
     if (main) main.style.display = 'none';
@@ -406,6 +407,12 @@ function renderBookings() {
     if (!rows.length) {
         list.innerHTML =
             `<div class="bo-search-empty" style="padding:24px 0;color:var(--text-muted);">No bookings ${q ? 'match your search' : 'to show here'}.</div>`;
+        // A selection whose booking no longer exists must not linger in the pane.
+        if (__hubBookingId && !findBookingById(__hubBookingId)) {
+            __hubBookingId = null;
+            const bhc = document.getElementById('booking-hub-content');
+            if (bhc) bhc.innerHTML = '';
+        }
         if (bookingsSplitWide()) markBookingsSelection();
         return;
     }
@@ -2537,7 +2544,7 @@ function renderExpenses() {
                         .map(
                             (x) => `<div>
                       <div class="feed-row" style="grid-template-columns:84px 1fr auto auto auto;gap:10px;">
-                        <span class="feed-date">${x.date}</span>
+                        <span class="feed-date">${fmtDate(x.date)}</span>
                         <span class="feed-who">${escapeHtml(x.category)}${x.description ? ' · ' + escapeHtml(x.description) : ''}${x.prop_key && propertyMeta[x.prop_key] ? ' · ' + escapeHtml(propertyMeta[x.prop_key].short || propertyMeta[x.prop_key].name) : ''}${x.recurring ? ' <span class="exp-tag">recurring</span>' : ''}</span>
                         ${__expenseReceipts[x.id] ? `<button class="feed-del" title="View scanned receipt" onclick="toggleReceiptDetail(${x.id})">🧾</button>` : '<span></span>'}
                         <span class="feed-amt">${gbp(x.amount)}</span>
@@ -3257,7 +3264,7 @@ async function renderMoneyFeed() {
                 (deleted ? ' · deleted booking' : '') +
                 (note ? ' · ' + note : '');
             return `<div class="feed-row"${note ? ` title="${escapeHtml(note)}"` : ''}>
-                    <span class="feed-date">${escapeHtml(date)}</span>
+                    <span class="feed-date">${escapeHtml(fmtDate(date))}</span>
                     <span class="prop-tag tag-${p.prop_key}">${escapeHtml(propName)}</span>
                     <span class="feed-who"${deleted ? ' style="color:var(--text-muted);"' : ''}>${escapeHtml(who)}</span>
                     <span class="feed-kind">${label}${feeNote}</span>
@@ -7402,6 +7409,11 @@ function renderInbox() {
 
     if (enquiries.length === 0) {
         list.innerHTML = `<div class="inbox-empty-inline"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg> Inbox zero — no pending enquiries right now.</div>`;
+        // The docked pane must not keep showing the last (now handled) enquiry.
+        __enqHubId = null;
+        const ehc = document.getElementById('enquiry-hub-content');
+        if (ehc) ehc.innerHTML = '';
+        markInboxSelection();
         return;
     }
 
@@ -7994,6 +8006,13 @@ async function approveEnquiry(enqId) {
                     attention.join('\n') +
                     '\n\nThe booking is still confirmed — you may want to contact the guest directly.',
             );
+            // The booking WAS created — land on its hub like the happy path.
+            if (__enqHubId === enqId) __enqHubId = null;
+            if (res.booking_id) {
+                try {
+                    openBookingHub('b' + res.booking_id);
+                } catch (e) {}
+            }
         } else {
             toast(
                 `Booked: ${enq.name} at ${propName}` +
@@ -8283,7 +8302,7 @@ async function expMove(id, dir) {
     }
 }
 // Publish the facade-stubbed entry points (see app.js loadAdminBundle).
-[accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, bulkImportReviews, cancelBooking, changeAdminPassword, changeMonth, inboxSub, inboxSubClose, initBackOffice, loadAdminMessages, loadDiagnostics, loadGuestList, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveDepositPct, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsRecentRender, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
+[accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, bulkImportReviews, cancelBooking, changeAdminPassword, changeMonth, inboxSub, inboxSubClose, initBackOffice, loadAdminMessages, loadDiagnostics, loadGuestList, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveDepositPct, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsRecentRender, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
     window[f.name] = f;
 });
 window.__ADMIN_LOADED = true;

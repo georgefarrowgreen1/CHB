@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 49;
+const ADMIN_BUNDLE_V = 50;
 let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
@@ -1723,7 +1723,12 @@ function syncDockArea() {
     requestAnimationFrame(moveDockIndicator);
 }
 // Fill the Inbox screen — also called from nav() so a history/back restore repaints it.
+// __inboxSubStamp: bumped by inboxSub() (admin.js); the tail below only resets
+// to the main list if NO sub-folder was opened while the awaits were in flight
+// (a history replay opens one right after nav() returns — don't close it again).
+let __inboxSubStamp = 0;
 async function renderInboxScreen() {
+    const stamp = __inboxSubStamp;
     try {
         await loadData();
     } catch (e) {}
@@ -1737,7 +1742,7 @@ async function renderInboxScreen() {
         await loadAdminMessages();
     } catch (e) {}
     try {
-        inboxSubClose(); // always land on the inbox itself, not a sub-folder
+        if (stamp === __inboxSubStamp) inboxSubClose(); // land on the inbox itself unless a sub was just restored
     } catch (e) {}
     try {
         refreshModerationCounts();
@@ -11907,7 +11912,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'j6q7f3ip';
+    const BUILD = 'j6q8g4jq';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
