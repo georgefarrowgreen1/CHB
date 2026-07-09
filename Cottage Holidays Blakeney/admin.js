@@ -7251,20 +7251,31 @@ function renderCalendar() {
                 cells += `<span class="tl-cell${wknd ? ' is-wknd' : ''}${dates[i] === todayIso ? ' is-today' : ''}" style="grid-column:${i + 1}"${past ? '' : ` onclick="tlAddAt('${k}','${dates[i]}')" title="Add a booking at ${escapeHtml(meta.name)} from ${fmtDate(dates[i])}"`}></span>`;
             }
             let bars = '';
+            // Bars run noon-to-noon (check-in afternoon → checkout morning): the
+            // grid area covers check-in day THROUGH checkout day, and the CSS
+            // insets each end by half a day — so back-to-back changeover
+            // bookings visibly share the day, meeting mid-cell. Bars cut off by
+            // the window edge drop the inset on that side (tl-clip-*).
+            const tlSpan = (ci, co) => {
+                const sIdx = idxOf(ci),
+                    eIdx = idxOf(co);
+                const s0 = Math.max(0, sIdx);
+                const eL = Math.min(TL_DAYS + 1, Math.max(s0 + 2, eIdx + 2));
+                const clip = `${sIdx < 0 ? ' tl-clip-l' : ''}${eIdx >= TL_DAYS ? ' tl-clip-r' : ''}`;
+                return { col: `${s0 + 1}/${eL}`, clip };
+            };
             (dbBookings[k] || []).forEach((b) => {
                 if (!b.checkIn || !b.checkOut || b.checkOut <= dates[0] || b.checkIn >= dates[TL_DAYS - 1]) return;
-                const s0 = Math.max(0, idxOf(b.checkIn));
-                const e0 = Math.min(TL_DAYS, Math.max(s0 + 1, idxOf(b.checkOut)));
+                const sp = tlSpan(b.checkIn, b.checkOut);
                 const ps = paymentSummary(k, b);
                 const pay = ps.fullyPaid ? 'ok' : ps.deposit > 0 ? 'warn' : 'danger';
-                bars += `<button type="button" class="tl-bar bar-${k} tl-pay-${pay}" style="grid-column:${s0 + 1}/${e0 + 1}" onclick="openBookingHub('${b.id}')" title="${escapeHtml(meta.name)} — ${escapeHtml(b.name || 'Guest')} · ${fmtDate(b.checkIn)} → ${fmtDate(b.checkOut)}">${escapeHtml((b.name || 'Guest').split(' ')[0])}</button>`;
+                bars += `<button type="button" class="tl-bar bar-${k} tl-pay-${pay}${sp.clip}" style="grid-column:${sp.col}" onclick="openBookingHub('${b.id}')" title="${escapeHtml(meta.name)} — ${escapeHtml(b.name || 'Guest')} · ${fmtDate(b.checkIn)} → ${fmtDate(b.checkOut)}">${escapeHtml((b.name || 'Guest').split(' ')[0])}</button>`;
             });
             (dbBlocks[k] || []).forEach((bl) => {
                 if (!bl.checkIn || !bl.checkOut || bl.checkOut <= dates[0] || bl.checkIn >= dates[TL_DAYS - 1]) return;
-                const s0 = Math.max(0, idxOf(bl.checkIn));
-                const e0 = Math.min(TL_DAYS, Math.max(s0 + 1, idxOf(bl.checkOut)));
+                const sp = tlSpan(bl.checkIn, bl.checkOut);
                 const src = bl.source ? bl.source.charAt(0).toUpperCase() + bl.source.slice(1) : 'External';
-                bars += `<span class="tl-bar tl-ext" style="grid-column:${s0 + 1}/${e0 + 1}" title="${escapeHtml(meta.name)} — ${escapeHtml(src)} booking · ${fmtDate(bl.checkIn)} → ${fmtDate(bl.checkOut)}">${escapeHtml(src)}</span>`;
+                bars += `<span class="tl-bar tl-ext${sp.clip}" style="grid-column:${sp.col}" title="${escapeHtml(meta.name)} — ${escapeHtml(src)} booking · ${fmtDate(bl.checkIn)} → ${fmtDate(bl.checkOut)}">${escapeHtml(src)}</span>`;
             });
             const priv = meta.unlisted ? lock : '';
             return `<div class="tl-row">
