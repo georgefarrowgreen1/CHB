@@ -92,6 +92,41 @@ function booking_email_warning($email)
     return ['email_warn' => true, 'message' => $msg, 'suggest' => $chk['suggest'] ?? null];
 }
 
+// Soft occupancy warning for a booking's party size, read from the PROPERTY ROW
+// itself (occupancy_limits() deliberately covers only live+listed cottages — the
+// back office can book private/unlisted ones too). Returns an
+// ['occupancy_warn'=>true,'message'=>…] payload the client confirms, or null.
+// The UI already warns; this makes the server the single source of truth so a
+// direct API call can't create a 10-guest booking in a 2-person cottage silently.
+function booking_occupancy_warning($propKey, $adults, $children)
+{
+    try {
+        $s = db()->prepare('SELECT max_adults, max_children, max_total FROM properties WHERE prop_key = ?');
+        $s->execute([$propKey]);
+        $row = $s->fetch();
+    } catch (\Throwable $e) {
+        return null; // columns not migrated — nothing to check against
+    }
+    if (!$row) {
+        return null;
+    }
+    $maxAdults = max(1, (int) ($row['max_adults'] ?? 2));
+    $maxChildren = max(0, (int) ($row['max_children'] ?? 0));
+    $maxTotal = max(1, (int) ($row['max_total'] ?? 2));
+    if ($adults > $maxAdults || $children > $maxChildren || $adults + $children > $maxTotal) {
+        return [
+            'occupancy_warn' => true,
+            'message' =>
+                'That party (' . $adults . ' adult' . ($adults === 1 ? '' : 's') .
+                ($children > 0 ? ', ' . $children . ' child' . ($children === 1 ? '' : 'ren') : '') .
+                ') is over this property’s normal limit of ' . $maxTotal . ' guest' . ($maxTotal === 1 ? '' : 's') . '.',
+        ];
+    }
+    return null;
+}
+
+// (prop_is_archived() lives in db.php — shared with the approval path.)
+
 // Reconcile a deposit amount against a chosen status + total. Returns float or null(invalid).
 function reconcile_deposit($status, $total, $currentDep, $proposedDep)
 {
@@ -408,6 +443,22 @@ $action = $in['action'] ?? '';
 if ($action === 'delete') {
     $id = (int) ($in['id'] ?? 0);
     $b = booking_by_id($id);
+    // Hard delete is for junk/test rows. A booking that has taken MONEY must go
+    // through Cancel instead — cancel refunds the card payment, settles/returns
+    // the damage deposit and emails the guest; delete does none of that, which
+    // previously left the guest a live confirmation and unreturned money.
+    if ($b) {
+        $moneyIn = (float) ($b['deposit_paid'] ?? 0) > 0.001;
+        $holdLive = in_array($b['hold_status'] ?? 'none', ['authorized', 'charged', 'captured'], true);
+        if ($moneyIn || $holdLive) {
+            json_out([
+                'error' =>
+                    'This booking has taken money' .
+                    ($holdLive ? ' (and holds a damages deposit)' : '') .
+                    ' — use “Cancel booking” instead, which refunds the guest and lets them know. Delete is only for junk/test rows.',
+            ], 400);
+        }
+    }
     db()
         ->prepare('DELETE FROM bookings WHERE id = ?')
         ->execute([$id]);
@@ -428,6 +479,9 @@ if ($action === 'add') {
     if (!$rate) {
         json_out(['error' => 'Unknown property'], 400);
     }
+    if (prop_is_archived($propKey)) {
+        json_out(['error' => 'That cottage has been removed from the site — restore it (Settings → Preferences) before adding bookings.'], 400);
+    }
     $name = clean($in['name'] ?? '');
     $checkIn = clean($in['check_in'] ?? '');
     $checkOut = clean($in['check_out'] ?? '');
@@ -437,6 +491,9 @@ if ($action === 'add') {
     if ($checkOut <= $checkIn) {
         json_out(['error' => 'Check-out must be after check-in'], 400);
     }
+
+    $adults = max(1, (int) ($in['adults'] ?? 2));
+    $children = max(0, (int) ($in['children'] ?? 0));
 
     // Email deliverability warning (soft): a mistyped domain (e.g. ntl-world.com)
     // means the guest never gets their confirmation. Warn — with a suggested
@@ -448,19 +505,29 @@ if ($action === 'add') {
         }
     }
 
+    // Occupancy warning (soft): over the property's limit needs a deliberate
+    // confirm (override_occupancy:true), same pattern as email + clash.
+    if (empty($in['override_occupancy'])) {
+        $occWarn = booking_occupancy_warning($propKey, $adults, $children);
+        if ($occWarn) {
+            json_out($occWarn);
+        }
+    }
+
     // Date-clash warning (soft): if these dates overlap an existing booking or an
     // imported platform (Airbnb/Vrbo) block, return a clash notice so the owner
     // can confirm. Sending override_clash:true proceeds anyway.
-    book_lock($propKey); // serialise this property's writes (auto-frees at request end)
+    if (!book_lock($propKey)) {
+        // Genuine lock timeout (another booking write held it >30s): proceeding
+        // would run UNPROTECTED past the clash check — refuse instead.
+        json_out(['error' => 'The calendar is busy with another booking for this cottage — please try again in a moment.'], 409);
+    }
     if (empty($in['override_clash'])) {
         $clashMsg = clash_message($propKey, $checkIn, $checkOut, null);
         if ($clashMsg) {
             json_out(['clash' => true, 'message' => $clashMsg]);
         }
     }
-
-    $adults = max(1, (int) ($in['adults'] ?? 2));
-    $children = max(0, (int) ($in['children'] ?? 0));
     $status = in_array($in['payment'] ?? 'unpaid', ['unpaid', 'deposit', 'paid']) ? $in['payment'] : 'unpaid';
     $damagesOverride = array_key_exists('damages_deposit', $in) ? $in['damages_deposit'] : null;
 
@@ -593,18 +660,29 @@ if ($action === 'update') {
         }
     }
 
+    $adults = max(1, (int) ($in['adults'] ?? $b['adults']));
+    $children = max(0, (int) ($in['children'] ?? $b['children']));
+
+    // Occupancy warning (soft) — only when the party actually GREW, so editing
+    // other fields on a historic over-limit booking never re-nags.
+    if (empty($in['override_occupancy']) && ($adults > (int) $b['adults'] || $children > (int) $b['children'] || $propKey !== $b['prop_key'])) {
+        $occWarn = booking_occupancy_warning($propKey, $adults, $children);
+        if ($occWarn) {
+            json_out($occWarn);
+        }
+    }
+
     // Date-clash warning (soft) — ignore this booking's own dates. Confirm with
     // override_clash:true to proceed.
-    book_lock($propKey); // serialise this property's writes (auto-frees at request end)
+    if (!book_lock($propKey)) {
+        json_out(['error' => 'The calendar is busy with another booking for this cottage — please try again in a moment.'], 409);
+    }
     if (empty($in['override_clash'])) {
         $clashMsg = clash_message($propKey, $checkIn, $checkOut, $id);
         if ($clashMsg) {
             json_out(['clash' => true, 'message' => $clashMsg]);
         }
     }
-
-    $adults = max(1, (int) ($in['adults'] ?? $b['adults']));
-    $children = max(0, (int) ($in['children'] ?? $b['children']));
 
     // Re-snapshot price if the stay changed OR a new damages deposit was supplied
     $damagesOverride = array_key_exists('damages_deposit', $in) ? $in['damages_deposit'] : null;

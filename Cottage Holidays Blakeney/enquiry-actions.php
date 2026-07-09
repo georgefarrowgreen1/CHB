@@ -43,7 +43,16 @@ function enquiry_approve($id)
     if (!$rate) {
         return ['error' => 'Property not found', 'code' => 404];
     }
-    book_lock($e['prop_key']); // serialise so concurrent approvals can't both win
+    // get_rate() happily returns archived cottages — the public form rejects
+    // them, so approval must too (restore the cottage first).
+    if (function_exists('prop_is_archived') && prop_is_archived($e['prop_key'])) {
+        return ['error' => 'That cottage has been removed from the site — restore it (Settings → Preferences) before approving.', 'code' => 400];
+    }
+    if (!book_lock($e['prop_key'])) {
+        // Genuine lock timeout — proceeding would skip the concurrent-approval
+        // protection, so refuse rather than risk a double booking.
+        return ['error' => 'The calendar is busy with another booking for this cottage — please try again in a moment.', 'code' => 409];
+    }
     // Don't approve onto dates that have since been taken (a confirmed booking or an
     // imported Airbnb/Vrbo block).
     if (dates_clash($e['prop_key'], $e['check_in'], $e['check_out'])) {
@@ -97,6 +106,31 @@ function enquiry_approve($id)
         ->prepare('DELETE FROM enquiries WHERE id = ?')
         ->execute([$id]);
     book_unlock($e['prop_key']); // free before the (slower) email send
+
+    // A booking was born — record it like the manual-add path does, so the
+    // audit trail covers bookings however they're created.
+    log_activity('booking', 'booking.add', 'Booking created from enquiry — ' . ($e['name'] ?? ''), [
+        'prop_key' => $e['prop_key'] ?? '',
+        'entity' => 'booking',
+        'entity_id' => (string) $bookingId,
+    ]);
+
+    // Heads-up (non-blocking): enquiry emails are validated at submit NOW, but
+    // older enquiries weren't — flag an undeliverable-looking address so the
+    // owner knows the confirmation may not arrive, without blocking approval.
+    $emailCheck = null;
+    if (!empty($e['email']) && function_exists('email_deliverability')) {
+        try {
+            $chk = email_deliverability($e['email']);
+            if (empty($chk['ok'])) {
+                $emailCheck =
+                    '“' . $e['email'] . '” may not receive email' .
+                    (!empty($chk['suggest']) ? ' — did they mean ' . $chk['suggest'] . '?' : '') .
+                    ' Check the address on the booking.';
+            }
+        } catch (\Throwable $ex) {
+        }
+    }
 
     // Send confirmation emails (guest + owner). Wrapped so an email problem
     // never breaks the approval — the booking is already saved above.
@@ -213,5 +247,7 @@ function enquiry_approve($id)
         'booking_id' => (int) $bookingId,
         'email' => $emailResult,
         'payment_request' => $paymentRequest,
+        // Non-blocking deliverability heads-up (null when the address looks fine).
+        'email_check' => $emailCheck,
     ];
 }

@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 35;
+const ADMIN_BUNDLE_V = 36;
 let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
@@ -34,7 +34,7 @@ function loadAdminBundle() {
     __adminBundlePromise = attempt(2);
     return __adminBundlePromise;
 }
-["accountsBack","accountsOpen","accountsShowIndex","activityLogSearch","addAdminPasskey","addReviewRow","afterPaymentChange","autoSyncIcalBlocks","backfillWebp","bookingSearch","bookingsSetFilter","bookingsSetSearch","bulkImportReviews","cancelBooking","changeAdminPassword","changeMonth","inboxSub","inboxSubClose","initBackOffice","loadAdminMessages","loadDiagnostics","loadGuestList","logoutStaff","openAccounts","openAddBooking","openArea","openBlockDates","openBookings","openBookingEmail","openInbox","openSettings","openStagingSite","refreshModerationCounts","renderAccounts","renderActivityLog","renderBookings","renderCalendar","renderExpenses","renderInbox","renderMoneyOverview","renderSquareSettings","runMigrations","saveApiKey","saveContactPhone","saveContent","saveDepositPct","saveGoogleReviewUrl","saveHostText","saveReviews","sendBroadcast","sendSampleEmails","sendTestEmail","settingsBack","settingsFilter","settingsOpen","settingsOpenAccom","settingsOpenAccomSec","settingsOpenCalendar","settingsOpenCancel","settingsRecentRender","settingsSearchKey","settingsShowIndex","tryAccessBackOffice","uploadHostPhoto"].forEach((n) => {
+["accountsBack","accountsOpen","accountsShowIndex","activityLogSearch","addAdminPasskey","addReviewRow","afterPaymentChange","autoSyncIcalBlocks","backfillWebp","bookingSearch","bookingsSetFilter","bookingsSetSearch","bulkImportReviews","cancelBooking","changeAdminPassword","changeMonth","inboxSub","inboxSubClose","initBackOffice","loadAdminMessages","loadDiagnostics","loadGuestList","logoutStaff","openAccounts","openAddBooking","openArea","openBlockDates","openBookings","openBookingEmail","openInbox","openSettings","openStagingSite","refreshModerationCounts","renderAccounts","renderActivityLog","renderBookings","renderCalendar","renderExpenses","renderInbox","renderMoneyOverview","requestPayment","renderSquareSettings","runMigrations","saveApiKey","saveContactPhone","saveContent","saveDepositPct","saveGoogleReviewUrl","saveHostText","saveReviews","sendBroadcast","sendSampleEmails","sendTestEmail","settingsBack","settingsFilter","settingsOpen","settingsOpenAccom","settingsOpenAccomSec","settingsOpenCalendar","settingsOpenCancel","settingsRecentRender","settingsSearchKey","settingsShowIndex","tryAccessBackOffice","uploadHostPhoto"].forEach((n) => {
     const stub = (...a) =>
         loadAdminBundle()
             .catch((e) => {
@@ -10894,6 +10894,11 @@ function decodeEntities(str) {
 // ===================================================================
 function openModal() {
     document.getElementById('edit-modal').classList.add('open');
+    // Land the owner ready to type (guest name is the first blank on an add).
+    setTimeout(() => {
+        const nm = document.getElementById('modal-name');
+        if (nm && !nm.value) nm.focus();
+    }, 120);
 }
 function closeModal() {
     document.getElementById('edit-modal').classList.remove('open');
@@ -11197,6 +11202,14 @@ function setModalFields(f) {
     document.getElementById('modal-children').value = f.children != null ? f.children : 0;
     document.getElementById('modal-notes').value = f.notes || '';
     document.getElementById('modal-payment').value = f.payment || 'unpaid';
+    // Inline payment details (amount / date / method) — prefill from the booking.
+    const amtEl = document.getElementById('modal-deposit-amount');
+    if (amtEl) amtEl.value = f.depositPaid > 0 ? f.depositPaid : '';
+    const pdEl = document.getElementById('modal-payment-date');
+    if (pdEl) pdEl.value = f.paymentDate || '';
+    const pmEl = document.getElementById('modal-payment-method');
+    if (pmEl) pmEl.value = f.paymentMethod || '';
+    togglePaymentDetails();
     const depEl = document.getElementById('modal-damages-deposit');
     if (depEl)
         depEl.value =
@@ -11305,9 +11318,31 @@ function togglePaymentField(show) {
     const lbl = sel.previousElementSibling; // its <label>
     sel.style.display = show ? 'block' : 'none';
     if (lbl && lbl.classList.contains('modal-label')) lbl.style.display = show ? 'block' : 'none';
+    if (!show) {
+        // Enquiry mode has no payment — hide the inline details too.
+        const det = document.getElementById('modal-payment-details');
+        if (det) det.style.display = 'none';
+    } else {
+        togglePaymentDetails();
+    }
     // Relabel the notes field
     const notesLabel = document.getElementById('modal-notes').previousElementSibling;
     if (notesLabel) notesLabel.innerText = show ? 'Staff Notes' : 'Guest Message';
+}
+
+// Show the inline amount/date/method fields when a payment status is chosen
+// (these used to be 3 sequential pop-up prompts AFTER pressing Save). For
+// "Paid in Full" the amount is the total, so only date + method show.
+function togglePaymentDetails() {
+    const status = (document.getElementById('modal-payment') || {}).value || 'unpaid';
+    const det = document.getElementById('modal-payment-details');
+    if (!det) return;
+    det.style.display = status === 'deposit' || status === 'paid' ? '' : 'none';
+    const amtWrap = document.getElementById('modal-deposit-amount-wrap');
+    if (amtWrap) amtWrap.style.display = status === 'deposit' ? '' : 'none';
+    // Default the payment date to today the first time it's revealed.
+    const pd = document.getElementById('modal-payment-date');
+    if (pd && det.style.display !== 'none' && !pd.value) pd.value = todayDashed();
 }
 
 // Save a booking (add/update) through the soft warnings the server can raise:
@@ -11335,6 +11370,12 @@ async function saveBookingGuarded(action, payload, clashPrompt) {
             if (!(await glassConfirm(res.message + '\n\nSave the booking anyway?'))) return null;
             extra.override_email = true;
         }
+        res = await apiPost('bookings.php', { action, ...payload, ...extra });
+    }
+    // Occupancy (party over the property's normal limit) — deliberate confirm.
+    if (res && res.occupancy_warn) {
+        if (!(await glassConfirm(res.message + '\n\nSave anyway (e.g. a cot or an agreed exception)?'))) return null;
+        extra.override_occupancy = true;
         res = await apiPost('bookings.php', { action, ...payload, ...extra });
     }
     // Date clash.
@@ -11403,18 +11444,9 @@ async function saveModal() {
         return;
     }
 
-    // Occupancy limit — owner can override with confirmation (e.g. a cot, an exception)
-    const occErr = checkOccupancy(propKey, adults, children);
-    if (occErr) {
-        if (
-            !(await glassConfirm(
-                occErr + '\n\nThis is over the normal limit for this property. Save anyway?',
-            ))
-        ) {
-            showErr(occErr);
-            return;
-        }
-    }
+    // Occupancy + date-clash checks now live SERVER-SIDE only (bookings.php
+    // occupancy_warn/clash, confirmed via saveBookingGuarded) — the old client
+    // pre-checks here asked the same questions a second time.
 
     // ----- Enquiry edit -----
     if (mode === 'enquiry') {
@@ -11449,48 +11481,32 @@ async function saveModal() {
     }
 
     // ----- Booking add / edit -----
-    if (hasDateClash(propKey, checkIn, checkOut, mode === 'booking' ? id : null)) {
-        if (
-            !(await glassConfirm(
-                `These dates clash with an existing booking or an imported Airbnb/Vrbo block at ${propertyMeta[propKey].name}. Save anyway?`,
-            ))
-        )
-            return;
-    }
+    // (Clash detection happens server-side under the per-property lock; the
+    // guarded save prompts once with the authoritative answer.)
 
-    // If the status is "deposit", we need an amount. Ask for it (the server
-    // also validates 0 < amount < total).
+    // Payment details come from the INLINE fields under Payment Status (they
+    // were 3 sequential pop-up prompts here before). The server still validates
+    // 0 < deposit < total.
     let depositAmount = null;
     let paymentDate = null;
     let paymentMethod = null;
     if (payment === 'deposit' || payment === 'paid') {
-        // For an edit, default to the existing recorded deposit/date/method.
-        let existing = null;
-        if (mode === 'booking') {
-            const loc = findBookingLocation(id);
-            if (loc) existing = dbBookings[loc.propKey][loc.idx];
-        }
         if (payment === 'deposit') {
-            const existingDep = existing && existing.depositPaid > 0 ? existing.depositPaid : '';
-            const entered = await glassPrompt('Deposit amount paid (£):', existingDep);
-            if (entered === null) return;
-            depositAmount = Math.max(0, parseFloat(entered) || 0);
+            depositAmount = Math.max(
+                0,
+                parseFloat((document.getElementById('modal-deposit-amount') || {}).value) || 0,
+            );
+            if (!(depositAmount > 0)) {
+                showErr('Enter the deposit amount paid (more than £0).');
+                return;
+            }
         }
-        // Payment date required when money is recorded
-        const existingDate =
-            existing && existing.paymentDate ? existing.paymentDate : todayDashed();
-        const d = await glassPrompt('Payment date (YYYY-MM-DD):', existingDate);
-        if (d === null) return;
-        if (!/^\d{4}-\d{2}-\d{2}$/.test(d.trim())) {
-            showErr('A valid payment date (YYYY-MM-DD) is required.');
+        paymentDate = ((document.getElementById('modal-payment-date') || {}).value || '').trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(paymentDate)) {
+            showErr('Choose the payment date.');
             return;
         }
-        paymentDate = d.trim();
-        const m = await glassPrompt(
-            'Payment method (Card / Bank Transfer / Cash / PayPal / Other) — optional:',
-            (existing && existing.paymentMethod) || '',
-        );
-        paymentMethod = m === null ? '' : m.trim();
+        paymentMethod = ((document.getElementById('modal-payment-method') || {}).value || '').trim();
     }
 
     const payload = {
@@ -11550,18 +11566,46 @@ async function saveModal() {
         renderCalendar();
         clearDetails();
         showChangeoverToasts();
-        // Tell the owner whether the auto-confirmation email went out
-        if (mode === 'add' && addRes && addRes.email && addRes.email.guest) {
-            if (addRes.email.guest.ok) {
-                glassAlert(`Booking saved. A confirmation email was sent to ${payload.email}.`);
+        if (mode === 'add' && addRes) {
+            // Show the owner their new booking straight away (no hunting the
+            // calendar) and confirm what happened with a non-blocking toast —
+            // a blocking OK-alert only when something needs attention.
+            const fresh = addRes.id
+                ? (Object.values(dbBookings).flat().find((x) => x.dbId === addRes.id) || null)
+                : null;
+            const guestEmail = addRes.email && addRes.email.guest;
+            if (guestEmail && guestEmail.ok) {
+                toast(`Booking saved — confirmation emailed to ${payload.email}.`);
             } else if (
-                addRes.email.guest.error &&
-                addRes.email.guest.error !== 'Mail disabled' &&
-                addRes.email.guest.error !== 'No guest email on file'
+                guestEmail &&
+                guestEmail.error &&
+                guestEmail.error !== 'Mail disabled' &&
+                guestEmail.error !== 'No guest email on file'
             ) {
                 glassAlert(
-                    `Booking saved, but the confirmation email didn't send (${addRes.email.guest.error}). You can resend it from the booking details.`,
+                    `Booking saved, but the confirmation email didn't send (${guestEmail.error}). You can resend it from the booking details.`,
                 );
+            } else {
+                toast('Booking saved.');
+            }
+            if (fresh) {
+                const loc = findBookingLocation(fresh.id);
+                if (loc) showDetails(loc.propKey, fresh);
+                // Parity with enquiry approval: offer the Square payment request
+                // right away instead of relying on the owner remembering later.
+                if (
+                    typeof squareAdminEnabled !== 'undefined' &&
+                    squareAdminEnabled &&
+                    payload.email &&
+                    payment !== 'paid' &&
+                    (await glassConfirm(
+                        `Email ${payload.email} a secure card link for the deposit now?`,
+                    ))
+                ) {
+                    try {
+                        await requestPayment(fresh.id, 'deposit');
+                    } catch (e) {}
+                }
             }
         }
     } catch (e) {
@@ -11817,7 +11861,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'j6k5r9tm';
+    const BUILD = 'j6n4q7vc';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

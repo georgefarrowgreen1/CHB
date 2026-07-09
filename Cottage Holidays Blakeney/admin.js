@@ -7950,14 +7950,29 @@ async function approveEnquiry(enqId) {
         renderInbox();
         renderCalendar();
         showChangeoverToasts();
-        let note = `Booking confirmed for ${enq.name} at ${propName}. It's now on the calendar.`;
+        // Happy path = one non-blocking toast covering the whole outcome —
+        // confirmation email AND (previously invisible in-app) the automatic
+        // payment request. A blocking alert only when something needs attention.
         const em = res && res.email;
-        if (em && em.guest) {
-            if (em.guest.ok) note += `\n\nA confirmation email was sent to ${enq.email}.`;
-            else if (em.guest.error && em.guest.error !== 'Mail disabled')
-                note += `\n\nNote: the confirmation email didn't send (${em.guest.error}). The booking is still confirmed — you may want to contact the guest directly.`;
+        const guestOk = em && em.guest && em.guest.ok;
+        const guestErr = em && em.guest && !em.guest.ok && em.guest.error && em.guest.error !== 'Mail disabled' ? em.guest.error : null;
+        const payOk = res && res.payment_request && res.payment_request.ok;
+        const attention = [];
+        if (guestErr) attention.push(`the confirmation email didn't send (${guestErr})`);
+        if (res && res.email_check) attention.push(res.email_check);
+        if (attention.length) {
+            glassAlert(
+                `Booking confirmed for ${enq.name} at ${propName} — it's on the calendar.\n\nNeeds attention: ` +
+                    attention.join('\n') +
+                    '\n\nThe booking is still confirmed — you may want to contact the guest directly.',
+            );
+        } else {
+            toast(
+                `Booked: ${enq.name} at ${propName}` +
+                    (guestOk ? ' · confirmation sent' : '') +
+                    (payOk ? ` · payment request sent (${gbp(res.payment_request.amount || 0)})` : ''),
+            );
         }
-        glassAlert(note);
     } catch (e) {
         glassAlert("Couldn't approve: " + e.message);
     }
@@ -8261,7 +8276,7 @@ async function expMove(id, dir) {
     }
 }
 // Publish the facade-stubbed entry points (see app.js loadAdminBundle).
-[accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingSearch, bulkImportReviews, cancelBooking, changeAdminPassword, changeMonth, inboxSub, inboxSubClose, initBackOffice, loadAdminMessages, loadDiagnostics, loadGuestList, logoutStaff, openAccounts, openAddBooking, openArea, openBlockDates, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveDepositPct, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsRecentRender, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
+[accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingSearch, bulkImportReviews, cancelBooking, changeAdminPassword, changeMonth, inboxSub, inboxSubClose, initBackOffice, loadAdminMessages, loadDiagnostics, loadGuestList, logoutStaff, openAccounts, openAddBooking, openArea, openBlockDates, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveDepositPct, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsRecentRender, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
     window[f.name] = f;
 });
 window.__ADMIN_LOADED = true;

@@ -140,9 +140,21 @@ if (!empty($r['error'])) {
     http_response_code((int) ($r['code'] ?? 400));
     ea_page('Could not approve', '<h1>Could not approve</h1>' . $summary . '<p>' . $esc($r['error']) . '</p>');
 }
+// The in-app approve logs enquiry.approve via enquiries.php; this one-tap route
+// previously logged NOTHING — a booking born from an email tap left no
+// approval entry in the audit trail.
+log_activity('enquiry', 'enquiry.approve', 'Enquiry approved (one-tap email) — ' . ($e['name'] ?? ''), [
+    'actor' => 'owner',
+    'prop_key' => $e['prop_key'] ?? '',
+    'entity' => 'enquiry',
+    'entity_id' => (string) $id,
+]);
 $payNote = !empty($r['payment_request']['ok'])
     ? 'Their payment request has been emailed automatically.'
     : 'Confirmation emails have been sent.';
+$emailNote = !empty($r['email_check'])
+    ? '<p style="color:#b26a00;"><strong>Heads-up:</strong> ' . $esc($r['email_check']) . '</p>'
+    : '';
 ea_page(
     'Booking confirmed',
     '<h1>Booking confirmed &#127881;</h1>' .
@@ -151,5 +163,6 @@ ea_page(
         $esc($e['name']) .
         ' is booked in. ' .
         $payNote .
-        '</p>',
+        '</p>' .
+        $emailNote,
 );
