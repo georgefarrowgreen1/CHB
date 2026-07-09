@@ -2160,11 +2160,26 @@
 
             <div id="modal-payment-group">
                 <label class="modal-label">Payment Status</label>
-                <select class="input-glass" id="modal-payment">
+                <select class="input-glass" id="modal-payment" onchange="togglePaymentDetails()">
                     <option value="unpaid">Unpaid</option>
                     <option value="deposit">Deposit Paid</option>
                     <option value="paid">Paid in Full</option>
                 </select>
+                <!-- Inline payment details (were 3 sequential pop-up prompts after Save). -->
+                <div id="modal-payment-details" style="display:none;">
+                    <div style="display:flex;gap:15px;flex-wrap:wrap;">
+                        <div id="modal-deposit-amount-wrap" style="flex:1;min-width:130px;">
+                            <label class="modal-label" for="modal-deposit-amount">Amount paid (£)</label>
+                            <input type="number" class="input-glass" id="modal-deposit-amount" min="0" step="0.01" placeholder="e.g. 100">
+                        </div>
+                        <div style="flex:1;min-width:130px;">
+                            <label class="modal-label" for="modal-payment-date">Payment date</label>
+                            <input type="date" class="input-glass" id="modal-payment-date">
+                        </div>
+                    </div>
+                    <label class="modal-label" for="modal-payment-method">Payment method (optional)</label>
+                    <input type="text" class="input-glass" id="modal-payment-method" placeholder="Card / Bank transfer / Cash …">
+                </div>
             </div>
 
             <div id="modal-deposit-group">
@@ -2309,7 +2324,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=234"></script>
+    <script defer src="app.js?v=235"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
