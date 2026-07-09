@@ -7083,12 +7083,12 @@ function saveRules(propKey) {
 function changeMonth(dir) {
     const host = document.getElementById('cal-body');
     if (!host) return;
-    host.scrollBy({ left: dir * 30 * TL_DAY_W, behavior: 'smooth' });
+    host.scrollBy({ left: dir * 30 * tlDayW(), behavior: 'smooth' });
 }
 function timelineToday() {
     const host = document.getElementById('cal-body');
     if (!host) return;
-    host.scrollTo({ left: Math.max(0, (-TL_START_OFFSET - 2) * TL_DAY_W), behavior: 'smooth' });
+    host.scrollTo({ left: Math.max(0, (-TL_START_OFFSET - 2) * tlDayW()), behavior: 'smooth' });
 }
 // Free timeline day tapped → start an Add Booking on that cottage + date.
 function tlAddAt(propKey, iso) {
@@ -7111,7 +7111,7 @@ function tlSyncMonthLabel() {
     const host = document.getElementById('cal-body');
     const label = document.getElementById('cal-month-display');
     if (!host || !label) return;
-    const idx = Math.max(0, Math.round(host.scrollLeft / TL_DAY_W));
+    const idx = Math.max(0, Math.round(host.scrollLeft / tlDayW()));
     const start = dpParse(todayDashed());
     const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + TL_START_OFFSET + idx + 3);
     label.innerText = d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
@@ -7205,7 +7205,13 @@ function cottageMonthOccupancy() {
 // them); free future days are tappable to start an Add Booking there.
 const TL_START_OFFSET = -7; // window starts a week back…
 const TL_DAYS = 187; // …and runs ~6 months forward
-const TL_DAY_W = 38; // px per day (must match the inline column width below)
+// Px per day comes from the --tl-day-w custom property on .tl-wrap (narrower on
+// phones), so the lanes' grid columns and this scroll maths always agree.
+function tlDayW() {
+    const host = document.getElementById('cal-body');
+    const v = host ? parseFloat(getComputedStyle(host).getPropertyValue('--tl-day-w')) : NaN;
+    return isNaN(v) ? 38 : v;
+}
 let __tlScrolled = false; // first render jumps to today; later renders keep place
 function renderCalendar() {
     renderCalUpdated();
@@ -7263,7 +7269,7 @@ function renderCalendar() {
             const priv = meta.unlisted ? lock : '';
             return `<div class="tl-row">
                 <div class="tl-label" title="${escapeHtml(meta.name)}">${priv}${escapeHtml(meta.short || meta.name)}</div>
-                <div class="tl-lane" style="grid-template-columns:repeat(${TL_DAYS}, ${TL_DAY_W}px)">${cells}${bars}</div>
+                <div class="tl-lane" style="grid-template-columns:repeat(${TL_DAYS}, var(--tl-day-w, 38px))">${cells}${bars}</div>
             </div>`;
         })
         .join('');
@@ -7271,7 +7277,7 @@ function renderCalendar() {
     host.innerHTML = `<div class="tl-inner">
         <div class="tl-row tl-headrow">
             <div class="tl-label"></div>
-            <div class="tl-lane" style="grid-template-columns:repeat(${TL_DAYS}, ${TL_DAY_W}px)">${head}</div>
+            <div class="tl-lane" style="grid-template-columns:repeat(${TL_DAYS}, var(--tl-day-w, 38px))">${head}</div>
         </div>
         ${rows}
     </div>`;
@@ -7281,7 +7287,7 @@ function renderCalendar() {
     }
     if (keepScroll !== null) host.scrollLeft = keepScroll;
     else {
-        host.scrollLeft = Math.max(0, (-TL_START_OFFSET - 2) * TL_DAY_W);
+        host.scrollLeft = Math.max(0, (-TL_START_OFFSET - 2) * tlDayW());
         __tlScrolled = true;
     }
     tlSyncMonthLabel();
