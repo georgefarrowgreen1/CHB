@@ -4496,6 +4496,30 @@ body.owner-mode .chat-widget {
 .bk-email-log-item[open] > summary .bk-email-log-toggle::after {
   content: 'Hide email';
 }
+/* Chosen-attachment chips in the email composer. */
+.compose-attach-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 10px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-pill, 999px);
+  font-size: 0.78rem;
+  color: var(--text-light);
+  max-width: 100%;
+}
+.compose-attach-chip button {
+  border: 0;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.compose-attach-chip button:hover {
+  color: var(--danger);
+}
 /* "Show email" button on templated log rows (opens a regenerated preview). */
 .bk-email-log-view {
   display: inline-flex;

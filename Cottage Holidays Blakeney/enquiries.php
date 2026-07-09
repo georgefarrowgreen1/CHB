@@ -423,9 +423,10 @@ if ($action === 'email_guest') {
     } catch (\Throwable $e) {
     }
     require_once __DIR__ . '/mailer.php';
+    $atts = sanitize_email_attachments($in['attachments'] ?? []);
     $r = ['ok' => false, 'error' => 'send failed'];
     try {
-        $r = send_enquiry_reply_email(array_merge($row, ['price' => $priceEst]), $subject, $message);
+        $r = send_enquiry_reply_email(array_merge($row, ['price' => $priceEst]), $subject, $message, 'enquiry', $atts);
     } catch (\Throwable $e) {
         $r = ['ok' => false, 'error' => $e->getMessage()];
     }
