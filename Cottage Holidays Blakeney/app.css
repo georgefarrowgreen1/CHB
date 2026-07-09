@@ -5759,6 +5759,283 @@ body.owner-mode .chat-widget {
   font-size: 0.85rem;
   color: var(--text-muted);
 }
+
+/* ---- Booking hub (view-booking-hub): one screen per booking ---- */
+.bhub-head {
+  padding: 22px 24px;
+  border-radius: var(--r-panel);
+  margin-top: 14px;
+}
+.bhub-head-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.bhub-name {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 1.7rem;
+  margin: 8px 0 4px;
+}
+.bhub-ref {
+  margin-left: 8px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+}
+.bhub-sub {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+.bhub-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.bhub-changeover {
+  margin-top: 10px;
+  cursor: pointer;
+  border: 1px solid rgba(255, 167, 38, 0.32);
+}
+/* Stage strip: Booked → Deposit → Paid → Arrival → Stay → Deposit back */
+.bhub-pipe {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 18px 0 0;
+}
+.pipe-step {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: var(--r-pill);
+  font-size: 0.74rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--glass-border);
+}
+.pipe-step .pipe-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22);
+}
+.pipe-step.is-done {
+  color: var(--ok);
+  background: rgba(76, 175, 80, 0.1);
+  border-color: rgba(76, 175, 80, 0.26);
+}
+.pipe-step.is-done .pipe-dot {
+  background: var(--ok);
+}
+.pipe-step.is-now {
+  color: var(--warn);
+  background: rgba(255, 167, 38, 0.12);
+  border-color: rgba(255, 167, 38, 0.3);
+}
+.pipe-step.is-now .pipe-dot {
+  background: var(--warn);
+}
+.pipe-link {
+  width: 12px;
+  height: 1px;
+  background: var(--glass-border);
+  flex-shrink: 0;
+}
+/* The single surfaced next action */
+.bhub-next {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+  padding: 12px 16px;
+  border-radius: var(--r-sm);
+  background: rgba(255, 167, 38, 0.09);
+  border: 1px solid rgba(255, 167, 38, 0.26);
+  font-size: 0.9rem;
+}
+.bhub-next.is-clear {
+  background: rgba(76, 175, 80, 0.08);
+  border-color: rgba(76, 175, 80, 0.22);
+  color: var(--text-muted);
+}
+.bhub-next-btn {
+  padding: 10px 20px;
+  font-size: 0.8rem;
+}
+.bhub-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 16px 0 40px;
+  align-items: start;
+}
+.bhub-card {
+  padding: 20px 22px;
+  border-radius: var(--r-panel);
+  min-width: 0;
+}
+.bhub-card-title {
+  font-family: var(--font-serif);
+  font-weight: 400;
+  font-size: 1.15rem;
+  margin: 0 0 14px;
+}
+.bhub-btn-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+.bhub-mut {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  margin-top: 8px;
+}
+.bhub-empty {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  padding: 10px 0;
+}
+.bhub-hist-row {
+  display: grid;
+  grid-template-columns: 130px 1fr auto;
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--glass-border);
+  font-size: 0.82rem;
+}
+.bhub-hist-row:last-child {
+  border-bottom: 0;
+}
+.bhub-hist-when {
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.bhub-hist-actor {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+.bhub-stay-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  margin-top: 8px;
+  padding: 9px 12px;
+  border-radius: var(--r-sm);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid var(--glass-border);
+  color: var(--text-light);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  text-align: left;
+}
+#hub-email-log .bk-email-log {
+  margin-top: 14px;
+  border-top: 0;
+  padding-top: 0;
+}
+@media (max-width: 900px) {
+  .bhub-grid {
+    grid-template-columns: 1fr;
+  }
+  .bhub-hist-row {
+    grid-template-columns: 1fr;
+    gap: 2px;
+  }
+}
+
+/* ---- Live availability strip in the Add/Edit Booking modal ---- */
+#modal-availability {
+  margin: 0 0 18px;
+}
+.mav-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.mav-legend {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+}
+.mav-key {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  display: inline-block;
+  margin-left: 8px;
+}
+.mav-key.is-booked,
+.mav-day.is-booked {
+  background: rgba(229, 115, 115, 0.28);
+}
+.mav-key.is-external,
+.mav-day.is-external {
+  background: rgba(255, 167, 38, 0.26);
+}
+.mav-key.is-sel {
+  background: rgba(76, 175, 80, 0.3);
+}
+.mav-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+}
+.mav-dow {
+  text-align: center;
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  padding: 2px 0;
+}
+.mav-day {
+  text-align: center;
+  font-size: 0.68rem;
+  padding: 5px 1px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid transparent;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.mav-day.is-sel {
+  border-color: rgba(76, 175, 80, 0.55);
+  color: var(--text-light);
+  background: rgba(76, 175, 80, 0.16);
+}
+.mav-day.is-sel.is-booked {
+  background: rgba(229, 115, 115, 0.45);
+  border-color: var(--danger);
+  color: #fff;
+}
+.mav-day.is-sel.is-external {
+  background: rgba(255, 167, 38, 0.42);
+  border-color: var(--warn);
+  color: #fff;
+}
+.mav-clash {
+  margin-top: 8px;
+  font-size: 0.78rem;
+  color: var(--warn);
+}
 .money-deposit strong {
   color: var(--text-light);
 }

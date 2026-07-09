@@ -76,6 +76,11 @@ single index filtered per area by `applyAreaFilter()` (`SECTION_AREA`/`ADMIN_ARE
 row opens via `settingsOpen(id)` → `#sec-<id>`. `ADMIN_VIEWS` is the canonical
 admin-screen list (used by `nav()`/`forceAdminLogout()`) — keep it complete. The two
 dock pips both show `enquiries.length` and are synced from `refreshInboxBadge()`.
+The **booking hub** (`view-booking-hub`) is the ONE home per booking — `showDetails()`
+(app.js) only delegates to `openBookingHub()` (admin.js), so every calendar day, list
+row and search hit lands there (status pipeline + next action, money, emails, guest,
+change history via `bookings.php` `history`). The old `#details-modal` remains ONLY
+for external iCal blocks; new booking actions belong on the hub, not new surfaces.
 
 **Backend** — flat PHP in the same folder, each a small JSON endpoint. Helpers in
 `db.php`: `db()` (lazy PDO), `body()`, `json_out()`, `clean()`, `require_admin()`,

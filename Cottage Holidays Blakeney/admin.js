@@ -533,6 +533,326 @@ function bookingEmailLogHtml(b) {
     return `<div class="bk-email-log"><span class="bk-email-log-title">Emails sent (${logs.length})</span>${rows}</div>`;
 }
 
+// ==================================================================
+//  BOOKING HUB — ONE screen per booking (view-booking-hub).
+//  Everything about a single booking in one place: a status pipeline with
+//  the next action surfaced, the money (price, received, ledger, actions),
+//  the full email history, the guest's other stays + private notes, and the
+//  booking's change history from the activity log. Every calendar day, list
+//  row and search hit routes here (app.js showDetails → openBookingHub).
+// ==================================================================
+let __hubBookingId = null;
+let __hubChangeoverId = null;
+let __hubReturnView = 'view-bookings';
+
+async function openBookingHub(bookingId, changeoverWithId = null) {
+    if (!isAuthenticated) {
+        tryAccessBackOffice();
+        return;
+    }
+    let b = findBookingById(bookingId);
+    if (!b) {
+        try {
+            await loadData();
+        } catch (e) {}
+        b = findBookingById(bookingId);
+    }
+    if (!b) {
+        toast('That booking is no longer here.', 'error');
+        window.openBookings();
+        return;
+    }
+    const prev = document.querySelector('.page-view.active');
+    const alreadyHere = prev && prev.id === 'view-booking-hub' && __hubBookingId === bookingId;
+    if (prev && prev.id !== 'view-booking-hub') __hubReturnView = prev.id;
+    __hubBookingId = bookingId;
+    __hubChangeoverId = changeoverWithId || null;
+    nav('view-booking-hub');
+    if (!alreadyHere) adminHistPush('view-booking-hub', null, { hubBooking: bookingId });
+    renderBookingHub();
+    window.scrollTo({ top: 0 });
+
+    // Async enrichments — each fills its own card when it lands (guarded so a
+    // slow response never paints over a different booking's hub).
+    const dbId = b.dbId;
+    loadBookingEmailLogs()
+        .then(() => {
+            const elog = document.getElementById('hub-email-log');
+            const fresh = findBookingById(bookingId);
+            if (elog && fresh && __hubBookingId === bookingId) elog.innerHTML = bookingEmailLogHtml(fresh);
+        })
+        .catch(() => {});
+    apiPost('bookings.php', { action: 'history', id: dbId })
+        .then((r) => {
+            const el = document.getElementById('hub-history');
+            if (!el || __hubBookingId !== bookingId) return;
+            const evs = (r && r.events) || [];
+            el.innerHTML = evs.length
+                ? evs
+                      .map(
+                          (e) =>
+                              `<div class="bhub-hist-row"><span class="bhub-hist-when">${escapeHtml(fmtLogWhen(e.at))}</span><span class="bhub-hist-what">${escapeHtml(e.summary || e.action || '')}</span><span class="bhub-hist-actor">${escapeHtml(e.actor || '')}</span></div>`,
+                      )
+                      .join('')
+                : '<div class="bhub-empty">Nothing recorded yet — edits, payments and emails will appear here.</div>';
+        })
+        .catch(() => {
+            const el = document.getElementById('hub-history');
+            if (el && __hubBookingId === bookingId) el.innerHTML = '<div class="bhub-empty">Couldn’t load the history.</div>';
+        });
+    if (squareAdminEnabled && b.email) {
+        try {
+            loadBookingPayments(b.id);
+        } catch (e) {}
+    }
+}
+
+function bookingHubBack() {
+    const back = __hubReturnView && document.getElementById(__hubReturnView) ? __hubReturnView : 'view-bookings';
+    if (back === 'view-accounts') {
+        openAccounts();
+        return;
+    }
+    if (back === 'view-backoffice') {
+        nav('view-backoffice');
+        Promise.resolve(initBackOffice()).catch(() => {});
+        return;
+    }
+    if (back === 'view-inbox') {
+        openInbox();
+        return;
+    }
+    window.openBookings();
+}
+
+// The stage strip + the single next action for a booking's current state.
+function hubPipelineHtml(propKey, b, gt, dh) {
+    const today = todayDashed();
+    const past = (b.checkOut || '') <= today;
+    const inStay = !past && (b.checkIn || '') <= today;
+    const hasDamage =
+        dh.collected > 0 || gt.dep > 0 || ['authorized', 'captured', 'charged', 'returned', 'kept'].includes(b.holdStatus || 'none');
+    const stages = [
+        { label: 'Booked', done: true },
+        { label: 'Deposit', done: gt.paid > 0 },
+        { label: 'Paid in full', done: gt.fullyPaid },
+        { label: 'Arrival info', done: !!b.preArrivalSent },
+        { label: past ? 'Stayed' : 'Stay', done: past, now: inStay },
+    ];
+    if (hasDamage) {
+        stages.push({
+            label: 'Deposit back',
+            done: ['returned', 'kept'].includes(b.holdStatus || '') || (dh.collected > 0 && dh.held <= 0.001),
+        });
+    }
+    const strip = stages
+        .map(
+            (s) =>
+                `<span class="pipe-step${s.done ? ' is-done' : ''}${s.now ? ' is-now' : ''}"><span class="pipe-dot"></span>${escapeHtml(s.label)}</span>`,
+        )
+        .join('<span class="pipe-link"></span>');
+
+    // ONE next action, derived from state — the answer to "what does this
+    // booking need from me?" without reading the whole screen.
+    let next = null; // { text, onclick, btn }
+    if (!gt.fullyPaid && !past) {
+        const canCard = squareAdminEnabled && b.email;
+        if (!(gt.paid > 0)) {
+            next = {
+                text: `Nothing received yet — ${gbp(gt.balance)} due.`,
+                onclick: canCard ? `requestPayment('${b.id}','deposit')` : `recordPayment('${b.id}')`,
+                btn: canCard ? 'Email a secure card link' : 'Record a payment',
+            };
+        } else {
+            next = {
+                text: `${gbp(gt.balance)} balance remaining.`,
+                onclick: canCard ? `requestPayment('${b.id}','balance')` : `recordPayment('${b.id}')`,
+                btn: canCard ? 'Request the balance by card' : 'Record a payment',
+            };
+        }
+    } else if (!past && !b.preArrivalSent && b.email) {
+        next = {
+            text: 'Paid up — the arrival info (directions, key code) hasn’t gone out yet.',
+            onclick: `sendArrivalInfo('${b.id}')`,
+            btn: 'Send arrival info',
+        };
+    } else if (past && dh.held > 0.001) {
+        next = {
+            text: `The stay is over and ${gbp(dh.held)} refundable damage deposit is still held.`,
+            onclick: `returnDeposit('${b.id}')`,
+            btn: 'Return the deposit',
+        };
+    }
+    const nextHtml = next
+        ? `<div class="bhub-next"><span class="bhub-next-text">${next.text}</span><button class="btn-glass bhub-next-btn" onclick="${next.onclick}">${next.btn}</button></div>`
+        : `<div class="bhub-next is-clear"><span class="bhub-next-text">All set — nothing needs doing on this booking right now.</span></div>`;
+    return `<div class="bhub-pipe">${strip}</div>${nextHtml}`;
+}
+
+function renderBookingHub() {
+    const el = document.getElementById('booking-hub-content');
+    if (!el) return;
+    const b = findBookingById(__hubBookingId);
+    if (!b) {
+        el.innerHTML = '<div class="bhub-empty" style="margin-top:30px;">This booking is no longer here.</div>';
+        return;
+    }
+    const loc = findBookingLocation(__hubBookingId);
+    const propKey = loc ? loc.propKey : activeFrontProperty;
+    const meta = propertyMeta[propKey] || { name: propKey };
+    const fin = (n) => typeof n === 'number' && isFinite(n);
+    let p = b.agreedPrice || null;
+    if (!p) {
+        try {
+            p = priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
+        } catch (e) {}
+    }
+    if (!p || !fin(p.total)) p = { total: 0, perNight: 0, nights: 0, nightly: 0, damagesDeposit: 0, transactionPct: 0, txFee: 0 };
+    const ps = paymentSummary(propKey, b);
+    const gt = displayGrand(p, ps, b.holdStatus || 'none');
+    const dh = damageHeld(propKey, b);
+    const today = todayDashed();
+    const past = (b.checkOut || '') <= today;
+    const nights = fin(p.nights) && p.nights > 0 ? p.nights : Math.max(1, Math.round((new Date(b.checkOut) - new Date(b.checkIn)) / 864e5));
+    const ref = typeof bookingRef === 'function' ? bookingRef(b.id) : '';
+
+    // Same-day changeover companion (from the calendar's changeover cells).
+    let changeover = '';
+    if (__hubChangeoverId) {
+        const other = findBookingById(__hubChangeoverId);
+        if (other)
+            changeover = `<button class="bk-chip warn bhub-changeover" onclick="openBookingHub('${other.id}')" title="Open the other side of this changeover"><span class="bk-dot"></span>Same-day changeover with ${escapeHtml(other.name || 'another guest')} →</button>`;
+    }
+
+    // ---- Header ----
+    const header = `
+        <div class="bhub-head glass-panel">
+            <div class="bhub-head-top">
+                <div>
+                    <span class="prop-tag tag-${propKey}">${escapeHtml(meta.name)}</span>
+                    ${ref ? `<span class="bhub-ref">${escapeHtml(ref)}</span>` : ''}
+                    <h1 class="bhub-name">${escapeHtml(b.name || 'Guest')}</h1>
+                    <div class="bhub-sub">${b.checkIn}${b.checkInTime ? ' · ' + b.checkInTime : ''} → ${b.checkOut}${b.checkOutTime ? ' · ' + b.checkOutTime : ''} · ${nights} night${nights === 1 ? '' : 's'} · ${escapeHtml(b.guests || '')}${past ? ' · past stay' : ''}</div>
+                    ${changeover}
+                </div>
+                <div class="bhub-actions">
+                    <button class="btn-sm btn-edit" onclick="openEditBooking('${b.id}')">Edit / Move</button>
+                    ${b.email ? `<button class="btn-sm btn-edit" onclick="openBookingEmail('${b.id}')">Email guest</button>` : ''}
+                    <button class="btn-sm btn-edit" onclick="addBookingToCalendar('${b.id}')">Add to calendar</button>
+                    <button class="btn-sm btn-decline" onclick="cancelBooking('${b.id}')">Cancel &amp; refund</button>
+                    <button class="btn-sm btn-decline" style="opacity:.8;" onclick="deleteBooking('${b.id}')" title="Only for junk/test rows — cancelling is the right way to end a real booking">Delete</button>
+                </div>
+            </div>
+            ${hubPipelineHtml(propKey, b, gt, dh)}
+        </div>`;
+
+    // ---- Money card ----
+    const agreedNote = b.agreedPrice
+        ? `<div class="bhub-mut">Agreed price${b.agreedPrice.isOverride ? ' (custom)' : ''}${b.agreedPrice.agreedOn ? ' · ' + b.agreedPrice.agreedOn : ''} — locked at the rates in effect when booked.</div>`
+        : '';
+    const breakdownRows =
+        fin(p.perNight) && fin(p.nightly) && p.nights > 0
+            ? `<div class="price-row"><span>${gbp(p.perNight)} × ${p.nights} night${p.nights === 1 ? '' : 's'}</span><span>${gbp(p.nightly)}</span></div>
+               <div class="price-row"><span>Transaction fee (${fin(p.transactionPct) ? p.transactionPct : 0}%)</span><span>${gbp(fin(p.txFee) ? p.txFee : 0)}</span></div>`
+            : '';
+    const priceBox = `
+        <div class="price-box" style="margin-bottom:0;">
+            ${breakdownRows}
+            ${gt.dep > 0 ? `<div class="price-row"><span>Refundable damages deposit</span><span>${gbp(gt.dep)}</span></div>` : ''}
+            <div class="price-row total"><span>Total${gt.dep > 0 ? ' (incl. deposit)' : ''}</span><span class="price-amount">${gbp(gt.total)}</span></div>
+            ${gt.paid > 0 ? `<div class="price-row" style="color:#4CAF50;"><span>Received</span><span>− ${gbp(gt.paid)}</span></div>` : ''}
+            <div class="price-row total"><span>${gt.fullyPaid ? 'Paid in full' : 'Balance due'}</span><span class="price-amount" style="${gt.fullyPaid ? 'color:#4CAF50;' : ''}">${gbp(gt.fullyPaid ? 0 : gt.balance)}</span></div>
+        </div>${agreedNote}`;
+    const depositLine =
+        dh.collected > 0
+            ? `<div class="money-deposit"><span>Refundable damage deposit: ${
+                  dh.held > 0
+                      ? `<strong>${gbp(dh.held)} collected</strong>${dh.returned > 0 ? ` · ${gbp(dh.returned)} returned` : ''}`
+                      : `<span style="color:#4CAF50;">returned${dh.returned < dh.collected - 0.001 ? ` (${gbp(dh.collected - dh.returned)} retained)` : ''}</span>`
+              }</span>${dh.held > 0 && past ? `<button class="btn-sm btn-edit" onclick="returnDeposit('${b.id}')">Return / settle</button>` : ''}</div>`
+            : holdControls(b);
+    const payHistory =
+        squareAdminEnabled && b.email
+            ? `<div id="sq-pay-${b.id}" class="sq-pay-history" style="margin-top:10px;font-size:0.82rem;color:var(--text-muted);">Loading payments…</div>`
+            : '';
+    const moneyCard = `
+        <section class="bhub-card glass-panel">
+            <h3 class="bhub-card-title">Money</h3>
+            ${priceBox}
+            ${depositLine}
+            <div class="bhub-btn-row">
+                ${!gt.fullyPaid ? `<button class="btn-sm btn-edit" onclick="recordPayment('${b.id}')">Record payment</button>` : ''}
+                ${!gt.fullyPaid && squareAdminEnabled && b.email ? `<button class="btn-sm btn-edit" onclick="requestPayment('${b.id}','${gt.paid > 0 ? 'balance' : 'deposit'}')">Request ${gt.paid > 0 ? 'balance' : 'deposit'} by card</button>` : ''}
+                ${b.email && gt.paid > 0 ? `<button class="btn-sm btn-edit" onclick="offerUpdatedConfirmationEmail('${b.id}')">Email updated confirmation</button>` : ''}
+                <button class="btn-sm btn-edit" onclick="downloadInvoice('${b.id}')">Invoice (PDF)</button>
+            </div>
+            ${payHistory}
+        </section>`;
+
+    // ---- Emails card ----
+    const emailsCard = `
+        <section class="bhub-card glass-panel">
+            <h3 class="bhub-card-title">Emails</h3>
+            ${
+                b.email
+                    ? `<div class="bhub-btn-row" style="margin-top:0;">
+                        <button class="btn-sm btn-edit" onclick="sendConfirmationEmail('${b.id}')">Send confirmation</button>
+                        <button class="btn-sm btn-edit" onclick="sendArrivalInfo('${b.id}')">Send arrival info${b.preArrivalSent ? ' (sent ✓)' : ''}</button>
+                        <button class="btn-sm btn-edit" onclick="openBookingEmail('${b.id}')">Write an email</button>
+                    </div>`
+                    : '<div class="bhub-mut">No guest email on file — add one via Edit / Move to send anything.</div>'
+            }
+            <div id="hub-email-log"><div class="bhub-empty">Loading email history…</div></div>
+        </section>`;
+
+    // ---- Guest card (contact + notes + their other stays) ----
+    const emailLower = (b.email || '').toLowerCase();
+    const otherStays = [];
+    if (emailLower) {
+        Object.keys(dbBookings).forEach((pk) =>
+            (dbBookings[pk] || []).forEach((x) => {
+                if (x.id !== b.id && (x.email || '').toLowerCase() === emailLower) otherStays.push({ pk, x });
+            }),
+        );
+        otherStays.sort((a, z) => (z.x.checkIn || '').localeCompare(a.x.checkIn || ''));
+    }
+    const staysHtml = otherStays.length
+        ? `<div class="bhub-mut" style="margin-top:14px;">Also stayed (${otherStays.length}):</div>` +
+          otherStays
+              .slice(0, 6)
+              .map(
+                  ({ pk, x }) =>
+                      `<button class="bhub-stay-row" onclick="openBookingHub('${x.id}')"><span class="prop-tag tag-${pk}">${escapeHtml((propertyMeta[pk] || { name: pk }).name)}</span><span>${x.checkIn} → ${x.checkOut}</span><span class="bhub-mut">open →</span></button>`,
+              )
+              .join('')
+        : '';
+    const contact = (label, val) =>
+        `<div class="booking-detail-item"><span class="booking-detail-label">${label}</span><span class="booking-detail-value" style="font-size:0.95rem;">${val || '<span class="bhub-mut">—</span>'}</span></div>`;
+    const guestCard = `
+        <section class="bhub-card glass-panel">
+            <h3 class="bhub-card-title">Guest</h3>
+            <div class="detail-grid" style="margin-top:0;">
+                ${contact('Email', b.email ? `<a href="mailto:${escapeHtml(b.email)}" style="color:var(--text-light);">${escapeHtml(b.email)}</a>` : '')}
+                ${contact('Phone', b.phone ? `<a href="tel:${escapeHtml(b.phone)}" style="color:var(--text-light);">${escapeHtml(b.phone)}</a>` : '')}
+                <div class="booking-detail-item" style="grid-column:1/-1;"><span class="booking-detail-label">Home address</span><span class="booking-detail-value" style="font-size:0.95rem;white-space:pre-wrap;">${b.address || b.postcode ? escapeHtml([b.address, b.postcode].filter(Boolean).join(', ')) : '<span class="bhub-mut">—</span>'}</span></div>
+                ${contact('Terms', b.termsAcceptedAt ? 'Accepted ' + escapeHtml(b.termsAcceptedAt) + (b.termsVersion ? ' (v' + escapeHtml(b.termsVersion) + ')' : '') : 'Not recorded')}
+            </div>
+            <span class="booking-detail-label" style="margin-top:14px;">Staff notes <span class="bhub-mut" style="text-transform:none;letter-spacing:0;">· private, only you see these</span></span>
+            <textarea id="bk-notes-${b.id}" class="input-glass" rows="2" maxlength="2000" placeholder="Add a private note — arriving late, allergies, paid cash for extras…" style="margin:6px 0 0;resize:vertical;font-size:0.9rem;">${b.notes ? escapeHtml(b.notes) : ''}</textarea>
+            <div style="display:flex;justify-content:flex-end;margin-top:6px;"><button class="btn-sm btn-edit" id="bk-notes-save-${b.id}" onclick="saveBookingNote('${b.id}')">Save note</button></div>
+            ${staysHtml}
+        </section>`;
+
+    // ---- History card ----
+    const historyCard = `
+        <section class="bhub-card glass-panel">
+            <h3 class="bhub-card-title">History</h3>
+            <div id="hub-history"><div class="bhub-empty">Loading history…</div></div>
+        </section>`;
+
+    el.innerHTML = `${header}<div class="bhub-grid">${moneyCard}${emailsCard}${guestCard}${historyCard}</div>`;
+}
+
 // ---- Settings router: Apple-style index → drill-down sub-pages ----
 const SETTINGS_TITLES = {
     notify: 'Notifications',
@@ -2497,6 +2817,9 @@ async function cancelBooking(bookingId) {
         } catch (e) {}
         await loadData();
         renderCalendar();
+        // A cancelled booking's row is gone — leave its hub screen if we're on it.
+        const hub = document.getElementById('view-booking-hub');
+        if (hub && hub.classList.contains('active')) window.openBookings();
         if (
             document.getElementById('view-accounts') &&
             document.getElementById('view-accounts').classList.contains('active')
@@ -8277,7 +8600,7 @@ async function expMove(id, dir) {
     }
 }
 // Publish the facade-stubbed entry points (see app.js loadAdminBundle).
-[accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingSearch, bulkImportReviews, cancelBooking, changeAdminPassword, changeMonth, inboxSub, inboxSubClose, initBackOffice, loadAdminMessages, loadDiagnostics, loadGuestList, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveDepositPct, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsRecentRender, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
+[accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, bookingSearch, bulkImportReviews, cancelBooking, changeAdminPassword, changeMonth, inboxSub, inboxSubClose, initBackOffice, loadAdminMessages, loadDiagnostics, loadGuestList, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveDepositPct, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsRecentRender, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
     window[f.name] = f;
 });
 window.__ADMIN_LOADED = true;

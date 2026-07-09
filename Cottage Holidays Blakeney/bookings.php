@@ -783,7 +783,31 @@ if ($action === 'update') {
     $args[] = $id;
     db()->prepare($sql)->execute($args);
     book_unlock($propKey);
-    log_activity('booking', 'booking.update', 'Booking edited', ['prop_key' => $propKey, 'entity' => 'booking', 'entity_id' => (string) $id]);
+    // Say WHAT changed, so the booking hub's history reads like a story
+    // ("dates 12→15 Aug ⇒ 13→16 Aug") instead of a bare "edited".
+    $changes = [];
+    if ($checkIn !== $b['check_in'] || $checkOut !== $b['check_out']) {
+        $changes[] = 'dates ' . $b['check_in'] . '→' . $b['check_out'] . ' ⇒ ' . $checkIn . '→' . $checkOut;
+    }
+    if ($propKey !== $b['prop_key']) {
+        $changes[] = 'moved ' . $b['prop_key'] . ' ⇒ ' . $propKey;
+    }
+    if ($adults != $b['adults'] || $children != $b['children']) {
+        $changes[] = 'party now ' . $adults . ' adult' . ($adults == 1 ? '' : 's') . ($children ? ' + ' . $children : '');
+    }
+    $oldOverride = $b['price_override'] !== null && $b['price_override'] !== '' ? (float) $b['price_override'] : null;
+    if ($priceOverride !== $oldOverride) {
+        $changes[] = $priceOverride !== null ? 'price set to £' . number_format($priceOverride, 2) : 'custom price removed';
+    }
+    if (trim((string) ($in['email'] ?? $b['email'])) !== trim((string) $b['email'])) {
+        $changes[] = 'email updated';
+    }
+    log_activity(
+        'booking',
+        'booking.update',
+        'Booking edited' . ($changes ? ' — ' . mb_substr(implode('; ', $changes), 0, 200) : '') . ' — ' . ($b['name'] ?? ''),
+        ['prop_key' => $propKey, 'entity' => 'booking', 'entity_id' => (string) $id],
+    );
     json_out(['ok' => true]);
 }
 
@@ -1544,6 +1568,37 @@ if ($action === 'email_logs') {
     } catch (\Throwable $e) {
         json_out(['logs' => []]);
     }
+}
+
+// Everything the activity log recorded about ONE booking — created, edited,
+// payments recorded, emails, cancellation — newest first. Powers the booking
+// hub's History card, so "what happened on this booking?" is answerable in
+// one look instead of scrolling the whole site-wide activity feed.
+if ($action === 'history') {
+    require_admin();
+    $id = (int) ($in['id'] ?? 0);
+    $events = [];
+    try {
+        $st = db()->prepare(
+            "SELECT action, summary, actor, created_at
+               FROM activity_log
+              WHERE entity = 'booking' AND entity_id = ?
+           ORDER BY id DESC
+              LIMIT 80",
+        );
+        $st->execute([(string) $id]);
+        foreach ($st->fetchAll() as $r) {
+            $events[] = [
+                'action' => $r['action'],
+                'summary' => $r['summary'],
+                'actor' => $r['actor'] ?: 'system',
+                'at' => $r['created_at'],
+            ];
+        }
+    } catch (\Throwable $e) {
+        // table not migrated yet → empty history, never an error
+    }
+    json_out(['ok' => true, 'events' => $events]);
 }
 
 // Regenerate a templated email exactly as it was/would be sent to the guest, so

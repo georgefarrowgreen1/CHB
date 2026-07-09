@@ -226,6 +226,9 @@ async function waitForServer(url, tries = 40) {
     const ADMIN_VIEWS = [
       { key: 'admin-today', open: "(async () => { isAuthenticated = true; document.body.classList.add('owner-mode'); nav('view-backoffice'); await initBackOffice(); })()", mustSee: ['#today-panel', '#cal-body'] },
       { key: 'admin-bookings', open: '(async () => { await openBookings(); })()', mustSee: ['#bookings-list'] },
+      { key: 'admin-booking-hub', open: "(async () => { await openBookingHub('b2'); })()", mustSee: ['#booking-hub-content', '#hub-history'] },
+      { key: 'admin-add-booking', open: "(async () => { window.openBookings && await openBookings(); openAddBooking(); document.getElementById('modal-checkin').value = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10); document.getElementById('modal-checkout').value = new Date(Date.now() + 33 * 864e5).toISOString().slice(0, 10); updateModalPrice(); })()", mustSee: ['#edit-modal .modal-box', '#modal-availability .mav-grid'] },
+      { key: 'admin-close-modal', open: 'closeModal()', mustSee: ['#bookings-list'] },
       { key: 'admin-inbox', open: '(async () => { await openInbox(); })()', mustSee: ['#inbox-list', '#messages-list'] },
       { key: 'admin-money', open: '(async () => { await openAccounts(); })()', mustSee: ['#accounts-index'] },
       { key: 'admin-money-payments', open: "(async () => { await openAccounts(); accountsOpen('payments'); })()", mustSee: ['#money-panel'] },

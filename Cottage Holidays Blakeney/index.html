@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=131">
+    <link rel="stylesheet" href="app.css?v=132">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -1003,6 +1003,15 @@
             <div id="bookings-summary" style="font-size:0.85rem;color:var(--text-muted);margin:2px 0 12px;"></div>
             <div id="bookings-list"><!-- JS injects booking rows here --></div>
         </div>
+    </main>
+
+    <!-- ================= BOOKING HUB — one screen per booking ================= -->
+    <!-- Everything about a single booking in one place: status pipeline + next
+         action, money, emails, guest history and change history. Rendered
+         entirely by admin.js renderBookingHub(); this is just the shell. -->
+    <main id="view-booking-hub" class="page-view container">
+        <span class="back-link" onclick="bookingHubBack()">← Back</span>
+        <div id="booking-hub-content"><!-- admin.js injects the hub here --></div>
     </main>
 
     <!-- ================= SETTINGS (Apple-style grouped index + drill-down) ================= -->
@@ -2145,6 +2154,9 @@
                     <input type="time" class="input-glass" id="modal-checkout-time" value="10:00">
                 </div>
             </div>
+            <!-- Live availability for the chosen cottage: booked/blocked days are
+                 visible BEFORE saving, so doomed dates never get typed in. -->
+            <div id="modal-availability" style="display:none;"></div>
 
             <div class="modal-2col">
                 <div>
@@ -2327,7 +2339,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=236"></script>
+    <script defer src="app.js?v=237"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
