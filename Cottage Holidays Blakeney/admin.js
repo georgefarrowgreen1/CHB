@@ -127,59 +127,43 @@ async function openSettings(section) {
     else settingsShowIndex();
 }
 
-// ---- Back-office AREAS: the admin sections hub (view-settings) is split into
-// task-based areas reached from the dock — Inbox, Cottages, Marketing, Settings.
-// Each area shows only its own groups of the shared section index; the section
-// panels (#sec-…) and the settingsOpen() router are unchanged. ----
-const ADMIN_AREAS = {
-    cottages: { title: 'Cottages', sub: 'Rates, photos, text, calendars and rules' },
-    marketing: { title: 'Marketing', sub: 'Website, reviews, guests and outreach' },
-    settings: { title: 'Settings', sub: 'Account, notifications, payments and system' },
-};
-// Which area each section belongs to (keeps the header/dock right on a deep-link).
-const SECTION_AREA = {
-    accom: 'cottages', seasongrid: 'cottages', calendar: 'cottages', cancel: 'cottages',
-    content: 'marketing', experiences: 'marketing', reviews: 'marketing', photos: 'marketing',
-    guests: 'marketing', newsletter: 'marketing', waitlist: 'marketing', analytics: 'marketing',
-    notify: 'settings', payments: 'settings', host: 'settings', security: 'settings',
-    apis: 'settings', diagnostics: 'settings', testcentre: 'settings',
-};
-async function openArea(area) {
+// ---- Back-office MANAGE: the admin sections hub (view-settings) is ONE index
+// now — cottages, then marketing, then account/system, with the section labels
+// as the grouping. openArea() survives as a compat alias (dock, tests, old
+// history entries); the section panels (#sec-…) and settingsOpen() router are
+// unchanged. ----
+async function openArea() {
     if (!isAuthenticated) {
         tryAccessBackOffice();
         return;
     }
-    currentAdminArea = ADMIN_AREAS[area] ? area : 'settings';
     await openSettings(); // opens view-settings + shows the index
-    // Drop any leftover search text so the new area opens on its full index, not
-    // filtered by a query the owner typed in the area they just left.
+    // Drop any leftover search text so the index opens unfiltered.
     const sBox = document.getElementById('settings-search');
     if (sBox) sBox.value = '';
     applyAreaFilter();
-    syncDockArea();
 }
-// Show only the active area's groups + set the header; called on open and on
-// returning from a drill-down panel.
+// Show the full Manage index (all groups) + set the header; called on open and
+// on returning from a drill-down panel. The per-area hiding is gone — the name
+// stays because every open/return path calls through here.
 function applyAreaFilter() {
     const idx = document.getElementById('settings-index');
     if (!idx) return;
     idx.querySelectorAll('.settings-group, .settings-section-label, .area-overview').forEach((el) => {
         if (el.id === 'testcentre-row') return; // staging-only; JS controls its display
-        const a = el.getAttribute('data-area');
-        el.style.display = !a || a === currentAdminArea ? '' : 'none';
+        el.style.display = '';
     });
-    // Lead each area with its key numbers (the "important parts first" overview).
+    // Lead each family with its key numbers (the "important parts first" overviews).
     try {
-        if (currentAdminArea === 'cottages') renderCottagesOverview();
-        else if (currentAdminArea === 'marketing') renderMarketingOverview();
+        renderCottagesOverview();
+        renderMarketingOverview();
     } catch (e) {}
-    const meta = ADMIN_AREAS[currentAdminArea];
     const h = document.querySelector('#view-settings .dashboard-header h1');
     const p = document.querySelector('#view-settings .dashboard-header .lead');
-    if (meta && h) h.textContent = meta.title;
-    if (meta && p) p.textContent = meta.sub;
+    if (h) h.textContent = 'Manage';
+    if (p) p.textContent = 'Cottages, marketing, account and system';
     const s = document.getElementById('settings-search');
-    if (s) s.placeholder = 'Search ' + (meta ? meta.title.toLowerCase() : 'settings') + '…';
+    if (s) s.placeholder = 'Search cottages, marketing & settings…';
 }
 
 // ---- Area overviews: lead each area with its key numbers (iOS-Settings style —
@@ -227,7 +211,7 @@ async function renderMarketingOverview() {
         ['wait', 'On the waitlist'],
     ];
     el.innerHTML =
-        `<div class="settings-section-label" style="display:block;">At a glance</div>
+        `<div class="settings-section-label" style="display:block;">Marketing at a glance</div>
          <div class="area-ov-grid">${tiles
              .map(
                  ([id, label]) =>
@@ -977,7 +961,7 @@ function adminHistPush(view, section, path) {
         // deep drill-down path — so hardware/browser Back can replay it level
         // by level (drill-down → section → index → dashboard), matching the
         // on-screen "‹ Back" instead of skipping straight out of the area.
-        const st = { view, section: section || null, area: typeof currentAdminArea !== 'undefined' ? currentAdminArea : null };
+        const st = { view, section: section || null };
         if (path) Object.assign(st, path);
         history.pushState({ chbAdmin: st }, '');
     } catch (e) {}
@@ -995,12 +979,6 @@ function settingsFilter(q) {
     let total = 0;
     idx.querySelectorAll('.settings-group').forEach((g) => {
         if (g.id === 'testcentre-row') return; // staging-only; JS controls it
-        // Search stays within the current area — other areas have their own tab.
-        const ga = g.getAttribute('data-area');
-        if (ga && ga !== currentAdminArea) {
-            g.style.display = 'none';
-            return;
-        }
         let any = false;
         g.querySelectorAll('.settings-row').forEach((row) => {
             const hay = (row.textContent + ' ' + (row.getAttribute('data-kw') || '')).toLowerCase();
@@ -1086,13 +1064,6 @@ function settingsShowIndex() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 function settingsOpen(section) {
-    // Keep the header + dock on the right area when a section is deep-linked.
-    if (SECTION_AREA[section]) {
-        currentAdminArea = SECTION_AREA[section];
-        try {
-            syncDockArea();
-        } catch (e) {}
-    }
     adminHistPush('view-settings', section);
     settingsRecentRecord(section);
     __settingsPath = section ? { section } : null;
@@ -1145,7 +1116,7 @@ function settingsBack() {
     else settingsShowIndex();
 }
 
-// ---- Settings → Pricing coach (data-driven suggestions; apply is opt-in) ----
+// ---- Money → Pricing coach (data-driven suggestions; apply is opt-in) ----
 async function renderPricingCoach() {
     const wrap = document.getElementById('pricingcoach-body');
     if (!wrap) return;
@@ -1226,7 +1197,7 @@ async function applyPricingSuggestion(propKey, field, value, id) {
     }
 }
 
-// ---- Settings → Website content (form-based editor for the global homepage /
+// ---- Manage → Website content (form-based editor for the global homepage /
 // nav text + images that used to be edited inline via edit-mode). Reads each
 // field's CURRENT value straight off the live element, saves via saveContent,
 // and updates the page immediately. Per-cottage text/photos live under
@@ -1332,7 +1303,7 @@ function contentEditImage(key) {
         if (th) th.style.backgroundImage = `url('${url}')`;
     });
 }
-// ---- Settings → API keys ----
+// ---- Manage → API keys ----
 function renderApis() {
     const el = document.getElementById('apikey-tides-input');
     if (el) el.value = (adminPrivateContent && adminPrivateContent['apikey-tides']) || '';
@@ -3114,7 +3085,7 @@ function renderMoneyPanel() {
               : 0;
     const intro = squareAdminEnabled
         ? 'Tap a booking to handle its money on the booking hub — request card payments, record bank transfers, return the damage deposit and download invoices all live there.'
-        : 'Tap a booking to handle its money on the booking hub. Square card payments are off — set them up in Settings to email pay links; recording manual payments (bank transfer, cash) works regardless.';
+        : 'Tap a booking to handle its money on the booking hub. Square card payments are off — set them up in Manage to email pay links; recording manual payments (bank transfer, cash) works regardless.';
     if (!rows.length) {
         el.innerHTML = `<div class="accounts-empty">No upcoming or current bookings.</div>`;
         return;
@@ -3732,7 +3703,7 @@ async function diagnoseReplyEmail(btn) {
         }
     }
 }
-// ---- Owner email recipients (Settings → Notifications) ----
+// ---- Owner email recipients (Manage → Notifications) ----
 async function loadNotifyEmails() {
     const box = document.getElementById('notify-emails-list');
     if (!box) return;
@@ -4307,7 +4278,7 @@ function avatarInitial(s) {
 }
 const CHAT_FAQ_ORDER = ['checkin', 'parking', 'wifi'];
 
-// ---- Admin side: Guest messages (Settings → Guest messages) + reply modal ----
+// ---- Admin side: Guest messages (Manage → Guest messages) + reply modal ----
 let __msgShowArchived = false;
 async function loadAdminMessages() {
     // Zero-setup reply-by-email: opportunistically pull any emailed replies
@@ -4942,7 +4913,7 @@ async function saveWelcome(propKey) {
 }
 
 // ---- Moderation of guest-submitted reviews (Settings) ----
-// ---- Analytics panel (Settings → Analytics) ----
+// ---- Analytics panel (Manage → Analytics) ----
 let __analyticsSummary = null; // last summary fetched, for the CSV export
 
 // Build + download a CSV of the current analytics window (no backend).
@@ -5400,7 +5371,7 @@ async function loadAnalytics(days = 30) {
                 )}`;
 }
 
-// ---- Waitlist manager (Settings → Waitlist) ----
+// ---- Waitlist manager (Manage → Waitlist) ----
 async function loadWaitlist() {
     const wrap = document.getElementById('waitlist-body');
     if (!wrap) return;
@@ -5439,7 +5410,7 @@ async function loadWaitlist() {
         })
         .join('');
 }
-// ---- Newsletter (Settings → Newsletter) ----
+// ---- Newsletter (Manage → Newsletter) ----
 async function loadNewsletter() {
     const stats = document.getElementById('newsletter-stats');
     const sendMsg = document.getElementById('nl-send-msg');
@@ -5465,7 +5436,7 @@ async function loadNewsletter() {
                     <div><div class="today-card-value" style="font-size:1.7rem;">${total - active}</div><div style="font-size:0.72rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;">Unsubscribed</div></div>
                 </div>${list}</div>`;
 }
-// ---- System check (Settings → System check) ----
+// ---- System check (Manage → System check) ----
 // Apply any pending database migrations from the UI (calls migrate.php with
 // the admin session) — so new tables/columns go live without phpMyAdmin.
 // Generate WebP companions for EXISTING uploaded photos (new uploads already
@@ -5730,7 +5701,7 @@ async function sendTestEmail() {
 }
 
 // ============================================================
-//  Test centre (Settings → Test centre): try every customer-facing feature
+//  Test centre (Manage → Test centre): try every customer-facing feature
 //  from the back office — preview the site, send sample emails, run a
 //  disposable test booking through the real pay/email/arrival flows, and
 //  see & remove all test data in one place.
@@ -5823,7 +5794,7 @@ function tcPageFeatures() {
         ],
         [
             'Pricing Coach',
-            'Settings → Pricing coach: suggestions appear from the seeded bookings, Airbnb/Vrbo blocks and searches (turn-on-weekend, orphan nights, unmet demand, quiet period).',
+            'Money → Pricing coach: suggestions appear from the seeded bookings, Airbnb/Vrbo blocks and searches (turn-on-weekend, orphan nights, unmet demand, quiet period).',
         ],
         [
             'Cross-channel calendar',
@@ -5839,7 +5810,7 @@ function tcPageFeatures() {
         ],
         [
             'WebP images',
-            'Settings → Health check → “Optimise photos for faster loading” (needs uploaded photos to convert).',
+            'Manage → Health check → “Optimise photos for faster loading” (needs uploaded photos to convert).',
         ],
     ];
     return `<div class="rate-prop">
@@ -5867,7 +5838,7 @@ async function tcSeedFeatures(btn) {
         if (msg) {
             if (r.ok) {
                 msg.style.color = '#7FD68A';
-                msg.innerHTML = `✓ Demo data seeded across ${r.cottages} cottage${r.cottages === 1 ? '' : 's'}. Work through the checklist below — open <strong>Preview as guest</strong> for the public-facing items and <strong>Settings → Pricing coach</strong> for the suggestions.`;
+                msg.innerHTML = `✓ Demo data seeded across ${r.cottages} cottage${r.cottages === 1 ? '' : 's'}. Work through the checklist below — open <strong>Preview as guest</strong> for the public-facing items and <strong>Money → Pricing coach</strong> for the suggestions.`;
             } else {
                 msg.style.color = '#E57373';
                 msg.textContent = r.error || 'Seeding failed.';

@@ -167,7 +167,7 @@ async function waitForServer(url, tries = 40) {
     (await page.evaluate(() => !!document.querySelector('#view-settings #health-pill'))) ? pass('health pill lives on Settings') : fail('health pill not on Settings');
     (await page.locator('#cal-body .tl-day').count()) > 20 ? pass('timeline calendar rendered') : fail('timeline missing');
 
-    console.log('== 5b. Back-office areas (dock reorg) ==');
+    console.log('== 5b. Back-office Manage (one merged index) ==');
     const areaShows = async (area) => {
       await page.evaluate((a) => openArea(a), area);
       await page.waitForTimeout(350);
@@ -179,7 +179,7 @@ async function waitForServer(url, tries = 40) {
         };
         return {
           onSettings: ((document.querySelector('.page-view.active') || {}).id === 'view-settings'),
-          enquiries: rowVisible("settingsOpen('enquiries')"),
+          header: (document.querySelector('#view-settings .dashboard-header h1') || {}).textContent || '',
           accom: rowVisible("settingsOpen('accom')"),
           analytics: rowVisible("settingsOpen('analytics')"),
           security: rowVisible("settingsOpen('security')"),
@@ -195,12 +195,11 @@ async function waitForServer(url, tries = 40) {
         msgs: !!document.getElementById('messages-list'),
     }));
     (inbox.active && inbox.enq && inbox.msgs) ? pass('Inbox is a dedicated screen (enquiries + messages)') : fail('Inbox screen wrong: ' + JSON.stringify(inbox));
-    let ar = await areaShows('cottages');
-    (ar.accom && !ar.enquiries && !ar.analytics && !ar.security) ? pass('Cottages area shows only cottage rows') : fail('Cottages area filter wrong: ' + JSON.stringify(ar));
-    ar = await areaShows('marketing');
-    (ar.analytics && !ar.accom && !ar.enquiries && !ar.security) ? pass('Marketing area shows only marketing rows') : fail('Marketing area filter wrong: ' + JSON.stringify(ar));
-    ar = await areaShows('settings');
-    (ar.security && !ar.enquiries && !ar.accom && !ar.analytics) ? pass('Settings area shows only settings rows') : fail('Settings area filter wrong: ' + JSON.stringify(ar));
+    let ar = await areaShows('manage');
+    (ar.onSettings && ar.accom && ar.analytics && ar.security) ? pass('Manage shows cottage + marketing + system rows on one index') : fail('Manage index wrong: ' + JSON.stringify(ar));
+    (ar.header === 'Manage') ? pass('Manage header set') : fail('Manage header wrong: ' + ar.header);
+    ar = await areaShows('cottages'); // legacy alias (old links/history) still lands on Manage
+    (ar.onSettings && ar.accom && ar.security) ? pass('legacy openArea() args land on the merged index') : fail('legacy openArea broken: ' + JSON.stringify(ar));
     await page.evaluate(async () => { nav('view-backoffice'); await initBackOffice(); });
 
     console.log('== 5c. Bookings dashboard (index + docked hub + filters + email) ==');
