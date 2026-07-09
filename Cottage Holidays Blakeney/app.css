@@ -5811,8 +5811,15 @@ body.owner-mode .chat-widget {
   cursor: pointer;
   text-align: left;
 }
-.bk-row.due-soon {
+/* Traffic-light payment edge on every row: red unpaid · amber part · green paid. */
+.bk-row.pay-danger {
+  border-left: 3px solid var(--danger);
+}
+.bk-row.pay-warn {
   border-left: 3px solid var(--warn);
+}
+.bk-row.pay-ok {
+  border-left: 3px solid var(--ok);
 }
 .bk-row.is-open {
   border-color: rgba(255, 255, 255, 0.35);
