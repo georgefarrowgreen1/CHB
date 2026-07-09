@@ -81,9 +81,10 @@ The **booking hub** (`view-booking-hub`) is the ONE home per booking — `showDe
 hit lands there (status pipeline + next action, money, emails, guest, change history
 via `bookings.php` `history`); at ≥1200px the Bookings page docks it in a side pane
 (master–detail). The Today calendar is a READ-ONLY overview (no click handlers on its
-pills — don't add any); external iCal blocks are opened from the Bookings page's
-"External bookings" rows into `#details-modal`, which exists only for them. New
-booking actions belong on the hub, not new surfaces.
+pills — don't add any); external iCal blocks appear ONLY as display-only pills there
+(no details/remove UI — the auto-sync owns their lifecycle, and `#details-modal` is
+gone; `closeDetailsModal()` survives as a defensive no-op). New booking actions
+belong on the hub, not new surfaces.
 
 **Backend** — flat PHP in the same folder, each a small JSON endpoint. Helpers in
 `db.php`: `db()` (lazy PDO), `body()`, `json_out()`, `clean()`, `require_admin()`,

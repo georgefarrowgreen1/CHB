@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=135">
+    <link rel="stylesheet" href="app.css?v=136">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -1963,16 +1963,9 @@
     </div>
 
     <!-- GOOD TO KNOW (FAQ) MODAL — top-level so it's never hidden by a page view -->
-    <!-- BOOKING DETAILS MODAL (opens when a calendar booking is clicked) -->
-    <div id="details-modal" class="reviews-modal" role="dialog" aria-modal="true" aria-labelledby="details-modal-title">
-        <div class="reviews-modal-box glass-panel" style="max-width:620px;">
-            <div class="reviews-modal-head">
-                <h2 class="section-title" id="details-modal-title" style="margin:0;font-size:1.5rem;">Guest Details</h2>
-                <button class="reviews-modal-close" onclick="closeDetailsModal()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-            </div>
-            <div class="reviews-modal-body" id="booking-details-content" style="display:block;"></div>
-        </div>
-    </div>
+    <!-- (The old booking-details modal is gone: bookings open on the hub, and
+         external iCal blocks are read-only pills on the calendar — the sync
+         owns their lifecycle, so there's nothing to open or remove by hand.) -->
 
     <!-- Email an enquirer from the Inbox (admin) — sent in the house email style
          with the enquiry's details attached (enquiries.php action email_guest). -->
@@ -2352,7 +2345,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=241"></script>
+    <script defer src="app.js?v=242"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

@@ -391,17 +391,13 @@ function renderBookings() {
             { upcoming: 'upcoming', past: 'past', needspay: 'needing payment', all: 'in total' }[f] || '';
         sum.textContent = rows.length ? `${rows.length} booking${rows.length === 1 ? '' : 's'} ${label}` : '';
     }
-    // Imported platform blocks ride along under the live filters (not under
-    // search or the money-focused ones — they're availability, not guests).
-    const blocksHtml = (f === 'upcoming' || f === 'all') && !q ? externalBlocksHtml(today) : '';
     if (!rows.length) {
         list.innerHTML =
-            `<div class="bo-search-empty" style="padding:24px 0;color:var(--text-muted);">No bookings ${q ? 'match your search' : 'to show here'}.</div>` +
-            blocksHtml;
+            `<div class="bo-search-empty" style="padding:24px 0;color:var(--text-muted);">No bookings ${q ? 'match your search' : 'to show here'}.</div>`;
         if (bookingsSplitWide()) markBookingsSelection();
         return;
     }
-    list.innerHTML = rows.map(({ propKey, b }) => bookingListRow(propKey, b, today)).join('') + blocksHtml;
+    list.innerHTML = rows.map(({ propKey, b }) => bookingListRow(propKey, b, today)).join('');
     // Wide split: keep the docked pane in sync — drop a selection whose booking
     // is gone, and open the first listed booking when nothing is selected yet
     // so the dashboard never sits with an empty pane.
@@ -455,51 +451,6 @@ function bookingListRow(propKey, b, today) {
             </span>
             <span class="bk-row-arrow" aria-hidden="true">›</span>
         </button>`;
-}
-// External (Airbnb/Vrbo) imported blocks as index rows — the calendar shows
-// them read-only, so THIS is where they're opened (view details / remove).
-function externalBlocksHtml(today) {
-    const items = [];
-    Object.keys(dbBlocks).forEach((pk) =>
-        (dbBlocks[pk] || []).forEach((bl) => {
-            if ((bl.checkOut || '') >= today) items.push({ pk, bl });
-        }),
-    );
-    if (!items.length) return '';
-    items.sort((a, z) => (a.bl.checkIn || '').localeCompare(z.bl.checkIn || ''));
-    const srcName = (s) =>
-        s === 'airbnb' ? 'Airbnb' : s === 'vrbo' ? 'Vrbo' : s ? s.charAt(0).toUpperCase() + s.slice(1) : 'External';
-    return (
-        `<div class="bk-blocks-title">External bookings — imported from other platforms</div>` +
-        items
-            .map(({ pk, bl }) => {
-                const meta = propertyMeta[pk] || { name: pk };
-                return `
-        <button type="button" class="bk-row glass-panel bk-row-ext" onclick="showBlockDetailsById(${Number(bl.id)})">
-            <span class="bk-row-body">
-                <span class="bk-row-top">
-                    <span class="prop-tag tag-${pk}">${escapeHtml(meta.name)}</span>
-                    <span class="bk-chip warn"><span class="bk-dot"></span>External</span>
-                </span>
-                <strong class="bk-row-name">${escapeHtml(srcName(bl.source))} booking</strong>
-                <span class="bk-row-dates">${fmtStayRange(bl.checkIn, bl.checkOut)}</span>
-            </span>
-            <span class="bk-row-arrow" aria-hidden="true">›</span>
-        </button>`;
-            })
-            .join('')
-    );
-}
-// Look an imported block up by id (the row can't carry the object) → details modal.
-function showBlockDetailsById(id) {
-    for (const pk of Object.keys(dbBlocks)) {
-        const bl = (dbBlocks[pk] || []).find((x) => Number(x.id) === Number(id));
-        if (bl) {
-            showBlockDetails(pk, bl);
-            return;
-        }
-    }
-    toast('That external booking is no longer here.', 'error');
 }
 // Wide-screen master–detail: is the docked hub pane in play?
 function bookingsSplitWide() {
@@ -7776,50 +7727,6 @@ function renderCalendar() {
         }
         cell.appendChild(barsWrap);
         calBody.appendChild(cell);
-    }
-}
-
-// Popup for an external (Airbnb/Vrbo) imported block, with a Remove button.
-function showBlockDetails(propKey, bl) {
-    const panel = document.getElementById('booking-details-content');
-    if (!panel) return;
-    const meta = propertyMeta[propKey] || { name: propKey };
-    const label = 'EXTERNAL';
-    const nights = nightsBetween(bl.checkIn, bl.checkOut);
-    panel.innerHTML = `
-                <div class="detail-grid">
-                    <div>
-                        <h4 style="color:var(--text-muted);margin:0 0 6px;font-size:0.85rem;text-transform:uppercase;">Property</h4>
-                        <p style="margin:0 0 16px;"><span class="legend-swatch swatch-${propKey}"></span> <strong>${escapeHtml(meta.name)}</strong></p>
-                        <h4 style="color:var(--text-muted);margin:0 0 6px;font-size:0.85rem;text-transform:uppercase;">Booked via</h4>
-                        <p style="margin:0 0 16px;">${IC_LOCK} ${escapeHtml(label)}</p>
-                    </div>
-                    <div>
-                        <h4 style="color:var(--text-muted);margin:0 0 6px;font-size:0.85rem;text-transform:uppercase;">Dates</h4>
-                        <p style="margin:0 0 4px;">${escapeHtml(bl.checkIn)} → ${escapeHtml(bl.checkOut)}</p>
-                        <p style="margin:0 0 16px;color:var(--text-muted);font-size:0.85rem;">${nights} night${nights === 1 ? '' : 's'} blocked</p>
-                    </div>
-                </div>
-                <p style="font-size:0.8rem;color:var(--text-muted);margin:8px 0 18px;">Imported automatically from an external platform's calendar (e.g. Airbnb or Vrbo) so guests can't double-book. Removing it only clears it from your calendar — if the booking still exists on the external platform, the next sync may bring it back.</p>
-                <button class="btn-glass" style="width:100%;padding:14px;" onclick="deleteIcalBlock(${Number(bl.id)})"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2M6 7l1 13a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1l1-13"/></svg> Remove from calendar</button>`;
-    const t = document.getElementById('details-modal-title');
-    if (t) t.innerText = 'External Booking';
-    const m = document.getElementById('details-modal');
-    if (m) m.classList.add('open');
-}
-
-async function deleteIcalBlock(id) {
-    const ok = await glassConfirm(
-        'Remove this external booking from your calendar?\n\nIf it still exists on the platform (Airbnb/Vrbo), it may return next time your calendar syncs.',
-    );
-    if (!ok) return;
-    try {
-        await apiPost('ical-import.php', { action: 'delete_block', id });
-        closeDetailsModal();
-        await loadData();
-        renderCalendar();
-    } catch (e) {
-        glassAlert("Couldn't remove it: " + e.message);
     }
 }
 

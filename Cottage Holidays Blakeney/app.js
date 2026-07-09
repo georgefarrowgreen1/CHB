@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 42;
+const ADMIN_BUNDLE_V = 43;
 let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
@@ -9692,42 +9692,19 @@ function refreshDateTrigger() {
 // One home per booking: every list row and search hit lands on the booking
 // HUB (a full admin screen — admin.js renderBookingHub), which replaced the
 // old cramped details modal. The calendar is a read-only overview — nothing
-// on it is clickable. The #details-modal shell remains only for iCal blocks.
+// on it is clickable (external iCal blocks are display-only pills there;
+// the auto-sync owns their lifecycle).
 function showDetails(propKey, booking1) {
     if (!booking1) return;
     window.openBookingHub(booking1.id);
 }
+// The details modal itself is gone; this stays as a safe no-op because many
+// flows still call it defensively while closing everything.
 function closeDetailsModal() {
     const m = document.getElementById('details-modal');
     if (m) m.classList.remove('open');
 }
 
-// A glanceable status strip for the booking details modal: rental payment,
-// refundable-deposit state, and whether arrival info has gone out — so "what's
-// outstanding on this booking?" is answerable at a glance. All from fields
-// already on the booking (no admin globals — keeps app.js self-contained).
-function bookingStatusStrip(b, ps, p) {
-    const chips = [];
-    if (ps.fullyPaid) chips.push(['ok', 'Paid in full']);
-    else if (ps.deposit > 0) chips.push(['warn', `${gbp(ps.balance)} balance due`]);
-    else chips.push(['danger', `Unpaid · ${gbp(ps.balance)} due`]);
-
-    const dep = Math.max(0, (p && p.damagesDeposit) || 0);
-    const st = b.holdStatus || 'none';
-    const ret = Number(b.damagesReturned) || 0;
-    const depAmt = Number(b.holdAmount) || dep;
-    if (dep > 0 || st !== 'none') {
-        if (st === 'returned' || (st === 'charged' && ret >= depAmt - 0.01)) chips.push(['ok', 'Deposit refunded']);
-        else if (st === 'kept') chips.push(['warn', 'Deposit kept (damage)']);
-        else if (st === 'charged') chips.push(ret > 0.01 ? ['ok', `Deposit ${gbp(ret)} refunded`] : ['ok', 'Deposit paid']);
-        else if (['authorized', 'captured'].includes(st)) chips.push(['ok', 'Deposit held']);
-    }
-    if (b.preArrivalSent) chips.push(['ok', 'Arrival info sent']);
-
-    return `<div class="bk-status">${chips
-        .map(([c, t]) => `<span class="bk-chip ${c}"><span class="bk-dot"></span>${escapeHtml(t)}</span>`)
-        .join('')}</div>`;
-}
 // Save the owner-only staff note from the booking details modal (its own
 // lightweight endpoint so a note never touches dates/price/payment).
 async function saveBookingNote(bookingId) {
@@ -11853,7 +11830,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'j6p9y5bi';
+    const BUILD = 'j6q1z6cj';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
