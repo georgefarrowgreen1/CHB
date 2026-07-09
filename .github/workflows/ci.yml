@@ -37,6 +37,14 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-reply.php
 
+      # SMTP transport: runs mailer.php's real socket conversation against a
+      # scriptable fake SMTP server — happy path, transient-retry, the
+      # no-retry-after-payload guarantee (double-send safety), batch-over-one-
+      # connection, mid-batch recipient rejection, and preview capture.
+      - name: SMTP transport tests (fake server)
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-smtp.php
+
       # Static "undefined reference" gate for the front-end JS — catches typo'd /
       # missing functions and variables (the "X is not defined" runtime errors)
       # before they ship, which php -l's JS equivalent (node --check) can't see.
