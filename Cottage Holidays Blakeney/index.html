@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=129">
+    <link rel="stylesheet" href="app.css?v=130">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -1969,7 +1969,13 @@
                     <input type="text" class="input-glass" id="enq-email-subject" maxlength="150">
                     <label class="modal-label" for="enq-email-body">Message</label>
                     <textarea class="input-glass" id="enq-email-body" rows="6" maxlength="5000" placeholder="Write your message…" style="resize:vertical;"></textarea>
-                    <p style="font-size:0.75rem;color:var(--text-muted);margin:6px 0 14px;">Sent in the site's email design with these details attached underneath. Their reply comes back to your inbox.</p>
+                    <p style="font-size:0.75rem;color:var(--text-muted);margin:6px 0 10px;">Sent in the site's email design with these details attached underneath. Their reply comes back to your inbox.</p>
+                    <!-- Optional file attachments (images / PDFs / docs). -->
+                    <div style="margin:0 0 12px;">
+                        <input type="file" id="enq-email-file-input" multiple accept="image/*,application/pdf,.doc,.docx,.txt,.ics" style="display:none;" onchange="addComposeAttachments(this.files)">
+                        <button type="button" class="btn-sm btn-edit" onclick="document.getElementById('enq-email-file-input').click()">＋ Attach a file</button>
+                        <div id="enq-email-attach-list" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"></div>
+                    </div>
                     <p class="enq-modal-msg" id="enq-email-msg" role="alert"></p>
                     <div style="display:flex;gap:10px;">
                         <button class="toggle-btn" id="enq-email-preview-btn" style="flex:1;padding:14px;" onclick="previewComposedEmail()">Preview</button>
@@ -2303,7 +2309,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=232"></script>
+    <script defer src="app.js?v=233"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

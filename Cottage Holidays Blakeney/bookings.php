@@ -759,10 +759,18 @@ if ($action === 'set_payment') {
         $date = null;
     }
 
+    $prevDep = round((float) ($b['deposit_paid'] ?? 0), 2);
     db()
         ->prepare('UPDATE bookings SET payment=?, deposit_paid=?, payment_method=?, payment_date=? WHERE id=?')
         ->execute([$status, $dep, $method, $date ?: null, $id]);
-    log_activity('payment', 'booking.set_payment', 'Payment status set to ' . $status . ($b['name'] ? ' — ' . $b['name'] : ''), ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
+    // When money came in (recorded amount went UP), log it as a clear payment
+    // event ("a deposit/payment has been made") rather than a vague status change.
+    if ($dep > $prevDep + 0.001) {
+        $kindWord = $status === 'paid' ? 'Payment' : 'Deposit';
+        log_activity('payment', 'payment.recorded', $kindWord . ' recorded — £' . number_format($dep - $prevDep, 2) . ($method ? ' (' . $method . ')' : '') . ($b['name'] ? ' · ' . $b['name'] : ''), ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
+    } else {
+        log_activity('payment', 'booking.set_payment', 'Payment status set to ' . $status . ($b['name'] ? ' — ' . $b['name'] : ''), ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
+    }
     json_out(['ok' => true]);
 }
 
@@ -858,9 +866,10 @@ if ($action === 'email_guest') {
     } catch (\Throwable $e) {
     }
     require_once __DIR__ . '/mailer.php';
+    $atts = sanitize_email_attachments($in['attachments'] ?? []);
     $r = ['ok' => false, 'error' => 'send failed'];
     try {
-        $r = send_enquiry_reply_email(array_merge($b, ['price' => $priceEst]), $subject, $message, 'booking');
+        $r = send_enquiry_reply_email(array_merge($b, ['price' => $priceEst]), $subject, $message, 'booking', $atts);
     } catch (\Throwable $e) {
         $r = ['ok' => false, 'error' => $e->getMessage()];
     }

@@ -838,7 +838,7 @@ function build_enquiry_reply_email($e, $subject, $message, $ctx = 'enquiry')
         'Dates: ' . ($e['check_in'] ?? '') . ' to ' . ($e['check_out'] ?? '') . "\n" .
         $times . "\n" .
         "Party: {$party}\n" .
-        ($priceLine !== '' ? 'Estimated price: ' . $priceLine . "\n" : '') .
+        ($priceLine !== '' ? ($noun === 'booking' ? 'Price: ' : 'Estimated price: ') . $priceLine . "\n" : '') .
         "\nJust reply to this email to reach us.\nCottage Holidays Blakeney";
 
     // Owner-typed message: escape, then preserve their line breaks.
@@ -859,7 +859,8 @@ function build_enquiry_reply_email($e, $subject, $message, $ctx = 'enquiry')
     $kv('Dates', ($e['check_in'] ?? '') . ' to ' . ($e['check_out'] ?? ''));
     $kv('Times', $times);
     $kv('Party', $party);
-    $kv('Est. price', $priceLine);
+    // A confirmed booking's price is settled — "Price"; an enquiry is still a quote.
+    $kv($noun === 'booking' ? 'Price' : 'Est. price', $priceLine);
 
     $inner =
         email_h('About your ' . $noun, $accent) .
@@ -877,14 +878,56 @@ function build_enquiry_reply_email($e, $subject, $message, $ctx = 'enquiry')
 // Send the branded reply email (owner writes the message; the guest's details
 // ride along underneath). Builds via build_enquiry_reply_email() so the sent
 // email is byte-identical to the composer preview.
-function send_enquiry_reply_email($e, $subject, $message, $ctx = 'enquiry')
+function send_enquiry_reply_email($e, $subject, $message, $ctx = 'enquiry', $attachments = [])
 {
     $noun = $ctx === 'booking' ? 'booking' : 'enquiry';
     if (empty($e['email'])) {
         return ['ok' => false, 'error' => 'No guest email on this ' . $noun];
     }
     $m = build_enquiry_reply_email($e, $subject, $message, $ctx);
-    return smtp_send($m['email'], $m['name'], $m['subject'], $m['text'], $m['html']);
+    return smtp_send($m['email'], $m['name'], $m['subject'], $m['text'], $m['html'], is_array($attachments) ? $attachments : []);
+}
+
+// Validate + normalise attachments from a JSON email_guest payload (admin-only)
+// into smtp_send's format: [['filename','mime','content'(RAW bytes)], …]. Caps
+// count/size, sanitises filenames, and decodes the base64 content.
+function sanitize_email_attachments($raw)
+{
+    if (!is_array($raw)) {
+        return [];
+    }
+    $allowed = [
+        'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif',
+        'application/pdf', 'text/plain', 'text/calendar',
+        'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    ];
+    $out = [];
+    $total = 0;
+    foreach ($raw as $a) {
+        if (count($out) >= 4) {
+            break;
+        }
+        $content = base64_decode((string) ($a['content'] ?? ''), true);
+        if ($content === false || $content === '') {
+            continue;
+        }
+        $len = strlen($content);
+        if ($len > 4 * 1024 * 1024) {
+            continue; // 4 MB per file
+        }
+        $total += $len;
+        if ($total > 8 * 1024 * 1024) {
+            break; // 8 MB total
+        }
+        $filename = preg_replace('/[^A-Za-z0-9._ \-]/', '_', (string) ($a['filename'] ?? 'attachment'));
+        $filename = mb_substr(trim($filename) !== '' ? trim($filename) : 'attachment', 0, 120);
+        $mime = (string) ($a['mime'] ?? '');
+        if (!in_array($mime, $allowed, true)) {
+            $mime = 'application/octet-stream'; // still attach, but as a generic file
+        }
+        $out[] = ['filename' => $filename, 'mime' => $mime, 'content' => $content];
+    }
+    return $out;
 }
 
 // New-enquiry alert for the owner, with signed one-tap action links. $e carries

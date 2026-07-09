@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 33;
+const ADMIN_BUNDLE_V = 34;
 let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
@@ -11536,7 +11536,9 @@ async function saveModal() {
                 ))
             ) {
                 try {
-                    await apiPost('bookings.php', { action: 'send_confirmation', id: payload.id });
+                    // guest_only: this is an owner edit — re-send to the guest only,
+                    // don't ping the owner with a "new booking confirmed" email.
+                    await apiPost('bookings.php', { action: 'send_confirmation', id: payload.id, guest_only: true });
                     toast('Updated confirmation sent.');
                 } catch (e) {
                     glassAlert("Saved, but the email didn't send: " + e.message);
@@ -11815,7 +11817,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'j6j3n6dw';
+    const BUILD = 'j6k5r9tm';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

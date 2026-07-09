@@ -7646,6 +7646,8 @@ function openEnquiryEmail(enqId) {
         return;
     }
     __composeTarget = { kind: 'enquiry', enq };
+    __composeAttachments = [];
+    renderComposeAttachChips();
     backToComposeEdit();
     const propName = (propertyMeta[enq.propKey] && propertyMeta[enq.propKey].name) || enq.propKey;
     // Key details, visible while writing: who + cottage + dates + party + phone
@@ -7690,6 +7692,8 @@ function closeEnquiryEmailModal() {
     if (m) m.classList.remove('open');
     backToComposeEdit(); // reset to the compose view for next time
     __composeTarget = null;
+    __composeAttachments = [];
+    renderComposeAttachChips();
 }
 // Toggle the composer back from the preview to the editing view.
 function backToComposeEdit() {
@@ -7747,6 +7751,64 @@ async function previewComposedEmail() {
         }
     }
 }
+// ---- Custom-email attachments ----
+// Files chosen in the composer, read to base64 for the email_guest payload.
+let __composeAttachments = [];
+const COMPOSE_ATTACH_MAX = 4;
+const COMPOSE_ATTACH_MAX_EACH = 4 * 1024 * 1024; // 4 MB per file
+const COMPOSE_ATTACH_MAX_TOTAL = 8 * 1024 * 1024; // 8 MB total (keeps the POST + email deliverable)
+async function addComposeAttachments(fileList) {
+    const files = Array.from(fileList || []);
+    const input = document.getElementById('enq-email-file-input');
+    if (input) input.value = ''; // allow re-picking the same file later
+    for (const f of files) {
+        if (__composeAttachments.length >= COMPOSE_ATTACH_MAX) {
+            glassAlert(`You can attach up to ${COMPOSE_ATTACH_MAX} files.`);
+            break;
+        }
+        if (f.size > COMPOSE_ATTACH_MAX_EACH) {
+            glassAlert(`"${f.name}" is too big (max ${Math.round(COMPOSE_ATTACH_MAX_EACH / 1024 / 1024)} MB each).`);
+            continue;
+        }
+        const total = __composeAttachments.reduce((s, a) => s + a.size, 0) + f.size;
+        if (total > COMPOSE_ATTACH_MAX_TOTAL) {
+            glassAlert('That would exceed the total attachment size (12 MB).');
+            break;
+        }
+        try {
+            const content = await new Promise((resolve, reject) => {
+                const r = new FileReader();
+                r.onload = () => resolve(String(r.result).split(',')[1] || '');
+                r.onerror = () => reject(new Error('read failed'));
+                r.readAsDataURL(f);
+            });
+            __composeAttachments.push({
+                filename: f.name || 'attachment',
+                mime: f.type || 'application/octet-stream',
+                size: f.size,
+                content,
+            });
+        } catch (e) {
+            glassAlert(`Couldn't read "${f.name}".`);
+        }
+    }
+    renderComposeAttachChips();
+}
+function removeComposeAttachment(i) {
+    __composeAttachments.splice(i, 1);
+    renderComposeAttachChips();
+}
+function renderComposeAttachChips() {
+    const el = document.getElementById('enq-email-attach-list');
+    if (!el) return;
+    el.innerHTML = __composeAttachments
+        .map((a, i) => {
+            const kb = a.size < 1024 * 1024 ? Math.round(a.size / 1024) + ' KB' : (a.size / 1024 / 1024).toFixed(1) + ' MB';
+            return `<span class="compose-attach-chip">${escapeHtml(a.filename)} <span style="color:var(--text-muted);">· ${kb}</span><button type="button" aria-label="Remove" onclick="removeComposeAttachment(${i})">×</button></span>`;
+        })
+        .join('');
+}
+
 async function sendEnquiryEmail() {
     const t = __composeTarget;
     if (!t) return;
@@ -7775,6 +7837,7 @@ async function sendEnquiryEmail() {
             id: rec.dbId,
             subject: subject.trim(),
             message: body.trim(),
+            attachments: __composeAttachments.map((a) => ({ filename: a.filename, mime: a.mime, content: a.content })),
         });
         closeEnquiryEmailModal();
         toast(`Email sent to ${rec.name || rec.email}.`);
@@ -7806,6 +7869,8 @@ function openBookingEmail(bookingId) {
         return;
     }
     __composeTarget = { kind: 'booking', b, propKey: loc.propKey };
+    __composeAttachments = [];
+    renderComposeAttachChips();
     backToComposeEdit();
     const propName = (propertyMeta[loc.propKey] && propertyMeta[loc.propKey].name) || loc.propKey;
     const ctx = document.getElementById('enq-email-context');
