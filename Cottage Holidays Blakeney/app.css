@@ -5795,6 +5795,15 @@ body.owner-mode .chat-widget {
   font-size: 0.9rem;
   text-align: center;
 }
+/* Guest My-Stays header: keep Account & settings + Call to Discuss together
+   as one action group (they were separate flex children pushed apart). */
+.guest-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 /* Compact index row — the whole row opens the booking hub. Fixed three-line
    anatomy (tag + status chip / name / dates · party) so every row is the same
    shape at every width; each line ellipsises rather than wrapping. */

@@ -160,14 +160,7 @@ async function waitForServer(url, tries = 40) {
     await page.waitForTimeout(1200);
     // Today panel now hides zero tiles: it shows the non-zero action cards, or a
     // single "All clear" line when nothing needs the owner. Either is a valid render.
-    (await page.evaluate(() => {
-      const grid = document.querySelector('#today-panel .today-grid');
-      const ac = document.getElementById('today-allclear');
-      if (!grid) return false;
-      const visibleCards = [...grid.querySelectorAll('.today-card')].filter((c) => c.style.display !== 'none').length;
-      const allClearShown = !!ac && ac.style.display !== 'none';
-      return visibleCards > 0 || allClearShown;
-    })) ? pass('today panel rendered (action tiles or all-clear)') : fail('today panel incomplete');
+    (await page.evaluate(() => !document.getElementById('today-panel'))) ? pass('Today panel removed from the dashboard') : fail('today panel still present');
     // The dashboard has no search of its own (bookings are found on the
     // Bookings page) and no health pills (they live on Settings now).
     (await page.evaluate(() => !document.getElementById('bo-search') || !document.querySelector('#view-backoffice #bo-search'))) ? pass('dashboard search removed') : fail('dashboard search still present');
