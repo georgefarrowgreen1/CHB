@@ -4203,147 +4203,10 @@ async function initBackOffice() {
     try {
         await loadDepositReturns();
     } catch (e) {} // for the deposits-to-return line
-    try {
-        renderTodayPanel();
-    } catch (e) {}
     showChangeoverToasts();
     // Quietly refresh external (Airbnb/Vrbo) bookings in the background so
     // cancelled or moved dates drop off on their own. Non-blocking + throttled.
     autoSyncIcalBlocks();
-}
-// "Today / needs doing" — arrivals, departures, balances due this week,
-// and deposits to return, all from the data already loaded for the calendar.
-function renderTodayPanel() {
-    const el = document.getElementById('today-panel');
-    if (!el) return;
-    const today = todayDashed();
-    const in7 = formatDashed(
-        new Date(
-            dpParse(today).getFullYear(),
-            dpParse(today).getMonth(),
-            dpParse(today).getDate() + 7,
-        ),
-    );
-    const arrivals = [],
-        departures = [],
-        dueSoon = [],
-        toReturn = [];
-    Object.keys(dbBookings).forEach((propKey) => {
-        (dbBookings[propKey] || []).forEach((b) => {
-            const name = (b.name || '').split(' ')[0];
-            const tag = `<span class="prop-tag tag-${propKey}">${propertyMeta[propKey] ? propertyMeta[propKey].short : propKey}</span>`;
-            if (b.checkIn === today)
-                arrivals.push(`${tag} ${escapeHtml(name)} · ${b.checkInTime || '15:00'}`);
-            if (b.checkOut === today)
-                departures.push(`${tag} ${escapeHtml(name)} · ${b.checkOutTime || '10:00'}`);
-            const ps = paymentSummary(propKey, b);
-            if (!ps.fullyPaid && b.checkIn >= today && b.checkIn <= in7)
-                dueSoon.push(`${tag} ${escapeHtml(name)} · ${gbp(ps.balance)} (${b.checkIn})`);
-            const dh = damageHeld(propKey, b);
-            if (dh.held > 0 && (b.checkOut || '') < today)
-                toReturn.push(`${tag} ${escapeHtml(name)} · ${gbp(dh.held)}`);
-        });
-    });
-    const card = (label, items, accent, target) => {
-        const click = target
-            ? ` clickable" role="button" tabindex="0" onclick="dashGo('${target}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();dashGo('${target}')}"`
-            : '"';
-        return `
-                <div class="today-card${click}>
-                    <div class="today-card-label">${label}</div>
-                    <div class="today-card-value" style="${accent || ''}">${items.length}</div>
-                    <div class="today-card-list">${
-                        items.length
-                            ? items
-                                  .slice(0, 4)
-                                  .map((i) => `<div>${i}</div>`)
-                                  .join('') +
-                              (items.length > 4
-                                  ? `<div style="color:var(--text-muted);">+${items.length - 4} more</div>`
-                                  : '')
-                            : '<span style="color:var(--text-muted);">Nothing</span>'
-                    }</div>
-                </div>`;
-    };
-    // The two things that need a same-day reply lead the panel: pending
-    // enquiries (already loaded by loadData) and unread guest messages
-    // (fetched async below — the card updates in place when it arrives).
-    const enqItems = (enquiries || []).map((e) => {
-        const tag = `<span class="prop-tag tag-${e.propKey}">${propertyMeta[e.propKey] ? propertyMeta[e.propKey].short : e.propKey}</span>`;
-        return `${tag} ${escapeHtml((e.name || '').split(' ')[0])} · ${e.checkIn || ''}`;
-    });
-    // Only surface the things that actually need you today — a wall of zeros is
-    // noise. Non-zero action tiles are rendered; when there are none (and no
-    // unread messages / nothing to approve) the "All clear" line shows instead.
-    const actionTiles = [];
-    if (enqItems.length)
-        actionTiles.push(card('Enquiries to answer', enqItems, 'color:#FFA726;', 'enquiries'));
-    if (arrivals.length) actionTiles.push(card('Arrivals today', arrivals, '', 'calendar'));
-    if (departures.length) actionTiles.push(card('Departures today', departures, '', 'calendar'));
-    if (dueSoon.length)
-        actionTiles.push(card('Balances due (7 days)', dueSoon, 'color:#FFA726;', 'money'));
-    if (toReturn.length)
-        actionTiles.push(card('Deposits to return', toReturn, 'color:#FFA726;', 'deposits'));
-    el.innerHTML = `<h2 style="font-family:var(--font-serif);font-size:1.3rem;font-weight:400;margin:0 0 12px;">Today &amp; this week</h2>
-                <div class="today-grid">
-                ${actionTiles.join('')}
-                <div class="today-card clickable" id="today-msgs-card" style="display:none;" role="button" tabindex="0" onclick="dashGo('messages')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();dashGo('messages')}">
-                    <div class="today-card-label">Unread messages</div>
-                    <div class="today-card-value" id="today-msgs-value">–</div>
-                    <div class="today-card-list" id="today-msgs-list"></div>
-                </div>
-                <div class="today-card today-approve" id="today-approve-card" style="display:none;" role="button" tabindex="0" onclick="dashGo(this.dataset.go || 'enquiries')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();dashGo(this.dataset.go || 'enquiries')}">
-                    <div class="today-card-label">Waiting for approval</div>
-                    <div class="today-card-value" id="today-approve-value">–</div>
-                    <div class="today-card-list" id="today-approve-list"></div>
-                </div>
-                </div>
-                <div id="today-allclear" class="today-allclear" style="display:${actionTiles.length ? 'none' : 'block'};"><span class="today-allclear-tick">✓</span> All clear — nothing needs you today.</div>`;
-    refreshTodayMessages();
-}
-// Fill the "Unread messages" today-card once the thread list arrives
-// (best-effort; the card just shows 0 if messages can't load).
-async function refreshTodayMessages() {
-    const card = document.getElementById('today-msgs-card');
-    const val = document.getElementById('today-msgs-value');
-    const list = document.getElementById('today-msgs-list');
-    if (!card || !val || !list) return;
-    let threads = [];
-    try {
-        const r = await apiPost('messages.php', { action: 'threads', archived: 0 });
-        threads = r.threads || [];
-    } catch (e) {
-        card.style.display = 'none';
-        updateTodayAllClear();
-        return;
-    }
-    const unreadThreads = threads.filter((t) => (t.unread || 0) > 0);
-    const unread = unreadThreads.reduce((s, t) => s + (t.unread || 0), 0);
-    // Only show the tile when there's actually something unread.
-    card.style.display = unread > 0 ? '' : 'none';
-    val.textContent = unread;
-    val.style.color = unread ? '#FFA726' : '';
-    list.innerHTML = unreadThreads
-        .slice(0, 4)
-        .map((t) => `<div>${escapeHtml(t.name || t.email || 'Visitor')} · ${t.unread}</div>`)
-        .join('') +
-        (unreadThreads.length > 4
-            ? `<div style="color:var(--text-muted);">+${unreadThreads.length - 4} more</div>`
-            : '');
-    updateTodayAllClear();
-}
-// Show the "All clear" line only when no action tile is visible in the Today grid.
-function updateTodayAllClear() {
-    const grid = document.querySelector('#today-panel .today-grid');
-    const ac = document.getElementById('today-allclear');
-    if (!grid || !ac) return;
-    const anyVisible = [...grid.querySelectorAll('.today-card')].some(
-        (c) => c.style.display !== 'none',
-    );
-    // Collapse the (otherwise empty) grid when nothing needs the owner, so its
-    // bottom margin doesn't leave a gap above the "All clear" line.
-    grid.style.display = anyVisible ? '' : 'none';
-    ac.style.display = anyVisible ? 'none' : 'block';
 }
 // Owner block: hold dates for maintenance / personal use (no fake booking).
 async function openBlockDates() {
@@ -7238,51 +7101,6 @@ function getBookingForDate(dateStr, property) {
     return { status: 'none' };
 }
 
-// Dashboard cards are shortcuts: jump to the relevant tool when tapped.
-function dashGo(target) {
-    // Land the owner ON the thing the tile counted, not just the right page.
-    const scrollTo = (sel) =>
-        setTimeout(() => {
-            const el = document.querySelector(sel);
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 350);
-    try {
-        if (target === 'analytics') {
-            openSettings('analytics');
-        } else if (target === 'enquiries') {
-            openInbox();
-        } else if (target === 'messages') {
-            // The messages list sits below the enquiries — scroll to it.
-            Promise.resolve(openInbox()).then(() => scrollTo('#messages-list'));
-        } else if (target === 'reviews') {
-            openSettings('reviews');
-        } else if (target === 'photos') {
-            openSettings('photos');
-        } else if (target === 'experiences') {
-            openSettings('experiences');
-        } else if (target === 'money' || target === 'deposits') {
-            Promise.resolve(openAccounts()).then(() => {
-                try {
-                    accountsOpen('payments');
-                    // "Deposits to return" is its own queue at the top of the
-                    // payments screen; balances live in the rows below it.
-                    if (target === 'deposits') scrollTo('#deposits-due');
-                } catch (e) {}
-            });
-        } else if (target === 'calendar') {
-            const el =
-                document.querySelector('#view-backoffice .cal-panel') ||
-                document.getElementById('cal-body');
-            if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        } else {
-            // Unknown target — never a silent no-op; the dashboard is home.
-            nav('view-backoffice');
-        }
-    } catch (e) {}
-}
-// Occupancy heatmap: every cottage × the next N days as one compact strip, so the
-// owner can see how full the diary is at a glance. Reuses the calendar's data
-// Radial donut gauge (inline SVG) for a 0–100 percentage.
 function osDonut(pct, color) {
     pct = Math.max(0, Math.min(100, pct || 0));
     const R = 26,
@@ -8121,37 +7939,8 @@ async function refreshModerationCounts() {
     setBadge('reviews-pending-badge', rev);
     setBadge('photos-pending-badge', ph);
     setBadge('exp-pending-badge', exp);
-    // (Approvals surface in exactly TWO places: the Today "Waiting for approval"
-    // card — the pointer — and Marketing's "To approve" rows — the action. The
-    // old Inbox callout was a third copy and is gone.)
-    const cardEl = document.getElementById('today-approve-card');
-    if (cardEl) {
-        const total = rev + ph + exp;
-        if (total > 0) {
-            cardEl.style.display = '';
-            cardEl.dataset.go = rev > 0 ? 'reviews' : ph > 0 ? 'photos' : 'experiences';
-            const val = document.getElementById('today-approve-value');
-            if (val) {
-                val.textContent = total;
-                val.style.color = 'var(--warn)';
-            }
-            // Each pending type is its OWN link — photos/experiences shouldn't
-            // be unreachable until the reviews queue is empty.
-            const line = (n, label, go) =>
-                n
-                    ? `<div><a class="approve-line" onclick="event.stopPropagation();dashGo('${go}')">${n} ${label}${n === 1 ? '' : 's'} to approve →</a></div>`
-                    : '';
-            const list = document.getElementById('today-approve-list');
-            if (list)
-                list.innerHTML =
-                    line(rev, 'review', 'reviews') +
-                    line(ph, 'guest photo', 'photos') +
-                    line(exp, 'experience suggestion', 'experiences');
-        } else cardEl.style.display = 'none';
-    }
-    try {
-        updateTodayAllClear();
-    } catch (e) {}
+    // Approvals now surface in Marketing's "To approve" rows (the badges above
+    // point there) — the dashboard's Today panel is gone.
 }
 async function loadExperiencesAdmin() {
     const wrap = document.getElementById('exp-admin');

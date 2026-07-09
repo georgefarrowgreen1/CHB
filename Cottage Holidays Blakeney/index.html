@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=137">
+    <link rel="stylesheet" href="app.css?v=138">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -892,7 +892,8 @@
         <!-- (The dashboard search moved to the Bookings page; the health /
              needs-a-look pills moved to Settings.) -->
 
-        <div id="today-panel"><!-- JS injects the "today / needs doing" list --></div>
+        <!-- (The "Today & this week" panel was removed at the owner's request —
+             the calendar + dock pips carry the day's state.) -->
 
         <!-- CALENDAR (left) + PENDING ENQUIRIES (right) -->
         <div class="bo-layout">
@@ -1662,9 +1663,12 @@
             </div>
             <!-- On the mobile shell the dock's Account button opens the account section;
                  on desktop (no dock) this header button is the way in. Hidden on the
-                 mobile shell via CSS so it isn't duplicated there. -->
-            <button id="acct-settings-btn" class="btn-sm btn-edit" onclick="openGuestDetailsModal()" title="Account &amp; settings"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg> Account &amp; settings</button>
-            <a id="acct-call-btn" class="btn-sm btn-edit" title="Call to discuss"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.6 3.5l2.1.4 1 3-1.5 1.4a12 12 0 0 0 5 5l1.4-1.5 3 1 .4 2.1a2 2 0 0 1-2 2.3A15.5 15.5 0 0 1 4.3 5.5a2 2 0 0 1 2.3-2z"/></svg> Call to Discuss</a>
+                 mobile shell via CSS so it isn't duplicated there. Grouped with the
+                 call button so the two sit together, not at opposite ends. -->
+            <div class="guest-head-actions">
+                <button id="acct-settings-btn" class="btn-sm btn-edit" onclick="openGuestDetailsModal()" title="Account &amp; settings"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg> Account &amp; settings</button>
+                <a id="acct-call-btn" class="btn-sm btn-edit" title="Call to discuss"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.6 3.5l2.1.4 1 3-1.5 1.4a12 12 0 0 0 5 5l1.4-1.5 3 1 .4 2.1a2 2 0 0 1-2 2.3A15.5 15.5 0 0 1 4.3 5.5a2 2 0 0 1 2.3-2z"/></svg> Call to Discuss</a>
+            </div>
         </div>
         <div id="guest-bookings-list">
             <!-- JS injects the guest's bookings here -->
@@ -2334,7 +2338,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=244"></script>
+    <script defer src="app.js?v=245"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
