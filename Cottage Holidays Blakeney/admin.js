@@ -3926,12 +3926,6 @@ function saveLocalContent(key, value) {
 }
 
 // Default the back-office calendar to the current month.
-let calDate = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
-
-// External blocks covering a given date for a property (checkout day exclusive).
-function getBlocksForDate(dateStr, propKey) {
-    return (dbBlocks[propKey] || []).filter((bl) => dateStr >= bl.checkIn && dateStr < bl.checkOut);
-}
 
 // ONE way to record money on a booking (was a status <select> AND an amount box,
 // each driving its own chain of pop-up prompts): a single glass form — amount,
@@ -7085,31 +7079,42 @@ function saveRules(propKey) {
     saveContent('rules-' + propKey, rules);
 }
 
+// Timeline navigation: ‹ › scroll roughly a month; Today snaps back.
 function changeMonth(dir) {
-    calDate.setMonth(calDate.getMonth() + dir);
-    renderCalendar();
+    const host = document.getElementById('cal-body');
+    if (!host) return;
+    host.scrollBy({ left: dir * 30 * TL_DAY_W, behavior: 'smooth' });
 }
-
-// For a given date string + property, return the status & relevant booking(s)
-function getBookingForDate(dateStr, property) {
-    const propertyBookings = dbBookings[property] || [];
-
-    for (let b of propertyBookings) {
-        if (dateStr === b.checkIn) {
-            const prevBooking = propertyBookings.find((prev) => prev.checkOut === dateStr);
-            if (prevBooking) return { status: 'changeover', booking: prevBooking, nextBooking: b };
-            return { status: 'check-in', booking: b };
-        }
-        if (dateStr === b.checkOut) {
-            const nextBooking = propertyBookings.find((next) => next.checkIn === dateStr);
-            if (nextBooking) return { status: 'changeover', booking: b, nextBooking: nextBooking };
-            return { status: 'check-out', booking: b };
-        }
-        if (dateStr > b.checkIn && dateStr < b.checkOut) {
-            return { status: 'booked', booking: b };
-        }
+function timelineToday() {
+    const host = document.getElementById('cal-body');
+    if (!host) return;
+    host.scrollTo({ left: Math.max(0, (-TL_START_OFFSET - 2) * TL_DAY_W), behavior: 'smooth' });
+}
+// Free timeline day tapped → start an Add Booking on that cottage + date.
+function tlAddAt(propKey, iso) {
+    openAddBooking();
+    const sel = document.getElementById('modal-property');
+    if (sel && propertyMeta[propKey]) {
+        populateBookingPropertySelect(propKey); // ensures the key is listed
+        sel.value = propKey;
     }
-    return { status: 'none' };
+    document.getElementById('modal-checkin').value = iso;
+    document.getElementById('modal-checkout').value = '';
+    try {
+        applyModalPropertyMode();
+        refreshModalDateTrigger();
+        updateModalPrice();
+    } catch (e) {}
+}
+// Keep the header label in sync with the month under the left edge.
+function tlSyncMonthLabel() {
+    const host = document.getElementById('cal-body');
+    const label = document.getElementById('cal-month-display');
+    if (!host || !label) return;
+    const idx = Math.max(0, Math.round(host.scrollLeft / TL_DAY_W));
+    const start = dpParse(todayDashed());
+    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + TL_START_OFFSET + idx + 3);
+    label.innerText = d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
 }
 
 function osDonut(pct, color) {
@@ -7194,135 +7199,92 @@ function cottageMonthOccupancy() {
     return out;
 }
 
+// ---- TIMELINE calendar (Today): one row per cottage, days across ----
+// Bookings render as bars (traffic-light left edge; tap → the booking hub);
+// imported Airbnb/Vrbo blocks are greyed and display-only (the auto-sync owns
+// them); free future days are tappable to start an Add Booking there.
+const TL_START_OFFSET = -7; // window starts a week back…
+const TL_DAYS = 187; // …and runs ~6 months forward
+const TL_DAY_W = 38; // px per day (must match the inline column width below)
+let __tlScrolled = false; // first render jumps to today; later renders keep place
 function renderCalendar() {
     renderCalUpdated();
-    const year = calDate.getFullYear();
-    const month = calDate.getMonth();
+    const host = document.getElementById('cal-body');
+    if (!host) return;
+    const keepScroll = __tlScrolled ? host.scrollLeft : null;
+    const todayIso = todayDashed();
+    const t0 = dpParse(todayIso);
+    const dates = [];
+    for (let i = 0; i < TL_DAYS; i++)
+        dates.push(formatDashed(new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + TL_START_OFFSET + i)));
+    const M = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const dows = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
+    const idxOf = (ds) => Math.round((dpParse(ds) - dpParse(dates[0])) / 864e5);
 
-    const monthNames = [
-        'January',
-        'February',
-        'March',
-        'April',
-        'May',
-        'June',
-        'July',
-        'August',
-        'September',
-        'October',
-        'November',
-        'December',
-    ];
-    document.getElementById('cal-month-display').innerText = `${monthNames[month]} ${year}`;
-
-    const firstDay = new Date(year, month, 1).getDay();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-
-    const calBody = document.getElementById('cal-body');
-    calBody.innerHTML = '';
-
-    for (let i = 0; i < firstDay; i++) {
-        const emptyCell = document.createElement('div');
-        emptyCell.className = 'cal-day empty';
-        calBody.appendChild(emptyCell);
+    // Header lane: day cells (dow letter + number; month name on the 1st).
+    let head = '';
+    for (let i = 0; i < TL_DAYS; i++) {
+        const d = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + TL_START_OFFSET + i);
+        const wknd = d.getDay() === 0 || d.getDay() === 6;
+        const monthTag =
+            d.getDate() === 1 || i === 0 ? `<b>${M[d.getMonth()]}${d.getMonth() === 0 || i === 0 ? ' ' + d.getFullYear() : ''}</b>` : '';
+        head += `<span class="tl-day${wknd ? ' is-wknd' : ''}${dates[i] === todayIso ? ' is-today' : ''}" style="grid-column:${i + 1}">${monthTag}<i>${dows[d.getDay()]}</i>${d.getDate()}</span>`;
     }
 
-    const today = new Date();
-    const todayStr = formatDashed(today);
-
-    for (let d = 1; d <= daysInMonth; d++) {
-        const cellDate = new Date(year, month, d);
-        const dateStr = formatDashed(cellDate);
-
-        const cell = document.createElement('div');
-        cell.className = 'cal-day';
-        if (dateStr === todayStr) cell.classList.add('today');
-        const dow = cellDate.getDay();
-        if (dow === 0 || dow === 6) cell.classList.add('weekend');
-
-        const numSpan = document.createElement('span');
-        numSpan.className = 'day-num';
-        numSpan.innerText = d;
-        cell.appendChild(numSpan);
-
-        // Collect this day's pills (bookings + external blocks), then cap with "+N more".
-        const barsWrap = document.createElement('div');
-        barsWrap.className = 'day-bookings';
-        const dayBars = [];
-
-        // Loop over ALL properties so they appear together on one calendar
-        Object.keys(dbBookings).forEach((propKey) => {
-            const dayData = getBookingForDate(dateStr, propKey);
-            if (dayData.status === 'none') return;
-
-            const bar = document.createElement('div');
-            bar.className = `booking-bar bar-${propKey}`;
-            const short = propertyMeta[propKey].short;
-
-            // Payment dot reflects the *displayed* booking's status.
-            // For changeovers the bar represents the leaving guest's booking.
-            const payColor = paymentMeta[dayData.booking.payment]
-                ? paymentMeta[dayData.booking.payment].dot
-                : '#888';
-            const dot = `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${payColor};margin-right:5px;vertical-align:middle;"></span>`;
-            const firstName = dayData.booking.name.split(' ')[0];
-            const _pm = paymentMeta[dayData.booking.payment] || {};
-            bar.title = `${propertyMeta[propKey].name} — ${dayData.booking.name} · ${fmtDate(dayData.booking.checkIn)} → ${fmtDate(dayData.booking.checkOut)}${_pm.label ? ' · ' + _pm.label : ''}`;
-
-            // Read-only pills: the calendar is an at-a-glance overview only.
-            // Opening/acting on bookings happens on the Bookings dashboard
-            // (rows → hub) and via the dashboard search.
-            if (dayData.status === 'check-in') {
-                bar.innerHTML = `${dot}<span class="bb-code">${short}</span><span class="bb-name"> ▶ ${escapeHtml(firstName)}</span>`;
-            } else if (dayData.status === 'check-out') {
-                bar.innerHTML = `${dot}<span class="bb-code">${short}</span><span class="bb-name"> ◀ ${escapeHtml(firstName)}</span>`;
-            } else if (dayData.status === 'changeover') {
-                bar.classList.add('changeover-bar');
-                bar.innerHTML = `${dot}<span class="bb-code">${short}</span><span class="bb-name"> ⟷ Changeover</span>`;
-            } else {
-                // booked (mid-stay)
-                bar.innerHTML = `${dot}<span class="bb-code">${short}</span><span class="bb-name"> · ${escapeHtml(firstName)}</span>`;
+    const keys = Object.keys(propertyMeta);
+    const lock =
+        '<svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:2px;opacity:0.75;" aria-hidden="true"><rect x="4" y="10.5" width="16" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg>';
+    const rows = keys
+        .map((k) => {
+            const meta = propertyMeta[k] || { name: k, short: k };
+            let cells = '';
+            for (let i = 0; i < TL_DAYS; i++) {
+                const d = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + TL_START_OFFSET + i);
+                const wknd = d.getDay() === 0 || d.getDay() === 6;
+                const past = dates[i] < todayIso;
+                cells += `<span class="tl-cell${wknd ? ' is-wknd' : ''}${dates[i] === todayIso ? ' is-today' : ''}" style="grid-column:${i + 1}"${past ? '' : ` onclick="tlAddAt('${k}','${dates[i]}')" title="Add a booking at ${escapeHtml(meta.name)} from ${fmtDate(dates[i])}"`}></span>`;
             }
-
-            dayBars.push(bar);
-        });
-
-        // External (Airbnb/Vrbo) blocks — show the dates as taken, colour-coded
-        // by property, with the platform name. View/remove lives on the
-        // Bookings page's "External bookings" section.
-        Object.keys(dbBlocks).forEach((propKey) => {
-            getBlocksForDate(dateStr, propKey).forEach((bl) => {
-                const meta = propertyMeta[propKey] || { name: propKey, short: propKey };
-                const bar = document.createElement('div');
-                bar.className = `booking-bar bar-${propKey} ext-block`;
-                const arrow = dateStr === bl.checkIn ? '▶' : '·';
-                const srcName =
-                    bl.source === 'airbnb'
-                        ? 'Airbnb'
-                        : bl.source === 'vrbo'
-                          ? 'Vrbo'
-                          : bl.source
-                            ? bl.source.charAt(0).toUpperCase() + bl.source.slice(1)
-                            : 'External';
-                bar.innerHTML = `${IC_LOCK}<span class="bb-code">${meta.short}</span><span class="bb-name"> ${arrow} ${escapeHtml(srcName.toUpperCase())}</span>`;
-                bar.title = `${meta.name} — ${srcName} booking (${fmtDate(bl.checkIn)} to ${fmtDate(bl.checkOut)})`;
-                dayBars.push(bar);
+            let bars = '';
+            (dbBookings[k] || []).forEach((b) => {
+                if (!b.checkIn || !b.checkOut || b.checkOut <= dates[0] || b.checkIn >= dates[TL_DAYS - 1]) return;
+                const s0 = Math.max(0, idxOf(b.checkIn));
+                const e0 = Math.min(TL_DAYS, Math.max(s0 + 1, idxOf(b.checkOut)));
+                const ps = paymentSummary(k, b);
+                const pay = ps.fullyPaid ? 'ok' : ps.deposit > 0 ? 'warn' : 'danger';
+                bars += `<button type="button" class="tl-bar bar-${k} tl-pay-${pay}" style="grid-column:${s0 + 1}/${e0 + 1}" onclick="openBookingHub('${b.id}')" title="${escapeHtml(meta.name)} — ${escapeHtml(b.name || 'Guest')} · ${fmtDate(b.checkIn)} → ${fmtDate(b.checkOut)}">${escapeHtml((b.name || 'Guest').split(' ')[0])}</button>`;
             });
-        });
+            (dbBlocks[k] || []).forEach((bl) => {
+                if (!bl.checkIn || !bl.checkOut || bl.checkOut <= dates[0] || bl.checkIn >= dates[TL_DAYS - 1]) return;
+                const s0 = Math.max(0, idxOf(bl.checkIn));
+                const e0 = Math.min(TL_DAYS, Math.max(s0 + 1, idxOf(bl.checkOut)));
+                const src = bl.source ? bl.source.charAt(0).toUpperCase() + bl.source.slice(1) : 'External';
+                bars += `<span class="tl-bar tl-ext" style="grid-column:${s0 + 1}/${e0 + 1}" title="${escapeHtml(meta.name)} — ${escapeHtml(src)} booking · ${fmtDate(bl.checkIn)} → ${fmtDate(bl.checkOut)}">${escapeHtml(src)}</span>`;
+            });
+            const priv = meta.unlisted ? lock : '';
+            return `<div class="tl-row">
+                <div class="tl-label" title="${escapeHtml(meta.name)}">${priv}${escapeHtml(meta.short || meta.name)}</div>
+                <div class="tl-lane" style="grid-template-columns:repeat(${TL_DAYS}, ${TL_DAY_W}px)">${cells}${bars}</div>
+            </div>`;
+        })
+        .join('');
 
-        // Show up to N pills, then a "+N more" line (iOS-style), so busy days
-        // never make the row tall. Tapping "more" opens the first booking.
-        const maxBars = window.innerWidth <= 480 ? 2 : 4;
-        dayBars.slice(0, maxBars).forEach((el) => barsWrap.appendChild(el));
-        if (dayBars.length > maxBars) {
-            const more = document.createElement('div');
-            more.className = 'cal-more';
-            more.textContent = `+${dayBars.length - maxBars} more`;
-            barsWrap.appendChild(more);
-        }
-        cell.appendChild(barsWrap);
-        calBody.appendChild(cell);
+    host.innerHTML = `<div class="tl-inner">
+        <div class="tl-row tl-headrow">
+            <div class="tl-label"></div>
+            <div class="tl-lane" style="grid-template-columns:repeat(${TL_DAYS}, ${TL_DAY_W}px)">${head}</div>
+        </div>
+        ${rows}
+    </div>`;
+    if (!host.__tlScroll) {
+        host.__tlScroll = true;
+        host.addEventListener('scroll', tlSyncMonthLabel, { passive: true });
     }
+    if (keepScroll !== null) host.scrollLeft = keepScroll;
+    else {
+        host.scrollLeft = Math.max(0, (-TL_START_OFFSET - 2) * TL_DAY_W);
+        __tlScrolled = true;
+    }
+    tlSyncMonthLabel();
 }
 
 // A small "returning guest" pill for an enquiry whose email matches one or more

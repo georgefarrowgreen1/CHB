@@ -67,8 +67,8 @@ Single-operator holiday-let PWA. No framework, no build step.
   (e.g. `view-experiences` → `renderExperiencesView()`). No router lib.
 
 **Back-office IA** — the admin dock (`body.owner-mode`) has 7 buttons, each a task
-area, not a settings dump: **Today** (`view-backoffice` — just the title + READ-ONLY
-calendar now; `dock-badge-enquiries` pip), **Bookings** (`openBookings()` →
+area, not a settings dump: **Today** (`view-backoffice` — just the title + timeline
+calendar; `dock-badge-enquiries` pip), **Bookings** (`openBookings()` →
 `view-bookings`), **Inbox** (`openInbox()` → `view-inbox`; `inboxSub()` sub-folders via
 `INBOX_SUBS`; `dock-badge-inbox` pip), **Money** (`openAccounts()` → `view-accounts`;
 `accountsOpen(id)` → `#asec-<id>`, incl. the pricing coach), and
@@ -86,10 +86,14 @@ email/decline + agreed price live there; approving jumps to the new booking's hu
 (`enquiries.php` returns `booking_id`). At ≥1200px both the Bookings page and the
 Inbox dock their hub in a side pane (master–detail; the `#booking-hub-content` /
 `#enquiry-hub-content` nodes re-parent between pane and standalone view). Index rows
-share the `.bk-row` three-line anatomy. The Today calendar is READ-ONLY (no click
-handlers on its pills — don't add any); external iCal blocks appear only as
-display-only pills there (the auto-sync owns their lifecycle; `#details-modal` is
-gone and `closeDetailsModal()` survives as a defensive no-op). New booking/enquiry
+share the `.bk-row` three-line anatomy. The Today calendar is a horizontal
+multi-cottage TIMELINE (`renderCalendar()` in admin.js, `.tl-*` CSS): one lane per
+cottage, sticky labels, ~6 months of days. Its bars are launchers, not editors —
+tapping a booking bar opens `openBookingHub()`, tapping a free future cell calls
+`tlAddAt(propKey, iso)` to prefill the Add Booking modal; no other editing lives
+on the calendar. External iCal bars (`.tl-ext`) stay display-only (the auto-sync
+owns their lifecycle; `#details-modal` is gone and `closeDetailsModal()` survives
+as a defensive no-op). New booking/enquiry
 actions belong on the hubs, not new surfaces. Dates display DD/MM/YYYY everywhere
 (`fmtDate()` JS / `uk_date()` PHP); storage, APIs and ICS stay ISO.
 
