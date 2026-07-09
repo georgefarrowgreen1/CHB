@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 46;
+const ADMIN_BUNDLE_V = 47;
 let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
@@ -8922,8 +8922,42 @@ function openDatePicker() {
     dpState.end = document.getElementById('enq-checkout').value || null;
     const seed = dpParse(dpState.start) || dpToday0();
     dpState.view = new Date(seed.getFullYear(), seed.getMonth(), 1);
+    document.getElementById('date-picker').classList.remove('dp-admin');
     renderDatePicker();
     document.getElementById('date-picker').classList.add('open');
+}
+// The SAME glass picker for the back-office Add/Edit Booking modal. Taken
+// nights for the chosen cottage are shaded from the data already loaded
+// (excluding the booking being edited) but everything stays pickable — the
+// owner may back-date a stay or deliberately overlap, and the availability
+// strip + the server's clash confirm still guard the save.
+function openBookingDatePicker() {
+    dpMode = 'admin';
+    dpState.start = document.getElementById('modal-checkin').value || null;
+    dpState.end = document.getElementById('modal-checkout').value || null;
+    const seed = dpParse(dpState.start) || dpToday0();
+    dpState.view = new Date(seed.getFullYear(), seed.getMonth(), 1);
+    document.getElementById('date-picker').classList.add('dp-admin');
+    renderDatePicker();
+    document.getElementById('date-picker').classList.add('open');
+}
+// Keep the modal's date trigger label in sync with the hidden inputs.
+function refreshModalDateTrigger() {
+    const disp = document.getElementById('modal-date-display');
+    const trigger = document.getElementById('modal-date-trigger');
+    if (!disp || !trigger) return;
+    const ci = document.getElementById('modal-checkin').value;
+    const co = document.getElementById('modal-checkout').value;
+    if (ci && co) {
+        disp.innerText = `${dpPretty(ci)}  →  ${dpPretty(co)}`;
+        trigger.classList.add('has-dates');
+    } else if (ci) {
+        disp.innerText = `Check-in ${dpPretty(ci)} — pick check-out`;
+        trigger.classList.remove('has-dates');
+    } else {
+        disp.innerText = 'Select the stay dates';
+        trigger.classList.remove('has-dates');
+    }
 }
 function closeDatePicker() {
     document.getElementById('date-picker').classList.remove('open');
@@ -8961,18 +8995,26 @@ function renderDatePicker() {
     let cells = '';
     for (let i = 0; i < offset; i++) cells += `<div class="dp-day dp-empty"></div>`;
     const pickingEnd = !!(dpState.start && !dpState.end);
+    const adminConflicts = dpMode === 'admin' ? modalStayConflicts() : null;
     for (let d = 1; d <= daysInMonth; d++) {
         const date = new Date(year, month, d);
         const ds = formatDashed(date);
         const isPast = date < today;
-        const booked = dpMode !== 'search' && !isPast && isBookedNight(ds);
+        const booked =
+            dpMode === 'admin'
+                ? !!(adminConflicts && modalDayState(adminConflicts, ds))
+                : dpMode !== 'search' && !isPast && isBookedNight(ds);
         // Clickability rules (server enforces too — this is the friendly layer):
         //  - picking check-in: any free future night (a checkout/turnover day IS free)
         //  - picking check-out: any later date, as long as no booked night falls
         //    inside the stay; the first day of an existing booking is a valid
         //    checkout (turnover day), so a "booked" cell can still end a stay.
+        //  - admin mode: EVERYTHING is pickable (back-dating and deliberate
+        //    overlaps are the owner's call; taken nights stay shaded as a cue
+        //    and the availability strip + server clash confirm guard the save).
         let clickable;
-        if (isPast) clickable = false;
+        if (dpMode === 'admin') clickable = true;
+        else if (isPast) clickable = false;
         else if (dpMode === 'search')
             clickable = true; // hero search: any future date
         else if (!pickingEnd) clickable = !booked;
@@ -8980,10 +9022,11 @@ function renderDatePicker() {
             clickable = !booked; // restart selection
         else clickable = !rangeCrossesBooked(dpState.start, ds); // valid checkout
         const classes = ['dp-day'];
-        if (isPast) classes.push('dp-disabled');
+        if (isPast && dpMode !== 'admin') classes.push('dp-disabled');
         // Cross out booked nights — except when this cell is selectable as a
         // checkout (turnover day), where crossing it out would be confusing.
-        if (booked && !(pickingEnd && ds > dpState.start && clickable)) classes.push('dp-booked');
+        // (Admin mode always keeps the shading — it's the conflict cue.)
+        if (booked && (dpMode === 'admin' || !(pickingEnd && ds > dpState.start && clickable))) classes.push('dp-booked');
         if (ds === formatDashed(today)) classes.push('dp-today');
         if (dpState.start && ds === dpState.start) classes.push('dp-start');
         if (dpState.end && ds === dpState.end) classes.push('dp-end');
@@ -9020,6 +9063,16 @@ function dpClear() {
 }
 
 function dpDone() {
+    if (dpMode === 'admin') {
+        document.getElementById('modal-checkin').value = dpState.start || '';
+        document.getElementById('modal-checkout').value = dpState.end || '';
+        refreshModalDateTrigger();
+        closeDatePicker();
+        try {
+            updateModalPrice(); // also repaints the availability strip
+        } catch (e) {}
+        return;
+    }
     if (dpMode === 'search') {
         heroSearch.checkin = dpState.start || null;
         heroSearch.checkout = dpState.end || null;
@@ -9148,6 +9201,7 @@ function openHeroDatePicker() {
     dpState.end = heroSearch.checkout;
     const seed = dpParse(dpState.start) || dpToday0();
     dpState.view = new Date(seed.getFullYear(), seed.getMonth(), 1);
+    document.getElementById('date-picker').classList.remove('dp-admin');
     renderDatePicker();
     document.getElementById('date-picker').classList.add('open');
 }
@@ -11103,10 +11157,34 @@ function setModalFields(f) {
     const ovEl = document.getElementById('modal-price-override');
     if (ovEl) ovEl.value = f.priceOverride != null ? f.priceOverride : '';
     applyModalPropertyMode(); // sync pricing-field visibility + Save/Next label
+    try {
+        refreshModalDateTrigger(); // the glass-picker trigger shows the dates
+    } catch (e) {}
     updateModalPrice();
 }
 
 // ---- Live availability inside the Add/Edit modal ----
+// The chosen cottage's own bookings + imported platform blocks, with the
+// booking being edited excluded (it must not shade itself as a conflict).
+// Shared by the availability strip AND the admin mode of the glass picker.
+function modalStayConflicts() {
+    const cur = currentModalProperty();
+    const propKey = cur.key;
+    if (!propKey || !propertyMeta[propKey]) return null;
+    const mode = (document.getElementById('modal-mode') || {}).value;
+    const selfId = mode === 'booking' ? (document.getElementById('modal-record-id') || {}).value : null;
+    return {
+        propKey,
+        bookings: (dbBookings[propKey] || []).filter((b) => b.id !== selfId),
+        blocks: dbBlocks[propKey] || [],
+    };
+}
+// What (if anything) occupies one night in the modal's cottage.
+function modalDayState(c, d) {
+    for (const b of c.bookings) if (d >= b.checkIn && d < b.checkOut) return { kind: 'booked', who: b.name || 'a booking' };
+    for (const bl of c.blocks) if (d >= bl.checkIn && d < bl.checkOut) return { kind: 'external', who: (bl.source || 'external') + ' import' };
+    return null;
+}
 // Six weeks around the chosen dates with this cottage's booked days (own
 // bookings) and imported platform blocks (Airbnb/Vrbo) marked, so a clash is
 // visible BEFORE saving instead of only as the server's warning afterwards.
@@ -11119,21 +11197,12 @@ function updateModalAvailability() {
         el.innerHTML = '';
     };
     if (!isAuthenticated) return hide();
-    const cur = currentModalProperty();
-    const propKey = cur.key;
-    if (!propKey || !propertyMeta[propKey]) return hide();
+    const conflicts = modalStayConflicts();
+    if (!conflicts) return hide();
+    const propKey = conflicts.propKey;
     const ci = document.getElementById('modal-checkin').value;
     const co = document.getElementById('modal-checkout').value;
-    // The booking being edited must not shade itself as a conflict.
-    const mode = (document.getElementById('modal-mode') || {}).value;
-    const selfId = mode === 'booking' ? (document.getElementById('modal-record-id') || {}).value : null;
-    const bookings = (dbBookings[propKey] || []).filter((b) => b.id !== selfId);
-    const blocks = dbBlocks[propKey] || [];
-    const dayState = (d) => {
-        for (const b of bookings) if (d >= b.checkIn && d < b.checkOut) return { kind: 'booked', who: b.name || 'a booking' };
-        for (const bl of blocks) if (d >= bl.checkIn && d < bl.checkOut) return { kind: 'external', who: (bl.source || 'external') + ' import' };
-        return null;
-    };
+    const dayState = (d) => modalDayState(conflicts, d);
     // Grid: 6 weeks starting on the Monday of the week holding check-in (or today).
     const anchorIso = /^\d{4}-\d{2}-\d{2}$/.test(ci) ? ci : todayDashed();
     const anchor = new Date(anchorIso + 'T00:00:00Z');
@@ -11830,7 +11899,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'j6q4c9fm';
+    const BUILD = 'j6q5d1gn';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

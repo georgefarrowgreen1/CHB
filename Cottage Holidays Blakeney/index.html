@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=138">
+    <link rel="stylesheet" href="app.css?v=139">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -2133,22 +2133,21 @@
             <label class="modal-label" for="modal-postcode">Postcode</label>
             <input type="text" class="input-glass" id="modal-postcode" placeholder="e.g. NR25 7AB">
 
+            <!-- Same clickable glass calendar the customer site uses (admin mode:
+                 taken nights shaded from loaded data, everything still pickable —
+                 the availability strip + server clash confirm guard the save). -->
+            <label class="modal-label">Stay Dates</label>
+            <button type="button" class="date-range-trigger" id="modal-date-trigger" onclick="openBookingDatePicker()">
+                <span class="date-range-text" id="modal-date-display">Select the stay dates</span>
+                <span class="date-range-icon"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></span>
+            </button>
+            <input type="hidden" id="modal-checkin"><input type="hidden" id="modal-checkout">
             <div class="modal-2col">
                 <div>
-                    <label class="modal-label">Check In</label>
-                    <input type="date" class="input-glass" id="modal-checkin" oninput="updateModalPrice()">
-                </div>
-                <div class="modal-col-narrow">
                     <label class="modal-label">In Time</label>
                     <input type="time" class="input-glass" id="modal-checkin-time" value="15:00">
                 </div>
-            </div>
-            <div class="modal-2col">
                 <div>
-                    <label class="modal-label">Check Out</label>
-                    <input type="date" class="input-glass" id="modal-checkout" oninput="updateModalPrice()">
-                </div>
-                <div class="modal-col-narrow">
                     <label class="modal-label">Out Time</label>
                     <input type="time" class="input-glass" id="modal-checkout-time" value="10:00">
                 </div>
@@ -2338,7 +2337,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=245"></script>
+    <script defer src="app.js?v=246"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
