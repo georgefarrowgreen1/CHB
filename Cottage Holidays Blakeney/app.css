@@ -6042,6 +6042,56 @@ body.owner-mode .chat-widget {
     gap: 2px;
   }
 }
+/* Phone: the hub reads top-to-bottom in one clean column — even two-up button
+   grids instead of ragged pills, the pipeline as ONE swipeable line instead of
+   wrapping with dangling connectors, and tighter card padding. */
+@media (max-width: 640px) {
+  .bhub-head {
+    padding: 18px 16px;
+  }
+  .bhub-card {
+    padding: 16px;
+  }
+  .bhub-name {
+    font-size: 1.45rem;
+  }
+  .bhub-actions,
+  .bhub-btn-row {
+    display: grid;
+    /* minmax(0,…) lets a column shrink below a long label's natural width */
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    width: 100%;
+  }
+  .bhub-actions .btn-sm,
+  .bhub-btn-row .btn-sm {
+    width: 100%;
+    text-align: center;
+    white-space: normal;
+  }
+  .bhub-pipe {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .bhub-pipe::-webkit-scrollbar {
+    display: none;
+  }
+  .bhub-pipe .pipe-step {
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .bhub-next {
+    flex-direction: column;
+    align-items: stretch;
+    text-align: left;
+  }
+  .bhub-next-btn {
+    width: 100%;
+  }
+}
 
 /* ---- Live availability strip in the Add/Edit Booking modal ---- */
 #modal-availability {
