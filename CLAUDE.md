@@ -66,25 +66,32 @@ Single-operator holiday-let PWA. No framework, no build step.
 - Routing is `nav()` toggling `.page-view.active`; per-view init lives in `nav()`
   (e.g. `view-experiences` → `renderExperiencesView()`). No router lib.
 
-**Back-office IA** — the admin dock (`body.owner-mode`) has 6 buttons, each a task
-area, not a settings dump: **Today** (`view-backoffice`, `dock-badge-enquiries` pip),
-**Inbox** (`openInbox()` → `view-inbox`; `inboxSub()` sub-folders via `INBOX_SUBS`;
-`dock-badge-inbox` pip), **Money** (`openAccounts()` → `view-accounts`; `accountsOpen(id)`
-→ `#asec-<id>`, incl. the pricing coach), and **Cottages / Marketing / Settings**
-(`openArea('cottages'|'marketing'|'settings')` → `view-settings`). `view-settings` is a
-single index filtered per area by `applyAreaFilter()` (`SECTION_AREA`/`ADMIN_AREAS`); a
-row opens via `settingsOpen(id)` → `#sec-<id>`. `ADMIN_VIEWS` is the canonical
-admin-screen list (used by `nav()`/`forceAdminLogout()`) — keep it complete. The two
-dock pips both show `enquiries.length` and are synced from `refreshInboxBadge()`.
-The **booking hub** (`view-booking-hub`) is the ONE home per booking — `showDetails()`
-(app.js) only delegates to `openBookingHub()` (admin.js), so every list row and search
-hit lands there (status pipeline + next action, money, emails, guest, change history
-via `bookings.php` `history`); at ≥1200px the Bookings page docks it in a side pane
-(master–detail). The Today calendar is a READ-ONLY overview (no click handlers on its
-pills — don't add any); external iCal blocks appear ONLY as display-only pills there
-(no details/remove UI — the auto-sync owns their lifecycle, and `#details-modal` is
-gone; `closeDetailsModal()` survives as a defensive no-op). New booking actions
-belong on the hub, not new surfaces.
+**Back-office IA** — the admin dock (`body.owner-mode`) has 7 buttons, each a task
+area, not a settings dump: **Today** (`view-backoffice` — just the title + READ-ONLY
+calendar now; `dock-badge-enquiries` pip), **Bookings** (`openBookings()` →
+`view-bookings`), **Inbox** (`openInbox()` → `view-inbox`; `inboxSub()` sub-folders via
+`INBOX_SUBS`; `dock-badge-inbox` pip), **Money** (`openAccounts()` → `view-accounts`;
+`accountsOpen(id)` → `#asec-<id>`, incl. the pricing coach), and
+**Cottages / Marketing / Settings** (`openArea(...)` → `view-settings`, a single index
+filtered per area by `applyAreaFilter()`; a row opens via `settingsOpen(id)` →
+`#sec-<id>`; the health/cron pills + Activity log live here). `ADMIN_VIEWS` is the
+canonical admin-screen list (used by `nav()`/`forceAdminLogout()`) — keep it complete.
+The two dock pips both show `enquiries.length`, synced from `refreshInboxBadge()`.
+**Hubs are where you act; index rows are where you find.** The **booking hub**
+(`view-booking-hub`) is the ONE home per booking — `showDetails()` (app.js) only
+delegates to `openBookingHub()` (admin.js): status pipeline + next action, money,
+emails, guest, change history via `bookings.php` `history`. The **enquiry hub**
+(`view-enquiry-hub`, `openEnquiryHub()`) is the same for enquiries — approve/edit/
+email/decline + agreed price live there; approving jumps to the new booking's hub
+(`enquiries.php` returns `booking_id`). At ≥1200px both the Bookings page and the
+Inbox dock their hub in a side pane (master–detail; the `#booking-hub-content` /
+`#enquiry-hub-content` nodes re-parent between pane and standalone view). Index rows
+share the `.bk-row` three-line anatomy. The Today calendar is READ-ONLY (no click
+handlers on its pills — don't add any); external iCal blocks appear only as
+display-only pills there (the auto-sync owns their lifecycle; `#details-modal` is
+gone and `closeDetailsModal()` survives as a defensive no-op). New booking/enquiry
+actions belong on the hubs, not new surfaces. Dates display DD/MM/YYYY everywhere
+(`fmtDate()` JS / `uk_date()` PHP); storage, APIs and ICS stay ISO.
 
 **Backend** — flat PHP in the same folder, each a small JSON endpoint. Helpers in
 `db.php`: `db()` (lazy PDO), `body()`, `json_out()`, `clean()`, `require_admin()`,
