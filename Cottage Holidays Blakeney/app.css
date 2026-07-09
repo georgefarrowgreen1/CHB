@@ -4349,19 +4349,6 @@ body.owner-mode .chat-widget {
 }
 
 /* Enquiry cards stacked in the sidebar */
-.enquiry-card {
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-lg);
-  padding: 18px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-/* An enquiry left waiting too long gets an amber edge so it can't go stale. */
-.enquiry-card.enquiry-stale {
-  border-left: 3px solid var(--warn);
-}
 /* Availability / age chips shown on the enquiry card (free / clash / waiting). */
 .avail-chip {
   display: inline-flex;
@@ -4644,11 +4631,6 @@ body.owner-mode .chat-widget {
   color: var(--accent);
   border-color: rgba(199, 154, 100, 0.3);
 }
-.enquiry-info h3 {
-  font-family: var(--font-serif);
-  font-size: 1.2rem;
-  margin-bottom: 6px;
-}
 /* "Returning guest" pill on an enquiry whose email matches past stays. */
 .repeat-badge {
   display: inline-flex;
@@ -4743,27 +4725,6 @@ body.owner-mode .chat-widget {
   color: var(--text-muted);
   max-height: 84px;
   overflow-y: auto;
-}
-.enquiry-meta {
-  font-size: 0.8rem;
-  color: var(--text-muted);
-  line-height: 1.7;
-}
-.enquiry-meta strong {
-  color: var(--text-light);
-  font-weight: 500;
-}
-.enquiry-msg {
-  font-size: 0.78rem;
-  color: var(--text-muted);
-  margin-top: 8px;
-  font-style: italic;
-}
-.enquiry-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: auto;
 }
 .btn-sm {
   padding: 8px 14px;
@@ -5766,17 +5727,20 @@ body.owner-mode .chat-widget {
    Left: the compact bookings index. Right: the SELECTED booking's hub, docked
    (the shared #booking-hub-content node re-parents in). Below 1200px the pane
    hides and the hub opens as its own screen — the phone flow is unchanged. */
-#bookings-detail-pane {
+#bookings-detail-pane,
+#inbox-detail-pane {
   display: none;
 }
 @media (min-width: 1200px) {
-  .bk-split {
+  .bk-split,
+  .enq-split {
     display: grid;
     grid-template-columns: minmax(340px, 420px) minmax(0, 1fr);
     gap: 22px;
     align-items: start;
   }
-  #bookings-detail-pane {
+  #bookings-detail-pane,
+  #inbox-detail-pane {
     display: block;
     position: sticky;
     top: 16px;
@@ -5786,14 +5750,17 @@ body.owner-mode .chat-widget {
     padding-right: 2px;
   }
   /* Inside the pane the hub reads as one column of cards. */
-  #bookings-detail-pane .bhub-grid {
+  #bookings-detail-pane .bhub-grid,
+  #inbox-detail-pane .bhub-grid {
     grid-template-columns: 1fr;
   }
-  #bookings-detail-pane .bhub-head {
+  #bookings-detail-pane .bhub-head,
+  #inbox-detail-pane .bhub-head {
     margin-top: 0;
   }
 }
-#bookings-detail-empty {
+#bookings-detail-empty,
+#inbox-detail-empty {
   padding: 40px 24px;
   border-radius: var(--r-panel);
   border: 1px dashed var(--glass-border);

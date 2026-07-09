@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=139">
+    <link rel="stylesheet" href="app.css?v=140">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -993,6 +993,14 @@
         </div>
     </main>
 
+    <!-- ================= ENQUIRY HUB — one screen per enquiry ================= -->
+    <!-- Same pattern as the booking hub: rendered entirely by admin.js
+         renderEnquiryHub(); this is just the shell. -->
+    <main id="view-enquiry-hub" class="page-view container">
+        <span class="back-link" onclick="enquiryHubBack()">← Back</span>
+        <div id="enquiry-hub-content"><!-- admin.js injects the enquiry hub here --></div>
+    </main>
+
     <!-- ================= BOOKING HUB — one screen per booking ================= -->
     <!-- Everything about a single booking in one place: status pipeline + next
          action, money, emails, guest history and change history. Rendered
@@ -1005,6 +1013,10 @@
     <!-- ================= SETTINGS (Apple-style grouped index + drill-down) ================= -->
     <!-- ================= INBOX (dedicated back-office screen) ================= -->
     <main id="view-inbox" class="page-view container">
+        <!-- ≥1200px: master–detail like the Bookings dashboard — enquiry index
+             on the left, the SELECTED enquiry's hub docked on the right (the
+             shared #enquiry-hub-content node re-parents into the pane). -->
+        <div class="enq-split">
         <div id="inbox-main">
             <span class="back-link" onclick="nav('view-backoffice'); initBackOffice();">← Back to Dashboard</span>
             <div class="dashboard-header">
@@ -1035,6 +1047,10 @@
                     <span class="settings-row-main"><span class="settings-row-label">Follow-up emails</span><span class="settings-row-sub">Automatic nudges to enquirers &amp; past guests</span></span><span class="settings-row-chev">›</span>
                 </button>
             </div>
+        </div>
+        <aside id="inbox-detail-pane" aria-label="Selected enquiry">
+            <div id="inbox-detail-empty">Select an enquiry on the left — its details and actions appear here.</div>
+        </aside>
         </div>
         <!-- Sub-folder: Instant chat answers -->
         <div id="inbox-sub-answers" style="display:none;">
@@ -2337,7 +2353,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=247"></script>
+    <script defer src="app.js?v=248"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
