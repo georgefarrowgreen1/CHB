@@ -106,8 +106,11 @@ if ($action === 'broadcast') {
     $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
     $bodyHtml = nl2br($esc($bodyText));
 
-    $sent = 0;
-    $failed = 0;
+    // Build every personalised message first, then send them all over ONE SMTP
+    // connection (smtp_send_batch) — this used to open a fresh connect+TLS+AUTH
+    // handshake per subscriber. RFC 8058 one-click List-Unsubscribe headers are
+    // included so mail clients surface their own "Unsubscribe" affordance.
+    $msgs = [];
     foreach ($subs as $s) {
         $name = $s['name'] ?: 'there';
         $unsub = $base . 'index.html?unsub=' . rawurlencode($s['token']);
@@ -130,7 +133,22 @@ if ($action === 'broadcast') {
                 '">' .
                 $esc($unsub) .
                 '</a></p></body></html>';
-        $res = smtp_send($s['email'], $name, $subject, $text, $html);
+        $msgs[] = [
+            'to' => $s['email'],
+            'name' => $name,
+            'subject' => $subject,
+            'text' => $text,
+            'html' => $html,
+            'headers' => [
+                'List-Unsubscribe' => '<' . $unsub . '>',
+                'List-Unsubscribe-Post' => 'List-Unsubscribe=One-Click',
+            ],
+        ];
+    }
+    $results = smtp_send_batch($msgs);
+    $sent = 0;
+    $failed = 0;
+    foreach ($results as $res) {
         if (!empty($res['ok'])) {
             $sent++;
         } else {

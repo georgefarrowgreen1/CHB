@@ -353,64 +353,70 @@ if ($action === 'charge') {
         ['actor' => 'guest', 'prop_key' => $b['prop_key'], 'entity' => 'booking', 'entity_id' => (string) $bookingId],
     );
 
-    // Receipt email (best-effort — never fails the payment).
-    try {
-        require_once __DIR__ . '/mailer.php';
-        $receipt = send_payment_receipt([
-            'name' => $b['name'],
-            'email' => $b['email'],
-            'prop_key' => $b['prop_key'],
-            'prop_name' => $propName,
-            'ref' => $ref,
-            'kind' => $kind,
-            'amount' => $amountDue,
-            'total' => $total,
-            'paid_so_far' => $newPaid,
-            'balance' => round(max(0, $total - $newPaid), 2),
-            'fully_paid' => $newStatus === 'paid',
-            // Refundable deposit taken with this payment (refunded after checkout).
-            'deposit_charged' => $damagesDue,
-        ]);
-        // Record the receipt so it shows in the Bookings page email log.
-        if (is_array($receipt) && !empty($receipt['ok'])) {
-            log_activity(
-                'comms',
-                'email.receipt',
-                'Payment receipt emailed — £' . number_format($amountDue, 2) . ($b['name'] ? ' · ' . $b['name'] : ''),
-                ['actor' => 'guest', 'prop_key' => $b['prop_key'], 'entity' => 'booking', 'entity_id' => (string) $bookingId],
-            );
+    // The payment is fully recorded above — everything from here is
+    // notification, so it runs AFTER the guest's "payment successful" response
+    // is flushed (mail_after_response): the receipt + owner emails are SMTP
+    // handshakes and the pushes are external HTTP calls, and none of them
+    // should keep the guest staring at the card-payment spinner.
+    require_once __DIR__ . '/mailer.php';
+    mail_after_response(function () use ($b, $propName, $ref, $kind, $amountDue, $total, $newPaid, $newStatus, $damagesDue, $bookingId) {
+        // Receipt email (best-effort — never fails the payment).
+        try {
+            $receipt = send_payment_receipt([
+                'name' => $b['name'],
+                'email' => $b['email'],
+                'prop_key' => $b['prop_key'],
+                'prop_name' => $propName,
+                'ref' => $ref,
+                'kind' => $kind,
+                'amount' => $amountDue,
+                'total' => $total,
+                'paid_so_far' => $newPaid,
+                'balance' => round(max(0, $total - $newPaid), 2),
+                'fully_paid' => $newStatus === 'paid',
+                // Refundable deposit taken with this payment (refunded after checkout).
+                'deposit_charged' => $damagesDue,
+            ]);
+            // Record the receipt so it shows in the Bookings page email log.
+            if (is_array($receipt) && !empty($receipt['ok'])) {
+                log_activity(
+                    'comms',
+                    'email.receipt',
+                    'Payment receipt emailed — £' . number_format($amountDue, 2) . ($b['name'] ? ' · ' . $b['name'] : ''),
+                    ['actor' => 'guest', 'prop_key' => $b['prop_key'], 'entity' => 'booking', 'entity_id' => (string) $bookingId],
+                );
+            }
+        } catch (\Throwable $e) {
         }
-    } catch (\Throwable $e) {
-    }
 
-    // Notify the owner that money has landed (best-effort).
-    try {
-        require_once __DIR__ . '/mailer.php';
-        send_owner_payment_notice([
-            'name' => $b['name'],
-            'prop_key' => $b['prop_key'],
-            'prop_name' => $propName,
-            'kind' => $kind,
-            'amount' => $amountDue,
-            'status' => $newStatus,
-        ]);
-    } catch (\Throwable $e) {
-    }
-    // Wake the owner's devices (best-effort).
-    try {
-        require_once __DIR__ . '/webpush.php';
-        alert_owner('Payment received', '£' . number_format($amountDue, 2) . ' · ' . $propName);
-    } catch (\Throwable $e) {
-    }
-    // And confirm to the guest on their own device (best-effort, no-op if none).
-    try {
-        $msg =
-            $newStatus === 'paid'
-                ? 'Paid in full — thank you! We look forward to welcoming you.'
-                : 'We\'ve received £' . number_format($amountDue, 2) . ' — thank you.';
-        notify_guest_email($b['email'], 'Payment received', $msg, './');
-    } catch (\Throwable $e) {
-    }
+        // Notify the owner that money has landed (best-effort).
+        try {
+            send_owner_payment_notice([
+                'name' => $b['name'],
+                'prop_key' => $b['prop_key'],
+                'prop_name' => $propName,
+                'kind' => $kind,
+                'amount' => $amountDue,
+                'status' => $newStatus,
+            ]);
+        } catch (\Throwable $e) {
+        }
+        // Wake the owner's devices (best-effort).
+        try {
+            require_once __DIR__ . '/webpush.php';
+            alert_owner('Payment received', '£' . number_format($amountDue, 2) . ' · ' . $propName);
+        } catch (\Throwable $e) {
+        }
+        // And confirm to the guest on their own device (best-effort, no-op if none).
+        try {
+            $msg =
+                $newStatus === 'paid'
+                    ? 'Paid in full — thank you! We look forward to welcoming you.'
+                    : 'We\'ve received £' . number_format($amountDue, 2) . ' — thank you.';
+            notify_guest_email($b['email'], 'Payment received', $msg, './');
+        } catch (\Throwable $e) {
+        }
+    });
 
     json_out(['ok' => true, 'status' => $newStatus, 'paid' => $amountDue, 'fullyPaid' => $newStatus === 'paid']);
 }

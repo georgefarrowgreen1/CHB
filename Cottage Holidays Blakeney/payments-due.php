@@ -46,16 +46,29 @@ $sent = 0;
 $skipped = 0;
 $report = [];
 foreach ($due as $b) {
+    // Claim the send BEFORE emailing: for a money-chaser a duplicate email is
+    // worse than a day's delay, and stamping first means a crash mid-send can
+    // never re-ask tomorrow. A CLEAN send failure un-stamps below so it IS
+    // retried next run; only an ambiguous post-payload failure (the server may
+    // have delivered it) keeps the claim.
+    try {
+        db()
+            ->prepare('UPDATE bookings SET balance_requested_at = NOW() WHERE id = ?')
+            ->execute([(int) $b['id']]);
+    } catch (\Throwable $e) {
+    }
     // 'balance' asks for everything still outstanding (covers guests who never
     // paid the deposit too — they simply get asked for the full amount).
     $res = request_booking_payment($b, 'balance');
-    if (!empty($res['ok'])) {
+    if (empty($res['ok']) && strpos($res['error'] ?? '', 'Message not accepted') !== 0 && ($res['error'] ?? '') !== 'Nothing left to pay.') {
         try {
             db()
-                ->prepare('UPDATE bookings SET balance_requested_at = NOW() WHERE id = ?')
+                ->prepare('UPDATE bookings SET balance_requested_at = NULL WHERE id = ?')
                 ->execute([(int) $b['id']]);
         } catch (\Throwable $e) {
         }
+    }
+    if (!empty($res['ok'])) {
         try {
             notify_guest_email(
                 $b['email'],
@@ -83,15 +96,8 @@ foreach ($due as $b) {
         $sent++;
         $report[] = ['id' => (int) $b['id'], 'status' => 'requested', 'amount' => $res['amount'] ?? null];
     } else {
-        // Nothing due (already settled) — mark it so we don't retry every night.
-        if (($res['error'] ?? '') === 'Nothing left to pay.') {
-            try {
-                db()
-                    ->prepare('UPDATE bookings SET balance_requested_at = NOW() WHERE id = ?')
-                    ->execute([(int) $b['id']]);
-            } catch (\Throwable $e) {
-            }
-        }
+        // Already stamped above. 'Nothing left to pay.' (settled since) keeps the
+        // stamp so we don't re-check every night; other failures were un-stamped.
         $skipped++;
         $report[] = ['id' => (int) $b['id'], 'status' => 'skipped', 'reason' => $res['error'] ?? 'unknown'];
     }
@@ -128,14 +134,24 @@ try {
 }
 
 foreach ($toRemind as $b) {
+    // Stamp-before-send, same reasoning as the request pass above: a duplicate
+    // reminder is worse than one skipped 3-day cycle. Clean failures un-stamp.
+    try {
+        db()
+            ->prepare('UPDATE bookings SET balance_reminded_at = NOW() WHERE id = ?')
+            ->execute([(int) $b['id']]);
+    } catch (\Throwable $e) {
+    }
     $res = request_booking_payment($b, 'balance', true); // reminder = true
-    if (!empty($res['ok'])) {
+    if (empty($res['ok']) && strpos($res['error'] ?? '', 'Message not accepted') !== 0 && ($res['error'] ?? '') !== 'Nothing left to pay.') {
         try {
             db()
-                ->prepare('UPDATE bookings SET balance_reminded_at = NOW() WHERE id = ?')
+                ->prepare('UPDATE bookings SET balance_reminded_at = NULL WHERE id = ?')
                 ->execute([(int) $b['id']]);
         } catch (\Throwable $e) {
         }
+    }
+    if (!empty($res['ok'])) {
         try {
             notify_guest_email(
                 $b['email'],
@@ -147,15 +163,8 @@ foreach ($toRemind as $b) {
         }
         $reminded++;
         $remReport[] = ['id' => (int) $b['id'], 'status' => 'reminded', 'amount' => $res['amount'] ?? null];
-    } elseif (($res['error'] ?? '') === 'Nothing left to pay.') {
-        // Settled since the request — stop reminding.
-        try {
-            db()
-                ->prepare('UPDATE bookings SET balance_reminded_at = NOW() WHERE id = ?')
-                ->execute([(int) $b['id']]);
-        } catch (\Throwable $e) {
-        }
     }
+    // 'Nothing left to pay.' (settled since the request) keeps the stamp — stop reminding.
 }
 
 // ---- Abandoned-deposit recovery -------------------------------------------

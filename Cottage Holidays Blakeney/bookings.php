@@ -277,7 +277,9 @@ function damages_returned($bookingId)
 // array (or an ['error'=>...] note) so callers can surface it without failing.
 // $guestOnly = true suppresses the owner "new booking" notification — used when
 // RE-sending after a payment is recorded, so the owner isn't re-pinged each time.
-function send_booking_confirmation($bookingId, $guestOnly = false)
+// $deferOwner = true sends the guest copy now (its result is what the UI shows)
+// but moves the owner copy to after the response is flushed (mail_after_response).
+function send_booking_confirmation($bookingId, $guestOnly = false, $deferOwner = false)
 {
     try {
         $b = booking_by_id((int) $bookingId);
@@ -353,6 +355,8 @@ function send_booking_confirmation($bookingId, $guestOnly = false)
             'grand_total' => $grand,
             // Suppress the owner copy on a re-send after a payment.
             'skip_owner' => $guestOnly,
+            // Send the owner copy after the HTTP response (booking-add flow).
+            'defer_owner' => $deferOwner,
             // Signed link to the guest-viewable HTML invoice (invoice.php).
             'invoice_url' => site_base_url() . 'invoice.php?b=' . (int) $bookingId . '&token=' . invoice_token((int) $bookingId),
         ]);
@@ -531,7 +535,8 @@ if ($action === 'add') {
     $emailResult = null;
     $guestEmail = clean($in['email'] ?? '');
     if ($guestEmail !== '') {
-        $emailResult = send_booking_confirmation($newId);
+        // Guest copy sync (the UI reports its result); owner copy after the response.
+        $emailResult = send_booking_confirmation($newId, false, true);
         // Record the confirmation so it shows in the Bookings page email log.
         if (is_array($emailResult) && !empty($emailResult['guest']['ok'])) {
             log_activity('comms', 'email.confirmation', 'Booking confirmation emailed — ' . $name, [

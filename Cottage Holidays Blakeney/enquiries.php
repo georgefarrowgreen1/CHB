@@ -265,87 +265,99 @@ if ($action === 'submit') {
         } catch (\Throwable $e) {
         }
     }
-    // Acknowledge the enquiry by email (best-effort — never block the enquiry on mail).
-    try {
-        require_once __DIR__ . '/mailer.php';
-        if ($email !== '' && function_exists('send_enquiry_ack')) {
-            send_enquiry_ack(
-                [
-                    'name' => $name,
-                    'email' => $email,
-                    'prop_key' => $propKey,
-                    'check_in' => $checkIn,
-                    'check_out' => $checkOut,
-                ],
-                $accountExists,
-            );
+    // Emails go out AFTER the response is flushed (mail_after_response): the
+    // enquiry is already saved, so the guest shouldn't wait on two SMTP
+    // handshakes — on a slow mail day that blocked the public form long enough
+    // to risk a host gateway timeout. Both sends stay best-effort.
+    require_once __DIR__ . '/mailer.php';
+    $ackName = $name;
+    $ackEmail = $email;
+    $ackAccountExists = $accountExists;
+    $ownerCtx = [
+        'id' => $enqId,
+        'name' => $name,
+        'email' => $email,
+        'phone' => clean($in['phone'] ?? ''),
+        'address' => $address,
+        'postcode' => $postcode,
+        'prop_key' => $propKey,
+        'check_in' => $checkIn,
+        'check_out' => $checkOut,
+        'check_in_time' => clean($in['check_in_time'] ?? '15:00'),
+        'check_out_time' => clean($in['check_out_time'] ?? '10:00'),
+        'adults' => $adultsN,
+        'children' => $childrenN,
+        'message' => clean($in['message'] ?? ''),
+    ];
+    $base = site_base_url(); // built from $_SERVER now, used after flush
+    mail_after_response(function () use ($ackName, $ackEmail, $ackAccountExists, $ownerCtx, $base) {
+        // Acknowledge the enquiry to the guest (best-effort).
+        try {
+            if ($ackEmail !== '' && function_exists('send_enquiry_ack')) {
+                send_enquiry_ack(
+                    [
+                        'name' => $ackName,
+                        'email' => $ackEmail,
+                        'prop_key' => $ownerCtx['prop_key'],
+                        'check_in' => $ownerCtx['check_in'],
+                        'check_out' => $ownerCtx['check_out'],
+                    ],
+                    $ackAccountExists,
+                );
+            }
+        } catch (\Throwable $e) {
         }
-    } catch (\Throwable $e) {
-    }
 
-    // Let the owner act straight from their inbox: a notification email with
-    // signed one-tap Review/Approve/Decline links (enquiry-action.php shows a
-    // confirmation page first, so mail scanners that prefetch links can't act).
-    try {
-        require_once __DIR__ . '/mailer.php';
-        if (function_exists('send_owner_enquiry_email')) {
-            $newId = $enqId;
-            $base = site_base_url();
-            // Full context for the owner's inbox: the price the site quoted
-            // (estimate — approval snapshots the real figures) and whether this
-            // email has completed stays before (returning guest).
-            $priceEst = null;
-            try {
-                $rate = get_rate($propKey);
-                if ($rate) {
-                    $priceEst = price_breakdown($rate, $adultsN, $childrenN, $checkIn, $checkOut);
+        // Let the owner act straight from their inbox: a notification email with
+        // signed one-tap Review/Approve/Decline links (enquiry-action.php shows a
+        // confirmation page first, so mail scanners that prefetch links can't act).
+        try {
+            if (function_exists('send_owner_enquiry_email')) {
+                $newId = $ownerCtx['id'];
+                // Full context for the owner's inbox: the price the site quoted
+                // (estimate — approval snapshots the real figures) and whether this
+                // email has completed stays before (returning guest).
+                $priceEst = null;
+                try {
+                    $rate = get_rate($ownerCtx['prop_key']);
+                    if ($rate) {
+                        $priceEst = price_breakdown($rate, $ownerCtx['adults'], $ownerCtx['children'], $ownerCtx['check_in'], $ownerCtx['check_out']);
+                    }
+                } catch (\Throwable $e) {
                 }
-            } catch (\Throwable $e) {
-            }
-            $priorStays = 0;
-            try {
-                if ($email !== '') {
-                    $ps = db()->prepare(
-                        "SELECT COUNT(*) FROM bookings WHERE email = ? AND email <> '' AND check_out < CURDATE()",
-                    );
-                    $ps->execute([$email]);
-                    $priorStays = (int) $ps->fetchColumn();
+                $priorStays = 0;
+                try {
+                    if ($ownerCtx['email'] !== '') {
+                        $ps = db()->prepare(
+                            "SELECT COUNT(*) FROM bookings WHERE email = ? AND email <> '' AND check_out < CURDATE()",
+                        );
+                        $ps->execute([$ownerCtx['email']]);
+                        $priorStays = (int) $ps->fetchColumn();
+                    }
+                } catch (\Throwable $e) {
                 }
-            } catch (\Throwable $e) {
+                send_owner_enquiry_email(
+                    $ownerCtx + [
+                        'price' => $priceEst,
+                        'prior_stays' => $priorStays,
+                        'approve_url' =>
+                            $base .
+                            'enquiry-action.php?id=' .
+                            $newId .
+                            '&a=approve&t=' .
+                            enquiry_action_token($newId, 'approve'),
+                        'decline_url' =>
+                            $base .
+                            'enquiry-action.php?id=' .
+                            $newId .
+                            '&a=decline&t=' .
+                            enquiry_action_token($newId, 'decline'),
+                    ],
+                );
             }
-            send_owner_enquiry_email([
-                'id' => $newId,
-                'name' => $name,
-                'email' => $email,
-                'phone' => clean($in['phone'] ?? ''),
-                'address' => $address,
-                'postcode' => $postcode,
-                'prop_key' => $propKey,
-                'check_in' => $checkIn,
-                'check_out' => $checkOut,
-                'check_in_time' => clean($in['check_in_time'] ?? '15:00'),
-                'check_out_time' => clean($in['check_out_time'] ?? '10:00'),
-                'adults' => $adultsN,
-                'children' => $childrenN,
-                'message' => clean($in['message'] ?? ''),
-                'price' => $priceEst,
-                'prior_stays' => $priorStays,
-                'approve_url' =>
-                    $base .
-                    'enquiry-action.php?id=' .
-                    $newId .
-                    '&a=approve&t=' .
-                    enquiry_action_token($newId, 'approve'),
-                'decline_url' =>
-                    $base .
-                    'enquiry-action.php?id=' .
-                    $newId .
-                    '&a=decline&t=' .
-                    enquiry_action_token($newId, 'decline'),
-            ]);
+        } catch (\Throwable $e) {
         }
-    } catch (\Throwable $e) {
-    }
+    });
 
     json_out(['ok' => true, 'account_exists' => $accountExists]);
 }

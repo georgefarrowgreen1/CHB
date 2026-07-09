@@ -31,6 +31,25 @@ function email_crown_header($bg)
 // smtp_send short-circuits into the capture buffer instead of connecting, so we
 // get the EXACT bytes that would have been sent — no duplicated templates, no
 // SMTP, no side effects.
+// Run $fn AFTER the HTTP response has been flushed to the client — the same
+// pattern chat uses (messages.php chat_notify_owner_deferred): the visitor
+// isn't kept waiting on SMTP handshakes, and a slow mail server can't gateway-
+// timeout a request whose real work (the DB write) is already committed.
+// Without fastcgi_finish_request (CLI/cron) it still runs at shutdown, i.e.
+// exactly where the code sat before — never earlier, never skipped.
+function mail_after_response($fn)
+{
+    register_shutdown_function(function () use ($fn) {
+        if (function_exists('fastcgi_finish_request')) {
+            @fastcgi_finish_request();
+        }
+        try {
+            $fn();
+        } catch (\Throwable $e) {
+        }
+    });
+}
+
 function mail_preview_start()
 {
     $GLOBALS['__mail_preview'] = [];
@@ -42,43 +61,65 @@ function mail_preview_take()
     return $c;
 }
 
-/**
- * Low-level: send one email via SMTP. Returns [ok=>bool, error=>string].
- */
-function smtp_send(
-    $toEmail,
-    $toName,
-    $subject,
-    $bodyText,
-    $bodyHtml = null,
-    $attachments = [],
-    $replyTo = null,
-    $messageId = null,
-) {
-    if (!defined('MAIL_ENABLED') || !MAIL_ENABLED) {
-        return ['ok' => false, 'error' => 'Mail disabled'];
+// ============================================================
+//  SMTP transport — split into open / transmit / quit so ONE connection can
+//  carry several messages (smtp_send_batch): the owner-copies loop and the
+//  newsletter used to pay a full connect + STARTTLS + AUTH handshake PER
+//  message. smtp_send() keeps its public contract (one message, then done)
+//  and adds a single retry on TRANSIENT failures — but never after the
+//  message payload has been transmitted, so a retry can't double-send.
+// ============================================================
+
+// Read one (possibly multi-line) SMTP reply. '' on read failure/EOF.
+function smtp_read($fp)
+{
+    $data = '';
+    while (($line = fgets($fp, 515)) !== false) {
+        $data .= $line;
+        // Lines like "250-..." continue; "250 ..." (space) ends the reply.
+        if (isset($line[3]) && $line[3] === ' ') {
+            break;
+        }
     }
-    // Preview mode: capture the fully-built message instead of sending it, so the
-    // back office can show the owner exactly what a templated email looks like
-    // (booking confirmation, arrival info, payment request) — no send, no SMTP.
-    if (isset($GLOBALS['__mail_preview']) && is_array($GLOBALS['__mail_preview'])) {
-        $GLOBALS['__mail_preview'][] = [
-            'to' => (string) $toEmail,
-            'name' => (string) $toName,
-            'subject' => (string) $subject,
-            'text' => (string) $bodyText,
-            'html' => $bodyHtml !== null ? (string) $bodyHtml : '',
-        ];
-        return ['ok' => true, 'preview' => true];
+    return $data;
+}
+function smtp_cmd($fp, $command)
+{
+    fwrite($fp, $command . "\r\n");
+}
+function smtp_code($reply)
+{
+    return (int) substr(ltrim($reply), 0, 3);
+}
+// Transient failures (4xx greylist/rate-limit, connection trouble) are worth
+// one retry; permanent rejections (5xx: bad auth, relaying denied) are not.
+function smtp_transient($reply)
+{
+    $c = smtp_code($reply);
+    return $c === 0 || ($c >= 400 && $c < 500);
+}
+function smtp_quit($fp)
+{
+    @fwrite($fp, "QUIT\r\n");
+    @fclose($fp);
+}
+// One warn entry in the activity log per FINAL failure (a blip that a retry
+// recovers is no longer logged — it wasn't a problem the owner needs to see).
+function smtp_fail_log($toName, $error)
+{
+    if (function_exists('log_activity')) {
+        log_activity('system', 'email.fail', 'Email failed to send — ' . $toName, [
+            'severity' => 'warn',
+            'entity' => 'email',
+            'meta' => ['detail' => mb_substr((string) $error, 0, 200)],
+        ]);
     }
-    // Defence-in-depth: strip any CR/LF from the recipient so it can never inject
-    // extra SMTP commands (RCPT TO) or email headers. Addresses are also validated
-    // with FILTER_VALIDATE_EMAIL on input.
-    $toEmail = preg_replace('/[\r\n]+/', '', (string) $toEmail);
-    // The staging Test centre marks sample emails so they're unmistakable in the inbox.
-    if (!empty($GLOBALS['__chb_test_prefix'])) {
-        $subject = $GLOBALS['__chb_test_prefix'] . $subject;
-    }
+}
+
+// Connect + greeting + EHLO + STARTTLS + AUTH. Returns ['ok'=>true,'fp'=>…]
+// or ['ok'=>false,'error'=>…,'retryable'=>bool].
+function smtp_open()
+{
     $host = SMTP_HOST;
     $port = (int) SMTP_PORT;
     $secure = strtolower(SMTP_SECURE);
@@ -103,71 +144,38 @@ function smtp_send(
     $errstr = '';
     $fp = @stream_socket_client("{$transport}:{$port}", $errno, $errstr, $timeout, STREAM_CLIENT_CONNECT, $ctx);
     if (!$fp) {
-        if (function_exists('log_activity')) {
-            log_activity('system', 'email.fail', 'Email could not be sent — mail server unreachable', [
-                'severity' => 'warn',
-                'entity' => 'email',
-                'meta' => ['detail' => 'to ' . $toName . ' · ' . $errstr],
-            ]);
-        }
-        return ['ok' => false, 'error' => "Connect failed: {$errstr} ({$errno})"];
+        return ['ok' => false, 'error' => "Connect failed: {$errstr} ({$errno})", 'retryable' => true];
     }
     stream_set_timeout($fp, $timeout);
 
-    // Helper to read a (possibly multi-line) SMTP reply and check the code.
-    $read = function () use ($fp) {
-        $data = '';
-        while (($line = fgets($fp, 515)) !== false) {
-            $data .= $line;
-            // Lines like "250-..." continue; "250 ..." (space) ends the reply.
-            if (isset($line[3]) && $line[3] === ' ') {
-                break;
-            }
-        }
-        return $data;
-    };
-    $cmd = function ($command) use ($fp) {
-        fwrite($fp, $command . "\r\n");
-    };
-    $code = function ($reply) {
-        return (int) substr(ltrim($reply), 0, 3);
-    };
-
-    // $reply (optional) is the server's raw response line. Include a trimmed,
-    // single-line copy in the error + log so a rejection tells us WHY (e.g.
-    // "550 relaying denied", "452 too many recipients", a rate-limit notice)
-    // instead of just which step failed.
-    $fail = function ($msg, $reply = '') use ($fp, $toName) {
-        @fwrite($fp, "QUIT\r\n");
-        @fclose($fp);
+    $fail = function ($msg, $reply = '') use ($fp) {
+        smtp_quit($fp);
         $detail = trim(preg_replace('/\s+/', ' ', (string) $reply));
-        $full = $detail !== '' ? $msg . ' — ' . $detail : $msg;
-        if (function_exists('log_activity')) {
-            log_activity('system', 'email.fail', 'Email failed to send — ' . $toName, [
-                'severity' => 'warn',
-                'entity' => 'email',
-                'meta' => ['detail' => mb_substr($full, 0, 200)],
-            ]);
-        }
-        return ['ok' => false, 'error' => mb_substr($full, 0, 200)];
+        return [
+            'ok' => false,
+            'error' => mb_substr($detail !== '' ? $msg . ' — ' . $detail : $msg, 0, 200),
+            'retryable' => smtp_transient($reply),
+        ];
     };
 
-    // Greeting
-    if ($code($read()) !== 220) {
-        return $fail('No 220 greeting');
+    $greet = smtp_read($fp);
+    if (smtp_code($greet) !== 220) {
+        return $fail('No 220 greeting', $greet);
     }
 
     $ehloHost = $_SERVER['SERVER_NAME'] ?? 'localhost';
-    $cmd("EHLO {$ehloHost}");
-    if ($code($read()) !== 250) {
-        return $fail('EHLO rejected');
+    smtp_cmd($fp, "EHLO {$ehloHost}");
+    $r = smtp_read($fp);
+    if (smtp_code($r) !== 250) {
+        return $fail('EHLO rejected', $r);
     }
 
     // Upgrade to TLS on 587
     if ($secure === 'tls') {
-        $cmd('STARTTLS');
-        if ($code($read()) !== 220) {
-            return $fail('STARTTLS rejected');
+        smtp_cmd($fp, 'STARTTLS');
+        $r = smtp_read($fp);
+        if (smtp_code($r) !== 220) {
+            return $fail('STARTTLS rejected', $r);
         }
         if (
             !@stream_socket_enable_crypto(
@@ -178,47 +186,96 @@ function smtp_send(
                     STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT,
             )
         ) {
-            return $fail('TLS negotiation failed');
+            smtp_quit($fp);
+            return ['ok' => false, 'error' => 'TLS negotiation failed', 'retryable' => true];
         }
-        $cmd("EHLO {$ehloHost}");
-        if ($code($read()) !== 250) {
-            return $fail('EHLO after TLS rejected');
+        smtp_cmd($fp, "EHLO {$ehloHost}");
+        $r = smtp_read($fp);
+        if (smtp_code($r) !== 250) {
+            return $fail('EHLO after TLS rejected', $r);
         }
     }
 
     // AUTH LOGIN
-    $cmd('AUTH LOGIN');
-    if ($code($read()) !== 334) {
-        return $fail('AUTH not accepted');
+    smtp_cmd($fp, 'AUTH LOGIN');
+    $r = smtp_read($fp);
+    if (smtp_code($r) !== 334) {
+        return $fail('AUTH not accepted', $r);
     }
-    $cmd(base64_encode(SMTP_USER));
-    if ($code($read()) !== 334) {
-        return $fail('Username rejected');
+    smtp_cmd($fp, base64_encode(SMTP_USER));
+    $r = smtp_read($fp);
+    if (smtp_code($r) !== 334) {
+        return $fail('Username rejected', $r);
     }
-    $cmd(base64_encode(SMTP_PASS));
-    if ($code($read()) !== 235) {
-        return $fail('Login failed (check user/password)');
+    smtp_cmd($fp, base64_encode(SMTP_PASS));
+    $r = smtp_read($fp);
+    if (smtp_code($r) !== 235) {
+        return $fail('Login failed (check user/password)', $r);
     }
+
+    return ['ok' => true, 'fp' => $fp];
+}
+
+// Send ONE message on an open, authenticated connection. Returns
+// ['ok'=>bool,'error'=>…,'retryable'=>bool,'dirty'=>bool]. dirty=true means
+// the connection is no longer trustworthy for another message (payload was
+// transmitted but refused, or a read broke mid-exchange) — the caller must
+// close it. A clean command rejection (MAIL/RCPT/DATA refused before any
+// payload) is RSET so the same connection can carry the next message.
+function smtp_transmit(
+    $fp,
+    $toEmail,
+    $toName,
+    $subject,
+    $bodyText,
+    $bodyHtml = null,
+    $attachments = [],
+    $replyTo = null,
+    $messageId = null,
+    $extraHeaders = [],
+) {
+    // Defence-in-depth: strip any CR/LF from the recipient so it can never inject
+    // extra SMTP commands (RCPT TO) or email headers. Addresses are also validated
+    // with FILTER_VALIDATE_EMAIL on input.
+    $toEmail = preg_replace('/[\r\n]+/', '', (string) $toEmail);
+    // The staging Test centre marks sample emails so they're unmistakable in the inbox.
+    if (!empty($GLOBALS['__chb_test_prefix'])) {
+        $subject = $GLOBALS['__chb_test_prefix'] . $subject;
+    }
+
+    // A pre-payload rejection: RSET so the connection stays usable for the
+    // next message in a batch; if even RSET misbehaves, mark it dirty.
+    $reject = function ($msg, $reply) use ($fp) {
+        $detail = trim(preg_replace('/\s+/', ' ', (string) $reply));
+        smtp_cmd($fp, 'RSET');
+        $rst = smtp_read($fp);
+        return [
+            'ok' => false,
+            'error' => mb_substr($detail !== '' ? $msg . ' — ' . $detail : $msg, 0, 200),
+            'retryable' => smtp_transient($reply),
+            'dirty' => smtp_code($rst) !== 250,
+        ];
+    };
 
     // Envelope
     $from = MAIL_FROM;
-    $cmd("MAIL FROM:<{$from}>");
-    $mfReply = $read();
-    if ($code($mfReply) !== 250) {
-        return $fail('MAIL FROM rejected', $mfReply);
+    smtp_cmd($fp, "MAIL FROM:<{$from}>");
+    $mfReply = smtp_read($fp);
+    if (smtp_code($mfReply) !== 250) {
+        return $reject('MAIL FROM rejected', $mfReply);
     }
-    $cmd("RCPT TO:<{$toEmail}>");
-    $rcptReply = $read();
-    $rc = $code($rcptReply);
+    smtp_cmd($fp, "RCPT TO:<{$toEmail}>");
+    $rcptReply = smtp_read($fp);
+    $rc = smtp_code($rcptReply);
     if ($rc !== 250 && $rc !== 251) {
-        return $fail('RCPT TO rejected', $rcptReply);
+        return $reject('RCPT TO rejected', $rcptReply);
     }
 
     // Data
-    $cmd('DATA');
-    $dataReply = $read();
-    if ($code($dataReply) !== 354) {
-        return $fail('DATA not accepted', $dataReply);
+    smtp_cmd($fp, 'DATA');
+    $dataReply = smtp_read($fp);
+    if (smtp_code($dataReply) !== 354) {
+        return $reject('DATA not accepted', $dataReply);
     }
 
     $fromName = defined('MAIL_FROM_NAME') ? MAIL_FROM_NAME : $from;
@@ -241,6 +298,15 @@ function smtp_send(
             ? preg_replace('/[^A-Za-z0-9._+\-]/', '', (string) $messageId)
             : bin2hex(random_bytes(12));
     $headers .= "Message-ID: <{$mid}@{$fromDomain}>\r\n";
+    // Caller-supplied extra headers (e.g. List-Unsubscribe on marketing sends).
+    // Names/values sanitised so they can never inject additional headers.
+    foreach ((array) $extraHeaders as $hn => $hv) {
+        $hn = preg_replace('/[^A-Za-z0-9\-]/', '', (string) $hn);
+        $hv = trim(preg_replace('/[\r\n]+/', ' ', (string) $hv));
+        if ($hn !== '' && $hv !== '') {
+            $headers .= "{$hn}: {$hv}\r\n";
+        }
+    }
 
     // Base64-encode bodies in 76-char lines. This guarantees no line ever exceeds
     // the SMTP limit (which caused "501 line too long" with raw 8-bit HTML), and
@@ -287,15 +353,161 @@ function smtp_send(
         $payload = $headers . "\r\n" . $body . "\r\n.";
     }
 
-    $cmd($payload);
-    $finalReply = $read();
-    if ($code($finalReply) !== 250) {
-        return $fail('Message not accepted: ' . trim($finalReply));
+    smtp_cmd($fp, $payload);
+    $finalReply = smtp_read($fp);
+    if (smtp_code($finalReply) !== 250) {
+        // The payload was transmitted: the server MAY have accepted it despite
+        // the error, so this is NEVER retryable (a retry could double-send),
+        // and the connection state is unknown — callers must close it.
+        return [
+            'ok' => false,
+            'error' => mb_substr('Message not accepted: ' . trim($finalReply), 0, 200),
+            'retryable' => false,
+            'dirty' => true,
+        ];
     }
 
-    $cmd('QUIT');
-    @fclose($fp);
-    return ['ok' => true, 'error' => ''];
+    return ['ok' => true, 'error' => '', 'retryable' => false, 'dirty' => false];
+}
+
+/**
+ * Low-level: send one email via SMTP. Returns [ok=>bool, error=>string].
+ * Retries ONCE on a transient failure (connect trouble or a 4xx before the
+ * payload went out) — never after the payload was transmitted.
+ */
+function smtp_send(
+    $toEmail,
+    $toName,
+    $subject,
+    $bodyText,
+    $bodyHtml = null,
+    $attachments = [],
+    $replyTo = null,
+    $messageId = null,
+    $extraHeaders = [],
+) {
+    if (!defined('MAIL_ENABLED') || !MAIL_ENABLED) {
+        return ['ok' => false, 'error' => 'Mail disabled'];
+    }
+    // Preview mode: capture the fully-built message instead of sending it, so the
+    // back office can show the owner exactly what a templated email looks like
+    // (booking confirmation, arrival info, payment request) — no send, no SMTP.
+    if (isset($GLOBALS['__mail_preview']) && is_array($GLOBALS['__mail_preview'])) {
+        $GLOBALS['__mail_preview'][] = [
+            'to' => (string) $toEmail,
+            'name' => (string) $toName,
+            'subject' => (string) $subject,
+            'text' => (string) $bodyText,
+            'html' => $bodyHtml !== null ? (string) $bodyHtml : '',
+        ];
+        return ['ok' => true, 'preview' => true];
+    }
+
+    $last = ['ok' => false, 'error' => 'send failed'];
+    for ($attempt = 1; $attempt <= 2; $attempt++) {
+        $open = smtp_open();
+        if (!$open['ok']) {
+            $last = $open;
+            if ($attempt === 1 && !empty($open['retryable'])) {
+                usleep(800000); // brief pause — greylists/blips often clear immediately
+                continue;
+            }
+            break;
+        }
+        $res = smtp_transmit($fp = $open['fp'], $toEmail, $toName, $subject, $bodyText, $bodyHtml, $attachments, $replyTo, $messageId, $extraHeaders);
+        smtp_quit($fp);
+        if ($res['ok']) {
+            return ['ok' => true, 'error' => ''];
+        }
+        $last = $res;
+        if ($attempt === 1 && !empty($res['retryable'])) {
+            usleep(800000);
+            continue;
+        }
+        break;
+    }
+    smtp_fail_log($toName, $last['error'] ?? 'send failed');
+    return ['ok' => false, 'error' => $last['error'] ?? 'send failed'];
+}
+
+/**
+ * Send SEVERAL messages over ONE connection (owner copies, newsletter, cron
+ * batches) instead of a full connect+TLS+AUTH handshake per message. Each
+ * message: ['to','name','subject','text','html','attachments','reply_to',
+ * 'message_id','headers']. Returns one [ok,error] result per message, in
+ * order. If the connection turns dirty mid-batch it reconnects once and
+ * carries on; per-message failures don't stop the rest.
+ */
+function smtp_send_batch($messages)
+{
+    $results = [];
+    if (!defined('MAIL_ENABLED') || !MAIL_ENABLED) {
+        foreach ($messages as $i => $m) {
+            $results[$i] = ['ok' => false, 'error' => 'Mail disabled'];
+        }
+        return $results;
+    }
+    if (isset($GLOBALS['__mail_preview']) && is_array($GLOBALS['__mail_preview'])) {
+        foreach ($messages as $i => $m) {
+            $GLOBALS['__mail_preview'][] = [
+                'to' => (string) ($m['to'] ?? ''),
+                'name' => (string) ($m['name'] ?? ''),
+                'subject' => (string) ($m['subject'] ?? ''),
+                'text' => (string) ($m['text'] ?? ''),
+                'html' => isset($m['html']) && $m['html'] !== null ? (string) $m['html'] : '',
+            ];
+            $results[$i] = ['ok' => true, 'preview' => true];
+        }
+        return $results;
+    }
+
+    $fp = null;
+    $reconnects = 1; // allow one mid-batch reconnect (greylist blip, dropped socket)
+    foreach ($messages as $i => $m) {
+        if ($fp === null) {
+            $open = smtp_open();
+            if (!$open['ok'] && $reconnects > 0 && !empty($open['retryable'])) {
+                $reconnects--;
+                usleep(800000);
+                $open = smtp_open();
+            }
+            if (!$open['ok']) {
+                // Connection unavailable — fail this and every remaining message.
+                for ($j = $i; $j < count($messages); $j++) {
+                    if (!isset($results[$j])) {
+                        $results[$j] = ['ok' => false, 'error' => $open['error']];
+                        smtp_fail_log($messages[$j]['name'] ?? '', $open['error']);
+                    }
+                }
+                return $results;
+            }
+            $fp = $open['fp'];
+        }
+        $res = smtp_transmit(
+            $fp,
+            $m['to'] ?? '',
+            $m['name'] ?? '',
+            $m['subject'] ?? '',
+            $m['text'] ?? '',
+            $m['html'] ?? null,
+            $m['attachments'] ?? [],
+            $m['reply_to'] ?? null,
+            $m['message_id'] ?? null,
+            $m['headers'] ?? [],
+        );
+        $results[$i] = ['ok' => $res['ok'], 'error' => $res['error']];
+        if (!$res['ok']) {
+            smtp_fail_log($m['name'] ?? '', $res['error']);
+        }
+        if (!empty($res['dirty'])) {
+            smtp_quit($fp);
+            $fp = null; // next message reopens (bounded by $reconnects)
+        }
+    }
+    if ($fp !== null) {
+        smtp_quit($fp);
+    }
+    return $results;
 }
 
 // Everyone who should receive owner/admin activity notifications: the primary
@@ -340,14 +552,22 @@ function send_owner($subject, $text, $html = null, $atts = [], $replyTo = null, 
     if (!$rcpts) {
         return ['ok' => false, 'error' => 'No owner email'];
     }
-    $first = null;
-    foreach ($rcpts as $i => $to) {
-        $r = smtp_send($to, 'Owner', $subject, $text, $html, $atts, $replyTo, $messageId);
-        if ($i === 0) {
-            $first = $r;
-        }
+    // One connection for all owner copies (was one full handshake per address).
+    $msgs = [];
+    foreach ($rcpts as $to) {
+        $msgs[] = [
+            'to' => $to,
+            'name' => 'Owner',
+            'subject' => $subject,
+            'text' => $text,
+            'html' => $html,
+            'attachments' => $atts,
+            'reply_to' => $replyTo,
+            'message_id' => $messageId,
+        ];
     }
-    return $first ?: ['ok' => false, 'error' => 'No owner email'];
+    $results = smtp_send_batch($msgs);
+    return $results[0] ?? ['ok' => false, 'error' => 'No owner email'];
 }
 
 /** Encode a display name safely for a header (handles non-ASCII). */
@@ -1200,7 +1420,17 @@ function send_booking_emails($b)
         $body .= "Guests: {$party}\n";
         $ownerDep = round((float) ($b['damages_deposit'] ?? 0), 2);
         $body .= 'Total: ' . $money(round((float) $b['total'] + $ownerDep, 2)) . ($ownerDep > 0 ? ' (incl. deposit)' : '') . "\n";
-        $out['owner'] = send_owner($subject, $body);
+        if (!empty($b['defer_owner'])) {
+            // The caller only needs the GUEST result (that's what the UI shows);
+            // the owner copy can go out after the response has been flushed, so
+            // the save isn't kept waiting on a second SMTP handshake.
+            mail_after_response(function () use ($subject, $body) {
+                send_owner($subject, $body);
+            });
+            $out['owner'] = ['ok' => true, 'deferred' => true];
+        } else {
+            $out['owner'] = send_owner($subject, $body);
+        }
     }
 
     return $out;
