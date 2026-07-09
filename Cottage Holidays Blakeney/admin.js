@@ -90,6 +90,14 @@ function clearGeo(k) {
 // Open the Settings & Fees page (admin only)
 let adminPrivateContent = {}; // includes arrival-* keys (admin-only)
 async function openSettings(section) {
+    // The health / cron pills live on this page now — refresh them on open
+    // (both are cached + best-effort, so this is cheap and never blocks).
+    try {
+        checkCronHealth();
+    } catch (e) {}
+    try {
+        checkSystemHealth();
+    } catch (e) {}
     if (!isAuthenticated) {
         tryAccessBackOffice();
         return;
@@ -3291,7 +3299,7 @@ function renderMoneyForecast() {
     }
     const propCount = Object.keys(propertyMeta).length || 3;
     // Revenue: direct bookings by check-in month. Occupancy: direct bookings + iCal
-    // blocks, each cottage-night counted once (mirrors renderOwnerSummary).
+    // blocks, each cottage-night counted once.
     const addNights = (m, propKey, checkIn, checkOut) => {
         let d = dpParse(checkIn),
             end = dpParse(checkOut);
@@ -4198,13 +4206,6 @@ async function initBackOffice() {
     try {
         renderTodayPanel();
     } catch (e) {}
-    const sb = document.getElementById('booking-search');
-    if (sb) {
-        sb.value = '';
-        bookingSearch('');
-    }
-    const bsw = document.getElementById('bo-search');
-    if (bsw) bsw.classList.remove('open'); // reset to the compact pill on each visit
     showChangeoverToasts();
     // Quietly refresh external (Airbnb/Vrbo) bookings in the background so
     // cancelled or moved dates drop off on their own. Non-blocking + throttled.
@@ -4343,92 +4344,6 @@ function updateTodayAllClear() {
     // bottom margin doesn't leave a gap above the "All clear" line.
     grid.style.display = anyVisible ? '' : 'none';
     ac.style.display = anyVisible ? 'none' : 'block';
-}
-// Compact dashboard search: a slim icon/label pill by default that expands to
-// the full input on tap (and collapses + clears on Escape / re-tap).
-function toggleBoSearch() {
-    const w = document.getElementById('bo-search');
-    if (!w) return;
-    const open = w.classList.toggle('open');
-    const inp = document.getElementById('booking-search');
-    if (!inp) return;
-    if (open) {
-        inp.focus();
-    } else {
-        inp.value = '';
-        bookingSearch('');
-    }
-}
-// Quick find: filter bookings by guest name/email; click a result to open it.
-function bookingSearch(q) {
-    const out = document.getElementById('booking-search-results');
-    if (!out) return;
-    q = (q || '').trim().toLowerCase();
-    if (q.length < 2) {
-        out.innerHTML = '';
-        return;
-    }
-    const today = todayDashed();
-    const hits = [];
-    Object.keys(dbBookings).forEach((propKey) => {
-        (dbBookings[propKey] || []).forEach((b) => {
-            let ref = '';
-            try {
-                ref = bookingRef(b.id).toLowerCase();
-            } catch (e) {}
-            if (
-                (b.name || '').toLowerCase().includes(q) ||
-                (b.email || '').toLowerCase().includes(q) ||
-                ref.includes(q) ||
-                ref.replace('chb-', '').replace(/^0+/, '').includes(q)
-            )
-                hits.push({ propKey, b });
-        });
-    });
-    // Upcoming stays first (soonest first), then past stays (most recent first).
-    hits.sort((a, b) => {
-        const au = a.b.checkOut >= today,
-            bu = b.b.checkOut >= today;
-        if (au !== bu) return au ? -1 : 1;
-        return au
-            ? (a.b.checkIn || '').localeCompare(b.b.checkIn || '')
-            : (b.b.checkIn || '').localeCompare(a.b.checkIn || '');
-    });
-    // Open enquiries too — the guest the owner is looking for may not be a booking yet.
-    const enqHits = (enquiries || [])
-        .filter(
-            (e) =>
-                (e.name || '').toLowerCase().includes(q) ||
-                (e.email || '').toLowerCase().includes(q),
-        )
-        .slice(0, 4);
-    if (!hits.length && !enqHits.length) {
-        out.innerHTML = `<div class="bo-search-empty">Nothing matches “${escapeHtml(q)}” — bookings and open enquiries are searched.</div>`;
-        return;
-    }
-    out.innerHTML =
-        hits
-            .slice(0, 10)
-            .map(
-                ({ propKey, b }) =>
-                    `<button class="bo-search-hit" onclick="showDetails('${propKey}', findBookingById('${b.id}'))">
-                    <span class="prop-tag tag-${propKey}">${propertyMeta[propKey] ? propertyMeta[propKey].short : propKey}</span>
-                    <span>${escapeHtml(b.name)}</span>
-                    <span style="color:var(--text-muted);font-size:0.8rem;">${b.checkIn} → ${b.checkOut}${b.checkOut < today ? ' · past' : ''}</span>
-                    <span style="margin-left:auto;color:var(--text-muted);font-size:0.74rem;">${bookingRef(b.id)}</span>
-                </button>`,
-            )
-            .join('') +
-        enqHits
-            .map(
-                (e) =>
-                    `<button class="bo-search-hit" onclick="dashGo('enquiries')">
-                    <span class="prop-tag" style="background:rgba(255,167,38,0.18);color:var(--warn-text);">Enquiry</span>
-                    <span>${escapeHtml(e.name || e.email || 'Visitor')}</span>
-                    <span style="color:var(--text-muted);font-size:0.8rem;">${e.checkIn || ''}${e.checkIn ? ' → ' + (e.checkOut || '') : ''}</span>
-                </button>`,
-            )
-            .join('');
 }
 // Owner block: hold dates for maintenance / personal use (no fake booking).
 async function openBlockDates() {
@@ -7367,110 +7282,6 @@ function dashGo(target) {
 }
 // Occupancy heatmap: every cottage × the next N days as one compact strip, so the
 // owner can see how full the diary is at a glance. Reuses the calendar's data
-// (dbBookings/getBookingForDate) + external iCal blocks (dbBlocks/getBlocksForDate).
-function renderOccupancyHeatmap() {
-    const host = document.getElementById('occupancy-heatmap');
-    if (!host) return;
-    // Show every BOOKABLE cottage — including private (unlisted) ones — so the
-    // owner sees their real availability at a glance and can spot a private let
-    // right next to the public cottages (they're marked with a padlock).
-    const keys =
-        typeof bookableCottageKeys === 'function' ? bookableCottageKeys() : Object.keys(propertyMeta);
-    if (!keys.length) {
-        host.innerHTML = '';
-        return;
-    }
-    const DAYS = 30;
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    const dates = [];
-    for (let i = 0; i < DAYS; i++) {
-        const d = new Date(start);
-        d.setDate(start.getDate() + i);
-        dates.push(formatDashed(d));
-    }
-    let filled = 0;
-    const total = keys.length * DAYS;
-    const rows = keys
-        .map((k) => {
-            const meta = propertyMeta[k] || { name: k, short: k };
-            const priv = !!meta.unlisted;
-            const cells = dates
-                .map((ds) => {
-                    let st = 'free';
-                    if (getBookingForDate(ds, k).status !== 'none') st = 'booked';
-                    else if (typeof getBlocksForDate === 'function' && getBlocksForDate(ds, k).length)
-                        st = 'block';
-                    if (st !== 'free') filled++;
-                    const word = st === 'booked' ? 'Booked' : st === 'block' ? 'Blocked (external)' : 'Free';
-                    return `<span class="occ-cell occ-${st}" title="${escapeHtml(meta.name + ' · ' + ds + ' · ' + word)}"></span>`;
-                })
-                .join('');
-            // A private cottage gets a small padlock inside the fixed-width name
-            // cell (overflow-hidden, so it never affects the row width/layout).
-            const lock = priv
-                ? '<svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:2px;opacity:0.75;" aria-hidden="true"><rect x="4" y="10.5" width="16" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg>'
-                : '';
-            return `<div class="occ-row"><span class="occ-name" title="${escapeHtml(meta.name + (priv ? ' (private)' : ''))}">${lock}${escapeHtml(meta.short || meta.name)}</span><span class="occ-cells">${cells}</span></div>`;
-        })
-        .join('');
-    const pct = total ? Math.round((filled / total) * 100) : 0;
-    host.innerHTML = `
-        <div class="occ-head"><span class="occ-title">Occupancy — next ${DAYS} days</span><span class="occ-pct">${pct}% full</span></div>
-        <div class="occ-grid">${rows}</div>
-        <div class="occ-legend"><span><i class="occ-cell occ-booked"></i>Booked</span><span><i class="occ-cell occ-block"></i>External</span><span><i class="occ-cell occ-free"></i>Free</span></div>`;
-}
-function renderOwnerSummary() {
-    const el = document.getElementById('owner-summary');
-    if (!el) return;
-    const todayStr = todayDashed();
-    const now = new Date();
-    const in30 = formatDashed(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 30));
-
-    let arrivals30 = 0,
-        received = 0,
-        outstanding = 0,
-        unpaidUpcoming = 0;
-    Object.keys(dbBookings).forEach((propKey) => {
-        (dbBookings[propKey] || []).forEach((b) => {
-            const ps = paymentSummary(propKey, b);
-            const isUpcomingOrActive = b.checkOut >= todayStr;
-            // Arrivals in the next 30 days
-            if (b.checkIn >= todayStr && b.checkIn <= in30) arrivals30++;
-            // Money: count received always; outstanding only for not-yet-finished stays
-            received += ps.deposit;
-            if (isUpcomingOrActive) {
-                outstanding += ps.balance;
-                if (!ps.fullyPaid) unpaidUpcoming++;
-            }
-        });
-    });
-    // Include imported Airbnb / Vrbo blocks in the next-30-day arrivals count —
-    // a guest checking in via an external platform is still an arrival to
-    // prepare for. (Occupancy itself lives in the 30-day heatmap below.)
-    Object.keys(dbBlocks).forEach((propKey) => {
-        (dbBlocks[propKey] || []).forEach((bl) => {
-            const ci = dpParse(bl.checkIn);
-            if (ci) {
-                const ds = formatDashed(ci);
-                if (ds >= todayStr && ds <= in30) arrivals30++;
-            }
-        });
-    });
-    const monthName = now.toLocaleDateString('en-GB', { month: 'long' });
-
-    const paidFrac =
-        received + outstanding > 0 ? received / (received + outstanding) : received > 0 ? 1 : 0;
-    // Slim money/at-a-glance row (occupancy lives in the heatmap below; website
-    // visits live in Marketing → Analytics — neither belongs on the ops summary).
-    el.innerHTML = `
-                <div class="os-card clickable" role="button" tabindex="0" onclick="dashGo('money')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();dashGo('money')}" title="Open Money — payments & balances"><div class="os-label">Received (${monthName})</div>
-                    <div class="os-value os-good">${gbp(received)}</div>
-                    <div class="os-bar"><span style="width:${Math.round(paidFrac * 100)}%;"></span></div>
-                    <div class="os-sub">${outstanding > 0.001 ? gbp(outstanding) + ' outstanding · ' + unpaidUpcoming + ' unpaid' : 'All upcoming stays paid'}</div></div>
-                <div class="os-card clickable" role="button" tabindex="0" onclick="dashGo('calendar')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();dashGo('calendar')}" title="See upcoming arrivals on the calendar"><div class="os-label">Arrivals (next 30 days)</div>
-                    <div class="os-value">${arrivals30}</div><div class="os-sub">guests checking in</div></div>`;
-}
 // Radial donut gauge (inline SVG) for a 0–100 percentage.
 function osDonut(pct, color) {
     pct = Math.max(0, Math.min(100, pct || 0));
@@ -7483,49 +7294,6 @@ function osDonut(pct, color) {
                 <text x="32" y="38" text-anchor="middle" font-family="var(--font-serif)" font-size="16" fill="var(--text-light)">${pct}%</text>
             </svg>`;
 }
-// Filled sparkline for a small series of values (drawn into an existing <svg>).
-function osSparkline(el, values, color) {
-    if (!el) return;
-    const vals = values && values.length ? values : [0];
-    const max = Math.max(1, ...vals),
-        n = vals.length;
-    const x = (i) => (n === 1 ? 50 : (i * 100) / (n - 1));
-    const y = (v) => 34 - (v / max) * 32 + 1;
-    const pts = vals.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ');
-    const area = `0,36 ${pts} 100,36`;
-    el.innerHTML = `<polygon points="${area}" fill="${color}" fill-opacity="0.18"/>
-                <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>`;
-}
-// Fill the dashboard "Visits this week" card from the analytics endpoint
-// (cached ~60s so flipping calendar months doesn't refetch each time).
-let __homeVisits = null,
-    __homeVisitsAt = 0;
-async function refreshHomeVisits() {
-    const v = document.getElementById('os-visits');
-    if (!v) return;
-    if (!(__homeVisits && Date.now() - __homeVisitsAt < 60000)) {
-        try {
-            __homeVisits = await apiGet('track.php?action=summary&days=7');
-            __homeVisitsAt = Date.now();
-        } catch (e) {
-            __homeVisits = null;
-        }
-    }
-    const cur = document.getElementById('os-visits'); // may have re-rendered
-    if (!cur) return;
-    if (__homeVisits) {
-        cur.textContent = __homeVisits.weekViews || 0;
-        const s = document.getElementById('os-visits-sub');
-        if (s) s.textContent = `${__homeVisits.weekUnique || 0} unique · last 7 days`;
-        const daily = Array.isArray(__homeVisits.daily)
-            ? __homeVisits.daily.map((d) => d.views || 0)
-            : [];
-        osSparkline(document.getElementById('os-visits-spark'), daily, '#5BA8FF');
-    } else {
-        cur.textContent = '–';
-    }
-}
-
 // ---- Reusable mini-chart helpers (inline SVG/CSS, no library) ----
 function moneyShort(v) {
     v = +v || 0;
@@ -7598,8 +7366,6 @@ function cottageMonthOccupancy() {
 }
 
 function renderCalendar() {
-    renderOwnerSummary();
-    renderOccupancyHeatmap();
     renderCalUpdated();
     const year = calDate.getFullYear();
     const month = calDate.getMonth();
@@ -8570,7 +8336,7 @@ async function expMove(id, dir) {
     }
 }
 // Publish the facade-stubbed entry points (see app.js loadAdminBundle).
-[accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, bookingSearch, bulkImportReviews, cancelBooking, changeAdminPassword, changeMonth, inboxSub, inboxSubClose, initBackOffice, loadAdminMessages, loadDiagnostics, loadGuestList, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveDepositPct, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsRecentRender, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
+[accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, bulkImportReviews, cancelBooking, changeAdminPassword, changeMonth, inboxSub, inboxSubClose, initBackOffice, loadAdminMessages, loadDiagnostics, loadGuestList, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveDepositPct, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsRecentRender, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
     window[f.name] = f;
 });
 window.__ADMIN_LOADED = true;

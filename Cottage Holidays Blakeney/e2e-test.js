@@ -168,16 +168,10 @@ async function waitForServer(url, tries = 40) {
       const allClearShown = !!ac && ac.style.display !== 'none';
       return visibleCards > 0 || allClearShown;
     })) ? pass('today panel rendered (action tiles or all-clear)') : fail('today panel incomplete');
-    // Compact search: collapsed to a pill by default; expands on toggle.
-    (await page.evaluate(() => {
-      const w = document.getElementById('bo-search');
-      if (!w) return false;
-      const collapsed = !w.classList.contains('open');
-      toggleBoSearch();
-      const opened = w.classList.contains('open') && getComputedStyle(document.getElementById('booking-search')).display !== 'none';
-      toggleBoSearch();
-      return collapsed && opened;
-    })) ? pass('compact search toggles') : fail('compact search broken');
+    // The dashboard has no search of its own (bookings are found on the
+    // Bookings page) and no health pills (they live on Settings now).
+    (await page.evaluate(() => !document.getElementById('bo-search') || !document.querySelector('#view-backoffice #bo-search'))) ? pass('dashboard search removed') : fail('dashboard search still present');
+    (await page.evaluate(() => !!document.querySelector('#view-settings #health-pill'))) ? pass('health pill lives on Settings') : fail('health pill not on Settings');
     (await page.locator('#cal-body .cal-day, #cal-body > *').count()) > 20 ? pass('calendar grid rendered') : fail('calendar grid missing');
 
     console.log('== 5b. Back-office areas (dock reorg) ==');
