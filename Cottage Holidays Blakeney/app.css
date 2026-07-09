@@ -3050,9 +3050,16 @@ textarea.input-glass.field-sm {
 .cal-header-bar .cal-month-nav {
   grid-column: 2;
 }
-.cal-add-btn {
+.cal-actions {
   grid-column: 3;
   justify-self: end;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+}
+.cal-add-btn {
   padding: 12px 22px;
   font-size: 0.75rem;
 }
@@ -3092,10 +3099,7 @@ textarea.input-glass.field-sm {
 .cal-updated {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin: -12px 0 22px;
+  gap: 10px;
   font-size: 0.78rem;
   color: var(--text-muted);
 }
@@ -5640,6 +5644,7 @@ body.owner-mode .chat-widget {
   min-width: 0;
 }
 .tl-wrap {
+  --tl-day-w: 38px; /* px per day — the lanes' grid columns and the JS scroll maths both read this */
   max-width: 100%;
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
@@ -5769,6 +5774,21 @@ body.owner-mode .chat-widget {
   font: 600 0.7rem var(--font-sans);
   letter-spacing: 0.04em;
   cursor: pointer;
+}
+/* Phone: denser timeline — slimmer sticky label column + narrower days so more
+   of the strip fits on screen, keeping the 44px lane for comfortable taps. */
+@media (max-width: 640px) {
+  .tl-wrap {
+    --tl-day-w: 32px;
+  }
+  .tl-label {
+    flex-basis: 54px;
+    padding: 0 6px;
+    font-size: 0.68rem;
+  }
+  .tl-day {
+    font-size: 0.62rem;
+  }
 }
 
 /* ---- Booking hub (view-booking-hub): one screen per booking ---- */
@@ -8144,25 +8164,29 @@ p.lead[data-edit-text] {
   }
   
   .cal-panel {
-    padding: 12px 10px;
+    padding: 12px 8px;
   }
   .cal-header-bar {
     grid-template-columns: 1fr;
-    gap: 14px;
+    gap: 10px;
     justify-items: center;
-    margin-bottom: 16px;
+    margin-bottom: 12px;
   }
   .cal-header-bar .cal-month-nav {
     grid-column: 1;
   }
-  .cal-add-btn {
+  .cal-actions {
     grid-column: 1;
     justify-self: center;
+    justify-content: center;
+  }
+  .cal-add-btn {
+    padding: 10px 16px;
   }
   .cal-month-nav {
     justify-content: space-between;
     width: 100%;
-    max-width: 280px;
+    max-width: 300px;
   }
   .cal-legend {
     gap: 14px;
