@@ -66,15 +66,17 @@ Single-operator holiday-let PWA. No framework, no build step.
 - Routing is `nav()` toggling `.page-view.active`; per-view init lives in `nav()`
   (e.g. `view-experiences` → `renderExperiencesView()`). No router lib.
 
-**Back-office IA** — the admin dock (`body.owner-mode`) has 7 buttons, each a task
+**Back-office IA** — the admin dock (`body.owner-mode`) has 5 buttons, each a task
 area, not a settings dump: **Today** (`view-backoffice` — just the title + timeline
 calendar; `dock-badge-enquiries` pip), **Bookings** (`openBookings()` →
 `view-bookings`), **Inbox** (`openInbox()` → `view-inbox`; `inboxSub()` sub-folders via
 `INBOX_SUBS`; `dock-badge-inbox` pip), **Money** (`openAccounts()` → `view-accounts`;
 `accountsOpen(id)` → `#asec-<id>`, incl. the pricing coach), and
-**Cottages / Marketing / Settings** (`openArea(...)` → `view-settings`, a single index
-filtered per area by `applyAreaFilter()`; a row opens via `settingsOpen(id)` →
-`#sec-<id>`; the health/cron pills + Activity log live here). `ADMIN_VIEWS` is the
+**Manage** (`openArea()` → `view-settings`, ONE index — cottages, then marketing, then
+account/system, grouped by `.settings-section-label`s; the old per-area filtering is
+gone but `applyAreaFilter()` keeps its name as the open/return repaint; a row opens
+via `settingsOpen(id)` → `#sec-<id>`; the health/cron pills + Activity log live
+here). `ADMIN_VIEWS` is the
 canonical admin-screen list (used by `nav()`/`forceAdminLogout()`) — keep it complete.
 The two dock pips both show `enquiries.length`, synced from `refreshInboxBadge()`.
 **Hubs are where you act; index rows are where you find.** The **booking hub**

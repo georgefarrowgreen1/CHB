@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 54;
+const ADMIN_BUNDLE_V = 55;
 let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
@@ -1068,16 +1068,11 @@ function nav(viewId, anchorId = null) {
     }
 
     // Accentuate which admin section the dock is currently showing (clears
-    // when on a non-admin view such as the public site or the dashboard).
-    // Non-area buttons (Today, Money) highlight by their view. Area buttons
-    // (Inbox/Cottages/Marketing/Settings, all view-settings) are handled by
-    // syncDockArea() so only the ACTIVE area lights up, not all four.
+    // when on a non-admin view such as the public site) — every dock button
+    // maps 1:1 to a view now.
     document.querySelectorAll('.admin-dock-btn[data-view]').forEach((b) => {
-        if (b.hasAttribute('data-area')) return;
         b.classList.toggle('current', b.getAttribute('data-view') === viewId);
     });
-    if (viewId === 'view-settings') syncDockArea();
-    else document.querySelectorAll('.admin-dock-btn[data-area]').forEach((b) => b.classList.remove('current'));
     requestAnimationFrame(moveDockIndicator);
 
     // The cottage page's sticky booking bar lives on <body> (so its position:fixed
@@ -1697,7 +1692,7 @@ function exitPreview() {
 }
 
 // ---- Owner navigation helpers ----
-// Enquiries now live in Settings → Enquiries.
+// Enquiries now live in Manage → Enquiries.
 async function openEnquiriesView() {
     openInbox();
 }
@@ -1714,13 +1709,6 @@ async function refreshOwnerHomeBadges() {
     } catch (e) {
         /* badges are a nicety; never block the page */
     }
-}
-let currentAdminArea = 'settings';
-function syncDockArea() {
-    document
-        .querySelectorAll('.admin-dock-btn[data-area]')
-        .forEach((b) => b.classList.toggle('current', b.getAttribute('data-area') === currentAdminArea));
-    requestAnimationFrame(moveDockIndicator);
 }
 // Fill the Inbox screen — also called from nav() so a history/back restore repaints it.
 // __inboxSubStamp: bumped by inboxSub() (admin.js); the tail below only resets
@@ -3742,7 +3730,7 @@ async function submitGuestReview(propKey) {
 // ---- Booking Terms & Conditions ----
 // Render the terms into the modal body (uses any Live Editor title override).
 // Clause 7's refund terms come from the cottage's chosen cancellation policy
-// (set in Settings → Cancellation policy), so the Terms always match what the
+// (set in Manage → Cancellation policy), so the Terms always match what the
 // guest is shown on the cottage page.
 function cancellationClauseParagraphs(propKey) {
     const pol =
@@ -4965,7 +4953,7 @@ let activePropSafety = [];
 const IC_SHIELD =
     '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6z"/></svg>';
 // Display-only on the cottage page; the list is edited in
-// Settings → Preferences → cottage → Safety & property.
+// Manage → Preferences → cottage → Safety & property.
 function renderSafety(propKey) {
     const wrap = document.getElementById('prop-safety');
     if (!wrap) return;
@@ -5031,7 +5019,7 @@ const DEFAULT_DARKSKIES =
 const DEFAULT_ACCESS =
     "Please ask us before you book if you have specific access needs — we're happy to talk through the layout. Tell us about parking distance, steps or stairs, doorway widths, ground-floor sleeping and bathroom facilities so we can confirm the cottage is right for you.";
 // ---- Tide widget (Blakeney) — fetched once from tides.php, cached in-memory.
-// Hidden entirely unless an API key is configured (Settings → API keys). ----
+// Hidden entirely unless an API key is configured (Manage → API keys). ----
 let __tideData = null;
 // ONE fetch for tide data (2 days covers both consumers) — the Experiences
 // panel and the in-stay strip are just two formatters over the same cache.
@@ -5353,7 +5341,7 @@ function renderHouseRules(propKey) {
     const item = (text) =>
         `<div class="things-item">${IC_CHECK} <span>${escapeHtml(text)}</span></div>`;
     // Auto lines from the functional booking rules, then the owner's custom
-    // house-rules list (managed in Settings → Preferences → cottage → House rules).
+    // house-rules list (managed in Manage → Preferences → cottage → House rules).
     const custom = Array.isArray(siteContent['houserules-' + propKey])
         ? siteContent['houserules-' + propKey]
         : DEFAULT_HOUSE_RULES;
@@ -6308,7 +6296,7 @@ async function loadSquareAdminConfig(pre) {
     } catch (e) {
         squareAdminEnabled = false;
     }
-    // Repaint the Settings → Payments panel only if the admin bundle is already
+    // Repaint the Manage → Payments panel only if the admin bundle is already
     // in — this runs on PUBLIC boot too, and calling the facade stub here would
     // make every guest download admin.js. Post-login, settingsOpen('payments')
     // and nav(view-settings) render it anyway.
@@ -6897,7 +6885,7 @@ function chatQuick(text) {
 // ---- In-chat assistant: instant FAQ answers + a live availability check.
 //  Pure client-side (no owner ping) so common questions self-serve; the guest
 //  can still type below for a real reply. Answers are owner-editable in
-//  Settings → Guest messages (content keys below), with sensible defaults.
+//  Manage → Guest messages (content keys below), with sensible defaults.
 const CHAT_FAQ = {
     checkin: {
         q: 'What time is check-in and check-out?',
@@ -7618,7 +7606,7 @@ function reviewCardHtml(r) {
 // All genuine guest reviews, newest first. Two real sources are combined:
 //  1. On-site submissions — approved, from guests who actually completed a
 //     stay (served by reviews.php). These are real and come newest-first.
-//  2. Owner-curated reviews entered in Settings → Guest Reviews — genuine
+//  2. Owner-curated reviews entered in Manage → Guest Reviews — genuine
 //     reviews imported from other platforms (Airbnb/Vrbo/Google etc.),
 //     each tagged with its source so visitors see where it came from.
 // Both feed the per-cottage and host counts/ratings.
@@ -8077,7 +8065,7 @@ function enquireContinue() {
     if (box) box.scrollTop = 0;
 }
 
-// ---- Guest photos: admin moderation (Settings → Guest photos) ----
+// ---- Guest photos: admin moderation (Manage → Guest photos) ----
 async function loadGuestPhotosAdmin() {
     const wrap = document.getElementById('photos-admin');
     if (!wrap) return;
@@ -10119,12 +10107,6 @@ window.addEventListener('popstate', (ev) => {
                 else inboxSubClose();
             } else if (st.view === 'view-settings') {
                 nav('view-settings');
-                // Restore the dock area first so the index/section shows the
-                // right area's rows and highlight.
-                if (st.area) {
-                    currentAdminArea = st.area;
-                    try { syncDockArea(); } catch (e) {}
-                }
                 if (st.section) {
                     settingsOpen(st.section);
                     // Walk back down any deep drill-down (cottage editor,
@@ -10900,7 +10882,7 @@ function openCustomSetup(name) {
     const s = (__customBooking && __customBooking.setup) || null;
     const sub = document.getElementById('newprop-sub');
     if (sub)
-        sub.textContent = `Prices for “${name}”. You can change these later in Settings → Preferences.`;
+        sub.textContent = `Prices for “${name}”. You can change these later in Manage → Preferences.`;
     document.getElementById('newprop-couple').value = s ? s.couple || '' : '';
     document.getElementById('newprop-extra-adult').value = s ? s.extraAdult || '' : '';
     document.getElementById('newprop-child').value = s ? s.child || '' : '';
@@ -11912,7 +11894,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'j6qdj9ov';
+    const BUILD = 'j6qek0pw';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
