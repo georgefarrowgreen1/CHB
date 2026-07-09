@@ -165,7 +165,7 @@ async function waitForServer(url, tries = 40) {
     // Bookings page) and no health pills (they live on Settings now).
     (await page.evaluate(() => !document.getElementById('bo-search') || !document.querySelector('#view-backoffice #bo-search'))) ? pass('dashboard search removed') : fail('dashboard search still present');
     (await page.evaluate(() => !!document.querySelector('#view-settings #health-pill'))) ? pass('health pill lives on Settings') : fail('health pill not on Settings');
-    (await page.locator('#cal-body .cal-day, #cal-body > *').count()) > 20 ? pass('calendar grid rendered') : fail('calendar grid missing');
+    (await page.locator('#cal-body .tl-day').count()) > 20 ? pass('timeline calendar rendered') : fail('timeline missing');
 
     console.log('== 5b. Back-office areas (dock reorg) ==');
     const areaShows = async (area) => {

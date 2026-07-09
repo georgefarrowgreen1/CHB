@@ -3159,125 +3159,42 @@ textarea.input-glass.field-sm {
 }
 /* iOS-Calendar-style month grid: borderless cells, thin week separators,
            dimmed weekend numbers, a filled "today" circle, clean event pills. */
-.cal-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 0;
-}
-.cal-day-header {
-  text-align: center;
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  letter-spacing: 1.4px;
-  font-weight: 500;
-  padding-bottom: 12px;
-}
-.cal-day {
-  background: transparent;
-  border: none;
-  border-top: 1px solid var(--glass-border);
-  min-height: 112px;
-  padding: 8px 6px 6px;
-  cursor: default;
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  transition: background 0.2s var(--fluid-bezier);
-}
-.cal-day:not(.empty):hover {
-  background: rgba(255, 255, 255, 0.03);
-}
-.cal-day.weekend .day-num {
-  color: var(--text-muted);
-}
-.cal-day.today .day-num {
-  font-weight: 700;
-  color: #1a191b;
-  background: var(--accent);
-  border-radius: 50%;
-  width: 26px;
-  height: 26px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-}
-.day-num {
-  font-size: 0.98rem;
-  align-self: flex-start;
-  font-weight: 600;
-  z-index: 2;
-  margin-bottom: 6px;
-  color: var(--text-light);
-}
+
+
+
+
+
+
+
 
 /* Stacked booking pills inside each day */
-.day-bookings {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  margin-top: 2px;
-}
+
 /* Calendar pills are a read-only overview (no click affordance) — bookings
    are opened from the Bookings dashboard / search, external blocks from the
    Bookings page's External section. */
-.booking-bar {
-  font-size: 0.66rem;
-  padding: 3px 8px;
-  border-radius: var(--r-pill);
-  cursor: default;
-  font-weight: 500;
-  color: var(--text-light);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  border-left: 3px solid;
-}
-.booking-bar .bb-code {
-  font-weight: 600;
-}
-.cal-more {
-  font-size: 0.64rem;
-  color: var(--text-muted);
-  padding: 2px 6px;
-  margin-top: 1px;
-}
+
+
+
 @media (max-width: 480px) {
-  .booking-bar .bb-name {
-    display: none;
-  }
-  .booking-bar {
-    border-radius: 7px;
-  }
+  
+  
 }
-.booking-bar.bar-21a {
+.tl-bar.bar-21a {
   background: var(--prop-21a-bg);
   border-left-color: var(--prop-21a);
 }
-.booking-bar.bar-jollyboat {
+.tl-bar.bar-jollyboat {
   background: var(--prop-jollyboat-bg);
   border-left-color: var(--prop-jollyboat);
 }
-.booking-bar.bar-pimpernel {
+.tl-bar.bar-pimpernel {
   background: var(--prop-pimpernel-bg);
   border-left-color: var(--prop-pimpernel);
 }
-.booking-bar.changeover-bar {
-  border-left-style: double;
-  border-left-width: 4px;
-}
+
 /* External (Airbnb/Vrbo) imported blocks: keep the property colour but add
            diagonal stripes + a dashed edge so they read as "taken elsewhere". */
-.booking-bar.ext-block {
-  background-image: repeating-linear-gradient(
-    45deg,
-    rgba(255, 255, 255, 0.12) 0 4px,
-    transparent 4px 8px
-  );
-  border-left-style: dashed;
-  font-style: italic;
-}
+
 
 .detail-grid {
   display: grid;
@@ -5716,6 +5633,144 @@ body.owner-mode .chat-widget {
   flex-shrink: 0;
 }
 
+/* ---- Timeline calendar (Today): rows = cottages, days flow across ---- */
+/* The timeline's intrinsic width (187 × 38px) must scroll INSIDE its panel,
+   never widen the page: kill min-content sizing up the ancestor chain. */
+.bo-layout > * {
+  min-width: 0;
+}
+.tl-wrap {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  border-radius: var(--r-sm);
+}
+.tl-inner {
+  display: inline-block;
+  min-width: 100%;
+}
+.tl-row {
+  display: flex;
+  align-items: stretch;
+}
+.tl-label {
+  position: sticky;
+  left: 0;
+  z-index: 3;
+  flex: 0 0 74px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--dark-grey); /* the page ground — solid so bars slide under it */
+  border-right: 1px solid var(--glass-border);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tl-lane {
+  position: relative;
+  display: grid;
+  grid-auto-flow: column;
+  grid-template-rows: 44px;
+  align-items: center;
+}
+.tl-headrow .tl-lane {
+  grid-template-rows: 40px;
+}
+.tl-day {
+  grid-row: 1;
+  position: relative;
+  text-align: center;
+  font-size: 0.66rem;
+  color: var(--text-muted);
+  padding-top: 14px;
+  border-left: 1px solid rgba(255, 255, 255, 0.04);
+}
+.tl-day i {
+  font-style: normal;
+  opacity: 0.55;
+  margin-right: 2px;
+  font-size: 0.58rem;
+}
+.tl-day b {
+  position: absolute;
+  top: 0;
+  left: 2px;
+  font-size: 0.62rem;
+  letter-spacing: 0.04em;
+  color: var(--text-light);
+  white-space: nowrap;
+}
+.tl-day.is-wknd {
+  background: rgba(255, 255, 255, 0.025);
+}
+.tl-day.is-today {
+  color: var(--accent);
+  font-weight: 700;
+}
+.tl-cell {
+  grid-row: 1;
+  height: 100%;
+  border-left: 1px solid rgba(255, 255, 255, 0.04);
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  cursor: pointer;
+}
+.tl-cell.is-wknd {
+  background: rgba(255, 255, 255, 0.025);
+}
+.tl-cell.is-today {
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.tl-cell:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.tl-bar {
+  grid-row: 1;
+  z-index: 2;
+  height: 30px;
+  margin: 0 1px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: var(--r-pill);
+  border-left: 3px solid;
+  font: 600 0.7rem var(--font-sans);
+  color: var(--text-light);
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+.tl-bar.tl-pay-ok {
+  border-left-color: var(--ok);
+}
+.tl-bar.tl-pay-warn {
+  border-left-color: var(--warn);
+}
+.tl-bar.tl-pay-danger {
+  border-left-color: var(--danger);
+}
+.tl-bar.tl-ext {
+  background: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.05) 6px, rgba(255, 255, 255, 0.1) 6px, rgba(255, 255, 255, 0.1) 12px);
+  border-left-color: rgba(255, 255, 255, 0.25);
+  color: var(--text-muted);
+  cursor: default;
+}
+.tl-today-btn {
+  margin-left: 8px;
+  padding: 6px 14px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--glass-border);
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-light);
+  font: 600 0.7rem var(--font-sans);
+  letter-spacing: 0.04em;
+  cursor: pointer;
+}
+
 /* ---- Booking hub (view-booking-hub): one screen per booking ---- */
 .bhub-head {
   padding: 22px 24px;
@@ -6254,13 +6309,8 @@ body.owner-mode .chat-widget {
     height: 9px;
   }
   
-  .cal-day {
-    min-height: 128px;
-  }
-  .booking-bar {
-    font-size: 0.7rem;
-    padding: 4px 9px;
-  }
+  
+  
 }
 /* Tidy action row on guest booking cards */
 .card-actions {
@@ -8118,27 +8168,11 @@ p.lead[data-edit-text] {
     gap: 14px;
     margin-bottom: 16px;
   }
-  .cal-grid {
-    gap: 4px;
-  }
-  .cal-day {
-    height: 84px;
-    min-height: 84px;
-    padding: 5px 4px;
-    overflow: hidden;
-  }
-  .cal-day-header {
-    font-size: 0.7rem;
-    padding-bottom: 8px;
-  }
-  .day-num {
-    font-size: 0.8rem;
-    margin-bottom: 2px;
-  }
-  .booking-bar {
-    font-size: 0.6rem;
-    padding: 2px 4px;
-  }
+  
+  
+  
+  
+  
   .modal-box {
     padding: 26px 22px;
   }
@@ -8193,35 +8227,12 @@ p.lead[data-edit-text] {
   .cal-panel {
     padding: 10px 7px;
   }
-  .cal-grid {
-    gap: 3px;
-  }
-  .cal-day {
-    height: 78px;
-    min-height: 78px;
-    padding: 4px 3px;
-    border-radius: 8px;
-    overflow: hidden;
-  }
-  .cal-day-header {
-    font-size: 0.6rem;
-    letter-spacing: 0;
-    padding-bottom: 6px;
-  }
-  .day-num {
-    font-size: 0.72rem;
-    margin-bottom: 1px;
-  }
-  .cal-day.today .day-num {
-    width: 20px;
-    height: 20px;
-    font-size: 0.68rem;
-  }
-  .booking-bar {
-    font-size: 0.55rem;
-    padding: 2px 4px;
-    border-radius: 5px;
-  }
+  
+  
+  
+  
+  
+  
   /* Back-office at-a-glance cards: a touch tighter still */
   
   .today-card {
@@ -8278,14 +8289,8 @@ p.lead[data-edit-text] {
 
 /* ---------- VERY SMALL / NARROW (≤360px) ---------- */
 @media (max-width: 360px) {
-  .cal-day {
-    height: 80px;
-    min-height: 80px;
-    overflow: hidden;
-  }
-  .booking-bar {
-    font-size: 0.45rem;
-  }
+  
+  
   .hero p {
     letter-spacing: 1px;
   }

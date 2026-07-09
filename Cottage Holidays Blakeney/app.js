@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 50;
+const ADMIN_BUNDLE_V = 51;
 let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
@@ -8354,7 +8354,7 @@ function injectPropColors() {
             classRules +=
                 `.swatch-${k}{background:var(--prop-${k}-bg);border:1px solid var(--prop-${k}-border);}` +
                 `.tag-${k}{background:var(--prop-${k}-bg);border:1px solid var(--prop-${k}-border);color:var(--prop-${k});}` +
-                `.booking-bar.bar-${k}{background:var(--prop-${k}-bg);color:var(--prop-${k});}`;
+                `.tl-bar.bar-${k}{background:var(--prop-${k}-bg);color:var(--prop-${k});}`;
         });
         let style = document.getElementById('prop-accent-colors');
         if (!style) {
@@ -11912,7 +11912,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'j6q8g4jq';
+    const BUILD = 'j6q9h5kr';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

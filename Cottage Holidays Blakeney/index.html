@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=141">
+    <link rel="stylesheet" href="app.css?v=142">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -904,6 +904,7 @@
                         <button onclick="changeMonth(-1)">&#10094;</button>
                         <div class="cal-month-title" id="cal-month-display">June 2026</div>
                         <button onclick="changeMonth(1)">&#10095;</button>
+                        <button class="tl-today-btn" onclick="timelineToday()">Today</button>
                     </div>
                     <div style="display:flex;gap:8px;flex-wrap:wrap;">
                         <button class="btn-glass cal-add-btn" onclick="openAddBooking()" data-edit-text="cal-add-btn">+ Add Booking</button>
@@ -916,14 +917,11 @@
                     <button class="cal-refresh-btn" id="cal-refresh-btn" onclick="autoSyncIcalBlocks(true)" title="Refresh external bookings now" aria-label="Refresh external bookings now"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-1.9 5.3"/><path d="M20 5v6h-6"/></svg></button>
                 </div>
 
+                <!-- TIMELINE: one row per cottage, days flowing across — bookings
+                     as bars (tap → hub), imported blocks greyed (display-only),
+                     free days tappable to start an Add Booking on that date. -->
                 <div class="glass-panel cal-panel">
-                    <div class="cal-grid" id="cal-headers">
-                        <div class="cal-day-header">Sun</div><div class="cal-day-header">Mon</div><div class="cal-day-header">Tue</div>
-                        <div class="cal-day-header">Wed</div><div class="cal-day-header">Thu</div><div class="cal-day-header">Fri</div><div class="cal-day-header">Sat</div>
-                    </div>
-                    <div class="cal-grid" id="cal-body">
-                        <!-- JS injects days here -->
-                    </div>
+                    <div id="cal-body" class="tl-wrap"><!-- renderCalendar() injects the timeline --></div>
                 </div>
 
                 <!-- Guest details now open in a pop-up when a booking is clicked -->
@@ -2353,7 +2351,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=249"></script>
+    <script defer src="app.js?v=250"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
