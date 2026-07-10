@@ -215,6 +215,11 @@ RewriteRule ^(.+)\.(js|css)$ $1.$2.br [L]
 # ---- Don't list directory contents ----
 Options -Indexes
 
+# ---- Hide dotfiles (.gitignore, .htaccess itself, any future .env) ----
+# .well-known stays reachable (security.txt, Apple Pay domain association).
+RedirectMatch 404 "(?!^/\.well-known/)^/\..*"
+
+
 # ---- Keep the staging site out of search engines ----
 # The same code is deployed to staging.<domain>; on that host only, send a
 # noindex header so the test environment is never indexed or shown publicly.
@@ -230,8 +235,15 @@ AddDefaultCharset UTF-8
 
 # ---- Security headers ----
 <IfModule mod_headers.c>
-    # Tell browsers to always use HTTPS for this site (6 months)
-    Header set Strict-Transport-Security "max-age=15552000"
+    # Tell browsers to always use HTTPS for this site (1 year, all subdomains —
+    # staging is HTTPS too, so nothing breaks)
+    Header set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    # This site never uses camera/mic/location — say so explicitly, which also
+    # denies them to anything embedded. (payment is deliberately NOT listed:
+    # its browser default of 'self' is exactly what Square/Google Pay need.)
+    Header set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    # Keep our window object isolated from cross-origin openers
+    Header set Cross-Origin-Opener-Policy "same-origin-allow-popups"
     # Don't let browsers guess content types (blocks some injection tricks)
     Header set X-Content-Type-Options "nosniff"
     # This site never needs to be embedded in someone else's frame
