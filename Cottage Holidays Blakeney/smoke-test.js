@@ -274,6 +274,8 @@ check('viewport-fit=cover present', /viewport-fit=cover/.test(html));
         /<meta property="og:url" content="[^"]*"/,
         /<meta name="twitter:title" content="[^"]*"/,
         /<meta name="twitter:description" content="[^"]*"/,
+        /<meta property="og:image:alt" content="[^"]*"/,
+        /<meta name="twitter:image:alt" content="[^"]*"/,
         /<h1 class="section-title prop-h1" id="prop-title"><\/h1>/,
         /<p class="prop-subtitle" id="prop-subtitle"><\/p>/,
         /id="prop-desc"><\/p>/,

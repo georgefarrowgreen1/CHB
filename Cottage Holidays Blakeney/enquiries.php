@@ -144,6 +144,12 @@ if ($action === 'submit') {
     if ($checkOut <= $checkIn) {
         json_out(['error' => 'Check-out must be after check-in'], 400);
     }
+    // The picker blocks past dates client-side; enforce it here so a direct
+    // POST can't create a stay that has already started. (Admin edits are
+    // exempt — the owner may legitimately amend a historic enquiry.)
+    if (!$isAdminEdit && $checkIn < date('Y-m-d')) {
+        json_out(['error' => 'Check-in can’t be in the past.'], 400);
+    }
     // The email was previously stored with NO validation at all — a typo'd
     // address sailed through submit, approval and the confirmation send before
     // anyone noticed (see the ntl-world.com incident). Validate the format and
@@ -163,6 +169,19 @@ if ($action === 'submit') {
         if (empty($chk['ok']) && ($chk['reason'] ?? '') === 'no_mail') {
             json_out(['error' => 'That email domain can’t receive mail — please check the part after the @.'], 400);
         }
+    }
+
+    // We must be able to REPLY: require an email or a phone number. Without
+    // either, the ack email is skipped and the owner has no way to answer —
+    // the guest waits for a response that can never come.
+    $enqPhone = clean($in['phone'] ?? '');
+    if (!$isAdminEdit && $enqEmail === '' && $enqPhone === '') {
+        json_out(['error' => 'Please give an email address or phone number so we can reply.'], 400);
+    }
+    // The form requires a message client-side; mirror it here (admin edits may
+    // carry an empty notes field, so they're exempt).
+    if (!$isAdminEdit && trim((string) ($in['message'] ?? '')) === '') {
+        json_out(['error' => 'Please tell us a little about your party.'], 400);
     }
 
     $address = clean($in['address'] ?? '');
@@ -236,9 +255,25 @@ if ($action === 'submit') {
         json_out(['error' => 'Sorry, those dates are no longer available. Please choose different dates.'], 409);
     }
 
-    // Record terms acceptance (server timestamp is authoritative)
+    // Record terms acceptance (server timestamp is authoritative). The client
+    // blocks submit without the tick; enforce it here so a direct PUBLIC POST
+    // can't create a booking-to-be with NULL terms acceptance. Admin edits are
+    // exempt (the owner amending an enquiry mustn't wipe or fake acceptance —
+    // the original values are preserved by the edit path).
+    if (!$isAdminEdit && empty($in['terms_accepted'])) {
+        json_out(['error' => 'Please accept the booking terms to send your enquiry.'], 400);
+    }
     $termsAt = !empty($in['terms_accepted']) ? date('Y-m-d H:i:s') : null;
     $termsVer = $termsAt ? clean($in['terms_version'] ?? '') : null;
+    // Admin Edit/Move works as decline + resubmit — carry the guest's ORIGINAL
+    // acceptance across so an edit never silently wipes (or re-dates) it.
+    if ($isAdminEdit && $termsAt === null && !empty($in['terms_accepted_at_passthrough'])) {
+        $orig = clean($in['terms_accepted_at_passthrough']);
+        if (preg_match('/^\d{4}-\d{2}-\d{2}( \d{2}:\d{2}:\d{2})?$/', $orig)) {
+            $termsAt = $orig;
+            $termsVer = clean($in['terms_version'] ?? '') ?: null;
+        }
+    }
 
     db()
         ->prepare(

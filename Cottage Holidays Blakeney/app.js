@@ -2853,7 +2853,9 @@ async function openPayView(token, bookingId, kind) {
     } catch (e) {}
     payState.token = token;
     payState.bookingId = bookingId;
-    payState.kind = kind === 'balance' ? 'balance' : 'deposit';
+    // 'hold' MUST survive: a legacy ?hold= link promises an authorise-only
+    // refundable hold — coercing it to 'deposit' would CHARGE the guest.
+    payState.kind = kind === 'balance' || kind === 'hold' ? kind : 'deposit';
     squareCard = null;
     ['pay-body', 'pay-done', 'pay-error'].forEach((id) => {
         const e = document.getElementById(id);
@@ -2899,7 +2901,7 @@ async function openPayView(token, bookingId, kind) {
                 : (s.kind === 'balance'
                       ? `of ${gbp(grandTotalRef)} total`
                       : `${s.depositPct}% deposit · ${gbp(grandTotalRef)} total`) +
-                  (dep > 0 ? ` · incl. ${gbp(dep)} refundable deposit (refunded after checkout)` : '');
+                  (dep > 0 ? ` · incl. ${gbp(dep)} refundable deposit (refunded after your stay)` : '');
         try {
             const pb = document.getElementById('pay-btn');
             if (pb) pb.textContent = s.kind === 'hold' ? 'Place hold' : 'Pay now';
@@ -5723,7 +5725,7 @@ function priceBreakdown(propKey, adults, children, checkIn, checkOut, depositOve
     // Transaction fee applies to rental income only (not the refundable deposit).
     const txFee = Math.round(nightly * (r.transactionPct / 100) * 100) / 100;
     // The damages deposit is CHARGED together with the guest's first payment and
-    // refunded after checkout, so it is NOT part of the rental total here.
+    // refunded after your stay, so it is NOT part of the rental total here.
     const rentalTotal = nightly + txFee;
     const total = rentalTotal;
     return {
@@ -7833,7 +7835,7 @@ async function loadGuestPhotosAdmin() {
             const pend = p.status === 'pending';
             const data = encodeURIComponent(p.url) + '|' + encodeURIComponent(p.caption || '');
             return `<div style="background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:14px;overflow:hidden;">
-                    <div class="guest-photo" style="aspect-ratio:4/3;border:none;border-radius:0;" data-photo="${escapeHtml(data)}" onclick="openPhotoLightbox(this)"><img loading="lazy" src="${escapeHtml(p.url)}" alt="${escapeHtml(p.caption || 'Guest photo at ' + (meta.name || p.prop_key))}"></div>
+                    <div class="guest-photo" style="aspect-ratio:4/3;border:none;border-radius:0;" role="button" tabindex="0" aria-label="${escapeHtml(p.caption || 'Guest photo')}" data-photo="${escapeHtml(data)}" onclick="openPhotoLightbox(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openPhotoLightbox(this)}"><img loading="lazy" src="${escapeHtml(p.url)}" alt="${escapeHtml(p.caption || 'Guest photo at ' + (meta.name || p.prop_key))}"></div>
                     <div style="padding:9px 11px;">
                         <div style="font-size:0.74rem;color:var(--text-muted);"><span class="prop-tag tag-${p.prop_key}">${escapeHtml(meta.short || meta.name)}</span> ${escapeHtml(p.guest_name || 'Guest')}${pend ? ' · <span style="color:#FFB74D;">Pending</span>' : ' · <span style="color:#4CAF50;">Live</span>'}</div>
                         ${p.caption ? `<div style="font-size:0.8rem;margin:6px 0 0;">${escapeHtml(p.caption)}</div>` : ''}
@@ -8418,8 +8420,6 @@ document.addEventListener('keydown', (e) => {
         if (m && m.classList.contains('open')) closeAllReviews();
         const fm = document.getElementById('faq-modal');
         if (fm && fm.classList.contains('open')) closeFaqModal();
-        const dm = document.getElementById('details-modal');
-        if (dm && dm.classList.contains('open')) closeDetailsModal();
         const pl = document.getElementById('photo-lightbox');
         if (pl && pl.classList.contains('open')) closePhotoLightbox();
     }
@@ -8427,7 +8427,6 @@ document.addEventListener('keydown', (e) => {
 document.addEventListener('click', (e) => {
     if (e.target && e.target.id === 'reviews-modal') closeAllReviews();
     if (e.target && e.target.id === 'faq-modal') closeFaqModal();
-    if (e.target && e.target.id === 'details-modal') closeDetailsModal();
 });
 
 // ---- Global keyboard handling for the glass modals, the date picker and the
@@ -8514,7 +8513,15 @@ document.addEventListener('keydown', (e) => {
             target.focus({ preventScroll: true });
         } catch (e) {}
     };
+    // Full-screen dialogs lock the page scroll behind them (the date picker
+    // and chat widget are inline popovers — the page must stay scrollable).
+    const LOCK_SEL = '.modal-overlay, #lightbox, .reviews-modal';
+    const syncScrollLock = () => {
+        const anyOpen = Array.from(document.querySelectorAll(LOCK_SEL)).some(isOpen);
+        document.body.classList.toggle('modal-open', anyOpen);
+    };
     const onToggle = (el, wasOpen) => {
+        syncScrollLock();
         const now = isOpen(el);
         if (now && !wasOpen) {
             const ae = document.activeElement;
@@ -8852,15 +8859,30 @@ function dpDone() {
 }
 
 // ===== Homepage hero availability search =====
-// Guest stepper for the cross-cottage search. Capped to the portfolio limit:
-// at most 3 guests total and at most 1 child, and a child only alongside ≤2
-// adults — so the two largest parties are "2 adults + 1 child" or "3 adults".
-// Increments that would break the rule are simply blocked (nothing is dropped).
+// Guest stepper for the cross-cottage search. Capped to the PORTFOLIO limit —
+// the largest party ANY live cottage can take — derived from the loaded
+// occupancy rows so an owner-added bigger cottage is reachable from the hero
+// search without a code change. Falls back to the original 3/1 caps until
+// rates load. Increments that would break the cap are simply blocked.
+function hsPortfolioCaps() {
+    let total = 0,
+        adults = 0,
+        children = 0;
+    Object.keys(occupancyLimits).forEach((k) => {
+        if (!propertyMeta[k]) return; // only LIVE cottages widen the caps
+        const m = occupancyLimits[k] || {};
+        total = Math.max(total, parseInt(m.maxTotal, 10) || 0);
+        adults = Math.max(adults, parseInt(m.maxAdults, 10) || 0);
+        children = Math.max(children, parseInt(m.maxChildren, 10) || 0);
+    });
+    return { total: total || 3, adults: adults || 3, children: children >= 0 && total ? children : 1 };
+}
 function hsAdjust(field, delta) {
-    const MAX_TOTAL = 3,
-        MAX_CHILDREN = 1;
+    const caps = hsPortfolioCaps();
+    const MAX_TOTAL = caps.total,
+        MAX_CHILDREN = caps.children;
     if (field === 'adults') {
-        const cap = Math.min(3, MAX_TOTAL - heroSearch.children);
+        const cap = Math.min(caps.adults, MAX_TOTAL - heroSearch.children);
         heroSearch.adults = Math.max(1, Math.min(cap, heroSearch.adults + delta));
     } else {
         const cap = Math.min(MAX_CHILDREN, MAX_TOTAL - heroSearch.adults);
@@ -8905,11 +8927,12 @@ function hsRestore() {
         heroSearch.checkin = s.checkin;
         heroSearch.checkout = s.checkout || null;
     }
-    if (typeof s.adults === 'number') heroSearch.adults = Math.max(1, Math.min(3, s.adults));
-    if (typeof s.children === 'number') heroSearch.children = Math.max(0, Math.min(1, s.children));
-    // Keep the restored party within the 3-guest total (drop the child if needed).
-    if (heroSearch.adults + heroSearch.children > 3)
-        heroSearch.children = Math.max(0, 3 - heroSearch.adults);
+    const caps = hsPortfolioCaps();
+    if (typeof s.adults === 'number') heroSearch.adults = Math.max(1, Math.min(caps.adults, s.adults));
+    if (typeof s.children === 'number') heroSearch.children = Math.max(0, Math.min(caps.children, s.children));
+    // Keep the restored party within the portfolio total (drop children first).
+    if (heroSearch.adults + heroSearch.children > caps.total)
+        heroSearch.children = Math.max(0, caps.total - heroSearch.adults);
     if (s.cottage) heroSearch.cottage = s.cottage;
     if (typeof s.flex === 'number') heroSearch.flex = s.flex;
     if (typeof s.nights === 'number') heroSearch.nights = Math.max(1, Math.min(14, s.nights));
@@ -9732,8 +9755,11 @@ function updateRouteSeo(propKey) {
     if (desc.length > 160) desc = desc.slice(0, 157).trim() + '…';
     if (!desc)
         desc = (meta.name || 'A self-catering holiday cottage') + ' in Blakeney, North Norfolk.';
-    // Social image: this cottage's first photo, else its card, made absolute.
-    let img = (Array.isArray(content.images) && content.images[0]) || 'card-' + propKey + '.jpg';
+    // Social image: this cottage's first photo, made absolute. With no gallery
+    // photo, LEAVE the server-injected og:image alone — the old 'card-<key>.jpg'
+    // fallback doesn't exist on the live host (same class as hero.jpg) and
+    // would replace a valid preview with a 404.
+    let img = (Array.isArray(content.images) && content.images[0]) || '';
     if (img && !/^https?:\/\//i.test(img)) img = SITE_ORIGIN + '/' + img.replace(/^\//, '');
     document.title = title;
     if (canonical) canonical.setAttribute('href', url);
@@ -9741,7 +9767,7 @@ function updateRouteSeo(propKey) {
     if (ogTitle) ogTitle.setAttribute('content', title);
     if (metaDesc) metaDesc.setAttribute('content', desc);
     if (ogDesc) ogDesc.setAttribute('content', desc);
-    if (ogImage) ogImage.setAttribute('content', img);
+    if (ogImage && img) ogImage.setAttribute('content', img);
 }
 // Reflect the open cottage in the address bar (push, or replace if already there).
 function syncCottageUrl(propKey) {
@@ -10125,8 +10151,8 @@ function updateEnquiryPrice() {
         extras.push(`${p.extraAdults} extra adult${p.extraAdults === 1 ? '' : 's'}`);
     if (children > 0) extras.push(`${children} child${children === 1 ? '' : 'ren'}`);
     box.innerHTML = `
-                <div class="price-row total" style="border-top:none;padding-top:0;"><span>From</span><span><span class="price-amount">${gbp(displayGrandTotal(p.rentalTotal, p, 'none'))}</span> <span style="font-size:0.7rem;color:var(--text-muted);font-weight:400;">*fees inc</span></span></div>
-                ${p.damagesDeposit > 0 ? `<div class="price-row" style="margin-top:12px;"><span>Incl. refundable damages deposit</span><span>${gbp(p.damagesDeposit)}</span></div>` : ''}
+                <div class="price-row total" style="border-top:none;padding-top:0;"><span>From</span><span><span class="price-amount">${gbp(p.rentalTotal)}</span> <span style="font-size:0.7rem;color:var(--text-muted);font-weight:400;">*fees inc</span></span></div>
+                ${p.damagesDeposit > 0 ? `<div class="price-row" style="margin-top:12px;"><span>+ Refundable damages deposit</span><span>${gbp(p.damagesDeposit)}</span></div>` : ''}
                 <p style="color: var(--text-muted); font-size: 0.78rem; text-align: center; margin: 10px 0 0; line-height: 1.45;">${p.damagesDeposit > 0 ? "The deposit is refunded after your stay. " : ''}Subject to change before booking has been confirmed — we will contact you to give an accurate price.</p>
             `;
     try {
@@ -10270,6 +10296,18 @@ async function submitEnquiry(propKey) {
     }
     if (!address) {
         setEnqMsg('details', 'Please enter your UK address.');
+        return;
+    }
+    // We must be able to reply: an email or a phone number is required, and a
+    // typed email has to look like one (the server re-checks both).
+    if (!email && !phone) {
+        setEnqMsg('details', 'Please give an email address or phone number so we can reply.');
+        document.getElementById('enq-email').focus();
+        return;
+    }
+    if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
+        setEnqMsg('details', 'That email address doesn’t look right — please check it.');
+        document.getElementById('enq-email').focus();
         return;
     }
     if (!isUkPostcode(postcode)) {
@@ -11225,6 +11263,10 @@ async function saveModal() {
                 adults,
                 children,
                 message: notes,
+                // Preserve the guest's original terms acceptance across the
+                // decline+resubmit edit (otherwise it's silently wiped).
+                terms_accepted_at_passthrough: enq.termsAcceptedAt || '',
+                terms_version: enq.termsVersion || '',
             });
             await loadData();
             closeModal();
@@ -11641,7 +11683,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'j6qio4ta';
+    const BUILD = 'j6qjp5ub';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

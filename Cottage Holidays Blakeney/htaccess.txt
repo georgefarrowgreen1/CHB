@@ -12,6 +12,13 @@ RewriteCond %{HTTPS} !=on
 RewriteCond %{HTTP:X-Forwarded-Proto} !https
 RewriteRule ^ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
 
+# ---- One canonical host: www.<domain> 301s to the apex ----
+# Both hosts used to serve 200 (duplicate content mitigated only by
+# rel=canonical, which consistently points at the apex). Guarded to this
+# site's own www so staging.<domain> is untouched.
+RewriteCond %{HTTP_HOST} ^www\.(cottageholidaysblakeney\.co\.uk)$ [NC]
+RewriteRule ^ https://%1%{REQUEST_URI} [L,R=301]
+
 # ---- Lock the staging site to the owner (staging host ONLY) ----
 # On staging.<domain> the site's entry pages are routed through staging-gate.php,
 # which demands an HTTP Basic-Auth password (set in staging's config.php) and

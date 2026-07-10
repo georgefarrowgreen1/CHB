@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=149">
+    <link rel="stylesheet" href="app.css?v=150">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -209,15 +209,15 @@
 
     <!-- HEADER -->
     <header class="glass-panel">
-        <div class="logo" onpointerdown="flareCrown()" onclick="nav('view-main')">
+        <div class="logo" role="link" tabindex="0" aria-label="Cottage Holidays Blakeney — home" onpointerdown="flareCrown()" onclick="nav('view-main')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();nav('view-main');}">
             <img src="logo.svg" alt="Cottage Holidays Blakeney crown logo" class="logo-mark">
             <span class="logo-text" data-edit-text="site-logo">Cottage Holidays Blakeney</span>
         </div>
         <nav>
             <ul>
                 <span class="nav-indicator" aria-hidden="true"></span>
-                <li><a onclick="nav('view-main')" data-edit-text="nav-home">Home</a></li>
-                <li><a onclick="nav('view-cottages')" data-edit-text="nav-cottages">Cottages</a></li>
+                <li><a href="/" onclick="event.preventDefault(); nav('view-main')" data-edit-text="nav-home">Home</a></li>
+                <li><a href="/#cottages" onclick="event.preventDefault(); nav('view-cottages')" data-edit-text="nav-cottages">Cottages</a></li>
                 <li><a href="/experiences" onclick="event.preventDefault(); nav('view-experiences')" data-edit-text="nav-experiences">Experiences</a></li>
             </ul>
         </nav>
@@ -252,8 +252,8 @@
     </div>
 
     <div class="mobile-nav-overlay" id="mobileMenu">
-        <a onclick="toggleMobileMenu(); nav('view-main')" data-edit-text="mnav-home">Home</a>
-        <a onclick="toggleMobileMenu(); nav('view-cottages')" data-edit-text="mnav-cottages">Cottages</a>
+        <a href="/" onclick="event.preventDefault(); toggleMobileMenu(); nav('view-main')" data-edit-text="mnav-home">Home</a>
+        <a href="/#cottages" onclick="event.preventDefault(); toggleMobileMenu(); nav('view-cottages')" data-edit-text="mnav-cottages">Cottages</a>
         <a href="/experiences" onclick="event.preventDefault(); toggleMobileMenu(); nav('view-experiences')" data-edit-text="mnav-experiences">Experiences</a>
     </div>
 
@@ -411,7 +411,7 @@
                         </div>
                     </div>
                     <button type="button" class="btn-glass" id="hs-search-btn" style="width:100%;" onclick="hsRun()">Check availability</button>
-                    <div class="hs-msg" id="hs-msg"></div>
+                    <div class="hs-msg" id="hs-msg" role="alert"></div>
                 </div>
             </div>
             <div class="hero-results-wrap" id="hero-results-wrap" style="display:none;">
@@ -558,7 +558,7 @@
 
     <!-- ================= PROPERTY DETAIL VIEW (template, populated per cottage) ================= -->
     <main id="view-21a" class="page-view container">
-        <span class="back-link" onclick="nav('view-cottages')">← Back to Cottages</span>
+        <span class="back-link"  role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="nav('view-cottages')">← Back to Cottages</span>
         
         <div class="gallery-container">
             <div class="gallery-track" id="gallery-21a">
@@ -760,16 +760,16 @@
 
                 <!-- STEP 2: YOUR DETAILS -->
                 <div id="enquire-step-details" style="display:none;">
-                    <span class="back-link" style="margin-bottom:12px;" onclick="enquireBack()">← Back</span>
+                    <span class="back-link" style="margin-bottom:12px;"  role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="enquireBack()">← Back</span>
                     <h2 class="section-title" style="font-size:1.6rem;margin:0 0 18px;text-align:left;">Your details</h2>
                     <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-name">Your Name</label>
-                    <input type="text" class="input-glass" id="enq-name" placeholder="Full name">
+                    <input type="text" class="input-glass" id="enq-name" autocomplete="name" placeholder="Full name">
                     <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-email">Email</label>
-                    <input type="email" class="input-glass" id="enq-email" placeholder="you@email.com">
+                    <input type="email" class="input-glass" id="enq-email" autocomplete="email" inputmode="email" placeholder="you@email.com">
                     <div class="reg-row">
                         <div>
                             <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-phone">Phone</label>
-                            <input type="tel" class="input-glass" id="enq-phone" placeholder="Contact number">
+                            <input type="tel" class="input-glass" id="enq-phone" autocomplete="tel" inputmode="tel" placeholder="Contact number">
                         </div>
                         <div>
                             <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-postcode">Postcode</label>
@@ -782,12 +782,12 @@
                     </label>
                     <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-address">UK Address</label>
                     <textarea class="input-glass" id="enq-address" rows="2" placeholder="House name/number, street, town, county" style="resize: vertical; margin-bottom: 6px;"></textarea>
-                    <p style="font-size: 0.72rem; color: var(--text-muted); margin: 0 0 18px;">Used only to manage your booking and contact you. See our <a onclick="nav('view-privacy')" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy Policy</a>.</p>
+                    <p style="font-size: 0.72rem; color: var(--text-muted); margin: 0 0 18px;">Used only to manage your booking and contact you. See our <a href="#" onclick="event.preventDefault(); nav('view-privacy')" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy Policy</a>.</p>
                     <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-message">About your party <span style="color: var(--danger);" aria-hidden="true">*</span></label>
                     <textarea class="input-glass" id="enq-message" rows="4" required aria-required="true" placeholder="Here at Cottage Holidays Blakeney we like to know a little bit about our guests! Tell us a bit about your party and we will do what we can to accommodate you better" style="resize: vertical;"></textarea>
                     <label class="terms-accept">
                         <input type="checkbox" id="enq-terms">
-                        <span>I have read and accept the <a onclick="openTermsModal(event)">Booking Terms &amp; Conditions</a>.</span>
+                        <span>I have read and accept the <a href="#" onclick="event.preventDefault(); openTermsModal(event)">Booking Terms &amp; Conditions</a>.</span>
                     </label>
                     <p class="enq-modal-msg" id="enq-msg-details" role="alert"></p>
                     <button class="btn-glass btn-accent" style="width: 100%; padding: 18px;" id="enq-submit-btn">Send enquiry</button>
@@ -815,7 +815,7 @@
                         <button class="btn-glass btn-accent" style="width:100%;padding:16px;" onclick="enquireSignInInstead()">Sign in</button>
                     </div>
                     <div style="text-align:center;margin-top:14px;">
-                        <a onclick="enquireSkipAccount()" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);font-size:0.82rem;">No thanks, maybe later</a>
+                        <a href="#" onclick="event.preventDefault(); enquireSkipAccount()" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);font-size:0.82rem;">No thanks, maybe later</a>
                     </div>
                 </div>
             </div>
@@ -1611,7 +1611,7 @@
                     <input type="text" class="input-glass" id="login-email" name="email" autocomplete="username" autocapitalize="off" autocorrect="off" spellcheck="false" inputmode="email" placeholder="you@email.com">
                     <label class="modal-label" for="login-password">Password</label>
                     <input type="password" class="input-glass" id="login-password" name="password" autocomplete="current-password" placeholder="Your password">
-                    <div id="login-error" style="color:#E53935;font-size:0.8rem;margin-bottom:12px;display:none;"></div>
+                    <div id="login-error" role="alert" style="color:var(--danger);font-size:0.8rem;margin-bottom:12px;display:none;"></div>
                     <button class="btn-glass btn-accent" style="width:100%;padding:16px;" onclick="guestLogin()">Log In</button>
                     <div style="text-align:center;margin-top:14px;">
                         <a id="magic-link-cta" onclick="requestMagicLink()" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);font-size:0.82rem;">Email me a sign-in link instead</a>
@@ -1640,10 +1640,10 @@
                     </div>
                     <label class="modal-label" for="reg-address">UK Address</label>
                     <textarea class="input-glass" id="reg-address" name="address" autocomplete="street-address" rows="2" placeholder="House name/number, street, town, county" style="resize: vertical; margin-bottom: 6px;"></textarea>
-                    <p style="font-size: 0.72rem; color: var(--text-muted); margin: 0 0 18px;">Used only to manage your bookings and contact you. See our <a onclick="closeGuestAuthModal(); nav('view-privacy')" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy Policy</a>.</p>
+                    <p style="font-size: 0.72rem; color: var(--text-muted); margin: 0 0 18px;">Used only to manage your bookings and contact you. See our <a href="#" onclick="event.preventDefault(); closeGuestAuthModal(); nav('view-privacy')" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy Policy</a>.</p>
                     <label class="modal-label" for="reg-password">Password</label>
                     <input type="password" class="input-glass" id="reg-password" name="new-password" autocomplete="new-password" placeholder="Choose a password">
-                    <div id="reg-error" style="color:#E53935;font-size:0.8rem;margin-bottom:12px;display:none;"></div>
+                    <div id="reg-error" role="alert" style="color:var(--danger);font-size:0.8rem;margin-bottom:12px;display:none;"></div>
                     <button class="btn-glass btn-accent" style="width:100%;padding:16px;" onclick="guestRegister()">Create Account</button>
                 </div>
             </div>
@@ -1845,7 +1845,7 @@
             <textarea class="input-glass" id="profile-address" rows="2" placeholder="House name/number, street, town, county" style="resize:vertical;"></textarea>
             <label class="modal-label" for="profile-postcode">Postcode</label>
             <input type="text" class="input-glass" id="profile-postcode" placeholder="e.g. NR25 7AB" autocomplete="postal-code" style="margin-bottom:6px;">
-            <p style="font-size:0.72rem;color:var(--text-muted);margin:0 0 10px;">Used only to manage your bookings and contact you. See our <a onclick="closeGuestDetailsModal(); nav('view-privacy')" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy Policy</a>.</p>
+            <p style="font-size:0.72rem;color:var(--text-muted);margin:0 0 10px;">Used only to manage your bookings and contact you. See our <a href="#" onclick="event.preventDefault(); closeGuestDetailsModal(); nav('view-privacy')" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy Policy</a>.</p>
             <div id="profile-msg" style="font-size:0.8rem;margin:4px 0 10px;display:none;"></div>
             <button class="btn-glass" style="width:100%;padding:14px;" onclick="saveGuestProfile()">Save details</button>
             <div style="display:flex;flex-direction:column;gap:10px;margin-top:16px;padding-top:16px;border-top:1px solid var(--glass-border);">
@@ -2074,7 +2074,7 @@
                 <button class="btn-glass" style="width:100%;padding:15px;margin-top:2px;" onclick="submitAdmin2fa()">Verify &amp; sign in</button>
             </div>
 
-            <div id="admin-login-error" role="alert" style="color:#E53935;font-size:0.8rem;margin:12px 0 0;display:none;"></div>
+            <div id="admin-login-error" role="alert" style="color:var(--danger);font-size:0.8rem;margin:12px 0 0;display:none;"></div>
         </div>
     </div>
 
@@ -2206,7 +2206,7 @@
             <label class="modal-label">Staff Notes</label>
             <textarea class="input-glass" id="modal-notes" rows="2" style="resize: vertical;"></textarea>
 
-            <div id="modal-error" style="color: #E53935; font-size: 0.8rem; margin-bottom: 15px; display: none;"></div>
+            <div id="modal-error" style="color: var(--danger); font-size: 0.8rem; margin-bottom: 15px; display: none;"></div>
 
             <div style="display: flex; gap: 12px; margin-top: 10px;">
                 <button class="btn-glass" style="flex: 1;" id="modal-save-btn" onclick="saveModal()">Save</button>
@@ -2251,7 +2251,7 @@
             <input type="number" min="0" step="0.01" inputmode="decimal" class="input-glass" id="newprop-override" placeholder="Leave blank to use the calculated price">
             <p style="font-size: 0.72rem; color: var(--text-muted); margin: -12px 0 4px;">Set a custom total for this booking only.</p>
 
-            <div id="newprop-error" style="color: #E53935; font-size: 0.8rem; margin: 12px 0 0; display: none;"></div>
+            <div id="newprop-error" style="color: var(--danger); font-size: 0.8rem; margin: 12px 0 0; display: none;"></div>
 
             <div style="display: flex; gap: 12px; margin-top: 18px;">
                 <button class="btn-glass" style="flex: 1;" onclick="customSetupNext()">Review booking →</button>
@@ -2279,7 +2279,7 @@
                 </select>
             </div>
 
-            <div id="overview-error" style="color: #E53935; font-size: 0.8rem; margin: 12px 0 0; display: none;"></div>
+            <div id="overview-error" style="color: var(--danger); font-size: 0.8rem; margin: 12px 0 0; display: none;"></div>
 
             <div style="display: flex; gap: 12px; margin-top: 18px;">
                 <button class="btn-glass" style="flex: 1;" onclick="confirmCustomBooking()">Confirm booking</button>
@@ -2311,9 +2311,9 @@
                 <a href="/cottages/pimpernel" onclick="return cottageLink(event,'pimpernel')">Pimpernel</a>
             </span>
             <a href="/experiences" onclick="return routeLink(event,'view-experiences')">Things to do</a>
-            <a onclick="openAllReviews()">Guest reviews</a>
-            <a onclick="openTermsModal(event)">Booking terms</a>
-            <a onclick="nav('view-privacy')">Privacy</a>
+            <a href="#" onclick="event.preventDefault(); openAllReviews()">Guest reviews</a>
+            <a href="#" onclick="event.preventDefault(); openTermsModal(event)">Booking terms</a>
+            <a href="#" onclick="event.preventDefault(); nav('view-privacy')">Privacy</a>
         </nav>
         <!-- Newsletter opt-in: a direct-booking audience the owner owns. -->
         <div class="footer-newsletter" id="footer-newsletter">
@@ -2334,7 +2334,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=259"></script>
+    <script defer src="app.js?v=260"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

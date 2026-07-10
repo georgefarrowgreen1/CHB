@@ -145,6 +145,9 @@ try {
                 $inject('#(<meta property="og:image" content=")[^"]*(")#', $safeImg);
                 $inject('#(<meta name="twitter:image" content=")[^"]*(")#', $safeImg);
                 $inject('#(<meta property="og:image:alt" content=")[^"]*(")#', 'Photo of ' . $name);
+                // The swapped gallery photo is an arbitrary ratio — the static
+                // 1200×630 dims would make platforms crop it wrongly. Drop them.
+                $out = preg_replace('#\s*<meta property="og:image:(width|height)" content="[^"]*">#', '', $out);
                 $inject('#(<meta name="twitter:image:alt" content=")[^"]*(")#', 'Photo of ' . $name);
             }
 
