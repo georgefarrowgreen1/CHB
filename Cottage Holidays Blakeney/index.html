@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=146">
+    <link rel="stylesheet" href="app.css?v=147">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -1102,9 +1102,9 @@
             <!-- One Manage index: cottages first (with each cottage's key numbers),
                  then marketing, then account/system — the section labels are the
                  grouping now that the three dock areas are one page. -->
-            <div class="settings-section-label" data-area="cottages">Manage each cottage</div>
-            <div id="cottages-overview" data-area="cottages" class="area-overview"></div>
-            <div class="settings-group" data-area="cottages">
+            <div class="settings-section-label">Manage each cottage</div>
+            <div id="cottages-overview" class="area-overview"></div>
+            <div class="settings-group">
                 <button class="settings-row" data-kw="rates prices fees nightly rules occupancy photos text add remove accommodation property min nights" onclick="settingsOpen('accom')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Cottages</span><span class="settings-row-sub">Each cottage's rates, fees, rules, photos &amp; text — add or remove a cottage</span></span><span class="settings-row-chev">›</span>
@@ -1123,9 +1123,9 @@
                 </button>
             </div>
 
-            <div id="marketing-overview" data-area="marketing" class="area-overview"></div>
-            <div class="settings-section-label" data-area="marketing">To approve</div>
-            <div class="settings-group" data-area="marketing">
+            <div id="marketing-overview" class="area-overview"></div>
+            <div class="settings-section-label">To approve</div>
+            <div class="settings-group">
                 <button class="settings-row" data-kw="stars ratings testimonials airbnb import approve moderate" onclick="settingsOpen('reviews')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 17.77 6.8 19.5l.99-5.78-4.21-4.1 5.82-.85z"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Reviews <span id="reviews-pending-badge" style="display:none;background:#E5533C;color:#fff;font-size:0.62rem;font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:middle;"></span></span><span class="settings-row-sub">Approve guest reviews &amp; import reviews from Airbnb</span></span><span class="settings-row-chev">›</span>
@@ -1136,8 +1136,8 @@
                 </button>
             </div>
 
-            <div class="settings-section-label" data-area="marketing">Website &amp; content</div>
-            <div class="settings-group" data-area="marketing">
+            <div class="settings-section-label">Website &amp; content</div>
+            <div class="settings-group">
                 <button class="settings-row" data-kw="hero banner images text logo site name navigation menu labels seo homepage" onclick="settingsOpen('content')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h10"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Home page &amp; menu</span><span class="settings-row-sub">Hero banner, menu labels &amp; site name</span></span><span class="settings-row-chev">›</span>
@@ -1148,8 +1148,8 @@
                 </button>
             </div>
 
-            <div class="settings-section-label" data-area="marketing">Guests &amp; marketing</div>
-            <div class="settings-group" data-area="marketing">
+            <div class="settings-section-label">Guests &amp; marketing</div>
+            <div class="settings-group">
                 <button class="settings-row" data-kw="users accounts password reset lookup email login" onclick="settingsOpen('guests')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 5.5a3 3 0 0 1 0 5.8M21 19a5.5 5.5 0 0 0-4-5.3"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Guest accounts</span><span class="settings-row-sub">Look up a guest &amp; reset their password</span></span><span class="settings-row-chev">›</span>
@@ -1168,8 +1168,8 @@
                 </button>
             </div>
 
-            <div class="settings-section-label" data-area="settings">Notifications &amp; payments</div>
-            <div class="settings-group" data-area="settings">
+            <div class="settings-section-label">Notifications &amp; payments</div>
+            <div class="settings-group">
                 <button class="settings-row" data-kw="push alerts phone device notifications" onclick="settingsOpen('notify')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Notifications</span><span class="settings-row-sub">Get phone alerts for new bookings &amp; messages</span></span><span class="settings-row-chev">›</span>
@@ -1180,8 +1180,8 @@
                 </button>
             </div>
 
-            <div class="settings-section-label" data-area="settings">Your account</div>
-            <div class="settings-group" data-area="settings">
+            <div class="settings-section-label">Your account</div>
+            <div class="settings-group">
                 <button class="settings-row" data-kw="bio about phone contact host profile picture" onclick="settingsOpen('host')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Profile</span><span class="settings-row-sub">Your host bio &amp; contact number</span></span><span class="settings-row-chev">›</span>
@@ -1192,8 +1192,8 @@
                 </button>
             </div>
 
-            <div class="settings-section-label" data-area="settings">Advanced &amp; system</div>
-            <div class="settings-group" data-area="settings">
+            <div class="settings-section-label">Advanced &amp; system</div>
+            <div class="settings-group">
                 <button class="settings-row" data-kw="api keys tide times connected services" onclick="settingsOpen('apis')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 13.5l-5.3 5.3a2 2 0 0 1-2.8-2.8l5.3-5.3"/><circle cx="15.5" cy="8.5" r="5"/><path d="M13.5 10.5l1.5 1.5"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Integrations</span><span class="settings-row-sub">Tide times &amp; other connected services</span></span><span class="settings-row-chev">›</span>
@@ -1212,22 +1212,22 @@
                 </button>
             </div>
 
-            <div class="settings-section-label" data-area="settings">Testing</div>
-            <div class="settings-group" data-area="settings" id="staging-link-row">
+            <div class="settings-section-label">Testing</div>
+            <div class="settings-group" id="staging-link-row">
                 <button class="settings-row" data-kw="staging sandbox practice preview" onclick="openStagingSite()">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6M10 3v5.2L5.4 17a2 2 0 0 0 1.8 3h9.6a2 2 0 0 0 1.8-3L14 8.2V3"/><path d="M8 14h8"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Test copy ↗</span><span class="settings-row-sub">Open a safe practice copy of your site</span></span><span class="settings-row-chev">›</span>
                 </button>
             </div>
             <!-- Test centre — shown on the staging sandbox only (revealed by JS when IS_STAGING) -->
-            <div class="settings-group" data-area="settings" id="testcentre-row" style="display:none;">
+            <div class="settings-group" id="testcentre-row" style="display:none;">
                 <button class="settings-row" data-kw="staging sandbox preview sample data" onclick="settingsOpen('testcentre')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6M10 3v5.2L5.4 17a2 2 0 0 0 1.8 3h9.6a2 2 0 0 0 1.8-3L14 8.2V3"/><path d="M8 14h8"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Test centre</span><span class="settings-row-sub">Preview, sample emails, test bookings &amp; data</span></span><span class="settings-row-chev">›</span>
                 </button>
             </div>
             <!-- Always last: sign out -->
-            <div class="settings-group" data-area="settings">
+            <div class="settings-group">
                 <button class="settings-row settings-row-logout" data-kw="sign out exit" onclick="logoutStaff()">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h3.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H15"/><path d="M10 12h9"/><path d="M16 8.5l3.5 3.5L16 15.5"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Log out</span></span>
@@ -1429,7 +1429,7 @@
             <div class="settings-sec" id="sec-security" style="display:none;">
                 <div class="accounts-stat" style="max-width:640px;">
                     <div class="label">Admin Password</div>
-                    <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 16px;">This password protects the Back Office, Settings, Money and Live Editor.</p>
+                    <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 16px;">This password protects the whole back office — bookings, money and settings.</p>
                     <button class="btn-sm btn-edit" onclick="changeAdminPassword()">Change Password</button>
                 </div>
                 <div class="accounts-stat" style="max-width:640px;margin-top:16px;">
@@ -2211,7 +2211,7 @@
             <div id="modal-override-group">
                 <label class="modal-label">Override total price (£) — optional</label>
                 <input type="number" class="input-glass" id="modal-price-override" min="0" step="0.01" placeholder="Leave blank to use calculated price" oninput="updateModalPrice()">
-                <p style="font-size:0.72rem;color:var(--text-muted);margin:-12px 0 18px;">Set a custom total for this booking only. The customer enquiry form still uses the Settings &amp; Fees prices.</p>
+                <p style="font-size:0.72rem;color:var(--text-muted);margin:-12px 0 18px;">Set a custom total for this booking only. The customer enquiry form still uses the standard prices from Manage &rarr; Preferences.</p>
             </div>
 
             <label class="modal-label">Staff Notes</label>
@@ -2345,7 +2345,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=255"></script>
+    <script defer src="app.js?v=256"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

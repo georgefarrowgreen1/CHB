@@ -153,7 +153,7 @@ if ($action === 'suggest') {
                 "{$guest['name']} suggested an experience:\n\n{$title}\n\n{$bodyTxt}\n\n" .
                     ($linkUrl ? "Link: {$linkUrl}\n" : '') .
                     ($phone ? "Phone: {$phone}\n" : '') .
-                    "\nReview it in Settings -> Experiences.",
+                    "\nReview it in Manage → Experiences.",
             );
         } catch (\Throwable $e) {
         }

@@ -52,7 +52,7 @@ function enquiry_approve($id, $priceOverride = null)
     // get_rate() happily returns archived cottages — the public form rejects
     // them, so approval must too (restore the cottage first).
     if (function_exists('prop_is_archived') && prop_is_archived($e['prop_key'])) {
-        return ['error' => 'That cottage has been removed from the site — restore it (Settings → Preferences) before approving.', 'code' => 400];
+        return ['error' => 'That cottage has been removed from the site — restore it (Manage → Preferences) before approving.', 'code' => 400];
     }
     if (!book_lock($e['prop_key'])) {
         // Genuine lock timeout — proceeding would skip the concurrent-approval

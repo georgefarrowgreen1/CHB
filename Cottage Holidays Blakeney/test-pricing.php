@@ -46,8 +46,8 @@ chk('21A 3-night => nights = 3', $p['nights'] === 3);
 chk('21A nightly = 390 (3 x 130)', approxEq($p['nightly'], 390));
 chk('21A per-night = 130', approxEq($p['perNight'], 130));
 chk('21A transaction fee = 11.70 (3% of 390)', approxEq($p['txFee'], 11.7));
-chk('21A damages deposit = 75 (held separately, not in total)', approxEq($p['damagesDeposit'], 75));
-chk('21A total = 401.70 (390 + 11.70; damages held, not charged)', approxEq($p['total'], 401.7));
+chk('21A damages deposit = 75 (charged with the first payment, not in total)', approxEq($p['damagesDeposit'], 75));
+chk('21A total = 401.70 (390 + 11.70; rental only, deposit excluded)', approxEq($p['total'], 401.7));
 
 // Pimpernel: couple 120, extra adult 42. 2 nights, 3 adults (1 extra).
 $ratePimp = [

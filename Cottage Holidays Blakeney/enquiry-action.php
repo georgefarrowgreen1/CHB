@@ -52,7 +52,7 @@ if (
     http_response_code(403);
     ea_page(
         'Link not valid',
-        '<h1>That link isn&rsquo;t valid</h1><p>It may have been altered in transit. Open the enquiry from Settings &rarr; Enquiries instead.</p>',
+        '<h1>That link isn&rsquo;t valid</h1><p>It may have been altered in transit. Open the enquiry from the Inbox in your back office instead.</p>',
     );
 }
 

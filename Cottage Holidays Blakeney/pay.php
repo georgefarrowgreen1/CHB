@@ -121,8 +121,11 @@ if ($action === 'authorize') {
     if ($holdAmount <= 0) {
         json_out(['error' => 'No security deposit is required for this booking.'], 409);
     }
-    if (in_array($holdStatus, ['authorized', 'captured'], true)) {
-        json_out(['error' => 'A security hold is already in place for this booking.'], 409);
+    // Also refuse when the deposit was CHARGED with the first payment (new
+    // model) or already settled after the stay — a legacy authorise here
+    // would overwrite hold_payment_id and orphan the charged deposit's refund.
+    if (in_array($holdStatus, ['authorized', 'captured', 'charged', 'returned', 'kept'], true)) {
+        json_out(['error' => 'The security deposit for this booking is already in place or settled.'], 409);
     }
 
     // Serialise + re-read the hold state under the lock so two concurrent submits
@@ -132,9 +135,9 @@ if ($action === 'authorize') {
     }
     $hs = db()->prepare('SELECT hold_status FROM bookings WHERE id = ?');
     $hs->execute([$bookingId]);
-    if (in_array((string) ($hs->fetchColumn() ?: 'none'), ['authorized', 'captured'], true)) {
+    if (in_array((string) ($hs->fetchColumn() ?: 'none'), ['authorized', 'captured', 'charged', 'returned', 'kept'], true)) {
         book_unlock($b['prop_key']);
-        json_out(['error' => 'A security hold is already in place for this booking.'], 409);
+        json_out(['error' => 'The security deposit for this booking is already in place or settled.'], 409);
     }
 
     $pence = (int) round($holdAmount * 100);

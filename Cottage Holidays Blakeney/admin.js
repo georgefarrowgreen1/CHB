@@ -461,6 +461,25 @@ function bookingsSplitWide() {
     return !!(document.getElementById('bookings-detail-pane') && window.matchMedia('(min-width: 1200px)').matches);
 }
 // Highlight the open booking's row + toggle the pane's empty state.
+// Crossing the 1200px master–detail boundary while a hub is open used to
+// strand it: shrinking hid the docked pane (detail vanished), growing left the
+// standalone hub undocked. Re-invoking the open fn re-parents the shared
+// content node to the right home for the new width in both directions.
+try {
+    const tlMq = window.matchMedia('(min-width: 1200px)');
+    const onSplitChange = () => {
+        const active = (document.querySelector('.page-view.active') || {}).id;
+        try {
+            if (active === 'view-bookings' || active === 'view-booking-hub') {
+                if (__hubBookingId && findBookingById(__hubBookingId)) openBookingHub(__hubBookingId);
+            } else if (active === 'view-inbox' || active === 'view-enquiry-hub') {
+                if (__enqHubId && enquiries.find((x) => x.id === __enqHubId)) openEnquiryHub(__enqHubId);
+            }
+        } catch (e) {}
+    };
+    if (tlMq.addEventListener) tlMq.addEventListener('change', onSplitChange);
+    else if (tlMq.addListener) tlMq.addListener(onSplitChange);
+} catch (e) {}
 function markBookingsSelection() {
     document
         .querySelectorAll('#bookings-list .bk-row')
@@ -2941,9 +2960,17 @@ function renderMoneyOverview() {
             if ((b.checkIn || '') >= monthStart && (b.checkIn || '') <= monthEnd)
                 monthRevenue += ps.total || 0;
             if ((b.checkOut || '') >= today) {
-                receivedUpcoming += ps.deposit || 0;
+                // Outstanding/collected KPIs use the SAME deposit-folded figures
+                // (displayGrand) as the Payments & balances rows, so the two
+                // screens always quote identical numbers for the same bookings.
+                // Income aggregates above (receivedTY, trend) stay rental-only.
+                const pG =
+                    b.agreedPrice ||
+                    priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
+                const gt = displayGrand(pG, ps, b.holdStatus);
+                receivedUpcoming += gt.paid || 0;
                 if (!ps.fullyPaid) {
-                    owedUpcoming += ps.balance || 0;
+                    owedUpcoming += gt.balance || 0;
                     owedCount++;
                 }
                 if ((b.checkIn || '') >= today && (b.checkIn || '') <= in90)
@@ -3062,8 +3089,12 @@ function renderMoneyPanel() {
     const rows = [];
     Object.keys(dbBookings).forEach((propKey) => {
         (dbBookings[propKey] || []).forEach((b) => {
-            if ((b.checkOut || '') >= today)
-                rows.push({ propKey, b, ps: paymentSummary(propKey, b) });
+            if ((b.checkOut || '') < today) return;
+            const ps = paymentSummary(propKey, b);
+            const p =
+                b.agreedPrice ||
+                priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
+            rows.push({ propKey, b, ps, gt: displayGrand(p, ps, b.holdStatus) });
         });
     });
     // "Owed to you" focus: unpaid/part-paid first (an action queue), then settled;
@@ -3074,9 +3105,11 @@ function renderMoneyPanel() {
         if (ap !== bp) return ap - bp;
         return (a.b.checkIn || '').localeCompare(b.b.checkIn || '');
     });
+    // Banner + donut use the SAME deposit-folded figures the rows show
+    // (displayGrand), so the headline always equals the sum of its rows.
     const owed = rows.filter((r) => !r.ps.fullyPaid);
-    const owedTotal = owed.reduce((s, r) => s + (r.ps.balance || 0), 0);
-    const receivedTotal = rows.reduce((s, r) => s + (r.ps.deposit || 0), 0);
+    const owedTotal = owed.reduce((s, r) => s + (r.gt.balance || 0), 0);
+    const receivedTotal = rows.reduce((s, r) => s + (r.gt.paid || 0), 0);
     const collectedPct =
         receivedTotal + owedTotal > 0
             ? Math.round((receivedTotal / (receivedTotal + owedTotal)) * 100)
@@ -3103,12 +3136,8 @@ function renderMoneyPanel() {
     // place a booking's money is handled (request/record/refund/invoice/
     // history all live there) — each row here just locates and opens it.
     const cards = rows
-        .map(({ propKey, b, ps }) => {
+        .map(({ propKey, b, ps, gt }) => {
             const meta = propertyMeta[propKey] || { name: propKey };
-            const pForGrand =
-                b.agreedPrice ||
-                priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
-            const gt = displayGrand(pForGrand, ps, b.holdStatus);
             const payLabel = gt.fullyPaid ? 'Paid' : gt.paid > 0 ? 'Part-paid' : 'Unpaid';
             const payClass = gt.fullyPaid ? 'ok' : gt.paid > 0 ? 'warn' : 'danger';
             const ci = dpParse(b.checkIn),
@@ -6787,16 +6816,6 @@ async function checkSystemHealth() {
     }
     pill.style.display = '';
 }
-// Recompute the health pill after an action that could change it (e.g. running
-// migrations) — clears the per-session cache first.
-function refreshSystemHealth() {
-    try {
-        sessionStorage.removeItem('chb-health');
-    } catch (e) {}
-    try {
-        checkSystemHealth();
-    } catch (e) {}
-}
 // ---- Dashboard: recent-activity feed ----
 function timeAgoLabel(at) {
     try {
@@ -8210,7 +8229,7 @@ async function expMove(id, dir) {
     }
 }
 // Publish the facade-stubbed entry points (see app.js loadAdminBundle).
-[accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, bulkImportReviews, cancelBooking, changeAdminPassword, changeMonth, inboxSub, inboxSubClose, initBackOffice, loadAdminMessages, loadDiagnostics, loadGuestList, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveDepositPct, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsRecentRender, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
+[accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, bulkImportReviews, changeAdminPassword, changeMonth, timelineToday, inboxSub, inboxSubClose, initBackOffice, loadAdminMessages, loadDiagnostics, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveDepositPct, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsRecentRender, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
     window[f.name] = f;
 });
 window.__ADMIN_LOADED = true;

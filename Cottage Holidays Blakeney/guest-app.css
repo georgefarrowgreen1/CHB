@@ -174,12 +174,10 @@ body.guest-app:not(.owner-mode) #prop-book-bar {
 }
 
 /* My Stays and Experiences only appear for a signed-in guest. */
-.gt-stays,
-.gt-auth {
+.gt-stays {
   display: none;
 }
-body.guest-app:not(.owner-mode).guest-signed-in .gt-stays,
-body.guest-app:not(.owner-mode).guest-signed-in .gt-auth {
+body.guest-app:not(.owner-mode).guest-signed-in .gt-stays {
   display: inline-flex;
 }
 

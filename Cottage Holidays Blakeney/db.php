@@ -387,12 +387,6 @@ function prop_is_archived($propKey)
     }
 }
 
-// True if the text contains a UK postcode (used where a postcode sits inside a
-// free-text address).
-function uk_postcode_present($s)
-{
-    return (bool) preg_match('/\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i', (string) $s);
-}
 // True if the whole value IS a UK postcode (used for the dedicated postcode field).
 // 'YYYY-MM-DD' → 'DD/MM/YYYY' — the UK display format used wherever a date
 // reaches a guest or the owner (screens, emails, invoices). Storage stays ISO.

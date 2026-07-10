@@ -171,7 +171,7 @@ if (($in['action'] ?? '') === 'create') {
         json_out(
             [
                 'error' =>
-                    'Could not create the cottage — run migrations first (Settings → System check → Run migrations).',
+                    'Could not create the cottage — run migrations first (Manage → System check → Run migrations).',
             ],
             500,
         );
@@ -208,7 +208,7 @@ if (($in['action'] ?? '') === 'set_unlisted') {
             ->execute([$unlisted, $propKey]);
     } catch (\Throwable $e) {
         json_out(
-            ['error' => 'Could not update — please run updates first (Settings → Health check → Install updates).'],
+            ['error' => 'Could not update — please run updates first (Manage → Health check → Install updates).'],
             500,
         );
     }
@@ -241,7 +241,7 @@ if (($in['action'] ?? '') === 'archive' || ($in['action'] ?? '') === 'unarchive'
             ->execute([$archivedAt, $propKey]);
     } catch (\Throwable $e) {
         json_out(
-            ['error' => 'Could not update — please run updates first (Settings → Health check → Install updates).'],
+            ['error' => 'Could not update — please run updates first (Manage → Health check → Install updates).'],
             500,
         );
     }

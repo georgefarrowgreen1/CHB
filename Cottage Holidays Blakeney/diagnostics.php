@@ -220,7 +220,7 @@ add(
     $tideKey !== ''
         ? 'API key set — tide widget & in-stay tides active.'
         : 'No key (optional). The tide widget and tide push stay hidden/idle.',
-    $tideKey !== '' ? '' : 'Paste a free WorldTides key in Settings → API keys.',
+    $tideKey !== '' ? '' : 'Paste a free WorldTides key in Manage → API keys.',
 );
 
 $gReview = trim(content_value('google-review-url'));
@@ -232,7 +232,7 @@ add(
     $gReview !== ''
         ? 'Set — review emails lead with a Google button.'
         : 'Not set (optional). Review emails use the on-site form only.',
-    $gReview !== '' ? '' : 'Paste your Google "write a review" link in Settings → Reviews.',
+    $gReview !== '' ? '' : 'Paste your Google "write a review" link in Manage → Reviews.',
 );
 
 // ---- Daily automation heartbeat -----------------------------------------
