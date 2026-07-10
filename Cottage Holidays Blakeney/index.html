@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=153">
+    <link rel="stylesheet" href="app.css?v=154">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -990,39 +990,42 @@
 
     <!-- ================= SETTINGS (Apple-style grouped index + drill-down) ================= -->
     <!-- ================= INBOX (dedicated back-office screen) ================= -->
-    <main id="view-inbox" class="page-view container">
+    <main id="view-inbox" class="page-view container wide">
         <!-- ≥1200px: master–detail like the Bookings dashboard — enquiry index
              on the left, the SELECTED enquiry's hub docked on the right (the
              shared #enquiry-hub-content node re-parents into the pane). -->
         <div class="enq-split">
         <div id="inbox-main">
             <span class="back-link" onclick="nav('view-backoffice'); initBackOffice();">← Back to Today</span>
+            <!-- Header mirrors the Today dashboard: big title + a LIVING subline
+                 (inboxSubline() keeps it current — what's waiting for a reply). -->
             <div class="dashboard-header">
                 <div>
-                    <h1 class="section-title" style="margin-bottom: 5px;">Inbox</h1>
-                    <p class="lead" style="text-align: left; margin: 0;">Enquiries &amp; guest messages from your website.</p>
+                    <h1 class="section-title" style="margin: 0;">Inbox</h1>
+                    <p class="lead bo-today-date" id="inbox-subline" style="text-align:left;margin:4px 0 0;">Enquiries, guest chat &amp; email — every conversation in one place.</p>
                 </div>
             </div>
             <!-- (Approvals live in Marketing → "To approve"; the Today card points there.) -->
             <!-- ONE comms dashboard: every conversation channel behind a folder
                  switch — website enquiries, guest chat, and the cottage EMAIL
                  mailbox (moved here from Manage; one home per task). -->
-            <div class="inbox-sort seg" id="inbox-folders" role="tablist" aria-label="Inbox folders" style="margin-bottom:16px;">
-                <button class="inbox-sort-btn is-on" role="tab" data-ifolder="enquiries" onclick="inboxFolder('enquiries')">Enquiries <span class="ifold-count" id="ifold-count-enq"></span></button>
-                <button class="inbox-sort-btn" role="tab" data-ifolder="messages" onclick="inboxFolder('messages')">Messages <span class="ifold-count" id="ifold-count-msg"></span></button>
-                <button class="inbox-sort-btn" role="tab" data-ifolder="email" onclick="inboxFolder('email')">Email <span class="ifold-count" id="ifold-count-mbx"></span></button>
+            <div class="inbox-sort seg" id="inbox-folders" role="tablist" aria-label="Inbox folders">
+                <button class="inbox-sort-btn is-on" role="tab" data-ifolder="enquiries" onclick="inboxFolder('enquiries')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>Enquiries <span class="ifold-count" id="ifold-count-enq"></span></button>
+                <button class="inbox-sort-btn" role="tab" data-ifolder="messages" onclick="inboxFolder('messages')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.6-.8L3 21l1.9-5.7A8.38 8.38 0 0 1 4 11.5 8.5 8.5 0 0 1 12.5 3 8.38 8.38 0 0 1 21 11.5z"/></svg>Messages <span class="ifold-count" id="ifold-count-msg"></span></button>
+                <button class="inbox-sort-btn" role="tab" data-ifolder="email" onclick="inboxFolder('email')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/></svg>Email <span class="ifold-count" id="ifold-count-mbx"></span></button>
             </div>
             <!-- Enquiries folder -->
             <div id="inbox-folder-enquiries">
-            <h2 class="accounts-section-title" style="margin-top: 6px;">Enquiries <span class="inbox-badge" id="inbox-badge">0</span></h2>
+            <h2 class="bo-sec-title">Enquiries <span class="inbox-badge" id="inbox-badge">0</span></h2>
             <div id="inbox-list"><!-- JS injects enquiry cards here --></div>
             </div>
             <!-- Messages folder (guest chat + the comms automations) -->
             <div id="inbox-folder-messages" style="display:none;">
-            <h2 class="accounts-section-title" style="margin-top: 6px;">Guest messages <span class="inbox-badge zero" id="messages-badge">0</span></h2>
+            <h2 class="bo-sec-title">Guest messages <span class="inbox-badge zero" id="messages-badge">0</span></h2>
             <div id="messages-list"><!-- JS injects message threads here --></div>
             <!-- Automation (chat + enquiry emails), tucked into sub-folders (not inline). -->
-            <div class="settings-group" style="max-width:640px;margin-top:20px;">
+            <div class="settings-section-label" style="margin-top:24px;">Automation</div>
+            <div class="settings-group" style="max-width:640px;">
                 <button class="settings-row" onclick="inboxSub('answers')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.6-.8L3 21l1.9-5.7A8.38 8.38 0 0 1 4 11.5 8.5 8.5 0 0 1 12.5 3 8.38 8.38 0 0 1 21 11.5z"/><path d="M9 10h6M9 13h4"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Instant chat answers</span><span class="settings-row-sub">Auto-answers to the chat's quick-question chips</span></span><span class="settings-row-chev">›</span>
@@ -2351,7 +2354,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=264"></script>
+    <script defer src="app.js?v=265"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
