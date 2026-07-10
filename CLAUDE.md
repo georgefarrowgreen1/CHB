@@ -71,8 +71,13 @@ area, not a settings dump: **Today** (`view-backoffice` — the OPERATIONS works
 timeline calendar on top, then the bookings master–detail — filters/search/`.bk-row`
 index + the `#bookings-detail-pane` docked hub at ≥1200px; `openBookings()` survives
 as an alias that lands here and scrolls to `#bookings-workspace`;
-`dock-badge-enquiries` pip), **Inbox** (`openInbox()` → `view-inbox`; `inboxSub()`
-sub-folders via `INBOX_SUBS`; `dock-badge-inbox` pip), **Money** (`openAccounts()` →
+`dock-badge-enquiries` pip), **Inbox** (`openInbox()` → `view-inbox` — the COMMS
+dashboard: an **Enquiries | Messages | Email** folder switch (`inboxFolder()`,
+`#inbox-folder-*` containers, `.ifold-count` chips; the docked enquiry pane only
+shows on Enquiries via `.enq-split.no-pane`); Email is the full mailbox client
+(`loadMailbox()`/`mailbox.php`, lazy on first open — moved from Manage, and
+`settingsOpen('mailbox')` redirects here); `inboxSub()` sub-folders via
+`INBOX_SUBS`; `dock-badge-inbox` pip), **Money** (`openAccounts()` →
 `view-accounts`;
 `accountsOpen(id)` → `#asec-<id>`, incl. the pricing coach), and
 **Manage** (`openArea()` → `view-settings`, ONE index — cottages, then marketing, then
