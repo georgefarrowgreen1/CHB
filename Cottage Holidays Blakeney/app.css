@@ -4416,6 +4416,26 @@ body.owner-mode .chat-widget {
   border: 0;
   box-shadow: var(--shadow-soft);
 }
+/* Inbox folder-switch count chips: a tiny .inbox-badge sized to sit inside a
+   segment. Empty (count 0) hides itself so quiet folders stay clean. */
+.ifold-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  margin-left: 4px;
+  border-radius: var(--r-pill);
+  background: var(--warn);
+  color: #1a1a1a;
+  font-size: 0.68rem;
+  font-weight: 600;
+  vertical-align: middle;
+}
+.ifold-count:empty {
+  display: none;
+}
 .inbox-sort-btn {
   font: inherit;
   cursor: pointer;
@@ -5329,6 +5349,14 @@ body.owner-mode .chat-widget {
   #bookings-detail-pane .bhub-head,
   #inbox-detail-pane .bhub-head {
     margin-top: 0;
+  }
+  /* Messages/Email folders: the docked enquiry pane doesn't apply — give the
+     folder the full width until the owner switches back to Enquiries. */
+  .enq-split.no-pane {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .enq-split.no-pane #inbox-detail-pane {
+    display: none;
   }
 }
 #bookings-detail-empty,

@@ -288,6 +288,35 @@ function inboxSubClose() {
     if (main) main.style.display = '';
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
+// ---- Inbox folders: the Inbox is ONE comms dashboard — website enquiries,
+// guest chat and the cottage EMAIL mailbox behind a segmented folder switch.
+// State survives leaving the view (display toggles persist in the DOM), so the
+// owner comes back to the folder they were in. ----
+let __inboxFolder = 'enquiries';
+let __mbxOpenedOnce = false;
+function inboxFolder(which) {
+    if (!['enquiries', 'messages', 'email'].includes(which)) which = 'enquiries';
+    __inboxFolder = which;
+    document.querySelectorAll('#inbox-folders [data-ifolder]').forEach((b) => {
+        const on = b.dataset.ifolder === which;
+        b.classList.toggle('is-on', on);
+        b.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    ['enquiries', 'messages', 'email'].forEach((f) => {
+        const el = document.getElementById('inbox-folder-' + f);
+        if (el) el.style.display = f === which ? '' : 'none';
+    });
+    // The docked enquiry pane belongs to the Enquiries folder only — on the
+    // other folders the list takes the full width (CSS hides it via no-pane).
+    const split = document.querySelector('#view-inbox .enq-split');
+    if (split) split.classList.toggle('no-pane', which !== 'enquiries');
+    // The mailbox is lazy: first open fetches, after that the rendered list
+    // stays live in the DOM and the Refresh button re-pulls on demand.
+    if (which === 'email' && !__mbxOpenedOnce) {
+        __mbxOpenedOnce = true;
+        loadMailbox();
+    }
+}
 
 // ---- Bookings: a browsable list of every confirmed booking (dock → Bookings) ----
 let __bookingsFilter = 'upcoming';
@@ -965,7 +994,6 @@ function renderBookingHub() {
 
 // ---- Settings router: Apple-style index → drill-down sub-pages ----
 const SETTINGS_TITLES = {
-    mailbox: 'Email',
     notify: 'Notifications',
     host: 'Profile',
     reviews: 'Reviews',
@@ -1101,6 +1129,13 @@ function settingsShowIndex() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 function settingsOpen(section) {
+    // The email client moved from Manage into the Inbox (comms dashboard) —
+    // redirect old links, saved history entries and recents to its new home.
+    if (section === 'mailbox') {
+        openInbox();
+        inboxFolder('email');
+        return;
+    }
     adminHistPush('view-settings', section);
     settingsRecentRecord(section);
     __settingsPath = section ? { section } : null;
@@ -1124,8 +1159,7 @@ function settingsOpen(section) {
     const title = document.getElementById('settings-panel-title');
     if (title) title.textContent = SETTINGS_TITLES[section] || 'Settings';
     settingsBackTarget = () => settingsShowIndex();
-    if (section === 'mailbox') loadMailbox();
-    else if (section === 'notify') renderNotifySettings();
+    if (section === 'notify') renderNotifySettings();
     else if (section === 'host') fillHostFields();
     else if (section === 'reviews') loadGuestReviewModeration();
     else if (section === 'photos') loadGuestPhotosAdmin();
@@ -4359,11 +4393,15 @@ async function loadAdminMessages() {
             list.innerHTML = `<p style="font-size:0.82rem;color:var(--text-muted);">Couldn't load messages.</p>`;
         return;
     }
-    // The settings badge only ever reflects unread in the active inbox.
-    if (!__msgShowArchived && badge) {
+    // The badges only ever reflect unread in the active inbox.
+    if (!__msgShowArchived) {
         const unread = threads.reduce((s, t) => s + (t.unread || 0), 0);
-        badge.textContent = unread;
-        badge.classList.toggle('zero', unread === 0);
+        if (badge) {
+            badge.textContent = unread;
+            badge.classList.toggle('zero', unread === 0);
+        }
+        const chip = document.getElementById('ifold-count-msg');
+        if (chip) chip.textContent = unread > 0 ? unread : '';
     }
     if (!list) return;
     __msgThreads = threads;
@@ -8260,7 +8298,7 @@ async function expMove(id, dir) {
 // Publish the facade-stubbed entry points (see app.js loadAdminBundle).
 
 // ============================================================
-//  Manage → Email: the back office's email client on the cottage mailbox.
+//  Inbox → Email folder: the back office's email client on the cottage mailbox.
 //  List/read/delete/attachments over POP3 via mailbox.php; compose/reply/CC
 //  sends the branded coastal shell through the site's own smtp_send; "Sent"
 //  is our own mail_sent ledger (POP3 can only read the INBOX). Received mail
@@ -8383,6 +8421,13 @@ function mailboxSearch(q) {
 function renderMailboxList(keepSearchFocus) {
     const el = document.getElementById('mailbox-body');
     if (!el) return;
+    // Folder-switch chip: unread count over the FULL fetched list (not the
+    // current search filter), so it reads like the other folders' counts.
+    const mbxChip = document.getElementById('ifold-count-mbx');
+    if (mbxChip) {
+        const u = __mbxMessages.filter((m) => !m.seen).length;
+        mbxChip.textContent = u > 0 ? u : '';
+    }
     const q = __mbxQuery;
     const match = (t) => !q || String(t || '').toLowerCase().includes(q);
     let rows = '';
@@ -8612,7 +8657,7 @@ async function mailboxDelete(uid) {
     }
 }
 
-[accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, bulkImportReviews, changeAdminPassword, changeMonth, timelineToday, inboxSub, inboxSubClose, initBackOffice, loadAdminMessages, loadDiagnostics, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveDepositPct, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsRecentRender, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
+[accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, bulkImportReviews, changeAdminPassword, changeMonth, timelineToday, inboxSub, inboxSubClose, inboxFolder, initBackOffice, loadAdminMessages, loadDiagnostics, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveDepositPct, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsRecentRender, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
     window[f.name] = f;
 });
 window.__ADMIN_LOADED = true;

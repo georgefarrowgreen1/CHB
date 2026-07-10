@@ -229,10 +229,10 @@ async function waitForServer(url, tries = 40) {
       { key: 'admin-booking-hub', open: "(async () => { await openBookingHub('b2'); })()", mustSee: ['#booking-hub-content', '#hub-history'] },
       { key: 'admin-add-booking', open: "(async () => { window.openBookings && await openBookings(); openAddBooking(); document.getElementById('modal-checkin').value = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10); document.getElementById('modal-checkout').value = new Date(Date.now() + 33 * 864e5).toISOString().slice(0, 10); updateModalPrice(); })()", mustSee: ['#edit-modal .modal-box', '#modal-availability .mav-grid'] },
       { key: 'admin-close-modal', open: 'closeModal()', mustSee: ['#bookings-list'] },
-      { key: 'admin-inbox', open: '(async () => { await openInbox(); })()', mustSee: ['#inbox-list', '#messages-list'] },
+      { key: 'admin-inbox-messages', open: "(async () => { await openInbox(); inboxFolder('messages'); })()", mustSee: ['#inbox-folders', '#messages-list'] },
       { key: 'admin-money', open: '(async () => { await openAccounts(); })()', mustSee: ['#accounts-index'] },
       { key: 'admin-money-payments', open: "(async () => { await openAccounts(); accountsOpen('payments'); })()", mustSee: ['#money-panel'] },
-      { key: 'admin-inbox', open: '(async () => { await openInbox(); })()', mustSee: ['#inbox-list'] },
+      { key: 'admin-inbox', open: "(async () => { await openInbox(); inboxFolder('enquiries'); })()", mustSee: ['#inbox-folders', '#inbox-list'] },
       { key: 'admin-money', open: '(async () => { await openAccounts(); })()', mustSee: ['#money-overview'] },
       { key: 'admin-manage', open: "(async () => { await openArea('manage'); })()", mustSee: ['#settings-index'] },
       { key: 'admin-accom', open: "(async () => { await openArea('cottages'); settingsOpen('accom'); })()", mustSee: ['#sec-accom'] },
@@ -240,7 +240,7 @@ async function waitForServer(url, tries = 40) {
       { key: 'admin-calendar-sync', open: "(async () => { await openArea('cottages'); settingsOpen('calendar'); await settingsOpenCalendar('21a'); })()", mustSee: ['#sync-export-21a', '#sync-airbnb-21a', '#sync-bookingcom-21a'] },
       { key: 'admin-reviews', open: "(async () => { await openArea('marketing'); settingsOpen('reviews'); })()", mustSee: ['#sec-reviews'] },
       { key: 'admin-health', open: "(async () => { await openArea('settings'); settingsOpen('diagnostics'); })()", mustSee: ['#sec-diagnostics'] },
-      { key: 'admin-mailbox', open: "(async () => { await openArea('manage'); settingsOpen('mailbox'); })()", mustSee: ['#sec-mailbox'] },
+      { key: 'admin-mailbox', open: "(async () => { await openInbox(); inboxFolder('email'); })()", mustSee: ['#inbox-folder-email'] },
     ];
     for (const vp of WIDTHS) {
       const page = await newPage(browser, vp, 'admin-' + vp.name);

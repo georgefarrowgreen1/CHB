@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 62;
+const ADMIN_BUNDLE_V = 63;
 let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
@@ -34,7 +34,7 @@ function loadAdminBundle() {
     __adminBundlePromise = attempt(2);
     return __adminBundlePromise;
 }
-["accountsBack","accountsOpen","accountsShowIndex","activityLogSearch","addAdminPasskey","addReviewRow","afterPaymentChange","autoSyncIcalBlocks","backfillWebp","bookingHubBack","bookingsSetFilter","bookingsSetSearch","bulkImportReviews","changeAdminPassword","changeMonth","timelineToday","inboxSub","inboxSubClose","initBackOffice","loadAdminMessages","loadDiagnostics","logoutStaff","offerUpdatedConfirmationEmail","openAccounts","openAddBooking","openArea","openBlockDates","openBookings","openBookingEmail","openBookingHub","openEnquiryHub","enquiryHubBack","openInbox","openSettings","openStagingSite","refreshModerationCounts","renderAccounts","renderActivityLog","renderBookings","renderCalendar","renderExpenses","renderInbox","renderMoneyOverview","requestPayment","renderSquareSettings","runMigrations","saveApiKey","saveContactPhone","saveContent","saveDepositPct","saveGoogleReviewUrl","saveHostText","saveReviews","sendBroadcast","sendSampleEmails","sendTestEmail","settingsBack","settingsFilter","settingsOpen","settingsOpenAccom","settingsOpenAccomSec","settingsOpenCalendar","settingsOpenCancel","settingsRecentRender","settingsSearchKey","settingsShowIndex","tryAccessBackOffice","uploadHostPhoto"].forEach((n) => {
+["accountsBack","accountsOpen","accountsShowIndex","activityLogSearch","addAdminPasskey","addReviewRow","afterPaymentChange","autoSyncIcalBlocks","backfillWebp","bookingHubBack","bookingsSetFilter","bookingsSetSearch","bulkImportReviews","changeAdminPassword","changeMonth","timelineToday","inboxSub","inboxSubClose","inboxFolder","initBackOffice","loadAdminMessages","loadDiagnostics","logoutStaff","offerUpdatedConfirmationEmail","openAccounts","openAddBooking","openArea","openBlockDates","openBookings","openBookingEmail","openBookingHub","openEnquiryHub","enquiryHubBack","openInbox","openSettings","openStagingSite","refreshModerationCounts","renderAccounts","renderActivityLog","renderBookings","renderCalendar","renderExpenses","renderInbox","renderMoneyOverview","requestPayment","renderSquareSettings","runMigrations","saveApiKey","saveContactPhone","saveContent","saveDepositPct","saveGoogleReviewUrl","saveHostText","saveReviews","sendBroadcast","sendSampleEmails","sendTestEmail","settingsBack","settingsFilter","settingsOpen","settingsOpenAccom","settingsOpenAccomSec","settingsOpenCalendar","settingsOpenCancel","settingsRecentRender","settingsSearchKey","settingsShowIndex","tryAccessBackOffice","uploadHostPhoto"].forEach((n) => {
     const stub = (...a) =>
         loadAdminBundle()
             .catch((e) => {
@@ -10581,6 +10581,9 @@ function refreshInboxBadge() {
         badge.innerText = n;
         badge.classList.toggle('zero', n === 0);
     }
+    // Inbox folder-switch chip (comms dashboard) — same pending count.
+    const folderChip = document.getElementById('ifold-count-enq');
+    if (folderChip) folderChip.textContent = n > 0 ? n : '';
     // Dock Inbox pip.
     const dock = document.getElementById('dock-badge-inbox');
     if (dock) {
@@ -11691,7 +11694,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'j6qms8xe';
+    const BUILD = 'mrfgb8a5';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
