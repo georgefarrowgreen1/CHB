@@ -307,13 +307,20 @@ async function openBookings() {
         tryAccessBackOffice();
         return;
     }
-    // Make sure bookings are loaded before the list renders. (Per-booking email
-    // history now loads on demand when a hub opens — the index doesn't show it.)
+    // The Bookings page merged into the Today dashboard: land there, render
+    // the workspace, and scroll to it (past the timeline) so "open bookings"
+    // still means "show me the list".
     try {
         if (!Object.keys(dbBookings).some((k) => (dbBookings[k] || []).length)) await loadData();
     } catch (e) {}
-    nav('view-bookings'); // nav() calls renderBookings()
-    adminHistPush('view-bookings');
+    nav('view-backoffice');
+    adminHistPush('view-backoffice');
+    try {
+        renderCalendar();
+    } catch (e) {}
+    renderBookings();
+    const ws = document.getElementById('bookings-workspace');
+    if (ws) ws.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 // Friendly label for a logged email action.
 function emailLogLabel(action) {
@@ -407,7 +414,7 @@ function renderBookings() {
     if (bookingsSplitWide()) {
         if (__hubBookingId && !findBookingById(__hubBookingId)) __hubBookingId = null;
         if (!__hubBookingId) {
-            openBookingHub(rows[0].b.id);
+            openBookingHub(rows[0].b.id, true); // quiet: no scroll on auto-select
             return;
         }
         markBookingsSelection();
@@ -470,7 +477,7 @@ try {
     const onSplitChange = () => {
         const active = (document.querySelector('.page-view.active') || {}).id;
         try {
-            if (active === 'view-bookings' || active === 'view-booking-hub') {
+            if (active === 'view-backoffice' || active === 'view-booking-hub') {
                 if (__hubBookingId && findBookingById(__hubBookingId)) openBookingHub(__hubBookingId);
             } else if (active === 'view-inbox' || active === 'view-enquiry-hub') {
                 if (__enqHubId && enquiries.find((x) => x.id === __enqHubId)) openEnquiryHub(__enqHubId);
@@ -597,9 +604,9 @@ function bookingEmailLogHtml(b) {
 //  row and search hit routes here (app.js showDetails → openBookingHub).
 // ==================================================================
 let __hubBookingId = null;
-let __hubReturnView = 'view-bookings';
+let __hubReturnView = 'view-backoffice';
 
-async function openBookingHub(bookingId) {
+async function openBookingHub(bookingId, quiet) {
     if (!isAuthenticated) {
         tryAccessBackOffice();
         return;
@@ -626,11 +633,21 @@ async function openBookingHub(bookingId) {
         // #booking-hub-content node re-parents into the pane) — no page swap.
         const pane = document.getElementById('bookings-detail-pane');
         if (content && content.parentElement !== pane) pane.appendChild(content);
-        if (!prev || prev.id !== 'view-bookings') {
-            nav('view-bookings'); // nav() renders the index (selection already set)
-            adminHistPush('view-bookings');
+        if (!prev || prev.id !== 'view-backoffice') {
+            nav('view-backoffice');
+            adminHistPush('view-backoffice');
+            try {
+                renderCalendar();
+            } catch (e) {}
+            renderBookings(); // renders the index; the selection highlights itself
+        } else {
+            markBookingsSelection();
         }
-        markBookingsSelection();
+        // A tap can come from the timeline at the top of the page (or from
+        // Money/Inbox) — bring the docked hub into view so the action visibly
+        // lands somewhere. `quiet` = the dashboard's own auto-select, which
+        // must never yank the owner down the page.
+        if (pane && !quiet) pane.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     } else {
         const home = document.getElementById('view-booking-hub');
         if (content && home && content.parentElement !== home) home.appendChild(content);
@@ -676,7 +693,7 @@ async function openBookingHub(bookingId) {
 }
 
 function bookingHubBack() {
-    const back = __hubReturnView && document.getElementById(__hubReturnView) ? __hubReturnView : 'view-bookings';
+    const back = __hubReturnView && document.getElementById(__hubReturnView) ? __hubReturnView : 'view-backoffice';
     if (back === 'view-accounts') {
         openAccounts();
         return;
@@ -2901,7 +2918,7 @@ async function cancelBooking(bookingId) {
         // it, or refresh the index + docked pane on the bookings dashboard.
         const hub = document.getElementById('view-booking-hub');
         if (hub && hub.classList.contains('active')) window.openBookings();
-        const bkView = document.getElementById('view-bookings');
+        const bkView = document.getElementById('view-backoffice');
         if (bkView && bkView.classList.contains('active')) renderBookings();
         if (
             document.getElementById('view-accounts') &&
@@ -4153,6 +4170,9 @@ async function releaseHold(bookingId) {
 async function initBackOffice() {
     await loadData();
     renderCalendar();
+    try {
+        renderBookings(); // the bookings workspace shares the dashboard now
+    } catch (e) {}
     renderInbox();
     try {
         refreshModerationCounts();
@@ -7761,7 +7781,7 @@ async function sendEnquiryEmail() {
         if (t.kind === 'booking') {
             try {
                 await loadBookingEmailLogs();
-                if ((document.querySelector('.page-view.active') || {}).id === 'view-bookings')
+                if ((document.querySelector('.page-view.active') || {}).id === 'view-backoffice')
                     renderBookings();
             } catch (e) {}
         }

@@ -66,11 +66,14 @@ Single-operator holiday-let PWA. No framework, no build step.
 - Routing is `nav()` toggling `.page-view.active`; per-view init lives in `nav()`
   (e.g. `view-experiences` → `renderExperiencesView()`). No router lib.
 
-**Back-office IA** — the admin dock (`body.owner-mode`) has 5 buttons, each a task
-area, not a settings dump: **Today** (`view-backoffice` — just the title + timeline
-calendar; `dock-badge-enquiries` pip), **Bookings** (`openBookings()` →
-`view-bookings`), **Inbox** (`openInbox()` → `view-inbox`; `inboxSub()` sub-folders via
-`INBOX_SUBS`; `dock-badge-inbox` pip), **Money** (`openAccounts()` → `view-accounts`;
+**Back-office IA** — the admin dock (`body.owner-mode`) has 4 buttons, each a task
+area, not a settings dump: **Today** (`view-backoffice` — the OPERATIONS workspace:
+timeline calendar on top, then the bookings master–detail — filters/search/`.bk-row`
+index + the `#bookings-detail-pane` docked hub at ≥1200px; `openBookings()` survives
+as an alias that lands here and scrolls to `#bookings-workspace`;
+`dock-badge-enquiries` pip), **Inbox** (`openInbox()` → `view-inbox`; `inboxSub()`
+sub-folders via `INBOX_SUBS`; `dock-badge-inbox` pip), **Money** (`openAccounts()` →
+`view-accounts`;
 `accountsOpen(id)` → `#asec-<id>`, incl. the pricing coach), and
 **Manage** (`openArea()` → `view-settings`, ONE index — cottages, then marketing, then
 account/system, grouped by `.settings-section-label`s; the old per-area filtering is
@@ -85,9 +88,10 @@ delegates to `openBookingHub()` (admin.js): status pipeline + next action, money
 emails, guest, change history via `bookings.php` `history`. The **enquiry hub**
 (`view-enquiry-hub`, `openEnquiryHub()`) is the same for enquiries — approve/edit/
 email/decline + agreed price live there; approving jumps to the new booking's hub
-(`enquiries.php` returns `booking_id`). At ≥1200px both the Bookings page and the
+(`enquiries.php` returns `booking_id`). At ≥1200px both the Today workspace and the
 Inbox dock their hub in a side pane (master–detail; the `#booking-hub-content` /
-`#enquiry-hub-content` nodes re-parent between pane and standalone view). Index rows
+`#enquiry-hub-content` nodes re-parent between pane and standalone view, incl. live
+on crossing 1200px). Index rows
 share the `.bk-row` three-line anatomy. The Today calendar is a horizontal
 multi-cottage TIMELINE (`renderCalendar()` in admin.js, `.tl-*` CSS): one lane per
 cottage, sticky labels, ~6 months of days. Its bars are launchers, not editors —
