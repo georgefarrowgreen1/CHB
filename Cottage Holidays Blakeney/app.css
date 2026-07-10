@@ -4436,6 +4436,46 @@ body.owner-mode .chat-widget {
 .ifold-count:empty {
   display: none;
 }
+/* The Inbox folder switch is the view's hero control — the same segmented
+   pill as the Today filters, sized up a step, with the site's line icons.
+   On phones it stretches edge to edge with equal segments. */
+#inbox-folders {
+  margin-bottom: 20px;
+}
+#inbox-folders .inbox-sort-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 9px 18px;
+  font-size: 0.82rem;
+}
+#inbox-folders .ic {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+@media (max-width: 640px) {
+  #inbox-folders {
+    display: flex;
+    width: 100%;
+  }
+  #inbox-folders .inbox-sort-btn {
+    flex: 1;
+    justify-content: center;
+    padding: 9px 6px;
+  }
+}
+@media (max-width: 480px) {
+  #inbox-folders .ic {
+    display: none;
+  }
+}
+/* Inside a folder the switch already separates the sections — the section
+   title sits close under it, not at the Today page's 34px rhythm. */
+#inbox-folder-enquiries .bo-sec-title,
+#inbox-folder-messages .bo-sec-title {
+  margin-top: 4px;
+}
 .inbox-sort-btn {
   font: inherit;
   cursor: pointer;
@@ -5634,11 +5674,9 @@ body.owner-mode .chat-widget {
 }
 
 /* ---- Manage → Email: the admin mailbox client ---- */
-.mbx-bar {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 16px;
+/* The opened email reads like a hub card and arrives with the same entrance. */
+#mbx-reader .bhub-card {
+  animation: bhubIn 0.4s var(--fluid-bezier) both;
 }
 .mbx-when {
   margin-left: auto;

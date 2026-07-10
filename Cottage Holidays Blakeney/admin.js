@@ -316,6 +316,24 @@ function inboxFolder(which) {
         __mbxOpenedOnce = true;
         loadMailbox();
     }
+    inboxSubline();
+}
+// The header's LIVING subline — the Today-dashboard treatment applied to
+// comms: one quiet sentence saying what's waiting for a reply, composed from
+// the same counts the folder chips show (enquiries live; chats/emails read
+// from their chips so this never re-fetches anything).
+function inboxSubline() {
+    const el = document.getElementById('inbox-subline');
+    if (!el) return;
+    const chip = (id) => parseInt((document.getElementById(id) || {}).textContent, 10) || 0;
+    const enq = typeof enquiries !== 'undefined' ? enquiries.length : chip('ifold-count-enq');
+    const msg = chip('ifold-count-msg');
+    const mbx = chip('ifold-count-mbx');
+    const parts = [];
+    if (enq) parts.push(enq === 1 ? '1 enquiry waiting' : `${enq} enquiries waiting`);
+    if (msg) parts.push(msg === 1 ? '1 unread chat' : `${msg} unread chats`);
+    if (mbx) parts.push(mbx === 1 ? '1 unread email' : `${mbx} unread emails`);
+    el.textContent = parts.length ? parts.join(' · ') : 'All caught up — nothing needs a reply.';
 }
 
 // ---- Bookings: a browsable list of every confirmed booking (dock → Bookings) ----
@@ -4402,6 +4420,7 @@ async function loadAdminMessages() {
         }
         const chip = document.getElementById('ifold-count-msg');
         if (chip) chip.textContent = unread > 0 ? unread : '';
+        inboxSubline();
     }
     if (!list) return;
     __msgThreads = threads;
@@ -7395,6 +7414,7 @@ function sortedEnquiries() {
 }
 function renderInbox() {
     refreshInboxBadge();
+    inboxSubline();
     const tg = document.getElementById('enq-nudge-toggle');
     if (tg) tg.checked = siteContent['enquiry-nudge-off'] !== '1';
     const ag = document.getElementById('anniv-nudge-toggle');
@@ -8469,20 +8489,25 @@ function renderMailboxList(keepSearchFocus) {
             )
             .join('');
     }
+    // Toolbar mirrors the Today calendar header: segmented switch on the left,
+    // the accent action + circular refresh on the right, search underneath.
     el.innerHTML = `
-        <div class="mbx-bar">
-            <div class="inbox-sort seg" role="tablist" aria-label="Mailbox folders">
+        <div class="cal-header-bar" style="margin-bottom:14px;">
+            <div class="inbox-sort seg" role="tablist" aria-label="Mailbox folders" style="margin-bottom:0;">
                 <button class="inbox-sort-btn${__mbxTab === 'inbox' ? ' is-on' : ''}" role="tab" onclick="mailboxTab('inbox')">Inbox</button>
                 <button class="inbox-sort-btn${__mbxTab === 'sent' ? ' is-on' : ''}" role="tab" onclick="mailboxTab('sent')">Sent</button>
             </div>
-            <button class="btn-glass btn-accent cal-add-btn" onclick="mailboxCompose()">+ New email</button>
-            <button class="btn-glass cal-add-btn" onclick="loadMailbox()">Refresh</button>
+            <div class="cal-actions">
+                <button class="btn-glass btn-accent cal-add-btn" onclick="mailboxCompose()">+ New email</button>
+                <button class="cal-refresh-btn" onclick="loadMailbox()" title="Check for new email" aria-label="Check for new email"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-1.9 5.3"/><path d="M20 5v6h-6"/></svg></button>
+            </div>
         </div>
         <div class="bo-search" style="margin-bottom:14px;">
-            <input type="search" class="input-glass" id="mbx-search" placeholder="Search sender or subject…" autocomplete="off" value="${mbxEsc(q)}" oninput="mailboxSearch(this.value)" style="margin-bottom:0;">
+            <input type="search" class="input-glass" id="mbx-search" placeholder="Find an email — sender or subject…" autocomplete="off" value="${mbxEsc(q)}" oninput="mailboxSearch(this.value)" style="margin-bottom:0;">
         </div>
-        ${rows || `<div class="accounts-empty">${q ? 'Nothing matches your search.' : __mbxTab === 'sent' ? 'Nothing sent from here yet.' : 'Nothing in the mailbox.'}</div>`}
+        ${rows || `<div class="accounts-empty">${q ? 'Nothing matches your search.' : __mbxTab === 'sent' ? 'Nothing sent from here yet.' : 'All caught up — nothing in the mailbox.'}</div>`}
         <div id="mbx-reader"></div>`;
+    inboxSubline();
     if (keepSearchFocus) {
         const sBox = document.getElementById('mbx-search');
         if (sBox) {
@@ -8519,7 +8544,7 @@ async function mailboxOpen(uid) {
             <pre class="mbx-text">${mbxEsc(m.body || '(no text content)')}</pre>
             ${atts ? `<div class="mbx-atts">${atts}</div>` : ''}
             <div class="bhub-btn-row">
-                <button class="btn-sm btn-edit" onclick="mailboxReply('${mbxEsc(uid)}')">Reply</button>
+                <button class="btn-sm btn-edit" style="color:var(--accent);border-color:rgba(199,154,100,0.45);" onclick="mailboxReply('${mbxEsc(uid)}')">Reply</button>
                 <button class="btn-sm btn-edit" onclick="mailboxMarkUnread('${mbxEsc(uid)}')">Mark unread</button>
                 <button class="btn-sm btn-edit" style="color:var(--danger);border-color:rgba(229,115,115,0.4);" onclick="mailboxDelete('${mbxEsc(uid)}')">Delete</button>
             </div>
