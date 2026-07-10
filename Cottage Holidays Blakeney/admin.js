@@ -7370,7 +7370,7 @@ function renderInbox() {
     // Sort control — only worth showing with more than one enquiry.
     const sortBar =
         enquiries.length > 1
-            ? `<div class="inbox-sort">Sort:${[
+            ? `<div class="inbox-sort seg" role="group" aria-label="Sort enquiries">${[
                   ['soonest', 'Soonest stay'],
                   ['newest', 'Newest'],
                   ['cottage', 'Cottage'],

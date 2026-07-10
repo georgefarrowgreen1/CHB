@@ -384,6 +384,31 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
     }
 }
 
+// ---------- §8: stylesheet structural integrity ----------
+// A mangled edit once left an UNTERMINATED /* comment that silently swallowed
+// the following rules until the next */ (the browser drops them without any
+// error). Walk each stylesheet honouring comments: every /* must close, and
+// braces must balance OUTSIDE comments — so a truncated comment or a stray
+// brace fails CI instead of shipping invisible style loss.
+console.log('\n== 8. Stylesheet integrity ==');
+for (const cssFile of ['app.css', 'guest-app.css']) {
+    const css = fs.readFileSync(path.join(__dirname, cssFile), 'utf8');
+    let inComment = false;
+    let depth = 0;
+    let bad = '';
+    for (let i = 0; i < css.length; i++) {
+        if (inComment) {
+            if (css[i] === '*' && css[i + 1] === '/') { inComment = false; i++; }
+        } else if (css[i] === '/' && css[i + 1] === '*') {
+            inComment = true; i++;
+        } else if (css[i] === '{') depth++;
+        else if (css[i] === '}') { depth--; if (depth < 0) { bad = 'stray } at index ' + i; break; } }
+    }
+    if (!bad && inComment) bad = 'unterminated /* comment';
+    if (!bad && depth !== 0) bad = 'unbalanced braces (depth ' + depth + ' at EOF)';
+    check(cssFile + ' parses cleanly (comments closed, braces balanced)', !bad, bad);
+}
+
 console.log('\n== Summary ==');
 if (failures === 0) { console.log('  ALL CHECKS PASSED ✅\n'); process.exit(0); }
 console.log('  ' + failures + ' CHECK(S) FAILED ❌\n'); process.exit(1);
