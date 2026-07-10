@@ -5649,6 +5649,44 @@ body.owner-mode .chat-widget {
   display: block;
   margin-bottom: 5px;
 }
+/* Guest-match card: who this sender is, with hub links */
+.mbx-ctx {
+  margin: 0 0 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-sm);
+  background: rgba(127, 127, 127, 0.05);
+}
+.mbx-ctx .bhub-stay-row {
+  margin-top: 6px;
+}
+/* Attachment pills */
+.mbx-atts {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 10px 0 2px;
+}
+.mbx-att {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-pill);
+  background: rgba(127, 127, 127, 0.07);
+  color: var(--text-light);
+  font-size: 0.8rem;
+  text-decoration: none;
+  transition: background 0.2s var(--fluid-bezier);
+}
+.mbx-att:hover {
+  background: var(--glass-hover);
+}
+.mbx-att .ic {
+  width: 13px;
+  height: 13px;
+}
 
 /* ---- Booking hub (view-booking-hub): one screen per booking ---- */
 @keyframes bhubIn {
