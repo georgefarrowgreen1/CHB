@@ -27,7 +27,7 @@ concurrency:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     steps:
       - uses: actions/checkout@v4
 
@@ -81,9 +81,15 @@ jobs:
           # gzip; .htaccess serves these to brotli-capable browsers — ~15%
           # smaller than gzip). sw.js is skipped: it must stay no-cache and an
           # immutable stale sw.js.br would freeze service-worker updates.
-          sudo apt-get install -y -qq brotli > /dev/null
-          find "$OUT" -maxdepth 1 \( -name '*.js' -o -name '*.css' \) ! -name 'sw.js' -exec brotli -f -q 11 -k {} \;
-          echo "Brotli twins:"; ls -la "$OUT"/*.br || true
+          # Self-hosted: brotli comes from the machine (brew install brotli /
+          # sudo apt install brotli); missing it just skips the twins (non-fatal,
+          # the site simply serves gzip-only).
+          if command -v brotli > /dev/null; then
+            find "$OUT" -maxdepth 1 \( -name '*.js' -o -name '*.css' \) ! -name 'sw.js' -exec brotli -f -q 11 -k {} \;
+            echo "Brotli twins:"; ls -la "$OUT"/*.br || true
+          else
+            echo "brotli not installed on this runner — skipping precompressed twins."
+          fi
 
           echo "Staged files:"; ls -la "$OUT"
 
@@ -96,10 +102,12 @@ jobs:
           REMOTE: ${{ secrets.IONOS_REMOTE_PATH }}
         run: |
           set -e
-          # Drop the flaky Microsoft/Azure apt repos (they intermittently serve an
-          # unsigned InRelease that fails apt-get update) — we only need lftp.
-          sudo rm -f /etc/apt/sources.list.d/*microsoft*.list /etc/apt/sources.list.d/*azure*.list 2>/dev/null || true
-          sudo apt-get update -qq -o Acquire::Retries=3 && sudo apt-get install -y lftp
+          # Self-hosted: lftp must be installed on the runner machine once
+          # (brew install lftp on a Mac / sudo apt install lftp on Linux+WSL).
+          if ! command -v lftp > /dev/null; then
+            echo "::error::lftp is not installed on this runner. Install it once: brew install lftp (Mac) or sudo apt install lftp (Linux/WSL)."
+            exit 1
+          fi
           PORT="${PORT:-22}"
           REMOTE="${REMOTE:-/}"
           # mirror -R = push local->remote, recursively (includes dotfiles like .htaccess).
@@ -147,7 +155,7 @@ jobs:
   #   STAGING_SFTP_HOST / STAGING_SFTP_USER / STAGING_SFTP_PASS / STAGING_SFTP_PORT
   # See SETUP-STAGING.md.
   deploy-staging:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: deploy
     steps:
       - name: Is staging configured?
@@ -191,8 +199,14 @@ jobs:
           fi
           # Precompressed brotli beside every js/css (same as the live deploy;
           # sw.js skipped — it must stay no-cache).
-          sudo apt-get install -y -qq brotli > /dev/null
-          find "$OUT" -maxdepth 1 \( -name '*.js' -o -name '*.css' \) ! -name 'sw.js' -exec brotli -f -q 11 -k {} \;
+          # Self-hosted: brotli comes from the machine (brew install brotli /
+          # sudo apt install brotli); missing it just skips the twins (non-fatal,
+          # the site simply serves gzip-only).
+          if command -v brotli > /dev/null; then
+            find "$OUT" -maxdepth 1 \( -name '*.js' -o -name '*.css' \) ! -name 'sw.js' -exec brotli -f -q 11 -k {} \;
+          else
+            echo "brotli not installed on this runner — skipping precompressed twins."
+          fi
 
       - name: Upload to staging via SFTP (lftp mirror)
         if: steps.chk.outputs.configured == 'true'
@@ -206,10 +220,12 @@ jobs:
           REMOTE: ${{ secrets.STAGING_REMOTE_PATH }}
         run: |
           set -e
-          # Drop the flaky Microsoft/Azure apt repos (they intermittently serve an
-          # unsigned InRelease that fails apt-get update) — we only need lftp.
-          sudo rm -f /etc/apt/sources.list.d/*microsoft*.list /etc/apt/sources.list.d/*azure*.list 2>/dev/null || true
-          sudo apt-get update -qq -o Acquire::Retries=3 && sudo apt-get install -y lftp
+          # Self-hosted: lftp must be installed on the runner machine once
+          # (brew install lftp on a Mac / sudo apt install lftp on Linux+WSL).
+          if ! command -v lftp > /dev/null; then
+            echo "::error::lftp is not installed on this runner. Install it once: brew install lftp (Mac) or sudo apt install lftp (Linux/WSL)."
+            exit 1
+          fi
           PORT="${PORT:-22}"
           REMOTE="${REMOTE:-/}"
           lftp -u "$USERNAME" --env-password "sftp://$HOST:$PORT" -e "set sftp:auto-confirm yes; set net:max-retries 3; set net:reconnect-interval-base 5; mirror -R --verbose --no-perms --parallel=2 ./deploy/ \"$REMOTE\"; bye"
