@@ -10,7 +10,7 @@ on:
 
 jobs:
   checks:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -68,7 +68,7 @@ jobs:
   # the core guest journeys + admin dashboard. Catches the render/integration
   # breakage the DOM-shim smoke test can't see. Runs in parallel with `checks`.
   browser-test:
-    runs-on: self-hosted
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -80,13 +80,14 @@ jobs:
       - name: Install Playwright browsers (Chromium + WebKit)
         working-directory: "Cottage Holidays Blakeney"
         run: |
-          # Self-hosted: the browser cache (~/.cache/ms-playwright) persists
-          # between runs, so this is a no-op after the first run. System deps
-          # (Linux only) are a ONE-TIME manual install — see SETUP-RUNNER.md —
-          # because --with-deps would need passwordless sudo on your machine.
+          # The hosted runner's Microsoft/Azure apt repos intermittently serve an
+          # unsigned InRelease ("NOSPLIT"), which fails `--with-deps`' apt-get and
+          # kills the whole browser-test. We don't need those repos, so drop them
+          # (and add apt retries) before the install.
+          sudo rm -f /etc/apt/sources.list.d/*microsoft*.list /etc/apt/sources.list.d/*azure*.list 2>/dev/null || true
           npm init -y > /dev/null
           npm install --no-audit --no-fund playwright
-          npx playwright install chromium webkit
+          npx playwright install --with-deps chromium webkit
 
       - name: Browser smoke test
         working-directory: "Cottage Holidays Blakeney"
