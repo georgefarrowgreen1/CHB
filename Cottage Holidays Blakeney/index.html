@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=150">
+    <link rel="stylesheet" href="app.css?v=151">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -1139,6 +1139,12 @@
 
             <div class="settings-section-label">Guests &amp; marketing</div>
             <div class="settings-group">
+                <button class="settings-row" data-kw="email mail inbox mailbox send receive compose reply" onclick="settingsOpen('mailbox')">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/><path d="M16.5 15.5h3"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Email</span><span class="settings-row-sub">Read &amp; send email from the cottage mailbox</span></span><span class="settings-row-chev">›</span>
+                </button>
+            </div>
+            <div class="settings-group">
                 <button class="settings-row" data-kw="users accounts password reset lookup email login" onclick="settingsOpen('guests')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 5.5a3 3 0 0 1 0 5.8M21 19a5.5 5.5 0 0 0-4-5.3"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Guest accounts</span><span class="settings-row-sub">Look up a guest &amp; reset their password</span></span><span class="settings-row-chev">›</span>
@@ -1231,6 +1237,10 @@
 
             <!-- Enquiries -->
             <!-- Notifications (owner push) -->
+            <div class="settings-sec" id="sec-mailbox" style="display:none;">
+                <div id="mailbox-body"><p style="font-size:0.85rem;color:var(--text-muted);">Loading your mailbox…</p></div>
+            </div>
+
             <div class="settings-sec" id="sec-notify" style="display:none;">
                 <div id="notify-body"></div>
             </div>
@@ -2334,7 +2344,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=261"></script>
+    <script defer src="app.js?v=262"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

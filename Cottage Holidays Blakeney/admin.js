@@ -965,6 +965,7 @@ function renderBookingHub() {
 
 // ---- Settings router: Apple-style index → drill-down sub-pages ----
 const SETTINGS_TITLES = {
+    mailbox: 'Email',
     notify: 'Notifications',
     host: 'Profile',
     reviews: 'Reviews',
@@ -1123,7 +1124,8 @@ function settingsOpen(section) {
     const title = document.getElementById('settings-panel-title');
     if (title) title.textContent = SETTINGS_TITLES[section] || 'Settings';
     settingsBackTarget = () => settingsShowIndex();
-    if (section === 'notify') renderNotifySettings();
+    if (section === 'mailbox') loadMailbox();
+    else if (section === 'notify') renderNotifySettings();
     else if (section === 'host') fillHostFields();
     else if (section === 'reviews') loadGuestReviewModeration();
     else if (section === 'photos') loadGuestPhotosAdmin();
@@ -8256,6 +8258,187 @@ async function expMove(id, dir) {
     }
 }
 // Publish the facade-stubbed entry points (see app.js loadAdminBundle).
+
+// ============================================================
+//  Manage → Email: a small, real email client on the cottage mailbox.
+//  List/read/delete over POP3 via mailbox.php; compose/reply sends the
+//  branded coastal shell through the site's own smtp_send. Received mail
+//  renders as ESCAPED TEXT only — a hostile email can never run script
+//  inside the owner's admin session.
+// ============================================================
+let __mbxMessages = [];
+let __mbxOpenUid = null;
+function mbxEsc(v) {
+    return escapeHtml(String(v == null ? '' : v));
+}
+function mbxWhen(iso) {
+    if (!iso) return '';
+    const d = new Date(iso.replace(' ', 'T'));
+    if (isNaN(d.getTime())) return '';
+    const today = new Date();
+    const sameDay = d.toDateString() === today.toDateString();
+    return sameDay
+        ? d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
+        : fmtDate(iso.slice(0, 10));
+}
+async function loadMailbox() {
+    const el = document.getElementById('mailbox-body');
+    if (!el) return;
+    __mbxOpenUid = null;
+    el.innerHTML = '<p style="font-size:0.85rem;color:var(--text-muted);">Checking the mailbox…</p>';
+    try {
+        const r = await apiPost('mailbox.php', { action: 'list' });
+        __mbxMessages = r.messages || [];
+        renderMailboxList();
+    } catch (e) {
+        el.innerHTML = `<div class="accounts-empty">Couldn't open the mailbox — ${mbxEsc(e.message)}</div>
+            <div class="bhub-btn-row"><button class="btn-sm btn-edit" onclick="loadMailbox()">Try again</button></div>`;
+    }
+}
+function renderMailboxList() {
+    const el = document.getElementById('mailbox-body');
+    if (!el) return;
+    const rows = __mbxMessages
+        .map((m) => {
+            const unread = !m.seen;
+            return `
+        <button type="button" class="bk-row glass-panel${unread ? ' mbx-unread' : ''}" onclick="mailboxOpen('${mbxEsc(m.uid)}')">
+            <span class="bk-row-body">
+                <span class="bk-row-top">
+                    ${unread ? '<span class="bk-chip warn"><span class="bk-dot"></span>New</span>' : ''}
+                    <span class="mbx-when">${mbxEsc(mbxWhen(m.date))}</span>
+                </span>
+                <strong class="bk-row-name">${mbxEsc(m.fromRaw || m.from || 'Unknown sender')}</strong>
+                <span class="bk-row-dates">${mbxEsc(m.subject)}</span>
+            </span>
+            <span class="bk-row-arrow" aria-hidden="true">›</span>
+        </button>`;
+        })
+        .join('');
+    el.innerHTML = `
+        <div class="mbx-bar">
+            <button class="btn-glass btn-accent cal-add-btn" onclick="mailboxCompose()">+ New email</button>
+            <button class="btn-glass cal-add-btn" onclick="loadMailbox()">Refresh</button>
+        </div>
+        ${rows || '<div class="accounts-empty">Nothing in the mailbox.</div>'}
+        <div id="mbx-reader"></div>`;
+}
+async function mailboxOpen(uid) {
+    const pane = document.getElementById('mbx-reader');
+    if (!pane) return;
+    __mbxOpenUid = uid;
+    pane.innerHTML = '<p style="font-size:0.85rem;color:var(--text-muted);margin-top:18px;">Opening…</p>';
+    pane.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    try {
+        const m = await apiPost('mailbox.php', { action: 'read', uid });
+        const local = __mbxMessages.find((x) => x.uid === uid);
+        if (local) local.seen = true;
+        pane.innerHTML = `
+        <section class="bhub-card glass-panel" style="margin-top:18px;">
+            <h3 class="bhub-card-title">${mbxEsc(m.subject)}</h3>
+            <div class="mbx-meta">
+                <div><span class="booking-detail-label">From</span> ${mbxEsc(m.fromRaw || m.from)}</div>
+                <div><span class="booking-detail-label">Date</span> ${mbxEsc(mbxWhen(m.date))}</div>
+            </div>
+            <pre class="mbx-text">${mbxEsc(m.body || '(no text content)')}</pre>
+            <div class="bhub-btn-row">
+                <button class="btn-sm btn-edit" onclick="mailboxReply('${mbxEsc(uid)}')">Reply</button>
+                <button class="btn-sm btn-edit" style="color:var(--danger);border-color:rgba(229,115,115,0.4);" onclick="mailboxDelete('${mbxEsc(uid)}')">Delete</button>
+            </div>
+            <div id="mbx-compose"></div>
+        </section>`;
+        // keep the list's unread chips honest without a refetch
+        const openMsg = m;
+        __mbxLastOpen = openMsg;
+    } catch (e) {
+        pane.innerHTML = `<div class="accounts-empty">${mbxEsc(e.message)}</div>`;
+    }
+}
+let __mbxLastOpen = null;
+function mailboxComposeForm(target, presetTo, presetSubject, quoted) {
+    target.innerHTML = `
+        <div class="mbx-form">
+            <label class="booking-detail-label" for="mbx-to">To</label>
+            <input class="input-glass" id="mbx-to" type="email" inputmode="email" autocomplete="off" placeholder="guest@example.com" value="${mbxEsc(presetTo || '')}" style="margin-bottom:10px;">
+            <label class="booking-detail-label" for="mbx-subject">Subject</label>
+            <input class="input-glass" id="mbx-subject" type="text" maxlength="300" value="${mbxEsc(presetSubject || '')}" style="margin-bottom:10px;">
+            <label class="booking-detail-label" for="mbx-text">Message</label>
+            <textarea class="input-glass" id="mbx-text" rows="8" maxlength="20000" style="resize:vertical;margin-bottom:10px;">${mbxEsc(quoted || '')}</textarea>
+            <p class="bhub-mut" style="margin:0 0 10px;">Sends from the cottage mailbox with the site's coastal styling.</p>
+            <div class="bhub-btn-row" style="margin-top:0;">
+                <button class="btn-glass btn-accent cal-add-btn" id="mbx-send-btn" onclick="mailboxSend()">Send</button>
+                <button class="btn-glass cal-add-btn" onclick="renderMailboxList()">Cancel</button>
+            </div>
+            <p id="mbx-msg" role="alert" style="font-size:0.85rem;color:var(--danger);margin:8px 0 0;"></p>
+        </div>`;
+    const to = document.getElementById(presetTo ? 'mbx-text' : 'mbx-to');
+    if (to) to.focus();
+}
+function mailboxCompose() {
+    const pane = document.getElementById('mbx-reader');
+    if (!pane) return;
+    __mbxOpenUid = null;
+    pane.innerHTML = `<section class="bhub-card glass-panel" style="margin-top:18px;">
+        <h3 class="bhub-card-title">New email</h3><div id="mbx-compose"></div></section>`;
+    mailboxComposeForm(document.getElementById('mbx-compose'));
+    pane.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+function mailboxReply(uid) {
+    const box = document.getElementById('mbx-compose');
+    const m = __mbxLastOpen && __mbxLastOpen.uid === uid ? __mbxLastOpen : null;
+    if (!box || !m) return;
+    const subj = /^re:/i.test(m.subject || '') ? m.subject : 'Re: ' + (m.subject || '');
+    const quoted =
+        '\n\nOn ' + (mbxWhen(m.date) || 'an earlier date') + ', ' + (m.fromRaw || m.from || 'they') + ' wrote:\n' +
+        String(m.body || '')
+            .split('\n')
+            .map((l) => '> ' + l)
+            .join('\n');
+    mailboxComposeForm(box, m.from || '', subj, quoted);
+}
+async function mailboxSend() {
+    const to = (document.getElementById('mbx-to') || {}).value || '';
+    const subject = (document.getElementById('mbx-subject') || {}).value || '';
+    const body = (document.getElementById('mbx-text') || {}).value || '';
+    const msg = document.getElementById('mbx-msg');
+    const btn = document.getElementById('mbx-send-btn');
+    if (msg) msg.textContent = '';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(to.trim())) {
+        if (msg) msg.textContent = 'Please enter a valid "To" email address.';
+        return;
+    }
+    if (!subject.trim() || !body.trim()) {
+        if (msg) msg.textContent = 'A subject and a message are both required.';
+        return;
+    }
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Sending…';
+    }
+    try {
+        await apiPost('mailbox.php', { action: 'send', to: to.trim(), subject: subject.trim(), body });
+        toast('Email sent.');
+        renderMailboxList();
+    } catch (e) {
+        if (msg) msg.textContent = e.message;
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Send';
+        }
+    }
+}
+async function mailboxDelete(uid) {
+    if (!(await glassConfirm('Delete this email from the mailbox? This can’t be undone.'))) return;
+    try {
+        await apiPost('mailbox.php', { action: 'delete', uid });
+        __mbxMessages = __mbxMessages.filter((m) => m.uid !== uid);
+        toast('Email deleted.');
+        renderMailboxList();
+    } catch (e) {
+        glassAlert("Couldn't delete: " + e.message);
+    }
+}
+
 [accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, bulkImportReviews, changeAdminPassword, changeMonth, timelineToday, inboxSub, inboxSubClose, initBackOffice, loadAdminMessages, loadDiagnostics, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveDepositPct, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsRecentRender, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
     window[f.name] = f;
 });

@@ -5605,6 +5605,51 @@ body.owner-mode .chat-widget {
   }
 }
 
+/* ---- Manage → Email: the admin mailbox client ---- */
+.mbx-bar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+.mbx-when {
+  margin-left: auto;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.bk-row.mbx-unread .bk-row-name {
+  font-weight: 700;
+}
+.mbx-meta {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  font-size: 0.85rem;
+  margin-bottom: 12px;
+}
+.mbx-meta .booking-detail-label {
+  margin-right: 4px;
+}
+/* Received mail renders as escaped text only — readable, never executable. */
+.mbx-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: 0.92rem/1.55 var(--font-sans);
+  color: var(--text-light);
+  background: rgba(127, 127, 127, 0.06);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-sm);
+  padding: 14px 16px;
+  margin: 0 0 4px;
+  max-height: 55vh;
+  overflow-y: auto;
+}
+.mbx-form .booking-detail-label {
+  display: block;
+  margin-bottom: 5px;
+}
+
 /* ---- Booking hub (view-booking-hub): one screen per booking ---- */
 @keyframes bhubIn {
   from {
