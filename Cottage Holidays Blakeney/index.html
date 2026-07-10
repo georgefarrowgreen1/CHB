@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=148">
+    <link rel="stylesheet" href="app.css?v=149">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -933,7 +933,7 @@
             <div class="bo-search" style="margin-top:4px;">
                 <input type="search" class="input-glass" id="bookings-search" placeholder="Find a booking — guest name, email or reference…" autocomplete="off" oninput="bookingsSetSearch(this.value)">
             </div>
-            <div class="inbox-sort" id="bookings-filters" role="tablist" aria-label="Filter bookings">
+            <div class="inbox-sort seg" id="bookings-filters" role="tablist" aria-label="Filter bookings">
                 <button class="inbox-sort-btn is-on" role="tab" onclick="bookingsSetFilter('upcoming')" data-bfilter="upcoming">Upcoming</button>
                 <button class="inbox-sort-btn" role="tab" onclick="bookingsSetFilter('needspay')" data-bfilter="needspay">Needs payment</button>
                 <button class="inbox-sort-btn" role="tab" onclick="bookingsSetFilter('past')" data-bfilter="past">Past</button>
@@ -1080,7 +1080,9 @@
              then your listing & account, with the legal reference last. -->
         <!-- Type-to-find: matches labels, descriptions AND hidden data-kw synonyms
              ("backup", "ical", "rates"…). Enter opens the first match. -->
-        <input type="search" class="input-glass" id="settings-search" placeholder="Search — try &quot;rates&quot;, &quot;reviews&quot; or &quot;backup&quot;…" autocomplete="off" oninput="settingsFilter(this.value)" onkeydown="settingsSearchKey(event)" style="max-width:640px;margin-bottom:8px;">
+        <div class="bo-search" style="margin:0 0 8px;">
+        <input type="search" class="input-glass" id="settings-search" placeholder="Search — try &quot;rates&quot;, &quot;reviews&quot; or &quot;backup&quot;…" autocomplete="off" oninput="settingsFilter(this.value)" onkeydown="settingsSearchKey(event)" style="margin-bottom:0;">
+        </div>
         <div id="settings-recent" class="settings-recent" style="display:none;"></div>
         <p id="settings-noresults" class="settings-noresults" style="display:none;">Nothing matches — try another word, or browse below.</p>
         </div>
@@ -2332,7 +2334,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=258"></script>
+    <script defer src="app.js?v=259"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

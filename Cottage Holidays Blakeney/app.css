@@ -3045,7 +3045,7 @@ textarea.input-glass.field-sm {
 /* Dashboard workspace section heading (serif, like the Money overview's) */
 .bo-sec-title {
   font-family: var(--font-serif);
-  font-size: 1.3rem;
+  font-size: var(--fs-h3);
   font-weight: 400;
   margin: 34px 0 2px;
 }
@@ -3250,20 +3250,12 @@ textarea.input-glass.field-sm {
   border: 1px solid var(--prop-pimpernel-border);
 }
 
-/* --- INBOX STRIP (top of unified back office) --- */
 /* Back-office layout: calendar (left) + enquiries sidebar (right) */
 .bo-layout {
   display: grid;
   grid-template-columns: 1fr;
   gap: 30px;
   align-items: start;
-} /* it's a container {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20px 24px;
-  cursor: pointer;
-  user-select: none;
 }
 .inbox-badge {
   background: var(--warn);
@@ -4394,9 +4386,9 @@ body.owner-mode .chat-widget {
   color: var(--text-muted);
   margin-bottom: 12px;
 }
-/* The dashboard's filter row is a segmented control: one hairline pill, the
-   active segment raised as a thumb (the Inbox "Sort:" row keeps its chips). */
-#bookings-filters.inbox-sort {
+/* Segmented control (.inbox-sort.seg): one hairline pill, the active
+   segment raised as a thumb — the dashboard filters and the Inbox sort. */
+.inbox-sort.seg {
   display: inline-flex;
   flex-wrap: nowrap;
   gap: 2px;
@@ -4407,12 +4399,12 @@ body.owner-mode .chat-widget {
   border-radius: var(--r-pill);
   background: rgba(127, 127, 127, 0.07);
 }
-#bookings-filters .inbox-sort-btn {
+.inbox-sort.seg .inbox-sort-btn {
   border: 0;
   white-space: nowrap;
   padding: 6px 14px;
 }
-#bookings-filters .inbox-sort-btn.is-on {
+.inbox-sort.seg .inbox-sort-btn.is-on {
   background: var(--glass-hover);
   color: var(--text-light);
   border: 0;
@@ -4827,6 +4819,10 @@ body.owner-mode .chat-widget {
   padding: 10px 2px;
   border-bottom: 1px solid var(--glass-border);
   font-size: 0.85rem;
+  transition: background 0.2s var(--fluid-bezier);
+}
+.act-row:hover {
+  background: var(--glass-hover);
 }
 .act-row:last-child {
   border-bottom: none;
@@ -5102,7 +5098,19 @@ body.owner-mode .chat-widget {
   color: var(--text-light);
   padding: 15px 18px;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background 0.2s var(--fluid-bezier);
+}
+.settings-row:active {
+  background: rgba(127, 127, 127, 0.12);
+}
+.settings-row .settings-row-chev {
+  transition:
+    transform 0.3s var(--spring),
+    color 0.2s var(--fluid-bezier);
+}
+.settings-row:hover .settings-row-chev {
+  transform: translateX(2px);
+  color: var(--accent);
 }
 .settings-row:first-child {
   border-top: none;
@@ -5605,6 +5613,21 @@ body.owner-mode .chat-widget {
 .bhub-head {
   animation: bhubIn 0.35s var(--fluid-bezier) both;
 }
+.bhub-card {
+  animation: bhubIn 0.4s var(--fluid-bezier) both;
+}
+.bhub-card:nth-of-type(2) {
+  animation-delay: 0.04s;
+}
+.bhub-card:nth-of-type(3) {
+  animation-delay: 0.08s;
+}
+.bhub-card:nth-of-type(4) {
+  animation-delay: 0.12s;
+}
+.bhub-card:nth-of-type(5) {
+  animation-delay: 0.16s;
+}
 .bhub-head {
   padding: 22px 24px;
   border-radius: var(--r-panel);
@@ -5797,8 +5820,12 @@ body.owner-mode .chat-widget {
   color: var(--text-light);
   font: inherit;
   font-size: 0.85rem;
+  transition: background 0.2s var(--fluid-bezier);
   cursor: pointer;
   text-align: left;
+}
+.bhub-stay-row:hover {
+  background: var(--glass-hover);
 }
 #hub-email-log .bk-email-log {
   margin-top: 14px;
@@ -6191,7 +6218,7 @@ body.owner-mode .chat-widget {
 .mo-kpi {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
-  border-radius: 18px;
+  border-radius: var(--r-lg);
   padding: 16px 18px;
 }
 .mo-kpi .mo-label {
@@ -8144,14 +8171,6 @@ body.owner-mode .admin-dock-wrap {
   justify-content: center;
   box-shadow: 0 0 0 2px rgba(26, 25, 27, 0.92);
 }
-/* Divider before the log out icon {
-  width: 1px;
-  height: 30px;
-  background: rgba(255, 255, 255, 0.14);
-  margin: 0 5px;
-  flex-shrink: 0;
-}
-
 /* ----- Homepage hero availability search ----- */
 .hero-search {
   width: 100%;
