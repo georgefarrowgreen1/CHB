@@ -2986,18 +2986,14 @@ textarea.input-glass.field-sm {
 
 /* --- CALENDAR MODULE --- */
 .cal-header-bar {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  display: flex;
   align-items: center;
-  margin-bottom: 20px;
-  gap: 15px;
-}
-.cal-header-bar .cal-month-nav {
-  grid-column: 2;
+  justify-content: space-between;
+  gap: 12px 16px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
 }
 .cal-actions {
-  grid-column: 3;
-  justify-self: end;
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
@@ -3010,27 +3006,53 @@ textarea.input-glass.field-sm {
 }
 .cal-month-nav {
   display: flex;
-  gap: 25px;
+  gap: 16px;
   align-items: center;
-  justify-content: center;
-}
-.cal-month-nav button {
-  background: transparent;
-  border: none;
-  color: var(--text-light);
-  font-size: 1.5rem;
-  cursor: pointer;
-  transition: color 0.3s var(--fluid-bezier);
-}
-.cal-month-nav button:hover {
-  color: var(--glass-highlight);
+  min-width: 0;
 }
 .cal-month-title {
   font-family: var(--font-serif);
-  font-size: clamp(1.4rem, 4vw, 2rem);
-  width: clamp(160px, 40vw, 240px);
-  text-align: center;
-  white-space: nowrap; /* "September 2026" must never wrap under the arrows */
+  font-size: clamp(1.4rem, 4vw, 1.8rem);
+  line-height: 1.15;
+  white-space: nowrap; /* "September 2026" must never wrap beside the control */
+}
+/* Segmented ‹ Today › control — one hairline pill, buttons divided inside. */
+.tl-seg {
+  display: inline-flex;
+  align-items: stretch;
+  flex-shrink: 0;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-pill);
+  overflow: hidden;
+  background: rgba(127, 127, 127, 0.07);
+}
+.tl-seg button {
+  font: 600 0.72rem var(--font-sans);
+  letter-spacing: 0.04em;
+  color: var(--text-light);
+  background: transparent;
+  border: 0;
+  padding: 8px 14px;
+  cursor: pointer;
+  transition: background 0.2s var(--fluid-bezier);
+}
+.tl-seg button + button {
+  border-left: 1px solid var(--glass-border);
+}
+.tl-seg button:hover {
+  background: var(--glass-hover);
+}
+/* Dashboard workspace section heading (serif, like the Money overview's) */
+.bo-sec-title {
+  font-family: var(--font-serif);
+  font-size: 1.3rem;
+  font-weight: 400;
+  margin: 34px 0 2px;
+}
+.bo-today-date {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  letter-spacing: 0.01em;
 }
 .cal-updated {
   display: flex;
@@ -4372,6 +4394,30 @@ body.owner-mode .chat-widget {
   color: var(--text-muted);
   margin-bottom: 12px;
 }
+/* The dashboard's filter row is a segmented control: one hairline pill, the
+   active segment raised as a thumb (the Inbox "Sort:" row keeps its chips). */
+#bookings-filters.inbox-sort {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  gap: 2px;
+  padding: 3px;
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-pill);
+  background: rgba(127, 127, 127, 0.07);
+}
+#bookings-filters .inbox-sort-btn {
+  border: 0;
+  white-space: nowrap;
+  padding: 6px 14px;
+}
+#bookings-filters .inbox-sort-btn.is-on {
+  background: var(--glass-hover);
+  color: var(--text-light);
+  border: 0;
+  box-shadow: var(--shadow-soft);
+}
 .inbox-sort-btn {
   font: inherit;
   cursor: pointer;
@@ -4635,8 +4681,25 @@ body.owner-mode .chat-widget {
 }
 /* Back-office booking search */
 .bo-search {
+  position: relative;
   max-width: 720px;
   margin: 0 0 22px;
+}
+.bo-search::before {
+  content: '';
+  position: absolute;
+  left: 15px;
+  top: 18px;
+  width: 15px;
+  height: 15px;
+  background: var(--text-muted);
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E") center / contain no-repeat;
+  pointer-events: none;
+  opacity: 0.75;
+}
+.bo-search .input-glass {
+  padding-left: 40px;
 }
 /* Collapsed to a slim pill; the full input appears when .open (toggleBoSearch). */
 
@@ -5338,7 +5401,26 @@ body.owner-mode .chat-widget {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.bk-row {
+  transition:
+    transform 0.3s var(--spring),
+    box-shadow 0.3s var(--fluid-bezier);
+}
+.bk-row:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-soft);
+}
+.bk-row:active {
+  transform: scale(0.995);
+}
+.bk-row:hover .bk-row-arrow {
+  color: var(--accent);
+  transform: translateX(2px);
+}
 .bk-row-arrow {
+  transition:
+    transform 0.3s var(--spring),
+    color 0.2s var(--fluid-bezier);
   color: var(--text-muted);
   font-size: 1.1rem;
   flex-shrink: 0;
@@ -5356,6 +5438,10 @@ body.owner-mode .chat-widget {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   border-radius: var(--r-sm);
+  /* Soft fade on the trailing edge — the strip visibly continues. The sticky
+     cottage labels sit on the LEFT, outside the faded zone. */
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
 }
 .tl-inner {
   display: inline-block;
@@ -5443,6 +5529,9 @@ body.owner-mode .chat-widget {
   grid-row: 1;
   z-index: 2;
   height: 30px;
+  transition:
+    transform 0.25s var(--spring),
+    filter 0.2s var(--fluid-bezier);
   /* Noon-to-noon: the grid area includes the check-in AND checkout days; the
      half-day insets make changeover days visibly shared between two stays. */
   margin: 0 calc(var(--tl-day-w, 38px) * 0.5 + 1px);
@@ -5467,6 +5556,10 @@ body.owner-mode .chat-widget {
 .tl-bar.tl-pay-danger {
   border-left-color: var(--danger);
 }
+.tl-bar:not(.tl-ext):hover {
+  transform: translateY(-1px);
+  filter: brightness(1.08);
+}
 .tl-bar.tl-ext {
   /* Neutral grey stripes so the block reads on BOTH themes (white-on-white
      was invisible in light mode). */
@@ -5481,17 +5574,6 @@ body.owner-mode .chat-widget {
 }
 .tl-bar.tl-clip-r {
   margin-right: 1px;
-}
-.tl-today-btn {
-  margin-left: 8px;
-  padding: 6px 14px;
-  border-radius: var(--r-pill);
-  border: 1px solid var(--glass-border);
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text-light);
-  font: 600 0.7rem var(--font-sans);
-  letter-spacing: 0.04em;
-  cursor: pointer;
 }
 /* Phone: denser timeline — slimmer sticky label column + narrower days so more
    of the strip fits on screen, keeping the 44px lane for comfortable taps. */
@@ -5510,6 +5592,19 @@ body.owner-mode .chat-widget {
 }
 
 /* ---- Booking hub (view-booking-hub): one screen per booking ---- */
+@keyframes bhubIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.bhub-head {
+  animation: bhubIn 0.35s var(--fluid-bezier) both;
+}
 .bhub-head {
   padding: 22px 24px;
   border-radius: var(--r-panel);
@@ -7687,34 +7782,29 @@ p.lead[data-edit-text] {
   .cal-panel {
     padding: 12px 8px;
   }
+  /* Phone toolbar: month title + segmented control share the first line,
+     the action buttons flow beneath. */
   .cal-header-bar {
-    grid-template-columns: 1fr;
+    flex-direction: column;
+    align-items: stretch;
     gap: 10px;
-    justify-items: center;
     margin-bottom: 12px;
-  }
-  .cal-header-bar .cal-month-nav {
-    grid-column: 1;
-  }
-  .cal-actions {
-    grid-column: 1;
-    justify-self: center;
-    justify-content: center;
-  }
-  .cal-add-btn {
-    padding: 10px 16px;
   }
   .cal-month-nav {
     justify-content: space-between;
     gap: 12px;
     width: 100%;
-    max-width: 300px;
+  }
+  .cal-actions {
+    justify-content: flex-start;
+  }
+  .cal-add-btn {
+    padding: 10px 16px;
   }
   /* Size the serif title so even the longest month + year stays on one line
-     between the arrows on a small phone. */
+     beside the segmented control on a small phone. */
   .cal-month-title {
     font-size: clamp(1.05rem, 4.5vw, 1.35rem);
-    width: auto;
   }
   
   

@@ -4168,6 +4168,9 @@ async function releaseHold(bookingId) {
 
 // Unified back office: load data once, render calendar and inbox.
 async function initBackOffice() {
+    // The page header carries the living date ("Friday 10 July").
+    const td = document.getElementById('today-date');
+    if (td) td.textContent = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
     await loadData();
     renderCalendar();
     try {
