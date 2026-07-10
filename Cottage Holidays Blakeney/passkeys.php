@@ -92,6 +92,14 @@ function normalize_args($node)
 
 $in = body();
 $action = $in['action'] ?? '';
+
+// Brute-force / spam guard on the UNAUTHENTICATED WebAuthn steps. The crypto
+// itself resists guessing, but unlimited login_finish attempts and unlimited
+// challenge minting are free load + probing surface. Authenticated actions
+// (register/list/delete) are already gated by their sessions.
+if (in_array($action, ['login_begin', 'login_finish', 'admin_login_begin', 'admin_login_finish'], true)) {
+    rate_limit('passkey-login', 20, 10);
+}
 $wa = new_webauthn($rpName, $rpId);
 
 // ---------------- REGISTER (logged-in guest adds a passkey) ----------------

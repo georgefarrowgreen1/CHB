@@ -2322,7 +2322,11 @@ function loadTesseract() {
     if (__tessLoading) return __tessLoading;
     __tessLoading = new Promise((resolve, reject) => {
         const s = document.createElement('script');
-        s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';
+        // Pinned EXACT version + SRI: a floating @5 tag would change content
+        // under us (and can't be integrity-checked at all).
+        s.src = 'https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js';
+        s.integrity = 'sha384-GJqSu7vueQ9qN0E9yLPb3Wtpd7OrgK8KmYzC8T1IysG1bcvxvIO4qtYR/D3A991F';
+        s.crossOrigin = 'anonymous';
         s.onload = resolve;
         s.onerror = () => {
             __tessLoading = null;

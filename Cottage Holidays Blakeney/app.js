@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 59;
+const ADMIN_BUNDLE_V = 60;
 let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
@@ -559,6 +559,8 @@ function loadHeic2any() {
     __heicLoader = new Promise((resolve, reject) => {
         const s = document.createElement('script');
         s.src = 'https://cdnjs.cloudflare.com/ajax/libs/heic2any/0.0.4/heic2any.min.js';
+        s.integrity = 'sha384-OTofQ0MEeiSgh62havBcemCIK0gqj809wX6UA0uPISNMRnR6NZyCdGzX3SbLrgwL';
+        s.crossOrigin = 'anonymous';
         s.onload = () => resolve();
         s.onerror = () => {
             __heicLoader = null;
@@ -1802,6 +1804,8 @@ function ensureJsPdf() {
     __jspdfPromise = new Promise((resolve, reject) => {
         const s = document.createElement('script');
         s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js';
+        s.integrity = 'sha384-JcnsjUPPylna1s1fvi1u12X5qjY5OL56iySh75FdtrwhO/SWXgMjoVqcKyIIWOLk';
+        s.crossOrigin = 'anonymous';
         s.async = true;
         s.onload = () => resolve();
         s.onerror = () => {
@@ -2771,9 +2775,13 @@ function loadLeaflet() {
         const css = document.createElement('link');
         css.rel = 'stylesheet';
         css.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css';
+        css.integrity = 'sha384-c6Rcwz4e4CITMbu/NBmnNS8yN2sC3cUElMEMfP3vqqKFp7GOYaaBBCqmaWBjmkjb';
+        css.crossOrigin = 'anonymous';
         document.head.appendChild(css);
         const js = document.createElement('script');
         js.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js';
+        js.integrity = 'sha384-NElt3Op+9NBMCYaef5HxeJmU4Xeard/Lku8ek6hoPTvYkQPh3zLIrJP7KiRocsxO';
+        js.crossOrigin = 'anonymous';
         js.onload = () => resolve();
         js.onerror = () => {
             __leafletLoader = null;
@@ -11683,7 +11691,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'j6qjp5ub';
+    const BUILD = 'j6qkq6vc';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
