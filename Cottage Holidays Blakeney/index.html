@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=147">
+    <link rel="stylesheet" href="app.css?v=148">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -876,7 +876,8 @@
 
         <div class="dashboard-header">
             <div>
-                <h1 class="section-title" style="margin: 0;">Dashboard</h1>
+                <h1 class="section-title" style="margin: 0;">Today</h1>
+                <p class="lead bo-today-date" id="today-date" style="text-align:left;margin:4px 0 0;"></p>
             </div>
         </div>
 
@@ -892,14 +893,16 @@
             <div>
                 <div class="cal-header-bar">
                     <div class="cal-month-nav">
-                        <button onclick="changeMonth(-1)">&#10094;</button>
                         <div class="cal-month-title" id="cal-month-display">June 2026</div>
-                        <button onclick="changeMonth(1)">&#10095;</button>
-                        <button class="tl-today-btn" onclick="timelineToday()">Today</button>
+                        <div class="tl-seg" role="group" aria-label="Move along the timeline">
+                            <button aria-label="Earlier" onclick="changeMonth(-1)">&#10094;</button>
+                            <button class="tl-today-btn" onclick="timelineToday()">Today</button>
+                            <button aria-label="Later" onclick="changeMonth(1)">&#10095;</button>
+                        </div>
                     </div>
                     <div class="cal-actions">
-                        <button class="btn-glass cal-add-btn" onclick="openAddBooking()" data-edit-text="cal-add-btn">+ Add Booking</button>
-                        <button class="btn-glass cal-add-btn" style="background:rgba(255,255,255,0.06);" onclick="openBlockDates()">Block dates</button>
+                        <button class="btn-glass btn-accent cal-add-btn" onclick="openAddBooking()" data-edit-text="cal-add-btn">+ Add Booking</button>
+                        <button class="btn-glass cal-add-btn" onclick="openBlockDates()">Block dates</button>
                         <div class="cal-updated">
                             <span id="cal-updated-text"></span>
                             <button class="cal-refresh-btn" id="cal-refresh-btn" onclick="autoSyncIcalBlocks(true)" title="Refresh external bookings now" aria-label="Refresh external bookings now"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-1.9 5.3"/><path d="M20 5v6h-6"/></svg></button>
@@ -925,7 +928,7 @@
              pane). Narrower screens keep the two-step list → hub flow. -->
         <div class="bk-split" id="bookings-workspace">
         <div id="bookings-main">
-            <h2 style="font-family:var(--font-serif);font-size:1.3rem;font-weight:400;margin:26px 0 2px;">Bookings</h2>
+            <h2 class="bo-sec-title">Bookings</h2>
             <div id="bookings-summary" style="font-size:0.85rem;color:var(--text-muted);margin:2px 0 12px;"></div>
             <div class="bo-search" style="margin-top:4px;">
                 <input type="search" class="input-glass" id="bookings-search" placeholder="Find a booking — guest name, email or reference…" autocomplete="off" oninput="bookingsSetSearch(this.value)">
@@ -993,7 +996,7 @@
              shared #enquiry-hub-content node re-parents into the pane). -->
         <div class="enq-split">
         <div id="inbox-main">
-            <span class="back-link" onclick="nav('view-backoffice'); initBackOffice();">← Back to Dashboard</span>
+            <span class="back-link" onclick="nav('view-backoffice'); initBackOffice();">← Back to Today</span>
             <div class="dashboard-header">
                 <div>
                     <h1 class="section-title" style="margin-bottom: 5px;">Inbox</h1>
@@ -1054,7 +1057,7 @@
              drill-down section is open so the section leads with ONE back link
              and its own title, not two stacked headers. -->
         <div id="settings-chrome">
-        <span class="back-link" onclick="nav('view-backoffice'); initBackOffice();">← Back to Dashboard</span>
+        <span class="back-link" onclick="nav('view-backoffice'); initBackOffice();">← Back to Today</span>
         <div class="dashboard-header">
             <div>
                 <h1 class="section-title" style="margin-bottom: 5px;">Manage</h1>
@@ -1488,7 +1491,7 @@
         <!-- Area-level chrome — hidden while a drill-down section is open (see
              #settings-chrome for the rationale). -->
         <div id="accounts-chrome">
-        <span class="back-link" onclick="nav('view-backoffice'); initBackOffice();">← Back to Dashboard</span>
+        <span class="back-link" onclick="nav('view-backoffice'); initBackOffice();">← Back to Today</span>
         <div class="dashboard-header">
             <div>
                 <h1 class="section-title" style="margin-bottom: 5px;">Money</h1>
@@ -2329,7 +2332,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=257"></script>
+    <script defer src="app.js?v=258"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
