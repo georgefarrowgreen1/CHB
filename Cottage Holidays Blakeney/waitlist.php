@@ -37,15 +37,29 @@ function wl_send($row)
         return ['ok' => false, 'error' => 'no mailer'];
     }
     $name = wl_prop_name($row['prop_key']);
-    $dates = $row['check_in'] && $row['check_out'] ? " for {$row['check_in']} to {$row['check_out']}" : '';
-    return smtp_send(
-        $row['email'],
-        $row['name'] ?: 'there',
-        "Good news — availability at {$name}",
+    // Dates read DD/MM/YYYY like every other guest email (raw ISO leaked here).
+    $prettyDates =
+        $row['check_in'] && $row['check_out']
+            ? ' for ' . uk_date($row['check_in']) . ' to ' . uk_date($row['check_out'])
+            : '';
+    $guest = $row['name'] ?: 'there';
+    $text =
         'Hi ' .
-            ($row['name'] ?: 'there') .
-            ",\n\nA space has just opened at {$name}{$dates}. Popular dates can go quickly, so book soon to secure them.\n\nVisit our website to check availability and enquire.\nCottage Holidays Blakeney",
-    );
+        $guest .
+        ",\n\nA space has just opened at {$name}{$prettyDates}. Popular dates can go quickly, so book soon to secure them.\n\nVisit our website to check availability and enquire.\nCottage Holidays Blakeney";
+    // Branded HTML part like every other guest email (this one was bare text).
+    $html = null;
+    if (function_exists('email_shell')) {
+        $esc = fn($v) => htmlspecialchars((string) $v, ENT_QUOTES, 'UTF-8');
+        $accent = function_exists('prop_display') ? prop_display($row['prop_key'])['accent'] : '#C79A64';
+        $inner =
+            email_h('A space has opened up') .
+            email_p('Hello ' . $esc($guest) . ', good news — availability has just opened at <strong style="color:#2A2622;">' . $esc($name) . '</strong>' . $esc($prettyDates) . '.') .
+            email_p('Popular dates can go quickly, so book soon to secure them.') .
+            email_btn(site_base_url() . '/', 'Check availability');
+        $html = email_shell('Availability at ' . $name, $inner, $accent);
+    }
+    return smtp_send($row['email'], $guest, "Good news — availability at {$name}", $text, $html);
 }
 
 // Email every un-notified waitlist entry for $prop whose dates overlap the freed

@@ -139,7 +139,16 @@ async function waitForServer(url, tries = 40) {
       document.getElementById('enq-checkout').value = '2026-08-13';
       document.getElementById('enq-address').value = '1 Test Street';
       document.getElementById('enq-postcode').value = 'NR25 7AB';
+      document.getElementById('enq-email').value = '';
+      document.getElementById('enq-phone').value = '';
       document.getElementById('enq-message').value = '';
+      submitEnquiry('jollyboat');
+    });
+    await page.waitForTimeout(250);
+    // With neither email nor phone, the reply-channel rule fires first.
+    ((await page.locator('#enq-msg-details').textContent()) || '').toLowerCase().includes('email address or phone') ? pass('blocks submit with no way to reply') : fail('contact-required rule missing');
+    await page.evaluate(() => {
+      document.getElementById('enq-email').value = 'guest@example.com';
       submitEnquiry('jollyboat');
     });
     await page.waitForTimeout(250);

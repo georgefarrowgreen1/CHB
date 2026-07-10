@@ -992,8 +992,8 @@ function send_enquiry_ack($enq, $accountExists = false)
     $name = trim((string) ($enq['name'] ?? '')) ?: 'there';
     $first = explode(' ', $name)[0] ?: 'there';
     $prop = function_exists('prop_display') ? prop_display($enq['prop_key'] ?? '')['name'] ?? '' : '';
-    $pretty = fn($d) => $d ? date('D j M Y', strtotime($d)) : '';
-    $dates = trim($pretty($enq['check_in'] ?? '') . ' – ' . $pretty($enq['check_out'] ?? ''), ' –');
+    $pretty = fn($d) => $d ? uk_date($d) : '';
+    $dates = trim($pretty($enq['check_in'] ?? '') . ' to ' . $pretty($enq['check_out'] ?? ''), ' to');
     $url = function_exists('site_base_url') ? site_base_url() : '/';
     $acctLine = $accountExists
         ? 'You already have an account with us — sign in to track this enquiry and manage your bookings.'
@@ -1271,6 +1271,21 @@ function send_owner_enquiry_email($e)
     return send_owner($subject, $text, $html);
 }
 
+// One-line summary of a cottage's cancellation policy (mirrors the JS
+// CANCELLATION_POLICIES map + the '<prop>-cancellation-policy' content key) —
+// the booking Terms promise this appears in the confirmation email.
+function cancellation_policy_line($propKey)
+{
+    $policies = [
+        'flexible' => ['Flexible', 'full refund at least 1 day before check-in; partial refund within 1 day of check-in'],
+        'moderate' => ['Moderate', 'full refund at least 5 days before check-in; partial refund within 5 days of check-in'],
+        'limited' => ['Limited', 'full refund at least 14 days before check-in; partial refund 7–14 days before check-in'],
+    ];
+    $key = function_exists('content_value') ? content_value($propKey . '-cancellation-policy') : '';
+    $pol = $policies[$key] ?? $policies['flexible'];
+    return 'Cancellation policy — ' . $pol[0] . ': ' . $pol[1] . '. Full details in our booking terms.';
+}
+
 function send_booking_emails($b)
 {
     $out = [
@@ -1325,6 +1340,7 @@ function send_booking_emails($b)
                 $money($depAmt) .
                 ", charged together with your first payment and refunded in full after checkout (provided there's no damage).\n";
         }
+        $body .= cancellation_policy_line($b['prop_key'] ?? '') . "\n";
         // Payment state (only once something has been paid) so a re-sent
         // confirmation reflects a recorded deposit/payment.
         $paidNow = round((float) ($b['paid_so_far'] ?? 0), 2);
@@ -1404,6 +1420,7 @@ function send_booking_emails($b)
             ]) .
             $priceBox .
             (!empty($b['invoice_url']) ? email_btn($b['invoice_url'], 'View your invoice', $accent, '#ffffff') : '') .
+            email_p(htmlspecialchars(cancellation_policy_line($b['prop_key'] ?? ''), ENT_QUOTES, 'UTF-8'), true) .
             email_p('Any questions? Just reply to this email — we look forward to welcoming you.', true);
         $html = email_shell('Your booking at ' . $b['prop_name'] . ' is confirmed', $inner, $accent);
 
@@ -1464,7 +1481,7 @@ function send_arrival_email($b)
     $accent = prop_display($b['prop_key'] ?? '')['accent']; // per-cottage accent (works for owner-added cottages too)
     $name = $b['name'] ?: 'Guest';
     $prop = $b['prop_name'] ?: 'your cottage';
-    $inDate = date('D j M Y', strtotime($b['check_in']));
+    $inDate = uk_date($b['check_in']);
     $time = $b['check_in_time'] ?: '15:00';
     $addr = trim($b['address'] ?? '');
     // The actual entry/key code is NOT emailed (see send_arrival_for_booking);

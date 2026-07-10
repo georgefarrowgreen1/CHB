@@ -3042,6 +3042,12 @@ textarea.input-glass.field-sm {
 .tl-seg button:hover {
   background: var(--glass-hover);
 }
+/* Any full-screen dialog locks the page scroll behind it (set/cleared by the
+   modal observer in app.js — the focus-trap machinery already tracks opens). */
+body.modal-open {
+  overflow: hidden;
+}
+
 /* Dashboard workspace section heading (serif, like the Money overview's) */
 .bo-sec-title {
   font-family: var(--font-serif);

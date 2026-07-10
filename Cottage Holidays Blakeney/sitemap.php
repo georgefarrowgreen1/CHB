@@ -11,7 +11,6 @@ header('Content-Type: application/xml; charset=UTF-8');
 
 // Single canonical origin (matches the SITE_ORIGIN used for canonicals/JSON-LD).
 $origin = 'https://cottageholidaysblakeney.co.uk';
-$today = date('Y-m-d');
 
 // Live cottages, in display order.
 $cottages = [];
@@ -50,7 +49,6 @@ if ($hb !== '' && preg_match('#^[a-z0-9/_.\-]+\.(jpe?g|png|webp)$#i', $hb)) {
 // Home page (with the hero image, when set).
 echo "  <url>\n";
 echo "    <loc>{$origin}/</loc>\n";
-echo "    <lastmod>{$today}</lastmod>\n";
 echo "    <changefreq>weekly</changefreq>\n";
 echo "    <priority>1.0</priority>\n";
 if ($heroImg !== '') {
@@ -63,15 +61,14 @@ if ($heroImg !== '') {
 echo "  </url>\n";
 
 // Things to do (server-rendered for crawlers by experiences-page.php).
-echo "  <url>\n    <loc>{$origin}/experiences</loc>\n    <lastmod>{$today}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.6</priority>\n  </url>\n";
+echo "  <url>\n    <loc>{$origin}/experiences</loc>\n    <changefreq>weekly</changefreq>\n    <priority>0.6</priority>\n  </url>\n";
 
 // One entry per live cottage.
 foreach ($cottages as $slug) {
     $loc = $origin . '/cottages/' . $esc($slug);
     echo "  <url>\n";
     echo "    <loc>{$loc}</loc>\n";
-    echo "    <lastmod>{$today}</lastmod>\n";
-    echo "    <changefreq>weekly</changefreq>\n";
+        echo "    <changefreq>weekly</changefreq>\n";
     echo "    <priority>0.9</priority>\n";
     echo "  </url>\n";
 }

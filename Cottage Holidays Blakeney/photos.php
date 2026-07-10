@@ -56,12 +56,15 @@ if ($action === 'submit') {
     if (!$guest) {
         json_out(['error' => 'Please log in first'], 401);
     }
+    // The stay must have at least STARTED — a future-only (or later-moved)
+    // booking shouldn't unlock the public photo wall yet. In-stay sharing is
+    // deliberately allowed (reviews, by contrast, need a COMPLETED stay).
     $own = db()->prepare(
-        'SELECT COUNT(*) FROM bookings WHERE prop_key = ? AND email IS NOT NULL AND LOWER(email) = LOWER(?)',
+        'SELECT COUNT(*) FROM bookings WHERE prop_key = ? AND email IS NOT NULL AND LOWER(email) = LOWER(?) AND check_in <= CURDATE()',
     );
     $own->execute([$prop, $guest['email']]);
     if ((int) $own->fetchColumn() < 1) {
-        json_out(['error' => "You can share photos for a cottage you've booked."], 403);
+        json_out(['error' => 'You can share photos once your stay has begun.'], 403);
     }
 
     // Rate-limit: at most 12 photos per guest.
