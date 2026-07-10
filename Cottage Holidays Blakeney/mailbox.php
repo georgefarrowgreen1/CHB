@@ -27,7 +27,9 @@ require_once __DIR__ . '/mailbox-read.php';
 
 require_admin();
 
-$in = body();
+// The attachment download is a plain GET link (an <a download> can't POST);
+// everything else stays JSON-POST. GETs never mutate, so CSRF isn't needed.
+$in = $_SERVER['REQUEST_METHOD'] === 'GET' ? $_GET : body();
 $action = $in['action'] ?? '';
 
 // ---- helpers ---------------------------------------------------------------
@@ -93,14 +95,88 @@ function mbx_quit($fp)
     @fclose($fp);
 }
 
+// Walk a (possibly nested) multipart body and collect NON-text parts that
+// carry a filename — the attachments. Returns [{name, mime, size, body}]
+// with body still ENCODED; decode on download only (list stays cheap).
+function mbx_parse_attachments($body, $ctype)
+{
+    $out = [];
+    if (stripos((string) $ctype, 'multipart/') === false) {
+        return $out;
+    }
+    if (!preg_match('/boundary="?([^";]+)"?/i', $ctype, $m)) {
+        return $out;
+    }
+    $parts = explode('--' . $m[1], str_replace("\r\n", "\n", (string) $body));
+    foreach ($parts as $part) {
+        $part = ltrim($part, "\n");
+        if ($part === '' || $part[0] === '-') {
+            continue;
+        }
+        [$phead, $pbody] = array_pad(explode("\n\n", $part, 2), 2, '');
+        $phead = preg_replace('/\n[ \t]+/', ' ', $phead);
+        $h = function ($name) use ($phead) {
+            return preg_match('/^' . preg_quote($name, '/') . ':\s*(.+)$/mi', $phead, $mm) ? trim($mm[1]) : '';
+        };
+        $pct = $h('Content-Type');
+        // Nested containers recurse; leaves with a filename are attachments.
+        if (stripos($pct, 'multipart/') !== false) {
+            foreach (mbx_parse_attachments($pbody, $pct) as $a) {
+                $out[] = $a;
+            }
+            continue;
+        }
+        $disp = $h('Content-Disposition');
+        $name = '';
+        if (preg_match('/filename\*?="?([^\";]+)"?/i', $disp . ' ' . $pct, $fm)) {
+            $name = mailbox_decode_subject(trim($fm[1]));
+        }
+        if ($name === '') {
+            continue; // inline text/html alternatives are not attachments
+        }
+        $out[] = [
+            'name' => $name,
+            'mime' => trim(explode(';', $pct)[0]) ?: 'application/octet-stream',
+            'cte' => strtolower($h('Content-Transfer-Encoding')),
+            'body' => $pbody,
+        ];
+    }
+    return $out;
+}
+// Fetch one raw message by UIDL (shared by read / attachment).
+function mbx_retr($uid)
+{
+    [$fp, $uidl] = mbx_open_listed();
+    $no = array_search($uid, $uidl, true);
+    if ($no === false) {
+        mbx_quit($fp);
+        json_out(['error' => 'That message is no longer in the mailbox.'], 404);
+    }
+    fwrite($fp, "RETR {$no}\r\n");
+    $first = fgets($fp, 1024);
+    if (!is_string($first) || $first === '' || $first[0] !== '+') {
+        mbx_quit($fp);
+        json_out(['error' => 'Could not fetch the message'], 502);
+    }
+    $clean = false;
+    $raw = pop3_multiline($fp, $clean, 12 * 1024 * 1024);
+    mbx_quit($fp);
+    if (!$clean) {
+        json_out(['error' => 'Mailbox read timed out — try again'], 502);
+    }
+    return $raw;
+}
+
 // ---- actions ----------------------------------------------------------------
 
 if ($action === 'list') {
     [$fp, $uidl] = mbx_open_listed();
-    // Newest last in POP3 numbering — show the most recent 30.
+    // Newest last in POP3 numbering — page through 30 at a time.
+    $offset = max(0, (int) ($in['offset'] ?? 0));
     $nos = array_keys($uidl);
     rsort($nos);
-    $nos = array_slice($nos, 0, 30);
+    $hasMore = count($nos) > $offset + 30;
+    $nos = array_slice($nos, $offset, 30);
     $seen = mbx_seen_uids();
     $out = [];
     foreach ($nos as $no) {
@@ -124,7 +200,7 @@ if ($action === 'list') {
         ];
     }
     mbx_quit($fp);
-    json_out(['ok' => true, 'messages' => $out, 'total' => count($uidl)]);
+    json_out(['ok' => true, 'messages' => $out, 'total' => count($uidl), 'hasMore' => $hasMore]);
 }
 
 if ($action === 'read') {
@@ -132,25 +208,9 @@ if ($action === 'read') {
     if ($uid === '') {
         json_out(['error' => 'Missing message id'], 400);
     }
-    [$fp, $uidl] = mbx_open_listed();
-    $no = array_search($uid, $uidl, true);
-    if ($no === false) {
-        mbx_quit($fp);
-        json_out(['error' => 'That message is no longer in the mailbox.'], 404);
-    }
-    fwrite($fp, "RETR {$no}\r\n");
-    $first = fgets($fp, 1024);
-    if (!is_string($first) || $first === '' || $first[0] !== '+') {
-        mbx_quit($fp);
-        json_out(['error' => 'Could not fetch the message'], 502);
-    }
-    $clean = false;
-    $raw = pop3_multiline($fp, $clean, 1024 * 1024);
-    mbx_quit($fp);
-    if (!$clean) {
-        json_out(['error' => 'Mailbox read timed out — try again'], 502);
-    }
-    [$head] = array_pad(explode("\n\n", str_replace("\r\n", "\n", $raw), 2), 1, '');
+    $raw = mbx_retr($uid);
+    [$head, $rawBody] = array_pad(explode("\n\n", str_replace("\r\n", "\n", $raw), 2), 2, '');
+    $atts = mbx_parse_attachments($rawBody, mbx_header($head, 'Content-Type'));
     $parsed = parse_email_message($raw); // tested MIME → decoded TEXT part
     $seen = mbx_seen_uids();
     if (!in_array($uid, $seen, true)) {
@@ -166,15 +226,73 @@ if ($action === 'read') {
         'date' => mbx_date_iso(mbx_header($head, 'Date')),
         'subject' => $parsed['subject'] !== '' ? $parsed['subject'] : '(no subject)',
         'body' => $parsed['body'], // text only — the client escapes it
+        'attachments' => array_map(
+            fn($a, $i) => ['i' => $i, 'name' => $a['name'], 'mime' => $a['mime'], 'size' => strlen($a['body'])],
+            $atts,
+            array_keys($atts),
+        ),
     ]);
+}
+
+if ($action === 'attachment') {
+    $uid = clean($in['uid'] ?? '');
+    $idx = max(0, (int) ($in['i'] ?? -1));
+    if ($uid === '') {
+        json_out(['error' => 'Missing message id'], 400);
+    }
+    $raw = mbx_retr($uid);
+    [$head, $rawBody] = array_pad(explode("\n\n", str_replace("\r\n", "\n", $raw), 2), 2, '');
+    $atts = mbx_parse_attachments($rawBody, mbx_header($head, 'Content-Type'));
+    if (!isset($atts[$idx])) {
+        json_out(['error' => 'No such attachment'], 404);
+    }
+    $a = $atts[$idx];
+    $data = mailbox_decode_body($a['body'], $a['cte']);
+    if (strlen($data) > 15 * 1024 * 1024) {
+        json_out(['error' => 'Attachment too large to download here'], 413);
+    }
+    // Force a plain download regardless of the claimed type — never let a
+    // hostile attachment render inline in the admin origin.
+    $safeName = preg_replace('/[^A-Za-z0-9. _()\-]/', '_', $a['name']) ?: 'attachment';
+    header('Content-Type: application/octet-stream');
+    header('X-Content-Type-Options: nosniff');
+    header('Content-Disposition: attachment; filename="' . $safeName . '"');
+    header('Content-Length: ' . strlen($data));
+    echo $data;
+    exit();
+}
+
+if ($action === 'mark_unread') {
+    $uid = clean($in['uid'] ?? '');
+    if ($uid === '') {
+        json_out(['error' => 'Missing message id'], 400);
+    }
+    mbx_seen_save(array_values(array_diff(mbx_seen_uids(), [$uid])));
+    json_out(['ok' => true]);
+}
+
+if ($action === 'sent') {
+    try {
+        $rows = db()
+            ->query('SELECT id, to_email, cc_email, subject, body, sent_at FROM mail_sent ORDER BY sent_at DESC, id DESC LIMIT 50')
+            ->fetchAll();
+    } catch (\Throwable $e) {
+        // Table appears after the next migrate run — an empty Sent beats a 500.
+        $rows = [];
+    }
+    json_out(['ok' => true, 'messages' => $rows]);
 }
 
 if ($action === 'send') {
     $to = clean($in['to'] ?? '');
     $subject = trim((string) ($in['subject'] ?? ''));
     $bodyText = trim((string) ($in['body'] ?? ''));
+    $cc = clean($in['cc'] ?? '');
     if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
         json_out(['error' => 'Please enter a valid "To" email address.'], 400);
+    }
+    if ($cc !== '' && !filter_var($cc, FILTER_VALIDATE_EMAIL)) {
+        json_out(['error' => 'The CC address doesn’t look right — please check it.'], 400);
     }
     if ($subject === '' || $bodyText === '') {
         json_out(['error' => 'A subject and a message are both required.'], 400);
@@ -193,6 +311,16 @@ if ($action === 'send') {
     $r = smtp_send($to, '', $subject, $bodyText, $html);
     if (empty($r['ok'])) {
         json_out(['error' => "Couldn't send: " . ($r['error'] ?? 'unknown error')], 502);
+    }
+    if ($cc !== '') {
+        smtp_send($cc, '', $subject, $bodyText, $html); // best-effort copy
+    }
+    try {
+        db()
+            ->prepare('INSERT INTO mail_sent (to_email, cc_email, subject, body) VALUES (?, ?, ?, ?)')
+            ->execute([$to, $cc !== '' ? $cc : null, $subject, $bodyText]);
+    } catch (\Throwable $e) {
+        // Sent ledger appears after the next migrate run; the send itself succeeded.
     }
     log_activity('email', 'email.mailbox_send', 'Email sent from the admin mailbox to ' . $to, [
         'actor' => 'owner',

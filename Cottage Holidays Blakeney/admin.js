@@ -8260,48 +8260,138 @@ async function expMove(id, dir) {
 // Publish the facade-stubbed entry points (see app.js loadAdminBundle).
 
 // ============================================================
-//  Manage → Email: a small, real email client on the cottage mailbox.
-//  List/read/delete over POP3 via mailbox.php; compose/reply sends the
-//  branded coastal shell through the site's own smtp_send. Received mail
+//  Manage → Email: the back office's email client on the cottage mailbox.
+//  List/read/delete/attachments over POP3 via mailbox.php; compose/reply/CC
+//  sends the branded coastal shell through the site's own smtp_send; "Sent"
+//  is our own mail_sent ledger (POP3 can only read the INBOX). Received mail
 //  renders as ESCAPED TEXT only — a hostile email can never run script
-//  inside the owner's admin session.
+//  inside the owner's admin session. The reader recognises the sender
+//  against bookings + enquiries and links straight to their hubs.
 // ============================================================
 let __mbxMessages = [];
-let __mbxOpenUid = null;
+let __mbxSent = [];
+let __mbxTab = 'inbox';
+let __mbxQuery = '';
+let __mbxHasMore = false;
+let __mbxLastOpen = null;
 function mbxEsc(v) {
     return escapeHtml(String(v == null ? '' : v));
 }
 function mbxWhen(iso) {
     if (!iso) return '';
-    const d = new Date(iso.replace(' ', 'T'));
+    const d = new Date(String(iso).replace(' ', 'T'));
     if (isNaN(d.getTime())) return '';
-    const today = new Date();
-    const sameDay = d.toDateString() === today.toDateString();
+    const sameDay = d.toDateString() === new Date().toDateString();
     return sameDay
         ? d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
-        : fmtDate(iso.slice(0, 10));
+        : fmtDate(String(iso).slice(0, 10));
+}
+function mbxSize(n) {
+    if (!n) return '';
+    return n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+}
+// Every guest the system knows (bookings + enquiries), deduped by email —
+// powers the reader's context card and the compose To/CC autocomplete.
+function mbxKnownGuests() {
+    const map = {};
+    Object.keys(dbBookings).forEach((pk) =>
+        (dbBookings[pk] || []).forEach((b) => {
+            const e = (b.email || '').toLowerCase();
+            if (!e) return;
+            (map[e] = map[e] || { email: b.email, name: b.name, bookings: [], enquiries: [] }).bookings.push({ pk, b });
+        }),
+    );
+    (enquiries || []).forEach((q) => {
+        const e = (q.email || '').toLowerCase();
+        if (!e) return;
+        (map[e] = map[e] || { email: q.email, name: q.name, bookings: [], enquiries: [] }).enquiries.push(q);
+    });
+    return map;
+}
+// The context card: who is this sender, and one-tap routes to their hubs.
+function mbxContextHtml(fromEmail) {
+    const e = (fromEmail || '').toLowerCase();
+    if (!e) return '';
+    const g = mbxKnownGuests()[e];
+    if (!g) {
+        return '<div class="mbx-ctx"><span class="bhub-mut">No bookings or enquiries found for this address.</span></div>';
+    }
+    const today = todayDashed();
+    const chips = [];
+    g.bookings
+        .sort((a, z) => (z.b.checkIn || '').localeCompare(a.b.checkIn || ''))
+        .slice(0, 4)
+        .forEach(({ pk, b }) => {
+            const meta = propertyMeta[pk] || { name: pk };
+            const past = (b.checkOut || '') < today;
+            chips.push(
+                `<button type="button" class="bhub-stay-row" onclick="openBookingHub('${b.id}')"><span class="prop-tag tag-${pk}">${mbxEsc(meta.name)}</span><span>${fmtStayRange(b.checkIn, b.checkOut)}${past ? ' · past' : ''}</span><span class="bhub-mut">open →</span></button>`,
+            );
+        });
+    g.enquiries.slice(0, 3).forEach((q) => {
+        chips.push(
+            `<button type="button" class="bhub-stay-row" onclick="openEnquiryHub('${q.id}')"><span class="bk-chip warn"><span class="bk-dot"></span>Enquiry</span><span>${fmtStayRange(q.checkIn, q.checkOut)}</span><span class="bhub-mut">open →</span></button>`,
+        );
+    });
+    return `<div class="mbx-ctx">
+        <div class="booking-detail-label" style="margin-bottom:6px;">Guest match — ${mbxEsc(g.name || g.email)}</div>
+        ${chips.join('')}
+    </div>`;
 }
 async function loadMailbox() {
     const el = document.getElementById('mailbox-body');
     if (!el) return;
-    __mbxOpenUid = null;
     el.innerHTML = '<p style="font-size:0.85rem;color:var(--text-muted);">Checking the mailbox…</p>';
+    // The context card + autocomplete need the guest data.
     try {
-        const r = await apiPost('mailbox.php', { action: 'list' });
-        __mbxMessages = r.messages || [];
+        if (!Object.keys(dbBookings).some((k) => (dbBookings[k] || []).length)) await loadData();
+    } catch (e) {}
+    try {
+        const [inbox, sent] = await Promise.all([
+            apiPost('mailbox.php', { action: 'list' }),
+            apiPost('mailbox.php', { action: 'sent' }).catch(() => ({ messages: [] })),
+        ]);
+        __mbxMessages = inbox.messages || [];
+        __mbxHasMore = !!inbox.hasMore;
+        __mbxSent = sent.messages || [];
+        __mbxTab = 'inbox';
+        __mbxQuery = '';
         renderMailboxList();
     } catch (e) {
         el.innerHTML = `<div class="accounts-empty">Couldn't open the mailbox — ${mbxEsc(e.message)}</div>
             <div class="bhub-btn-row"><button class="btn-sm btn-edit" onclick="loadMailbox()">Try again</button></div>`;
     }
 }
-function renderMailboxList() {
+async function mailboxOlder() {
+    try {
+        const r = await apiPost('mailbox.php', { action: 'list', offset: __mbxMessages.length });
+        __mbxMessages = __mbxMessages.concat(r.messages || []);
+        __mbxHasMore = !!r.hasMore;
+        renderMailboxList();
+    } catch (e) {
+        glassAlert("Couldn't load older messages: " + e.message);
+    }
+}
+function mailboxTab(tab) {
+    __mbxTab = tab === 'sent' ? 'sent' : 'inbox';
+    renderMailboxList();
+}
+function mailboxSearch(q) {
+    __mbxQuery = (q || '').toLowerCase();
+    renderMailboxList(true);
+}
+function renderMailboxList(keepSearchFocus) {
     const el = document.getElementById('mailbox-body');
     if (!el) return;
-    const rows = __mbxMessages
-        .map((m) => {
-            const unread = !m.seen;
-            return `
+    const q = __mbxQuery;
+    const match = (t) => !q || String(t || '').toLowerCase().includes(q);
+    let rows = '';
+    if (__mbxTab === 'inbox') {
+        rows = __mbxMessages
+            .filter((m) => match(m.fromRaw) || match(m.from) || match(m.subject))
+            .map((m) => {
+                const unread = !m.seen;
+                return `
         <button type="button" class="bk-row glass-panel${unread ? ' mbx-unread' : ''}" onclick="mailboxOpen('${mbxEsc(m.uid)}')">
             <span class="bk-row-body">
                 <span class="bk-row-top">
@@ -8313,26 +8403,66 @@ function renderMailboxList() {
             </span>
             <span class="bk-row-arrow" aria-hidden="true">›</span>
         </button>`;
-        })
-        .join('');
+            })
+            .join('');
+        if (__mbxHasMore && !q) {
+            rows += '<div class="bhub-btn-row" style="justify-content:center;"><button class="btn-sm btn-edit" onclick="mailboxOlder()">Load older messages</button></div>';
+        }
+    } else {
+        rows = __mbxSent
+            .filter((m) => match(m.to_email) || match(m.subject))
+            .map(
+                (m) => `
+        <button type="button" class="bk-row glass-panel" onclick="mailboxOpenSent(${m.id})">
+            <span class="bk-row-body">
+                <span class="bk-row-top"><span class="mbx-when">${mbxEsc(mbxWhen(m.sent_at))}</span></span>
+                <strong class="bk-row-name">To: ${mbxEsc(m.to_email)}</strong>
+                <span class="bk-row-dates">${mbxEsc(m.subject)}</span>
+            </span>
+            <span class="bk-row-arrow" aria-hidden="true">›</span>
+        </button>`,
+            )
+            .join('');
+    }
     el.innerHTML = `
         <div class="mbx-bar">
+            <div class="inbox-sort seg" role="tablist" aria-label="Mailbox folders">
+                <button class="inbox-sort-btn${__mbxTab === 'inbox' ? ' is-on' : ''}" role="tab" onclick="mailboxTab('inbox')">Inbox</button>
+                <button class="inbox-sort-btn${__mbxTab === 'sent' ? ' is-on' : ''}" role="tab" onclick="mailboxTab('sent')">Sent</button>
+            </div>
             <button class="btn-glass btn-accent cal-add-btn" onclick="mailboxCompose()">+ New email</button>
             <button class="btn-glass cal-add-btn" onclick="loadMailbox()">Refresh</button>
         </div>
-        ${rows || '<div class="accounts-empty">Nothing in the mailbox.</div>'}
+        <div class="bo-search" style="margin-bottom:14px;">
+            <input type="search" class="input-glass" id="mbx-search" placeholder="Search sender or subject…" autocomplete="off" value="${mbxEsc(q)}" oninput="mailboxSearch(this.value)" style="margin-bottom:0;">
+        </div>
+        ${rows || `<div class="accounts-empty">${q ? 'Nothing matches your search.' : __mbxTab === 'sent' ? 'Nothing sent from here yet.' : 'Nothing in the mailbox.'}</div>`}
         <div id="mbx-reader"></div>`;
+    if (keepSearchFocus) {
+        const sBox = document.getElementById('mbx-search');
+        if (sBox) {
+            sBox.focus();
+            sBox.setSelectionRange(sBox.value.length, sBox.value.length);
+        }
+    }
 }
 async function mailboxOpen(uid) {
     const pane = document.getElementById('mbx-reader');
     if (!pane) return;
-    __mbxOpenUid = uid;
     pane.innerHTML = '<p style="font-size:0.85rem;color:var(--text-muted);margin-top:18px;">Opening…</p>';
     pane.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     try {
         const m = await apiPost('mailbox.php', { action: 'read', uid });
         const local = __mbxMessages.find((x) => x.uid === uid);
         if (local) local.seen = true;
+        __mbxLastOpen = m;
+        const atts = (m.attachments || [])
+            .map(
+                (a) => `<a class="mbx-att" href="mailbox.php?action=attachment&uid=${encodeURIComponent(uid)}&i=${a.i}" download>
+                    <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.4 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.2-9.19a4 4 0 1 1 5.65 5.66l-9.2 9.19a2 2 0 0 1-2.82-2.83l8.49-8.48"/></svg>
+                    ${mbxEsc(a.name)} <span class="bhub-mut">${mbxEsc(mbxSize(a.size))}</span></a>`,
+            )
+            .join('');
         pane.innerHTML = `
         <section class="bhub-card glass-panel" style="margin-top:18px;">
             <h3 class="bhub-card-title">${mbxEsc(m.subject)}</h3>
@@ -8340,26 +8470,52 @@ async function mailboxOpen(uid) {
                 <div><span class="booking-detail-label">From</span> ${mbxEsc(m.fromRaw || m.from)}</div>
                 <div><span class="booking-detail-label">Date</span> ${mbxEsc(mbxWhen(m.date))}</div>
             </div>
+            ${mbxContextHtml(m.from)}
             <pre class="mbx-text">${mbxEsc(m.body || '(no text content)')}</pre>
+            ${atts ? `<div class="mbx-atts">${atts}</div>` : ''}
             <div class="bhub-btn-row">
                 <button class="btn-sm btn-edit" onclick="mailboxReply('${mbxEsc(uid)}')">Reply</button>
+                <button class="btn-sm btn-edit" onclick="mailboxMarkUnread('${mbxEsc(uid)}')">Mark unread</button>
                 <button class="btn-sm btn-edit" style="color:var(--danger);border-color:rgba(229,115,115,0.4);" onclick="mailboxDelete('${mbxEsc(uid)}')">Delete</button>
             </div>
             <div id="mbx-compose"></div>
         </section>`;
-        // keep the list's unread chips honest without a refetch
-        const openMsg = m;
-        __mbxLastOpen = openMsg;
     } catch (e) {
         pane.innerHTML = `<div class="accounts-empty">${mbxEsc(e.message)}</div>`;
     }
 }
-let __mbxLastOpen = null;
+function mailboxOpenSent(id) {
+    const m = __mbxSent.find((x) => x.id === id);
+    const pane = document.getElementById('mbx-reader');
+    if (!m || !pane) return;
+    pane.innerHTML = `
+        <section class="bhub-card glass-panel" style="margin-top:18px;">
+            <h3 class="bhub-card-title">${mbxEsc(m.subject)}</h3>
+            <div class="mbx-meta">
+                <div><span class="booking-detail-label">To</span> ${mbxEsc(m.to_email)}${m.cc_email ? ' · CC ' + mbxEsc(m.cc_email) : ''}</div>
+                <div><span class="booking-detail-label">Sent</span> ${mbxEsc(mbxWhen(m.sent_at))}</div>
+            </div>
+            ${mbxContextHtml(m.to_email)}
+            <pre class="mbx-text">${mbxEsc(m.body)}</pre>
+        </section>`;
+    pane.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+function mbxGuestDatalist() {
+    const guests = mbxKnownGuests();
+    const opts = Object.values(guests)
+        .slice(0, 200)
+        .map((g) => `<option value="${mbxEsc(g.email)}">${mbxEsc(g.name || '')}</option>`)
+        .join('');
+    return `<datalist id="mbx-guests">${opts}</datalist>`;
+}
 function mailboxComposeForm(target, presetTo, presetSubject, quoted) {
     target.innerHTML = `
         <div class="mbx-form">
+            ${mbxGuestDatalist()}
             <label class="booking-detail-label" for="mbx-to">To</label>
-            <input class="input-glass" id="mbx-to" type="email" inputmode="email" autocomplete="off" placeholder="guest@example.com" value="${mbxEsc(presetTo || '')}" style="margin-bottom:10px;">
+            <input class="input-glass" id="mbx-to" type="email" inputmode="email" list="mbx-guests" autocomplete="off" placeholder="guest@example.com" value="${mbxEsc(presetTo || '')}" style="margin-bottom:10px;">
+            <label class="booking-detail-label" for="mbx-cc">CC <span class="bhub-mut" style="text-transform:none;letter-spacing:0;">· optional</span></label>
+            <input class="input-glass" id="mbx-cc" type="email" inputmode="email" list="mbx-guests" autocomplete="off" placeholder="" style="margin-bottom:10px;">
             <label class="booking-detail-label" for="mbx-subject">Subject</label>
             <input class="input-glass" id="mbx-subject" type="text" maxlength="300" value="${mbxEsc(presetSubject || '')}" style="margin-bottom:10px;">
             <label class="booking-detail-label" for="mbx-text">Message</label>
@@ -8371,16 +8527,15 @@ function mailboxComposeForm(target, presetTo, presetSubject, quoted) {
             </div>
             <p id="mbx-msg" role="alert" style="font-size:0.85rem;color:var(--danger);margin:8px 0 0;"></p>
         </div>`;
-    const to = document.getElementById(presetTo ? 'mbx-text' : 'mbx-to');
-    if (to) to.focus();
+    const focusEl = document.getElementById(presetTo ? 'mbx-text' : 'mbx-to');
+    if (focusEl) focusEl.focus();
 }
-function mailboxCompose() {
+function mailboxCompose(presetTo) {
     const pane = document.getElementById('mbx-reader');
     if (!pane) return;
-    __mbxOpenUid = null;
     pane.innerHTML = `<section class="bhub-card glass-panel" style="margin-top:18px;">
         <h3 class="bhub-card-title">New email</h3><div id="mbx-compose"></div></section>`;
-    mailboxComposeForm(document.getElementById('mbx-compose'));
+    mailboxComposeForm(document.getElementById('mbx-compose'), presetTo || '');
     pane.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 function mailboxReply(uid) {
@@ -8397,17 +8552,23 @@ function mailboxReply(uid) {
     mailboxComposeForm(box, m.from || '', subj, quoted);
 }
 async function mailboxSend() {
-    const to = (document.getElementById('mbx-to') || {}).value || '';
-    const subject = (document.getElementById('mbx-subject') || {}).value || '';
+    const to = ((document.getElementById('mbx-to') || {}).value || '').trim();
+    const cc = ((document.getElementById('mbx-cc') || {}).value || '').trim();
+    const subject = ((document.getElementById('mbx-subject') || {}).value || '').trim();
     const body = (document.getElementById('mbx-text') || {}).value || '';
     const msg = document.getElementById('mbx-msg');
     const btn = document.getElementById('mbx-send-btn');
     if (msg) msg.textContent = '';
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(to.trim())) {
+    const emailOk = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v);
+    if (!emailOk(to)) {
         if (msg) msg.textContent = 'Please enter a valid "To" email address.';
         return;
     }
-    if (!subject.trim() || !body.trim()) {
+    if (cc && !emailOk(cc)) {
+        if (msg) msg.textContent = 'The CC address doesn’t look right — please check it.';
+        return;
+    }
+    if (!subject || !body.trim()) {
         if (msg) msg.textContent = 'A subject and a message are both required.';
         return;
     }
@@ -8416,7 +8577,8 @@ async function mailboxSend() {
         btn.textContent = 'Sending…';
     }
     try {
-        await apiPost('mailbox.php', { action: 'send', to: to.trim(), subject: subject.trim(), body });
+        await apiPost('mailbox.php', { action: 'send', to, cc, subject, body });
+        __mbxSent.unshift({ id: Date.now(), to_email: to, cc_email: cc || null, subject, body, sent_at: '' });
         toast('Email sent.');
         renderMailboxList();
     } catch (e) {
@@ -8425,6 +8587,17 @@ async function mailboxSend() {
             btn.disabled = false;
             btn.textContent = 'Send';
         }
+    }
+}
+async function mailboxMarkUnread(uid) {
+    try {
+        await apiPost('mailbox.php', { action: 'mark_unread', uid });
+        const local = __mbxMessages.find((x) => x.uid === uid);
+        if (local) local.seen = false;
+        toast('Marked unread.');
+        renderMailboxList();
+    } catch (e) {
+        glassAlert("Couldn't mark unread: " + e.message);
     }
 }
 async function mailboxDelete(uid) {
