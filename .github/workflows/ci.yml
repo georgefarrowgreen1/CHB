@@ -77,6 +77,15 @@ jobs:
         with:
           node-version: '20'
 
+      # Browsers are ~300MB per run without a cache. Playwright is PINNED so
+      # the cache key is stable; bump the version here and the key rolls over
+      # automatically. On a cache hit only the (fast) apt system-deps run.
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-1.61.1
+
       - name: Install Playwright browsers (Chromium + WebKit)
         working-directory: "Cottage Holidays Blakeney"
         run: |
@@ -86,7 +95,7 @@ jobs:
           # (and add apt retries) before the install.
           sudo rm -f /etc/apt/sources.list.d/*microsoft*.list /etc/apt/sources.list.d/*azure*.list 2>/dev/null || true
           npm init -y > /dev/null
-          npm install --no-audit --no-fund playwright
+          npm install --no-audit --no-fund playwright@1.61.1
           npx playwright install --with-deps chromium webkit
 
       - name: Browser smoke test
