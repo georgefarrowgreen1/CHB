@@ -238,9 +238,6 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18"/><path d="M8 2.5v4M16 2.5v4"/></svg>
                 <span class="admin-dock-badge" id="dock-badge-enquiries" style="display:none;">0</span>
             </button>
-            <button class="admin-dock-btn" data-view="view-bookings" data-label="Bookings" aria-label="Bookings" title="Bookings" onclick="openBookings()">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3.5" width="16" height="17" rx="2.5"/><path d="M8 3v3M16 3v3M8 11h8M8 15h5"/></svg>
-            </button>
             <button class="admin-dock-btn" data-view="view-inbox" data-label="Inbox" aria-label="Inbox" title="Inbox" onclick="openInbox()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/></svg>
                 <span class="admin-dock-badge" id="dock-badge-inbox" style="display:none;">0</span>
@@ -921,6 +918,31 @@
             </div>
         </div>
 
+        <!-- BOOKINGS WORKSPACE — the timeline shows WHEN, these rows show WHO
+             and what's owed, and the hub is where you act. ≥1200px this is a
+             master–detail: index rows left, the SELECTED booking's hub docked
+             right (the shared #booking-hub-content node re-parents into the
+             pane). Narrower screens keep the two-step list → hub flow. -->
+        <div class="bk-split" id="bookings-workspace">
+        <div id="bookings-main">
+            <h2 style="font-family:var(--font-serif);font-size:1.3rem;font-weight:400;margin:26px 0 2px;">Bookings</h2>
+            <div id="bookings-summary" style="font-size:0.85rem;color:var(--text-muted);margin:2px 0 12px;"></div>
+            <div class="bo-search" style="margin-top:4px;">
+                <input type="search" class="input-glass" id="bookings-search" placeholder="Find a booking — guest name, email or reference…" autocomplete="off" oninput="bookingsSetSearch(this.value)">
+            </div>
+            <div class="inbox-sort" id="bookings-filters" role="tablist" aria-label="Filter bookings">
+                <button class="inbox-sort-btn is-on" role="tab" onclick="bookingsSetFilter('upcoming')" data-bfilter="upcoming">Upcoming</button>
+                <button class="inbox-sort-btn" role="tab" onclick="bookingsSetFilter('needspay')" data-bfilter="needspay">Needs payment</button>
+                <button class="inbox-sort-btn" role="tab" onclick="bookingsSetFilter('past')" data-bfilter="past">Past</button>
+                <button class="inbox-sort-btn" role="tab" onclick="bookingsSetFilter('all')" data-bfilter="all">All</button>
+            </div>
+            <div id="bookings-list"><!-- JS injects booking rows here --></div>
+        </div>
+        <aside id="bookings-detail-pane" aria-label="Selected booking">
+            <div id="bookings-detail-empty">Select a booking on the left — everything about it (money, emails, guest, history) appears here.</div>
+        </aside>
+        </div>
+
         <!-- (The money/arrivals summary cards + occupancy heatmap were removed —
              Money owns the figures, the calendar shows occupancy.) -->
 
@@ -946,44 +968,6 @@
     </main>
 
     <!-- ================= BOOKINGS (dedicated back-office screen) ================= -->
-    <main id="view-bookings" class="page-view container">
-        <!-- ≥1200px this is a master–detail dashboard: the index rows on the
-             left, the SELECTED booking's hub docked on the right (the shared
-             #booking-hub-content node is re-parented into the pane). Narrower
-             screens keep the two-step list → hub flow. -->
-        <div class="bk-split">
-        <div id="bookings-main">
-            <span class="back-link" onclick="nav('view-backoffice'); initBackOffice();">← Back to Dashboard</span>
-            <div class="dashboard-header">
-                <div>
-                    <h1 class="section-title" style="margin-bottom: 5px;">Bookings</h1>
-                    <p class="lead" style="text-align: left; margin: 0;">Every confirmed booking — payment status, guest emails and more.</p>
-                </div>
-            </div>
-            <!-- The same actions as the dashboard calendar, so adding a booking or
-                 blocking dates doesn't require leaving this screen. -->
-            <div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px;">
-                <button class="btn-glass cal-add-btn" style="grid-column:auto;justify-self:start;" onclick="openAddBooking()">+ Add Booking</button>
-                <button class="btn-glass cal-add-btn" style="grid-column:auto;justify-self:start;background:rgba(255,255,255,0.06);" onclick="openBlockDates()">Block dates</button>
-            </div>
-            <div class="bo-search" style="margin-top:4px;">
-                <input type="search" class="input-glass" id="bookings-search" placeholder="Find a booking — guest name, email or reference…" autocomplete="off" oninput="bookingsSetSearch(this.value)">
-            </div>
-            <div class="inbox-sort" id="bookings-filters" role="tablist" aria-label="Filter bookings">
-                <button class="inbox-sort-btn is-on" role="tab" onclick="bookingsSetFilter('upcoming')" data-bfilter="upcoming">Upcoming</button>
-                <button class="inbox-sort-btn" role="tab" onclick="bookingsSetFilter('needspay')" data-bfilter="needspay">Needs payment</button>
-                <button class="inbox-sort-btn" role="tab" onclick="bookingsSetFilter('past')" data-bfilter="past">Past</button>
-                <button class="inbox-sort-btn" role="tab" onclick="bookingsSetFilter('all')" data-bfilter="all">All</button>
-            </div>
-            <div id="bookings-summary" style="font-size:0.85rem;color:var(--text-muted);margin:2px 0 12px;"></div>
-            <div id="bookings-list"><!-- JS injects booking rows here --></div>
-        </div>
-        <aside id="bookings-detail-pane" aria-label="Selected booking">
-            <div id="bookings-detail-empty">Select a booking on the left — everything about it (money, emails, guest, history) appears here.</div>
-        </aside>
-        </div>
-    </main>
-
     <!-- ================= ENQUIRY HUB — one screen per enquiry ================= -->
     <!-- Same pattern as the booking hub: rendered entirely by admin.js
          renderEnquiryHub(); this is just the shell. -->
@@ -2345,7 +2329,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=256"></script>
+    <script defer src="app.js?v=257"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

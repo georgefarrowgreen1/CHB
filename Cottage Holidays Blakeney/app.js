@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 56;
+const ADMIN_BUNDLE_V = 57;
 let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
@@ -812,7 +812,7 @@ function mapEnquiryFromApi(row) {
 const CUSTOMER_FACING_VIEWS = ['view-main', 'view-cottages', 'view-21a'];
 // The only views an admin ever sees — everything else is the customer site,
 // which a signed-in admin has no use for (nav() bounces it to the back office).
-const ADMIN_VIEWS = ['view-backoffice', 'view-bookings', 'view-booking-hub', 'view-inbox', 'view-enquiry-hub', 'view-settings', 'view-accounts', 'view-activity-log'];
+const ADMIN_VIEWS = ['view-backoffice', 'view-booking-hub', 'view-inbox', 'view-enquiry-hub', 'view-settings', 'view-accounts', 'view-activity-log'];
 // Preview-as-guest: opening the site with ?preview=1 renders the customer
 // experience even though an admin is signed in (owner-mode + the admin bounce
 // are suppressed). Read-only — used by the staging Test centre to view the site.
@@ -1067,7 +1067,7 @@ function nav(viewId, anchorId = null) {
     // when on a non-admin view such as the public site). Detail screens with
     // no button of their own light up their parent workspace's button.
     const dockAlias = {
-        'view-booking-hub': 'view-bookings',
+        'view-booking-hub': 'view-backoffice',
         'view-enquiry-hub': 'view-inbox',
         'view-activity-log': 'view-settings',
     };
@@ -1095,11 +1095,6 @@ function nav(viewId, anchorId = null) {
     if (viewId === 'view-inbox') {
         try {
             renderInboxScreen();
-        } catch (e) {}
-    }
-    if (viewId === 'view-bookings') {
-        try {
-            renderBookings();
         } catch (e) {}
     }
     if (viewId === 'view-settings') {
@@ -9875,6 +9870,8 @@ window.addEventListener('popstate', (ev) => {
                 if (st.section) accountsOpen(st.section);
                 else accountsShowIndex();
             } else if (st.view === 'view-bookings') {
+                // Pre-merge history entries: the Bookings page is now part of
+                // the dashboard — the alias lands on the merged workspace.
                 Promise.resolve(openBookings()).catch(() => {});
             } else if (st.view === 'view-booking-hub' && st.hubBooking) {
                 Promise.resolve(window.openBookingHub(st.hubBooking)).catch(() => {});
@@ -11400,7 +11397,7 @@ async function deleteBooking(bookingId) {
         // and on the bookings dashboard, refresh the index + docked pane.
         const hub = document.getElementById('view-booking-hub');
         if (hub && hub.classList.contains('active')) window.openBookings();
-        const bkView = document.getElementById('view-bookings');
+        const bkView = document.getElementById('view-backoffice');
         if (bkView && bkView.classList.contains('active')) {
             try {
                 window.renderBookings();
@@ -11644,7 +11641,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'j6qfl1qx';
+    const BUILD = 'j6qgm2ry';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
