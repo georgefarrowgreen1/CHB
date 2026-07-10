@@ -104,7 +104,7 @@ $text =
     "  • Most-viewed page: {$topPage}\n" .
     ($noResult > 0 ? "  • Availability searches that found nothing: {$noResult}\n" : '') .
     ($dropPct !== null && $dropPct <= -30 ? "\nHeads-up: visits are down " . abs($dropPct) . "% on last week.\n" : '') .
-    "\nSee the full picture in Settings → Analytics.\n\nyour website";
+    "\nSee the full picture in Manage → Analytics.\n\nyour website";
 
 // ---- HTML ----
 $alertHtml =
@@ -146,7 +146,7 @@ $inner =
         ] + ($noResult > 0 ? [3 => ['Searches finding nothing', (string) $noResult]] : []),
     ) .
     email_btn($siteUrl, 'Open analytics') .
-    email_p('You can switch this weekly email off in Settings.', true);
+    email_p('You can switch this weekly email off in Manage.', true);
 $html = email_shell('Your Blakeney week online', $inner, '#D6A785');
 
 $res = send_owner($subject, $text, $html);

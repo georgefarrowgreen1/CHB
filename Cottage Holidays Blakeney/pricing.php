@@ -86,9 +86,10 @@ function last_minute_factor($checkIn, $today, $pct, $days)
 // $rate is a properties row. Returns the full breakdown.
 // $depositOverride: optional per-booking damages deposit (null = use property standard).
 // $seasons: optional pre-fetched seasonal rates (null = fetch from DB).
-// The refundable damages deposit is HELD, not income: it is excluded from the
-// rental subtotal and from the transaction-fee calculation, but added to the
-// total the guest pays upfront.
+// The refundable damages deposit is NOT income: it is excluded from the
+// rental subtotal, the transaction-fee calculation and `total` (RENTAL ONLY).
+// It is CHARGED together with the guest's first payment (pay.php) and
+// refunded after checkout (bookings.php return_deposit / keep_deposit).
 function price_breakdown($rate, $adults, $children, $checkIn, $checkOut, $depositOverride = null, $seasons = null, $today = null)
 {
     $today = $today ?: date('Y-m-d');
@@ -106,7 +107,7 @@ function price_breakdown($rate, $adults, $children, $checkIn, $checkOut, $deposi
         $d = date('Y-m-d', strtotime($checkIn . ' +' . $i . ' days'));
         $nightly += nightly_rate_for($d, $rate, $seasons) + $extrasPerNight;
     }
-    // Last-minute discount on the nightly rental (never the held damages deposit).
+    // Last-minute discount on the nightly rental (never the damages deposit).
     $nightly = round(
         $nightly * last_minute_factor($checkIn, $today, $rate['lastmin_pct'] ?? 0, $rate['lastmin_days'] ?? 0),
         2,
@@ -121,8 +122,10 @@ function price_breakdown($rate, $adults, $children, $checkIn, $checkOut, $deposi
     $txPct = (float) $rate['transaction_pct'];
     $txFee = round($nightly * ($txPct / 100), 2); // income only
     $rentalTotal = $nightly + $txFee; // what the owner earns
-    // The refundable damages deposit is taken as a separate card HOLD near arrival
-    // (authorised, not captured) — so it is NOT part of the total the guest is charged.
+    // `total` is RENTAL ONLY. The refundable damages deposit is returned
+    // separately as damagesDeposit — pay.php charges it alongside the guest's
+    // FIRST payment and it is refunded after checkout, so it never counts as
+    // income and never joins this total.
     $total = $rentalTotal;
     return [
         'nights' => $nights,

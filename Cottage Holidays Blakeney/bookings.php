@@ -480,7 +480,7 @@ if ($action === 'add') {
         json_out(['error' => 'Unknown property'], 400);
     }
     if (prop_is_archived($propKey)) {
-        json_out(['error' => 'That cottage has been removed from the site — restore it (Settings → Preferences) before adding bookings.'], 400);
+        json_out(['error' => 'That cottage has been removed from the site — restore it (Manage → Preferences) before adding bookings.'], 400);
     }
     $name = clean($in['name'] ?? '');
     $checkIn = clean($in['check_in'] ?? '');
@@ -999,7 +999,7 @@ if ($action === 'email_guest') {
 // Email the guest a secure link to pay the deposit (or balance) on our site.
 if ($action === 'request_payment') {
     if (!square_enabled()) {
-        json_out(['error' => 'Square payments are not switched on yet (see config.php / Settings).'], 400);
+        json_out(['error' => 'Square payments are not switched on yet (see config.php / Manage).'], 400);
     }
     $id = (int) ($in['id'] ?? 0);
     $kind = ($in['kind'] ?? 'deposit') === 'balance' ? 'balance' : 'deposit';
@@ -1024,7 +1024,7 @@ if ($action === 'request_payment') {
 // without emailing it. Same token the email uses; authorises paying THIS booking.
 if ($action === 'pay_link') {
     if (!square_enabled()) {
-        json_out(['error' => 'Square payments are not switched on yet (see config.php / Settings).'], 400);
+        json_out(['error' => 'Square payments are not switched on yet (see config.php / Manage).'], 400);
     }
     $id = (int) ($in['id'] ?? 0);
     $kind = ($in['kind'] ?? 'balance') === 'deposit' ? 'deposit' : 'balance';
@@ -1064,8 +1064,12 @@ if ($action === 'hold_request') {
     if (empty($b['email'])) {
         json_out(['error' => 'This booking has no guest email on file.'], 400);
     }
-    if (in_array($b['hold_status'] ?? 'none', ['authorized', 'captured'], true)) {
-        json_out(['error' => 'A hold is already in place.'], 409);
+    // Block the LEGACY hold flow on new-model rows too: 'charged' means the
+    // deposit was already collected with the first payment (a second hold
+    // would overwrite hold_payment_id and orphan the refund), and
+    // 'returned'/'kept' mean the deposit is already settled after the stay.
+    if (in_array($b['hold_status'] ?? 'none', ['authorized', 'captured', 'charged', 'returned', 'kept'], true)) {
+        json_out(['error' => 'The damages deposit for this booking is already collected or settled.'], 409);
     }
     require_once __DIR__ . '/mailer.php';
     $rate = get_rate($b['prop_key']);

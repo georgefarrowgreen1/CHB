@@ -314,7 +314,7 @@ function ical_record_status($prop, $summary)
                 );
                 try {
                     require_once __DIR__ . '/webpush.php';
-                    alert_owner('Calendar sync failing', $name . ': the ' . $src . ' link isn\'t working — check it in Settings → Calendar sync.');
+                    alert_owner('Calendar sync failing', $name . ': the ' . $src . ' link isn\'t working — check it in Manage → Calendar sync.');
                 } catch (\Throwable $e) {
                 }
             }

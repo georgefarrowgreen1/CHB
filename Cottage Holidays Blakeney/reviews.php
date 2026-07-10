@@ -102,7 +102,7 @@ if ($action === 'submit') {
             send_owner(
                 'New guest review awaiting approval',
                 "A review was submitted by {$guest['name']} for {$propKey} ({$stars}\xE2\x98\x85):\n\n{$text}\n\n" .
-                    'Approve or decline it in Settings & Fees -> Guest Reviews.',
+                    'Approve or decline it in Manage → Guest reviews.',
             );
         } catch (\Throwable $e) {
         }

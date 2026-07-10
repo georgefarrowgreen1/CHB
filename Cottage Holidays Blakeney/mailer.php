@@ -1058,7 +1058,7 @@ function build_enquiry_reply_email($e, $subject, $message, $ctx = 'enquiry')
         ? $money($p['total']) .
             ' (' . (int) $p['nights'] . ' night' . ((int) $p['nights'] === 1 ? '' : 's') .
             ' × ' . $money($p['perNight'] ?? 0) . ')' .
-            (!empty($p['damagesDeposit']) ? ' + ' . $money($p['damagesDeposit']) . ' refundable deposit (refunded after your stay)' : '')
+            (!empty($p['damagesDeposit']) ? ' + ' . $money($p['damagesDeposit']) . ' refundable deposit (charged with your first payment, refunded after your stay)' : '')
         : '';
     $times = 'Arrive ' . (($e['check_in_time'] ?? '') ?: '15:00') . ' · leave ' . (($e['check_out_time'] ?? '') ?: '10:00');
 

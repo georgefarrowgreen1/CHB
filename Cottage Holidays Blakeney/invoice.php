@@ -150,8 +150,18 @@ if ($b['agreed_total'] !== null) {
     $nights = 0; $perNight = 0; $nightly = 0; $txPct = 0; $txFee = 0; $damages = 0; $total = (float) ($b['agreed_total'] ?? 0);
 }
 
+// Mirror the client's displayGrand() (app.js): the refundable damages deposit
+// shows in the grand total only until refunded, and counts as PAID only once
+// genuinely collected — Square charges it with the first payment
+// (hold_status 'charged'; legacy card-holds settle to 'captured'; 'kept' =
+// collected and retained after damage). deposit_paid is RENTAL-only, so
+// without this the invoice understates Paid / overstates Balance the moment
+// the deposit is charged, and re-bills a refunded deposit after checkout.
+$holdStatus = (string) ($b['hold_status'] ?? 'none');
+if (in_array($holdStatus, ['returned', 'released'], true)) $damages = 0.0;
+$depositCharged = in_array($holdStatus, ['charged', 'captured', 'kept'], true);
 $grand = round($total + $damages, 2);
-$paid = round((float) ($b['deposit_paid'] ?? 0), 2);
+$paid = round((float) ($b['deposit_paid'] ?? 0) + ($depositCharged ? $damages : 0), 2);
 $balance = max(0, round($grand - $paid, 2));
 
 $disp = prop_display($b['prop_key']);

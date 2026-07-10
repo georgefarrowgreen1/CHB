@@ -226,7 +226,7 @@ if ($action === 'seed_features') {
     } catch (\Throwable $e) {
     }
     if (!$keys) {
-        json_out(['ok' => false, 'error' => 'No cottages found — run migrations first (Settings → System check).']);
+        json_out(['ok' => false, 'error' => 'No cottages found — run migrations first (Manage → System check).']);
     }
     $k0 = $keys[0];
     $k1 = $keys[1] ?? $keys[0];

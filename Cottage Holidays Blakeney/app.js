@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 55;
+const ADMIN_BUNDLE_V = 56;
 let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
@@ -34,7 +34,7 @@ function loadAdminBundle() {
     __adminBundlePromise = attempt(2);
     return __adminBundlePromise;
 }
-["accountsBack","accountsOpen","accountsShowIndex","activityLogSearch","addAdminPasskey","addReviewRow","afterPaymentChange","autoSyncIcalBlocks","backfillWebp","bookingHubBack","bookingsSetFilter","bookingsSetSearch","bulkImportReviews","cancelBooking","changeAdminPassword","changeMonth","inboxSub","inboxSubClose","initBackOffice","loadAdminMessages","loadDiagnostics","loadGuestList","logoutStaff","offerUpdatedConfirmationEmail","openAccounts","openAddBooking","openArea","openBlockDates","openBookings","openBookingEmail","openBookingHub","openEnquiryHub","enquiryHubBack","openInbox","openSettings","openStagingSite","refreshModerationCounts","renderAccounts","renderActivityLog","renderBookings","renderCalendar","renderExpenses","renderInbox","renderMoneyOverview","requestPayment","renderSquareSettings","runMigrations","saveApiKey","saveContactPhone","saveContent","saveDepositPct","saveGoogleReviewUrl","saveHostText","saveReviews","sendBroadcast","sendSampleEmails","sendTestEmail","settingsBack","settingsFilter","settingsOpen","settingsOpenAccom","settingsOpenAccomSec","settingsOpenCalendar","settingsOpenCancel","settingsRecentRender","settingsSearchKey","settingsShowIndex","tryAccessBackOffice","uploadHostPhoto"].forEach((n) => {
+["accountsBack","accountsOpen","accountsShowIndex","activityLogSearch","addAdminPasskey","addReviewRow","afterPaymentChange","autoSyncIcalBlocks","backfillWebp","bookingHubBack","bookingsSetFilter","bookingsSetSearch","bulkImportReviews","changeAdminPassword","changeMonth","timelineToday","inboxSub","inboxSubClose","initBackOffice","loadAdminMessages","loadDiagnostics","logoutStaff","offerUpdatedConfirmationEmail","openAccounts","openAddBooking","openArea","openBlockDates","openBookings","openBookingEmail","openBookingHub","openEnquiryHub","enquiryHubBack","openInbox","openSettings","openStagingSite","refreshModerationCounts","renderAccounts","renderActivityLog","renderBookings","renderCalendar","renderExpenses","renderInbox","renderMoneyOverview","requestPayment","renderSquareSettings","runMigrations","saveApiKey","saveContactPhone","saveContent","saveDepositPct","saveGoogleReviewUrl","saveHostText","saveReviews","sendBroadcast","sendSampleEmails","sendTestEmail","settingsBack","settingsFilter","settingsOpen","settingsOpenAccom","settingsOpenAccomSec","settingsOpenCalendar","settingsOpenCancel","settingsRecentRender","settingsSearchKey","settingsShowIndex","tryAccessBackOffice","uploadHostPhoto"].forEach((n) => {
     const stub = (...a) =>
         loadAdminBundle()
             .catch((e) => {
@@ -843,10 +843,6 @@ if (IS_STAGING) {
         });
     } catch (e) {}
 }
-// True for a booking the Test centre created (tagged in its notes).
-function isTestBooking(b) {
-    return !!(b && typeof b.notes === 'string' && b.notes.indexOf('[CHB-TEST]') !== -1);
-}
 // First-party, cookie-free analytics (see track.php). Fire-and-forget; never
 // blocks the UI and never counts the owner's own browsing. utm_source from the
 // landing URL is captured once so campaign traffic (newsletter, Instagram…) is
@@ -1068,10 +1064,16 @@ function nav(viewId, anchorId = null) {
     }
 
     // Accentuate which admin section the dock is currently showing (clears
-    // when on a non-admin view such as the public site) — every dock button
-    // maps 1:1 to a view now.
+    // when on a non-admin view such as the public site). Detail screens with
+    // no button of their own light up their parent workspace's button.
+    const dockAlias = {
+        'view-booking-hub': 'view-bookings',
+        'view-enquiry-hub': 'view-inbox',
+        'view-activity-log': 'view-settings',
+    };
+    const dockView = dockAlias[viewId] || viewId;
     document.querySelectorAll('.admin-dock-btn[data-view]').forEach((b) => {
-        b.classList.toggle('current', b.getAttribute('data-view') === viewId);
+        b.classList.toggle('current', b.getAttribute('data-view') === dockView);
     });
     requestAnimationFrame(moveDockIndicator);
 
@@ -1271,15 +1273,6 @@ function addBookingToCalendar(bookingId) {
     setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-// Mobile action dropdown (guest dashboard)
-function toggleActionMenu(e) {
-    if (e) e.stopPropagation();
-    const m = document.querySelector('.action-menu');
-    if (!m) return;
-    const open = m.classList.toggle('open');
-    const t = m.querySelector('.action-dd-toggle');
-    if (t) t.setAttribute('aria-expanded', open ? 'true' : 'false');
-}
 function closeActionMenu() {
     const m = document.querySelector('.action-menu');
     if (m) m.classList.remove('open');
@@ -1691,11 +1684,6 @@ function exitPreview() {
     location.href = 'index.html';
 }
 
-// ---- Owner navigation helpers ----
-// Enquiries now live in Manage → Enquiries.
-async function openEnquiriesView() {
-    openInbox();
-}
 // Keep the dock's pending-enquiries count badge live.
 async function refreshOwnerHomeBadges() {
     try {
@@ -1785,10 +1773,6 @@ function applyCancellationText(propKey) {
     el.innerHTML = `<strong>${pol.name}.</strong> ${pol.points.map((p) => escapeHtml(p)).join('. ')}.`;
 }
 
-// Reviews moderation now lives as a folder inside Settings.
-async function openReviews() {
-    openSettings('reviews');
-}
 
 // ===================================================================
 //  ACCOUNTS — financial reporting by UK tax year (6 Apr – 5 Apr)
@@ -1803,26 +1787,6 @@ function taxYearStartOf(dateStr) {
     return y;
 }
 
-// Every recorded payment as a flat list: {propKey, booking, amount, date, method, taxYear}
-function paymentRecords() {
-    const records = [];
-    Object.keys(dbBookings).forEach((propKey) => {
-        (dbBookings[propKey] || []).forEach((b) => {
-            const amount = Math.max(0, Number(b.depositPaid) || 0);
-            if (amount <= 0) return; // only money actually received
-            const date = b.paymentDate || '';
-            records.push({
-                propKey,
-                booking: b,
-                amount,
-                date,
-                method: b.paymentMethod || '',
-                taxYear: taxYearStartOf(date),
-            });
-        });
-    });
-    return records;
-}
 let allExpenses = []; // cached expense rows (client buckets by tax year)
 async function loadExpenses() {
     try {
@@ -3671,42 +3635,6 @@ function guestReviewForm(propKey) {
                 </div>
             </div>`;
 }
-function guestReviewBlock(propKey) {
-    const existing = myGuestReviews[propKey];
-    const meta = propertyMeta[propKey] || { name: propKey };
-    let head;
-    if (!existing) {
-        head = `<button class="btn-sm btn-edit" onclick="toggleGuestReview('${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.9l-5.2 2.6.99-5.78-4.21-4.1 5.82-.85z" fill="currentColor" stroke="none"/></svg> Review your stay</button>`;
-    } else if (existing.status === 'approved') {
-        head = `<span style="font-size:0.82rem;color:#4CAF50;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.9l-5.2 2.6.99-5.78-4.21-4.1 5.82-.85z" fill="currentColor" stroke="none"/></svg> Your review of ${escapeHtml(meta.name)} is live on our home page — thank you!</span>
-                        <button class="btn-sm btn-edit" style="margin-left:10px;" onclick="toggleGuestReview('${propKey}')">Edit review</button>`;
-    } else if (existing.status === 'pending') {
-        head = `<span style="font-size:0.82rem;color:var(--text-muted);"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.9l-5.2 2.6.99-5.78-4.21-4.1 5.82-.85z" fill="currentColor" stroke="none"/></svg> Thank you for staying with us!</span>
-                        <button class="btn-sm btn-edit" style="margin-left:10px;" onclick="toggleGuestReview('${propKey}')">Edit review</button>`;
-    } else {
-        // declined — let them quietly revise rather than surfacing "declined"
-        head = `<button class="btn-sm btn-edit" onclick="toggleGuestReview('${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.9l-5.2 2.6.99-5.78-4.21-4.1 5.82-.85z" fill="currentColor" stroke="none"/></svg> Edit your review</button>`;
-    }
-    const stars = existing ? existing.stars : 5;
-    const starOpts = [5, 4, 3, 2, 1]
-        .map(
-            (n) =>
-                `<option value="${n}" ${stars === n ? 'selected' : ''}>${'★'.repeat(n)}${'☆'.repeat(5 - n)}</option>`,
-        )
-        .join('');
-    return `
-            <div style="margin-top:14px;border-top:1px solid var(--glass-border);padding-top:14px;">
-                <div>${head}</div>
-                <div id="grf-${propKey}" style="display:none;margin-top:12px;">
-                    <select id="grf-stars-${propKey}" class="input-glass field-sm" style="margin-bottom:10px;">${starOpts}</select>
-                    <textarea id="grf-text-${propKey}" rows="3" maxlength="1000" class="input-glass field-sm" placeholder="How was your stay at ${escapeHtml(meta.name)}?">${existing ? escapeHtml(existing.text) : ''}</textarea>
-                    <div style="display:flex;gap:10px;align-items:center;margin-top:10px;">
-                        <button class="btn-glass" style="padding:10px 22px;" onclick="submitGuestReview('${propKey}')">Submit review</button>
-                        <span style="font-size:0.72rem;color:var(--text-muted);">Your review will appear on our site shortly.</span>
-                    </div>
-                </div>
-            </div>`;
-}
 function toggleGuestReview(propKey) {
     const f = document.getElementById('grf-' + propKey);
     if (f) f.style.display = f.style.display === 'none' ? 'block' : 'none';
@@ -3828,7 +3756,7 @@ async function sendArrivalInfo(bookingId) {
     }
     if (
         !(await glassConfirm(
-            `Send the arrival info email to ${b.email}?\n\nTip: the arrival details are set per cottage in Settings & Fees.`,
+            `Send the arrival info email to ${b.email}?\n\nTip: the arrival details are set per cottage in Manage → Preferences.`,
         ))
     )
         return;
@@ -4437,12 +4365,6 @@ function startLiveUpdates() {
         if (!document.hidden) liveUpdateTick();
     });
 }
-function stopLiveUpdates() {
-    if (liveUpdateTimer) {
-        clearInterval(liveUpdateTimer);
-        liveUpdateTimer = null;
-    }
-}
 
 window.addEventListener('DOMContentLoaded', async () => {
     try {
@@ -5008,10 +4930,6 @@ function renderHost() {
             ? `url('${hostVal('host-photo')}')`
             : '';
 }
-// Host profile now lives inside Settings; this shim keeps any old callers working.
-function openHostEditor() {
-    openSettings('host');
-}
 
 // ---- Dark-skies note (Experiences page) + accessibility + savings badge ----
 const DEFAULT_DARKSKIES =
@@ -5239,23 +5157,6 @@ const DEFAULT_TRIP_ACTIVITIES = [
 function tripActivities() {
     const c = siteContent['trip-activities'];
     return Array.isArray(c) && c.length ? c : DEFAULT_TRIP_ACTIVITIES;
-}
-function openTripModal() {
-    const wrap = document.getElementById('trip-interests');
-    if (wrap)
-        wrap.innerHTML = TRIP_INTERESTS.map(
-            ([id, label]) =>
-                `<button type="button" class="trip-chip" data-int="${id}" onclick="this.classList.toggle('on')">${label}</button>`,
-        ).join('');
-    const sel = document.getElementById('trip-days');
-    if (sel)
-        sel.innerHTML = [2, 3, 4, 5, 6, 7]
-            .map((n) => `<option value="${n}" ${n === 3 ? 'selected' : ''}>${n}</option>`)
-            .join('');
-    const res = document.getElementById('trip-result');
-    if (res) res.innerHTML = '';
-    const m = document.getElementById('trip-modal');
-    if (m) m.classList.add('open');
 }
 function closeTripModal() {
     const m = document.getElementById('trip-modal');
@@ -5637,9 +5538,6 @@ function cottageSleepsLabel(k) {
     return 'Sleeps ' + (o.maxTotal || o.maxAdults || 2);
 }
 
-function persistRates() {
-    /* rates are saved per-field via updateRate -> API */
-}
 async function loadRates(pre) {
     try {
         // `pre` = this endpoint's payload already fetched via bootstrap.php.
@@ -5888,32 +5786,6 @@ function displayGrand(p, ps, holdStatus) {
     return { dep, total, paid, balance, fullyPaid: ps.fullyPaid || balance <= 0.001 };
 }
 
-// Freeze the agreed price onto a booking at the moment it is created or its
-// stay is changed. After this, the booking shows THIS figure even if the
-// property's rates later change in Settings & Fees.
-function snapshotPrice(propKey, booking) {
-    const p = priceBreakdown(
-        propKey,
-        booking.adults,
-        booking.children,
-        booking.checkIn,
-        booking.checkOut,
-        booking.damagesDeposit,
-    );
-    booking.agreedPrice = {
-        nights: p.nights,
-        perNight: p.perNight,
-        nightly: p.nightly,
-        damagesDeposit: p.damagesDeposit,
-        transactionPct: p.transactionPct,
-        txFee: p.txFee,
-        rentalTotal: p.rentalTotal,
-        total: p.total,
-        extraAdults: p.extraAdults,
-        agreedOn: todayDashed(),
-    };
-    return booking;
-}
 
 function gbp(n) {
     return (
@@ -5939,38 +5811,6 @@ function paymentSummary(propKey, b) {
     return { total, deposit, balance, fullyPaid };
 }
 
-// Compute a depositPaid value consistent with a chosen status.
-// Returns the numeric deposit, or null if the user cancels the prompt.
-async function reconcileDeposit(propKey, booking, status) {
-    const p =
-        booking.agreedPrice ||
-        priceBreakdown(
-            propKey,
-            booking.adults || 0,
-            booking.children || 0,
-            booking.checkIn,
-            booking.checkOut,
-        );
-    const total = p.total;
-    let dep = Math.max(0, Number(booking.depositPaid) || 0);
-    if (status === 'paid') return Math.round(total * 100) / 100;
-    if (status === 'unpaid') return 0;
-    // 'deposit' — needs a partial amount
-    if (dep > 0 && dep < total) return Math.round(dep * 100) / 100;
-    const entered = await glassPrompt(
-        `Deposit paid (£). Must be between £0.01 and ${gbp(total - 0.01)}:`,
-        '',
-    );
-    if (entered === null) return null;
-    let val = Math.max(0, parseFloat(entered) || 0);
-    if (val <= 0 || val >= total) {
-        glassAlert(
-            "A deposit must be more than £0 and less than the full total. Use 'Paid in Full' or 'Unpaid' instead.",
-        );
-        return null;
-    }
-    return Math.round(val * 100) / 100;
-}
 
 // Dummy Database
 const dbBookings = {
@@ -6196,12 +6036,6 @@ function sourceLabel(src) {
     if (map[s]) return map[s];
     return src ? src.charAt(0).toUpperCase() + src.slice(1) : 'External';
 }
-// Friendly label covering every feed a (possibly de-duplicated) block came
-// from, e.g. "Airbnb + Vrbo" when the same booking arrived in both.
-function blockSourcesLabel(bl) {
-    const srcs = bl && bl.sources && bl.sources.length ? bl.sources : [bl && bl.source];
-    return srcs.filter(Boolean).map(sourceLabel).join(' + ') || 'External';
-}
 
 function findBookingById(bookingId) {
     for (const list of Object.values(dbBookings)) {
@@ -6232,59 +6066,7 @@ function hasDateClash(propKey, checkIn, checkOut, ignoreId = null) {
     return (dbBlocks[propKey] || []).some((bl) => checkIn < bl.checkOut && checkOut > bl.checkIn);
 }
 
-// Changing the status must stay consistent with the recorded deposit:
-//  • Paid in Full  → deposit becomes the full total
-//  • Unpaid        → deposit resets to £0
-//  • Deposit Paid  → keep a partial amount; if none/over, prompt for one
-// A payment date is REQUIRED whenever money is recorded. If none is set,
-// prompt for one (defaulting to today) and validate it. Returns true if a
-// valid date is now present, false if the user cancelled / gave a bad date.
-async function ensurePaymentDate(booking) {
-    if (booking.paymentDate && /^\d{4}-\d{2}-\d{2}$/.test(booking.paymentDate)) return true;
-    const today = todayDashed();
-    const entered = await glassPrompt('A payment date is required (YYYY-MM-DD):', today);
-    if (entered === null) return false; // cancelled
-    const val = entered.trim();
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(val) || isNaN(new Date(val).getTime())) {
-        glassAlert('Please enter a valid date in YYYY-MM-DD format.');
-        return false;
-    }
-    booking.paymentDate = val;
-    return true;
-}
 
-// Setter for payment metadata (method, date) without changing the amount.
-async function updatePaymentField(bookingId, field, value) {
-    const booking = findBookingById(bookingId);
-    if (!booking) return;
-    const loc = findBookingLocation(bookingId);
-    const propKey = loc ? loc.propKey : '21a';
-    if (field === 'paymentDate' && !value && Number(booking.depositPaid) > 0) {
-        glassAlert(
-            'A payment date is required while a payment is recorded. Set the deposit to £0 first if you need to remove it.',
-        );
-        afterPaymentChange(bookingId);
-        return;
-    }
-    // Re-send the current payment with the changed metadata field
-    const payload = {
-        id: booking.dbId,
-        payment: booking.payment,
-        deposit: booking.depositPaid,
-        payment_date: field === 'paymentDate' ? value : booking.paymentDate || '',
-        payment_method: field === 'paymentMethod' ? value : booking.paymentMethod || '',
-    };
-    try {
-        await apiPost('bookings.php', { action: 'set_payment', ...payload });
-        await loadData();
-        renderCalendar();
-        const fresh = findBookingById(bookingId);
-        if (fresh) afterPaymentChange(bookingId);
-    } catch (e) {
-        glassAlert("Couldn't update: " + e.message);
-        afterPaymentChange(bookingId);
-    }
-}
 
 // ---- Square online payments (admin) ----
 let squareAdminEnabled = false;
@@ -6303,34 +6085,6 @@ async function loadSquareAdminConfig(pre) {
     try {
         if (window.__ADMIN_LOADED) renderSquareSettings();
     } catch (e) {}
-}
-async function requestHold(bookingId) {
-    const booking = findBookingById(bookingId);
-    if (!booking) return;
-    try {
-        const res = await apiPost('bookings.php', { action: 'hold_request', id: booking.dbId });
-        toast(`Card-hold request sent — ${gbp(res.amount)}.`);
-    } catch (e) {
-        glassAlert("Couldn't send the hold request: " + e.message);
-    }
-}
-async function copyHoldLink(bookingId) {
-    const booking = findBookingById(bookingId);
-    if (!booking) return;
-    try {
-        const res = await apiPost('bookings.php', { action: 'hold_link', id: booking.dbId });
-        const url = res.url || '';
-        if (!url) throw new Error('No link returned.');
-        let copied = false;
-        try {
-            await navigator.clipboard.writeText(url);
-            copied = true;
-        } catch (e) {}
-        if (copied) toast('Hold link copied to clipboard.');
-        else await glassAlert('Copy this secure card-hold link:\n\n' + url);
-    } catch (e) {
-        glassAlert("Couldn't get the hold link: " + e.message);
-    }
 }
 // Show the Square payment ledger for a booking inside the details modal.
 async function loadBookingPayments(bookingId) {
@@ -6401,10 +6155,6 @@ async function refundPayment(bookingId, squareId, maxAmount) {
     }
 }
 
-function initCalendar() {
-    loadData();
-    renderCalendar();
-}
 
 // --- Same-day changeover notifications (planning aid) ---
 const CHANGEOVER_DISMISSED_KEY = 'nn-changeover-dismissed';
@@ -11894,7 +11644,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'j6qek0pw';
+    const BUILD = 'j6qfl1qx';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
