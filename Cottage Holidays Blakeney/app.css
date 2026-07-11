@@ -5452,6 +5452,81 @@ body.owner-mode .chat-widget {
   .enq-split.no-pane #inbox-detail-pane {
     display: none;
   }
+  /* ---- Apple-Mail Inbox (desktop): folders rail | list | reading pane ---- */
+  #view-inbox .enq-split {
+    grid-template-columns: minmax(540px, 640px) minmax(0, 1fr);
+  }
+  #inbox-main {
+    display: grid;
+    grid-template-columns: 185px minmax(0, 1fr);
+    column-gap: 20px;
+    align-items: start;
+  }
+  #inbox-main > .back-link,
+  #inbox-main > .dashboard-header {
+    grid-column: 1 / -1;
+  }
+  /* The folder switch becomes a Mail-style sidebar rail. */
+  #inbox-folders {
+    grid-column: 1;
+    position: sticky;
+    top: 16px;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 4px;
+    border: 0;
+    background: none;
+    padding: 0;
+    overflow: visible;
+  }
+  #inbox-folders .inbox-sort-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 8px;
+    padding: 10px 12px;
+    border-radius: var(--r-sm);
+    font-size: 0.82rem;
+  }
+  #inbox-folders .inbox-sort-btn .ifold-count {
+    margin-left: auto;
+  }
+  #inbox-folder-enquiries,
+  #inbox-folder-messages,
+  #inbox-folder-email {
+    grid-column: 2;
+    min-width: 0;
+  }
+  #inbox-main > .settings-section-label,
+  #inbox-main > .settings-group {
+    grid-column: 2;
+  }
+  /* The docked chat window: the messages modal renders INSIDE the pane as a
+     static panel (no overlay, no veil) while the Messages folder is open. */
+  #inbox-detail-pane #messages-modal {
+    position: static;
+    inset: auto;
+    display: none;
+    padding: 0;
+    background: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+  #inbox-detail-pane #messages-modal.open {
+    display: block;
+  }
+  #inbox-detail-pane #messages-modal .modal-box {
+    width: 100%;
+    max-width: none;
+    margin: 0;
+    max-height: none;
+  }
+  /* The pane's hint steps aside once real content is docked. */
+  #inbox-detail-pane:has(#messages-modal.open) #inbox-detail-empty,
+  #inbox-detail-pane:has(#mbx-pane-dock:not(:empty)) #inbox-detail-empty {
+    display: none;
+  }
 }
 #bookings-detail-empty,
 #inbox-detail-empty {
@@ -6124,7 +6199,9 @@ body.admin-screen .site-footer {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.22);
+  /* Yet-to-be-done stages carry a RED dot — done is green, current amber,
+     so the three states read at a glance. */
+  background: var(--danger);
 }
 .pipe-step.is-done {
   color: var(--ok);

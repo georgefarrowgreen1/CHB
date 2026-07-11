@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 74;
+const ADMIN_BUNDLE_V = 75;
 let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
@@ -7029,6 +7029,20 @@ async function openMessageThread(threadId) {
     __msgThreadId = threadId;
     adminClearAttach(); // don't carry a pending photo between conversations
     const modal = document.getElementById('messages-modal');
+    // The desktop Inbox docks this window into its reading pane. If that
+    // context no longer applies (different view, messages folder hidden, or a
+    // narrow window), give it back to <body> so it opens as the floating
+    // window again. DOM-state checks only — no back-office globals.
+    try {
+        const paneEl = document.getElementById('inbox-detail-pane');
+        const inboxActive = !!document.querySelector('#view-inbox.active');
+        const msgFold = document.getElementById('inbox-folder-messages');
+        const foldShown = !!msgFold && msgFold.style.display !== 'none';
+        const wide = window.matchMedia('(min-width: 1200px)').matches;
+        if (modal && paneEl && modal.parentElement === paneEl && !(inboxActive && foldShown && wide)) {
+            document.body.appendChild(modal);
+        }
+    } catch (e) {}
     const title = document.getElementById('messages-modal-title');
     const ctx = document.getElementById('messages-modal-ctx');
     const thread = document.getElementById('messages-modal-thread');
@@ -11815,7 +11829,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'mrgtl8x2';
+    const BUILD = 'mrgu1drm';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

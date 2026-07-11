@@ -75,7 +75,9 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     firstSubject: (document.querySelector('#mailbox-body .bk-row .bk-row-dates') || {}).textContent || '',
   }));
   ok(l.rows === 2 && l.unreadChips === 1, `2 messages listed, 1 unread (${l.rows}/${l.unreadChips})`);
-  ok(l.activeView === 'view-inbox' && l.emailShown && l.enqHidden && l.noPane, `email folder active in the Inbox, pane released (${l.activeView})`);
+  // The pane is never 'released' any more — on desktop it serves every folder
+  // (Apple-Mail layout); below 1200px it's simply hidden by CSS.
+  ok(l.activeView === 'view-inbox' && l.emailShown && l.enqHidden && !l.noPane, `email folder active in the Inbox, pane kept (${l.activeView})`);
   ok(l.firstSubject === 'Question about parking', `subject shown (${l.firstSubject})`);
 
   console.log('1b. folder switch + unread chip');
