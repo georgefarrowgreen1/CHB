@@ -77,12 +77,20 @@ index + the `#bookings-detail-pane` docked hub at ≥1200px; `openBookings()` su
 as an alias that lands here and scrolls to `#bookings-workspace`;
 `dock-badge-enquiries` pip), **Inbox** (`openInbox()` → `view-inbox` — the COMMS
 dashboard: an **Enquiries | Messages | Email** folder switch (`inboxFolder()`,
-`#inbox-folder-*` containers, `.ifold-count` chips; the docked enquiry pane only
-shows on Enquiries via `.enq-split.no-pane`); Email is the full mailbox client
-(`loadMailbox()`/`mailbox.php`, lazy on first open — moved from Manage, and
-`settingsOpen('mailbox')` redirects here); `inboxSub()` sub-folders via
-`INBOX_SUBS`; `dock-badge-inbox` pip), **Money** (`openAccounts()` →
-`view-accounts`;
+`#inbox-folder-*` containers, `.ifold-count` chips). At ≥1200px the Inbox is an
+APPLE-MAIL three-pane client: the folder switch becomes a left sidebar rail, the
+active folder's list is the middle column, and `#inbox-detail-pane` is a reading
+pane serving EVERY folder — the enquiry hub docks as before, emails open in the
+pane (`mbxPaneDock()`; row highlight `.is-open`; below 1200px they open as an
+in-row accordion, `mbxSlotFor()`), and guest chats dock the `#messages-modal`
+node into the pane as a static panel (undocked on folder switch; app.js
+`openMessageThread` self-heals the dock via DOM checks only — never admin
+globals). Email is the full mailbox client (`loadMailbox()`/`mailbox.php`, lazy
+on first open — moved from Manage, and `settingsOpen('mailbox')` redirects
+here); `inboxSub()` sub-folders via
+`INBOX_SUBS`; `dock-badge-inbox` pip), **Payments** (`openAccounts()` →
+`view-accounts` — dock label/titles say "Payments" but the internal ids keep
+their names (`asec-*`, `#money-overview`);
 `accountsOpen(id)` → `#asec-<id>`, incl. the pricing coach), and
 **Manage** (`openArea()` → `view-settings`, ONE index — cottages, then marketing, then
 account/system, grouped by `.settings-section-label`s; the old per-area filtering is
@@ -94,7 +102,11 @@ The two dock pips both show `enquiries.length`, synced from `refreshInboxBadge()
 **Hubs are where you act; index rows are where you find.** The **booking hub**
 (`view-booking-hub`) is the ONE home per booking — `showDetails()` (app.js) only
 delegates to `openBookingHub()` (admin.js): status pipeline + next action, money,
-emails, guest, change history via `bookings.php` `history`. The **enquiry hub**
+emails, guest, change history via `bookings.php` `history`; on desktop (≥900px)
+the status pipeline shows ALL stages (upcoming = red dot), compact Done·Now·Next
+below that; the settled Payments card folds to one line carrying the deposit
+state (incl./excl.) with the standalone deposit row only when it has an action.
+The **enquiry hub**
 (`view-enquiry-hub`, `openEnquiryHub()`) is the same for enquiries — approve/edit/
 email/decline + agreed price live there; approving jumps to the new booking's hub
 (`enquiries.php` returns `booking_id`). At ≥1200px both the Today workspace and the
@@ -103,7 +115,10 @@ Inbox dock their hub in a side pane (master–detail; the `#booking-hub-content`
 on crossing 1200px). Index rows
 share the `.bk-row` three-line anatomy. The Today calendar is a horizontal
 multi-cottage TIMELINE (`renderCalendar()` in admin.js, `.tl-*` CSS): one lane per
-cottage, sticky labels, ~6 months of days. Its bars are launchers, not editors —
+cottage, sticky labels; the window ALWAYS starts on the 1st of the current month
+(`tlStartOffset()`), opens there, and GROWS endlessly — nearing the right edge
+extends it ~3 months in place (`tlMaybeExtend()`, scroll preserved). Its bars
+are launchers, not editors —
 tapping a booking bar opens `openBookingHub()`, tapping a free future cell calls
 `tlAddAt(propKey, iso)` to prefill the Add Booking modal; no other editing lives
 on the calendar. External iCal bars (`.tl-ext`) stay display-only (the auto-sync
