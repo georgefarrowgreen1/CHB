@@ -15,8 +15,12 @@
 //      treats an expired auth as released).
 //   3. Active cottages missing a slug or accent (pre-migration rows) →
 //      regenerated with the same helpers rates.php 'create' uses.
+//   4. Curated review names still carrying import paste artifacts
+//      ("2. Rebecca — 5 stars — May 2026" → "Rebecca") — the numbering,
+//      star count and month are display noise the review card already
+//      renders properly from its own fields.
 //  Flags (owner decides):
-//   4. Payments whose booking row no longer exists (orphans) — money records
+//   5. Payments whose booking row no longer exists (orphans) — money records
 //      are NEVER deleted; logged once when the count grows.
 //
 //  Run daily via cron.php, or manually as a signed-in admin (POST — CSRF).
@@ -141,8 +145,56 @@ try {
 } catch (\Throwable $e) {
 }
 
-// ---- 4. Orphaned payment rows (flag only — never delete money records) -----
-// ---- 5. Monthly digest into the activity log --------------------------------
+// ---- 4. Review names carrying import paste artifacts ------------------------
+// Owner-curated reviews (content key 'reviews') imported by copy-paste sometimes
+// keep the platform's listing line as the NAME: "2. Rebecca — 5 stars — May 2026".
+// The numbering, star count and month are noise (the card renders stars and the
+// cottage from its own fields) — strip them down to the guest's name. Only names
+// matching the exact artifact shape are touched; everything else stays
+// byte-identical, so the pass is idempotent and can never mangle a real name.
+try {
+    $s = db()->prepare('SELECT item_value FROM content WHERE item_key = ?');
+    $s->execute(['reviews']);
+    $raw = $s->fetchColumn();
+    $list = $raw !== false ? json_decode((string) $raw, true) : null;
+    if (is_array($list) && $list) {
+        $months = '(?:January|February|March|April|May|June|July|August|September|October|November|December)';
+        $cleaned = 0;
+        foreach ($list as $i => $r) {
+            if (!is_array($r) || !isset($r['name']) || !is_string($r['name'])) {
+                continue;
+            }
+            $name = $r['name'];
+            // Trailing " — 5 stars — May 2026" (any dash style, any case).
+            $new = preg_replace('/\s*[—–-]+\s*\d\s*stars?\s*[—–-]+\s*' . $months . '\s+\d{4}\s*$/iu', '', $name);
+            // Leading "2. " / "12) " numbering — only alongside-or-after the
+            // suffix strip, so a genuine name like "2. Corinthians" alone is
+            // never touched unless it carried the full artifact shape.
+            if ($new !== $name) {
+                $new = preg_replace('/^\s*\d{1,3}\s*[.)]\s*/', '', $new);
+            }
+            $new = trim($new);
+            if ($new !== $name && $new !== '') {
+                $list[$i]['name'] = $new;
+                $cleaned++;
+            }
+        }
+        if ($cleaned > 0) {
+            db()
+                ->prepare('UPDATE content SET item_value = ? WHERE item_key = ?')
+                ->execute([json_encode(array_values($list), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES), 'reviews']);
+            $fixed[] = "cleaned $cleaned imported review name(s)";
+            log_activity('settings', 'selfrepair.reviews', 'Self-repair: cleaned ' . $cleaned . ' imported review name(s) — paste artifacts removed', [
+                'actor' => $actor,
+                'entity' => 'content',
+            ]);
+        }
+    }
+} catch (\Throwable $e) {
+}
+
+// ---- 5. Orphaned payment rows (flag only — never delete money records) -----
+// ---- 6. Monthly digest into the activity log --------------------------------
 try {
     $orphans = (int) db()
         ->query('SELECT COUNT(*) FROM payments p LEFT JOIN bookings b ON b.id = p.booking_id WHERE b.id IS NULL')
