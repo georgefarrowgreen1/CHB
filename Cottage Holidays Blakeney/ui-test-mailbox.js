@@ -101,6 +101,28 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(r.bodyShown, 'message text renders');
   ok(r.scriptVisible && r.pwned === 0 && r.imgs === 0, `hostile HTML shown as text, never executed (pwned=${r.pwned})`);
 
+  console.log('2a. accordion — the email opens INSIDE its row, and collapses');
+  const acc = await page.evaluate(() => {
+    const open = document.querySelector('#mailbox-body .mbx-item.open');
+    return {
+      insideRow: !!(open && open.querySelector('.mbx-inline .mbx-text')),
+      expanded: !!open && open.querySelector('.bk-row').getAttribute('aria-expanded') === 'true',
+      collapseBtn: !!(open && [...open.querySelectorAll('button')].some((b) => /collapse/i.test(b.textContent))),
+    };
+  });
+  ok(acc.insideRow, 'reader renders inside the tapped row (not at the page bottom)');
+  ok(acc.expanded, 'row marked aria-expanded');
+  ok(acc.collapseBtn, 'Collapse button present');
+  await page.evaluate(() => document.querySelector('#mailbox-body .mbx-item.open .bk-row').click());
+  await page.waitForTimeout(300);
+  const collapsed = await page.evaluate(() => ({
+    stillOpen: !!document.querySelector('#mailbox-body .mbx-item.open'),
+    readerGone: !document.querySelector('#mailbox-body .mbx-inline .mbx-text'),
+  }));
+  ok(!collapsed.stillOpen && collapsed.readerGone, 'second tap on the row collapses the email');
+  await page.evaluate(() => { const b = [...document.querySelectorAll('#mailbox-body .bk-row')].find((x) => /parking/i.test(x.textContent)); b && b.click(); });
+  await page.waitForTimeout(600);
+
   console.log('2b. guest context + attachments');
   const ctx = await page.evaluate(() => ({
     match: /Guest match/.test((document.querySelector('.mbx-ctx') || {}).textContent || ''),
