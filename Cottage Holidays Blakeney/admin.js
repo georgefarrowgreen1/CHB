@@ -4235,6 +4235,150 @@ async function releaseHold(bookingId) {
     }
 }
 
+// ---- NEEDS YOU: the one prioritised to-do list on Today. Everything across
+// the back office that's waiting on the owner — automation warnings, waiting
+// enquiries, balances to collect, damages deposits to return, guest chats,
+// approvals — each row a one-tap jump to the exact place to act. Built from
+// data Today already loads; chats arrive from one fire-and-forget fetch.
+// All clear → the section hides (the ops line already says "all quiet"). ----
+let __nyChats = 0; // guest chats needing a reply (async fetch)
+let __nyMod = { rev: 0, ph: 0, exp: 0 }; // pending approvals (refreshModerationCounts)
+let __nyCronQuiet = false; // daily automation gone quiet (checkCronHealth)
+let __nyExpanded = false;
+const NY_ICONS = {
+    alert: '<path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/>',
+    enquiry: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/>',
+    money: '<circle cx="12" cy="12" r="9"/><path d="M15 8.5c-.6-.9-1.7-1.5-3-1.5-1.9 0-3.4 1.3-3.4 3 0 3.6 6.8 2 6.8 5.5 0 1.7-1.5 3-3.4 3-1.4 0-2.6-.7-3.2-1.8M12 4.5v2M12 17.5v2"/>',
+    deposit: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
+    chat: '<path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.6-.8L3 21l1.9-5.7A8.38 8.38 0 0 1 4 11.5 8.5 8.5 0 0 1 12.5 3 8.38 8.38 0 0 1 21 11.5z"/>',
+    approve: '<path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5-5.9-3.2-5.9 3.2 1.2-6.5L2.5 9.4l6.6-.9z"/>',
+};
+function needsYouItems() {
+    const items = [];
+    const today = todayDashed();
+    const dayMs = 86400e3;
+    const t0 = dpParse(today).getTime();
+    const propName = (k) => escapeHtml((propertyMeta[k] || {}).name || k);
+    // 1) The daily automation has gone quiet — everything else depends on it.
+    if (__nyCronQuiet) {
+        items.push({
+            sev: 'danger', ic: 'alert',
+            label: 'Your daily automation looks stopped',
+            sub: 'Reminders, backups and calendar syncs are not running',
+            act: 'Check', go: "nav('view-settings'); settingsOpen('diagnostics')",
+        });
+    }
+    // 2) Enquiries waiting for an answer — the money-makers, oldest first.
+    (enquiries || [])
+        .slice()
+        .sort((a, b) => (a.receivedAt || '').localeCompare(b.receivedAt || ''))
+        .forEach((q) => {
+            const ageDays = q.receivedAt
+                ? Math.max(0, Math.floor((Date.now() - new Date(q.receivedAt.replace(' ', 'T')).getTime()) / dayMs))
+                : 0;
+            const age = ageDays <= 0 ? 'new today' : ageDays === 1 ? 'waiting a day' : `waiting ${ageDays} days`;
+            items.push({
+                sev: ageDays >= 2 ? 'danger' : 'warn', ic: 'enquiry',
+                label: `${escapeHtml(q.name || 'A guest')}&rsquo;s enquiry — ${age}`,
+                sub: `${fmtStayRange(q.checkIn, q.checkOut)} · ${propName(q.propKey)}`,
+                act: 'Answer', go: `openEnquiryHub('${q.id}')`,
+            });
+        });
+    // 3) Damages deposits to give back (guest has checked out) and
+    // 4) balances to collect before arrival (soonest arrivals first).
+    const chase = [];
+    Object.keys(dbBookings || {}).forEach((k) =>
+        (dbBookings[k] || []).forEach((b) => {
+            if ((b.holdStatus || 'none') === 'charged' && (b.checkOut || '') <= today) {
+                items.push({
+                    sev: 'warn', ic: 'deposit',
+                    label: `Return ${escapeHtml(b.name || 'the guest')}&rsquo;s damages deposit`,
+                    sub: `Checked out ${fmtDate(b.checkOut)} · ${propName(k)}`,
+                    act: 'Review', go: `openBookingHub('${b.id}')`,
+                });
+            }
+            const ps = paymentSummary(k, b);
+            if (!ps.fullyPaid && (b.checkIn || '') >= today) {
+                const days = Math.round((dpParse(b.checkIn).getTime() - t0) / dayMs);
+                if (days <= 21) chase.push({ days, b, k, ps });
+            }
+        }),
+    );
+    chase
+        .sort((a, b) => a.days - b.days)
+        .forEach(({ days, b, k, ps }) => {
+            const when = days === 0 ? 'arrives today' : days === 1 ? 'arrives tomorrow' : `arrives in ${days} days`;
+            items.push({
+                sev: days <= 7 ? 'danger' : 'warn', ic: 'money',
+                label: `${escapeHtml(b.name || 'A guest')} ${when} — £${ps.balance.toFixed(2)} to collect`,
+                sub: `${fmtStayRange(b.checkIn, b.checkOut)} · ${propName(k)}`,
+                act: 'Chase', go: `openBookingHub('${b.id}')`,
+            });
+        });
+    // 5) Guest chats waiting on a reply.
+    if (__nyChats > 0) {
+        items.push({
+            sev: 'warn', ic: 'chat',
+            label: __nyChats === 1 ? 'A guest chat needs a reply' : `${__nyChats} guest chats need a reply`,
+            sub: 'Website chat · Inbox → Messages',
+            act: 'Reply', go: "openInbox().then(() => inboxFolder('messages'))",
+        });
+    }
+    // 6) Guest content waiting for approval.
+    [
+        ['rev', 'review', 'reviews'],
+        ['ph', 'guest photo', 'photos'],
+        ['exp', 'experience suggestion', 'experiences'],
+    ].forEach(([key, noun, section]) => {
+        const n = __nyMod[key] || 0;
+        if (n > 0) {
+            items.push({
+                sev: 'ok', ic: 'approve',
+                label: n === 1 ? `A ${noun} to approve` : `${n} ${noun}s to approve`,
+                sub: 'Guests see it once you approve',
+                act: 'Approve', go: `nav('view-settings'); settingsOpen('${section}')`,
+            });
+        }
+    });
+    return items;
+}
+function needsYouExpand() {
+    __nyExpanded = true;
+    renderNeedsYou();
+}
+function renderNeedsYou() {
+    const wrap = document.getElementById('needs-you');
+    const list = document.getElementById('needs-you-list');
+    if (!wrap || !list) return;
+    let items = [];
+    try {
+        items = needsYouItems();
+    } catch (e) {}
+    const count = document.getElementById('needs-you-count');
+    if (count) count.textContent = items.length;
+    if (!items.length) {
+        wrap.style.display = 'none';
+        list.innerHTML = '';
+        return;
+    }
+    wrap.style.display = '';
+    const MAX = 4;
+    const shown = __nyExpanded ? items : items.slice(0, MAX);
+    list.innerHTML =
+        shown
+            .map(
+                (it) => `
+        <button type="button" class="ny-row glass-panel ny-${it.sev}" onclick="${it.go}">
+            <span class="ny-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${NY_ICONS[it.ic] || NY_ICONS.alert}</svg></span>
+            <span class="ny-main"><span class="ny-label">${it.label}</span><span class="ny-sub">${it.sub}</span></span>
+            <span class="ny-act">${it.act} ›</span>
+        </button>`,
+            )
+            .join('') +
+        (items.length > shown.length
+            ? `<button type="button" class="btn-sm btn-edit ny-more" onclick="needsYouExpand()">Show ${items.length - shown.length} more</button>`
+            : '');
+}
 // The header's living second line: the date plus what today actually holds —
 // arrivals, departures, changeovers and money still to collect. Quiet days
 // read "all quiet"; the numbers come from data already loaded for the page.
@@ -4282,6 +4426,19 @@ async function initBackOffice() {
     await loadData();
     try {
         todayOpsLine();
+    } catch (e) {}
+    try {
+        renderNeedsYou();
+    } catch (e) {}
+    // Guest chats for the Needs-you strip — one fire-and-forget fetch; the
+    // strip repaints when the count lands.
+    try {
+        apiPost('messages.php', { action: 'threads' })
+            .then((r) => {
+                __nyChats = (((r || {}).threads) || []).filter(msgNeedsReply).length;
+                renderNeedsYou();
+            })
+            .catch(() => {});
     } catch (e) {}
     renderCalendar();
     try {
@@ -6894,6 +7051,10 @@ async function checkCronHealth() {
             pill.style.display = 'none';
         }
     }
+    __nyCronQuiet = !!(d && d.stale);
+    try {
+        renderNeedsYou();
+    } catch (e) {}
     if (!d || !d.stale) {
         el.style.display = 'none';
         return;
@@ -8185,6 +8346,10 @@ async function refreshModerationCounts() {
     setBadge('reviews-pending-badge', rev);
     setBadge('photos-pending-badge', ph);
     setBadge('exp-pending-badge', exp);
+    __nyMod = { rev, ph, exp };
+    try {
+        renderNeedsYou();
+    } catch (e) {}
     // Approvals now surface in Marketing's "To approve" rows (the badges above
     // point there) — the dashboard's Today panel is gone.
 }

@@ -5635,6 +5635,99 @@ body.owner-mode .chat-widget {
 body.admin-screen .site-footer {
   display: none;
 }
+/* ---- NEEDS YOU (Today): the one prioritised to-do list. Rows share the
+   back office's row anatomy, with a severity edge and a labelled action. ---- */
+#needs-you-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+.ny-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  padding: 13px 16px;
+  border-radius: var(--r-panel);
+  border-left: 3px solid var(--warn);
+  cursor: pointer;
+  animation: bhubIn 0.35s var(--fluid-bezier) both;
+  transition:
+    transform 0.25s var(--spring),
+    box-shadow 0.25s var(--fluid-bezier);
+}
+#needs-you-list .ny-row:nth-child(2) { animation-delay: 0.05s; }
+#needs-you-list .ny-row:nth-child(3) { animation-delay: 0.1s; }
+#needs-you-list .ny-row:nth-child(4) { animation-delay: 0.15s; }
+.ny-row:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-soft);
+}
+.ny-row:active {
+  transform: scale(0.99);
+}
+.ny-danger {
+  border-left-color: var(--danger);
+}
+.ny-ok {
+  border-left-color: var(--ok);
+}
+.ny-ic {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(127, 127, 127, 0.08);
+  color: var(--warn);
+}
+.ny-ic .ic {
+  width: 16px;
+  height: 16px;
+}
+.ny-danger .ny-ic {
+  color: var(--danger);
+}
+.ny-ok .ny-ic {
+  color: var(--ok);
+}
+.ny-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ny-label {
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--text-light);
+  line-height: 1.35;
+}
+.ny-sub {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ny-act {
+  flex: none;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--accent);
+  white-space: nowrap;
+}
+.ny-more {
+  align-self: flex-start;
+  margin-top: 2px;
+}
 .tl-bar {
   grid-row: 1;
   z-index: 2;
