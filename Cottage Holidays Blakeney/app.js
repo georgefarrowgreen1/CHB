@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 79;
+const ADMIN_BUNDLE_V = 80;
 let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
@@ -34,7 +34,7 @@ function loadAdminBundle() {
     __adminBundlePromise = attempt(2);
     return __adminBundlePromise;
 }
-["accountsBack","accountsOpen","accountsShowIndex","activityLogSearch","addAdminPasskey","addReviewRow","afterPaymentChange","autoSyncIcalBlocks","backfillWebp","bookingHubBack","bookingsSetFilter","bookingsSetSearch","bulkImportReviews","changeAdminPassword","changeMonth","timelineToday","inboxSub","inboxSubClose","inboxFolder","initBackOffice","loadAdminMessages","loadDiagnostics","logoutStaff","offerUpdatedConfirmationEmail","openAccounts","openAddBooking","openArea","openBlockDates","openBookings","openBookingEmail","openBookingHub","openEnquiryHub","enquiryHubBack","openInbox","openSettings","openStagingSite","refreshModerationCounts","renderAccounts","renderActivityLog","renderBookings","renderCalendar","renderExpenses","renderInbox","renderMoneyOverview","requestPayment","renderSquareSettings","runMigrations","saveApiKey","saveContactPhone","saveContent","saveDepositPct","saveGoogleReviewUrl","saveHostText","saveReviews","sendBroadcast","sendSampleEmails","sendTestEmail","settingsBack","settingsFilter","settingsOpen","settingsOpenAccom","settingsOpenAccomSec","settingsOpenCalendar","settingsOpenCancel","settingsRecentRender","settingsSearchKey","settingsShowIndex","tryAccessBackOffice","uploadHostPhoto"].forEach((n) => {
+["accountsBack","accountsOpen","accountsShowIndex","activityLogSearch","addAdminPasskey","addReviewRow","afterPaymentChange","autoSyncIcalBlocks","backfillWebp","bookingHubBack","bookingsSetFilter","bookingsSetSearch","bulkImportReviews","changeAdminPassword","changeMonth","timelineToday","inboxSub","inboxSubClose","inboxFolder","initBackOffice","closeBreakdownModal","diagnoseReplyEmail","closeEnquiryEmailModal","addComposeAttachments","previewComposedEmail","sendEnquiryEmail","backToComposeEdit","loadAdminMessages","loadDiagnostics","logoutStaff","offerUpdatedConfirmationEmail","openAccounts","openAddBooking","openArea","openBlockDates","openBookings","openBookingEmail","openBookingHub","openEnquiryHub","enquiryHubBack","openInbox","openSettings","openStagingSite","refreshModerationCounts","renderAccounts","renderActivityLog","renderBookings","renderCalendar","renderExpenses","renderInbox","renderMoneyOverview","requestPayment","renderSquareSettings","runMigrations","saveApiKey","saveContactPhone","saveContent","saveDepositPct","saveGoogleReviewUrl","saveHostText","saveReviews","sendBroadcast","sendSampleEmails","sendTestEmail","settingsBack","settingsFilter","settingsOpen","settingsOpenAccom","settingsOpenAccomSec","settingsOpenCalendar","settingsOpenCancel","settingsRecentRender","settingsSearchKey","settingsShowIndex","tryAccessBackOffice","uploadHostPhoto"].forEach((n) => {
     const stub = (...a) =>
         loadAdminBundle()
             .catch((e) => {
@@ -1155,6 +1155,9 @@ function nav(viewId, anchorId = null) {
 
 // ---- Light / dark theme toggle ----
 function setThemeLabel() {
+    // Keep the browser/PWA chrome colour in step with the active theme.
+    const tc = document.querySelector('meta[name="theme-color"]');
+    if (tc) tc.setAttribute('content', document.body.classList.contains('light-mode') ? '#f5f1e9' : '#121316');
     // Manage → Appearance row shows the live mode (the footer toggle is hidden
     // on admin screens, so this row is the back office's switch).
     const v = document.getElementById('theme-row-value');
@@ -1878,7 +1881,7 @@ async function saveGuestProfile() {
     const show = (t, ok) => {
         if (msg) {
             msg.textContent = t;
-            msg.style.color = ok ? '#4CAF50' : '#E53935';
+            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
             msg.style.display = 'block';
         }
     };
@@ -1970,7 +1973,7 @@ async function changeGuestPassword() {
     const show = (t, ok) => {
         if (msg) {
             msg.textContent = t;
-            msg.style.color = ok ? '#4CAF50' : '#E53935';
+            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
             msg.style.display = 'block';
         }
     };
@@ -2236,7 +2239,7 @@ async function requestMagicLink() {
     const show = (t, ok) => {
         if (msg) {
             msg.textContent = t;
-            msg.style.color = ok ? '#4CAF50' : '#E53935';
+            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
             msg.style.display = 'block';
         }
     };
@@ -2596,14 +2599,14 @@ async function renderGuestBookings() {
                     <div class="guest-booking-head">
                         <div class="guest-booking-img" style="background-image:url('${img}');"></div>
                         <div class="guest-booking-body">
-                            <h3><span class="legend-swatch swatch-${propKey}"></span> ${escapeHtml(meta.name)} <span class="guest-status-badge" style="background:rgba(255,167,38,0.22);color:#FFB74D;border:1px solid rgba(255,167,38,0.5);">Pending</span></h3>
+                            <h3><span class="legend-swatch swatch-${propKey}"></span> ${escapeHtml(meta.name)} <span class="guest-status-badge" style="background:rgba(255,167,38,0.22);color:var(--warn-text);border:1px solid rgba(255,167,38,0.5);">Pending</span></h3>
                             <div class="guest-ref">Awaiting confirmation</div>
                             <div class="guest-booking-cols">
                             <div class="guest-detail-grid">
                                 <div class="booking-detail-item"><span class="booking-detail-label">Check In</span><span class="booking-detail-value" style="font-size:1rem;">${checkIn} · ${checkInTime}</span></div>
                                 <div class="booking-detail-item"><span class="booking-detail-label">Check Out</span><span class="booking-detail-value" style="font-size:1rem;">${checkOut} · ${checkOutTime}</span></div>
                                 <div class="booking-detail-item"><span class="booking-detail-label">Party</span><span class="booking-detail-value" style="font-size:1rem;">${escapeHtml(party)}</span></div>
-                                <div class="booking-detail-item"><span class="booking-detail-label">Status</span><span class="booking-detail-value" style="font-size:1rem;color:#FFB74D;">Awaiting confirmation</span></div>
+                                <div class="booking-detail-item"><span class="booking-detail-label">Status</span><span class="booking-detail-value" style="font-size:1rem;color:var(--warn-text);">Awaiting confirmation</span></div>
                                 <div class="booking-detail-item" style="grid-column:1/-1;"><span class="booking-detail-label">Address</span><span class="booking-detail-value" style="font-size:0.95rem;">${escapeHtml(addr || 'Address available on confirmation.')}</span></div>
                             </div>
                             ${guestPriceBoxHtml(p, {
@@ -2669,8 +2672,8 @@ async function renderGuestBookings() {
                                 extraRows:
                                     gt.paid > 0
                                         ? `
-                                <div class="price-row" style="color:#4CAF50;"><span>Paid${b.paymentMethod ? ' (' + escapeHtml(b.paymentMethod) + ')' : ''}${b.paymentDate ? ' on ' + fmtDate(b.paymentDate) : ''}</span><span>− ${gbp(gt.paid)}</span></div>
-                                <div class="price-row total"><span>${gt.fullyPaid ? 'Paid in full' : 'Balance due'}</span><span class="price-amount" style="${gt.fullyPaid ? 'color:#4CAF50;' : ''}">${gbp(gt.fullyPaid ? gt.total : gt.balance)}</span></div>`
+                                <div class="price-row" style="color:var(--ok);"><span>Paid${b.paymentMethod ? ' (' + escapeHtml(b.paymentMethod) + ')' : ''}${b.paymentDate ? ' on ' + fmtDate(b.paymentDate) : ''}</span><span>− ${gbp(gt.paid)}</span></div>
+                                <div class="price-row total"><span>${gt.fullyPaid ? 'Paid in full' : 'Balance due'}</span><span class="price-amount" style="${gt.fullyPaid ? 'color:var(--ok);' : ''}">${gbp(gt.fullyPaid ? gt.total : gt.balance)}</span></div>`
                                         : '',
                             })}
                             </div>
@@ -3613,7 +3616,7 @@ async function submitGuestPhoto() {
     const msg = document.getElementById('pu-msg');
     const show = (t, ok) => {
         if (msg) {
-            msg.style.color = ok ? '#4CAF50' : '#E57373';
+            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
             msg.textContent = t;
         }
     };
@@ -3651,7 +3654,7 @@ function guestReviewForm(propKey) {
     const meta = propertyMeta[propKey] || { name: propKey };
     let note = '';
     if (existing && existing.status === 'approved')
-        note = `<div style="font-size:0.82rem;color:#4CAF50;margin-bottom:10px;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.9l-5.2 2.6.99-5.78-4.21-4.1 5.82-.85z" fill="currentColor" stroke="none"/></svg> Your review of ${escapeHtml(meta.name)} is live on our home page — thank you!</div>`;
+        note = `<div style="font-size:0.82rem;color:var(--ok);margin-bottom:10px;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.9l-5.2 2.6.99-5.78-4.21-4.1 5.82-.85z" fill="currentColor" stroke="none"/></svg> Your review of ${escapeHtml(meta.name)} is live on our home page — thank you!</div>`;
     else if (existing && existing.status === 'pending')
         note = `<div style="font-size:0.82rem;color:var(--text-muted);margin-bottom:10px;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.9l-5.2 2.6.99-5.78-4.21-4.1 5.82-.85z" fill="currentColor" stroke="none"/></svg> Thank you for staying with us!</div>`;
     const stars = existing ? existing.stars : 5;
@@ -4117,7 +4120,7 @@ function postcodeRecognize(inputId, statusId, onBlur) {
                 out.style.color = '#7FD68A';
                 out.textContent = '✓ ' + (r.postcode || val) + (r.place ? ' — ' + r.place : '');
             } else if (r.ok) {
-                out.style.color = '#FFB74D';
+                out.style.color = 'var(--warn-text)';
                 out.textContent = "We can't find that postcode — please double-check it.";
             } else {
                 out.textContent = '';
@@ -5498,9 +5501,9 @@ async function renderCottagesMap() {
 
 // Payment status config: label + colour. Keys are stored on each booking.
 const paymentMeta = {
-    paid: { label: 'Paid in Full', color: '#4CAF50', dot: '#4CAF50' },
-    deposit: { label: 'Deposit Paid', color: '#FFA726', dot: '#FFA726' },
-    unpaid: { label: 'Unpaid', color: '#E53935', dot: '#E53935' },
+    paid: { label: 'Paid in Full', color: 'var(--ok)', dot: 'var(--ok)' },
+    deposit: { label: 'Deposit Paid', color: 'var(--warn)', dot: 'var(--warn)' },
+    unpaid: { label: 'Unpaid', color: 'var(--danger)', dot: 'var(--danger)' },
 };
 
 // ===================================================================
@@ -6963,7 +6966,7 @@ async function submitNewsletter(ev) {
     const email = ((el && el.value) || '').trim();
     const show = (t, ok) => {
         if (msg) {
-            msg.style.color = ok ? '#4CAF50' : '#E57373';
+            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
             msg.textContent = t;
         }
     };
@@ -7929,7 +7932,7 @@ async function loadGuestPhotosAdmin() {
             return `<div style="background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:14px;overflow:hidden;">
                     <div class="guest-photo" style="aspect-ratio:4/3;border:none;border-radius:0;" role="button" tabindex="0" aria-label="${escapeHtml(p.caption || 'Guest photo')}" data-photo="${escapeHtml(data)}" onclick="openPhotoLightbox(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openPhotoLightbox(this)}"><img loading="lazy" src="${escapeHtml(p.url)}" alt="${escapeHtml(p.caption || 'Guest photo at ' + (meta.name || p.prop_key))}"></div>
                     <div style="padding:9px 11px;">
-                        <div style="font-size:0.74rem;color:var(--text-muted);"><span class="prop-tag tag-${p.prop_key}">${escapeHtml(meta.short || meta.name)}</span> ${escapeHtml(p.guest_name || 'Guest')}${pend ? ' · <span style="color:#FFB74D;">Pending</span>' : ' · <span style="color:#4CAF50;">Live</span>'}</div>
+                        <div style="font-size:0.74rem;color:var(--text-muted);"><span class="prop-tag tag-${p.prop_key}">${escapeHtml(meta.short || meta.name)}</span> ${escapeHtml(p.guest_name || 'Guest')}${pend ? ' · <span style="color:var(--warn-text);">Pending</span>' : ' · <span style="color:var(--ok);">Live</span>'}</div>
                         ${p.caption ? `<div style="font-size:0.8rem;margin:6px 0 0;">${escapeHtml(p.caption)}</div>` : ''}
                         <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
                             ${pend ? `<button class="btn-sm btn-edit" onclick="moderatePhoto(${p.id},'approve')">Approve</button>` : ''}
@@ -8579,11 +8582,15 @@ const MODAL_CLOSERS = {
     'messages-modal': closeMessagesModal,
     'waitlist-modal': closeWaitlistModal,
     'trip-modal': closeTripModal,
+    // Admin email composer — the stub loads the bundle if it isn't in yet.
+    'enq-email-modal': (...a) => window.closeEnquiryEmailModal(...a),
 };
 function topOpenDialog() {
     const lb = document.getElementById('lightbox');
     if (lb && lb.classList.contains('open')) return lb;
-    const open = Array.from(document.querySelectorAll('.modal-overlay.open'));
+    // .reviews-modal covers the reviews/FAQ/email-composer family — include it
+    // so Tab stays trapped inside those dialogs too, not just .modal-overlay.
+    const open = Array.from(document.querySelectorAll('.modal-overlay.open, .reviews-modal.open'));
     if (open.length) return open[open.length - 1];
     const dp = document.getElementById('date-picker');
     if (dp && dp.classList.contains('open')) return dp;
@@ -9252,7 +9259,7 @@ async function runFlexSearch() {
     const setMsg = (t, ok) => {
         if (msg) {
             msg.innerText = t || '';
-            msg.style.color = ok ? 'var(--text-muted)' : '#FFB74D';
+            msg.style.color = ok ? 'var(--text-muted)' : 'var(--warn-text)';
         }
     };
     if (!heroSearch.month) {
@@ -9361,7 +9368,7 @@ async function runHeroSearch() {
     const setMsg = (t, ok) => {
         if (msg) {
             msg.innerText = t || '';
-            msg.style.color = ok ? 'var(--text-muted)' : '#FFB74D';
+            msg.style.color = ok ? 'var(--text-muted)' : 'var(--warn-text)';
         }
     };
     const ci = heroSearch.checkin,
@@ -11824,7 +11831,7 @@ async function submitExperienceSuggestion() {
     const show = (t, ok) => {
         if (msg) {
             msg.textContent = t;
-            msg.style.color = ok ? '#4CAF50' : '#E53935';
+            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
             msg.style.display = 'block';
         }
     };
@@ -11871,7 +11878,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'mrgxl61q';
+    const BUILD = 'mrgyq5rd';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

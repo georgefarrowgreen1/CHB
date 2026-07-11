@@ -15,6 +15,9 @@
 //    POST {action:'status'}   -> list stored backups
 //    GET  ?action=download    -> stream the newest dump
 // ============================================================
+// KNOWN GAP: uploads/ (guest photos, chat attachments) is NOT included —
+// this job covers the DATABASE only. Uploaded files only exist on the host;
+// keep an occasional manual SFTP copy of uploads/ if they matter.
 require_once __DIR__ . '/db.php';
 
 $in = body();

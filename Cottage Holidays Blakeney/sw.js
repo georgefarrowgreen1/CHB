@@ -14,10 +14,10 @@
 //  show (push.php?action=sw_notify) and relays release reloads to open pages.
 //  Keep this file in the SAME folder as index.html.
 // ============================================================
-const CACHE = 'chb-cache-v341';
+const CACHE = 'chb-cache-v342';
 // admin.js is deliberately NOT precached — it's the owner-only bundle, fetched on
 // demand by loadAdminBundle() (app.js) and cached at runtime like any static asset.
-const CORE = ['./', 'index.html', 'logo.svg', 'favicon.png', 'apple-touch-icon.png', 'manifest.json', 'app.css?v=171', 'app.js?v=290', 'guest-app.css?v=31', 'guest-app.js?v=15'];
+const CORE = ['./', 'index.html', 'logo.svg', 'favicon.png', 'apple-touch-icon.png', 'manifest.json', 'app.css?v=172', 'app.js?v=291', 'guest-app.css?v=31', 'guest-app.js?v=15'];
 // uploads/ images live in their own size-capped bucket so galleries stay fast and
 // available offline WITHOUT growing the main cache without bound (every image ever
 // viewed used to accumulate forever in CACHE).
@@ -57,11 +57,15 @@ self.addEventListener('fetch', (event) => {
     let url;
     try { url = new URL(req.url); } catch (e) { return; }
     if (url.origin !== self.location.origin) return;   // let cross-origin (Square, fonts, tiles) pass through
+    // img.php-RESIZED gallery images are images, not APIs: same capped
+    // stale-while-revalidate bucket as uploads/ (offline galleries + fast
+    // repeat views). Checked BEFORE the generic .php bypass below.
+    const isImgPhp = /(^|\/)img\.php$/.test(url.pathname);
     // Dynamic JSON APIs are network-only — never serve stale prices/availability,
     // never write credentialed (admin/guest) responses to the shared cache, and
     // never let per-date/year query strings grow the cache unbounded. (Covers the
     // version.php update probe too, which must always be live.)
-    if (url.pathname.endsWith('.php')) return;
+    if (url.pathname.endsWith('.php') && !isImgPhp) return;
 
     const accept = req.headers.get('accept') || '';
     const isNav = req.mode === 'navigate' || accept.includes('text/html');
@@ -85,7 +89,7 @@ self.addEventListener('fetch', (event) => {
 
     // uploads/ images: stale-while-revalidate into the capped image bucket (trimmed
     // to IMG_CACHE_MAX so it can't grow forever).
-    if (url.pathname.includes('/uploads/')) {
+    if (url.pathname.includes('/uploads/') || isImgPhp) {
         event.respondWith((async () => {
             const c = await caches.open(IMG_CACHE);
             const cached = await c.match(req);

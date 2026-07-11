@@ -817,15 +817,20 @@ function ical_token($propKey)
 function msg_reply_token($threadId)
 {
     $tid = (int) $threadId;
-    return $tid . 'x' . substr(hash_hmac('sha256', 'msg-reply|' . $tid, APP_SECRET), 0, 16);
+    return $tid . 'x' . substr(hash_hmac('sha256', 'msg-reply|' . $tid, APP_SECRET), 0, 32);
 }
 function msg_reply_verify($token)
 {
-    if (!preg_match('/(\d+)x([0-9a-f]{16})/', (string) $token, $m)) {
+    // 32-hex is current (128-bit, matching the other tokens); 16-hex tokens
+    // still ride in the Reply-To of ALREADY-SENT emails, so verify accepts
+    // both — each against its own full-strength recomputation.
+    if (!preg_match('/(\d+)x([0-9a-f]{16,32})/', (string) $token, $m)) {
         return 0;
     }
     $tid = (int) $m[1];
-    return hash_equals(msg_reply_token($tid), $m[1] . 'x' . $m[2]) ? $tid : 0;
+    $mac = hash_hmac('sha256', 'msg-reply|' . $tid, APP_SECRET);
+    $want = strlen($m[2]) >= 32 ? substr($mac, 0, 32) : substr($mac, 0, 16);
+    return hash_equals($want, $m[2]) ? $tid : 0;
 }
 // The reply address a message-notification email points at:
 //  1. If REPLY_INBOX is set → its plus-address (the webhook route).

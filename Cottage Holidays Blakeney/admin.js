@@ -1019,10 +1019,10 @@ function renderBookingHub() {
             ${breakdownRows}
             ${gt.dep > 0 ? `<div class="price-row"><span>Refundable damages deposit</span><span>${gbp(gt.dep)}</span></div>` : ''}
             <div class="price-row total"><span>Total${gt.dep > 0 ? ' (incl. deposit)' : ''}</span><span class="price-amount">${gbp(gt.total)}</span></div>
-            ${gt.paid > 0 ? `<div class="price-row" style="color:#4CAF50;"><span>Received</span><span>− ${gbp(gt.paid)}</span></div>` : ''}
+            ${gt.paid > 0 ? `<div class="price-row" style="color:var(--ok);"><span>Received</span><span>− ${gbp(gt.paid)}</span></div>` : ''}
             ${
                 gt.fullyPaid
-                    ? `<div class="price-row total" style="color:#4CAF50;"><span>Paid in full</span><span class="price-amount" style="color:#4CAF50;">✓</span></div>`
+                    ? `<div class="price-row total" style="color:var(--ok);"><span>Paid in full</span><span class="price-amount" style="color:var(--ok);">✓</span></div>`
                     : `<div class="price-row total"><span>Balance due</span><span class="price-amount">${gbp(gt.balance)}</span></div>`
             }
         </div>`;
@@ -1042,7 +1042,7 @@ function renderBookingHub() {
     const priceBox = gt.fullyPaid
         ? `
         <div class="price-box" style="margin-bottom:0;">
-            <div class="price-row total" style="color:#4CAF50;border-top:0;padding-top:0;margin-top:0;"><span>Paid in full${depSuffix ? `<span style="color:var(--text-muted);font-weight:400;">${depSuffix}</span>` : ''}</span><span class="price-amount" style="color:#4CAF50;">${gbp(gt.total)} ✓</span></div>
+            <div class="price-row total" style="color:var(--ok);border-top:0;padding-top:0;margin-top:0;"><span>Paid in full${depSuffix ? `<span style="color:var(--text-muted);font-weight:400;">${depSuffix}</span>` : ''}</span><span class="price-amount" style="color:var(--ok);">${gbp(gt.total)} ✓</span></div>
         </div>`
         : `${fullBox}${agreedNote}`;
     // The breakdown opener sits AFTER the deposit status line in the card.
@@ -1060,7 +1060,7 @@ function renderBookingHub() {
                 : `<div class="money-deposit"><span>Refundable damage deposit: ${
                       dh.held > 0
                           ? `<strong>${gbp(dh.held)} collected</strong>${dh.returned > 0 ? ` · ${gbp(dh.returned)} returned` : ''}`
-                          : `<span style="color:#4CAF50;">returned${dh.returned < dh.collected - 0.001 ? ` (${gbp(dh.collected - dh.returned)} retained)` : ''}</span>`
+                          : `<span style="color:var(--ok);">returned${dh.returned < dh.collected - 0.001 ? ` (${gbp(dh.collected - dh.returned)} retained)` : ''}</span>`
                   }</span>${dh.held > 0 && past ? `<button class="btn-sm btn-edit" onclick="returnDeposit('${b.id}')">Return / settle</button>` : ''}</div>`
             : holdControls(b);
     const payHistory =
@@ -1523,7 +1523,7 @@ function contentEditSave(key) {
     document.querySelectorAll('[data-edit-text="' + key + '"]').forEach((t) => {
         t.textContent = val;
     });
-    el.style.borderColor = '#4CAF50';
+    el.style.borderColor = 'var(--ok)';
     setTimeout(() => {
         el.style.borderColor = '';
     }, 1200);
@@ -1556,12 +1556,12 @@ async function saveApiKey(which) {
         if (adminPrivateContent) adminPrivateContent['apikey-tides'] = val;
         __tideData = null; // re-fetch with the new key next time
         if (msg) {
-            msg.style.color = '#4CAF50';
+            msg.style.color = 'var(--ok)';
             msg.textContent = val ? 'Saved ✓' : 'Cleared — tide widget hidden.';
         }
     } catch (e) {
         if (msg) {
-            msg.style.color = '#E57373';
+            msg.style.color = 'var(--danger)';
             msg.textContent = "Couldn't save: " + e.message;
         }
     }
@@ -1862,8 +1862,8 @@ function settingsOpenAccom(k) {
                     </div>`
             : `<div class="settings-group" style="margin-top:14px;">
                         <button class="settings-row" onclick="archiveAccommodation('${k}')">
-                            <span class="settings-row-ic" style="color:#E57373;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></span>
-                            <span class="settings-row-main"><span class="settings-row-label" style="color:#E57373;">Remove this accommodation</span><span class="settings-row-sub">Hides it from the site — bookings &amp; history are kept, and you can restore it</span></span><span class="settings-row-chev">›</span>
+                            <span class="settings-row-ic" style="color:var(--danger);"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></span>
+                            <span class="settings-row-main"><span class="settings-row-label" style="color:var(--danger);">Remove this accommodation</span><span class="settings-row-sub">Hides it from the site — bookings &amp; history are kept, and you can restore it</span></span><span class="settings-row-chev">›</span>
                         </button>
                     </div>`;
         detail.innerHTML = `<div class="settings-group">${ACCOM_SECTIONS.map(
@@ -2082,7 +2082,7 @@ async function loadCalendarSyncProp(key) {
     try {
         data = await apiPost('ical-import.php', { action: 'list', prop: key });
     } catch (e) {
-        box.innerHTML = `<p style="color:#E53935;">${escapeHtml(e.message)}</p>`;
+        box.innerHTML = `<p style="color:var(--danger);">${escapeHtml(e.message)}</p>`;
         return;
     }
     box.innerHTML = calendarPropBoxHtml(key, label, data);
@@ -2102,7 +2102,7 @@ async function loadCalendarSync() {
         try {
             data = await apiPost('ical-import.php', { action: 'list', prop: key });
         } catch (e) {
-            html += `<p style="color:#E53935;">${label}: ${escapeHtml(e.message)}</p>`;
+            html += `<p style="color:var(--danger);">${label}: ${escapeHtml(e.message)}</p>`;
             continue;
         }
         html += `<div style="margin-bottom:14px;"><div style="font-family:var(--font-serif);font-size:1.1rem;margin-bottom:10px;">${label}</div>${calendarPropBoxHtml(key, label, data)}</div>`;
@@ -2170,7 +2170,7 @@ async function loadGuestList() {
     try {
         res = await apiPost('auth.php', { action: 'guest_list' });
     } catch (e) {
-        box.innerHTML = `<p style="color:#E53935;font-size:0.85rem;">Couldn't load guests: ${escapeHtml(e.message)}</p>`;
+        box.innerHTML = `<p style="color:var(--danger);font-size:0.85rem;">Couldn't load guests: ${escapeHtml(e.message)}</p>`;
         return;
     }
     const guests = res.guests || [];
@@ -2447,7 +2447,7 @@ async function renderAccounts() {
     const quarterly = `<div class="mo-card" style="max-width:460px;margin-top:14px;"><div class="mo-card-title">Quarterly breakdown (Making Tax Digital)</div>
                 <div class="feed-list" style="padding:0;">
                     <div class="feed-row" style="grid-template-columns:1fr auto auto auto;gap:10px;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);"><span>Quarter</span><span>Income</span><span>Costs</span><span>Net</span></div>
-                    ${qRows.map((q) => `<div class="feed-row" style="grid-template-columns:1fr auto auto auto;gap:10px;"><span class="feed-who">${q.lbl}</span><span class="feed-amt">${gbp(q.inc)}</span><span class="feed-amt" style="color:var(--text-muted);">${gbp(q.exp)}</span><span class="feed-amt" style="color:${q.net < 0 ? '#FFA726' : 'var(--text-light)'};">${gbp(q.net)}</span></div>`).join('')}
+                    ${qRows.map((q) => `<div class="feed-row" style="grid-template-columns:1fr auto auto auto;gap:10px;"><span class="feed-who">${q.lbl}</span><span class="feed-amt">${gbp(q.inc)}</span><span class="feed-amt" style="color:var(--text-muted);">${gbp(q.exp)}</span><span class="feed-amt" style="color:${q.net < 0 ? 'var(--warn)' : 'var(--text-light)'};">${gbp(q.net)}</span></div>`).join('')}
                 </div></div>`;
 
     content.innerHTML = `
@@ -3447,7 +3447,7 @@ async function renderMoneyFeed() {
                     <span class="prop-tag tag-${p.prop_key}">${escapeHtml(propName)}</span>
                     <span class="feed-who"${deleted ? ' style="color:var(--text-muted);"' : ''}>${escapeHtml(who)}</span>
                     <span class="feed-kind">${label}${feeNote}</span>
-                    <span class="feed-amt" style="${isReturn ? 'color:#E57373;' : 'color:#4CAF50;'}"${!isReturn && fee != null ? ` title="Gross ${gbp(gross)} · fee ${gbp(fee)} · net ${gbp(Math.max(0, gross - fee))}"` : ''}>${amt}</span>
+                    <span class="feed-amt" style="${isReturn ? 'color:var(--danger);' : 'color:var(--ok);'}"${!isReturn && fee != null ? ` title="Gross ${gbp(gross)} · fee ${gbp(fee)} · net ${gbp(Math.max(0, gross - fee))}"` : ''}>${amt}</span>
                     <span class="feed-status">${escapeHtml(p.status || '')}</span>
                 </div>`;
         })
@@ -3459,8 +3459,8 @@ async function renderMoneyFeed() {
                 <div class="mo-card-title">Card reconciliation · last ${list.length} transaction${list.length === 1 ? '' : 's'}</div>
                 <div style="display:flex;gap:22px;flex-wrap:wrap;font-size:0.9rem;margin-top:6px;">
                     <span style="color:var(--text-muted);">Gross<strong style="color:var(--text-light);margin-left:6px;">${gbp(grossIn)}</strong></span>
-                    <span style="color:var(--text-muted);">Square fees<strong style="color:#E57373;margin-left:6px;">− ${gbp(feeSum)}</strong></span>
-                    <span style="color:var(--text-muted);">Net payout<strong style="color:#4CAF50;margin-left:6px;">${gbp(Math.max(0, grossIn - feeSum))}</strong></span>
+                    <span style="color:var(--text-muted);">Square fees<strong style="color:var(--danger);margin-left:6px;">− ${gbp(feeSum)}</strong></span>
+                    <span style="color:var(--text-muted);">Net payout<strong style="color:var(--ok);margin-left:6px;">${gbp(Math.max(0, grossIn - feeSum))}</strong></span>
                 </div>
                 ${feeKnown < list.length ? `<div class="os-sub" style="margin-top:6px;">Fees appear once Square settles each payment (usually within a day or two), so recent charges may not show a fee yet.</div>` : ''}
             </div>`
@@ -4220,8 +4220,8 @@ function renderSquareSettings() {
     const st = document.getElementById('sq-settings-status');
     if (st)
         st.innerHTML = squareAdminEnabled
-            ? '<span style="color:#4CAF50;">●</span> Connected — guests can pay by card. Send a request from any booking\'s details.'
-            : '<span style="color:#FFA726;">●</span> Not set up — add your Square keys in <code>config.php</code> and set <code>SQUARE_PAYMENTS_ENABLED</code> to true.';
+            ? '<span style="color:var(--ok);">●</span> Connected — guests can pay by card. Send a request from any booking\'s details.'
+            : '<span style="color:var(--warn);">●</span> Not set up — add your Square keys in <code>config.php</code> and set <code>SQUARE_PAYMENTS_ENABLED</code> to true.';
     const inp = document.getElementById('sq-deposit-pct');
     if (inp) {
         const v = parseFloat(siteContent['square-deposit-pct']);
@@ -4295,18 +4295,18 @@ function holdControls(b) {
         return `<div class="money-deposit"><span>Damage deposit: <strong>${gbp(amt)} collected</strong></span> ${actions}</div>`;
     }
     if (st === 'returned')
-        return `<div class="money-deposit"><span>Damage deposit: <span style="color:#4CAF50;">${gbp(amt)} refunded</span></span></div>`;
+        return `<div class="money-deposit"><span>Damage deposit: <span style="color:var(--ok);">${gbp(amt)} refunded</span></span></div>`;
     if (st === 'kept')
-        return `<div class="money-deposit"><span>Damage deposit: <strong style="color:#E57373;">${gbp(amt)} kept</strong> for damage</span></div>`;
+        return `<div class="money-deposit"><span>Damage deposit: <strong style="color:var(--danger);">${gbp(amt)} kept</strong> for damage</span></div>`;
     // Legacy card-hold model — kept working for any in-flight authorised holds.
     if (st === 'authorized')
         return `<div class="money-deposit"><span>Damage hold: <strong>${gbp(amt)} held</strong></span>
                 <button class="btn-sm btn-edit" onclick="releaseHold('${b.id}')">Release</button>
                 <button class="btn-sm btn-edit" onclick="captureHold('${b.id}')">Capture (damage)</button></div>`;
     if (st === 'captured')
-        return `<div class="money-deposit"><span>Damage hold: <strong style="color:#E57373;">${gbp(amt)} captured</strong> for damage</span></div>`;
+        return `<div class="money-deposit"><span>Damage hold: <strong style="color:var(--danger);">${gbp(amt)} captured</strong> for damage</span></div>`;
     if (st === 'released')
-        return `<div class="money-deposit"><span>Damage hold: <span style="color:#4CAF50;">released</span></span></div>`;
+        return `<div class="money-deposit"><span>Damage hold: <span style="color:var(--ok);">released</span></span></div>`;
     if (st === 'expired')
         return `<div class="money-deposit"><span>Damage hold: expired (auto-released)</span></div>`;
     // Fresh booking: the deposit is charged automatically with the guest's payment.
@@ -5061,7 +5061,7 @@ function accomSaveText(k) {
     const m = document.getElementById('accom-text-msg-' + k);
     if (m) {
         m.textContent = 'Saved.';
-        m.style.color = '#4CAF50';
+        m.style.color = 'var(--ok)';
         setTimeout(() => {
             m.textContent = '';
         }, 1500);
@@ -5876,7 +5876,7 @@ async function loadWaitlist() {
             const dates =
                 w.check_in && w.check_out ? `${fmtDate(w.check_in)} → ${fmtDate(w.check_out)}` : 'Any dates';
             const notified = w.notified_at
-                ? `<span style="color:#4CAF50;">Notified ${escapeHtml(String(w.notified_at).slice(0, 10))}</span>`
+                ? `<span style="color:var(--ok);">Notified ${escapeHtml(String(w.notified_at).slice(0, 10))}</span>`
                 : '<span style="color:var(--text-muted);">Waiting</span>';
             return `<div class="accounts-stat" style="max-width:640px;margin-bottom:12px;">
                     <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:baseline;">
@@ -5933,18 +5933,18 @@ async function backfillWebp() {
         const r = await apiPost('webp-backfill.php', {});
         if (!msg) return;
         if (!r.ok) {
-            msg.style.color = '#E57373';
+            msg.style.color = 'var(--danger)';
             msg.textContent = r.error || "Couldn't optimise photos.";
             return;
         }
-        msg.style.color = '#4CAF50';
+        msg.style.color = 'var(--ok)';
         const more = r.remaining > 0 ? ` ${r.remaining} more to go — click again to continue.` : '';
         msg.textContent =
             `Done — optimised ${r.created} photo${r.created === 1 ? '' : 's'}` +
             ` (${r.skipped} already done${r.failed ? `, ${r.failed} skipped` : ''}).${more}`;
     } catch (e) {
         if (msg) {
-            msg.style.color = '#E57373';
+            msg.style.color = 'var(--danger)';
             msg.textContent = 'Could not run: ' + (e.message || 'error');
         }
     }
@@ -5964,7 +5964,7 @@ async function runMigrations() {
         const list = (data && data.migrations) || [];
         const changed = list.filter((m) => /^(applied|re-applied|baselined)/i.test(m.status || ''));
         if (msg) {
-            msg.style.color = data.ok ? '#4CAF50' : '#E57373';
+            msg.style.color = data.ok ? 'var(--ok)' : 'var(--danger)';
             msg.textContent = !data.ok
                 ? "Some updates didn't install — see below."
                 : changed.length
@@ -5977,7 +5977,7 @@ async function runMigrations() {
                 ? list
                       .map((m) => {
                           const err = (m.status || '').toLowerCase() === 'error';
-                          return `<div style="color:${err ? '#E57373' : 'var(--text-muted)'};">${escapeHtml(m.file || '')} — ${escapeHtml(m.status || '')}${m.error ? ': ' + escapeHtml(m.error) : ''}</div>`;
+                          return `<div style="color:${err ? 'var(--danger)' : 'var(--text-muted)'};">${escapeHtml(m.file || '')} — ${escapeHtml(m.status || '')}${m.error ? ': ' + escapeHtml(m.error) : ''}</div>`;
                       })
                       .join('')
                 : '<div style="color:var(--text-muted);">No migration files found.</div>';
@@ -5987,7 +5987,7 @@ async function runMigrations() {
         } catch (e) {}
     } catch (e) {
         if (msg) {
-            msg.style.color = '#E57373';
+            msg.style.color = 'var(--danger)';
             msg.textContent = 'Could not install updates: ' + (e.message || 'error');
         }
     }
@@ -6003,12 +6003,12 @@ async function loadDiagnostics() {
     try {
         r = await apiPost('diagnostics.php', { action: 'run' });
     } catch (e) {
-        body.innerHTML = `<p style="font-size:0.85rem;color:#E57373;">Couldn't run checks: ${escapeHtml(e.message || '')}</p>`;
+        body.innerHTML = `<p style="font-size:0.85rem;color:var(--danger);">Couldn't run checks: ${escapeHtml(e.message || '')}</p>`;
         return;
     }
     const checks = r.checks || [],
         s = r.summary || {};
-    const dot = (st) => (st === 'ok' ? '#4CAF50' : st === 'warn' ? '#FFB74D' : '#E57373');
+    const dot = (st) => (st === 'ok' ? 'var(--ok)' : st === 'warn' ? 'var(--warn-text)' : 'var(--danger)');
     const word = (st) => (st === 'ok' ? 'OK' : st === 'warn' ? 'Optional' : 'Action needed');
     // Group by category, preserving order of first appearance.
     const cats = [];
@@ -6016,9 +6016,9 @@ async function loadDiagnostics() {
         if (!cats.includes(c.category)) cats.push(c.category);
     });
     const summary = `<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;font-size:0.85rem;">
-                <span style="color:#4CAF50;">● ${s.ok || 0} OK</span>
-                <span style="color:#FFB74D;">● ${s.warn || 0} optional/off</span>
-                <span style="color:#E57373;">● ${s.fail || 0} need attention</span></div>`;
+                <span style="color:var(--ok);">● ${s.ok || 0} OK</span>
+                <span style="color:var(--warn-text);">● ${s.warn || 0} optional/off</span>
+                <span style="color:var(--danger);">● ${s.fail || 0} need attention</span></div>`;
     body.innerHTML =
         summary +
         cats
@@ -6168,7 +6168,7 @@ async function sendTestEmail() {
     const msg = document.getElementById('diag-msg');
     const show = (t, ok) => {
         if (msg) {
-            msg.style.color = ok ? '#4CAF50' : '#E57373';
+            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
             msg.textContent = t;
         }
     };
@@ -6322,7 +6322,7 @@ async function tcSeedFeatures(btn) {
                 msg.style.color = '#7FD68A';
                 msg.innerHTML = `✓ Demo data seeded across ${r.cottages} cottage${r.cottages === 1 ? '' : 's'}. Work through the checklist below — open <strong>Preview as guest</strong> for the public-facing items and <strong>Money → Pricing coach</strong> for the suggestions.`;
             } else {
-                msg.style.color = '#E57373';
+                msg.style.color = 'var(--danger)';
                 msg.textContent = r.error || 'Seeding failed.';
             }
         }
@@ -6335,7 +6335,7 @@ async function tcSeedFeatures(btn) {
         } catch (e) {}
     } catch (e) {
         if (msg) {
-            msg.style.color = '#E57373';
+            msg.style.color = 'var(--danger)';
             msg.textContent = 'Could not seed: ' + (e.message || 'error');
         }
     } finally {
@@ -6394,7 +6394,7 @@ async function tcSendEmail(which, btn) {
     const msg = document.getElementById('tc-email-msg');
     const show = (t, ok) => {
         if (msg) {
-            msg.style.color = ok ? '#4CAF50' : '#E57373';
+            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
             msg.innerHTML = t;
         }
     };
@@ -6440,7 +6440,7 @@ async function tcRenderBooking() {
     try {
         data = await apiPost('testcentre.php', { action: 'list_data' });
     } catch (e) {
-        detail.innerHTML = `<p style="color:#E57373;">${escapeHtml(e.message || '')}</p>`;
+        detail.innerHTML = `<p style="color:var(--danger);">${escapeHtml(e.message || '')}</p>`;
         return;
     }
     tcOwnerEmail = data.owner_email || '';
@@ -6448,7 +6448,7 @@ async function tcRenderBooking() {
     const bk = data.bookings || [];
     const intro = `<p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 12px;">Creates a real but clearly-flagged booking (unpaid, tagged <strong>[CHB-TEST]</strong>, kept out of your revenue) so you can run the actual pay, email, arrival and daily-automation flows against it — then remove it on the Test data page. Pick dates to match what you want to test:</p>`;
     const sqNote = tcSquare.production
-        ? `<div class="email-note" style="border-left:3px solid #E57373;background:rgba(229,115,115,0.08);padding:10px 12px;border-radius:8px;font-size:0.8rem;color:#E57373;margin-bottom:12px;">Square is in <strong>PRODUCTION</strong> mode — paying will make a real charge. Switch to sandbox in config.php to test safely.</div>`
+        ? `<div class="email-note" style="border-left:3px solid var(--danger);background:rgba(229,115,115,0.08);padding:10px 12px;border-radius:8px;font-size:0.8rem;color:var(--danger);margin-bottom:12px;">Square is in <strong>PRODUCTION</strong> mode — paying will make a real charge. Switch to sandbox in config.php to test safely.</div>`
         : tcSquare.enabled
           ? `<p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 12px;">Square is in sandbox — pay flows use test cards, no real money moves.</p>`
           : `<p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 12px;">Square is off — the pay/balance buttons will say so. Emails &amp; arrival still work.</p>`;
@@ -6477,7 +6477,7 @@ async function tcRenderBooking() {
                         <button class="btn-sm btn-edit" onclick="tcAutomation(${b.id},'pre_arrival',this)">Pre-arrival email</button>
                         <button class="btn-sm btn-edit" onclick="tcAutomation(${b.id},'balance_reminder',this)">Balance reminder</button>
                         <button class="btn-sm btn-edit" onclick="tcAutomation(${b.id},'review',this)">Review request</button>
-                        <button class="btn-sm btn-edit" style="color:#E57373;border-color:rgba(229,115,115,0.4);" onclick="tcDeleteBooking(${b.id})">Delete</button>
+                        <button class="btn-sm btn-edit" style="color:var(--danger);border-color:rgba(229,115,115,0.4);" onclick="tcDeleteBooking(${b.id})">Delete</button>
                     </div></div>`;
         })
         .join('');
@@ -6499,7 +6499,7 @@ async function tcCreateBooking(preset, btn) {
     const msg = document.getElementById('tc-bk-msg');
     const show = (t, ok) => {
         if (msg) {
-            msg.style.color = ok ? '#4CAF50' : '#E57373';
+            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
             msg.textContent = t;
         }
     };
@@ -6579,7 +6579,7 @@ async function tcAutomation(id, which, btn) {
     const msg = document.getElementById('tc-bk-msg');
     const show = (t, ok) => {
         if (msg) {
-            msg.style.color = ok ? '#4CAF50' : '#E57373';
+            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
             msg.textContent = t;
         }
     };
@@ -6609,7 +6609,7 @@ async function tcPay(id, kind, btn) {
     const msg = document.getElementById('tc-bk-msg');
     const show = (t, ok) => {
         if (msg) {
-            msg.style.color = ok ? '#4CAF50' : '#E57373';
+            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
             msg.textContent = t;
         }
     };
@@ -6637,7 +6637,7 @@ async function tcBookingEmail(id, action, btn) {
     const msg = document.getElementById('tc-bk-msg');
     const show = (t, ok) => {
         if (msg) {
-            msg.style.color = ok ? '#4CAF50' : '#E57373';
+            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
             msg.textContent = t;
         }
     };
@@ -6680,7 +6680,7 @@ async function tcRenderData() {
     try {
         data = await apiPost('testcentre.php', { action: 'list_data' });
     } catch (e) {
-        detail.innerHTML = `<p style="color:#E57373;">${escapeHtml(e.message || '')}</p>`;
+        detail.innerHTML = `<p style="color:var(--danger);">${escapeHtml(e.message || '')}</p>`;
         return;
     }
     const bk = data.bookings || [],
@@ -6699,7 +6699,7 @@ async function tcRenderData() {
             return `
                 <div class="settings-row" style="cursor:default;">
                     <span class="settings-row-main"><span class="settings-row-label">${escapeHtml(name)} · #${b.id}</span><span class="settings-row-sub">${escapeHtml(fmtDate(b.check_in))} → ${escapeHtml(fmtDate(b.check_out))} · ${gbp(b.agreed_total || 0)}${b.payments ? ` · ${b.payments} payment${b.payments === 1 ? '' : 's'}` : ''}</span></span>
-                    <button class="btn-sm btn-edit" style="color:#E57373;border-color:rgba(229,115,115,0.4);" onclick="tcDeleteData('booking',${b.id})">Remove</button>
+                    <button class="btn-sm btn-edit" style="color:var(--danger);border-color:rgba(229,115,115,0.4);" onclick="tcDeleteData('booking',${b.id})">Remove</button>
                 </div>`;
         })
         .join('');
@@ -6708,7 +6708,7 @@ async function tcRenderData() {
             (e) => `
                 <div class="settings-row" style="cursor:default;">
                     <span class="settings-row-main"><span class="settings-row-label">Enquiry · #${e.id}</span><span class="settings-row-sub">${escapeHtml(fmtDate(e.check_in) || '')} → ${escapeHtml(fmtDate(e.check_out) || '')}</span></span>
-                    <button class="btn-sm btn-edit" style="color:#E57373;border-color:rgba(229,115,115,0.4);" onclick="tcDeleteData('enquiry',${e.id})">Remove</button>
+                    <button class="btn-sm btn-edit" style="color:var(--danger);border-color:rgba(229,115,115,0.4);" onclick="tcDeleteData('enquiry',${e.id})">Remove</button>
                 </div>`,
         )
         .join('');
@@ -6716,7 +6716,7 @@ async function tcRenderData() {
         ? `
                 <div class="settings-row" style="cursor:default;">
                     <span class="settings-row-main"><span class="settings-row-label">Test guest account</span><span class="settings-row-sub">${escapeHtml(guest.email || '')}</span></span>
-                    <button class="btn-sm btn-edit" style="color:#E57373;border-color:rgba(229,115,115,0.4);" onclick="tcDeleteData('guest',${guest.id})">Remove</button>
+                    <button class="btn-sm btn-edit" style="color:var(--danger);border-color:rgba(229,115,115,0.4);" onclick="tcDeleteData('guest',${guest.id})">Remove</button>
                 </div>`
         : '';
     const total = bk.length + enq.length + (showGuest ? 1 : 0);
@@ -6725,7 +6725,7 @@ async function tcRenderData() {
                 ${bk.length ? `<div class="rule-divider">Test bookings</div><div class="settings-group">${bRows}</div>` : ''}
                 ${enq.length ? `<div class="rule-divider">Test enquiries</div><div class="settings-group">${eRows}</div>` : ''}
                 ${showGuest ? `<div class="rule-divider">Test guest</div><div class="settings-group">${gRows}</div>` : ''}
-                <button class="btn-glass" style="width:auto;padding:12px 22px;margin-top:16px;color:#E57373;" onclick="tcPurgeData()">Remove all test data</button></div>`;
+                <button class="btn-glass" style="width:auto;padding:12px 22px;margin-top:16px;color:var(--danger);" onclick="tcPurgeData()">Remove all test data</button></div>`;
 }
 async function tcDeleteData(type, id) {
     try {
@@ -6758,7 +6758,7 @@ async function sendBroadcast() {
     const bodyText = ((bodyEl && bodyEl.value) || '').trim();
     const show = (t, ok) => {
         if (msg) {
-            msg.style.color = ok ? '#4CAF50' : '#E57373';
+            msg.style.color = ok ? 'var(--ok)' : 'var(--danger)';
             msg.textContent = t;
         }
     };
@@ -6815,7 +6815,7 @@ async function saveGoogleReviewUrl() {
     await saveContent('google-review-url', val);
     siteContent['google-review-url'] = val;
     if (msg) {
-        msg.style.color = '#4CAF50';
+        msg.style.color = 'var(--ok)';
         msg.textContent = val ? 'Saved ✓' : 'Cleared.';
     }
 }
@@ -6853,7 +6853,7 @@ async function loadGuestReviewModeration() {
                         <strong>${escapeHtml(r.name)}</strong>
                         <span style="color:var(--text-muted);">${escapeHtml((propertyMeta[r.prop_key] || {}).name || r.prop_key)}</span>
                         <span style="color:#d6a785;">${stars(r.stars)}</span>
-                        <span style="color:#FFA726;">pending</span>
+                        <span style="color:var(--warn);">pending</span>
                     </div>
                     <div style="font-size:0.88rem;color:var(--text-muted);margin:8px 0;font-style:italic;">“${escapeHtml(r.review_text)}”</div>
                     <div style="display:flex;gap:8px;">
@@ -8568,7 +8568,7 @@ async function loadExperiencesAdmin() {
         const r = await apiPost('experiences.php', { action: 'list_admin' });
         rows = r.experiences || [];
     } catch (e) {
-        wrap.innerHTML = `<p style="color:#E57373;font-size:0.9rem;">${escapeHtml(e.message || 'Could not load — has migrate.php been run?')}</p>`;
+        wrap.innerHTML = `<p style="color:var(--danger);font-size:0.9rem;">${escapeHtml(e.message || 'Could not load — has migrate.php been run?')}</p>`;
         return;
     }
     __expAdmin = rows;
