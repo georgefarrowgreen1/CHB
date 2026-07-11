@@ -164,6 +164,25 @@ else {
     check('lastmin: 0 days → 1.0 (off)', approx(lmf('2026-01-03', '2026-01-01', 20, 0), 1.0));
     check('lastmin: capped at 90% off', approx(lmf('2026-01-03', '2026-01-01', 99, 10), 0.1));
 }
+// Availability chip — "Available now" must mean TONIGHT is free. A gap starting
+// tomorrow (or the old 2-day grace window) must say "Available from <date>",
+// or the card contradicts the cottage's own calendar.
+const chip = get('availChipHtml');
+const fg = get('freeGaps');
+if (typeof chip !== 'function' || typeof fg !== 'function') { fail('availChipHtml / freeGaps not defined'); }
+else {
+    check('chip: gap starting today → "Available now"', /Available now/.test(chip('2026-07-11', '2026-07-11')));
+    check('chip: gap starting tomorrow → "Available from"', /Available from/.test(chip('2026-07-12', '2026-07-11')) && !/Available now/.test(chip('2026-07-12', '2026-07-11')));
+    check('chip: gap starting in 2 days → "Available from" (regression: old grace said now)', /Available from/.test(chip('2026-07-13', '2026-07-11')));
+    // freeGaps semantics: end-exclusive blocks, minNights honoured.
+    const td = get('todayDashed')();
+    const plus = (n) => { const d = get('dpParse')(td); d.setDate(d.getDate() + n); return get('formatDashed')(d); };
+    const gaps = fg([{ start: td, end: plus(3) }, { start: plus(5), end: plus(9) }], 14, 2);
+    check('freeGaps: first gap starts when the block ends (checkout day free)', gaps.length > 0 && gaps[0].start === plus(3));
+    check('freeGaps: 2-night hole kept at minNights 2', gaps.length > 0 && gaps[0].nights === 2);
+    const gaps3 = fg([{ start: td, end: plus(3) }, { start: plus(5), end: plus(9) }], 14, 3);
+    check('freeGaps: 2-night hole skipped at minNights 3', gaps3.length > 0 && gaps3[0].start === plus(9));
+}
 
 console.log('\n== 3. UK postcode validation ==');
 const hp = get('hasUkPostcode');

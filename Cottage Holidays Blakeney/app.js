@@ -7981,6 +7981,15 @@ function freeGaps(ranges, days, minNights) {
     if (run && run.nights >= minNights) gaps.push(run);
     return gaps;
 }
+// The card chip must tell the truth against the cottage's own calendar:
+// "Available now" ONLY when tonight is genuinely free (the first bookable gap
+// starts today). A gap starting tomorrow or later says "Available from <date>"
+// — the old 2-day grace read as a lie next to a calendar showing today booked.
+function availChipHtml(gapStart, today) {
+    return gapStart <= today
+        ? `<span class="avail-chip now"><span class="dot"></span>Available now</span>`
+        : `<span class="avail-chip"><span class="dot"></span>Available from ${dpPretty(gapStart)}</span>`;
+}
 function renderCardAvailability() {
     if (!publicAllAvailability) return;
     const today = todayDashed();
@@ -7990,19 +7999,7 @@ function renderCardAvailability() {
         const gaps = freeGaps(publicAllAvailability[k], 60, minN);
         let html = '';
         if (gaps.length) {
-            const g = gaps[0];
-            const soon =
-                g.start <=
-                formatDashed(
-                    new Date(
-                        dpParse(today).getFullYear(),
-                        dpParse(today).getMonth(),
-                        dpParse(today).getDate() + 2,
-                    ),
-                );
-            html = soon
-                ? `<span class="avail-chip now"><span class="dot"></span>Available now</span>`
-                : `<span class="avail-chip"><span class="dot"></span>Available from ${dpPretty(g.start)}</span>`;
+            html = availChipHtml(gaps[0].start, today);
         }
         ['card-avail-' + k, 'home-card-avail-' + k].forEach((id) => {
             const el = document.getElementById(id);
@@ -11694,7 +11691,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'mrfkq8v2';
+    const BUILD = 'mrfl3ab9';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
