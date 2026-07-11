@@ -178,6 +178,16 @@ function insert_payment_row($bookingId, $sqId, $kind, $amount, $status, $gName, 
                 )
                 ->execute([$bookingId, $sqId, $kind, $amount, $status]);
         } catch (\Throwable $e2) {
+            // A money movement that the ledger could not record must never be
+            // silent — the owner reconciles from this ledger.
+            try {
+                log_activity('payment', 'ledger.write_fail', 'Payments ledger write FAILED — ' . $kind . ' £' . number_format((float) $amount, 2) . ' (booking #' . (int) $bookingId . ')', [
+                    'actor' => 'system',
+                    'severity' => 'action',
+                    'meta' => ['detail' => mb_substr($e2->getMessage(), 0, 160)],
+                ]);
+            } catch (\Throwable $e3) {
+            }
         }
     }
 }
@@ -202,8 +212,21 @@ function find_charge_for_refund($bookingId, $need)
 // ['ok'=>bool,'status'=>..,'error'=>..]. $kind is 'refund' or 'damages_return'.
 function record_square_refund($bookingId, $sqId, $amount, $kind, $note, $gName, $gProp)
 {
+    // DETERMINISTIC idempotency key: a retry after a mid-operation crash (Square
+    // succeeded, ledger row lost) reuses the same key, so Square returns the
+    // original refund instead of paying out twice. The refunded-so-far ledger
+    // sum keeps the key stable across retries of the SAME intent but distinct
+    // for a genuine second refund of the same amount later.
+    $priorCents = 0;
+    try {
+        $q = db()->prepare('SELECT COALESCE(SUM(amount),0) FROM payments WHERE booking_id = ? AND kind = ?');
+        $q->execute([(int) $bookingId, $kind]);
+        $priorCents = (int) round(((float) $q->fetchColumn()) * 100);
+    } catch (\Throwable $e) {
+    }
+    $idemKey = 'chb-r-' . (int) $bookingId . '-' . substr(hash('sha256', $sqId), 0, 8) . '-' . (int) round($amount * 100) . '-' . ($kind === 'damages_return' ? 'd' : 'r') . '-' . $priorCents;
     $res = square_api('POST', '/v2/refunds', [
-        'idempotency_key' => bin2hex(random_bytes(16)),
+        'idempotency_key' => $idemKey,
         'payment_id' => $sqId,
         'amount_money' => ['amount' => (int) round($amount * 100), 'currency' => 'GBP'],
         'reason' =>

@@ -145,6 +145,18 @@ $sum = db()->prepare("SELECT
 $sum->execute([$bookingId]);
 $paid = round(max(0, (float) $sum->fetchColumn()), 2);
 $paid = min($total > 0 ? $total : $paid, $paid);
+
+// GUARD: never write a LOWER figure than the booking already carries unless the
+// ledger actually contains refunds. Manually recorded payments (bank transfer)
+// have no ledger rows — without this, any webhook event matching the booking
+// (including the digits-in-reference fallback above) would wipe them to £0.
+if ($paid < (float) $b['deposit_paid'] - 0.001) {
+    $rq = db()->prepare("SELECT COUNT(*) FROM payments WHERE booking_id = ? AND kind = 'refund'");
+    $rq->execute([$bookingId]);
+    if ((int) $rq->fetchColumn() === 0) {
+        json_out(['ok' => true]); // ledger knows less than the booking — leave it be
+    }
+}
 $newStatus = $total > 0 && $paid >= $total - 0.001 ? 'paid' : ($paid > 0 ? 'deposit' : 'unpaid');
 
 db()

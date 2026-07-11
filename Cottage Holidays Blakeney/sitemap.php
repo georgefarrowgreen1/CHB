@@ -5,8 +5,10 @@
 //  the cottages that are currently LIVE (owner-added ones included, archived
 //  ones dropped) instead of a hardcoded three. robots.txt points here.
 // ============================================================
-require_once __DIR__ . '/db.php';
-
+// Deliberately STANDALONE (own PDO, mirrors home.php/cottage.php): db.php's
+// db() EXITS with a JSON error when the database is down, which would emit a
+// JSON blob under this XML header. A local PDO throws instead, and the catch
+// below serves the three-cottage fallback.
 header('Content-Type: application/xml; charset=UTF-8');
 
 // Single canonical origin (matches the SITE_ORIGIN used for canonicals/JSON-LD).
@@ -15,8 +17,17 @@ $origin = 'https://cottageholidaysblakeney.co.uk';
 // Live cottages, in display order.
 $cottages = [];
 try {
+    if (!is_file(__DIR__ . '/config.php')) {
+        throw new RuntimeException('no config');
+    }
+    require_once __DIR__ . '/config.php';
+    $pdo = new PDO('mysql:host=' . DB_HOST . ';dbname=' . DB_NAME . ';charset=' . DB_CHARSET, DB_USER, DB_PASS, [
+        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::ATTR_TIMEOUT => 3,
+    ]);
     foreach (
-        db()
+        $pdo
             ->query('SELECT slug, prop_key FROM properties WHERE archived_at IS NULL AND unlisted = 0 ORDER BY sort_order, name')
             ->fetchAll()
         as $r

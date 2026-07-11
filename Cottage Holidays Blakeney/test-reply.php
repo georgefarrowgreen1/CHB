@@ -31,6 +31,12 @@ chk(
     'plus reply address carries the token',
     msg_reply_address(42) === 'reply+' . $tok . '@cottageholidaysblakeney.co.uk',
 );
+// Tokens in ALREADY-SENT emails were 16-hex — they must keep verifying after
+// the widening to 32 (each length checks against its own recomputation).
+$legacy = '42x' . substr(hash_hmac('sha256', 'msg-reply|42', APP_SECRET), 0, 16);
+chk('legacy 16-hex token still verifies', msg_reply_verify($legacy) === 42);
+chk('current token is 32-hex', preg_match('/x[0-9a-f]{32}$/', $tok) === 1);
+chk('legacy token with wrong mac rejected', msg_reply_verify('42x' . str_repeat('0', 16)) === 0);
 
 // The inbound gateway pulls the token from a plus-recipient or an In-Reply-To.
 $find = function ($hay) {

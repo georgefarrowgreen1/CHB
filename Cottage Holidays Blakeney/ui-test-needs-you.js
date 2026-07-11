@@ -4,6 +4,11 @@
 //  2. capped at 4 with "Show N more"; expanding reveals the rest
 //  3. rows ROUTE: enquiry → enquiry hub, chase → booking hub, approve → reviews
 //  4. all clear → the section hides entirely
+// The site reckons "today" in UK time (todayDashed / ukNowParts), so the
+// tests must too — pin the whole process (and the browser it launches) to
+// Europe/London so fixtures built from new Date() agree with the app on
+// any runner, in any timezone. Must run before the first Date call.
+process.env.TZ = 'Europe/London';
 const { chromium } = require('playwright');
 const { spawn } = require('child_process');
 const PORT = 8209;
@@ -19,7 +24,11 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   page.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
   await page.addInitScript(() => { if (navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {}); });
 
-  const d = (n) => { const t = new Date(); t.setDate(t.getDate() + n); return t.toISOString().slice(0, 10); };
+  // Local-formatted, never toISOString() — that's UTC and slips a day near midnight.
+  const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.getMonth(), t.getDate() + n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
+  // Enquiry age: the app FLOORS elapsed hours into days, so seed by hours-ago
+  // (a date + fixed clock time reads differently depending on when the test runs).
+  const hrsAgo = (h) => { const t = new Date(Date.now() - h * 3600e3); const p = (n) => String(n).padStart(2, '0'); return `${t.getFullYear()}-${p(t.getMonth() + 1)}-${p(t.getDate())} ${p(t.getHours())}:${p(t.getMinutes())}:00`; };
   const mkB = (id, prop, name, inD, outD, pay, dep, hold) => ({
     id, prop_key: prop, name, email: 'g@e.com', phone: '', address: '', postcode: 'NR25 7AB',
     check_in: d(inD), check_out: d(outD), check_in_time: '15:00', check_out_time: '10:00',
@@ -47,7 +56,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       ] });
     }
     if (url.includes('enquiries.php')) return json({ enquiries: [
-      { id: 7, prop_key: '21a', name: 'Jane Doe', email: 'j@e.com', phone: '', check_in: d(20), check_out: d(24), adults: 2, children: 0, message: 'Dogs?', status: 'new', created_at: d(-2) + ' 10:00:00' },
+      { id: 7, prop_key: '21a', name: 'Jane Doe', email: 'j@e.com', phone: '', check_in: d(20), check_out: d(24), adults: 2, children: 0, message: 'Dogs?', status: 'new', created_at: hrsAgo(53) /* 2 days 5h → always "waiting 2 days" (danger) */ },
     ] });
     if (url.includes('messages.php')) return json({ ok: true, threads: [
       { thread_id: 1, name: 'Ali', unread: 1, last_role: 'guest', archived: 0, last_body: 'Hi' },

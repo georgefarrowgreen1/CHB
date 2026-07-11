@@ -161,12 +161,12 @@
     <!-- Installable PWA + Web Push (arrival check-in notifications) -->
     <link rel="manifest" href="manifest.json">
     <link rel="stylesheet" href="guest-app.css?v=31">
-    <meta name="theme-color" content="#121316">
+    <meta name="theme-color" content="#f5f1e9">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=171">
+    <link rel="stylesheet" href="app.css?v=172">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -1295,7 +1295,7 @@
                     <input type="text" id="apikey-tides-input" class="input-glass" placeholder="paste your key…" autocomplete="off" spellcheck="false" style="font-family:monospace;">
                     <div style="margin-top:12px;display:flex;gap:10px;align-items:center;">
                         <button class="btn-sm btn-edit" onclick="saveApiKey('tides')">Save key</button>
-                        <span id="apikey-tides-msg" style="font-size:0.82rem;color:#4CAF50;"></span>
+                        <span id="apikey-tides-msg" style="font-size:0.82rem;color:var(--ok);"></span>
                     </div>
                 </div>
             </div>
@@ -1357,7 +1357,7 @@
                     <input class="input-glass" id="host-f-work" onchange="saveHostText('host-work', this.value)">
                     <label class="host-edit-label" for="host-f-bio">Bio</label>
                     <textarea class="input-glass" id="host-f-bio" rows="4" style="resize:vertical;" onchange="saveHostText('host-bio', this.value)"></textarea>
-                    <p id="host-save-msg" style="font-size:0.82rem;color:#4CAF50;min-height:1em;margin:4px 0 0;"></p>
+                    <p id="host-save-msg" style="font-size:0.82rem;color:var(--ok);min-height:1em;margin:4px 0 0;"></p>
                     <div style="margin-top:22px;padding-top:20px;border-top:1px solid var(--glass-border);">
                         <label class="host-edit-label" for="contact-phone-dial" style="margin-top:0;">Contact number — "Call to Discuss" buttons</label>
                         <p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 10px;">Guests see a "Call to discuss" button on the booking form. <strong>Dial number</strong> — the full number we'll call (e.g. +44 1263 740512). <strong>Display</strong> — how it reads to guests (e.g. 01263 740512).</p>
@@ -1719,7 +1719,7 @@
                 <h3 id="messages-modal-title" style="font-family:var(--font-serif);font-size:1.4rem;">Messages</h3>
                 <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
                     <button class="btn-sm btn-edit" id="msg-archive-btn" onclick="archiveCurrentThread()">Archive</button>
-                    <button class="btn-sm" id="msg-delete-btn" onclick="deleteCurrentThread()" style="color:#E57373;">Delete</button>
+                    <button class="btn-sm" id="msg-delete-btn" onclick="deleteCurrentThread()" style="color:var(--danger);">Delete</button>
                     <button class="reviews-modal-close" onclick="closeMessagesModal()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
                 </div>
             </div>
@@ -1904,7 +1904,7 @@
             <button class="btn-glass" style="width:100%;padding:14px;" onclick="saveGuestProfile()">Save details</button>
             <div style="display:flex;flex-direction:column;gap:10px;margin-top:16px;padding-top:16px;border-top:1px solid var(--glass-border);">
                 <button class="btn-sm btn-edit" style="width:100%;justify-content:center;" onclick="closeGuestDetailsModal(); openGuestSecurityModal()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="15" cy="9" r="3.6"/><path d="M12.4 11.6L4 20"/><path d="M7 17l2 2M5 19l2 2"/></svg> Account &amp; Security</button>
-                <button class="btn-sm btn-edit" style="width:100%;justify-content:center;color:#E57373;border-color:rgba(229,115,115,0.4);" onclick="closeGuestDetailsModal(); guestLogout()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l-5-5 5-5"/><path d="M5 12h11"/></svg> Log Out</button>
+                <button class="btn-sm btn-edit" style="width:100%;justify-content:center;color:var(--danger);border-color:rgba(229,115,115,0.4);" onclick="closeGuestDetailsModal(); guestLogout()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l-5-5 5-5"/><path d="M5 12h11"/></svg> Log Out</button>
             </div>
             </div><!-- /.auth-form-col -->
         </div>
@@ -1946,7 +1946,7 @@
             <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:12px;">Download a copy of everything we hold about you — your account, bookings, payments, enquiries, messages and more — as a JSON file.</p>
             <button class="btn-sm btn-edit" onclick="exportGuestData(this)">Download my data</button>
 
-            <h3 style="font-family:var(--font-serif);font-size:1.1rem;margin:26px 0 6px;color:#E57373;">Delete my account</h3>
+            <h3 style="font-family:var(--font-serif);font-size:1.1rem;margin:26px 0 6px;color:var(--danger);">Delete my account</h3>
             <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:12px;">Erases your login, contact details, messages, reviews and mailing-list entry. Past bookings are kept as legally-required financial records but anonymised. This can't be undone.</p>
             <button class="btn-sm btn-decline" onclick="deleteGuestAccount()">Delete my account</button>
             </div><!-- /.auth-form-col -->
@@ -2380,7 +2380,7 @@
             <p id="nl-msg" style="font-size:0.76rem;margin:8px 0 0;min-height:1em;" aria-live="polite"></p>
         </div>
         <p class="footer-nap" style="font-size:0.7rem;color:var(--text-muted);opacity:0.55;margin:14px 0 4px;letter-spacing:0.2px;">Self-catering holiday cottages in Blakeney, North Norfolk · NR25</p>
-        <p class="footer-meta" style="font-size:0.74rem;color:var(--text-muted);"><span class="footer-legal">&copy; <span id="footer-year">2026</span> Cottage Holidays Blakeney &nbsp;·&nbsp; <a onclick="nav('view-privacy')" style="cursor:pointer;color:var(--text-muted);text-decoration:underline;">Privacy Policy</a> &nbsp;·&nbsp; </span><span class="footer-credit">Made by George with <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:#E57373;"><path d="M12 20s-7-4.6-7-9.5A3.7 3.7 0 0 1 12 7a3.7 3.7 0 0 1 7 3.5C19 15.4 12 20 12 20z" fill="currentColor" stroke="none"/></svg></span></p>
+        <p class="footer-meta" style="font-size:0.74rem;color:var(--text-muted);"><span class="footer-legal">&copy; <span id="footer-year">2026</span> Cottage Holidays Blakeney &nbsp;·&nbsp; <a onclick="nav('view-privacy')" style="cursor:pointer;color:var(--text-muted);text-decoration:underline;">Privacy Policy</a> &nbsp;·&nbsp; </span><span class="footer-credit">Made by George with <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var(--danger);"><path d="M12 20s-7-4.6-7-9.5A3.7 3.7 0 0 1 12 7a3.7 3.7 0 0 1 7 3.5C19 15.4 12 20 12 20z" fill="currentColor" stroke="none"/></svg></span></p>
         <p style="margin-top: 4px; font-size: 0.68rem; color: var(--text-muted); opacity: 0.6;">Build <span id="build-stamp">—</span></p>
     </footer>
 
@@ -2388,7 +2388,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=290"></script>
+    <script defer src="app.js?v=291"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

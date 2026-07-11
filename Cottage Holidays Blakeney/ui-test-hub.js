@@ -8,11 +8,18 @@
 //  G. Modal availability strip: booked days shaded, clash note on overlap,
 //     no self-clash when editing the same booking, none when dates free.
 //  H. Deleting from the hub exits to the Bookings list.
+// The site reckons "today" in UK time (todayDashed / ukNowParts), so the
+// tests must too — pin the whole process (and the browser it launches) to
+// Europe/London so fixtures built from new Date() agree with the app on
+// any runner, in any timezone. Must run before the first Date call.
+process.env.TZ = 'Europe/London';
 const { chromium } = require('playwright');
 const { spawn } = require('child_process');
 const PORT = 8276;
 const dir = __dirname;
-const d = (o) => new Date(Date.UTC(2026, 6, 9) + o * 864e5).toISOString().slice(0, 10);
+// Fixture dates are TODAY-relative (a fixed anchor rots as real time passes)
+// and formatted locally — toISOString() is UTC and slips a day near midnight.
+const d = (o) => { const t = new Date(); const x = new Date(t.getFullYear(), t.getMonth(), t.getDate() + o); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
 const ok = (cond, label) => {
   console.log((cond ? '  ✓ ' : '  ✗ ') + label);
   if (!cond) throw new Error('FAILED: ' + label);

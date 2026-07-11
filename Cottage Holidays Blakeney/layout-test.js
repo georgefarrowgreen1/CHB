@@ -22,6 +22,11 @@
 //  the owner actually manages the site (and where overhang bugs have bitten
 //  before): Today, Inbox, Money and all three settings areas.
 // ============================================================
+// The site reckons "today" in UK time (todayDashed / ukNowParts), so the
+// tests must too — pin the whole process (and the browser it launches) to
+// Europe/London so fixtures built from new Date() agree with the app on
+// any runner, in any timezone. Must run before the first Date call.
+process.env.TZ = 'Europe/London';
 const { chromium, webkit } = require('playwright');
 const { spawn } = require('child_process');
 const http = require('http');

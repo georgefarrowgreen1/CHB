@@ -4,6 +4,11 @@
 //  3. reply prefills to/subject + quoted body; send posts the right payload
 //  4. compose fresh; validation (bad address, empty fields)
 //  5. delete confirms then posts + removes the row
+// The site reckons "today" in UK time (todayDashed / ukNowParts), so the
+// tests must too — pin the whole process (and the browser it launches) to
+// Europe/London so fixtures built from new Date() agree with the app on
+// any runner, in any timezone. Must run before the first Date call.
+process.env.TZ = 'Europe/London';
 const { chromium } = require('playwright');
 const { spawn } = require('child_process');
 const PORT = 8181;
@@ -19,7 +24,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   page.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
   await page.addInitScript(() => { if (navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {}); });
 
-  const d = (n) => { const t = new Date(); t.setDate(t.getDate() + n); return t.toISOString().slice(0, 10); };
+  // Local-formatted, never toISOString() — that's UTC and slips a day near midnight.
+  const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.getMonth(), t.getDate() + n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
   const bookingRows = [{
     id: 9, prop_key: '21a', name: 'A Guest', email: 'guest@example.com', phone: '', address: '1 Lane',
     postcode: 'NR25 7AB', check_in: d(12), check_out: d(15), check_in_time: '15:00', check_out_time: '10:00',
