@@ -68,7 +68,11 @@ Single-operator holiday-let PWA. No framework, no build step.
 
 **Back-office IA** — the admin dock (`body.owner-mode`) has 4 buttons, each a task
 area, not a settings dump: **Today** (`view-backoffice` — the OPERATIONS workspace:
-timeline calendar on top, then the bookings master–detail — filters/search/`.bk-row`
+the **Needs-you strip** first (`renderNeedsYou()` — ONE prioritised to-do list:
+automation warnings, waiting enquiries, balances to chase ≤21 days out, damages
+deposits to return, chats, approvals; each row one-tap-routes to the exact
+hub/screen; hidden when clear), then the timeline calendar, then the bookings
+master–detail — filters/search/`.bk-row`
 index + the `#bookings-detail-pane` docked hub at ≥1200px; `openBookings()` survives
 as an alias that lands here and scrolls to `#bookings-workspace`;
 `dock-badge-enquiries` pip), **Inbox** (`openInbox()` → `view-inbox` — the COMMS
