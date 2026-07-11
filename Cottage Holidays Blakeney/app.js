@@ -7282,7 +7282,14 @@ function renderGuestWords() {
     const show = () => {
         const r = list[__gwIdx % list.length];
         const text = String(r.text || '').trim();
-        q.textContent = text.length > 220 ? text.slice(0, 217).trimEnd() + '…' : text;
+        // Clamp long quotes at a WORD boundary — "…and the qu…" reads broken.
+        let clipped = text;
+        if (text.length > 220) {
+            clipped = text.slice(0, 218);
+            const cut = clipped.lastIndexOf(' ');
+            clipped = (cut > 160 ? clipped.slice(0, cut) : clipped).replace(/[\s,;:.!?—-]+$/, '') + '…';
+        }
+        q.textContent = clipped;
         const stars = Math.max(1, Math.min(5, parseInt(r.stars) || 5));
         const propName = r.prop && propertyMeta[r.prop] ? propertyMeta[r.prop].name : '';
         meta.innerHTML = `<span class="gw-stars">${'★'.repeat(stars)}</span>&nbsp;&nbsp;${escapeHtml(r.name || 'A guest')}${propName ? ' · ' + escapeHtml(propName) : ''}`;
@@ -11758,7 +11765,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'mrfnp5g2';
+    const BUILD = 'mrfpv8k3';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
