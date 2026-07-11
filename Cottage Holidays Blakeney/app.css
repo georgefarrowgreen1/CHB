@@ -3257,6 +3257,23 @@ body.modal-open {
   color: #fff;
   border: 1px solid var(--prop-pimpernel-border);
 }
+/* Light mode: white-on-pale-tint is unreadable — use the cottage accent
+   darkened towards ink (plain-ink fallback where color-mix is missing).
+   Owner-added cottages get the same rule from injectPropColors(). */
+body.light-mode .tag-21a,
+body.light-mode .tag-jollyboat,
+body.light-mode .tag-pimpernel {
+  color: #1b2a34;
+}
+body.light-mode .tag-21a {
+  color: color-mix(in srgb, var(--prop-21a) 55%, #1b2a34);
+}
+body.light-mode .tag-jollyboat {
+  color: color-mix(in srgb, var(--prop-jollyboat) 55%, #1b2a34);
+}
+body.light-mode .tag-pimpernel {
+  color: color-mix(in srgb, var(--prop-pimpernel) 55%, #1b2a34);
+}
 
 /* Back-office layout: calendar (left) + enquiries sidebar (right) */
 .bo-layout {
@@ -5637,6 +5654,11 @@ body.admin-screen .site-footer {
 }
 /* ---- NEEDS YOU (Today): the one prioritised to-do list. Rows share the
    back office's row anatomy, with a severity edge and a labelled action. ---- */
+/* Cushion below the strip so its last card never touches the calendar
+   toolbar's Add booking / Block dates buttons. */
+#needs-you {
+  margin-bottom: 24px;
+}
 #needs-you-list {
   display: flex;
   flex-direction: column;
@@ -8354,7 +8376,6 @@ body.owner-mode header,
 body.owner-mode #mobileMenu {
   display: none !important;
 }
-body.owner-mode .footer-controls,
 body.owner-mode #footer-newsletter,
 body.owner-mode .footer-nap,
 body.owner-mode .footer-meta {
