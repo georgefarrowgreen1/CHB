@@ -96,6 +96,18 @@ async function waitForServer(url, tries = 40) {
         }
         return json({ threads: [{ thread_id: 1, name: 'Sarah', unread: 1, last_body: 'Hi' }] });
       }
+      if (url.includes('auth.php')) {
+        let act = ''; try { act = JSON.parse(post || '{}').action || ''; } catch (e) {}
+        // New-device 2FA: the password is right but a code is required (drives
+        // scenario 4b). The code the "email" carried is 123456.
+        if (act === 'admin_login') return json({ ok: true, twofa: true });
+        if (act === 'admin_2fa') {
+          let code = ''; try { code = JSON.parse(post || '{}').code || ''; } catch (e) {}
+          if (code === '123456') return json({ ok: true });
+          return route.fulfill({ status: 401, contentType: 'application/json', body: JSON.stringify({ error: 'Incorrect code — check the email and try again.' }) });
+        }
+        return json({ ok: true });
+      }
       if (url.includes('availability.php')) {
         // 21a: booked tonight + tomorrow (next gap from d+2), plus a later
         // block. jollyboat: completely free. Drives scenario 9's truth checks.
@@ -169,7 +181,32 @@ async function waitForServer(url, tries = 40) {
     await page.evaluate(() => switchGuestTab('register'));
     await page.waitForTimeout(200);
     (await page.locator('#reg-name').isVisible()) ? pass('register tab shows') : fail('register tab broken');
-    await page.evaluate(() => closeGuestAuthModal());
+
+    console.log('== 4b. Owner on a NEW device: 2FA code step must appear ==');
+    // The owner's only sign-in on a fresh PC is this guest modal. With 2FA on,
+    // admin_login returns {twofa:true} — the modal must hand over to the code
+    // step, and the client must NOT claim to be signed in until the code lands.
+    await page.evaluate(() => switchGuestTab('login'));
+    await page.evaluate(() => {
+      document.getElementById('login-email').value = 'owner';
+      document.getElementById('login-password').value = 'correct-password';
+      return guestLogin();
+    });
+    await page.waitForTimeout(600);
+    (await page.evaluate(() => document.getElementById('admin-login-modal').classList.contains('open') && document.getElementById('admin-login-2fa-form').style.display !== 'none'))
+      ? pass('2FA code window appears for a new device') : fail('2FA code window did not appear');
+    (await page.evaluate(() => !isAuthenticated)) ? pass('not signed in until the code is entered') : fail('client claimed sign-in before the code');
+    await page.evaluate(() => { document.getElementById('admin-login-2fa-code').value = '000000'; return submitAdmin2fa(); });
+    await page.waitForTimeout(400);
+    (await page.evaluate(() => !isAuthenticated && document.getElementById('admin-login-error').style.display !== 'none'))
+      ? pass('wrong code rejected with a visible error') : fail('wrong code was not rejected');
+    await page.evaluate(() => { document.getElementById('admin-login-2fa-code').value = '123456'; return submitAdmin2fa(); });
+    await page.waitForTimeout(600);
+    (await page.evaluate(() => isAuthenticated && !document.getElementById('admin-login-modal').classList.contains('open')))
+      ? pass('correct code completes the owner sign-in') : fail('correct code did not complete the sign-in');
+    // Reset to a signed-out guest state for the sections that follow.
+    await page.evaluate(() => { isAuthenticated = false; document.body.classList.remove('owner-mode'); setAuthUI(); nav('view-main'); });
+    await page.waitForTimeout(300);
 
     console.log('== 5. Admin dashboard renders ==');
     await page.evaluate(async () => { isAuthenticated = true; document.body.classList.add('owner-mode'); nav('view-backoffice'); await initBackOffice(); });
