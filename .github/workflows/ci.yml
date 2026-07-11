@@ -23,7 +23,7 @@ jobs:
         run: |
           set -e
           find "Cottage Holidays Blakeney" -name '*.php' -print0 \
-            | xargs -0 -n1 php -l
+            | xargs -0 -n1 -P4 php -l
 
       - name: Front-end smoke test
         working-directory: "Cottage Holidays Blakeney"
@@ -55,93 +55,108 @@ jobs:
       # Static "undefined reference" gate for the front-end JS — catches typo'd /
       # missing functions and variables (the "X is not defined" runtime errors)
       # before they ship, which php -l's JS equivalent (node --check) can't see.
+      - name: Cache npm (eslint)
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-eslint-${{ runner.os }}-v1
+
       - name: JS static check (ESLint no-undef)
         working-directory: "Cottage Holidays Blakeney"
         run: |
           npm init -y > /dev/null 2>&1
-          npm install --no-audit --no-fund eslint globals
+          npm install --no-audit --no-fund --prefer-offline eslint globals
           node lint-js.js
 
       # PHP static analysis — catches undefined functions/constants/variables and
       # wrong argument counts across every endpoint, far beyond php -l's syntax
       # check. A committed phpstan-baseline.neon (if present) scopes it to NEW code.
+      # The phar is cached (it never changes for a pinned version) and so is
+      # PHPStan's RESULT cache — unchanged files aren't re-analysed, which cuts
+      # the analyse step from ~20s to a few seconds on typical PRs.
+      - name: Cache PHPStan (phar + result cache)
+        uses: actions/cache@v4
+        with:
+          path: |
+            /tmp/phpstan.phar
+            Cottage Holidays Blakeney/.phpstan-cache
+          key: phpstan-2.2.5-${{ hashFiles('Cottage Holidays Blakeney/**/*.php') }}
+          restore-keys: |
+            phpstan-2.2.5-
+
       - name: PHP static analysis (PHPStan)
         working-directory: "Cottage Holidays Blakeney"
         run: |
-          curl -sSL https://github.com/phpstan/phpstan/releases/download/2.2.5/phpstan.phar -o /tmp/phpstan.phar
+          [ -s /tmp/phpstan.phar ] || curl -sSL https://github.com/phpstan/phpstan/releases/download/2.2.5/phpstan.phar -o /tmp/phpstan.phar
           php /tmp/phpstan.phar analyse -c phpstan.neon.dist --no-progress --error-format=table
 
-  # Real-browser smoke test: boots the site headless with stubbed APIs and walks
-  # the core guest journeys + admin dashboard. Catches the render/integration
-  # breakage the DOM-shim smoke test can't see. Runs in parallel with `checks`.
-  browser-test:
+  # Real-browser tests, split into PARALLEL jobs so the wall-clock is the
+  # slowest single job rather than the sum. All three run in the official
+  # Playwright container — browsers AND system libraries are pre-baked, which
+  # deletes the per-run `playwright install --with-deps` apt step (and the
+  # flaky-Microsoft-apt-repo workaround it needed). Only php-cli is added
+  # (the suites boot `php -S` stub servers).
+  browser-core:
     runs-on: ubuntu-latest
+    container: mcr.microsoft.com/playwright:v1.61.1-jammy
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
     steps:
       - uses: actions/checkout@v4
 
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      # Browsers are ~300MB per run without a cache. Playwright is PINNED so
-      # the cache key is stable; bump the version here and the key rolls over
-      # automatically. On a cache hit only the (fast) apt system-deps run.
-      - name: Cache Playwright browsers
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-1.61.1
-
-      - name: Install Playwright browsers (Chromium + WebKit)
+      - name: Install php-cli (stub servers) + playwright package
         working-directory: "Cottage Holidays Blakeney"
         run: |
-          # The hosted runner's Microsoft/Azure apt repos intermittently serve an
-          # unsigned InRelease ("NOSPLIT"), which fails `--with-deps`' apt-get and
-          # kills the whole browser-test. We don't need those repos, so drop them
-          # (and add apt retries) before the install.
-          sudo rm -f /etc/apt/sources.list.d/*microsoft*.list /etc/apt/sources.list.d/*azure*.list 2>/dev/null || true
+          apt-get update -qq && apt-get install -y -qq --no-install-recommends php-cli > /dev/null
           npm init -y > /dev/null
           npm install --no-audit --no-fund playwright@1.61.1
-          npx playwright install --with-deps chromium webkit
 
       - name: Browser smoke test
         working-directory: "Cottage Holidays Blakeney"
         run: node e2e-test.js
 
-      # Design-regression gate: layout invariants (no horizontal overflow, no
-      # content cut off past the right edge, key content rendered) at phone /
-      # tablet / desktop widths on the public views. Deterministic — no pixel
-      # diffs, so no cross-machine font flakiness.
-      - name: Layout regression gate
-        working-directory: "Cottage Holidays Blakeney"
-        run: node layout-test.js
-
-      # Same gate in WebKit (Safari's engine). iOS lays out native form
-      # controls from shadow DOM and ignores some shrink rules, so phone-only
-      # overlaps can exist that Chromium can't reproduce — this pass catches
-      # them in CI before they reach a real iPhone.
-      - name: Layout regression gate (WebKit)
-        working-directory: "Cottage Holidays Blakeney"
-        env:
-          CHB_ENGINE: webkit
-        run: node layout-test.js
-
-      # Behaviour suites: booking hub (menu, money fold, breakdown window,
-      # delete rules), Needs-you strip, edit-modal locked price, guest account
-      # modals on phones, Inbox mailbox client, Money reconciliation, and the
-      # merged Today workspace. Each boots its own stubbed php -S like e2e.
+      # Behaviour suites (booking hub, Needs-you, locked price, guest modals,
+      # mailbox, Payments, merged workspace) — three suites at a time.
       - name: UI behaviour suites
         working-directory: "Cottage Holidays Blakeney"
         run: node ui-tests.js
 
-      # The gate also screenshots every view×width — kept as an artifact so a
-      # reviewer can eyeball the design straight from the PR checks page.
+  # Design-regression gate: layout invariants (no horizontal overflow, no
+  # content cut off, key content rendered) at phone / tablet / desktop widths.
+  # Chromium and WebKit run as parallel matrix legs; WebKit is Safari's engine
+  # and catches iPhone-only overlaps Chromium can't reproduce.
+  layout:
+    runs-on: ubuntu-latest
+    container: mcr.microsoft.com/playwright:v1.61.1-jammy
+    strategy:
+      fail-fast: false
+      matrix:
+        engine: [chromium, webkit]
+    env:
+      PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install php-cli (stub servers) + playwright package
+        working-directory: "Cottage Holidays Blakeney"
+        run: |
+          apt-get update -qq && apt-get install -y -qq --no-install-recommends php-cli > /dev/null
+          npm init -y > /dev/null
+          npm install --no-audit --no-fund playwright@1.61.1
+
+      - name: Layout regression gate (${{ matrix.engine }})
+        working-directory: "Cottage Holidays Blakeney"
+        env:
+          CHB_ENGINE: ${{ matrix.engine == 'webkit' && 'webkit' || '' }}
+        run: node layout-test.js
+
+      # Every view×width screenshot, kept as an artifact so a reviewer can
+      # eyeball the design straight from the PR checks page.
       - name: Upload layout screenshots
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: layout-shots
+          name: layout-shots-${{ matrix.engine }}
           path: "Cottage Holidays Blakeney/layout-shots/"
           if-no-files-found: ignore
           retention-days: 14

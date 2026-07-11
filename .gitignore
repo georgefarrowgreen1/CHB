@@ -18,3 +18,6 @@ node_modules/
 
 # Layout-gate screenshots (regenerated per run; uploaded as a CI artifact).
 Cottage Holidays Blakeney/layout-shots/
+
+# PHPStan result cache (CI-persisted, never committed)
+Cottage Holidays Blakeney/.phpstan-cache/

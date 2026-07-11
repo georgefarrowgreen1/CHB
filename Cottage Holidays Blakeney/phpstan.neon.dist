@@ -8,6 +8,8 @@ includes:
     - phpstan-baseline.neon
 parameters:
     level: 1
+    # Result cache lives in the workspace so CI can persist it between runs.
+    tmpDir: .phpstan-cache
     paths:
         - .
     # Dev/CI-only files that aren't part of the deployed app.
