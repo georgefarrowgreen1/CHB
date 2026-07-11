@@ -195,3 +195,31 @@ function booking_amount_due($b, $kind)
     $due = $kind === 'balance' ? max(0, $total - $alreadyPaid) : max(0, $depositAmount - $alreadyPaid);
     return ['total' => $total, 'alreadyPaid' => $alreadyPaid, 'due' => round($due, 2)];
 }
+
+// The price a CONFIRMED booking shows anywhere a guest can see it (emails,
+// previews): the LOCKED agreed snapshot (honouring a manual price override),
+// falling back to a live calculation only for legacy pre-snapshot rows.
+// Same shape as price_breakdown() so consumers can swap it in directly.
+function booking_price($rate, $b)
+{
+    if (isset($b['agreed_total']) && $b['agreed_total'] !== null) {
+        $total =
+            isset($b['price_override']) && $b['price_override'] !== null && $b['price_override'] !== ''
+                ? (float) $b['price_override']
+                : (float) $b['agreed_total'];
+        return [
+            'total' => $total,
+            'perNight' => (float) $b['agreed_per_night'],
+            'nights' => (int) $b['agreed_nights'],
+            'nightly' => (float) $b['agreed_nightly'],
+            'damagesDeposit' => (float) $b['agreed_booking_fee'],
+            'transactionPct' => (float) $b['agreed_txn_pct'],
+            'txFee' => (float) $b['agreed_txn_fee'],
+            'agreed' => true,
+        ];
+    }
+    if (!$rate) {
+        return null;
+    }
+    return price_breakdown($rate, (int) $b['adults'], (int) $b['children'], $b['check_in'], $b['check_out']);
+}

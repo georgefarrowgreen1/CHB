@@ -935,10 +935,8 @@ if ($action === 'email_preview') {
     $subject = mb_substr(clean($in['subject'] ?? ''), 0, 150);
     $priceEst = null;
     try {
-        $rate = get_rate($b['prop_key']);
-        if ($rate) {
-            $priceEst = price_breakdown($rate, (int) $b['adults'], (int) $b['children'], $b['check_in'], $b['check_out']);
-        }
+        // Agreed (locked-in) price when the booking has a snapshot; live rates only as fallback
+        $priceEst = booking_price(get_rate($b['prop_key']), $b);
     } catch (\Throwable $e) {
     }
     require_once __DIR__ . '/mailer.php';
@@ -966,10 +964,8 @@ if ($action === 'email_guest') {
     $subject = mb_substr(clean($in['subject'] ?? ''), 0, 150);
     $priceEst = null;
     try {
-        $rate = get_rate($b['prop_key']);
-        if ($rate) {
-            $priceEst = price_breakdown($rate, (int) $b['adults'], (int) $b['children'], $b['check_in'], $b['check_out']);
-        }
+        // Agreed (locked-in) price when the booking has a snapshot; live rates only as fallback
+        $priceEst = booking_price(get_rate($b['prop_key']), $b);
     } catch (\Throwable $e) {
     }
     require_once __DIR__ . '/mailer.php';

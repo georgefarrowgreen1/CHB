@@ -110,6 +110,30 @@ chk('lastmin breakdown: total = 164.80', approxEq($plm['total'], 164.8));
 $plmOut = price_breakdown($rateLM, 2, 0, '2026-02-01', '2026-02-03', null, [], '2026-01-01'); // 31 days out — no discount
 chk('lastmin breakdown: outside window unchanged = 200', approxEq($plmOut['nightly'], 200));
 
+// booking_price(): confirmed bookings must show their AGREED (locked-in) snapshot,
+// never today's rates — emails and previews route through this helper.
+$rateNow = [
+    'prop_key' => 'bp', 'couple_rate' => 165, 'extra_adult_rate' => 0, 'child_rate' => 0,
+    'booking_fee' => 75, 'transaction_pct' => 3, 'weekend_pct' => 0, 'weekend_days' => '',
+];
+$bAgreed = [
+    'adults' => 2, 'children' => 0, 'check_in' => '2026-08-01', 'check_out' => '2026-08-05',
+    'agreed_total' => 556.2, 'agreed_per_night' => 135, 'agreed_nights' => 4,
+    'agreed_nightly' => 540, 'agreed_booking_fee' => 75, 'agreed_txn_pct' => 3,
+    'agreed_txn_fee' => 16.2, 'price_override' => null,
+];
+$bp = booking_price($rateNow, $bAgreed);
+chk('booking_price: locked total 556.20 (not live 679.80)', approxEq($bp['total'], 556.2));
+chk('booking_price: locked per-night 135 (not live 165)', approxEq($bp['perNight'], 135));
+chk('booking_price: locked damages deposit rides along', approxEq($bp['damagesDeposit'], 75));
+chk('booking_price: flags the snapshot as agreed', !empty($bp['agreed']));
+$bpOv = booking_price($rateNow, array_merge($bAgreed, ['price_override' => 500]));
+chk('booking_price: manual override wins over agreed total', approxEq($bpOv['total'], 500));
+$bLive = ['adults' => 2, 'children' => 0, 'check_in' => '2026-08-01', 'check_out' => '2026-08-05', 'agreed_total' => null];
+$bpLive = booking_price($rateNow, $bLive);
+chk('booking_price: no snapshot → live rates (679.80)', approxEq($bpLive['total'], 679.8));
+chk('booking_price: no snapshot and no rate → null', booking_price(null, $bLive) === null);
+
 echo "\n";
 if ($fail) {
     fwrite(STDERR, "$fail pricing check(s) FAILED — JS and PHP pricing may have diverged.\n");
