@@ -165,6 +165,22 @@ switch ($action) {
         $row = $stmt->fetch();
         if (!password_verify($password, $row['password_hash'] ?? AUTH_DUMMY_HASH) || !$row) {
             throttle_record('admin:' . strtolower($username), false);
+            // Diagnose WHY for the owner's log — the HTTP reply below stays generic
+            // so an attacker learns nothing. The one sign-in form tries owner first
+            // and falls back to guest, so a REGISTERED GUEST's email landing here is
+            // routine, not an attack: skip the owner-side warning entirely and let
+            // the guest attempt that follows log its own real outcome.
+            $reason = $row ? 'wrong password for the owner account' : 'not the owner username';
+            if (!$row && strpos($username, '@') !== false) {
+                try {
+                    $gq = db()->prepare('SELECT COUNT(*) FROM guests WHERE email = ?');
+                    $gq->execute([strtolower($username)]);
+                    if ((int) $gq->fetchColumn() > 0) {
+                        json_out(['error' => 'Incorrect username or password'], 401);
+                    }
+                } catch (\Throwable $e) {
+                }
+            }
             // Collapse a burst: log the first failure, then only at thresholds — so a
             // brute-force attempt is one or two "Needs attention" rows, not fifty.
             $fails = 1;
@@ -177,9 +193,9 @@ switch ($action) {
             } catch (\Throwable $e) {
             }
             if ($fails === 1) {
-                log_activity('account', 'admin.login_fail', 'Failed sign-in attempt', ['actor' => 'system', 'severity' => 'warn', 'meta' => ['detail' => 'username: ' . mb_substr($username, 0, 60)]]);
+                log_activity('account', 'admin.login_fail', 'Failed owner sign-in — ' . $reason, ['actor' => 'system', 'severity' => 'warn', 'meta' => ['detail' => 'username: ' . mb_substr($username, 0, 60)]]);
             } elseif (in_array($fails, [5, 15, 30], true)) {
-                log_activity('account', 'admin.login_burst', $fails . ' failed sign-in attempts in 15 min', ['actor' => 'system', 'severity' => 'action', 'meta' => ['detail' => 'username: ' . mb_substr($username, 0, 60)]]);
+                log_activity('account', 'admin.login_burst', $fails . ' failed owner sign-in attempts in 15 min — ' . $reason, ['actor' => 'system', 'severity' => 'action', 'meta' => ['detail' => 'username: ' . mb_substr($username, 0, 60)]]);
             }
             json_out(['error' => 'Incorrect username or password'], 401);
         }
@@ -231,15 +247,23 @@ switch ($action) {
         $p = $_SESSION['pending_admin_2fa'] ?? null;
         if (!is_array($p) || (int) ($p['exp'] ?? 0) < time()) {
             unset($_SESSION['pending_admin_2fa']);
+            if (is_array($p)) {
+                log_activity('account', 'admin.2fa_fail', 'Owner sign-in code expired before it was used (10-minute window)', ['actor' => 'system', 'severity' => 'warn']);
+            }
             json_out(['error' => 'That code has expired — please sign in again.'], 401);
         }
         if ((int) ($p['tries'] ?? 0) >= 5) {
             unset($_SESSION['pending_admin_2fa']);
+            log_activity('account', 'admin.2fa_fail', 'Owner sign-in cancelled — 5 wrong one-time codes in a row', ['actor' => 'system', 'severity' => 'action']);
             json_out(['error' => 'Too many attempts — please sign in again.'], 429);
         }
         $_SESSION['pending_admin_2fa']['tries'] = (int) ($p['tries'] ?? 0) + 1;
         $code = preg_replace('/\D/', '', (string) ($in['code'] ?? ''));
         if ($code === '' || !hash_equals((string) ($p['hash'] ?? ''), hash('sha256', $code))) {
+            // First typo only (retries are normal) — the cancel above covers persistence.
+            if ((int) ($p['tries'] ?? 0) === 0) {
+                log_activity('account', 'admin.2fa_fail', 'Wrong one-time sign-in code entered (owner 2FA)', ['actor' => 'system', 'severity' => 'warn']);
+            }
             json_out(['error' => 'Incorrect code — check the email and try again.'], 401);
         }
         if (!empty($in['remember'])) {
@@ -332,6 +356,34 @@ switch ($action) {
         $row = $stmt->fetch();
         if (!password_verify($pw, $row['password_hash'] ?? AUTH_DUMMY_HASH) || !$row) {
             throttle_record('guest:' . $email, false);
+            // Diagnose WHY for the owner's log (the reply stays generic): the usual
+            // culprits are an email we've never seen, an account that only ever
+            // used magic links (no password to check), or a plain wrong password.
+            $reason = !$row
+                ? 'no guest account with this email'
+                : ((string) ($row['password_hash'] ?? '') === ''
+                    ? 'account has no password — they need "Email me a sign-in link" or account setup'
+                    : 'wrong password');
+            // Burst-collapsed like the owner path: first failure, then thresholds.
+            $fails = 1;
+            try {
+                $fq = db()->prepare(
+                    "SELECT COUNT(*) FROM login_attempts WHERE identifier = ? AND success = 0 AND attempted_at > (NOW() - INTERVAL 15 MINUTE)",
+                );
+                $fq->execute(['guest:' . $email]);
+                $fails = (int) $fq->fetchColumn();
+            } catch (\Throwable $e) {
+            }
+            if ($fails === 1) {
+                $opts = ['actor' => 'system', 'severity' => 'warn', 'meta' => ['detail' => 'email: ' . mb_substr($email, 0, 80)]];
+                if ($row) {
+                    $opts['entity'] = 'guest';
+                    $opts['entity_id'] = (string) $row['id'];
+                }
+                log_activity('account', 'guest.login_fail', 'Failed guest sign-in — ' . $reason, $opts);
+            } elseif (in_array($fails, [5, 15, 30], true)) {
+                log_activity('account', 'guest.login_burst', $fails . ' failed guest sign-in attempts in 15 min — ' . $reason, ['actor' => 'system', 'severity' => 'action', 'meta' => ['detail' => 'email: ' . mb_substr($email, 0, 80)]]);
+            }
             json_out(['error' => 'Email or password not recognised'], 401);
         }
         throttle_record('guest:' . $email, true);
@@ -372,6 +424,11 @@ switch ($action) {
                 require_once __DIR__ . '/mailer.php';
                 send_magic_link_email($g, $url);
                 log_activity('account', 'guest.magic_link', 'Magic sign-in link emailed to a guest', ['actor' => 'guest', 'entity' => 'guest', 'entity_id' => (string) $g['id']]);
+            } else {
+                // The HTTP reply stays a uniform ok (no account probing), but the
+                // owner's log gets the truth — it explains "my sign-in link never
+                // arrived" (usually a typo'd or different email than the booking's).
+                log_activity('account', 'guest.magic_unknown', 'Sign-in link requested for an email with no guest account — nothing sent', ['actor' => 'system', 'meta' => ['detail' => 'email: ' . mb_substr($email, 0, 80)]]);
             }
         }
         // Count EVERY request (pass false so it records an attempt rather than
