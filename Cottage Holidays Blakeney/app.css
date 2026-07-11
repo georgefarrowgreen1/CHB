@@ -3150,6 +3150,13 @@ body.modal-open {
   height: 16px;
   border-radius: 5px;
 }
+/* In guest stay titles the swatch is a cottage colour DOT — the rounded
+   square reads as an empty checkbox beside serif text. */
+.guest-booking h3 .legend-swatch {
+  border-radius: 50%;
+  width: 13px;
+  height: 13px;
+}
 .swatch-21a {
   background: var(--prop-21a-bg);
   border: 1px solid var(--prop-21a-border);
@@ -3268,6 +3275,7 @@ body.modal-open {
   margin-bottom: 15px;
   border-bottom: 1px solid var(--glass-border);
   padding-bottom: 15px;
+  min-width: 0; /* grid item may shrink — long values wrap instead of colliding */
 }
 .booking-detail-label {
   font-size: 0.7rem;
@@ -3279,6 +3287,9 @@ body.modal-open {
 .booking-detail-value {
   font-size: 1.1rem;
   color: var(--text-light);
+  /* Long unbroken values (email addresses) wrap within their column rather
+     than running into the neighbouring one. */
+  overflow-wrap: anywhere;
 }
 .prop-tag {
   display: inline-block;

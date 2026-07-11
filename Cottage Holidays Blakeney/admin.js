@@ -7934,6 +7934,9 @@ function markInboxSelection() {
     const empty = document.getElementById('inbox-detail-empty');
     const pane = document.getElementById('inbox-detail-pane');
     const content = document.getElementById('enquiry-hub-content');
+    // The pane belongs to the ACTIVE folder — a background re-render must not
+    // dock the enquiry hub over the email reader / chat panel.
+    if (__inboxFolder !== 'enquiries') return;
     if (inboxSplitWide() && __enqHubId && pane && content && content.parentElement !== pane) {
         pane.appendChild(content);
         renderEnquiryHub();
