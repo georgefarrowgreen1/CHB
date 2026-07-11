@@ -3032,7 +3032,7 @@ textarea.input-glass.field-sm {
   color: var(--text-light);
   background: transparent;
   border: 0;
-  padding: 8px 14px;
+  padding: 9px 14px; /* lands the control at 32px — same as the segmented filters and .btn-sm */
   cursor: pointer;
   transition: background 0.2s var(--fluid-bezier);
 }
@@ -3075,7 +3075,9 @@ body.modal-open {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 6px;
+  width: 32px; /* fixed circle at the small-control height (segments, .btn-sm) */
+  height: 32px;
+  padding: 0;
   border-radius: 50%;
 }
 .cal-refresh-btn .ic {
@@ -4939,6 +4941,9 @@ body.owner-mode .chat-widget {
 .act-log-chip {
   font-family: var(--font-sans);
   font-size: 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px; /* the small-control height (segments, .btn-sm) */
   padding: 6px 13px;
   border-radius: var(--r-pill);
   border: 1px solid var(--glass-border);
@@ -5905,7 +5910,7 @@ body.owner-mode .chat-widget {
   color: var(--text-muted);
 }
 .bhub-next-btn {
-  padding: 10px 20px;
+  padding: 12px 22px; /* the standard action-button geometry (.cal-add-btn) */
   font-size: 0.8rem;
 }
 .bhub-grid {
@@ -8542,6 +8547,13 @@ body.light-mode .hs-field:hover {
   box-shadow: 0 8px 24px var(--accent-soft);
 }
 #hs-search-btn:hover,
+/* In the back office the accent is a COLOUR, not a size: an accent action
+   sits beside plain .cal-add-btn buttons ("+ Add Booking" | "Block dates")
+   and must share their exact geometry — .btn-accent's guest-CTA padding
+   would otherwise make it 10px taller than its neighbours. */
+.btn-glass.btn-accent.cal-add-btn {
+  padding: 12px 22px;
+}
 .btn-glass.btn-accent:hover {
   background: var(--accent);
   color: #1b1208;
