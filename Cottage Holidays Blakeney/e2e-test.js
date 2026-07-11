@@ -381,8 +381,15 @@ async function waitForServer(url, tries = 40) {
     const todayCell = await page.evaluate(async () => {
       nav('view-21a');
       await loadAvailability('21a');
+      // "Today" means UK today: the app strikes cells against todayDashed()
+      // (Europe/London), but CI runners sit on UTC — an hour behind BST — so
+      // between 23:00 and 00:00 UTC the local date is a day early. Point the
+      // calendar at the UK month and look up the UK day number, exactly as
+      // the app itself does.
+      const uk = ukNowParts();
+      availCalMonth = new Date(uk.y, uk.m - 1, 1);
       renderAvailCal();
-      const dayN = String(new Date().getDate());
+      const dayN = String(uk.d);
       const cell = [...document.querySelectorAll('#avail-cal-grid .avail-cell')]
         .find((c) => ((c.querySelector('.ac-day') || {}).textContent || '') === dayN && !c.classList.contains('past'));
       return cell ? cell.className : 'missing';
