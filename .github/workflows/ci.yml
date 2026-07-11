@@ -104,22 +104,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # NOTE: container jobs must not use working-directory here — the runner
+      # passes a space-containing path unquoted to docker exec and dies with
+      # "No such container: Holidays". Plain `cd` inside run instead.
       - name: Install php-cli (stub servers) + playwright package
-        working-directory: "Cottage Holidays Blakeney"
         run: |
           apt-get update -qq && apt-get install -y -qq --no-install-recommends php-cli > /dev/null
+          cd "Cottage Holidays Blakeney"
           npm init -y > /dev/null
           npm install --no-audit --no-fund playwright@1.61.1
 
       - name: Browser smoke test
-        working-directory: "Cottage Holidays Blakeney"
-        run: node e2e-test.js
+        run: cd "Cottage Holidays Blakeney" && node e2e-test.js
 
       # Behaviour suites (booking hub, Needs-you, locked price, guest modals,
       # mailbox, Payments, merged workspace) — three suites at a time.
       - name: UI behaviour suites
-        working-directory: "Cottage Holidays Blakeney"
-        run: node ui-tests.js
+        run: cd "Cottage Holidays Blakeney" && node ui-tests.js
 
   # Design-regression gate: layout invariants (no horizontal overflow, no
   # content cut off, key content rendered) at phone / tablet / desktop widths.
@@ -137,18 +138,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # (Same no-working-directory rule as browser-core — spaces + docker exec.)
       - name: Install php-cli (stub servers) + playwright package
-        working-directory: "Cottage Holidays Blakeney"
         run: |
           apt-get update -qq && apt-get install -y -qq --no-install-recommends php-cli > /dev/null
+          cd "Cottage Holidays Blakeney"
           npm init -y > /dev/null
           npm install --no-audit --no-fund playwright@1.61.1
 
       - name: Layout regression gate (${{ matrix.engine }})
-        working-directory: "Cottage Holidays Blakeney"
         env:
           CHB_ENGINE: ${{ matrix.engine == 'webkit' && 'webkit' || '' }}
-        run: node layout-test.js
+        run: cd "Cottage Holidays Blakeney" && node layout-test.js
 
       # Every view×width screenshot, kept as an artifact so a reviewer can
       # eyeball the design straight from the PR checks page.
