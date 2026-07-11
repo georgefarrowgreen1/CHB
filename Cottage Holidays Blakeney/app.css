@@ -5742,6 +5742,12 @@ body.admin-screen .site-footer {
   border-radius: var(--r-panel);
   flex-direction: column;
   gap: 2px;
+  /* SOLID surface, not glass: a floating menu over busy content must be
+     fully legible on a real phone (same solid-ground rule as .tl-label). */
+  background: var(--dark-grey);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 1px solid var(--glass-border);
   box-shadow: var(--shadow-float);
   animation: bhubIn 0.22s var(--fluid-bezier) both;
 }

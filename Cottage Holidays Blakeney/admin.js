@@ -662,9 +662,9 @@ function bookingEmailLogHtml(b) {
 //  row and search hit routes here (app.js showDetails → openBookingHub).
 // ==================================================================
 let __hubBookingId = null;
-// A settled booking's Money card folds to one line; this remembers the owner
-// asking for the full breakdown (reset whenever a different booking opens).
-let __bhubMoneyOpen = false;
+// A settled booking's Money card folds to one line; the full breakdown opens
+// as a pop-up window (renderBookingHub stashes its HTML here).
+let __bhubBreakdownHtml = '';
 // ---- Hub header overflow menu (⋯ More): one open at a time; click-away and
 // Escape both close it. Holds the secondary + destructive actions so the
 // header stays calm and "Cancel & refund" is a deliberate two-tap. ----
@@ -694,13 +694,16 @@ function bhubMenuClose() {
         .forEach((b) => b.setAttribute('aria-expanded', 'false'));
     document.removeEventListener('keydown', __bhubMenuEsc);
 }
-function bhubMoneyExpand(id) {
-    __bhubMoneyOpen = true;
-    openBookingHub(id, true);
+function bhubMoneyExpand() {
+    const body = document.getElementById('breakdown-modal-body');
+    const m = document.getElementById('breakdown-modal');
+    if (!body || !m) return;
+    body.innerHTML = __bhubBreakdownHtml || '<div class="bhub-mut">Nothing to show.</div>';
+    m.classList.add('open');
 }
-function bhubMoneyCollapse(id) {
-    __bhubMoneyOpen = false;
-    openBookingHub(id, true);
+function closeBreakdownModal() {
+    const m = document.getElementById('breakdown-modal');
+    if (m) m.classList.remove('open');
 }
 let __hubReturnView = 'view-backoffice';
 
@@ -724,7 +727,6 @@ async function openBookingHub(bookingId, quiet) {
     const prev = document.querySelector('.page-view.active');
     const alreadyHere = prev && prev.id === 'view-booking-hub' && __hubBookingId === bookingId;
     if (prev && prev.id !== 'view-booking-hub') __hubReturnView = prev.id;
-    if (__hubBookingId !== bookingId) __bhubMoneyOpen = false; // fresh booking → folded again
     __hubBookingId = bookingId;
     const content = document.getElementById('booking-hub-content');
     if (bookingsSplitWide()) {
@@ -965,17 +967,10 @@ function renderBookingHub() {
             ? `<div class="price-row"><span>${gbp(p.perNight)} × ${p.nights} night${p.nights === 1 ? '' : 's'}</span><span>${gbp(p.nightly)}</span></div>
                <div class="price-row"><span>Transaction fee (${fin(p.transactionPct) ? p.transactionPct : 0}%)</span><span>${gbp(fin(p.txFee) ? p.txFee : 0)}</span></div>`
             : '';
-    // Settled bookings fold the breakdown to ONE reassuring line — the numbers
-    // are still one tap away, but a paid booking stops reading like an invoice.
-    // Anything still owed keeps the full box open: that's the working surface.
-    const priceBox =
-        gt.fullyPaid && !__bhubMoneyOpen
-            ? `
-        <div class="price-box" style="margin-bottom:0;">
-            <div class="price-row total" style="color:#4CAF50;"><span>Paid in full${gt.dep > 0 ? `<span style="color:var(--text-muted);font-weight:400;"> · incl. ${gbp(gt.dep)} damages deposit</span>` : ''}</span><span class="price-amount" style="color:#4CAF50;">${gbp(gt.total)} ✓</span></div>
-        </div>
-        <button type="button" class="bhub-disclose" onclick="bhubMoneyExpand('${b.id}')">Show the full breakdown ▾</button>`
-            : `
+    // The full breakdown, always built — shown in-page while money is owed
+    // (that's the working surface), or stashed for the pop-up window when the
+    // booking is settled and the Money card folds to ONE reassuring line.
+    const fullBox = `
         <div class="price-box" style="margin-bottom:0;">
             ${breakdownRows}
             ${gt.dep > 0 ? `<div class="price-row"><span>Refundable damages deposit</span><span>${gbp(gt.dep)}</span></div>` : ''}
@@ -986,7 +981,15 @@ function renderBookingHub() {
                     ? `<div class="price-row total" style="color:#4CAF50;"><span>Paid in full</span><span class="price-amount" style="color:#4CAF50;">✓</span></div>`
                     : `<div class="price-row total"><span>Balance due</span><span class="price-amount">${gbp(gt.balance)}</span></div>`
             }
-        </div>${gt.fullyPaid ? `<button type="button" class="bhub-disclose" onclick="bhubMoneyCollapse('${b.id}')">Hide the breakdown ▴</button>` : ''}${agreedNote}`;
+        </div>`;
+    __bhubBreakdownHtml = fullBox + agreedNote;
+    const priceBox = gt.fullyPaid
+        ? `
+        <div class="price-box" style="margin-bottom:0;">
+            <div class="price-row total" style="color:#4CAF50;"><span>Paid in full${gt.dep > 0 ? `<span style="color:var(--text-muted);font-weight:400;"> · incl. ${gbp(gt.dep)} damages deposit</span>` : ''}</span><span class="price-amount" style="color:#4CAF50;">${gbp(gt.total)} ✓</span></div>
+        </div>
+        <button type="button" class="bhub-disclose" onclick="bhubMoneyExpand()">Show the full breakdown ▾</button>`
+        : `${fullBox}${agreedNote}`;
     const depositLine =
         dh.collected > 0
             ? `<div class="money-deposit"><span>Refundable damage deposit: ${
