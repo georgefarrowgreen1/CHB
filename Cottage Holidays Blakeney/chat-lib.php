@@ -208,10 +208,32 @@ if (!function_exists('chat_admin_reply')) {
                     $replyAddr = function_exists('msg_reply_address') ? msg_reply_address($threadId) : '';
                     $msgId =
                         $replyAddr && function_exists('msg_reply_token') ? 'msg.' . msg_reply_token($threadId) : null;
-                    $photoLine =
+                    $photoUrl =
                         $attachment !== '' && function_exists('site_base_url')
-                            ? "\n\nView photo: " . rtrim(site_base_url(), '/') . '/' . $attachment
+                            ? rtrim(site_base_url(), '/') . '/' . $attachment
                             : '';
+                    $photoLine = $photoUrl !== '' ? "\n\nView photo: " . $photoUrl : '';
+                    // Same coastal shell as every other guest email, with the
+                    // message quoted and the photo (if any) one tap away.
+                    $chatHtml = email_shell(
+                        'A message from Cottage Holidays Blakeney',
+                        email_h('You have a new message') .
+                            email_p('Hello ' . email_esc($thread['name'] ?: 'there') . ',') .
+                            email_p('&ldquo;' . nl2br(email_esc($logBody)) . '&rdquo;') .
+                            ($photoUrl !== ''
+                                ? email_p(
+                                    '<a href="' .
+                                        email_esc($photoUrl) .
+                                        '" style="color:#B07A3F;text-decoration:underline;">View the photo</a>',
+                                )
+                                : '') .
+                            email_p(
+                                'Reply on our website chat' .
+                                    ($replyAddr ? ' &mdash; or just reply to this email' : '') .
+                                    '.',
+                                true,
+                            ),
+                    );
                     smtp_send(
                         $thread['email'],
                         $thread['name'] ?: 'there',
@@ -225,7 +247,7 @@ if (!function_exists('chat_admin_reply')) {
                             "\n\nReply on our website chat" .
                             ($replyAddr ? ' — or just reply to this email' : '') .
                             ".\nCottage Holidays Blakeney",
-                        null,
+                        $chatHtml,
                         [],
                         $replyAddr ?: null,
                         $msgId,
