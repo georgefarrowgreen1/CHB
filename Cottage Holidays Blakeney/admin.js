@@ -4753,8 +4753,12 @@ async function loadAdminMessages() {
         apiPost('mailbox-read.php', {}).catch(() => {});
     } catch (e) {}
     const list = document.getElementById('messages-list');
+    if (list && !list.dataset.loaded && !list.querySelector('.msg-thread-row')) list.innerHTML = skelRows(3);
     const badge = document.getElementById('messages-badge');
     let threads = [];
+    const stampLoaded = () => {
+        if (list) list.dataset.loaded = '1'; // fetch done — skeleton retires for good
+    };
     try {
         const r = await apiPost('messages.php', {
             action: 'threads',
@@ -4762,10 +4766,12 @@ async function loadAdminMessages() {
         });
         threads = r.threads || [];
     } catch (e) {
+        stampLoaded();
         if (list)
             list.innerHTML = `<p style="font-size:0.82rem;color:var(--text-muted);">Couldn't load messages.</p>`;
         return;
     }
+    stampLoaded();
     // The badges only ever reflect unread in the active inbox.
     if (!__msgShowArchived) {
         const unread = threads.reduce((s, t) => s + (t.unread || 0), 0);
@@ -4799,6 +4805,12 @@ function msgNeedsReply(t) {
 function renderMessagesList() {
     const list = document.getElementById('messages-list');
     if (!list) return;
+    // Until the FIRST fetch lands (loadAdminMessages stamps data-loaded), an
+    // empty list means "still loading" — show the shimmer, not "No messages".
+    if (!list.dataset.loaded && !__msgThreads.length) {
+        list.innerHTML = skelRows(3);
+        return;
+    }
     // Preserve focus/caret if a poll rebuilds the list while the owner is searching.
     const sEl = document.getElementById('msg-search');
     const hadFocus = sEl && document.activeElement === sEl;
@@ -8810,7 +8822,9 @@ function mbxContextHtml(fromEmail) {
 async function loadMailbox() {
     const el = document.getElementById('mailbox-body');
     if (!el) return;
-    el.innerHTML = '<p style="font-size:0.85rem;color:var(--text-muted);">Checking the mailbox…</p>';
+    // Shimmer skeleton while fetching (a Refresh over a live list keeps the
+    // rows in place rather than flashing back to bones).
+    if (!el.querySelector('.bk-row')) el.innerHTML = skelRows(4);
     // The context card + autocomplete need the guest data.
     try {
         if (!Object.keys(dbBookings).some((k) => (dbBookings[k] || []).length)) await loadData();
@@ -9005,7 +9019,7 @@ async function mailboxOpen(uid) {
     }
     const pane = dock || mbxSlotFor('uid', uid);
     if (!pane) return;
-    pane.innerHTML = '<p style="font-size:0.85rem;color:var(--text-muted);margin:10px 4px;">Opening…</p>';
+    pane.innerHTML = `<div style="padding:8px 2px;"><span class="skel-bar w45" style="display:block;margin-bottom:12px;"></span><span class="skel-bar w85" style="display:block;margin-bottom:12px;"></span><span class="skel-bar w65" style="display:block;"></span></div>`;
     try {
         const m = await apiPost('mailbox.php', { action: 'read', uid });
         const local = __mbxMessages.find((x) => x.uid === uid);
