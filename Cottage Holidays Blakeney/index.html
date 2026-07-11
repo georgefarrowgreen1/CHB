@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=155">
+    <link rel="stylesheet" href="app.css?v=156">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -527,7 +527,7 @@
                 <h3 style="font-family:var(--font-serif);font-size:1.2rem;margin:0 0 4px;">Know a great local spot?</h3>
                 <p style="font-size:0.85rem;color:var(--text-muted);margin:0;">Suggest an experience and we'll review it.</p>
             </div>
-            <button class="btn-glass" style="width:auto;padding:13px 22px;" onclick="openExperienceSuggest()">Suggest an experience</button>
+            <button class="btn-glass" style="width:auto;" onclick="openExperienceSuggest()">Suggest an experience</button>
         </div>
     </main>
 
@@ -679,7 +679,7 @@
                 <div class="pr-price" id="pr-price"></div>
                 <div class="pr-savings" id="pr-savings" style="display:none;"></div>
                 <div class="pr-sub">No payment now — enquire to check your dates &amp; price.</div>
-                <button type="button" id="reserve-enquire-btn" class="btn-glass" style="width:100%;padding:15px;margin-top:16px;" onclick="openEnquireModal()">Enquire now</button>
+                <button type="button" id="reserve-enquire-btn" class="btn-glass" style="width:100%;padding:17px;margin-top:16px;" onclick="openEnquireModal()">Enquire now</button>
                 <div class="pr-trust">Book direct with the owner &nbsp;&middot;&nbsp; Personally hosted</div>
             </aside>
             <!-- The enquiry now lives in the two-step #enquire-modal (opened by "Enquire now"). -->
@@ -1619,7 +1619,7 @@
                     <p class="lead" style="font-size: 0.85rem; margin-bottom: 20px;">Sign in to manage your stay, messages and bookings.</p>
                     <!-- Passkey: the prominent, primary way in (Face ID / Touch ID / device PIN) -->
                     <div id="passkey-login-wrap" style="display:none;">
-                        <button class="btn-glass" style="width:100%;padding:18px;font-size:1rem;" onclick="passkeyLogin()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg> Secure sign in</button>
+                        <button class="btn-glass" style="width:100%;padding:15px;font-size:0.85rem;" onclick="passkeyLogin()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg> Secure sign in</button>
                         <p style="font-size:0.75rem;color:var(--text-muted);text-align:center;margin-top:10px;">Fast, password-free sign-in with your device.</p>
                         <div style="display:flex;align-items:center;gap:12px;margin:22px 0 18px;">
                             <span style="flex:1;height:1px;background:var(--glass-border);"></span>
@@ -2354,7 +2354,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=266"></script>
+    <script defer src="app.js?v=267"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
