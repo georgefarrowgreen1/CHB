@@ -987,9 +987,12 @@ function renderBookingHub() {
         ? `
         <div class="price-box" style="margin-bottom:0;">
             <div class="price-row total" style="color:#4CAF50;"><span>Paid in full${gt.dep > 0 ? `<span style="color:var(--text-muted);font-weight:400;"> · incl. ${gbp(gt.dep)} damages deposit</span>` : ''}</span><span class="price-amount" style="color:#4CAF50;">${gbp(gt.total)} ✓</span></div>
-        </div>
-        <button type="button" class="btn-sm btn-edit bhub-disclose-btn" onclick="bhubMoneyExpand()">Show the full breakdown</button>`
+        </div>`
         : `${fullBox}${agreedNote}`;
+    // The breakdown opener sits AFTER the deposit status line in the card.
+    const discloseBtn = gt.fullyPaid
+        ? `<button type="button" class="btn-sm btn-edit bhub-disclose-btn" onclick="bhubMoneyExpand()">Show the full breakdown</button>`
+        : '';
     const depositLine =
         dh.collected > 0
             ? `<div class="money-deposit"><span>Refundable damage deposit: ${
@@ -1007,6 +1010,7 @@ function renderBookingHub() {
             <h3 class="bhub-card-title">Money</h3>
             ${priceBox}
             ${depositLine}
+            ${discloseBtn}
             <div class="bhub-btn-row">
                 ${!gt.fullyPaid ? `<button class="btn-sm btn-edit" onclick="recordPayment('${b.id}')">Record payment</button>` : ''}
                 ${!gt.fullyPaid && squareAdminEnabled && b.email ? `<button class="btn-sm btn-edit" onclick="requestPayment('${b.id}','${gt.paid > 0 ? 'balance' : 'deposit'}')">Request ${gt.paid > 0 ? 'balance' : 'deposit'} by card</button>` : ''}
