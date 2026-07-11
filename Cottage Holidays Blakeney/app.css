@@ -6204,6 +6204,16 @@ body.admin-screen .site-footer {
     align-items: center;
     justify-content: center;
   }
+  /* A button that ends a row on its own spans the full width — no half-width
+     orphans: a lone "Invoice (PDF)" fills the line, and a 3-button section
+     renders as a pair plus one full-width. */
+  .bhub-btn-row .btn-sm:last-child:nth-child(odd) {
+    grid-column: 1 / -1;
+  }
+  /* The header only ever holds ⋯ More (the menu is its absolute sibling). */
+  .bhub-actions .bhub-menu-btn {
+    grid-column: 1 / -1;
+  }
   /* Keep the Done › Now › Next window on ONE line (scrolls if ever tight). */
   .bhub-pipe3 {
     flex-wrap: nowrap;
