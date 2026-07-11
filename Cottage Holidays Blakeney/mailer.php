@@ -543,6 +543,30 @@ function owner_recipients()
     return $out;
 }
 
+// Branded HTML for plain-text owner alerts — the SAME coastal shell guests
+// get, built automatically so every send_owner(subject, text) caller (new
+// payment, new message, new review, owner booking copies…) matches the guest
+// emails. Blank lines split paragraphs; bare URLs become links; all escaped.
+function owner_alert_text_html($subject, $text)
+{
+    // The shell already carries the brand — don't repeat it in the heading.
+    $heading = preg_replace('/\s*[—–-]\s*Cottage Holidays Blakeney\s*$/u', '', (string) $subject);
+    $inner = email_h($heading);
+    foreach (preg_split('/\n{2,}/', trim((string) $text)) as $para) {
+        $para = trim($para);
+        if ($para === '') {
+            continue;
+        }
+        $safe = nl2br(email_esc($para));
+        $safe = preg_replace(
+            '~(https?://[^\s<]+)~',
+            '<a href="$1" style="color:#B07A3F;text-decoration:underline;">$1</a>',
+            $safe,
+        );
+        $inner .= email_p($safe);
+    }
+    return email_shell($heading, $inner);
+}
 // Send ONE owner/admin notification to every recipient (owner_recipients()).
 // Returns the primary send's result so existing callers keep their {ok,error}
 // contract; copies to the extra addresses are best-effort.
@@ -551,6 +575,11 @@ function send_owner($subject, $text, $html = null, $atts = [], $replyTo = null, 
     $rcpts = owner_recipients();
     if (!$rcpts) {
         return ['ok' => false, 'error' => 'No owner email'];
+    }
+    // Plain-text callers get the branded shell automatically — one look for
+    // every email that leaves this site, owner alerts included.
+    if ($html === null || $html === '') {
+        $html = owner_alert_text_html($subject, $text);
     }
     // One connection for all owner copies (was one full handshake per address).
     $msgs = [];

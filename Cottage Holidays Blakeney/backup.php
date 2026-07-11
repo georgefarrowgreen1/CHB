@@ -241,7 +241,15 @@ try {
             'Owner',
             'Weekly database backup — Cottage Holidays Blakeney',
             "Attached is this week's database backup ({$nice}).\n\nKeep a few of these somewhere safe (they contain all bookings, payments and guest details). To restore, unzip and import the .sql via your host's phpMyAdmin.",
-            null,
+            email_shell(
+                'Weekly database backup',
+                email_h('Weekly database backup') .
+                    email_p('Attached is this week&rsquo;s database backup (' . email_esc($nice) . ').') .
+                    email_p(
+                        'Keep a few of these somewhere safe — they contain all bookings, payments and guest details. To restore, unzip and import the .sql via your host&rsquo;s phpMyAdmin.',
+                        true,
+                    ),
+            ),
             [
                 [
                     'filename' => basename($res['file']),

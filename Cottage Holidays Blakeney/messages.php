@@ -136,6 +136,14 @@ function chat_maybe_autoreply($tid)
                     $name,
                     'Cottage Holidays Blakeney',
                     'Hello ' . $name . ",\n\n" . $msg . "\n\nCottage Holidays Blakeney",
+                    // Same coastal shell as every other guest email.
+                    email_shell(
+                        'A message from Cottage Holidays Blakeney',
+                        email_h('A message for you') .
+                            email_p('Hello ' . email_esc($name) . ',') .
+                            email_p(nl2br(email_esc($msg))) .
+                            email_p('Reply any time on our website chat.', true),
+                    ),
                 );
             }
         }

@@ -197,11 +197,25 @@ switch ($action) {
             try {
                 require_once __DIR__ . '/mailer.php';
                 if (function_exists('smtp_send')) {
+                    // Same coastal shell as every other email the site sends,
+                    // with the code big enough to read off a phone screen.
+                    $codeHtml = email_shell(
+                        'Your one-time sign-in code',
+                        email_h('Your sign-in code') .
+                            email_p('Use this code to finish signing in to your back office on a new device. It expires in 10 minutes.') .
+                            '<div style="text-align:center;padding:20px 0 8px;"><span style="font-family:' .
+                            email_sans() .
+                            ';font-size:34px;letter-spacing:9px;font-weight:700;color:#2A2622;">' .
+                            email_esc($code) .
+                            '</span></div>' .
+                            email_p('If you didn&rsquo;t just try to sign in, ignore this email and consider changing your password.', true),
+                    );
                     smtp_send(
                         OWNER_NOTIFY_EMAIL,
                         'Owner',
                         'Your sign-in code — Cottage Holidays Blakeney',
                         "Your one-time sign-in code is: {$code}\n\nIt expires in 10 minutes. If you didn't just try to sign in to your back office, ignore this email and consider changing your password.",
+                        $codeHtml,
                     );
                 }
             } catch (\Throwable $e) {
