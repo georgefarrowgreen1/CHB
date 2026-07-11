@@ -51,10 +51,10 @@ function render_invoice_html($d)
         '<title>Invoice ' . $e($d['ref'] ?? '') . ' — Cottage Holidays Blakeney</title>' .
         '<style>' .
         '*{box-sizing:border-box}' .
-        'body{margin:0;background:#f4efe4;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#2b2b2b;padding:24px 16px;}' .
+        'body{margin:0;background:#f5f1e9;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#1b2a34;padding:24px 16px;}' .
         '.sheet{max-width:640px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,0.08);}' .
         '.top{padding:28px 32px;border-top:5px solid ' . $accent . ';}' .
-        '.brand{font-size:22px;font-weight:800;letter-spacing:-0.01em;}' .
+        '.brand{font-family:Georgia,\'Times New Roman\',serif;font-size:24px;font-weight:700;letter-spacing:-0.01em;color:#1b2a34;}' .
         '.sub{color:#8a8378;font-size:13px;margin-top:2px;}' .
         '.tag{float:right;color:#8a8378;font-size:12px;letter-spacing:2px;font-weight:700;padding-top:6px;}' .
         '.body{padding:8px 32px 32px;}' .

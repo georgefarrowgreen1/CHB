@@ -3885,33 +3885,65 @@ async function downloadInvoice(bookingId) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'pt', format: 'a4' });
     const W = doc.internal.pageSize.getWidth();
-    const left = 50,
-        right = W - 50;
-    let y = 60;
+    const H = doc.internal.pageSize.getHeight();
+    // The site's coastal palette, so the PDF reads as the same brand: linen
+    // page, white sheet, the cottage's accent as the top band, ink text.
+    const hexRgb = (h) => {
+        const m = /^#?([0-9a-f]{6})$/i.exec(String(h || ''));
+        const n = parseInt(m ? m[1] : 'c79a64', 16);
+        return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    };
+    const INK = [27, 42, 52];
+    const MUTED = [82, 100, 110];
+    const HAIR = [230, 221, 202];
+    const OK = [76, 175, 80];
+    const ACCENT = hexRgb((meta && meta.accent) || '#C79A64');
+    // Linen page + white sheet + accent band
+    doc.setFillColor(245, 241, 233);
+    doc.rect(0, 0, W, H, 'F');
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(28, 28, W - 56, H - 56, 10, 10, 'F');
+    doc.setFillColor(ACCENT[0], ACCENT[1], ACCENT[2]);
+    doc.rect(28, 28, W - 56, 5, 'F');
+    const left = 64,
+        right = W - 64;
+    let y = 84;
     const line = (yy) => {
-        doc.setDrawColor(210);
+        doc.setDrawColor(HAIR[0], HAIR[1], HAIR[2]);
         doc.line(left, yy, right, yy);
     };
     const rowLR = (l, rr, yy, bold) => {
         doc.setFont('helvetica', bold ? 'bold' : 'normal');
+        doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
+        if (bold) doc.setTextColor(INK[0], INK[1], INK[2]);
         doc.text(String(l), left, yy);
+        doc.setTextColor(INK[0], INK[1], INK[2]);
         doc.text(String(rr), right, yy, { align: 'right' });
+    };
+    // Section titles echo the site's serif headings.
+    const sectionTitle = (t, yy) => {
+        doc.setFont('times', 'bold');
+        doc.setFontSize(14);
+        doc.setTextColor(INK[0], INK[1], INK[2]);
+        doc.text(t, left, yy);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
     };
 
     // Header
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(22);
+    doc.setFont('times', 'bold');
+    doc.setFontSize(23);
+    doc.setTextColor(INK[0], INK[1], INK[2]);
     doc.text('Cottage Holidays Blakeney', left, y);
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(11);
-    doc.setTextColor(120);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
     doc.text('INVOICE', right, y, { align: 'right' });
-    doc.setTextColor(0);
     y += 16;
+    doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
-    doc.setTextColor(120);
     doc.text('North Norfolk Coastal Retreats', left, y);
-    doc.setTextColor(0);
+    doc.setTextColor(INK[0], INK[1], INK[2]);
     y += 24;
     line(y);
     y += 28;
@@ -3920,7 +3952,7 @@ async function downloadInvoice(bookingId) {
     doc.setFontSize(10);
     rowLR('Invoice reference', bookingRef(b.id), y);
     y += 18;
-    rowLR('Issued', todayDashed(), y);
+    rowLR('Issued', fmtDate(todayDashed()), y);
     y += 18;
     rowLR('Guest', b.name || '', y);
     y += 18;
@@ -3933,16 +3965,15 @@ async function downloadInvoice(bookingId) {
     y += 28;
 
     // Stay details
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.text('Your Stay', left, y);
+    sectionTitle('Your stay', y);
     y += 20;
-    doc.setFontSize(10);
     rowLR('Property', meta.name, y);
     y += 18;
     // Address can wrap
     doc.setFont('helvetica', 'normal');
+    doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
     doc.text('Address', left, y);
+    doc.setTextColor(INK[0], INK[1], INK[2]);
     const addrLines = doc.splitTextToSize(address || 'Address provided on confirmation.', 300);
     doc.text(addrLines, right, y, { align: 'right' });
     y += addrLines.length * 14 + 6;
@@ -3959,11 +3990,8 @@ async function downloadInvoice(bookingId) {
     y += 28;
 
     // Charges
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.text('Charges', left, y);
+    sectionTitle('Charges', y);
     y += 20;
-    doc.setFontSize(10);
     rowLR(`${gbp(p.perNight)} x ${p.nights} night${p.nights === 1 ? '' : 's'}`, gbp(p.nightly), y);
     y += 18;
     rowLR(`Transaction fee (${p.transactionPct}%)`, gbp(p.txFee), y);
@@ -3982,39 +4010,31 @@ async function downloadInvoice(bookingId) {
     // total, since it's never rental income), showing the amount and its live
     // status: paid with the booking and, after checkout, refunded.
     if (depAmt > 0) {
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(12);
-        doc.text('Refundable damages deposit', left, y);
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(10);
+        sectionTitle('Refundable damages deposit', y);
         doc.text(gbp(depAmt), right, y, { align: 'right' });
         y += 18;
-        doc.setTextColor(90);
+        doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
         const stLines = doc.splitTextToSize(depStatus, right - left);
         doc.text(stLines, left, y);
-        doc.setTextColor(0);
+        doc.setTextColor(INK[0], INK[1], INK[2]);
         y += stLines.length * 13 + 8;
         line(y);
         y += 24;
     }
 
     // Payments
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.text('Payments', left, y);
+    sectionTitle('Payments', y);
     y += 20;
-    doc.setFontSize(10);
     if (gt.paid > 0) {
         const how = b.paymentMethod ? ` via ${b.paymentMethod}` : '';
         const when = b.paymentDate ? ` on ${fmtDate(b.paymentDate)}` : '';
         rowLR(`Amount paid${how}${when}`, '- ' + gbp(gt.paid), y);
         y += 18;
-        rowLR(
-            gt.fullyPaid ? 'Paid in full' : 'Balance due',
-            gbp(gt.fullyPaid ? gt.total : gt.balance),
-            y,
-            true,
-        );
+        if (gt.fullyPaid) doc.setTextColor(OK[0], OK[1], OK[2]);
+        doc.setFont('helvetica', 'bold');
+        doc.text(gt.fullyPaid ? 'Paid in full' : 'Balance due', left, y);
+        doc.text(gbp(gt.fullyPaid ? gt.total : gt.balance), right, y, { align: 'right' });
+        doc.setTextColor(INK[0], INK[1], INK[2]);
         y += 18;
     } else {
         rowLR('Amount paid', gbp(0), y);
@@ -4029,7 +4049,7 @@ async function downloadInvoice(bookingId) {
     y += 20;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
-    doc.setTextColor(120);
+    doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
     doc.text(
         'Thank you for booking with Cottage Holidays Blakeney. We look forward to welcoming you.',
         left,
@@ -11829,7 +11849,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'mrgup0ky';
+    const BUILD = 'mrgv5q4v';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
