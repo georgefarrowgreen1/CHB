@@ -7419,7 +7419,7 @@ function changeMonth(dir) {
 function timelineToday() {
     const host = document.getElementById('cal-body');
     if (!host) return;
-    host.scrollTo({ left: Math.max(0, (-TL_START_OFFSET - 2) * tlDayW()), behavior: 'smooth' });
+    host.scrollTo({ left: Math.max(0, (-tlStartOffset() - 2) * tlDayW()), behavior: 'smooth' });
 }
 // Free timeline day tapped → start an Add Booking on that cottage + date.
 function tlAddAt(propKey, iso) {
@@ -7444,7 +7444,7 @@ function tlSyncMonthLabel() {
     if (!host || !label) return;
     const idx = Math.max(0, Math.round(host.scrollLeft / tlDayW()));
     const start = dpParse(todayDashed());
-    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + TL_START_OFFSET + idx + 3);
+    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + tlStartOffset() + idx + 3);
     label.innerText = d.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
 }
 
@@ -7534,8 +7534,13 @@ function cottageMonthOccupancy() {
 // Bookings render as bars (traffic-light left edge; tap → the booking hub);
 // imported Airbnb/Vrbo blocks are greyed and display-only (the auto-sync owns
 // them); free future days are tappable to start an Add Booking there.
-const TL_START_OFFSET = -7; // window starts a week back…
-const TL_DAYS = 187; // …and runs ~6 months forward
+// The window always STARTS on the 1st of the current month (the offset is
+// how many days back from today that is), so the left edge of the timeline
+// is the month start — never a part-month.
+function tlStartOffset() {
+    return 1 - dpParse(todayDashed()).getDate();
+}
+const TL_DAYS = 187; // the window runs ~6 months forward from the 1st
 // Px per day comes from the --tl-day-w custom property on .tl-wrap (narrower on
 // phones), so the lanes' grid columns and this scroll maths always agree.
 function tlDayW() {
@@ -7551,9 +7556,10 @@ function renderCalendar() {
     const keepScroll = __tlScrolled ? host.scrollLeft : null;
     const todayIso = todayDashed();
     const t0 = dpParse(todayIso);
+    const off = tlStartOffset();
     const dates = [];
     for (let i = 0; i < TL_DAYS; i++)
-        dates.push(formatDashed(new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + TL_START_OFFSET + i)));
+        dates.push(formatDashed(new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + off + i)));
     const M = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const dows = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
     const idxOf = (ds) => Math.round((dpParse(ds) - dpParse(dates[0])) / 864e5);
@@ -7561,7 +7567,7 @@ function renderCalendar() {
     // Header lane: day cells (dow letter + number; month name on the 1st).
     let head = '';
     for (let i = 0; i < TL_DAYS; i++) {
-        const d = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + TL_START_OFFSET + i);
+        const d = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + off + i);
         const wknd = d.getDay() === 0 || d.getDay() === 6;
         const monthTag =
             d.getDate() === 1 || i === 0 ? `<b>${M[d.getMonth()]}${d.getMonth() === 0 || i === 0 ? ' ' + d.getFullYear() : ''}</b>` : '';
@@ -7576,7 +7582,7 @@ function renderCalendar() {
             const meta = propertyMeta[k] || { name: k, short: k };
             let cells = '';
             for (let i = 0; i < TL_DAYS; i++) {
-                const d = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + TL_START_OFFSET + i);
+                const d = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + off + i);
                 const wknd = d.getDay() === 0 || d.getDay() === 6;
                 const past = dates[i] < todayIso;
                 cells += `<span class="tl-cell${wknd ? ' is-wknd' : ''}${dates[i] === todayIso ? ' is-today' : ''}" style="grid-column:${i + 1}"${past ? '' : ` onclick="tlAddAt('${k}','${dates[i]}')" title="Add a booking at ${escapeHtml(meta.name)} from ${fmtDate(dates[i])}"`}></span>`;
@@ -7631,7 +7637,9 @@ function renderCalendar() {
     }
     if (keepScroll !== null) host.scrollLeft = keepScroll;
     else {
-        host.scrollLeft = Math.max(0, (-TL_START_OFFSET - 2) * tlDayW());
+        // Open at the start of the month (the requested anchor); the Today
+        // button snaps to today when the owner wants to jump forward.
+        host.scrollLeft = 0;
         __tlScrolled = true;
     }
     tlSyncMonthLabel();
