@@ -988,7 +988,7 @@ function renderBookingHub() {
         <div class="price-box" style="margin-bottom:0;">
             <div class="price-row total" style="color:#4CAF50;"><span>Paid in full${gt.dep > 0 ? `<span style="color:var(--text-muted);font-weight:400;"> · incl. ${gbp(gt.dep)} damages deposit</span>` : ''}</span><span class="price-amount" style="color:#4CAF50;">${gbp(gt.total)} ✓</span></div>
         </div>
-        <button type="button" class="bhub-disclose" onclick="bhubMoneyExpand()">Show the full breakdown ▾</button>`
+        <button type="button" class="btn-sm btn-edit bhub-disclose-btn" onclick="bhubMoneyExpand()">Show the full breakdown</button>`
         : `${fullBox}${agreedNote}`;
     const depositLine =
         dh.collected > 0
