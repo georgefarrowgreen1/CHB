@@ -96,6 +96,13 @@ async function waitForServer(url, tries = 40) {
         }
         return json({ threads: [{ thread_id: 1, name: 'Sarah', unread: 1, last_body: 'Hi' }] });
       }
+      if (url.includes('availability.php')) {
+        // 21a: booked tonight + tomorrow (next gap from d+2), plus a later
+        // block. jollyboat: completely free. Drives scenario 9's truth checks.
+        const blocked = [{ start: d(0), end: d(2) }, { start: d(4), end: d(8) }];
+        if (url.includes('all=1')) return json({ props: { '21a': blocked, jollyboat: [], pimpernel: [] } });
+        return json({ ranges: url.includes('prop=21a') ? blocked : [] });
+      }
       if (url.includes('content.php') && post.includes('get_all')) return json({ content: {} });
       if (url.includes('content.php')) return json({ content: {} });
       if (url.includes('accounts.php')) return json({ years: [] });
@@ -316,6 +323,36 @@ async function waitForServer(url, tries = 40) {
     themeAfter !== themeBefore ? pass('theme toggle flips the palette') : fail('theme toggle did not change the palette');
     await page.evaluate(() => toggleTheme());
     (await page.evaluate(() => document.body.classList.contains('light-mode'))) === themeBefore ? pass('theme toggle returns to the original palette') : fail('theme toggle did not return to the original palette');
+
+    console.log('== 9. Availability tells the truth (chip ↔ calendar) ==');
+    // 21a is booked tonight; jollyboat is free tonight. The card chips and the
+    // cottage-page calendar must agree — "Available now" ONLY when tonight is
+    // genuinely free (regression: the chip once claimed "now" for a gap 2 days
+    // out while the calendar showed today struck through).
+    await page.evaluate(() => { nav('view-main'); return loadPublicAvailability(); });
+    await page.waitForTimeout(700);
+    const chips = await page.evaluate(() => ({
+      blocked: ((document.getElementById('home-card-avail-21a') || {}).textContent || '') + ((document.getElementById('card-avail-21a') || {}).textContent || ''),
+      free: ((document.getElementById('home-card-avail-jollyboat') || {}).textContent || '') + ((document.getElementById('card-avail-jollyboat') || {}).textContent || ''),
+    }));
+    (/Available from/.test(chips.blocked) && !/Available now/.test(chips.blocked))
+      ? pass('cottage booked tonight says "Available from …", never "Available now"')
+      : fail('booked-tonight cottage chip wrong: "' + chips.blocked + '"');
+    /Available now/.test(chips.free)
+      ? pass('cottage genuinely free tonight says "Available now"')
+      : fail('free cottage chip wrong: "' + chips.free + '"');
+    const todayCell = await page.evaluate(async () => {
+      nav('view-21a');
+      await loadAvailability('21a');
+      renderAvailCal();
+      const dayN = String(new Date().getDate());
+      const cell = [...document.querySelectorAll('#avail-cal-grid .avail-cell')]
+        .find((c) => ((c.querySelector('.ac-day') || {}).textContent || '') === dayN && !c.classList.contains('past'));
+      return cell ? cell.className : 'missing';
+    });
+    /taken/.test(todayCell)
+      ? pass('the cottage-page calendar strikes tonight through (agrees with the chip)')
+      : fail('calendar disagrees with the chip — today cell: ' + todayCell);
 
     await browser.close();
   } catch (e) {
