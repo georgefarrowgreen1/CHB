@@ -264,6 +264,8 @@ function inboxSub(which) {
     adminHistPush('view-inbox', null, { inboxSub: which });
     const main = document.getElementById('inbox-main');
     if (main) main.style.display = 'none';
+    const head = document.getElementById('inbox-head');
+    if (head) head.style.display = 'none';
     const pane = document.getElementById('inbox-detail-pane');
     if (pane) pane.style.display = 'none';
     Object.entries(INBOX_SUBS).forEach(([key, id]) => {
@@ -286,6 +288,8 @@ function inboxSubClose() {
     if (pane) pane.style.display = '';
     const main = document.getElementById('inbox-main');
     if (main) main.style.display = '';
+    const head = document.getElementById('inbox-head');
+    if (head) head.style.display = '';
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 // ---- Inbox folders: the Inbox is ONE comms dashboard — website enquiries,
@@ -7468,11 +7472,27 @@ function saveRules(propKey) {
     saveContent('rules-' + propKey, rules);
 }
 
-// Timeline navigation: ‹ › scroll roughly a month; Today snaps back.
+// Timeline navigation: ‹ › snap to the FIRST day of the previous/next month
+// (relative to the month under the left edge); Today snaps back to now.
 function changeMonth(dir) {
     const host = document.getElementById('cal-body');
     if (!host) return;
-    host.scrollBy({ left: dir * 30 * tlDayW(), behavior: 'smooth' });
+    const t0 = dpParse(todayDashed());
+    const start = new Date(t0.getFullYear(), t0.getMonth(), 1); // window day 0
+    // Month currently under the left edge (same anchor as the header label).
+    const idx = Math.max(0, Math.round(host.scrollLeft / tlDayW()));
+    const at = new Date(start.getFullYear(), start.getMonth(), 1 + idx + 3);
+    const target = new Date(at.getFullYear(), at.getMonth() + dir, 1);
+    let targetIdx = Math.round((target - start) / 864e5);
+    if (targetIdx < 0) targetIdx = 0;
+    // Ensure the window reaches the target month before scrolling to it.
+    let grew = false;
+    while (targetIdx > __tlDays - 31) {
+        __tlDays += 92;
+        grew = true;
+    }
+    if (grew) renderCalendar();
+    host.scrollTo({ left: targetIdx * tlDayW(), behavior: 'smooth' });
 }
 function timelineToday() {
     const host = document.getElementById('cal-body');
@@ -7717,9 +7737,9 @@ function renderCalendar() {
     }
     if (keepScroll !== null) host.scrollLeft = keepScroll;
     else {
-        // Open at the start of the month (the requested anchor); the Today
-        // button snaps to today when the owner wants to jump forward.
-        host.scrollLeft = 0;
+        // Page load shows from TODAY (2-day lead-in, same as the Today button);
+        // the ‹ › switcher then snaps month-first to the 1st.
+        host.scrollLeft = Math.max(0, (-tlStartOffset() - 2) * tlDayW());
         __tlScrolled = true;
     }
     tlSyncMonthLabel();

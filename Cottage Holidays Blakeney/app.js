@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 76;
+const ADMIN_BUNDLE_V = 77;
 let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
@@ -1805,6 +1805,10 @@ let __accountsSection = null;
 // ON DEMAND the first time the owner exports a PDF, rather than on every page
 // load, so guests never pay for it. Promise-cached so it loads at most once.
 let __jspdfPromise = null;
+// The crown mark (logo.svg rasterised at 2x, transparent) for the PDF
+// invoice letterhead — jsPDF can't draw the SVG's gradients directly.
+const CHB_CROWN_PNG =
+    'data:image/png;base64,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';
 function ensureJsPdf() {
     if (window.jspdf && window.jspdf.jsPDF) return Promise.resolve();
     if (__jspdfPromise) return __jspdfPromise;
@@ -3885,34 +3889,74 @@ async function downloadInvoice(bookingId) {
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'pt', format: 'a4' });
     const W = doc.internal.pageSize.getWidth();
-    const left = 50,
-        right = W - 50;
-    let y = 60;
+    const H = doc.internal.pageSize.getHeight();
+    // The site's coastal palette, so the PDF reads as the same brand: linen
+    // page, white sheet, the cottage's accent as the top band, ink text.
+    const hexRgb = (h) => {
+        const m = /^#?([0-9a-f]{6})$/i.exec(String(h || ''));
+        const n = parseInt(m ? m[1] : 'c79a64', 16);
+        return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+    };
+    const INK = [27, 42, 52];
+    const MUTED = [82, 100, 110];
+    const HAIR = [230, 221, 202];
+    const OK = [76, 175, 80];
+    const ACCENT = hexRgb((meta && meta.accent) || '#C79A64');
+    // Linen page + white sheet + accent band
+    doc.setFillColor(245, 241, 233);
+    doc.rect(0, 0, W, H, 'F');
+    doc.setFillColor(255, 255, 255);
+    doc.roundedRect(28, 28, W - 56, H - 56, 10, 10, 'F');
+    doc.setFillColor(ACCENT[0], ACCENT[1], ACCENT[2]);
+    doc.rect(28, 28, W - 56, 5, 'F');
+    const left = 64,
+        right = W - 64;
+    let y = 84;
     const line = (yy) => {
-        doc.setDrawColor(210);
+        doc.setDrawColor(HAIR[0], HAIR[1], HAIR[2]);
         doc.line(left, yy, right, yy);
     };
     const rowLR = (l, rr, yy, bold) => {
         doc.setFont('helvetica', bold ? 'bold' : 'normal');
+        doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
+        if (bold) doc.setTextColor(INK[0], INK[1], INK[2]);
         doc.text(String(l), left, yy);
+        doc.setTextColor(INK[0], INK[1], INK[2]);
         doc.text(String(rr), right, yy, { align: 'right' });
     };
+    // Section titles echo the site's serif headings.
+    const sectionTitle = (t, yy) => {
+        doc.setFont('times', 'bold');
+        doc.setFontSize(14);
+        doc.setTextColor(INK[0], INK[1], INK[2]);
+        doc.text(t, left, yy);
+        doc.setFont('helvetica', 'normal');
+        doc.setFontSize(10);
+    };
 
-    // Header
-    doc.setFont('helvetica', 'bold');
+    // Letterhead: the crown mark centred over the serif brand — the same
+    // anatomy as the site's sign-in brand panel.
+    const cx = W / 2;
+    try {
+        doc.addImage(CHB_CROWN_PNG, 'PNG', cx - 27, y - 22, 54, 32);
+    } catch (e) {}
+    y += 28;
+    doc.setFont('times', 'bold');
     doc.setFontSize(22);
-    doc.text('Cottage Holidays Blakeney', left, y);
+    doc.setTextColor(INK[0], INK[1], INK[2]);
+    doc.text('Cottage Holidays Blakeney', cx, y, { align: 'center' });
+    y += 15;
     doc.setFont('helvetica', 'normal');
-    doc.setFontSize(11);
-    doc.setTextColor(120);
-    doc.text('INVOICE', right, y, { align: 'right' });
-    doc.setTextColor(0);
-    y += 16;
     doc.setFontSize(9);
-    doc.setTextColor(120);
-    doc.text('North Norfolk Coastal Retreats', left, y);
-    doc.setTextColor(0);
-    y += 24;
+    doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
+    doc.text('North Norfolk Coastal Retreats', cx, y, { align: 'center' });
+    y += 15;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(ACCENT[0], ACCENT[1], ACCENT[2]);
+    doc.text('I N V O I C E', cx, y, { align: 'center' });
+    doc.setTextColor(INK[0], INK[1], INK[2]);
+    y += 20;
     line(y);
     y += 28;
 
@@ -3920,7 +3964,7 @@ async function downloadInvoice(bookingId) {
     doc.setFontSize(10);
     rowLR('Invoice reference', bookingRef(b.id), y);
     y += 18;
-    rowLR('Issued', todayDashed(), y);
+    rowLR('Issued', fmtDate(todayDashed()), y);
     y += 18;
     rowLR('Guest', b.name || '', y);
     y += 18;
@@ -3933,16 +3977,15 @@ async function downloadInvoice(bookingId) {
     y += 28;
 
     // Stay details
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.text('Your Stay', left, y);
+    sectionTitle('Your stay', y);
     y += 20;
-    doc.setFontSize(10);
     rowLR('Property', meta.name, y);
     y += 18;
     // Address can wrap
     doc.setFont('helvetica', 'normal');
+    doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
     doc.text('Address', left, y);
+    doc.setTextColor(INK[0], INK[1], INK[2]);
     const addrLines = doc.splitTextToSize(address || 'Address provided on confirmation.', 300);
     doc.text(addrLines, right, y, { align: 'right' });
     y += addrLines.length * 14 + 6;
@@ -3959,11 +4002,8 @@ async function downloadInvoice(bookingId) {
     y += 28;
 
     // Charges
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.text('Charges', left, y);
+    sectionTitle('Charges', y);
     y += 20;
-    doc.setFontSize(10);
     rowLR(`${gbp(p.perNight)} x ${p.nights} night${p.nights === 1 ? '' : 's'}`, gbp(p.nightly), y);
     y += 18;
     rowLR(`Transaction fee (${p.transactionPct}%)`, gbp(p.txFee), y);
@@ -3982,39 +4022,31 @@ async function downloadInvoice(bookingId) {
     // total, since it's never rental income), showing the amount and its live
     // status: paid with the booking and, after checkout, refunded.
     if (depAmt > 0) {
-        doc.setFont('helvetica', 'bold');
-        doc.setFontSize(12);
-        doc.text('Refundable damages deposit', left, y);
-        doc.setFont('helvetica', 'normal');
-        doc.setFontSize(10);
+        sectionTitle('Refundable damages deposit', y);
         doc.text(gbp(depAmt), right, y, { align: 'right' });
         y += 18;
-        doc.setTextColor(90);
+        doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
         const stLines = doc.splitTextToSize(depStatus, right - left);
         doc.text(stLines, left, y);
-        doc.setTextColor(0);
+        doc.setTextColor(INK[0], INK[1], INK[2]);
         y += stLines.length * 13 + 8;
         line(y);
         y += 24;
     }
 
     // Payments
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(12);
-    doc.text('Payments', left, y);
+    sectionTitle('Payments', y);
     y += 20;
-    doc.setFontSize(10);
     if (gt.paid > 0) {
         const how = b.paymentMethod ? ` via ${b.paymentMethod}` : '';
         const when = b.paymentDate ? ` on ${fmtDate(b.paymentDate)}` : '';
         rowLR(`Amount paid${how}${when}`, '- ' + gbp(gt.paid), y);
         y += 18;
-        rowLR(
-            gt.fullyPaid ? 'Paid in full' : 'Balance due',
-            gbp(gt.fullyPaid ? gt.total : gt.balance),
-            y,
-            true,
-        );
+        if (gt.fullyPaid) doc.setTextColor(OK[0], OK[1], OK[2]);
+        doc.setFont('helvetica', 'bold');
+        doc.text(gt.fullyPaid ? 'Paid in full' : 'Balance due', left, y);
+        doc.text(gbp(gt.fullyPaid ? gt.total : gt.balance), right, y, { align: 'right' });
+        doc.setTextColor(INK[0], INK[1], INK[2]);
         y += 18;
     } else {
         rowLR('Amount paid', gbp(0), y);
@@ -4029,7 +4061,7 @@ async function downloadInvoice(bookingId) {
     y += 20;
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(9);
-    doc.setTextColor(120);
+    doc.setTextColor(MUTED[0], MUTED[1], MUTED[2]);
     doc.text(
         'Thank you for booking with Cottage Holidays Blakeney. We look forward to welcoming you.',
         left,
@@ -11829,7 +11861,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'mrgup0ky';
+    const BUILD = 'mrgv5q4v';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
