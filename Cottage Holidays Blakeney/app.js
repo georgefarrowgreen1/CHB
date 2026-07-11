@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 64;
+const ADMIN_BUNDLE_V = 65;
 let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
@@ -1035,6 +1035,9 @@ function nav(viewId, anchorId = null) {
     }
     document.querySelectorAll('.page-view').forEach((v) => v.classList.remove('active'));
     target.classList.add('active');
+    // Back-office screens end like an app, not a website — the public
+    // marketing footer only shows under customer-facing views.
+    document.body.classList.toggle('admin-screen', ADMIN_VIEWS.includes(viewId));
 
     // On mobile the sign-in and messages screens are shown as full pages
     // (below the dock), so navigating via the dock should leave them like
@@ -11755,7 +11758,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'mrfmc1e8';
+    const BUILD = 'mrfnp5g2';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
