@@ -11138,12 +11138,44 @@ function updateModalPrice() {
     // Deposit is charged with the first payment & refunded after the stay → show it
     // inside the total until it's been refunded (for an edit, use the booking's state).
     let holdSt = 'none';
+    let repriceNote = '';
     if (document.getElementById('modal-mode').value === 'booking') {
         const bk =
             typeof findBookingById === 'function'
                 ? findBookingById(document.getElementById('modal-record-id').value)
                 : null;
         if (bk) holdSt = bk.holdStatus || 'none';
+        // EDITING A CONFIRMED BOOKING: the price was LOCKED when it was booked.
+        // While the stay is unchanged, show the AGREED figures — that is exactly
+        // what saving preserves (bookings.php only re-snapshots when the stay
+        // changes). Changing dates/party/deposit falls through to today's rates,
+        // with an explicit note that saving replaces the agreed total.
+        if (bk && bk.agreedPrice) {
+            const a = bk.agreedPrice;
+            const loc = typeof findBookingLocation === 'function' ? findBookingLocation(bk.id) : null;
+            const curDep = bk.damagesDeposit != null ? bk.damagesDeposit : a.damagesDeposit || 0;
+            const stayChanged =
+                (loc && loc.propKey && propKey !== loc.propKey) ||
+                checkIn !== bk.checkIn ||
+                checkOut !== bk.checkOut ||
+                adults !== bk.adults ||
+                children !== bk.children ||
+                (depOverride !== null && parseFloat(depOverride) !== curDep);
+            const agreedGrand = displayGrandTotal(a.total, a, holdSt);
+            if (!stayChanged && override === null) {
+                const aDep = displayDepositAmt(a, holdSt);
+                box.innerHTML = `
+                <div class="price-row"><span>${gbp(a.perNight)} × ${a.nights} night${a.nights === 1 ? '' : 's'}</span><span>${gbp(a.nightly)}</span></div>
+                <div class="price-row"><span>Transaction fee (${a.transactionPct || 0}%)</span><span>${gbp(a.txFee || 0)}</span></div>
+                ${aDep > 0 ? `<div class="price-row"><span>Refundable damages deposit</span><span>${gbp(aDep)}</span></div>` : ''}
+                <div class="price-row total"><span>Agreed total${aDep > 0 ? ' (incl. deposit)' : ''}</span><span class="price-amount">${gbp(agreedGrand)}</span></div>
+                <p style="font-size:0.75rem;color:var(--text-muted);margin:8px 0 0;">Agreed price — locked at the rates in effect when booked. Changing the dates or party reprices at today's rates.</p>`;
+                return;
+            }
+            if (stayChanged) {
+                repriceNote = `<p style="font-size:0.75rem;color:var(--warn);margin:8px 0 0;">New price at today's rates — saving replaces the agreed ${gbp(agreedGrand)}.</p>`;
+            }
+        }
     }
     const depAmt = displayDepositAmt(p, holdSt);
     let rows = `
@@ -11157,7 +11189,7 @@ function updateModalPrice() {
     } else {
         rows += `<div class="price-row total"><span>Total${depAmt > 0 ? ' (incl. deposit)' : ''}</span><span class="price-amount">${gbp(displayGrandTotal(p.total, p, holdSt))}</span></div>`;
     }
-    box.innerHTML = rows;
+    box.innerHTML = rows + repriceNote;
 }
 
 function openEditBooking(bookingId) {
@@ -11765,7 +11797,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'mrfxr3s6';
+    const BUILD = 'mrfyt6w1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
