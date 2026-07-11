@@ -1065,7 +1065,7 @@ function renderBookingHub() {
             : '';
     const moneyCard = `
         <section class="bhub-card glass-panel">
-            <h3 class="bhub-card-title">Money</h3>
+            <h3 class="bhub-card-title">Payments</h3>
             ${priceBox}
             ${depositLine}
             ${discloseBtn}
@@ -2377,7 +2377,7 @@ function accountsOpen(section) {
     const sec = document.getElementById('asec-' + section);
     if (sec) sec.style.display = '';
     const title = document.getElementById('accounts-panel-title');
-    if (title) title.textContent = ACCOUNTS_TITLES[section] || 'Money';
+    if (title) title.textContent = ACCOUNTS_TITLES[section] || 'Payments';
     // Refresh the section's data so it's current each time it's opened.
     try {
         if (section === 'payments') {
@@ -3278,7 +3278,7 @@ function renderMoneyOverview() {
             : '';
 
     el.innerHTML = `
-                <h2 style="font-family:var(--font-serif);font-size:1.3rem;font-weight:400;margin:0 0 12px;">Your money at a glance</h2>
+                <h2 style="font-family:var(--font-serif);font-size:1.3rem;font-weight:400;margin:0 0 12px;">Your payments at a glance</h2>
                 <div class="mo-kpis">
                     <div class="mo-kpi mo-kpi-lead"><div class="mo-label">Outstanding</div><div class="mo-value ${owedUpcoming > 0 ? 'mo-warn' : 'mo-good'}">${gbp(owedUpcoming)}</div><div class="mo-sub">${owedCount} unpaid · upcoming</div>${chaseCta}</div>
                     <div class="mo-kpi"><div class="mo-label">Received · ${taxYearShort(curTY)}</div><div class="mo-value mo-good">${gbp(receivedTY)}</div><div class="mo-sub">this tax year</div></div>

@@ -178,7 +178,7 @@ const ok = (cond, label) => {
   const em2 = await page.evaluate(() => ({
     inEmails: !!document.querySelector('#booking-hub-content .bhub-card:nth-of-type(2) [onclick^="offerUpdatedConfirmationEmail"]') ||
       Array.from(document.querySelectorAll('.bhub-card')).some((c) => /Emails/.test((c.querySelector('.bhub-card-title') || {}).textContent || '') && c.querySelector('[onclick^="offerUpdatedConfirmationEmail"]')),
-    inMoney: Array.from(document.querySelectorAll('.bhub-card')).some((c) => /Money/.test((c.querySelector('.bhub-card-title') || {}).textContent || '') && c.querySelector('[onclick^="offerUpdatedConfirmationEmail"]')),
+    inMoney: Array.from(document.querySelectorAll('.bhub-card')).some((c) => /Payments/.test((c.querySelector('.bhub-card-title') || {}).textContent || '') && c.querySelector('[onclick^="offerUpdatedConfirmationEmail"]')),
   }));
   ok(em2.inEmails && !em2.inMoney, 'updated-confirmation button lives in the Emails card (not Money)');
 
