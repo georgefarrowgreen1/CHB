@@ -986,7 +986,7 @@ function renderBookingHub() {
     const priceBox = gt.fullyPaid
         ? `
         <div class="price-box" style="margin-bottom:0;">
-            <div class="price-row total" style="color:#4CAF50;"><span>Paid in full${gt.dep > 0 ? `<span style="color:var(--text-muted);font-weight:400;"> · incl. ${gbp(gt.dep)} damages deposit</span>` : ''}</span><span class="price-amount" style="color:#4CAF50;">${gbp(gt.total)} ✓</span></div>
+            <div class="price-row total" style="color:#4CAF50;border-top:0;padding-top:0;margin-top:0;"><span>Paid in full${gt.dep > 0 ? `<span style="color:var(--text-muted);font-weight:400;"> · incl. ${gbp(gt.dep)} damages deposit</span>` : ''}</span><span class="price-amount" style="color:#4CAF50;">${gbp(gt.total)} ✓</span></div>
         </div>`
         : `${fullBox}${agreedNote}`;
     // The breakdown opener sits AFTER the deposit status line in the card.
@@ -4537,30 +4537,40 @@ async function initBackOffice() {
 }
 // Owner block: hold dates for maintenance / personal use (no fake booking).
 async function openBlockDates() {
-    const names = Object.keys(propertyMeta)
-        .map((k) => `${k} = ${propertyMeta[k].name}`)
-        .join(', ');
-    const prop = await glassPrompt(`Which cottage to block? Enter its key (${names}):`, '21a');
-    if (prop === null) return;
-    const key = (prop || '').trim();
+    // ONE dialog: pick the cottage from a dropdown (no typed keys) and the
+    // dates from native pickers.
+    const vals = await glassForm('Block out dates', [
+        {
+            id: 'prop',
+            label: 'Cottage',
+            type: 'select',
+            options: Object.keys(propertyMeta).map((k) => ({ value: k, label: propertyMeta[k].name })),
+        },
+        { id: 'from', label: 'First blocked night', type: 'date', value: todayDashed() },
+        { id: 'to', label: 'Free again from (checkout morning)', type: 'date' },
+    ]);
+    if (vals === null) return;
+    const key = (vals.prop || '').trim();
+    const from = (vals.from || '').trim();
+    const to = (vals.to || '').trim();
     if (!propertyMeta[key]) {
-        glassAlert('Unknown cottage key. Use one of: ' + Object.keys(propertyMeta).join(', '));
+        glassAlert('Please pick a cottage.');
         return;
     }
-    const from = await glassPrompt('Block FROM date (YYYY-MM-DD):', todayDashed());
-    if (from === null) return;
-    const to = await glassPrompt('Block TO date (YYYY-MM-DD, the morning it frees up):', '');
-    if (to === null) return;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(from.trim()) || !/^\d{4}-\d{2}-\d{2}$/.test(to.trim())) {
-        glassAlert('Please enter valid dates (YYYY-MM-DD).');
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(from) || !/^\d{4}-\d{2}-\d{2}$/.test(to)) {
+        glassAlert('Please pick both dates.');
+        return;
+    }
+    if (to <= from) {
+        glassAlert('The "free again" date must be after the first blocked night.');
         return;
     }
     try {
         await apiPost('ical-import.php', {
             action: 'add_block',
             prop: key,
-            check_in: from.trim(),
-            check_out: to.trim(),
+            check_in: from,
+            check_out: to,
         });
         toast('Dates blocked.');
         await initBackOffice();
@@ -8749,8 +8759,11 @@ function renderMailboxList(keepSearchFocus) {
             .filter((m) => match(m.fromRaw) || match(m.from) || match(m.subject))
             .map((m) => {
                 const unread = !m.seen;
+                // Each row carries its own expansion slot: the email opens
+                // INSIDE the tapped card (accordion), not at the page bottom.
                 return `
-        <button type="button" class="bk-row glass-panel${unread ? ' mbx-unread' : ''}" onclick="mailboxOpen('${mbxEsc(m.uid)}')">
+        <div class="mbx-item" data-uid="${mbxEsc(m.uid)}">
+        <button type="button" class="bk-row glass-panel${unread ? ' mbx-unread' : ''}" onclick="mailboxOpen('${mbxEsc(m.uid)}')" aria-expanded="false">
             <span class="bk-row-body">
                 <span class="bk-row-top">
                     ${unread ? '<span class="bk-chip warn"><span class="bk-dot"></span>New</span>' : ''}
@@ -8760,7 +8773,9 @@ function renderMailboxList(keepSearchFocus) {
                 <span class="bk-row-dates">${mbxEsc(m.subject)}</span>
             </span>
             <span class="bk-row-arrow" aria-hidden="true">›</span>
-        </button>`;
+        </button>
+        <div class="mbx-inline"></div>
+        </div>`;
             })
             .join('');
         if (__mbxHasMore && !q) {
@@ -8771,14 +8786,17 @@ function renderMailboxList(keepSearchFocus) {
             .filter((m) => match(m.to_email) || match(m.subject))
             .map(
                 (m) => `
-        <button type="button" class="bk-row glass-panel" onclick="mailboxOpenSent(${m.id})">
+        <div class="mbx-item" data-sent-id="${m.id}">
+        <button type="button" class="bk-row glass-panel" onclick="mailboxOpenSent(${m.id})" aria-expanded="false">
             <span class="bk-row-body">
                 <span class="bk-row-top"><span class="mbx-when">${mbxEsc(mbxWhen(m.sent_at))}</span></span>
                 <strong class="bk-row-name">To: ${mbxEsc(m.to_email)}</strong>
                 <span class="bk-row-dates">${mbxEsc(m.subject)}</span>
             </span>
             <span class="bk-row-arrow" aria-hidden="true">›</span>
-        </button>`,
+        </button>
+        <div class="mbx-inline"></div>
+        </div>`,
             )
             .join('');
     }
@@ -8809,11 +8827,37 @@ function renderMailboxList(keepSearchFocus) {
         }
     }
 }
+// Collapse whichever email is expanded (and reset every row's open state).
+function mailboxCollapse() {
+    document.querySelectorAll('#mailbox-body .mbx-item').forEach((it) => {
+        it.classList.remove('open');
+        const slot = it.querySelector('.mbx-inline');
+        if (slot) slot.innerHTML = '';
+        const btn = it.querySelector('.bk-row');
+        if (btn) btn.setAttribute('aria-expanded', 'false');
+    });
+}
+// The reader expands INSIDE the tapped row (accordion) — tapping the row
+// again, or its Collapse button, folds it back up.
+function mbxSlotFor(attr, value) {
+    const item = [...document.querySelectorAll('#mailbox-body .mbx-item')].find(
+        (x) => x.dataset[attr] === String(value),
+    );
+    if (!item) return null;
+    if (item.classList.contains('open')) {
+        mailboxCollapse();
+        return null; // second tap on the open row = collapse
+    }
+    mailboxCollapse();
+    item.classList.add('open');
+    const btn = item.querySelector('.bk-row');
+    if (btn) btn.setAttribute('aria-expanded', 'true');
+    return item.querySelector('.mbx-inline');
+}
 async function mailboxOpen(uid) {
-    const pane = document.getElementById('mbx-reader');
+    const pane = mbxSlotFor('uid', uid);
     if (!pane) return;
-    pane.innerHTML = '<p style="font-size:0.85rem;color:var(--text-muted);margin-top:18px;">Opening…</p>';
-    pane.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    pane.innerHTML = '<p style="font-size:0.85rem;color:var(--text-muted);margin:10px 4px;">Opening…</p>';
     try {
         const m = await apiPost('mailbox.php', { action: 'read', uid });
         const local = __mbxMessages.find((x) => x.uid === uid);
@@ -8827,8 +8871,7 @@ async function mailboxOpen(uid) {
             )
             .join('');
         pane.innerHTML = `
-        <section class="bhub-card glass-panel" style="margin-top:18px;">
-            <h3 class="bhub-card-title">${mbxEsc(m.subject)}</h3>
+        <section class="bhub-card glass-panel mbx-inline-card">
             <div class="mbx-meta">
                 <div><span class="booking-detail-label">From</span> ${mbxEsc(m.fromRaw || m.from)}</div>
                 <div><span class="booking-detail-label">Date</span> ${mbxEsc(mbxWhen(m.date))}</div>
@@ -8840,6 +8883,7 @@ async function mailboxOpen(uid) {
                 <button class="btn-sm btn-edit" style="color:var(--accent);border-color:rgba(199,154,100,0.45);" onclick="mailboxReply('${mbxEsc(uid)}')">Reply</button>
                 <button class="btn-sm btn-edit" onclick="mailboxMarkUnread('${mbxEsc(uid)}')">Mark unread</button>
                 <button class="btn-sm btn-edit" style="color:var(--danger);border-color:rgba(229,115,115,0.4);" onclick="mailboxDelete('${mbxEsc(uid)}')">Delete</button>
+                <button class="btn-sm btn-edit" onclick="mailboxCollapse()">Collapse ▴</button>
             </div>
             <div id="mbx-compose"></div>
         </section>`;
@@ -8849,19 +8893,20 @@ async function mailboxOpen(uid) {
 }
 function mailboxOpenSent(id) {
     const m = __mbxSent.find((x) => x.id === id);
-    const pane = document.getElementById('mbx-reader');
+    const pane = mbxSlotFor('sentId', id);
     if (!m || !pane) return;
     pane.innerHTML = `
-        <section class="bhub-card glass-panel" style="margin-top:18px;">
-            <h3 class="bhub-card-title">${mbxEsc(m.subject)}</h3>
+        <section class="bhub-card glass-panel mbx-inline-card">
             <div class="mbx-meta">
                 <div><span class="booking-detail-label">To</span> ${mbxEsc(m.to_email)}${m.cc_email ? ' · CC ' + mbxEsc(m.cc_email) : ''}</div>
                 <div><span class="booking-detail-label">Sent</span> ${mbxEsc(mbxWhen(m.sent_at))}</div>
             </div>
             ${mbxContextHtml(m.to_email)}
             <pre class="mbx-text">${mbxEsc(m.body)}</pre>
+            <div class="bhub-btn-row">
+                <button class="btn-sm btn-edit" onclick="mailboxCollapse()">Collapse ▴</button>
+            </div>
         </section>`;
-    pane.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 function mbxGuestDatalist() {
     const guests = mbxKnownGuests();

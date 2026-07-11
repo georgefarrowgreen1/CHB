@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 70;
+const ADMIN_BUNDLE_V = 71;
 let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
@@ -8373,18 +8373,28 @@ function glassDialog(opts) {
             if (fields) {
                 if (isForm) {
                     fields.innerHTML = opts.fields
-                        .map(
-                            (f) =>
-                                `<label class="modal-label" for="gdf-${f.id}">${escapeHtml(f.label || '')}</label>` +
+                        .map((f) => {
+                            const label = `<label class="modal-label" for="gdf-${f.id}">${escapeHtml(f.label || '')}</label>`;
+                            // 'select': a dropdown of {value,label} options — for
+                            // pick-one questions (e.g. which cottage), never typed keys.
+                            if (f.type === 'select') {
+                                const os = (f.options || [])
+                                    .map((o) => `<option value="${escapeHtml(o.value)}">${escapeHtml(o.label)}</option>`)
+                                    .join('');
+                                return label + `<select class="input-glass" id="gdf-${f.id}">${os}</select>`;
+                            }
+                            return (
+                                label +
                                 `<input class="input-glass" id="gdf-${f.id}" type="${f.type || 'text'}"` +
                                 (f.min != null ? ` min="${f.min}"` : '') +
                                 (f.step != null ? ` step="${f.step}"` : '') +
-                                ` placeholder="${escapeHtml(f.placeholder || '')}">`,
-                        )
+                                ` placeholder="${escapeHtml(f.placeholder || '')}">`
+                            );
+                        })
                         .join('');
                     opts.fields.forEach((f) => {
                         const el = document.getElementById('gdf-' + f.id);
-                        if (el) el.value = f.value != null ? String(f.value) : '';
+                        if (el && f.value != null) el.value = String(f.value);
                     });
                 }
                 fields.style.display = isForm ? 'block' : 'none';
@@ -11805,7 +11815,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'mrgqylki';
+    const BUILD = 'mrgrgv7g';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

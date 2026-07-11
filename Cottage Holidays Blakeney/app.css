@@ -3098,6 +3098,16 @@ body.modal-open {
   opacity: 0.6;
   pointer-events: none;
 }
+/* While syncing the arrow itself turns — on phones it's the ONLY indicator
+   (the status text is hidden there so the toolbar never wraps). */
+.cal-refresh-btn.syncing .ic {
+  animation: calSyncSpin 0.9s linear infinite;
+}
+@keyframes calSyncSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
 .legend-swatch {
   width: 16px;
   height: 16px;
@@ -4487,6 +4497,20 @@ body.owner-mode .chat-widget {
 @media (max-width: 480px) {
   #inbox-folders .ic {
     display: none;
+  }
+}
+/* The Bookings list filters stretch edge to edge on phones too — same
+   full-width treatment as the folder switch, segments sharing the width
+   in proportion so "Needs payment" never wraps. */
+@media (max-width: 640px) {
+  #bookings-filters {
+    display: flex;
+    width: 100%;
+  }
+  #bookings-filters .inbox-sort-btn {
+    flex: 1 1 auto;
+    text-align: center;
+    padding: 9px 6px;
   }
 }
 /* Inside a folder the switch already separates the sections — the section
@@ -5886,6 +5910,18 @@ body.admin-screen .site-footer {
 }
 .bk-row.mbx-unread .bk-row-name {
   font-weight: 700;
+}
+/* Accordion: the email opens INSIDE its row — the arrow turns to point down
+   and the reader card slots directly beneath, collapsible from the row or
+   its Collapse button. */
+.mbx-item.open > .bk-row {
+  margin-bottom: 0;
+}
+.mbx-item.open > .bk-row .bk-row-arrow {
+  transform: rotate(90deg);
+}
+.mbx-inline-card {
+  margin: 6px 0 14px;
 }
 .mbx-meta {
   display: flex;
@@ -8213,6 +8249,11 @@ p.lead[data-edit-text] {
   .cal-actions .cal-updated,
   .cal-actions > .cal-refresh-btn:last-child {
     margin-left: auto;
+  }
+  /* No room for prose beside the buttons: hide the sync status text so the
+     refresh stays ON the toolbar line — the spinning icon signals a sync. */
+  .cal-actions #cal-updated-text {
+    display: none;
   }
   .cal-add-btn {
     padding: 10px 16px;
