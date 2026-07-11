@@ -440,7 +440,18 @@ function renderBookings() {
     if (sum) {
         const label =
             { upcoming: 'upcoming', past: 'past', needspay: 'needing payment', all: 'in total' }[f] || '';
-        sum.textContent = rows.length ? `${rows.length} booking${rows.length === 1 ? '' : 's'} ${label}` : '';
+        // The summary carries the money too: what these rows still owe.
+        let owed = 0;
+        rows.forEach(({ propKey, b }) => {
+            if ((b.checkOut || '') >= today) {
+                const ps = paymentSummary(propKey, b);
+                if (!ps.fullyPaid) owed += Math.max(0, ps.balance || 0);
+            }
+        });
+        sum.textContent = rows.length
+            ? `${rows.length} booking${rows.length === 1 ? '' : 's'} ${label}` +
+              (owed > 0.005 ? ` · £${Math.round(owed).toLocaleString('en-GB')} still to collect` : '')
+            : '';
     }
     if (!rows.length) {
         list.innerHTML =
@@ -4224,12 +4235,54 @@ async function releaseHold(bookingId) {
     }
 }
 
+// The header's living second line: the date plus what today actually holds —
+// arrivals, departures, changeovers and money still to collect. Quiet days
+// read "all quiet"; the numbers come from data already loaded for the page.
+function todayOpsLine() {
+    const el = document.getElementById('today-date');
+    if (!el) return;
+    const date = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+    const today = todayDashed();
+    let arrivals = 0,
+        departures = 0,
+        changeovers = 0,
+        owed = 0;
+    Object.keys(dbBookings || {}).forEach((k) => {
+        let inToday = false,
+            outToday = false;
+        (dbBookings[k] || []).forEach((b) => {
+            if (b.checkIn === today) {
+                arrivals++;
+                inToday = true;
+            }
+            if (b.checkOut === today) {
+                departures++;
+                outToday = true;
+            }
+            if ((b.checkOut || '') >= today) {
+                const ps = paymentSummary(k, b);
+                if (!ps.fullyPaid) owed += Math.max(0, ps.balance || 0);
+            }
+        });
+        if (inToday && outToday) changeovers++;
+    });
+    const parts = [];
+    if (arrivals) parts.push(arrivals === 1 ? '1 arrival' : arrivals + ' arrivals');
+    if (departures) parts.push(departures === 1 ? '1 departure' : departures + ' departures');
+    if (changeovers) parts.push(changeovers === 1 ? '1 changeover' : changeovers + ' changeovers');
+    if (owed > 0.005) parts.push('£' + Math.round(owed).toLocaleString('en-GB') + ' to collect');
+    el.textContent = date + (parts.length ? ' · ' + parts.join(' · ') : ' · all quiet today');
+}
 // Unified back office: load data once, render calendar and inbox.
 async function initBackOffice() {
-    // The page header carries the living date ("Friday 10 July").
+    // The page header carries the living date ("Friday 10 July") instantly;
+    // once the data lands, todayOpsLine() enriches it with the day's ops.
     const td = document.getElementById('today-date');
     if (td) td.textContent = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
     await loadData();
+    try {
+        todayOpsLine();
+    } catch (e) {}
     renderCalendar();
     try {
         renderBookings(); // the bookings workspace shares the dashboard now
@@ -7312,8 +7365,10 @@ function renderCalendar() {
                 bars += `<span class="tl-bar tl-ext${sp.clip}" style="grid-column:${sp.col}" title="${escapeHtml(meta.name)} — ${escapeHtml(src)} booking · ${fmtDate(bl.checkIn)} → ${fmtDate(bl.checkOut)}">${escapeHtml(src)}</span>`;
             });
             const priv = meta.unlisted ? lock : '';
+            // The lane label carries the cottage's accent dot, tying it to its bars.
+            const dot = `<span class="tl-label-dot" style="background:${meta.accent || 'var(--accent)'}"></span>`;
             return `<div class="tl-row">
-                <div class="tl-label" title="${escapeHtml(meta.name)}">${priv}${escapeHtml(meta.short || meta.name)}</div>
+                <div class="tl-label" title="${escapeHtml(meta.name)}">${dot}${priv}${escapeHtml(meta.short || meta.name)}</div>
                 <div class="tl-lane" style="grid-template-columns:repeat(${TL_DAYS}, var(--tl-day-w, 38px))">${cells}${bars}</div>
             </div>`;
         })

@@ -5395,6 +5395,10 @@ body.owner-mode .chat-widget {
   #inbox-detail-pane .bhub-head {
     margin-top: 0;
   }
+  /* The docked hub's top edge aligns with the section header beside it. */
+  #bookings-detail-pane {
+    margin-top: 34px;
+  }
   /* Messages/Email folders: the docked enquiry pane doesn't apply — give the
      folder the full width until the owner switches back to Enquiries. */
   .enq-split.no-pane {
@@ -5608,9 +5612,28 @@ body.owner-mode .chat-widget {
 }
 .tl-cell.is-today {
   box-shadow: inset 2px 0 0 var(--accent);
+  background: rgba(199, 154, 100, 0.09); /* a whisper of accent anchors today down every lane */
 }
 .tl-cell:hover {
   background: rgba(255, 255, 255, 0.06);
+}
+/* Bars invite the tap that opens the booking hub. */
+.tl-bar:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.07);
+}
+/* Ties each lane to its bars' cottage colour. */
+.tl-label-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  margin-right: 7px;
+}
+/* Back-office screens end like an app — no public marketing footer.
+   (nav() stamps body.admin-screen while an ADMIN_VIEWS view is active.) */
+body.admin-screen .site-footer {
+  display: none;
 }
 .tl-bar {
   grid-row: 1;
