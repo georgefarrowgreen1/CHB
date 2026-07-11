@@ -6071,6 +6071,23 @@ body.admin-screen .site-footer {
   gap: 8px;
   margin: 18px 0 0;
 }
+/* Desktop: the FULL journey strip (every stage) replaces the compact
+   three-pill window — same pills, all six of them. */
+.bhub-pipe-full {
+  display: none;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 18px 0 0;
+}
+@media (min-width: 900px) {
+  .bhub-pipe3 {
+    display: none;
+  }
+  .bhub-pipe-full {
+    display: flex;
+  }
+}
 .pipe3-col {
   display: flex;
   flex-direction: column;

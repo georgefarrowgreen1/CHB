@@ -847,6 +847,11 @@ function hubPipelineHtml(propKey, b, gt, dh) {
         if (stages[curIdx + 1]) parts.push(arrow, col('Next', pill(stages[curIdx + 1], '')));
         strip = parts.join('');
     }
+    // Desktop shows the WHOLE journey (every stage with its own state); the
+    // three-pill window above is the phone/tablet view — CSS swaps them at 900px.
+    const fullStrip = stages
+        .map((s, i) => pill(s, s.now || i === curIdx ? 'is-now' : s.done ? 'is-done' : ''))
+        .join(arrow);
 
     // ONE next action, derived from state — the answer to "what does this
     // booking need from me?" without reading the whole screen.
@@ -882,7 +887,7 @@ function hubPipelineHtml(propKey, b, gt, dh) {
     const nextHtml = next
         ? `<div class="bhub-next"><span class="bhub-next-text">${next.text}</span><button class="btn-glass bhub-next-btn" onclick="${next.onclick}">${next.btn}</button></div>`
         : `<div class="bhub-next is-clear"><span class="bhub-next-text">All set — nothing needs doing on this booking right now.</span></div>`;
-    return `<div class="bhub-pipe3">${strip}</div>${nextHtml}`;
+    return `<div class="bhub-pipe3">${strip}</div><div class="bhub-pipe-full">${fullStrip}</div>${nextHtml}`;
 }
 
 function renderBookingHub() {
