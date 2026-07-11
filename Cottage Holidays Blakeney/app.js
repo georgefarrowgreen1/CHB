@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 77;
+const ADMIN_BUNDLE_V = 78;
 let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
@@ -7078,7 +7078,8 @@ async function openMessageThread(threadId) {
     const title = document.getElementById('messages-modal-title');
     const ctx = document.getElementById('messages-modal-ctx');
     const thread = document.getElementById('messages-modal-thread');
-    if (thread) thread.innerHTML = `<p class="chat-empty">Loading…</p>`;
+    if (thread)
+        thread.innerHTML = `<div style="padding:10px 4px;"><span class="skel-bar w65" style="display:block;margin-bottom:12px;"></span><span class="skel-bar w45" style="display:block;margin-bottom:12px;"></span><span class="skel-bar w85" style="display:block;margin-left:auto;"></span></div>`;
     if (ctx) ctx.innerHTML = '';
     if (modal) modal.classList.add('open');
     try {
@@ -8495,6 +8496,15 @@ function glassForm(message, fields) {
 }
 // Lightweight non-blocking toast for success/info confirmations (vs. glassAlert,
 // which blocks with an OK button — kept for errors & destructive confirms).
+// Shimmer skeleton rows — the list-shaped loading state (see .skel-row).
+function skelRows(n = 4) {
+    return Array.from({ length: n })
+        .map(
+            () =>
+                '<div class="skel-row" aria-hidden="true"><span class="skel-bar w20"></span><span class="skel-bar w65"></span><span class="skel-bar w45"></span></div>',
+        )
+        .join('');
+}
 function toast(message, type) {
     let stack = document.getElementById('app-toasts');
     if (!stack) {
@@ -11861,7 +11871,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'mrgv5q4v';
+    const BUILD = 'mrgwrnss';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

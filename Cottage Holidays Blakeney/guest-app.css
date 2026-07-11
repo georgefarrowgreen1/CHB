@@ -131,7 +131,7 @@ body.guest-app:not(.owner-mode) #prop-book-bar {
   cursor: pointer;
   transition:
     background 0.2s var(--fluid-bezier),
-    transform 0.15s var(--fluid-bezier);
+    transform 0.4s var(--spring);
   -webkit-tap-highlight-color: transparent;
 }
 .guest-dock-btn svg {
@@ -149,7 +149,8 @@ body.guest-app:not(.owner-mode) #prop-book-bar {
   outline-offset: 2px;
 }
 .guest-dock-btn:active {
-  transform: scale(0.92);
+  transform: scale(0.85);
+  transition-duration: 0.2s, 0.08s;
 }
 /* Current section: icon flips dark to sit over the white indicator + nudges up. */
 .guest-dock-btn.current {
@@ -157,6 +158,23 @@ body.guest-app:not(.owner-mode) #prop-book-bar {
 }
 .guest-dock-btn.current svg {
   transform: scale(1.08);
+  animation: gdockPop 0.5s var(--spring);
+}
+@keyframes gdockPop {
+  0% {
+    transform: scale(0.9);
+  }
+  55% {
+    transform: scale(1.24);
+  }
+  100% {
+    transform: scale(1.08);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .guest-dock-btn.current svg {
+    animation: none;
+  }
 }
 
 /* The crown logo is the Home button; darken to a silhouette when it's current

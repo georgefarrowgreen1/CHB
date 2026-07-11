@@ -2743,6 +2743,43 @@ textarea.input-glass.field-sm {
   background: var(--dark-grey);
   border: 1px solid var(--glass-border);
 }
+/* Skeleton ROWS — the list-shaped loading state (mailbox, chat threads,
+   readers). Same shimmer as the gallery placeholders; neutral greys so both
+   themes read. Bars share the .bk-row anatomy so the swap-in doesn't jump. */
+.skel-row {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 16px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-panel);
+  margin-bottom: 10px;
+}
+.skel-bar {
+  height: 10px;
+  border-radius: var(--r-pill);
+  background:
+    linear-gradient(100deg, rgba(127, 127, 127, 0.12) 30%, rgba(127, 127, 127, 0.26) 50%, rgba(127, 127, 127, 0.12) 70%)
+    0 0 / 200% 100%;
+  animation: shimmerBg 1.4s linear infinite;
+}
+.skel-bar.w20 {
+  width: 20%;
+}
+.skel-bar.w45 {
+  width: 45%;
+}
+.skel-bar.w65 {
+  width: 65%;
+}
+.skel-bar.w85 {
+  width: 85%;
+}
+@media (prefers-reduced-motion: reduce) {
+  .skel-bar {
+    animation: none;
+  }
+}
 /* Shimmer skeletons (loading states) */
 @keyframes shimmerBg {
   to {
@@ -8584,7 +8621,7 @@ body.owner-mode .admin-dock-wrap {
   cursor: pointer;
   transition:
     background 0.2s var(--fluid-bezier),
-    transform 0.15s var(--fluid-bezier);
+    transform 0.4s var(--spring);
   -webkit-tap-highlight-color: transparent;
 }
 .admin-dock-btn svg {
@@ -8598,7 +8635,9 @@ body.owner-mode .admin-dock-wrap {
   outline: none;
 }
 .admin-dock-btn:active {
-  transform: scale(0.92);
+  /* Press digs in fast; release springs back (transition below). */
+  transform: scale(0.85);
+  transition-duration: 0.2s, 0.08s;
 }
 /* Current section: a clearly lighter filled pill, like the active tab in the
            reference design. Stays highlighted even when not hovered. */
@@ -8616,6 +8655,25 @@ body.owner-mode .admin-dock-wrap {
 }
 .admin-dock-btn.current svg {
   transform: scale(1.08);
+  /* One-shot overshoot as the tab becomes current — the pill glides in and
+     the icon gives a little haptic-feel pop. */
+  animation: dockPop 0.5s var(--spring);
+}
+@keyframes dockPop {
+  0% {
+    transform: scale(0.9);
+  }
+  55% {
+    transform: scale(1.24);
+  }
+  100% {
+    transform: scale(1.08);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .admin-dock-btn.current svg {
+    animation: none;
+  }
 }
 /* Instagram-style selection pill that physically glides between tabs. JS sizes
            and positions it under the .current button; the springy easing adds the bounce. */
