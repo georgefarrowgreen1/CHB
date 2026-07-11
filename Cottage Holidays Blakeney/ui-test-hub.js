@@ -97,7 +97,10 @@ const ok = (cond, label) => {
   const a = await page.evaluate(() => ({
     active: (document.querySelector('.page-view.active') || {}).id,
     name: (document.querySelector('.bhub-name') || {}).textContent || '',
-    pipeSteps: document.querySelectorAll('.pipe-step').length,
+    pipeSteps: document.querySelectorAll('.bhub-pipe3 .pipe-step').length,
+    fullSteps: document.querySelectorAll('.bhub-pipe-full .pipe-step').length,
+    fullVisible: !!document.querySelector('.bhub-pipe-full') && getComputedStyle(document.querySelector('.bhub-pipe-full')).display !== 'none',
+    compactHidden: !!document.querySelector('.bhub-pipe3') && getComputedStyle(document.querySelector('.bhub-pipe3')).display === 'none',
     caps: Array.from(document.querySelectorAll('.pipe3-cap')).map((t) => t.textContent),
     nowPill: (document.querySelector('.pipe-step.is-now') || {}).textContent || '',
     donePill: (document.querySelector('.pipe-step.is-done') || {}).textContent || '',
@@ -107,6 +110,8 @@ const ok = (cond, label) => {
   ok(a.active === 'view-booking-hub', `hub view active (${a.active})`);
   ok(a.name === 'Walk-in Guest', `guest name in header (${a.name})`);
   ok(a.pipeSteps === 3, `dynamic 3-pill journey window (${a.pipeSteps} pills)`);
+  ok(a.fullSteps >= 5, `desktop full-journey strip carries every stage (${a.fullSteps} pills)`);
+  ok(a.fullVisible && a.compactHidden, 'desktop shows the FULL strip and hides the compact window');
   ok(a.caps.join('|') === 'Done|Now · 2 of 6|Next', `window captions with step counter (${a.caps.join('|')})`);
   ok(a.donePill.includes('Booked') && a.nowPill.includes('Deposit'), `unpaid → Done:Booked, Now:Deposit (${a.nowPill})`);
   ok(a.cards === 4, `four cards rendered (${a.cards})`);
