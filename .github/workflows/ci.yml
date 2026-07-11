@@ -37,6 +37,13 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-reply.php
 
+      # Locked-price emails: booking_price() → build_enquiry_reply_email() must
+      # quote the AGREED snapshot for confirmed bookings, live rates only as the
+      # legacy fallback — the guest-facing half of test-pricing.php's guard.
+      - name: Locked-price email rendering
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-emails.php
+
       # SMTP transport: runs mailer.php's real socket conversation against a
       # scriptable fake SMTP server — happy path, transient-retry, the
       # no-retry-after-payload guarantee (double-send safety), batch-over-one-
@@ -119,6 +126,14 @@ jobs:
         env:
           CHB_ENGINE: webkit
         run: node layout-test.js
+
+      # Behaviour suites: booking hub (menu, money fold, breakdown window,
+      # delete rules), Needs-you strip, edit-modal locked price, guest account
+      # modals on phones, Inbox mailbox client, Money reconciliation, and the
+      # merged Today workspace. Each boots its own stubbed php -S like e2e.
+      - name: UI behaviour suites
+        working-directory: "Cottage Holidays Blakeney"
+        run: node ui-tests.js
 
       # The gate also screenshots every view×width — kept as an artifact so a
       # reviewer can eyeball the design straight from the PR checks page.
