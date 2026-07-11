@@ -12,6 +12,11 @@
 //  (needs `npm i playwright` once + a Chromium; set CHB_CHROMIUM to use an
 //   existing binary, e.g. CHB_CHROMIUM=/opt/pw-browsers/chromium)
 // ============================================================
+// The site reckons "today" in UK time (todayDashed / ukNowParts), so the
+// tests must too — pin the whole process (and the browser it launches) to
+// Europe/London so fixtures built from new Date() agree with the app on
+// any runner, in any timezone. Must run before the first Date call.
+process.env.TZ = 'Europe/London';
 const { chromium } = require('playwright');
 const { spawn } = require('child_process');
 const http = require('http');

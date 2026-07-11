@@ -3,6 +3,11 @@
 // only show today's rates (with an explicit replaces-note) once the stay
 // actually changes. Reproduces the owner's Richard Berry case: agreed at
 // £135/night (£631.20 grand incl. £75 deposit) vs live rates at £165/night.
+// The site reckons "today" in UK time (todayDashed / ukNowParts), so the
+// tests must too — pin the whole process (and the browser it launches) to
+// Europe/London so fixtures built from new Date() agree with the app on
+// any runner, in any timezone. Must run before the first Date call.
+process.env.TZ = 'Europe/London';
 const { chromium } = require('playwright');
 const { spawn } = require('child_process');
 const PORT = 8231;
@@ -17,7 +22,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const page = await browser.newPage({ viewport: { width: 1000, height: 1200 } });
   page.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
   await page.addInitScript(() => { if (navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {}); });
-  const d = (n) => { const t = new Date(); t.setDate(t.getDate() + n); return t.toISOString().slice(0, 10); };
+  // Local-formatted, never toISOString() — that's UTC and slips a day near midnight.
+  const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.getMonth(), t.getDate() + n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
 
   await page.route(/\.php/, (route) => {
     const url = route.request().url();

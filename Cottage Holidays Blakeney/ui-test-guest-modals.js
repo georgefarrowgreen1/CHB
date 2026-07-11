@@ -3,6 +3,11 @@
 // and every action — password button, Log Out — must be scrollable clear of the
 // floating dock (clearance lives INSIDE .modal-box; iOS ignores the scroll
 // container's own bottom padding for scroll extent).
+// The site reckons "today" in UK time (todayDashed / ukNowParts), so the
+// tests must too — pin the whole process (and the browser it launches) to
+// Europe/London so fixtures built from new Date() agree with the app on
+// any runner, in any timezone. Must run before the first Date call.
+process.env.TZ = 'Europe/London';
 const { chromium } = require('playwright');
 const { spawn } = require('child_process');
 const PORT = 8233;
