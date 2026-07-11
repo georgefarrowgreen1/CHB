@@ -5462,10 +5462,6 @@ body.owner-mode .chat-widget {
     column-gap: 20px;
     align-items: start;
   }
-  #inbox-main > .back-link,
-  #inbox-main > .dashboard-header {
-    grid-column: 1 / -1;
-  }
   /* The folder switch becomes a Mail-style sidebar rail. */
   #inbox-folders {
     grid-column: 1;

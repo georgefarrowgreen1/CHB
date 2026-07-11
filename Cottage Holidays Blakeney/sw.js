@@ -17,7 +17,7 @@
 const CACHE = 'chb-cache-v339';
 // admin.js is deliberately NOT precached — it's the owner-only bundle, fetched on
 // demand by loadAdminBundle() (app.js) and cached at runtime like any static asset.
-const CORE = ['./', 'index.html', 'logo.svg', 'favicon.png', 'apple-touch-icon.png', 'manifest.json', 'app.css?v=168', 'app.js?v=288', 'guest-app.css?v=30', 'guest-app.js?v=15'];
+const CORE = ['./', 'index.html', 'logo.svg', 'favicon.png', 'apple-touch-icon.png', 'manifest.json', 'app.css?v=169', 'app.js?v=288', 'guest-app.css?v=30', 'guest-app.js?v=15'];
 // uploads/ images live in their own size-capped bucket so galleries stay fast and
 // available offline WITHOUT growing the main cache without bound (every image ever
 // viewed used to accumulate forever in CACHE).

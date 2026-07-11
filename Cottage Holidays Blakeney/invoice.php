@@ -53,10 +53,11 @@ function render_invoice_html($d)
         '*{box-sizing:border-box}' .
         'body{margin:0;background:#f5f1e9;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;color:#1b2a34;padding:24px 16px;}' .
         '.sheet{max-width:640px;margin:0 auto;background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,0.08);}' .
-        '.top{padding:28px 32px;border-top:5px solid ' . $accent . ';}' .
+        '.top{padding:26px 32px 6px;border-top:5px solid ' . $accent . ';text-align:center;}' .
+        '.crown{display:block;margin:0 auto 10px;width:64px;height:auto;}' .
         '.brand{font-family:Georgia,\'Times New Roman\',serif;font-size:24px;font-weight:700;letter-spacing:-0.01em;color:#1b2a34;}' .
         '.sub{color:#8a8378;font-size:13px;margin-top:2px;}' .
-        '.tag{float:right;color:#8a8378;font-size:12px;letter-spacing:2px;font-weight:700;padding-top:6px;}' .
+        '.tag{color:' . $accent . ';font-size:11px;letter-spacing:4px;font-weight:700;margin-top:10px;}' .
         '.body{padding:8px 32px 32px;}' .
         'h2{font-size:13px;text-transform:uppercase;letter-spacing:1.5px;color:#8a8378;margin:26px 0 8px;}' .
         'table{width:100%;border-collapse:collapse;font-size:14px;}' .
@@ -68,7 +69,7 @@ function render_invoice_html($d)
         '@media print{body{background:#fff;padding:0;} .sheet{box-shadow:none;border-radius:0;max-width:none;} .actions{display:none;}}' .
         '</style></head><body>' .
         '<div class="sheet">' .
-        '<div class="top"><span class="tag">INVOICE</span><div class="brand">Cottage Holidays Blakeney</div><div class="sub">North Norfolk Coastal Retreats</div></div>' .
+        '<div class="top"><img class="crown" src="logo.svg" alt="" width="64" height="38"><div class="brand">Cottage Holidays Blakeney</div><div class="sub">North Norfolk Coastal Retreats</div><div class="tag">INVOICE</div></div>' .
         '<div class="body">' .
         '<table class="meta">' .
         '<tr><td>Invoice reference</td><td>' . $e($d['ref'] ?? '') . '</td></tr>' .

@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=168">
+    <link rel="stylesheet" href="app.css?v=169">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -1005,8 +1005,10 @@
         <!-- ≥1200px: master–detail like the Bookings dashboard — enquiry index
              on the left, the SELECTED enquiry's hub docked on the right (the
              shared #enquiry-hub-content node re-parents into the pane). -->
-        <div class="enq-split">
-        <div id="inbox-main">
+        <!-- The header band spans the FULL width (its divider runs edge to
+             edge); the three-pane split — rail | list | reading pane — sits
+             entirely below it. -->
+        <div id="inbox-head">
             <span class="back-link" onclick="nav('view-backoffice'); initBackOffice();">← Back to Today</span>
             <!-- Header mirrors the Today dashboard: big title + a LIVING subline
                  (inboxSubline() keeps it current — what's waiting for a reply). -->
@@ -1016,6 +1018,9 @@
                     <p class="lead bo-today-date" id="inbox-subline" style="text-align:left;margin:4px 0 0;">Enquiries, guest chat &amp; email — every conversation in one place.</p>
                 </div>
             </div>
+        </div>
+        <div class="enq-split">
+        <div id="inbox-main">
             <!-- (Approvals live in Marketing → "To approve"; the Today card points there.) -->
             <!-- ONE comms dashboard: every conversation channel behind a folder
                  switch — website enquiries, guest chat, and the cottage EMAIL
