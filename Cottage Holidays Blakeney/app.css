@@ -8167,8 +8167,9 @@ p.lead[data-edit-text] {
   .cal-panel {
     padding: 12px 8px;
   }
-  /* Phone toolbar: month title + segmented control share the first line,
-     the action buttons flow beneath. */
+  /* Phone toolbar: the action buttons lead (+ Add Booking | Block dates, with
+     the refresh pinned to the right screen edge), and the month title +
+     segmented ‹ Today › control sit on the line beneath. */
   .cal-header-bar {
     flex-direction: column;
     align-items: stretch;
@@ -8179,9 +8180,17 @@ p.lead[data-edit-text] {
     justify-content: space-between;
     gap: 12px;
     width: 100%;
+    order: 1; /* below the actions row */
   }
   .cal-actions {
     justify-content: flex-start;
+  }
+  /* Refresh hugs the right edge — both on the calendar (icon rides inside
+     .cal-updated with its "updated…" text) and on the mailbox toolbar
+     (bare icon), whatever else wraps. */
+  .cal-actions .cal-updated,
+  .cal-actions > .cal-refresh-btn:last-child {
+    margin-left: auto;
   }
   .cal-add-btn {
     padding: 10px 16px;
