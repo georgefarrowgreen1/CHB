@@ -983,23 +983,41 @@ function renderBookingHub() {
             }
         </div>`;
     __bhubBreakdownHtml = fullBox + agreedNote;
+    // The deposit's state rides INSIDE the settled line (incl. while we hold
+    // it, excl. once refunded/retained) — no separate status row repeating it.
+    let depSuffix = '';
+    if (dh.held > 0) depSuffix = ` · incl. ${gbp(dh.held)} damages deposit`;
+    else if (b.holdStatus === 'returned') depSuffix = ` · excl. ${gbp(dh.deposit || 0)} deposit — refunded`;
+    else if (b.holdStatus === 'kept') depSuffix = ` · excl. ${gbp(dh.deposit || 0)} deposit — retained for damage`;
+    else if (dh.collected > 0)
+        depSuffix =
+            dh.returned >= dh.collected - 0.001
+                ? ` · excl. deposit — ${gbp(dh.returned)} refunded`
+                : ` · excl. deposit — ${gbp(dh.collected - dh.returned)} retained`;
+    else if (gt.dep > 0) depSuffix = ` · incl. ${gbp(gt.dep)} damages deposit`;
     const priceBox = gt.fullyPaid
         ? `
         <div class="price-box" style="margin-bottom:0;">
-            <div class="price-row total" style="color:#4CAF50;border-top:0;padding-top:0;margin-top:0;"><span>Paid in full${gt.dep > 0 ? `<span style="color:var(--text-muted);font-weight:400;"> · incl. ${gbp(gt.dep)} damages deposit</span>` : ''}</span><span class="price-amount" style="color:#4CAF50;">${gbp(gt.total)} ✓</span></div>
+            <div class="price-row total" style="color:#4CAF50;border-top:0;padding-top:0;margin-top:0;"><span>Paid in full${depSuffix ? `<span style="color:var(--text-muted);font-weight:400;">${depSuffix}</span>` : ''}</span><span class="price-amount" style="color:#4CAF50;">${gbp(gt.total)} ✓</span></div>
         </div>`
         : `${fullBox}${agreedNote}`;
     // The breakdown opener sits AFTER the deposit status line in the card.
     const discloseBtn = gt.fullyPaid
         ? `<button type="button" class="btn-sm btn-edit bhub-disclose-btn" onclick="bhubMoneyExpand()">Show the full breakdown</button>`
         : '';
+    // Settled bookings: the folded line above already states the deposit, so
+    // the row only appears when it carries an ACTION (return after checkout,
+    // or the legacy card-hold controls). While money is still owed the full
+    // status row stays — the breakdown is the working surface there.
     const depositLine =
         dh.collected > 0
-            ? `<div class="money-deposit"><span>Refundable damage deposit: ${
-                  dh.held > 0
-                      ? `<strong>${gbp(dh.held)} collected</strong>${dh.returned > 0 ? ` · ${gbp(dh.returned)} returned` : ''}`
-                      : `<span style="color:#4CAF50;">returned${dh.returned < dh.collected - 0.001 ? ` (${gbp(dh.collected - dh.returned)} retained)` : ''}</span>`
-              }</span>${dh.held > 0 && past ? `<button class="btn-sm btn-edit" onclick="returnDeposit('${b.id}')">Return / settle</button>` : ''}</div>`
+            ? gt.fullyPaid && !(dh.held > 0 && past)
+                ? ''
+                : `<div class="money-deposit"><span>Refundable damage deposit: ${
+                      dh.held > 0
+                          ? `<strong>${gbp(dh.held)} collected</strong>${dh.returned > 0 ? ` · ${gbp(dh.returned)} returned` : ''}`
+                          : `<span style="color:#4CAF50;">returned${dh.returned < dh.collected - 0.001 ? ` (${gbp(dh.collected - dh.returned)} retained)` : ''}</span>`
+                  }</span>${dh.held > 0 && past ? `<button class="btn-sm btn-edit" onclick="returnDeposit('${b.id}')">Return / settle</button>` : ''}</div>`
             : holdControls(b);
     const payHistory =
         squareAdminEnabled && b.email
@@ -7540,7 +7558,21 @@ function cottageMonthOccupancy() {
 function tlStartOffset() {
     return 1 - dpParse(todayDashed()).getDate();
 }
-const TL_DAYS = 187; // the window runs ~6 months forward from the 1st
+let __tlDays = 187; // the window opens ~6 months forward — and GROWS: nearing
+// the right edge extends it another ~3 months in place (scroll preserved),
+// so the timeline never runs out.
+let __tlExtending = false;
+function tlMaybeExtend() {
+    const host = document.getElementById('cal-body');
+    if (!host || __tlExtending) return;
+    if (host.scrollWidth - host.scrollLeft - host.clientWidth > 25 * tlDayW()) return;
+    __tlExtending = true;
+    __tlDays += 92;
+    renderCalendar();
+    requestAnimationFrame(() => {
+        __tlExtending = false;
+    });
+}
 // Px per day comes from the --tl-day-w custom property on .tl-wrap (narrower on
 // phones), so the lanes' grid columns and this scroll maths always agree.
 function tlDayW() {
@@ -7557,8 +7589,9 @@ function renderCalendar() {
     const todayIso = todayDashed();
     const t0 = dpParse(todayIso);
     const off = tlStartOffset();
+    const N = __tlDays;
     const dates = [];
-    for (let i = 0; i < TL_DAYS; i++)
+    for (let i = 0; i < N; i++)
         dates.push(formatDashed(new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + off + i)));
     const M = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const dows = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
@@ -7566,7 +7599,7 @@ function renderCalendar() {
 
     // Header lane: day cells (dow letter + number; month name on the 1st).
     let head = '';
-    for (let i = 0; i < TL_DAYS; i++) {
+    for (let i = 0; i < N; i++) {
         const d = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + off + i);
         const wknd = d.getDay() === 0 || d.getDay() === 6;
         const monthTag =
@@ -7581,7 +7614,7 @@ function renderCalendar() {
         .map((k) => {
             const meta = propertyMeta[k] || { name: k, short: k };
             let cells = '';
-            for (let i = 0; i < TL_DAYS; i++) {
+            for (let i = 0; i < N; i++) {
                 const d = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + off + i);
                 const wknd = d.getDay() === 0 || d.getDay() === 6;
                 const past = dates[i] < todayIso;
@@ -7597,19 +7630,19 @@ function renderCalendar() {
                 const sIdx = idxOf(ci),
                     eIdx = idxOf(co);
                 const s0 = Math.max(0, sIdx);
-                const eL = Math.min(TL_DAYS + 1, Math.max(s0 + 2, eIdx + 2));
-                const clip = `${sIdx < 0 ? ' tl-clip-l' : ''}${eIdx >= TL_DAYS ? ' tl-clip-r' : ''}`;
+                const eL = Math.min(N + 1, Math.max(s0 + 2, eIdx + 2));
+                const clip = `${sIdx < 0 ? ' tl-clip-l' : ''}${eIdx >= N ? ' tl-clip-r' : ''}`;
                 return { col: `${s0 + 1}/${eL}`, clip };
             };
             (dbBookings[k] || []).forEach((b) => {
-                if (!b.checkIn || !b.checkOut || b.checkOut <= dates[0] || b.checkIn >= dates[TL_DAYS - 1]) return;
+                if (!b.checkIn || !b.checkOut || b.checkOut <= dates[0] || b.checkIn >= dates[N - 1]) return;
                 const sp = tlSpan(b.checkIn, b.checkOut);
                 const ps = paymentSummary(k, b);
                 const pay = ps.fullyPaid ? 'ok' : ps.deposit > 0 ? 'warn' : 'danger';
                 bars += `<button type="button" class="tl-bar bar-${k} tl-pay-${pay}${sp.clip}" style="grid-column:${sp.col}" onclick="openBookingHub('${b.id}')" title="${escapeHtml(meta.name)} — ${escapeHtml(b.name || 'Guest')} · ${fmtDate(b.checkIn)} → ${fmtDate(b.checkOut)}">${escapeHtml((b.name || 'Guest').split(' ')[0])}</button>`;
             });
             (dbBlocks[k] || []).forEach((bl) => {
-                if (!bl.checkIn || !bl.checkOut || bl.checkOut <= dates[0] || bl.checkIn >= dates[TL_DAYS - 1]) return;
+                if (!bl.checkIn || !bl.checkOut || bl.checkOut <= dates[0] || bl.checkIn >= dates[N - 1]) return;
                 const sp = tlSpan(bl.checkIn, bl.checkOut);
                 const src = bl.source ? bl.source.charAt(0).toUpperCase() + bl.source.slice(1) : 'External';
                 bars += `<span class="tl-bar tl-ext${sp.clip}" style="grid-column:${sp.col}" title="${escapeHtml(meta.name)} — ${escapeHtml(src)} booking · ${fmtDate(bl.checkIn)} → ${fmtDate(bl.checkOut)}">${escapeHtml(src)}</span>`;
@@ -7619,7 +7652,7 @@ function renderCalendar() {
             const dot = `<span class="tl-label-dot" style="background:${meta.accent || 'var(--accent)'}"></span>`;
             return `<div class="tl-row">
                 <div class="tl-label" title="${escapeHtml(meta.name)}">${dot}${priv}${escapeHtml(meta.short || meta.name)}</div>
-                <div class="tl-lane" style="grid-template-columns:repeat(${TL_DAYS}, var(--tl-day-w, 38px))">${cells}${bars}</div>
+                <div class="tl-lane" style="grid-template-columns:repeat(${N}, var(--tl-day-w, 38px))">${cells}${bars}</div>
             </div>`;
         })
         .join('');
@@ -7627,13 +7660,20 @@ function renderCalendar() {
     host.innerHTML = `<div class="tl-inner">
         <div class="tl-row tl-headrow">
             <div class="tl-label"></div>
-            <div class="tl-lane" style="grid-template-columns:repeat(${TL_DAYS}, var(--tl-day-w, 38px))">${head}</div>
+            <div class="tl-lane" style="grid-template-columns:repeat(${N}, var(--tl-day-w, 38px))">${head}</div>
         </div>
         ${rows}
     </div>`;
     if (!host.__tlScroll) {
         host.__tlScroll = true;
-        host.addEventListener('scroll', tlSyncMonthLabel, { passive: true });
+        host.addEventListener(
+            'scroll',
+            () => {
+                tlSyncMonthLabel();
+                tlMaybeExtend();
+            },
+            { passive: true },
+        );
     }
     if (keepScroll !== null) host.scrollLeft = keepScroll;
     else {

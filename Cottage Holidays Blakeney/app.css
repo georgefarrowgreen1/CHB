@@ -4499,17 +4499,21 @@ body.owner-mode .chat-widget {
     display: none;
   }
 }
-/* The Bookings list filters stretch edge to edge on phones too — same
-   full-width treatment as the folder switch, segments sharing the width
-   in proportion so "Needs payment" never wraps. */
+/* The Bookings list filters span the SAME width as the search box and the
+   booking rows below them (segments sharing the width in proportion, so
+   "Needs payment" never wraps) — the pill lines up with its column at every
+   size, phone to desktop. */
+#bookings-filters {
+  display: flex;
+  width: 100%;
+  max-width: 720px; /* same cap as .bo-search — the pill and the search align */
+}
+#bookings-filters .inbox-sort-btn {
+  flex: 1 1 auto;
+  text-align: center;
+}
 @media (max-width: 640px) {
-  #bookings-filters {
-    display: flex;
-    width: 100%;
-  }
   #bookings-filters .inbox-sort-btn {
-    flex: 1 1 auto;
-    text-align: center;
     padding: 9px 6px;
   }
 }
