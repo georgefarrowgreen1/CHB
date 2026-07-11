@@ -2164,7 +2164,30 @@ async function guestLogin() {
     // 1) Owner/admin first (username + password). A failure here (wrong match
     //    or throttle) simply falls through to the guest attempt below.
     try {
-        await apiPost('auth.php', { action: 'admin_login', username: id, password });
+        const res = await apiPost('auth.php', { action: 'admin_login', username: id, password });
+        // 2FA on a NEW device: the password was right but the server held the
+        // login and emailed a code. This guest modal has no code step — hand
+        // over to the admin modal's existing 2FA step. (Previously this path
+        // ignored `twofa` and pretended the sign-in had completed: no code
+        // window, and a half-signed-in state where every admin call failed.)
+        if (res && res.twofa) {
+            err.style.display = 'none';
+            closeGuestAuthModal();
+            adminLoginOnSuccess = () => {
+                nav('view-backoffice');
+                refreshOwnerHomeBadges();
+            };
+            const m = document.getElementById('admin-login-modal');
+            const t = document.getElementById('admin-login-title');
+            const s = document.getElementById('admin-login-sub');
+            if (t) t.innerText = 'Owner sign in';
+            if (s) s.innerText = 'New device — we’ve emailed you a one-time code.';
+            const aerr = document.getElementById('admin-login-error');
+            if (aerr) aerr.style.display = 'none';
+            if (m) m.classList.add('open');
+            showAdmin2faStep();
+            return;
+        }
         isAuthenticated = true;
         setAuthUI();
         currentGuest = null;
@@ -11732,7 +11755,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'mrflx7d4';
+    const BUILD = 'mrfmc1e8';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
