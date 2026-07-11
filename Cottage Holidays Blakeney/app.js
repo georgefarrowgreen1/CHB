@@ -7950,6 +7950,27 @@ async function loadPublicAvailability() {
         renderLateAvailability();
     } catch (e) {}
 }
+// Long-open tabs go stale: someone books while the page sits in a background
+// tab, and the chips/calendars keep claiming the old availability (the server
+// still rejects a stale enquiry — this keeps what the guest SEES truthful).
+// When the tab wakes after 10+ minutes hidden, re-pull everything
+// availability-shaped; each loader repaints its own surfaces when data lands.
+let __availHiddenAt = null;
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+        __availHiddenAt = Date.now();
+        return;
+    }
+    if (__availHiddenAt && Date.now() - __availHiddenAt > 10 * 60 * 1000) {
+        try {
+            loadPublicAvailability();
+        } catch (e) {}
+        try {
+            if (activeFrontProperty) loadAvailability(activeFrontProperty);
+        } catch (e) {}
+    }
+    __availHiddenAt = null;
+});
 // Free runs of at least minNights within the next `days`, from blocked
 // ranges (end-exclusive, matching availability.php). Returns
 // [{start, end (checkout), nights}] in date order.
@@ -10346,6 +10367,15 @@ async function submitEnquiry(propKey) {
         );
         return;
     }
+    // Last look at the availability data we hold before posting — a tab that
+    // sat open while someone else booked gets a clear message here instead of
+    // a server rejection (the server re-checks authoritatively either way).
+    const knownRanges = propertyAvailability[propKey] || [];
+    if (knownRanges.some((r) => r.start < checkOut && r.end > checkIn)) {
+        setEnqMsg('details', 'Sorry, those dates have just been taken — please choose different dates.');
+        loadAvailability(propKey);
+        return;
+    }
 
     // Disable the button + show progress so a slow connection can't be
     // double-submitted into duplicate enquiries.
@@ -10380,6 +10410,17 @@ async function submitEnquiry(propKey) {
                 document.getElementById('enq-sms-optin') && document.getElementById('enq-sms-optin').checked ? 1 : 0,
         });
     } catch (e) {
+        // Server said the dates were taken while this tab held stale data —
+        // refresh every availability surface so the calendar and chips the
+        // guest looks at next tell the truth about why.
+        if (/no longer available/i.test(e.message || '')) {
+            try {
+                loadAvailability(propKey);
+            } catch (e2) {}
+            try {
+                loadPublicAvailability();
+            } catch (e2) {}
+        }
         setEnqMsg('details', "Sorry, your enquiry couldn't be sent: " + e.message);
         return;
     } finally {
@@ -11691,7 +11732,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'mrfl3ab9';
+    const BUILD = 'mrflx7d4';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
