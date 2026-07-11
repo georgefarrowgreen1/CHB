@@ -6197,6 +6197,12 @@ body.admin-screen .site-footer {
     width: 100%;
     text-align: center;
     white-space: normal;
+    /* One height for every button in the grid — wrapped and unwrapped labels
+       alike — so adjacent rows always line up (was 44px vs 46px raggedness). */
+    min-height: 46px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
   }
   /* Keep the Done › Now › Next window on ONE line (scrolls if ever tight). */
   .bhub-pipe3 {
