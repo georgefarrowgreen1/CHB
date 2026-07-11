@@ -242,7 +242,7 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/></svg>
                 <span class="admin-dock-badge" id="dock-badge-inbox" style="display:none;">0</span>
             </button>
-            <button class="admin-dock-btn" data-view="view-accounts" data-label="Money" aria-label="Money" title="Money" onclick="openAccounts()">
+            <button class="admin-dock-btn" data-view="view-accounts" data-label="Payments" aria-label="Payments" title="Payments" onclick="openAccounts()">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><text x="12" y="16.2" font-size="11" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="Georgia, serif">&#163;</text></svg>
             </button>
             <button class="admin-dock-btn" data-view="view-settings" data-label="Manage" aria-label="Manage" title="Manage" onclick="openArea('manage')">
@@ -1531,7 +1531,7 @@
         <span class="back-link" onclick="nav('view-backoffice'); initBackOffice();">← Back to Today</span>
         <div class="dashboard-header">
             <div>
-                <h1 class="section-title" style="margin-bottom: 5px;">Money</h1>
+                <h1 class="section-title" style="margin-bottom: 5px;">Payments</h1>
                 <p class="lead" style="text-align: left; margin: 0;">Request deposits and balances, reconcile payments, and review your income.</p>
             </div>
         </div>
@@ -1787,7 +1787,7 @@
     <div id="breakdown-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Price breakdown" onclick="if(event.target===this) closeBreakdownModal()">
         <div class="modal-box glass-panel" style="max-width:420px;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:6px;">
-                <h3 id="breakdown-modal-title" style="font-family:var(--font-serif);font-size:1.4rem;">Money breakdown</h3>
+                <h3 id="breakdown-modal-title" style="font-family:var(--font-serif);font-size:1.4rem;">Payment breakdown</h3>
                 <button class="reviews-modal-close" onclick="closeBreakdownModal()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
             <div id="breakdown-modal-body" style="margin-top:8px;"></div>
@@ -2383,7 +2383,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=286"></script>
+    <script defer src="app.js?v=287"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

@@ -76,7 +76,7 @@ const d = (n) => { const t = new Date(); t.setDate(t.getDate() + n); return t.to
     const b = document.querySelector('.admin-dock-btn[data-view="view-accounts"]');
     return { exists: !!b, label: b ? b.getAttribute('data-label') : '', onclick: b ? b.getAttribute('onclick') : '' };
   });
-  ok(dock.exists && dock.label === 'Money' && /openAccounts/.test(dock.onclick), `Money dock button present + wired (${dock.onclick})`);
+  ok(dock.exists && dock.label === 'Payments' && /openAccounts/.test(dock.onclick), `Payments dock button present + wired (${dock.onclick})`);
   await page.evaluate(() => document.querySelector('.admin-dock-btn[data-view="view-accounts"]').click());
   await page.waitForTimeout(1100);
   const nav1 = await page.evaluate(() => ({
@@ -149,7 +149,7 @@ const d = (n) => { const t = new Date(); t.setDate(t.getDate() + n); return t.to
       hasRecord: /Record payment/.test(root.textContent),
       hasInvoice: /Invoice \(PDF\)/.test(root.textContent),
       balance: /Balance due/.test(root.textContent),
-      moneyText: (Array.from(root.querySelectorAll('.bhub-card')).find((c) => /Money/.test((c.querySelector('.bhub-card-title') || {}).textContent || '')) || { textContent: '' }).textContent.replace(/\s+/g, ' ').slice(0, 300),
+      moneyText: (Array.from(root.querySelectorAll('.bhub-card')).find((c) => /Payments/.test((c.querySelector('.bhub-card-title') || {}).textContent || '')) || { textContent: '' }).textContent.replace(/\s+/g, ' ').slice(0, 300),
     };
   });
   ok(hub.name === 'Owes Money' && hub.balance, `row opened the right hub with a balance due (${hub.name})`);
