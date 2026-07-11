@@ -10,7 +10,7 @@
 const { chromium } = require('playwright');
 const { spawn } = require('child_process');
 const PORT = 8151;
-const dir = process.cwd();
+const dir = __dirname;
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
 const d = (n) => { const t = new Date(); t.setDate(t.getDate() + n); return t.toISOString().slice(0, 10); };

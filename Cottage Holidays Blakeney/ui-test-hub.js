@@ -11,7 +11,7 @@
 const { chromium } = require('playwright');
 const { spawn } = require('child_process');
 const PORT = 8276;
-const dir = '/home/user/CHB/Cottage Holidays Blakeney';
+const dir = __dirname;
 const d = (o) => new Date(Date.UTC(2026, 6, 9) + o * 864e5).toISOString().slice(0, 10);
 const ok = (cond, label) => {
   console.log((cond ? '  ✓ ' : '  ✗ ') + label);
