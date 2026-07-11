@@ -134,6 +134,35 @@ $bpLive = booking_price($rateNow, $bLive);
 chk('booking_price: no snapshot → live rates (679.80)', approxEq($bpLive['total'], 679.8));
 chk('booking_price: no snapshot and no rate → null', booking_price(null, $bLive) === null);
 
+// ---- Structural anti-leak guard -------------------------------------------
+// A confirmed booking's price is LOCKED. Every direct price_breakdown() call in
+// a booking-context file below is an audited agreed-first fallback (or the
+// snapshot creator itself). If this check fails, you added a NEW direct call:
+// use booking_price($rate, $b) instead — it returns the agreed snapshot first —
+// or, if the new call genuinely is a guarded legacy fallback, re-audit the file
+// and update the expected count here in the same PR.
+$allowedDirectCalls = [
+    'bookings.php' => 3, // snapshot_fields() + confirmation-email fallback + hold-request deposit fallback
+    'pay.php' => 2, // total + damages-deposit legacy fallbacks
+    'mailer.php' => 1, // payment-request damages-deposit legacy fallback
+    'invoice.php' => 1, // legacy pre-snapshot fallback
+    'square-webhook.php' => 1, // legacy pre-snapshot fallback
+];
+foreach ($allowedDirectCalls as $file => $expected) {
+    $src = (string) file_get_contents(__DIR__ . '/' . $file);
+    $n = preg_match_all('/price_breakdown\s*\(/', $src);
+    chk(
+        "guard: $file has exactly $expected audited price_breakdown() call(s) — new booking-context calls must use booking_price() (found $n)",
+        $n === $expected,
+    );
+}
+// The owner email composer must price bookings through booking_price().
+$bkSrc = (string) file_get_contents(__DIR__ . '/bookings.php');
+chk(
+    'guard: bookings.php email composer routes through booking_price() (preview + send)',
+    preg_match_all('/booking_price\s*\(/', $bkSrc) >= 2,
+);
+
 echo "\n";
 if ($fail) {
     fwrite(STDERR, "$fail pricing check(s) FAILED — JS and PHP pricing may have diverged.\n");

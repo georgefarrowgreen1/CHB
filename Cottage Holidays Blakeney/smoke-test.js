@@ -430,6 +430,37 @@ for (const cssFile of ['app.css', 'guest-app.css']) {
     check(cssFile + ' parses cleanly (comments closed, braces balanced)', !bad, bad);
 }
 
+// ---------- §9: locked-price guard ----------
+// A confirmed booking's price is LOCKED at its agreed snapshot. Rendering a
+// booking with a live priceBreakdown() call once leaked today's rates into a
+// guest email (£679.80 instead of the agreed £556.20). Structural rule: any
+// priceBreakdown() call fed a BOOKING object's fields (b.adults / booking.adults)
+// must sit behind an agreedPrice check within a few lines above. Quote/enquiry
+// contexts (plain adults, e.adults, enq.adults) are exempt — nothing is locked
+// there. PHP has the mirror guard in test-pricing.php.
+console.log('\n== 9. Locked-price guard (agreedPrice-first) ==');
+for (const [name, src] of [['app.js', appScript], ['admin.js', adminScript]]) {
+    const lines = src.split('\n');
+    const offenders = [];
+    lines.forEach((line, i) => {
+        if (!/priceBreakdown\s*\(/.test(line)) return;
+        // The call's arguments may wrap onto following lines.
+        const callText = lines.slice(i, i + 8).join('\n');
+        if (!/\b(?:b|booking)\s*\.\s*adults\b/.test(callText)) return; // not a booking object
+        const before = lines.slice(Math.max(0, i - 4), i + 1).join('\n');
+        if (!/agreedPrice/.test(before)) offenders.push(name + ':' + (i + 1));
+    });
+    check(
+        name + ': every booking-fed priceBreakdown() is agreedPrice-first' +
+            (offenders.length ? ' — use `b.agreedPrice || priceBreakdown(...)` at ' + offenders.join(', ') : ''),
+        offenders.length === 0,
+    );
+}
+// The edit modal must keep its locked-price branch (agreed figures + note while
+// the stay is unchanged; live reprice only once it genuinely changes).
+check('updateModalPrice keeps the locked-price branch', /locked at the rates in effect when booked/.test(appScript));
+check('updateModalPrice keeps the replaces-the-agreed reprice note', /saving replaces the agreed/.test(appScript));
+
 console.log('\n== Summary ==');
 if (failures === 0) { console.log('  ALL CHECKS PASSED ✅\n'); process.exit(0); }
 console.log('  ' + failures + ' CHECK(S) FAILED ❌\n'); process.exit(1);
