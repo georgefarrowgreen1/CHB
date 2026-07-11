@@ -662,6 +662,46 @@ function bookingEmailLogHtml(b) {
 //  row and search hit routes here (app.js showDetails → openBookingHub).
 // ==================================================================
 let __hubBookingId = null;
+// A settled booking's Money card folds to one line; this remembers the owner
+// asking for the full breakdown (reset whenever a different booking opens).
+let __bhubMoneyOpen = false;
+// ---- Hub header overflow menu (⋯ More): one open at a time; click-away and
+// Escape both close it. Holds the secondary + destructive actions so the
+// header stays calm and "Cancel & refund" is a deliberate two-tap. ----
+function bhubMenuToggle(ev) {
+    ev.stopPropagation();
+    const btn = ev.currentTarget;
+    const menu = btn.parentElement.querySelector('.bhub-menu');
+    if (!menu) return;
+    const wasOpen = menu.style.display !== 'none';
+    bhubMenuClose();
+    if (!wasOpen) {
+        menu.style.display = 'flex';
+        btn.setAttribute('aria-expanded', 'true');
+        setTimeout(() => {
+            document.addEventListener('click', bhubMenuClose, { once: true });
+            document.addEventListener('keydown', __bhubMenuEsc);
+        }, 0);
+    }
+}
+function __bhubMenuEsc(e) {
+    if (e.key === 'Escape') bhubMenuClose();
+}
+function bhubMenuClose() {
+    document.querySelectorAll('.bhub-menu').forEach((m) => (m.style.display = 'none'));
+    document
+        .querySelectorAll('.bhub-menu-btn[aria-expanded="true"]')
+        .forEach((b) => b.setAttribute('aria-expanded', 'false'));
+    document.removeEventListener('keydown', __bhubMenuEsc);
+}
+function bhubMoneyExpand(id) {
+    __bhubMoneyOpen = true;
+    openBookingHub(id, true);
+}
+function bhubMoneyCollapse(id) {
+    __bhubMoneyOpen = false;
+    openBookingHub(id, true);
+}
 let __hubReturnView = 'view-backoffice';
 
 async function openBookingHub(bookingId, quiet) {
@@ -684,6 +724,7 @@ async function openBookingHub(bookingId, quiet) {
     const prev = document.querySelector('.page-view.active');
     const alreadyHere = prev && prev.id === 'view-booking-hub' && __hubBookingId === bookingId;
     if (prev && prev.id !== 'view-booking-hub') __hubReturnView = prev.id;
+    if (__hubBookingId !== bookingId) __bhubMoneyOpen = false; // fresh booking → folded again
     __hubBookingId = bookingId;
     const content = document.getElementById('booking-hub-content');
     if (bookingsSplitWide()) {
@@ -893,17 +934,23 @@ function renderBookingHub() {
                     ${changeover}
                 </div>
                 <div class="bhub-actions">
-                    <button class="btn-sm btn-edit" onclick="openEditBooking('${b.id}')">Edit / Move</button>
-                    <button class="btn-sm btn-edit" onclick="addBookingToCalendar('${b.id}')">Add to calendar</button>
-                    <button class="btn-sm btn-decline" onclick="cancelBooking('${b.id}')">Cancel &amp; refund</button>
-                    ${
-                        // Delete exists ONLY while no money is on the booking (same
-                        // rule the server enforces): once anything has been paid or
-                        // a card hold is live, Cancel & refund is the only way out.
-                        bookingHasMoney(b)
-                            ? ''
-                            : `<button class="btn-sm btn-decline" style="opacity:.8;" onclick="deleteBooking('${b.id}')" title="Only for junk/test rows — cancelling is the right way to end a real booking">Delete</button>`
-                    }
+                    <!-- ONE quiet overflow menu instead of a row of buttons: the
+                         header stays calm and the destructive action becomes a
+                         deliberate two-tap instead of a permanent red button. -->
+                    <button class="btn-sm btn-edit bhub-menu-btn" onclick="bhubMenuToggle(event)" aria-haspopup="menu" aria-expanded="false">⋯&nbsp;&nbsp;More</button>
+                    <div class="bhub-menu glass-panel" role="menu" style="display:none;">
+                        <button role="menuitem" onclick="bhubMenuClose(); openEditBooking('${b.id}')">Edit / Move</button>
+                        <button role="menuitem" onclick="bhubMenuClose(); addBookingToCalendar('${b.id}')">Add to calendar</button>
+                        <button role="menuitem" class="bhub-menu-danger" onclick="bhubMenuClose(); cancelBooking('${b.id}')">Cancel &amp; refund</button>
+                        ${
+                            // Delete exists ONLY while no money is on the booking (same
+                            // rule the server enforces): once anything has been paid or
+                            // a card hold is live, Cancel & refund is the only way out.
+                            bookingHasMoney(b)
+                                ? ''
+                                : `<button role="menuitem" class="bhub-menu-danger" onclick="bhubMenuClose(); deleteBooking('${b.id}')" title="Only for junk/test rows — cancelling is the right way to end a real booking">Delete</button>`
+                        }
+                    </div>
                 </div>
             </div>
             ${hubPipelineHtml(propKey, b, gt, dh)}
@@ -918,7 +965,17 @@ function renderBookingHub() {
             ? `<div class="price-row"><span>${gbp(p.perNight)} × ${p.nights} night${p.nights === 1 ? '' : 's'}</span><span>${gbp(p.nightly)}</span></div>
                <div class="price-row"><span>Transaction fee (${fin(p.transactionPct) ? p.transactionPct : 0}%)</span><span>${gbp(fin(p.txFee) ? p.txFee : 0)}</span></div>`
             : '';
-    const priceBox = `
+    // Settled bookings fold the breakdown to ONE reassuring line — the numbers
+    // are still one tap away, but a paid booking stops reading like an invoice.
+    // Anything still owed keeps the full box open: that's the working surface.
+    const priceBox =
+        gt.fullyPaid && !__bhubMoneyOpen
+            ? `
+        <div class="price-box" style="margin-bottom:0;">
+            <div class="price-row total" style="color:#4CAF50;"><span>Paid in full${gt.dep > 0 ? `<span style="color:var(--text-muted);font-weight:400;"> · incl. ${gbp(gt.dep)} damages deposit</span>` : ''}</span><span class="price-amount" style="color:#4CAF50;">${gbp(gt.total)} ✓</span></div>
+        </div>
+        <button type="button" class="bhub-disclose" onclick="bhubMoneyExpand('${b.id}')">Show the full breakdown ▾</button>`
+            : `
         <div class="price-box" style="margin-bottom:0;">
             ${breakdownRows}
             ${gt.dep > 0 ? `<div class="price-row"><span>Refundable damages deposit</span><span>${gbp(gt.dep)}</span></div>` : ''}
@@ -929,7 +986,7 @@ function renderBookingHub() {
                     ? `<div class="price-row total" style="color:#4CAF50;"><span>Paid in full</span><span class="price-amount" style="color:#4CAF50;">✓</span></div>`
                     : `<div class="price-row total"><span>Balance due</span><span class="price-amount">${gbp(gt.balance)}</span></div>`
             }
-        </div>${agreedNote}`;
+        </div>${gt.fullyPaid ? `<button type="button" class="bhub-disclose" onclick="bhubMoneyCollapse('${b.id}')">Hide the breakdown ▴</button>` : ''}${agreedNote}`;
     const depositLine =
         dh.collected > 0
             ? `<div class="money-deposit"><span>Refundable damage deposit: ${
@@ -994,16 +1051,25 @@ function renderBookingHub() {
               )
               .join('')
         : '';
+    // Only fields that HAVE a value render — a card of "—" rows is noise.
+    // Terms always shows (it's the acceptance evidence, present or not).
     const contact = (label, val) =>
-        `<div class="booking-detail-item"><span class="booking-detail-label">${label}</span><span class="booking-detail-value" style="font-size:0.95rem;">${val || '<span class="bhub-mut">—</span>'}</span></div>`;
+        val
+            ? `<div class="booking-detail-item"><span class="booking-detail-label">${label}</span><span class="booking-detail-value" style="font-size:0.95rem;">${val}</span></div>`
+            : '';
+    const noContact =
+        !b.email && !b.phone
+            ? `<div class="bhub-mut" style="margin-bottom:8px;">No contact details on file — add them via ⋯ More → Edit / Move.</div>`
+            : '';
     const guestCard = `
         <section class="bhub-card glass-panel">
             <h3 class="bhub-card-title">Guest</h3>
+            ${noContact}
             <div class="detail-grid" style="margin-top:0;">
                 ${contact('Email', b.email ? `<a href="mailto:${escapeHtml(b.email)}" style="color:var(--text-light);">${escapeHtml(b.email)}</a>` : '')}
                 ${contact('Phone', b.phone ? `<a href="tel:${escapeHtml(b.phone)}" style="color:var(--text-light);">${escapeHtml(b.phone)}</a>` : '')}
-                <div class="booking-detail-item" style="grid-column:1/-1;"><span class="booking-detail-label">Home address</span><span class="booking-detail-value" style="font-size:0.95rem;white-space:pre-wrap;">${b.address || b.postcode ? escapeHtml([b.address, b.postcode].filter(Boolean).join(', ')) : '<span class="bhub-mut">—</span>'}</span></div>
-                ${contact('Terms', b.termsAcceptedAt ? 'Accepted ' + escapeHtml(b.termsAcceptedAt) + (b.termsVersion ? ' (v' + escapeHtml(b.termsVersion) + ')' : '') : 'Not recorded')}
+                ${b.address || b.postcode ? `<div class="booking-detail-item" style="grid-column:1/-1;"><span class="booking-detail-label">Home address</span><span class="booking-detail-value" style="font-size:0.95rem;white-space:pre-wrap;">${escapeHtml([b.address, b.postcode].filter(Boolean).join(', '))}</span></div>` : ''}
+                ${contact('Terms', b.termsAcceptedAt ? 'Accepted ' + escapeHtml(b.termsAcceptedAt) + (b.termsVersion ? ' (v' + escapeHtml(b.termsVersion) + ')' : '') : '<span class="bhub-mut">Not recorded</span>')}
             </div>
             <span class="booking-detail-label" style="margin-top:14px;">Staff notes <span class="bhub-mut" style="text-transform:none;letter-spacing:0;">· private, only you see these</span></span>
             <textarea id="bk-notes-${b.id}" class="input-glass" rows="2" maxlength="2000" placeholder="Add a private note — arriving late, allergies, paid cash for extras…" style="margin:6px 0 0;resize:vertical;font-size:0.9rem;">${b.notes ? escapeHtml(b.notes) : ''}</textarea>
