@@ -160,7 +160,7 @@
     <link rel="apple-touch-icon" href="apple-touch-icon.png?v=3">
     <!-- Installable PWA + Web Push (arrival check-in notifications) -->
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="guest-app.css?v=29">
+    <link rel="stylesheet" href="guest-app.css?v=30">
     <meta name="theme-color" content="#121316">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
@@ -1877,7 +1877,7 @@
                 </div>
             </aside>
             <div class="auth-form-col">
-            <div style="display:flex;justify-content:flex-end;margin:-6px -6px 4px 0;">
+            <div class="auth-close-row">
                 <button class="reviews-modal-close" onclick="closeGuestDetailsModal()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
             <h2 class="section-title" style="font-size:1.5rem;margin:0 0 6px;">Your details</h2>
@@ -1913,7 +1913,7 @@
                 </div>
             </aside>
             <div class="auth-form-col">
-            <div style="display:flex;justify-content:flex-end;margin:-6px -6px 4px 0;">
+            <div class="auth-close-row">
                 <button class="reviews-modal-close" onclick="closeGuestSecurityModal()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
             <h2 class="section-title" style="font-size:1.5rem;margin:0 0 18px;">Account &amp; Security</h2>
@@ -2379,7 +2379,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=279"></script>
+    <script defer src="app.js?v=280"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

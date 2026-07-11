@@ -330,8 +330,7 @@ body.guest-app:not(.owner-mode) #guest-security-modal {
      instead of floating low in the middle with empty space above and below. */
   justify-content: flex-start;
   overflow-y: auto;
-  padding: calc(26px + env(safe-area-inset-top, 0px)) clamp(16px, 5vw, 32px)
-    calc(124px + env(safe-area-inset-bottom, 0px));
+  padding: calc(26px + env(safe-area-inset-top, 0px)) clamp(16px, 5vw, 32px) 0;
 }
 body.guest-app:not(.owner-mode) #guest-auth-modal .modal-box,
 body.guest-app:not(.owner-mode) #guest-details-modal .modal-box,
@@ -345,7 +344,10 @@ body.guest-app:not(.owner-mode) #guest-security-modal .modal-box {
   border-radius: 0;
   background: transparent;
   box-shadow: none;
-  padding: 0;
+  /* Dock clearance lives INSIDE the box: iOS ignores the scroll container's
+     own bottom padding for scroll extent, which left the last buttons
+     (password / log out) trapped behind the floating dock. */
+  padding: 0 0 calc(124px + env(safe-area-inset-bottom, 0px));
 }
 /* The box has no padding here, so the close (×) row's desktop negative margins
    would push it past the edge and clip its top-right — keep it fully inside. */
