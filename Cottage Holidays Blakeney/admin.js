@@ -306,10 +306,45 @@ function inboxFolder(which) {
         const el = document.getElementById('inbox-folder-' + f);
         if (el) el.style.display = f === which ? '' : 'none';
     });
-    // The docked enquiry pane belongs to the Enquiries folder only — on the
-    // other folders the list takes the full width (CSS hides it via no-pane).
+    // Apple-Mail desktop: the reading pane serves EVERY folder — the enquiry
+    // hub, the docked chat window, or the email reader — so swap its content
+    // (and the empty-state hint) with the folder.
     const split = document.querySelector('#view-inbox .enq-split');
-    if (split) split.classList.toggle('no-pane', which !== 'enquiries');
+    if (split) split.classList.remove('no-pane');
+    const pane = document.getElementById('inbox-detail-pane');
+    const hint = document.getElementById('inbox-detail-empty');
+    const msgModal = document.getElementById('messages-modal');
+    if (pane && msgModal) {
+        if (which === 'messages' && inboxSplitWide()) {
+            if (msgModal.parentElement !== pane) pane.appendChild(msgModal);
+        } else if (msgModal.parentElement === pane) {
+            msgModal.classList.remove('open');
+            document.body.appendChild(msgModal);
+        }
+    }
+    const mbxDock = document.getElementById('mbx-pane-dock');
+    if (mbxDock && which !== 'email') {
+        mbxDock.innerHTML = '';
+        __mbxSelUid = null;
+        __mbxSelSent = null;
+    }
+    // Leaving Enquiries: give the hub content back to its standalone screen so
+    // the pane is free for the other folders.
+    if (which !== 'enquiries') {
+        const ehc = document.getElementById('enquiry-hub-content');
+        const home = document.getElementById('view-enquiry-hub');
+        if (ehc && home && pane && ehc.parentElement === pane) home.appendChild(ehc);
+    }
+    if (hint) {
+        hint.textContent =
+            which === 'messages'
+                ? 'Select a conversation on the left — it opens here.'
+                : which === 'email'
+                  ? 'Select an email on the left — it opens here.'
+                  : 'Select an enquiry on the left — its details and actions appear here.';
+        hint.style.display = '';
+    }
+    if (which === 'enquiries') markInboxSelection();
     // The mailbox is lazy: first open fetches, after that the rendered list
     // stays live in the DOM and the Refresh button re-pulls on demand.
     if (which === 'email' && !__mbxOpenedOnce) {
@@ -8816,7 +8851,7 @@ function renderMailboxList(keepSearchFocus) {
                 // INSIDE the tapped card (accordion), not at the page bottom.
                 return `
         <div class="mbx-item" data-uid="${mbxEsc(m.uid)}">
-        <button type="button" class="bk-row glass-panel${unread ? ' mbx-unread' : ''}" onclick="mailboxOpen('${mbxEsc(m.uid)}')" aria-expanded="false">
+        <button type="button" class="bk-row glass-panel${unread ? ' mbx-unread' : ''}${__mbxSelUid != null && String(__mbxSelUid) === String(m.uid) ? ' is-open' : ''}" onclick="mailboxOpen('${mbxEsc(m.uid)}')" aria-expanded="false">
             <span class="bk-row-body">
                 <span class="bk-row-top">
                     ${unread ? '<span class="bk-chip warn"><span class="bk-dot"></span>New</span>' : ''}
@@ -8840,7 +8875,7 @@ function renderMailboxList(keepSearchFocus) {
             .map(
                 (m) => `
         <div class="mbx-item" data-sent-id="${m.id}">
-        <button type="button" class="bk-row glass-panel" onclick="mailboxOpenSent(${m.id})" aria-expanded="false">
+        <button type="button" class="bk-row glass-panel${__mbxSelSent != null && String(__mbxSelSent) === String(m.id) ? ' is-open' : ''}" onclick="mailboxOpenSent(${m.id})" aria-expanded="false">
             <span class="bk-row-body">
                 <span class="bk-row-top"><span class="mbx-when">${mbxEsc(mbxWhen(m.sent_at))}</span></span>
                 <strong class="bk-row-name">To: ${mbxEsc(m.to_email)}</strong>
@@ -8880,8 +8915,42 @@ function renderMailboxList(keepSearchFocus) {
         }
     }
 }
+// Desktop reading pane for the mailbox (Apple-Mail style): emails open in
+// the Inbox's right-hand pane; phones/tablets keep the in-row accordion.
+let __mbxSelUid = null;
+let __mbxSelSent = null;
+function mbxPaneDock() {
+    if (!inboxSplitWide()) return null;
+    const view = document.getElementById('view-inbox');
+    if (!view || !view.classList.contains('active')) return null;
+    const fold = document.getElementById('inbox-folder-email');
+    if (!fold || fold.style.display === 'none') return null;
+    const pane = document.getElementById('inbox-detail-pane');
+    if (!pane) return null;
+    let dock = document.getElementById('mbx-pane-dock');
+    if (!dock) {
+        dock = document.createElement('div');
+        dock.id = 'mbx-pane-dock';
+        pane.appendChild(dock);
+    }
+    return dock;
+}
+function mbxMarkSel() {
+    document.querySelectorAll('#mailbox-body .mbx-item').forEach((it) => {
+        const on =
+            (__mbxSelUid != null && it.dataset.uid === String(__mbxSelUid)) ||
+            (__mbxSelSent != null && it.dataset.sentId === String(__mbxSelSent));
+        const row = it.querySelector('.bk-row');
+        if (row) row.classList.toggle('is-open', on);
+    });
+}
 // Collapse whichever email is expanded (and reset every row's open state).
 function mailboxCollapse() {
+    const dock = document.getElementById('mbx-pane-dock');
+    if (dock) dock.innerHTML = '';
+    __mbxSelUid = null;
+    __mbxSelSent = null;
+    mbxMarkSel();
     document.querySelectorAll('#mailbox-body .mbx-item').forEach((it) => {
         it.classList.remove('open');
         const slot = it.querySelector('.mbx-inline');
@@ -8908,7 +8977,13 @@ function mbxSlotFor(attr, value) {
     return item.querySelector('.mbx-inline');
 }
 async function mailboxOpen(uid) {
-    const pane = mbxSlotFor('uid', uid);
+    const dock = mbxPaneDock();
+    if (dock) {
+        __mbxSelUid = uid;
+        __mbxSelSent = null;
+        mbxMarkSel();
+    }
+    const pane = dock || mbxSlotFor('uid', uid);
     if (!pane) return;
     pane.innerHTML = '<p style="font-size:0.85rem;color:var(--text-muted);margin:10px 4px;">Opening…</p>';
     try {
@@ -8946,7 +9021,13 @@ async function mailboxOpen(uid) {
 }
 function mailboxOpenSent(id) {
     const m = __mbxSent.find((x) => x.id === id);
-    const pane = mbxSlotFor('sentId', id);
+    const dock = mbxPaneDock();
+    if (dock) {
+        __mbxSelSent = id;
+        __mbxSelUid = null;
+        mbxMarkSel();
+    }
+    const pane = dock || mbxSlotFor('sentId', id);
     if (!m || !pane) return;
     pane.innerHTML = `
         <section class="bhub-card glass-panel mbx-inline-card">
@@ -8992,7 +9073,13 @@ function mailboxComposeForm(target, presetTo, presetSubject, quoted) {
     if (focusEl) focusEl.focus();
 }
 function mailboxCompose(presetTo) {
-    const pane = document.getElementById('mbx-reader');
+    const dock = mbxPaneDock();
+    if (dock) {
+        __mbxSelUid = null;
+        __mbxSelSent = null;
+        mbxMarkSel();
+    }
+    const pane = dock || document.getElementById('mbx-reader');
     if (!pane) return;
     pane.innerHTML = `<section class="bhub-card glass-panel" style="margin-top:18px;">
         <h3 class="bhub-card-title">New email</h3><div id="mbx-compose"></div></section>`;
