@@ -20,7 +20,8 @@ const ok = (cond, label) => {
 
 (async () => {
   const server = spawn('php', ['-S', `127.0.0.1:${PORT}`, '-t', dir], { stdio: 'ignore' });
-  await new Promise((r) => setTimeout(r, 800));
+  // Wait for php -S to actually accept connections (a fixed sleep flakes on slow CI runners).
+  for (let i = 0; i < 60; i++) { try { if ((await fetch(`http://127.0.0.1:${PORT}/index.html`)).ok) break; } catch (e) {} await new Promise((r) => setTimeout(r, 250)); }
   const browser = await chromium.launch(process.env.CHB_CHROMIUM ? { executablePath: process.env.CHB_CHROMIUM } : {});
   // <1200px so sections A–H exercise the STANDALONE hub flow (the ≥1200
   // master–detail split gets its own section I at the end).

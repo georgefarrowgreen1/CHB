@@ -17,7 +17,8 @@ const d = (n) => { const t = new Date(); t.setDate(t.getDate() + n); return t.to
 
 (async () => {
   const server = spawn('php', ['-S', `127.0.0.1:${PORT}`, '-t', dir], { stdio: 'ignore' });
-  await new Promise((r) => setTimeout(r, 800));
+  // Wait for php -S to actually accept connections (a fixed sleep flakes on slow CI runners).
+  for (let i = 0; i < 60; i++) { try { if ((await fetch(`http://127.0.0.1:${PORT}/index.html`)).ok) break; } catch (e) {} await new Promise((r) => setTimeout(r, 250)); }
   const browser = await chromium.launch(process.env.CHB_CHROMIUM ? { executablePath: process.env.CHB_CHROMIUM } : {});
   const page = await browser.newPage({ viewport: { width: 1280, height: 950 } });
   page.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
