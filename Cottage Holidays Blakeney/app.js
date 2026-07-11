@@ -1155,6 +1155,10 @@ function nav(viewId, anchorId = null) {
 
 // ---- Light / dark theme toggle ----
 function setThemeLabel() {
+    // Manage → Appearance row shows the live mode (the footer toggle is hidden
+    // on admin screens, so this row is the back office's switch).
+    const v = document.getElementById('theme-row-value');
+    if (v) v.textContent = document.body.classList.contains('light-mode') ? 'light' : 'dark';
     const btn = document.getElementById('theme-toggle');
     if (!btn) return;
     // The switch position/animation is driven by the body.light-mode class in CSS;
@@ -1169,10 +1173,10 @@ function applySavedTheme() {
     try {
         pref = localStorage.getItem('chb-theme');
     } catch (e) {}
-    // Coastal-fresh LIGHT is the guest default; dark is opt-in (pref==='dark').
-    // Admins always use dark mode (their toggle is hidden); their saved
-    // preference is left untouched and re-applied when they sign out.
-    if (pref !== 'dark' && !isAuthenticated) document.body.classList.add('light-mode');
+    // Coastal-fresh LIGHT is the default everywhere — including the back
+    // office; dark is opt-in (pref==='dark') via the footer toggle, one
+    // preference shared across the public site and the admin dashboard.
+    if (pref !== 'dark') document.body.classList.add('light-mode');
     else document.body.classList.remove('light-mode');
     try {
         document.documentElement.classList.remove('theme-light-boot');
@@ -1643,7 +1647,7 @@ function setAuthUI() {
     // In preview-as-guest mode the admin sees the customer site, so don't
     // apply owner chrome or bounce them into the back office.
     document.body.classList.toggle('owner-mode', isAuthenticated && !PREVIEW_MODE);
-    // Force dark mode for admins (and restore the saved theme on sign-out).
+    // Re-apply the saved theme — the back office follows it like the public site.
     try {
         applySavedTheme();
     } catch (e) {}
@@ -8148,7 +8152,11 @@ function injectPropColors() {
             classRules +=
                 `.swatch-${k}{background:var(--prop-${k}-bg);border:1px solid var(--prop-${k}-border);}` +
                 `.tag-${k}{background:var(--prop-${k}-bg);border:1px solid var(--prop-${k}-border);color:var(--prop-${k});}` +
-                `.tl-bar.bar-${k}{background:var(--prop-${k}-bg);color:var(--prop-${k});}`;
+                // Light mode: accent-on-pale-tint is too faint — darken towards ink
+                // (same treatment app.css gives the three built-in cottages).
+                `body.light-mode .tag-${k}{color:#1b2a34;color:color-mix(in srgb,var(--prop-${k}) 55%,#1b2a34);}` +
+                // Timeline bar text INHERITS the theme ink (matches the built-in bars).
+                `.tl-bar.bar-${k}{background:var(--prop-${k}-bg);}`;
         });
         let style = document.getElementById('prop-accent-colors');
         if (!style) {
@@ -11797,7 +11805,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'mrgq5a1k';
+    const BUILD = 'mrgqylki';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
