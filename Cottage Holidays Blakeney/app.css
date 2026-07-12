@@ -7750,6 +7750,12 @@ body.owner-mode .admin-dock-wrap {
 .admin-dock-btn.active-mode:hover {
   background: #43a047;
 }
+/* Search-first layout: collapse the dock to Today · Inbox · Search. Payments and
+   Manage move into the ⌘K palette; their buttons are hidden (not removed), so
+   switching back to classic in Manage → Appearance is instant. Gated on
+   owner-mode so it can never affect the public site or the guest shell. */
+body.owner-mode.search-first .admin-dock-btn[data-view="view-accounts"],
+body.owner-mode.search-first .admin-dock-btn[data-view="view-settings"] { display: none; }
 .admin-dock {
   position: relative;
   display: flex;
