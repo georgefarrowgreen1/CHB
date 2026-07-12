@@ -139,6 +139,8 @@ async function openSettings(section) {
 // ===================================================================
 let __cmdkResults = [];
 let __cmdkSel = 0;
+let __cmdkServerT = null; // debounce timer for the deep server-side search
+let __cmdkServerStamp = 0; // stale-guards late responses when the query moved on
 function cmdkIcon(type) {
     if (type === 'booking')
         return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg>';
@@ -146,6 +148,18 @@ function cmdkIcon(type) {
         return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
     if (type === 'answer')
         return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg>';
+    if (type === 'email')
+        return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/></svg>';
+    if (type === 'message')
+        return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.6-.8L3 21l1.9-5.7A8.38 8.38 0 0 1 4 11.5 8.5 8.5 0 0 1 12.5 3 8.38 8.38 0 0 1 21 11.5z"/></svg>';
+    if (type === 'guest')
+        return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg>';
+    if (type === 'review')
+        return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.2 5.8.9-4.2 4 1 5.7-5.2-2.7-5.2 2.7 1-5.7-4.2-4 5.8-.9z"/></svg>';
+    if (type === 'payment')
+        return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="5.5" width="19" height="13" rx="2.5"/><path d="M2.5 10h19"/></svg>';
+    if (type === 'activity')
+        return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 1.8"/></svg>';
     return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>';
 }
 // The fixed screens — dock destinations + every Manage sub-screen — so the
@@ -257,7 +271,7 @@ function cmdkIntent(q) {
             .sort(byIn);
         const total = rows.reduce((s, x) => s + x.ps.balance, 0);
         const head = ans(
-            rows.length ? `${rows.length} guest${rows.length === 1 ? '' : 's'} owe ${gbp(total)}` : 'Everyone’s paid up',
+            rows.length ? `${rows.length} guest${rows.length === 1 ? '' : 's'} owe${rows.length === 1 ? 's' : ''} ${gbp(total)}` : 'Everyone’s paid up',
             rows.length ? 'Outstanding balances — open Bookings ▸ Needs payment' : 'No balances outstanding',
             () => { closeCmdK(); Promise.resolve(openBookings()).then(() => bookingsSetFilter('needspay')); },
         );
@@ -266,7 +280,7 @@ function cmdkIntent(q) {
     // 2) Leaving / checking out (today, or this week).
     if (/\bleav|leaving|check.?out|checking out|departing|departure|checkout\b/.test(q)) {
         const rows = flat.filter((x) => x.b.checkOut && x.b.checkOut >= today && x.b.checkOut <= end).sort(byOut);
-        const head = ans(rows.length ? `${rows.length} checking out ${when}` : `No check-outs ${when}`, 'Departures', () => { closeCmdK(); tryAccessBackOffice(); });
+        const head = ans(rows.length ? `${rows.length} guest${rows.length === 1 ? '' : 's'} checking out ${when}` : `No check-outs ${when}`, 'Departures', () => { closeCmdK(); tryAccessBackOffice(); });
         return [head].concat(rows.map((x) => bk(x.pk, x.b, `Checks out ${fmtDate(x.b.checkOut)}${x.b.checkOutTime ? ' · ' + x.b.checkOutTime : ''} · ${propName(x.pk)}`)));
     }
     // 3) Upcoming / next bookings — future arrivals, soonest first.
@@ -282,7 +296,7 @@ function cmdkIntent(q) {
     // 4) Arriving / checking in (today, or this week).
     if (/\barriv|arriving|check.?in|checking in|arrival|coming\b/.test(q)) {
         const rows = flat.filter((x) => x.b.checkIn && x.b.checkIn >= today && x.b.checkIn <= end).sort(byIn);
-        const head = ans(rows.length ? `${rows.length} arriving ${when}` : `No arrivals ${when}`, 'Check-ins', () => { closeCmdK(); tryAccessBackOffice(); });
+        const head = ans(rows.length ? `${rows.length} guest${rows.length === 1 ? '' : 's'} arriving ${when}` : `No arrivals ${when}`, 'Check-ins', () => { closeCmdK(); tryAccessBackOffice(); });
         return [head].concat(rows.map((x) => bk(x.pk, x.b, `Checks in ${fmtDate(x.b.checkIn)}${x.b.checkInTime ? ' · ' + x.b.checkInTime : ''} · ${propName(x.pk)}`)));
     }
     // 5) Currently staying / in-house right now.
@@ -339,6 +353,51 @@ function cmdkSearch(q) {
     __cmdkResults = results.concat(fuzzy).slice(0, 18);
     __cmdkSel = 0;
     cmdkRender();
+    // Deep index search runs server-side (emails, messages, invoices, guests,
+    // reviews, activity — everything not held in the browser) and merges in when
+    // it lands. Debounced so we don't hit the server on every keystroke, and
+    // stale-guarded so a slow response for an old query is ignored.
+    clearTimeout(__cmdkServerT);
+    if (ql.length >= 2) {
+        __cmdkServerT = setTimeout(() => cmdkServerSearch(ql), 180);
+    } else {
+        __cmdkServerStamp++;
+    }
+}
+// Fire the federated search.php query and merge its typed results in below the
+// local answers, deduped and mapped to the right destination per type.
+function cmdkServerSearch(ql) {
+    const stamp = ++__cmdkServerStamp;
+    apiPost('search.php', { q: ql })
+        .then((r) => {
+            if (stamp !== __cmdkServerStamp) return; // a newer query superseded this
+            const seen = new Set(__cmdkResults.filter((x) => x.id != null).map((x) => x.type + ':' + x.id));
+            const mapped = ((r && r.results) || [])
+                .map(cmdkServerItem)
+                .filter((x) => x && !(x.id != null && seen.has(x.type + ':' + x.id)));
+            if (!mapped.length) return;
+            __cmdkResults = __cmdkResults.concat(mapped).slice(0, 34);
+            cmdkRender();
+        })
+        .catch(() => {});
+}
+// Map a server result row → a palette item with the right one-tap destination.
+// The server sends only data + a type; routing lives here (never in the payload).
+function cmdkServerItem(x) {
+    const routes = {
+        booking: () => { closeCmdK(); openBookingHub(x.id); },
+        enquiry: () => { closeCmdK(); openEnquiryHub(x.id); },
+        guest: () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => settingsOpen('guests')); },
+        message: () => { closeCmdK(); Promise.resolve(openInbox()).then(() => { inboxFolder('messages'); if (x.thread_id) openMessageThread(x.thread_id); }); },
+        review: () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => settingsOpen('reviews')); },
+        email: () => { closeCmdK(); Promise.resolve(openInbox()).then(() => inboxFolder('email')); },
+        payment: () => { closeCmdK(); openBookingHub(x.booking_id); },
+        activity: () => { closeCmdK(); nav('view-activity-log'); },
+    };
+    const run = routes[x.type];
+    if (!run) return null;
+    const id = x.id != null ? x.id : x.booking_id != null ? x.booking_id : x.thread_id;
+    return { type: x.type, id, label: x.title || '(untitled)', sub: x.sub || '', run };
 }
 function cmdkRender() {
     const box = document.getElementById('cmdk-results');
