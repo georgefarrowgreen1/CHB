@@ -187,7 +187,10 @@ function renderCottagesOverview() {
         const accent = meta.accent || 'var(--accent)';
         // Stacked layout: name, then price, then occupancy — nothing sits on one
         // squeezed row, so a long cottage name can't push the price off the card.
-        return `<button class="glass-panel area-ov-card" onclick="settingsOpen('accom')" style="text-align:left;padding:15px 16px;cursor:pointer;">
+        // Tap a cottage card → open THAT cottage's editor, not the cottage list.
+        // settingsOpen('accom') shows the section (renderAccomList hides the
+        // detail first), then settingsOpenAccom drills into this cottage.
+        return `<button class="glass-panel area-ov-card" onclick="settingsOpen('accom');settingsOpenAccom('${k}')" style="text-align:left;padding:15px 16px;cursor:pointer;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
                 <span style="font-weight:600;line-height:1.25;">${escapeHtml(meta.name || k)}</span>
                 <span class="settings-row-chev" style="flex-shrink:0;">›</span>
