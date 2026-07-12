@@ -353,9 +353,7 @@ function applyAreaFilter() {
         renderCottagesOverview();
     } catch (e) {}
     const h = document.querySelector('#view-settings .dashboard-header h1');
-    const p = document.querySelector('#view-settings .dashboard-header .lead');
     if (h) h.textContent = 'Manage';
-    if (p) p.textContent = 'Cottages, marketing, account and system';
     const s = document.getElementById('settings-search');
     if (s) s.placeholder = 'Search cottages, marketing & settings…';
 }
