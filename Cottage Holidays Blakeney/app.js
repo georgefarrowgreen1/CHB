@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 92;
+const ADMIN_BUNDLE_V = 93;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -8555,7 +8555,7 @@ function showSendConfirm(o) {
             ov.className = 'modal-overlay';
             ov.setAttribute('role', 'dialog');
             ov.setAttribute('aria-modal', 'true');
-            ov.innerHTML = `<div class="modal-box email-modal-box send-confirm-box">
+            ov.innerHTML = `<div class="modal-box email-modal-box send-confirm-box glass-panel">
                 <div class="email-modal-head">
                     <span class="email-modal-title">Review before sending</span>
                     <button type="button" class="email-modal-close" id="send-confirm-x" aria-label="Cancel">×</button>
@@ -12008,7 +12008,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'mshgmsgs';
+    const BUILD = 'mshgglas';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
