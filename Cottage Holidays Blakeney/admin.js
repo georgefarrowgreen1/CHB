@@ -265,6 +265,112 @@ function cmdkActions(q) {
         A('activity', 'Activity log', 'Every change & action', 'activity log history audit changes events', /(view|open|show|see).{0,10}(activity|log|history|audit)/, () => { closeCmdK(); nav('view-activity-log'); }),
     ];
 }
+// Parse a date or date-range out of a command query. Handles "12–15 Aug",
+// "aug 12-15", "12 aug" (check-in only), "12/08[/2026]", ISO, and the relatives
+// "tonight/today/tomorrow", "this/next weekend", "this/next week". Returns
+// { from, to } ISO (to may be null) or null when nothing date-like is present.
+function cmdkParseDates(q, today) {
+    const t = today || todayDashed();
+    const d0 = new Date(t + 'T00:00:00');
+    const iso = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+    const addOn = (dt, n) => { const x = new Date(dt); x.setDate(x.getDate() + n); return x; };
+    const MON = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+    const monIdx = (s) => MON.indexOf(s.slice(0, 3));
+    const yearFor = (mi) => d0.getFullYear() + (mi < d0.getMonth() ? 1 : 0);
+    const upcoming = (dow) => { const x = new Date(d0); x.setDate(x.getDate() + ((dow - x.getDay() + 7) % 7)); return x; }; // today if it matches
+    const MO = 'jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec';
+    let m;
+    // "12-15 aug" / "12 to 15 august"
+    if ((m = q.match(new RegExp('\\b(\\d{1,2})\\s*(?:-|–|to|until|till|thru)\\s*(\\d{1,2})\\s+(' + MO + ')[a-z]*\\b')))) {
+        const mi = monIdx(m[3]), yr = yearFor(mi);
+        return { from: iso(new Date(yr, mi, +m[1])), to: iso(new Date(yr, mi, +m[2])) };
+    }
+    // "aug 12-15"
+    if ((m = q.match(new RegExp('\\b(' + MO + ')[a-z]*\\s+(\\d{1,2})\\s*(?:-|–|to|until|till|thru)\\s*(\\d{1,2})\\b')))) {
+        const mi = monIdx(m[1]), yr = yearFor(mi);
+        return { from: iso(new Date(yr, mi, +m[2])), to: iso(new Date(yr, mi, +m[3])) };
+    }
+    // single "12 aug" or "aug 12" → check-in only
+    if ((m = q.match(new RegExp('\\b(\\d{1,2})\\s+(' + MO + ')[a-z]*\\b'))) || (m = q.match(new RegExp('\\b(' + MO + ')[a-z]*\\s+(\\d{1,2})\\b')))) {
+        const dayStr = /^\d/.test(m[1]) ? m[1] : m[2];
+        const monStr = /^\d/.test(m[1]) ? m[2] : m[1];
+        const mi = monIdx(monStr), yr = yearFor(mi);
+        return { from: iso(new Date(yr, mi, +dayStr)), to: null };
+    }
+    if ((m = q.match(/\b(\d{4})-(\d{2})-(\d{2})\b/))) return { from: `${m[1]}-${m[2]}-${m[3]}`, to: null };
+    if ((m = q.match(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/))) {
+        const yr = m[3] ? (m[3].length === 2 ? 2000 + +m[3] : +m[3]) : d0.getFullYear();
+        return { from: iso(new Date(yr, +m[2] - 1, +m[1])), to: null };
+    }
+    if (/\bnext weekend\b/.test(q)) { const f = addOn(upcoming(6), 7); return { from: iso(f), to: iso(addOn(f, 2)) }; }
+    if (/\b(this )?weekend\b/.test(q)) { const f = upcoming(6); return { from: iso(f), to: iso(addOn(f, 2)) }; }
+    if (/\btomorrow\b/.test(q)) { const f = addOn(d0, 1); return { from: iso(f), to: iso(addOn(f, 1)) }; }
+    if (/\b(tonight|today)\b/.test(q)) return { from: iso(d0), to: iso(addOn(d0, 1)) };
+    if (/\bnext week\b/.test(q)) { const f = addOn(upcoming(1), 7); return { from: iso(f), to: iso(addOn(f, 7)) }; }
+    if (/\bthis week\b/.test(q)) { const f = upcoming(1); return { from: iso(f), to: iso(addOn(f, 7)) }; }
+    return null;
+}
+// Open the Add-Booking form pre-filled (used by the "add booking for…" command).
+function cmdkPrefillAddBooking(p) {
+    openAddBooking();
+    try {
+        if (p.name) { const el = document.getElementById('modal-name'); if (el) el.value = p.name; }
+        const sel = document.getElementById('modal-property');
+        if (sel && p.propKey && propertyMeta[p.propKey]) { populateBookingPropertySelect(p.propKey); sel.value = p.propKey; }
+        if (p.checkIn) { const ci = document.getElementById('modal-checkin'); if (ci) ci.value = p.checkIn; }
+        if (p.checkOut) { const co = document.getElementById('modal-checkout'); if (co) co.value = p.checkOut; }
+        applyModalPropertyMode();
+        refreshModalDateTrigger();
+        updateModalPrice();
+    } catch (e) {}
+}
+// Natural-language COMMANDS — parse a task + its entities (cottage, dates, guest)
+// and open the target pre-filled: "block Jollyboat next weekend", "add booking
+// for Smith 12–15 Aug", "message Debbie". Returns [item] or null (fall through to
+// the normal answers/actions). Runs FIRST in cmdkIntent so a fully-specified
+// command beats the generic "open the form" action.
+function cmdkCommand(q, today) {
+    const dates = cmdkParseDates(q, today);
+    const pk = cmdkCottageFor(q);
+    const cName = pk && propertyMeta[pk] ? propertyMeta[pk].name : '';
+    const range = dates ? (dates.to ? `${fmtDate(dates.from)}–${fmtDate(dates.to)}` : fmtDate(dates.from)) : '';
+    const cmd = (label, sub, run) => [{ type: 'answer', id: 'cmdk-command', label, sub, run }];
+    // BLOCK — "block <cottage> <dates>"; needs a cottage or dates to be a command.
+    if (/\bblock(ed|ing|s)?\b/.test(q) && (pk || dates)) {
+        return cmd(
+            `Block ${cName || 'dates'}${range ? ' · ' + range : ''}`,
+            'Opens Block-dates pre-filled — just confirm',
+            () => { closeCmdK(); openBlockDates({ prop: pk || '', from: dates ? dates.from : '', to: dates ? dates.to || '' : '' }); },
+        );
+    }
+    // ADD BOOKING — "add booking for <name> <dates> [cottage]" / "book <name>…".
+    const addVerb = /\b(add|new|make|create|take|enter).{0,20}\bbooking\b/.test(q) || /\bbook\s+(in\s+)?(?:for\s+)?[a-z]{2,}/.test(q);
+    const nameM = q.match(/\bfor\s+([a-z][a-z .'-]*?)(?=\s+\d|\s+(?:on|from|in|next|this|tomorrow|tonight|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b|$)/);
+    if (addVerb && (nameM || dates)) {
+        let raw = nameM ? nameM[1].trim() : '';
+        // The cottage name/key can sit inside the captured name ("Jones Jollyboat")
+        // — strip its words so the guest name is just the guest.
+        if (raw && pk) {
+            const drop = new Set((cName + ' ' + pk).toLowerCase().split(/\s+/).filter(Boolean));
+            raw = raw.split(/\s+/).filter((w) => !drop.has(w.toLowerCase())).join(' ');
+        }
+        const name = raw.replace(/\b[a-z]/g, (c) => c.toUpperCase());
+        return cmd(
+            `Add booking${name ? ' · ' + name : ''}${range ? ' · ' + range : ''}${cName ? ' · ' + cName : ''}`,
+            'Opens the new-booking form, pre-filled',
+            () => { closeCmdK(); cmdkPrefillAddBooking({ propKey: pk, checkIn: dates ? dates.from : '', checkOut: dates ? dates.to || '' : '', name }); },
+        );
+    }
+    // MESSAGE / EMAIL a named guest — resolve the name to a booking.
+    const msgM = q.match(/\b(?:message|email|text|msg|write to|contact)\s+([a-z][a-z .'-]+)/);
+    if (msgM) {
+        const words = msgM[1].trim().toLowerCase().split(/\s+/).filter((w) => w.length >= 3);
+        let hit = null;
+        Object.keys(dbBookings || {}).forEach((k) => (dbBookings[k] || []).forEach((b) => { if (!hit && b.name && words.some((w) => b.name.toLowerCase().includes(w))) hit = b; }));
+        if (hit) return cmd(`Email ${hit.name}`, 'Opens the email composer for their booking', () => { closeCmdK(); openBookingEmail(hit.id); });
+    }
+    return null;
+}
 // Bounded Levenshtein — returns min(distance, max+1); bails as soon as a whole
 // row exceeds the budget, so typo-matching stays cheap on every keystroke.
 function cmdkLev(a, b, max) {
@@ -427,6 +533,10 @@ function cmdkAll(q) {
 // recognised question.
 function cmdkIntent(q) {
     const today = todayDashed();
+    // -1) Natural-language commands — a fully-specified task ("block Jollyboat
+    // next weekend", "add booking for Smith 12–15 Aug") wins over everything else
+    // and opens the target pre-filled.
+    try { const cmd = cmdkCommand(q, today); if (cmd) return cmd; } catch (e) {}
     const propName = (k) => (propertyMeta[k] && propertyMeta[k].name) || k || '';
     const flat = [];
     if (typeof dbBookings === 'object' && dbBookings) {
@@ -684,29 +794,16 @@ function cmdkIntent(q) {
 function cmdkSearch(q) {
     cmdkSearchCore(q, true);
 }
-// The search engine. `allowCorrect` runs the typo auto-corrector first (the
-// "Showing results for…" note re-runs with it off so the owner can force the
-// literal spelling). Order: corrected operational answers → importance-ranked,
-// typo-tolerant fuzzy over bookings/enquiries/actions/screens → server merge.
-function cmdkSearchCore(q, allowCorrect) {
-    const raw = (q || '').trim().toLowerCase();
-    if (!raw) {
-        // Empty query → the dock destinations, as quick launchers.
-        __cmdkResults = cmdkScreens().slice(0, 6);
-        __cmdkSel = 0;
-        cmdkRender();
-        return;
-    }
-    const corr = allowCorrect ? cmdkCorrect(raw) : { text: raw, changed: false };
-    const ql = corr.text;
+// Build the two local result bands for a query: the operational answers/commands
+// (cmdkIntent) and the importance-ranked, typo-tolerant fuzzy list, deduped
+// against each other. Pure — no DOM — so cmdkSearchCore can try it on the literal
+// query and, only if that's empty, again on the auto-corrected one.
+function cmdkBuildResults(ql) {
     let results = [];
-    // Smart operational answers lead when the query is a recognised question.
     try {
         const intent = cmdkIntent(ql);
         if (intent) results = intent.slice(0, 11);
     } catch (e) {}
-    // Then the fuzzy name / screen / action / keyword search, deduped against the
-    // answer and ranked by relevance + importance (see cmdkScore).
     const seen = new Set(results.filter((r) => r.id != null).map((r) => r.type + ':' + r.id));
     const words = ql.split(/\s+/).filter(Boolean);
     const fuzzy = cmdkAll(ql)
@@ -719,12 +816,40 @@ function cmdkSearchCore(q, allowCorrect) {
         .sort((a, b) => b.score - a.score)
         .slice(0, 12)
         .map((x) => x.it);
-    // A quiet "Showing results for '<corrected>'" chip when we fixed a typo, with
-    // a one-tap escape hatch back to the literal spelling.
-    const note = corr.changed
-        ? [{ type: 'answer', id: 'cmdk-correction', label: `Showing results for “${ql}”`, sub: `Search instead for “${raw}”`, run: () => { const el = document.getElementById('cmdk-input'); if (el) el.value = raw; cmdkSearchCore(raw, false); } }]
-        : [];
-    __cmdkResults = note.concat(results).concat(fuzzy).slice(0, 18);
+    return { results, fuzzy };
+}
+// The search engine. The literal query is tried first (never corrected); the
+// typo auto-corrector is a fallback that only runs when the literal query is
+// empty — the "Showing results for…" note re-runs with it off so the owner can
+// force the literal spelling.
+function cmdkSearchCore(q, allowCorrect) {
+    const raw = (q || '').trim().toLowerCase();
+    if (!raw) {
+        // Empty query → the dock destinations, as quick launchers.
+        __cmdkResults = cmdkScreens().slice(0, 6);
+        __cmdkSel = 0;
+        cmdkRender();
+        return;
+    }
+    // The LITERAL query is tried first — never auto-corrected — so a precise
+    // command ("block Jollyboat next weekend") or an exact name is parsed as
+    // typed. Auto-correct is a fallback that only runs when the literal query
+    // finds nothing, exactly like a phone's search.
+    let ql = raw;
+    let built = cmdkBuildResults(raw);
+    let note = [];
+    if (allowCorrect && !built.results.length && !built.fuzzy.length) {
+        const corr = cmdkCorrect(raw);
+        if (corr.changed) {
+            const alt = cmdkBuildResults(corr.text);
+            if (alt.results.length || alt.fuzzy.length) {
+                built = alt;
+                ql = corr.text;
+                note = [{ type: 'answer', id: 'cmdk-correction', label: `Showing results for “${ql}”`, sub: `Search instead for “${raw}”`, run: () => { const el = document.getElementById('cmdk-input'); if (el) el.value = raw; cmdkSearchCore(raw, false); } }];
+            }
+        }
+    }
+    __cmdkResults = note.concat(built.results).concat(built.fuzzy).slice(0, 18);
     __cmdkSel = note.length && __cmdkResults.length > 1 ? 1 : 0; // keep the top real result selected, not the note
     cmdkRender();
     // Deep index search runs server-side (emails, messages, invoices, guests,
@@ -5277,7 +5402,10 @@ async function initBackOffice() {
     autoSyncIcalBlocks();
 }
 // Owner block: hold dates for maintenance / personal use (no fake booking).
-async function openBlockDates() {
+// `prefill` (optional {prop, from, to}) lets a ⌘K command open this dialog
+// already filled in — "block Jollyboat next weekend" — so the owner just confirms.
+async function openBlockDates(prefill) {
+    const pf = prefill && typeof prefill === 'object' ? prefill : {};
     // ONE dialog: pick the cottage from a dropdown (no typed keys) and the
     // dates from native pickers.
     const vals = await glassForm('Block out dates', [
@@ -5285,10 +5413,11 @@ async function openBlockDates() {
             id: 'prop',
             label: 'Cottage',
             type: 'select',
+            value: pf.prop && propertyMeta[pf.prop] ? pf.prop : undefined,
             options: Object.keys(propertyMeta).map((k) => ({ value: k, label: propertyMeta[k].name })),
         },
-        { id: 'from', label: 'First blocked night', type: 'date', value: todayDashed() },
-        { id: 'to', label: 'Free again from (checkout morning)', type: 'date' },
+        { id: 'from', label: 'First blocked night', type: 'date', value: pf.from || todayDashed() },
+        { id: 'to', label: 'Free again from (checkout morning)', type: 'date', value: pf.to || undefined },
     ]);
     if (vals === null) return;
     const key = (vals.prop || '').trim();
