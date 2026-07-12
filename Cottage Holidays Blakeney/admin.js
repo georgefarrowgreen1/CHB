@@ -242,7 +242,7 @@ function cmdkActions(q) {
         A('addbooking', 'Add a booking', 'Take a booking into the diary', 'book customer guest reservation manual new take enter create put', /(add|new|create|make|manual|take|enter|put).{0,14}(booking|reservation|stay|customer|guest)|book (a|in|someone|my)/, () => { closeCmdK(); openAddBooking(); }),
         A('block', 'Block out dates', 'Mark dates unavailable', 'block off close unavailable maintenance reserve hold', /block.{0,10}(date|off|out|calendar|time)|(add|make).{0,10}block|close.{0,8}date/, () => { closeCmdK(); openBlockDates(); }),
         A('rates', 'Change prices & rates', 'Nightly and seasonal pricing', 'price rate nightly cost charge seasonal summer holiday raise lower adjust set fee', /(change|edit|update|set|adjust|raise|lower|manage|amend).{0,14}(price|rate|pricing|cost|nightly|charge|fee)|season(al)? (rate|price)|price.{0,6}(change|update)/, toManage('seasongrid')),
-        A('email', 'Compose an email', 'Write a new message', 'send write mail email message compose new', /(send|compose|write|new|draft).{0,14}(email|mail|message)/, () => { closeCmdK(); Promise.resolve(openInbox()).then(() => inboxFolder('email')); }),
+        A('email', 'Compose an email', 'Write a new message', 'send write mail email message compose new create make', /(send|compose|write|new|draft|create|make).{0,14}(email|mail|message)/, () => { closeCmdK(); Promise.resolve(openInbox()).then(() => inboxFolder('email')); }),
         A('welcome', cName ? `Welcome guide — ${cName}` : 'Edit the welcome guide', 'In-stay guide: Wi-Fi, appliances, bins, tips', 'welcome book guide in stay wifi manual instructions house information handbook', /(edit|change|update|write|add).{0,18}(welcome|guide|in.?stay|house ?book|handbook)/, toAccom('welcome')),
         A('house', cName ? `House rules — ${cName}` : 'Edit house rules', 'Pets, smoking, parties, quiet hours', 'rules policy pets smoking parties quiet hours house', /(edit|change|update|set).{0,14}(house ?rule|rule)/, toAccom('house')),
         A('photos', cName ? `Photos — ${cName}` : 'Cottage photos', 'Manage the gallery', 'photo image picture gallery upload cottage', /(add|upload|change|edit|manage|new|put).{0,18}(photo|image|picture|gallery)/, toAccom('photos')),
@@ -839,6 +839,54 @@ function cmdkIntent(q) {
             );
             return [head].concat(rows.slice(0, 10).map((x) => bk(x.pk, x.b, `${fmtDate(x.b.checkIn)}–${fmtDate(x.b.checkOut)}`)));
         }
+    }
+
+    // 0j) Topic dossiers — a bare topic word returns that topic's whole page
+    // inside search: live facts + every path. Money / Status / Messages.
+    const runQ = (query) => () => { const el = document.getElementById('cmdk-input'); if (el) el.value = query; cmdkSearch(query); };
+    const toMng = (sec) => () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => settingsOpen(sec)); };
+    const A = (id, label, sub, run) => ({ type: 'action', id, label, sub, run });
+    if (/^\s*(the\s+)?(money|payments?|takings|finances?|accounts?|cash)\s*(overview|summary|dashboard)?\s*$/.test(q)) {
+        let outstanding = 0, owers = 0, held = 0, depN = 0;
+        flat.forEach((x) => {
+            const ps = paymentSummary(x.pk, x.b);
+            if (!ps.fullyPaid && ps.balance > 0.5) { outstanding += ps.balance; owers++; }
+            try { const dh = damageHeld(x.pk, x.b); if (dh && dh.held > 0.5) { held += dh.held; depN++; } } catch (e) {}
+        });
+        const facts = [outstanding > 0.5 ? `${gbp(outstanding)} to collect` : 'All balances in', held > 0.5 ? `${gbp(held)} deposits held` : null].filter(Boolean).join(' · ');
+        const head = ans('Payments', facts, () => { closeCmdK(); openAccounts(); });
+        return [head].concat([
+            A('mdsr-open', 'Open Payments', 'Money & reconciliation', () => { closeCmdK(); openAccounts(); }),
+            owers ? A('mdsr-owe', `Who owes money · ${owers}`, `${gbp(outstanding)} outstanding`, runQ('who owes me money')) : null,
+            depN ? A('mdsr-dep', 'Deposits to return', `${gbp(held)} held`, runQ('deposits to return')) : null,
+            A('mdsr-rev', 'Revenue this month', 'Booked income', runQ('revenue this month')),
+            A('mdsr-set', 'Payment settings', 'Square & deposit policy', toMng('payments')),
+        ].filter(Boolean));
+    }
+    if (/^\s*(the\s+)?(status|system status|health|health check|site status|system check|how.?s (the )?(site|system|business))\s*$/.test(q)) {
+        const ny = (() => { try { return needsYouItems().length; } catch (e) { return 0; } })();
+        const autoOk = typeof __nyCronQuiet === 'undefined' ? true : !__nyCronQuiet;
+        const head = {
+            type: autoOk ? 'answer' : 'figure', id: 'sdsr',
+            label: autoOk && !ny ? 'All systems operational' : 'System status',
+            sub: `${autoOk ? 'Automation running' : 'Automation looks stopped'} · ${ny ? ny + ' thing' + (ny === 1 ? '' : 's') + ' need you' : 'nothing needs you'}`,
+            run: toMng('diagnostics'),
+        };
+        return [head].concat([
+            A('sdsr-open', 'Open Status', 'Health, insights & updates', toMng('diagnostics')),
+            ny ? A('sdsr-ny', `${ny} thing${ny === 1 ? '' : 's'} need you`, 'The Today needs-you strip', () => { closeCmdK(); tryAccessBackOffice(); }) : null,
+            A('sdsr-act', 'Activity log', 'Every change & action', () => { closeCmdK(); nav('view-activity-log'); }),
+            A('sdsr-bak', 'Back up your data', 'Download a database backup', toMng('diagnostics')),
+        ].filter(Boolean));
+    }
+    if (/^\s*(the\s+)?(messages?|chats?|guest (chat|message)s?|inbox chats?)\s*$/.test(q)) {
+        const n = typeof __nyChats === 'number' ? __nyChats : 0;
+        const head = ans('Messages', n ? `${n} chat${n === 1 ? '' : 's'} waiting a reply` : 'Guest chats', () => { closeCmdK(); Promise.resolve(openInbox()).then(() => inboxFolder('messages')); });
+        return [head].concat([
+            A('gdsr-open', 'Open Messages', 'Guest chat folder', () => { closeCmdK(); Promise.resolve(openInbox()).then(() => inboxFolder('messages')); }),
+            A('gdsr-away', 'Away auto-reply', 'Out-of-hours acknowledgement', toMng('chat-away')),
+            A('gdsr-ans', 'Instant chat answers', 'Auto-answers to chat chips', toMng('chat-answers')),
+        ]);
     }
 
     // 1) Payments — who owes, who's paid in full, who's paid a deposit.
