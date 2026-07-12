@@ -543,6 +543,10 @@ function cmdkIntent(q) {
     // cottage earns most" is never mistaken for a guest). Defined once, used by
     // the insights branch AND to suppress the named-guest handler.
     const INSIGHTS_RE = /\brevenue\b|\bincome\b|\bearn(ed|ings?|ing)?\b|\btakings?\b|\bturnover\b|\bgross\b|occupanc|occupied|\bnights? (booked|sold)\b|how many nights|average (rate|price|nightly)|\bavg\b|busiest|quietest|best month|worst month|which (cottage|month)|top cottage|how.?s business|how am i doing|\bperformance\b|how much (did i |have i |i )?(make|made|earn|take)/;
+    // Operational list queries (deposits to return, balances to chase, volume) —
+    // like insights, they must beat guest-name matching (a query like "overdue
+    // balances" must not be read as guest "Olive Over").
+    const OPS_RE = /overdue|to chase|\bchase\b|chasing|behind|balances? (due|to chase|overdue|outstanding)|deposit.{0,14}(return|back|refund|give back)|return.{0,14}deposit|how many (guests|bookings|people|stays)|(guests?|bookings?) (this|last) year/;
     const propName = (k) => (propertyMeta[k] && propertyMeta[k].name) || k || '';
     const flat = [];
     if (typeof dbBookings === 'object' && dbBookings) {
@@ -636,8 +640,9 @@ function cmdkIntent(q) {
     // 0b) A specific guest by name — "have I refunded John?", "has Mary paid?",
     // "John's booking". Naming a guest wins over the generic intents below: the
     // head answers the money/refund question directly and the row(s) open the hub.
-    // (Insight queries are excluded so "which cottage earns most" can't name-match.)
-    if (named.length && !INSIGHTS_RE.test(q)) {
+    // (Insight/operational queries are excluded so "which cottage earns most" or
+    // "overdue balances" can't be mistaken for a guest name.)
+    if (named.length && !INSIGHTS_RE.test(q) && !OPS_RE.test(q)) {
         const rows = named.slice().sort(byIn);
         let head;
         if (rows.length === 1) {
@@ -731,6 +736,60 @@ function cmdkIntent(q) {
         // Default: revenue headline + the numbers + per-cottage split.
         const head = { type: 'figure', id: 'ins', label: `${gbp(revenue)} booked ${plabel}`, sub: `${soldNights} night${soldNights === 1 ? '' : 's'} · ${occPct}% occupancy${avgRate ? ' · avg ' + gbp(avgRate) + '/night' : ''}`, run: openMoney };
         return [head].concat(ranked.filter((r) => r.v > 0).map((r) => ({ type: 'answer', id: 'ins-' + r.k, label: `${propName(r.k)} · ${gbp(r.v)}`, sub: `${Math.round((100 * r.v) / (revenue || 1))}% of revenue`, run: openMoney })));
+    }
+
+    // 0d) Booking reference — "CHB-000123", "#123", "booking 123" → open it.
+    {
+        const refM = q.match(/(?:\bchb[-\s]?|#|\bbooking\s+|\bref\s+)0*(\d{1,6})\b/i);
+        if (refM) {
+            const id = +refM[1];
+            const found = flat.find((x) => String(x.b.id) === String(id) || String(x.b.dbId) === String(id));
+            if (found) return [bk(found.pk, found.b, `CHB-${String(found.b.id).padStart(6, '0')} · ${propName(found.pk)}${found.b.checkIn ? ' · ' + fmtDate(found.b.checkIn) : ''}`)];
+        }
+    }
+    // 0e) Amount — a bare "£440" / "440" → bookings whose total, deposit or balance matches.
+    {
+        const amtM = q.match(/^\s*£?\s*(\d{2,6})(?:\.\d{1,2})?\s*$/);
+        if (amtM) {
+            const amt = +amtM[1];
+            const near = (v) => Math.abs((v || 0) - amt) < 1;
+            const hits = flat.filter((x) => { const p = paymentSummary(x.pk, x.b); return near(p.total) || near(p.deposit) || near(p.balance); });
+            if (hits.length) {
+                const head = ans(`${hits.length} booking${hits.length === 1 ? '' : 's'} near ${gbp(amt)}`, 'Matched by total, deposit or balance', () => { closeCmdK(); openBookings(); });
+                return [head].concat(hits.slice(0, 10).map((x) => { const p = paymentSummary(x.pk, x.b); const which = near(p.total) ? 'total' : near(p.deposit) ? 'deposit paid' : 'balance due'; return bk(x.pk, x.b, `${gbp(amt)} ${which} · ${propName(x.pk)}`); }));
+            }
+        }
+    }
+    // 0f) Damage deposits to return — charged, and the guest has checked out.
+    if (/deposit/.test(q) && /return|give back|owed back|hand back|refund|\bback\b/.test(q)) {
+        const rows = flat.filter((x) => (x.b.holdStatus || 'none') === 'charged' && (x.b.checkOut || '') <= today).sort(byOut);
+        const head = ans(rows.length ? `${rows.length} deposit${rows.length === 1 ? '' : 's'} to return` : 'No deposits to return', rows.length ? 'Guests have checked out — refund the damages deposit' : 'Nothing waiting', () => { closeCmdK(); openBookings(); });
+        return [head].concat(rows.map((x) => bk(x.pk, x.b, `Checked out ${fmtDate(x.b.checkOut)} · ${propName(x.pk)}`)));
+    }
+    // 0g) Balances to chase — unpaid, arriving within three weeks or already overdue.
+    if (/overdue|to chase|\bchase\b|chasing|behind|due soon|balances? (due|to chase|overdue|outstanding)|payments? (due|overdue)/.test(q)) {
+        const rows = flat
+            .map((x) => ({ x, ps: paymentSummary(x.pk, x.b) }))
+            .filter((r) => !r.ps.fullyPaid && r.ps.balance > 0.5)
+            .map((r) => ({ ...r, days: Math.round((new Date((r.x.b.checkIn || today) + 'T00:00:00') - new Date(today + 'T00:00:00')) / 86400000) }))
+            .filter((r) => r.days <= 21)
+            .sort((a, b) => a.days - b.days);
+        const totalDue = rows.reduce((s, r) => s + r.ps.balance, 0);
+        const head = ans(
+            rows.length ? `${rows.length} balance${rows.length === 1 ? '' : 's'} to chase · ${gbp(totalDue)}` : 'Nothing to chase',
+            rows.length ? 'Due soon or overdue — open Bookings ▸ Needs payment' : 'All balances are in hand',
+            () => { closeCmdK(); Promise.resolve(openBookings()).then(() => bookingsSetFilter('needspay')); },
+        );
+        return [head].concat(rows.slice(0, 12).map((r) => { const when = r.days < 0 ? `overdue — was due ${fmtDate(r.x.b.checkIn)}` : r.days === 0 ? 'arrives today' : r.days === 1 ? 'arrives tomorrow' : `arrives in ${r.days} days`; return bk(r.x.pk, r.x.b, `${gbp(r.ps.balance)} · ${when} · ${propName(r.x.pk)}`); }));
+    }
+    // 0h) Volume — "how many guests / bookings this year".
+    if (/(how many|number of) (guests|people|bookings|stays)|guests? (this|last) year|bookings? (this|last) year/.test(q) && /year|so far|to date|202\d/.test(q)) {
+        const yr = /last year/.test(q) ? +today.slice(0, 4) - 1 : +today.slice(0, 4);
+        const rows = flat.filter((x) => x.b.checkIn && +x.b.checkIn.slice(0, 4) === yr);
+        const heads = rows.reduce((s, x) => s + (Number(x.b.adults) || 0) + (Number(x.b.children) || 0), 0);
+        const wantsBookings = /booking|stay/.test(q);
+        const label = wantsBookings || heads <= 0 ? `${rows.length} booking${rows.length === 1 ? '' : 's'} in ${yr}` : `${heads} guest${heads === 1 ? '' : 's'} across ${rows.length} booking${rows.length === 1 ? '' : 's'} in ${yr}`;
+        return [ans(label, `Check-ins during ${yr}`, () => { closeCmdK(); openBookings(); })];
     }
 
     // 1) Payments — who owes, who's paid in full, who's paid a deposit.
@@ -828,8 +887,8 @@ function cmdkIntent(q) {
             .concat(outs.map((x) => bk(x.pk, x.b, `Departs${x.b.checkOutTime ? ' ' + x.b.checkOutTime : ''} · ${propName(x.pk)}`)))
             .concat(eOuts.map((x) => ext(x.pk, x.bl, `Departs · ${propName(x.pk)}`)));
     }
-    // 7) Enquiries — the website enquiry inbox.
-    if (/\benquir|enquiry|enquiries|leads?|who (asked|enquired)|new lead\b/.test(q)) {
+    // 7) Enquiries — the website enquiry inbox (also the "waiting for a reply" queue).
+    if (/\benquir|enquiry|enquiries|leads?|who (asked|enquired)|new lead|unanswered|awaiting (a )?reply|to reply|not replied|need(s|ing)? (a )?reply|haven.?t replied|hasn.?t replied|who.?s waiting\b/.test(q)) {
         const list = (Array.isArray(enquiries) ? enquiries : []).slice().sort((a, b) => ((b.receivedAt || '') < (a.receivedAt || '') ? -1 : 1));
         const head = ans(list.length ? `${list.length} enquir${list.length === 1 ? 'y' : 'ies'} in the inbox` : 'No enquiries yet', 'Open the Inbox', () => { closeCmdK(); openInbox(); });
         return [head].concat(list.slice(0, 10).map((e) => ({ type: 'enquiry', id: e.id, label: e.name || '(no name)', sub: `Enquiry · ${propName(e.propKey)}${e.checkIn ? ' · ' + fmtDate(e.checkIn) : ''}`, run: () => { closeCmdK(); openEnquiryHub(e.id); } })));
