@@ -1242,7 +1242,7 @@ function cmdkRender() {
         const brief = __cmdkResults.slice(0, __cmdkBriefN).map((it, i) => cmdkRowHtml(it, i, false)).join('');
         const screens = __cmdkResults.slice(__cmdkBriefN).map((it, i) => cmdkRowHtml(it, __cmdkBriefN + i, false)).join('');
         box.innerHTML =
-            (__cmdkBriefN ? `<div class="cmdk-group-label">Your day</div>${brief}` : '') +
+            (__cmdkBriefN ? `<div class="cmdk-group-label">${cmdkGreeting()}</div>${brief}` : '') +
             `<div class="cmdk-group-label">Try asking</div><div class="cmdk-examples">${chips}</div>` +
             `<div class="cmdk-group-label">Jump to</div>${screens}`;
         return;
@@ -1285,6 +1285,49 @@ function cmdkClear() {
     }
     cmdkSearch('');
 }
+// Time-aware greeting for the brief header — makes the empty palette read like a
+// briefing rather than a blank box.
+function cmdkGreeting() {
+    const h = new Date().getHours();
+    return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : h < 22 ? 'Good evening' : 'Late tonight';
+}
+// Voice input — dictate a query with the browser's own speech recognition where
+// it exists (desktop / most Android). Progressive enhancement: the mic button is
+// only revealed when supported; on iPhone the keyboard's dictation mic already
+// fills the field, so nothing is lost where this API is absent.
+let __cmdkRec = null;
+function cmdkVoiceSupported() {
+    return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+}
+function cmdkVoiceInit() {
+    const mic = document.getElementById('cmdk-mic');
+    if (mic && cmdkVoiceSupported()) mic.style.display = 'flex';
+}
+function cmdkVoice() {
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) return;
+    const mic = document.getElementById('cmdk-mic');
+    const el = document.getElementById('cmdk-input');
+    if (__cmdkRec) { try { __cmdkRec.stop(); } catch (e) {} return; } // tap again to stop
+    let rec;
+    try { rec = new SR(); } catch (e) { return; }
+    rec.lang = 'en-GB';
+    rec.interimResults = true;
+    rec.maxAlternatives = 1;
+    __cmdkRec = rec;
+    if (mic) mic.classList.add('is-listening');
+    rec.onresult = (e) => {
+        let t = '';
+        for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript;
+        t = t.trim();
+        if (el) el.value = t;
+        cmdkSearch(t);
+    };
+    const done = () => { __cmdkRec = null; if (mic) mic.classList.remove('is-listening'); if (el) el.focus(); };
+    rec.onend = done;
+    rec.onerror = done;
+    try { rec.start(); } catch (e) { done(); }
+}
 // Run a quick-action (chip) on a result row without dismissing via the row.
 function cmdkAct(i, k) {
     const it = __cmdkResults[i];
@@ -1320,6 +1363,7 @@ function openCmdK() {
     if (!o || !inp) return;
     o.style.display = 'flex';
     inp.value = '';
+    cmdkVoiceInit(); // reveal the mic where speech recognition is supported
     cmdkSearch('');
     // focus after paint so the mobile keyboard opens reliably
     setTimeout(() => inp.focus(), 30);
