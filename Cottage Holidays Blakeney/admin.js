@@ -166,6 +166,8 @@ function cmdkIcon(type) {
         return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2L4.5 13.5H11l-1 8.5L19.5 10H12z"/></svg>';
     if (type === 'figure')
         return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="4" width="3" height="14"/></svg>';
+    if (type === 'content')
+        return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h9l5 5v13H5z"/><path d="M14 3v5h5M8.5 13h7M8.5 17h7"/></svg>';
     return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>';
 }
 // The fixed screens — dock destinations + every Manage sub-screen — so the
@@ -946,7 +948,10 @@ function cmdkBuildResults(ql) {
         .sort((a, b) => b.score - a.score)
         .slice(0, 12)
         .map((x) => x.it);
-    return { results, fuzzy };
+    // Owner content (welcome guide / FAQs / arrival info) matches, deduped, appended.
+    const cseen = new Set(results.concat(fuzzy).filter((r) => r.id != null).map((r) => r.type + ':' + r.id));
+    const content = cmdkContentMatches(ql).filter((c) => !cseen.has(c.type + ':' + c.id));
+    return { results, fuzzy: fuzzy.concat(content) };
 }
 // The search engine. The literal query is tried first (never corrected); the
 // typo auto-corrector is a fallback that only runs when the literal query is
@@ -984,6 +989,7 @@ function cmdkSearchCore(q, allowCorrect) {
             }
         }
     }
+    __cmdkWords = ql.split(/\s+/).filter(Boolean); // terms to highlight in the rows
     __cmdkResults = cmdkArrange(note.concat(built.results).concat(built.fuzzy).slice(0, 18));
     __cmdkSel = note.length && __cmdkResults.length > 1 ? 1 : 0; // the Top Hit, not the correction note
     cmdkRender();
@@ -1046,6 +1052,85 @@ function cmdkServerItem(x) {
     }
     return item;
 }
+// Escape a string AND wrap the current query terms in <mark> so matches stand
+// out. Highlighting is applied only to matched result types (booking, screen,
+// content…), never the computed answer/figure summaries.
+let __cmdkWords = [];
+function cmdkHi(text) {
+    const esc = escapeHtml(text || '');
+    const ws = (__cmdkWords || []).filter((w) => /^[a-z0-9£]{2,}$/i.test(w));
+    if (!ws.length) return esc;
+    const pat = ws
+        .slice()
+        .sort((a, b) => b.length - a.length)
+        .map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+        .join('|');
+    try {
+        return esc.replace(new RegExp('(' + pat + ')', 'gi'), '<mark class="cmdk-hi">$1</mark>');
+    } catch (e) {
+        return esc;
+    }
+}
+// Search the owner's editable content (welcome guide, FAQs, arrival info) that is
+// already decrypted into adminPrivateContent on this admin session — so "wifi"
+// jumps straight to the welcome-book editor. Client-side only (welcome content is
+// encrypted at rest, so the server can't LIKE it). Hyphen/case-insensitive.
+function cmdkContentMatches(ql) {
+    if (!ql || ql.length < 3) return [];
+    const asStr = (s) => (typeof s === 'string' ? s : JSON.stringify(s || '')).toLowerCase();
+    const normSp = (s) => asStr(s).replace(/[^a-z0-9]+/g, ' ').trim(); // words preserved
+    const normNo = (s) => asStr(s).replace(/[^a-z0-9]+/g, ''); // punctuation + spaces removed ("wi-fi" → "wifi")
+    const qs = normSp(ql), qn = normNo(ql);
+    if (qn.length < 3) return [];
+    const apc = (typeof adminPrivateContent === 'object' && adminPrivateContent) || {};
+    const pub = (typeof siteContent === 'object' && siteContent) || {};
+    const out = [];
+    const add = (pk, sec, label, raw) => {
+        if (!raw || out.length >= 6) return;
+        if (!(normSp(raw).includes(qs) || normNo(raw).includes(qn))) return;
+        const plain = (typeof raw === 'string' ? raw : JSON.stringify(raw))
+            .replace(/"(?:title|body|q|a|question|answer|heading|text)"\s*:/gi, ' ')
+            .replace(/[\[\]{}"]/g, ' ')
+            .replace(/\\n/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+        out.push({
+            type: 'content',
+            id: 'ct-' + sec + '-' + pk,
+            label,
+            sub: 'Content · ' + (plain.length > 72 ? plain.slice(0, 71) + '…' : plain || 'edit'),
+            run: () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => { if (pk && typeof settingsOpenAccomSec === 'function') settingsOpenAccomSec(pk, sec); else settingsOpen('content'); }); },
+        });
+    };
+    Object.keys(propertyMeta || {}).forEach((pk) => {
+        const nm = (propertyMeta[pk] || {}).name || pk;
+        add(pk, 'welcome', `Welcome guide · ${nm}`, apc['welcome-' + pk]);
+        add(pk, 'faq', `FAQs · ${nm}`, apc['faqs-' + pk] || pub['faqs-' + pk]);
+        add(pk, 'arrival', `Arrival info · ${nm}`, apc['arrival-' + pk]);
+    });
+    return out;
+}
+// Example-question chips for the empty palette — contextual: surface what's
+// actually actionable right now (money owed, deposits to return, waiting
+// enquiries) ahead of the evergreen prompts.
+let __cmdkChips = [];
+function cmdkExampleChips() {
+    const chips = [];
+    const today = todayDashed();
+    let owe = 0, dep = 0;
+    Object.keys(dbBookings || {}).forEach((k) => (dbBookings[k] || []).forEach((b) => {
+        try {
+            const ps = paymentSummary(k, b);
+            if (!ps.fullyPaid && ps.balance > 0.5) owe++;
+        } catch (e) {}
+        if ((b.holdStatus || 'none') === 'charged' && (b.checkOut || '') <= today) dep++;
+    }));
+    if (owe) chips.push('who owes me money');
+    if (dep) chips.push('deposits to return');
+    if (Array.isArray(enquiries) && enquiries.length) chips.push('unanswered enquiries');
+    ['who’s leaving today', 'revenue this month', 'upcoming bookings', 'block dates', 'what’s free tonight'].forEach((c) => chips.push(c));
+    return [...new Set(chips)].slice(0, 6);
+}
 // ---- Spotlight-style presentation: a Top Hit, grouped section headers, and
 // example-question chips on the empty palette. ----
 let __cmdkEmpty = false;
@@ -1055,6 +1140,7 @@ function cmdkSection(type) {
     if (type === 'answer' || type === 'figure') return { key: 'answers', label: 'Answers', order: 0 };
     if (type === 'action') return { key: 'actions', label: 'Actions', order: 1 };
     if (type === 'booking' || type === 'enquiry' || type === 'external') return { key: 'bookings', label: 'Bookings & enquiries', order: 2 };
+    if (type === 'content') return { key: 'content', label: 'Website content', order: 2.5 };
     if (type === 'screen') return { key: 'screens', label: 'Screens', order: 4 };
     return { key: 'more', label: 'More results', order: 3 };
 }
@@ -1070,7 +1156,8 @@ function cmdkArrange(list) {
     return lead.concat(out);
 }
 function cmdkRunExample(i) {
-    const q = CMDK_EXAMPLES[i];
+    const q = (__cmdkChips && __cmdkChips[i]) || CMDK_EXAMPLES[i];
+    if (!q) return;
     const el = document.getElementById('cmdk-input');
     if (el) el.value = q;
     cmdkSearch(q);
@@ -1079,9 +1166,12 @@ function cmdkRunExample(i) {
 // its larger treatment.
 function cmdkRowHtml(it, i, top) {
     const sel = i === __cmdkSel;
+    // Highlight the matched terms — but not on computed summaries (answer/figure),
+    // whose text isn't a literal echo of the query.
+    const hi = it.type === 'answer' || it.type === 'figure' ? (s) => escapeHtml(s || '') : cmdkHi;
     const row = `<button type="button" class="cmdk-row cmdk-row-${it.type}${sel ? ' is-sel' : ''}${top ? ' cmdk-tophit' : ''}" role="option" aria-selected="${sel}" data-idx="${i}" onclick="cmdkExec(${i})">
                     <span class="cmdk-row-ic cmdk-${it.type}">${cmdkIcon(it.type)}</span>
-                    <span class="cmdk-row-main"><span class="cmdk-row-label">${escapeHtml(it.label)}</span><span class="cmdk-row-sub">${escapeHtml(it.sub || '')}</span></span>
+                    <span class="cmdk-row-main"><span class="cmdk-row-label">${hi(it.label)}</span><span class="cmdk-row-sub">${hi(it.sub || '')}</span></span>
                 </button>`;
     const acts =
         sel && Array.isArray(it.actions) && it.actions.length
@@ -1095,7 +1185,8 @@ function cmdkRender() {
     // Empty palette → example-question chips (teach what search can do) + the dock
     // destinations underneath.
     if (__cmdkEmpty) {
-        const chips = CMDK_EXAMPLES.map((q, i) => `<button type="button" class="cmdk-ex" onclick="cmdkRunExample(${i})">${escapeHtml(q)}</button>`).join('');
+        __cmdkChips = cmdkExampleChips();
+        const chips = __cmdkChips.map((q, i) => `<button type="button" class="cmdk-ex" onclick="cmdkRunExample(${i})">${escapeHtml(q)}</button>`).join('');
         const screens = __cmdkResults.map((it, i) => cmdkRowHtml(it, i, false)).join('');
         box.innerHTML = `<div class="cmdk-group-label">Try asking</div><div class="cmdk-examples">${chips}</div><div class="cmdk-group-label">Jump to</div>${screens}`;
         return;
