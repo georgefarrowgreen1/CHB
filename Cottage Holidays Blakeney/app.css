@@ -4774,9 +4774,18 @@ body.owner-mode .chat-widget {
   width: auto; /* override the mobile > div:first-child { width:100% } */
   flex: 1 1 auto;
 }
-.dashboard-header.settings-head #cron-pill {
+/* The pill group on the right — both health pills, stacked & right-aligned,
+   top-aligned with the "Manage" title. */
+.settings-head-pills {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
   flex-shrink: 0;
-  margin: 6px 0 0; /* nudge onto the title's baseline; drop the old bottom gap */
+  margin-top: 6px; /* nudge onto the title's cap height */
+}
+.settings-head-pills .cron-pill {
+  margin: 0; /* drop the old stacked-below bottom gap */
 }
 .cron-pill {
   display: inline-flex;
