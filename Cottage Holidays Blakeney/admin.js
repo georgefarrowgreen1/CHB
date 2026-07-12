@@ -800,6 +800,28 @@ function cmdkIntent(q) {
         return [ans(label, `Check-ins during ${yr}`, () => { closeCmdK(); openBookings(); })];
     }
 
+    // 0h2) Cottage dossier — a cottage name alone (or "…settings/setup/manage")
+    // returns a CARD: live facts up top, then every editing path for that cottage.
+    // This is what lets a cottage's whole settings index live inside search.
+    {
+        const keys = Object.keys(propertyMeta || {});
+        const bare = q.trim().replace(/^(the )\s*/, '').replace(/\s+(settings?|set ?up|manage|options?|everything|all|details?|admin|page|info)$/, '').trim();
+        const dPk = keys.find((k) => bare === k.toLowerCase() || bare === ((propertyMeta[k].name || '').toLowerCase()));
+        if (dPk && typeof ACCOM_SECTIONS !== 'undefined' && typeof settingsOpenAccomSec === 'function') {
+            const cName = propName(dPk);
+            const bs = (dbBookings[dPk] || []).filter((b) => b.checkIn);
+            const next = bs.filter((b) => b.checkIn >= today).sort((a, b) => (a.checkIn < b.checkIn ? -1 : 1))[0];
+            const yr = +today.slice(0, 4);
+            const rev = bs.filter((b) => +b.checkIn.slice(0, 4) === yr).reduce((s, b) => s + ((b.agreedPrice && b.agreedPrice.total) || 0), 0);
+            const facts = [next ? `Next in ${fmtDate(next.checkIn)}` : 'Nothing upcoming', rev ? `${gbp(rev)} booked in ${yr}` : null].filter(Boolean).join(' · ');
+            const openSec = (sec) => () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => settingsOpenAccomSec(dPk, sec)); };
+            const runQ = (query) => () => { const el = document.getElementById('cmdk-input'); if (el) el.value = query; cmdkSearch(query); };
+            const head = ans(cName, facts, openSec('rates'), [{ label: 'Bookings', run: runQ(cName + ' bookings') }].concat(next ? [calChip(next.checkIn)] : []));
+            const rows = ACCOM_SECTIONS.map((s) => ({ type: 'action', id: 'dsr-' + dPk + '-' + s.id, label: s.label.replace(/&amp;/g, '&'), sub: (s.sub || '').replace(/&amp;/g, '&'), run: openSec(s.id) }));
+            return [head].concat(rows);
+        }
+    }
+
     // 0i) Cottage pivot — "Jollyboat bookings", "bookings at 21a", "who's at
     // Pimpernel" — this cottage's upcoming stays. Needs an EXPLICIT cottage name
     // (not the single-cottage fallback) so it can't swallow "upcoming bookings".
