@@ -896,12 +896,14 @@ function cmdkBuildResults(ql) {
 function cmdkSearchCore(q, allowCorrect) {
     const raw = (q || '').trim().toLowerCase();
     if (!raw) {
-        // Empty query → the dock destinations, as quick launchers.
+        // Empty query → example chips + the dock destinations, as quick launchers.
+        __cmdkEmpty = true;
         __cmdkResults = cmdkScreens().slice(0, 6);
-        __cmdkSel = 0;
+        __cmdkSel = -1; // nothing pre-selected under the example chips
         cmdkRender();
         return;
     }
+    __cmdkEmpty = false;
     // The LITERAL query is tried first — never auto-corrected — so a precise
     // command ("block Jollyboat next weekend") or an exact name is parsed as
     // typed. Auto-correct is a fallback that only runs when the literal query
@@ -920,8 +922,8 @@ function cmdkSearchCore(q, allowCorrect) {
             }
         }
     }
-    __cmdkResults = note.concat(built.results).concat(built.fuzzy).slice(0, 18);
-    __cmdkSel = note.length && __cmdkResults.length > 1 ? 1 : 0; // keep the top real result selected, not the note
+    __cmdkResults = cmdkArrange(note.concat(built.results).concat(built.fuzzy).slice(0, 18));
+    __cmdkSel = note.length && __cmdkResults.length > 1 ? 1 : 0; // the Top Hit, not the correction note
     cmdkRender();
     // Deep index search runs server-side (emails, messages, invoices, guests,
     // reviews, activity — everything not held in the browser) and merges in when
@@ -946,7 +948,12 @@ function cmdkServerSearch(ql) {
                 .map(cmdkServerItem)
                 .filter((x) => x && !(x.id != null && seen.has(x.type + ':' + x.id)));
             if (!mapped.length) return;
-            __cmdkResults = __cmdkResults.concat(mapped).slice(0, 34);
+            // Re-arrange so the server hits slot into their sections, keeping the
+            // currently-selected row selected across the merge.
+            const selItem = __cmdkResults[__cmdkSel];
+            __cmdkResults = cmdkArrange(__cmdkResults.concat(mapped).slice(0, 34));
+            const ni = __cmdkResults.indexOf(selItem);
+            if (ni >= 0) __cmdkSel = ni;
             cmdkRender();
         })
         .catch(() => {});
@@ -977,30 +984,82 @@ function cmdkServerItem(x) {
     }
     return item;
 }
-function cmdkRender() {
-    const box = document.getElementById('cmdk-results');
-    if (!box) return;
-    if (!__cmdkResults.length) {
-        box.innerHTML = '<div class="cmdk-none">No matches — try a guest name or a screen.</div>';
-        return;
-    }
-    box.innerHTML = __cmdkResults
-        .map((it, i) => {
-            const sel = i === __cmdkSel;
-            const row = `<button type="button" class="cmdk-row cmdk-row-${it.type}${sel ? ' is-sel' : ''}" role="option" aria-selected="${sel}" data-idx="${i}" onclick="cmdkExec(${i})">
+// ---- Spotlight-style presentation: a Top Hit, grouped section headers, and
+// example-question chips on the empty palette. ----
+let __cmdkEmpty = false;
+const CMDK_EXAMPLES = ['who owes me money', "who's leaving today", 'revenue this month', 'upcoming bookings', 'block dates', "what's free tonight"];
+// Which section a result belongs to — drives the grouped headers + arrange order.
+function cmdkSection(type) {
+    if (type === 'answer' || type === 'figure') return { key: 'answers', label: 'Answers', order: 0 };
+    if (type === 'action') return { key: 'actions', label: 'Actions', order: 1 };
+    if (type === 'booking' || type === 'enquiry' || type === 'external') return { key: 'bookings', label: 'Bookings & enquiries', order: 2 };
+    if (type === 'screen') return { key: 'screens', label: 'Screens', order: 4 };
+    return { key: 'more', label: 'More results', order: 3 };
+}
+// Reorder a built result list into Spotlight shape: the correction note (if any)
+// first, then the single best result as the Top Hit (its importance rank kept),
+// then the rest grouped by section (stable within each).
+function cmdkArrange(list) {
+    const out = list.slice();
+    const lead = [];
+    if (out[0] && out[0].id === 'cmdk-correction') lead.push(out.shift());
+    if (out.length) lead.push(out.shift()); // Top Hit
+    out.sort((a, b) => cmdkSection(a.type).order - cmdkSection(b.type).order);
+    return lead.concat(out);
+}
+function cmdkRunExample(i) {
+    const q = CMDK_EXAMPLES[i];
+    const el = document.getElementById('cmdk-input');
+    if (el) el.value = q;
+    cmdkSearch(q);
+}
+// One result row (+ its quick-action bar when selected). `top` gives the Top Hit
+// its larger treatment.
+function cmdkRowHtml(it, i, top) {
+    const sel = i === __cmdkSel;
+    const row = `<button type="button" class="cmdk-row cmdk-row-${it.type}${sel ? ' is-sel' : ''}${top ? ' cmdk-tophit' : ''}" role="option" aria-selected="${sel}" data-idx="${i}" onclick="cmdkExec(${i})">
                     <span class="cmdk-row-ic cmdk-${it.type}">${cmdkIcon(it.type)}</span>
                     <span class="cmdk-row-main"><span class="cmdk-row-label">${escapeHtml(it.label)}</span><span class="cmdk-row-sub">${escapeHtml(it.sub || '')}</span></span>
                 </button>`;
-            // The selected row reveals its quick-actions (act without leaving search).
-            const acts =
-                sel && Array.isArray(it.actions) && it.actions.length
-                    ? `<div class="cmdk-actbar">${it.actions
-                          .map((a, k) => `<button type="button" class="cmdk-act" data-idx="${i}" data-act="${k}" onclick="cmdkAct(${i},${k})">${a.icon || ''}${escapeHtml(a.label)}</button>`)
-                          .join('')}</div>`
-                    : '';
-            return row + acts;
-        })
-        .join('');
+    const acts =
+        sel && Array.isArray(it.actions) && it.actions.length
+            ? `<div class="cmdk-actbar">${it.actions.map((a, k) => `<button type="button" class="cmdk-act" data-idx="${i}" data-act="${k}" onclick="cmdkAct(${i},${k})">${a.icon || ''}${escapeHtml(a.label)}</button>`).join('')}</div>`
+            : '';
+    return row + acts;
+}
+function cmdkRender() {
+    const box = document.getElementById('cmdk-results');
+    if (!box) return;
+    // Empty palette → example-question chips (teach what search can do) + the dock
+    // destinations underneath.
+    if (__cmdkEmpty) {
+        const chips = CMDK_EXAMPLES.map((q, i) => `<button type="button" class="cmdk-ex" onclick="cmdkRunExample(${i})">${escapeHtml(q)}</button>`).join('');
+        const screens = __cmdkResults.map((it, i) => cmdkRowHtml(it, i, false)).join('');
+        box.innerHTML = `<div class="cmdk-group-label">Try asking</div><div class="cmdk-examples">${chips}</div><div class="cmdk-group-label">Jump to</div>${screens}`;
+        return;
+    }
+    if (!__cmdkResults.length) {
+        box.innerHTML = '<div class="cmdk-none">No matches — try a guest name, a screen, or a question like “who owes me money”.</div>';
+        return;
+    }
+    // Structure longer lists: a Top Hit, then grouped section headers. Short lists
+    // stay flat (headers on 1–2 rows are just noise).
+    const grouped = __cmdkResults.length >= 3;
+    const firstReal = __cmdkResults[0] && __cmdkResults[0].id === 'cmdk-correction' ? 1 : 0;
+    let lastKey = null;
+    const parts = [];
+    __cmdkResults.forEach((it, i) => {
+        if (grouped) {
+            if (i === firstReal) parts.push('<div class="cmdk-group-label">Top hit</div>');
+            else if (i > firstReal) {
+                const sec = cmdkSection(it.type);
+                if (sec.key !== lastKey) parts.push(`<div class="cmdk-group-label">${sec.label}</div>`);
+                lastKey = sec.key;
+            }
+        }
+        parts.push(cmdkRowHtml(it, i, grouped && i === firstReal));
+    });
+    box.innerHTML = parts.join('');
 }
 function cmdkExec(i) {
     const it = __cmdkResults[i];

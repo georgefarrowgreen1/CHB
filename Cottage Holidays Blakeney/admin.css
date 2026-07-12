@@ -1145,6 +1145,52 @@ body.owner-mode #mobileMenu {
   font-weight: 800;
   font-size: 1.05rem;
 }
+/* Spotlight-style section headers, Top Hit + empty-state example chips. */
+.cmdk-group-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 12px 12px 4px;
+}
+.cmdk-results > .cmdk-group-label:first-child {
+  padding-top: 4px;
+}
+.cmdk-row.cmdk-tophit {
+  padding-top: 13px;
+  padding-bottom: 13px;
+}
+.cmdk-row.cmdk-tophit .cmdk-row-ic {
+  width: 34px;
+  height: 34px;
+}
+.cmdk-row.cmdk-tophit .cmdk-row-label {
+  font-size: 1.02rem;
+}
+.cmdk-examples {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 2px 12px 4px;
+}
+.cmdk-ex {
+  font-size: 0.8rem;
+  font-weight: 500;
+  padding: 6px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  color: var(--text-light);
+  cursor: pointer;
+  transition: background 0.14s var(--fluid-bezier), border-color 0.14s var(--fluid-bezier);
+}
+.cmdk-ex:hover,
+.cmdk-ex:focus-visible {
+  background: var(--glass-hover);
+  border-color: var(--accent);
+  outline: none;
+}
 /* Quick-actions revealed under the selected result — act without leaving search. */
 .cmdk-actbar {
   display: flex;
