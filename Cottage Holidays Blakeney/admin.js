@@ -153,10 +153,9 @@ function applyAreaFilter() {
         if (el.id === 'testcentre-row') return; // staging-only; JS controls its display
         el.style.display = '';
     });
-    // Lead each family with its key numbers (the "important parts first" overviews).
+    // Lead the cottages family with its key numbers (occupancy glance).
     try {
         renderCottagesOverview();
-        renderMarketingOverview();
     } catch (e) {}
     const h = document.querySelector('#view-settings .dashboard-header h1');
     const p = document.querySelector('#view-settings .dashboard-header .lead');
@@ -198,52 +197,9 @@ function renderCottagesOverview() {
             <div style="height:6px;border-radius:999px;background:rgba(128,128,128,0.18);margin-top:8px;overflow:hidden;"><div style="height:100%;width:${pct}%;background:${accent};border-radius:999px;"></div></div>
         </button>`;
     };
-    el.innerHTML =
-        `<div class="settings-section-label" style="display:block;">This month</div>
-         <div class="area-ov-grid">${keys.map(card).join('')}</div>`;
-}
-async function renderMarketingOverview() {
-    const el = document.getElementById('marketing-overview');
-    if (!el) return;
-    const tiles = [
-        ['approvals', 'Awaiting approval'],
-        ['subs', 'Subscribers'],
-        ['wait', 'On the waitlist'],
-    ];
-    el.innerHTML =
-        `<div class="settings-section-label" style="display:block;">Marketing at a glance</div>
-         <div class="area-ov-grid">${tiles
-             .map(
-                 ([id, label]) =>
-                     `<div class="glass-panel" style="padding:15px 16px;"><div id="mkt-ov-${id}" style="font-family:var(--font-serif);font-size:1.6rem;line-height:1;">…</div><div style="font-size:0.74rem;color:var(--text-muted);margin-top:6px;">${label}</div></div>`,
-             )
-             .join('')}</div>`;
-    const set = (id, v) => {
-        const e = document.getElementById('mkt-ov-' + id);
-        if (e) e.textContent = v;
-    };
-    try {
-        const a = await apiPost('reviews.php', { action: 'list_admin' });
-        const b = await apiPost('photos.php', { action: 'list_admin' });
-        const rev = (a.reviews || []).filter((x) => x.status === 'pending').length;
-        const ph = (b.photos || []).filter((x) => x.status === 'pending').length;
-        set('approvals', rev + ph);
-    } catch (e) {
-        set('approvals', '—');
-    }
-    try {
-        const r = await apiGet('newsletter.php');
-        // newsletter.php returns {active,total,recent} — use the active count.
-        set('subs', r.active != null ? r.active : r.total != null ? r.total : '—');
-    } catch (e) {
-        set('subs', '—');
-    }
-    try {
-        const r = await apiPost('waitlist.php', { action: 'list' });
-        set('wait', (r.waitlist || []).length);
-    } catch (e) {
-        set('wait', '—');
-    }
+    // No sub-label — these cottage cards are the lead of the "Your cottages"
+    // section, and each card's "X% booked in <month>" already carries the month.
+    el.innerHTML = `<div class="area-ov-grid">${keys.map(card).join('')}</div>`;
 }
 
 // ---- Inbox: a dedicated back-office screen combining enquiries, guest messages
