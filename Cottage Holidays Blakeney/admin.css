@@ -974,3 +974,36 @@
 body.owner-mode #mobileMenu {
   display: none !important;
 }
+
+/* Shared empty state for admin lists (emptyState() in admin.js) — a soft
+   accent icon, a serif title, guidance and an optional action, so a list with
+   nothing in it reads as intentional rather than a bare grey sentence. */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  padding: 44px 22px;
+  color: var(--text-muted);
+}
+.empty-state-ic {
+  width: 42px;
+  height: 42px;
+  color: var(--accent);
+  opacity: 0.6;
+  margin-bottom: 4px;
+}
+.empty-state-title {
+  font-family: var(--font-serif);
+  font-size: 1.2rem;
+  color: var(--text-light);
+}
+.empty-state-sub {
+  font-size: 0.85rem;
+  max-width: 340px;
+  line-height: 1.5;
+}
+.empty-state-action {
+  margin-top: 10px;
+}

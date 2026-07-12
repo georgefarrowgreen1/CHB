@@ -132,6 +132,27 @@ async function openSettings(section) {
 // as the grouping. openArea() survives as a compat alias (dock, tests, old
 // history entries); the section panels (#sec-…) and settingsOpen() router are
 // unchanged. ----
+// A consistent, on-brand empty state for admin lists — a soft accent icon, a
+// short serif title, an optional line of guidance and an optional action
+// button — so a list with nothing in it reads as friendly and intentional
+// rather than a bare grey sentence. opts: { icon?(svg inner), title, sub?,
+// actionLabel?, onClick?(inline handler string) }.
+function emptyState(opts) {
+    const o = opts || {};
+    const icon =
+        o.icon ||
+        '<circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/>';
+    const action =
+        o.actionLabel && o.onClick
+            ? `<button type="button" class="btn-sm btn-edit empty-state-action" onclick="${o.onClick}">${escapeHtml(o.actionLabel)}</button>`
+            : '';
+    return `<div class="empty-state">
+        <svg class="empty-state-ic ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icon}</svg>
+        <div class="empty-state-title">${escapeHtml(o.title || 'Nothing here yet')}</div>
+        ${o.sub ? `<div class="empty-state-sub">${escapeHtml(o.sub)}</div>` : ''}
+        ${action}
+    </div>`;
+}
 async function openArea() {
     if (!isAuthenticated) {
         tryAccessBackOffice();
@@ -2136,7 +2157,11 @@ async function loadGuestList() {
     const guests = res.guests || [];
     if (guests.length === 0) {
         box.innerHTML =
-            '<p style="color:var(--text-muted);font-size:0.85rem;">No guest bookings yet.</p>';
+            emptyState({
+                icon: '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 5.5a3 3 0 0 1 0 5.8M21 19a5.5 5.5 0 0 0-4-5.3"/>',
+                title: 'No guests yet',
+                sub: 'Guests appear here once they’ve booked — ranked by lifetime spend, with a badge on anyone who’s stayed before.',
+            });
         return;
     }
     // Repeat-guest rate for a quick loyalty read.
@@ -5827,7 +5852,11 @@ async function loadWaitlist() {
         return;
     }
     if (!rows.length) {
-        wrap.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">No one on the waitlist yet.</p>`;
+        wrap.innerHTML = emptyState({
+            icon: '<circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M18 8v6M21 11h-6"/>',
+            title: 'No one waiting',
+            sub: 'When a cottage is fully booked, guests can ask to be told if a date frees up — they’ll appear here.',
+        });
         return;
     }
     wrap.innerHTML = rows
@@ -6830,7 +6859,13 @@ async function loadGuestReviewModeration() {
         return;
     }
     if (!rows.length) {
-        wrap.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">No guest reviews yet.</p>`;
+        wrap.innerHTML = emptyState({
+            icon: '<path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 17.77 6.8 19.5l.99-5.78-4.21-4.1 5.82-.85z"/>',
+            title: 'No reviews yet',
+            sub: 'Reviews you approve show on your website. Import your existing Airbnb reviews to get started.',
+            actionLabel: 'Import reviews',
+            onClick: 'bulkImportReviews()',
+        });
         return;
     }
 
@@ -8599,7 +8634,13 @@ async function loadExperiencesAdmin() {
         `<div id="exp-admin-list">` +
         (published.length
             ? published.map(expEditHtml).join('')
-            : `<p style="color:var(--text-muted);font-size:0.88rem;">None yet — add your first experience.</p>`) +
+            : emptyState({
+                  icon: '<circle cx="12" cy="12" r="9"/><path d="M15.6 8.4l-2.1 5.1-5.1 2.1 2.1-5.1z"/>',
+                  title: 'No experiences yet',
+                  sub: 'Add local things to do — seal trips, coast walks, the best pubs — to show guests on your site.',
+                  actionLabel: '＋ Add experience',
+                  onClick: 'expAddNew()',
+              })) +
         `</div>`;
     wrap.innerHTML = html;
     refreshExpPendingBadge(pending.length);
