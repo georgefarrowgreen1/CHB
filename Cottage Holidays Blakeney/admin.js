@@ -6049,12 +6049,17 @@ async function loadDiagnostics() {
     body.innerHTML += `
                 <div class="accounts-stat" style="max-width:640px;margin-bottom:14px;">
                     <div class="label">Backups</div>
-                    <p style="font-size:0.8rem;color:var(--text-muted);margin:8px 0 12px;">A copy of every booking, payment and guest record. Runs automatically each Monday and is emailed to you; the last 8 are kept on the server.</p>
+                    <p style="font-size:0.8rem;color:var(--text-muted);margin:8px 0 12px;">A copy of every booking, payment and guest record. Runs automatically each Monday and is emailed to you; the last 8 are kept on the server. Photos &amp; uploads are archived alongside it when they change.</p>
                     <div id="backup-status" style="font-size:0.82rem;color:var(--text-muted);margin-bottom:12px;">Checking…</div>
                     <div style="display:flex;gap:8px;flex-wrap:wrap;">
                         <button class="btn-sm btn-edit" onclick="runBackupNow(this)">Back up now</button>
                         <button class="btn-sm btn-edit" onclick="verifyBackupNow(this)">Verify latest</button>
                         <button class="btn-sm btn-edit" onclick="window.open('backup.php?action=download','_blank')">Download latest</button>
+                    </div>
+                    <div id="files-backup-status" style="font-size:0.82rem;color:var(--text-muted);margin:14px 0 12px;">Checking…</div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                        <button class="btn-sm btn-edit" onclick="runFilesBackupNow(this)">Archive files now</button>
+                        <button class="btn-sm btn-edit" onclick="window.open('backup.php?action=download_files','_blank')">Download files</button>
                     </div>
                 </div>
                 <div class="accounts-stat" style="max-width:640px;margin-bottom:14px;">
@@ -6118,9 +6123,38 @@ async function refreshBackupStatus() {
         el.textContent = b
             ? `Latest: ${b.file} · ${Math.round(b.bytes / 1024)} KB · ${b.at}`
             : 'No backup stored yet — run one now.';
+        const fe = document.getElementById('files-backup-status');
+        if (fe) {
+            const f = r.files_backup;
+            fe.textContent = f
+                ? `Photos & uploads: ${f.file} · ${(f.bytes / 1048576).toFixed(1)} MB · ${f.at} — too big to email, download a copy now and then.`
+                : 'Photos & uploads: no archive yet — refreshes each Monday, or archive now.';
+        }
     } catch (e) {
         el.textContent = "Couldn't check backups: " + (e.message || '');
     }
+}
+async function runFilesBackupNow(btn) {
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Archiving…';
+    }
+    try {
+        const r = await apiPost('backup.php', { action: 'run_files' });
+        toast(
+            r.ok
+                ? `Files archived (${((r.bytes || 0) / 1048576).toFixed(1)} MB, ${r.files || 0} files)${r.verified ? ' & verified' : ' — but VERIFY FAILED'}.`
+                : r.error || 'Files archive failed',
+            r.ok && r.verified ? undefined : 'error',
+        );
+    } catch (e) {
+        toast(e.message || 'Files archive failed', 'error');
+    }
+    if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'Archive files now';
+    }
+    refreshBackupStatus();
 }
 async function verifyBackupNow(btn) {
     if (btn) {

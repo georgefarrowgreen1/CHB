@@ -15,9 +15,12 @@
 //    POST {action:'status'}   -> list stored backups
 //    GET  ?action=download    -> stream the newest dump
 // ============================================================
-// KNOWN GAP: uploads/ (guest photos, chat attachments) is NOT included —
-// this job covers the DATABASE only. Uploaded files only exist on the host;
-// keep an occasional manual SFTP copy of uploads/ if they matter.
+//  uploads/ (guest photos, hero images, chat attachments) is covered by a
+//  separate FILES archive: a zip of the whole folder, rebuilt on the weekly
+//  run only when something changed, newest 2 kept in backups/. Too big to
+//  email, so the weekly email nudges the owner to download it now and then
+//  (POST {action:'run_files'} / GET ?action=download_files, and the same
+//  Health-check card in Settings).
 require_once __DIR__ . '/db.php';
 
 $in = body();
@@ -101,6 +104,102 @@ function chb_backup_latest($dir)
     return $all ? end($all) : null;
 }
 
+// ---- FILES archive: zip uploads/ into backups/, rotating, change-aware ----
+function chb_files_latest($dir)
+{
+    $all = glob($dir . '/chb-files-*.zip') ?: [];
+    sort($all);
+    return $all ? end($all) : null;
+}
+
+// Every regular file under uploads/ (flat today, but walk subfolders so a
+// future re-organisation doesn't silently shrink the archive).
+function chb_uploads_files()
+{
+    $root = __DIR__ . '/uploads';
+    if (!is_dir($root)) {
+        return [];
+    }
+    $files = [];
+    $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS));
+    foreach ($it as $f) {
+        if ($f->isFile()) {
+            $files[] = $f->getPathname();
+        }
+    }
+    sort($files);
+    return $files;
+}
+
+function chb_files_backup_write($dir, $force = false)
+{
+    $files = chb_uploads_files();
+    if (!$files) {
+        return ['ok' => true, 'ran' => false, 'reason' => 'uploads/ is empty — nothing to archive'];
+    }
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0755, true);
+    }
+    // Skip the (potentially slow) re-zip when nothing changed since the last
+    // archive — compare the newest upload mtime against the zip's.
+    $latest = chb_files_latest($dir);
+    if (!$force && $latest) {
+        $newest = 0;
+        foreach ($files as $f) {
+            $newest = max($newest, (int) @filemtime($f));
+        }
+        if ($newest <= (int) filemtime($latest)) {
+            return ['ok' => true, 'ran' => false, 'reason' => 'no uploads changed since the last archive', 'file' => $latest, 'bytes' => filesize($latest), 'files' => null];
+        }
+    }
+    @set_time_limit(300);
+    $file = $dir . '/chb-files-' . date('Ymd-His') . '.zip';
+    $zip = new ZipArchive();
+    if ($zip->open($file, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
+        return ['ok' => false, 'error' => 'Could not create the files archive — check backups/ permissions.'];
+    }
+    $root = __DIR__ . '/uploads';
+    $added = 0;
+    foreach ($files as $f) {
+        // Images are already compressed — store, don't deflate (much faster).
+        if ($zip->addFile($f, 'uploads/' . ltrim(substr($f, strlen($root)), '/'))) {
+            $zip->setCompressionIndex($added, ZipArchive::CM_STORE);
+            $added++;
+        }
+    }
+    if (!$zip->close()) {
+        @unlink($file);
+        return ['ok' => false, 'error' => 'Files archive failed to finalise — possibly out of disk space.'];
+    }
+    // Keep the newest 2 — these are big, and the DB dumps carry the history.
+    $all = glob($dir . '/chb-files-*.zip') ?: [];
+    sort($all);
+    while (count($all) > 2) {
+        @unlink(array_shift($all));
+    }
+    return ['ok' => true, 'ran' => true, 'file' => $file, 'bytes' => filesize($file), 'files' => $added];
+}
+
+// A zip that won't open or whose entry count disagrees with uploads/ is not a
+// backup — same philosophy as chb_backup_verify.
+function chb_files_verify($file)
+{
+    if (!$file || !is_file($file)) {
+        return ['ok' => false, 'error' => 'No files archive stored yet.'];
+    }
+    $zip = new ZipArchive();
+    if ($zip->open($file, ZipArchive::CHECKCONS) !== true) {
+        return ['ok' => false, 'error' => 'Corrupt — the files archive fails its consistency check.'];
+    }
+    $n = $zip->numFiles;
+    $readable = $n > 0 && $zip->getFromIndex(0) !== false;
+    $zip->close();
+    if (!$readable) {
+        return ['ok' => false, 'error' => 'Files archive is empty or unreadable.'];
+    }
+    return ['ok' => true, 'files' => $n];
+}
+
 // ---- Verify a backup is sound WITHOUT a second database (shared hosting has
 //      none to restore into). We fully decompress the dump — which catches a
 //      truncated or corrupt gzip — and confirm it actually contains table
@@ -159,6 +258,33 @@ if ($action === 'download') {
     exit();
 }
 
+// ---- Admin: stream the newest FILES archive for download ----
+if ($action === 'download_files') {
+    require_admin();
+    $f = chb_files_latest($dir);
+    if (!$f) {
+        json_out(['error' => 'No files archive stored yet — run one from Health check first.'], 404);
+    }
+    header('Content-Type: application/zip');
+    header('Content-Disposition: attachment; filename="' . basename($f) . '"');
+    header('Content-Length: ' . filesize($f));
+    readfile($f);
+    exit();
+}
+
+// ---- Admin: archive uploads/ right now ----
+if ($action === 'run_files') {
+    require_admin();
+    $r = chb_files_backup_write($dir, true);
+    if (empty($r['ok'])) {
+        log_activity('system', 'backup.files_fail', 'Files archive FAILED — ' . ($r['error'] ?? 'unknown'), ['severity' => 'action', 'entity' => 'backup']);
+        json_out(['ok' => false, 'error' => $r['error'] ?? 'Files archive failed'], 500);
+    }
+    $v = chb_files_verify($r['file'] ?? null);
+    log_activity('system', 'backup.files_run', 'Uploads archived (' . number_format(($r['bytes'] ?? 0) / 1048576, 1) . ' MB, ' . (int) ($r['files'] ?? 0) . ' files)' . (empty($v['ok']) ? ' — VERIFY FAILED' : ''), ['entity' => 'backup']);
+    json_out(['ok' => true, 'ran' => true, 'file' => basename($r['file']), 'bytes' => $r['bytes'], 'files' => $r['files'], 'verified' => !empty($v['ok']), 'verify_error' => $v['error'] ?? null]);
+}
+
 // ---- Admin: list what's stored ----
 if ($action === 'status') {
     require_admin();
@@ -166,7 +292,14 @@ if ($action === 'status') {
         fn($f) => ['file' => basename($f), 'bytes' => filesize($f), 'at' => date('Y-m-d H:i', filemtime($f))],
         array_reverse(glob($dir . '/chb-backup-*.sql.gz') ?: []),
     );
-    json_out(['ok' => true, 'backups' => array_slice($files, 0, 8)]);
+    $fz = chb_files_latest($dir);
+    json_out([
+        'ok' => true,
+        'backups' => array_slice($files, 0, 8),
+        'files_backup' => $fz
+            ? ['file' => basename($fz), 'bytes' => filesize($fz), 'at' => date('Y-m-d H:i', filemtime($fz))]
+            : null,
+    ]);
 }
 
 // ---- Admin: verify the newest stored backup on demand ----
@@ -220,6 +353,20 @@ if (empty($verify['ok'])) {
     log_activity('system', 'backup.verify_fail', 'Backup written but verification FAILED — ' . ($verify['error'] ?? 'unknown'), ['severity' => 'action', 'entity' => 'backup']);
 }
 
+// Refresh the uploads archive on the same weekly beat (skips itself when no
+// upload changed). A failure here never blocks the DB backup — just log it.
+$filesRes = ['ok' => true, 'ran' => false];
+try {
+    $filesRes = chb_files_backup_write($dir);
+    if (empty($filesRes['ok'])) {
+        log_activity('system', 'backup.files_fail', 'Files archive FAILED — ' . ($filesRes['error'] ?? 'unknown'), ['severity' => 'action', 'entity' => 'backup']);
+    } elseif (!empty($filesRes['ran'])) {
+        log_activity('system', 'backup.files_run', 'Uploads archived (' . number_format(($filesRes['bytes'] ?? 0) / 1048576, 1) . ' MB, ' . (int) ($filesRes['files'] ?? 0) . ' files)', ['entity' => 'backup']);
+    }
+} catch (\Throwable $e) {
+    log_activity('system', 'backup.files_fail', 'Files archive FAILED — ' . $e->getMessage(), ['severity' => 'action', 'entity' => 'backup']);
+}
+
 try {
     db()
         ->prepare(
@@ -239,19 +386,29 @@ try {
     if (defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL && $res['bytes'] < 8 * 1024 * 1024) {
         require_once __DIR__ . '/mailer.php';
         $nice = number_format($res['bytes'] / 1024, 0) . ' KB';
+        // Photos/uploads are archived on the host but too big to attach —
+        // remind the owner to pull a copy down now and then.
+        $fz = chb_files_latest($dir);
+        $filesNote = $fz
+            ? 'Your photos and uploads are archived separately on the host (' .
+                number_format(filesize($fz) / 1048576, 1) .
+                ' MB) — download a copy occasionally from Settings → Health check → "Download files".'
+            : '';
         $r = smtp_send(
             OWNER_NOTIFY_EMAIL,
             'Owner',
             'Weekly database backup — Cottage Holidays Blakeney',
-            "Attached is this week's database backup ({$nice}).\n\nKeep a few of these somewhere safe (they contain all bookings, payments and guest details). To restore, unzip and import the .sql via your host's phpMyAdmin.",
+            "Attached is this week's database backup ({$nice}).\n\nKeep a few of these somewhere safe (they contain all bookings, payments and guest details). To restore, unzip and import the .sql via your host's phpMyAdmin." .
+                ($filesNote ? "\n\n" . $filesNote : ''),
             email_shell(
                 'Weekly database backup',
                 email_h('Weekly database backup') .
                     email_p('Attached is this week&rsquo;s database backup (' . email_esc($nice) . ').') .
                     email_p(
                         'Keep a few of these somewhere safe — they contain all bookings, payments and guest details. To restore, unzip and import the .sql via your host&rsquo;s phpMyAdmin.',
-                        true,
-                    ),
+                        !$filesNote,
+                    ) .
+                    ($filesNote ? email_p(email_esc($filesNote), true) : ''),
             ),
             [
                 [
@@ -280,4 +437,6 @@ json_out([
     'tables' => $verify['tables'] ?? null,
     'emailed' => $emailed,
     'email_error' => $emailErr,
+    'files_ran' => !empty($filesRes['ran']),
+    'files_bytes' => $filesRes['bytes'] ?? null,
 ]);
