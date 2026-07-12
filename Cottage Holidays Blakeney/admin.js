@@ -554,6 +554,25 @@ function cmdkAll(q) {
             run: () => { closeCmdK(); openEnquiryHub(e.id); },
         });
     });
+    // Blocked-out ranges (maintenance / owner use / imported OTA holds) — indexed
+    // so a text search ("blocked", "maintenance", a cottage name) surfaces them and
+    // jumps to that date on the calendar. Display-only, so no hub.
+    if (typeof dbBlocks === 'object' && dbBlocks) {
+        Object.keys(dbBlocks).forEach((pk) => (dbBlocks[pk] || []).forEach((bl) => {
+            const nm = propName(pk);
+            const reason = ((bl.reason || bl.note || '') + '').trim();
+            const ota = !!bl.source;
+            const dates = `${bl.checkIn ? fmtDate(bl.checkIn) : ''}${bl.checkOut ? ' → ' + fmtDate(bl.checkOut) : ''}`;
+            items.push({
+                type: 'external',
+                id: 'blk-' + (bl.id != null ? bl.id : pk + '-' + (bl.checkIn || '')),
+                label: (ota ? 'External hold' : 'Blocked') + ' — ' + nm,
+                sub: `${ota ? 'Imported' : 'Blocked'} · ${dates}${reason ? ' · ' + reason : ''}`,
+                kw: `blocked block off closed unavailable maintenance hold ${ota ? 'airbnb vrbo external ota imported' : ''} ${reason} ${nm}`,
+                run: () => { closeCmdK(); Promise.resolve(tryAccessBackOffice()).then(() => setTimeout(() => { try { tlScrollToDate(bl.checkIn); } catch (e) {} }, 160)); },
+            });
+        }));
+    }
     return items.concat(cmdkActions(q)).concat(cmdkScreens()).concat(cmdkFields(q)).concat(cmdkSheets(q));
 }
 // ---- Smart queries: answer operational questions ("who owes money", "leaving
@@ -1286,6 +1305,9 @@ function cmdkFields(q) {
         pub(nm, pk + '-location', 'Location blurb', 'text', 'A one-line location note shown on the cottage page.', '');
         priv(nm, 'arrival-' + pk, 'Arrival info', 'textarea', 'Sent to guests before check-in — directions, key collection, wifi. Never shown publicly.');
         num(nm, pk, 'coupleRate', 'Couple rate', 'Nightly rate for two adults (£). Prices update everywhere on save.');
+        num(nm, pk, 'extraAdultRate', 'Extra adult rate', 'Nightly charge per extra adult (£).');
+        num(nm, pk, 'childRate', 'Child rate', 'Nightly charge per child (£).');
+        num(nm, pk, 'damagesDeposit', 'Damages deposit', 'Refundable damage deposit (£), charged with the guest’s first payment.');
     });
     // Global (site-wide) fields — not per cottage.
     out.push({

@@ -1312,6 +1312,12 @@ body.owner-mode #mobileMenu {
   outline: none;
   border-color: var(--accent);
 }
+/* Light mode: single-line text/number inputs need the same frosted-white fill the
+   global textarea rule already gives the textarea variant, or they read as a dark
+   muddy box on the white palette. */
+body.light-mode .cmdk-editor-input {
+  background: rgba(255, 255, 255, 0.55);
+}
 .cmdk-editor-bar {
   display: flex;
   align-items: center;

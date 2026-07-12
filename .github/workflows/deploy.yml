@@ -59,7 +59,7 @@ jobs:
           [ -f "$OUT/htaccess.txt" ] && mv -f "$OUT/htaccess.txt" "$OUT/.htaccess"
 
           # Run-once tools must never be live on the server.
-          rm -f "$OUT/setup.php" "$OUT/health.php"
+          rm -f "$OUT/setup.php" "$OUT/health.php" "$OUT/vapid-keygen.php"
 
           # Never overwrite live secrets — the server keeps its own config.php.
           rm -f "$OUT/config.php"
@@ -180,7 +180,7 @@ jobs:
           rm -rf "$OUT"; mkdir -p "$OUT"
           cp -r "$SRC"/. "$OUT"/
           [ -f "$OUT/htaccess.txt" ] && mv -f "$OUT/htaccess.txt" "$OUT/.htaccess"
-          rm -f "$OUT/setup.php" "$OUT/health.php"
+          rm -f "$OUT/setup.php" "$OUT/health.php" "$OUT/vapid-keygen.php"
           rm -f "$OUT/config.php"          # staging keeps its OWN config.php (sandbox DB + sandbox Square/email)
           rm -f "$OUT"/ui-test-*.js "$OUT/ui-tests.js" "$OUT/test-emails.php" "$OUT/smoke-test.js" "$OUT/search-test.js" "$OUT/test-pricing.php" "$OUT/test-reply.php" "$OUT/test-smtp.php" "$OUT/test-smtp-server.php" "$OUT/e2e-test.js" "$OUT/layout-test.js" "$OUT/lint-js.js" "$OUT/phpstan.neon.dist" "$OUT/phpstan-baseline.neon" "$OUT/package.json" "$OUT/package-lock.json"
           rm -rf "$OUT/layout-shots"
