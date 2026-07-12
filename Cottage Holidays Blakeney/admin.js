@@ -236,7 +236,7 @@ function cmdkActions(q) {
     const pk = cmdkCottageFor(ql);
     const cName = pk && propertyMeta[pk] ? propertyMeta[pk].name : '';
     const toManage = (key) => () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => settingsOpen(key)); };
-    const toAccom = (sec) => () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => { if (pk && typeof settingsOpenAccomSec === 'function') settingsOpenAccomSec(pk, sec); else settingsOpen('accom'); }); };
+    const toAccom = (sec) => () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => { if (pk && typeof settingsGotoAccomSec === 'function') settingsGotoAccomSec(pk, sec); else settingsOpen('accom'); }); };
     const A = (slug, label, sub, kw, re, run) => ({ type: 'action', id: 'act-' + slug, label, sub, kw, re, run });
     return [
         A('addbooking', 'Add a booking', 'Take a booking into the diary', 'book customer guest reservation manual new take enter create put', /(add|new|create|make|manual|take|enter|put).{0,14}(booking|reservation|stay|customer|guest)|book (a|in|someone|my)/, () => { closeCmdK(); openAddBooking(); }),
@@ -814,7 +814,7 @@ function cmdkIntent(q) {
             const yr = +today.slice(0, 4);
             const rev = bs.filter((b) => +b.checkIn.slice(0, 4) === yr).reduce((s, b) => s + ((b.agreedPrice && b.agreedPrice.total) || 0), 0);
             const facts = [next ? `Next in ${fmtDate(next.checkIn)}` : 'Nothing upcoming', rev ? `${gbp(rev)} booked in ${yr}` : null].filter(Boolean).join(' · ');
-            const openSec = (sec) => () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => settingsOpenAccomSec(dPk, sec)); };
+            const openSec = (sec) => () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => settingsGotoAccomSec(dPk, sec)); };
             const runQ = (query) => () => { const el = document.getElementById('cmdk-input'); if (el) el.value = query; cmdkSearch(query); };
             const head = ans(cName, facts, openSec('rates'), [{ label: 'Bookings', run: runQ(cName + ' bookings') }].concat(next ? [calChip(next.checkIn)] : []));
             const rows = ACCOM_SECTIONS.map((s) => ({ type: 'action', id: 'dsr-' + dPk + '-' + s.id, label: s.label.replace(/&amp;/g, '&'), sub: (s.sub || '').replace(/&amp;/g, '&'), run: openSec(s.id) }));
@@ -1199,7 +1199,7 @@ function cmdkContentMatches(ql) {
             id: 'ct-' + sec + '-' + pk,
             label,
             sub: 'Content · ' + (plain.length > 72 ? plain.slice(0, 71) + '…' : plain || 'edit'),
-            run: () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => { if (pk && typeof settingsOpenAccomSec === 'function') settingsOpenAccomSec(pk, sec); else settingsOpen('content'); }); },
+            run: () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => { if (pk && typeof settingsGotoAccomSec === 'function') settingsGotoAccomSec(pk, sec); else settingsOpen('content'); }); },
         });
     };
     Object.keys(propertyMeta || {}).forEach((pk) => {
@@ -3153,6 +3153,15 @@ function settingsOpenAccom(k) {
     settingsBackTarget = () => settingsOpen('accom');
     __settingsPath = { section: 'accom', prop: k };
     window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+// Jump STRAIGHT to a cottage's section from anywhere (e.g. search) — reveals the
+// Cottages panel and hides the cottage list first, since settingsOpenAccomSec on
+// its own only fills the detail pane and assumes that chrome is already shown.
+function settingsGotoAccomSec(k, sec) {
+    settingsOpen('accom');
+    const list = document.getElementById('accom-list');
+    if (list) list.style.display = 'none';
+    settingsOpenAccomSec(k, sec);
 }
 function settingsOpenAccomSec(k, sec) {
     adminHistPush('view-settings', 'accom', { prop: k, accomSec: sec });
