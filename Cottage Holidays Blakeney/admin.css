@@ -1156,3 +1156,178 @@ body.owner-mode #cmdk-fab {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* ============================================================
+   Status page (Manage → Status): verdict-first health readout.
+   Verdict hero → attention items → optional extras → collapsed
+   wall of passing checks → maintenance. Owner-only.
+   ============================================================ */
+.status-hero {
+  display: flex;
+  gap: 16px;
+  align-items: flex-start;
+  max-width: 640px;
+  padding: 20px 22px;
+  margin: 0 0 20px;
+  border-radius: var(--r-lg);
+}
+.status-hero-mark {
+  flex-shrink: 0;
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1;
+}
+.status-hero.is-ok .status-hero-mark { background: var(--ok); }
+.status-hero.is-warn .status-hero-mark { background: var(--warn-text); }
+.status-hero.is-danger .status-hero-mark { background: var(--danger); }
+.status-hero-text { min-width: 0; flex: 1; }
+.status-hero-title {
+  font-family: var(--font-serif);
+  font-size: 1.4rem;
+  line-height: 1.15;
+  color: var(--text-light);
+}
+.status-hero-sub {
+  font-size: 0.86rem;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+.status-counts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 13px;
+}
+.status-count {
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 10px;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+.status-count.ok { color: var(--ok-text); }
+.status-count.warn { color: var(--warn-text); }
+.status-count.danger { color: var(--danger); }
+.status-count.optional { color: var(--text-muted); }
+.status-hero-meta {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  margin-top: 12px;
+}
+.status-rerun {
+  background: none;
+  border: none;
+  color: var(--text-light);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  font: inherit;
+  padding: 0;
+}
+.status-group { max-width: 640px; margin: 0 0 20px; }
+.status-group-title {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+  color: var(--text-muted);
+  margin: 0 0 10px;
+}
+.status-group-note {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  margin: -2px 0 12px;
+  line-height: 1.45;
+}
+.status-item {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 14px 16px;
+  margin-bottom: 8px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-left: 3px solid var(--glass-border);
+  border-radius: var(--r-md);
+}
+.status-item.is-warn { border-left-color: var(--warn-text); }
+.status-item.is-fail { border-left-color: var(--danger); }
+.status-item.is-optional { opacity: 0.92; }
+.status-item-dot {
+  flex-shrink: 0;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-top: 6px;
+}
+.status-item-body { min-width: 0; flex: 1; }
+.status-item-head {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.status-item-label {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text-light);
+}
+.status-item-chip {
+  font-size: 0.64rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 7px;
+  border-radius: var(--r-pill);
+  background: color-mix(in srgb, currentColor 14%, transparent);
+}
+.status-item-chip.ok { color: var(--ok-text); }
+.status-item-chip.warn { color: var(--warn-text); }
+.status-item-chip.fail { color: var(--danger); }
+.status-item-chip.optional { color: var(--text-muted); }
+.status-item-detail {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+  margin-top: 3px;
+}
+.status-item-hint {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  opacity: 0.85;
+  line-height: 1.4;
+  margin-top: 5px;
+}
+.status-item-hint::before { content: '\2192\00a0'; }
+.status-item-actions { margin-top: 11px; }
+.status-ok-wall { max-width: 640px; margin-bottom: 20px; }
+.status-ok-body { padding-top: 6px; }
+.status-okcat { margin-bottom: 16px; }
+.status-okcat:last-child { margin-bottom: 4px; }
+.status-okcat-title {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+  color: var(--text-muted);
+  opacity: 0.8;
+  margin-bottom: 9px;
+}
+.status-okrow {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 9px;
+}
+.status-okrow-label {
+  font-size: 0.86rem;
+  font-weight: 500;
+  color: var(--text-light);
+}
+.status-maint-title { margin-top: 26px; }
