@@ -4907,8 +4907,8 @@ async function loadAdminMessages() {
     if (!list) return;
     __msgThreads = threads;
     renderMessagesList();
-    renderChatAnswersEditor();
-    renderChatAwayEditor();
+    // (The chat-answers / away-reply editors render on demand from Manage →
+    //  Messages via settingsOpen() now — no longer painted on every inbox load.)
 }
 // Inbox list state: the fetched threads plus the owner's live search term and
 // "Needs reply" filter. Search/filter run over the DOM (show/hide) so typing
@@ -4943,18 +4943,16 @@ function renderMessagesList() {
         .slice()
         .sort((a, b) => (msgNeedsReply(b) ? 1 : 0) - (msgNeedsReply(a) ? 1 : 0));
     const needCount = threads.filter(msgNeedsReply).length;
-    // The archived toggle is a low-frequency control, so it sits at the end of
-    // the controls row (after search), not in a prime slot above it.
+    // The archived toggle docks to the RIGHT of the "Guest messages" heading
+    // (#messages-head-actions), not inline in the controls row — set just after
+    // the list renders below.
     const toggle = `<button class="btn-sm msg-archived-toggle" onclick="toggleArchivedMessages()">${__msgShowArchived ? '← Active conversations' : 'Show archived'}</button>`;
-    const controls = `<div class="msg-inbox-controls">
-                ${
-                    threads.length
-                        ? `<input id="msg-search" class="input-glass field-sm" type="search" placeholder="Search name, email or text…" value="${escapeHtml(__msgSearch)}" oninput="onMsgSearch(this.value)" autocomplete="off">
-                ${needCount && !__msgShowArchived ? `<button id="msg-unanswered" class="msg-filter-chip${__msgUnansweredOnly ? ' on' : ''}" onclick="toggleUnansweredOnly()">Needs reply · ${needCount}</button>` : ''}`
-                        : ''
-                }
-                ${toggle}
-           </div>`;
+    const controls = threads.length
+        ? `<div class="msg-inbox-controls">
+                <input id="msg-search" class="input-glass field-sm" type="search" placeholder="Search name, email or text…" value="${escapeHtml(__msgSearch)}" oninput="onMsgSearch(this.value)" autocomplete="off">
+                ${needCount && !__msgShowArchived ? `<button id="msg-unanswered" class="msg-filter-chip${__msgUnansweredOnly ? ' on' : ''}" onclick="toggleUnansweredOnly()">Needs reply · ${needCount}</button>` : ''}
+           </div>`
+        : '';
     const rows = threads.length
         ? threads
               .map((t) => {
@@ -4981,6 +4979,11 @@ function renderMessagesList() {
           `<p id="msg-noresults" class="msg-noresults" style="display:none;">No conversations match.</p>`
         : `<p style="font-size:0.82rem;color:var(--text-muted);">${__msgShowArchived ? 'No archived conversations.' : 'No messages yet.'}</p>`;
     list.innerHTML = controls + rows;
+    // Dock the Show-archived toggle to the right of the "Guest messages" heading
+    // (frees the controls row; reads better on mobile). Guard: the slot only
+    // exists in the Inbox → Messages folder, not in any other render context.
+    const headActions = document.getElementById('messages-head-actions');
+    if (headActions) headActions.innerHTML = toggle;
     applyMsgFilter();
     if (hadFocus) {
         const s = document.getElementById('msg-search');
@@ -6133,8 +6136,11 @@ async function loadDiagnostics() {
     }
     const checks = r.checks || [],
         s = r.summary || {};
-    const dot = (st) => (st === 'ok' ? 'var(--ok)' : st === 'warn' ? 'var(--warn-text)' : 'var(--danger)');
-    const word = (st) => (st === 'ok' ? 'OK' : st === 'warn' ? 'Optional' : 'Action needed');
+    // 'optional' = a switched-off optional feature (informational, never counted
+    // as "needs a look"); 'warn' = a real, actionable warning. Both are amber but
+    // labelled differently so the owner can tell them apart at a glance.
+    const dot = (st) => (st === 'ok' ? 'var(--ok)' : st === 'fail' ? 'var(--danger)' : 'var(--warn-text)');
+    const word = (st) => (st === 'ok' ? 'OK' : st === 'optional' ? 'Optional' : st === 'fail' ? 'Action needed' : 'Needs a look');
     // Group by category, preserving order of first appearance.
     const cats = [];
     checks.forEach((c) => {
@@ -6142,7 +6148,8 @@ async function loadDiagnostics() {
     });
     const summary = `<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;font-size:0.85rem;">
                 <span style="color:var(--ok);">● ${s.ok || 0} OK</span>
-                <span style="color:var(--warn-text);">● ${s.warn || 0} optional/off</span>
+                ${(s.warn || 0) > 0 ? `<span style="color:var(--warn-text);">● ${s.warn} need${s.warn === 1 ? 's' : ''} a look</span>` : ''}
+                <span style="color:var(--warn-text);opacity:0.75;">● ${s.optional || 0} optional/off</span>
                 <span style="color:var(--danger);">● ${s.fail || 0} need attention</span></div>`;
     body.innerHTML =
         summary +
@@ -7433,8 +7440,10 @@ async function checkSystemHealth() {
         pill.className = 'cron-pill warn';
         pill.innerHTML = `<span class="cron-pill-dot"></span>${warn} thing${warn === 1 ? '' : 's'} need${warn === 1 ? 's' : ''} a look`;
     } else {
+        // No failures and no actionable warnings (optional/off features don't
+        // count) → the calm green "all clear" state.
         pill.className = 'cron-pill ok';
-        pill.innerHTML = `<span class="cron-pill-dot"></span>All systems healthy`;
+        pill.innerHTML = `<span class="cron-pill-dot"></span>All systems operational`;
     }
     pill.style.display = '';
 }
@@ -9139,11 +9148,7 @@ function renderMailboxList(keepSearchFocus) {
     // the accent action + circular refresh on the right, search underneath.
     el.innerHTML = `
         <div class="cal-header-bar" style="margin-bottom:14px;">
-            <div class="inbox-sort seg" role="tablist" aria-label="Mailbox folders" style="margin-bottom:0;">
-                <button class="inbox-sort-btn${__mbxTab === 'inbox' ? ' is-on' : ''}" role="tab" onclick="mailboxTab('inbox')">Inbox</button>
-                <button class="inbox-sort-btn${__mbxTab === 'sent' ? ' is-on' : ''}" role="tab" onclick="mailboxTab('sent')">Sent</button>
-            </div>
-            <div class="cal-actions">
+            <div class="cal-actions" style="margin-left:auto;">
                 <button class="btn-glass btn-accent cal-add-btn" onclick="mailboxCompose()">+ New email</button>
                 <button class="cal-refresh-btn" onclick="loadMailbox()" title="Check for new email" aria-label="Check for new email"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-1.9 5.3"/><path d="M20 5v6h-6"/></svg></button>
             </div>
