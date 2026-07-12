@@ -459,6 +459,14 @@ if ($action === 'restore' || $action === 'undecline') {
     json_out($r);
 }
 
+// Render the confirmation email an approval would send, so the owner can review
+// it before approving. No booking is created and nothing is sent.
+if ($action === 'approve_preview') {
+    require_admin();
+    $r = enquiry_confirmation_preview((int) ($in['id'] ?? 0), $in['price_override'] ?? null);
+    json_out($r);
+}
+
 if ($action === 'approve') {
     // Optional agreed price (parity with the manual add's price override).
     $r = enquiry_approve((int) ($in['id'] ?? 0), $in['price_override'] ?? null);

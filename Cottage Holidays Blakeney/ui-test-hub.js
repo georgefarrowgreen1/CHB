@@ -71,6 +71,7 @@ const ok = (cond, label) => {
         return json({ ok: true });
       }
       if (b.__url === 'enquiries.php') {
+        if (b.action === 'approve_preview') return json({ ok: true, subject: 'Your booking is confirmed', html: '<p>Preview</p>' });
         if (b.action === 'approve') {
           const enq = enqs.find((x) => x.id === b.id);
           rows.push(mk(70, { name: enq ? enq.name : 'Approved Guest', email: 'enq@gmail.com', check_in: d(40), check_out: d(43) }));
@@ -455,8 +456,14 @@ const ok = (cond, label) => {
   ok(j1.actions === 4 && j1.priceBtn, 'approve/edit/email/decline + agreed-price on the hub');
   // Approve from the hub → lands on the NEW booking's hub.
   const apr = page.evaluate(() => approveEnquiry(document.querySelector('#inbox-list .bk-row[data-enqid]').getAttribute('data-enqid')));
-  await page.waitForTimeout(600);
+  await page.waitForTimeout(700);
   await page.evaluate(() => { try { glassDialogResolve(true); } catch (e) {} }); // clash/confirm if any
+  // Approving now PREVIEWS the confirmation first — hit Send to proceed.
+  await page.waitForTimeout(300);
+  await page.evaluate(() => {
+    const ov = document.getElementById('send-confirm-overlay');
+    if (ov && ov.classList.contains('open')) document.getElementById('send-confirm-send').click();
+  });
   await apr;
   await page.waitForTimeout(900);
   const j2 = await page.evaluate(() => ({

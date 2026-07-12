@@ -8657,6 +8657,28 @@ async function approveEnquiry(enqId) {
         )
             return;
     }
+    // Show the confirmation email that approving would send, and only proceed
+    // once the owner confirms. Approving both CREATES the booking and sends the
+    // email, so the send label makes that clear.
+    await previewAndSendEmail({
+        to: enq.email,
+        sendLabel: enq.email ? 'Approve & send confirmation' : 'Approve booking',
+        fallbackConfirm: enq.email
+            ? `Approve this enquiry and email ${enq.name || 'the guest'} their booking confirmation?`
+            : 'Approve this enquiry? (No email on file, so no confirmation will be sent.)',
+        render: async () => {
+            if (!enq.email) return null; // nothing to preview
+            try {
+                const pr = { action: 'approve_preview', id: enq.dbId };
+                if (enq.priceOverride != null) pr.price_override = enq.priceOverride;
+                return await apiPost('enquiries.php', pr);
+            } catch (e) {
+                return null;
+            }
+        },
+        doSend: doApproveEnquiry,
+    });
+    async function doApproveEnquiry() {
     try {
         const req = { action: 'approve', id: enq.dbId };
         if (enq.priceOverride != null) req.price_override = enq.priceOverride;
@@ -8705,6 +8727,7 @@ async function approveEnquiry(enqId) {
         }
     } catch (e) {
         glassAlert("Couldn't approve: " + e.message);
+    }
     }
 }
 
