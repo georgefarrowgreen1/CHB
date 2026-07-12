@@ -147,7 +147,7 @@ if (Array.isArray(fields)) {
     check('field ids are unique', new Set(fields.map((f) => f.id)).size === fields.length);
     check('every field has a non-empty label', fields.every((f) => typeof f.label === 'string' && f.label.trim()));
     check('every field carries get() and set() functions', fields.every((f) => typeof f.get === 'function' && typeof f.set === 'function'));
-    check('every field ftype is text or textarea', fields.every((f) => f.ftype === 'text' || f.ftype === 'textarea'));
+    check('every field ftype is text, textarea or number', fields.every((f) => f.ftype === 'text' || f.ftype === 'textarea' || f.ftype === 'number'));
     check('every field has a run() that opens the editor', fields.every((f) => typeof f.run === 'function'));
     let getOk = true;
     try { fields.forEach((f) => { if (typeof f.get() !== 'string') getOk = false; }); } catch (e) { getOk = false; }
