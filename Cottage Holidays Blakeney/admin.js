@@ -1261,11 +1261,34 @@ function cmdkFields(q) {
         get: () => (typeof apc[key] === 'string' ? apc[key] : ''),
         set: (v) => { const val = v == null ? '' : String(v); apc[key] = val; return Promise.resolve(saveContent(key, val)); },
     });
+    // A nightly-price number — written through updateRate (the SAME path the rates
+    // screen uses, which persists to the backend and repaints prices/calendar).
+    const num = (nm, pk, field, label, hint) => out.push({
+        type: 'field', id: 'fld-rate-' + pk + '-' + field, label: `${label} — ${nm}`,
+        sub: 'Edit here · nightly pricing', ftype: 'number', hint,
+        kw: `${label} ${nm} ${field} price rate nightly cost charge edit change`,
+        get: () => { const r = (typeof propertyRates === 'object' && propertyRates && propertyRates[pk]) || {}; return r[field] != null ? String(r[field]) : ''; },
+        set: (v) => Promise.resolve(updateRate(pk, field, v)),
+    });
     Object.keys(metas).forEach((pk) => {
         const nm = (metas[pk] || {}).name || pk;
+        const def = pc[pk] || {};
         pub(nm, pk + '-subtitle', 'Subtitle', 'text', 'The short line under the cottage name on its page.', '');
-        pub(nm, pk + '-desc', 'Description', 'textarea', 'The main descriptive paragraph on the cottage page.', (pc[pk] && pc[pk].desc) || '');
+        pub(nm, pk + '-tagline', 'Price tagline', 'text', 'The small price line on the cottage card (e.g. "from £120/night").', '');
+        pub(nm, pk + '-title', 'Title', 'text', 'The cottage’s headline name on its page.', def.title || nm);
+        pub(nm, pk + '-desc', 'Description', 'textarea', 'The main descriptive paragraph on the cottage page.', def.desc || '');
+        pub(nm, pk + '-location', 'Location blurb', 'text', 'A one-line location note shown on the cottage page.', '');
         priv(nm, 'arrival-' + pk, 'Arrival info', 'textarea', 'Sent to guests before check-in — directions, key collection, wifi. Never shown publicly.');
+        num(nm, pk, 'coupleRate', 'Couple rate', 'Nightly rate for two adults (£). Prices update everywhere on save.');
+    });
+    // Global (site-wide) fields — not per cottage.
+    out.push({
+        type: 'field', id: 'fld-host-bio', label: 'Host bio',
+        sub: 'Edit here · about you, shown on the site', ftype: 'textarea',
+        hint: 'Your short introduction guests see on the site.',
+        kw: 'host bio about you owner profile introduction blurb me welcome',
+        get: () => (sc['host-bio'] != null ? String(sc['host-bio']) : ''),
+        set: (v) => Promise.resolve(saveHostText('host-bio', v)),
     });
     out.forEach((f) => { f.run = () => cmdkFieldOpen(f); });
     return out;
@@ -1274,27 +1297,40 @@ function cmdkFields(q) {
 // list). Save writes through the field's own set() — the same endpoint the Manage
 // screen uses — and "‹ Back" returns to the results you came from.
 let __cmdkField = null;
+let __cmdkFieldOrig = ''; // the value on open / last save — for the unsaved-changes guard
 function cmdkFieldOpen(f) {
     if (!f) return;
     __cmdkField = f;
     const box = document.getElementById('cmdk-results');
     if (!box) return;
     const cur = (typeof f.get === 'function' ? f.get() : '') || '';
+    __cmdkFieldOrig = cur;
     const big = f.ftype === 'textarea';
+    const inputType = f.ftype === 'number' ? 'number' : 'text';
     box.innerHTML =
         `<div class="cmdk-editor">` +
         `<div class="cmdk-group-label">Edit · ${escapeHtml(f.label)}</div>` +
         (f.hint ? `<p class="cmdk-editor-hint">${escapeHtml(f.hint)}</p>` : '') +
         (big
-            ? `<textarea id="cmdk-editor-field" class="cmdk-editor-input" rows="5" spellcheck="true">${escapeHtml(cur)}</textarea>`
-            : `<input id="cmdk-editor-field" type="text" class="cmdk-editor-input" value="${escapeHtml(cur)}">`) +
+            ? `<textarea id="cmdk-editor-field" class="cmdk-editor-input" rows="5" spellcheck="true" onkeydown="cmdkFieldKey(event)">${escapeHtml(cur)}</textarea>`
+            : `<input id="cmdk-editor-field" type="${inputType}"${inputType === 'number' ? ' min="0" step="1" inputmode="decimal"' : ''} class="cmdk-editor-input" value="${escapeHtml(cur)}" onkeydown="cmdkFieldKey(event)">`) +
         `<div class="cmdk-editor-bar">` +
         `<button type="button" class="cmdk-ex cmdk-back" onclick="cmdkFieldBack()">‹ Back to results</button>` +
         `<span id="cmdk-editor-msg" class="cmdk-editor-msg" aria-live="polite"></span>` +
         `<button type="button" class="cmdk-editor-save" onclick="cmdkFieldSave()">Save</button>` +
         `</div></div>`;
     const inp = document.getElementById('cmdk-editor-field');
-    if (inp) { try { inp.focus(); if (!big) inp.setSelectionRange(inp.value.length, inp.value.length); } catch (e) {} }
+    if (inp) { try { inp.focus(); if (f.ftype === 'text') inp.setSelectionRange(inp.value.length, inp.value.length); } catch (e) {} }
+}
+// ⌘/Ctrl-Enter saves without reaching for the button (Enter alone in a textarea
+// still inserts a newline; a single-line input has nothing else to do so Enter
+// saves there too).
+function cmdkFieldKey(e) {
+    if (!e) return;
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey || __cmdkField && __cmdkField.ftype !== 'textarea')) {
+        e.preventDefault();
+        cmdkFieldSave();
+    }
 }
 async function cmdkFieldSave() {
     const f = __cmdkField;
@@ -1304,14 +1340,23 @@ async function cmdkFieldSave() {
     if (msg) { msg.textContent = 'Saving…'; msg.className = 'cmdk-editor-msg'; }
     try {
         await Promise.resolve(f.set(inp.value));
+        __cmdkFieldOrig = inp.value; // now clean — the guard won't nag on Back
         if (msg) { msg.textContent = 'Saved ✓'; msg.className = 'cmdk-editor-msg is-ok'; }
         try { toast('Saved — ' + f.label + '.'); } catch (e) {}
     } catch (e) {
         if (msg) { msg.textContent = "Couldn't save — try again"; msg.className = 'cmdk-editor-msg is-err'; }
     }
 }
-function cmdkFieldBack() {
+async function cmdkFieldBack() {
+    // Guard against silently losing an edit — confirm before discarding.
+    const inp = document.getElementById('cmdk-editor-field');
+    if (inp && inp.value !== __cmdkFieldOrig) {
+        let ok = true;
+        try { ok = await glassConfirm('Discard your unsaved changes?'); } catch (e) { ok = true; }
+        if (!ok) { try { inp.focus(); } catch (e) {} return; }
+    }
     __cmdkField = null;
+    __cmdkFieldOrig = '';
     const el = document.getElementById('cmdk-input');
     if (el) { try { el.focus(); } catch (e) {} }
     cmdkSearchCore(el ? el.value : '', true);
