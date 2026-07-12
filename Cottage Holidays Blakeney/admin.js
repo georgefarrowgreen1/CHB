@@ -784,10 +784,15 @@ function showEmailPreview(subject, html, text) {
         ov = document.createElement('div');
         ov.id = 'email-preview-overlay';
         ov.className = 'modal-overlay';
-        ov.innerHTML = `<div class="modal-box email-preview-box">
-                <button class="modal-x" type="button" aria-label="Close" onclick="closeEmailPreview()">×</button>
-                <div class="email-preview-subject" id="email-preview-subject"></div>
-                <iframe id="email-preview-frame" class="email-preview-frame" title="Email preview" sandbox=""></iframe>
+        ov.innerHTML = `<div class="modal-box email-modal-box">
+                <div class="email-modal-head">
+                    <span class="email-modal-title">Email preview</span>
+                    <button class="email-modal-close" type="button" aria-label="Close" onclick="closeEmailPreview()">×</button>
+                </div>
+                <div class="email-modal-meta">
+                    <div class="email-meta-row"><span class="email-meta-label">Subject</span><span class="email-meta-value is-subject" id="email-preview-subject"></span></div>
+                </div>
+                <iframe id="email-preview-frame" class="email-modal-frame" title="Email preview" sandbox=""></iframe>
             </div>`;
         document.body.appendChild(ov);
         ov.addEventListener('click', (e) => {
@@ -1135,10 +1140,9 @@ function renderBookingHub() {
                     <!-- ONE quiet overflow menu instead of a row of buttons: the
                          header stays calm and the destructive action becomes a
                          deliberate two-tap instead of a permanent red button. -->
-                    <button class="btn-sm btn-edit bhub-menu-btn" onclick="bhubMenuToggle(event)" aria-haspopup="menu" aria-expanded="false">⋯&nbsp;&nbsp;More</button>
+                    <button class="btn-sm btn-edit bhub-menu-btn" onclick="bhubMenuToggle(event)" aria-haspopup="menu" aria-expanded="false">Edit/Move/Cancel</button>
                     <div class="bhub-menu glass-panel" role="menu" style="display:none;">
                         <button role="menuitem" onclick="bhubMenuClose(); openEditBooking('${b.id}')">Edit / Move</button>
-                        <button role="menuitem" onclick="bhubMenuClose(); addBookingToCalendar('${b.id}')">Add to calendar</button>
                         <button role="menuitem" class="bhub-menu-danger" onclick="bhubMenuClose(); cancelBooking('${b.id}')">Cancel &amp; refund</button>
                         ${
                             // Delete exists ONLY while no money is on the booking (same
@@ -1280,7 +1284,7 @@ function renderBookingHub() {
             : '';
     const noContact =
         !b.email && !b.phone
-            ? `<div class="bhub-mut" style="margin-bottom:8px;">No contact details on file — add them via ⋯ More → Edit / Move.</div>`
+            ? `<div class="bhub-mut" style="margin-bottom:8px;">No contact details on file — add them via the Edit/Move/Cancel menu → Edit / Move.</div>`
             : '';
     const guestCard = `
         <section class="bhub-card glass-panel">
@@ -1379,9 +1383,6 @@ function settingsFilter(q) {
     });
     const nores = document.getElementById('settings-noresults');
     if (nores) nores.style.display = words.length && !total ? '' : 'none';
-    // Recents are browsing furniture — hide them while searching.
-    const rec = document.getElementById('settings-recent');
-    if (rec) rec.style.display = words.length || !settingsRecentList().length ? 'none' : '';
 }
 // Enter opens the first visible result; Escape clears the search.
 function settingsSearchKey(ev) {
@@ -1399,39 +1400,6 @@ function settingsSearchKey(ev) {
         settingsFilter('');
     }
 }
-// ---- "Recently used" chips (the sections this owner actually opens) ----
-function settingsRecentList() {
-    try {
-        return JSON.parse(localStorage.getItem('chb-settings-recent') || '[]');
-    } catch (e) {
-        return [];
-    }
-}
-function settingsRecentRecord(section) {
-    if (!section) return;
-    try {
-        const list = settingsRecentList().filter((k) => k !== section);
-        list.unshift(section);
-        localStorage.setItem('chb-settings-recent', JSON.stringify(list.slice(0, 4)));
-    } catch (e) {}
-}
-function settingsRecentRender() {
-    const wrap = document.getElementById('settings-recent');
-    if (!wrap) return;
-    const chips = settingsRecentList()
-        .map((key) => {
-            const row = document.querySelector(
-                `#settings-index .settings-row[onclick*="settingsOpen('${key}')"]`,
-            );
-            const label = row && row.querySelector('.settings-row-label');
-            if (!label) return '';
-            return `<button type="button" class="settings-recent-chip" onclick="settingsOpen('${key}')">${escapeHtml(label.textContent.trim())}</button>`;
-        })
-        .filter(Boolean)
-        .join('');
-    wrap.innerHTML = chips ? `<span class="settings-recent-label">Recent</span>${chips}` : '';
-    wrap.style.display = chips ? '' : 'none';
-}
 function settingsShowIndex() {
     __settingsPath = null;
     const idx = document.getElementById('settings-index');
@@ -1441,7 +1409,6 @@ function settingsShowIndex() {
     if (idx) idx.style.display = '';
     if (chrome) chrome.style.display = ''; // area header/search return with the index
     applyAreaFilter(); // restore the current area's rows + header
-    settingsRecentRender();
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 function settingsOpen(section) {
@@ -1453,7 +1420,6 @@ function settingsOpen(section) {
         return;
     }
     adminHistPush('view-settings', section);
-    settingsRecentRecord(section);
     __settingsPath = section ? { section } : null;
     const idx = document.getElementById('settings-index');
     const panel = document.getElementById('settings-panel');
@@ -9463,7 +9429,7 @@ async function mailboxDelete(uid) {
     }
 }
 
-[accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, bulkImportReviews, changeAdminPassword, changeMonth, timelineToday, inboxSub, inboxSubClose, inboxFolder, initBackOffice, loadAdminMessages, loadDiagnostics, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveDepositPct, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsRecentRender, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
+[accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, bulkImportReviews, changeAdminPassword, changeMonth, timelineToday, inboxSub, inboxSubClose, inboxFolder, initBackOffice, loadAdminMessages, loadDiagnostics, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveDepositPct, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
     window[f.name] = f;
 });
 window.__ADMIN_LOADED = true;

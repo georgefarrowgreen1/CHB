@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=179">
+    <link rel="stylesheet" href="app.css?v=180">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -1135,7 +1135,6 @@
         <div class="bo-search" style="margin:0 0 8px;">
         <input type="search" class="input-glass" id="settings-search" placeholder="Search — try &quot;rates&quot;, &quot;reviews&quot; or &quot;backup&quot;…" autocomplete="off" oninput="settingsFilter(this.value)" onkeydown="settingsSearchKey(event)" style="margin-bottom:0;">
         </div>
-        <div id="settings-recent" class="settings-recent" style="display:none;"></div>
         <p id="settings-noresults" class="settings-noresults" style="display:none;">Nothing matches — try another word, or browse below.</p>
         </div>
 
@@ -1551,8 +1550,7 @@
         <span class="back-link" onclick="nav('view-backoffice'); initBackOffice();">← Back to Today</span>
         <div class="dashboard-header">
             <div>
-                <h1 class="section-title" style="margin-bottom: 5px;">Payments</h1>
-                <p class="lead" style="text-align: left; margin: 0;">Request deposits and balances, reconcile payments, and review your income.</p>
+                <h1 class="section-title" style="margin: 0;">Payments</h1>
             </div>
         </div>
         </div>
@@ -2403,7 +2401,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=306"></script>
+    <script defer src="app.js?v=307"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

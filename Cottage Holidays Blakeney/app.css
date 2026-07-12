@@ -4291,54 +4291,108 @@ body.owner-mode .chat-widget {
 
 
 /* Email preview overlay: subject bar + a sandboxed iframe of the email. */
-.email-preview-box {
+/* ============================================================
+   EMAIL MODAL — one shared layout for both the email VIEWER (showEmailPreview,
+   read a sent/templated email) and the pre-send PREVIEWER (showSendConfirm,
+   review before sending). A clear header (title + close), labelled To/Subject
+   metadata, the email body in a white framed pane, and (previewer only) a
+   Cancel / Send footer. ============================================================ */
+.email-modal-box {
   display: flex;
   flex-direction: column;
-  width: min(680px, 100%);
+  width: min(560px, 100%);
   max-height: 88vh;
   padding: 0;
   overflow: hidden;
 }
-.email-preview-subject {
-  font-weight: 600;
-  color: var(--text-light);
-  padding: 18px 48px 14px 20px;
+.email-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 15px 14px 15px 20px;
   border-bottom: 1px solid var(--glass-border);
-  word-break: break-word;
+  flex-shrink: 0;
 }
-.email-preview-frame {
+.email-modal-title {
+  font-family: var(--font-serif);
+  font-size: 1.2rem;
+  color: var(--text-light);
+  line-height: 1.2;
+}
+.email-modal-close {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  color: var(--text-muted);
+  font-size: 1.15rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s var(--fluid-bezier);
+}
+.email-modal-close:hover {
+  background: var(--glass-hover);
+  color: var(--text-light);
+}
+/* To / Subject metadata — labelled rows, so it reads like an email header. */
+.email-modal-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 13px 20px;
+  border-bottom: 1px solid var(--glass-border);
+  background: rgba(127, 127, 127, 0.05);
+  flex-shrink: 0;
+}
+.email-meta-row {
+  display: flex;
+  gap: 10px;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+.email-meta-label {
+  flex-shrink: 0;
+  width: 56px;
+  padding-top: 1px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  font-size: 0.68rem;
+  letter-spacing: 0.05em;
+  font-weight: 700;
+}
+.email-meta-value {
+  color: var(--text-light);
+  overflow-wrap: anywhere;
+}
+.email-meta-value.is-subject {
+  font-weight: 600;
+}
+.email-modal-frame {
   flex: 1;
   width: 100%;
-  min-height: 50vh;
+  min-height: 44vh;
   border: 0;
   background: #fff;
 }
-
-/* Preview-before-send confirm modal (showSendConfirm): the rendered email with
-   a recipient line and Cancel / Send actions. Reuses .email-preview-box. */
-.send-confirm-head {
+.email-modal-actions {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 10px;
-}
-.send-confirm-title {
-  font-family: var(--font-serif);
-  font-size: 1.15rem;
-  color: var(--text-light);
-}
-.send-confirm-to {
-  font-size: 0.82rem;
-  color: var(--text-muted);
-  overflow-wrap: anywhere;
-}
-.send-confirm-actions {
-  display: flex;
-  justify-content: flex-end;
   gap: 10px;
-  margin-top: 14px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--glass-border);
+  flex-shrink: 0;
+}
+.email-modal-actions .email-modal-cancel {
+  flex: 0 0 auto;
+}
+.email-modal-actions .email-modal-send {
+  flex: 1 1 auto; /* the primary action is the widest, most tappable target */
+  justify-content: center;
 }
 
 
@@ -5030,17 +5084,6 @@ body.owner-mode .chat-widget {
 
 
 /* "Recent" chips + empty-search note above the index */
-.settings-recent {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  max-width: 640px;
-  margin: 2px 0 14px;
-}
-
-
-
 .settings-noresults {
   font-size: 0.85rem;
   color: var(--text-muted);
