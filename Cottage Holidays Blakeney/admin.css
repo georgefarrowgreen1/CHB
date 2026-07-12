@@ -1102,6 +1102,16 @@ body.owner-mode #mobileMenu {
 .cmdk-row-ic.cmdk-screen .ic {
   color: var(--text-muted);
 }
+/* Smart-answer row (the summary that leads an operational query result). */
+.cmdk-row-ic.cmdk-answer {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+}
+.cmdk-row-ic.cmdk-answer .ic {
+  color: var(--accent);
+}
+.cmdk-row-answer .cmdk-row-label {
+  font-weight: 700;
+}
 .cmdk-row-main {
   display: flex;
   flex-direction: column;
