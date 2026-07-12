@@ -408,41 +408,17 @@ async function openInbox() {
     nav('view-inbox'); // nav() calls renderInboxScreen() for us
     adminHistPush('view-inbox');
 }
-// Chat automation drill-downs (instant answers / away reply) live in their own
-// sub-folders off the Inbox rather than sprawling down the messages tab.
-const INBOX_SUBS = { answers: 'inbox-sub-answers', away: 'inbox-sub-away', enq: 'inbox-sub-enq' };
-function inboxSub(which) {
-    __inboxSubStamp++;
-    adminHistPush('view-inbox', null, { inboxSub: which });
-    const main = document.getElementById('inbox-main');
-    if (main) main.style.display = 'none';
-    const head = document.getElementById('inbox-head');
-    if (head) head.style.display = 'none';
-    const pane = document.getElementById('inbox-detail-pane');
-    if (pane) pane.style.display = 'none';
-    Object.entries(INBOX_SUBS).forEach(([key, id]) => {
-        const el = document.getElementById(id);
-        if (el) el.style.display = key === which ? '' : 'none';
-    });
-    try {
-        if (which === 'answers') renderChatAnswersEditor();
-        else if (which === 'away') renderChatAwayEditor();
-        // 'enq' is static toggles — their checked state is set by renderInbox().
-    } catch (e) {}
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-}
-function inboxSubClose() {
-    Object.values(INBOX_SUBS).forEach((id) => {
-        const el = document.getElementById(id);
-        if (el) el.style.display = 'none';
-    });
-    const pane = document.getElementById('inbox-detail-pane');
-    if (pane) pane.style.display = '';
-    const main = document.getElementById('inbox-main');
-    if (main) main.style.display = '';
-    const head = document.getElementById('inbox-head');
-    if (head) head.style.display = '';
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+// The comms automations (instant chat answers / away auto-reply / follow-up
+// emails) now live in Manage → Messages as ordinary settings sections
+// (settingsOpen('chat-answers' | 'chat-away' | 'follow-ups')), not as Inbox
+// sub-folders — so the old inboxSub()/inboxSubClose() drill-down is gone.
+// hydrateFollowUpToggles() fills the two follow-up checkboxes when that section
+// opens (their editors, renderChat*Editor(), target the same ids as before).
+function hydrateFollowUpToggles() {
+    const tg = document.getElementById('enq-nudge-toggle');
+    if (tg) tg.checked = siteContent['enquiry-nudge-off'] !== '1';
+    const ag = document.getElementById('anniv-nudge-toggle');
+    if (ag) ag.checked = siteContent['anniversary-nudge-off'] !== '1';
 }
 // ---- Inbox folders: the Inbox is ONE comms dashboard — website enquiries,
 // guest chat and the cottage EMAIL mailbox behind a segmented folder switch.
@@ -1333,6 +1309,9 @@ const SETTINGS_TITLES = {
     apis: 'Integrations',
     diagnostics: 'Health check',
     testcentre: 'Test centre',
+    'chat-answers': 'Instant chat answers',
+    'chat-away': 'Away auto-reply',
+    'follow-ups': 'Follow-up emails',
 };
 // Open the separate staging sandbox (where all testing now happens) in a new tab.
 const STAGING_URL = 'https://staging.cottageholidaysblakeney.co.uk/';
@@ -1451,6 +1430,9 @@ function settingsOpen(section) {
     else if (section === 'guests') loadGuestList();
     else if (section === 'experiences') loadExperiencesAdmin();
     else if (section === 'content') loadContentEditor();
+    else if (section === 'chat-answers') renderChatAnswersEditor();
+    else if (section === 'chat-away') renderChatAwayEditor();
+    else if (section === 'follow-ups') hydrateFollowUpToggles();
     else if (section === 'diagnostics') loadDiagnostics();
     else if (section === 'testcentre') renderTestCentreList();
     else if (section === 'apis') renderApis();
@@ -8017,10 +7999,6 @@ function sortedEnquiries() {
 function renderInbox() {
     refreshInboxBadge();
     inboxSubline();
-    const tg = document.getElementById('enq-nudge-toggle');
-    if (tg) tg.checked = siteContent['enquiry-nudge-off'] !== '1';
-    const ag = document.getElementById('anniv-nudge-toggle');
-    if (ag) ag.checked = siteContent['anniversary-nudge-off'] !== '1';
     const list = document.getElementById('inbox-list');
 
     if (enquiries.length === 0) {
@@ -9429,7 +9407,7 @@ async function mailboxDelete(uid) {
     }
 }
 
-[accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, bulkImportReviews, changeAdminPassword, changeMonth, timelineToday, inboxSub, inboxSubClose, inboxFolder, initBackOffice, loadAdminMessages, loadDiagnostics, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveDepositPct, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
+[accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, bulkImportReviews, changeAdminPassword, changeMonth, timelineToday, inboxFolder, initBackOffice, loadAdminMessages, loadDiagnostics, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveDepositPct, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
     window[f.name] = f;
 });
 window.__ADMIN_LOADED = true;
