@@ -1178,6 +1178,16 @@ body.owner-mode #mobileMenu {
   font-weight: 800;
   font-size: 1.05rem;
 }
+.cmdk-row-ic.cmdk-content .ic {
+  color: var(--accent);
+}
+/* Matched-term highlight inside a result row. */
+.cmdk-hi {
+  background: color-mix(in srgb, var(--accent) 26%, transparent);
+  color: inherit;
+  border-radius: 3px;
+  padding: 0 1px;
+}
 /* Spotlight-style section headers, Top Hit + empty-state example chips. */
 .cmdk-group-label {
   font-size: 0.68rem;
