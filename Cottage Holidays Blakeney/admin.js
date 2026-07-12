@@ -963,10 +963,13 @@ function cmdkSearchCore(q, allowCorrect) {
     const searchWrap = document.querySelector('#cmdk .cmdk-search');
     if (searchWrap) searchWrap.classList.toggle('has-text', (q || '').length > 0);
     if (!raw) {
-        // Empty query → example chips + the dock destinations, as quick launchers.
+        // Empty query → an answer-first "Your day" brief, example chips, then the
+        // dock destinations. The brief + screens are the executable rows.
         __cmdkEmpty = true;
-        __cmdkResults = cmdkScreens().slice(0, 6);
-        __cmdkSel = -1; // nothing pre-selected under the example chips
+        const brief = cmdkBrief();
+        __cmdkBriefN = brief.length;
+        __cmdkResults = brief.concat(cmdkScreens().slice(0, 6));
+        __cmdkSel = -1; // nothing pre-selected
         cmdkRender();
         return;
     }
@@ -1131,6 +1134,28 @@ function cmdkExampleChips() {
     ['who’s leaving today', 'revenue this month', 'upcoming bookings', 'block dates', 'what’s free tonight'].forEach((c) => chips.push(c));
     return [...new Set(chips)].slice(0, 6);
 }
+// Answer-first "Your day" brief for the empty palette — a proactive read of what
+// matters now (today's movements, money to collect, enquiries waiting, deposits
+// to return), computed from the loaded data. Each row routes to where you act.
+let __cmdkBriefN = 0;
+function cmdkBrief() {
+    const items = [];
+    const today = todayDashed();
+    let ins = 0, outs = 0, owed = 0, owers = 0, depN = 0;
+    Object.keys(dbBookings || {}).forEach((k) => (dbBookings[k] || []).forEach((b) => {
+        if (b.checkIn === today) ins++;
+        if (b.checkOut === today) outs++;
+        try { const ps = paymentSummary(k, b); if (!ps.fullyPaid && ps.balance > 0.5) { owed += ps.balance; owers++; } } catch (e) {}
+        if ((b.holdStatus || 'none') === 'charged' && (b.checkOut || '') <= today) depN++;
+    }));
+    if (typeof dbBlocks === 'object' && dbBlocks) Object.keys(dbBlocks).forEach((k) => (dbBlocks[k] || []).forEach((bl) => { if (bl.checkIn === today) ins++; if (bl.checkOut === today) outs++; }));
+    if (ins || outs) items.push({ type: 'figure', id: 'brief-today', label: `Today · ${ins} in · ${outs} out`, sub: 'Arrivals & departures', run: () => { closeCmdK(); tryAccessBackOffice(); } });
+    if (owers) items.push({ type: 'answer', id: 'brief-money', label: `${gbp(owed)} to collect`, sub: `${owers} balance${owers === 1 ? '' : 's'} outstanding — tap to chase`, run: () => { closeCmdK(); Promise.resolve(openBookings()).then(() => bookingsSetFilter('needspay')); } });
+    const enq = Array.isArray(enquiries) ? enquiries.length : 0;
+    if (enq) items.push({ type: 'answer', id: 'brief-enq', label: `${enq} enquir${enq === 1 ? 'y' : 'ies'} waiting`, sub: 'Reply to win the booking', run: () => { closeCmdK(); openInbox(); } });
+    if (depN) items.push({ type: 'answer', id: 'brief-dep', label: `${depN} deposit${depN === 1 ? '' : 's'} to return`, sub: 'Guests have checked out', run: () => { closeCmdK(); openBookings(); } });
+    return items.slice(0, 4);
+}
 // ---- Spotlight-style presentation: a Top Hit, grouped section headers, and
 // example-question chips on the empty palette. ----
 let __cmdkEmpty = false;
@@ -1187,8 +1212,12 @@ function cmdkRender() {
     if (__cmdkEmpty) {
         __cmdkChips = cmdkExampleChips();
         const chips = __cmdkChips.map((q, i) => `<button type="button" class="cmdk-ex" onclick="cmdkRunExample(${i})">${escapeHtml(q)}</button>`).join('');
-        const screens = __cmdkResults.map((it, i) => cmdkRowHtml(it, i, false)).join('');
-        box.innerHTML = `<div class="cmdk-group-label">Try asking</div><div class="cmdk-examples">${chips}</div><div class="cmdk-group-label">Jump to</div>${screens}`;
+        const brief = __cmdkResults.slice(0, __cmdkBriefN).map((it, i) => cmdkRowHtml(it, i, false)).join('');
+        const screens = __cmdkResults.slice(__cmdkBriefN).map((it, i) => cmdkRowHtml(it, __cmdkBriefN + i, false)).join('');
+        box.innerHTML =
+            (__cmdkBriefN ? `<div class="cmdk-group-label">Your day</div>${brief}` : '') +
+            `<div class="cmdk-group-label">Try asking</div><div class="cmdk-examples">${chips}</div>` +
+            `<div class="cmdk-group-label">Jump to</div>${screens}`;
         return;
     }
     if (!__cmdkResults.length) {
