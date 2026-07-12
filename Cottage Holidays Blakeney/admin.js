@@ -561,6 +561,9 @@ function cmdkIntent(q) {
     };
     const bk = (pk, b, sub) => ({ type: 'booking', id: b.id, label: b.name || '(no name)', sub, run: () => { closeCmdK(); openBookingHub(b.id); }, actions: cmdkBookingActions(b, pk) });
     const ans = (label, sub, run, chips) => ({ type: 'answer', label, sub, run: run || (() => closeCmdK()), chips });
+    // A "Show on calendar" chip (time as a first-class axis) — opens the Today
+    // timeline and scrolls it to `iso`.
+    const calChip = (iso) => ({ label: 'Show on calendar', run: () => { closeCmdK(); Promise.resolve(tryAccessBackOffice()).then(() => setTimeout(() => { try { tlScrollToDate(iso); } catch (e) {} }, 160)); } });
     const byIn = (a, b) => ((a.b.checkIn || '') < (b.b.checkIn || '') ? -1 : 1);
     const byOut = (a, b) => ((a.b.checkOut || '') < (b.b.checkOut || '') ? -1 : 1);
     // External OTA stays (Airbnb / Vrbo / Booking.com) imported via iCal — anonymous
@@ -661,6 +664,9 @@ function cmdkIntent(q) {
             } else {
                 head = ans(nm, `${m.money}${m.dep ? ' · ' + m.dep : ''} · ${propName(g.pk)}`, go);
             }
+            // Entity pivots: jump to the same cottage's bookings, or to this stay
+            // on the calendar.
+            head.chips = [{ label: `${propName(g.pk)} bookings`, q: `${propName(g.pk)} bookings` }].concat(g.b.checkIn ? [calChip(g.b.checkIn)] : []);
         } else {
             head = ans(`${rows.length} bookings match that name`, 'Pick the guest you mean', () => { closeCmdK(); openBookings(); });
         }
@@ -794,6 +800,25 @@ function cmdkIntent(q) {
         return [ans(label, `Check-ins during ${yr}`, () => { closeCmdK(); openBookings(); })];
     }
 
+    // 0i) Cottage pivot — "Jollyboat bookings", "bookings at 21a", "who's at
+    // Pimpernel" — this cottage's upcoming stays. Needs an EXPLICIT cottage name
+    // (not the single-cottage fallback) so it can't swallow "upcoming bookings".
+    {
+        const keys = Object.keys(propertyMeta || {});
+        const namedPk = keys.find((k) => q.includes(k.toLowerCase()) || ((propertyMeta[k].name || '').toLowerCase() && q.includes((propertyMeta[k].name || '').toLowerCase())));
+        if (namedPk && /\bbookings?\b|\bstays?\b|\bcalendar\b|who.?s (at|in|staying)/.test(q)) {
+            const cName = propName(namedPk);
+            const rows = flat.filter((x) => x.pk === namedPk && x.b.checkIn && x.b.checkIn >= today).sort(byIn);
+            const head = ans(
+                rows.length ? `${rows.length} upcoming at ${cName}` : `Nothing upcoming at ${cName}`,
+                'Bookings for this cottage',
+                () => { closeCmdK(); openBookings(); },
+                [calChip(rows[0] ? rows[0].b.checkIn : today)],
+            );
+            return [head].concat(rows.slice(0, 10).map((x) => bk(x.pk, x.b, `${fmtDate(x.b.checkIn)}–${fmtDate(x.b.checkOut)}`)));
+        }
+    }
+
     // 1) Payments — who owes, who's paid in full, who's paid a deposit.
     if (/\bowe|owes|owing|owed|balance|outstanding|unpaid|to collect|to chase|money|paid|payment|deposit|paying|settle/.test(q)) {
         const withPs = flat.map((x) => ({ ...x, ps: paymentSummary(x.pk, x.b) }));
@@ -826,7 +851,7 @@ function cmdkIntent(q) {
         const rows = flat.filter((x) => x.b.checkOut && x.b.checkOut >= rStart && x.b.checkOut <= rEnd).sort(byOut);
         const eRows = blocks.filter((x) => x.bl.checkOut && x.bl.checkOut >= rStart && x.bl.checkOut <= rEnd).sort(byBlkOut);
         const n = rows.length + eRows.length;
-        const head = ans(n ? `${n} guest${n === 1 ? '' : 's'} checking out ${when}` : `No check-outs ${when}`, 'Departures · direct & OTA', () => { closeCmdK(); tryAccessBackOffice(); }, [{ label: 'Arriving', q: 'who’s arriving today' }, { label: 'This week', q: 'leaving this week' }, { label: 'Staying now', q: 'who’s staying now' }]);
+        const head = ans(n ? `${n} guest${n === 1 ? '' : 's'} checking out ${when}` : `No check-outs ${when}`, 'Departures · direct & OTA', () => { closeCmdK(); tryAccessBackOffice(); }, [{ label: 'Arriving', q: 'who’s arriving today' }, { label: 'This week', q: 'leaving this week' }, { label: 'Staying now', q: 'who’s staying now' }, calChip(rStart)]);
         return [head]
             .concat(rows.map((x) => bk(x.pk, x.b, `Checks out ${fmtDate(x.b.checkOut)}${x.b.checkOutTime ? ' · ' + x.b.checkOutTime : ''} · ${propName(x.pk)}`)))
             .concat(eRows.map((x) => ext(x.pk, x.bl, `Checks out ${fmtDate(x.bl.checkOut)} · ${propName(x.pk)}`)));
@@ -862,7 +887,7 @@ function cmdkIntent(q) {
             ? ans(`No arrivals ${when}`, 'Check-ins · direct & OTA', () => { closeCmdK(); tryAccessBackOffice(); })
             : wantsPeople && heads > 0
               ? ans(`${heads} ${heads === 1 ? 'person' : 'people'} arriving ${when}`, `Across ${n} booking${n === 1 ? '' : 's'}${eRows.length ? ' · OTA headcount not shared' : ''}`, () => { closeCmdK(); tryAccessBackOffice(); })
-              : ans(`${n} guest${n === 1 ? '' : 's'} arriving ${when}`, 'Check-ins · direct & OTA', () => { closeCmdK(); tryAccessBackOffice(); }, [{ label: 'This week', q: 'arriving this week' }, { label: 'Next month', q: 'arriving next month' }, { label: 'Leaving today', q: 'who’s leaving today' }]);
+              : ans(`${n} guest${n === 1 ? '' : 's'} arriving ${when}`, 'Check-ins · direct & OTA', () => { closeCmdK(); tryAccessBackOffice(); }, [{ label: 'This week', q: 'arriving this week' }, { label: 'Next month', q: 'arriving next month' }, { label: 'Leaving today', q: 'who’s leaving today' }, calChip(rStart)]);
         return [head]
             .concat(rows.map((x) => bk(x.pk, x.b, `Checks in ${fmtDate(x.b.checkIn)}${x.b.checkInTime ? ' · ' + x.b.checkInTime : ''} · ${propName(x.pk)}`)))
             .concat(eRows.map((x) => ext(x.pk, x.bl, `Checks in ${fmtDate(x.bl.checkIn)} · ${propName(x.pk)}`)));
@@ -1197,6 +1222,7 @@ function cmdkChipRun(i, k) {
     const it = __cmdkResults[i];
     const c = it && Array.isArray(it.chips) ? it.chips[k] : null;
     if (!c) return;
+    if (typeof c.run === 'function') { c.run(); return; } // action chip (e.g. Show on calendar)
     const el = document.getElementById('cmdk-input');
     __cmdkHist.push(el ? el.value : '');
     if (el) el.value = c.q;
@@ -9050,6 +9076,27 @@ function tlMaybeExtend() {
     renderCalendar();
     requestAnimationFrame(() => {
         __tlExtending = false;
+    });
+}
+// Scroll the timeline so a given date is in view — the "Show on calendar" pivot
+// from search. The window's first column is the 1st of the current month, so the
+// column index is the day-gap from there; extend the window if the date is past
+// the current right edge. Past dates clamp to the start (the window never runs
+// earlier than this month).
+function tlScrollToDate(iso) {
+    const host = document.getElementById('cal-body');
+    if (!host || !iso) return;
+    const start = dpParse(todayDashed());
+    start.setDate(1);
+    let idx = Math.round((dpParse(iso) - start) / 86400000);
+    if (idx < 0) idx = 0;
+    if (idx + 25 > __tlDays) {
+        __tlDays = idx + 120;
+        renderCalendar();
+    }
+    requestAnimationFrame(() => {
+        host.scrollLeft = Math.max(0, idx * tlDayW() - host.clientWidth * 0.35);
+        __tlScrolled = true;
     });
 }
 // Px per day comes from the --tl-day-w custom property on .tl-wrap (narrower on
