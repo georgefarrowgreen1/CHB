@@ -34,7 +34,9 @@ const ok = (cond, label) => {
   // master–detail split gets its own section I at the end).
   const page = await browser.newPage({ viewport: { width: 1000, height: 900 } });
   page.on('pageerror', (e) => console.log('PAGEERR:', e.message));
-  await page.addInitScript(() => { if (navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {}); });
+  // Top frame only — the email-preview iframes are sandboxed (no serviceWorker),
+  // so running this inside them just throws a noise pageerror.
+  await page.addInitScript(() => { if (window.top === window && navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {}); });
 
   const mk = (id, over = {}) => Object.assign({
     id, prop_key: '21a', name: 'Walk-in Guest', email: 'guest@gmail.com', phone: '07700 900000',
@@ -63,6 +65,7 @@ const ok = (cond, label) => {
           { action: 'booking.add', summary: 'Booking created — Walk-in Guest', actor: 'owner', at: d(-2) + ' 18:30:00' },
         ] });
         if (b.action === 'email_logs') return json({ logs: { 1: [{ action: 'email.confirmation', summary: 'Booking confirmation emailed', at: d(-2) + ' 18:31:00' }] } });
+        if (b.action === 'email_render') return json({ ok: true, subject: 'Your booking is confirmed', html: '<p>Preview</p>' });
         if (b.action === 'set_payment') { const r = rows.find((x) => x.id === b.id); if (r) { r.payment = b.payment; r.deposit_paid = b.deposit || (b.payment === 'paid' ? r.agreed_total : 0); } return json({ ok: true }); }
         if (b.action === 'delete') { rows = rows.filter((x) => x.id !== b.id); return json({ ok: true }); }
         return json({ ok: true });
@@ -143,8 +146,15 @@ const ok = (cond, label) => {
   await page.waitForTimeout(700);
   await page.evaluate(() => { document.getElementById('gdf-amount').value = '100'; });
   await page.evaluate(() => glassDialogResolve(true));
-  await page.waitForTimeout(600);
-  await page.evaluate(() => glassDialogResolve(false)); // decline the email offer
+  await page.waitForTimeout(700);
+  // The updated-confirmation offer now PREVIEWS the email first — cancel that
+  // send-confirm modal (or the plain confirm if no preview was produced).
+  await page.evaluate(() => {
+    const ov = document.getElementById('send-confirm-overlay');
+    if (ov && ov.classList.contains('open')) document.getElementById('send-confirm-cancel').click();
+    else try { glassDialogResolve(false); } catch (e) {}
+  });
+  await rp.catch(() => {});
   await rp;
   await page.waitForTimeout(500);
   const next2 = await page.evaluate(() => (document.querySelector('.bhub-next') || {}).textContent || '');
