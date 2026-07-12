@@ -1134,6 +1134,17 @@ body.owner-mode #mobileMenu {
 .cmdk-row-ic.cmdk-action .ic {
   color: var(--accent);
 }
+/* Business-insight figure card — the big number leads. */
+.cmdk-row-ic.cmdk-figure {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+}
+.cmdk-row-ic.cmdk-figure .ic {
+  color: var(--accent);
+}
+.cmdk-row-figure .cmdk-row-label {
+  font-weight: 800;
+  font-size: 1.05rem;
+}
 /* Quick-actions revealed under the selected result — act without leaving search. */
 .cmdk-actbar {
   display: flex;
