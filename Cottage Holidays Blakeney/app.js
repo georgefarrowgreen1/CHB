@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 115;
+const ADMIN_BUNDLE_V = 116;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -1467,6 +1467,40 @@ function closeLightbox() {
     );
 })();
 
+// ---- Back-office layout mode: 'classic' vs 'search' ----
+// A device-level display preference (like the theme). 'classic' is the full dock
+// (Today · Inbox · Payments · Manage · Search). 'search' collapses it to the two
+// surfaces you dwell in — Today · Inbox · Search — and Payments + Manage move
+// entirely inside the ⌘K palette. Nothing is removed: the extra dock buttons are
+// hidden by the `body.search-first` class, so flipping back is instant. Reachable
+// from Manage → Appearance, and (crucially, since Manage's button hides in this
+// mode) from a ⌘K action, so you can never be stranded.
+function backofficeMode() {
+    try { return localStorage.getItem('chb-bo-mode') === 'search' ? 'search' : 'classic'; } catch (e) { return 'classic'; }
+}
+function applyBackofficeMode() {
+    const m = backofficeMode();
+    document.body.classList.toggle('search-first', m === 'search');
+    const v = document.getElementById('bomode-row-value');
+    if (v) v.textContent = m === 'search' ? 'search-first' : 'classic';
+    // The active view's dock button may now be hidden; realign (or hide) the pill.
+    try { moveDockIndicator(); } catch (e) {}
+    return m;
+}
+function setBackofficeMode(m) {
+    const mode = m === 'search' ? 'search' : 'classic';
+    try { localStorage.setItem('chb-bo-mode', mode); } catch (e) {}
+    applyBackofficeMode();
+    try {
+        toast(mode === 'search'
+            ? 'Search-first layout on — Payments & Manage now live in Search (⌘K).'
+            : 'Classic layout restored.');
+    } catch (e) {}
+}
+function toggleBackofficeMode() {
+    setBackofficeMode(backofficeMode() === 'search' ? 'classic' : 'search');
+}
+
 // ---- Sliding selection pill for the admin dock ----
 // Sizes + positions the white indicator under the active section button, so it
 // glides between tabs (like a modern liquid-glass tab bar) instead of blinking.
@@ -1667,6 +1701,10 @@ function setAuthUI() {
     // In preview-as-guest mode the admin sees the customer site, so don't
     // apply owner chrome or bounce them into the back office.
     document.body.classList.toggle('owner-mode', isAuthenticated && !PREVIEW_MODE);
+    // Re-apply the saved back-office layout mode (classic vs search-first).
+    try {
+        applyBackofficeMode();
+    } catch (e) {}
     // Re-apply the saved theme — the back office follows it like the public site.
     try {
         applySavedTheme();
@@ -12008,7 +12046,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'registry';
+    const BUILD = 'sfmode1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

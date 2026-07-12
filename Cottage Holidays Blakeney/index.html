@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=180">
+    <link rel="stylesheet" href="app.css?v=181">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -1231,6 +1231,10 @@
                 <button class="settings-row" data-kw="appearance theme light dark mode colours display" onclick="toggleTheme()">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.8 4.8l1.8 1.8M17.4 17.4l1.8 1.8M19.2 4.8l-1.8 1.8M6.6 17.4l-1.8 1.8"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Appearance</span><span class="settings-row-sub">Tap to switch — currently <strong id="theme-row-value">light</strong> mode</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" data-kw="layout dock search first classic minimal home screen back office interface mode buttons pages" onclick="toggleBackofficeMode()">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 9h18M9 9v11"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Back-office layout</span><span class="settings-row-sub">Tap to switch — currently <strong id="bomode-row-value">classic</strong>. Search-first collapses the dock to Today · Inbox · Search.</span></span><span class="settings-row-chev">›</span>
                 </button>
             </div>
 
@@ -2405,7 +2409,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=332"></script>
+    <script defer src="app.js?v=333"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
