@@ -3912,7 +3912,7 @@ body.light-mode .tag-pimpernel {
   background: var(--glass-hover);
   border: 1px solid var(--glass-border);
   padding: 3px 12px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
 }
 /* Collapsible "who is this" details in the reply modal */
 .msg-ctx-d {
@@ -3943,7 +3943,7 @@ body.light-mode .tag-pimpernel {
   color: var(--accent);
   background: rgba(214, 167, 133, 0.14);
   padding: 2px 9px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
 }
 .msg-ctx-caret {
   flex-shrink: 0;
@@ -3986,7 +3986,7 @@ body.light-mode .tag-pimpernel {
   font-size: 0.76rem;
   font-weight: 600;
   padding: 7px 12px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   cursor: pointer;
   white-space: nowrap;
   transition:
@@ -4005,7 +4005,7 @@ body.light-mode .tag-pimpernel {
   color: var(--text-muted);
   font-size: 0.76rem;
   padding: 7px 12px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   cursor: pointer;
   white-space: nowrap;
 }
@@ -4029,7 +4029,7 @@ body.light-mode .tag-pimpernel {
   letter-spacing: 0.3px;
   text-transform: uppercase;
   padding: 2px 7px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   margin-left: 6px;
 }
 .msg-noresults {
@@ -4187,8 +4187,8 @@ body.owner-mode .chat-widget {
   flex-direction: column;
   overflow: hidden;
   background: rgba(26, 25, 30, 0.96);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   border: 1px solid var(--glass-highlight);
   border-radius: var(--r-panel);
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
@@ -7612,8 +7612,8 @@ body.admin-screen .site-footer {
 }
 .rate-prop {
   background: var(--glass-bg);
-  backdrop-filter: blur(24px);
-  -webkit-backdrop-filter: blur(24px);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
   border: 1px solid var(--glass-border);
   border-radius: var(--r-lg);
   padding: 24px 26px;
@@ -9155,7 +9155,7 @@ body.light-mode .hs-field:hover {
   }
   .cottages-list .card-img {
     height: clamp(230px, 21vw, 320px);
-    border-radius: 12px;
+    border-radius: var(--r-sm);
     margin-bottom: 0;
   }
   .cottages-list .card-title {

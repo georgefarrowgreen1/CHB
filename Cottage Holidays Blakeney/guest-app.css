@@ -72,7 +72,7 @@ body.guest-app:not(.owner-mode) #guest-tabbar.gt-show-cta #guest-book-cta {
   color: #1b1208;
   background: var(--accent);
   border: none;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   padding: 14px 30px;
   box-shadow: 0 16px 44px rgba(0, 0, 0, 0.45);
   transition:
@@ -111,7 +111,7 @@ body.guest-app:not(.owner-mode) #prop-book-bar {
   -webkit-backdrop-filter: blur(14px);
   backdrop-filter: blur(14px);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   padding: 12px 16px;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
 }
@@ -126,7 +126,7 @@ body.guest-app:not(.owner-mode) #prop-book-bar {
   justify-content: center;
   background: transparent;
   border: none;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   color: #fff;
   cursor: pointer;
   transition:
@@ -207,7 +207,7 @@ body.guest-app:not(.owner-mode).guest-signed-in .gt-stays {
   transform: translateY(-50%);
   width: 60px;
   height: 60px;
-  border-radius: 999px;
+  border-radius: var(--r-pill);
   background: rgba(255, 255, 255, 0.92);
   opacity: 0;
   pointer-events: none;
