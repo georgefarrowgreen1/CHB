@@ -1296,3 +1296,64 @@ body.owner-mode #mobileMenu {
   color: var(--text-light);
 }
 .status-maint-title { margin-top: 26px; }
+
+/* Status page — the "Fix safe issues" action + the Insights vital-signs list. */
+.status-hero-actions {
+  margin-top: 12px;
+}
+.status-insights {
+  display: flex;
+  flex-direction: column;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.status-insight {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 13px 16px;
+}
+.status-insight + .status-insight {
+  border-top: 1px solid var(--glass-border);
+}
+.status-insight .status-item-dot {
+  margin-top: 6px;
+}
+.status-insight-body {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px 16px;
+  flex-wrap: wrap;
+}
+.status-insight-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--text-light);
+  flex-shrink: 0;
+}
+.status-insight-value {
+  font-size: 0.84rem;
+  color: var(--text-muted);
+  text-align: right;
+}
+.status-insight.is-warn .status-insight-value {
+  color: var(--warn-text);
+}
+.status-insight-act {
+  background: none;
+  border: none;
+  color: var(--text-light);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+  padding: 0;
+  margin-left: 6px;
+  white-space: nowrap;
+}
