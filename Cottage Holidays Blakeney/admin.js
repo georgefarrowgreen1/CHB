@@ -222,12 +222,16 @@ function cmdkRegistry() {
 // The navigation thunk for a registry entry — a Manage section opens via
 // settingsOpen(sec); everything else uses its own go().
 function cmdkRegGo(e) {
-    return e.sec ? () => Promise.resolve(openArea('manage')).then(() => settingsOpen(e.sec)) : e.go || (() => {});
+    // Manage sections honour the layout mode (sheet in search-first, page in
+    // classic) via cmdkOpenSection; non-section destinations close the palette and
+    // run their go().
+    if (e.sec) return () => cmdkOpenSection(e.sec, e.label);
+    return () => { closeCmdK(); (e.go || (() => {}))(); };
 }
 // The fixed screens — dock destinations + every Manage sub-screen — generated
 // from the registry so the palette can jump straight to a screen, not the index.
 function cmdkScreens() {
-    return cmdkRegistry().map((e) => ({ type: 'screen', id: 'scr-' + e.id, label: e.label, sub: e.sub, kw: e.kw || '', run: () => { closeCmdK(); cmdkRegGo(e)(); } }));
+    return cmdkRegistry().map((e) => ({ type: 'screen', id: 'scr-' + e.id, label: e.label, sub: e.sub, kw: e.kw || '', run: () => cmdkRegGo(e)() }));
 }
 // Which cottage does the query name? Matches a prop key or a cottage name; if
 // none is named and only one cottage is live, that one is assumed (so "edit the
@@ -247,7 +251,7 @@ function cmdkActions(q) {
     const ql = (q || '').toLowerCase();
     const pk = cmdkCottageFor(ql);
     const cName = pk && propertyMeta[pk] ? propertyMeta[pk].name : '';
-    const toManage = (key) => () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => settingsOpen(key)); };
+    const toManage = (key) => () => cmdkOpenSection(key);
     const toAccom = (sec) => () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => { if (pk && typeof settingsGotoAccomSec === 'function') settingsGotoAccomSec(pk, sec); else settingsOpen('accom'); }); };
     const A = (slug, label, sub, kw, re, run) => ({ type: 'action', id: 'act-' + slug, label, sub, kw, re, run });
     // Current back-office layout — the escape hatch below flips to the other one.
@@ -1626,8 +1630,27 @@ function cmdkSheets(q) {
     }];
 }
 function cmdkSheetRender(section) {
-    if (section === 'seasongrid' && typeof renderSeasonGrid === 'function') renderSeasonGrid();
-    // (future structured editors wire their render here)
+    // Render ANY Manage section into its #sec node using the same dispatch the
+    // settings page uses — so the sheet hosts the real, live editor.
+    if (typeof settingsRenderSection === 'function') settingsRenderSection(section);
+    else if (section === 'seasongrid' && typeof renderSeasonGrid === 'function') renderSeasonGrid();
+}
+// A couple of sections drive their own sub-navigation via settingsOpen() (the
+// per-cottage accom detail, the per-property cancellation editor). Hosting those
+// in a sheet would fight the background page, so in search-first they still route
+// to Manage. Everything else opens INTO the palette for editing.
+const CMDK_SHEET_EXCLUDE = { accom: 1, cancel: 1 };
+// Open a Manage section from search: in search-first mode load it INTO the palette
+// as a sheet ("edit here", no page change); in classic mode route to the Manage
+// page as before.
+function cmdkOpenSection(sec, label) {
+    const searchFirst = typeof backofficeMode === 'function' && backofficeMode() === 'search';
+    if (searchFirst && document.getElementById('sec-' + sec) && !CMDK_SHEET_EXCLUDE[sec]) {
+        cmdkSheetOpen(sec, label || (typeof SETTINGS_TITLES === 'object' && SETTINGS_TITLES[sec]) || sec);
+        return;
+    }
+    closeCmdK();
+    Promise.resolve(openArea('manage')).then(() => settingsOpen(sec));
 }
 function cmdkSheetOpen(section, title) {
     const sec = document.getElementById('sec-' + section);
@@ -2806,6 +2829,13 @@ function settingsOpen(section) {
     const title = document.getElementById('settings-panel-title');
     if (title) title.textContent = SETTINGS_TITLES[section] || 'Settings';
     settingsBackTarget = () => settingsShowIndex();
+    settingsRenderSection(section);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+// Populate one Manage section's live content. Extracted from settingsOpen so the
+// ⌘K Tier-2 sheet can render the SAME section into the palette (search-first
+// "edit here") without duplicating the per-section render dispatch.
+function settingsRenderSection(section) {
     if (section === 'notify') renderNotifySettings();
     else if (section === 'host') fillHostFields();
     else if (section === 'reviews') loadGuestReviewModeration();
@@ -2831,7 +2861,6 @@ function settingsOpen(section) {
     else if (section === 'calendar') renderCalendarList();
     else if (section === 'cancel') renderCancelList();
     else if (section === 'seasongrid') renderSeasonGrid();
-    window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 function settingsBack() {
     if (settingsBackTarget) settingsBackTarget();
