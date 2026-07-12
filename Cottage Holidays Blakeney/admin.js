@@ -144,44 +144,55 @@ function cmdkIcon(type) {
         return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg>';
     if (type === 'enquiry')
         return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+    if (type === 'answer')
+        return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg>';
     return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>';
 }
 // The fixed screens — dock destinations + every Manage sub-screen — so the
 // palette can jump straight to a settings screen, not just the index.
 function cmdkScreens() {
-    const seg = (key, label, sub) => ({
+    // kw = hidden synonyms folded into the search haystack so "backup" finds
+    // Status, "airbnb" finds Calendar sync, "square" finds Payments settings…
+    const seg = (key, label, sub, kw) => ({
         type: 'screen',
         label,
         sub,
+        kw: kw || '',
         run: () => {
             closeCmdK();
             Promise.resolve(openArea('manage')).then(() => settingsOpen(key));
         },
     });
     return [
-        { type: 'screen', label: 'Today', sub: 'Operations dashboard', run: () => { closeCmdK(); tryAccessBackOffice(); } },
-        { type: 'screen', label: 'Inbox', sub: 'Enquiries, messages & email', run: () => { closeCmdK(); openInbox(); } },
-        { type: 'screen', label: 'Payments', sub: 'Money & reconciliation', run: () => { closeCmdK(); openAccounts(); } },
-        { type: 'screen', label: 'Manage', sub: 'All settings', run: () => { closeCmdK(); openArea('manage'); } },
-        { type: 'screen', label: 'Activity log', sub: 'Every change & action', run: () => { closeCmdK(); nav('view-activity-log'); } },
-        seg('accom', 'Cottages', 'Rates, fees, rules & photos'),
-        seg('seasongrid', 'Seasonal rates', 'Summer & holiday pricing'),
-        seg('calendar', 'Calendar sync', 'Airbnb, Vrbo & Booking.com'),
-        seg('payments', 'Payments settings', 'Square & deposit policy'),
-        seg('cancel', 'Cancellation policy', 'Refund terms'),
-        seg('content', 'Home page & menu', 'Hero, menu & site name'),
-        seg('experiences', 'Experiences', 'Local things to do'),
-        seg('reviews', 'Reviews', 'Approve & import'),
-        seg('photos', 'Guest photos', 'Approve shared photos'),
-        seg('guests', 'Guest accounts', 'Look up & reset a guest'),
-        seg('newsletter', 'Newsletter', 'Mailing list & broadcasts'),
-        seg('waitlist', 'Waitlist', 'Sold-out demand'),
-        seg('analytics', 'Analytics', 'Visits & referrers'),
-        seg('host', 'Profile', 'Host bio & contact'),
-        seg('notify', 'Notifications', 'Phone alerts'),
-        seg('security', 'Security', 'Password & quick sign-in'),
-        seg('apis', 'Integrations', 'Tide times & services'),
-        seg('diagnostics', 'Status', 'System health & updates'),
+        { type: 'screen', label: 'Today', sub: 'Operations dashboard', kw: 'home dashboard calendar timeline arrivals departures', run: () => { closeCmdK(); tryAccessBackOffice(); } },
+        { type: 'screen', label: 'Bookings', sub: 'All bookings', kw: 'reservations stays guests list', run: () => { closeCmdK(); openBookings(); } },
+        { type: 'screen', label: 'Inbox', sub: 'Enquiries, messages & email', kw: 'chat conversations', run: () => { closeCmdK(); openInbox(); } },
+        { type: 'screen', label: 'Messages', sub: 'Guest chat folder', kw: 'chat conversations inbox', run: () => { closeCmdK(); Promise.resolve(openInbox()).then(() => inboxFolder('messages')); } },
+        { type: 'screen', label: 'Email', sub: 'Mailbox folder', kw: 'mailbox sent compose inbox', run: () => { closeCmdK(); Promise.resolve(openInbox()).then(() => inboxFolder('email')); } },
+        { type: 'screen', label: 'Payments', sub: 'Money & reconciliation', kw: 'money accounts income deposits balances expenses owed', run: () => { closeCmdK(); openAccounts(); } },
+        { type: 'screen', label: 'Manage', sub: 'All settings', kw: 'settings admin', run: () => { closeCmdK(); openArea('manage'); } },
+        { type: 'screen', label: 'Activity log', sub: 'Every change & action', kw: 'history audit errors', run: () => { closeCmdK(); nav('view-activity-log'); } },
+        seg('accom', 'Cottages', 'Rates, fees, rules & photos', 'property add remove cottage price occupancy'),
+        seg('seasongrid', 'Seasonal rates', 'Summer & holiday pricing', 'rates price season'),
+        seg('calendar', 'Calendar sync', 'Airbnb, Vrbo & Booking.com', 'ical import export channel airbnb vrbo booking.com feed'),
+        seg('payments', 'Payments settings', 'Square & deposit policy', 'square card deposit refund'),
+        seg('cancel', 'Cancellation policy', 'Refund terms', 'refund cancel'),
+        seg('content', 'Home page & menu', 'Hero, menu & site name', 'website hero photo text logo homepage'),
+        seg('experiences', 'Experiences', 'Local things to do', 'things to do activities'),
+        seg('reviews', 'Reviews', 'Approve & import', 'google review testimonial star'),
+        seg('photos', 'Guest photos', 'Approve shared photos', 'photo wall gallery'),
+        seg('chat-answers', 'Instant chat answers', 'Auto-answers to chat chips', 'automation faq quick reply bot'),
+        seg('chat-away', 'Away auto-reply', 'Out-of-hours acknowledgement', 'automation away office hours'),
+        seg('follow-ups', 'Follow-up emails', 'Enquiry & guest nudges', 'automation nudge reminder anniversary'),
+        seg('guests', 'Guest accounts', 'Look up & reset a guest', 'account password reset user'),
+        seg('newsletter', 'Newsletter', 'Mailing list & broadcasts', 'email marketing subscribers broadcast'),
+        seg('waitlist', 'Waitlist', 'Sold-out demand', 'notify demand'),
+        seg('analytics', 'Analytics', 'Visits & referrers', 'stats traffic visitors'),
+        seg('host', 'Profile', 'Host bio & contact', 'bio about phone'),
+        seg('notify', 'Notifications', 'Phone alerts', 'push alerts'),
+        seg('security', 'Security', 'Password & quick sign-in', 'password passkey 2fa face id fingerprint'),
+        seg('apis', 'Integrations', 'Tide times & services', 'api key tide worldtides'),
+        seg('diagnostics', 'Status', 'System health, insights & updates', 'health check backup diagnostics updates migrations database storage'),
     ];
 }
 function cmdkAll() {
@@ -194,6 +205,7 @@ function cmdkAll() {
             (dbBookings[pk] || []).forEach((b) => {
                 items.push({
                     type: 'booking',
+                    id: b.id,
                     label: b.name || '(no name)',
                     sub: `Booking · ${propName(pk)}${b.checkIn ? ' · ' + fmtDate(b.checkIn) : ''}`,
                     run: () => { closeCmdK(); openBookingHub(b.id); },
@@ -204,6 +216,7 @@ function cmdkAll() {
     (Array.isArray(enquiries) ? enquiries : []).forEach((e) => {
         items.push({
             type: 'enquiry',
+            id: e.id,
             label: e.name || '(no name)',
             sub: `Enquiry · ${propName(e.propKey)}${e.checkIn ? ' · ' + fmtDate(e.checkIn) : ''}`,
             run: () => { closeCmdK(); openEnquiryHub(e.id); },
@@ -211,29 +224,119 @@ function cmdkAll() {
     });
     return items.concat(cmdkScreens());
 }
-function cmdkSearch(q) {
-    q = (q || '').trim().toLowerCase();
-    if (!q) {
-        // Empty query → the dock destinations, as quick launchers.
-        __cmdkResults = cmdkScreens().slice(0, 5);
-    } else {
-        const words = q.split(/\s+/).filter(Boolean);
-        __cmdkResults = cmdkAll()
-            .map((it) => {
-                const hay = (it.label + ' ' + (it.sub || '') + ' ' + it.type).toLowerCase();
-                if (!words.every((w) => hay.includes(w))) return null;
-                const lab = it.label.toLowerCase();
-                let score = 1;
-                if (lab.startsWith(words[0])) score += 3;
-                else if (lab.includes(words[0])) score += 1;
-                if (it.type === 'screen') score += 0.5; // screens are cheap, keep them handy
-                return { it, score };
-            })
-            .filter(Boolean)
-            .sort((a, b) => b.score - a.score)
-            .slice(0, 12)
-            .map((x) => x.it);
+// ---- Smart queries: answer operational questions ("who owes money", "leaving
+// today", "who's arriving", "upcoming") from the live booking data. Returns an
+// array of result items — an "answer" summary row that routes to the relevant
+// workspace, followed by the matching bookings — or null when the query isn't a
+// recognised question.
+function cmdkIntent(q) {
+    const today = todayDashed();
+    const propName = (k) => (propertyMeta[k] && propertyMeta[k].name) || k || '';
+    const flat = [];
+    if (typeof dbBookings === 'object' && dbBookings) {
+        Object.keys(dbBookings).forEach((pk) => (dbBookings[pk] || []).forEach((b) => flat.push({ pk, b })));
     }
+    const addDays = (iso, n) => {
+        const d = new Date(iso + 'T00:00:00');
+        d.setDate(d.getDate() + n);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    };
+    const bk = (pk, b, sub) => ({ type: 'booking', id: b.id, label: b.name || '(no name)', sub, run: () => { closeCmdK(); openBookingHub(b.id); } });
+    const ans = (label, sub, run) => ({ type: 'answer', label, sub, run: run || (() => closeCmdK()) });
+    const byIn = (a, b) => ((a.b.checkIn || '') < (b.b.checkIn || '') ? -1 : 1);
+    const byOut = (a, b) => ((a.b.checkOut || '') < (b.b.checkOut || '') ? -1 : 1);
+    const week = /\bweek\b/.test(q);
+    const end = week ? addDays(today, 7) : today;
+    const when = week ? 'this week' : 'today';
+
+    // 1) Who owes money — outstanding balances (any date).
+    if (/\bowe|owes|owing|owed|balance|outstanding|unpaid|to collect|to chase|money\b/.test(q)) {
+        const rows = flat
+            .map((x) => ({ ...x, ps: paymentSummary(x.pk, x.b) }))
+            .filter((x) => !x.ps.fullyPaid && x.ps.balance > 0.5)
+            .sort(byIn);
+        const total = rows.reduce((s, x) => s + x.ps.balance, 0);
+        const head = ans(
+            rows.length ? `${rows.length} guest${rows.length === 1 ? '' : 's'} owe ${gbp(total)}` : 'Everyone’s paid up',
+            rows.length ? 'Outstanding balances — open Bookings ▸ Needs payment' : 'No balances outstanding',
+            () => { closeCmdK(); Promise.resolve(openBookings()).then(() => bookingsSetFilter('needspay')); },
+        );
+        return [head].concat(rows.map((x) => bk(x.pk, x.b, `${gbp(x.ps.balance)} still due · ${propName(x.pk)}${x.b.checkOut ? ' · out ' + fmtDate(x.b.checkOut) : ''}`)));
+    }
+    // 2) Leaving / checking out (today, or this week).
+    if (/\bleav|leaving|check.?out|checking out|departing|departure|checkout\b/.test(q)) {
+        const rows = flat.filter((x) => x.b.checkOut && x.b.checkOut >= today && x.b.checkOut <= end).sort(byOut);
+        const head = ans(rows.length ? `${rows.length} checking out ${when}` : `No check-outs ${when}`, 'Departures', () => { closeCmdK(); tryAccessBackOffice(); });
+        return [head].concat(rows.map((x) => bk(x.pk, x.b, `Checks out ${fmtDate(x.b.checkOut)}${x.b.checkOutTime ? ' · ' + x.b.checkOutTime : ''} · ${propName(x.pk)}`)));
+    }
+    // 3) Upcoming / next bookings — future arrivals, soonest first.
+    if (/\bupcoming|next book|next arriv|next guest|next stay|coming up|who.?s next|future book|future guest\b/.test(q)) {
+        const rows = flat.filter((x) => x.b.checkIn && x.b.checkIn > today).sort(byIn).slice(0, 10);
+        const head = ans(
+            rows.length ? `Next: ${rows[0].b.name || 'Guest'} · ${fmtDate(rows[0].b.checkIn)}` : 'Nothing upcoming',
+            rows.length ? `${rows.length} upcoming booking${rows.length === 1 ? '' : 's'} — open Bookings ▸ Upcoming` : 'No future arrivals',
+            () => { closeCmdK(); Promise.resolve(openBookings()).then(() => bookingsSetFilter('upcoming')); },
+        );
+        return [head].concat(rows.map((x) => bk(x.pk, x.b, `Arrives ${fmtDate(x.b.checkIn)} · ${propName(x.pk)}`)));
+    }
+    // 4) Arriving / checking in (today, or this week).
+    if (/\barriv|arriving|check.?in|checking in|arrival|coming\b/.test(q)) {
+        const rows = flat.filter((x) => x.b.checkIn && x.b.checkIn >= today && x.b.checkIn <= end).sort(byIn);
+        const head = ans(rows.length ? `${rows.length} arriving ${when}` : `No arrivals ${when}`, 'Check-ins', () => { closeCmdK(); tryAccessBackOffice(); });
+        return [head].concat(rows.map((x) => bk(x.pk, x.b, `Checks in ${fmtDate(x.b.checkIn)}${x.b.checkInTime ? ' · ' + x.b.checkInTime : ''} · ${propName(x.pk)}`)));
+    }
+    // 5) Currently staying / in-house right now.
+    if (/\bstaying|in.?house|here now|current guest|who.?s here|checked in|in residence\b/.test(q)) {
+        const rows = flat.filter((x) => x.b.checkIn && x.b.checkOut && x.b.checkIn <= today && x.b.checkOut > today).sort(byOut);
+        const head = ans(rows.length ? `${rows.length} guest${rows.length === 1 ? '' : 's'} in-house now` : 'No one in-house right now', 'Currently staying', () => { closeCmdK(); tryAccessBackOffice(); });
+        return [head].concat(rows.map((x) => bk(x.pk, x.b, `In until ${fmtDate(x.b.checkOut)} · ${propName(x.pk)}`)));
+    }
+    // 6) Bare "today" — both arrivals and departures.
+    if (/^\s*(what.?s\s*)?(on\s*)?today.?s?\s*$|today.?s? (activity|schedule|arrivals|movements)/.test(q)) {
+        const ins = flat.filter((x) => x.b.checkIn === today).sort(byIn);
+        const outs = flat.filter((x) => x.b.checkOut === today).sort(byOut);
+        const head = ans(`Today: ${ins.length} in · ${outs.length} out`, 'Arrivals & departures', () => { closeCmdK(); tryAccessBackOffice(); });
+        return [head]
+            .concat(ins.map((x) => bk(x.pk, x.b, `Arrives${x.b.checkInTime ? ' ' + x.b.checkInTime : ''} · ${propName(x.pk)}`)))
+            .concat(outs.map((x) => bk(x.pk, x.b, `Departs${x.b.checkOutTime ? ' ' + x.b.checkOutTime : ''} · ${propName(x.pk)}`)));
+    }
+    return null;
+}
+function cmdkSearch(q) {
+    const ql = (q || '').trim().toLowerCase();
+    if (!ql) {
+        // Empty query → the dock destinations, as quick launchers.
+        __cmdkResults = cmdkScreens().slice(0, 6);
+        __cmdkSel = 0;
+        cmdkRender();
+        return;
+    }
+    let results = [];
+    // Smart operational answers lead when the query is a recognised question.
+    try {
+        const intent = cmdkIntent(ql);
+        if (intent) results = intent.slice(0, 11);
+    } catch (e) {}
+    // Then the fuzzy name / screen / keyword search, deduped against the answer.
+    const seen = new Set(results.filter((r) => r.id != null).map((r) => r.type + ':' + r.id));
+    const words = ql.split(/\s+/).filter(Boolean);
+    const fuzzy = cmdkAll()
+        .map((it) => {
+            if (it.id != null && seen.has(it.type + ':' + it.id)) return null;
+            const hay = (it.label + ' ' + (it.sub || '') + ' ' + (it.kw || '') + ' ' + it.type).toLowerCase();
+            if (!words.every((w) => hay.includes(w))) return null;
+            const lab = it.label.toLowerCase();
+            let score = 1;
+            if (lab.startsWith(words[0])) score += 3;
+            else if (lab.includes(words[0])) score += 1;
+            if (it.type === 'screen') score += 0.5; // screens are cheap, keep them handy
+            return { it, score };
+        })
+        .filter(Boolean)
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 12)
+        .map((x) => x.it);
+    __cmdkResults = results.concat(fuzzy).slice(0, 18);
     __cmdkSel = 0;
     cmdkRender();
 }
@@ -247,7 +350,7 @@ function cmdkRender() {
     box.innerHTML = __cmdkResults
         .map(
             (it, i) =>
-                `<button type="button" class="cmdk-row${i === __cmdkSel ? ' is-sel' : ''}" role="option" aria-selected="${i === __cmdkSel}" data-idx="${i}" onclick="cmdkExec(${i})">
+                `<button type="button" class="cmdk-row cmdk-row-${it.type}${i === __cmdkSel ? ' is-sel' : ''}" role="option" aria-selected="${i === __cmdkSel}" data-idx="${i}" onclick="cmdkExec(${i})">
                     <span class="cmdk-row-ic cmdk-${it.type}">${cmdkIcon(it.type)}</span>
                     <span class="cmdk-row-main"><span class="cmdk-row-label">${escapeHtml(it.label)}</span><span class="cmdk-row-sub">${escapeHtml(it.sub || '')}</span></span>
                 </button>`,
