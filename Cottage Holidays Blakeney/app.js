@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 87;
+const ADMIN_BUNDLE_V = 88;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -3816,26 +3816,29 @@ async function sendArrivalInfo(bookingId) {
         glassAlert('This booking has no guest email on file.');
         return;
     }
-    if (
-        !(await glassConfirm(
-            `Send the arrival info email to ${b.email}?\n\nTip: the arrival details are set per cottage in Manage → Preferences.`,
-        ))
-    )
-        return;
-    try {
-        const res = await apiPost('bookings.php', { action: 'send_arrival', id: b.dbId });
-        if (res && res.error) glassAlert(res.error);
-        else {
-            toast(`Arrival info sent to ${b.email}.`);
-            await loadData();
-            renderCalendar();
-            // Refresh the open details panel so the "(sent ✓)" state shows
-            const loc = findBookingLocation(bookingId);
-            if (loc) showDetails(loc.propKey, dbBookings[loc.propKey][loc.idx]);
-        }
-    } catch (e) {
-        glassAlert("Couldn't send: " + e.message);
-    }
+    await previewAndSendEmail({
+        id: b.dbId,
+        kind: 'email.arrival',
+        to: b.email,
+        sendLabel: 'Send arrival info',
+        fallbackConfirm: `Send the arrival info email to ${b.email}?\n\nTip: the arrival details are set per cottage in Manage → Preferences.`,
+        doSend: async () => {
+            try {
+                const res = await apiPost('bookings.php', { action: 'send_arrival', id: b.dbId });
+                if (res && res.error) glassAlert(res.error);
+                else {
+                    toast(`Arrival info sent to ${b.email}.`);
+                    await loadData();
+                    renderCalendar();
+                    // Refresh the open details panel so the "(sent ✓)" state shows
+                    const loc = findBookingLocation(bookingId);
+                    if (loc) showDetails(loc.propKey, dbBookings[loc.propKey][loc.idx]);
+                }
+            } catch (e) {
+                glassAlert("Couldn't send: " + e.message);
+            }
+        },
+    });
 }
 
 async function sendConfirmationEmail(bookingId) {
@@ -3848,17 +3851,22 @@ async function sendConfirmationEmail(bookingId) {
         glassAlert('This booking has no guest email on file.');
         return;
     }
-    if (!(await glassConfirm(`Send a confirmation email to ${b.email}?`))) return;
-    try {
-        const res = await apiPost('bookings.php', { action: 'send_confirmation', id: b.dbId });
-        if (res && res.error) {
-            glassAlert(res.error);
-        } else {
-            toast(`Confirmation email sent to ${b.email}.`);
-        }
-    } catch (e) {
-        glassAlert("Couldn't send the email: " + e.message);
-    }
+    await previewAndSendEmail({
+        id: b.dbId,
+        kind: 'email.confirmation',
+        to: b.email,
+        sendLabel: 'Send confirmation',
+        fallbackConfirm: `Send a confirmation email to ${b.email}?`,
+        doSend: async () => {
+            try {
+                const res = await apiPost('bookings.php', { action: 'send_confirmation', id: b.dbId });
+                if (res && res.error) glassAlert(res.error);
+                else toast(`Confirmation email sent to ${b.email}.`);
+            } catch (e) {
+                glassAlert("Couldn't send the email: " + e.message);
+            }
+        },
+    });
 }
 
 async function downloadInvoice(bookingId) {
@@ -8517,6 +8525,82 @@ function glassPrompt(message, def, opts) {
 function glassForm(message, fields) {
     return glassDialog({ type: 'form', message, fields });
 }
+// ---- Preview-before-send: render the EXACT email the server would send, show
+// it to the owner, and only send once they confirm. Used by the booking hub's
+// one-tap emails. Reuses bookings.php 'email_render' (no send, no side effects);
+// if a preview can't be produced, falls back to a plain confirm so sending is
+// never blocked. ----
+async function previewAndSendEmail(opts) {
+    // opts: { id, kind, to, sendLabel, doSend, fallbackConfirm }
+    let subject = '',
+        html = '',
+        text = '',
+        got = false;
+    try {
+        const r = await apiPost('bookings.php', { action: 'email_render', id: opts.id, kind: opts.kind });
+        if (r && r.ok) {
+            subject = r.subject || '';
+            html = r.html || '';
+            text = r.text || '';
+            got = true;
+        }
+    } catch (e) {}
+    const ok = got
+        ? await showSendConfirm({ subject, html, text, to: opts.to, sendLabel: opts.sendLabel })
+        : await glassConfirm(opts.fallbackConfirm || `Send this email to ${opts.to || 'the guest'}?`);
+    if (ok) await opts.doSend();
+}
+// Promise<bool> — shows the rendered email in a sandboxed iframe with the
+// recipient + subject and Cancel / Send buttons. Resolves true only on Send.
+function showSendConfirm(o) {
+    return new Promise((resolve) => {
+        let ov = document.getElementById('send-confirm-overlay');
+        if (!ov) {
+            ov = document.createElement('div');
+            ov.id = 'send-confirm-overlay';
+            ov.className = 'modal-overlay';
+            ov.setAttribute('role', 'dialog');
+            ov.setAttribute('aria-modal', 'true');
+            ov.innerHTML = `<div class="modal-box email-preview-box send-confirm-box">
+                <div class="send-confirm-head"><span class="send-confirm-title">Review before sending</span><span class="send-confirm-to" id="send-confirm-to"></span></div>
+                <div class="email-preview-subject" id="send-confirm-subject"></div>
+                <iframe id="send-confirm-frame" class="email-preview-frame" title="Email preview" sandbox=""></iframe>
+                <div class="send-confirm-actions">
+                    <button type="button" class="btn-sm btn-edit" id="send-confirm-cancel">Cancel</button>
+                    <button type="button" class="btn-glass" id="send-confirm-send">Send</button>
+                </div>
+            </div>`;
+            document.body.appendChild(ov);
+        }
+        const esc = (e) => {
+            if (e.key === 'Escape') done(false);
+        };
+        const done = (val) => {
+            ov.classList.remove('open');
+            document.removeEventListener('keydown', esc);
+            resolve(val);
+        };
+        ov.querySelector('#send-confirm-to').textContent = o.to ? 'To: ' + o.to : '';
+        ov.querySelector('#send-confirm-subject').textContent = o.subject || '(no subject)';
+        const f = ov.querySelector('#send-confirm-frame');
+        f.srcdoc =
+            o.html && o.html.trim()
+                ? o.html
+                : '<pre style="font:14px system-ui,sans-serif;white-space:pre-wrap;word-break:break-word;padding:16px;margin:0;">' +
+                  escapeHtml(o.text || '(empty)') +
+                  '</pre>';
+        const sendBtn = ov.querySelector('#send-confirm-send');
+        sendBtn.textContent = o.sendLabel || 'Send';
+        sendBtn.onclick = () => done(true);
+        ov.querySelector('#send-confirm-cancel').onclick = () => done(false);
+        ov.onclick = (e) => {
+            if (e.target === ov) done(false);
+        };
+        ov.classList.add('open');
+        document.addEventListener('keydown', esc);
+        setTimeout(() => sendBtn.focus(), 30);
+    });
+}
 // Lightweight non-blocking toast for success/info confirmations (vs. glassAlert,
 // which blocks with an OK button — kept for errors & destructive confirms).
 // Shimmer skeleton rows — the list-shaped loading state (see .skel-row).
@@ -11920,7 +12004,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'mrhacmdk';
+    const BUILD = 'mrhbmail';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

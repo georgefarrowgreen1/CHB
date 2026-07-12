@@ -28,7 +28,7 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   const browser = await chromium.launch(process.env.CHB_CHROMIUM ? { executablePath: process.env.CHB_CHROMIUM } : {});
   const page = await browser.newPage({ viewport: { width: 1280, height: 950 } });
   page.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
-  await page.addInitScript(() => { if (navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {}); });
+  await page.addInitScript(() => { if (window.top === window && navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {}); });
 
   const mk = (id, over = {}) => Object.assign({
     id, prop_key: '21a', name: 'Owes Money', email: 'owes@gmail.com', phone: '', address: '1 Lane',
@@ -54,6 +54,7 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
       if (b.__url === 'bookings.php') {
         if (b.action === 'history') return json({ ok: true, events: [] });
         if (b.action === 'email_logs') return json({ logs: {} });
+        if (b.action === 'email_render') return json({ ok: true, subject: 'Your booking is confirmed', html: '<p>Preview</p>' });
         if (b.action === 'set_payment') { const r = rows.find((x) => x.id === b.id); if (r) { r.payment = b.payment; r.deposit_paid = b.deposit || (b.payment === 'paid' ? r.agreed_total : 0); r.payment_method = b.payment_method || ''; r.payment_date = b.payment_date || ''; } return json({ ok: true }); }
         if (b.action === 'return_deposit') { const r = rows.find((x) => x.id === b.id); if (r) r.hold_status = 'returned'; return json({ ok: true }); }
         return json({ ok: true });
@@ -170,7 +171,13 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     glassDialogResolve(true);
   });
   await page.waitForTimeout(900);
-  await page.evaluate(() => { try { glassDialogResolve(false); } catch (e) {} }); // decline the updated-confirmation email ask
+  // The updated-confirmation offer now PREVIEWS the email first — cancel that
+  // send-confirm modal (or the plain confirm if no preview was produced).
+  await page.evaluate(() => {
+    const ov = document.getElementById('send-confirm-overlay');
+    if (ov && ov.classList.contains('open')) document.getElementById('send-confirm-cancel').click();
+    else try { glassDialogResolve(false); } catch (e) {}
+  });
   await rec.catch(() => {});
   let paidPost = null;
   for (let i = 0; i < 40 && !paidPost; i++) { await page.waitForTimeout(100); paidPost = posts.find((p) => p.action === 'set_payment'); }

@@ -766,7 +766,7 @@ async function openEmailPreview(bookingDbId, kind, btn) {
         btn.textContent = 'Loading…';
     }
     try {
-        const r = await apiPost('bookings.php', { action: 'email_preview', id: bookingDbId, kind });
+        const r = await apiPost('bookings.php', { action: 'email_render', id: bookingDbId, kind });
         if (!r || !r.ok) throw new Error((r && r.error) || 'No preview available.');
         showEmailPreview(r.subject || '(no subject)', r.html || '', r.text || '');
     } catch (e) {
@@ -4364,16 +4364,23 @@ async function offerUpdatedConfirmationEmail(bookingId) {
                 ? `${gbp(gt.paid)} paid — paid in full`
                 : `${gbp(gt.paid)} paid · ${gbp(gt.balance)} balance remaining`
             : null;
-    const q =
-        `Email ${b.name || 'the guest'} an updated booking confirmation?` +
-        (statusLine ? `\n\nIt will show ${statusLine}.` : '');
-    if (!(await glassConfirm(q))) return;
-    try {
-        await apiPost('bookings.php', { action: 'send_confirmation', id: b.dbId, guest_only: true });
-        toast('Updated confirmation sent.');
-    } catch (e) {
-        glassAlert("Saved, but the email didn't send: " + e.message);
-    }
+    await previewAndSendEmail({
+        id: b.dbId,
+        kind: 'email.confirmation',
+        to: b.email,
+        sendLabel: 'Send updated confirmation',
+        fallbackConfirm:
+            `Email ${b.name || 'the guest'} an updated booking confirmation?` +
+            (statusLine ? `\n\nIt will show ${statusLine}.` : ''),
+        doSend: async () => {
+            try {
+                await apiPost('bookings.php', { action: 'send_confirmation', id: b.dbId, guest_only: true });
+                toast('Updated confirmation sent.');
+            } catch (e) {
+                glassAlert("Saved, but the email didn't send: " + e.message);
+            }
+        },
+    });
 }
 function renderSquareSettings() {
     const st = document.getElementById('sq-settings-status');
@@ -4405,16 +4412,25 @@ async function saveDepositPct() {
 async function requestPayment(bookingId, kind) {
     const booking = findBookingById(bookingId);
     if (!booking) return;
-    try {
-        const res = await apiPost('bookings.php', {
-            action: 'request_payment',
-            id: booking.dbId,
-            kind,
-        });
-        toast(`${kind === 'balance' ? 'Balance' : 'Deposit'} request sent — ${gbp(res.amount)}.`);
-    } catch (e) {
-        glassAlert("Couldn't send the payment request: " + e.message);
-    }
+    await previewAndSendEmail({
+        id: booking.dbId,
+        kind: 'payment.request',
+        to: booking.email,
+        sendLabel: `Send ${kind === 'balance' ? 'balance' : 'deposit'} request`,
+        fallbackConfirm: `Email ${booking.name || 'the guest'} a ${kind === 'balance' ? 'balance' : 'deposit'} payment request?`,
+        doSend: async () => {
+            try {
+                const res = await apiPost('bookings.php', {
+                    action: 'request_payment',
+                    id: booking.dbId,
+                    kind,
+                });
+                toast(`${kind === 'balance' ? 'Balance' : 'Deposit'} request sent — ${gbp(res.amount)}.`);
+            } catch (e) {
+                glassAlert("Couldn't send the payment request: " + e.message);
+            }
+        },
+    });
 }
 // Copy a secure pay link to the clipboard, to share by WhatsApp/SMS/etc.
 async function copyPayLink(bookingId, kind) {

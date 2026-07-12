@@ -4314,6 +4314,33 @@ body.owner-mode .chat-widget {
   background: #fff;
 }
 
+/* Preview-before-send confirm modal (showSendConfirm): the rendered email with
+   a recipient line and Cancel / Send actions. Reuses .email-preview-box. */
+.send-confirm-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.send-confirm-title {
+  font-family: var(--font-serif);
+  font-size: 1.15rem;
+  color: var(--text-light);
+}
+.send-confirm-to {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+.send-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 14px;
+}
+
 
 /* Inbox sort control (soonest stay / newest / cottage). */
 .inbox-sort {
