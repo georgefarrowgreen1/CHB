@@ -223,7 +223,7 @@ add(
     $checks,
     'Integrations',
     'Tide data (WorldTides)',
-    $tideKey !== '' ? 'ok' : 'warn',
+    $tideKey !== '' ? 'ok' : 'optional',
     $tideKey !== ''
         ? 'API key set — tide widget & in-stay tides active.'
         : 'No key (optional). The tide widget and tide push stay hidden/idle.',
@@ -235,7 +235,7 @@ add(
     $checks,
     'Integrations',
     'Google review link',
-    $gReview !== '' ? 'ok' : 'warn',
+    $gReview !== '' ? 'ok' : 'optional',
     $gReview !== ''
         ? 'Set — review emails lead with a Google button.'
         : 'Not set (optional). Review emails use the on-site form only.',
