@@ -1624,11 +1624,13 @@ if ($action === 'history') {
     json_out(['ok' => true, 'events' => $events]);
 }
 
-// Regenerate a templated email exactly as it was/would be sent to the guest, so
-// the owner can READ it from the booking's email log. Reuses the real builders
-// via mail-preview capture (no send, no side effects). Supported kinds:
-// email.confirmation, email.arrival, payment.request.
-if ($action === 'email_preview') {
+// Regenerate a templated email exactly as it would be sent to the guest, so the
+// owner can READ it (from the email log) or REVIEW it before hitting send.
+// Reuses the real builders via mail-preview capture (no send, no side effects).
+// Supported kinds: email.confirmation, email.arrival, payment.request.
+// NB: distinct action from the free-text composer 'email_preview' above — that
+// one shadowed this block, so the templated preview never actually ran.
+if ($action === 'email_render') {
     require_admin();
     $id = (int) ($in['id'] ?? 0);
     $b = booking_by_id($id);
