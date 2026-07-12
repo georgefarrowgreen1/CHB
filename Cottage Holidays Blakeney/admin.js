@@ -760,7 +760,7 @@ function showEmailPreview(subject, html, text) {
         ov = document.createElement('div');
         ov.id = 'email-preview-overlay';
         ov.className = 'modal-overlay';
-        ov.innerHTML = `<div class="modal-box email-modal-box">
+        ov.innerHTML = `<div class="modal-box email-modal-box glass-panel">
                 <div class="email-modal-head">
                     <span class="email-modal-title">Email preview</span>
                     <button class="email-modal-close" type="button" aria-label="Close" onclick="closeEmailPreview()">×</button>
