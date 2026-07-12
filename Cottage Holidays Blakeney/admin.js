@@ -168,6 +168,8 @@ function cmdkIcon(type) {
         return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="4" width="3" height="14"/></svg>';
     if (type === 'content')
         return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h9l5 5v13H5z"/><path d="M14 3v5h5M8.5 13h7M8.5 17h7"/></svg>';
+    if (type === 'field')
+        return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
     return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>';
 }
 // ============================================================
@@ -480,7 +482,7 @@ function cmdkScore(it, words, ql) {
     else if (lab.startsWith(words[0])) score += 4;
     else if (lab.includes(' ' + words[0])) score += 2;
     if (words.every((w) => lab.includes(w))) score += 2; // all words hit the label itself
-    const typeW = { booking: 3, enquiry: 3, action: 3, guest: 2, payment: 2, review: 1.5, screen: 1 };
+    const typeW = { booking: 3, enquiry: 3, action: 3, field: 2.5, guest: 2, payment: 2, review: 1.5, screen: 1 };
     score += typeW[it.type] != null ? typeW[it.type] : 1.5;
     if (it.type === 'booking' && it._urgent) score += 2; // arriving soon / in-house = more important
     if (typoUsed) score -= 1.5; // prefer exact matches over corrected ones
@@ -546,7 +548,7 @@ function cmdkAll(q) {
             run: () => { closeCmdK(); openEnquiryHub(e.id); },
         });
     });
-    return items.concat(cmdkActions(q)).concat(cmdkScreens());
+    return items.concat(cmdkActions(q)).concat(cmdkScreens()).concat(cmdkFields(q));
 }
 // ---- Smart queries: answer operational questions ("who owes money", "leaving
 // today", "who's arriving", "upcoming") from the live booking data. Returns an
@@ -1228,6 +1230,92 @@ function cmdkContentMatches(ql) {
     });
     return out;
 }
+// ---- Inline field editing (Tier 1): edit a scalar setting right inside the
+// palette instead of routing to its screen. Each field reuses the SAME save path
+// its Manage screen already uses (saveContent → content.php), so there's no second
+// copy of the write logic to drift out of lockstep. Only fields that are safe to
+// edit in ISOLATION live here; structured editors (welcome guide, FAQs, photos,
+// the season grid) stay on their screens and are reached via their actions/rows.
+function cmdkFields(q) {
+    if (typeof siteContent !== 'object' || !siteContent) return [];
+    const metas = (typeof propertyMeta === 'object' && propertyMeta) || {};
+    const sc = siteContent;
+    const apc = (typeof adminPrivateContent === 'object' && adminPrivateContent) || {};
+    const pc = (typeof propertyContent === 'object' && propertyContent) || {};
+    const out = [];
+    const repaint = () => { try { applyContentOverrides(); } catch (e) {} try { renderCottageCards(); } catch (e) {} };
+    // Public website text — read/written through siteContent + saveContent, then
+    // the live page is repainted so the change shows without a reload.
+    const pub = (nm, key, label, ftype, hint, def) => out.push({
+        type: 'field', id: 'fld-' + key, label: `${label} — ${nm}`,
+        sub: 'Edit here · shown on the website', ftype, hint,
+        kw: `${label} ${nm} ${key} text edit change website content cottage`,
+        get: () => (sc[key] != null && sc[key] !== '' ? String(sc[key]) : (def || '')),
+        set: (v) => { const val = v == null ? '' : String(v); sc[key] = val; return Promise.resolve(saveContent(key, val)).then(repaint); },
+    });
+    // Private guest text (never public) — mirrors the admin cache the screen reads.
+    const priv = (nm, key, label, ftype, hint) => out.push({
+        type: 'field', id: 'fld-' + key, label: `${label} — ${nm}`,
+        sub: 'Edit here · private, sent to guests', ftype, hint,
+        kw: `${label} ${nm} ${key} text edit change private arrival cottage`,
+        get: () => (typeof apc[key] === 'string' ? apc[key] : ''),
+        set: (v) => { const val = v == null ? '' : String(v); apc[key] = val; return Promise.resolve(saveContent(key, val)); },
+    });
+    Object.keys(metas).forEach((pk) => {
+        const nm = (metas[pk] || {}).name || pk;
+        pub(nm, pk + '-subtitle', 'Subtitle', 'text', 'The short line under the cottage name on its page.', '');
+        pub(nm, pk + '-desc', 'Description', 'textarea', 'The main descriptive paragraph on the cottage page.', (pc[pk] && pc[pk].desc) || '');
+        priv(nm, 'arrival-' + pk, 'Arrival info', 'textarea', 'Sent to guests before check-in — directions, key collection, wifi. Never shown publicly.');
+    });
+    out.forEach((f) => { f.run = () => cmdkFieldOpen(f); });
+    return out;
+}
+// Render the inline editor for one field into the results area (replacing the
+// list). Save writes through the field's own set() — the same endpoint the Manage
+// screen uses — and "‹ Back" returns to the results you came from.
+let __cmdkField = null;
+function cmdkFieldOpen(f) {
+    if (!f) return;
+    __cmdkField = f;
+    const box = document.getElementById('cmdk-results');
+    if (!box) return;
+    const cur = (typeof f.get === 'function' ? f.get() : '') || '';
+    const big = f.ftype === 'textarea';
+    box.innerHTML =
+        `<div class="cmdk-editor">` +
+        `<div class="cmdk-group-label">Edit · ${escapeHtml(f.label)}</div>` +
+        (f.hint ? `<p class="cmdk-editor-hint">${escapeHtml(f.hint)}</p>` : '') +
+        (big
+            ? `<textarea id="cmdk-editor-field" class="cmdk-editor-input" rows="5" spellcheck="true">${escapeHtml(cur)}</textarea>`
+            : `<input id="cmdk-editor-field" type="text" class="cmdk-editor-input" value="${escapeHtml(cur)}">`) +
+        `<div class="cmdk-editor-bar">` +
+        `<button type="button" class="cmdk-ex cmdk-back" onclick="cmdkFieldBack()">‹ Back to results</button>` +
+        `<span id="cmdk-editor-msg" class="cmdk-editor-msg" aria-live="polite"></span>` +
+        `<button type="button" class="cmdk-editor-save" onclick="cmdkFieldSave()">Save</button>` +
+        `</div></div>`;
+    const inp = document.getElementById('cmdk-editor-field');
+    if (inp) { try { inp.focus(); if (!big) inp.setSelectionRange(inp.value.length, inp.value.length); } catch (e) {} }
+}
+async function cmdkFieldSave() {
+    const f = __cmdkField;
+    const inp = document.getElementById('cmdk-editor-field');
+    const msg = document.getElementById('cmdk-editor-msg');
+    if (!f || !inp || typeof f.set !== 'function') return;
+    if (msg) { msg.textContent = 'Saving…'; msg.className = 'cmdk-editor-msg'; }
+    try {
+        await Promise.resolve(f.set(inp.value));
+        if (msg) { msg.textContent = 'Saved ✓'; msg.className = 'cmdk-editor-msg is-ok'; }
+        try { toast('Saved — ' + f.label + '.'); } catch (e) {}
+    } catch (e) {
+        if (msg) { msg.textContent = "Couldn't save — try again"; msg.className = 'cmdk-editor-msg is-err'; }
+    }
+}
+function cmdkFieldBack() {
+    __cmdkField = null;
+    const el = document.getElementById('cmdk-input');
+    if (el) { try { el.focus(); } catch (e) {} }
+    cmdkSearchCore(el ? el.value : '', true);
+}
 // Example-question chips for the empty palette — contextual: surface what's
 // actually actionable right now (money owed, deposits to return, waiting
 // enquiries) ahead of the evergreen prompts.
@@ -1279,6 +1367,7 @@ const CMDK_EXAMPLES = ['who owes me money', "who's leaving today", 'revenue this
 function cmdkSection(type) {
     if (type === 'answer' || type === 'figure') return { key: 'answers', label: 'Answers', order: 0 };
     if (type === 'action') return { key: 'actions', label: 'Actions', order: 1 };
+    if (type === 'field') return { key: 'edit', label: 'Edit here', order: 1.5 };
     if (type === 'booking' || type === 'enquiry' || type === 'external') return { key: 'bookings', label: 'Bookings & enquiries', order: 2 };
     if (type === 'content') return { key: 'content', label: 'Website content', order: 2.5 };
     if (type === 'screen') return { key: 'screens', label: 'Screens', order: 4 };

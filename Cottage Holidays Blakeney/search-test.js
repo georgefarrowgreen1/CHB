@@ -136,6 +136,25 @@ const litAccom = [
 const badAccom = [...new Set(litAccom)].filter((s) => !accomSecs.has(s));
 check('every cottage-section route targets a real ACCOM_SECTIONS id', badAccom.length === 0, 'unknown: ' + badAccom.join(', '));
 
+// ---- 6. Inline field editor registry (cmdkFields) — Tier-1 edit-in-search ----
+// app.js seeds propertyMeta with the default cottages (shared lexical scope in the
+// vm), so cmdkFields() builds real per-cottage fields with no extra seeding.
+const fields = typeof ctx.cmdkFields === 'function' ? ctx.cmdkFields('') : null;
+check('cmdkFields() is defined and returns a list', Array.isArray(fields), typeof ctx.cmdkFields);
+if (Array.isArray(fields)) {
+    check('cmdkFields() produced fields for the seeded cottage', fields.length > 0);
+    check('every field has type "field"', fields.every((f) => f.type === 'field'));
+    check('field ids are unique', new Set(fields.map((f) => f.id)).size === fields.length);
+    check('every field has a non-empty label', fields.every((f) => typeof f.label === 'string' && f.label.trim()));
+    check('every field carries get() and set() functions', fields.every((f) => typeof f.get === 'function' && typeof f.set === 'function'));
+    check('every field ftype is text or textarea', fields.every((f) => f.ftype === 'text' || f.ftype === 'textarea'));
+    check('every field has a run() that opens the editor', fields.every((f) => typeof f.run === 'function'));
+    let getOk = true;
+    try { fields.forEach((f) => { if (typeof f.get() !== 'string') getOk = false; }); } catch (e) { getOk = false; }
+    check('every field get() returns a string without throwing', getOk);
+}
+check('cmdkFieldOpen/Save/Back editor fns are defined', typeof ctx.cmdkFieldOpen === 'function' && typeof ctx.cmdkFieldSave === 'function' && typeof ctx.cmdkFieldBack === 'function');
+
 // ---- Summary ----
 console.log('\n== Summary ==');
 if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }
