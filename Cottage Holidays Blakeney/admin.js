@@ -560,7 +560,7 @@ function cmdkIntent(q) {
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     };
     const bk = (pk, b, sub) => ({ type: 'booking', id: b.id, label: b.name || '(no name)', sub, run: () => { closeCmdK(); openBookingHub(b.id); }, actions: cmdkBookingActions(b, pk) });
-    const ans = (label, sub, run) => ({ type: 'answer', label, sub, run: run || (() => closeCmdK()) });
+    const ans = (label, sub, run, chips) => ({ type: 'answer', label, sub, run: run || (() => closeCmdK()), chips });
     const byIn = (a, b) => ((a.b.checkIn || '') < (b.b.checkIn || '') ? -1 : 1);
     const byOut = (a, b) => ((a.b.checkOut || '') < (b.b.checkOut || '') ? -1 : 1);
     // External OTA stays (Airbnb / Vrbo / Booking.com) imported via iCal — anonymous
@@ -736,7 +736,7 @@ function cmdkIntent(q) {
             return [{ type: 'figure', id: 'ins', label: `${gbp(avgRate)} avg/night ${plabel}`, sub: `${gbp(revenue)} over ${soldNights} night${soldNights === 1 ? '' : 's'}`, run: openMoney }];
         }
         // Default: revenue headline + the numbers + per-cottage split.
-        const head = { type: 'figure', id: 'ins', label: `${gbp(revenue)} booked ${plabel}`, sub: `${soldNights} night${soldNights === 1 ? '' : 's'} · ${occPct}% occupancy${avgRate ? ' · avg ' + gbp(avgRate) + '/night' : ''}`, run: openMoney };
+        const head = { type: 'figure', id: 'ins', label: `${gbp(revenue)} booked ${plabel}`, sub: `${soldNights} night${soldNights === 1 ? '' : 's'} · ${occPct}% occupancy${avgRate ? ' · avg ' + gbp(avgRate) + '/night' : ''}`, run: openMoney, chips: [{ label: 'Last month', q: 'revenue last month' }, { label: 'This year', q: 'revenue this year' }, { label: 'Busiest month', q: 'busiest month' }, { label: 'Top cottage', q: 'which cottage earns most' }] };
         return [head].concat(ranked.filter((r) => r.v > 0).map((r) => ({ type: 'answer', id: 'ins-' + r.k, label: `${propName(r.k)} · ${gbp(r.v)}`, sub: `${Math.round((100 * r.v) / (revenue || 1))}% of revenue`, run: openMoney })));
     }
 
@@ -817,6 +817,7 @@ function cmdkIntent(q) {
             rows.length ? `${rows.length} guest${rows.length === 1 ? '' : 's'} owe${rows.length === 1 ? 's' : ''} ${gbp(total)}` : 'Everyone’s paid up',
             rows.length ? 'Outstanding balances — open Bookings ▸ Needs payment' : 'No balances outstanding',
             () => { closeCmdK(); Promise.resolve(openBookings()).then(() => bookingsSetFilter('needspay')); },
+            rows.length ? [{ label: 'Overdue only', q: 'overdue balances' }, { label: 'Deposits to return', q: 'deposits to return' }, { label: 'Who’s paid in full', q: 'who has paid in full' }] : null,
         );
         return [head].concat(rows.map((x) => bk(x.pk, x.b, `${gbp(x.ps.balance)} still due · ${propName(x.pk)}${x.b.checkOut ? ' · out ' + fmtDate(x.b.checkOut) : ''}`)));
     }
@@ -825,7 +826,7 @@ function cmdkIntent(q) {
         const rows = flat.filter((x) => x.b.checkOut && x.b.checkOut >= rStart && x.b.checkOut <= rEnd).sort(byOut);
         const eRows = blocks.filter((x) => x.bl.checkOut && x.bl.checkOut >= rStart && x.bl.checkOut <= rEnd).sort(byBlkOut);
         const n = rows.length + eRows.length;
-        const head = ans(n ? `${n} guest${n === 1 ? '' : 's'} checking out ${when}` : `No check-outs ${when}`, 'Departures · direct & OTA', () => { closeCmdK(); tryAccessBackOffice(); });
+        const head = ans(n ? `${n} guest${n === 1 ? '' : 's'} checking out ${when}` : `No check-outs ${when}`, 'Departures · direct & OTA', () => { closeCmdK(); tryAccessBackOffice(); }, [{ label: 'Arriving', q: 'who’s arriving today' }, { label: 'This week', q: 'leaving this week' }, { label: 'Staying now', q: 'who’s staying now' }]);
         return [head]
             .concat(rows.map((x) => bk(x.pk, x.b, `Checks out ${fmtDate(x.b.checkOut)}${x.b.checkOutTime ? ' · ' + x.b.checkOutTime : ''} · ${propName(x.pk)}`)))
             .concat(eRows.map((x) => ext(x.pk, x.bl, `Checks out ${fmtDate(x.bl.checkOut)} · ${propName(x.pk)}`)));
@@ -861,7 +862,7 @@ function cmdkIntent(q) {
             ? ans(`No arrivals ${when}`, 'Check-ins · direct & OTA', () => { closeCmdK(); tryAccessBackOffice(); })
             : wantsPeople && heads > 0
               ? ans(`${heads} ${heads === 1 ? 'person' : 'people'} arriving ${when}`, `Across ${n} booking${n === 1 ? '' : 's'}${eRows.length ? ' · OTA headcount not shared' : ''}`, () => { closeCmdK(); tryAccessBackOffice(); })
-              : ans(`${n} guest${n === 1 ? '' : 's'} arriving ${when}`, 'Check-ins · direct & OTA', () => { closeCmdK(); tryAccessBackOffice(); });
+              : ans(`${n} guest${n === 1 ? '' : 's'} arriving ${when}`, 'Check-ins · direct & OTA', () => { closeCmdK(); tryAccessBackOffice(); }, [{ label: 'This week', q: 'arriving this week' }, { label: 'Next month', q: 'arriving next month' }, { label: 'Leaving today', q: 'who’s leaving today' }]);
         return [head]
             .concat(rows.map((x) => bk(x.pk, x.b, `Checks in ${fmtDate(x.b.checkIn)}${x.b.checkInTime ? ' · ' + x.b.checkInTime : ''} · ${propName(x.pk)}`)))
             .concat(eRows.map((x) => ext(x.pk, x.bl, `Checks in ${fmtDate(x.bl.checkIn)} · ${propName(x.pk)}`)));
@@ -924,6 +925,7 @@ function cmdkIntent(q) {
     return null;
 }
 function cmdkSearch(q) {
+    __cmdkHist = []; // manual typing starts a fresh refine thread
     cmdkSearchCore(q, true);
 }
 // Build the two local result bands for a query: the operational answers/commands
@@ -1187,6 +1189,26 @@ function cmdkRunExample(i) {
     if (el) el.value = q;
     cmdkSearch(q);
 }
+// Conversational refine-chip thread: running a refine chip remembers where you
+// were so a "‹ Back" chip can return, letting you narrow an answer and step back
+// without retyping. Manual typing (cmdkSearch) starts a fresh thread.
+let __cmdkHist = [];
+function cmdkChipRun(i, k) {
+    const it = __cmdkResults[i];
+    const c = it && Array.isArray(it.chips) ? it.chips[k] : null;
+    if (!c) return;
+    const el = document.getElementById('cmdk-input');
+    __cmdkHist.push(el ? el.value : '');
+    if (el) el.value = c.q;
+    cmdkSearchCore(c.q, true); // preserve the history stack (bypasses cmdkSearch)
+}
+function cmdkChipBack() {
+    if (!__cmdkHist.length) return;
+    const q = __cmdkHist.pop();
+    const el = document.getElementById('cmdk-input');
+    if (el) el.value = q;
+    cmdkSearchCore(q, true);
+}
 // One result row (+ its quick-action bar when selected). `top` gives the Top Hit
 // its larger treatment.
 function cmdkRowHtml(it, i, top) {
@@ -1202,7 +1224,12 @@ function cmdkRowHtml(it, i, top) {
         sel && Array.isArray(it.actions) && it.actions.length
             ? `<div class="cmdk-actbar">${it.actions.map((a, k) => `<button type="button" class="cmdk-act" data-idx="${i}" data-act="${k}" onclick="cmdkAct(${i},${k})">${a.icon || ''}${escapeHtml(a.label)}</button>`).join('')}</div>`
             : '';
-    return row + acts;
+    // Refine chips under an answer head — narrow/pivot without retyping.
+    const refine =
+        Array.isArray(it.chips) && it.chips.length
+            ? `<div class="cmdk-refine">${it.chips.map((c, k) => `<button type="button" class="cmdk-ex cmdk-refine-chip" onclick="cmdkChipRun(${i},${k})">${escapeHtml(c.label)}</button>`).join('')}</div>`
+            : '';
+    return row + acts + refine;
 }
 function cmdkRender() {
     const box = document.getElementById('cmdk-results');
@@ -1229,7 +1256,9 @@ function cmdkRender() {
     const grouped = __cmdkResults.length >= 3;
     const firstReal = __cmdkResults[0] && __cmdkResults[0].id === 'cmdk-correction' ? 1 : 0;
     let lastKey = null;
-    const parts = [];
+    // A refine-thread "‹ Back" affordance, shown at the top whenever there's a
+    // previous query to step back to (independent of the current head's chips).
+    const parts = __cmdkHist.length ? ['<div class="cmdk-refine cmdk-refine-top"><button type="button" class="cmdk-ex cmdk-refine-chip cmdk-back" onclick="cmdkChipBack()">‹ Back</button></div>'] : [];
     __cmdkResults.forEach((it, i) => {
         if (grouped) {
             if (i === firstReal) parts.push('<div class="cmdk-group-label">Top hit</div>');

@@ -1265,6 +1265,24 @@ body.owner-mode #mobileMenu {
   width: 13px;
   height: 13px;
 }
+/* Refine chips under an answer head — narrow/pivot the result without retyping. */
+.cmdk-refine {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 2px 12px 10px 55px;
+}
+.cmdk-refine-chip {
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 5px 10px;
+}
+.cmdk-refine-chip.cmdk-back {
+  color: var(--text-muted);
+}
+.cmdk-refine-top {
+  padding: 8px 12px 4px;
+}
 /* ============================================================
    Status page (Manage → Status): verdict-first health readout.
    Verdict hero → attention items → optional extras → collapsed
