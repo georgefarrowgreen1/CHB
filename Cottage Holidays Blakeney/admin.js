@@ -170,52 +170,60 @@ function cmdkIcon(type) {
         return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h9l5 5v13H5z"/><path d="M14 3v5h5M8.5 13h7M8.5 17h7"/></svg>';
     return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>';
 }
-// The fixed screens — dock destinations + every Manage sub-screen — so the
-// palette can jump straight to a settings screen, not just the index.
-function cmdkScreens() {
-    // kw = hidden synonyms folded into the search haystack so "backup" finds
-    // Status, "airbnb" finds Calendar sync, "square" finds Payments settings…
-    const seg = (key, label, sub, kw) => ({
-        type: 'screen',
-        label,
-        sub,
-        kw: kw || '',
-        run: () => {
-            closeCmdK();
-            Promise.resolve(openArea('manage')).then(() => settingsOpen(key));
-        },
-    });
+// ============================================================
+//  ADMIN FEATURE REGISTRY — the single source of truth for every admin
+//  DESTINATION search can route to. cmdkScreens() is generated from it, and
+//  search-test.js verifies every `sec` here has a matching #sec-<id> page and
+//  that nothing (screens, actions, dossiers) routes to an unregistered section.
+//  Adding a new admin section = one entry here → it's searchable + tested.
+//  (It's a function, not a const, so the CI shim can introspect it.)
+//  kw = hidden synonyms folded into the search haystack ("backup" finds Status,
+//  "airbnb" finds Calendar sync, "square" finds Payments settings…).
+// ============================================================
+function cmdkRegistry() {
     return [
-        { type: 'screen', label: 'Today', sub: 'Operations dashboard', kw: 'home dashboard calendar timeline arrivals departures', run: () => { closeCmdK(); tryAccessBackOffice(); } },
-        { type: 'screen', label: 'Bookings', sub: 'All bookings', kw: 'reservations stays guests list', run: () => { closeCmdK(); openBookings(); } },
-        { type: 'screen', label: 'Inbox', sub: 'Enquiries, messages & email', kw: 'chat conversations', run: () => { closeCmdK(); openInbox(); } },
-        { type: 'screen', label: 'Messages', sub: 'Guest chat folder', kw: 'chat conversations inbox', run: () => { closeCmdK(); Promise.resolve(openInbox()).then(() => inboxFolder('messages')); } },
-        { type: 'screen', label: 'Email', sub: 'Mailbox folder', kw: 'mailbox sent compose inbox', run: () => { closeCmdK(); Promise.resolve(openInbox()).then(() => inboxFolder('email')); } },
-        { type: 'screen', label: 'Payments', sub: 'Money & reconciliation', kw: 'money accounts income deposits balances expenses owed', run: () => { closeCmdK(); openAccounts(); } },
-        { type: 'screen', label: 'Manage', sub: 'All settings', kw: 'settings admin', run: () => { closeCmdK(); openArea('manage'); } },
-        { type: 'screen', label: 'Activity log', sub: 'Every change & action', kw: 'history audit errors', run: () => { closeCmdK(); nav('view-activity-log'); } },
-        seg('accom', 'Cottages', 'Rates, fees, rules & photos', 'property add remove cottage price occupancy'),
-        seg('seasongrid', 'Seasonal rates', 'Summer & holiday pricing', 'rates price season'),
-        seg('calendar', 'Calendar sync', 'Airbnb, Vrbo & Booking.com', 'ical import export channel airbnb vrbo booking.com feed'),
-        seg('payments', 'Payments settings', 'Square & deposit policy', 'square card deposit refund'),
-        seg('cancel', 'Cancellation policy', 'Refund terms', 'refund cancel'),
-        seg('content', 'Home page & menu', 'Hero, menu & site name', 'website hero photo text logo homepage'),
-        seg('experiences', 'Experiences', 'Local things to do', 'things to do activities'),
-        seg('reviews', 'Reviews', 'Approve & import', 'google review testimonial star'),
-        seg('photos', 'Guest photos', 'Approve shared photos', 'photo wall gallery'),
-        seg('chat-answers', 'Instant chat answers', 'Auto-answers to chat chips', 'automation faq quick reply bot'),
-        seg('chat-away', 'Away auto-reply', 'Out-of-hours acknowledgement', 'automation away office hours'),
-        seg('follow-ups', 'Follow-up emails', 'Enquiry & guest nudges', 'automation nudge reminder anniversary'),
-        seg('guests', 'Guest accounts', 'Look up & reset a guest', 'account password reset user'),
-        seg('newsletter', 'Newsletter', 'Mailing list & broadcasts', 'email marketing subscribers broadcast'),
-        seg('waitlist', 'Waitlist', 'Sold-out demand', 'notify demand'),
-        seg('analytics', 'Analytics', 'Visits & referrers', 'stats traffic visitors'),
-        seg('host', 'Profile', 'Host bio & contact', 'bio about phone'),
-        seg('notify', 'Notifications', 'Phone alerts', 'push alerts'),
-        seg('security', 'Security', 'Password & quick sign-in', 'password passkey 2fa face id fingerprint'),
-        seg('apis', 'Integrations', 'Tide times & services', 'api key tide worldtides'),
-        seg('diagnostics', 'Status', 'System health, insights & updates', 'health check backup diagnostics updates migrations database storage'),
+        // Top-level destinations (dock + standalone views).
+        { id: 'today', label: 'Today', sub: 'Operations dashboard', kw: 'home dashboard calendar timeline arrivals departures', go: () => tryAccessBackOffice() },
+        { id: 'bookings', label: 'Bookings', sub: 'All bookings', kw: 'reservations stays guests list', go: () => openBookings() },
+        { id: 'inbox', label: 'Inbox', sub: 'Enquiries, messages & email', kw: 'chat conversations', go: () => openInbox() },
+        { id: 'messages', label: 'Messages', sub: 'Guest chat folder', kw: 'chat conversations inbox', go: () => Promise.resolve(openInbox()).then(() => inboxFolder('messages')) },
+        { id: 'email', label: 'Email', sub: 'Mailbox folder', kw: 'mailbox sent compose inbox', go: () => Promise.resolve(openInbox()).then(() => inboxFolder('email')) },
+        { id: 'payments-area', label: 'Payments', sub: 'Money & reconciliation', kw: 'money accounts income deposits balances expenses owed', go: () => openAccounts() },
+        { id: 'manage', label: 'Manage', sub: 'All settings', kw: 'settings admin', go: () => openArea('manage') },
+        { id: 'activity', label: 'Activity log', sub: 'Every change & action', kw: 'history audit errors', go: () => nav('view-activity-log') },
+        // Manage sections — each `sec` opens #sec-<sec> via settingsOpen().
+        { id: 'accom', label: 'Cottages', sub: 'Rates, fees, rules & photos', kw: 'property add remove cottage price occupancy', sec: 'accom' },
+        { id: 'seasongrid', label: 'Seasonal rates', sub: 'Summer & holiday pricing', kw: 'rates price season', sec: 'seasongrid' },
+        { id: 'calendar', label: 'Calendar sync', sub: 'Airbnb, Vrbo & Booking.com', kw: 'ical import export channel airbnb vrbo booking.com feed', sec: 'calendar' },
+        { id: 'payments', label: 'Payments settings', sub: 'Square & deposit policy', kw: 'square card deposit refund', sec: 'payments' },
+        { id: 'cancel', label: 'Cancellation policy', sub: 'Refund terms', kw: 'refund cancel', sec: 'cancel' },
+        { id: 'content', label: 'Home page & menu', sub: 'Hero, menu & site name', kw: 'website hero photo text logo homepage', sec: 'content' },
+        { id: 'experiences', label: 'Experiences', sub: 'Local things to do', kw: 'things to do activities', sec: 'experiences' },
+        { id: 'reviews', label: 'Reviews', sub: 'Approve & import', kw: 'google review testimonial star', sec: 'reviews' },
+        { id: 'photos', label: 'Guest photos', sub: 'Approve shared photos', kw: 'photo wall gallery', sec: 'photos' },
+        { id: 'chat-answers', label: 'Instant chat answers', sub: 'Auto-answers to chat chips', kw: 'automation faq quick reply bot', sec: 'chat-answers' },
+        { id: 'chat-away', label: 'Away auto-reply', sub: 'Out-of-hours acknowledgement', kw: 'automation away office hours', sec: 'chat-away' },
+        { id: 'follow-ups', label: 'Follow-up emails', sub: 'Enquiry & guest nudges', kw: 'automation nudge reminder anniversary', sec: 'follow-ups' },
+        { id: 'guests', label: 'Guest accounts', sub: 'Look up & reset a guest', kw: 'account password reset user', sec: 'guests' },
+        { id: 'newsletter', label: 'Newsletter', sub: 'Mailing list & broadcasts', kw: 'email marketing subscribers broadcast', sec: 'newsletter' },
+        { id: 'waitlist', label: 'Waitlist', sub: 'Sold-out demand', kw: 'notify demand', sec: 'waitlist' },
+        { id: 'analytics', label: 'Analytics', sub: 'Visits & referrers', kw: 'stats traffic visitors', sec: 'analytics' },
+        { id: 'host', label: 'Profile', sub: 'Host bio & contact', kw: 'bio about phone', sec: 'host' },
+        { id: 'notify', label: 'Notifications', sub: 'Phone alerts', kw: 'push alerts', sec: 'notify' },
+        { id: 'security', label: 'Security', sub: 'Password & quick sign-in', kw: 'password passkey 2fa face id fingerprint', sec: 'security' },
+        { id: 'apis', label: 'Integrations', sub: 'Tide times & services', kw: 'api key tide worldtides', sec: 'apis' },
+        { id: 'diagnostics', label: 'Status', sub: 'System health, insights & updates', kw: 'health check backup diagnostics updates migrations database storage', sec: 'diagnostics' },
     ];
+}
+// The navigation thunk for a registry entry — a Manage section opens via
+// settingsOpen(sec); everything else uses its own go().
+function cmdkRegGo(e) {
+    return e.sec ? () => Promise.resolve(openArea('manage')).then(() => settingsOpen(e.sec)) : e.go || (() => {});
+}
+// The fixed screens — dock destinations + every Manage sub-screen — generated
+// from the registry so the palette can jump straight to a screen, not the index.
+function cmdkScreens() {
+    return cmdkRegistry().map((e) => ({ type: 'screen', id: 'scr-' + e.id, label: e.label, sub: e.sub, kw: e.kw || '', run: () => { closeCmdK(); cmdkRegGo(e)(); } }));
 }
 // Which cottage does the query name? Matches a prop key or a cottage name; if
 // none is named and only one cottage is live, that one is assumed (so "edit the
