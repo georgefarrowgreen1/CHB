@@ -1092,8 +1092,8 @@
                  #health-pill = systems rollup incl. "N things need a look"
                  (checkSystemHealth). The full-width cron-alert banner stays below. -->
             <div class="settings-head-pills">
-                <button id="cron-pill" class="cron-pill" style="display:none;" onclick="settingsOpen('diagnostics');" title="Open Health check"></button>
-                <button id="health-pill" class="cron-pill" style="display:none;" onclick="settingsOpen('diagnostics');" title="Open Health check"></button>
+                <button id="cron-pill" class="cron-pill" style="display:none;" onclick="settingsOpen('diagnostics');" title="Open Status"></button>
+                <button id="health-pill" class="cron-pill" style="display:none;" onclick="settingsOpen('diagnostics');" title="Open Status"></button>
             </div>
         </div>
 
@@ -1242,9 +1242,9 @@
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Activity log</span><span class="settings-row-sub">Every change &amp; action — bookings, payments, edits</span></span><span class="settings-row-chev">›</span>
                 </button>
-                <button class="settings-row" data-kw="system check updates migrations backup database export version email test" onclick="settingsOpen('diagnostics')">
+                <button class="settings-row" data-kw="status health system check diagnostics updates migrations backup database export version email test" onclick="settingsOpen('diagnostics')">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2 5 4-12 2 7h6"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Health check</span><span class="settings-row-sub">Check everything's working &amp; install updates</span></span><span class="settings-row-chev">›</span>
+                    <span class="settings-row-main"><span class="settings-row-label">Status</span><span class="settings-row-sub">See everything's running &amp; the maintenance tools</span></span><span class="settings-row-chev">›</span>
                 </button>
                 <button id="staging-link-row" class="settings-row" data-kw="staging sandbox practice preview test copy" onclick="openStagingSite()">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6M10 3v5.2L5.4 17a2 2 0 0 0 1.8 3h9.6a2 2 0 0 0 1.8-3L14 8.2V3"/><path d="M8 14h8"/></svg></span>
@@ -1325,18 +1325,16 @@
             </div>
 
             <div class="settings-sec" id="sec-diagnostics" style="display:none;">
-                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 14px;">Green is good; amber is either optional (switched off) or worth a quick look; red needs your attention.</p>
-                <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">
-                    <button class="btn-glass" style="width:auto;padding:12px 22px;" onclick="loadDiagnostics()">Run checks</button>
-                    <button class="btn-sm btn-edit" onclick="runMigrations()">Install updates</button>
-                    <span id="diag-msg" style="font-size:0.82rem;"></span>
-                </div>
+                <span id="diag-msg" style="font-size:0.82rem;"></span>
                 <div id="migrate-result" style="display:none;font-size:0.82rem;margin-bottom:16px;"></div>
-                <!-- Health status leads; the occasional maintenance tools sit under a disclosure. -->
+                <!-- Verdict-first status read-out (loadDiagnostics builds the hero,
+                     the attention/optional groups, the collapsed pass list, then
+                     the Maintenance cards). "Re-run" lives in the hero. -->
                 <div id="diagnostics-body"></div>
                 <details class="help-disclosure" style="margin-top:18px;max-width:640px;">
                     <summary>More tools</summary>
                     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px;">
+                        <button class="btn-sm btn-edit" onclick="runMigrations()">Install updates</button>
                         <button class="btn-sm btn-edit" onclick="backfillWebp()">Optimise photos for faster loading</button>
                         <button class="btn-sm btn-edit" onclick="sendTestEmail()">Send test email</button>
                         <button class="btn-sm btn-edit" onclick="sendSampleEmails(this)">Email me samples</button>
@@ -2405,7 +2403,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=310"></script>
+    <script defer src="app.js?v=311"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

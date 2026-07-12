@@ -181,7 +181,7 @@ function cmdkScreens() {
         seg('notify', 'Notifications', 'Phone alerts'),
         seg('security', 'Security', 'Password & quick sign-in'),
         seg('apis', 'Integrations', 'Tide times & services'),
-        seg('diagnostics', 'Health check', 'System & updates'),
+        seg('diagnostics', 'Status', 'System health & updates'),
     ];
 }
 function cmdkAll() {
@@ -1307,7 +1307,7 @@ const SETTINGS_TITLES = {
     content: 'Home page & menu',
     photos: 'Guest photos',
     apis: 'Integrations',
-    diagnostics: 'Health check',
+    diagnostics: 'Status',
     testcentre: 'Test centre',
     'chat-answers': 'Instant chat answers',
     'chat-away': 'Away auto-reply',
@@ -1336,7 +1336,7 @@ let settingsBackTarget = null;
 // Test-centre group keeps whatever visibility the IS_STAGING code gave it.
 function settingsFilter(q) {
     // Every word must match somewhere in the row's visible text OR its
-    // hidden data-kw synonyms ("backup" → Health check, "ical" → Calendar).
+    // hidden data-kw synonyms ("backup" → Status page, "ical" → Calendar).
     const words = (q || '').trim().toLowerCase().split(/\s+/).filter(Boolean);
     const idx = document.getElementById('settings-index');
     if (!idx) return;
@@ -6134,51 +6134,97 @@ async function loadDiagnostics() {
         body.innerHTML = `<p style="font-size:0.85rem;color:var(--danger);">Couldn't run checks: ${escapeHtml(e.message || '')}</p>`;
         return;
     }
-    const checks = r.checks || [],
-        s = r.summary || {};
-    // 'optional' = a switched-off optional feature (informational, never counted
-    // as "needs a look"); 'warn' = a real, actionable warning. Both are amber but
-    // labelled differently so the owner can tell them apart at a glance.
-    const dot = (st) => (st === 'ok' ? 'var(--ok)' : st === 'fail' ? 'var(--danger)' : 'var(--warn-text)');
+    const checks = r.checks || [];
+    // 'optional' = a switched-off optional feature (informational, never a
+    // problem); 'warn' = an actionable warning; 'fail' = a hard failure.
+    const dotColor = (st) => (st === 'ok' ? 'var(--ok)' : st === 'fail' ? 'var(--danger)' : 'var(--warn-text)');
     const word = (st) => (st === 'ok' ? 'OK' : st === 'optional' ? 'Optional' : st === 'fail' ? 'Action needed' : 'Needs a look');
-    // Group by category, preserving order of first appearance.
-    const cats = [];
-    checks.forEach((c) => {
-        if (!cats.includes(c.category)) cats.push(c.category);
-    });
-    const summary = `<div style="display:flex;gap:16px;flex-wrap:wrap;margin-bottom:16px;font-size:0.85rem;">
-                <span style="color:var(--ok);">● ${s.ok || 0} OK</span>
-                ${(s.warn || 0) > 0 ? `<span style="color:var(--warn-text);">● ${s.warn} need${s.warn === 1 ? 's' : ''} a look</span>` : ''}
-                <span style="color:var(--warn-text);opacity:0.75;">● ${s.optional || 0} optional/off</span>
-                <span style="color:var(--danger);">● ${s.fail || 0} need attention</span></div>`;
-    body.innerHTML =
-        summary +
-        cats
+    const fails = checks.filter((c) => c.status === 'fail');
+    const warns = checks.filter((c) => c.status === 'warn');
+    const optionals = checks.filter((c) => c.status === 'optional');
+    const oks = checks.filter((c) => c.status === 'ok');
+    const attention = fails.concat(warns); // hard failures lead, then warnings
+    // ---- Overall verdict (the one-glance answer) ----
+    const tone = fails.length ? 'danger' : warns.length ? 'warn' : 'ok';
+    const title = fails.length
+        ? `${fails.length} issue${fails.length === 1 ? '' : 's'} need${fails.length === 1 ? 's' : ''} your attention`
+        : warns.length
+          ? `${warns.length} thing${warns.length === 1 ? '' : 's'} worth a look`
+          : 'All systems operational';
+    const sub = fails.length
+        ? 'Something core needs fixing — the details are below.'
+        : warns.length
+          ? "Nothing's broken, but these could use a moment."
+          : "Everything's running as it should.";
+    const mark = tone === 'ok' ? '✓' : tone === 'warn' ? '!' : '✕';
+    const now = new Date();
+    const hhmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const chip = (n, cls, label) => (n > 0 ? `<span class="status-count ${cls}">${n} ${label}</span>` : '');
+    let html = `
+        <div class="status-hero is-${tone} glass-panel">
+            <div class="status-hero-mark" aria-hidden="true">${mark}</div>
+            <div class="status-hero-text">
+                <div class="status-hero-title">${escapeHtml(title)}</div>
+                <div class="status-hero-sub">${escapeHtml(sub)}</div>
+                <div class="status-counts">
+                    ${chip(oks.length, 'ok', 'OK')}
+                    ${chip(warns.length, 'warn', 'to look at')}
+                    ${chip(fails.length, 'danger', 'to fix')}
+                    ${chip(optionals.length, 'optional', 'optional off')}
+                </div>
+                <div class="status-hero-meta">Checked ${hhmm} · <button type="button" class="status-rerun" onclick="loadDiagnostics()">Re-run</button></div>
+            </div>
+        </div>`;
+    // A curated in-app destination for the optional integrations, so a fix is one tap.
+    const routeFor = (label) =>
+        /Square/i.test(label) ? { fn: "settingsOpen('payments')", t: 'Set up card payments' }
+        : /Google review/i.test(label) ? { fn: "settingsOpen('reviews')", t: 'Add the review link' }
+        : /Tide data/i.test(label) ? { fn: "settingsOpen('apis')", t: 'Add a tide key' }
+        : /Web push/i.test(label) ? { fn: "settingsOpen('notify')", t: 'Open notifications' }
+        : null;
+    const item = (c) => {
+        const route = c.status === 'optional' || c.status === 'warn' ? routeFor(c.label) : null;
+        const chipCls = c.status === 'fail' ? 'fail' : c.status;
+        return `
+        <div class="status-item is-${c.status}">
+            <span class="status-item-dot" style="background:${dotColor(c.status)};"></span>
+            <div class="status-item-body">
+                <div class="status-item-head"><span class="status-item-label">${escapeHtml(c.label)}</span><span class="status-item-chip ${chipCls}">${word(c.status)}</span></div>
+                <div class="status-item-detail">${escapeHtml(c.detail || '')}</div>
+                ${c.hint ? `<div class="status-item-hint">${escapeHtml(c.hint)}</div>` : ''}
+                ${route ? `<div class="status-item-actions"><button type="button" class="btn-sm btn-edit" onclick="${route.fn}">${route.t}</button></div>` : ''}
+            </div>
+        </div>`;
+    };
+    if (attention.length) {
+        html += `<div class="status-group"><div class="status-group-title">Needs attention</div>${attention.map(item).join('')}</div>`;
+    }
+    if (optionals.length) {
+        html += `<div class="status-group"><div class="status-group-title">Optional extras — switched off</div><p class="status-group-note">These are turned off. Switch on any you'd like; none of them are a problem left as they are.</p>${optionals.map(item).join('')}</div>`;
+    }
+    // The reassuring wall of passing checks, grouped by area, collapsed by default
+    // so problems (above) lead and the page stays short.
+    if (oks.length) {
+        const okCats = [];
+        oks.forEach((c) => {
+            if (!okCats.includes(c.category)) okCats.push(c.category);
+        });
+        const okBody = okCats
             .map(
-                (cat) => `
-                <div class="accounts-stat" style="max-width:640px;margin-bottom:14px;">
-                    <div class="label">${escapeHtml(cat)}</div>
-                    <div style="display:flex;flex-direction:column;gap:10px;margin-top:10px;">
-                        ${checks
-                            .filter((c) => c.category === cat)
-                            .map(
-                                (c) => `
-                            <div style="display:flex;gap:10px;align-items:flex-start;">
-                                <span style="color:${dot(c.status)};font-size:1.1rem;line-height:1.2;flex-shrink:0;">●</span>
-                                <div style="min-width:0;">
-                                    <div style="font-size:0.9rem;color:var(--text-light);"><strong>${escapeHtml(c.label)}</strong> <span style="font-size:0.72rem;color:${dot(c.status)};">${word(c.status)}</span></div>
-                                    <div style="font-size:0.8rem;color:var(--text-muted);">${escapeHtml(c.detail || '')}</div>
-                                    ${c.hint && c.status !== 'ok' ? `<div style="font-size:0.76rem;color:var(--text-muted);opacity:0.85;margin-top:2px;">→ ${escapeHtml(c.hint)}</div>` : ''}
-                                </div>
-                            </div>`,
-                            )
-                            .join('')}
-                    </div>
-                </div>`,
+                (cat) => `<div class="status-okcat"><div class="status-okcat-title">${escapeHtml(cat)}</div>${oks
+                    .filter((c) => c.category === cat)
+                    .map(
+                        (c) => `<div class="status-okrow"><span class="status-item-dot" style="background:var(--ok);"></span><div><div class="status-okrow-label">${escapeHtml(c.label)}</div><div class="status-item-detail">${escapeHtml(c.detail || '')}</div></div></div>`,
+                    )
+                    .join('')}</div>`,
             )
             .join('');
+        html += `<details class="help-disclosure status-ok-wall"><summary>${oks.length} check${oks.length === 1 ? '' : 's'} passing ✓</summary><div class="status-ok-body">${okBody}</div></details>`;
+    }
+    body.innerHTML = html;
     // Backups: run/download the weekly database dump (also emailed Mondays).
     body.innerHTML += `
+                <div class="status-group-title status-maint-title">Maintenance</div>
                 <div class="accounts-stat" style="max-width:640px;margin-bottom:14px;">
                     <div class="label">Backups</div>
                     <p style="font-size:0.8rem;color:var(--text-muted);margin:8px 0 12px;">A copy of every booking, payment and guest record. Runs automatically each Monday and is emailed to you; the last 8 are kept on the server. Photos &amp; uploads are archived alongside it when they change.</p>
@@ -6458,7 +6504,7 @@ function tcPageFeatures() {
         ],
         [
             'WebP images',
-            'Manage → Health check → “Optimise photos for faster loading” (needs uploaded photos to convert).',
+            'Manage → Status → “Optimise photos for faster loading” (needs uploaded photos to convert).',
         ],
     ];
     return `<div class="rate-prop">
@@ -7395,15 +7441,15 @@ async function checkCronHealth() {
                 <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
                 <div>
                     <strong>Your daily automation looks stopped</strong> — ${detail}. While it's off, pre-arrival emails, balance reminders, guest re-invites and weekly backups won't send.
-                    <div style="margin-top:6px;font-size:0.85rem;">Check the scheduled task at your host still points at <code>cron.php</code>, then open <a onclick="nav('view-settings'); settingsOpen('diagnostics');" style="cursor:pointer;text-decoration:underline;">Health check</a>.</div>
+                    <div style="margin-top:6px;font-size:0.85rem;">Check the scheduled task at your host still points at <code>cron.php</code>, then open <a onclick="nav('view-settings'); settingsOpen('diagnostics');" style="cursor:pointer;text-decoration:underline;">Status</a>.</div>
                 </div>`;
     el.style.display = '';
 }
 // ---- Dashboard: one-glance systems-health pill ----
-// Rolls up the full Health check (diagnostics.php: DB, mail, Square, cron,
+// Rolls up the full Status page (diagnostics.php: DB, mail, Square, cron,
 // backup, migrations, error rate …) into a single dashboard signal so trouble
 // surfaces without visiting System check. Green = all clear; amber = something
-// needs a look; red = a hard failure. Tap opens the full Health check. Cached
+// needs a look; red = a hard failure. Tap opens the full Status page. Cached
 // for the session so the (heavier) diagnostics scan runs at most once per visit.
 async function checkSystemHealth() {
     const pill = document.getElementById('health-pill');
@@ -7577,7 +7623,7 @@ function activityLogSearch(v) {
     clearTimeout(__actLogSearchTimer);
     __actLogSearchTimer = setTimeout(renderActivityLog, 250);
 }
-// ---- Health check: email me a sample of every guest email ----
+// ---- Status page: email me a sample of every guest email ----
 async function sendSampleEmails(btn) {
     if (
         !(await glassConfirm(
