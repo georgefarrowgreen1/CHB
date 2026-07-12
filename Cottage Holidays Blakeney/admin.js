@@ -164,6 +164,8 @@ function cmdkIcon(type) {
         return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3.5 12h17M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>';
     if (type === 'action')
         return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2L4.5 13.5H11l-1 8.5L19.5 10H12z"/></svg>';
+    if (type === 'figure')
+        return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="4" width="3" height="14"/></svg>';
     return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>';
 }
 // The fixed screens — dock destinations + every Manage sub-screen — so the
@@ -537,6 +539,10 @@ function cmdkIntent(q) {
     // next weekend", "add booking for Smith 12–15 Aug") wins over everything else
     // and opens the target pre-filled.
     try { const cmd = cmdkCommand(q, today); if (cmd) return cmd; } catch (e) {}
+    // Business-insight queries take priority over guest-name matching (so "which
+    // cottage earns most" is never mistaken for a guest). Defined once, used by
+    // the insights branch AND to suppress the named-guest handler.
+    const INSIGHTS_RE = /\brevenue\b|\bincome\b|\bearn(ed|ings?|ing)?\b|\btakings?\b|\bturnover\b|\bgross\b|occupanc|occupied|\bnights? (booked|sold)\b|how many nights|average (rate|price|nightly)|\bavg\b|busiest|quietest|best month|worst month|which (cottage|month)|top cottage|how.?s business|how am i doing|\bperformance\b|how much (did i |have i |i )?(make|made|earn|take)/;
     const propName = (k) => (propertyMeta[k] && propertyMeta[k].name) || k || '';
     const flat = [];
     if (typeof dbBookings === 'object' && dbBookings) {
@@ -630,7 +636,8 @@ function cmdkIntent(q) {
     // 0b) A specific guest by name — "have I refunded John?", "has Mary paid?",
     // "John's booking". Naming a guest wins over the generic intents below: the
     // head answers the money/refund question directly and the row(s) open the hub.
-    if (named.length) {
+    // (Insight queries are excluded so "which cottage earns most" can't name-match.)
+    if (named.length && !INSIGHTS_RE.test(q)) {
         const rows = named.slice().sort(byIn);
         let head;
         if (rows.length === 1) {
@@ -660,6 +667,70 @@ function cmdkIntent(q) {
                 return bk(x.pk, x.b, bits.join(' · '));
             }),
         );
+    }
+
+    // 0c) Business insights — revenue, occupancy, nights, average rate, best month,
+    // top cottage — computed from the live bookings (locked agreedPrice attributed
+    // to the stay's check-in). Rendered as a figure card that opens Payments.
+    if (INSIGHTS_RE.test(q)) {
+        const dd0 = new Date(today + 'T00:00:00');
+        const isoD = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+        const dnights = (a, b) => Math.max(0, Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 86400000));
+        const total = (b) => (b.agreedPrice && b.agreedPrice.total) || 0;
+        const openMoney = () => { closeCmdK(); openAccounts(); };
+        const MON3 = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+        // "busiest / best / quietest month" — rank the year's months by revenue.
+        if (/busiest|best month|quietest|worst month|which month/.test(q)) {
+            const yr = /last year/.test(q) ? dd0.getFullYear() - 1 : dd0.getFullYear();
+            const byM = Array.from({ length: 12 }, () => 0);
+            flat.forEach((x) => { if (x.b.checkIn && +x.b.checkIn.slice(0, 4) === yr) byM[+x.b.checkIn.slice(5, 7) - 1] += total(x.b); });
+            const rankedM = byM.map((v, mi) => ({ mi, v })).filter((m) => m.v > 0).sort((a, b) => b.v - a.v);
+            if (!rankedM.length) return [{ type: 'figure', id: 'ins', label: `No bookings in ${yr} yet`, sub: 'Nothing to rank', run: openMoney }];
+            const quiet = /quietest|worst/.test(q);
+            const pick = quiet ? rankedM[rankedM.length - 1] : rankedM[0];
+            const yrTot = rankedM.reduce((s, x) => s + x.v, 0);
+            const head = { type: 'figure', id: 'ins', label: `${monthName(pick.mi)} — ${quiet ? 'quietest' : 'busiest'} · ${gbp(pick.v)}`, sub: `By revenue in ${yr}`, run: openMoney };
+            return [head].concat(rankedM.slice(0, 6).map((m) => ({ type: 'answer', id: 'ins-m' + m.mi, label: `${monthName(m.mi)} · ${gbp(m.v)}`, sub: `${Math.round((100 * m.v) / (yrTot || 1))}% of ${yr}`, run: openMoney })));
+        }
+        // Period for the point-in-time metrics.
+        let pStart, pEnd, plabel;
+        const nm = q.match(/\b(january|february|march|april|may|june|july|august|september|october|november|december|jan|feb|mar|apr|jun|jul|aug|sept|sep|oct|nov|dec)\b/);
+        if (/this year/.test(q)) { pStart = `${dd0.getFullYear()}-01-01`; pEnd = `${dd0.getFullYear()}-12-31`; plabel = `in ${dd0.getFullYear()}`; }
+        else if (/last year/.test(q)) { const y = dd0.getFullYear() - 1; pStart = `${y}-01-01`; pEnd = `${y}-12-31`; plabel = `in ${y}`; }
+        else if (/last month/.test(q)) { const s = new Date(dd0.getFullYear(), dd0.getMonth() - 1, 1), e = new Date(dd0.getFullYear(), dd0.getMonth(), 0); pStart = isoD(s); pEnd = isoD(e); plabel = 'in ' + monthName(s.getMonth()); }
+        else if (/next month/.test(q)) { const s = new Date(dd0.getFullYear(), dd0.getMonth() + 1, 1), e = new Date(dd0.getFullYear(), dd0.getMonth() + 2, 0); pStart = isoD(s); pEnd = isoD(e); plabel = 'in ' + monthName(s.getMonth()); }
+        else if (nm) { const mi = MON3.indexOf(nm[1].slice(0, 3)); const yr = dd0.getFullYear(); pStart = isoD(new Date(yr, mi, 1)); pEnd = isoD(new Date(yr, mi + 1, 0)); plabel = 'in ' + monthName(mi); }
+        else { const s = new Date(dd0.getFullYear(), dd0.getMonth(), 1), e = new Date(dd0.getFullYear(), dd0.getMonth() + 1, 0); pStart = isoD(s); pEnd = isoD(e); plabel = 'this month'; }
+        const stays = flat.filter((x) => x.b.checkIn && x.b.checkIn >= pStart && x.b.checkIn <= pEnd);
+        const revenue = stays.reduce((s, x) => s + total(x.b), 0);
+        const soldNights = stays.reduce((s, x) => s + (x.b.checkOut ? dnights(x.b.checkIn, x.b.checkOut) : 0), 0);
+        const avgRate = soldNights ? revenue / soldNights : 0;
+        const cottages = Object.keys(dbBookings || {}).length || 1;
+        const periodDays = dnights(pStart, pEnd) + 1;
+        const endPlus = isoD(new Date(new Date(pEnd + 'T00:00:00').getTime() + 86400000));
+        let occNights = 0;
+        flat.forEach((x) => { if (x.b.checkIn && x.b.checkOut) { const inN = x.b.checkIn > pStart ? x.b.checkIn : pStart; const outN = x.b.checkOut < endPlus ? x.b.checkOut : endPlus; const n = dnights(inN, outN); if (n > 0) occNights += n; } });
+        const occPct = Math.round((100 * occNights) / (cottages * periodDays));
+        const byC = {};
+        stays.forEach((x) => { byC[x.pk] = (byC[x.pk] || 0) + total(x.b); });
+        const ranked = Object.keys(byC).map((k) => ({ k, v: byC[k] })).sort((a, b) => b.v - a.v);
+        const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+        if (/which cottage|top cottage|best cottage|earns? (the )?most|most (money|revenue|income)/.test(q) && ranked.length) {
+            const head = { type: 'figure', id: 'ins', label: `${propName(ranked[0].k)} earns most · ${gbp(ranked[0].v)}`, sub: `${cap(plabel)} · ${gbp(revenue)} across all cottages`, run: openMoney };
+            return [head].concat(ranked.map((r) => ({ type: 'answer', id: 'ins-' + r.k, label: `${propName(r.k)} · ${gbp(r.v)}`, sub: `${Math.round((100 * r.v) / (revenue || 1))}% of revenue ${plabel}`, run: openMoney })));
+        }
+        if (/occupanc|occupied|how (full|busy)/.test(q)) {
+            return [{ type: 'figure', id: 'ins', label: `${occPct}% occupancy ${plabel}`, sub: `${occNights} of ${cottages * periodDays} cottage-nights · ${gbp(revenue)} revenue`, run: openMoney }];
+        }
+        if (/nights? (booked|sold)|how many nights/.test(q)) {
+            return [{ type: 'figure', id: 'ins', label: `${soldNights} night${soldNights === 1 ? '' : 's'} booked ${plabel}`, sub: `${occPct}% occupancy · ${gbp(revenue)} revenue`, run: openMoney }];
+        }
+        if (/average (rate|price|nightly)|\bavg\b/.test(q)) {
+            return [{ type: 'figure', id: 'ins', label: `${gbp(avgRate)} avg/night ${plabel}`, sub: `${gbp(revenue)} over ${soldNights} night${soldNights === 1 ? '' : 's'}`, run: openMoney }];
+        }
+        // Default: revenue headline + the numbers + per-cottage split.
+        const head = { type: 'figure', id: 'ins', label: `${gbp(revenue)} booked ${plabel}`, sub: `${soldNights} night${soldNights === 1 ? '' : 's'} · ${occPct}% occupancy${avgRate ? ' · avg ' + gbp(avgRate) + '/night' : ''}`, run: openMoney };
+        return [head].concat(ranked.filter((r) => r.v > 0).map((r) => ({ type: 'answer', id: 'ins-' + r.k, label: `${propName(r.k)} · ${gbp(r.v)}`, sub: `${Math.round((100 * r.v) / (revenue || 1))}% of revenue`, run: openMoney })));
     }
 
     // 1) Payments — who owes, who's paid in full, who's paid a deposit.
