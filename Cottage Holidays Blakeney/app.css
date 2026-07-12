@@ -6967,6 +6967,28 @@ body.admin-screen .site-footer {
   border-left-color: var(--ok);
   padding: 13px 16px;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+/* Inline toast action (e.g. Undo) — the toast always sits on dark glass, so
+   the rose-gold accent reads in both themes. */
+.toast-action {
+  flex-shrink: 0;
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 700;
+  font-size: 0.86rem;
+  letter-spacing: 0.02em;
+  padding: 4px 2px;
+  cursor: pointer;
+}
+.toast-action:hover,
+.toast-action:focus-visible {
+  text-decoration: underline;
 }
 .toast.toast-mini.toast-err {
   border-left-color: var(--danger);

@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 83;
+const ADMIN_BUNDLE_V = 84;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -7312,7 +7312,7 @@ async function accomMovePhoto(k, i, dir) {
     await accomSavePhotos(k, imgs);
 }
 async function accomRemovePhoto(k, i) {
-    if (!confirm('Remove this photo?')) return;
+    if (!(await glassConfirm('Remove this photo?'))) return;
     const imgs = accomImages(k);
     imgs.splice(i, 1);
     await accomSavePhotos(k, imgs);
@@ -8528,7 +8528,12 @@ function skelRows(n = 4) {
         )
         .join('');
 }
-function toast(message, type) {
+// toast(message, type, action?)
+//   type   : 'error' for the danger style, anything else = success.
+//   action : optional { label, fn } — renders an inline button (e.g. "Undo")
+//            and gives the toast a longer, clearer window so it can be reached.
+//            Clicking the button runs fn; clicking the rest dismisses.
+function toast(message, type, action) {
     let stack = document.getElementById('app-toasts');
     if (!stack) {
         stack = document.createElement('div');
@@ -8541,10 +8546,13 @@ function toast(message, type) {
     const icon = ok
         ? '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg>'
         : '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 8v5M12 16h.01"/></svg>';
+    const hasAction = action && typeof action.fn === 'function';
     const el = document.createElement('div');
     el.className = 'toast toast-mini' + (ok ? '' : ' toast-err');
     el.setAttribute('role', 'status');
-    el.innerHTML = `<div class="toast-body">${icon}<span>${escapeHtml(message)}</span></div>`;
+    el.innerHTML =
+        `<div class="toast-body">${icon}<span>${escapeHtml(message)}</span></div>` +
+        (hasAction ? `<button type="button" class="toast-action">${escapeHtml(action.label || 'Undo')}</button>` : '');
     stack.appendChild(el);
     let gone = false;
     const remove = () => {
@@ -8553,8 +8561,22 @@ function toast(message, type) {
         el.classList.add('toast-out');
         setTimeout(() => el.remove(), 360);
     };
-    el.addEventListener('click', remove);
-    setTimeout(remove, 3600);
+    if (hasAction) {
+        // Reachable window (~6.5s), and the action button runs fn without the
+        // body's dismiss-on-click swallowing it.
+        el.querySelector('.toast-action').addEventListener('click', (e) => {
+            e.stopPropagation();
+            remove();
+            try {
+                action.fn();
+            } catch (_) {}
+        });
+        el.querySelector('.toast-body').addEventListener('click', remove);
+        setTimeout(remove, 6500);
+    } else {
+        el.addEventListener('click', remove);
+        setTimeout(remove, 3600);
+    }
 }
 // Keyboard: Enter = OK, Escape = Cancel (matches native dialog habits)
 document.addEventListener('keydown', (e) => {
@@ -11898,7 +11920,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'mrh6cott';
+    const BUILD = 'mrh7undo';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
