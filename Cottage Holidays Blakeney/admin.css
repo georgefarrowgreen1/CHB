@@ -1131,6 +1131,40 @@ body.owner-mode #mobileMenu {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+.cmdk-row-ic.cmdk-action .ic {
+  color: var(--accent);
+}
+/* Quick-actions revealed under the selected result — act without leaving search. */
+.cmdk-actbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 2px 12px 10px 55px;
+}
+.cmdk-act {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.76rem;
+  font-weight: 600;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-bg);
+  color: var(--text-light);
+  cursor: pointer;
+  transition: background 0.14s var(--fluid-bezier), border-color 0.14s var(--fluid-bezier);
+}
+.cmdk-act:hover,
+.cmdk-act:focus-visible {
+  background: var(--glass-hover);
+  border-color: var(--accent);
+  outline: none;
+}
+.cmdk-act .ic {
+  width: 13px;
+  height: 13px;
+}
 /* ============================================================
    Status page (Manage → Status): verdict-first health readout.
    Verdict hero → attention items → optional extras → collapsed

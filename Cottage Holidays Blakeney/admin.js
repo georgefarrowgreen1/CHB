@@ -358,6 +358,32 @@ function cmdkScore(it, words, ql) {
     if (typoUsed) score -= 1.5; // prefer exact matches over corrected ones
     return score;
 }
+// Quick-actions for a booking result — act without leaving the palette. Every
+// one routes to an EXISTING owner flow that previews/prompts before it does
+// anything (compose email, payment-request preview, return-deposit prompt), so
+// a one-tap chip can never fire an irreversible action silently.
+function cmdkActIcon(name) {
+    const p = {
+        mail: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/>',
+        coin: '<circle cx="12" cy="12" r="9"/><path d="M12 7v10M9.5 9.5h3.2a1.8 1.8 0 0 1 0 3.6H10a1.8 1.8 0 0 0 0 3.4h3"/>',
+        undo: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
+        hub: '<path d="M4 6h16M4 12h16M4 18h10"/>',
+    };
+    return `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p[name] || p.hub}</svg>`;
+}
+function cmdkBookingActions(b, pk) {
+    if (!b || b.id == null) return [];
+    const acts = [{ key: 'email', label: 'Email', icon: cmdkActIcon('mail'), run: () => { closeCmdK(); openBookingEmail(b.id); } }];
+    let ps = null;
+    try { ps = typeof paymentSummary === 'function' ? paymentSummary(pk, b) : null; } catch (e) {}
+    if (ps && !ps.fullyPaid && ps.balance > 0.5) {
+        acts.push({ key: 'balance', label: ps.deposit > 0.5 ? 'Request balance' : 'Request payment', icon: cmdkActIcon('coin'), run: () => { closeCmdK(); requestPayment(b.id, ps.deposit > 0.5 ? 'balance' : 'deposit'); } });
+    }
+    if ((b.holdStatus || 'none') === 'charged') {
+        acts.push({ key: 'deposit', label: 'Return deposit', icon: cmdkActIcon('undo'), run: () => { closeCmdK(); returnDeposit(b.id); } });
+    }
+    return acts;
+}
 function cmdkAll(q) {
     const items = [];
     const propName = (k) => (propertyMeta[k] && propertyMeta[k].name) || k || '';
@@ -378,6 +404,7 @@ function cmdkAll(q) {
                     label: b.name || '(no name)',
                     sub: `Booking · ${propName(pk)}${b.checkIn ? ' · ' + fmtDate(b.checkIn) : ''}`,
                     run: () => { closeCmdK(); openBookingHub(b.id); },
+                    actions: cmdkBookingActions(b, pk),
                 });
             });
         });
@@ -410,7 +437,7 @@ function cmdkIntent(q) {
         d.setDate(d.getDate() + n);
         return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     };
-    const bk = (pk, b, sub) => ({ type: 'booking', id: b.id, label: b.name || '(no name)', sub, run: () => { closeCmdK(); openBookingHub(b.id); } });
+    const bk = (pk, b, sub) => ({ type: 'booking', id: b.id, label: b.name || '(no name)', sub, run: () => { closeCmdK(); openBookingHub(b.id); }, actions: cmdkBookingActions(b, pk) });
     const ans = (label, sub, run) => ({ type: 'answer', label, sub, run: run || (() => closeCmdK()) });
     const byIn = (a, b) => ((a.b.checkIn || '') < (b.b.checkIn || '') ? -1 : 1);
     const byOut = (a, b) => ((a.b.checkOut || '') < (b.b.checkOut || '') ? -1 : 1);
@@ -744,7 +771,15 @@ function cmdkServerItem(x) {
     const run = routes[x.type];
     if (!run) return null;
     const id = x.id != null ? x.id : x.booking_id != null ? x.booking_id : x.thread_id;
-    return { type: x.type, id, label: x.title || '(untitled)', sub: x.sub || '', run };
+    const item = { type: x.type, id, label: x.title || '(untitled)', sub: x.sub || '', run };
+    // Booking/payment rows from the server carry the same quick-actions when the
+    // booking is loaded locally (findBookingById resolves it by display id).
+    if ((x.type === 'booking' || x.type === 'payment') && typeof findBookingById === 'function') {
+        const b = findBookingById(id);
+        const loc = b && typeof findBookingLocation === 'function' ? findBookingLocation(id) : null;
+        if (b) item.actions = cmdkBookingActions(b, loc ? loc.propKey : undefined);
+    }
+    return item;
 }
 function cmdkRender() {
     const box = document.getElementById('cmdk-results');
@@ -754,18 +789,32 @@ function cmdkRender() {
         return;
     }
     box.innerHTML = __cmdkResults
-        .map(
-            (it, i) =>
-                `<button type="button" class="cmdk-row cmdk-row-${it.type}${i === __cmdkSel ? ' is-sel' : ''}" role="option" aria-selected="${i === __cmdkSel}" data-idx="${i}" onclick="cmdkExec(${i})">
+        .map((it, i) => {
+            const sel = i === __cmdkSel;
+            const row = `<button type="button" class="cmdk-row cmdk-row-${it.type}${sel ? ' is-sel' : ''}" role="option" aria-selected="${sel}" data-idx="${i}" onclick="cmdkExec(${i})">
                     <span class="cmdk-row-ic cmdk-${it.type}">${cmdkIcon(it.type)}</span>
                     <span class="cmdk-row-main"><span class="cmdk-row-label">${escapeHtml(it.label)}</span><span class="cmdk-row-sub">${escapeHtml(it.sub || '')}</span></span>
-                </button>`,
-        )
+                </button>`;
+            // The selected row reveals its quick-actions (act without leaving search).
+            const acts =
+                sel && Array.isArray(it.actions) && it.actions.length
+                    ? `<div class="cmdk-actbar">${it.actions
+                          .map((a, k) => `<button type="button" class="cmdk-act" data-idx="${i}" data-act="${k}" onclick="cmdkAct(${i},${k})">${a.icon || ''}${escapeHtml(a.label)}</button>`)
+                          .join('')}</div>`
+                    : '';
+            return row + acts;
+        })
         .join('');
 }
 function cmdkExec(i) {
     const it = __cmdkResults[i];
     if (it && typeof it.run === 'function') it.run();
+}
+// Run a quick-action (chip) on a result row without dismissing via the row.
+function cmdkAct(i, k) {
+    const it = __cmdkResults[i];
+    const a = it && Array.isArray(it.actions) ? it.actions[k] : null;
+    if (a && typeof a.run === 'function') a.run();
 }
 function cmdkKey(e) {
     if (e.key === 'ArrowDown') {
