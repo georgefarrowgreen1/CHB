@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 90;
+const ADMIN_BUNDLE_V = 91;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 3;
+const ADMIN_CSS_V = 4;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -54,7 +54,7 @@ function loadAdminBundle() {
     __adminBundlePromise = attempt(2);
     return __adminBundlePromise;
 }
-["accountsBack","accountsOpen","accountsShowIndex","activityLogSearch","addAdminPasskey","addReviewRow","afterPaymentChange","autoSyncIcalBlocks","backfillWebp","bookingHubBack","bookingsSetFilter","bookingsSetSearch","bulkImportReviews","changeAdminPassword","changeMonth","timelineToday","inboxSub","inboxSubClose","inboxFolder","initBackOffice","closeBreakdownModal","diagnoseReplyEmail","closeEnquiryEmailModal","addComposeAttachments","previewComposedEmail","sendEnquiryEmail","backToComposeEdit","loadAdminMessages","loadDiagnostics","logoutStaff","offerUpdatedConfirmationEmail","openAccounts","openAddBooking","openArea","openBlockDates","openBookings","openBookingEmail","openBookingHub","openEnquiryHub","enquiryHubBack","openInbox","openSettings","openStagingSite","refreshModerationCounts","renderAccounts","renderActivityLog","renderBookings","renderCalendar","renderExpenses","renderInbox","renderMoneyOverview","requestPayment","renderSquareSettings","runMigrations","saveApiKey","saveContactPhone","saveContent","saveDepositPct","saveGoogleReviewUrl","saveHostText","saveReviews","sendBroadcast","sendSampleEmails","sendTestEmail","settingsBack","settingsFilter","settingsOpen","settingsOpenAccom","settingsOpenAccomSec","settingsOpenCalendar","settingsOpenCancel","settingsRecentRender","settingsSearchKey","settingsShowIndex","tryAccessBackOffice","uploadHostPhoto"].forEach((n) => {
+["accountsBack","accountsOpen","accountsShowIndex","activityLogSearch","addAdminPasskey","addReviewRow","afterPaymentChange","autoSyncIcalBlocks","backfillWebp","bookingHubBack","bookingsSetFilter","bookingsSetSearch","bulkImportReviews","changeAdminPassword","changeMonth","timelineToday","inboxSub","inboxSubClose","inboxFolder","initBackOffice","closeBreakdownModal","diagnoseReplyEmail","closeEnquiryEmailModal","addComposeAttachments","previewComposedEmail","sendEnquiryEmail","backToComposeEdit","loadAdminMessages","loadDiagnostics","logoutStaff","offerUpdatedConfirmationEmail","openAccounts","openAddBooking","openArea","openBlockDates","openBookings","openBookingEmail","openBookingHub","openEnquiryHub","enquiryHubBack","openInbox","openSettings","openStagingSite","refreshModerationCounts","renderAccounts","renderActivityLog","renderBookings","renderCalendar","renderExpenses","renderInbox","renderMoneyOverview","requestPayment","renderSquareSettings","runMigrations","saveApiKey","saveContactPhone","saveContent","saveDepositPct","saveGoogleReviewUrl","saveHostText","saveReviews","sendBroadcast","sendSampleEmails","sendTestEmail","settingsBack","settingsFilter","settingsOpen","settingsOpenAccom","settingsOpenAccomSec","settingsOpenCalendar","settingsOpenCancel","settingsSearchKey","settingsShowIndex","tryAccessBackOffice","uploadHostPhoto"].forEach((n) => {
     const stub = (...a) =>
         loadAdminBundle()
             .catch((e) => {
@@ -1125,9 +1125,6 @@ function nav(viewId, anchorId = null) {
     if (viewId === 'view-settings') {
         try {
             renderSquareSettings();
-        } catch (e) {}
-        try {
-            settingsRecentRender();
         } catch (e) {}
     }
     if (viewId === 'view-experiences') {
@@ -8566,13 +8563,19 @@ function showSendConfirm(o) {
             ov.className = 'modal-overlay';
             ov.setAttribute('role', 'dialog');
             ov.setAttribute('aria-modal', 'true');
-            ov.innerHTML = `<div class="modal-box email-preview-box send-confirm-box">
-                <div class="send-confirm-head"><span class="send-confirm-title">Review before sending</span><span class="send-confirm-to" id="send-confirm-to"></span></div>
-                <div class="email-preview-subject" id="send-confirm-subject"></div>
-                <iframe id="send-confirm-frame" class="email-preview-frame" title="Email preview" sandbox=""></iframe>
-                <div class="send-confirm-actions">
-                    <button type="button" class="btn-sm btn-edit" id="send-confirm-cancel">Cancel</button>
-                    <button type="button" class="btn-glass" id="send-confirm-send">Send</button>
+            ov.innerHTML = `<div class="modal-box email-modal-box send-confirm-box">
+                <div class="email-modal-head">
+                    <span class="email-modal-title">Review before sending</span>
+                    <button type="button" class="email-modal-close" id="send-confirm-x" aria-label="Cancel">×</button>
+                </div>
+                <div class="email-modal-meta">
+                    <div class="email-meta-row" id="send-confirm-to-row"><span class="email-meta-label">To</span><span class="email-meta-value" id="send-confirm-to"></span></div>
+                    <div class="email-meta-row"><span class="email-meta-label">Subject</span><span class="email-meta-value is-subject" id="send-confirm-subject"></span></div>
+                </div>
+                <iframe id="send-confirm-frame" class="email-modal-frame" title="Email preview" sandbox=""></iframe>
+                <div class="email-modal-actions">
+                    <button type="button" class="btn-sm btn-edit email-modal-cancel" id="send-confirm-cancel">Cancel</button>
+                    <button type="button" class="btn-glass email-modal-send" id="send-confirm-send">Send</button>
                 </div>
             </div>`;
             document.body.appendChild(ov);
@@ -8585,7 +8588,14 @@ function showSendConfirm(o) {
             document.removeEventListener('keydown', esc);
             resolve(val);
         };
-        ov.querySelector('#send-confirm-to').textContent = o.to ? 'To: ' + o.to : '';
+        // "To" row only when we have a recipient.
+        const toRow = ov.querySelector('#send-confirm-to-row');
+        if (o.to) {
+            ov.querySelector('#send-confirm-to').textContent = o.to;
+            toRow.style.display = '';
+        } else {
+            toRow.style.display = 'none';
+        }
         ov.querySelector('#send-confirm-subject').textContent = o.subject || '(no subject)';
         const f = ov.querySelector('#send-confirm-frame');
         f.srcdoc =
@@ -8598,6 +8608,7 @@ function showSendConfirm(o) {
         sendBtn.textContent = o.sendLabel || 'Send';
         sendBtn.onclick = () => done(true);
         ov.querySelector('#send-confirm-cancel').onclick = () => done(false);
+        ov.querySelector('#send-confirm-x').onclick = () => done(false);
         ov.onclick = (e) => {
             if (e.target === ov) done(false);
         };
@@ -12009,7 +12020,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'mrhfnsub';
+    const BUILD = 'mshgemod';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

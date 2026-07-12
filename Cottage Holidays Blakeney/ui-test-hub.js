@@ -305,11 +305,11 @@ const ok = (cond, label) => {
     };
   });
   ok(menu1.hidden, 'overflow menu starts closed');
-  ok(menu1.headerBtns === 1, `header shows just the ⋯ More button (${menu1.headerBtns})`);
-  ok(/openEditBooking/.test(menu1.items) && /addBookingToCalendar/.test(menu1.items) && /cancelBooking/.test(menu1.items), 'Edit/Move + Add to calendar + Cancel & refund live in the menu');
+  ok(menu1.headerBtns === 1, `header shows just the Edit/Move/Cancel button (${menu1.headerBtns})`);
+  ok(/openEditBooking/.test(menu1.items) && /cancelBooking/.test(menu1.items) && !/addBookingToCalendar/.test(menu1.items), 'Edit/Move + Cancel & refund live in the menu; no Add to calendar');
   await page.evaluate(() => document.querySelector('.bhub-menu-btn').click());
   await page.waitForTimeout(200);
-  ok(await page.evaluate(() => document.querySelector('.bhub-menu').style.display !== 'none'), 'tapping ⋯ More opens the menu');
+  ok(await page.evaluate(() => document.querySelector('.bhub-menu').style.display !== 'none'), 'tapping Edit/Move/Cancel opens the menu');
   await page.keyboard.press('Escape');
   await page.waitForTimeout(200);
   ok(await page.evaluate(() => document.querySelector('.bhub-menu').style.display === 'none'), 'Escape closes the menu');
