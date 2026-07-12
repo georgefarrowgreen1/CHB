@@ -895,6 +895,9 @@ function cmdkBuildResults(ql) {
 // force the literal spelling.
 function cmdkSearchCore(q, allowCorrect) {
     const raw = (q || '').trim().toLowerCase();
+    // Show the clear (✕) button in place of the magnifier once there's text.
+    const searchWrap = document.querySelector('#cmdk .cmdk-search');
+    if (searchWrap) searchWrap.classList.toggle('has-text', (q || '').length > 0);
     if (!raw) {
         // Empty query → example chips + the dock destinations, as quick launchers.
         __cmdkEmpty = true;
@@ -1064,6 +1067,15 @@ function cmdkRender() {
 function cmdkExec(i) {
     const it = __cmdkResults[i];
     if (it && typeof it.run === 'function') it.run();
+}
+// Clear the search text (✕ button) and return the palette to its empty state.
+function cmdkClear() {
+    const el = document.getElementById('cmdk-input');
+    if (el) {
+        el.value = '';
+        el.focus();
+    }
+    cmdkSearch('');
 }
 // Run a quick-action (chip) on a result row without dismissing via the row.
 function cmdkAct(i, k) {

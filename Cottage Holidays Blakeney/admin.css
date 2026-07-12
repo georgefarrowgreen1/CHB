@@ -1042,6 +1042,39 @@ body.owner-mode #mobileMenu {
   color: var(--text-muted);
   flex-shrink: 0;
 }
+/* Clear (✕) button — occupies the search-icon slot once there's text to clear. */
+.cmdk-clear {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  margin: -2px 0;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: rgba(127, 127, 127, 0.16);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: background 0.14s var(--fluid-bezier), color 0.14s var(--fluid-bezier);
+}
+.cmdk-clear .ic {
+  width: 14px;
+  height: 14px;
+}
+.cmdk-clear:hover,
+.cmdk-clear:focus-visible {
+  background: var(--glass-hover);
+  color: var(--text-light);
+  outline: none;
+}
+.cmdk-search.has-text .cmdk-search-ic {
+  display: none;
+}
+.cmdk-search.has-text .cmdk-clear {
+  display: flex;
+}
 .cmdk-search input {
   flex: 1;
   min-width: 0;
