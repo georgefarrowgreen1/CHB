@@ -248,16 +248,19 @@
             <button class="admin-dock-btn" data-view="view-settings" data-label="Manage" aria-label="Manage" title="Manage" onclick="openArea('manage')">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             </button>
+            <!-- Whole-site search lives in the dock now (rightmost), not a separate
+                 floating button. No data-view: it opens the ⌘K palette, it isn't a
+                 nav target, so the sliding indicator ignores it. -->
+            <button class="admin-dock-btn" data-label="Search" aria-label="Search" title="Search (⌘K)" onclick="openCmdK()">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+            </button>
         </nav>
     </div>
 
     <!-- Command palette: jump to any booking, enquiry or screen. Owner-only —
-         the FAB is revealed by admin.css in owner-mode; both start display:none
-         inline so a guest (who never loads admin.css/admin.js) never sees them.
-         Opened by the FAB or ⌘K / Ctrl-K; wired in admin.js. -->
-    <button id="cmdk-fab" class="cmdk-fab" aria-label="Search the back office" title="Search (⌘K)" onclick="openCmdK()" style="display:none;">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-    </button>
+         opened by the dock's Search button or ⌘K / Ctrl-K (wired in admin.js);
+         starts display:none inline so a guest (who never loads admin.css/admin.js)
+         never sees it. -->
     <div id="cmdk" class="cmdk-overlay" role="dialog" aria-modal="true" aria-label="Search the back office" style="display:none;" onclick="if(event.target===this) closeCmdK()">
         <div class="cmdk-box">
             <div class="cmdk-search">
@@ -1102,12 +1105,9 @@
         <div id="cron-alert" class="cron-alert" style="display:none;" role="alert"></div>
 
         <!-- INDEX — ordered by importance: your cottages first, then money & guests,
-             then your listing & account, with the legal reference last. -->
-        <!-- Type-to-find: matches labels, descriptions AND hidden data-kw synonyms
-             ("backup", "ical", "rates"…). Enter opens the first match. -->
-        <div class="bo-search" style="margin:0 0 8px;">
-        <input type="search" class="input-glass" id="settings-search" placeholder="Search — try &quot;rates&quot;, &quot;reviews&quot; or &quot;backup&quot;…" autocomplete="off" oninput="settingsFilter(this.value)" onkeydown="settingsSearchKey(event)" style="margin-bottom:0;">
-        </div>
+             then your listing & account, with the legal reference last.
+             Per-page search removed — the back-office ⌘K search finds any setting;
+             the grouped index below is the browse path. -->
         <p id="settings-noresults" class="settings-noresults" style="display:none;">Nothing matches — try another word, or browse below.</p>
         </div>
 
@@ -2403,7 +2403,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=311"></script>
+    <script defer src="app.js?v=312"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
