@@ -261,6 +261,10 @@ try {
     // admin.js is owner-only and loaded on demand — precaching it would make every
     // guest download the back office and defeat the split.
     check('admin.js is NOT in the sw.js CORE precache list', !/CORE = \[[^\]]*admin\.js/.test(sw));
+    // admin.css is the same story: owner-only, injected by ensureAdminCss on
+    // bundle load — it must NOT be precached, and app.js must actually inject it.
+    check('admin.css is NOT in the sw.js CORE precache list', !/CORE = \[[^\]]*admin\.css/.test(sw));
+    check('app.js injects admin.css via ensureAdminCss', /ensureAdminCss/.test(appScript) && /admin\.css\?v=/.test(appScript));
 } catch (e) { check('sw.js precache version check ran (' + e.message + ')', false); }
 
 // 6d. JSON-LD structured data parses.
