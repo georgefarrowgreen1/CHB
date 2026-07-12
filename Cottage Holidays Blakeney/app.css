@@ -4758,6 +4758,26 @@ body.owner-mode .chat-widget {
   font-size: 0.9em;
 }
 /* Always-on automation health pill (dashboard) — green healthy / amber quiet. */
+/* Manage header: the automation-health pill sits to the RIGHT of the title
+   (top-aligned with "Manage"), instead of stacked below the subtitle. */
+.dashboard-header.settings-head {
+  /* flex-direction:row (explicit) beats the ≤640px .dashboard-header column
+     rule by specificity, so the pill stays RIGHT of the title on mobile too. */
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.dashboard-header.settings-head .settings-head-titles {
+  min-width: 0; /* let the subtitle wrap rather than shove the pill off-screen */
+  width: auto; /* override the mobile > div:first-child { width:100% } */
+  flex: 1 1 auto;
+}
+.dashboard-header.settings-head #cron-pill {
+  flex-shrink: 0;
+  margin: 6px 0 0; /* nudge onto the title's baseline; drop the old bottom gap */
+}
 .cron-pill {
   display: inline-flex;
   align-items: center;

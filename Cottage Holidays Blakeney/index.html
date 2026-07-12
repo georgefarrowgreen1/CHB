@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=177">
+    <link rel="stylesheet" href="app.css?v=178">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -1110,19 +1110,20 @@
              and its own title, not two stacked headers. -->
         <div id="settings-chrome">
         <span class="back-link" onclick="nav('view-backoffice'); initBackOffice();">← Back to Today</span>
-        <div class="dashboard-header">
-            <div>
+        <div class="dashboard-header settings-head">
+            <div class="settings-head-titles">
                 <h1 class="section-title" style="margin-bottom: 5px;">Manage</h1>
                 <p class="lead" style="text-align: left; margin: 0;">Cottages, marketing, account and system.</p>
             </div>
+            <!-- Always-on automation health pill (green healthy / amber needs a look /
+                 red failure). Sits to the RIGHT of the Manage title; filled + shown
+                 by checkCronHealth()/checkSystemHealth(). -->
+            <button id="cron-pill" class="cron-pill" style="display:none;" onclick="settingsOpen('diagnostics');" title="Open Health check"></button>
         </div>
 
         <!-- Cron dead-man's-switch: shown by checkCronHealth() only when the daily
              automation has gone quiet. -->
         <div id="cron-alert" class="cron-alert" style="display:none;" role="alert"></div>
-
-        <!-- Always-on automation health pill (green when healthy, amber when quiet). -->
-        <button id="cron-pill" class="cron-pill" style="display:none;" onclick="settingsOpen('diagnostics');" title="Open Health check"></button>
 
         <!-- Systems-health rollup (DB, mail, Square, cron, backup, migrations, errors):
              one tap opens the full Health check. Filled by checkSystemHealth(). -->
@@ -2403,7 +2404,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=303"></script>
+    <script defer src="app.js?v=304"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
