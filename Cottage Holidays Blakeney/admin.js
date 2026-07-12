@@ -132,6 +132,180 @@ async function openSettings(section) {
 // as the grouping. openArea() survives as a compat alias (dock, tests, old
 // history entries); the section panels (#sec-…) and settingsOpen() router are
 // unchanged. ----
+// ===================================================================
+//  COMMAND PALETTE (⌘K) — jump to any booking, enquiry or screen from
+//  anywhere in the back office. Owner-only; the markup + FAB live in
+//  index.html (display:none inline, revealed by admin.css in owner-mode).
+// ===================================================================
+let __cmdkResults = [];
+let __cmdkSel = 0;
+function cmdkIcon(type) {
+    if (type === 'booking')
+        return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg>';
+    if (type === 'enquiry')
+        return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+    return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>';
+}
+// The fixed screens — dock destinations + every Manage sub-screen — so the
+// palette can jump straight to a settings screen, not just the index.
+function cmdkScreens() {
+    const seg = (key, label, sub) => ({
+        type: 'screen',
+        label,
+        sub,
+        run: () => {
+            closeCmdK();
+            Promise.resolve(openArea('manage')).then(() => settingsOpen(key));
+        },
+    });
+    return [
+        { type: 'screen', label: 'Today', sub: 'Operations dashboard', run: () => { closeCmdK(); tryAccessBackOffice(); } },
+        { type: 'screen', label: 'Inbox', sub: 'Enquiries, messages & email', run: () => { closeCmdK(); openInbox(); } },
+        { type: 'screen', label: 'Payments', sub: 'Money & reconciliation', run: () => { closeCmdK(); openAccounts(); } },
+        { type: 'screen', label: 'Manage', sub: 'All settings', run: () => { closeCmdK(); openArea('manage'); } },
+        { type: 'screen', label: 'Activity log', sub: 'Every change & action', run: () => { closeCmdK(); nav('view-activity-log'); } },
+        seg('accom', 'Cottages', 'Rates, fees, rules & photos'),
+        seg('seasongrid', 'Seasonal rates', 'Summer & holiday pricing'),
+        seg('calendar', 'Calendar sync', 'Airbnb, Vrbo & Booking.com'),
+        seg('payments', 'Payments settings', 'Square & deposit policy'),
+        seg('cancel', 'Cancellation policy', 'Refund terms'),
+        seg('content', 'Home page & menu', 'Hero, menu & site name'),
+        seg('experiences', 'Experiences', 'Local things to do'),
+        seg('reviews', 'Reviews', 'Approve & import'),
+        seg('photos', 'Guest photos', 'Approve shared photos'),
+        seg('guests', 'Guest accounts', 'Look up & reset a guest'),
+        seg('newsletter', 'Newsletter', 'Mailing list & broadcasts'),
+        seg('waitlist', 'Waitlist', 'Sold-out demand'),
+        seg('analytics', 'Analytics', 'Visits & referrers'),
+        seg('host', 'Profile', 'Host bio & contact'),
+        seg('notify', 'Notifications', 'Phone alerts'),
+        seg('security', 'Security', 'Password & quick sign-in'),
+        seg('apis', 'Integrations', 'Tide times & services'),
+        seg('diagnostics', 'Health check', 'System & updates'),
+    ];
+}
+function cmdkAll() {
+    const items = [];
+    const propName = (k) => (propertyMeta[k] && propertyMeta[k].name) || k || '';
+    // The master booking list is dbBookings — an object keyed by prop_key →
+    // arrays. Flatten it (the same shape renderBookings uses).
+    if (typeof dbBookings === 'object' && dbBookings) {
+        Object.keys(dbBookings).forEach((pk) => {
+            (dbBookings[pk] || []).forEach((b) => {
+                items.push({
+                    type: 'booking',
+                    label: b.name || '(no name)',
+                    sub: `Booking · ${propName(pk)}${b.checkIn ? ' · ' + fmtDate(b.checkIn) : ''}`,
+                    run: () => { closeCmdK(); openBookingHub(b.id); },
+                });
+            });
+        });
+    }
+    (Array.isArray(enquiries) ? enquiries : []).forEach((e) => {
+        items.push({
+            type: 'enquiry',
+            label: e.name || '(no name)',
+            sub: `Enquiry · ${propName(e.propKey)}${e.checkIn ? ' · ' + fmtDate(e.checkIn) : ''}`,
+            run: () => { closeCmdK(); openEnquiryHub(e.id); },
+        });
+    });
+    return items.concat(cmdkScreens());
+}
+function cmdkSearch(q) {
+    q = (q || '').trim().toLowerCase();
+    if (!q) {
+        // Empty query → the dock destinations, as quick launchers.
+        __cmdkResults = cmdkScreens().slice(0, 5);
+    } else {
+        const words = q.split(/\s+/).filter(Boolean);
+        __cmdkResults = cmdkAll()
+            .map((it) => {
+                const hay = (it.label + ' ' + (it.sub || '') + ' ' + it.type).toLowerCase();
+                if (!words.every((w) => hay.includes(w))) return null;
+                const lab = it.label.toLowerCase();
+                let score = 1;
+                if (lab.startsWith(words[0])) score += 3;
+                else if (lab.includes(words[0])) score += 1;
+                if (it.type === 'screen') score += 0.5; // screens are cheap, keep them handy
+                return { it, score };
+            })
+            .filter(Boolean)
+            .sort((a, b) => b.score - a.score)
+            .slice(0, 12)
+            .map((x) => x.it);
+    }
+    __cmdkSel = 0;
+    cmdkRender();
+}
+function cmdkRender() {
+    const box = document.getElementById('cmdk-results');
+    if (!box) return;
+    if (!__cmdkResults.length) {
+        box.innerHTML = '<div class="cmdk-none">No matches — try a guest name or a screen.</div>';
+        return;
+    }
+    box.innerHTML = __cmdkResults
+        .map(
+            (it, i) =>
+                `<button type="button" class="cmdk-row${i === __cmdkSel ? ' is-sel' : ''}" role="option" aria-selected="${i === __cmdkSel}" data-idx="${i}" onclick="cmdkExec(${i})">
+                    <span class="cmdk-row-ic cmdk-${it.type}">${cmdkIcon(it.type)}</span>
+                    <span class="cmdk-row-main"><span class="cmdk-row-label">${escapeHtml(it.label)}</span><span class="cmdk-row-sub">${escapeHtml(it.sub || '')}</span></span>
+                </button>`,
+        )
+        .join('');
+}
+function cmdkExec(i) {
+    const it = __cmdkResults[i];
+    if (it && typeof it.run === 'function') it.run();
+}
+function cmdkKey(e) {
+    if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        __cmdkSel = Math.min(__cmdkSel + 1, __cmdkResults.length - 1);
+        cmdkRender();
+        cmdkScrollSel();
+    } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        __cmdkSel = Math.max(__cmdkSel - 1, 0);
+        cmdkRender();
+        cmdkScrollSel();
+    } else if (e.key === 'Enter') {
+        e.preventDefault();
+        cmdkExec(__cmdkSel);
+    } else if (e.key === 'Escape') {
+        e.preventDefault();
+        closeCmdK();
+    }
+}
+function cmdkScrollSel() {
+    const row = document.querySelector('#cmdk-results .cmdk-row.is-sel');
+    if (row && row.scrollIntoView) row.scrollIntoView({ block: 'nearest' });
+}
+function openCmdK() {
+    const o = document.getElementById('cmdk');
+    const inp = document.getElementById('cmdk-input');
+    if (!o || !inp) return;
+    o.style.display = 'flex';
+    inp.value = '';
+    cmdkSearch('');
+    // focus after paint so the mobile keyboard opens reliably
+    setTimeout(() => inp.focus(), 30);
+}
+function closeCmdK() {
+    const o = document.getElementById('cmdk');
+    if (o) o.style.display = 'none';
+}
+// ⌘K / Ctrl-K toggles the palette (owner only). Registered once on bundle load.
+document.addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        if (typeof isAuthenticated === 'undefined' || !isAuthenticated) return;
+        e.preventDefault();
+        const o = document.getElementById('cmdk');
+        if (o && o.style.display !== 'none') closeCmdK();
+        else openCmdK();
+    }
+});
+
 // A consistent, on-brand empty state for admin lists — a soft accent icon, a
 // short serif title, an optional line of guidance and an optional action
 // button — so a list with nothing in it reads as friendly and intentional
