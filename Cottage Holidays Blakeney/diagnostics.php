@@ -386,4 +386,87 @@ foreach ($checks as $c) {
     $summary[$c['status']] = ($summary[$c['status']] ?? 0) + 1;
 }
 
-json_out(['ok' => true, 'summary' => $summary, 'checks' => $checks, 'mail_ready' => $mailOn]);
+// ---- Insights: operational signals beyond the pass/fail checks above. Every
+// query is individually guarded so a missing table/column can never break the
+// diagnostics response (which also drives the header health pill).
+$insights = [];
+// 1) Recent issues — errors/warnings captured in the activity log.
+try {
+    $w = db()
+        ->query("SELECT COUNT(*) c, MAX(created_at) m FROM activity_log WHERE severity = 'warn' AND created_at >= (NOW() - INTERVAL 7 DAY)")
+        ->fetch();
+    $anyW = db()->query("SELECT MAX(created_at) m FROM activity_log WHERE severity = 'warn'")->fetch();
+    $insights['issues'] = [
+        'warn7d' => (int) ($w['c'] ?? 0),
+        'lastWarn' => $w['m'] ?? null,
+        'lastWarnEver' => $anyW['m'] ?? null,
+    ];
+} catch (\Throwable $e) {
+}
+// 2) Automation — the daily cron heartbeat + recent job failures.
+try {
+    $cl = content_value('cron-last-run');
+    $jf = db()
+        ->query("SELECT COUNT(*) c FROM activity_log WHERE action = 'cron.job_fail' AND created_at >= (NOW() - INTERVAL 2 DAY)")
+        ->fetch();
+    $insights['automation'] = [
+        'lastRun' => $cl !== '' ? $cl : null,
+        'jobs' => 11,
+        'recentFails' => (int) ($jf['c'] ?? 0),
+    ];
+} catch (\Throwable $e) {
+    $insights['automation'] = ['lastRun' => content_value('cron-last-run') ?: null, 'jobs' => 11, 'recentFails' => 0];
+}
+// 3) Calendar (iCal) sync — connected feeds + imported blocks + last import.
+try {
+    $feeds = 0;
+    foreach (db()->query("SELECT item_value FROM content WHERE item_key LIKE 'ical-feeds-%'")->fetchAll() as $r) {
+        $arr = json_decode((string) $r['item_value'], true);
+        if (is_array($arr)) {
+            $feeds += count($arr);
+        }
+    }
+    $b = db()->query('SELECT COUNT(*) c, MAX(created_at) m FROM ical_blocks')->fetch();
+    $ie = db()
+        ->query("SELECT COUNT(*) c FROM activity_log WHERE action LIKE 'ical%fail%' AND created_at >= (NOW() - INTERVAL 3 DAY)")
+        ->fetch();
+    $insights['ical'] = [
+        'feeds' => $feeds,
+        'blocks' => (int) ($b['c'] ?? 0),
+        'lastImport' => $b['m'] ?? null,
+        'recentErrors' => (int) ($ie['c'] ?? 0),
+    ];
+} catch (\Throwable $e) {
+}
+// 4) Storage — database size + the uploads/ folder (photos, hero, attachments).
+try {
+    $dbRow = db()
+        ->query('SELECT SUM(data_length + index_length) b FROM information_schema.tables WHERE table_schema = DATABASE()')
+        ->fetch();
+    $up = 0;
+    $root = __DIR__ . '/uploads';
+    if (is_dir($root)) {
+        $n = 0;
+        $it = new RecursiveIteratorIterator(new RecursiveDirectoryIterator($root, FilesystemIterator::SKIP_DOTS));
+        foreach ($it as $f) {
+            if ($f->isFile()) {
+                $up += $f->getSize();
+            }
+            if (++$n > 20000) {
+                break; // safety cap — never let a runaway scan hold the request
+            }
+        }
+    }
+    $insights['storage'] = ['dbBytes' => (int) ($dbRow['b'] ?? 0), 'uploadsBytes' => $up];
+} catch (\Throwable $e) {
+}
+// 5) Deliverability — failed email sends logged in the last week.
+try {
+    $ef = db()
+        ->query("SELECT COUNT(*) c, MAX(created_at) m FROM activity_log WHERE action = 'email.fail' AND created_at >= (NOW() - INTERVAL 7 DAY)")
+        ->fetch();
+    $insights['email'] = ['fails7d' => (int) ($ef['c'] ?? 0), 'lastFail' => $ef['m'] ?? null];
+} catch (\Throwable $e) {
+}
+
+json_out(['ok' => true, 'summary' => $summary, 'checks' => $checks, 'mail_ready' => $mailOn, 'insights' => $insights]);

@@ -6173,6 +6173,7 @@ async function loadDiagnostics() {
                     ${chip(optionals.length, 'optional', 'optional off')}
                 </div>
                 <div class="status-hero-meta">Checked ${hhmm} · <button type="button" class="status-rerun" onclick="loadDiagnostics()">Re-run</button></div>
+                <div class="status-hero-actions"><button type="button" class="btn-sm btn-edit" onclick="runSelfRepair(this)" title="Safely fixes state drift — dead photo links, lapsed card holds, missing slugs — and flags anything ambiguous. Never touches your code or bookings.">Fix safe issues</button></div>
             </div>
         </div>`;
     // A curated in-app destination for the optional integrations, so a fix is one tap.
@@ -6198,6 +6199,80 @@ async function loadDiagnostics() {
     };
     if (attention.length) {
         html += `<div class="status-group"><div class="status-group-title">Needs attention</div>${attention.map(item).join('')}</div>`;
+    }
+    // ---- Insights: operational vital signs (diagnostics.php `insights`). Each row
+    // stays muted (green) unless it's actually telling you something (amber).
+    const ins = r.insights || {};
+    const fmtMB = (b) => (!b ? '0 KB' : b >= 1048576 ? (b / 1048576).toFixed(b >= 10485760 ? 0 : 1) + ' MB' : Math.max(1, Math.round(b / 1024)) + ' KB');
+    const sinceDays = (s) => {
+        if (!s) return null;
+        const d = new Date(String(s).replace(' ', 'T'));
+        return isNaN(d) ? null : Math.floor((Date.now() - d.getTime()) / 86400000);
+    };
+    const whenLabel = (s) => {
+        if (!s) return 'never';
+        const d = new Date(String(s).replace(' ', 'T'));
+        if (isNaN(d)) return String(s);
+        const days = sinceDays(s);
+        const t = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+        return days <= 0 ? 'today ' + t : days === 1 ? 'yesterday' : days < 8 ? days + ' days ago' : fmtDate(String(s).slice(0, 10));
+    };
+    const insRows = [];
+    if (ins.issues) {
+        const w = ins.issues.warn7d || 0;
+        const dz = sinceDays(ins.issues.lastWarnEver);
+        insRows.push({
+            tone: w > 0 ? 'warn' : 'ok',
+            label: 'Recent issues',
+            value: w > 0 ? `${w} warning${w === 1 ? '' : 's'} in the last 7 days` : dz != null ? `None in ${Math.max(dz, 7)} days` : 'None logged',
+            act: w > 0 || dz != null ? { fn: "nav('view-activity-log')", t: 'View log' } : null,
+        });
+    }
+    if (ins.automation) {
+        const a = ins.automation;
+        const dz = sinceDays(a.lastRun);
+        const stale = !a.lastRun || (dz != null && dz >= 2);
+        insRows.push({
+            tone: stale || a.recentFails > 0 ? 'warn' : 'ok',
+            label: 'Daily automation',
+            value: !a.lastRun
+                ? 'Never run yet'
+                : `Ran ${whenLabel(a.lastRun)} · ${a.jobs} daily jobs${a.recentFails > 0 ? ` · ${a.recentFails} recent failure${a.recentFails === 1 ? '' : 's'}` : ''}`,
+        });
+    }
+    if (ins.ical) {
+        const c = ins.ical;
+        insRows.push({
+            tone: c.recentErrors > 0 ? 'warn' : 'ok',
+            label: 'Calendar sync',
+            value: !c.feeds
+                ? 'No external feeds connected'
+                : `${c.feeds} feed${c.feeds === 1 ? '' : 's'} · ${c.blocks} imported date${c.blocks === 1 ? '' : 's'}${c.lastImport ? ' · ' + whenLabel(c.lastImport) : ''}${c.recentErrors > 0 ? ` · ${c.recentErrors} error${c.recentErrors === 1 ? '' : 's'}` : ''}`,
+        });
+    }
+    if (ins.storage) {
+        insRows.push({
+            tone: 'ok',
+            label: 'Storage',
+            value: `Database ${fmtMB(ins.storage.dbBytes)} · Photos & uploads ${fmtMB(ins.storage.uploadsBytes)}`,
+        });
+    }
+    if (ins.email) {
+        const f = ins.email.fails7d || 0;
+        insRows.push({
+            tone: f > 0 ? 'warn' : 'ok',
+            label: 'Email delivery',
+            value: f > 0 ? `${f} failed to send in the last 7 days` : 'No send failures',
+            act: f > 0 ? { fn: "nav('view-activity-log')", t: 'View log' } : null,
+        });
+    }
+    if (insRows.length) {
+        html += `<div class="status-group"><div class="status-group-title">Insights</div><div class="status-insights">${insRows
+            .map(
+                (x) =>
+                    `<div class="status-insight is-${x.tone}"><span class="status-item-dot" style="background:${dotColor(x.tone)};"></span><div class="status-insight-body"><span class="status-insight-label">${escapeHtml(x.label)}</span><span class="status-insight-value">${escapeHtml(x.value)}${x.act ? ` <button type="button" class="status-insight-act" onclick="${x.act.fn}">${x.act.t}</button>` : ''}</span></div></div>`,
+            )
+            .join('')}</div></div>`;
     }
     if (optionals.length) {
         html += `<div class="status-group"><div class="status-group-title">Optional extras — switched off</div><p class="status-group-note">These are turned off. Switch on any you'd like; none of them are a problem left as they are.</p>${optionals.map(item).join('')}</div>`;
@@ -6248,6 +6323,37 @@ async function loadDiagnostics() {
                 </div>`;
     refreshBackupStatus();
     refreshHeroStatus();
+}
+// One-tap error correction: runs self-repair.php (the same nightly job) on demand.
+// It only ever fixes safe STATE drift — dead gallery links, lapsed Square card
+// holds, missing slug/accent, messy imported review names — and flags ambiguous
+// things (orphaned payments) without touching them. It never changes code or
+// bookings. Reports what it did, then refreshes the Status read-out.
+async function runSelfRepair(btn) {
+    if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Fixing…';
+    }
+    try {
+        const r = await apiPost('self-repair.php', {});
+        const fixed = r.fixed || [],
+            flagged = r.flagged || [];
+        if (!fixed.length && !flagged.length) {
+            toast('All clear — nothing needed fixing.');
+        } else {
+            const bits = [];
+            if (fixed.length) bits.push(`Fixed ${fixed.length}: ${fixed.join('; ')}`);
+            if (flagged.length) bits.push(`Flagged ${flagged.length} for review`);
+            toast(bits.join(' · '));
+        }
+        loadDiagnostics(); // re-run the checks so the page reflects the repair
+    } catch (e) {
+        toast(e.message || "Couldn't run the fixer just now.", 'error');
+        if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'Fix safe issues';
+        }
+    }
 }
 async function refreshHeroStatus() {
     const el = document.getElementById('hero-opt-status');
