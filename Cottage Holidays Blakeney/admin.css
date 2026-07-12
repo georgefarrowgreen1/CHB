@@ -1008,6 +1008,19 @@ body.owner-mode #mobileMenu {
     opacity: 0;
   }
 }
+/* Tier-2 section sheet: the palette grows to host a whole re-parented editor
+   (e.g. the seasonal rate grid). Collapses back to the normal size on close. */
+.cmdk-overlay.cmdk-sheet {
+  padding-top: 6vh;
+}
+.cmdk-overlay.cmdk-sheet .cmdk-box {
+  max-width: 940px;
+  max-height: 86vh;
+}
+.cmdk-sheet-host {
+  padding: 6px 2px 10px;
+  overflow-x: auto;
+}
 .cmdk-box {
   width: 100%;
   max-width: 560px;
