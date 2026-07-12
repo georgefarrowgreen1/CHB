@@ -3182,22 +3182,10 @@ body.modal-open {
    are opened from the Bookings dashboard / search, external blocks from the
    Bookings page's External section. */
 
-@media (max-width: 480px) {
-  
-  
-}
-.tl-bar.bar-21a {
-  background: var(--prop-21a-bg);
-  border-left-color: var(--prop-21a);
-}
-.tl-bar.bar-jollyboat {
-  background: var(--prop-jollyboat-bg);
-  border-left-color: var(--prop-jollyboat);
-}
-.tl-bar.bar-pimpernel {
-  background: var(--prop-pimpernel-bg);
-  border-left-color: var(--prop-pimpernel);
-}
+
+
+
+
 
 /* External (Airbnb/Vrbo) imported blocks: keep the property colour but add
            diagonal stripes + a dashed edge so they read as "taken elsewhere". */
@@ -4266,165 +4254,42 @@ body.owner-mode .chat-widget {
 
 /* Glanceable booking status strip (details modal): payment / deposit / arrival. */
 
-.bk-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 11px;
-  border-radius: var(--r-pill);
-  font-size: 0.72rem;
-  font-weight: 600;
-  border: 1px solid transparent;
-}
-.bk-chip .bk-dot {
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: currentColor;
-  flex-shrink: 0;
-}
-.bk-chip.ok {
-  background: rgba(76, 175, 80, 0.13);
-  color: var(--ok);
-  border-color: rgba(76, 175, 80, 0.28);
-}
-.bk-chip.warn {
-  background: rgba(255, 167, 38, 0.14);
-  color: var(--warn);
-  border-color: rgba(255, 167, 38, 0.32);
-}
-.bk-chip.danger {
-  background: rgba(229, 115, 115, 0.13);
-  color: var(--danger);
-  border-color: rgba(229, 115, 115, 0.3);
-}
+
+
+
+
+
 /* Per-booking "Emails sent" log (Bookings page). */
-.bk-email-log {
-  margin-top: 12px;
-  padding-top: 10px;
-  border-top: 1px solid var(--glass-border);
-  font-size: 0.82rem;
-}
-.bk-email-log-title {
-  display: block;
-  color: var(--text-muted);
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  margin-bottom: 6px;
-}
-.bk-email-log-empty {
-  color: var(--text-muted);
-}
-.bk-email-log-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 4px 0;
-}
-.bk-email-log-what {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  color: var(--text-light);
-}
+
+
+
+
+
 .bk-email-log-what .ic {
   width: 15px;
   height: 15px;
   color: var(--text-muted);
   flex-shrink: 0;
 }
-.bk-email-log-when {
-  color: var(--text-muted);
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
+
 /* Expandable free-text message: reveals the subject + body that was sent. */
-.bk-email-log-item > summary {
-  list-style: none;
-  cursor: pointer;
-}
-.bk-email-log-item > summary::-webkit-details-marker {
-  display: none;
-}
-.bk-email-log-right {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
+
+
+
 /* Explicit "Show email" / "Hide email" button (clearer than a bare chevron).
    Native <details> toggles it; the label swaps via [open]. */
-.bk-email-log-toggle {
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 10px;
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-pill, 999px);
-  color: var(--text-light);
-  font-size: 0.72rem;
-  font-weight: 600;
-  white-space: nowrap;
-  transition: background 0.15s var(--fluid-bezier, ease), border-color 0.15s var(--fluid-bezier, ease);
-}
-.bk-email-log-item > summary:hover .bk-email-log-toggle {
-  background: var(--glass-hover, rgba(255, 255, 255, 0.06));
-  border-color: var(--text-muted);
-}
-.bk-email-log-toggle::after {
-  content: 'Show email';
-}
-.bk-email-log-item[open] > summary .bk-email-log-toggle::after {
-  content: 'Hide email';
-}
+
+
+
+
 /* Chosen-attachment chips in the email composer. */
-.compose-attach-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 6px 4px 10px;
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-pill, 999px);
-  font-size: 0.78rem;
-  color: var(--text-light);
-  max-width: 100%;
-}
-.compose-attach-chip button {
-  border: 0;
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 1rem;
-  line-height: 1;
-  cursor: pointer;
-  padding: 0 4px;
-}
-.compose-attach-chip button:hover {
-  color: var(--danger);
-}
+
+
+
 /* "Show email" button on templated log rows (opens a regenerated preview). */
-.bk-email-log-view {
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 10px;
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-pill, 999px);
-  background: transparent;
-  color: var(--text-light);
-  font: inherit;
-  font-size: 0.72rem;
-  font-weight: 600;
-  white-space: nowrap;
-  cursor: pointer;
-  transition: background 0.15s var(--fluid-bezier, ease), border-color 0.15s var(--fluid-bezier, ease);
-}
-.bk-email-log-view:hover:not(:disabled) {
-  background: var(--glass-hover, rgba(255, 255, 255, 0.06));
-  border-color: var(--text-muted);
-}
-.bk-email-log-view:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
+
+
+
 /* Email preview overlay: subject bar + a sandboxed iframe of the email. */
 .email-preview-box {
   display: flex;
@@ -4448,20 +4313,8 @@ body.owner-mode .chat-widget {
   border: 0;
   background: #fff;
 }
-.bk-email-log-subj {
-  font-weight: 600;
-  color: var(--text-light);
-  font-size: 0.82rem;
-  margin: 4px 0 2px;
-}
-.bk-email-log-msg {
-  color: var(--text-muted);
-  font-size: 0.82rem;
-  line-height: 1.5;
-  padding: 2px 0 8px;
-  white-space: normal;
-  word-break: break-word;
-}
+
+
 /* Inbox sort control (soonest stay / newest / cottage). */
 .inbox-sort {
   display: flex;
@@ -4618,72 +4471,18 @@ body.owner-mode .chat-widget {
   padding: 14px 16px;
   margin: 0 0 18px;
 }
-.enq-ctx-who {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding-bottom: 12px;
-  margin-bottom: 12px;
-  border-bottom: 1px solid var(--glass-border);
-}
-.enq-ctx-avatar {
-  width: 38px;
-  height: 38px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-serif);
-  font-size: 1.05rem;
-  background: rgba(199, 154, 100, 0.18);
-  color: var(--accent);
-  border: 1px solid rgba(199, 154, 100, 0.3);
-}
-.enq-ctx-name {
-  font-weight: 600;
-  font-size: 0.92rem;
-  line-height: 1.35;
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.enq-ctx-row {
-  display: flex;
-  align-items: flex-start;
-  font-size: 0.85rem;
-  padding: 3px 0;
-}
-.enq-ctx-txt {
-  flex: 1;
-  min-width: 0; /* wrapped lines stay aligned after the icon column */
-}
-.enq-ctx-ic {
-  width: 22px;
-  margin-top: 2px;
-  flex-shrink: 0;
-  color: var(--text-muted);
-  display: inline-flex;
-}
+
+
+
+
+
+
 .enq-ctx-ic .ic {
   width: 14px;
   height: 14px;
 }
-.enq-ctx-mut {
-  color: var(--text-muted);
-  font-size: 0.8rem;
-}
-.enq-ctx-quote {
-  margin-top: 10px;
-  padding: 8px 12px;
-  border-left: 2px solid var(--accent);
-  background: rgba(128, 128, 128, 0.06);
-  border-radius: 0 var(--r-sm) var(--r-sm) 0;
-  font-size: 0.82rem;
-  font-style: italic;
-  color: var(--text-muted);
-  max-height: 84px;
-  overflow-y: auto;
-}
+
+
 .btn-sm {
   padding: 8px 14px;
   border-radius: 18px;
@@ -5019,8 +4818,7 @@ body.owner-mode .chat-widget {
   margin-left: auto;
   flex-shrink: 0;
 }
-@media (max-width: 640px) {
-}
+
 .act-log-controls {
   margin: 8px 0 18px;
 }
@@ -5172,26 +4970,9 @@ body.owner-mode .chat-widget {
 }
 /* Area overview — the "important parts first" summary that leads Cottages &
    Marketing (occupancy / key numbers) before the detail sub-folders. */
-.area-ov-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  gap: 12px;
-  margin-bottom: var(--space-3);
-}
-.area-ov-card {
-  display: block;
-  width: 100%;
-  color: var(--text-light);
-  transition:
-    background 0.4s var(--fluid-bezier),
-    transform 0.4s var(--spring);
-}
-@media (hover: hover) {
-  .area-ov-card:hover {
-    background: var(--glass-hover);
-    transform: translateY(-2px);
-  }
-}
+
+
+
 /* "Recent" chips + empty-search note above the index */
 .settings-recent {
   display: flex;
@@ -5201,30 +4982,9 @@ body.owner-mode .chat-widget {
   max-width: 640px;
   margin: 2px 0 14px;
 }
-.settings-recent-label {
-  font-size: 0.66rem;
-  letter-spacing: 1.2px;
-  text-transform: uppercase;
-  color: var(--text-muted);
-  margin-right: 2px;
-}
-.settings-recent-chip {
-  font-size: 0.78rem;
-  padding: 6px 13px;
-  border-radius: var(--r-pill);
-  cursor: pointer;
-  color: var(--text-light);
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  transition:
-    background 0.2s var(--fluid-bezier),
-    border-color 0.2s var(--fluid-bezier);
-}
-.settings-recent-chip:hover,
-.settings-recent-chip:focus-visible {
-  background: var(--glass-hover);
-  border-color: var(--text-muted);
-}
+
+
+
 .settings-noresults {
   font-size: 0.85rem;
   color: var(--text-muted);
@@ -5415,46 +5175,11 @@ body.owner-mode .chat-widget {
    days)") keeps its headline number aligned with the neighbouring card. */
 
 /* Money & income — per-booking payments manager */
-.money-row {
-  padding: 16px 18px;
-  border-radius: var(--r-md);
-  margin-bottom: 12px;
-}
-.money-row-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.money-status {
-  font-size: 0.85rem;
-  color: var(--text-light);
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  white-space: nowrap;
-}
-.money-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  align-items: center;
-}
-.money-deposit {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin: 4px 0 12px;
-  padding: 9px 12px;
-  border-radius: var(--r-sm);
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--glass-border);
-  font-size: 0.85rem;
-  color: var(--text-muted);
-}
+
+
+
+
+
 
 /* ---- Bookings dashboard: master–detail split (≥1200px) ----
    Left: the compact bookings index. Right: the SELECTED booking's hub, docked
@@ -5483,14 +5208,8 @@ body.owner-mode .chat-widget {
     padding-right: 2px;
   }
   /* Inside the pane the hub reads as one column of cards. */
-  #bookings-detail-pane .bhub-grid,
-  #inbox-detail-pane .bhub-grid {
-    grid-template-columns: 1fr;
-  }
-  #bookings-detail-pane .bhub-head,
-  #inbox-detail-pane .bhub-head {
-    margin-top: 0;
-  }
+  
+  
   /* The docked hub's top edge aligns with the section header beside it. */
   #bookings-detail-pane {
     margin-top: 34px;
@@ -5596,93 +5315,23 @@ body.owner-mode .chat-widget {
 /* Compact index row — the whole row opens the booking hub. Fixed three-line
    anatomy (tag + status chip / name / dates · party) so every row is the same
    shape at every width; each line ellipsises rather than wrapping. */
-.bk-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  margin-bottom: 10px;
-  padding: 14px 16px;
-  border-radius: var(--r-panel);
-  color: var(--text-light);
-  font: inherit;
-  cursor: pointer;
-  text-align: left;
-}
+
 /* Traffic-light payment edge on every row: red unpaid · amber part · green paid. */
-.bk-row.pay-danger {
-  border-left: 3px solid var(--danger);
-}
-.bk-row.pay-warn {
-  border-left: 3px solid var(--warn);
-}
-.bk-row.pay-ok {
-  border-left: 3px solid var(--ok);
-}
-.bk-row.is-open {
-  border-color: rgba(255, 255, 255, 0.35);
-  background: rgba(255, 255, 255, 0.08);
-}
-.bk-row-body {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-.bk-row-top {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.bk-row-top .bk-chip {
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-.bk-row-top .prop-tag {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.bk-row-name {
-  font-size: 1rem;
-  line-height: 1.3;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.bk-row-dates {
-  color: var(--text-muted);
-  font-size: 0.8rem;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.bk-row {
-  transition:
-    transform 0.3s var(--spring),
-    box-shadow 0.3s var(--fluid-bezier);
-}
-.bk-row:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-soft);
-}
-.bk-row:active {
-  transform: scale(0.995);
-}
-.bk-row:hover .bk-row-arrow {
-  color: var(--accent);
-  transform: translateX(2px);
-}
-.bk-row-arrow {
-  transition:
-    transform 0.3s var(--spring),
-    color 0.2s var(--fluid-bezier);
-  color: var(--text-muted);
-  font-size: 1.1rem;
-  flex-shrink: 0;
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /* ---- Timeline calendar (Today): rows = cottages, days flow across ---- */
 /* The timeline's intrinsic width (187 × 38px) must scroll INSIDE its panel,
@@ -5701,102 +5350,24 @@ body.owner-mode .chat-widget {
   -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
   mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
 }
-.tl-inner {
-  display: inline-block;
-  min-width: 100%;
-}
-.tl-row {
-  display: flex;
-  align-items: stretch;
-}
-.tl-label {
-  position: sticky;
-  left: 0;
-  z-index: 3;
-  flex: 0 0 74px;
-  display: flex;
-  align-items: center;
-  padding: 0 8px;
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--text-muted);
-  background: var(--dark-grey); /* the page ground — solid so bars slide under it */
-  border-right: 1px solid var(--glass-border);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.tl-lane {
-  position: relative;
-  display: grid;
-  grid-auto-flow: column;
-  grid-template-rows: 44px;
-  align-items: center;
-}
-.tl-headrow .tl-lane {
-  grid-template-rows: 40px;
-}
-.tl-day {
-  grid-row: 1;
-  position: relative;
-  text-align: center;
-  font-size: 0.66rem;
-  color: var(--text-muted);
-  padding-top: 14px;
-  border-left: 1px solid rgba(255, 255, 255, 0.04);
-}
-.tl-day i {
-  font-style: normal;
-  opacity: 0.55;
-  margin-right: 2px;
-  font-size: 0.58rem;
-}
-.tl-day b {
-  position: absolute;
-  top: 0;
-  left: 2px;
-  font-size: 0.62rem;
-  letter-spacing: 0.04em;
-  color: var(--text-light);
-  white-space: nowrap;
-}
-.tl-day.is-wknd {
-  background: rgba(255, 255, 255, 0.025);
-}
-.tl-day.is-today {
-  color: var(--accent);
-  font-weight: 700;
-}
-.tl-cell {
-  grid-row: 1;
-  height: 100%;
-  border-left: 1px solid rgba(255, 255, 255, 0.04);
-  border-top: 1px solid rgba(255, 255, 255, 0.04);
-  cursor: pointer;
-}
-.tl-cell.is-wknd {
-  background: rgba(255, 255, 255, 0.025);
-}
-.tl-cell.is-today {
-  box-shadow: inset 2px 0 0 var(--accent);
-  background: rgba(199, 154, 100, 0.09); /* a whisper of accent anchors today down every lane */
-}
-.tl-cell:hover {
-  background: rgba(255, 255, 255, 0.06);
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* Bars invite the tap that opens the booking hub. */
-.tl-bar:hover {
-  transform: translateY(-1px);
-  filter: brightness(1.07);
-}
+
 /* Ties each lane to its bars' cottage colour. */
-.tl-label-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex: none;
-  margin-right: 7px;
-}
+
 /* Back-office screens end like an app — no public marketing footer.
    (nav() stamps body.admin-screen while an ADMIN_VIEWS view is active.) */
 body.admin-screen .site-footer {
@@ -5815,302 +5386,83 @@ body.admin-screen .site-footer {
   gap: 10px;
   margin-top: 10px;
 }
-.ny-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-  text-align: left;
-  padding: 13px 16px;
-  border-radius: var(--r-panel);
-  border-left: 3px solid var(--warn);
-  cursor: pointer;
-  animation: bhubIn 0.35s var(--fluid-bezier) both;
-  transition:
-    transform 0.25s var(--spring),
-    box-shadow 0.25s var(--fluid-bezier);
-}
-#needs-you-list .ny-row:nth-child(2) { animation-delay: 0.05s; }
-#needs-you-list .ny-row:nth-child(3) { animation-delay: 0.1s; }
-#needs-you-list .ny-row:nth-child(4) { animation-delay: 0.15s; }
-.ny-row:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-soft);
-}
-.ny-row:active {
-  transform: scale(0.99);
-}
-.ny-danger {
-  border-left-color: var(--danger);
-}
-.ny-ok {
-  border-left-color: var(--ok);
-}
-.ny-ic {
-  flex: none;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(127, 127, 127, 0.08);
-  color: var(--warn);
-}
+
+
+
+
+
+
+
+
+
 .ny-ic .ic {
   width: 16px;
   height: 16px;
 }
-.ny-danger .ny-ic {
-  color: var(--danger);
-}
-.ny-ok .ny-ic {
-  color: var(--ok);
-}
-.ny-main {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.ny-label {
-  font-weight: 600;
-  font-size: 0.92rem;
-  color: var(--text-light);
-  line-height: 1.35;
-}
-.ny-sub {
-  font-size: 0.78rem;
-  color: var(--text-muted);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.ny-act {
-  flex: none;
-  font-size: 0.72rem;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  color: var(--accent);
-  white-space: nowrap;
-}
-.ny-more {
-  align-self: flex-start;
-  margin-top: 2px;
-}
+
+
+
+
+
+
+
 /* ---- Booking hub: header overflow menu (⋯ More) + settled-money fold ---- */
-.bhub-actions {
-  position: relative;
-}
-.bhub-menu {
-  position: absolute;
-  right: 0;
-  top: calc(100% + 6px);
-  z-index: 30;
-  min-width: 210px;
-  padding: 6px;
-  border-radius: var(--r-panel);
-  flex-direction: column;
-  gap: 2px;
-  /* SOLID surface, not glass: a floating menu over busy content must be
-     fully legible on a real phone (same solid-ground rule as .tl-label). */
-  background: var(--dark-grey);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  border: 1px solid var(--glass-border);
-  box-shadow: var(--shadow-float);
-  animation: bhubIn 0.22s var(--fluid-bezier) both;
-}
-.bhub-menu button {
-  display: block;
-  width: 100%;
-  text-align: left;
-  padding: 10px 14px;
-  min-height: 40px;
-  border: 0;
-  background: transparent;
-  color: var(--text-light);
-  font: inherit;
-  font-size: 0.88rem;
-  border-radius: var(--r-sm);
-  cursor: pointer;
-}
-.bhub-menu button:hover {
-  background: var(--glass-hover);
-}
-.bhub-menu .bhub-menu-danger {
-  color: var(--danger);
-}
+
+
+
+
+
 /* The breakdown opener under a folded price box — a proper button in the
    hub's family, full-width on phones like every other lone hub button. */
-.bhub-disclose-btn {
-  margin-top: 10px;
-}
-@media (max-width: 900px) {
-  .bhub-disclose-btn {
-    width: 100%;
-    min-height: 46px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-  }
-}
-.tl-bar {
-  grid-row: 1;
-  z-index: 2;
-  height: 30px;
-  transition:
-    transform 0.25s var(--spring),
-    filter 0.2s var(--fluid-bezier);
-  /* Noon-to-noon: the grid area includes the check-in AND checkout days; the
-     half-day insets make changeover days visibly shared between two stays. */
-  margin: 0 calc(var(--tl-day-w, 38px) * 0.5 + 1px);
-  padding: 0 8px;
-  border: 0;
-  border-radius: var(--r-pill);
-  border-left: 3px solid;
-  font: 600 0.7rem var(--font-sans);
-  color: var(--text-light);
-  cursor: pointer;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  text-align: left;
-}
-.tl-bar.tl-pay-ok {
-  border-left-color: var(--ok);
-}
-.tl-bar.tl-pay-warn {
-  border-left-color: var(--warn);
-}
-.tl-bar.tl-pay-danger {
-  border-left-color: var(--danger);
-}
-.tl-bar:not(.tl-ext):hover {
-  transform: translateY(-1px);
-  filter: brightness(1.08);
-}
-.tl-bar.tl-ext {
-  /* Neutral grey stripes so the block reads on BOTH themes (white-on-white
-     was invisible in light mode). */
-  background: repeating-linear-gradient(135deg, rgba(128, 128, 128, 0.14), rgba(128, 128, 128, 0.14) 6px, rgba(128, 128, 128, 0.26) 6px, rgba(128, 128, 128, 0.26) 12px);
-  border-left-color: rgba(128, 128, 128, 0.5);
-  color: var(--text-muted);
-  cursor: default;
-}
+
+
+
+
+
+
+
+
 /* A bar cut off by the timeline window keeps a hard edge on that side. */
-.tl-bar.tl-clip-l {
-  margin-left: 1px;
-}
-.tl-bar.tl-clip-r {
-  margin-right: 1px;
-}
+
+
 /* Phone: denser timeline — slimmer sticky label column + narrower days so more
    of the strip fits on screen, keeping the 44px lane for comfortable taps. */
 @media (max-width: 640px) {
   .tl-wrap {
     --tl-day-w: 32px;
   }
-  .tl-label {
-    flex-basis: 54px;
-    padding: 0 6px;
-    font-size: 0.68rem;
-  }
-  .tl-day {
-    font-size: 0.62rem;
-  }
+  
+  
 }
 
 /* ---- Manage → Email: the admin mailbox client ---- */
 /* The opened email reads like a hub card and arrives with the same entrance. */
-#mbx-reader .bhub-card {
-  animation: bhubIn 0.4s var(--fluid-bezier) both;
-}
-.mbx-when {
-  margin-left: auto;
-  font-size: 0.72rem;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-.bk-row.mbx-unread .bk-row-name {
-  font-weight: 700;
-}
+
+
+
 /* Accordion: the email opens INSIDE its row — the arrow turns to point down
    and the reader card slots directly beneath, collapsible from the row or
    its Collapse button. */
-.mbx-item.open > .bk-row {
-  margin-bottom: 0;
-}
-.mbx-item.open > .bk-row .bk-row-arrow {
-  transform: rotate(90deg);
-}
-.mbx-inline-card {
-  margin: 6px 0 14px;
-}
-.mbx-meta {
-  display: flex;
-  gap: 18px;
-  flex-wrap: wrap;
-  font-size: 0.85rem;
-  margin-bottom: 12px;
-}
+
+
+
+
 .mbx-meta .booking-detail-label {
   margin-right: 4px;
 }
 /* Received mail renders as escaped text only — readable, never executable. */
-.mbx-text {
-  white-space: pre-wrap;
-  word-break: break-word;
-  font: 0.92rem/1.55 var(--font-sans);
-  color: var(--text-light);
-  background: rgba(127, 127, 127, 0.06);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-sm);
-  padding: 14px 16px;
-  margin: 0 0 4px;
-  max-height: 55vh;
-  overflow-y: auto;
-}
+
 .mbx-form .booking-detail-label {
   display: block;
   margin-bottom: 5px;
 }
 /* Guest-match card: who this sender is, with hub links */
-.mbx-ctx {
-  margin: 0 0 12px;
-  padding: 12px 14px;
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-sm);
-  background: rgba(127, 127, 127, 0.05);
-}
-.mbx-ctx .bhub-stay-row {
-  margin-top: 6px;
-}
+
+
 /* Attachment pills */
-.mbx-atts {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin: 10px 0 2px;
-}
-.mbx-att {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 7px 13px;
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-pill);
-  background: rgba(127, 127, 127, 0.07);
-  color: var(--text-light);
-  font-size: 0.8rem;
-  text-decoration: none;
-  transition: background 0.2s var(--fluid-bezier);
-}
-.mbx-att:hover {
-  background: var(--glass-hover);
-}
+
+
+
 .mbx-att .ic {
   width: 13px;
   height: 13px;
@@ -6127,89 +5479,26 @@ body.admin-screen .site-footer {
     transform: none;
   }
 }
-.bhub-head {
-  animation: bhubIn 0.35s var(--fluid-bezier) both;
-}
-.bhub-card {
-  animation: bhubIn 0.4s var(--fluid-bezier) both;
-}
-.bhub-card:nth-of-type(2) {
-  animation-delay: 0.04s;
-}
-.bhub-card:nth-of-type(3) {
-  animation-delay: 0.08s;
-}
-.bhub-card:nth-of-type(4) {
-  animation-delay: 0.12s;
-}
-.bhub-card:nth-of-type(5) {
-  animation-delay: 0.16s;
-}
-.bhub-head {
-  padding: 22px 24px;
-  border-radius: var(--r-panel);
-  margin-top: 14px;
-}
-.bhub-head-top {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-  align-items: flex-start;
-}
-.bhub-name {
-  font-family: var(--font-serif);
-  font-weight: 400;
-  font-size: 1.7rem;
-  margin: 8px 0 4px;
-}
-.bhub-ref {
-  margin-left: 8px;
-  font-size: 0.72rem;
-  color: var(--text-muted);
-  letter-spacing: 0.06em;
-}
-.bhub-sub {
-  color: var(--text-muted);
-  font-size: 0.9rem;
-}
-.bhub-actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  align-items: flex-start;
-}
-.bhub-changeover {
-  margin-top: 10px;
-  cursor: pointer;
-  border: 1px solid rgba(255, 167, 38, 0.32);
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* Journey window: previous (done) › NOW › next — a dynamic three-pill view
    of the booking's stage, instead of the whole strip squeezed in at once. */
-.bhub-pipe3 {
-  display: flex;
-  align-items: flex-end;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 18px 0 0;
-}
+
 /* Desktop: the FULL journey strip (every stage) replaces the compact
    three-pill window — same pills, all six of them. */
-.bhub-pipe-full {
-  display: none;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin: 18px 0 0;
-}
-@media (min-width: 900px) {
-  .bhub-pipe3 {
-    display: none;
-  }
-  .bhub-pipe-full {
-    display: flex;
-  }
-}
+
+
 .pipe3-col {
   display: flex;
   flex-direction: column;
@@ -6267,137 +5556,31 @@ body.admin-screen .site-footer {
   background: var(--warn);
 }
 /* The single surfaced next action */
-.bhub-next {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-top: 14px;
-  padding: 12px 16px;
-  border-radius: var(--r-sm);
-  background: rgba(255, 167, 38, 0.09);
-  border: 1px solid rgba(255, 167, 38, 0.26);
-  font-size: 0.9rem;
-}
-.bhub-next.is-clear {
-  background: rgba(76, 175, 80, 0.08);
-  border-color: rgba(76, 175, 80, 0.22);
-  color: var(--text-muted);
-}
-.bhub-next-btn {
-  padding: 12px 22px; /* the standard action-button geometry (.cal-add-btn) */
-  font-size: 0.8rem;
-}
-.bhub-grid {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  margin: 16px 0 40px;
-  align-items: start;
-}
-.bhub-card {
-  padding: 20px 22px;
-  border-radius: var(--r-panel);
-  min-width: 0;
-}
-.bhub-card-title {
-  font-family: var(--font-serif);
-  font-weight: 400;
-  font-size: 1.15rem;
-  margin: 0 0 14px;
-}
-.bhub-btn-row {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 14px;
-}
-.bhub-mut {
-  color: var(--text-muted);
-  font-size: 0.8rem;
-  margin-top: 8px;
-}
-.bhub-empty {
-  color: var(--text-muted);
-  font-size: 0.85rem;
-  padding: 10px 0;
-}
-.bhub-hist-row {
-  display: grid;
-  grid-template-columns: 130px 1fr auto;
-  gap: 10px;
-  padding: 7px 0;
-  border-bottom: 1px solid var(--glass-border);
-  font-size: 0.82rem;
-}
-.bhub-hist-row:last-child {
-  border-bottom: 0;
-}
-.bhub-hist-when {
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-.bhub-hist-actor {
-  color: var(--text-muted);
-  font-size: 0.72rem;
-}
-.bhub-stay-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  width: 100%;
-  margin-top: 8px;
-  padding: 9px 12px;
-  border-radius: var(--r-sm);
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid var(--glass-border);
-  color: var(--text-light);
-  font: inherit;
-  font-size: 0.85rem;
-  transition: background 0.2s var(--fluid-bezier);
-  cursor: pointer;
-  text-align: left;
-}
-.bhub-stay-row:hover {
-  background: var(--glass-hover);
-}
-#hub-email-log .bk-email-log {
-  margin-top: 14px;
-  border-top: 0;
-  padding-top: 0;
-}
-@media (max-width: 900px) {
-  .bhub-grid {
-    grid-template-columns: 1fr;
-  }
-  .bhub-hist-row {
-    grid-template-columns: 1fr;
-    gap: 2px;
-  }
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 /* Phone: the hub reads top-to-bottom in one clean column — even two-up button
    grids instead of ragged pills, the pipeline as ONE swipeable line instead of
    wrapping with dangling connectors, and tighter card padding. */
 @media (max-width: 640px) {
-  .bhub-head {
-    padding: 18px 16px;
-  }
-  .bhub-card {
-    padding: 16px;
-  }
-  .bhub-name {
-    font-size: 1.45rem;
-  }
-  .bhub-actions,
-  .bhub-btn-row {
-    display: grid;
-    /* minmax(0,…) lets a column shrink below a long label's natural width */
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-    width: 100%;
-  }
+  
+  
+  
+  
   .bhub-actions .btn-sm,
   .bhub-btn-row .btn-sm {
     width: 100%;
@@ -6417,32 +5600,13 @@ body.admin-screen .site-footer {
     grid-column: 1 / -1;
   }
   /* The header only ever holds ⋯ More (the menu is its absolute sibling). */
-  .bhub-actions .bhub-menu-btn {
-    grid-column: 1 / -1;
-  }
+  
   /* Keep the Done › Now › Next window on ONE line (scrolls if ever tight). */
-  .bhub-pipe3 {
-    flex-wrap: nowrap;
-    overflow-x: auto;
-    padding-bottom: 2px;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-  }
-  .bhub-pipe3::-webkit-scrollbar {
-    display: none;
-  }
-  .bhub-pipe3 .pipe-step {
-    white-space: nowrap;
-    padding: 4px 10px;
-  }
-  .bhub-next {
-    flex-direction: column;
-    align-items: stretch;
-    text-align: left;
-  }
-  .bhub-next-btn {
-    width: 100%;
-  }
+  
+  
+  
+  
+  
 }
 
 /* ---- Live availability strip in the Add/Edit Booking modal ---- */
@@ -6524,24 +5688,11 @@ body.admin-screen .site-footer {
   font-size: 0.78rem;
   color: var(--warn);
 }
-.money-deposit strong {
-  color: var(--text-light);
-}
-.money-owed {
-  font-size: 0.95rem;
-  color: var(--text-light);
-  margin: 4px 0 4px;
-}
-.money-owed strong {
-  color: var(--warn);
-}
-.money-owed.all-paid strong,
-.money-owed.all-paid {
-  color: var(--ok);
-}
-.money-row.due-soon {
-  border-color: rgba(255, 167, 38, 0.5);
-}
+
+
+
+
+
 /* Recent payments feed */
 .feed-list {
   padding: 4px 16px;
@@ -6687,11 +5838,7 @@ body.admin-screen .site-footer {
   border-color: var(--danger);
   filter: brightness(0.92); /* the deeper press the old hand-picked red gave */
 }
-.inbox-empty-inline {
-  color: var(--text-muted);
-  font-size: 0.88rem;
-  padding: 4px 4px 24px 4px;
-}
+
 .accounts-stat {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
@@ -6705,56 +5852,21 @@ body.admin-screen .site-footer {
   color: var(--text-muted);
   margin-bottom: 10px;
 }
-.accounts-stat .value {
-  font-family: var(--font-serif);
-  font-size: 2rem;
-  color: var(--text-light);
-}
+
 .accounts-stat.headline {
   border-left: 4px solid var(--ok);
 }
-.accounts-stat.headline .value {
-  color: #6fcf73;
-}
-.accounts-table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 10px;
-  font-size: 0.9rem;
-}
-.accounts-table th,
-.accounts-table td {
-  text-align: left;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--glass-border);
-}
-.accounts-table th {
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: var(--text-muted);
-  font-weight: 600;
-}
-.accounts-table td.num,
-.accounts-table th.num {
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-}
-.accounts-table tr:last-child td {
-  border-bottom: none;
-}
+
+
+
+
+
+
 /* Admin mobile polish: let wide tables scroll instead of overflowing, and
            keep money-row controls comfortably tappable. */
 @media (max-width: 640px) {
-  .accounts-table {
-    display: block;
-    overflow-x: auto;
-    white-space: nowrap;
-    -webkit-overflow-scrolling: touch;
-  }
-  .money-row-head {
-    gap: 6px;
-  }
+  
+  
   .today-card-value {
     font-size: 1.6rem;
   }
@@ -6763,54 +5875,15 @@ body.admin-screen .site-footer {
 .money-overview {
   margin-bottom: 22px;
 }
-.mo-kpis {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
-}
-.mo-kpi {
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-lg);
-  padding: 16px 18px;
-}
-.mo-kpi .mo-label {
-  font-size: 0.66rem;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: var(--text-muted);
-}
-.mo-kpi .mo-value {
-  font-family: var(--font-serif);
-  font-size: 1.55rem;
-  line-height: 1.1;
-  margin-top: 4px;
-}
-.mo-kpi .mo-sub {
-  font-size: 0.72rem;
-  color: var(--text-muted);
-  margin-top: 3px;
-}
-.mo-value.mo-good {
-  color: var(--ok);
-}
-.mo-value.mo-warn {
-  color: var(--warn);
-}
-.mo-card {
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  border-radius: 18px;
-  padding: 16px 18px;
-  margin-top: 12px;
-}
-.mo-card-title {
-  font-size: 0.68rem;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: var(--text-muted);
-  margin-bottom: 6px;
-}
+
+
+
+
+
+
+
+
+
 /* Year-on-year card */
 .yoy-grid {
   display: grid;
@@ -6835,27 +5908,14 @@ body.admin-screen .site-footer {
   font-size: 0.8rem;
   color: var(--text-muted);
 }
-.yoy-cmp .mo-good {
-  color: var(--ok);
-  font-weight: 600;
-}
-.yoy-cmp .mo-warn {
-  color: var(--warn-text);
-  font-weight: 600;
-}
+
+
 /* The lead KPI (Outstanding) carries a subtle accent + its own chase CTA. */
-.mo-kpi-lead {
-  border-color: rgba(255, 167, 38, 0.35);
-  background: rgba(255, 167, 38, 0.06);
-}
-.mo-kpi-cta {
-  margin-top: 10px;
-}
+
+
 /* Retrospective charts tuck under a disclosure so the landing leads with the
    actionable KPIs, not a wall of history. */
-.mo-trends {
-  margin-top: 14px;
-}
+
 .mo-trends > summary,
 .exp-add-details > summary {
   cursor: pointer;
@@ -6882,20 +5942,7 @@ body.admin-screen .site-footer {
 .exp-add-details[open] > summary::after {
   transform: rotate(180deg);
 }
-@media (min-width: 769px) {
-  .mo-kpis {
-    grid-template-columns: repeat(4, 1fr);
-  }
-  .mo-grid2 {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-    align-items: start;
-  }
-  .mo-grid2 .mo-card {
-    margin-top: 12px;
-  }
-}
+
 /* Analytics panel: sticky period bar, segmented control, group headings */
 .ana-pick {
   position: sticky;
@@ -7035,29 +6082,10 @@ body.admin-screen .site-footer {
   background: var(--glass-hover);
   color: var(--text-light);
 }
-.accounts-section-title {
-  font-family: var(--font-serif);
-  font-size: var(--fs-h3);
-  margin: 36px 0 6px;
-}
-.accounts-empty {
-  text-align: center;
-  padding: 50px 20px;
-  color: var(--text-muted);
-}
-.accounts-actions {
-  margin-top: 26px;
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-.accounts-note {
-  font-size: 0.78rem;
-  color: var(--text-muted);
-  margin-top: 24px;
-  line-height: 1.6;
-  max-width: 720px;
-}
+
+
+
+
 
 /* Editorial kickers: the small-caps accent line above section titles. */
 .section-kicker {
@@ -8291,8 +7319,7 @@ p.lead[data-edit-text] {
   letter-spacing: inherit !important;
 }
 
-@media (max-width: 1024px) {
-}
+
 /* ---------- TABLET & BELOW (≤900px) ---------- */
 @media (max-width: 900px) {
   .prop-layout {
@@ -8548,9 +7575,7 @@ p.lead[data-edit-text] {
 /* The owner's navigation lives in the floating bottom dock (.admin-dock-wrap);
            the old top owner bar has been removed. Once logged in, the footer
            back-office (🔩) button is redundant, so hide it (returns when logged out). */
-body.owner-mode #footer-backoffice {
-  display: none;
-}
+
 /* The header account button is for guest sign-in; hide it while the owner
            is signed in (their tools live in the floating admin dock). */
 body.owner-mode .account-btn {
@@ -8559,10 +7584,7 @@ body.owner-mode .account-btn {
 /* Admins have no customer-facing site: hide the public header, mobile menu
            and (most of) the footer — keep only the build number. The owner navigates
            via the floating dock and works entirely in the back office. */
-body.owner-mode header,
-body.owner-mode #mobileMenu {
-  display: none !important;
-}
+
 body.owner-mode #footer-newsletter,
 body.owner-mode .footer-nap,
 body.owner-mode .footer-meta {
@@ -9402,8 +8424,7 @@ body.light-mode .datepicker-pop {
     height: 20px;
   }
 }
-@media (max-width: 640px) {
-}
+
 
 /* Settings → Website content: image rows */
 /* Settings index: small section headers that group related folders. */
