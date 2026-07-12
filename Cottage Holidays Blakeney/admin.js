@@ -162,6 +162,8 @@ function cmdkIcon(type) {
         return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 1.8"/></svg>';
     if (type === 'external')
         return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3.5 12h17M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18"/></svg>';
+    if (type === 'action')
+        return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M13 2L4.5 13.5H11l-1 8.5L19.5 10H12z"/></svg>';
     return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>';
 }
 // The fixed screens — dock destinations + every Manage sub-screen — so the
@@ -211,17 +213,168 @@ function cmdkScreens() {
         seg('diagnostics', 'Status', 'System health, insights & updates', 'health check backup diagnostics updates migrations database storage'),
     ];
 }
-function cmdkAll() {
+// Which cottage does the query name? Matches a prop key or a cottage name; if
+// none is named and only one cottage is live, that one is assumed (so "edit the
+// welcome guide" just works on a single-cottage site).
+function cmdkCottageFor(ql) {
+    const keys = Object.keys(propertyMeta || {}).filter((k) => !(propertyMeta[k] && propertyMeta[k].archived));
+    const hit = keys.find((k) => ql.includes(k.toLowerCase()) || (propertyMeta[k].name && ql.includes(propertyMeta[k].name.toLowerCase())));
+    if (hit) return hit;
+    return keys.length === 1 ? keys[0] : '';
+}
+// The ACTIONS catalog — the "do things" half of the palette (Spotlight-style).
+// One source of truth: cmdkIntent matches `re` for natural phrasing ("how to add
+// a booking"), and cmdkAll folds these in so they're findable by name/synonym
+// ("welcome guide", "book in a customer"). Cottage-specific rows resolve which
+// cottage from the query up front, so the run() lands on the exact editor.
+function cmdkActions(q) {
+    const ql = (q || '').toLowerCase();
+    const pk = cmdkCottageFor(ql);
+    const cName = pk && propertyMeta[pk] ? propertyMeta[pk].name : '';
+    const toManage = (key) => () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => settingsOpen(key)); };
+    const toAccom = (sec) => () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => { if (pk && typeof settingsOpenAccomSec === 'function') settingsOpenAccomSec(pk, sec); else settingsOpen('accom'); }); };
+    const A = (slug, label, sub, kw, re, run) => ({ type: 'action', id: 'act-' + slug, label, sub, kw, re, run });
+    return [
+        A('addbooking', 'Add a booking', 'Take a booking into the diary', 'book customer guest reservation manual new take enter create put', /(add|new|create|make|manual|take|enter|put).{0,14}(booking|reservation|stay|customer|guest)|book (a|in|someone|my)/, () => { closeCmdK(); openAddBooking(); }),
+        A('block', 'Block out dates', 'Mark dates unavailable', 'block off close unavailable maintenance reserve hold', /block.{0,10}(date|off|out|calendar|time)|(add|make).{0,10}block|close.{0,8}date/, () => { closeCmdK(); openBlockDates(); }),
+        A('rates', 'Change prices & rates', 'Nightly and seasonal pricing', 'price rate nightly cost charge seasonal summer holiday raise lower adjust set fee', /(change|edit|update|set|adjust|raise|lower|manage|amend).{0,14}(price|rate|pricing|cost|nightly|charge|fee)|season(al)? (rate|price)|price.{0,6}(change|update)/, toManage('seasongrid')),
+        A('email', 'Compose an email', 'Write a new message', 'send write mail email message compose new', /(send|compose|write|new|draft).{0,14}(email|mail|message)/, () => { closeCmdK(); Promise.resolve(openInbox()).then(() => inboxFolder('email')); }),
+        A('welcome', cName ? `Welcome guide — ${cName}` : 'Edit the welcome guide', 'In-stay guide: Wi-Fi, appliances, bins, tips', 'welcome book guide in stay wifi manual instructions house information handbook', /(edit|change|update|write|add).{0,18}(welcome|guide|in.?stay|house ?book|handbook)/, toAccom('welcome')),
+        A('house', cName ? `House rules — ${cName}` : 'Edit house rules', 'Pets, smoking, parties, quiet hours', 'rules policy pets smoking parties quiet hours house', /(edit|change|update|set).{0,14}(house ?rule|rule)/, toAccom('house')),
+        A('photos', cName ? `Photos — ${cName}` : 'Cottage photos', 'Manage the gallery', 'photo image picture gallery upload cottage', /(add|upload|change|edit|manage|new|put).{0,18}(photo|image|picture|gallery)/, toAccom('photos')),
+        A('text', cName ? `Text & details — ${cName}` : 'Cottage text & details', 'Description and blurb', 'description text blurb wording details about copy', /(edit|change|update|write|rewrite).{0,18}(description|text|blurb|wording|details|copy)/, toAccom('text')),
+        A('faq', cName ? `Questions & answers — ${cName}` : 'Cottage FAQs', 'Common questions guests see', 'faq question answer', /(edit|change|update|add|write).{0,14}(faq|q ?& ?a|question)/, toAccom('faq')),
+        A('arrival', cName ? `Arrival info — ${cName}` : 'Arrival info', 'Pre-arrival email & key details', 'arrival check in directions key access getting there', /(edit|change|update).{0,14}(arrival|check.?in info|directions|key)/, toAccom('arrival')),
+        A('accom', 'Add or remove a cottage', 'Your accommodations', 'cottage property accommodation add remove new delete listing manage', /(add|remove|delete|new).{0,14}(cottage|property|accommodation|listing)/, toManage('accom')),
+        A('content', 'Edit the website', 'Home page, hero image, menu & name', 'website home page homepage hero photo menu logo site name banner front', /(edit|change|update).{0,16}(home ?page|homepage|website|the site|hero|site name|banner|menu)/, toManage('content')),
+        A('calendar', 'Connect a calendar', 'Airbnb, Vrbo & Booking.com sync', 'ical airbnb vrbo booking com channel sync import export feed calendar link connect', /(connect|link|set ?up|add|sync|import).{0,14}(airbnb|vrbo|booking\.?com|ical|channel|calendar|feed)/, toManage('calendar')),
+        A('payset', 'Payment settings', 'Square & deposit policy', 'square card deposit payout stripe money settings takings', /(payment|square|deposit|payout).{0,12}(setting|policy|setup|config)/, toManage('payments')),
+        A('cancel', 'Cancellation policy', 'Refund terms', 'cancel refund policy terms', /(cancel|refund).{0,10}(policy|terms)/, toManage('cancel')),
+        A('backup', 'Back up your data', 'Download a database backup', 'backup back up download export database save copy', /back ?up|download.{0,10}backup|export.{0,10}(data|database|everything)/, toManage('diagnostics')),
+        A('system', 'System check & updates', 'Health, migrations & status', 'status health migration update system check diagnostics upgrade', /(run|do|system).{0,10}(check|migration|update|diagnostic)|health check|check.{0,8}system/, toManage('diagnostics')),
+        A('security', 'Change your sign-in', 'Password & quick sign-in', 'password passkey 2fa face id fingerprint sign in login security change reset', /(change|reset|update|set).{0,14}(password|sign.?in|log ?in|passkey|security)/, toManage('security')),
+        A('notify', 'Notifications', 'Phone alerts', 'notification push alert phone owner', /(edit|change|manage|set|turn).{0,12}notification|push alert/, toManage('notify')),
+        A('newsletter', 'Newsletter & broadcasts', 'Mailing list', 'newsletter broadcast mailing subscribers marketing bulk', /(send|manage|edit|write).{0,12}(newsletter|broadcast|mailing)/, toManage('newsletter')),
+        A('experiences', 'Experiences', 'Local things to do', 'experience things to do activities local attractions', /(edit|add|manage).{0,12}(experience|thing.?to.?do|activit|attraction)/, toManage('experiences')),
+        A('reviews', 'Approve reviews', 'Moderate guest reviews', 'review testimonial star approve moderate import google', /(approve|moderate|manage|import).{0,10}review/, toManage('reviews')),
+        A('gphotos', 'Approve guest photos', 'Moderate shared photos', 'photo wall approve moderate guest shared', /(approve|moderate).{0,10}(guest |shared )?photo/, toManage('photos')),
+        A('guests', 'Guest accounts', 'Look up or reset a guest', 'guest account reset password user look up find', /(reset|look ?up|find|manage).{0,12}(guest|account|user)(.{0,10}password)?/, toManage('guests')),
+        A('away', 'Away auto-reply', 'Out-of-hours acknowledgement', 'away auto reply out of office automation holiday', /(set|edit|turn on|enable).{0,12}(away|auto.?reply|out of office)/, toManage('chat-away')),
+        A('chatans', 'Instant chat answers', 'Auto-answers to chat chips', 'auto answer chat bot faq quick reply automation', /(edit|set).{0,12}(instant |chat )?(answer)|auto.?answer/, toManage('chat-answers')),
+        A('followups', 'Follow-up emails', 'Enquiry & guest nudges', 'follow up nudge reminder anniversary automation email chase', /(edit|set|manage).{0,12}follow.?up/, toManage('follow-ups')),
+        A('activity', 'Activity log', 'Every change & action', 'activity log history audit changes events', /(view|open|show|see).{0,10}(activity|log|history|audit)/, () => { closeCmdK(); nav('view-activity-log'); }),
+    ];
+}
+// Bounded Levenshtein — returns min(distance, max+1); bails as soon as a whole
+// row exceeds the budget, so typo-matching stays cheap on every keystroke.
+function cmdkLev(a, b, max) {
+    const m = a.length, n = b.length;
+    if (Math.abs(m - n) > max) return max + 1;
+    let prev = Array.from({ length: n + 1 }, (_, i) => i);
+    for (let i = 1; i <= m; i++) {
+        const cur = [i];
+        let best = i;
+        for (let j = 1; j <= n; j++) {
+            const cost = a.charCodeAt(i - 1) === b.charCodeAt(j - 1) ? 0 : 1;
+            const v = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
+            cur[j] = v;
+            if (v < best) best = v;
+        }
+        if (best > max) return max + 1;
+        prev = cur;
+    }
+    return prev[n];
+}
+// The words the palette "knows" — used to spell-correct a typo'd query. Built
+// from the action/screen vocabulary + cottage names + live guest first names +
+// the operational question words, so "chekout", "welcom", "custmer" snap back.
+let __cmdkVocab = null;
+let __cmdkVocabStamp = '';
+function cmdkVocab() {
+    const stamp = Object.keys(dbBookings || {}).map((k) => (dbBookings[k] || []).length).join(',') + '|' + Object.keys(propertyMeta || {}).join(',');
+    if (__cmdkVocab && __cmdkVocabStamp === stamp) return __cmdkVocab;
+    const set = new Set();
+    const add = (s) => (s || '').toLowerCase().split(/[^a-z0-9]+/).forEach((w) => { if (w.length >= 4) set.add(w); });
+    // Operational question + domain words.
+    add('booking bookings reservation checkout checkin arrive arrives arriving arrival leaving departing departure staying upcoming today tonight tomorrow available availability vacancy vacant free enquiry enquiries message messages email emails payment payments deposit deposits refund refunded refunds balance outstanding unpaid owes owing paid settled invoice cottage cottages property guest guests customer prices rates pricing seasonal welcome guide house rules photos gallery description arrival calendar airbnb vrbo booking newsletter experiences reviews security password backup migrations notifications cancellation everyone approve approval pending');
+    // Month names.
+    add('january february march april june july august september october november december');
+    // Actions + screens vocabulary.
+    cmdkActions('').forEach((a) => { add(a.label); add(a.kw); });
+    cmdkScreens().forEach((s) => { add(s.label); add(s.kw); });
+    // Cottage names + live guest first names.
+    Object.keys(propertyMeta || {}).forEach((k) => { add(propertyMeta[k] && propertyMeta[k].name); add(k); });
+    Object.keys(dbBookings || {}).forEach((k) => (dbBookings[k] || []).forEach((b) => add(b.name)));
+    (Array.isArray(enquiries) ? enquiries : []).forEach((e) => add(e.name));
+    __cmdkVocab = set;
+    __cmdkVocabStamp = stamp;
+    return set;
+}
+// Auto-correct a typed query against the vocabulary. Short words and exact hits
+// pass through; longer unknown words snap to the closest vocab word within a
+// length-scaled edit budget. Returns { text, changed }.
+function cmdkCorrect(ql) {
+    const vocab = cmdkVocab();
+    let changed = false;
+    const out = ql.split(/\s+/).map((w) => {
+        if (w.length < 4 || vocab.has(w) || /\d/.test(w)) return w;
+        const max = w.length <= 6 ? 1 : 2;
+        let best = null, bestD = 99;
+        vocab.forEach((v) => {
+            if (Math.abs(v.length - w.length) > max) return;
+            const d = cmdkLev(w, v, max);
+            if (d < bestD) { bestD = d; best = v; }
+        });
+        if (best && bestD <= max && best !== w) { changed = true; return best; }
+        return w;
+    });
+    return { text: out.join(' '), changed };
+}
+// Relevance + importance score for a fuzzy candidate. Returns 0 to drop it.
+// Every query word must be present (as a substring OR a close typo of some
+// haystack token); then we weight exactness, where it matched, the result type,
+// and data urgency, so the most important, best-matching rows float to the top.
+function cmdkScore(it, words, ql) {
+    const lab = (it.label || '').toLowerCase();
+    const hay = (lab + ' ' + (it.sub || '') + ' ' + (it.kw || '') + ' ' + it.type).toLowerCase();
+    const tokens = hay.split(/[^a-z0-9.]+/).filter(Boolean);
+    let typoUsed = false;
+    for (const w of words) {
+        if (hay.includes(w)) continue;
+        const max = w.length <= 5 ? 1 : 2;
+        const near = tokens.some((t) => Math.abs(t.length - w.length) <= max && cmdkLev(w, t, max) <= max);
+        if (near) { typoUsed = true; continue; }
+        return 0; // a query word this item can't satisfy → not a match
+    }
+    let score = 1;
+    if (lab === ql) score += 12;
+    else if (lab.startsWith(ql)) score += 7;
+    else if (lab.startsWith(words[0])) score += 4;
+    else if (lab.includes(' ' + words[0])) score += 2;
+    if (words.every((w) => lab.includes(w))) score += 2; // all words hit the label itself
+    const typeW = { booking: 3, enquiry: 3, action: 3, guest: 2, payment: 2, review: 1.5, screen: 1 };
+    score += typeW[it.type] != null ? typeW[it.type] : 1.5;
+    if (it.type === 'booking' && it._urgent) score += 2; // arriving soon / in-house = more important
+    if (typoUsed) score -= 1.5; // prefer exact matches over corrected ones
+    return score;
+}
+function cmdkAll(q) {
     const items = [];
     const propName = (k) => (propertyMeta[k] && propertyMeta[k].name) || k || '';
+    const today = todayDashed();
+    const soon = (() => { const d = new Date(today + 'T00:00:00'); d.setDate(d.getDate() + 14); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; })();
     // The master booking list is dbBookings — an object keyed by prop_key →
     // arrays. Flatten it (the same shape renderBookings uses).
     if (typeof dbBookings === 'object' && dbBookings) {
         Object.keys(dbBookings).forEach((pk) => {
             (dbBookings[pk] || []).forEach((b) => {
+                // Importance signal for ranking: arriving within a fortnight, or
+                // in-house right now, makes a booking float above distant ones.
+                const urgent = !!((b.checkIn && b.checkIn >= today && b.checkIn <= soon) || (b.checkIn && b.checkOut && b.checkIn <= today && b.checkOut > today));
                 items.push({
                     type: 'booking',
                     id: b.id,
+                    _urgent: urgent,
                     label: b.name || '(no name)',
                     sub: `Booking · ${propName(pk)}${b.checkIn ? ' · ' + fmtDate(b.checkIn) : ''}`,
                     run: () => { closeCmdK(); openBookingHub(b.id); },
@@ -238,7 +391,7 @@ function cmdkAll() {
             run: () => { closeCmdK(); openEnquiryHub(e.id); },
         });
     });
-    return items.concat(cmdkScreens());
+    return items.concat(cmdkActions(q)).concat(cmdkScreens());
 }
 // ---- Smart queries: answer operational questions ("who owes money", "leaving
 // today", "who's arriving", "upcoming") from the live booking data. Returns an
@@ -330,30 +483,11 @@ function cmdkIntent(q) {
     };
 
     // 0) Actions / "how do I…" — route a task request straight to the thing that
-    // does it (or the screen where it lives), so "how to add a booking" works.
-    const act = (label, sub, run) => ({ type: 'answer', label, sub, run });
-    const ACTIONS = [
-        [/(add|new|create|make|manual|take|enter).{0,14}(booking|reservation|stay)/, () => act('Add a booking', 'Opens the new-booking form', () => { closeCmdK(); openAddBooking(); })],
-        [/(change|edit|update|set|adjust|raise|lower).{0,14}(price|rate|pricing|cost|nightly|charge)/, () => act('Change your rates', 'Manage ▸ Seasonal rates', () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => settingsOpen('seasongrid')); })],
-        [/block.{0,10}(date|off|out|calendar)|(add|make).{0,10}block/, () => act('Block dates', 'Mark dates unavailable', () => { closeCmdK(); openBlockDates(); })],
-        [/(send|compose|write|new).{0,14}(email|mail)/, () => act('Compose an email', 'Inbox ▸ Email', () => { closeCmdK(); Promise.resolve(openInbox()).then(() => inboxFolder('email')); })],
-        [/(add|remove|delete|new).{0,14}(cottage|property|accommodation)/, () => act('Add or remove a cottage', 'Manage ▸ Cottages', () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => settingsOpen('accom')); })],
-        [/back ?up|download.{0,10}backup/, () => act('Back up your data', 'Manage ▸ Status', () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => settingsOpen('diagnostics')); })],
-        [/(change|reset|update).{0,14}(password|sign.?in|log ?in|passkey)/, () => act('Change your sign-in', 'Manage ▸ Security', () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => settingsOpen('security')); })],
-        [/(edit|change|update).{0,16}(home ?page|homepage|website|the site|hero|site name)/, () => act('Edit the website', 'Manage ▸ Home page & menu', () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => settingsOpen('content')); })],
-        [/(connect|link|set ?up|add).{0,14}(airbnb|vrbo|booking\.?com|ical|channel)/, () => act('Connect a calendar', 'Manage ▸ Calendar sync', () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => settingsOpen('calendar')); })],
-        // Per-cottage photos / text — resolve which cottage from the query.
-        [/(add|upload|change|edit|manage|new).{0,18}(photo|image|picture|gallery)/, () => {
-            const pk = Object.keys(propertyMeta || {}).find((k) => q.includes(k.toLowerCase()) || (propertyMeta[k].name && q.includes(propertyMeta[k].name.toLowerCase())));
-            return act(pk ? `Photos for ${propertyMeta[pk].name}` : 'Cottage photos', pk ? 'Opens its Photos editor' : 'Manage ▸ Cottages ▸ pick a cottage ▸ Photos', () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => { if (pk && typeof settingsOpenAccomSec === 'function') settingsOpenAccomSec(pk, 'photos'); else settingsOpen('accom'); }); });
-        }],
-        [/(edit|change|update|write).{0,18}(description|text|welcome|blurb|wording).{0,10}(cottage|for )?/, () => {
-            const pk = Object.keys(propertyMeta || {}).find((k) => q.includes(k.toLowerCase()) || (propertyMeta[k].name && q.includes(propertyMeta[k].name.toLowerCase())));
-            return act(pk ? `Text for ${propertyMeta[pk].name}` : 'Cottage text', 'Manage ▸ Cottages ▸ Text', () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => { if (pk && typeof settingsOpenAccomSec === 'function') settingsOpenAccomSec(pk, 'text'); else settingsOpen('accom'); }); });
-        }],
-    ];
-    for (const [re, make] of ACTIONS) {
-        if (re.test(q)) return [make()];
+    // does it. Drawn from the shared CMDK_ACTIONS catalog (also fuzzy-searchable
+    // by name/synonym in cmdkAll), so "how to add a booking", "change prices",
+    // "edit the welcome guide for Jollyboat" all land on the right editor.
+    for (const a of cmdkActions(q)) {
+        if (a.re && a.re.test(q)) return [a];
     }
 
     // 0b) A specific guest by name — "have I refunded John?", "has Mary paid?",
@@ -521,41 +655,50 @@ function cmdkIntent(q) {
     return null;
 }
 function cmdkSearch(q) {
-    const ql = (q || '').trim().toLowerCase();
-    if (!ql) {
+    cmdkSearchCore(q, true);
+}
+// The search engine. `allowCorrect` runs the typo auto-corrector first (the
+// "Showing results for…" note re-runs with it off so the owner can force the
+// literal spelling). Order: corrected operational answers → importance-ranked,
+// typo-tolerant fuzzy over bookings/enquiries/actions/screens → server merge.
+function cmdkSearchCore(q, allowCorrect) {
+    const raw = (q || '').trim().toLowerCase();
+    if (!raw) {
         // Empty query → the dock destinations, as quick launchers.
         __cmdkResults = cmdkScreens().slice(0, 6);
         __cmdkSel = 0;
         cmdkRender();
         return;
     }
+    const corr = allowCorrect ? cmdkCorrect(raw) : { text: raw, changed: false };
+    const ql = corr.text;
     let results = [];
     // Smart operational answers lead when the query is a recognised question.
     try {
         const intent = cmdkIntent(ql);
         if (intent) results = intent.slice(0, 11);
     } catch (e) {}
-    // Then the fuzzy name / screen / keyword search, deduped against the answer.
+    // Then the fuzzy name / screen / action / keyword search, deduped against the
+    // answer and ranked by relevance + importance (see cmdkScore).
     const seen = new Set(results.filter((r) => r.id != null).map((r) => r.type + ':' + r.id));
     const words = ql.split(/\s+/).filter(Boolean);
-    const fuzzy = cmdkAll()
+    const fuzzy = cmdkAll(ql)
         .map((it) => {
             if (it.id != null && seen.has(it.type + ':' + it.id)) return null;
-            const hay = (it.label + ' ' + (it.sub || '') + ' ' + (it.kw || '') + ' ' + it.type).toLowerCase();
-            if (!words.every((w) => hay.includes(w))) return null;
-            const lab = it.label.toLowerCase();
-            let score = 1;
-            if (lab.startsWith(words[0])) score += 3;
-            else if (lab.includes(words[0])) score += 1;
-            if (it.type === 'screen') score += 0.5; // screens are cheap, keep them handy
-            return { it, score };
+            const score = cmdkScore(it, words, ql);
+            return score > 0 ? { it, score } : null;
         })
         .filter(Boolean)
         .sort((a, b) => b.score - a.score)
         .slice(0, 12)
         .map((x) => x.it);
-    __cmdkResults = results.concat(fuzzy).slice(0, 18);
-    __cmdkSel = 0;
+    // A quiet "Showing results for '<corrected>'" chip when we fixed a typo, with
+    // a one-tap escape hatch back to the literal spelling.
+    const note = corr.changed
+        ? [{ type: 'answer', id: 'cmdk-correction', label: `Showing results for “${ql}”`, sub: `Search instead for “${raw}”`, run: () => { const el = document.getElementById('cmdk-input'); if (el) el.value = raw; cmdkSearchCore(raw, false); } }]
+        : [];
+    __cmdkResults = note.concat(results).concat(fuzzy).slice(0, 18);
+    __cmdkSel = note.length && __cmdkResults.length > 1 ? 1 : 0; // keep the top real result selected, not the note
     cmdkRender();
     // Deep index search runs server-side (emails, messages, invoices, guests,
     // reviews, activity — everything not held in the browser) and merges in when
