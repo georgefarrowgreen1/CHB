@@ -1685,15 +1685,16 @@ async function setAccommodationPrivate(k, makePrivate) {
 }
 async function archiveAccommodation(k) {
     const name = (propertyMeta[k] && propertyMeta[k].name) || k;
-    const ok = await glassConfirm(
-        `Remove "${name}" from the site?\n\nIt’s hidden from guests and new bookings, but its past bookings, payments and history are kept — you can restore it any time.`,
-    );
-    if (!ok) return;
+    // Archiving is fully reversible (restore), so skip the confirm dialog and
+    // offer an immediate Undo instead — one tap, with a safety net right there.
     try {
         await apiPost('rates.php', { action: 'archive', prop_key: k });
         await loadRates();
         await renderAccomList();
-        toast(`"${name}" is now hidden from your website. You can bring it back anytime.`);
+        toast(`"${name}" removed from the site — bookings & history kept.`, undefined, {
+            label: 'Undo',
+            fn: () => restoreAccommodation(k),
+        });
     } catch (e) {
         glassAlert("Couldn't remove it: " + (e && e.message ? e.message : e));
     }
@@ -8694,7 +8695,7 @@ async function expDelete(id) {
         if (row) row.remove();
         return;
     }
-    if (!confirm('Delete this experience?')) return;
+    if (!(await glassConfirm('Delete this experience?'))) return;
     try {
         await apiPost('experiences.php', { action: 'delete', id });
         await loadExperiencesAdmin();
