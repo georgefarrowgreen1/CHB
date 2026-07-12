@@ -93,7 +93,13 @@ try {
 // ---- Pending enquiries --------------------------------------------------
 $pending = 0;
 try {
-    $pending = (int) db()->query('SELECT COUNT(*) FROM enquiries')->fetchColumn();
+    // Live enquiries only (declined ones are soft-deleted); fall back for a
+    // pre-migration database that lacks the column.
+    try {
+        $pending = (int) db()->query('SELECT COUNT(*) FROM enquiries WHERE declined_at IS NULL')->fetchColumn();
+    } catch (\Throwable $inner) {
+        $pending = (int) db()->query('SELECT COUNT(*) FROM enquiries')->fetchColumn();
+    }
 } catch (\Throwable $e) {
 }
 

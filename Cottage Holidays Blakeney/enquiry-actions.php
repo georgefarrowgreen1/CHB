@@ -23,10 +23,32 @@ function enquiry_action_token($id, $action)
 
 function enquiry_decline($id)
 {
-    db()
-        ->prepare('DELETE FROM enquiries WHERE id = ?')
-        ->execute([(int) $id]);
+    // SOFT delete — stamp declined_at so the enquiry drops out of every admin
+    // list but the row survives for an Undo / restore. (Older databases without
+    // the column fall back to a hard delete so decline still works pre-migration.)
+    try {
+        db()
+            ->prepare('UPDATE enquiries SET declined_at = NOW() WHERE id = ?')
+            ->execute([(int) $id]);
+    } catch (\Throwable $e) {
+        db()
+            ->prepare('DELETE FROM enquiries WHERE id = ?')
+            ->execute([(int) $id]);
+    }
     return ['ok' => true];
+}
+
+// Undo a decline — clear the timestamp so the enquiry returns to the inbox.
+function enquiry_undecline($id)
+{
+    try {
+        db()
+            ->prepare('UPDATE enquiries SET declined_at = NULL WHERE id = ?')
+            ->execute([(int) $id]);
+        return ['ok' => true];
+    } catch (\Throwable $e) {
+        return ['ok' => false, 'error' => 'This enquiry can no longer be restored.'];
+    }
 }
 
 // $priceOverride: optional agreed total (£) negotiated with the guest — parity

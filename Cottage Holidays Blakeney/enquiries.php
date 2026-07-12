@@ -14,7 +14,14 @@ require_once __DIR__ . '/enquiry-actions.php'; // shared approve/decline logic +
 // SAME data in its combined back-office boot response. Caller must require_admin.
 function enquiries_admin_payload()
 {
-    $rows = db()->query('SELECT * FROM enquiries ORDER BY created_at ASC')->fetchAll();
+    // Live enquiries only — declined ones are soft-deleted (declined_at set).
+    // Fall back to the unfiltered query if the column doesn't exist yet (the
+    // brief window after a deploy but before migrate.php adds it).
+    try {
+        $rows = db()->query('SELECT * FROM enquiries WHERE declined_at IS NULL ORDER BY created_at ASC')->fetchAll();
+    } catch (\Throwable $e) {
+        $rows = db()->query('SELECT * FROM enquiries ORDER BY created_at ASC')->fetchAll();
+    }
     // Repeat-guest recognition: tag each enquiry with how many COMPLETED stays the
     // same email has already had (matched case-insensitively), plus when/where the
     // most recent one ended. Lets the inbox badge returning guests. Cached per email
@@ -439,6 +446,16 @@ require_admin();
 if ($action === 'decline') {
     $r = enquiry_decline((int) ($in['id'] ?? 0));
     log_activity('enquiry', 'enquiry.decline', 'Enquiry declined', ['entity' => 'enquiry', 'entity_id' => (string) (int) ($in['id'] ?? 0)]);
+    json_out($r);
+}
+
+// Undo a decline (soft delete) — return the enquiry to the inbox.
+if ($action === 'restore' || $action === 'undecline') {
+    require_admin();
+    $r = enquiry_undecline((int) ($in['id'] ?? 0));
+    if (!empty($r['ok'])) {
+        log_activity('enquiry', 'enquiry.restore', 'Declined enquiry restored', ['entity' => 'enquiry', 'entity_id' => (string) (int) ($in['id'] ?? 0)]);
+    }
     json_out($r);
 }
 
