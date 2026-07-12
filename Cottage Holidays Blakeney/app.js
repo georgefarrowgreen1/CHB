@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 91;
+const ADMIN_BUNDLE_V = 92;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -54,7 +54,7 @@ function loadAdminBundle() {
     __adminBundlePromise = attempt(2);
     return __adminBundlePromise;
 }
-["accountsBack","accountsOpen","accountsShowIndex","activityLogSearch","addAdminPasskey","addReviewRow","afterPaymentChange","autoSyncIcalBlocks","backfillWebp","bookingHubBack","bookingsSetFilter","bookingsSetSearch","bulkImportReviews","changeAdminPassword","changeMonth","timelineToday","inboxSub","inboxSubClose","inboxFolder","initBackOffice","closeBreakdownModal","diagnoseReplyEmail","closeEnquiryEmailModal","addComposeAttachments","previewComposedEmail","sendEnquiryEmail","backToComposeEdit","loadAdminMessages","loadDiagnostics","logoutStaff","offerUpdatedConfirmationEmail","openAccounts","openAddBooking","openArea","openBlockDates","openBookings","openBookingEmail","openBookingHub","openEnquiryHub","enquiryHubBack","openInbox","openSettings","openStagingSite","refreshModerationCounts","renderAccounts","renderActivityLog","renderBookings","renderCalendar","renderExpenses","renderInbox","renderMoneyOverview","requestPayment","renderSquareSettings","runMigrations","saveApiKey","saveContactPhone","saveContent","saveDepositPct","saveGoogleReviewUrl","saveHostText","saveReviews","sendBroadcast","sendSampleEmails","sendTestEmail","settingsBack","settingsFilter","settingsOpen","settingsOpenAccom","settingsOpenAccomSec","settingsOpenCalendar","settingsOpenCancel","settingsSearchKey","settingsShowIndex","tryAccessBackOffice","uploadHostPhoto"].forEach((n) => {
+["accountsBack","accountsOpen","accountsShowIndex","activityLogSearch","addAdminPasskey","addReviewRow","afterPaymentChange","autoSyncIcalBlocks","backfillWebp","bookingHubBack","bookingsSetFilter","bookingsSetSearch","bulkImportReviews","changeAdminPassword","changeMonth","timelineToday","inboxFolder","initBackOffice","closeBreakdownModal","diagnoseReplyEmail","closeEnquiryEmailModal","addComposeAttachments","previewComposedEmail","sendEnquiryEmail","backToComposeEdit","loadAdminMessages","loadDiagnostics","logoutStaff","offerUpdatedConfirmationEmail","openAccounts","openAddBooking","openArea","openBlockDates","openBookings","openBookingEmail","openBookingHub","openEnquiryHub","enquiryHubBack","openInbox","openSettings","openStagingSite","refreshModerationCounts","renderAccounts","renderActivityLog","renderBookings","renderCalendar","renderExpenses","renderInbox","renderMoneyOverview","requestPayment","renderSquareSettings","runMigrations","saveApiKey","saveContactPhone","saveContent","saveDepositPct","saveGoogleReviewUrl","saveHostText","saveReviews","sendBroadcast","sendSampleEmails","sendTestEmail","settingsBack","settingsFilter","settingsOpen","settingsOpenAccom","settingsOpenAccomSec","settingsOpenCalendar","settingsOpenCancel","settingsSearchKey","settingsShowIndex","tryAccessBackOffice","uploadHostPhoto"].forEach((n) => {
     const stub = (...a) =>
         loadAdminBundle()
             .catch((e) => {
@@ -1723,12 +1723,7 @@ async function refreshOwnerHomeBadges() {
     }
 }
 // Fill the Inbox screen — also called from nav() so a history/back restore repaints it.
-// __inboxSubStamp: bumped by inboxSub() (admin.js); the tail below only resets
-// to the main list if NO sub-folder was opened while the awaits were in flight
-// (a history replay opens one right after nav() returns — don't close it again).
-let __inboxSubStamp = 0;
 async function renderInboxScreen() {
-    const stamp = __inboxSubStamp;
     try {
         await loadData();
     } catch (e) {}
@@ -1740,9 +1735,6 @@ async function renderInboxScreen() {
     } catch (e) {}
     try {
         await loadAdminMessages();
-    } catch (e) {}
-    try {
-        if (stamp === __inboxSubStamp) inboxSubClose(); // land on the inbox itself unless a sub was just restored
     } catch (e) {}
     try {
         refreshModerationCounts();
@@ -10154,10 +10146,6 @@ window.addEventListener('popstate', (ev) => {
         try {
             if (st.view === 'view-inbox') {
                 nav('view-inbox'); // nav() repaints the inbox screen
-                // Restore the exact level: a sub-folder if one was open, else
-                // make sure the main list shows (Back out of a sub-folder).
-                if (st.inboxSub) inboxSub(st.inboxSub);
-                else inboxSubClose();
             } else if (st.view === 'view-settings') {
                 nav('view-settings');
                 if (st.section) {
@@ -12020,7 +12008,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'mshgemod';
+    const BUILD = 'mshgmsgs';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
