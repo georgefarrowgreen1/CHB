@@ -1007,3 +1007,173 @@ body.owner-mode #mobileMenu {
 .empty-state-action {
   margin-top: 10px;
 }
+
+/* ---- Command palette (⌘K) — owner-only. The FAB sits above the dock; both
+   the FAB and overlay start display:none inline so guests never see them. ---- */
+body.owner-mode #cmdk-fab {
+  display: flex !important; /* beats the guest-safe inline display:none */
+}
+.cmdk-fab {
+  position: fixed;
+  right: 20px;
+  bottom: 104px;
+  z-index: 1400;
+  width: 48px;
+  height: 48px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-pill);
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-filter);
+  -webkit-backdrop-filter: var(--glass-filter);
+  box-shadow: var(--shadow-soft);
+  color: var(--text-light);
+  cursor: pointer;
+  transition:
+    transform 0.2s var(--spring),
+    background 0.2s var(--fluid-bezier);
+}
+.cmdk-fab:hover {
+  background: var(--glass-hover);
+  transform: translateY(-2px);
+}
+.cmdk-fab:active {
+  transform: scale(0.94);
+}
+.cmdk-fab .ic,
+.cmdk-fab svg {
+  width: 22px;
+  height: 22px;
+}
+.cmdk-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  /* display toggled inline by openCmdK/closeCmdK */
+  align-items: flex-start;
+  justify-content: center;
+  padding: 12vh 16px 16px;
+  background: rgba(10, 14, 18, 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: cmdkFade 0.16s var(--fluid-bezier);
+}
+@keyframes cmdkFade {
+  from {
+    opacity: 0;
+  }
+}
+.cmdk-box {
+  width: 100%;
+  max-width: 560px;
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-highlight);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-float);
+  backdrop-filter: var(--glass-filter);
+  -webkit-backdrop-filter: var(--glass-filter);
+  overflow: hidden;
+  animation: cmdkRise 0.22s var(--fluid-bezier);
+}
+@keyframes cmdkRise {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+}
+.cmdk-search {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--glass-border);
+}
+.cmdk-search .ic {
+  width: 20px;
+  height: 20px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.cmdk-search input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text-light);
+  font: inherit;
+  font-size: 1.05rem;
+}
+.cmdk-results {
+  overflow-y: auto;
+  padding: 8px;
+}
+.cmdk-none {
+  padding: 22px 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+.cmdk-row {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  border-radius: var(--r-sm);
+  padding: 11px 12px;
+  cursor: pointer;
+  color: var(--text-light);
+}
+.cmdk-row.is-sel,
+.cmdk-row:hover {
+  background: var(--glass-hover);
+}
+.cmdk-row-ic {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-sm);
+  background: rgba(127, 127, 127, 0.12);
+}
+.cmdk-row-ic .ic {
+  width: 17px;
+  height: 17px;
+}
+.cmdk-row-ic.cmdk-booking .ic {
+  color: var(--accent);
+}
+.cmdk-row-ic.cmdk-enquiry .ic {
+  color: var(--sky, var(--accent));
+}
+.cmdk-row-ic.cmdk-screen .ic {
+  color: var(--text-muted);
+}
+.cmdk-row-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+.cmdk-row-label {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cmdk-row-sub {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

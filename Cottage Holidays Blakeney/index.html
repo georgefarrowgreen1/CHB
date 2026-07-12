@@ -251,6 +251,23 @@
         </nav>
     </div>
 
+    <!-- Command palette: jump to any booking, enquiry or screen. Owner-only —
+         the FAB is revealed by admin.css in owner-mode; both start display:none
+         inline so a guest (who never loads admin.css/admin.js) never sees them.
+         Opened by the FAB or ⌘K / Ctrl-K; wired in admin.js. -->
+    <button id="cmdk-fab" class="cmdk-fab" aria-label="Search the back office" title="Search (⌘K)" onclick="openCmdK()" style="display:none;">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+    </button>
+    <div id="cmdk" class="cmdk-overlay" role="dialog" aria-modal="true" aria-label="Search the back office" style="display:none;" onclick="if(event.target===this) closeCmdK()">
+        <div class="cmdk-box">
+            <div class="cmdk-search">
+                <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+                <input id="cmdk-input" type="text" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Search bookings, enquiries &amp; screens…" oninput="cmdkSearch(this.value)" onkeydown="cmdkKey(event)" aria-label="Search bookings, enquiries and screens" aria-controls="cmdk-results">
+            </div>
+            <div id="cmdk-results" class="cmdk-results" role="listbox"></div>
+        </div>
+    </div>
+
     <div class="mobile-nav-overlay" id="mobileMenu">
         <a href="/" onclick="event.preventDefault(); toggleMobileMenu(); nav('view-main')" data-edit-text="mnav-home">Home</a>
         <a href="/#cottages" onclick="event.preventDefault(); toggleMobileMenu(); nav('view-cottages')" data-edit-text="mnav-cottages">Cottages</a>
@@ -2386,7 +2403,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=300"></script>
+    <script defer src="app.js?v=301"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
