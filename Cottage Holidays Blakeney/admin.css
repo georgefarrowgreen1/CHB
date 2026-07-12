@@ -987,44 +987,9 @@ body.owner-mode #mobileMenu {
   margin-top: 10px;
 }
 
-/* ---- Command palette (⌘K) — owner-only. The FAB sits above the dock; both
-   the FAB and overlay start display:none inline so guests never see them. ---- */
-body.owner-mode #cmdk-fab {
-  display: flex !important; /* beats the guest-safe inline display:none */
-}
-.cmdk-fab {
-  position: fixed;
-  right: 20px;
-  bottom: 104px;
-  z-index: 1400;
-  width: 48px;
-  height: 48px;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-pill);
-  background: var(--glass-bg);
-  backdrop-filter: var(--glass-filter);
-  -webkit-backdrop-filter: var(--glass-filter);
-  box-shadow: var(--shadow-soft);
-  color: var(--text-light);
-  cursor: pointer;
-  transition:
-    transform 0.2s var(--spring),
-    background 0.2s var(--fluid-bezier);
-}
-.cmdk-fab:hover {
-  background: var(--glass-hover);
-  transform: translateY(-2px);
-}
-.cmdk-fab:active {
-  transform: scale(0.94);
-}
-.cmdk-fab .ic,
-.cmdk-fab svg {
-  width: 22px;
-  height: 22px;
-}
+/* ---- Command palette (⌘K) — owner-only. Opened from the dock's Search
+   button (or ⌘K); the overlay starts display:none inline so guests never
+   see it. ---- */
 .cmdk-overlay {
   position: fixed;
   inset: 0;

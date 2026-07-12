@@ -265,7 +265,7 @@ async function waitForServer(url, tries = 40) {
     await page.waitForTimeout(700);
     (await page.evaluate(() => (document.querySelector('.page-view.active') || {}).id)) === 'view-backoffice' ? pass('bookings workspace lives on the dashboard') : fail('openBookings did not land on the dashboard');
     (await page.evaluate(() => !!document.querySelector('#view-backoffice #bookings-workspace') && !document.getElementById('view-bookings'))) ? pass('workspace merged; old Bookings page gone') : fail('view-bookings shell still present');
-    (await page.evaluate(() => document.querySelectorAll('.admin-dock-btn').length)) === 4 ? pass('dock has 4 admin buttons') : fail('dock button count wrong');
+    (await page.evaluate(() => document.querySelectorAll('.admin-dock-btn').length)) === 5 ? pass('dock has 5 admin buttons (Today, Inbox, Payments, Manage, Search)') : fail('dock button count wrong');
     (await page.locator('#bookings-list .bk-row').count()) === 2 ? pass('upcoming bookings listed (2)') : fail('bookings list count wrong: ' + (await page.locator('#bookings-list .bk-row').count()));
     // At 1280px this is a master–detail dashboard: the first booking's hub
     // auto-docks in the right-hand pane and its row highlights.
