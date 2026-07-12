@@ -170,6 +170,8 @@ function cmdkIcon(type) {
         return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 3h9l5 5v13H5z"/><path d="M14 3v5h5M8.5 13h7M8.5 17h7"/></svg>';
     if (type === 'field')
         return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
+    if (type === 'sheet')
+        return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>';
     return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>';
 }
 // ============================================================
@@ -482,7 +484,7 @@ function cmdkScore(it, words, ql) {
     else if (lab.startsWith(words[0])) score += 4;
     else if (lab.includes(' ' + words[0])) score += 2;
     if (words.every((w) => lab.includes(w))) score += 2; // all words hit the label itself
-    const typeW = { booking: 3, enquiry: 3, action: 3, field: 2.5, guest: 2, payment: 2, review: 1.5, screen: 1 };
+    const typeW = { booking: 3, enquiry: 3, action: 3, field: 2.5, sheet: 2.5, guest: 2, payment: 2, review: 1.5, screen: 1 };
     score += typeW[it.type] != null ? typeW[it.type] : 1.5;
     if (it.type === 'booking' && it._urgent) score += 2; // arriving soon / in-house = more important
     if (typoUsed) score -= 1.5; // prefer exact matches over corrected ones
@@ -548,7 +550,7 @@ function cmdkAll(q) {
             run: () => { closeCmdK(); openEnquiryHub(e.id); },
         });
     });
-    return items.concat(cmdkActions(q)).concat(cmdkScreens()).concat(cmdkFields(q));
+    return items.concat(cmdkActions(q)).concat(cmdkScreens()).concat(cmdkFields(q)).concat(cmdkSheets(q));
 }
 // ---- Smart queries: answer operational questions ("who owes money", "leaving
 // today", "who's arriving", "upcoming") from the live booking data. Returns an
@@ -1412,7 +1414,7 @@ const CMDK_EXAMPLES = ['who owes me money', "who's leaving today", 'revenue this
 function cmdkSection(type) {
     if (type === 'answer' || type === 'figure') return { key: 'answers', label: 'Answers', order: 0 };
     if (type === 'action') return { key: 'actions', label: 'Actions', order: 1 };
-    if (type === 'field') return { key: 'edit', label: 'Edit here', order: 1.5 };
+    if (type === 'field' || type === 'sheet') return { key: 'edit', label: 'Edit here', order: 1.5 };
     if (type === 'booking' || type === 'enquiry' || type === 'external') return { key: 'bookings', label: 'Bookings & enquiries', order: 2 };
     if (type === 'content') return { key: 'content', label: 'Website content', order: 2.5 };
     if (type === 'screen') return { key: 'screens', label: 'Screens', order: 4 };
@@ -1605,6 +1607,62 @@ function cmdkScrollSel() {
     const row = document.querySelector('#cmdk-results .cmdk-row.is-sel');
     if (row && row.scrollIntoView) row.scrollIntoView({ block: 'nearest' });
 }
+// ---- Tier-2 "section sheet": host a whole structured editor (e.g. the seasonal
+// rate grid) INSIDE the palette by physically re-parenting its real
+// #sec-<section> node — same DOM, same handlers (they're id-based, so parentage
+// doesn't matter), zero duplication. The node is ALWAYS restored to Manage on
+// close — including if the palette is dismissed — so the section can't go missing.
+let __cmdkSheet = null; // { node, parent, next, display, section }
+function cmdkSheets(q) {
+    // Structured editors that open as a palette sheet rather than routing away.
+    // (Fields safe to edit in isolation live in cmdkFields; these are the ones
+    // whose parts relate to each other, so we host the real screen instead.)
+    return [{
+        type: 'sheet', id: 'sheet-seasongrid',
+        label: 'Seasonal rates — all cottages',
+        sub: 'Edit here · pricing grid',
+        kw: 'season seasonal rate rates grid pricing all cottages summer christmas peak holiday band',
+        run: () => cmdkSheetOpen('seasongrid', 'Seasonal rates'),
+    }];
+}
+function cmdkSheetRender(section) {
+    if (section === 'seasongrid' && typeof renderSeasonGrid === 'function') renderSeasonGrid();
+    // (future structured editors wire their render here)
+}
+function cmdkSheetOpen(section, title) {
+    const sec = document.getElementById('sec-' + section);
+    const box = document.getElementById('cmdk-results');
+    const cmdk = document.getElementById('cmdk');
+    if (!sec || !box) return;
+    try { cmdkSheetRender(section); } catch (e) {}
+    // Remember exactly where the node lived so it goes back in place.
+    __cmdkSheet = { node: sec, parent: sec.parentNode, next: sec.nextSibling, display: sec.style.display, section };
+    box.innerHTML =
+        `<div class="cmdk-group-label">Edit · ${escapeHtml(title || section)}</div>` +
+        `<button type="button" class="cmdk-ex cmdk-back" onclick="cmdkSheetClose()">‹ Back to results</button>` +
+        `<div class="cmdk-sheet-host" id="cmdk-sheet-host"></div>`;
+    const host = document.getElementById('cmdk-sheet-host');
+    if (host) { sec.style.display = ''; host.appendChild(sec); }
+    if (cmdk) cmdk.classList.add('cmdk-sheet');
+}
+// Put the borrowed section node back where it belongs — used on Back AND on any
+// palette dismissal — leaving Manage intact.
+function cmdkSheetRestore() {
+    const s = __cmdkSheet;
+    __cmdkSheet = null;
+    const cmdk = document.getElementById('cmdk');
+    if (cmdk) cmdk.classList.remove('cmdk-sheet');
+    if (!s || !s.node || !s.parent) return;
+    s.node.style.display = s.display || 'none';
+    if (s.next && s.next.parentNode === s.parent) s.parent.insertBefore(s.node, s.next);
+    else s.parent.appendChild(s.node);
+}
+function cmdkSheetClose() {
+    cmdkSheetRestore();
+    const el = document.getElementById('cmdk-input');
+    if (el) { try { el.focus(); } catch (e) {} }
+    cmdkSearchCore(el ? el.value : '', true);
+}
 function openCmdK() {
     const o = document.getElementById('cmdk');
     const inp = document.getElementById('cmdk-input');
@@ -1618,6 +1676,9 @@ function openCmdK() {
 }
 function closeCmdK() {
     const o = document.getElementById('cmdk');
+    // If a Tier-2 sheet borrowed a Manage section, hand it back before closing so
+    // the section can never be left orphaned inside the palette.
+    if (__cmdkSheet) { try { cmdkSheetRestore(); } catch (e) {} }
     if (o) o.style.display = 'none';
 }
 // ⌘K / Ctrl-K toggles the palette (owner only). Registered once on bundle load.

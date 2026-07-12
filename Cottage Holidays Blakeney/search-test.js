@@ -155,6 +155,20 @@ if (Array.isArray(fields)) {
 }
 check('cmdkFieldOpen/Save/Back editor fns are defined', typeof ctx.cmdkFieldOpen === 'function' && typeof ctx.cmdkFieldSave === 'function' && typeof ctx.cmdkFieldBack === 'function');
 
+// ---- 7. Tier-2 section sheets (cmdkSheets) — host a real screen in the palette ----
+const sheets = typeof ctx.cmdkSheets === 'function' ? ctx.cmdkSheets('') : null;
+check('cmdkSheets() is defined and returns a non-empty list', Array.isArray(sheets) && sheets.length > 0, typeof ctx.cmdkSheets);
+if (Array.isArray(sheets)) {
+    check('every sheet has type "sheet"', sheets.every((s) => s.type === 'sheet'));
+    check('every sheet has a run() function', sheets.every((s) => typeof s.run === 'function'));
+    check('every sheet has a non-empty label', sheets.every((s) => typeof s.label === 'string' && s.label.trim()));
+    check('sheet ids are unique', new Set(sheets.map((s) => s.id)).size === sheets.length);
+    // Each sheet must target a REAL #sec-<section> page (parsed from its run source).
+    const sheetSecs = sheets.map((s) => { const m = /cmdkSheetOpen\(\s*'([a-z0-9-]+)'/.exec(String(s.run)); return m ? m[1] : null; });
+    check('every sheet targets a real #sec-<section> page', sheetSecs.every((id) => id && pageSecs.has(id)), 'bad: ' + sheetSecs.join(', '));
+}
+check('cmdkSheetOpen/Close/Restore fns are defined', typeof ctx.cmdkSheetOpen === 'function' && typeof ctx.cmdkSheetClose === 'function' && typeof ctx.cmdkSheetRestore === 'function');
+
 // ---- Summary ----
 console.log('\n== Summary ==');
 if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }
