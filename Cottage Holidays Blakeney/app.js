@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 88;
+const ADMIN_BUNDLE_V = 89;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -8531,18 +8531,23 @@ function glassForm(message, fields) {
 // if a preview can't be produced, falls back to a plain confirm so sending is
 // never blocked. ----
 async function previewAndSendEmail(opts) {
-    // opts: { id, kind, to, sendLabel, doSend, fallbackConfirm }
+    // opts: { id, kind, to, sendLabel, doSend, fallbackConfirm, render? }
+    //   render(): optional async () => {ok,subject,html,text} — a custom source
+    //   (e.g. an enquiry's approval confirmation). Defaults to bookings.php
+    //   email_render for id+kind.
     let subject = '',
         html = '',
         text = '',
         got = false;
     try {
-        const r = await apiPost('bookings.php', { action: 'email_render', id: opts.id, kind: opts.kind });
+        const r = opts.render
+            ? await opts.render()
+            : await apiPost('bookings.php', { action: 'email_render', id: opts.id, kind: opts.kind });
         if (r && r.ok) {
             subject = r.subject || '';
             html = r.html || '';
             text = r.text || '';
-            got = true;
+            got = !!(r.html || r.text || r.subject);
         }
     } catch (e) {}
     const ok = got
@@ -12004,7 +12009,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'mrhbmail';
+    const BUILD = 'mrhcaprv';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

@@ -51,6 +51,89 @@ function enquiry_undecline($id)
     }
 }
 
+// Render the confirmation email an approval WOULD send, from the enquiry's data,
+// WITHOUT creating the booking or sending anything — so the owner can review it
+// before tapping Approve. Mirrors the payload enquiry_approve() builds, captured
+// via mail_preview. Returns { ok, subject, html, text } or { ok:false, error }.
+function enquiry_confirmation_preview($id, $priceOverride = null)
+{
+    $id = (int) $id;
+    $priceOverride =
+        $priceOverride !== null && $priceOverride !== '' && (float) $priceOverride > 0
+            ? round((float) $priceOverride, 2)
+            : null;
+    $stmt = db()->prepare('SELECT * FROM enquiries WHERE id = ?');
+    $stmt->execute([$id]);
+    $e = $stmt->fetch();
+    if (!$e) {
+        return ['ok' => false, 'error' => 'Enquiry not found'];
+    }
+    if (empty($e['email'])) {
+        return ['ok' => false, 'error' => 'This enquiry has no email address, so no confirmation would be sent.'];
+    }
+    $rate = get_rate($e['prop_key']);
+    if (!$rate) {
+        return ['ok' => false, 'error' => 'Property not found'];
+    }
+    require_once __DIR__ . '/mailer.php';
+    if (!function_exists('mail_preview_start')) {
+        return ['ok' => false, 'error' => 'Preview isn’t available on this version.'];
+    }
+    $p = price_breakdown($rate, $e['adults'], $e['children'], $e['check_in'], $e['check_out']);
+    $agreedTotal = $priceOverride !== null ? $priceOverride : $p['total'];
+    // A realistic reference for the preview (the real one is minted on approval).
+    $nextId = 0;
+    try {
+        $nextId = (int) db()->query('SELECT COALESCE(MAX(id),0)+1 FROM bookings')->fetchColumn();
+    } catch (\Throwable $ex) {
+    }
+    $ref = 'CHB-' . str_pad(substr(preg_replace('/\D/', '', (string) $nextId), -6), 6, '0', STR_PAD_LEFT);
+    mail_preview_start();
+    try {
+        send_booking_emails([
+            'name' => $e['name'],
+            'email' => $e['email'],
+            'phone' => $e['phone'] ?? '',
+            'prop_key' => $e['prop_key'],
+            'prop_name' => $rate['name'] ?? $e['prop_key'],
+            'address' => $rate['address'] ?? '',
+            'check_in' => $e['check_in'],
+            'check_out' => $e['check_out'],
+            'check_in_time' => $e['check_in_time'] ?? '15:00',
+            'check_out_time' => $e['check_out_time'] ?? '10:00',
+            'nights' => $p['nights'],
+            'per_night' => $p['perNight'],
+            'nightly' => $p['nightly'],
+            'tx_pct' => $p['transactionPct'],
+            'tx_fee' => $p['txFee'],
+            'adults' => $e['adults'],
+            'children' => $e['children'],
+            'total' => $agreedTotal,
+            'damages_deposit' => $p['damagesDeposit'] ?? 0,
+            'payment' => 'unpaid',
+            'ref' => $ref,
+            'defer_owner' => true, // guest copy only for the preview
+        ]);
+    } catch (\Throwable $ex) {
+        // fall through to the empty-capture handling below
+    }
+    $caps = function_exists('mail_preview_take') ? mail_preview_take() : [];
+    $pick = null;
+    foreach ($caps as $c) {
+        if (strcasecmp($c['to'], (string) $e['email']) === 0) {
+            $pick = $c;
+            break;
+        }
+    }
+    if (!$pick && $caps) {
+        $pick = $caps[0];
+    }
+    if (!$pick) {
+        return ['ok' => false, 'error' => 'That confirmation can’t be previewed right now.'];
+    }
+    return ['ok' => true, 'subject' => $pick['subject'], 'html' => $pick['html'], 'text' => $pick['text']];
+}
+
 // $priceOverride: optional agreed total (£) negotiated with the guest — parity
 // with the manual Add Booking's "Override total price". Null/blank/≤0 = standard.
 function enquiry_approve($id, $priceOverride = null)
