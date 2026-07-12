@@ -1270,6 +1270,68 @@ body.owner-mode #mobileMenu {
   border-color: var(--accent);
   outline: none;
 }
+/* Inline field editor — edit a setting right inside ⌘K (Tier-1 edit-in-search).
+   Opened when a "Edit here" result is chosen; Save writes through the field's own
+   endpoint (the same one its Manage screen uses). */
+.cmdk-editor {
+  padding: 8px 6px 6px;
+}
+.cmdk-editor-hint {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin: 2px 2px 11px;
+  line-height: 1.45;
+}
+.cmdk-editor-input {
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--glass-border);
+  color: var(--text-light);
+  padding: 11px 13px;
+  border-radius: var(--r-panel);
+  font-family: var(--font-sans);
+  font-size: 0.95rem;
+  line-height: 1.5;
+  resize: vertical;
+}
+.cmdk-editor-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.cmdk-editor-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+}
+.cmdk-editor-save {
+  margin-left: auto;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--r-pill);
+  padding: 9px 22px;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: filter 0.14s var(--fluid-bezier);
+}
+.cmdk-editor-save:hover,
+.cmdk-editor-save:focus-visible {
+  filter: brightness(1.06);
+  outline: none;
+}
+.cmdk-editor-msg {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+}
+.cmdk-editor-msg.is-ok {
+  color: var(--ok);
+}
+.cmdk-editor-msg.is-err {
+  color: var(--danger);
+}
 /* Quick-actions revealed under the selected result — act without leaving search. */
 .cmdk-actbar {
   display: flex;
