@@ -958,9 +958,8 @@
         <div id="bookings-main">
             <h2 class="bo-sec-title">Bookings</h2>
             <div id="bookings-summary" style="font-size:0.85rem;color:var(--text-muted);margin:2px 0 12px;"></div>
-            <div class="bo-search" style="margin-top:4px;">
-                <input type="search" class="input-glass" id="bookings-search" placeholder="Find a booking — guest name, email or reference…" autocomplete="off" oninput="bookingsSetSearch(this.value)">
-            </div>
+            <!-- Per-page search removed — the back-office ⌘K search covers finding a
+                 booking by guest, email or reference. The filters below stay. -->
             <div class="inbox-sort seg" id="bookings-filters" role="tablist" aria-label="Filter bookings">
                 <button class="inbox-sort-btn is-on" role="tab" onclick="bookingsSetFilter('upcoming')" data-bfilter="upcoming">Upcoming</button>
                 <button class="inbox-sort-btn" role="tab" onclick="bookingsSetFilter('needspay')" data-bfilter="needspay">Needs payment</button>
@@ -1054,7 +1053,12 @@
             </div>
             <!-- Messages folder (guest chat + the comms automations) -->
             <div id="inbox-folder-messages" style="display:none;">
-            <h2 class="bo-sec-title">Guest messages <span class="inbox-badge zero" id="messages-badge">0</span></h2>
+            <div class="msg-head-row" style="display:flex;align-items:center;justify-content:space-between;gap:10px 14px;flex-wrap:wrap;">
+                <h2 class="bo-sec-title" style="margin:0;">Guest messages <span class="inbox-badge zero" id="messages-badge">0</span></h2>
+                <!-- Show-archived toggle docks here, to the RIGHT of the heading
+                     (renderMessages fills it); frees the controls row below. -->
+                <span id="messages-head-actions"></span>
+            </div>
             <div id="messages-list"><!-- JS injects message threads here --></div>
             <!-- Comms automation (instant answers, away reply, follow-up emails)
                  lives in Manage → Messages now, not here. -->
@@ -1321,7 +1325,7 @@
             </div>
 
             <div class="settings-sec" id="sec-diagnostics" style="display:none;">
-                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 14px;">Green is good; amber is something optional that's switched off; red needs your attention.</p>
+                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 14px;">Green is good; amber is either optional (switched off) or worth a quick look; red needs your attention.</p>
                 <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:16px;">
                     <button class="btn-glass" style="width:auto;padding:12px 22px;" onclick="loadDiagnostics()">Run checks</button>
                     <button class="btn-sm btn-edit" onclick="runMigrations()">Install updates</button>
@@ -2401,7 +2405,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=309"></script>
+    <script defer src="app.js?v=310"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

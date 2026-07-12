@@ -201,7 +201,7 @@ add(
     $checks,
     'Payments',
     'Card payments (Square)',
-    $square ? 'ok' : 'warn',
+    $square ? 'ok' : 'optional',
     $square
         ? 'Square is on — guests can pay deposits/balances by card.'
         : 'Off (optional). Deposit/balance requests and recovery emails are skipped.',
@@ -212,9 +212,9 @@ $push = function_exists('wp_vapid_configured') && wp_vapid_configured();
 add(
     $checks,
     'Notifications',
-    'Web push (check-in & tide pushes)',
-    $push ? 'ok' : 'warn',
-    $push ? 'VAPID keys configured.' : 'Off (optional). The check-in and tide pushes won\'t be delivered.',
+    'Web push (owner & guest alerts)',
+    $push ? 'ok' : 'optional',
+    $push ? 'VAPID keys configured.' : 'Off (optional). Owner alerts and guest notifications won\'t be delivered.',
     $push ? '' : 'Generate VAPID keys with vapid-keygen.php and paste them into config.php (SETUP-PUSH.md).',
 );
 
@@ -381,7 +381,7 @@ add(
     isset($tables['content']) ? '' : 'Run migrate.php.',
 );
 
-$summary = ['ok' => 0, 'warn' => 0, 'fail' => 0];
+$summary = ['ok' => 0, 'warn' => 0, 'fail' => 0, 'optional' => 0];
 foreach ($checks as $c) {
     $summary[$c['status']] = ($summary[$c['status']] ?? 0) + 1;
 }
