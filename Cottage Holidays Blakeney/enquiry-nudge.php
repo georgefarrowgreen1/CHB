@@ -32,7 +32,7 @@ try {
     $rows = db()
         ->query(
             "SELECT * FROM enquiries
-        WHERE email <> '' AND nudge_sent_at IS NULL
+        WHERE email <> '' AND nudge_sent_at IS NULL AND declined_at IS NULL
           AND created_at <= (NOW() - INTERVAL 2 DAY)
           AND check_in >= CURDATE()",
         )

@@ -8334,11 +8334,14 @@ function openBookingEmail(bookingId) {
 }
 
 async function declineEnquiry(enqId) {
-    if (!(await glassConfirm('Decline and remove this enquiry? This cannot be undone.'))) return;
     const enq = enquiries.find((e) => e.id === enqId);
     if (!enq) return;
+    // Declining is now reversible (soft delete), so no "cannot be undone"
+    // confirm — do it and offer an Undo, matching the archive-cottage pattern.
+    const dbId = enq.dbId;
+    const name = enq.name || 'guest';
     try {
-        await apiPost('enquiries.php', { action: 'decline', id: enq.dbId });
+        await apiPost('enquiries.php', { action: 'decline', id: dbId });
         if (__enqHubId === enqId) __enqHubId = null;
         await loadData();
         // Standalone hub screen for the declined enquiry → back to the Inbox
@@ -8349,9 +8352,26 @@ async function declineEnquiry(enqId) {
         } else {
             renderInbox();
         }
-        toast(`Enquiry declined — ${enq.name || 'guest'} removed from the inbox.`);
+        toast(`Enquiry declined — ${name} removed from the inbox.`, undefined, {
+            label: 'Undo',
+            fn: () => undoDeclineEnquiry(dbId, name),
+        });
     } catch (e) {
         glassAlert("Couldn't decline: " + e.message);
+    }
+}
+async function undoDeclineEnquiry(dbId, name) {
+    try {
+        const r = await apiPost('enquiries.php', { action: 'restore', id: dbId });
+        if (r && r.error) {
+            glassAlert(r.error);
+            return;
+        }
+        await loadData();
+        renderInbox();
+        toast(`Enquiry from ${name || 'guest'} restored to the inbox.`);
+    } catch (e) {
+        glassAlert("Couldn't restore: " + e.message);
     }
 }
 
