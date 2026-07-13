@@ -212,6 +212,7 @@ if (Array.isArray(help)) {
 }
 check('cmdkHelpItems() maps ids to items', typeof ctx.cmdkHelpItems === 'function' && ctx.cmdkHelpItems(['add-booking']).length === 1 && ctx.cmdkHelpItems(['add-booking'])[0].type === 'help');
 check('context help fns are defined (cmdkCurrentHelpIds, cmdkHelpOpen)', typeof ctx.cmdkCurrentHelpIds === 'function' && typeof ctx.cmdkHelpOpen === 'function');
+check('coach-mark fns are defined (coachMark, coachClear, coach flows)', typeof ctx.coachMark === 'function' && typeof ctx.coachClear === 'function' && typeof ctx.coachAddBooking === 'function' && typeof ctx.coachBlockDates === 'function');
 
 // ---- Summary ----
 console.log('\n== Summary ==');
