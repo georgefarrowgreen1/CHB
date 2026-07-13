@@ -548,6 +548,9 @@ function cmdkActIcon(name) {
     };
     return `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p[name] || p.hub}</svg>`;
 }
+// Trailing chevron + leading magnifier for the quick-actions / related-search rows.
+const CMDK_CHEV = '<svg class="ic cmdk-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
+const CMDK_SEARCH_IC = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.2-4.2"/></svg>';
 function cmdkBookingActions(b, pk) {
     if (!b || b.id == null) return [];
     const acts = [{ key: 'email', label: 'Email', icon: cmdkActIcon('mail'), run: () => { closeCmdK(); openBookingEmail(b.id); } }];
@@ -2441,15 +2444,17 @@ function cmdkRowHtml(it, i, top) {
                     <span class="cmdk-row-ic cmdk-${it.type}">${cmdkIcon(it.type)}</span>
                     <span class="cmdk-row-main"><span class="cmdk-row-label">${hi(it.label)}</span><span class="cmdk-row-sub">${hi(it.sub || '')}</span></span>
                 </button>`;
-    const acts =
-        sel && Array.isArray(it.actions) && it.actions.length
-            ? `<div class="cmdk-actbar"><span class="cmdk-grouplbl">Actions</span>${it.actions.map((a, k) => `<button type="button" class="cmdk-act" data-idx="${i}" data-act="${k}" onclick="cmdkAct(${i},${k})">${a.icon || ''}${escapeHtml(a.label)}</button>`).join('')}</div>`
-            : '';
-    // When the action bar is showing (the selected top hit), suppress any refine
-    // chip that just duplicates an action — e.g. "Show on calendar" lives in both,
-    // which read as two identical buttons. The chip's original index is preserved
-    // so cmdkChipRun still targets the right one.
-    const actLabels = acts && Array.isArray(it.actions) ? new Set(it.actions.map((a) => (a.label || '').toLowerCase())) : null;
+    // A selected record's actions are a proper QUICK-ACTIONS LIST — full-width
+    // rows (icon · label · chevron), the way a context menu / Spotlight lays them
+    // out — instead of a bag of wrapping pills. One thing per line, big tap
+    // targets, no reflow. Only entity results carry `actions`.
+    const hasActions = sel && Array.isArray(it.actions) && it.actions.length;
+    const actLabels = hasActions ? new Set(it.actions.map((a) => (a.label || '').toLowerCase())) : null;
+    const acts = hasActions
+        ? `<div class="cmdk-qa">${it.actions
+              .map((a, k) => `<button type="button" class="cmdk-qa-row" data-idx="${i}" data-act="${k}" onclick="cmdkAct(${i},${k})"><span class="cmdk-qa-ic">${a.icon || cmdkActIcon('hub')}</span><span class="cmdk-qa-lbl">${escapeHtml(a.label)}</span><span class="cmdk-qa-go" aria-hidden="true">${CMDK_CHEV}</span></button>`)
+              .join('')}</div>`
+        : '';
     // Help topics expand their numbered steps when selected (the Top Hit is
     // pre-selected, so the best answer opens straight away; the rest stay tidy).
     const isHelp = it.type === 'help';
@@ -2457,15 +2462,22 @@ function cmdkRowHtml(it, i, top) {
         isHelp && sel && Array.isArray(it.steps) && it.steps.length
             ? `<ol class="cmdk-help-steps">${it.steps.map((s) => `<li>${escapeHtml(s)}</li>`).join('')}</ol>`
             : '';
-    // Refine chips under an answer/help head — narrow/pivot/act without retyping.
-    // (Help chips — Do it / Show me / More — show with the expanded steps.)
-    const refineInner =
-        Array.isArray(it.chips) && it.chips.length && (!isHelp || sel)
-            ? it.chips
-                  .map((c, k) => (actLabels && actLabels.has((c.label || '').toLowerCase())) ? '' : `<button type="button" class="cmdk-ex cmdk-refine-chip" onclick="cmdkChipRun(${i},${k})">${escapeHtml(c.label)}</button>`)
-                  .join('')
-            : '';
-    const refine = refineInner ? `<div class="cmdk-refine">${refineInner}</div>` : '';
+    // Chips branch by context. For an entity WITH actions they are "related
+    // searches" — a quiet footer under the quick actions (search glyph, muted),
+    // never a duplicate of an action. For an answer/help head they stay as the
+    // inline refine chips (narrow/pivot without retyping). Original chip indices
+    // preserved either way so cmdkChipRun targets the right one.
+    let refine = '';
+    if (Array.isArray(it.chips) && it.chips.length && (!isHelp || sel)) {
+        if (hasActions) {
+            const rel = it.chips
+                .map((c, k) => (actLabels && actLabels.has((c.label || '').toLowerCase())) ? '' : `<button type="button" class="cmdk-related" onclick="cmdkChipRun(${i},${k})"><span class="cmdk-qa-ic">${CMDK_SEARCH_IC}</span><span class="cmdk-qa-lbl">${escapeHtml(c.label)}</span><span class="cmdk-qa-go" aria-hidden="true">${CMDK_CHEV}</span></button>`)
+                .join('');
+            refine = rel ? `<div class="cmdk-qa cmdk-related-list">${rel}</div>` : '';
+        } else {
+            refine = `<div class="cmdk-refine">${it.chips.map((c, k) => `<button type="button" class="cmdk-ex cmdk-refine-chip" onclick="cmdkChipRun(${i},${k})">${escapeHtml(c.label)}</button>`).join('')}</div>`;
+        }
+    }
     return row + steps + acts + refine;
 }
 // Point the combobox's aria-activedescendant at the highlighted option so screen
