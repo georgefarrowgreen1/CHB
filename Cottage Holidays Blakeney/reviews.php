@@ -16,6 +16,8 @@ require_once __DIR__ . '/mailer.php';
 // in its combined first-paint response without duplicating this logic.
 function reviews_public_payload()
 {
+    $out = [];
+    // Registered-guest reviews (guest_reviews, keyed to an account).
     try {
         $rows = db()
             ->query(
@@ -24,18 +26,35 @@ function reviews_public_payload()
              WHERE r.status = 'approved' ORDER BY r.created_at DESC",
             )
             ->fetchAll();
+        foreach ($rows as $r) {
+            $out[] = [
+                'name' => $r['name'],
+                'stars' => (int) $r['stars'],
+                'text' => $r['review_text'],
+                'prop' => $r['prop_key'],
+            ];
+        }
     } catch (\Throwable $e) {
-        $rows = [];
     } // table missing — no reviews yet
-    $out = array_map(
-        fn($r) => [
-            'name' => $r['name'],
-            'stars' => (int) $r['stars'],
-            'text' => $r['review_text'],
-            'prop' => $r['prop_key'],
-        ],
-        $rows,
-    );
+    // External-guest reviews left via the /review/<slug> links (direct_leads),
+    // once the owner has approved them. Same public shape as above.
+    try {
+        $rows = db()
+            ->query(
+                "SELECT prop_key, stars, review_text, name
+             FROM direct_leads WHERE status = 'approved' ORDER BY created_at DESC",
+            )
+            ->fetchAll();
+        foreach ($rows as $r) {
+            $out[] = [
+                'name' => $r['name'],
+                'stars' => (int) $r['stars'],
+                'text' => $r['review_text'],
+                'prop' => $r['prop_key'],
+            ];
+        }
+    } catch (\Throwable $e) {
+    } // table missing (pre-migration) — skip
     return ['reviews' => $out];
 }
 
