@@ -2452,7 +2452,7 @@ function cmdkRowHtml(it, i, top) {
     const actLabels = hasActions ? new Set(it.actions.map((a) => (a.label || '').toLowerCase())) : null;
     const acts = hasActions
         ? `<div class="cmdk-qa">${it.actions
-              .map((a, k) => `<button type="button" class="cmdk-qa-row" data-idx="${i}" data-act="${k}" onclick="cmdkAct(${i},${k})"><span class="cmdk-qa-ic">${a.icon || cmdkActIcon('hub')}</span><span class="cmdk-qa-lbl">${escapeHtml(a.label)}</span><span class="cmdk-qa-go" aria-hidden="true">${CMDK_CHEV}</span></button>`)
+              .map((a, k) => `<button type="button" class="cmdk-qa-row" data-idx="${i}" data-act="${k}" onclick="cmdkAct(${i},${k})"><span class="cmdk-qa-ic">${a.icon || cmdkActIcon('hub')}</span><span class="cmdk-qa-lbl">${escapeHtml(a.label)}</span></button>`)
               .join('')}</div>`
         : '';
     // Help topics expand their numbered steps when selected (the Top Hit is
