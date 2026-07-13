@@ -121,6 +121,9 @@ check('action ids are unique', new Set(actIds).size === actIds.length, 'dupes: '
 // Action/command parity: the "do it" one-tap actions are present.
 const parityActs = ['act-expense', 'act-csv', 'act-syncnow', 'act-fixsafe'];
 check('parity actions present (add expense / export CSV / sync now / fix safe)', parityActs.every((id) => actIds.includes(id)), 'missing: ' + parityActs.filter((id) => !actIds.includes(id)).join(', '));
+// Coverage: Payments sub-tabs reachable directly from search.
+const covActs = ['act-income', 'act-recentpay', 'act-pricingcoach'];
+check('Payments sub-tab actions present (income / recent / pricing coach)', covActs.every((id) => actIds.includes(id)), 'missing: ' + covActs.filter((id) => !actIds.includes(id)).join(', '));
 
 // ---- 5. No search route points at an unregistered / non-existent section ----
 // The per-cottage editors live in ACCOM_SECTIONS (rendered dynamically, no
@@ -219,7 +222,7 @@ check('coach-mark fns are defined (coachMark, coachClear, coach flows)', typeof 
 
 // ---- 8. Server results deep-link to the EXACT record + act inline ----
 if (typeof ctx.cmdkServerItem === 'function') {
-    const types = ['booking', 'enquiry', 'guest', 'message', 'review', 'email', 'payment', 'activity'];
+    const types = ['booking', 'enquiry', 'guest', 'message', 'review', 'email', 'payment', 'activity', 'expense', 'waitlist', 'subscriber', 'experience'];
     const items = types.map((t) => ctx.cmdkServerItem({ type: t, id: 7, booking_id: 7, thread_id: 7, email: 'a@b.co', title: 'x', sub: 's' }));
     check('cmdkServerItem() maps every server type to a runnable row', items.every((it) => it && typeof it.run === 'function'), items.map((i) => (i ? i.type : 'null')).join(','));
     const rev = ctx.cmdkServerItem({ type: 'review', id: 9, title: 'Lovely stay' });

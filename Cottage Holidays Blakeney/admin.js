@@ -174,6 +174,14 @@ function cmdkIcon(type) {
         return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>';
     if (type === 'help')
         return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.2 9.3a2.8 2.8 0 0 1 5.4 1c0 1.9-2.8 2.5-2.8 2.5"/><path d="M12 17h.01"/></svg>';
+    if (type === 'expense')
+        return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2h12v20l-3-1.8L12 22l-3-1.8L6 22z"/><path d="M9 8h6M9 12h6"/></svg>';
+    if (type === 'waitlist')
+        return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 1.8"/></svg>';
+    if (type === 'subscriber')
+        return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/></svg>';
+    if (type === 'experience')
+        return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-5.5-7-11a7 7 0 0 1 14 0c0 5.5-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>';
     return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>';
 }
 // ============================================================
@@ -296,6 +304,9 @@ function cmdkActions(q) {
         A('csv', 'Export accounts (CSV)', 'Download the spreadsheet for your accountant', 'export csv accountant spreadsheet download income tax accounts report figures', /(export|download|get|save).{0,14}(csv|accountant|spreadsheet|accounts?|income|figures|tax report)/, () => { cmdkOpenAccounts('income'); cmdkPoll(() => (typeof accountsReport !== 'undefined' && accountsReport) ? true : null, () => { if (typeof exportAccountsCSV === 'function') exportAccountsCSV(); }, 50); }),
         A('syncnow', 'Sync calendars now', 'Pull the latest Airbnb / Vrbo blocks', 'sync now refresh import update pull ical airbnb vrbo booking channel calendar blocks', /(sync|refresh|update|pull|import|re.?sync).{0,12}(now|calendar|ical|airbnb|vrbo|booking|channel|block|feed)/, () => { closeCmdK(); if (typeof toast === 'function') toast('Syncing calendars…'); if (typeof autoSyncIcalBlocks === 'function') autoSyncIcalBlocks(true); }),
         A('fixsafe', 'Fix safe issues', 'Auto-repair harmless state drift', 'fix repair safe issues self repair drift problems clean tidy resolve maintenance', /(fix|repair|resolve|clean up|tidy).{0,12}(safe|issue|problem|drift|error|thing)|self.?repair/, () => { closeCmdK(); if (typeof runSelfRepair === 'function') runSelfRepair(); }),
+        A('income', 'Income & tax', 'Totals, VAT position & the accountant CSV', 'income tax vat revenue takings earnings accounts total figures accountant year', /(income|tax|vat|revenue|takings|earnings|accounts?|figures).{0,10}(total|report|year|summary|view|show)?|view.{0,8}(income|accounts|tax)/, () => cmdkOpenAccounts('income')),
+        A('recentpay', 'Recent payments', 'The latest money in', 'recent payments latest money in received takings feed transactions', /(recent|latest|last).{0,10}(payment|money|takings|transaction)|money in/, () => cmdkOpenAccounts('recent')),
+        A('pricingcoach', 'Pricing coach', 'Rate suggestions & demand signals', 'pricing coach rate suggestion demand advice optimise revenue yield recommend', /(pricing|rate).{0,10}(coach|advice|suggestion|help|recommend|optimi)|coach/, () => cmdkOpenAccounts('pricingcoach')),
         A('theme',
             isLight ? 'Switch to dark mode' : 'Switch to light mode',
             'Change the app appearance',
@@ -1618,6 +1629,10 @@ function cmdkServerItem(x) {
         email: () => { closeCmdK(); cmdkOpenEmail(x.id); },
         payment: () => { closeCmdK(); openBookingHub(x.booking_id); },
         activity: () => { closeCmdK(); cmdkRevealActivity(x.title || ''); },
+        expense: () => cmdkOpenAccounts('expenses'),
+        waitlist: () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => settingsOpen('waitlist')); },
+        subscriber: () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => settingsOpen('newsletter')); },
+        experience: () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => settingsOpen('experiences')); },
     };
     const run = routes[x.type];
     if (!run) return null;
