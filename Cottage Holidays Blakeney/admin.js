@@ -2051,27 +2051,6 @@ async function cmdkFieldBack() {
     if (el) { try { el.focus(); } catch (e) {} }
     cmdkSearchCore(el ? el.value : '', true);
 }
-// Example-question chips for the empty palette — contextual: surface what's
-// actually actionable right now (money owed, deposits to return, waiting
-// enquiries) ahead of the evergreen prompts.
-let __cmdkChips = [];
-function cmdkExampleChips() {
-    const chips = [];
-    const today = todayDashed();
-    let owe = 0, dep = 0;
-    Object.keys(dbBookings || {}).forEach((k) => (dbBookings[k] || []).forEach((b) => {
-        try {
-            const ps = paymentSummary(k, b);
-            if (!ps.fullyPaid && ps.balance > 0.5) owe++;
-        } catch (e) {}
-        if ((b.holdStatus || 'none') === 'charged' && (b.checkOut || '') <= today) dep++;
-    }));
-    if (owe) chips.push('who owes me money');
-    if (dep) chips.push('deposits to return');
-    if (Array.isArray(enquiries) && enquiries.length) chips.push('unanswered enquiries');
-    ['who’s leaving today', 'revenue this month', 'upcoming bookings', 'block dates', 'what’s free tonight', 'how do I take a payment'].forEach((c) => chips.push(c));
-    return [...new Set(chips)].slice(0, 6);
-}
 // Answer-first "Your day" brief for the empty palette — a proactive read of what
 // matters now (today's movements, money to collect, enquiries waiting, deposits
 // to return), computed from the loaded data. Each row routes to where you act.
@@ -2094,10 +2073,8 @@ function cmdkBrief() {
     if (depN) items.push({ type: 'answer', id: 'brief-dep', label: `${depN} deposit${depN === 1 ? '' : 's'} to return`, sub: 'Guests have checked out', run: () => { closeCmdK(); openBookings(); } });
     return items.slice(0, 4);
 }
-// ---- Spotlight-style presentation: a Top Hit, grouped section headers, and
-// example-question chips on the empty palette. ----
+// ---- Spotlight-style presentation: a Top Hit + grouped section headers. ----
 let __cmdkEmpty = false;
-const CMDK_EXAMPLES = ['who owes me money', "who's leaving today", 'revenue this month', 'upcoming bookings', 'block dates', "what's free tonight"];
 // Which section a result belongs to — drives the grouped headers + arrange order.
 function cmdkSection(type) {
     if (type === 'answer' || type === 'figure') return { key: 'answers', label: 'Answers', order: 0 };
@@ -2156,13 +2133,6 @@ function cmdkArrange(list) {
     out.sort((a, b) => cmdkSection(a.type).order - cmdkSection(b.type).order);
     return lead.concat(out);
 }
-function cmdkRunExample(i) {
-    const q = (__cmdkChips && __cmdkChips[i]) || CMDK_EXAMPLES[i];
-    if (!q) return;
-    const el = document.getElementById('cmdk-input');
-    if (el) el.value = q;
-    cmdkSearch(q);
-}
 // Conversational refine-chip thread: running a refine chip remembers where you
 // were so a "‹ Back" chip can return, letting you narrow an answer and step back
 // without retyping. Manual typing (cmdkSearch) starts a fresh thread.
@@ -2218,17 +2188,13 @@ function cmdkRender() {
     const box = document.getElementById('cmdk-results');
     if (!box) return;
     const sb = cmdkScopeBar(); // scope switch sits above every state
-    // Empty palette → example-question chips (teach what search can do) + the dock
-    // destinations underneath.
+    // Empty palette → the "Your day" brief, then the dock destinations to jump to.
     if (__cmdkEmpty) {
-        __cmdkChips = cmdkExampleChips();
-        const chips = __cmdkChips.map((q, i) => `<button type="button" class="cmdk-ex" onclick="cmdkRunExample(${i})">${escapeHtml(q)}</button>`).join('');
         const brief = __cmdkResults.slice(0, __cmdkBriefN).map((it, i) => cmdkRowHtml(it, i, false)).join('');
         const screens = __cmdkResults.slice(__cmdkBriefN).map((it, i) => cmdkRowHtml(it, __cmdkBriefN + i, false)).join('');
         box.innerHTML =
             sb +
             (__cmdkBriefN ? `<div class="cmdk-group-label">${cmdkGreeting()}</div>${brief}` : '') +
-            `<div class="cmdk-group-label">Try asking</div><div class="cmdk-examples">${chips}</div>` +
             `<div class="cmdk-group-label">Jump to</div>${screens}`;
         return;
     }

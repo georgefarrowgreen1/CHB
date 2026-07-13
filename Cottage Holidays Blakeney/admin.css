@@ -1410,12 +1410,6 @@ body.owner-mode #mobileMenu {
   font-size: 1.04rem;
   font-weight: 700;
 }
-.cmdk-examples {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 7px;
-  padding: 4px 12px 6px;
-}
 .cmdk-ex {
   font-size: 0.82rem;
   font-weight: 500;
