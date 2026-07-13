@@ -27,9 +27,9 @@ $bookings = $stmt->fetchAll();
 // guest (sum of 'damages_return' ledger rows) — so the invoice can show "Refunded"
 // with the exact amount, not just the hold_status flag (which can't express a
 // partial return). One grouped query for all this guest's bookings.
+$ids = array_map(fn($b) => (int) $b['id'], $bookings);
 $returnedByBooking = [];
 try {
-    $ids = array_map(fn($b) => (int) $b['id'], $bookings);
     if ($ids) {
         $ph = implode(',', array_fill(0, count($ids), '?'));
         $rs = db()->prepare(
