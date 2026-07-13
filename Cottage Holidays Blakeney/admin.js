@@ -3702,14 +3702,22 @@ function renderBookingHub() {
             <h3 class="bhub-card-title">Emails</h3>
             ${
                 b.email
-                    ? `<div class="bhub-btn-row" style="margin-top:0;">
-                        <button class="btn-sm btn-edit" onclick="sendConfirmationEmail('${b.id}')">Send confirmation</button>
+                    ? `<div class="bhub-btn-row${(b.checkIn || '') > today ? '' : ' bhub-btn-row-center'}" style="margin-top:0;">
+                        ${
+                            // Pre-arrival emails (confirmation / arrival info / updated
+                            // confirmation) only make sense before the guest checks in.
+                            // Once they've arrived, the card is just "Write an email"
+                            // (centred, since it stands alone).
+                            (b.checkIn || '') > today
+                                ? `<button class="btn-sm btn-edit" onclick="sendConfirmationEmail('${b.id}')">Send confirmation</button>
                         ${
                             b.preArrivalSent
                                 ? `<span class="bhub-sent-tag" title="Sent ${escapeHtml(String(b.preArrivalSent))}">Arrival info sent ✓</span>`
                                 : `<button class="btn-sm btn-edit" onclick="sendArrivalInfo('${b.id}')">Send arrival info</button>`
                         }
-                        ${gt.paid > 0 ? `<button class="btn-sm btn-edit" onclick="offerUpdatedConfirmationEmail('${b.id}')">Email updated confirmation</button>` : ''}
+                        ${gt.paid > 0 ? `<button class="btn-sm btn-edit" onclick="offerUpdatedConfirmationEmail('${b.id}')">Email updated confirmation</button>` : ''}`
+                                : ''
+                        }
                         <button class="btn-sm btn-edit" onclick="openBookingEmail('${b.id}')">Write an email</button>
                     </div>`
                     : '<div class="bhub-mut">No guest email on file — add one via Edit / Move to send anything.</div>'
