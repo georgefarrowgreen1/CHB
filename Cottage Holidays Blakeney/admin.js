@@ -514,6 +514,8 @@ function cmdkActIcon(name) {
         coin: '<circle cx="12" cy="12" r="9"/><path d="M12 7v10M9.5 9.5h3.2a1.8 1.8 0 0 1 0 3.6H10a1.8 1.8 0 0 0 0 3.4h3"/>',
         undo: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
         hub: '<path d="M4 6h16M4 12h16M4 18h10"/>',
+        ok: '<circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/>',
+        no: '<circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/>',
     };
     return `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p[name] || p.hub}</svg>`;
 }
@@ -1596,15 +1598,18 @@ function cmdkServerSearch(ql) {
 // Map a server result row → a palette item with the right one-tap destination.
 // The server sends only data + a type; routing lives here (never in the payload).
 function cmdkServerItem(x) {
+    // Every route lands on the EXACT record, not just its list/section — email
+    // opens in the reading pane, a guest/review/activity row is revealed and
+    // flashed on its screen. (cmdkReveal* helpers below.)
     const routes = {
         booking: () => { closeCmdK(); openBookingHub(x.id); },
         enquiry: () => { closeCmdK(); openEnquiryHub(x.id); },
-        guest: () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => settingsOpen('guests')); },
+        guest: () => { closeCmdK(); cmdkRevealGuest(x.email || ''); },
         message: () => { closeCmdK(); Promise.resolve(openInbox()).then(() => { inboxFolder('messages'); if (x.thread_id) openMessageThread(x.thread_id); }); },
-        review: () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => settingsOpen('reviews')); },
-        email: () => { closeCmdK(); Promise.resolve(openInbox()).then(() => inboxFolder('email')); },
+        review: () => { closeCmdK(); cmdkRevealReview(x.id); },
+        email: () => { closeCmdK(); cmdkOpenEmail(x.id); },
         payment: () => { closeCmdK(); openBookingHub(x.booking_id); },
-        activity: () => { closeCmdK(); nav('view-activity-log'); },
+        activity: () => { closeCmdK(); cmdkRevealActivity(x.title || ''); },
     };
     const run = routes[x.type];
     if (!run) return null;
@@ -1617,7 +1622,73 @@ function cmdkServerItem(x) {
         const loc = b && typeof findBookingLocation === 'function' ? findBookingLocation(id) : null;
         if (b) item.actions = cmdkBookingActions(b, loc ? loc.propKey : undefined);
     }
+    // Reviews can be moderated straight from the result row — no need to open
+    // the Reviews screen first (setReviewStatus no-ops safely off-screen).
+    if (x.type === 'review' && x.id != null) {
+        item.actions = [
+            { key: 'approve', label: 'Approve', icon: cmdkActIcon('ok'), run: () => { closeCmdK(); cmdkModerateReview(x.id, 'approved'); } },
+            { key: 'decline', label: 'Decline', icon: cmdkActIcon('no'), run: () => { closeCmdK(); cmdkModerateReview(x.id, 'declined'); } },
+        ];
+    }
     return item;
+}
+// ---- Deep-link helpers: open a screen, then flash the exact record. Sections
+// render asynchronously, so poll briefly for the target element before giving up.
+function cmdkFlash(el) {
+    if (!el || !el.scrollIntoView) return;
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.add('cmdk-reveal');
+    setTimeout(() => el.classList.remove('cmdk-reveal'), 2200);
+}
+function cmdkPoll(find, done, tries) {
+    let n = tries || 30;
+    (function step() {
+        let el = null;
+        try { el = find(); } catch (e) {}
+        if (el) { done(el); return; }
+        if (--n > 0) setTimeout(step, 120);
+    })();
+}
+function cmdkRevealGuest(email) {
+    Promise.resolve(openArea('manage')).then(() => settingsOpen('guests'));
+    const key = (email || '').trim().toLowerCase();
+    if (!key) return;
+    cmdkPoll(() => {
+        const rows = document.querySelectorAll('#guest-admin-list tr[data-gemail]');
+        for (let i = 0; i < rows.length; i++) {
+            if ((rows[i].getAttribute('data-gemail') || '').toLowerCase() === key) return rows[i];
+        }
+        return null;
+    }, cmdkFlash);
+}
+function cmdkRevealReview(id) {
+    Promise.resolve(openArea('manage')).then(() => settingsOpen('reviews'));
+    cmdkPoll(() => document.getElementById('modrev-' + id), cmdkFlash);
+}
+function cmdkModerateReview(id, status) {
+    if (typeof setReviewStatus !== 'function') return;
+    Promise.resolve(setReviewStatus(id, status))
+        .then(() => { if (typeof toast === 'function') toast('Review ' + (status === 'approved' ? 'approved' : 'declined')); })
+        .catch(() => {});
+}
+function cmdkRevealActivity(text) {
+    nav('view-activity-log');
+    const q = (text || '').replace(/…\s*$/, '').trim();
+    if (!q) return;
+    cmdkPoll(() => document.getElementById('act-log-list'), () => {
+        const inp = document.getElementById('act-log-search');
+        if (inp) inp.value = q;
+        if (typeof activityLogSearch === 'function') activityLogSearch(q);
+    }, 25);
+}
+async function cmdkOpenEmail(id) {
+    await Promise.resolve(openInbox());
+    if (typeof inboxFolder === 'function') inboxFolder('email'); // lazy-loads the mailbox
+    cmdkPoll(
+        () => (typeof __mbxSent !== 'undefined' && Array.isArray(__mbxSent) && __mbxSent.some((m) => m.id === id)) ? true : null,
+        () => { if (typeof mailboxOpenSent === 'function') mailboxOpenSent(id); },
+        40,
+    );
 }
 // Escape a string AND wrap the current query terms in <mark> so matches stand
 // out. Highlighting is applied only to matched result types (booking, screen,
@@ -4223,7 +4294,7 @@ async function loadGuestList() {
                     <tbody>
                         ${guests
                             .map(
-                                (g) => `<tr>
+                                (g) => `<tr data-gemail="${escapeHtml((g.email || '').toLowerCase())}">
                             <td>${escapeHtml(g.name || '—')}${g.repeat ? ' <span class="chip-mini" style="background:var(--accent-soft);color:#1a191b;border-radius:var(--r-pill);padding:1px 7px;font-size:0.68rem;font-weight:600;">Returning</span>' : ''}<br><span style="color:var(--text-muted);font-size:0.76rem;">${escapeHtml(g.email || '')}</span></td>
                             <td class="num">${g.stays}</td>
                             <td class="num">${gbp(g.ltv || 0)}</td>
@@ -9104,7 +9175,7 @@ async function loadGuestReviewModeration() {
         ? pending
               .map(
                   (r) => `
-                <div style="border:1px solid var(--glass-border);border-radius:14px;padding:14px;margin-bottom:10px;background:var(--glass-bg);">
+                <div id="modrev-${r.id}" style="border:1px solid var(--glass-border);border-radius:14px;padding:14px;margin-bottom:10px;background:var(--glass-bg);">
                     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:0.82rem;">
                         <strong>${escapeHtml(r.name)}</strong>
                         <span style="color:var(--text-muted);">${escapeHtml((propertyMeta[r.prop_key] || {}).name || r.prop_key)}</span>

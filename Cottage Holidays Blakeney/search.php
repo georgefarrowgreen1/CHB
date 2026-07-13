@@ -71,7 +71,7 @@ $src(function () use (&$results, $like, $PER) {
     $st = db()->prepare('SELECT id, name, email, phone FROM guests WHERE name LIKE ? OR email LIKE ? OR phone LIKE ? ORDER BY id DESC LIMIT ' . $PER);
     $st->execute([$like, $like, $like]);
     foreach ($st->fetchAll() as $g) {
-        $results[] = ['type' => 'guest', 'id' => (int) $g['id'], 'title' => $g['name'] ?: $g['email'], 'sub' => 'Guest account · ' . $g['email']];
+        $results[] = ['type' => 'guest', 'id' => (int) $g['id'], 'email' => $g['email'], 'title' => $g['name'] ?: $g['email'], 'sub' => 'Guest account · ' . $g['email']];
     }
 });
 

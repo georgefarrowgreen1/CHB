@@ -214,6 +214,27 @@ check('cmdkHelpItems() maps ids to items', typeof ctx.cmdkHelpItems === 'functio
 check('context help fns are defined (cmdkCurrentHelpIds, cmdkHelpOpen)', typeof ctx.cmdkCurrentHelpIds === 'function' && typeof ctx.cmdkHelpOpen === 'function');
 check('coach-mark fns are defined (coachMark, coachClear, coach flows)', typeof ctx.coachMark === 'function' && typeof ctx.coachClear === 'function' && typeof ctx.coachAddBooking === 'function' && typeof ctx.coachBlockDates === 'function');
 
+// ---- 8. Server results deep-link to the EXACT record + act inline ----
+if (typeof ctx.cmdkServerItem === 'function') {
+    const types = ['booking', 'enquiry', 'guest', 'message', 'review', 'email', 'payment', 'activity'];
+    const items = types.map((t) => ctx.cmdkServerItem({ type: t, id: 7, booking_id: 7, thread_id: 7, email: 'a@b.co', title: 'x', sub: 's' }));
+    check('cmdkServerItem() maps every server type to a runnable row', items.every((it) => it && typeof it.run === 'function'), items.map((i) => (i ? i.type : 'null')).join(','));
+    const rev = ctx.cmdkServerItem({ type: 'review', id: 9, title: 'Lovely stay' });
+    check('review rows carry inline Approve/Decline actions', !!(rev && Array.isArray(rev.actions) && rev.actions.length === 2 && rev.actions.every((a) => typeof a.run === 'function')));
+    check(
+        'deep-link reveal helpers are defined',
+        typeof ctx.cmdkFlash === 'function' &&
+            typeof ctx.cmdkPoll === 'function' &&
+            typeof ctx.cmdkRevealGuest === 'function' &&
+            typeof ctx.cmdkRevealReview === 'function' &&
+            typeof ctx.cmdkRevealActivity === 'function' &&
+            typeof ctx.cmdkOpenEmail === 'function' &&
+            typeof ctx.cmdkModerateReview === 'function',
+    );
+} else {
+    check('cmdkServerItem() is defined', false);
+}
+
 // ---- Summary ----
 console.log('\n== Summary ==');
 if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }

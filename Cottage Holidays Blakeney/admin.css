@@ -1274,6 +1274,22 @@ body.owner-mode #mobileMenu {
   border-radius: 3px;
   padding: 0 1px;
 }
+/* Deep-link reveal: a brief accent ring drawn around the exact record a search
+   result jumped to (guest row, review card, activity entry). Outline-based so it
+   never shifts layout. */
+.cmdk-reveal {
+  animation: cmdkReveal 2.2s var(--fluid-bezier, ease) both;
+  border-radius: var(--r-panel, 14px);
+}
+@keyframes cmdkReveal {
+  0%,
+  70% {
+    box-shadow: 0 0 0 3px var(--accent, #c79a64), 0 0 18px 2px color-mix(in srgb, var(--accent) 45%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
 /* Spotlight-style section headers, Top Hit + empty-state example chips. */
 .cmdk-group-label {
   font-size: 0.68rem;
