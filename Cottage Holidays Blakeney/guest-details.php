@@ -189,14 +189,16 @@ function render_guest_form_html($d)
         // real dropdown on iOS Safari, so we build our own filtering panel.
         'document.querySelectorAll(".natwrap").forEach(function(w){' .
         'var inp=w.querySelector(".nat"),pop=w.querySelector(".natpop");' .
-        'function render(){var q=(inp.value||"").trim().toLowerCase();' .
+        'function render(showAll){var q=showAll?"":(inp.value||"").trim().toLowerCase();' .
         'var list=NATS.filter(function(n){return !q||n.toLowerCase().indexOf(q)>-1;});' .
         'pop.innerHTML=list.length?list.map(function(n){return "<div class=\'natopt\' role=\'option\'>"+natEsc(n)+"</div>";}).join(""):"<div class=\'natnone\'>Keep typing — we\\u2019ll use what you enter.</div>";}' .
-        'function open(){render();pop.hidden=false;inp.setAttribute("aria-expanded","true");}' .
+        'function open(showAll){render(showAll);pop.hidden=false;inp.setAttribute("aria-expanded","true");}' .
         'function close(){pop.hidden=true;inp.setAttribute("aria-expanded","false");}' .
-        'inp.addEventListener("focus",open);' .
-        'inp.addEventListener("click",open);' .
-        'inp.addEventListener("input",function(){open();toggleForeign(inp);});' .
+        // Focus shows the WHOLE list (so a pre-filled "British" doesn\'t hide it)
+        // and selects the text so the first keystroke replaces it, not appends.
+        'inp.addEventListener("focus",function(){setTimeout(function(){try{inp.setSelectionRange(0,(inp.value||"").length);}catch(e){}},0);open(true);});' .
+        'inp.addEventListener("click",function(){open(true);});' .
+        'inp.addEventListener("input",function(){open(false);toggleForeign(inp);});' .
         'pop.addEventListener("click",function(ev){var t=ev.target.closest(".natopt");if(!t)return;inp.value=t.textContent;close();toggleForeign(inp);});' .
         'document.addEventListener("pointerdown",function(ev){if(pop.hidden)return;if(w.contains(ev.target))return;close();});' .
         '});' .
