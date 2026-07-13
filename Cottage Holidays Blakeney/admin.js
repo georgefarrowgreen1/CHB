@@ -10634,7 +10634,13 @@ function renderCalendar() {
         head += `<span class="tl-day${wknd ? ' is-wknd' : ''}${dates[i] === todayIso ? ' is-today' : ''}" style="grid-column:${i + 1}">${monthTag}<i>${dows[d.getDay()]}</i>${d.getDate()}</span>`;
     }
 
-    const keys = Object.keys(propertyMeta);
+    // Private (unlisted) cottages are managed off to the side — they don't earn a
+    // lane on the operational timeline (their bookings still live in the Bookings
+    // list below). Archived (removed) cottages are hidden too.
+    const keys = Object.keys(propertyMeta).filter((k) => {
+        const m = propertyMeta[k];
+        return m && !m.unlisted && !m.archived;
+    });
     const lock =
         '<svg viewBox="0 0 24 24" width="9" height="9" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:2px;opacity:0.75;" aria-hidden="true"><rect x="4" y="10.5" width="16" height="10" rx="2"/><path d="M8 10.5V7a4 4 0 0 1 8 0v3.5"/></svg>';
     const rows = keys
