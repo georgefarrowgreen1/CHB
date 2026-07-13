@@ -1299,6 +1299,43 @@ body.owner-mode #mobileMenu {
   color: var(--text-muted);
   padding: 12px 12px 4px;
 }
+/* Search scope switch — narrows results to the workspace you're in. Sits at the
+   top of the palette, sticky so it stays reachable while the list scrolls. */
+.cmdk-scopes {
+  display: flex;
+  gap: 6px;
+  padding: 8px 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--glass-bg, rgba(255, 255, 255, 0.7));
+  backdrop-filter: blur(8px);
+}
+.cmdk-scopes::-webkit-scrollbar {
+  display: none;
+}
+.cmdk-scope {
+  flex: 0 0 auto;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: transparent;
+  border: 1px solid var(--glass-border, rgba(0, 0, 0, 0.12));
+  border-radius: var(--r-pill, 999px);
+  padding: 5px 13px;
+  cursor: pointer;
+  transition: background 0.15s var(--fluid-bezier, ease), color 0.15s ease, border-color 0.15s ease;
+}
+.cmdk-scope:hover {
+  color: var(--text);
+}
+.cmdk-scope.is-on {
+  color: #fff;
+  background: var(--accent, #c79a64);
+  border-color: var(--accent, #c79a64);
+}
 .cmdk-results > .cmdk-group-label:first-child {
   padding-top: 4px;
 }

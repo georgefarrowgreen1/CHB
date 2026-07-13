@@ -1969,11 +1969,47 @@ function cmdkSection(type) {
     if (type === 'screen') return { key: 'screens', label: 'Screens', order: 4 };
     return { key: 'more', label: 'More results', order: 3 };
 }
+// ---- Search scopes: narrow results to the part of the business you're in.
+// The palette opens pre-scoped to your current workspace (Today→Bookings,
+// Inbox→Inbox, Payments→Money); "All" clears it. Scoping only ever filters
+// ENTITY rows — actions, screens, answers and help are always shown, so you can
+// never lose your way back to a destination.
+let __cmdkScope = 'all';
+const CMDK_SCOPES = [['all', 'All'], ['bookings', 'Bookings'], ['inbox', 'Inbox'], ['money', 'Money'], ['guests', 'Guests']];
+const CMDK_SCOPE_OF = { booking: 'bookings', enquiry: 'bookings', external: 'bookings', message: 'inbox', email: 'inbox', payment: 'money', expense: 'money', figure: 'money', guest: 'guests', review: 'guests', subscriber: 'guests', waitlist: 'guests' };
+// Pure (state-free) scope test: does a result TYPE belong in a given scope?
+// Non-entity rows (action/screen/answer/help/field/sheet/content) have no domain
+// and are always kept, so navigation is never scoped away.
+function cmdkScopeMatch(scope, type) {
+    if (scope === 'all') return true;
+    const dom = CMDK_SCOPE_OF[type];
+    return !dom || dom === scope;
+}
+function cmdkInScope(it) {
+    return !it || cmdkScopeMatch(__cmdkScope, it.type);
+}
+function cmdkScopeBar() {
+    return '<div class="cmdk-scopes" role="tablist">' + CMDK_SCOPES.map(([k, l]) => `<button type="button" role="tab" class="cmdk-scope${__cmdkScope === k ? ' is-on' : ''}" aria-selected="${__cmdkScope === k}" onclick="cmdkSetScope('${k}')">${l}</button>`).join('') + '</div>';
+}
+function cmdkSetScope(s) {
+    __cmdkScope = s;
+    const el = document.getElementById('cmdk-input');
+    cmdkSearchCore(el ? el.value : '', true);
+    if (el) { try { el.focus(); } catch (e) {} }
+}
+function cmdkDefaultScope() {
+    const v = typeof document !== 'undefined' && document.querySelector ? document.querySelector('.page-view.active') : null;
+    const id = v ? v.id : '';
+    if (id === 'view-inbox') return 'inbox';
+    if (id === 'view-accounts') return 'money';
+    if (id === 'view-backoffice') return 'bookings';
+    return 'all';
+}
 // Reorder a built result list into Spotlight shape: the correction note (if any)
 // first, then the single best result as the Top Hit (its importance rank kept),
 // then the rest grouped by section (stable within each).
 function cmdkArrange(list) {
-    const out = list.slice();
+    const out = list.filter(cmdkInScope);
     const lead = [];
     if (out[0] && out[0].id === 'cmdk-correction') lead.push(out.shift());
     if (out.length) lead.push(out.shift()); // Top Hit
@@ -2041,6 +2077,7 @@ function cmdkRowHtml(it, i, top) {
 function cmdkRender() {
     const box = document.getElementById('cmdk-results');
     if (!box) return;
+    const sb = cmdkScopeBar(); // scope switch sits above every state
     // Empty palette → example-question chips (teach what search can do) + the dock
     // destinations underneath.
     if (__cmdkEmpty) {
@@ -2049,13 +2086,14 @@ function cmdkRender() {
         const brief = __cmdkResults.slice(0, __cmdkBriefN).map((it, i) => cmdkRowHtml(it, i, false)).join('');
         const screens = __cmdkResults.slice(__cmdkBriefN).map((it, i) => cmdkRowHtml(it, __cmdkBriefN + i, false)).join('');
         box.innerHTML =
+            sb +
             (__cmdkBriefN ? `<div class="cmdk-group-label">${cmdkGreeting()}</div>${brief}` : '') +
             `<div class="cmdk-group-label">Try asking</div><div class="cmdk-examples">${chips}</div>` +
             `<div class="cmdk-group-label">Jump to</div>${screens}`;
         return;
     }
     if (!__cmdkResults.length) {
-        box.innerHTML = '<div class="cmdk-none">No matches — try a guest name, a screen, or a question like “who owes me money”.</div>';
+        box.innerHTML = sb + `<div class="cmdk-none">No matches${__cmdkScope !== 'all' ? ' in ' + __cmdkScope + ' — tap “All” to widen' : ' — try a guest name, a screen, or a question like “who owes me money”'}.</div>`;
         return;
     }
     // Structure longer lists: a Top Hit, then grouped section headers. Short lists
@@ -2258,6 +2296,7 @@ function openCmdK() {
     if (!o || !inp) return;
     o.style.display = 'flex';
     inp.value = '';
+    __cmdkScope = cmdkDefaultScope(); // open pre-scoped to the workspace you're in
     cmdkVoiceInit(); // reveal the mic where speech recognition is supported
     cmdkSearch('');
     // focus after paint so the mobile keyboard opens reliably
