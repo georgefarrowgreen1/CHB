@@ -21,6 +21,7 @@ $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
 // ---- Resolve the cottage from the slug (best-effort) ----
 $propKey = '';
 $name = '';
+$subtitle = '';
 $accent = '#8FB3C7';
 $heroImg = '';
 $found = false;
@@ -60,7 +61,18 @@ try {
                 return is_string($d) ? $d : (is_scalar($d) ? (string) $d : '');
             };
             $name = trim($cv($propKey . '-title') ?: (string) ($p['name'] ?: $propKey));
-            // First gallery photo → a soft header image.
+            $subtitle = trim($cv($propKey . '-subtitle'));
+            // Make a stored asset path safe to use from /review/<slug>: absolute
+            // URLs pass through; anything else becomes ROOT-relative ("/uploads/…")
+            // so it resolves against the site root, not the /review/ path.
+            $rootRel = function ($p) {
+                $p = trim((string) $p);
+                if ($p === '' || preg_match('#^https?://#i', $p)) {
+                    return $p;
+                }
+                return '/' . ltrim($p, '/');
+            };
+            // First gallery photo → the hero image. Fall back to the site hero.
             try {
                 $gi = $pdo->prepare('SELECT item_value FROM content WHERE item_key = ?');
                 $gi->execute(['images-' . $propKey]);
@@ -68,7 +80,13 @@ try {
                 if ($gv !== false) {
                     $arr = json_decode((string) $gv, true);
                     if (is_array($arr) && !empty($arr[0]) && is_string($arr[0])) {
-                        $heroImg = trim($arr[0]);
+                        $heroImg = $rootRel($arr[0]);
+                    }
+                }
+                if ($heroImg === '') {
+                    $hb = $cv('hero-bg');
+                    if ($hb !== '') {
+                        $heroImg = $rootRel($hb);
                     }
                 }
             } catch (\Throwable $e) {
@@ -130,15 +148,25 @@ if (!$found) {
           overflow:hidden; animation:riseIn .6s cubic-bezier(.2,.7,.2,1) .06s both; }
   @keyframes riseIn { from { opacity:0; transform:translateY(22px) scale(.985); } to { opacity:1; transform:none; } }
   @keyframes fadeUp { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:none; } }
-  .hero { height:158px; background:#e6ddcf center/cover no-repeat; position:relative; }
-  .hero::after { content:""; position:absolute; inset:0;
-                 background:linear-gradient(180deg, transparent 30%, rgba(20,32,40,.5)); }
-  .hero h1 { position:absolute; left:24px; right:24px; bottom:16px; margin:0; z-index:1; text-align:center;
-             font-family:var(--serif); font-weight:700; color:#fff; font-size:26px; line-height:1.15;
-             text-shadow:0 2px 16px rgba(0,0,0,.45); }
-  .noimg { height:auto; background:none; padding:26px 26px 0; }
-  .noimg::after { content:none; }
-  .noimg h1 { position:static; color:var(--ink); text-shadow:none; padding:0; font-size:27px; }
+  /* Immersive hero: the cottage's own photo behind a warm scrim, slowly
+     drifting (Ken Burns). No photo? A coastal sky→sea→sand gradient still reads
+     as "the place", never a broken grey box. */
+  .hero { position:relative; min-height:252px; display:flex; align-items:flex-end; overflow:hidden;
+          background:linear-gradient(155deg, #cfe0ea 0%, #a7c1cd 52%, #d8c8ac 100%); }
+  .hero-img { position:absolute; inset:0; z-index:0; background:center/cover no-repeat;
+              animation:kenburns 22s ease-out both; transform-origin:52% 42%; }
+  .hero::after { content:""; position:absolute; inset:0; z-index:1;
+                 background:linear-gradient(180deg, rgba(16,28,36,0) 26%, rgba(16,28,36,.18) 52%, rgba(16,28,36,.66) 100%); }
+  .hero .htxt { position:relative; z-index:2; width:100%; padding:24px 26px 22px; text-align:center; }
+  .hero .eyebrow { font-family:var(--sans); font-size:10.5px; font-weight:600; letter-spacing:2.8px;
+                   text-transform:uppercase; color:rgba(255,255,255,.9); margin:0 0 9px;
+                   text-shadow:0 1px 10px rgba(0,0,0,.45); }
+  .hero .eyebrow::before, .hero .eyebrow::after { content:"—"; opacity:.5; margin:0 8px; }
+  .hero h1 { margin:0; font-family:var(--serif); font-weight:700; color:#fff; font-size:29px;
+             line-height:1.16; text-shadow:0 2px 20px rgba(0,0,0,.55); }
+  .hero .hsub { margin:10px 0 0; font-family:var(--sans); font-size:13.5px; font-weight:500;
+                color:rgba(255,255,255,.94); text-shadow:0 1px 10px rgba(0,0,0,.45); }
+  @keyframes kenburns { from { transform:scale(1.001); } to { transform:scale(1.1); } }
   /* Centred, boutique layout: headings, copy, labels, stars and buttons all
      centre-aligned; the input fields keep their text left for legibility. */
   .body { padding:22px 26px 28px; text-align:center; }
@@ -204,7 +232,7 @@ if (!$found) {
   .direct a:hover { filter:brightness(1.05); box-shadow:0 10px 28px rgba(198,136,94,.42); }
   .direct a:active { transform:translateY(1px); }
   @media (prefers-reduced-motion: reduce) {
-    .brand, .card, .done > *, .done .tick, .star.pop { animation:none !important; }
+    .brand, .card, .done > *, .done .tick, .star.pop, .hero-img { animation:none !important; }
     .rate-word { transition:none; }
   }
 </style>
@@ -224,12 +252,17 @@ if (!$found) {
       address, or visit <a href="/" style="color:var(--accent)">our website</a>.</p>
     </div>
 <?php else: ?>
-    <div class="hero<?= $heroImg === '' ? ' noimg' : '' ?>"<?= $heroImg !== '' ? ' style="background-image:url(\'' . $esc($heroImg) . '\')"' : '' ?>>
-      <h1>How was <?= $esc($name) ?>?</h1>
+    <div class="hero">
+<?php if ($heroImg !== ''): ?>      <div class="hero-img" style="background-image:url('<?= $esc($heroImg) ?>')"></div>
+<?php endif; ?>      <div class="htxt">
+        <div class="eyebrow">North Norfolk Coast</div>
+        <h1>How was <?= $esc($name) ?>?</h1>
+<?php if ($subtitle !== ''): ?>        <div class="hsub"><?= $esc($subtitle) ?></div>
+<?php endif; ?>      </div>
     </div>
     <div class="body">
       <p class="lede">Thanks for staying with us. A quick review helps other guests —
-      and once it's approved we'll pop it on our website.</p>
+      and we'd love to share it on our website.</p>
 
       <form id="rev" novalidate>
         <label>Your rating <span class="req">*</span></label>
