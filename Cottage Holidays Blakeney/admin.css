@@ -746,8 +746,9 @@
 }.bhub-paypipe .pipe-step {
   flex-shrink: 0;
   white-space: nowrap;
-  padding: 3px 9px;
-  font-size: 0.7rem;
+  /* Match the unified booking-flow pills above (.bhub-pipe3 .pipe-step): same
+     4px 10px padding and inherited 0.74rem text, not a smaller variant. */
+  padding: 4px 10px;
 }.bhub-paypipe .pipe3-arrow {
   padding-bottom: 0;
   flex-shrink: 0;
@@ -1648,6 +1649,17 @@ body.light-mode .cmdk-editor-input {
   flex-wrap: wrap;
   gap: 6px;
   padding: 2px 12px 10px 55px;
+}
+/* Small caption that names the action row, so the accent "do" buttons read as a
+   distinct group from the plain "related search" chips below them. */
+.cmdk-grouplbl {
+  align-self: center;
+  margin-right: 4px;
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--text-muted);
 }
 .cmdk-act {
   display: inline-flex;
