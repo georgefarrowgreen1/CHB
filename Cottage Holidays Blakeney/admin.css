@@ -1025,11 +1025,13 @@ body.owner-mode #mobileMenu {
   /* display toggled inline by openCmdK/closeCmdK */
   align-items: flex-start;
   justify-content: center;
-  padding: 12vh 16px 16px;
-  background: rgba(10, 14, 18, 0.5);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
-  animation: cmdkFade 0.16s var(--fluid-bezier);
+  padding: 11vh 16px 16px;
+  /* A soft vignette rather than a flat wash — the palette reads as lifted above
+     a dimmed, gently blurred workspace. */
+  background: radial-gradient(120% 90% at 50% 0%, rgba(12, 16, 20, 0.42), rgba(8, 11, 14, 0.62));
+  backdrop-filter: blur(7px) saturate(1.1);
+  -webkit-backdrop-filter: blur(7px) saturate(1.1);
+  animation: cmdkFade 0.18s var(--fluid-bezier);
 }
 @keyframes cmdkFade {
   from {
@@ -1050,38 +1052,43 @@ body.owner-mode #mobileMenu {
   overflow-x: auto;
 }
 .cmdk-box {
+  /* Local palette tints, derived from the accent so light + dark both work. */
+  --cmdk-tile: color-mix(in srgb, var(--accent) 14%, transparent);
+  --cmdk-sel: color-mix(in srgb, var(--accent) 13%, transparent);
+  --cmdk-sel-edge: color-mix(in srgb, var(--accent) 55%, transparent);
   width: 100%;
-  max-width: 560px;
-  max-height: 70vh;
+  max-width: 580px;
+  max-height: 72vh;
   display: flex;
   flex-direction: column;
   background: var(--glass-bg);
   border: 1px solid var(--glass-highlight);
   border-radius: var(--r-lg);
-  box-shadow: var(--shadow-float);
+  box-shadow: var(--shadow-float), 0 1px 0 var(--glass-highlight) inset, 0 40px 80px -32px rgba(8, 11, 14, 0.55);
   backdrop-filter: var(--glass-filter);
   -webkit-backdrop-filter: var(--glass-filter);
   overflow: hidden;
-  animation: cmdkRise 0.22s var(--fluid-bezier);
+  animation: cmdkRise 0.26s var(--spring, var(--fluid-bezier));
 }
 @keyframes cmdkRise {
   from {
     opacity: 0;
-    transform: translateY(-8px) scale(0.98);
+    transform: translateY(-10px) scale(0.975);
   }
 }
 .cmdk-search {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 16px 18px;
+  padding: 17px 18px;
   border-bottom: 1px solid var(--glass-border);
 }
-.cmdk-search .ic {
-  width: 20px;
-  height: 20px;
-  color: var(--text-muted);
+.cmdk-search .cmdk-search-ic {
+  width: 21px;
+  height: 21px;
+  color: var(--accent);
   flex-shrink: 0;
+  opacity: 0.9;
 }
 /* Clear (✕) button — occupies the search-icon slot once there's text to clear. */
 .cmdk-clear {
@@ -1169,7 +1176,14 @@ body.owner-mode #mobileMenu {
   outline: none;
   color: var(--text-light);
   font: inherit;
-  font-size: 1.05rem;
+  font-size: 1.08rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.cmdk-search input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.75;
+  font-weight: 400;
 }
 .cmdk-results {
   overflow-y: auto;
@@ -1189,24 +1203,33 @@ body.owner-mode #mobileMenu {
   text-align: left;
   background: none;
   border: none;
-  border-radius: var(--r-sm);
-  padding: 11px 12px;
+  border-radius: var(--r-md);
+  padding: 10px 12px;
   cursor: pointer;
   color: var(--text-light);
+  transition: background 0.14s var(--fluid-bezier), box-shadow 0.14s var(--fluid-bezier);
 }
-.cmdk-row.is-sel,
 .cmdk-row:hover {
   background: var(--glass-hover);
 }
+.cmdk-row.is-sel {
+  background: var(--cmdk-sel);
+  box-shadow: inset 3px 0 0 var(--cmdk-sel-edge);
+}
 .cmdk-row-ic {
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: var(--r-sm);
-  background: rgba(127, 127, 127, 0.12);
+  border-radius: var(--r-md);
+  background: var(--cmdk-tile);
+  color: var(--accent);
+  transition: transform 0.14s var(--spring, var(--fluid-bezier));
+}
+.cmdk-row.is-sel .cmdk-row-ic {
+  transform: scale(1.06);
 }
 .cmdk-row-ic .ic {
   width: 17px;
@@ -1217,6 +1240,10 @@ body.owner-mode #mobileMenu {
 }
 .cmdk-row-ic.cmdk-enquiry .ic {
   color: var(--sky, var(--accent));
+}
+/* Navigation ("Jump to") tiles read neutral so entities/answers keep the accent. */
+.cmdk-row-ic.cmdk-screen {
+  background: var(--glass-hover);
 }
 .cmdk-row-ic.cmdk-screen .ic {
   color: var(--text-muted);
@@ -1313,49 +1340,54 @@ body.owner-mode #mobileMenu {
 }
 /* Spotlight-style section headers, Top Hit + empty-state example chips. */
 .cmdk-group-label {
-  font-size: 0.68rem;
+  font-size: 0.66rem;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--text-muted);
-  padding: 12px 12px 4px;
+  opacity: 0.72;
+  padding: 15px 12px 5px;
 }
-/* Search scope switch — narrows results to the workspace you're in. Sits at the
-   top of the palette, sticky so it stays reachable while the list scrolls. */
+/* Search scope switch — a segmented pill row that reads as part of the palette
+   chrome (no opaque slab). Bleeds to the box edges (counters the .cmdk-results
+   padding) with a hairline underline separating it from the results. */
 .cmdk-scopes {
   display: flex;
-  gap: 6px;
-  padding: 8px 12px;
+  gap: 7px;
+  margin: -8px -8px 6px;
+  padding: 11px 14px 12px;
   overflow-x: auto;
   scrollbar-width: none;
-  position: sticky;
-  top: 0;
-  z-index: 2;
-  background: var(--glass-bg, rgba(255, 255, 255, 0.7));
-  backdrop-filter: blur(8px);
+  border-bottom: 1px solid var(--glass-border);
+  -webkit-overflow-scrolling: touch;
 }
 .cmdk-scopes::-webkit-scrollbar {
   display: none;
 }
 .cmdk-scope {
   flex: 0 0 auto;
-  font-size: 0.78rem;
+  font-size: 0.8rem;
   font-weight: 600;
+  letter-spacing: 0.01em;
   color: var(--text-muted);
-  background: transparent;
-  border: 1px solid var(--glass-border, rgba(0, 0, 0, 0.12));
-  border-radius: var(--r-pill, 999px);
-  padding: 5px 13px;
+  background: var(--glass-hover);
+  border: 1px solid transparent;
+  border-radius: var(--r-pill);
+  padding: 6px 15px;
   cursor: pointer;
-  transition: background 0.15s var(--fluid-bezier, ease), color 0.15s ease, border-color 0.15s ease;
+  transition: background 0.16s var(--fluid-bezier), color 0.16s var(--fluid-bezier), box-shadow 0.16s var(--fluid-bezier), transform 0.12s var(--fluid-bezier);
 }
 .cmdk-scope:hover {
-  color: var(--text);
+  color: var(--text-light);
+}
+.cmdk-scope:active {
+  transform: scale(0.95);
 }
 .cmdk-scope.is-on {
   color: #fff;
-  background: var(--accent, #c79a64);
-  border-color: var(--accent, #c79a64);
+  background: var(--accent);
+  border-color: var(--accent);
+  box-shadow: 0 5px 14px -4px color-mix(in srgb, var(--accent) 60%, transparent);
 }
 .cmdk-results > .cmdk-group-label:first-child {
   padding-top: 4px;
@@ -1363,36 +1395,47 @@ body.owner-mode #mobileMenu {
 .cmdk-row.cmdk-tophit {
   padding-top: 13px;
   padding-bottom: 13px;
+  background: linear-gradient(180deg, var(--cmdk-tile), color-mix(in srgb, var(--accent) 6%, transparent));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.cmdk-row.cmdk-tophit.is-sel {
+  box-shadow: inset 3px 0 0 var(--cmdk-sel-edge), inset 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent);
 }
 .cmdk-row.cmdk-tophit .cmdk-row-ic {
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 .cmdk-row.cmdk-tophit .cmdk-row-label {
-  font-size: 1.02rem;
+  font-size: 1.04rem;
+  font-weight: 700;
 }
 .cmdk-examples {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  padding: 2px 12px 4px;
+  gap: 7px;
+  padding: 4px 12px 6px;
 }
 .cmdk-ex {
-  font-size: 0.8rem;
+  font-size: 0.82rem;
   font-weight: 500;
-  padding: 6px 11px;
-  border-radius: 999px;
+  padding: 7px 13px;
+  border-radius: var(--r-pill);
   border: 1px solid var(--glass-border);
-  background: var(--glass-bg);
+  background: var(--glass-hover);
   color: var(--text-light);
   cursor: pointer;
-  transition: background 0.14s var(--fluid-bezier), border-color 0.14s var(--fluid-bezier);
+  transition: background 0.15s var(--fluid-bezier), border-color 0.15s var(--fluid-bezier), transform 0.12s var(--fluid-bezier), box-shadow 0.15s var(--fluid-bezier);
 }
 .cmdk-ex:hover,
 .cmdk-ex:focus-visible {
-  background: var(--glass-hover);
-  border-color: var(--accent);
+  background: var(--cmdk-tile);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  box-shadow: 0 4px 12px -5px color-mix(in srgb, var(--accent) 50%, transparent);
   outline: none;
+}
+.cmdk-ex:active {
+  transform: scale(0.96);
 }
 /* Inline field editor — edit a setting right inside ⌘K (Tier-1 edit-in-search).
    Opened when a "Edit here" result is chosen; Save writes through the field's own
@@ -1472,26 +1515,31 @@ body.light-mode .cmdk-editor-input {
 .cmdk-act {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
   font-size: 0.76rem;
   font-weight: 600;
-  padding: 5px 10px;
-  border-radius: 999px;
-  border: 1px solid var(--glass-border);
-  background: var(--glass-bg);
+  padding: 6px 12px;
+  border-radius: var(--r-pill);
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
+  background: var(--cmdk-tile, color-mix(in srgb, var(--accent) 14%, transparent));
   color: var(--text-light);
   cursor: pointer;
-  transition: background 0.14s var(--fluid-bezier), border-color 0.14s var(--fluid-bezier);
+  transition: background 0.14s var(--fluid-bezier), border-color 0.14s var(--fluid-bezier), box-shadow 0.14s var(--fluid-bezier), transform 0.12s var(--fluid-bezier);
 }
 .cmdk-act:hover,
 .cmdk-act:focus-visible {
-  background: var(--glass-hover);
-  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
+  box-shadow: 0 4px 12px -5px color-mix(in srgb, var(--accent) 55%, transparent);
   outline: none;
+}
+.cmdk-act:active {
+  transform: scale(0.96);
 }
 .cmdk-act .ic {
   width: 13px;
   height: 13px;
+  color: var(--accent);
 }
 /* Refine chips under an answer head — narrow/pivot the result without retyping. */
 .cmdk-refine {
