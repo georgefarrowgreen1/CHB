@@ -3567,6 +3567,9 @@ function renderBookingHub() {
     const dh = damageHeld(propKey, b);
     const today = todayDashed();
     const past = (b.checkOut || '') <= today;
+    // Once the guest has arrived (checked in) the booking is committed: you can
+    // still edit its details, but not MOVE it (dates/cottage) or Cancel & refund.
+    const arrived = (b.checkIn || '') <= today;
     const nights = fin(p.nights) && p.nights > 0 ? p.nights : Math.max(1, Math.round((new Date(b.checkOut) - new Date(b.checkIn)) / 864e5));
     const ref = typeof bookingRef === 'function' ? bookingRef(b.id) : '';
 
@@ -3597,10 +3600,17 @@ function renderBookingHub() {
                     <!-- ONE quiet overflow menu instead of a row of buttons: the
                          header stays calm and the destructive action becomes a
                          deliberate two-tap instead of a permanent red button. -->
-                    <button class="btn-sm btn-edit bhub-menu-btn" onclick="bhubMenuToggle(event)" aria-haspopup="menu" aria-expanded="false">Edit/Move/Cancel</button>
+                    <button class="btn-sm btn-edit bhub-menu-btn" onclick="bhubMenuToggle(event)" aria-haspopup="menu" aria-expanded="false">${arrived ? 'Edit' : 'Edit/Move/Cancel'}</button>
                     <div class="bhub-menu glass-panel" role="menu" style="display:none;">
-                        <button role="menuitem" onclick="bhubMenuClose(); openEditBooking('${b.id}')">Edit / Move</button>
-                        <button role="menuitem" class="bhub-menu-danger" onclick="bhubMenuClose(); cancelBooking('${b.id}')">Cancel &amp; refund</button>
+                        <button role="menuitem" onclick="bhubMenuClose(); openEditBooking('${b.id}')">${arrived ? 'Edit details' : 'Edit / Move'}</button>
+                        ${
+                            // After the guest arrives the stay is committed — no
+                            // Cancel & refund (only the damages deposit can go back,
+                            // handled on the Payments card).
+                            arrived
+                                ? ''
+                                : `<button role="menuitem" class="bhub-menu-danger" onclick="bhubMenuClose(); cancelBooking('${b.id}')">Cancel &amp; refund</button>`
+                        }
                         ${
                             // Delete exists ONLY while no money is on the booking (same
                             // rule the server enforces): once anything has been paid or
