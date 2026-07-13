@@ -1010,6 +1010,65 @@ function send_anniversary_email($b)
     return smtp_send($b['email'], $b['name'] ?? '', $subject, $text, $html, [], null, null, $headers);
 }
 
+// Book-direct re-invite for an EXTERNAL guest who left a review via a /review
+// link (~a year on). The whole point is to convert an Airbnb/Vrbo guest into a
+// direct booking: best price, no platform fees. $lead: name, email, prop_key.
+// Sent once per lead by direct-followup.php; low privately-rated guests are
+// filtered out before we ever get here.
+function send_direct_followup_email($lead)
+{
+    if (empty($lead['email'])) {
+        return ['ok' => false, 'error' => 'No email on file'];
+    }
+    $accent = prop_display($lead['prop_key'] ?? '')['accent'];
+    $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
+    $name = ($lead['name'] ?? '') !== '' ? preg_split('/\s+/', trim($lead['name']))[0] : 'there';
+    $prop = prop_display($lead['prop_key'] ?? '')['name'] ?: 'our cottage';
+    $url = function_exists('site_base_url') ? site_base_url() : '';
+
+    // Real one-click unsubscribe (this is a marketing email) + RFC 8058 headers.
+    $unsub = $url && function_exists('email_optout_token')
+        ? $url . 'email-optout.php?e=' . rawurlencode($lead['email']) . '&t=' . email_optout_token($lead['email'])
+        : '';
+
+    $subject = "Fancy another Blakeney escape? Book {$prop} direct";
+    $text =
+        "Hi {$name},\n\n" .
+        "A little while ago you left us a lovely review for {$prop} — thank you again, it means a lot.\n\n" .
+        "If the North Norfolk coast is calling you back, here's the good bit: book DIRECT with us and you skip " .
+        "the booking-site fees entirely. You get the best price, and you deal straight with us — the people who " .
+        "actually look after the cottage.\n\n" .
+        ($url ? "See dates & book direct: {$url}\n\n" : '') .
+        "We'd love to welcome you back,\nCottage Holidays Blakeney\n\n" .
+        ($unsub ? "Prefer not to get the occasional note like this? Unsubscribe in one tap: {$unsub}" : '');
+
+    $inner =
+        email_h('Come back — and book direct') .
+        email_p(
+            'Hi ' .
+                $esc($name) .
+                ', a little while ago you left us a lovely review for <strong style="color:#2A2622;">' .
+                $esc($prop) .
+                '</strong> — thank you again, it really means a lot.',
+        ) .
+        email_p(
+            'If the North Norfolk coast is calling you back, here\'s the good bit: book <strong style="color:#2A2622;">direct</strong> with us and you skip the booking-site fees entirely. You get the <strong style="color:#2A2622;">best price</strong>, and you deal straight with the people who look after the cottage.',
+        );
+    if ($url) {
+        $inner .= email_btn($url, 'See dates & book direct');
+    }
+    $inner .= email_p('We\'d love to welcome you back,<br>Cottage Holidays Blakeney', true);
+    $inner .= $unsub
+        ? email_p('Prefer not to get the occasional note like this? <a href="' . email_esc($unsub) . '" style="color:#A79E8A;text-decoration:underline;">Unsubscribe in one tap</a>.', true)
+        : email_p('Prefer not to get the occasional note like this? Just reply and say so.', true);
+    $html = email_shell('Book ' . $prop . ' direct and skip the fees', $inner, $accent);
+
+    $headers = $unsub
+        ? ['List-Unsubscribe' => '<' . $unsub . '>', 'List-Unsubscribe-Post' => 'List-Unsubscribe=One-Click']
+        : [];
+    return smtp_send($lead['email'], $lead['name'] ?? '', $subject, $text, $html, [], null, null, $headers);
+}
+
 // Acknowledge a guest's enquiry by email. $accountExists tailors the closing line:
 // returning guests are pointed to sign in; new guests are invited to create an account.
 function send_enquiry_ack($enq, $accountExists = false)
