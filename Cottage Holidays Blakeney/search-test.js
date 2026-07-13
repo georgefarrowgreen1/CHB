@@ -297,6 +297,16 @@ check('todayGaps returns an array', Array.isArray(ctx.todayGaps && ctx.todayGaps
 // The board filter now targets whichever workspace you're on (Today/Inbox/Payments).
 check('cmdkActiveWorkspace() is defined and defaults to a real workspace', typeof ctx.cmdkActiveWorkspace === 'function' && ['view-backoffice', 'view-inbox', 'view-accounts'].includes(ctx.cmdkActiveWorkspace()));
 
+// ---- 11. Entity-aware search (Siri-style: act on the record you're viewing) ----
+check('entity helpers are defined', typeof ctx.cmdkCurrentEntity === 'function' && typeof ctx.cmdkEntityActions === 'function' && typeof ctx.cmdkHubSuggestInject === 'function');
+if (typeof ctx.cmdkEntityActions === 'function') {
+    const bookActs = ctx.cmdkEntityActions({ type: 'booking', id: 1, name: 'Jane', b: { id: 1, checkIn: '2026-08-01', checkOut: '2026-08-05' } });
+    check('a booking entity suggests actions incl. "Their other stays"', Array.isArray(bookActs) && bookActs.length >= 2 && bookActs.some((a) => /other stays/i.test(a.label)) && bookActs.every((a) => typeof a.run === 'function'));
+    const enqActs = ctx.cmdkEntityActions({ type: 'enquiry', id: 2, name: 'Bob' });
+    check('an enquiry entity suggests Approve / Email / Decline', Array.isArray(enqActs) && enqActs.length === 4 && enqActs.some((a) => /approve/i.test(a.label)) && enqActs.some((a) => /decline/i.test(a.label)));
+    check('no entity → no suggestions', ctx.cmdkEntityActions(null).length === 0);
+}
+
 // ---- Summary ----
 console.log('\n== Summary ==');
 if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }

@@ -1338,6 +1338,50 @@ body.owner-mode #mobileMenu {
 .today-filter-bar strong {
   color: var(--accent);
 }
+/* Proactive "Suggested" next-best-action strip on the booking hub (the on-page
+   half of entity-aware search). */
+.hub-suggest {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 2px 2px 0;
+}
+.hub-suggest-lbl {
+  font-size: 0.64rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  opacity: 0.72;
+}
+.hub-suggest-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 7px 13px;
+  border-radius: var(--r-pill);
+  border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--text-light);
+  cursor: pointer;
+  transition: background 0.15s var(--fluid-bezier), box-shadow 0.15s var(--fluid-bezier), transform 0.12s var(--fluid-bezier);
+}
+.hub-suggest-chip:hover {
+  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  box-shadow: 0 4px 12px -5px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+.hub-suggest-chip:active {
+  transform: scale(0.96);
+}
+.hub-suggest-chip .ic {
+  width: 14px;
+  height: 14px;
+  color: var(--accent);
+}
 /* Spotlight-style section headers, Top Hit + empty-state example chips. */
 .cmdk-group-label {
   font-size: 0.66rem;

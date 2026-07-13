@@ -544,6 +544,7 @@ function cmdkActIcon(name) {
         plus: '<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',
         x: '<path d="M18 6L6 18M6 6l12 12"/>',
         cal: '<rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/>',
+        guest: '<circle cx="12" cy="8" r="4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/>',
     };
     return `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p[name] || p.hub}</svg>`;
 }
@@ -721,6 +722,14 @@ function cmdkIntent(q) {
         return { ps, st, money, dep };
     };
 
+    // 0a) Entity context — when a booking/enquiry hub is open, "email them",
+    //     "their other stays", "refund the deposit" act on THAT record.
+    if (__cmdkEntity && /\b(them|their|this (one|guest|booking|enquiry|stay|person)|refund|deposit|balance|pay|email|reply|approve|decline|other (stay|booking|enquir))\b/.test(q)) {
+        const ent = __cmdkEntity;
+        const eacts = cmdkEntityActions(ent);
+        return [ans(ent.name || 'This record', ent.type === 'booking' ? 'This booking' : 'This enquiry', () => { closeCmdK(); if (ent.type === 'booking') openBookingHub(ent.id); else openEnquiryHub(ent.id); })]
+            .concat(eacts.map((a, i) => ({ type: 'action', id: 'entq-' + i, label: a.label, sub: '', run: a.run })));
+    }
     // 0) Actions / "how do I…" — route a task request straight to the thing that
     // does it. Drawn from the shared CMDK_ACTIONS catalog (also fuzzy-searchable
     // by name/synonym in cmdkAll), so "how to add a booking", "change prices",
@@ -1617,12 +1626,18 @@ function cmdkSearchCore(q, allowCorrect) {
         // show only the active scope's items ("All" shows the day brief + the
         // top dock destinations).
         const keep = (it) => __cmdkScope === 'all' || it.scope === __cmdkScope;
+        // Entity-aware: viewing a booking/enquiry hub → lead with its next-best
+        // actions (proactive suggestions). Only in the unscoped "All" view.
+        const suggestions = (__cmdkScope === 'all' && __cmdkEntity)
+            ? cmdkEntityActions(__cmdkEntity).map((a, i) => ({ type: 'action', id: 'sug-' + i, label: a.label, sub: 'For ' + (__cmdkEntity.name || 'this'), run: a.run }))
+            : [];
         const brief = cmdkBrief().filter(keep);
         const allScreens = cmdkScreens();
         const screens = __cmdkScope === 'all' ? allScreens.slice(0, 6) : allScreens.filter(keep);
+        __cmdkSuggestN = suggestions.length;
         __cmdkBriefN = brief.length;
-        __cmdkResults = brief.concat(screens);
-        __cmdkSel = -1; // nothing pre-selected
+        __cmdkResults = suggestions.concat(brief).concat(screens);
+        __cmdkSel = __cmdkSuggestN ? 0 : -1; // pre-select the top suggestion when present
         cmdkRender();
         return;
     }
@@ -1786,6 +1801,75 @@ async function cmdkOpenEmail(id) {
 function cmdkOpenAccounts(sub) {
     closeCmdK();
     Promise.resolve(openAccounts()).then(() => { if (typeof accountsOpen === 'function') accountsOpen(sub); });
+}
+// ============================================================
+//  Entity-aware search ("Siri knows what's on your screen"). When ⌘K opens on a
+//  booking or enquiry hub, the palette pre-seeds that record and PROACTIVELY
+//  suggests its next-best actions, and "email them / their other stays / refund"
+//  act on it. cmdkEntityActions reuses the same flows the hub buttons use.
+// ============================================================
+let __cmdkEntity = null;
+function cmdkCurrentEntity() {
+    const v = typeof document !== 'undefined' && document.querySelector ? (document.querySelector('.page-view.active') || {}).id : '';
+    if (v === 'view-booking-hub' && typeof __hubBookingId !== 'undefined' && __hubBookingId) {
+        const b = typeof findBookingById === 'function' ? findBookingById(__hubBookingId) : null;
+        if (b) return { type: 'booking', id: __hubBookingId, name: b.name || 'this booking', b };
+    }
+    if (v === 'view-enquiry-hub' && typeof __enqHubId !== 'undefined' && __enqHubId) {
+        const e = Array.isArray(enquiries) ? enquiries.find((x) => String(x.id) === String(__enqHubId)) : null;
+        if (e) return { type: 'enquiry', id: __enqHubId, name: e.name || 'this enquiry', e };
+    }
+    return null;
+}
+function cmdkRunQuery(q) {
+    // Open the palette first if it's closed (e.g. run from an on-page hub chip).
+    const o = document.getElementById('cmdk');
+    if (o && o.style.display === 'none' && typeof openCmdK === 'function') openCmdK();
+    const el = document.getElementById('cmdk-input');
+    if (el) el.value = q || '';
+    cmdkSearch(q || '');
+}
+function cmdkEntityActions(ent) {
+    if (!ent) return [];
+    if (ent.type === 'booking') {
+        const loc = typeof findBookingLocation === 'function' ? findBookingLocation(ent.id) : null;
+        const acts = (typeof cmdkBookingActions === 'function' ? cmdkBookingActions(ent.b, loc ? loc.propKey : undefined) : []).slice();
+        acts.push({ key: 'other', label: 'Their other stays', icon: cmdkActIcon('guest'), run: () => cmdkRunQuery(ent.name) });
+        return acts;
+    }
+    if (ent.type === 'enquiry') {
+        return [
+            { key: 'approve', label: 'Approve & create booking', icon: cmdkActIcon('ok'), run: () => { closeCmdK(); if (typeof approveEnquiry === 'function') approveEnquiry(ent.id); } },
+            { key: 'email', label: 'Email them', icon: cmdkActIcon('mail'), run: () => { closeCmdK(); if (typeof openEnquiryEmail === 'function') openEnquiryEmail(ent.id); } },
+            { key: 'decline', label: 'Decline', icon: cmdkActIcon('no'), run: () => { closeCmdK(); if (typeof declineEnquiry === 'function') declineEnquiry(ent.id); } },
+            { key: 'other', label: 'Their other enquiries', icon: cmdkActIcon('guest'), run: () => cmdkRunQuery(ent.name) },
+        ];
+    }
+    return [];
+}
+// Proactive next-best actions for the hubs, surfaced ON the page (a "Suggested"
+// strip). Same source as the palette suggestions, capped to the top few.
+function cmdkHubSuggestInject(kind) {
+    try {
+        const id = kind === 'enquiry' ? 'enquiry-hub-content' : 'booking-hub-content';
+        const host = document.getElementById(id);
+        if (!host) return;
+        const ent = kind === 'enquiry'
+            ? (typeof __enqHubId !== 'undefined' && __enqHubId && Array.isArray(enquiries) ? (function () { const e = enquiries.find((x) => String(x.id) === String(__enqHubId)); return e ? { type: 'enquiry', id: __enqHubId, name: e.name, e } : null; })() : null)
+            : (typeof __hubBookingId !== 'undefined' && __hubBookingId && typeof findBookingById === 'function' ? (function () { const b = findBookingById(__hubBookingId); return b ? { type: 'booking', id: __hubBookingId, name: b.name, b } : null; })() : null);
+        const old = host.querySelector('.hub-suggest');
+        if (old) old.remove();
+        if (!ent) return;
+        const acts = cmdkEntityActions(ent).slice(0, 3);
+        if (!acts.length) return;
+        const bar = document.createElement('div');
+        bar.className = 'hub-suggest';
+        bar.innerHTML = '<span class="hub-suggest-lbl">Suggested</span>' + acts.map((a, i) => `<button type="button" class="hub-suggest-chip" data-i="${i}">${a.icon || ''}${escapeHtml(a.label)}</button>`).join('');
+        bar.querySelectorAll('.hub-suggest-chip').forEach((btn, i) => { btn.addEventListener('click', () => { try { acts[i].run(); } catch (e) {} }); });
+        const anchor = host.querySelector('.bhub-grid') || host.querySelector('.bhub-card');
+        if (anchor && anchor.parentElement === host) host.insertBefore(bar, anchor);
+        else host.insertBefore(bar, host.firstChild);
+    } catch (e) {}
 }
 // ============================================================
 //  Today × Search — search reaches into the operations workspace itself:
@@ -2102,6 +2186,7 @@ function cmdkBrief() {
 }
 // ---- Spotlight-style presentation: a Top Hit + grouped section headers. ----
 let __cmdkEmpty = false;
+let __cmdkSuggestN = 0; // count of leading entity-suggestion rows in the empty palette
 // Which section a result belongs to — drives the grouped headers + arrange order.
 function cmdkSection(type) {
     if (type === 'answer' || type === 'figure') return { key: 'answers', label: 'Answers', order: 0 };
@@ -2217,14 +2302,18 @@ function cmdkRender() {
     const sb = cmdkScopeBar(); // scope switch sits above every state
     // Empty palette → the "Your day" brief, then the dock destinations to jump to.
     if (__cmdkEmpty) {
-        const briefHtml = __cmdkResults.slice(0, __cmdkBriefN).map((it, i) => cmdkRowHtml(it, i, false)).join('');
-        const screenItems = __cmdkResults.slice(__cmdkBriefN);
-        const screensHtml = screenItems.map((it, i) => cmdkRowHtml(it, __cmdkBriefN + i, false)).join('');
+        const S = __cmdkSuggestN || 0;
+        const sugHtml = __cmdkResults.slice(0, S).map((it, i) => cmdkRowHtml(it, i, i === 0)).join('');
+        const briefHtml = __cmdkResults.slice(S, S + __cmdkBriefN).map((it, i) => cmdkRowHtml(it, S + i, false)).join('');
+        const screenItems = __cmdkResults.slice(S + __cmdkBriefN);
+        const screensHtml = screenItems.map((it, i) => cmdkRowHtml(it, S + __cmdkBriefN + i, false)).join('');
+        const sugLabel = __cmdkEntity ? 'Suggested · ' + (__cmdkEntity.name || 'this') : 'Suggested';
         box.innerHTML =
             sb +
+            (S ? `<div class="cmdk-group-label">${escapeHtml(sugLabel)}</div>${sugHtml}` : '') +
             (__cmdkBriefN ? `<div class="cmdk-group-label">${cmdkGreeting()}</div>${briefHtml}` : '') +
             (screenItems.length ? `<div class="cmdk-group-label">Jump to</div>${screensHtml}` : '') +
-            (!__cmdkBriefN && !screenItems.length ? `<div class="cmdk-none">Nothing here in ${escapeHtml(__cmdkScope)} — tap “All” to widen.</div>` : '');
+            (!S && !__cmdkBriefN && !screenItems.length ? `<div class="cmdk-none">Nothing here in ${escapeHtml(__cmdkScope)} — tap “All” to widen.</div>` : '');
         return;
     }
     if (!__cmdkResults.length) {
@@ -2432,6 +2521,7 @@ function openCmdK() {
     o.style.display = 'flex';
     inp.value = '';
     __cmdkScope = cmdkDefaultScope(); // open pre-scoped to the workspace you're in
+    __cmdkEntity = cmdkCurrentEntity(); // and aware of the record you're viewing
     cmdkVoiceInit(); // reveal the mic where speech recognition is supported
     cmdkSearch('');
     // focus after paint so the mobile keyboard opens reliably
@@ -3448,6 +3538,7 @@ function renderBookingHub() {
             <p class="bhub-mut" style="margin:10px 0 0;font-size:0.8rem;">Full name &amp; nationality of everyone 16+ (plus passport/ID &amp; next destination for non‑British/Irish). Held securely; deleted 12 months after checkout.</p>
         </section>`;
     el.innerHTML = `${header}<div class="bhub-grid">${moneyCard}${emailsCard}${guestCard}${regCard}${historyCard}</div>`;
+    try { cmdkHubSuggestInject('booking'); } catch (e) {}
 }
 // Guest-register (UK 1972 Order) helpers — open the token form to view/edit the
 // party, or copy the request link to send the guest. The token comes from the
