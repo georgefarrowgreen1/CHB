@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 142;
+const ADMIN_BUNDLE_V = 143;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -5939,6 +5939,49 @@ function paymentSummary(propKey, b) {
     const balance = Math.round((total - deposit) * 100) / 100;
     const fullyPaid = b.payment === 'paid' || balance <= 0.001;
     return { total, deposit, balance, fullyPaid };
+}
+
+// ---- Unified booking flow ------------------------------------------------
+// The ONE ordered progress model, shared by the admin booking hub and the
+// guest's My Stays card, so both sides show the same journey. Each stage is
+// { key, label (owner wording), glabel (guest wording), done, now }. Payments,
+// guest-details collection and the stay itself are all first-class steps.
+// Pure — everything is derived from the booking + the shared price/payment
+// helpers, so it can't disagree with the money shown elsewhere.
+// Order (owner-confirmed): Booked → Deposit → Guest details → Paid → Arrival →
+// Staying → Deposit back. The details stage only appears when a registration
+// form exists for the booking; the deposit-back stage only when a refundable
+// damage deposit applies.
+function bookingFlow(propKey, b) {
+    b = b || {};
+    const today = typeof todayDashed === 'function' ? todayDashed() : '';
+    const past = !!(b.checkOut && b.checkOut <= today);
+    const inStay = !past && !!(b.checkIn && b.checkIn <= today);
+    const p = b.agreedPrice || priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
+    const ps = paymentSummary(propKey, b);
+    const gt = displayGrand(p, ps, b.holdStatus);
+    const hold = b.holdStatus || 'none';
+    const hasReg = !!b.regUrl;
+    const hasDamage = (gt.dep || 0) > 0 || ['authorized', 'captured', 'charged', 'returned', 'kept'].includes(hold);
+    const stages = [
+        { key: 'booked', label: 'Booked', glabel: 'Booked', done: true },
+        { key: 'deposit', label: 'Deposit', glabel: 'Deposit paid', done: gt.paid > 0.001 },
+    ];
+    if (hasReg) stages.push({ key: 'details', label: 'Guest details', glabel: 'Your details', done: !!b.regSubmitted });
+    stages.push({ key: 'paid', label: 'Paid in full', glabel: 'Balance paid', done: !!gt.fullyPaid });
+    stages.push({ key: 'arrival', label: 'Arrival info', glabel: 'Arrival info', done: !!b.preArrivalSent });
+    stages.push({ key: 'stay', label: past ? 'Stayed' : 'Stay', glabel: past ? 'Stay complete' : 'Your stay', done: past, now: inStay });
+    if (hasDamage) stages.push({ key: 'depositback', label: 'Deposit back', glabel: 'Deposit returned', done: ['returned', 'kept'].includes(hold) });
+    return { stages, past, inStay, gt, ps, p, hasReg, hasDamage, hold };
+}
+// Reduce a flow to its Done / Now / Next window: index of the first unfinished
+// stage (the "now"), clamped so an in-progress stay reads as current. Shared so
+// admin + guest highlight the same step.
+function bookingFlowCursor(stages) {
+    let cur = stages.findIndex((s) => !s.done);
+    const stayNow = stages.findIndex((s) => s.now && !s.done);
+    if (stayNow > -1) cur = stayNow;
+    return cur; // -1 when every stage is done
 }
 
 
@@ -12051,7 +12094,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'staydot1';
+    const BUILD = 'bkflow1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

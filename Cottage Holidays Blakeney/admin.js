@@ -3431,28 +3431,21 @@ function hubPipelineHtml(propKey, b, gt, dh) {
     const today = todayDashed();
     const past = (b.checkOut || '') <= today;
     const inStay = !past && (b.checkIn || '') <= today;
-    const hasDamage =
-        dh.collected > 0 || gt.dep > 0 || ['authorized', 'captured', 'charged', 'returned', 'kept'].includes(b.holdStatus || 'none');
-    const stages = [
-        { label: 'Booked', done: true },
-        { label: 'Deposit', done: gt.paid > 0 },
-        { label: 'Paid in full', done: gt.fullyPaid },
-        { label: 'Arrival info', done: !!b.preArrivalSent },
-        { label: past ? 'Stayed' : 'Stay', done: past, now: inStay },
-    ];
-    if (hasDamage) {
-        stages.push({
-            label: 'Deposit back',
-            done: ['returned', 'kept'].includes(b.holdStatus || '') || (dh.collected > 0 && dh.held <= 0.001),
-        });
-    }
+    // The unified flow engine (app.js) is the single source of truth for the
+    // stages — now including the Guest-details collection step alongside payments.
+    // Admin refines the deposit-back done-state with its richer damage ledger.
+    const flow = bookingFlow(propKey, b);
+    const stages = flow.stages;
+    let dback = stages.find((s) => s.key === 'depositback');
+    if (!dback && dh.collected > 0) { dback = { key: 'depositback', label: 'Deposit back', done: false }; stages.push(dback); }
+    if (dback && !dback.done && dh.collected > 0 && dh.held <= 0.001) dback.done = true;
     // A dynamic three-pill window — where this booking has been, where it IS,
     // and what comes next — instead of the whole journey squeezed into one
     // strip (which needed swiping on phones and buried the current stage).
     const pill = (s, cls) => `<span class="pipe-step ${cls}"><span class="pipe-dot"></span>${escapeHtml(s.label)}</span>`;
     const col = (cap, inner) => `<div class="pipe3-col"><span class="pipe3-cap">${cap}</span>${inner}</div>`;
     const arrow = '<span class="pipe3-arrow" aria-hidden="true">›</span>';
-    const curIdx = stages.findIndex((s) => !s.done);
+    const curIdx = bookingFlowCursor(stages);
     let strip;
     if (curIdx === -1) {
         // Journey complete — the last stage says so.
@@ -3486,6 +3479,12 @@ function hubPipelineHtml(propKey, b, gt, dh) {
                 btn: canCard ? 'Request the balance by card' : 'Record a payment',
             };
         }
+    } else if (flow.hasReg && !b.regSubmitted && !past) {
+        next = {
+            text: 'Guest details haven’t been provided yet — required before arrival (UK guest records).',
+            onclick: `copyGuestRegLink('${b.id}')`,
+            btn: 'Copy the details link',
+        };
     } else if (!past && !b.preArrivalSent && b.email) {
         next = {
             text: 'Paid up — the arrival info (directions, key code) hasn’t gone out yet.',

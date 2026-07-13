@@ -359,6 +359,22 @@ if (typeof ctx.cmdkRowHtml === 'function') {
     check('rows carry a stable option id for aria-activedescendant', /id="cmdk-opt-2"/.test(html) && /role="option"/.test(html));
 }
 
+// ---- 15. Unified booking flow (shared admin + guest progress model) ----
+check('bookingFlow helpers are defined', typeof ctx.bookingFlow === 'function' && typeof ctx.bookingFlowCursor === 'function');
+if (typeof ctx.bookingFlow === 'function') {
+    const unpaid = ctx.bookingFlow('x', { agreedPrice: { total: 400, damagesDeposit: 0 }, depositPaid: 0, checkIn: '2026-08-01', checkOut: '2026-08-05' });
+    const keys = unpaid.stages.map((s) => s.key);
+    check('flow has the core stages in order', JSON.stringify(keys) === JSON.stringify(['booked', 'deposit', 'paid', 'arrival', 'stay']));
+    check('Booked is always done, Deposit pending when unpaid', unpaid.stages[0].done === true && unpaid.stages[1].done === false);
+    check('cursor points at the first unfinished stage (Deposit)', ctx.bookingFlowCursor(unpaid.stages) === 1);
+    // Guest-details stage appears only when a reg form exists, sitting after Deposit.
+    const withReg = ctx.bookingFlow('x', { agreedPrice: { total: 400, damagesDeposit: 100 }, depositPaid: 400, regUrl: 'http://x', regSubmitted: true, holdStatus: 'charged', checkIn: '2026-08-01', checkOut: '2026-08-05' });
+    const rkeys = withReg.stages.map((s) => s.key);
+    check('reg booking inserts Guest details after Deposit + adds Deposit-back', JSON.stringify(rkeys) === JSON.stringify(['booked', 'deposit', 'details', 'paid', 'arrival', 'stay', 'depositback']));
+    check('paid booking marks Deposit + Guest details + Paid done', withReg.stages[1].done && withReg.stages[2].done && withReg.stages[3].done);
+    check('stages carry guest wording (glabel)', withReg.stages.find((s) => s.key === 'details').glabel === 'Your details');
+}
+
 // ---- Summary ----
 console.log('\n== Summary ==');
 if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }
