@@ -252,7 +252,7 @@ function cmdkActions(q) {
     const pk = cmdkCottageFor(ql);
     const cName = pk && propertyMeta[pk] ? propertyMeta[pk].name : '';
     const toManage = (key) => () => cmdkOpenSection(key);
-    const toAccom = (sec) => () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => { if (pk && typeof settingsGotoAccomSec === 'function') settingsGotoAccomSec(pk, sec); else settingsOpen('accom'); }); };
+    const toAccom = (sec) => () => cmdkOpenAccomSec(pk, sec);
     const A = (slug, label, sub, kw, re, run) => ({ type: 'action', id: 'act-' + slug, label, sub, kw, re, run });
     // Current back-office layout — the escape hatch below flips to the other one.
     // (In search-first the Manage dock button is hidden, so this ⌘K action is the
@@ -867,7 +867,7 @@ function cmdkIntent(q) {
             const yr = +today.slice(0, 4);
             const rev = bs.filter((b) => +b.checkIn.slice(0, 4) === yr).reduce((s, b) => s + ((b.agreedPrice && b.agreedPrice.total) || 0), 0);
             const facts = [next ? `Next in ${fmtDate(next.checkIn)}` : 'Nothing upcoming', rev ? `${gbp(rev)} booked in ${yr}` : null].filter(Boolean).join(' · ');
-            const openSec = (sec) => () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => settingsGotoAccomSec(dPk, sec)); };
+            const openSec = (sec) => () => cmdkOpenAccomSec(dPk, sec);
             const runQ = (query) => () => { const el = document.getElementById('cmdk-input'); if (el) el.value = query; cmdkSearch(query); };
             const head = ans(cName, facts, openSec('rates'), [{ label: 'Bookings', run: runQ(cName + ' bookings') }].concat(next ? [calChip(next.checkIn)] : []));
             const rows = ACCOM_SECTIONS.map((s) => ({ type: 'action', id: 'dsr-' + dPk + '-' + s.id, label: s.label.replace(/&amp;/g, '&'), sub: (s.sub || '').replace(/&amp;/g, '&'), run: openSec(s.id) }));
@@ -1252,7 +1252,7 @@ function cmdkContentMatches(ql) {
             id: 'ct-' + sec + '-' + pk,
             label,
             sub: 'Content · ' + (plain.length > 72 ? plain.slice(0, 71) + '…' : plain || 'edit'),
-            run: () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => { if (pk && typeof settingsGotoAccomSec === 'function') settingsGotoAccomSec(pk, sec); else settingsOpen('content'); }); },
+            run: () => { if (pk) cmdkOpenAccomSec(pk, sec); else cmdkOpenSection('content'); },
         });
     };
     Object.keys(propertyMeta || {}).forEach((pk) => {
@@ -1665,11 +1665,11 @@ function cmdkSheetRender(section) {
     if (typeof settingsRenderSection === 'function') settingsRenderSection(section);
     else if (section === 'seasongrid' && typeof renderSeasonGrid === 'function') renderSeasonGrid();
 }
-// A couple of sections drive their own sub-navigation via settingsOpen() (the
-// per-cottage accom detail, the per-property cancellation editor). Hosting those
-// in a sheet would fight the background page, so in search-first they still route
-// to Manage. Everything else opens INTO the palette for editing.
-const CMDK_SHEET_EXCLUDE = { accom: 1, cancel: 1 };
+// Every Manage section can be hosted in a sheet now: the per-cottage accom detail
+// and per-property cancellation editor used to fight the background page, but the
+// settingsOpen sheet-guard keeps their sub-navigation inside the palette — so
+// nothing needs excluding. (Kept as a hook in case a future section must opt out.)
+const CMDK_SHEET_EXCLUDE = {};
 // Open a Manage section from search: in search-first mode load it INTO the palette
 // as a sheet ("edit here", no page change); in classic mode route to the Manage
 // page as before.
@@ -1681,6 +1681,19 @@ function cmdkOpenSection(sec, label) {
     }
     closeCmdK();
     Promise.resolve(openArea('manage')).then(() => settingsOpen(sec));
+}
+// Open a per-cottage editor sub-section (photos / text / rates / welcome / …) from
+// search: in search-first it loads the Cottages sheet and drills straight to that
+// cottage's section inside the palette; in classic it routes to the Manage page.
+function cmdkOpenAccomSec(pk, sec) {
+    const searchFirst = typeof backofficeMode === 'function' && backofficeMode() === 'search';
+    if (searchFirst && document.getElementById('sec-accom')) {
+        cmdkSheetOpen('accom', (typeof SETTINGS_TITLES === 'object' && SETTINGS_TITLES['accom']) || 'Cottages');
+        try { if (pk && typeof settingsGotoAccomSec === 'function') settingsGotoAccomSec(pk, sec); } catch (e) {}
+        return;
+    }
+    closeCmdK();
+    Promise.resolve(openArea('manage')).then(() => { if (pk && typeof settingsGotoAccomSec === 'function') settingsGotoAccomSec(pk, sec); else settingsOpen('accom'); });
 }
 function cmdkSheetOpen(section, title) {
     const sec = document.getElementById('sec-' + section);
@@ -2835,6 +2848,15 @@ function settingsOpen(section) {
     if (section === 'mailbox') {
         openInbox();
         inboxFolder('email');
+        return;
+    }
+    // If this section is currently hosted in a ⌘K sheet, keep it there: re-render
+    // its content in place and DON'T disturb the background Manage page. This lets
+    // the cottage / cancellation drill-ins (settingsGotoAccomSec → settingsOpen)
+    // stay inside the search palette instead of jumping to the settings page.
+    if (typeof __cmdkSheet !== 'undefined' && __cmdkSheet && __cmdkSheet.section === section) {
+        const sheeted = document.getElementById('sec-' + section);
+        if (sheeted) { sheeted.style.display = ''; try { settingsRenderSection(section); } catch (e) {} }
         return;
     }
     adminHistPush('view-settings', section);
