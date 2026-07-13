@@ -258,6 +258,8 @@ function cmdkActions(q) {
     // (In search-first the Manage dock button is hidden, so this ⌘K action is the
     // reliable way back to classic.)
     const boSearch = typeof backofficeMode === 'function' && backofficeMode() === 'search';
+    // Current appearance — the theme action below offers the opposite.
+    const isLight = typeof document !== 'undefined' && document.body && document.body.classList.contains('light-mode');
     return [
         A('addbooking', 'Add a booking', 'Take a booking into the diary', 'book customer guest reservation manual new take enter create put', /(add|new|create|make|manual|take|enter|put).{0,14}(booking|reservation|stay|customer|guest)|book (a|in|someone|my)/, () => { closeCmdK(); openAddBooking(); }),
         A('block', 'Block out dates', 'Mark dates unavailable', 'block off close unavailable maintenance reserve hold', /block.{0,10}(date|off|out|calendar|time)|(add|make).{0,10}block|close.{0,8}date/, () => { closeCmdK(); openBlockDates(); }),
@@ -287,6 +289,12 @@ function cmdkActions(q) {
         A('chatans', 'Instant chat answers', 'Auto-answers to chat chips', 'auto answer chat bot faq quick reply automation', /(edit|set).{0,12}(instant |chat )?(answer)|auto.?answer/, toManage('chat-answers')),
         A('followups', 'Follow-up emails', 'Enquiry & guest nudges', 'follow up nudge reminder anniversary automation email chase', /(edit|set|manage).{0,12}follow.?up/, toManage('follow-ups')),
         A('activity', 'Activity log', 'Every change & action', 'activity log history audit changes events', /(view|open|show|see).{0,10}(activity|log|history|audit)/, () => { closeCmdK(); nav('view-activity-log'); }),
+        A('theme',
+            isLight ? 'Switch to dark mode' : 'Switch to light mode',
+            'Change the app appearance',
+            'dark light mode theme appearance colour color night day display brightness switch toggle',
+            /\b(dark|light|night)\b|\bappearance\b|\btheme\b|colou?r scheme|(switch|change|toggle|turn).{0,12}(mode|theme|appearance|dark|light)/,
+            () => { closeCmdK(); if (typeof toggleTheme === 'function') toggleTheme(); }),
         A('layout',
             boSearch ? 'Switch to classic layout' : 'Switch to search-first layout',
             boSearch ? 'Restore the full dock — Payments & Manage buttons' : 'Collapse the dock — Payments & Manage move into search',
