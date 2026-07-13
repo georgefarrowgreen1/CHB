@@ -11,7 +11,7 @@ const ADMIN_BUNDLE_V = 152;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 38;
+const ADMIN_CSS_V = 39;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -4770,8 +4770,8 @@ window.addEventListener('unhandledrejection', (e) => {
 // Property metadata: colour code + display name
 const propertyMeta = {
     '21a': { name: '21A Westgate', short: '21A', color: 'pale blue' },
-    jollyboat: { name: 'Jollyboat', short: 'Jolly', color: 'green' },
-    pimpernel: { name: 'Pimpernel', short: 'Pimp', color: 'purple' },
+    jollyboat: { name: 'Jollyboat', short: 'Jollyboat', color: 'green' },
+    pimpernel: { name: 'Pimpernel', short: 'Pimpernel', color: 'purple' },
 };
 
 // Occupancy limits per property. maxAdults / maxChildren cap each field;
@@ -12220,7 +12220,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'srchqa2';
+    const BUILD = 'tllbl1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

@@ -367,7 +367,7 @@
   position: sticky;
   left: 0;
   z-index: 3;
-  flex: 0 0 74px;
+  flex: 0 0 90px;
   display: flex;
   align-items: center;
   padding: 0 8px;
@@ -614,7 +614,7 @@
 }.tl-bar.tl-clip-r {
   margin-right: 1px;
 }@media (max-width: 640px) {.tl-label {
-    flex-basis: 54px;
+    flex-basis: 80px;
     padding: 0 6px;
     font-size: 0.68rem;
   }.tl-day {
