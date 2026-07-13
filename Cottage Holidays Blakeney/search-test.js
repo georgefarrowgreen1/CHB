@@ -118,6 +118,9 @@ check('every action carries a natural-language regex (re)', actions.every((a) =>
 check('every action has a non-empty label', actions.every((a) => typeof a.label === 'string' && a.label.trim()));
 const actIds = actions.map((a) => a.id);
 check('action ids are unique', new Set(actIds).size === actIds.length, 'dupes: ' + actIds.filter((id, i) => actIds.indexOf(id) !== i).join(', '));
+// Action/command parity: the "do it" one-tap actions are present.
+const parityActs = ['act-expense', 'act-csv', 'act-syncnow', 'act-fixsafe'];
+check('parity actions present (add expense / export CSV / sync now / fix safe)', parityActs.every((id) => actIds.includes(id)), 'missing: ' + parityActs.filter((id) => !actIds.includes(id)).join(', '));
 
 // ---- 5. No search route points at an unregistered / non-existent section ----
 // The per-cottage editors live in ACCOM_SECTIONS (rendered dynamically, no
