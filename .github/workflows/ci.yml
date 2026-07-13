@@ -124,19 +124,45 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Only the browser/layout suites care about rendered output — skip the
+      # (slow) browser install + tests when a PR touches nothing that renders.
+      # The job still runs and reports SUCCESS so it stays a satisfied required
+      # check. Fail-safe: if the diff can't be computed, we run everything.
+      - name: Detect frontend changes
+        id: fe
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            RANGE="${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }}"
+          else
+            RANGE="${{ github.event.before }} ${{ github.sha }}"
+          fi
+          CHANGED=$(git diff --name-only $RANGE 2>/dev/null || echo __DIFF_FAILED__)
+          if [ "$CHANGED" = "__DIFF_FAILED__" ] || echo "$CHANGED" | grep -qE 'index\.html|app\.(css|js)|admin\.(js|css)|guest-app\.(js|css)|home\.php|cottage\.php|experiences-page\.php|e2e-test\.js|ui-tests?\.js|ui-test-.*\.js|layout-test\.js|\.github/workflows/ci\.yml'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"; echo "Frontend touched → running browser tests."
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"; echo "No frontend changes → skipping browser tests (fast green)."
+          fi
 
       - name: Set up Node
+        if: steps.fe.outputs.run == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
       - name: Cache Playwright browsers
+        if: steps.fe.outputs.run == 'true'
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-chromium-1.61.1
+          restore-keys: |
+            playwright-${{ runner.os }}-chromium-
 
       - name: Install Playwright (Chromium)
+        if: steps.fe.outputs.run == 'true'
         working-directory: "Cottage Holidays Blakeney"
         run: |
           # The hosted runner's Microsoft/Azure apt repos intermittently serve an
@@ -149,12 +175,14 @@ jobs:
           npx playwright install --with-deps chromium
 
       - name: Browser smoke test
+        if: steps.fe.outputs.run == 'true'
         working-directory: "Cottage Holidays Blakeney"
         run: node e2e-test.js
 
       # Behaviour suites (booking hub, Needs-you, locked price, guest modals,
       # mailbox, Payments, merged workspace) — three suites at a time.
       - name: UI behaviour suites
+        if: steps.fe.outputs.run == 'true'
         working-directory: "Cottage Holidays Blakeney"
         run: node ui-tests.js
 
@@ -171,19 +199,43 @@ jobs:
         engine: [chromium, webkit]
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # Same path filter as browser-core: skip the layout gate on backend-only
+      # PRs. Job still reports SUCCESS; fail-safe runs everything if unsure.
+      - name: Detect frontend changes
+        id: fe
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            RANGE="${{ github.event.pull_request.base.sha }} ${{ github.event.pull_request.head.sha }}"
+          else
+            RANGE="${{ github.event.before }} ${{ github.sha }}"
+          fi
+          CHANGED=$(git diff --name-only $RANGE 2>/dev/null || echo __DIFF_FAILED__)
+          if [ "$CHANGED" = "__DIFF_FAILED__" ] || echo "$CHANGED" | grep -qE 'index\.html|app\.(css|js)|admin\.(js|css)|guest-app\.(js|css)|home\.php|cottage\.php|experiences-page\.php|e2e-test\.js|ui-tests?\.js|ui-test-.*\.js|layout-test\.js|\.github/workflows/ci\.yml'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"; echo "Frontend touched → running layout gate."
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"; echo "No frontend changes → skipping layout gate (fast green)."
+          fi
 
       - name: Set up Node
+        if: steps.fe.outputs.run == 'true'
         uses: actions/setup-node@v4
         with:
           node-version: '20'
 
       - name: Cache Playwright browsers
+        if: steps.fe.outputs.run == 'true'
         uses: actions/cache@v4
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ matrix.engine }}-1.61.1
+          restore-keys: |
+            playwright-${{ runner.os }}-${{ matrix.engine }}-
 
       - name: Install Playwright (${{ matrix.engine }})
+        if: steps.fe.outputs.run == 'true'
         working-directory: "Cottage Holidays Blakeney"
         run: |
           # (Same Microsoft-apt-repo cleanup as browser-core.)
@@ -193,6 +245,7 @@ jobs:
           npx playwright install --with-deps ${{ matrix.engine }}
 
       - name: Layout regression gate (${{ matrix.engine }})
+        if: steps.fe.outputs.run == 'true'
         working-directory: "Cottage Holidays Blakeney"
         env:
           CHB_ENGINE: ${{ matrix.engine == 'webkit' && 'webkit' || '' }}
@@ -201,7 +254,7 @@ jobs:
       # Every view×width screenshot, kept as an artifact so a reviewer can
       # eyeball the design straight from the PR checks page.
       - name: Upload layout screenshots
-        if: always()
+        if: always() && steps.fe.outputs.run == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: layout-shots-${{ matrix.engine }}
