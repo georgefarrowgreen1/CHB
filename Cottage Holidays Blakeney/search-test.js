@@ -256,6 +256,19 @@ if (typeof ctx.cmdkScopeMatch === 'function') {
     check('screens/help/answers are never scoped away', m('bookings', 'screen') === true && m('money', 'help') === true && m('guests', 'answer') === true);
     check('scope bar renders a chip per scope (all/bookings/inbox/money/guests)', (ctx.cmdkScopeBar().match(/class="cmdk-scope/g) || []).length >= 5);
 }
+// Empty-palette scope filter: screens carry a scope so each chip narrows the
+// "Jump to" list (fixes "the scope chips do nothing on the empty palette").
+if (typeof ctx.cmdkScreens === 'function') {
+    const scr = ctx.cmdkScreens();
+    const byId = {};
+    scr.forEach((s) => { byId[s.id] = s; });
+    check(
+        'screens carry a scope tag (today→bookings, inbox→inbox, payments→money, guests→guests)',
+        (byId['scr-today'] || {}).scope === 'bookings' && (byId['scr-inbox'] || {}).scope === 'inbox' && (byId['scr-payments-area'] || {}).scope === 'money' && (byId['scr-guests'] || {}).scope === 'guests',
+    );
+    const per = (sc) => scr.filter((s) => s.scope === sc).length;
+    check('each scope has ≥2 Jump-to destinations', per('bookings') >= 2 && per('inbox') >= 2 && per('money') >= 2 && per('guests') >= 2);
+}
 
 // ---- 10. Today × Search (filter board, calendar reveal, gaps, needs-you) ----
 check(

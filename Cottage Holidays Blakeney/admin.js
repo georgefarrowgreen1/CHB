@@ -240,8 +240,16 @@ function cmdkRegGo(e) {
 }
 // The fixed screens — dock destinations + every Manage sub-screen — generated
 // from the registry so the palette can jump straight to a screen, not the index.
+// Which scope each destination belongs to — lets the scope switch narrow the
+// empty palette's "Jump to" list (untagged screens show only under "All").
+const CMDK_SCREEN_SCOPE = {
+    today: 'bookings', bookings: 'bookings', calendar: 'bookings', seasongrid: 'bookings', accom: 'bookings',
+    inbox: 'inbox', messages: 'inbox', email: 'inbox', 'follow-ups': 'inbox', 'chat-answers': 'inbox', 'chat-away': 'inbox',
+    'payments-area': 'money', payments: 'money', cancel: 'money',
+    guests: 'guests', reviews: 'guests', photos: 'guests', newsletter: 'guests', waitlist: 'guests',
+};
 function cmdkScreens() {
-    return cmdkRegistry().map((e) => ({ type: 'screen', id: 'scr-' + e.id, label: e.label, sub: e.sub, kw: e.kw || '', run: () => cmdkRegGo(e)() }));
+    return cmdkRegistry().map((e) => ({ type: 'screen', id: 'scr-' + e.id, label: e.label, sub: e.sub, kw: e.kw || '', scope: CMDK_SCREEN_SCOPE[e.id] || null, run: () => cmdkRegGo(e)() }));
 }
 // Which cottage does the query name? Matches a prop key or a cottage name; if
 // none is named and only one cottage is live, that one is assumed (so "edit the
@@ -1605,9 +1613,15 @@ function cmdkSearchCore(q, allowCorrect) {
         // Empty query → an answer-first "Your day" brief, example chips, then the
         // dock destinations. The brief + screens are the executable rows.
         __cmdkEmpty = true;
-        const brief = cmdkBrief();
+        // The scope switch narrows the empty landing too: the brief + "Jump to"
+        // show only the active scope's items ("All" shows the day brief + the
+        // top dock destinations).
+        const keep = (it) => __cmdkScope === 'all' || it.scope === __cmdkScope;
+        const brief = cmdkBrief().filter(keep);
+        const allScreens = cmdkScreens();
+        const screens = __cmdkScope === 'all' ? allScreens.slice(0, 6) : allScreens.filter(keep);
         __cmdkBriefN = brief.length;
-        __cmdkResults = brief.concat(cmdkScreens().slice(0, 6));
+        __cmdkResults = brief.concat(screens);
         __cmdkSel = -1; // nothing pre-selected
         cmdkRender();
         return;
@@ -2066,11 +2080,11 @@ function cmdkBrief() {
         if ((b.holdStatus || 'none') === 'charged' && (b.checkOut || '') <= today) depN++;
     }));
     if (typeof dbBlocks === 'object' && dbBlocks) Object.keys(dbBlocks).forEach((k) => (dbBlocks[k] || []).forEach((bl) => { if (bl.checkIn === today) ins++; if (bl.checkOut === today) outs++; }));
-    if (ins || outs) items.push({ type: 'figure', id: 'brief-today', label: `Today · ${ins} in · ${outs} out`, sub: 'Arrivals & departures', run: () => { closeCmdK(); tryAccessBackOffice(); } });
-    if (owers) items.push({ type: 'answer', id: 'brief-money', label: `${gbp(owed)} to collect`, sub: `${owers} balance${owers === 1 ? '' : 's'} outstanding — tap to chase`, run: () => { closeCmdK(); Promise.resolve(openBookings()).then(() => bookingsSetFilter('needspay')); } });
+    if (ins || outs) items.push({ type: 'figure', scope: 'bookings', id: 'brief-today', label: `Today · ${ins} in · ${outs} out`, sub: 'Arrivals & departures', run: () => { closeCmdK(); tryAccessBackOffice(); } });
+    if (owers) items.push({ type: 'answer', scope: 'money', id: 'brief-money', label: `${gbp(owed)} to collect`, sub: `${owers} balance${owers === 1 ? '' : 's'} outstanding — tap to chase`, run: () => { closeCmdK(); Promise.resolve(openBookings()).then(() => bookingsSetFilter('needspay')); } });
     const enq = Array.isArray(enquiries) ? enquiries.length : 0;
-    if (enq) items.push({ type: 'answer', id: 'brief-enq', label: `${enq} enquir${enq === 1 ? 'y' : 'ies'} waiting`, sub: 'Reply to win the booking', run: () => { closeCmdK(); openInbox(); } });
-    if (depN) items.push({ type: 'answer', id: 'brief-dep', label: `${depN} deposit${depN === 1 ? '' : 's'} to return`, sub: 'Guests have checked out', run: () => { closeCmdK(); openBookings(); } });
+    if (enq) items.push({ type: 'answer', scope: 'inbox', id: 'brief-enq', label: `${enq} enquir${enq === 1 ? 'y' : 'ies'} waiting`, sub: 'Reply to win the booking', run: () => { closeCmdK(); openInbox(); } });
+    if (depN) items.push({ type: 'answer', scope: 'money', id: 'brief-dep', label: `${depN} deposit${depN === 1 ? '' : 's'} to return`, sub: 'Guests have checked out', run: () => { closeCmdK(); openBookings(); } });
     return items.slice(0, 4);
 }
 // ---- Spotlight-style presentation: a Top Hit + grouped section headers. ----
@@ -2190,12 +2204,14 @@ function cmdkRender() {
     const sb = cmdkScopeBar(); // scope switch sits above every state
     // Empty palette → the "Your day" brief, then the dock destinations to jump to.
     if (__cmdkEmpty) {
-        const brief = __cmdkResults.slice(0, __cmdkBriefN).map((it, i) => cmdkRowHtml(it, i, false)).join('');
-        const screens = __cmdkResults.slice(__cmdkBriefN).map((it, i) => cmdkRowHtml(it, __cmdkBriefN + i, false)).join('');
+        const briefHtml = __cmdkResults.slice(0, __cmdkBriefN).map((it, i) => cmdkRowHtml(it, i, false)).join('');
+        const screenItems = __cmdkResults.slice(__cmdkBriefN);
+        const screensHtml = screenItems.map((it, i) => cmdkRowHtml(it, __cmdkBriefN + i, false)).join('');
         box.innerHTML =
             sb +
-            (__cmdkBriefN ? `<div class="cmdk-group-label">${cmdkGreeting()}</div>${brief}` : '') +
-            `<div class="cmdk-group-label">Jump to</div>${screens}`;
+            (__cmdkBriefN ? `<div class="cmdk-group-label">${cmdkGreeting()}</div>${briefHtml}` : '') +
+            (screenItems.length ? `<div class="cmdk-group-label">Jump to</div>${screensHtml}` : '') +
+            (!__cmdkBriefN && !screenItems.length ? `<div class="cmdk-none">Nothing here in ${escapeHtml(__cmdkScope)} — tap “All” to widen.</div>` : '');
         return;
     }
     if (!__cmdkResults.length) {
