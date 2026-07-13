@@ -3507,6 +3507,38 @@ function hubPipelineHtml(propKey, b, gt, dh) {
     return `<div class="bhub-pipe3">${strip}</div><div class="bhub-pipe-full">${fullStrip}</div>${nextHtml}`;
 }
 
+// A compact payment-progress strip for the Payments card — the MONEY journey on
+// its own (Deposit paid → Paid in full → Deposit back), separate from the whole-
+// booking flow shown at the top of the hub. Reuses the shared .pipe-step styling
+// (done=green, current=amber, upcoming=red dot). The deposit-back step only
+// appears when a refundable damage deposit is actually in play, and reads
+// "Deposit kept" when it was retained for damage rather than refunded.
+function hubPayFlowHtml(b, gt, dh) {
+    const hold = b.holdStatus || 'none';
+    const hasDamage =
+        (gt.dep || 0) > 0 ||
+        (dh && dh.collected > 0) ||
+        ['authorized', 'captured', 'charged', 'returned', 'kept'].includes(hold);
+    const steps = [
+        { label: 'Deposit paid', done: gt.paid > 0.001 },
+        { label: 'Paid in full', done: !!gt.fullyPaid },
+    ];
+    if (hasDamage) {
+        // Settled either via the hold_status flag or once the collected deposit has
+        // been fully returned in the ledger (admin's richer damage view).
+        const back = ['returned', 'kept'].includes(hold) || (dh && dh.collected > 0 && dh.held <= 0.001);
+        steps.push({ label: hold === 'kept' ? 'Deposit kept' : 'Deposit refunded', done: back });
+    }
+    const cur = steps.findIndex((s) => !s.done); // first unfinished = current
+    const pills = steps
+        .map((s, i) => {
+            const cls = s.done ? 'is-done' : i === cur ? 'is-now' : '';
+            return `<span class="pipe-step ${cls}"><span class="pipe-dot"></span>${escapeHtml(s.label)}</span>`;
+        })
+        .join('<span class="pipe3-arrow" aria-hidden="true">›</span>');
+    return `<div class="bhub-paypipe">${pills}</div>`;
+}
+
 function renderBookingHub() {
     const el = document.getElementById('booking-hub-content');
     if (!el) return;
@@ -3647,6 +3679,7 @@ function renderBookingHub() {
     const moneyCard = `
         <section class="bhub-card glass-panel">
             <h3 class="bhub-card-title">Payments</h3>
+            ${hubPayFlowHtml(b, gt, dh)}
             ${priceBox}
             ${depositLine}
             ${discloseBtn}

@@ -729,6 +729,14 @@
   flex-wrap: wrap;
   gap: 8px;
   margin: 18px 0 0;
+}.bhub-paypipe {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 2px 0 14px;
+}.bhub-paypipe .pipe3-arrow {
+  padding-bottom: 0;
 }.bhub-pipe-full {
   display: none;
   align-items: center;
