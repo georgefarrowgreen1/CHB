@@ -505,13 +505,42 @@ function cmdkCorrect(ql) {
 // Every query word must be present (as a substring OR a close typo of some
 // haystack token); then we weight exactness, where it matched, the result type,
 // and data urgency, so the most important, best-matching rows float to the top.
+// Everyday synonyms so the palette UNDERSTANDS the word the owner reached for, not
+// just the one we happened to label a thing with. A query word that isn't in an
+// item's haystack still counts as a hit if one of its synonyms is (so "cash",
+// "takings" and "revenue" all find Money; "diary" finds the calendar; "leaving"
+// finds check-outs). One-directional: query word → the vocabulary it implies.
+const CMDK_SYN = {
+    cash: 'money payment', takings: 'money payment', revenue: 'money accounts', earnings: 'money', income: 'money accounts', turnover: 'money accounts', profit: 'money accounts',
+    invoice: 'payment receipt', receipt: 'payment', refund: 'refund deposit payment', owe: 'balance due money', owed: 'balance due money', owes: 'balance due money', outstanding: 'balance due',
+    diary: 'calendar bookings', schedule: 'calendar', agenda: 'calendar today', availability: 'calendar bookings',
+    guest: 'guest customer booking', customer: 'guest booking', visitor: 'guest', client: 'guest',
+    leaving: 'checkout departure', departing: 'checkout', departure: 'checkout', arriving: 'arrival checkin', arrival: 'arrival checkin',
+    enquiry: 'enquiry lead request', inquiry: 'enquiry lead', lead: 'enquiry lead',
+    message: 'message chat inbox', chat: 'message inbox', text: 'message text',
+    price: 'rate pricing money', pricing: 'rate price', cost: 'rate price', charge: 'rate price fee',
+    photo: 'photo image gallery picture', image: 'photo gallery', picture: 'photo gallery',
+    cottage: 'cottage property accommodation', property: 'cottage accommodation', accommodation: 'cottage property',
+    website: 'website content homepage', homepage: 'website content home', site: 'website content',
+    review: 'review testimonial rating', rating: 'review', testimonial: 'review',
+    settings: 'settings manage preferences', preferences: 'settings manage', config: 'settings',
+    stats: 'analytics figures', analytics: 'analytics figures visits', numbers: 'analytics figures money',
+    help: 'help guide how', tutorial: 'help guide',
+};
+function cmdkSynHit(word, hay) {
+    const syn = CMDK_SYN[word];
+    if (!syn) return false;
+    return syn.split(' ').some((s) => hay.includes(s));
+}
 function cmdkScore(it, words, ql) {
     const lab = (it.label || '').toLowerCase();
     const hay = (lab + ' ' + (it.sub || '') + ' ' + (it.kw || '') + ' ' + it.type).toLowerCase();
     const tokens = hay.split(/[^a-z0-9.]+/).filter(Boolean);
     let typoUsed = false;
+    let synUsed = false;
     for (const w of words) {
         if (hay.includes(w)) continue;
+        if (cmdkSynHit(w, hay)) { synUsed = true; continue; }
         const max = w.length <= 5 ? 1 : 2;
         const near = tokens.some((t) => Math.abs(t.length - w.length) <= max && cmdkLev(w, t, max) <= max);
         if (near) { typoUsed = true; continue; }
@@ -526,8 +555,86 @@ function cmdkScore(it, words, ql) {
     const typeW = { booking: 3, enquiry: 3, action: 3, field: 2.5, sheet: 2.5, guest: 2, payment: 2, review: 1.5, screen: 1 };
     score += typeW[it.type] != null ? typeW[it.type] : 1.5;
     if (it.type === 'booking' && it._urgent) score += 2; // arriving soon / in-house = more important
+    score += cmdkFrecencyBoost(it); // your habits break ties in your favour (0..~3)
     if (typoUsed) score -= 1.5; // prefer exact matches over corrected ones
+    if (synUsed) score -= 0.6; // a direct word beats a synonym match
     return score;
+}
+// ============================================================
+//  Usage learning ("frecency"). The palette remembers what you actually open and
+//  floats it up — as a "Most used" group on the empty landing AND as a ranking
+//  boost while searching. Stored locally per device, decays over time, capped so
+//  it can't grow without bound. Only stable-id destinations are learned (a
+//  booking / guest / screen / action / field), never answers/notes/help.
+// ============================================================
+const CMDK_USE_KEY = 'chb-cmdk-use';
+const CMDK_USE_MAX = 80;
+const CMDK_USE_TYPES = { booking: 1, enquiry: 1, external: 1, guest: 1, payment: 1, review: 1, screen: 1, action: 1, field: 1, sheet: 1 };
+let __cmdkUse = null; // parsed once per session, mutated in place on learn
+function cmdkUsageMap() {
+    if (__cmdkUse) return __cmdkUse;
+    try {
+        const m = JSON.parse(localStorage.getItem(CMDK_USE_KEY) || '{}');
+        __cmdkUse = m && typeof m === 'object' ? m : {};
+    } catch (e) { __cmdkUse = {}; }
+    return __cmdkUse;
+}
+function cmdkUsageKey(it) {
+    if (!it || it.id == null || !CMDK_USE_TYPES[it.type]) return '';
+    return it.type + ':' + it.id;
+}
+// Recency-weighted frequency: the running count, halved every ~14 days since last
+// use — so a thing you opened ten times last year ranks below one you opened
+// twice this week.
+function cmdkFrecency(rec) {
+    if (!rec || !rec.n) return 0;
+    let age = 999;
+    try { age = (Date.now() - (rec.last || 0)) / 86400000; } catch (e) {}
+    return rec.n * Math.pow(0.5, Math.max(0, age) / 14);
+}
+function cmdkFrecencyBoost(it) {
+    const key = cmdkUsageKey(it);
+    if (!key) return 0;
+    const f = cmdkFrecency(cmdkUsageMap()[key]);
+    return f ? Math.min(3, Math.log2(1 + f) * 1.4) : 0;
+}
+function cmdkLearn(it) {
+    const key = cmdkUsageKey(it);
+    if (!key) return;
+    const m = cmdkUsageMap();
+    const rec = m[key] || { n: 0, last: 0 };
+    rec.n = (rec.n || 0) + 1;
+    try { rec.last = Date.now(); } catch (e) {}
+    rec.label = it.label || rec.label || '';
+    m[key] = rec;
+    const keys = Object.keys(m);
+    if (keys.length > CMDK_USE_MAX) {
+        keys.map((k) => [k, cmdkFrecency(m[k])])
+            .sort((a, b) => a[1] - b[1])
+            .slice(0, keys.length - CMDK_USE_MAX)
+            .forEach(([k]) => delete m[k]);
+    }
+    try { localStorage.setItem(CMDK_USE_KEY, JSON.stringify(m)); } catch (e) {}
+}
+// The "Most used" landing group: top learned destinations, resolved back to LIVE
+// runnable items from the catalog (so their run()/actions are current), ranked by
+// frecency. Returns at most `limit`.
+function cmdkFrequent(limit) {
+    const m = cmdkUsageMap();
+    const ranked = Object.keys(m)
+        .map((k) => ({ k, f: cmdkFrecency(m[k]) }))
+        .filter((x) => x.f > 0)
+        .sort((a, b) => b.f - a.f);
+    if (!ranked.length) return [];
+    const byKey = new Map();
+    try { cmdkAll('').forEach((it) => { if (it.id != null) byKey.set(it.type + ':' + it.id, it); }); } catch (e) {}
+    const out = [];
+    for (const { k } of ranked) {
+        const it = byKey.get(k);
+        if (it && typeof it.run === 'function') out.push(it);
+        if (out.length >= (limit || 4)) break;
+    }
+    return out;
 }
 // Quick-actions for a booking result — act without leaving the palette. Every
 // one routes to an EXISTING owner flow that previews/prompts before it does
@@ -1685,13 +1792,27 @@ function cmdkSearchCore(q, allowCorrect) {
         } else if (__cmdkScope === 'all') {
             try { suggestions = cmdkContextSuggest() || []; } catch (e) { suggestions = []; }
         }
+        const kof = (it) => (it && it.id != null ? it.type + ':' + it.id : null);
+        const seenKeys = new Set(suggestions.map(kof).filter(Boolean));
+        // "Most used" — what this owner actually opens, learned over time and shown
+        // FIRST (under any live context suggestions), scope-aware, deduped against
+        // the context row so nothing repeats.
+        let frequent = cmdkFrequent(6)
+            .filter(keep)
+            .filter((it) => { const k = kof(it); if (!k || seenKeys.has(k)) return false; seenKeys.add(k); return true; })
+            .slice(0, 4);
         const brief = cmdkBrief().filter(keep);
         const allScreens = cmdkScreens();
-        const screens = __cmdkScope === 'all' ? allScreens.slice(0, 6) : allScreens.filter(keep);
+        let screens = __cmdkScope === 'all' ? allScreens : allScreens.filter(keep);
+        // Don't list a screen under "Jump to" if it's already up in "Most used".
+        screens = screens.filter((it) => { const k = kof(it); return !(k && seenKeys.has(k)); });
+        if (__cmdkScope === 'all') screens = screens.slice(0, 6);
         __cmdkSuggestN = suggestions.length;
+        __cmdkFreqN = frequent.length;
         __cmdkBriefN = brief.length;
-        __cmdkResults = suggestions.concat(brief).concat(screens);
-        __cmdkSel = __cmdkSuggestN ? 0 : -1; // pre-select the top suggestion when present
+        __cmdkResults = suggestions.concat(frequent).concat(brief).concat(screens);
+        // Pre-select the top actionable row: a context suggestion, else your #1 most-used.
+        __cmdkSel = __cmdkSuggestN || __cmdkFreqN ? 0 : -1;
         cmdkSetLoading(false);
         cmdkRender();
         return;
@@ -2317,6 +2438,7 @@ async function cmdkFieldBack() {
 // matters now (today's movements, money to collect, enquiries waiting, deposits
 // to return), computed from the loaded data. Each row routes to where you act.
 let __cmdkBriefN = 0;
+let __cmdkFreqN = 0; // count of "Most used" rows in the empty palette
 function cmdkBrief() {
     const items = [];
     const today = todayDashed();
@@ -2551,17 +2673,21 @@ function cmdkRenderInner() {
     // Empty palette → the "Your day" brief, then the dock destinations to jump to.
     if (__cmdkEmpty) {
         const S = __cmdkSuggestN || 0;
+        const F = __cmdkFreqN || 0;
+        const B = __cmdkBriefN || 0;
         const sugHtml = __cmdkResults.slice(0, S).map((it, i) => cmdkRowHtml(it, i, i === 0)).join('');
-        const briefHtml = __cmdkResults.slice(S, S + __cmdkBriefN).map((it, i) => cmdkRowHtml(it, S + i, false)).join('');
-        const screenItems = __cmdkResults.slice(S + __cmdkBriefN);
-        const screensHtml = screenItems.map((it, i) => cmdkRowHtml(it, S + __cmdkBriefN + i, false)).join('');
+        const freqHtml = __cmdkResults.slice(S, S + F).map((it, i) => cmdkRowHtml(it, S + i, !S && i === 0)).join('');
+        const briefHtml = __cmdkResults.slice(S + F, S + F + B).map((it, i) => cmdkRowHtml(it, S + F + i, false)).join('');
+        const screenItems = __cmdkResults.slice(S + F + B);
+        const screensHtml = screenItems.map((it, i) => cmdkRowHtml(it, S + F + B + i, false)).join('');
         const sugLabel = (typeof __cmdkSugLabel !== 'undefined' && __cmdkSugLabel) ? 'Suggested · ' + __cmdkSugLabel : 'Suggested';
         box.innerHTML =
             sb +
             (S ? `<div class="cmdk-group-label">${escapeHtml(sugLabel)}</div>${sugHtml}` : '') +
-            (__cmdkBriefN ? `<div class="cmdk-group-label">${cmdkGreeting()}</div>${briefHtml}` : '') +
+            (F ? `<div class="cmdk-group-label">Most used</div>${freqHtml}` : '') +
+            (B ? `<div class="cmdk-group-label">${cmdkGreeting()}</div>${briefHtml}` : '') +
             (screenItems.length ? `<div class="cmdk-group-label">Jump to</div>${screensHtml}` : '') +
-            (!S && !__cmdkBriefN && !screenItems.length ? `<div class="cmdk-none">Nothing here in ${escapeHtml(__cmdkScope)} — tap “All” to widen.</div>` : '');
+            (!S && !F && !B && !screenItems.length ? `<div class="cmdk-none">Nothing here in ${escapeHtml(__cmdkScope)} — tap “All” to widen.</div>` : '');
         return;
     }
     if (!__cmdkResults.length) {
@@ -2599,7 +2725,7 @@ function cmdkRenderInner() {
 }
 function cmdkExec(i) {
     const it = __cmdkResults[i];
-    if (it && typeof it.run === 'function') it.run();
+    if (it && typeof it.run === 'function') { cmdkLearn(it); it.run(); }
 }
 // Clear the search text (✕ button) and return the palette to its empty state.
 function cmdkClear() {
