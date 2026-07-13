@@ -800,6 +800,10 @@
   gap: 8px;
   flex-wrap: wrap;
   margin-top: 14px;
+}.bhub-btn-row-center {
+  /* When the row carries a single action (e.g. only "Write an email" once the
+     guest has arrived), centre it rather than leaving it hugging the left. */
+  justify-content: center;
 }.bhub-sent-tag {
   /* A settled "already done" status that replaces a send button once its email
      has gone out — reads as confirmation, not another action to take. */
