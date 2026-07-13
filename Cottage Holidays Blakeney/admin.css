@@ -1117,7 +1117,8 @@ body.owner-mode #mobileMenu {
   display: flex;
 }
 /* Voice mic — revealed by JS only where speech recognition is supported. */
-.cmdk-mic {
+.cmdk-mic,
+.cmdk-help-btn {
   display: none;
   align-items: center;
   justify-content: center;
@@ -1133,12 +1134,20 @@ body.owner-mode #mobileMenu {
   cursor: pointer;
   transition: background 0.14s var(--fluid-bezier), color 0.14s var(--fluid-bezier);
 }
-.cmdk-mic .ic {
+/* The "?" is always available (voice is feature-gated on show). */
+.cmdk-help-btn {
+  display: flex;
+  margin-left: 4px;
+}
+.cmdk-mic .ic,
+.cmdk-help-btn .ic {
   width: 17px;
   height: 17px;
 }
 .cmdk-mic:hover,
-.cmdk-mic:focus-visible {
+.cmdk-mic:focus-visible,
+.cmdk-help-btn:hover,
+.cmdk-help-btn:focus-visible {
   background: var(--glass-hover);
   color: var(--text-light);
   outline: none;
