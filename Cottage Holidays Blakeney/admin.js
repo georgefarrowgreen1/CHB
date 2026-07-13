@@ -291,6 +291,11 @@ function cmdkActions(q) {
         A('chatans', 'Instant chat answers', 'Auto-answers to chat chips', 'auto answer chat bot faq quick reply automation', /(edit|set).{0,12}(instant |chat )?(answer)|auto.?answer/, toManage('chat-answers')),
         A('followups', 'Follow-up emails', 'Enquiry & guest nudges', 'follow up nudge reminder anniversary automation email chase', /(edit|set|manage).{0,12}follow.?up/, toManage('follow-ups')),
         A('activity', 'Activity log', 'Every change & action', 'activity log history audit changes events', /(view|open|show|see).{0,10}(activity|log|history|audit)/, () => { closeCmdK(); nav('view-activity-log'); }),
+        // ---- One-tap "do it" actions (parity: everything you can do in the UI) ----
+        A('expense', 'Add an expense', 'Log a cost against the books', 'expense cost spend receipt bill outgoing add log record purchase supplier', /(add|log|record|enter|new|put).{0,12}(expense|cost|receipt|bill|spend|outgoing|purchase)/, () => { cmdkOpenAccounts('expenses'); cmdkPoll(() => document.getElementById('exp-amount'), (el) => { try { el.scrollIntoView({ block: 'center' }); el.focus(); } catch (e) {} }, 40); }),
+        A('csv', 'Export accounts (CSV)', 'Download the spreadsheet for your accountant', 'export csv accountant spreadsheet download income tax accounts report figures', /(export|download|get|save).{0,14}(csv|accountant|spreadsheet|accounts?|income|figures|tax report)/, () => { cmdkOpenAccounts('income'); cmdkPoll(() => (typeof accountsReport !== 'undefined' && accountsReport) ? true : null, () => { if (typeof exportAccountsCSV === 'function') exportAccountsCSV(); }, 50); }),
+        A('syncnow', 'Sync calendars now', 'Pull the latest Airbnb / Vrbo blocks', 'sync now refresh import update pull ical airbnb vrbo booking channel calendar blocks', /(sync|refresh|update|pull|import|re.?sync).{0,12}(now|calendar|ical|airbnb|vrbo|booking|channel|block|feed)/, () => { closeCmdK(); if (typeof toast === 'function') toast('Syncing calendars…'); if (typeof autoSyncIcalBlocks === 'function') autoSyncIcalBlocks(true); }),
+        A('fixsafe', 'Fix safe issues', 'Auto-repair harmless state drift', 'fix repair safe issues self repair drift problems clean tidy resolve maintenance', /(fix|repair|resolve|clean up|tidy).{0,12}(safe|issue|problem|drift|error|thing)|self.?repair/, () => { closeCmdK(); if (typeof runSelfRepair === 'function') runSelfRepair(); }),
         A('theme',
             isLight ? 'Switch to dark mode' : 'Switch to light mode',
             'Change the app appearance',
@@ -516,6 +521,8 @@ function cmdkActIcon(name) {
         hub: '<path d="M4 6h16M4 12h16M4 18h10"/>',
         ok: '<circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/>',
         no: '<circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/>',
+        plus: '<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',
+        x: '<path d="M18 6L6 18M6 6l12 12"/>',
     };
     return `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p[name] || p.hub}</svg>`;
 }
@@ -526,6 +533,7 @@ function cmdkBookingActions(b, pk) {
     try { ps = typeof paymentSummary === 'function' ? paymentSummary(pk, b) : null; } catch (e) {}
     if (ps && !ps.fullyPaid && ps.balance > 0.5) {
         acts.push({ key: 'balance', label: ps.deposit > 0.5 ? 'Request balance' : 'Request payment', icon: cmdkActIcon('coin'), run: () => { closeCmdK(); requestPayment(b.id, ps.deposit > 0.5 ? 'balance' : 'deposit'); } });
+        acts.push({ key: 'record', label: 'Record payment', icon: cmdkActIcon('plus'), run: () => { closeCmdK(); recordPayment(b.id); } });
     }
     if ((b.holdStatus || 'none') === 'charged') {
         acts.push({ key: 'deposit', label: 'Return deposit', icon: cmdkActIcon('undo'), run: () => { closeCmdK(); returnDeposit(b.id); } });
@@ -1689,6 +1697,12 @@ async function cmdkOpenEmail(id) {
         () => { if (typeof mailboxOpenSent === 'function') mailboxOpenSent(id); },
         40,
     );
+}
+// Open the Payments workspace on a given sub-tab (used by the "add expense" /
+// "export CSV" search actions), then run a follow-up once it's rendered.
+function cmdkOpenAccounts(sub) {
+    closeCmdK();
+    Promise.resolve(openAccounts()).then(() => { if (typeof accountsOpen === 'function') accountsOpen(sub); });
 }
 // Escape a string AND wrap the current query terms in <mark> so matches stand
 // out. Highlighting is applied only to matched result types (booking, screen,
