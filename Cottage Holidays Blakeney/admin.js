@@ -9784,9 +9784,131 @@ async function copyReviewLink(key) {
     }
 }
 
+// ---- External-guest reviews (direct_leads via the /review/<slug> links) ----
+// Approve to publish on the site; privately rate the guest (hidden from them) to
+// steer whether they get the book-direct follow-up next year.
+const LEAD_SOURCE_LABEL = { airbnb: 'Airbnb', vrbo: 'Vrbo', bookingcom: 'Booking.com', direct: 'Direct' };
+function leadStatusPill(s) {
+    if (s === 'approved') return '<span style="color:var(--ok);font-weight:600;">Published</span>';
+    if (s === 'declined') return '<span style="color:var(--text-muted);">Hidden</span>';
+    return '<span style="color:var(--warn);font-weight:600;">Awaiting you</span>';
+}
+function leadCardHtml(l) {
+    const stars = '★'.repeat(Math.max(1, Math.min(5, parseInt(l.stars) || 5)));
+    const cott = (propertyMeta[l.prop_key] || {}).name || l.prop_key;
+    const src = LEAD_SOURCE_LABEL[l.source] || 'Direct';
+    const contact = [escapeHtml(l.email || ''), l.phone ? escapeHtml(l.phone) : ''].filter(Boolean).join(' · ');
+    const ar = parseInt(l.admin_rating) || 0;
+    const priv = [1, 2, 3, 4, 5]
+        .map(
+            (n) =>
+                `<button type="button" data-n="${n}" onclick="pickLeadStar(${l.id},${n})" aria-label="${n} star" style="font-size:19px;line-height:1;background:none;border:0;cursor:pointer;padding:1px;color:${ar >= n ? '#e0a12f' : '#dccfb9'};">★</button>`,
+        )
+        .join('');
+    const actions =
+        l.status === 'approved'
+            ? `<button class="btn-sm btn-edit" onclick="setLeadStatus(${l.id},'pending')">Unpublish</button>`
+            : `<button class="btn-sm btn-edit" onclick="setLeadStatus(${l.id},'approved')">Approve &amp; publish</button>` +
+              (l.status === 'pending' ? `<button class="btn-sm btn-edit" onclick="setLeadStatus(${l.id},'declined')">Decline</button>` : '');
+    const excluded = ar > 0 && ar < 3
+        ? `<div style="font-size:0.72rem;color:var(--warn);margin-top:6px;">This guest won't be included in the book-direct follow-up.</div>`
+        : '';
+    return `<div style="border:1px solid var(--glass-border);border-radius:14px;padding:14px;margin-bottom:10px;background:var(--glass-bg);">
+                <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:0.82rem;">
+                    <strong>${escapeHtml(l.name)}</strong>
+                    <span style="color:var(--text-muted);">${escapeHtml(cott)}</span>
+                    <span style="font-size:0.68rem;letter-spacing:.4px;text-transform:uppercase;color:var(--text-muted);border:1px solid var(--glass-border);border-radius:20px;padding:1px 8px;">${escapeHtml(src)}</span>
+                    <span style="color:#d6a785;">${stars}</span>
+                    <span style="margin-left:auto;">${leadStatusPill(l.status)}</span>
+                </div>
+                <div style="font-size:0.88rem;color:var(--text-muted);margin:8px 0;font-style:italic;">“${escapeHtml(l.review_text)}”</div>
+                <div style="font-size:0.76rem;color:var(--text-muted);margin-bottom:10px;">${contact}</div>
+                <div style="display:flex;gap:8px;flex-wrap:wrap;">${actions}
+                    <button class="btn-sm btn-delete" onclick="deleteLead(${l.id})">Delete</button>
+                </div>
+                <div style="margin-top:12px;border-top:1px dashed var(--glass-border);padding-top:12px;">
+                    <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);margin-bottom:6px;">
+                        <svg class="ic" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="vertical-align:-2px;"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+                        Rate this guest — private, never shown to them</div>
+                    <div class="lead-prate" data-id="${l.id}" data-val="${ar}" style="display:flex;gap:3px;margin-bottom:8px;">${priv}</div>
+                    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
+                        <input class="input-glass field-sm" id="lead-note-${l.id}" placeholder="Private note (optional)" value="${escapeHtml(l.admin_note || '')}" style="flex:1;min-width:160px;font-size:0.82rem;">
+                        <button class="btn-sm btn-edit" onclick="saveLeadRating(${l.id})">Save rating</button>
+                    </div>
+                    ${excluded}
+                </div>
+            </div>`;
+}
+function pickLeadStar(id, n) {
+    const box = document.querySelector('.lead-prate[data-id="' + id + '"]');
+    if (!box) return;
+    box.dataset.val = n;
+    box.querySelectorAll('button').forEach((b) => {
+        b.style.color = parseInt(b.dataset.n) <= n ? '#e0a12f' : '#dccfb9';
+    });
+}
+async function saveLeadRating(id) {
+    const box = document.querySelector('.lead-prate[data-id="' + id + '"]');
+    const noteEl = document.getElementById('lead-note-' + id);
+    const val = box ? parseInt(box.dataset.val) || 0 : 0;
+    try {
+        await apiPost('leads.php', { action: 'rate_guest', id, admin_rating: val || null, admin_note: noteEl ? noteEl.value : '' });
+        toast('Saved — only you can see this.');
+        loadLeadModeration();
+    } catch (e) {
+        glassAlert("Couldn't save: " + e.message);
+    }
+}
+async function setLeadStatus(id, status) {
+    try {
+        await apiPost('leads.php', { action: 'set_status', id, status });
+        await loadLeadModeration();
+        try {
+            await loadPublicReviews();
+            renderReviews();
+        } catch (e2) {}
+    } catch (e) {
+        glassAlert("Couldn't update: " + e.message);
+    }
+}
+async function deleteLead(id) {
+    if (!(await glassConfirm('Delete this review permanently?'))) return;
+    try {
+        await apiPost('leads.php', { action: 'delete', id });
+        await loadLeadModeration();
+    } catch (e) {
+        glassAlert("Couldn't delete: " + e.message);
+    }
+}
+async function loadLeadModeration() {
+    const wrap = document.getElementById('lead-moderation');
+    if (!wrap) return;
+    let rows = [];
+    try {
+        const r = await apiPost('leads.php', { action: 'list' });
+        rows = r.leads || [];
+    } catch (e) {
+        wrap.innerHTML = ''; // table missing / not migrated — stay quiet
+        return;
+    }
+    if (!rows.length) {
+        wrap.innerHTML = '';
+        return;
+    }
+    const pend = rows.filter((r) => r.status === 'pending').length;
+    wrap.innerHTML =
+        `<div style="display:flex;align-items:center;gap:8px;margin:4px 0 10px;">
+            <h3 style="font-family:var(--font-serif);font-size:1.1rem;margin:0;">External guest reviews</h3>
+            ${pend ? `<span style="font-size:0.72rem;font-weight:600;color:#fff;background:var(--warn);border-radius:20px;padding:2px 9px;">${pend} new</span>` : ''}
+        </div>
+        <p style="font-size:0.8rem;color:var(--text-muted);margin:0 0 12px;">Left via your review links. Approve to publish on the site; rate the guest privately to control who gets the book-direct follow-up.</p>` +
+        rows.map(leadCardHtml).join('');
+}
+
 async function loadGuestReviewModeration() {
     initGoogleReviewUrl();
     renderReviewLinks();
+    loadLeadModeration();
     // Set up the "import reviews from Airbnb & other sites" tools (always —
     // independent of whether there are on-site reviews to moderate).
     fillReviewImportControls();
