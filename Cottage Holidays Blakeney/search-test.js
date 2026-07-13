@@ -257,6 +257,31 @@ if (typeof ctx.cmdkScopeMatch === 'function') {
     check('scope bar renders a chip per scope (all/bookings/inbox/money/guests)', (ctx.cmdkScopeBar().match(/class="cmdk-scope/g) || []).length >= 5);
 }
 
+// ---- 10. Today × Search (filter board, calendar reveal, gaps, needs-you) ----
+check(
+    'Today-search helpers are defined',
+    typeof ctx.cmdkShowOnCalendar === 'function' &&
+        typeof ctx.cmdkJumpTimeline === 'function' &&
+        typeof ctx.applyTodayFilter === 'function' &&
+        typeof ctx.clearTodayFilter === 'function' &&
+        typeof ctx.todayGaps === 'function' &&
+        typeof ctx.needsYouItems === 'function',
+);
+check('"Filter the Today board" action is present', actIds.includes('act-filterboard'));
+if (typeof ctx.cmdkBookingActions === 'function') {
+    const acts = ctx.cmdkBookingActions({ id: 1, checkIn: '2026-08-01', checkOut: '2026-08-05' }, '21a');
+    check('booking rows gain a "Show on calendar" quick-action', Array.isArray(acts) && acts.some((a) => a.key === 'cal'));
+}
+if (typeof ctx.cmdkIntent === 'function') {
+    const ny = ctx.cmdkIntent('what needs me');
+    check('"what needs me" → a needs-you answer list', Array.isArray(ny) && ny.length >= 1 && ny[0].type === 'answer');
+    const gaps = ctx.cmdkIntent('gaps next month');
+    check('"gaps next month" → an availability answer list', Array.isArray(gaps) && gaps.length >= 1 && gaps[0].type === 'answer');
+    const jump = ctx.cmdkIntent('jump to august');
+    check('"jump to august" → a calendar-jump answer', Array.isArray(jump) && jump.length === 1 && typeof jump[0].run === 'function');
+}
+check('todayGaps returns an array', Array.isArray(ctx.todayGaps && ctx.todayGaps('2026-08-01', '2026-10-01')));
+
 // ---- Summary ----
 console.log('\n== Summary ==');
 if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }
