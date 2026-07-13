@@ -2686,7 +2686,66 @@ function cmdkOpenSection(sec, label) {
 // Open a per-cottage editor sub-section (photos / text / rates / welcome / …) from
 // search: in search-first it loads the Cottages sheet and drills straight to that
 // cottage's section inside the palette; in classic it routes to the Manage page.
-function cmdkOpenAccomSec(pk, sec) {
+// Per-cottage editors (photos, text, welcome, house rules, arrival, FAQs, web…)
+// all funnel through here. If the search query never named a cottage there's no
+// pk — rather than dumping the owner on the cottages index, ask which one first
+// (auto-picking when there's only a single cottage).
+function cmdkPickCottage(sec) {
+    const keys = typeof liveCottageKeys === 'function' ? liveCottageKeys() : [];
+    if (keys.length <= 1) {
+        cmdkOpenAccomSec(keys[0] || '', sec, true);
+        return;
+    }
+    const secLabel = {
+        welcome: 'Welcome guide', house: 'House rules', photos: 'Photos', text: 'Text & details',
+        faq: 'Questions & answers', arrival: 'Arrival info', web: 'Website & SEO', rates: 'Prices & rates',
+    }[sec] || '';
+    const old = document.getElementById('cottage-pick-overlay');
+    if (old) old.remove();
+    const ov = document.createElement('div');
+    ov.id = 'cottage-pick-overlay';
+    ov.className = 'modal-overlay';
+    ov.setAttribute('role', 'dialog');
+    ov.setAttribute('aria-modal', 'true');
+    const rows = keys
+        .map((k) => {
+            const m = propertyMeta[k] || {};
+            return `<button type="button" class="cpick-row" data-k="${escapeHtml(k)}" style="display:flex;align-items:center;gap:12px;width:100%;text-align:left;font:inherit;font-size:0.95rem;color:var(--text-light);background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:13px;padding:14px 16px;margin:0 0 8px;cursor:pointer;">
+                        <span style="width:10px;height:10px;border-radius:50%;flex-shrink:0;background:${escapeHtml(m.accent || '#c6885e')};"></span>
+                        <span style="flex:1;">${escapeHtml(m.name || k)}</span>
+                        <svg class="ic" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="opacity:.5;"><path d="M9 6l6 6-6 6"/></svg>
+                    </button>`;
+        })
+        .join('');
+    ov.innerHTML = `<div class="modal-box glass-panel" style="max-width:380px;padding:22px;">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
+                <h3 style="font-family:var(--font-serif);font-size:1.2rem;margin:0;">Which cottage?</h3>
+                <button type="button" id="cpick-x" aria-label="Cancel" style="background:none;border:0;font-size:1.5rem;line-height:1;color:var(--text-muted);cursor:pointer;">×</button>
+            </div>
+            <p style="font-size:0.82rem;color:var(--text-muted);margin:0 0 16px;">Choose which cottage to edit${secLabel ? ' — <strong style="color:var(--text-light);">' + escapeHtml(secLabel) + '</strong>' : ''}.</p>
+            ${rows}
+        </div>`;
+    document.body.appendChild(ov);
+    const close = () => ov.remove();
+    ov.addEventListener('click', (e) => {
+        if (e.target === ov) close();
+    });
+    ov.querySelector('#cpick-x').addEventListener('click', close);
+    ov.querySelectorAll('.cpick-row').forEach((b) =>
+        b.addEventListener('click', () => {
+            const k = b.getAttribute('data-k');
+            close();
+            cmdkOpenAccomSec(k, sec, true);
+        }),
+    );
+}
+function cmdkOpenAccomSec(pk, sec, picked) {
+    // No cottage in the query — ask which one (unless we've just picked, or the
+    // caller resolved a single cottage), so per-cottage actions drill in.
+    if (!pk && !picked) {
+        cmdkPickCottage(sec);
+        return;
+    }
     const searchFirst = typeof backofficeMode === 'function' && backofficeMode() === 'search';
     if (searchFirst && document.getElementById('sec-accom')) {
         cmdkSheetOpen('accom', (typeof SETTINGS_TITLES === 'object' && SETTINGS_TITLES['accom']) || 'Cottages');
