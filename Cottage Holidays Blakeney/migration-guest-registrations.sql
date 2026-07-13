@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS guest_registrations (
     guest_count   INT NOT NULL DEFAULT 0,       -- number of 16+ guests recorded (no PII)
     submitted_at  DATETIME NULL,                -- when the guest first submitted
     updated_at    DATETIME NULL,                -- last edit
-    expires_at    DATE NULL,                    -- checkout + 12 months; purged after
+    expires_at    DATE NULL,                    -- checkout + 12 months, then purged
     UNIQUE KEY uniq_booking (booking_id),
     KEY idx_expires (expires_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
