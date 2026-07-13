@@ -147,7 +147,7 @@ function cmdkIcon(type) {
     if (type === 'enquiry')
         return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
     if (type === 'answer')
-        return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></svg>';
+        return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.2l1.9 5.3 5.3 1.9-5.3 1.9L12 17.6l-1.9-5.3L4.8 10.4l5.3-1.9z"/><path d="M18.5 15.5l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7z"/></svg>';
     if (type === 'email')
         return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/></svg>';
     if (type === 'message')
@@ -758,27 +758,43 @@ function cmdkIntent(q) {
     // "overdue balances" can't be mistaken for a guest name.)
     if (named.length && !INSIGHTS_RE.test(q) && !OPS_RE.test(q)) {
         const rows = named.slice().sort(byIn);
-        let head;
+        // A SINGLE matched guest is ONE record — return one rich row, not an answer
+        // head twinned with an identical booking row below it (the old shape read as
+        // a duplicate). A question ("has X paid?") phrases the answer; a plain name
+        // returns the booking row itself. Either way it carries the same chips +
+        // quick-actions, and its `dedupName` suppresses a same-guest server twin.
         if (rows.length === 1) {
             const g = rows[0], m = moneyState(g.pk, g.b), nm = g.b.name || 'This guest';
             const go = () => { closeCmdK(); openBookingHub(g.b.id); };
-            if (/refund|deposit/.test(q)) {
-                head =
-                    m.st === 'returned' ? ans(`Yes — ${nm}’s deposit was refunded`, 'Damage deposit returned', go)
-                    : m.st === 'kept' ? ans(`${nm}’s deposit was kept for damage`, 'Retained, not refunded', go)
-                    : m.st === 'charged' ? ans(`Not yet — ${nm}’s deposit is still to refund`, 'Charged with their payment; return it after checkout', go)
-                    : ans(`No damage deposit on file for ${nm}`, 'Nothing to refund', go);
-            } else if (/owe|paid|balance|\bpay\b|paying|settle|money|owes|owing/.test(q)) {
-                head = ans(`${nm} — ${m.money}`, m.ps.fullyPaid ? 'Settled up' : 'Open the booking to take payment', go);
-            } else {
-                head = ans(nm, `${m.money}${m.dep ? ' · ' + m.dep : ''} · ${propName(g.pk)}`, go);
+            const chips = [{ label: `${propName(g.pk)} bookings`, q: `${propName(g.pk)} bookings` }].concat(g.b.checkIn ? [calChip(g.b.checkIn)] : []);
+            const acts = cmdkBookingActions(g.b, g.pk);
+            if (/refund|deposit|owe|paid|balance|\bpay\b|paying|settle|money|owes|owing/.test(q)) {
+                let head;
+                if (/refund|deposit/.test(q)) {
+                    head =
+                        m.st === 'returned' ? ans(`Yes — ${nm}’s deposit was refunded`, 'Damage deposit returned', go)
+                        : m.st === 'kept' ? ans(`${nm}’s deposit was kept for damage`, 'Retained, not refunded', go)
+                        : m.st === 'charged' ? ans(`Not yet — ${nm}’s deposit is still to refund`, 'Charged with their payment; return it after checkout', go)
+                        : ans(`No damage deposit on file for ${nm}`, 'Nothing to refund', go);
+                } else {
+                    head = ans(`${nm} — ${m.money}`, m.ps.fullyPaid ? `Settled up · ${propName(g.pk)}` : `Open the booking to take payment · ${propName(g.pk)}`, go);
+                }
+                head.chips = chips;
+                head.actions = acts;
+                head.dedupName = nm.toLowerCase().trim();
+                return [head];
             }
-            // Entity pivots: jump to the same cottage's bookings, or to this stay
-            // on the calendar.
-            head.chips = [{ label: `${propName(g.pk)} bookings`, q: `${propName(g.pk)} bookings` }].concat(g.b.checkIn ? [calChip(g.b.checkIn)] : []);
-        } else {
-            head = ans(`${rows.length} bookings match that name`, 'Pick the guest you mean', () => { closeCmdK(); openBookings(); });
+            // Plain name → the booking row IS the result (calendar icon, name matched).
+            const bits = [m.money];
+            if (m.dep) bits.push(m.dep);
+            bits.push(propName(g.pk));
+            if (g.b.checkIn) bits.push(`${fmtDate(g.b.checkIn)}–${fmtDate(g.b.checkOut)}`);
+            const row = bk(g.pk, g.b, bits.join(' · '));
+            row.chips = chips;
+            row.dedupName = nm.toLowerCase().trim();
+            return [row];
         }
+        const head = ans(`${rows.length} bookings match that name`, 'Pick the guest you mean', () => { closeCmdK(); openBookings(); });
         return [head].concat(
             rows.map((x) => {
                 const m = moneyState(x.pk, x.b);
@@ -1620,7 +1636,19 @@ function cmdkBuildResults(ql) {
     const softAsk = /\b(what|can i|do i|how)\b/.test(ql);
     if (procedural) results = help.concat(results);
     else if (softAsk) results = results.concat(help);
-    return { results, fuzzy: fuzzy.concat(content).concat((procedural || softAsk) ? [] : help) };
+    // A named-guest answer/booking (branch 0b) is the authoritative record for that
+    // person — drop any fuzzy booking/enquiry/guest row for the same name so the
+    // guest never appears twice (answer head + its own list row).
+    const claimed = new Set(
+        results
+            .filter((r) => r && (r.dedupName || ['booking', 'enquiry', 'guest'].includes(r.type)))
+            .map((r) => (r.dedupName || r.label || '').toLowerCase().trim())
+            .filter(Boolean),
+    );
+    const fuzzyDeduped = claimed.size
+        ? fuzzy.filter((it) => !(['booking', 'enquiry', 'guest', 'payment'].includes(it.type) && claimed.has((it.label || '').toLowerCase().trim())))
+        : fuzzy;
+    return { results, fuzzy: fuzzyDeduped.concat(content).concat((procedural || softAsk) ? [] : help) };
 }
 // The search engine. The literal query is tried first (never corrected); the
 // typo auto-corrector is a fallback that only runs when the literal query is
@@ -1703,9 +1731,19 @@ function cmdkServerSearch(ql) {
         .then((r) => {
             if (stamp !== __cmdkServerStamp) return; // a newer query superseded this
             const seen = new Set(__cmdkResults.filter((x) => x.id != null).map((x) => x.type + ':' + x.id));
+            // Guests already shown locally (by name) — the local match is
+            // authoritative, so a server booking/guest/enquiry for the same person
+            // is a duplicate (its DB id differs, so the id-set above can't catch it).
+            const claimed = new Set(
+                __cmdkResults
+                    .filter((x) => x && (x.dedupName || ['booking', 'enquiry', 'guest'].includes(x.type)))
+                    .map((x) => (x.dedupName || x.label || '').toLowerCase().trim())
+                    .filter(Boolean),
+            );
             const mapped = ((r && r.results) || [])
                 .map(cmdkServerItem)
-                .filter((x) => x && !(x.id != null && seen.has(x.type + ':' + x.id)));
+                .filter((x) => x && !(x.id != null && seen.has(x.type + ':' + x.id)))
+                .filter((x) => !(['booking', 'enquiry', 'guest', 'payment'].includes(x.type) && claimed.has((x.label || '').toLowerCase().trim())));
             if (!mapped.length) return;
             // Re-arrange so the server hits slot into their sections, keeping the
             // currently-selected row selected across the merge.
@@ -2329,15 +2367,42 @@ function cmdkDefaultScope() {
     if (id === 'view-backoffice') return 'bookings';
     return 'all';
 }
-// Reorder a built result list into Spotlight shape: the correction note (if any)
-// first, then the single best result as the Top Hit (its importance rank kept),
-// then the rest grouped by section (stable within each).
+// Normalised key for an activity row — strips the trailing ellipsis/whitespace so
+// the same logged event ("Card balance declined — £556.20 …") collapses to one.
+function cmdkActKey(label) {
+    return (label || '').toLowerCase().replace(/[…\s]+$/, '').trim();
+}
+// Reorder a built result list into Spotlight shape AND declutter it: drop exact
+// duplicate rows, collapse repeated activity entries, cap activity so a busy
+// booking's log can't flood the palette — then the correction note (if any)
+// first, the single best result as the Top Hit (its importance rank kept), and
+// the rest grouped by section (stable within each).
 function cmdkArrange(list) {
-    const out = list.filter(cmdkInScope);
+    const seenAct = new Set();
+    const seenExact = new Set();
+    let out = list.filter(cmdkInScope).filter((it) => {
+        if (!it) return false;
+        // Repeated activity (same normalised title) collapses to one row.
+        if (it.type === 'activity') {
+            const k = cmdkActKey(it.label);
+            if (seenAct.has(k)) return false;
+            seenAct.add(k);
+        }
+        // Any two rows with the same type + label + subtitle are the same thing
+        // arriving from two sources (local + server) — keep the first only. The
+        // correction note is exempt (its id keeps it unique anyway).
+        if (it.id === 'cmdk-correction') return true;
+        const ex = it.type + '|' + (it.label || '') + '|' + (it.sub || '');
+        if (seenExact.has(ex)) return false;
+        seenExact.add(ex);
+        return true;
+    });
     const lead = [];
     if (out[0] && out[0].id === 'cmdk-correction') lead.push(out.shift());
     if (out.length) lead.push(out.shift()); // Top Hit
     out.sort((a, b) => cmdkSection(a.type).order - cmdkSection(b.type).order);
+    let na = 0;
+    out = out.filter((it) => it.type !== 'activity' || ++na <= 5);
     return lead.concat(out);
 }
 // Conversational refine-chip thread: running a refine chip remembers where you

@@ -1262,16 +1262,20 @@ body.owner-mode #mobileMenu {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  gap: 1px;
+  gap: 2px;
 }
 .cmdk-row-label {
+  font-size: 0.95rem;
   font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: -0.005em;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .cmdk-row-sub {
-  font-size: 0.78rem;
+  font-size: 0.8rem;
+  line-height: 1.3;
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
@@ -1294,12 +1298,14 @@ body.owner-mode #mobileMenu {
 .cmdk-row-ic.cmdk-content .ic {
   color: var(--accent);
 }
-/* Matched-term highlight inside a result row. */
+/* Matched-term highlight inside a result row — a clean accent-weighted emphasis
+   rather than a filled "highlighter" box (which cut awkwardly at truncation and
+   read heavy). The term reads as bold + accent-tinted, contrast-safe on any tile. */
 .cmdk-hi {
-  background: color-mix(in srgb, var(--accent) 26%, transparent);
+  background: none;
   color: inherit;
-  border-radius: 3px;
-  padding: 0 1px;
+  font-weight: 800;
+  box-shadow: inset 0 -0.42em 0 color-mix(in srgb, var(--accent) 20%, transparent);
 }
 /* Deep-link reveal: a brief accent ring drawn around the exact record a search
    result jumped to (guest row, review card, activity entry). Outline-based so it

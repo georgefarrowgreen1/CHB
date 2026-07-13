@@ -323,6 +323,30 @@ if (typeof ctx.cmdkPageContext === 'function') {
     check('cmdkContextSuggest() returns an array (empty with no page context)', Array.isArray(ctx.cmdkContextSuggest()) && ctx.cmdkContextSuggest().length === 0);
 }
 
+// ---- 13. Result declutter: dedup + activity collapse (cmdkArrange) ----
+check('cmdkActKey normalises trailing ellipsis/space', typeof ctx.cmdkActKey === 'function' && ctx.cmdkActKey('Card balance declined — £556.20 …') === 'card balance declined — £556.20');
+if (typeof ctx.cmdkArrange === 'function') {
+    // Repeated activity (same event logged several times) collapses to one row.
+    const acts = ctx.cmdkArrange([
+        { type: 'activity', label: 'Card balance declined — £556.20', sub: 'a' },
+        { type: 'activity', label: 'Card balance declined — £556.20', sub: 'b' },
+        { type: 'activity', label: 'Arrival info emailed', sub: 'c' },
+    ]);
+    check('repeated activity rows collapse to one', acts.filter((x) => x.type === 'activity').length === 2);
+    // Exact-duplicate rows (same type+label+sub) arriving from two sources collapse.
+    const dup = ctx.cmdkArrange([
+        { type: 'booking', id: 1, label: 'Richard Berry', sub: 'paid in full · Jollyboat' },
+        { type: 'booking', id: 2, label: 'Richard Berry', sub: 'paid in full · Jollyboat' },
+    ]);
+    check('exact-duplicate rows collapse to one', dup.length === 1);
+    // Genuinely different rows (same guest, different stay) are NOT collapsed.
+    const distinct = ctx.cmdkArrange([
+        { type: 'booking', id: 1, label: 'Jane Doe', sub: 'August' },
+        { type: 'booking', id: 2, label: 'Jane Doe', sub: 'September' },
+    ]);
+    check('distinct rows (different subtitle) are kept', distinct.length === 2);
+}
+
 // ---- Summary ----
 console.log('\n== Summary ==');
 if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }
