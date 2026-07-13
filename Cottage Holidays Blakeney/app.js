@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 148;
+const ADMIN_BUNDLE_V = 149;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -11372,6 +11372,11 @@ function setModalFields(f) {
     const ovEl = document.getElementById('modal-price-override');
     if (ovEl) ovEl.value = f.priceOverride != null ? f.priceOverride : '';
     applyModalPropertyMode(); // sync pricing-field visibility + Save/Next label
+    // Clean slate: release any "move" lock left by a previous arrived-booking edit,
+    // so Add and normal edits always have the dates/cottage editable.
+    try {
+        lockBookingMove(false);
+    } catch (e) {}
     try {
         refreshModalDateTrigger(); // the glass-picker trigger shows the dates
     } catch (e) {}
@@ -11549,7 +11554,10 @@ function openEditBooking(bookingId) {
     const b = findBookingById(bookingId);
     const loc = findBookingLocation(bookingId);
     if (!b || !loc) return;
-    document.getElementById('modal-title').innerText = 'Edit / Move Booking';
+    // Once the guest has arrived, the booking can be edited but not MOVED — the
+    // dates and cottage are locked (openModal calls lockBookingMove below).
+    const arrived = !!(b.checkIn && typeof todayDashed === 'function' && b.checkIn <= todayDashed());
+    document.getElementById('modal-title').innerText = arrived ? 'Edit Booking' : 'Edit / Move Booking';
     document.getElementById('modal-mode').value = 'booking';
     document.getElementById('modal-record-id').value = b.id;
     setModalFields({
@@ -11570,6 +11578,35 @@ function openEditBooking(bookingId) {
     });
     togglePaymentField(true);
     openModal();
+    lockBookingMove(arrived);
+}
+
+// Lock (or release) the "move" fields of the booking modal — the date picker and
+// the cottage select — leaving every other field editable. Used when a booking
+// has already started: the owner can still fix details, but can't relocate a stay
+// that's under way. setModalFields() always releases it first, so Add and normal
+// edits are never left locked.
+function lockBookingMove(lock) {
+    const trig = document.getElementById('modal-date-trigger');
+    const prop = document.getElementById('modal-property');
+    if (trig) {
+        trig.disabled = !!lock;
+        trig.style.opacity = lock ? '0.55' : '';
+        trig.style.pointerEvents = lock ? 'none' : '';
+    }
+    if (prop) prop.disabled = !!lock;
+    let note = document.getElementById('modal-move-locked');
+    if (lock && trig && trig.parentNode) {
+        if (!note) {
+            note = document.createElement('p');
+            note.id = 'modal-move-locked';
+            note.style.cssText = 'margin:6px 0 0;font-size:0.8rem;color:var(--text-muted);';
+            trig.parentNode.insertBefore(note, trig.nextSibling);
+        }
+        note.textContent = 'The guest has arrived — the dates and cottage are locked. You can still edit the other details.';
+    } else if (note) {
+        note.remove();
+    }
 }
 
 // Payment + notes labelling differs slightly between modes
@@ -12150,7 +12187,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'payflw6';
+    const BUILD = 'payflw7';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
