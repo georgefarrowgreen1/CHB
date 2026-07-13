@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 154;
+const ADMIN_BUNDLE_V = 155;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 40;
+const ADMIN_CSS_V = 41;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -5883,11 +5883,26 @@ function paymentSummary(propKey, b) {
 // Staying → Deposit back. The details stage only appears when a registration
 // form exists for the booking; the deposit-back stage only when a refundable
 // damage deposit applies.
+// Has the guest actually CHECKED IN? True only once the check-in date AND time
+// have passed — on the arrival day, before the check-in time, they're still
+// "arriving", not "staying" (so "Staying" never shows from midnight). Falls back
+// to 15:00 when no check-in time is recorded.
+function hasCheckedIn(b) {
+    if (!b || !b.checkIn) return false;
+    const today = typeof todayDashed === 'function' ? todayDashed() : '';
+    if (b.checkIn < today) return true; // arrival day already gone
+    if (b.checkIn > today) return false; // still to come
+    // Arrival is TODAY — compare the wall clock to the check-in time.
+    const parts = String(b.checkInTime || '15:00').split(':');
+    const mins = (parseInt(parts[0], 10) || 0) * 60 + (parseInt(parts[1], 10) || 0);
+    const now = new Date();
+    return now.getHours() * 60 + now.getMinutes() >= mins;
+}
 function bookingFlow(propKey, b) {
     b = b || {};
     const today = typeof todayDashed === 'function' ? todayDashed() : '';
     const past = !!(b.checkOut && b.checkOut <= today);
-    const inStay = !past && !!(b.checkIn && b.checkIn <= today);
+    const inStay = !past && hasCheckedIn(b);
     const p = b.agreedPrice || priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
     const ps = paymentSummary(propKey, b);
     const gt = displayGrand(p, ps, b.holdStatus);
@@ -12128,7 +12143,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'nonotif1';
+    const BUILD = 'arrstay1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

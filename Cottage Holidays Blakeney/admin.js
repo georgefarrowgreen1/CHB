@@ -3129,12 +3129,18 @@ function bookingListRow(propKey, b, today) {
     const gt = displayGrand(p, ps, b.holdStatus);
     let payLabel = gt.fullyPaid ? 'Paid' : gt.paid > 0 ? 'Part-paid' : 'Unpaid';
     let payClass = gt.fullyPaid ? 'ok' : gt.paid > 0 ? 'warn' : 'danger';
-    // A guest who's in-house right now (checked in, not yet out) shows a live
-    // green "Staying" status instead of "Paid" — the operational state you care
-    // about while they're here. A still-owing in-house guest keeps their balance
-    // warning so money owed is never hidden behind it.
-    const inHouse = (b.checkIn || '') <= today && (b.checkOut || '') > today;
-    if (inHouse && gt.fullyPaid) { payLabel = 'Staying'; payClass = 'stay'; }
+    // Live operational status instead of "Paid": a guest who has actually checked
+    // in (past their check-in TIME, not just the date) reads green "Staying"; one
+    // arriving later TODAY (before their check-in time) reads "Arriving" — so the
+    // status only flips to Staying once they're really due in. A still-owing guest
+    // keeps their balance warning, so money owed is never hidden behind it.
+    const arrived = typeof hasCheckedIn === 'function' ? hasCheckedIn(b) : (b.checkIn || '') <= today;
+    const inHouse = arrived && (b.checkOut || '') > today;
+    const arrivingToday = !arrived && (b.checkIn || '') === today;
+    if (gt.fullyPaid) {
+        if (inHouse) { payLabel = 'Staying'; payClass = 'stay'; }
+        else if (arrivingToday) { payLabel = 'Arriving'; payClass = 'arrive'; }
+    }
     const past = (b.checkOut || '') < today;
     const balanceBit = !gt.fullyPaid ? ` · ${gbp(gt.balance)} due` : '';
     // Traffic-light edge on every row: red unpaid · amber part-paid · green paid.
