@@ -55,6 +55,13 @@
   color: var(--ok);
   border-color: rgba(76, 175, 80, 0.34);
 }
+/* "Arriving" — a paid guest due in LATER today (before their check-in time);
+   a calm sea-blue, distinct from the green "here now" Staying. */
+.bk-chip.arrive {
+  background: rgba(70, 130, 160, 0.14);
+  color: #35708f;
+  border-color: rgba(70, 130, 160, 0.32);
+}
 /* Live "here now" dot: a gentle pulse distinguishes a currently-staying guest
    from a static green "Paid". */
 .bk-chip.stay .bk-dot {

@@ -445,6 +445,22 @@ if (typeof ctx.cmdkRowHtml === 'function') {
     ctx.__cmdkSel = prevSel;
 }
 
+// ---- 19. Time-aware check-in (arrival → staying flips at the check-in TIME) ----
+if (typeof ctx.hasCheckedIn === 'function') {
+    const today = ctx.todayDashed();
+    const plus = (n) => {
+        const d = new Date(today + 'T00:00:00Z');
+        d.setUTCDate(d.getUTCDate() + n);
+        return d.toISOString().slice(0, 10);
+    };
+    check('a past-arrival booking counts as checked in', ctx.hasCheckedIn({ checkIn: plus(-1), checkInTime: '15:00' }) === true);
+    check('a future-arrival booking is not checked in', ctx.hasCheckedIn({ checkIn: plus(2), checkInTime: '15:00' }) === false);
+    // Arrival TODAY is time-driven: a 00:00 check-in has always passed; a 23:59
+    // one effectively never has during the working day.
+    check('today arrival at 00:00 reads as checked in', ctx.hasCheckedIn({ checkIn: today, checkInTime: '00:00' }) === true);
+    check('today arrival at 23:59 is not yet checked in', ctx.hasCheckedIn({ checkIn: today, checkInTime: '23:59' }) === false);
+}
+
 // ---- Summary ----
 console.log('\n== Summary ==');
 if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }
