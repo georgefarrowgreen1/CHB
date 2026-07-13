@@ -55,6 +55,12 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-emails.php
 
+      # Guest-registration form (UK hotel-records duty): validation + rendering
+      # of the token-linked party form (guest-details.php pure functions).
+      - name: Guest-registration form logic
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-guestreg.php
+
       # SMTP transport: runs mailer.php's real socket conversation against a
       # scriptable fake SMTP server — happy path, transient-retry, the
       # no-retry-after-payload guarantee (double-send safety), batch-over-one-

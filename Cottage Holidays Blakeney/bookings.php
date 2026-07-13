@@ -417,6 +417,8 @@ function send_booking_confirmation($bookingId, $guestOnly = false, $deferOwner =
             'defer_owner' => $deferOwner,
             // Signed link to the guest-viewable HTML invoice (invoice.php).
             'invoice_url' => site_base_url() . 'invoice.php?b=' . (int) $bookingId . '&token=' . invoice_token((int) $bookingId),
+            // Signed link to the guest-registration form (UK hotel-records duty).
+            'guest_reg_url' => site_base_url() . 'guest-details.php?b=' . (int) $bookingId . '&token=' . guest_reg_token((int) $bookingId),
         ]);
     } catch (\Throwable $ex) {
         return ['error' => 'Mail step skipped: ' . $ex->getMessage()];
@@ -441,6 +443,32 @@ function bookings_admin_payload()
         }
         foreach ($rows as &$bk) {
             $bk['damages_returned'] = $ret[(int) $bk['id']] ?? 0;
+        }
+        unset($bk);
+    } catch (\Throwable $e) {
+    }
+    // Guest-registration status per booking (UK hotel-records duty). The bulk
+    // payload carries only status + count + the owner-usable form link — never
+    // the PII; the owner opens the token page to view/edit the actual names.
+    // Robust to the guest_registrations table not existing yet (pre-migration).
+    foreach ($rows as &$bk) {
+        $id = (int) $bk['id'];
+        $bk['reg_url'] = site_base_url() . 'guest-details.php?b=' . $id . '&token=' . guest_reg_token($id);
+        $bk['reg_submitted'] = false;
+        $bk['reg_count'] = 0;
+    }
+    unset($bk);
+    try {
+        $reg = [];
+        foreach (db()->query('SELECT booking_id, guest_count, submitted_at FROM guest_registrations') as $r) {
+            $reg[(int) $r['booking_id']] = $r;
+        }
+        foreach ($rows as &$bk) {
+            $r = $reg[(int) $bk['id']] ?? null;
+            if ($r) {
+                $bk['reg_submitted'] = !empty($r['submitted_at']);
+                $bk['reg_count'] = (int) $r['guest_count'];
+            }
         }
         unset($bk);
     } catch (\Throwable $e) {

@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 127;
+const ADMIN_BUNDLE_V = 128;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -768,6 +768,11 @@ function mapBookingFromApi(row) {
         holdAmount: parseFloat(row.hold_amount) || 0,
         holdSettledAt: row.hold_settled_at || '',
         damagesReturned: parseFloat(row.damages_returned) || 0,
+        // Guest register (UK hotel-records duty): status + count + the token form
+        // link (owner opens it to view/edit the actual party). No PII here.
+        regSubmitted: !!row.reg_submitted,
+        regCount: parseInt(row.reg_count, 10) || 0,
+        regUrl: row.reg_url || '',
     };
     if (row.agreed_total != null) {
         const nightly = parseFloat(row.agreed_nightly) || 0;
@@ -12046,7 +12051,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'helpv3';
+    const BUILD = 'gstreg1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

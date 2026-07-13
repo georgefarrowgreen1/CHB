@@ -193,6 +193,24 @@ try {
 } catch (\Throwable $e) {
 }
 
+// ---- 4b. Expired guest registrations (UK 12-month retention) ---------------
+// The party register is a legal duty kept for 12 months after checkout; past
+// that we MUST delete it. Rows carry expires_at (checkout + 12mo); purge any
+// that are due. Best-effort + idempotent (also survives the table not existing).
+try {
+    $st = db()->prepare('DELETE FROM guest_registrations WHERE expires_at IS NOT NULL AND expires_at < CURDATE()');
+    $st->execute();
+    $purged = (int) $st->rowCount();
+    if ($purged > 0) {
+        $fixed[] = "purged $purged expired guest registration(s)";
+        log_activity('settings', 'selfrepair.guestreg', 'Self-repair: deleted ' . $purged . ' guest registration(s) past the 12-month retention limit', [
+            'actor' => $actor,
+            'entity' => 'guest_registrations',
+        ]);
+    }
+} catch (\Throwable $e) {
+}
+
 // ---- 5. Orphaned payment rows (flag only — never delete money records) -----
 // ---- 6. Monthly digest into the activity log --------------------------------
 try {

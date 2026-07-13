@@ -174,3 +174,18 @@ CREATE TABLE IF NOT EXISTS admin_passkeys (
     INDEX idx_admin (admin_id),
     CONSTRAINT fk_passkey_admin FOREIGN KEY (admin_id) REFERENCES admins(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Guest party register (UK Immigration (Hotel Records) Order 1972). One row per
+-- booking; the party (names/nationalities/ID docs) is stored ENCRYPTED at rest
+-- and auto-purged 12 months after checkout. See migration-guest-registrations.sql.
+CREATE TABLE IF NOT EXISTS guest_registrations (
+    id            INT AUTO_INCREMENT PRIMARY KEY,
+    booking_id    INT NOT NULL,
+    party_enc     MEDIUMTEXT NOT NULL,
+    guest_count   INT NOT NULL DEFAULT 0,
+    submitted_at  DATETIME NULL,
+    updated_at    DATETIME NULL,
+    expires_at    DATE NULL,
+    UNIQUE KEY uniq_booking (booking_id),
+    KEY idx_expires (expires_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
