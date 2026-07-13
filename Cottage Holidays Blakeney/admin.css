@@ -1644,51 +1644,89 @@ body.light-mode .cmdk-editor-input {
   color: var(--danger);
 }
 /* Quick-actions revealed under the selected result — act without leaving search. */
-.cmdk-actbar {
+/* Quick-actions list — a selected record's actions laid out as full-width rows
+   (icon · label · chevron), the way a context menu / Spotlight does it: one
+   action per line, comfortable tap targets, no wrapping. The tinted rounded
+   container "hangs" under the result it belongs to (55px left inset = under the
+   row label). */
+.cmdk-qa {
   display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 2px 12px 10px 55px;
+  flex-direction: column;
+  gap: 1px;
+  margin: 2px 12px 10px 55px;
+  padding: 4px;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 16%, transparent);
 }
-/* Small caption that names the action row, so the accent "do" buttons read as a
-   distinct group from the plain "related search" chips below them. */
-.cmdk-grouplbl {
-  align-self: center;
-  margin-right: 4px;
-  font-size: 0.62rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: var(--text-muted);
-}
-.cmdk-act {
-  display: inline-flex;
+.cmdk-qa-row,
+.cmdk-related {
+  display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 0.76rem;
+  gap: 11px;
+  width: 100%;
+  padding: 9px 12px;
+  border: 0;
+  background: transparent;
+  border-radius: 13px;
+  font-size: 0.9rem;
   font-weight: 600;
-  padding: 6px 12px;
-  border-radius: var(--r-pill);
-  border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
-  background: var(--cmdk-tile, color-mix(in srgb, var(--accent) 14%, transparent));
   color: var(--text-light);
+  text-align: left;
   cursor: pointer;
-  transition: background 0.14s var(--fluid-bezier), border-color 0.14s var(--fluid-bezier), box-shadow 0.14s var(--fluid-bezier), transform 0.12s var(--fluid-bezier);
+  transition: background 0.13s var(--fluid-bezier), transform 0.1s var(--fluid-bezier);
 }
-.cmdk-act:hover,
-.cmdk-act:focus-visible {
-  background: color-mix(in srgb, var(--accent) 22%, transparent);
-  border-color: color-mix(in srgb, var(--accent) 55%, transparent);
-  box-shadow: 0 4px 12px -5px color-mix(in srgb, var(--accent) 55%, transparent);
+.cmdk-qa-row:hover,
+.cmdk-qa-row:focus-visible,
+.cmdk-related:hover,
+.cmdk-related:focus-visible {
+  background: color-mix(in srgb, var(--accent) 17%, transparent);
   outline: none;
 }
-.cmdk-act:active {
-  transform: scale(0.96);
+.cmdk-qa-row:active,
+.cmdk-related:active {
+  transform: scale(0.99);
 }
-.cmdk-act .ic {
-  width: 13px;
-  height: 13px;
+.cmdk-qa-ic {
+  display: inline-flex;
+  flex-shrink: 0;
   color: var(--accent);
+}
+.cmdk-qa-ic .ic {
+  width: 17px;
+  height: 17px;
+}
+.cmdk-qa-lbl {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cmdk-qa-go {
+  display: inline-flex;
+  flex-shrink: 0;
+  color: var(--text-muted);
+  opacity: 0.55;
+}
+.cmdk-qa-go .ic {
+  width: 15px;
+  height: 15px;
+}
+/* Related searches: same row shape, but a quiet footer (no tint card, muted
+   glyph + text) so "run another search" reads as subordinate to the actions. */
+.cmdk-related-list {
+  margin-top: -6px;
+  padding: 0 4px;
+  background: transparent;
+  border: 0;
+}
+.cmdk-related {
+  font-weight: 500;
+  color: var(--text-muted);
+}
+.cmdk-related .cmdk-qa-ic {
+  color: var(--text-muted);
 }
 /* Refine chips under an answer head — narrow/pivot the result without retyping. */
 .cmdk-refine {

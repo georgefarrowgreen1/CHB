@@ -427,6 +427,24 @@ if (typeof ctx.rentalRefundBlocked === 'function') {
     ctx.cancelPolicyOf = realPolicyOf;
 }
 
+// ---- 18. ⌘K quick-actions layout (entity top-hit reimagined as a list) ----
+if (typeof ctx.cmdkRowHtml === 'function') {
+    const prevSel = ctx.__cmdkSel;
+    ctx.__cmdkSel = 0; // mark row 0 selected so its actions render
+    const it = {
+        type: 'booking',
+        label: 'Richard Berry',
+        sub: 'paid',
+        actions: [{ label: 'Email', run() {} }, { label: 'Show on calendar', run() {} }],
+        chips: [{ label: 'Jollyboat bookings' }, { label: 'Show on calendar' }],
+    };
+    const html = ctx.cmdkRowHtml(it, 0, true);
+    check('entity actions render as a vertical quick-actions list (not pills)', /cmdk-qa-row/.test(html) && !/cmdk-actbar/.test(html));
+    check('a related-search pivot renders as a quiet footer row', /class="cmdk-related"/.test(html) && /Jollyboat bookings/.test(html));
+    check('a related chip duplicating an action is suppressed', (html.match(/Show on calendar/g) || []).length === 1);
+    ctx.__cmdkSel = prevSel;
+}
+
 // ---- Summary ----
 console.log('\n== Summary ==');
 if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }
