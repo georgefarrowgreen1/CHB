@@ -196,6 +196,23 @@ const helpAns = typeof ctx.cmdkHelp === 'function' ? ctx.cmdkHelp('how do i refu
 check('cmdkHelp() answers a "how do I…" question with a help item', Array.isArray(helpAns) && helpAns.length > 0 && helpAns[0].type === 'help' && Array.isArray(helpAns[0].steps), 'got ' + (helpAns ? helpAns.length : 'null'));
 check('cmdkHelp() ignores a non-matching non-question', Array.isArray(ctx.cmdkHelp && ctx.cmdkHelp('xyzzy')) && ctx.cmdkHelp('xyzzy').length === 0);
 
+// Context-aware "?" — every id in HELP_INDEX / HELP_CONTEXT must be a real topic.
+if (Array.isArray(help)) {
+    const hset = new Set(help.map((t) => t.id));
+    const grabIds = (name) => {
+        const m = adminScript.match(new RegExp('const ' + name + '\\s*=\\s*([\\s\\S]*?);'));
+        if (!m) return null;
+        // Only pull ids inside [ … ] arrays (the topic-id lists) — not object keys.
+        return [...m[1].matchAll(/\[([^\]]*)\]/g)].flatMap((a) => [...a[1].matchAll(/'([a-z0-9-]+)'/g)].map((x) => x[1]));
+    };
+    const idxIds = grabIds('HELP_INDEX');
+    const ctxIds = grabIds('HELP_CONTEXT');
+    check('HELP_INDEX ids all resolve to real topics', idxIds && idxIds.length > 0 && idxIds.every((id) => hset.has(id)), 'bad: ' + (idxIds || []).filter((id) => !hset.has(id)).join(', '));
+    check('HELP_CONTEXT ids all resolve to real topics', ctxIds && ctxIds.length > 0 && ctxIds.every((id) => hset.has(id)), 'bad: ' + (ctxIds || []).filter((id) => !hset.has(id)).join(', '));
+}
+check('cmdkHelpItems() maps ids to items', typeof ctx.cmdkHelpItems === 'function' && ctx.cmdkHelpItems(['add-booking']).length === 1 && ctx.cmdkHelpItems(['add-booking'])[0].type === 'help');
+check('context help fns are defined (cmdkCurrentHelpIds, cmdkHelpOpen)', typeof ctx.cmdkCurrentHelpIds === 'function' && typeof ctx.cmdkHelpOpen === 'function');
+
 // ---- Summary ----
 console.log('\n== Summary ==');
 if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }

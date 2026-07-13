@@ -1231,9 +1231,100 @@ function helpTopics() {
             kw: 'notification notifications push alert phone new booking message enable turn on notify',
             steps: ['Open Manage → Notifications.', 'Enable push alerts on this device for new bookings, enquiries and messages.'],
             doIt: { label: 'Open Notifications', run: sec('notify') } },
+        { id: 'record-payment', title: 'Record a payment I took another way', cat: 'Money',
+            kw: 'record manual payment cash bank transfer cheque took offline mark paid add money received',
+            steps: ['Open the booking.', 'In the Money card record the amount you received (cash / bank transfer / cheque).', 'The balance and status update just like a card payment.'],
+            doIt: { label: 'Open Bookings', run: view(() => openBookings()) },
+            related: ['take-payment'] },
+        { id: 'pricing-coach', title: 'Get pricing suggestions', cat: 'Money',
+            kw: 'pricing coach suggest suggestion advice demand optimise increase revenue rate ideas smart',
+            steps: ['Open Payments and find the Pricing coach.', 'It suggests rate tweaks from your own bookings & demand — nothing changes until you tap Apply.'],
+            showMe: { label: 'Open Payments', run: view(() => openAccounts()) },
+            related: ['change-prices', 'seasonal-rates'] },
+        { id: 'weekend-pricing', title: 'Charge more on weekends', cat: 'Money',
+            kw: 'weekend friday saturday uplift surcharge more expensive percent price rate',
+            steps: ['Open Cottages → the cottage → Rates & fees.', 'Set the weekend uplift % (0 turns it off) — it adds to Fri & Sat nights.'],
+            doIt: { label: 'Open Cottages', run: sec('accom') },
+            related: ['change-prices', 'last-minute'] },
+        { id: 'last-minute', title: 'Offer a last-minute discount', cat: 'Money',
+            kw: 'last minute discount deal fill gaps near term cheap late offer percent off',
+            steps: ['Open Cottages → the cottage → Rates & fees.', 'Set the last-minute discount % and the days-before window — it auto-discounts near-term gaps.'],
+            doIt: { label: 'Open Cottages', run: sec('accom') },
+            related: ['weekend-pricing'] },
+        { id: 'checkin-times', title: 'Set check-in / check-out times & min nights', cat: 'Cottages',
+            kw: 'check in out time arrival departure minimum nights maximum stay rules house arrival days',
+            steps: ['Open Cottages → the cottage → House rules & stay.', 'Set check-in / check-out times, minimum & maximum nights and allowed arrival days.'],
+            doIt: { label: 'Open Cottages', run: sec('accom') },
+            related: ['house-rules', 'max-guests'] },
+        { id: 'max-guests', title: 'Change how many guests are allowed', cat: 'Cottages',
+            kw: 'max guests occupancy adults children people limit how many sleeps capacity',
+            steps: ['Open Cottages → the cottage → House rules & stay.', 'Set the max adults, children and total — the enquiry form enforces them.'],
+            doIt: { label: 'Open Cottages', run: sec('accom') },
+            related: ['checkin-times'] },
+        { id: 'house-rules', title: 'Edit house rules (pets, smoking…)', cat: 'Cottages',
+            kw: 'house rules pets smoking parties quiet hours policy edit dogs allowed',
+            steps: ['Open Cottages → the cottage → House rules & stay.', 'Add or edit the bullet rules guests see (pets, smoking, parties, quiet hours).'],
+            doIt: { label: 'Open Cottages', run: sec('accom') },
+            related: ['checkin-times'] },
+        { id: 'arrival-details', title: 'Set the pre-arrival info guests get', cat: 'Cottages',
+            kw: 'arrival pre arrival info directions key code access getting there before check in email private',
+            steps: ['Open Cottages → the cottage → Arrival info.', 'Add directions, key collection and Wi-Fi — it’s sent before check-in and never shown publicly.'],
+            doIt: { label: 'Open Cottages', run: sec('accom') },
+            related: ['directions'] },
+        { id: 'directions', title: 'Set the cottage location & key unlock spot', cat: 'Cottages',
+            kw: 'location address directions map gps key code unlock arrival geo coordinates where find',
+            steps: ['Open Cottages → the cottage → Location.', 'Set the address and, standing at the cottage, capture the GPS spot so arrival info unlocks on the guest’s phone nearby.'],
+            doIt: { label: 'Open Cottages', run: sec('accom') },
+            related: ['arrival-details'] },
+        { id: 'website-content', title: 'Edit the homepage text & hero image', cat: 'Marketing',
+            kw: 'website content homepage home page hero image banner headline text nav wording global site',
+            steps: ['Open Manage → Website content.', 'Edit the homepage headline, intro and hero image, plus shared nav text.'],
+            doIt: { label: 'Open Website content', run: sec('content') },
+            related: ['host-profile'] },
+        { id: 'host-profile', title: 'Edit your host bio & photo', cat: 'Marketing',
+            kw: 'host profile bio about me photo owner introduction contact number your details',
+            steps: ['Search “host bio” to edit it inline, or open Manage → Profile.', 'Update your introduction, photo and contact number.'],
+            doIt: { label: 'Open Profile', run: sec('host') } },
+        { id: 'experiences', title: 'Edit things-to-do / experiences', cat: 'Marketing',
+            kw: 'experiences things to do activities local attractions seal trips walks add edit guide',
+            steps: ['Open Manage → Experiences.', 'Add or edit the local things-to-do shown on the Experiences page.'],
+            doIt: { label: 'Open Experiences', run: sec('experiences') } },
+        { id: 'reset-guest', title: 'Reset a guest’s login', cat: 'Guests',
+            kw: 'guest account reset password login look up find user cant sign in help customer',
+            steps: ['Open Manage → Guests.', 'Find the guest and reset their access — they can also use the “email me a link” option themselves.'],
+            doIt: { label: 'Open Guests', run: sec('guests') } },
+        { id: 'waitlist', title: 'See who’s on the waitlist', cat: 'Marketing',
+            kw: 'waitlist wait list interested dates full booked notify demand guests waiting',
+            steps: ['Open Manage → Waitlist.', 'See guests waiting for dates that were full — handy to contact if a booking cancels.'],
+            doIt: { label: 'Open Waitlist', run: sec('waitlist') } },
+        { id: 'analytics', title: 'See how the site is performing', cat: 'System',
+            kw: 'analytics stats statistics visitors searches views performance numbers traffic report insights',
+            steps: ['Open Manage → Analytics.', 'See visits, searches and what guests looked for — useful for spotting demand.'],
+            doIt: { label: 'Open Analytics', run: sec('analytics') } },
+        { id: 'tide-times', title: 'Connect tide times / integrations', cat: 'System',
+            kw: 'tide times api key integration connect service weather data external add',
+            steps: ['Open Manage → Integrations.', 'Add the API key for tide times and other connected services.'],
+            doIt: { label: 'Open Integrations', run: sec('apis') } },
     ];
 }
 const HELP_STOP = new Set('a an the my me i to for of in on at do does how why what can could would should when where is are it this that with your you help guide show tell please again some any'.split(' '));
+// Build one help result item from a topic (shared by the query matcher and the
+// context "?" opener). Chips: [Do it] runs the flow, [Show me] opens the screen,
+// [More: …] pivots to a related topic.
+function cmdkHelpItem(t, byId) {
+    const chips = [];
+    if (t.doIt) chips.push(t.doIt);
+    if (t.showMe) chips.push(t.showMe);
+    (t.related || []).forEach((rid) => { if (byId[rid]) chips.push({ label: 'More: ' + byId[rid].title, q: byId[rid].title }); });
+    return { type: 'help', id: 'help-' + t.id, label: t.title, sub: (t.cat ? t.cat + ' · ' : '') + (t.steps && t.steps[0] ? t.steps[0] : 'How-to'), steps: t.steps, chips, run: (t.showMe && t.showMe.run) || (t.doIt && t.doIt.run) || (() => {}) };
+}
+// Turn a list of topic ids into help items (order preserved, unknowns dropped).
+function cmdkHelpItems(ids) {
+    const topics = helpTopics();
+    const byId = {};
+    topics.forEach((t) => { byId[t.id] = t; });
+    return (ids || []).map((id) => byId[id]).filter(Boolean).map((t) => cmdkHelpItem(t, byId));
+}
 // Match a query against the help catalogue. Explicit questions (or a bare "help")
 // return an answer set; a plain keyword returns matching topics too (placed lower
 // by cmdkBuildResults so they don't outrank direct hits).
@@ -1246,17 +1337,8 @@ function cmdkHelp(q) {
     const topics = helpTopics();
     const byId = {};
     topics.forEach((t) => { byId[t.id] = t; });
-    const toItem = (t) => {
-        const chips = [];
-        if (t.doIt) chips.push(t.doIt);
-        if (t.showMe) chips.push(t.showMe);
-        (t.related || []).forEach((rid) => { if (byId[rid]) chips.push({ label: 'More: ' + byId[rid].title, q: byId[rid].title }); });
-        return { type: 'help', id: 'help-' + t.id, label: t.title, sub: (t.cat ? t.cat + ' · ' : '') + (t.steps && t.steps[0] ? t.steps[0] : 'How-to'), steps: t.steps, chips, run: (t.showMe && t.showMe.run) || (t.doIt && t.doIt.run) || (() => {}) };
-    };
     // Bare "help" (no content words) → a short starter index across the main areas.
-    if (!words.length) {
-        return ['add-booking', 'take-payment', 'change-prices', 'block-dates', 'reply-enquiry', 'whats-broken'].map((id) => byId[id]).filter(Boolean).map(toItem);
-    }
+    if (!words.length) return cmdkHelpItems(['add-booking', 'take-payment', 'change-prices', 'block-dates', 'reply-enquiry', 'whats-broken']);
     const scored = topics.map((t) => {
         const hay = (t.title + ' ' + (t.kw || '')).toLowerCase();
         const toks = hay.split(/[^a-z0-9]+/).filter(Boolean);
@@ -1269,7 +1351,69 @@ function cmdkHelp(q) {
         if (score && wantHelp) score += 1;
         return { t, score };
     }).filter((x) => x.score > 0).sort((a, b) => b.score - a.score);
-    return scored.slice(0, wantHelp ? 4 : 3).map((x) => toItem(x.t));
+    return scored.slice(0, wantHelp ? 4 : 3).map((x) => cmdkHelpItem(x.t, byId));
+}
+// ---- Context-aware help: the palette "?" shows how-to for whatever screen the
+// owner is on right now (an open sheet, a hub, a settings section, or a dock
+// area), falling back to a general index. Ids here are guarded by search-test. ----
+const HELP_INDEX = ['add-booking', 'take-payment', 'refund-deposit', 'change-prices', 'seasonal-rates', 'block-dates', 'connect-airbnb', 'reply-enquiry', 'edit-photos', 'edit-welcome', 'whats-broken', 'two-factor'];
+const HELP_CONTEXT = {
+    'view-booking-hub': ['take-payment', 'record-payment', 'chase-balance', 'refund-deposit', 'cancel-booking', 'cant-delete-booking', 'send-email'],
+    'view-enquiry-hub': ['reply-enquiry', 'send-email', 'change-prices'],
+    'view-accounts': ['take-payment', 'record-payment', 'chase-balance', 'refund-deposit', 'deposit-explained', 'export-accountant', 'pricing-coach'],
+    'view-inbox': ['reply-enquiry', 'send-email', 'guest-messages', 'auto-reply', 'follow-ups'],
+    // Manage sections — also matched for an open sheet by its section id.
+    accom: ['change-prices', 'weekend-pricing', 'last-minute', 'edit-photos', 'edit-text', 'edit-welcome', 'house-rules', 'checkin-times', 'max-guests', 'arrival-details', 'directions', 'add-cottage', 'hide-cottage'],
+    seasongrid: ['seasonal-rates', 'change-prices'],
+    calendar: ['connect-airbnb', 'block-dates'],
+    payments: ['take-payment', 'record-payment', 'deposit-explained', 'export-accountant', 'pricing-coach'],
+    cancel: ['deposit-explained'],
+    reviews: ['reviews'],
+    newsletter: ['newsletter'],
+    'chat-away': ['auto-reply'],
+    'follow-ups': ['follow-ups'],
+    security: ['two-factor'],
+    notify: ['notifications'],
+    diagnostics: ['whats-broken', 'backup', 'run-updates'],
+    content: ['website-content', 'edit-text', 'edit-photos'],
+    photos: ['edit-photos'],
+    experiences: ['experiences'],
+    guests: ['reset-guest', 'send-email'],
+    waitlist: ['waitlist'],
+    analytics: ['analytics'],
+    host: ['host-profile'],
+    apis: ['tide-times'],
+};
+// Which help ids fit the screen the owner is looking at right now (null = none).
+function cmdkCurrentHelpIds() {
+    try {
+        if (typeof __cmdkSheet !== 'undefined' && __cmdkSheet && HELP_CONTEXT[__cmdkSheet.section]) return HELP_CONTEXT[__cmdkSheet.section];
+        const active = document.querySelector('.page-view.active');
+        const id = active ? active.id : '';
+        if (id === 'view-settings' && typeof __settingsPath === 'object' && __settingsPath && __settingsPath.section && HELP_CONTEXT[__settingsPath.section]) return HELP_CONTEXT[__settingsPath.section];
+        if (HELP_CONTEXT[id]) return HELP_CONTEXT[id];
+    } catch (e) {}
+    return null;
+}
+// The palette "?" — show help for the current screen, else the general index.
+function cmdkHelpOpen() {
+    const ctxIds = cmdkCurrentHelpIds(); // read context BEFORE any sheet restore
+    const ids = ctxIds && ctxIds.length ? ctxIds : HELP_INDEX;
+    const o = document.getElementById('cmdk');
+    if (o && o.style.display === 'none') openCmdK();
+    // If a sheet is open its node lives in #cmdk-results — hand it back before we
+    // overwrite the results with the help list.
+    if (typeof __cmdkSheet !== 'undefined' && __cmdkSheet) { try { cmdkSheetRestore(); } catch (e) {} }
+    __cmdkEmpty = false;
+    __cmdkWords = [];
+    __cmdkResults = cmdkArrange(cmdkHelpItems(ids));
+    __cmdkSel = 0;
+    const el = document.getElementById('cmdk-input');
+    if (el) el.value = '';
+    const wrap = document.querySelector('#cmdk .cmdk-search');
+    if (wrap) wrap.classList.remove('has-text');
+    cmdkRender();
+    if (el) { try { el.focus(); } catch (e) {} }
 }
 function cmdkBuildResults(ql) {
     let results = [];
