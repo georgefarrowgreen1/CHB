@@ -175,6 +175,7 @@ if (basename($_SERVER['SCRIPT_NAME'] ?? '') !== 'guest-details.php') {
 }
 
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/pricing.php'; // get_rate() lives here (as in invoice.php)
 
 header('Content-Type: text/html; charset=utf-8');
 header('X-Robots-Tag: noindex');
@@ -200,7 +201,7 @@ if (!$b) {
     exit();
 }
 
-$rate = get_rate($b['prop_key']);
+$rate = get_rate($b['prop_key']) ?: [];
 $accent = $rate['accent'] ?? '';
 $actionUrl = 'guest-details.php?b=' . $id . '&token=' . $token;
 $saved = false;
