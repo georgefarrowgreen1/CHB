@@ -170,6 +170,32 @@ if (Array.isArray(sheets)) {
 check('cmdkSheetOpen/Close/Restore fns are defined', typeof ctx.cmdkSheetOpen === 'function' && typeof ctx.cmdkSheetClose === 'function' && typeof ctx.cmdkSheetRestore === 'function');
 check('settingsRenderSection + cmdkOpenSection defined (search-first section routing)', typeof ctx.settingsRenderSection === 'function' && typeof ctx.cmdkOpenSection === 'function');
 
+// Every section a router literal targets must be a real registered section /
+// ACCOM_SECTIONS id — catches typos in help topics, actions, dossiers alike.
+const openSecTargets = [...adminScript.matchAll(/\bcmdkOpenSection\(\s*'([a-z0-9-]+)'/g)].map((m) => m[1]);
+check('every cmdkOpenSection() targets a registered section', [...new Set(openSecTargets)].every((s) => regSecs.has(s)), 'bad: ' + [...new Set(openSecTargets)].filter((s) => !regSecs.has(s)).join(', '));
+const openAccomTargets = [...adminScript.matchAll(/\bcmdkOpenAccomSec\([^,]+,\s*'([a-z0-9-]+)'/g)].map((m) => m[1]);
+check('every cmdkOpenAccomSec() targets a real ACCOM_SECTIONS id', [...new Set(openAccomTargets)].every((s) => accomSecs.has(s)), 'bad: ' + [...new Set(openAccomTargets)].filter((s) => !accomSecs.has(s)).join(', '));
+
+// ---- 8. Help & how-to topics (cmdkHelp) ----
+const help = typeof ctx.helpTopics === 'function' ? ctx.helpTopics() : null;
+check('helpTopics() is defined and returns a non-empty list', Array.isArray(help) && help.length > 0, typeof ctx.helpTopics);
+if (Array.isArray(help)) {
+    const hids = help.map((t) => t.id);
+    check('help topic ids are unique', new Set(hids).size === hids.length, 'dupes: ' + hids.filter((id, i) => hids.indexOf(id) !== i).join(', '));
+    check('every help topic has a non-empty title', help.every((t) => typeof t.title === 'string' && t.title.trim()));
+    check('every help topic has keywords', help.every((t) => typeof t.kw === 'string' && t.kw.trim()));
+    check('every help topic has at least one step', help.every((t) => Array.isArray(t.steps) && t.steps.length > 0 && t.steps.every((s) => typeof s === 'string' && s.trim())));
+    check('every help topic has a doIt or showMe with a run()', help.every((t) => (t.doIt && typeof t.doIt.run === 'function') || (t.showMe && typeof t.showMe.run === 'function')));
+    // related ids must resolve to real topics
+    const hset = new Set(hids);
+    const badRel = help.flatMap((t) => (t.related || []).filter((r) => !hset.has(r)));
+    check('every "related" id resolves to a real topic', badRel.length === 0, 'unknown: ' + badRel.join(', '));
+}
+const helpAns = typeof ctx.cmdkHelp === 'function' ? ctx.cmdkHelp('how do i refund a deposit') : null;
+check('cmdkHelp() answers a "how do I…" question with a help item', Array.isArray(helpAns) && helpAns.length > 0 && helpAns[0].type === 'help' && Array.isArray(helpAns[0].steps), 'got ' + (helpAns ? helpAns.length : 'null'));
+check('cmdkHelp() ignores a non-matching non-question', Array.isArray(ctx.cmdkHelp && ctx.cmdkHelp('xyzzy')) && ctx.cmdkHelp('xyzzy').length === 0);
+
 // ---- Summary ----
 console.log('\n== Summary ==');
 if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }
