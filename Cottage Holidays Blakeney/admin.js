@@ -4854,7 +4854,7 @@ async function loadGuestList() {
     box.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">Loading…</p>';
     let res;
     try {
-        res = await apiPost('auth.php', { action: 'guest_list' });
+        res = await apiPost('auth.php', { action: 'guest_crm' });
     } catch (e) {
         box.innerHTML = `<p style="color:var(--danger);font-size:0.85rem;">Couldn't load guests: ${escapeHtml(e.message)}</p>`;
         return;
@@ -4884,7 +4884,7 @@ async function loadGuestList() {
                             <td>${escapeHtml(g.name || '—')}${g.repeat ? ' <span class="chip-mini" style="background:var(--accent-soft);color:#1a191b;border-radius:var(--r-pill);padding:1px 7px;font-size:0.68rem;font-weight:600;">Returning</span>' : ''}<br><span style="color:var(--text-muted);font-size:0.76rem;">${escapeHtml(g.email || '')}</span></td>
                             <td class="num">${g.stays}</td>
                             <td class="num">${gbp(g.ltv || 0)}</td>
-                            <td>${g.last_stay || '—'}</td>
+                            <td>${g.last_stay ? (typeof fmtDate === 'function' ? fmtDate(g.last_stay) : g.last_stay) : '—'}</td>
                             <td>${escapeHtml(propName(g.fav_prop))}</td>
                             <td class="num" style="white-space:nowrap;">
                                 <button class="btn-sm btn-edit" data-email="${escapeHtml(g.email || '')}" onclick="reinviteGuest(this)" title="Email this guest a returning-guest invitation">Invite back</button>
@@ -8528,9 +8528,11 @@ async function loadAnalytics(days = 30) {
         })
         .join('');
 
-    // ---- sticky period bar (segmented control) + CSV export ----
+    // ---- sticky period bar (full-width segmented control). CSV export lives at
+    // the very bottom as its own action, so the sticky header stays clean. ----
     const seg = `<div class="ana-seg" role="tablist">${[7, 30, 90, 365].map((n) => `<button type="button" class="ana-seg-btn${n === winDays ? ' on' : ''}" onclick="loadAnalytics(${n})">${rangeLabel(n)}</button>`).join('')}</div>`;
-    const pickerRow = `<div class="ana-pick">${seg}<button type="button" class="ana-export" onclick="exportAnalyticsCsv()">⬇ Export CSV</button></div>`;
+    const pickerRow = `<div class="ana-pick">${seg}</div>`;
+    const exportRow = `<button type="button" class="ana-export" onclick="exportAnalyticsCsv()"><svg class="ic" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg> Export these figures (CSV)</button>`;
 
     // Auto-generated highlights ("so what") from the summary above.
     const insights = buildInsights(d);
@@ -8569,7 +8571,8 @@ async function loadAnalytics(days = 30) {
                     ${topMonthsHtml ? `<div style="font-size:0.74rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin:4px 0 10px;">Most-requested months</div>${topMonthsHtml}` : ''}
                     ${recentNoHtml ? `<div style="font-size:0.74rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;margin:14px 0 8px;">Recent searches that found nothing</div><ul style="margin:0;padding-left:18px;font-size:0.85rem;color:var(--text-light);">${recentNoHtml}</ul><p style="font-size:0.74rem;color:var(--text-muted);margin:10px 0 0;">These are unmet demand — consider opening dates, adjusting prices, or nudging your waitlist.</p>` : sd.total ? '' : emptyNote('No searches recorded yet.')}
                 `,
-                )}`;
+                )}` +
+        exportRow;
 }
 
 // ---- Waitlist manager (Manage → Waitlist) ----
@@ -9750,9 +9753,12 @@ function renderReviewLinks() {
             const slug = (typeof COTTAGE_SLUGS === 'object' && COTTAGE_SLUGS[k]) || k;
             const name = (propertyMeta[k] || {}).name || k;
             const url = origin + '/review/' + slug;
-            return `<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
-                        <input class="input-glass" readonly id="revlink-${escapeHtml(k)}" onclick="this.select()" value="${escapeHtml(url)}" title="${escapeHtml(name)} review link" aria-label="${escapeHtml(name)} review link" style="font-size:0.8rem;flex:1;min-width:0;">
-                        <button class="btn-sm btn-edit" style="flex-shrink:0;" onclick="copyReviewLink('${escapeHtml(k)}')">Copy</button>
+            return `<div style="margin-bottom:14px;">
+                        <div style="font-size:0.8rem;font-weight:600;color:var(--text-light);margin-bottom:5px;">${escapeHtml(name)}</div>
+                        <div style="display:flex;gap:8px;align-items:center;">
+                            <input class="input-glass" readonly id="revlink-${escapeHtml(k)}" onclick="this.select()" value="${escapeHtml(url)}" title="${escapeHtml(name)} review link" aria-label="${escapeHtml(name)} review link" style="font-size:0.8rem;flex:1;min-width:0;">
+                            <button class="btn-sm btn-edit" style="flex-shrink:0;" onclick="copyReviewLink('${escapeHtml(k)}')">Copy</button>
+                        </div>
                     </div>`;
         })
         .join('');
