@@ -298,7 +298,10 @@ check('todayGaps returns an array', Array.isArray(ctx.todayGaps && ctx.todayGaps
 check('cmdkActiveWorkspace() is defined and defaults to a real workspace', typeof ctx.cmdkActiveWorkspace === 'function' && ['view-backoffice', 'view-inbox', 'view-accounts'].includes(ctx.cmdkActiveWorkspace()));
 
 // ---- 11. Entity-aware search (Siri-style: act on the record you're viewing) ----
-check('entity helpers are defined', typeof ctx.cmdkCurrentEntity === 'function' && typeof ctx.cmdkEntityActions === 'function' && typeof ctx.cmdkHubSuggestInject === 'function');
+// Entity suggestions live ONLY in the ⌘K palette now — the on-page "Suggested"
+// hub strip (cmdkHubSuggestInject) was removed, so it must NOT come back.
+check('entity helpers are defined', typeof ctx.cmdkCurrentEntity === 'function' && typeof ctx.cmdkEntityActions === 'function');
+check('the on-page hub-suggest strip is gone (palette-only suggestions)', typeof ctx.cmdkHubSuggestInject === 'undefined');
 if (typeof ctx.cmdkEntityActions === 'function') {
     const bookActs = ctx.cmdkEntityActions({ type: 'booking', id: 1, name: 'Jane', b: { id: 1, checkIn: '2026-08-01', checkOut: '2026-08-05' } });
     check('a booking entity suggests actions incl. "Their other stays"', Array.isArray(bookActs) && bookActs.length >= 2 && bookActs.some((a) => /other stays/i.test(a.label)) && bookActs.every((a) => typeof a.run === 'function'));
