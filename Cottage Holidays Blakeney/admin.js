@@ -730,6 +730,19 @@ function cmdkIntent(q) {
         return [ans(ent.name || 'This record', ent.type === 'booking' ? 'This booking' : 'This enquiry', () => { closeCmdK(); if (ent.type === 'booking') openBookingHub(ent.id); else openEnquiryHub(ent.id); })]
             .concat(eacts.map((a, i) => ({ type: 'action', id: 'entq-' + i, label: a.label, sub: '', run: a.run })));
     }
+    // 0a2) Page context — a bare, page-relative query inherits the cottage whose
+    //      editor is open, so "its rates", "the photos", "prices", "description"
+    //      land on THAT cottage without naming it. (When no cottage is on screen
+    //      this falls through, so the words still search globally.)
+    try {
+        const ctx = cmdkPageContext();
+        if (ctx && ctx.cottage && /^\s*(its?|the|this|that)?\s*(rate|rates|price|prices|pricing|fee|fees|photo|photos|gallery|image|images|text|description|details|feature|features|web|website|seo)s?\s*(please|for it|for this one)?\s*$/i.test(q)) {
+            const nm = ctx.cottageName || ctx.cottage;
+            const sec = /photo|gallery|image/i.test(q) ? 'photos' : /text|descrip|detail|feature/i.test(q) ? 'text' : /web|seo/i.test(q) ? 'web' : 'rates';
+            const meta = typeof ACCOM_SECTIONS !== 'undefined' ? ACCOM_SECTIONS.find((s) => s.id === sec) : null;
+            return [ans(`${nm} · ${meta ? meta.label : sec}`, 'Open this cottage’s editor', () => { if (typeof cmdkOpenAccomSec === 'function') cmdkOpenAccomSec(ctx.cottage, sec); })];
+        }
+    } catch (e) {}
     // 0) Actions / "how do I…" — route a task request straight to the thing that
     // does it. Drawn from the shared CMDK_ACTIONS catalog (also fuzzy-searchable
     // by name/synonym in cmdkAll), so "how to add a booking", "change prices",
@@ -1627,10 +1640,17 @@ function cmdkSearchCore(q, allowCorrect) {
         // top dock destinations).
         const keep = (it) => __cmdkScope === 'all' || it.scope === __cmdkScope;
         // Entity-aware: viewing a booking/enquiry hub → lead with its next-best
-        // actions (proactive suggestions). Only in the unscoped "All" view.
-        const suggestions = (__cmdkScope === 'all' && __cmdkEntity)
-            ? cmdkEntityActions(__cmdkEntity).map((a, i) => ({ type: 'action', id: 'sug-' + i, label: a.label, sub: 'For ' + (__cmdkEntity.name || 'this'), run: a.run }))
-            : [];
+        // actions. Otherwise fall back to PAGE-context suggestions (the cottage
+        // you're editing, the Payments/Inbox folder, the calendar month in view).
+        // Only in the unscoped "All" view.
+        let suggestions = [];
+        __cmdkSugLabel = '';
+        if (__cmdkScope === 'all' && __cmdkEntity) {
+            suggestions = cmdkEntityActions(__cmdkEntity).map((a, i) => ({ type: 'action', id: 'sug-' + i, label: a.label, sub: 'For ' + (__cmdkEntity.name || 'this'), run: a.run }));
+            __cmdkSugLabel = __cmdkEntity.name || 'this';
+        } else if (__cmdkScope === 'all') {
+            try { suggestions = cmdkContextSuggest() || []; } catch (e) { suggestions = []; }
+        }
         const brief = cmdkBrief().filter(keep);
         const allScreens = cmdkScreens();
         const screens = __cmdkScope === 'all' ? allScreens.slice(0, 6) : allScreens.filter(keep);
@@ -1820,6 +1840,105 @@ function cmdkCurrentEntity() {
         if (e) return { type: 'enquiry', id: __enqHubId, name: e.name || 'this enquiry', e };
     }
     return null;
+}
+// ---- Page context: what the owner is looking at RIGHT NOW ------------------
+// A small, forgiving read of the live admin state — the workspace/view, the
+// cottage being edited, the open Manage section, the Payments sub-tab, the Inbox
+// folder and the calendar month scrolled into view — so search can be about
+// "here" without being told. Every field degrades to null when it doesn't apply
+// (and the whole thing to a bare {} off-DOM, e.g. under the test shim).
+function cmdkPageContext() {
+    const view = typeof document !== 'undefined' && document.querySelector ? ((document.querySelector('.page-view.active') || {}).id || null) : null;
+    const ctx = { view, cottage: null, cottageName: null, section: null, subtab: null, folder: null, calendarMonth: null, entity: null };
+    try { ctx.entity = cmdkCurrentEntity(); } catch (e) {}
+    // A ⌘K sheet hosting a section (search-first) is the section you're "in".
+    const sheeted = typeof __cmdkSheet !== 'undefined' && __cmdkSheet ? __cmdkSheet : null;
+    if (sheeted && sheeted.section) ctx.section = sheeted.section;
+    // Manage drill-in — __settingsPath = { section, prop?, accomSec? }. The cottage
+    // only counts when its editor is actually on screen (settings view active, or
+    // its sheet is open) so a stale path from a since-abandoned edit can't leak.
+    const sp = typeof __settingsPath !== 'undefined' && __settingsPath && typeof __settingsPath === 'object' ? __settingsPath : null;
+    if (sp) {
+        if (!ctx.section) ctx.section = sp.section || null;
+        const editorLive = view === 'view-settings' || (sheeted && sheeted.section === sp.section);
+        if (sp.prop && editorLive) { ctx.cottage = sp.prop; ctx.subtab = sp.accomSec || null; }
+    }
+    // Payments sub-tab (asec-*) and Inbox folder.
+    if (view === 'view-accounts' && typeof __accountsSection !== 'undefined' && __accountsSection) ctx.subtab = __accountsSection;
+    if (view === 'view-inbox' && typeof __inboxFolder !== 'undefined' && __inboxFolder) ctx.folder = __inboxFolder;
+    // The month the timeline is scrolled to (Today only, and only when it's rendered).
+    if (view === 'view-backoffice') { try { ctx.calendarMonth = cmdkCalendarMonthInView(); } catch (e) {} }
+    if (ctx.cottage && typeof propertyMeta === 'object' && propertyMeta && propertyMeta[ctx.cottage]) ctx.cottageName = propertyMeta[ctx.cottage].name || null;
+    return ctx;
+}
+// Map the timeline's scroll position to the first-of-month ISO in view. Window
+// day 0 is today+tlStartOffset(); each column is tlDayW() wide. Nudged a quarter
+// screen in so a part-scrolled month reads as the one you're actually looking at.
+function cmdkCalendarMonthInView() {
+    const host = typeof document !== 'undefined' && document.getElementById ? document.getElementById('cal-body') : null;
+    if (!host || !host.clientWidth) return null;
+    const dayW = typeof tlDayW === 'function' ? tlDayW() : 0;
+    if (!dayW) return null;
+    const start = dpParse(todayDashed());
+    start.setDate(start.getDate() + (typeof tlStartOffset === 'function' ? tlStartOffset() : -2));
+    const col = Math.round((host.scrollLeft + host.clientWidth * 0.25) / dayW);
+    const d = new Date(start.getFullYear(), start.getMonth(), start.getDate() + col);
+    return formatDashed(new Date(d.getFullYear(), d.getMonth(), 1));
+}
+// Proactive, page-aware suggestions for the empty palette — the "here" rows. Same
+// shape as the entity suggestions; sets __cmdkSugLabel for the group header. Kept
+// deliberately short (≤3) and only where there's a genuinely useful next step.
+let __cmdkSugLabel = '';
+function cmdkContextSuggest() {
+    let ctx = null;
+    try { ctx = cmdkPageContext(); } catch (e) { return []; }
+    if (!ctx) return [];
+    const S = (id, label, sub, run) => ({ type: 'action', id: 'ctx-' + id, label, sub, run });
+    const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+    const mLabel = (iso) => (iso ? MONTHS[parseInt(iso.slice(5, 7), 10) - 1] : '');
+    // A cottage editor is open → act on THAT cottage.
+    if (ctx.cottage) {
+        const nm = ctx.cottageName || ctx.cottage;
+        __cmdkSugLabel = nm;
+        const items = [];
+        if (typeof cmdkOpenAccomSec === 'function') {
+            items.push(S('rates', 'Edit rates & fees', nm, () => cmdkOpenAccomSec(ctx.cottage, 'rates')));
+            items.push(S('photos', 'Photos', nm, () => cmdkOpenAccomSec(ctx.cottage, 'photos')));
+        }
+        items.push(S('bkgs', nm + '’s bookings', 'See every stay', () => cmdkRunQuery(nm)));
+        return items.slice(0, 3);
+    }
+    // Payments workspace → the money answers you'd reach for here.
+    if (ctx.view === 'view-accounts') {
+        __cmdkSugLabel = 'Payments';
+        return [
+            S('owes', 'Who owes money', 'Balances to chase', () => cmdkRunQuery('who owes money')),
+            S('income', 'This month’s income', 'Revenue so far', () => cmdkRunQuery('income this month')),
+        ];
+    }
+    // Inbox → the folder you're standing in.
+    if (ctx.view === 'view-inbox') {
+        if (ctx.folder === 'messages') { __cmdkSugLabel = 'Messages'; return [S('chat', 'Guests waiting on a reply', 'Open chats', () => cmdkRunQuery('needs reply'))]; }
+        if (ctx.folder === 'email') { __cmdkSugLabel = ''; return []; }
+        __cmdkSugLabel = 'Enquiries';
+        return [S('enq', 'Waiting enquiries', 'Leads to answer', () => cmdkRunQuery('waiting enquiries'))];
+    }
+    // Today → the month you've scrolled to (only once you've moved off this one,
+    // so the normal daily brief stays the star on the current month).
+    if (ctx.view === 'view-backoffice' && ctx.calendarMonth) {
+        const now = dpParse(todayDashed());
+        const thisMonth = formatDashed(new Date(now.getFullYear(), now.getMonth(), 1));
+        if (ctx.calendarMonth > thisMonth) {
+            const ml = mLabel(ctx.calendarMonth);
+            __cmdkSugLabel = ml;
+            return [
+                S('arr', 'Arrivals in ' + ml, 'Who’s coming', () => cmdkRunQuery('arrivals in ' + ml.toLowerCase())),
+                S('jump', 'Jump the calendar to ' + ml, 'Scroll the timeline there', () => cmdkJumpTimeline(ctx.calendarMonth)),
+            ];
+        }
+    }
+    __cmdkSugLabel = '';
+    return [];
 }
 function cmdkRunQuery(q) {
     // Open the palette first if it's closed (e.g. run from an on-page hub chip).
@@ -2307,7 +2426,7 @@ function cmdkRender() {
         const briefHtml = __cmdkResults.slice(S, S + __cmdkBriefN).map((it, i) => cmdkRowHtml(it, S + i, false)).join('');
         const screenItems = __cmdkResults.slice(S + __cmdkBriefN);
         const screensHtml = screenItems.map((it, i) => cmdkRowHtml(it, S + __cmdkBriefN + i, false)).join('');
-        const sugLabel = __cmdkEntity ? 'Suggested · ' + (__cmdkEntity.name || 'this') : 'Suggested';
+        const sugLabel = (typeof __cmdkSugLabel !== 'undefined' && __cmdkSugLabel) ? 'Suggested · ' + __cmdkSugLabel : 'Suggested';
         box.innerHTML =
             sb +
             (S ? `<div class="cmdk-group-label">${escapeHtml(sugLabel)}</div>${sugHtml}` : '') +
