@@ -50,6 +50,22 @@
   background: rgba(229, 115, 115, 0.13);
   color: var(--danger);
   border-color: rgba(229, 115, 115, 0.3);
+}.bk-chip.stay {
+  background: rgba(76, 175, 80, 0.15);
+  color: var(--ok);
+  border-color: rgba(76, 175, 80, 0.34);
+}
+/* Live "here now" dot: a gentle pulse distinguishes a currently-staying guest
+   from a static green "Paid". */
+.bk-chip.stay .bk-dot {
+  animation: bkStayPulse 2s ease-in-out infinite;
+}
+@keyframes bkStayPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(76, 175, 80, 0.55); }
+  50% { box-shadow: 0 0 0 4px rgba(76, 175, 80, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .bk-chip.stay .bk-dot { animation: none; }
 }.bk-email-log {
   margin-top: 12px;
   padding-top: 10px;
@@ -285,6 +301,8 @@
 }.bk-row.pay-warn {
   border-left: 3px solid var(--warn);
 }.bk-row.pay-ok {
+  border-left: 3px solid var(--ok);
+}.bk-row.pay-stay {
   border-left: 3px solid var(--ok);
 }.bk-row.is-open {
   border-color: rgba(255, 255, 255, 0.35);

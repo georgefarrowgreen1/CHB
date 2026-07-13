@@ -3107,8 +3107,14 @@ function bookingListRow(propKey, b, today) {
         b.agreedPrice || priceBreakdown(propKey, b.adults || 0, b.children || 0, b.checkIn, b.checkOut);
     const ps = paymentSummary(propKey, b);
     const gt = displayGrand(p, ps, b.holdStatus);
-    const payLabel = gt.fullyPaid ? 'Paid' : gt.paid > 0 ? 'Part-paid' : 'Unpaid';
-    const payClass = gt.fullyPaid ? 'ok' : gt.paid > 0 ? 'warn' : 'danger';
+    let payLabel = gt.fullyPaid ? 'Paid' : gt.paid > 0 ? 'Part-paid' : 'Unpaid';
+    let payClass = gt.fullyPaid ? 'ok' : gt.paid > 0 ? 'warn' : 'danger';
+    // A guest who's in-house right now (checked in, not yet out) shows a live
+    // green "Staying" status instead of "Paid" — the operational state you care
+    // about while they're here. A still-owing in-house guest keeps their balance
+    // warning so money owed is never hidden behind it.
+    const inHouse = (b.checkIn || '') <= today && (b.checkOut || '') > today;
+    if (inHouse && gt.fullyPaid) { payLabel = 'Staying'; payClass = 'stay'; }
     const past = (b.checkOut || '') < today;
     const balanceBit = !gt.fullyPaid ? ` · ${gbp(gt.balance)} due` : '';
     // Traffic-light edge on every row: red unpaid · amber part-paid · green paid.
