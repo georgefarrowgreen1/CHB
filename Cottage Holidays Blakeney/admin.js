@@ -9274,10 +9274,10 @@ function changeMonth(dir) {
     const host = document.getElementById('cal-body');
     if (!host) return;
     const t0 = dpParse(todayDashed());
-    const start = new Date(t0.getFullYear(), t0.getMonth(), 1); // window day 0
+    const start = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + tlStartOffset()); // window day 0 = today − 2
     // Month currently under the left edge (same anchor as the header label).
     const idx = Math.max(0, Math.round(host.scrollLeft / tlDayW()));
-    const at = new Date(start.getFullYear(), start.getMonth(), 1 + idx + 3);
+    const at = new Date(start.getFullYear(), start.getMonth(), start.getDate() + idx + 3);
     const target = new Date(at.getFullYear(), at.getMonth() + dir, 1);
     let targetIdx = Math.round((target - start) / 864e5);
     if (targetIdx < 0) targetIdx = 0;
@@ -9408,11 +9408,12 @@ function cottageMonthOccupancy() {
 // Bookings render as bars (traffic-light left edge; tap → the booking hub);
 // imported Airbnb/Vrbo blocks are greyed and display-only (the auto-sync owns
 // them); free future days are tappable to start an Add Booking there.
-// The window always STARTS on the 1st of the current month (the offset is
-// how many days back from today that is), so the left edge of the timeline
-// is the month start — never a part-month.
+// The window STARTS two days before today (a short lead-in for context) and only
+// ever grows FORWARD — so the past is never more than the last 2 days, while every
+// upcoming booking is reachable. The offset is how many days back from today the
+// left edge sits.
 function tlStartOffset() {
-    return 1 - dpParse(todayDashed()).getDate();
+    return -2;
 }
 let __tlDays = 187; // the window opens ~6 months forward — and GROWS: nearing
 // the right edge extends it another ~3 months in place (scroll preserved),
@@ -9438,7 +9439,7 @@ function tlScrollToDate(iso) {
     const host = document.getElementById('cal-body');
     if (!host || !iso) return;
     const start = dpParse(todayDashed());
-    start.setDate(1);
+    start.setDate(start.getDate() + tlStartOffset()); // window day 0 = today − 2
     let idx = Math.round((dpParse(iso) - start) / 86400000);
     if (idx < 0) idx = 0;
     if (idx + 25 > __tlDays) {
@@ -9458,6 +9459,26 @@ function tlDayW() {
     return isNaN(v) ? 38 : v;
 }
 let __tlScrolled = false; // first render jumps to today; later renders keep place
+// The live "now" playhead — a thin accent line placed at today's column, offset
+// across the day by the current time (07:00 → near the left; 23:00 → near the
+// right edge, i.e. the next booking). Positioned in the timeline's own coordinate
+// space (via rects) so it scrolls with the lanes and slides under the label.
+let __tlNowTimer = null;
+let __tlRenderedToday = '';
+function tlPlaceNowLine() {
+    const host = document.getElementById('cal-body');
+    const inner = host && host.querySelector('.tl-inner');
+    if (!inner) return;
+    const cell = inner.querySelector('.tl-headrow .tl-day.is-today');
+    let line = inner.querySelector('.tl-nowline');
+    if (!cell) { if (line) line.remove(); return; } // today outside the window
+    if (!line) { line = document.createElement('div'); line.className = 'tl-nowline'; inner.appendChild(line); }
+    const now = new Date();
+    const frac = (now.getHours() * 3600 + now.getMinutes() * 60 + now.getSeconds()) / 86400;
+    const cr = cell.getBoundingClientRect();
+    const ir = inner.getBoundingClientRect();
+    line.style.left = ((cr.left - ir.left) + frac * cr.width) + 'px';
+}
 function renderCalendar() {
     renderCalUpdated();
     const host = document.getElementById('cal-body');
@@ -9560,6 +9581,16 @@ function renderCalendar() {
         __tlScrolled = true;
     }
     tlSyncMonthLabel();
+    // Live "now" playhead — place it now, and once a minute advance it (re-rendering
+    // instead if the day has rolled over, so "today" tracks past midnight).
+    __tlRenderedToday = todayIso;
+    tlPlaceNowLine();
+    if (!__tlNowTimer) {
+        __tlNowTimer = setInterval(() => {
+            if (todayDashed() !== __tlRenderedToday) { try { renderCalendar(); } catch (e) {} }
+            else { try { tlPlaceNowLine(); } catch (e) {} }
+        }, 60000);
+    }
 }
 
 // A small "returning guest" pill for an enquiry whose email matches one or more
