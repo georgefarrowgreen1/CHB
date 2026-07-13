@@ -10173,11 +10173,11 @@ function seasonGridRowHtml(b) {
     const keys = liveCottageKeys();
     return `
                 <tr class="sg-band">
-                    <td><input type="text" class="input-glass field-sm" value="${escapeHtml(b.label)}" data-sg="label" placeholder="e.g. Summer"></td>
-                    <td><input type="date" class="input-glass field-sm" value="${b.start || ''}" data-sg="start"></td>
-                    <td><input type="date" class="input-glass field-sm" value="${b.end || ''}" data-sg="end"></td>
-                    ${keys.map((k) => `<td><input type="number" class="input-glass field-sm sg-rate" min="0" step="1" placeholder="—" value="${b.rates[k] || ''}" data-sg-prop="${k}" title="${escapeHtml(propertyMeta[k].name)} £/night (couple)"></td>`).join('')}
-                    <td><button class="btn-sm btn-delete" onclick="this.closest('tr').remove()" title="Remove this season everywhere"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></td>
+                    <td data-label="Season"><input type="text" class="input-glass field-sm" value="${escapeHtml(b.label)}" data-sg="label" placeholder="e.g. Summer"></td>
+                    <td data-label="From"><input type="date" class="input-glass field-sm" value="${b.start || ''}" data-sg="start"></td>
+                    <td data-label="Until"><input type="date" class="input-glass field-sm" value="${b.end || ''}" data-sg="end"></td>
+                    ${keys.map((k) => `<td data-label="${escapeHtml(propertyMeta[k].short || propertyMeta[k].name || k)}"><input type="number" class="input-glass field-sm sg-rate" min="0" step="1" placeholder="—" value="${b.rates[k] || ''}" data-sg-prop="${k}" title="${escapeHtml(propertyMeta[k].name)} £/night (couple)"></td>`).join('')}
+                    <td class="sg-del"><button class="btn-sm btn-delete" onclick="this.closest('tr').remove()" title="Remove this season everywhere"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></td>
                 </tr>`;
 }
 function renderSeasonGrid() {
