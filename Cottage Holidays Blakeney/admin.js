@@ -172,6 +172,8 @@ function cmdkIcon(type) {
         return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>';
     if (type === 'sheet')
         return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18"/></svg>';
+    if (type === 'help')
+        return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.2 9.3a2.8 2.8 0 0 1 5.4 1c0 1.9-2.8 2.5-2.8 2.5"/><path d="M12 17h.01"/></svg>';
     return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>';
 }
 // ============================================================
@@ -1080,6 +1082,195 @@ function cmdkSearch(q) {
 // (cmdkIntent) and the importance-ranked, typo-tolerant fuzzy list, deduped
 // against each other. Pure — no DOM — so cmdkSearchCore can try it on the literal
 // query and, only if that's empty, again on the auto-corrected one.
+// ---- Help & how-to: curated, deterministic guidance folded into search. Each
+// topic answers a real "how do I… / why…" question with short steps and one-tap
+// chips — [Do it] runs the real flow, [Show me] opens the screen, [More: …]
+// pivots to a related topic. No AI, works offline; the "Show me / Do it" targets
+// are the SAME registry sections/actions the rest of search uses, so a topic can
+// never point at a dead button (search-test guards the section routes). ----
+function helpTopics() {
+    const view = (fn) => () => { closeCmdK(); try { fn(); } catch (e) {} }; // opens a full view
+    const sec = (s) => () => { try { cmdkOpenSection(s); } catch (e) {} };   // opens a Manage section (sheet/page)
+    return [
+        { id: 'add-booking', title: 'Add a booking by hand', cat: 'Bookings',
+            kw: 'add create new booking manual reservation book in customer guest enter put',
+            steps: ['Tap “+ Add booking” on Today (or the chip below).', 'Choose the cottage and the check-in / check-out dates.', 'Add the guest’s name & email and save — you can take payment straight after.'],
+            doIt: { label: 'Add a booking', run: view(() => openAddBooking()) },
+            showMe: { label: 'Open Bookings', run: view(() => openBookings()) },
+            related: ['take-payment', 'block-dates'] },
+        { id: 'take-payment', title: 'Take a payment or request one', cat: 'Money',
+            kw: 'take payment charge card request deposit balance money collect pay invoice link',
+            steps: ['Open the booking from Today or Bookings.', 'In the Money card tap “Request payment” to email a secure link — or record one you took another way.', 'The status updates to Part-paid / Paid automatically.'],
+            doIt: { label: 'Bookings to chase', run: view(() => { openBookings(); try { bookingsSetFilter('needspay'); } catch (e) {} }) },
+            showMe: { label: 'Open Payments', run: view(() => openAccounts()) },
+            related: ['chase-balance', 'deposit-explained'] },
+        { id: 'refund-deposit', title: 'Return (or keep) a damage deposit', cat: 'Money',
+            kw: 'refund return release damage deposit keep retain guest after stay checkout money back',
+            steps: ['After checkout, open the booking.', 'Tap “Return deposit” to refund in full — or “Keep for damage” to retain some/all with a reason.', 'The guest is emailed and the outcome is recorded on the booking.'],
+            doIt: { label: 'Recent checkouts', run: view(() => openBookings()) },
+            related: ['deposit-explained'] },
+        { id: 'deposit-explained', title: 'How damage deposits work', cat: 'Money',
+            kw: 'deposit damage how work charged held refund explain security bond breakage',
+            steps: ['The refundable damage deposit is charged together with the guest’s first payment (not “held”).', 'After a clean stay you return it in full; if there’s damage you keep some/all with a reason.', 'It’s never part of the rental total — it’s tracked separately on the booking.'],
+            showMe: { label: 'Set the deposit amount', run: sec('accom') },
+            related: ['refund-deposit'] },
+        { id: 'cant-delete-booking', title: 'Why can’t I delete this booking?', cat: 'Bookings',
+            kw: 'delete remove booking cant why blocked disabled money paid taken locked missing',
+            steps: ['Bookings that have taken money can’t be deleted — that would lose the payment record.', 'Cancel it instead: it frees the dates, optionally refunds, and emails the guest, keeping the history.', 'Only a booking with £0 taken shows a Delete option.'],
+            doIt: { label: 'Open Bookings', run: view(() => openBookings()) },
+            related: ['cancel-booking'] },
+        { id: 'cancel-booking', title: 'Cancel a booking', cat: 'Bookings',
+            kw: 'cancel booking refund free dates call off scrap guest',
+            steps: ['Open the booking’s hub.', 'Use the menu → Cancel; add a refund amount and an optional reason.', 'The dates are freed and the guest is emailed.'],
+            doIt: { label: 'Open Bookings', run: view(() => openBookings()) },
+            related: ['cant-delete-booking'] },
+        { id: 'change-prices', title: 'Change a cottage’s nightly price', cat: 'Money',
+            kw: 'change price prices rate rates nightly cost couple charge expensive cheaper put up',
+            steps: ['Search the cottage name + “couple rate” to edit it right here, or open the cottage’s Rates & fees.', 'Set the couple rate (and extra-adult / child if used).', 'Prices update across the site and future quotes on save.'],
+            doIt: { label: 'Open Cottages', run: sec('accom') },
+            related: ['seasonal-rates'] },
+        { id: 'seasonal-rates', title: 'Charge more for peak dates', cat: 'Money',
+            kw: 'season seasonal peak summer christmas school holiday higher price date range grid uplift',
+            steps: ['Open the Seasonal rates grid (all cottages on one screen).', 'Add a season with its date range, then set each cottage’s rate for it.', 'Leave a cell blank to keep a cottage on its base rate.'],
+            doIt: { label: 'Open Seasonal rates', run: sec('seasongrid') },
+            related: ['change-prices'] },
+        { id: 'chase-balance', title: 'Chase an unpaid balance', cat: 'Money',
+            kw: 'chase balance owed outstanding unpaid remind due money collect nudge',
+            steps: ['Open Bookings and filter to “Needs payment”.', 'Open the booking and tap “Request balance” to email a secure pay link.', 'Today’s Needs-you strip also flags balances due within 21 days.'],
+            doIt: { label: 'Who needs to pay', run: view(() => { openBookings(); try { bookingsSetFilter('needspay'); } catch (e) {} }) },
+            related: ['take-payment'] },
+        { id: 'export-accountant', title: 'Export figures for my accountant', cat: 'Money',
+            kw: 'export csv accountant tax figures spreadsheet download income report year money',
+            steps: ['Open Payments.', 'Use the CSV export to download the year’s payments as a spreadsheet.'],
+            showMe: { label: 'Open Payments', run: view(() => openAccounts()) } },
+        { id: 'block-dates', title: 'Block out dates (maintenance / own use)', cat: 'Calendar',
+            kw: 'block off close unavailable maintenance own use reserve hold dates stop bookings',
+            steps: ['Tap “Block dates”.', 'Pick the cottage and the first & last nights to close.', 'They show greyed on the timeline and stop new bookings.'],
+            doIt: { label: 'Block dates', run: view(() => openBlockDates()) },
+            related: ['connect-airbnb'] },
+        { id: 'connect-airbnb', title: 'Sync Airbnb / Vrbo so dates don’t clash', cat: 'System',
+            kw: 'airbnb vrbo booking.com ical sync import calendar channel connect ota external link clash double',
+            steps: ['Open a cottage’s Calendar sync.', 'Paste the iCal link from Airbnb/Vrbo to import their bookings, and copy your export link into theirs.', 'Imported stays show greyed on the timeline and block your site automatically.'],
+            doIt: { label: 'Open Calendar sync', run: sec('calendar') } },
+        { id: 'edit-welcome', title: 'Edit a cottage’s welcome guide', cat: 'Cottages',
+            kw: 'welcome guide book wifi appliances bins instructions house manual in stay handbook edit',
+            steps: ['Search the cottage name + “welcome”, or open Cottages → that cottage → Welcome guide.', 'Add sections (Wi-Fi, appliances, bins, tips) — guests see this during their stay.'],
+            doIt: { label: 'Open Cottages', run: sec('accom') },
+            related: ['edit-text', 'edit-photos'] },
+        { id: 'edit-photos', title: 'Change a cottage’s photos', cat: 'Cottages',
+            kw: 'photo photos image images gallery picture cottage change add upload replace order main',
+            steps: ['Open Cottages → the cottage → Photos.', 'Add, replace, reorder or remove — the first photo is the main image on the listing.'],
+            doIt: { label: 'Open Cottages', run: sec('accom') },
+            related: ['edit-text'] },
+        { id: 'edit-text', title: 'Edit a cottage’s description', cat: 'Cottages',
+            kw: 'text description blurb wording details copy about cottage edit rewrite subtitle tagline',
+            steps: ['Search the cottage name + “description” to edit it inline, or open Cottages → the cottage → Text & details.', 'Update the title, subtitle, description and features shown on the page.'],
+            doIt: { label: 'Open Cottages', run: sec('accom') },
+            related: ['edit-photos', 'edit-welcome'] },
+        { id: 'add-cottage', title: 'Add a new cottage', cat: 'Cottages',
+            kw: 'add new cottage accommodation property create another listing place',
+            steps: ['Open Cottages and use “Add accommodation”.', 'Give it a name and a couple rate — it generates the page; then fill in photos, text and rules.'],
+            doIt: { label: 'Open Cottages', run: sec('accom') },
+            related: ['hide-cottage'] },
+        { id: 'hide-cottage', title: 'Hide a cottage from the website', cat: 'Cottages',
+            kw: 'hide private unlist remove cottage website public archive delete accommodation take down',
+            steps: ['Open Cottages → the cottage.', '“Make private” hides it from the site but keeps bookings & payments working; “Remove” archives it (never hard-deleted, so history is safe).'],
+            doIt: { label: 'Open Cottages', run: sec('accom') },
+            related: ['add-cottage'] },
+        { id: 'reply-enquiry', title: 'Reply to or approve an enquiry', cat: 'Inbox',
+            kw: 'enquiry enquiries reply approve decline respond quote answer lead booking request',
+            steps: ['Open Inbox → Enquiries and pick one.', 'Approve to turn it into a booking (set the agreed price), edit, or decline — each emails the guest.'],
+            doIt: { label: 'Open Enquiries', run: view(() => { openInbox(); try { inboxFolder('enquiries'); } catch (e) {} }) },
+            related: ['send-email'] },
+        { id: 'send-email', title: 'Email a guest', cat: 'Inbox',
+            kw: 'send email guest message compose write mail contact confirmation',
+            steps: ['From a booking’s hub use the Emails card for one-tap branded emails (confirmation, balance, pre-arrival…).', 'For a free-form message use Inbox → Email.'],
+            doIt: { label: 'Open Email', run: view(() => { openInbox(); try { inboxFolder('email'); } catch (e) {} }) },
+            related: ['reply-enquiry'] },
+        { id: 'guest-messages', title: 'Read & reply to guest chats', cat: 'Inbox',
+            kw: 'message messages chat guest reply conversation thread talk respond',
+            steps: ['Open Inbox → Messages.', 'Pick a thread to reply; unread chats also show in Today’s Needs-you strip.'],
+            doIt: { label: 'Open Messages', run: view(() => { openInbox(); try { inboxFolder('messages'); } catch (e) {} }) },
+            related: ['auto-reply'] },
+        { id: 'auto-reply', title: 'Set an out-of-hours auto-reply', cat: 'Automation',
+            kw: 'auto reply away message out of office automatic respond hours holiday acknowledge chat',
+            steps: ['Open Manage → Away auto-reply.', 'Turn it on and write the message guests get outside your hours.'],
+            doIt: { label: 'Open Away auto-reply', run: sec('chat-away') },
+            related: ['follow-ups'] },
+        { id: 'follow-ups', title: 'Automatic follow-up emails', cat: 'Automation',
+            kw: 'follow up followup nudge reminder automatic email enquiry chase anniversary review request',
+            steps: ['Open Manage → Follow-up emails.', 'Toggle the automatic nudges (enquiry chase, pre-arrival, review request) on or off.'],
+            doIt: { label: 'Open Follow-ups', run: sec('follow-ups') },
+            related: ['reviews'] },
+        { id: 'reviews', title: 'Approve guest reviews', cat: 'Marketing',
+            kw: 'review reviews approve moderate testimonial star rating publish guest feedback',
+            steps: ['Open Manage → Reviews.', 'Approve or reject submitted reviews — approved ones show on the site with a star rating.'],
+            doIt: { label: 'Open Reviews', run: sec('reviews') } },
+        { id: 'newsletter', title: 'Send a newsletter / offer', cat: 'Marketing',
+            kw: 'newsletter broadcast email offer subscribers mailing list marketing bulk send campaign',
+            steps: ['Open Manage → Newsletter.', 'Write your message and send it to your subscribers.'],
+            doIt: { label: 'Open Newsletter', run: sec('newsletter') } },
+        { id: 'two-factor', title: 'Turn on two-step sign-in', cat: 'System',
+            kw: 'two factor 2fa security sign in login password passkey face id fingerprint protect code',
+            steps: ['Open Manage → Security.', 'Add a passkey (Face ID / fingerprint) for fast sign-in, and/or turn on the emailed 2-step code.'],
+            doIt: { label: 'Open Security', run: sec('security') } },
+        { id: 'backup', title: 'Back up my data', cat: 'System',
+            kw: 'backup back up download data database export save copy restore protect',
+            steps: ['Open Manage → Status.', 'Use the backup tool to download a copy of your database; automatic weekly backups also run.'],
+            doIt: { label: 'Open Status', run: sec('diagnostics') } },
+        { id: 'whats-broken', title: 'Something looks wrong — what do I check?', cat: 'System',
+            kw: 'broken error problem wrong not working status health check fix issue diagnostics down',
+            steps: ['Open Manage → Status for a health check of email, payments, sync and updates.', 'Tap “Fix safe issues” to auto-repair the harmless ones; Today’s Needs-you strip flags anything needing you.'],
+            doIt: { label: 'Open Status', run: sec('diagnostics') },
+            related: ['run-updates'] },
+        { id: 'run-updates', title: 'Run updates / migrations', cat: 'System',
+            kw: 'update updates migration migrate upgrade new features run system version',
+            steps: ['Open Manage → Status.', 'Tap “Run migrations” to apply any pending database updates safely.'],
+            doIt: { label: 'Open Status', run: sec('diagnostics') } },
+        { id: 'notifications', title: 'Get phone alerts for new bookings', cat: 'System',
+            kw: 'notification notifications push alert phone new booking message enable turn on notify',
+            steps: ['Open Manage → Notifications.', 'Enable push alerts on this device for new bookings, enquiries and messages.'],
+            doIt: { label: 'Open Notifications', run: sec('notify') } },
+    ];
+}
+const HELP_STOP = new Set('a an the my me i to for of in on at do does how why what can could would should when where is are it this that with your you help guide show tell please again some any'.split(' '));
+// Match a query against the help catalogue. Explicit questions (or a bare "help")
+// return an answer set; a plain keyword returns matching topics too (placed lower
+// by cmdkBuildResults so they don't outrank direct hits).
+function cmdkHelp(q) {
+    const ql = (q || '').toLowerCase().trim();
+    if (ql.length < 2) return [];
+    const wantHelp = /\b(how|why|what|help|guide|explain|advice|tutorial|steps?|do i|can i)\b/.test(ql);
+    const words = ql.split(/[^a-z0-9]+/).filter((w) => w && !HELP_STOP.has(w));
+    if (!words.length && !wantHelp) return [];
+    const topics = helpTopics();
+    const byId = {};
+    topics.forEach((t) => { byId[t.id] = t; });
+    const toItem = (t) => {
+        const chips = [];
+        if (t.doIt) chips.push(t.doIt);
+        if (t.showMe) chips.push(t.showMe);
+        (t.related || []).forEach((rid) => { if (byId[rid]) chips.push({ label: 'More: ' + byId[rid].title, q: byId[rid].title }); });
+        return { type: 'help', id: 'help-' + t.id, label: t.title, sub: (t.cat ? t.cat + ' · ' : '') + (t.steps && t.steps[0] ? t.steps[0] : 'How-to'), steps: t.steps, chips, run: (t.showMe && t.showMe.run) || (t.doIt && t.doIt.run) || (() => {}) };
+    };
+    // Bare "help" (no content words) → a short starter index across the main areas.
+    if (!words.length) {
+        return ['add-booking', 'take-payment', 'change-prices', 'block-dates', 'reply-enquiry', 'whats-broken'].map((id) => byId[id]).filter(Boolean).map(toItem);
+    }
+    const scored = topics.map((t) => {
+        const hay = (t.title + ' ' + (t.kw || '')).toLowerCase();
+        const toks = hay.split(/[^a-z0-9]+/).filter(Boolean);
+        let score = 0;
+        words.forEach((w) => {
+            if (hay.includes(w)) score += 2;
+            else if (toks.some((tk) => tk.length > 3 && (tk.startsWith(w) || w.startsWith(tk)))) score += 1;
+        });
+        if (score && t.title.toLowerCase().includes(ql)) score += 3;
+        if (score && wantHelp) score += 1;
+        return { t, score };
+    }).filter((x) => x.score > 0).sort((a, b) => b.score - a.score);
+    return scored.slice(0, wantHelp ? 4 : 3).map((x) => toItem(x.t));
+}
 function cmdkBuildResults(ql) {
     let results = [];
     try {
@@ -1101,7 +1292,22 @@ function cmdkBuildResults(ql) {
     // Owner content (welcome guide / FAQs / arrival info) matches, deduped, appended.
     const cseen = new Set(results.concat(fuzzy).filter((r) => r.id != null).map((r) => r.type + ':' + r.id));
     const content = cmdkContentMatches(ql).filter((c) => !cseen.has(c.type + ':' + c.id));
-    return { results, fuzzy: fuzzy.concat(content) };
+    // Help & how-to topics.
+    //  • A procedural question ("how do I… / why… / help") LEADS as the Top Hit
+    //    (prepended) — the owner wants guidance, not a stat that happens to share a
+    //    keyword (e.g. "how do I refund a deposit" must beat the "deposits to
+    //    return" figure).
+    //  • A metric question ("how much/many…") keeps the ops answer on top; help
+    //    still shows, just below (appended).
+    //  • A plain keyword rides in the Help section via fuzzy, never hijacking the
+    //    Top Hit from a real booking/screen/field.
+    let help = [];
+    try { help = cmdkHelp(ql) || []; } catch (e) {}
+    const procedural = /\b(how\s+(do|to|can|does|would|should)|why|help|guide|explain|tutorial|advice|steps?|walk me)\b/.test(ql) && !/\bhow\s+(much|many)\b/.test(ql);
+    const softAsk = /\b(what|can i|do i|how)\b/.test(ql);
+    if (procedural) results = help.concat(results);
+    else if (softAsk) results = results.concat(help);
+    return { results, fuzzy: fuzzy.concat(content).concat((procedural || softAsk) ? [] : help) };
 }
 // The search engine. The literal query is tried first (never corrected); the
 // typo auto-corrector is a fallback that only runs when the literal query is
@@ -1415,7 +1621,7 @@ function cmdkExampleChips() {
     if (owe) chips.push('who owes me money');
     if (dep) chips.push('deposits to return');
     if (Array.isArray(enquiries) && enquiries.length) chips.push('unanswered enquiries');
-    ['who’s leaving today', 'revenue this month', 'upcoming bookings', 'block dates', 'what’s free tonight'].forEach((c) => chips.push(c));
+    ['who’s leaving today', 'revenue this month', 'upcoming bookings', 'block dates', 'what’s free tonight', 'how do I take a payment'].forEach((c) => chips.push(c));
     return [...new Set(chips)].slice(0, 6);
 }
 // Answer-first "Your day" brief for the empty palette — a proactive read of what
@@ -1447,6 +1653,7 @@ const CMDK_EXAMPLES = ['who owes me money', "who's leaving today", 'revenue this
 // Which section a result belongs to — drives the grouped headers + arrange order.
 function cmdkSection(type) {
     if (type === 'answer' || type === 'figure') return { key: 'answers', label: 'Answers', order: 0 };
+    if (type === 'help') return { key: 'help', label: 'Help & how-to', order: 0.8 };
     if (type === 'action') return { key: 'actions', label: 'Actions', order: 1 };
     if (type === 'field' || type === 'sheet') return { key: 'edit', label: 'Edit here', order: 1.5 };
     if (type === 'booking' || type === 'enquiry' || type === 'external') return { key: 'bookings', label: 'Bookings & enquiries', order: 2 };
@@ -1508,12 +1715,20 @@ function cmdkRowHtml(it, i, top) {
         sel && Array.isArray(it.actions) && it.actions.length
             ? `<div class="cmdk-actbar">${it.actions.map((a, k) => `<button type="button" class="cmdk-act" data-idx="${i}" data-act="${k}" onclick="cmdkAct(${i},${k})">${a.icon || ''}${escapeHtml(a.label)}</button>`).join('')}</div>`
             : '';
-    // Refine chips under an answer head — narrow/pivot without retyping.
+    // Help topics expand their numbered steps when selected (the Top Hit is
+    // pre-selected, so the best answer opens straight away; the rest stay tidy).
+    const isHelp = it.type === 'help';
+    const steps =
+        isHelp && sel && Array.isArray(it.steps) && it.steps.length
+            ? `<ol class="cmdk-help-steps">${it.steps.map((s) => `<li>${escapeHtml(s)}</li>`).join('')}</ol>`
+            : '';
+    // Refine chips under an answer/help head — narrow/pivot/act without retyping.
+    // (Help chips — Do it / Show me / More — show with the expanded steps.)
     const refine =
-        Array.isArray(it.chips) && it.chips.length
+        Array.isArray(it.chips) && it.chips.length && (!isHelp || sel)
             ? `<div class="cmdk-refine">${it.chips.map((c, k) => `<button type="button" class="cmdk-ex cmdk-refine-chip" onclick="cmdkChipRun(${i},${k})">${escapeHtml(c.label)}</button>`).join('')}</div>`
             : '';
-    return row + acts + refine;
+    return row + steps + acts + refine;
 }
 function cmdkRender() {
     const box = document.getElementById('cmdk-results');

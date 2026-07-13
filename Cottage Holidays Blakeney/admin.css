@@ -1417,6 +1417,18 @@ body.light-mode .cmdk-editor-input {
   gap: 6px;
   padding: 2px 12px 10px 55px;
 }
+/* Help topic: numbered steps under the selected how-to answer. */
+.cmdk-help-steps {
+  margin: 2px 0 4px;
+  padding: 0 14px 0 74px;
+  font-size: 0.84rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.cmdk-help-steps li {
+  margin: 4px 0;
+  padding-left: 2px;
+}
 .cmdk-refine-chip {
   font-size: 0.75rem;
   font-weight: 600;
