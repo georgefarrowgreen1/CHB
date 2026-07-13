@@ -91,70 +91,91 @@ if (!$found) {
 <title><?= $found ? $esc($name) . ' — leave a review' : 'Leave a review' ?> | Cottage Holidays Blakeney</title>
 <link rel="icon" href="/favicon.png">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<!-- The site's own type pair (Playfair Display headings + Montserrat body).
+     CSP already whitelists fonts.googleapis.com / fonts.gstatic.com; display=swap
+     so text paints instantly with the system fallback if the fonts are slow. -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600;700&family=Playfair+Display:wght@600;700&display=swap">
 <style>
-  :root { --accent: <?= $esc($accent) ?>; --ink:#1b2a34; --muted:#5c6f7a; --line:rgba(27,42,52,.12);
-          --bg:#f3f0e9; --card:#fffdf8; --danger:#c0492f; --ok:#2e7d5b; }
+  /* Guest-facing palette (light theme — the site's default): warm linen ground,
+     rose-gold brand accent, ink-slate text, frosted-white glass, gold stars. */
+  :root { --accent:#c6885e; --accent-soft:rgba(198,136,94,.42);
+          --ink:#1b2a34; --muted:#52646e; --line:rgba(28,46,58,.12);
+          --bg:#f5f1e9; --glass:rgba(255,255,255,.82); --field:#fff;
+          --danger:#c0492f; --sea:#2e8b8b;
+          --cottage: <?= $esc($accent) ?>;
+          --serif:"Playfair Display", Georgia, serif;
+          --sans:"Montserrat", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html,body { margin:0; }
-  body { font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
-         color:var(--ink); background:var(--bg);
-         background-image:radial-gradient(120% 80% at 50% -10%, color-mix(in srgb, var(--accent) 16%, transparent), transparent 60%);
-         min-height:100dvh; padding:24px 18px calc(28px + env(safe-area-inset-bottom)); }
-  .wrap { max-width:520px; margin:0 auto; }
-  .brand { display:flex; align-items:center; gap:10px; justify-content:center; margin:6px 0 22px; }
-  .brand img { height:34px; width:auto; }
-  .brand span { font-weight:600; letter-spacing:.2px; color:var(--muted); font-size:14px; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:22px;
-          box-shadow:0 18px 50px -28px rgba(27,42,52,.5); overflow:hidden; }
-  .hero { height:150px; background:#e6ddcf center/cover no-repeat; position:relative; }
+  body { font:16px/1.6 var(--sans); color:var(--ink); background:var(--bg);
+         /* the site's ambient wash: soft sky / sand / seafoam blobs on linen */
+         background-image:
+           radial-gradient(60% 45% at 12% 0%, rgba(220,234,242,.7), transparent 70%),
+           radial-gradient(55% 40% at 100% 8%, rgba(237,230,214,.7), transparent 70%),
+           radial-gradient(70% 50% at 50% 100%, rgba(220,235,228,.55), transparent 72%);
+         background-attachment:fixed;
+         min-height:100dvh; padding:26px 18px calc(30px + env(safe-area-inset-bottom)); }
+  .wrap { max-width:500px; margin:0 auto; }
+  .brand { display:flex; align-items:center; gap:11px; justify-content:center; margin:6px 0 24px; }
+  .brand img { height:36px; width:auto; }
+  .brand span { font-family:var(--sans); font-weight:600; font-size:11.5px; letter-spacing:2.5px;
+                text-transform:uppercase; color:var(--muted); }
+  .card { background:var(--glass); -webkit-backdrop-filter:blur(18px) saturate(150%);
+          backdrop-filter:blur(18px) saturate(150%);
+          border:1px solid rgba(255,255,255,.7); border-radius:32px;
+          box-shadow:0 10px 34px rgba(30,54,72,.1), inset 0 1px 0 0 rgba(255,255,255,.85);
+          overflow:hidden; }
+  .hero { height:158px; background:#e6ddcf center/cover no-repeat; position:relative; }
   .hero::after { content:""; position:absolute; inset:0;
-                 background:linear-gradient(180deg, transparent 35%, rgba(0,0,0,.42)); }
-  .hero h1 { position:absolute; left:20px; right:20px; bottom:14px; margin:0; z-index:1;
-             color:#fff; font-size:22px; font-weight:650; text-shadow:0 2px 12px rgba(0,0,0,.4); }
-  .noimg { height:auto; background:none; padding:22px 22px 0; }
+                 background:linear-gradient(180deg, transparent 30%, rgba(20,32,40,.5)); }
+  .hero h1 { position:absolute; left:24px; right:24px; bottom:16px; margin:0; z-index:1;
+             font-family:var(--serif); font-weight:700; color:#fff; font-size:26px; line-height:1.15;
+             text-shadow:0 2px 16px rgba(0,0,0,.45); }
+  .noimg { height:auto; background:none; padding:26px 26px 0; }
   .noimg::after { content:none; }
-  .noimg h1 { position:static; color:var(--ink); text-shadow:none; padding:0; font-size:23px; }
-  .body { padding:20px 22px 24px; }
-  .lede { margin:0 0 18px; color:var(--muted); font-size:15px; }
-  label { display:block; font-weight:600; font-size:13px; margin:0 0 7px; color:var(--ink); }
-  .req { color:var(--danger); font-weight:600; }
-  .opt { color:var(--muted); font-weight:500; }
-  input, textarea { width:100%; font:inherit; color:var(--ink); background:#fff;
-                    border:1px solid var(--line); border-radius:13px; padding:12px 13px; margin:0 0 16px; }
+  .noimg h1 { position:static; color:var(--ink); text-shadow:none; padding:0; font-size:27px; }
+  .body { padding:22px 26px 28px; }
+  .lede { margin:0 0 22px; color:var(--muted); font-size:15px; }
+  label { display:block; font-weight:600; font-size:12.5px; margin:0 0 8px; color:var(--ink);
+          letter-spacing:.2px; }
+  .req { color:var(--accent); font-weight:700; }
+  .opt { color:var(--muted); font-weight:500; text-transform:none; letter-spacing:0; }
+  input, textarea { width:100%; font:15px/1.5 var(--sans); color:var(--ink); background:var(--field);
+                    border:1px solid var(--line); border-radius:16px; padding:13px 15px; margin:0 0 18px; }
+  input::placeholder, textarea::placeholder { color:#96a3ab; }
   input:focus, textarea:focus { outline:none; border-color:var(--accent);
-                    box-shadow:0 0 0 3px color-mix(in srgb, var(--accent) 22%, transparent); }
-  textarea { min-height:110px; resize:vertical; }
-  .stars { display:flex; gap:6px; margin:0 0 18px; }
-  .star { font-size:34px; line-height:1; cursor:pointer; color:#d8cdb8; background:none; border:0; padding:2px;
+                    box-shadow:0 0 0 3px var(--accent-soft); }
+  textarea { min-height:116px; resize:vertical; }
+  .stars { display:flex; gap:8px; margin:0 0 20px; }
+  .star { font-size:36px; line-height:1; cursor:pointer; color:#dccfb9; background:none; border:0; padding:2px;
           transition:transform .12s ease, color .12s ease; }
-  .star.on { color:#e8a838; }
-  .star:active { transform:scale(.88); }
-  .btn { width:100%; font:inherit; font-weight:650; font-size:16px; color:#fff; background:var(--accent);
-         border:0; border-radius:14px; padding:15px; cursor:pointer; transition:filter .15s ease, transform .1s ease; }
-  .btn:hover { filter:brightness(1.04); }
+  .star.on { color:#e0a12f; }
+  .star:active { transform:scale(.86); }
+  .btn { width:100%; font:600 16px/1 var(--sans); letter-spacing:.3px; color:#fff; background:var(--accent);
+         border:0; border-radius:40px; padding:17px; cursor:pointer; box-shadow:0 8px 22px rgba(198,136,94,.32);
+         transition:filter .15s ease, transform .1s ease, box-shadow .15s ease; }
+  .btn:hover { filter:brightness(1.05); box-shadow:0 10px 26px rgba(198,136,94,.4); }
   .btn:active { transform:translateY(1px); }
-  .btn[disabled] { opacity:.6; cursor:default; }
-  .err { display:none; color:var(--danger); font-size:14px; margin:0 0 14px; font-weight:500; }
+  .btn[disabled] { opacity:.6; cursor:default; box-shadow:none; }
+  .err { display:none; color:var(--danger); font-size:14px; margin:0 0 16px; font-weight:500; }
   .err.show { display:block; }
-  .foot { text-align:center; color:var(--muted); font-size:12px; margin:16px 0 0; }
+  .foot { text-align:center; color:var(--muted); font-size:12px; margin:18px 0 0; line-height:1.5; }
   /* Thank-you state */
-  .done { text-align:center; padding:30px 24px 34px; }
-  .done .tick { width:60px; height:60px; border-radius:50%; margin:0 auto 16px;
-                background:color-mix(in srgb, var(--ok) 16%, transparent); color:var(--ok);
-                display:flex; align-items:center; justify-content:center; font-size:32px; }
-  .done h2 { margin:0 0 8px; font-size:22px; }
-  .done p { margin:0 0 18px; color:var(--muted); }
-  .direct { background:color-mix(in srgb, var(--accent) 10%, #fff); border:1px solid var(--line);
-            border-radius:16px; padding:18px; margin:18px 0 0; text-align:left; }
-  .direct b { display:block; margin-bottom:6px; }
-  .direct p { margin:0; }
-  .direct a { display:inline-block; margin-top:14px; color:#fff; background:var(--accent);
-              text-decoration:none; font-weight:650; padding:11px 18px; border-radius:12px; }
-  @media (prefers-color-scheme: dark) {
-    :root { --ink:#eef3f6; --muted:#9fb2bd; --line:rgba(255,255,255,.14); --bg:#0f1a20; --card:#16242c; }
-    input, textarea { background:#0f1a20; }
-    .direct { background:color-mix(in srgb, var(--accent) 14%, #16242c); }
-  }
+  .done { text-align:center; padding:34px 26px 38px; }
+  .done .tick { width:64px; height:64px; border-radius:50%; margin:0 auto 18px;
+                background:rgba(46,139,139,.14); color:var(--sea);
+                display:flex; align-items:center; justify-content:center; font-size:34px; }
+  .done h2 { font-family:var(--serif); font-weight:700; margin:0 0 10px; font-size:26px; }
+  .done p { margin:0 0 20px; color:var(--muted); }
+  .direct { background:rgba(198,136,94,.09); border:1px solid var(--accent-soft);
+            border-radius:22px; padding:20px 22px; margin:20px 0 0; text-align:left; }
+  .direct b { display:block; font-family:var(--serif); font-weight:700; font-size:18px; margin-bottom:8px; color:var(--ink); }
+  .direct p { margin:0; color:var(--muted); font-size:14.5px; }
+  .direct a { display:inline-block; margin-top:16px; color:#fff; background:var(--accent);
+              text-decoration:none; font-weight:600; letter-spacing:.3px; padding:13px 22px; border-radius:40px;
+              box-shadow:0 8px 22px rgba(198,136,94,.32); }
 </style>
 </head>
 <body>
@@ -167,7 +188,7 @@ if (!$found) {
   <div class="card" id="card">
 <?php if (!$found): ?>
     <div class="body">
-      <h1 style="margin:0 0 10px;font-size:22px;">We couldn't find that cottage</h1>
+      <h1 style="margin:0 0 10px;font-family:var(--serif);font-weight:700;font-size:25px;">We couldn't find that cottage</h1>
       <p class="lede">This review link doesn't match one of our cottages. Please check the
       address, or visit <a href="/" style="color:var(--accent)">our website</a>.</p>
     </div>
