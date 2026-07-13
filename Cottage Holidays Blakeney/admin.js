@@ -3704,7 +3704,11 @@ function renderBookingHub() {
                 b.email
                     ? `<div class="bhub-btn-row" style="margin-top:0;">
                         <button class="btn-sm btn-edit" onclick="sendConfirmationEmail('${b.id}')">Send confirmation</button>
-                        <button class="btn-sm btn-edit" onclick="sendArrivalInfo('${b.id}')">Send arrival info${b.preArrivalSent ? ' (sent ✓)' : ''}</button>
+                        ${
+                            b.preArrivalSent
+                                ? `<span class="bhub-sent-tag" title="Sent ${escapeHtml(String(b.preArrivalSent))}">Arrival info sent ✓</span>`
+                                : `<button class="btn-sm btn-edit" onclick="sendArrivalInfo('${b.id}')">Send arrival info</button>`
+                        }
                         ${gt.paid > 0 ? `<button class="btn-sm btn-edit" onclick="offerUpdatedConfirmationEmail('${b.id}')">Email updated confirmation</button>` : ''}
                         <button class="btn-sm btn-edit" onclick="openBookingEmail('${b.id}')">Write an email</button>
                     </div>`

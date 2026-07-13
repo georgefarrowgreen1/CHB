@@ -733,6 +733,9 @@
   display: flex;
   align-items: center;
   flex-wrap: nowrap;
+  /* Spread the steps edge-to-edge so the strip fills the card width like the
+     unified booking-flow pill above it, rather than clustering on the left. */
+  justify-content: space-between;
   gap: 5px;
   margin: 2px 0 14px;
   overflow-x: auto;
@@ -797,6 +800,19 @@
   gap: 8px;
   flex-wrap: wrap;
   margin-top: 14px;
+}.bhub-sent-tag {
+  /* A settled "already done" status that replaces a send button once its email
+     has gone out — reads as confirmation, not another action to take. */
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--ok);
+  background: rgba(76, 175, 80, 0.1);
+  border: 1px solid rgba(76, 175, 80, 0.26);
+  border-radius: var(--r-pill);
 }.bhub-mut {
   color: var(--text-muted);
   font-size: 0.8rem;
