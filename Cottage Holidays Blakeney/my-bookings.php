@@ -50,8 +50,32 @@ $sqOn = square_enabled();
 foreach ($bookings as &$bk) {
     $bk['pay_token'] = $sqOn ? pay_token((int) $bk['id']) : null;
     $bk['damages_returned'] = $returnedByBooking[(int) $bk['id']] ?? 0;
+    // Guest-registration state powers the "Your details" step of the booking flow
+    // on My Stays. The token URL is login-free (guest-details.php verifies the
+    // HMAC), so the guest can add their party details straight from their card.
+    // Never carries the PII itself — only whether it's been submitted.
+    $bk['reg_url'] = site_base_url() . 'guest-details.php?b=' . (int) $bk['id'] . '&token=' . guest_reg_token((int) $bk['id']);
+    $bk['reg_submitted'] = false;
 }
 unset($bk);
+// Which of this guest's bookings have had their details submitted (one grouped
+// query; robust to the guest_registrations table not existing pre-migration).
+if ($ids) {
+    try {
+        $ph2 = implode(',', array_fill(0, count($ids), '?'));
+        $rg = db()->prepare("SELECT booking_id, submitted_at FROM guest_registrations WHERE booking_id IN ($ph2)");
+        $rg->execute($ids);
+        $regSub = [];
+        foreach ($rg->fetchAll() as $r) {
+            $regSub[(int) $r['booking_id']] = !empty($r['submitted_at']);
+        }
+        foreach ($bookings as &$bk) {
+            $bk['reg_submitted'] = $regSub[(int) $bk['id']] ?? false;
+        }
+        unset($bk);
+    } catch (\Throwable $e) {
+    }
+}
 
 // Also return this guest's PENDING enquiries (submitted, not yet confirmed by
 // the owner) so the account can show them as cards in the same layout.
