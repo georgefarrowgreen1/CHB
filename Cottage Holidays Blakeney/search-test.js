@@ -307,6 +307,19 @@ if (typeof ctx.cmdkEntityActions === 'function') {
     check('no entity → no suggestions', ctx.cmdkEntityActions(null).length === 0);
 }
 
+// ---- 12. Page-context layer (search aware of what's on screen) ----
+check('page-context helpers are defined', typeof ctx.cmdkPageContext === 'function' && typeof ctx.cmdkContextSuggest === 'function' && typeof ctx.cmdkCalendarMonthInView === 'function');
+if (typeof ctx.cmdkPageContext === 'function') {
+    const pc = ctx.cmdkPageContext();
+    const KEYS = ['view', 'cottage', 'cottageName', 'section', 'subtab', 'folder', 'calendarMonth', 'entity'];
+    check('cmdkPageContext() returns the full shape', pc && typeof pc === 'object' && KEYS.every((k) => k in pc));
+    // Off-DOM (test shim) every signal degrades to null — proves it never throws
+    // and is safe to call from any screen.
+    check('cmdkPageContext() degrades to all-null off-DOM', KEYS.every((k) => pc[k] === null));
+    check('cmdkCalendarMonthInView() is null when the timeline is not rendered', ctx.cmdkCalendarMonthInView() === null);
+    check('cmdkContextSuggest() returns an array (empty with no page context)', Array.isArray(ctx.cmdkContextSuggest()) && ctx.cmdkContextSuggest().length === 0);
+}
+
 // ---- Summary ----
 console.log('\n== Summary ==');
 if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }
