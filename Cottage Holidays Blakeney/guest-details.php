@@ -100,7 +100,7 @@ function render_guest_form_html($d)
         $nat = $e($g['nationality'] ?? '');
         $extraStyle = $home ? 'display:none;' : '';
         return '<fieldset class="guest" data-row>' .
-            '<div class="grow"><button type="button" class="rm" title="Remove this guest" onclick="rmRow(this)" aria-label="Remove guest">×</button></div>' .
+            '<div class="gnum">Guest ' . ($i + 1) . '</div>' .
             '<label>Full name<input type="text" name="name[]" value="' . $e($g['name'] ?? '') . '" maxlength="120" autocomplete="off" required></label>' .
             '<label>Nationality<input type="text" name="nationality[]" list="nats" value="' . ($nat === '' ? '' : $nat) . '" maxlength="60" autocomplete="off" oninput="toggleForeign(this)" required></label>' .
             '<div class="foreign" style="' . $extraStyle . '">' .
@@ -113,8 +113,6 @@ function render_guest_form_html($d)
     foreach ($party as $i => $g) {
         $rows .= $rowHtml($g, $i);
     }
-    // A hidden template row cloned by "Add another guest".
-    $template = '<template id="rowtpl">' . $rowHtml(['nationality' => 'British', 'british' => true], 0) . '</template>';
 
     $banner = $saved
         ? '<div class="note ok">Thank you — your guest details are saved. You can come back and update them any time before you arrive.</div>'
@@ -141,14 +139,11 @@ function render_guest_form_html($d)
         '.note.ok{background:#eaf5ec;border:1px solid #bfe0c6;color:#256b39;}' .
         '.note.err{background:#fbeceb;border:1px solid #f0c9c6;color:#a23b30;}' .
         'fieldset.guest{border:1px solid #ece4d3;border-radius:14px;padding:14px 16px 4px;margin:14px 0;position:relative;background:#fdfbf6;}' .
-        '.grow{position:absolute;top:8px;right:10px;}' .
-        '.rm{border:0;background:transparent;color:#b7ac97;font-size:22px;line-height:1;cursor:pointer;padding:2px 6px;}' .
-        '.rm:hover{color:#a23b30;}' .
+        '.gnum{font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:700;color:' . $accent . ';margin-bottom:2px;}' .
         'label{display:block;font-size:12px;color:#8a8378;font-weight:600;margin:8px 0 12px;}' .
         'input[type=text]{display:block;width:100%;margin-top:5px;padding:11px 12px;border:1px solid #ddd4c2;border-radius:10px;font-size:16px;font-family:inherit;color:#1b2a34;background:#fff;}' .
         'input[type=text]:focus{outline:none;border-color:' . $accent . ';}' .
         '.foreign{border-top:1px dashed #ece4d3;margin-top:4px;padding-top:6px;}' .
-        '.add{display:inline-block;margin:4px 0 8px;background:#faf6ec;border:1px solid #ece4d3;color:#57524A;border-radius:999px;padding:10px 18px;font-weight:600;font-size:14px;cursor:pointer;}' .
         '.actions{margin:18px 0 4px;}' .
         '.btn{display:inline-block;width:100%;background:' . $accent . ';color:#fff;text-decoration:none;font-weight:700;font-size:16px;padding:14px 26px;border:0;border-radius:999px;cursor:pointer;}' .
         '.foot{text-align:center;color:#8a8378;font-size:12px;padding:22px 32px 30px;line-height:1.6;}' .
@@ -162,21 +157,14 @@ function render_guest_form_html($d)
         $banner .
         '<form method="post" action="' . $action . '">' .
         '<div id="rows">' . $rows . '</div>' .
-        $template .
-        '<button type="button" class="add" onclick="addRow()">＋ Add another guest</button>' .
         '<div class="actions"><button type="submit" class="btn">Save guest details</button></div>' .
         '</form>' . $datalist .
         '</div>' .
         '<div class="foot">Cottage Holidays Blakeney · Any questions? Just reply to your confirmation email.<br>Held securely and deleted 12 months after your stay.</div>' .
         '</div>' .
         '<script>' .
-        'var MIN=' . $expected . ';' .
         'function toggleForeign(inp){var fs=inp.closest("[data-row]");var f=fs.querySelector(".foreign");var v=(inp.value||"").trim().toLowerCase();var home=["british","britain","uk","united kingdom","irish","ireland"].indexOf(v)>-1;f.style.display=(v===""||home)?"none":"block";}' .
-        'function addRow(){var t=document.getElementById("rowtpl");var n=t.content.firstElementChild.cloneNode(true);document.getElementById("rows").appendChild(n);var nat=n.querySelector("input[name=\'nationality[]\']");if(nat)toggleForeign(nat);n.querySelector("input").focus();syncRemove();}' .
-        'function rmRow(btn){var rows=document.querySelectorAll("#rows [data-row]");if(rows.length<=Math.max(1,MIN))return;btn.closest("[data-row]").remove();syncRemove();}' .
-        'function syncRemove(){var rows=document.querySelectorAll("#rows [data-row]");var lock=rows.length<=Math.max(1,MIN);rows.forEach(function(r){var b=r.querySelector(".rm");if(b){b.style.display=lock?"none":"";}});}' .
         'document.querySelectorAll("#rows input[name=\'nationality[]\']").forEach(toggleForeign);' .
-        'syncRemove();' .
         '</script>' .
         '</body></html>';
 }

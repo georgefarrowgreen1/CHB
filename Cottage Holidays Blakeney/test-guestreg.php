@@ -80,7 +80,7 @@ check('renders a full HTML document', strpos($html, '<!doctype html>') === 0);
 check('has the legal 16+ explainer', strpos($html, '16 or over') !== false || strpos($html, '16 or over') !== false);
 check('has name + nationality inputs', strpos($html, "name=\"name[]\"") !== false && strpos($html, "name=\"nationality[]\"") !== false);
 check('has the non-British doc + onward inputs', strpos($html, "name=\"doc[]\"") !== false && strpos($html, "name=\"onward[]\"") !== false);
-check('has an add-guest template + save button', strpos($html, 'id="rowtpl"') !== false && strpos($html, 'Save guest details') !== false);
+check('has a save button and NO add-another-guest control (fixed count)', strpos($html, 'Save guest details') !== false && strpos($html, 'Add another guest') === false && strpos($html, 'id="rowtpl"') === false);
 check('posts back to the token action url (& escaped)', strpos($html, 'guest-details.php?b=42&amp;token=abc') !== false);
 check('pre-fills the lead guest name', strpos($html, 'Jane Smith') !== false);
 
@@ -89,9 +89,9 @@ $html4 = render_guest_form_html([
     'prop_name' => 'X', 'lead_name' => 'Lead', 'accent' => '#8FB3C7', 'action_url' => 'x',
     'party' => null, 'expected' => 3, 'children' => 1,
 ]);
-check('renders exactly `expected` guest rows (3 → 3 + template)', substr_count($html4, 'name="name[]"') === 4);
+check('renders exactly `expected` guest rows (3 → 3, no template)', substr_count($html4, 'name="name[]"') === 3);
+check('numbers the guests (Guest 1 / Guest 3)', strpos($html4, '>Guest 1<') !== false && strpos($html4, '>Guest 3<') !== false);
 check('shows the "3 guests" count hint', strpos($html4, 'This booking is for <strong>3 guests</strong>') !== false);
-check('sets the JS minimum to expected (MIN=3)', strpos($html4, 'var MIN=3;') !== false);
 check('mentions children are excluded when children>0', strpos($html4, 'Children under 16') !== false);
 
 $html5 = render_guest_form_html([
@@ -105,7 +105,7 @@ $html6 = render_guest_form_html([
     'prop_name' => 'X', 'accent' => '#8FB3C7', 'action_url' => 'x', 'expected' => 1,
     'party' => [['name' => 'A', 'nationality' => 'British', 'british' => true], ['name' => 'B', 'nationality' => 'British', 'british' => true]],
 ]);
-check('party larger than expected is kept (2 rows + template)', substr_count($html6, 'name="name[]"') === 3);
+check('party larger than expected is kept (2 rows, no template)', substr_count($html6, 'name="name[]"') === 2);
 
 // XSS: a hostile name/nationality must be escaped in the output.
 $html2 = render_guest_form_html([
