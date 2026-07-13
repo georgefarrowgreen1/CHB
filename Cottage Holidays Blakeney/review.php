@@ -122,11 +122,14 @@ if (!$found) {
   .brand img { height:52px; width:auto; display:block; }
   .brand span { font-family:var(--sans); font-weight:600; font-size:11.5px; letter-spacing:2.5px;
                 text-transform:uppercase; color:var(--muted); }
+  .brand { animation:fadeUp .5s ease both; }
   .card { background:var(--glass); -webkit-backdrop-filter:blur(18px) saturate(150%);
           backdrop-filter:blur(18px) saturate(150%);
           border:1px solid rgba(255,255,255,.7); border-radius:32px;
-          box-shadow:0 10px 34px rgba(30,54,72,.1), inset 0 1px 0 0 rgba(255,255,255,.85);
-          overflow:hidden; }
+          box-shadow:0 12px 40px rgba(30,54,72,.12), inset 0 1px 0 0 rgba(255,255,255,.85);
+          overflow:hidden; animation:riseIn .6s cubic-bezier(.2,.7,.2,1) .06s both; }
+  @keyframes riseIn { from { opacity:0; transform:translateY(22px) scale(.985); } to { opacity:1; transform:none; } }
+  @keyframes fadeUp { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:none; } }
   .hero { height:158px; background:#e6ddcf center/cover no-repeat; position:relative; }
   .hero::after { content:""; position:absolute; inset:0;
                  background:linear-gradient(180deg, transparent 30%, rgba(20,32,40,.5)); }
@@ -151,11 +154,20 @@ if (!$found) {
   input:focus, textarea:focus { outline:none; border-color:var(--accent);
                     box-shadow:0 0 0 3px var(--accent-soft); }
   textarea { min-height:116px; resize:vertical; }
-  .stars { display:flex; gap:8px; margin:0 0 20px; justify-content:center; }
-  .star { font-size:36px; line-height:1; cursor:pointer; color:#dccfb9; background:none; border:0; padding:2px;
-          transition:transform .12s ease, color .12s ease; }
-  .star.on { color:#e0a12f; }
-  .star:active { transform:scale(.86); }
+  .stars { display:flex; gap:10px; margin:0 0 6px; justify-content:center; }
+  .star { font-size:40px; line-height:1; cursor:pointer; color:#e2d6c1; background:none; border:0; padding:2px;
+          transition:transform .16s var(--spring, cubic-bezier(.34,1.56,.64,1)), color .14s ease;
+          filter:drop-shadow(0 1px 1px rgba(0,0,0,.04)); }
+  .star.on { color:#e6a52c; }
+  .star.on { transform:scale(1.06); }
+  .star:active { transform:scale(.84); }
+  .star.pop { animation:starPop .34s cubic-bezier(.34,1.56,.64,1); }
+  @keyframes starPop { 0% { transform:scale(.7); } 60% { transform:scale(1.28); } 100% { transform:scale(1.06); } }
+  /* Live rating word beneath the stars — a warm, human cue as they pick. */
+  .rate-word { min-height:20px; margin:0 0 18px; font-family:var(--serif); font-style:italic;
+               font-size:15px; color:var(--accent); font-weight:600; opacity:0; transform:translateY(3px);
+               transition:opacity .2s ease, transform .2s ease; }
+  .rate-word.show { opacity:1; transform:none; }
   .btn { width:100%; font:600 16px/1 var(--sans); letter-spacing:.3px; color:#fff; background:var(--accent);
          border:0; border-radius:40px; padding:17px; cursor:pointer; box-shadow:0 8px 22px rgba(198,136,94,.32);
          transition:filter .15s ease, transform .1s ease, box-shadow .15s ease; }
@@ -166,19 +178,35 @@ if (!$found) {
   .err.show { display:block; }
   .foot { text-align:center; color:var(--muted); font-size:12px; margin:18px 0 0; line-height:1.5; }
   /* Thank-you state */
-  .done { text-align:center; padding:34px 26px 38px; }
-  .done .tick { width:64px; height:64px; border-radius:50%; margin:0 auto 18px;
+  .done { text-align:center; padding:36px 26px 38px; }
+  .done > * { animation:fadeUp .5s ease both; }
+  .done > *:nth-child(2) { animation-delay:.06s; }
+  .done > *:nth-child(3) { animation-delay:.12s; }
+  .done > *:nth-child(4) { animation-delay:.2s; }
+  .done .tick { width:66px; height:66px; border-radius:50%; margin:0 auto 20px;
                 background:rgba(46,139,139,.14); color:var(--sea);
-                display:flex; align-items:center; justify-content:center; font-size:34px; }
-  .done h2 { font-family:var(--serif); font-weight:700; margin:0 0 10px; font-size:26px; }
+                box-shadow:0 0 0 8px rgba(46,139,139,.06);
+                display:flex; align-items:center; justify-content:center; font-size:34px;
+                animation:tickIn .55s cubic-bezier(.34,1.56,.64,1) both; }
+  @keyframes tickIn { from { opacity:0; transform:scale(.4); } to { opacity:1; transform:none; } }
+  .done h2 { font-family:var(--serif); font-weight:700; margin:0 0 10px; font-size:27px; }
   .done p { margin:0 0 20px; color:var(--muted); }
-  .direct { background:rgba(198,136,94,.09); border:1px solid var(--accent-soft);
-            border-radius:22px; padding:22px; margin:20px 0 0; text-align:center; }
-  .direct b { display:block; font-family:var(--serif); font-weight:700; font-size:18px; margin-bottom:8px; color:var(--ink); }
+  .direct { background:linear-gradient(140deg, rgba(198,136,94,.13), rgba(214,167,133,.05));
+            border:1px solid var(--accent-soft); border-radius:24px; padding:24px 22px; margin:24px 0 0; text-align:center; }
+  .offer-tag { display:inline-block; font-family:var(--sans); font-size:10.5px; font-weight:700;
+               letter-spacing:1.6px; text-transform:uppercase; color:var(--accent);
+               background:rgba(198,136,94,.15); padding:6px 13px; border-radius:40px; margin-bottom:14px; }
+  .direct b { display:block; font-family:var(--serif); font-weight:700; font-size:19px; margin-bottom:8px; color:var(--ink); }
   .direct p { margin:0; color:var(--muted); font-size:14.5px; }
-  .direct a { display:inline-block; margin-top:16px; color:#fff; background:var(--accent);
-              text-decoration:none; font-weight:600; letter-spacing:.3px; padding:13px 22px; border-radius:40px;
-              box-shadow:0 8px 22px rgba(198,136,94,.32); }
+  .direct a { display:inline-block; margin-top:18px; color:#fff; background:var(--accent);
+              text-decoration:none; font-weight:600; letter-spacing:.3px; padding:14px 24px; border-radius:40px;
+              box-shadow:0 8px 22px rgba(198,136,94,.32); transition:filter .15s ease, box-shadow .15s ease, transform .1s ease; }
+  .direct a:hover { filter:brightness(1.05); box-shadow:0 10px 28px rgba(198,136,94,.42); }
+  .direct a:active { transform:translateY(1px); }
+  @media (prefers-reduced-motion: reduce) {
+    .brand, .card, .done > *, .done .tick, .star.pop { animation:none !important; }
+    .rate-word { transition:none; }
+  }
 </style>
 </head>
 <body>
@@ -210,6 +238,7 @@ if (!$found) {
           <button type="button" class="star" data-v="<?= $i ?>" aria-label="<?= $i ?> star<?= $i > 1 ? 's' : '' ?>">★</button>
           <?php endfor; ?>
         </div>
+        <div class="rate-word" id="rateWord" aria-live="polite"></div>
 
         <label for="text">Your review <span class="req">*</span></label>
         <textarea id="text" maxlength="1000" placeholder="What did you love? What made your stay special?"></textarea>
@@ -238,11 +267,25 @@ if (!$found) {
   var propKey = <?= json_encode($propKey) ?>;
   var source  = <?= json_encode($source) ?>;
   var stars = 0;
+  var WORDS = ['', 'Sorry to hear that', 'Room to improve', 'Good', 'Really good', 'Wonderful — thank you!'];
   var starEls = Array.prototype.slice.call(document.querySelectorAll('.star'));
-  function paint() { starEls.forEach(function (b) { b.classList.toggle('on', +b.dataset.v <= stars); }); }
+  var rateWord = document.getElementById('rateWord');
+  function paint(n) { starEls.forEach(function (b) { b.classList.toggle('on', +b.dataset.v <= n); }); }
+  function word(n) {
+    if (n > 0) { rateWord.textContent = WORDS[n]; rateWord.classList.add('show'); }
+    else { rateWord.classList.remove('show'); }
+  }
   starEls.forEach(function (b) {
-    b.addEventListener('click', function () { stars = +b.dataset.v; paint(); });
+    var v = +b.dataset.v;
+    b.addEventListener('click', function () {
+      stars = v; paint(v); word(v);
+      b.classList.remove('pop'); void b.offsetWidth; b.classList.add('pop');
+    });
+    // Desktop hover preview (fill up to the hovered star; no effect on touch).
+    b.addEventListener('mouseenter', function () { paint(v); word(v); });
   });
+  var starsWrap = document.getElementById('stars');
+  starsWrap.addEventListener('mouseleave', function () { paint(stars); word(stars); });
 
   var form = document.getElementById('rev');
   var err = document.getElementById('err');
@@ -279,6 +322,7 @@ if (!$found) {
             '<h2>Thank you!</h2>' +
             '<p>Your review has been sent — we really appreciate it.</p>' +
             '<div class="direct">' +
+              '<span class="offer-tag">Best price, direct</span>' +
               '<b>Coming back next year?</b>' +
               '<p>Book direct with us and skip the booking-site fees — you get the best price and we get to look after you again.</p>' +
               '<a href="/">Explore our cottages</a>' +
