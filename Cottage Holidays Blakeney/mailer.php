@@ -1381,6 +1381,9 @@ function send_booking_emails($b)
         if (!empty($b['invoice_url'])) {
             $body .= "\nView or download your invoice: " . $b['invoice_url'] . "\n";
         }
+        if (!empty($b['guest_reg_url'])) {
+            $body .= "\nBefore you arrive, please add your guest details (a UK legal requirement — full name & nationality of everyone 16+): " . $b['guest_reg_url'] . "\n";
+        }
         $body .= "\n";
         $body .= "If you have any questions, just reply to this email.\nCottage Holidays Blakeney\n";
 
@@ -1449,6 +1452,7 @@ function send_booking_emails($b)
             ]) .
             $priceBox .
             (!empty($b['invoice_url']) ? email_btn($b['invoice_url'], 'View your invoice', $accent, '#ffffff') : '') .
+            (!empty($b['guest_reg_url']) ? email_p('<strong>Before you arrive:</strong> UK law asks us to record the name &amp; nationality of everyone staying who is 16 or over. Please add your guest details — it only takes a minute.', true) . email_btn($b['guest_reg_url'], 'Add your guest details', $accent, '#ffffff') : '') .
             email_p(htmlspecialchars(cancellation_policy_line($b['prop_key'] ?? ''), ENT_QUOTES, 'UTF-8'), true) .
             email_p('Any questions? Just reply to this email — we look forward to welcoming you.', true);
         $html = email_shell('Your booking at ' . $b['prop_name'] . ' is confirmed', $inner, $accent);

@@ -3160,7 +3160,36 @@ function renderBookingHub() {
             <div id="hub-history"><div class="bhub-empty">Loading history…</div></div>
         </section>`;
 
-    el.innerHTML = `${header}<div class="bhub-grid">${moneyCard}${emailsCard}${guestCard}${historyCard}</div>`;
+    // ---- Guest register card (UK hotel-records duty) ----
+    const regCard = `
+        <section class="bhub-card glass-panel">
+            <h3 class="bhub-card-title">Guest register <span class="bhub-mut" style="text-transform:none;letter-spacing:0;font-weight:400;">· legal record</span></h3>
+            ${b.regSubmitted
+                ? `<div class="detail-grid" style="margin-top:0;"><div class="booking-detail-item" style="grid-column:1/-1;"><span class="booking-detail-label">Status</span><span class="booking-detail-value" style="color:var(--ok);font-weight:600;">✓ Submitted · ${b.regCount} guest${b.regCount === 1 ? '' : 's'} recorded</span></div></div>`
+                : `<p class="bhub-mut" style="margin:2px 0 10px;">Not yet submitted. The guest gets the form in their confirmation email — you can also fill it in or resend the link.</p>`}
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+                ${b.regUrl ? `<button class="btn-sm btn-edit" onclick="openGuestRegister('${b.id}')">${b.regSubmitted ? 'View / edit details' : 'Open the form'}</button>` : ''}
+                ${b.regUrl ? `<button class="btn-sm" onclick="copyGuestRegLink('${b.id}')">Copy request link</button>` : ''}
+            </div>
+            <p class="bhub-mut" style="margin:10px 0 0;font-size:0.8rem;">Full name &amp; nationality of everyone 16+ (plus passport/ID &amp; next destination for non‑British/Irish). Held securely; deleted 12 months after checkout.</p>
+        </section>`;
+    el.innerHTML = `${header}<div class="bhub-grid">${moneyCard}${emailsCard}${guestCard}${regCard}${historyCard}</div>`;
+}
+// Guest-register (UK 1972 Order) helpers — open the token form to view/edit the
+// party, or copy the request link to send the guest. The token comes from the
+// server (bookings_admin_payload); admin.js never computes it.
+function openGuestRegister(id) {
+    const b = typeof findBookingById === 'function' ? findBookingById(id) : null;
+    if (b && b.regUrl) window.open(b.regUrl, '_blank', 'noopener');
+}
+function copyGuestRegLink(id) {
+    const b = typeof findBookingById === 'function' ? findBookingById(id) : null;
+    if (!b || !b.regUrl) return;
+    try {
+        navigator.clipboard.writeText(b.regUrl).then(() => { try { toast('Guest-details link copied — paste it to your guest.'); } catch (e) {} });
+    } catch (e) {
+        try { toast('Copy this link for your guest: ' + b.regUrl); } catch (e2) {}
+    }
 }
 
 // ---- Settings router: Apple-style index → drill-down sub-pages ----

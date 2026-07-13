@@ -893,6 +893,14 @@ function invoice_token($bookingId)
 {
     return substr(hash_hmac('sha256', 'invoice:' . (int) $bookingId, APP_SECRET), 0, 32);
 }
+// Unguessable, login-free token for a booking's guest-registration form
+// (guest-details.php) where the lead guest records the party for the UK hotel
+// records duty. Distinct purpose so it can't be swapped with the pay/invoice
+// links; leaks nothing if seen.
+function guest_reg_token($bookingId)
+{
+    return substr(hash_hmac('sha256', 'guestreg:' . (int) $bookingId, APP_SECRET), 0, 32);
+}
 // ---- Marketing-email opt-out (anniversary re-invites etc.) ----------------
 // Past guests aren't newsletter subscribers, so they need their own one-click
 // unsubscribe: a signed link (email-optout.php) adds their address to a small
