@@ -1686,6 +1686,7 @@ function cmdkSearchCore(q, allowCorrect) {
         __cmdkBriefN = brief.length;
         __cmdkResults = suggestions.concat(brief).concat(screens);
         __cmdkSel = __cmdkSuggestN ? 0 : -1; // pre-select the top suggestion when present
+        cmdkSetLoading(false);
         cmdkRender();
         return;
     }
@@ -1718,9 +1719,11 @@ function cmdkSearchCore(q, allowCorrect) {
     // stale-guarded so a slow response for an old query is ignored.
     clearTimeout(__cmdkServerT);
     if (ql.length >= 2) {
+        cmdkSetLoading(true);
         __cmdkServerT = setTimeout(() => cmdkServerSearch(ql), 180);
     } else {
         __cmdkServerStamp++;
+        cmdkSetLoading(false);
     }
 }
 // Fire the federated search.php query and merge its typed results in below the
@@ -1729,7 +1732,8 @@ function cmdkServerSearch(ql) {
     const stamp = ++__cmdkServerStamp;
     apiPost('search.php', { q: ql })
         .then((r) => {
-            if (stamp !== __cmdkServerStamp) return; // a newer query superseded this
+            if (stamp !== __cmdkServerStamp) return; // a newer query superseded this (it owns the loader)
+            cmdkSetLoading(false);
             const seen = new Set(__cmdkResults.filter((x) => x.id != null).map((x) => x.type + ':' + x.id));
             // Guests already shown locally (by name) — the local match is
             // authoritative, so a server booking/guest/enquiry for the same person
@@ -1753,7 +1757,7 @@ function cmdkServerSearch(ql) {
             if (ni >= 0) __cmdkSel = ni;
             cmdkRender();
         })
-        .catch(() => {});
+        .catch(() => { if (stamp === __cmdkServerStamp) cmdkSetLoading(false); });
 }
 // Map a server result row → a palette item with the right one-tap destination.
 // The server sends only data + a type; routing lives here (never in the payload).
@@ -2433,7 +2437,7 @@ function cmdkRowHtml(it, i, top) {
     // Highlight the matched terms — but not on computed summaries (answer/figure),
     // whose text isn't a literal echo of the query.
     const hi = it.type === 'answer' || it.type === 'figure' ? (s) => escapeHtml(s || '') : cmdkHi;
-    const row = `<button type="button" class="cmdk-row cmdk-row-${it.type}${sel ? ' is-sel' : ''}${top ? ' cmdk-tophit' : ''}" role="option" aria-selected="${sel}" data-idx="${i}" onclick="cmdkExec(${i})">
+    const row = `<button type="button" id="cmdk-opt-${i}" class="cmdk-row cmdk-row-${it.type}${sel ? ' is-sel' : ''}${top ? ' cmdk-tophit' : ''}" role="option" aria-selected="${sel}" data-idx="${i}" onclick="cmdkExec(${i})">
                     <span class="cmdk-row-ic cmdk-${it.type}">${cmdkIcon(it.type)}</span>
                     <span class="cmdk-row-main"><span class="cmdk-row-label">${hi(it.label)}</span><span class="cmdk-row-sub">${hi(it.sub || '')}</span></span>
                 </button>`;
@@ -2456,7 +2460,25 @@ function cmdkRowHtml(it, i, top) {
             : '';
     return row + steps + acts + refine;
 }
+// Point the combobox's aria-activedescendant at the highlighted option so screen
+// readers announce the selection as you arrow through (the rows carry matching
+// ids). Called after every paint.
+function cmdkSyncActive() {
+    const inp = document.getElementById('cmdk-input');
+    if (!inp) return;
+    if (__cmdkSel >= 0 && __cmdkResults[__cmdkSel]) inp.setAttribute('aria-activedescendant', 'cmdk-opt-' + __cmdkSel);
+    else inp.removeAttribute('aria-activedescendant');
+}
+// Toggle the slim federated-search progress sweep under the search field.
+function cmdkSetLoading(on) {
+    const p = document.getElementById('cmdk-progress');
+    if (p) p.classList.toggle('is-loading', !!on);
+}
 function cmdkRender() {
+    cmdkRenderInner();
+    cmdkSyncActive();
+}
+function cmdkRenderInner() {
     const box = document.getElementById('cmdk-results');
     if (!box) return;
     const sb = cmdkScopeBar(); // scope switch sits above every state
@@ -2477,7 +2499,11 @@ function cmdkRender() {
         return;
     }
     if (!__cmdkResults.length) {
-        box.innerHTML = sb + `<div class="cmdk-none">No matches${__cmdkScope !== 'all' ? ' in ' + __cmdkScope + ' — tap “All” to widen' : ' — try a guest name, a screen, or a question like “who owes me money”'}.</div>`;
+        const scoped = __cmdkScope !== 'all';
+        box.innerHTML = sb + `<div class="cmdk-none">
+            <svg class="cmdk-none-ic ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
+            <div><strong>No matches${scoped ? ' in ' + escapeHtml(__cmdkScope) : ''}</strong>${scoped ? 'Tap “All” above to search everywhere.' : 'Try a guest name, a screen, or a question like “who owes me money”.'}</div>
+        </div>`;
         return;
     }
     // Structure longer lists: a Top Hit, then grouped section headers. Short lists
@@ -2572,6 +2598,16 @@ function cmdkKey(e) {
     } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         __cmdkSel = Math.max(__cmdkSel - 1, 0);
+        cmdkRender();
+        cmdkScrollSel();
+    } else if (e.key === 'Home' && __cmdkResults.length) {
+        e.preventDefault();
+        __cmdkSel = 0;
+        cmdkRender();
+        cmdkScrollSel();
+    } else if (e.key === 'End' && __cmdkResults.length) {
+        e.preventDefault();
+        __cmdkSel = __cmdkResults.length - 1;
         cmdkRender();
         cmdkScrollSel();
     } else if (e.key === 'Enter') {
@@ -2692,6 +2728,8 @@ function closeCmdK() {
     // If a Tier-2 sheet borrowed a Manage section, hand it back before closing so
     // the section can never be left orphaned inside the palette.
     if (__cmdkSheet) { try { cmdkSheetRestore(); } catch (e) {} }
+    __cmdkServerStamp++; // supersede any in-flight federated search
+    cmdkSetLoading(false);
     if (o) o.style.display = 'none';
 }
 // ⌘K / Ctrl-K toggles the palette (owner only). Registered once on bundle load.
