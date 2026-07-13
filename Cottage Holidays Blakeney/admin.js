@@ -2443,8 +2443,13 @@ function cmdkRowHtml(it, i, top) {
                 </button>`;
     const acts =
         sel && Array.isArray(it.actions) && it.actions.length
-            ? `<div class="cmdk-actbar">${it.actions.map((a, k) => `<button type="button" class="cmdk-act" data-idx="${i}" data-act="${k}" onclick="cmdkAct(${i},${k})">${a.icon || ''}${escapeHtml(a.label)}</button>`).join('')}</div>`
+            ? `<div class="cmdk-actbar"><span class="cmdk-grouplbl">Actions</span>${it.actions.map((a, k) => `<button type="button" class="cmdk-act" data-idx="${i}" data-act="${k}" onclick="cmdkAct(${i},${k})">${a.icon || ''}${escapeHtml(a.label)}</button>`).join('')}</div>`
             : '';
+    // When the action bar is showing (the selected top hit), suppress any refine
+    // chip that just duplicates an action — e.g. "Show on calendar" lives in both,
+    // which read as two identical buttons. The chip's original index is preserved
+    // so cmdkChipRun still targets the right one.
+    const actLabels = acts && Array.isArray(it.actions) ? new Set(it.actions.map((a) => (a.label || '').toLowerCase())) : null;
     // Help topics expand their numbered steps when selected (the Top Hit is
     // pre-selected, so the best answer opens straight away; the rest stay tidy).
     const isHelp = it.type === 'help';
@@ -2454,10 +2459,13 @@ function cmdkRowHtml(it, i, top) {
             : '';
     // Refine chips under an answer/help head — narrow/pivot/act without retyping.
     // (Help chips — Do it / Show me / More — show with the expanded steps.)
-    const refine =
+    const refineInner =
         Array.isArray(it.chips) && it.chips.length && (!isHelp || sel)
-            ? `<div class="cmdk-refine">${it.chips.map((c, k) => `<button type="button" class="cmdk-ex cmdk-refine-chip" onclick="cmdkChipRun(${i},${k})">${escapeHtml(c.label)}</button>`).join('')}</div>`
+            ? it.chips
+                  .map((c, k) => (actLabels && actLabels.has((c.label || '').toLowerCase())) ? '' : `<button type="button" class="cmdk-ex cmdk-refine-chip" onclick="cmdkChipRun(${i},${k})">${escapeHtml(c.label)}</button>`)
+                  .join('')
             : '';
+    const refine = refineInner ? `<div class="cmdk-refine">${refineInner}</div>` : '';
     return row + steps + acts + refine;
 }
 // Point the combobox's aria-activedescendant at the highlighted option so screen
@@ -11919,7 +11927,7 @@ function renderMailboxList(keepSearchFocus) {
     // the accent action + circular refresh on the right, search underneath.
     el.innerHTML = `
         <div class="cal-header-bar" style="margin-bottom:14px;">
-            <div class="cal-actions" style="margin-left:auto;">
+            <div class="cal-actions">
                 <button class="btn-glass btn-accent cal-add-btn" onclick="mailboxCompose()">+ New email</button>
                 <button class="cal-refresh-btn" onclick="loadMailbox()" title="Check for new email" aria-label="Check for new email"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-1.9 5.3"/><path d="M20 5v6h-6"/></svg></button>
             </div>
