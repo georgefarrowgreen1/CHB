@@ -97,7 +97,7 @@ function render_guest_form_html($d)
     // home-nation check keys off British/Irish), so a separate demonym would
     // wrongly trip the passport/onward fields.
     $suggest = ['British', 'Irish', 'Afghan', 'Albanian', 'Algerian', 'American', 'Andorran', 'Angolan', 'Antiguan', 'Argentine', 'Armenian', 'Australian', 'Austrian', 'Azerbaijani', 'Bahamian', 'Bahraini', 'Bangladeshi', 'Barbadian', 'Belarusian', 'Belgian', 'Belizean', 'Beninese', 'Bhutanese', 'Bolivian', 'Bosnian', 'Botswanan', 'Brazilian', 'Bruneian', 'Bulgarian', 'Burkinabé', 'Burmese', 'Burundian', 'Cambodian', 'Cameroonian', 'Canadian', 'Cape Verdean', 'Central African', 'Chadian', 'Chilean', 'Chinese', 'Colombian', 'Comoran', 'Congolese', 'Costa Rican', 'Croatian', 'Cuban', 'Cypriot', 'Czech', 'Danish', 'Djiboutian', 'Dominican', 'Dutch', 'East Timorese', 'Ecuadorean', 'Egyptian', 'Emirati', 'Equatorial Guinean', 'Eritrean', 'Estonian', 'Ethiopian', 'Fijian', 'Finnish', 'French', 'Gabonese', 'Gambian', 'Georgian', 'German', 'Ghanaian', 'Greek', 'Grenadian', 'Guatemalan', 'Guinean', 'Guyanese', 'Haitian', 'Honduran', 'Hungarian', 'Icelandic', 'Indian', 'Indonesian', 'Iranian', 'Iraqi', 'Israeli', 'Italian', 'Ivorian', 'Jamaican', 'Japanese', 'Jordanian', 'Kazakh', 'Kenyan', 'Kittitian', 'Kosovar', 'Kuwaiti', 'Kyrgyz', 'Lao', 'Latvian', 'Lebanese', 'Liberian', 'Libyan', 'Liechtensteiner', 'Lithuanian', 'Luxembourger', 'Macedonian', 'Malagasy', 'Malawian', 'Malaysian', 'Maldivian', 'Malian', 'Maltese', 'Marshallese', 'Mauritanian', 'Mauritian', 'Mexican', 'Micronesian', 'Moldovan', 'Monégasque', 'Mongolian', 'Montenegrin', 'Moroccan', 'Mozambican', 'Namibian', 'Nauruan', 'Nepalese', 'New Zealander', 'Nicaraguan', 'Nigerian', 'Nigerien', 'North Korean', 'Norwegian', 'Omani', 'Pakistani', 'Palauan', 'Palestinian', 'Panamanian', 'Papua New Guinean', 'Paraguayan', 'Peruvian', 'Filipino', 'Polish', 'Portuguese', 'Qatari', 'Romanian', 'Russian', 'Rwandan', 'Saint Lucian', 'Salvadoran', 'Samoan', 'San Marinese', 'Saudi', 'Senegalese', 'Serbian', 'Seychellois', 'Sierra Leonean', 'Singaporean', 'Slovak', 'Slovenian', 'Solomon Islander', 'Somali', 'South African', 'South Korean', 'South Sudanese', 'Spanish', 'Sri Lankan', 'Sudanese', 'Surinamese', 'Swazi', 'Swedish', 'Swiss', 'Syrian', 'Taiwanese', 'Tajik', 'Tanzanian', 'Thai', 'Togolese', 'Tongan', 'Trinidadian', 'Tunisian', 'Turkish', 'Turkmen', 'Tuvaluan', 'Ugandan', 'Ukrainian', 'Uruguayan', 'Uzbek', 'Vanuatuan', 'Venezuelan', 'Vietnamese', 'Yemeni', 'Zambian', 'Zimbabwean'];
-    $datalist = '<datalist id="nats">' . implode('', array_map(fn($n) => '<option value="' . $e($n) . '">', $suggest)) . '</datalist>';
+    $natsJson = json_encode(array_values($suggest), JSON_UNESCAPED_SLASHES);
 
     // One guest fieldset. $i is the row index; $g the existing values (or empty).
     $rowHtml = function ($g, $i) use ($e) {
@@ -107,7 +107,11 @@ function render_guest_form_html($d)
         return '<fieldset class="guest" data-row>' .
             '<div class="gnum">Guest ' . ($i + 1) . '</div>' .
             '<label>Full name<input type="text" name="name[]" value="' . $e($g['name'] ?? '') . '" maxlength="120" autocomplete="off" required></label>' .
-            '<label>Nationality <span class="hint">— tap and start typing to search</span><input class="nat" type="text" name="nationality[]" list="nats" value="' . ($nat === '' ? '' : $nat) . '" maxlength="60" placeholder="Start typing a nationality…" autocomplete="off" oninput="toggleForeign(this)" required></label>' .
+            '<label class="natlabel">Nationality <span class="hint">— tap to choose or type to search</span></label>' .
+            '<div class="natwrap">' .
+            '<input class="nat" type="text" name="nationality[]" value="' . ($nat === '' ? '' : $nat) . '" maxlength="60" placeholder="Start typing a nationality…" autocomplete="off" autocapitalize="words" role="combobox" aria-autocomplete="list" aria-expanded="false" required>' .
+            '<div class="natpop" hidden></div>' .
+            '</div>' .
             '<div class="foreign" style="' . $extraStyle . '">' .
             '<label>Passport / ID number<input type="text" name="doc[]" value="' . $e($g['doc'] ?? '') . '" maxlength="60" autocomplete="off"></label>' .
             '<label>Place of issue (country)<input type="text" name="docplace[]" value="' . $e($g['docPlace'] ?? '') . '" maxlength="80" autocomplete="off"></label>' .
@@ -149,7 +153,15 @@ function render_guest_form_html($d)
         '.hint{font-weight:400;color:#b0a892;font-size:11px;}' .
         'input[type=text]{display:block;width:100%;margin-top:5px;padding:11px 12px;border:1px solid #ddd4c2;border-radius:10px;font-size:16px;font-family:inherit;color:#1b2a34;background:#fff;}' .
         'input[type=text]:focus{outline:none;border-color:' . $accent . ';}' .
+        '.natwrap{position:relative;margin-top:5px;}' .
+        '.natwrap input{margin-top:0;}' .
         'input.nat{padding-right:34px;background-image:url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'16\' height=\'16\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%238a8378\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'><polyline points=\'6 9 12 15 18 9\'/></svg>");background-repeat:no-repeat;background-position:right 12px center;}' .
+        '.natpop{position:absolute;left:0;right:0;top:100%;margin-top:4px;z-index:30;max-height:244px;overflow-y:auto;-webkit-overflow-scrolling:touch;background:#fff;border:1px solid #ddd4c2;border-radius:10px;box-shadow:0 12px 34px rgba(27,42,52,0.16);}' .
+        '.natpop[hidden]{display:none;}' .
+        '.natopt{padding:12px 14px;font-size:16px;color:#1b2a34;cursor:pointer;border-bottom:1px solid #f3ede1;}' .
+        '.natopt:last-child{border-bottom:0;}' .
+        '.natopt.active,.natopt:hover{background:#faf6ec;}' .
+        '.natnone{padding:12px 14px;font-size:14px;color:#8a8378;}' .
         '.foreign{border-top:1px dashed #ece4d3;margin-top:4px;padding-top:6px;}' .
         '.actions{margin:18px 0 4px;}' .
         '.btn{display:inline-block;width:100%;background:' . $accent . ';color:#fff;text-decoration:none;font-weight:700;font-size:16px;padding:14px 26px;border:0;border-radius:999px;cursor:pointer;}' .
@@ -165,12 +177,29 @@ function render_guest_form_html($d)
         '<form method="post" action="' . $action . '">' .
         '<div id="rows">' . $rows . '</div>' .
         '<div class="actions"><button type="submit" class="btn">Save guest details</button></div>' .
-        '</form>' . $datalist .
+        '</form>' .
         '</div>' .
         '<div class="foot">Cottage Holidays Blakeney · Any questions? Just reply to your confirmation email.<br>Held securely and deleted 12 months after your stay.</div>' .
         '</div>' .
         '<script>' .
+        'var NATS=' . $natsJson . ';' .
         'function toggleForeign(inp){var fs=inp.closest("[data-row]");var f=fs.querySelector(".foreign");var v=(inp.value||"").trim().toLowerCase();var home=["british","britain","uk","united kingdom","irish","ireland"].indexOf(v)>-1;f.style.display=(v===""||home)?"none":"block";}' .
+        'function natEsc(s){return String(s).replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;","\\"":"&quot;"}[c];});}' .
+        // A custom searchable dropdown — native <datalist> does not render a
+        // real dropdown on iOS Safari, so we build our own filtering panel.
+        'document.querySelectorAll(".natwrap").forEach(function(w){' .
+        'var inp=w.querySelector(".nat"),pop=w.querySelector(".natpop");' .
+        'function render(){var q=(inp.value||"").trim().toLowerCase();' .
+        'var list=NATS.filter(function(n){return !q||n.toLowerCase().indexOf(q)>-1;});' .
+        'pop.innerHTML=list.length?list.map(function(n){return "<div class=\'natopt\' role=\'option\'>"+natEsc(n)+"</div>";}).join(""):"<div class=\'natnone\'>Keep typing — we\\u2019ll use what you enter.</div>";}' .
+        'function open(){render();pop.hidden=false;inp.setAttribute("aria-expanded","true");}' .
+        'function close(){pop.hidden=true;inp.setAttribute("aria-expanded","false");}' .
+        'inp.addEventListener("focus",open);' .
+        'inp.addEventListener("click",open);' .
+        'inp.addEventListener("input",function(){open();toggleForeign(inp);});' .
+        'pop.addEventListener("click",function(ev){var t=ev.target.closest(".natopt");if(!t)return;inp.value=t.textContent;close();toggleForeign(inp);});' .
+        'document.addEventListener("pointerdown",function(ev){if(pop.hidden)return;if(w.contains(ev.target))return;close();});' .
+        '});' .
         'document.querySelectorAll("#rows input[name=\'nationality[]\']").forEach(toggleForeign);' .
         '</script>' .
         '</body></html>';

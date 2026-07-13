@@ -79,9 +79,10 @@ $html = render_guest_form_html([
 check('renders a full HTML document', strpos($html, '<!doctype html>') === 0);
 check('has the legal 16+ explainer', strpos($html, '16 or over') !== false || strpos($html, '16 or over') !== false);
 check('has name + nationality inputs', strpos($html, "name=\"name[]\"") !== false && strpos($html, "name=\"nationality[]\"") !== false);
-check('nationality is a searchable datalist dropdown', strpos($html, 'list="nats"') !== false && strpos($html, '<datalist id="nats">') !== false && strpos($html, 'class="nat"') !== false);
-check('datalist lists the full nationality set (100+ options, incl. spread)', substr_count($html, '<option value="') > 100 && strpos($html, 'value="French"') !== false && strpos($html, 'value="Japanese"') !== false && strpos($html, 'value="Nigerian"') !== false && strpos($html, 'value="Vietnamese"') !== false);
-check('home nations lead the list (British then Irish)', strpos($html, 'value="British"') !== false && strpos($html, 'value="British"') < strpos($html, 'value="French"'));
+check('nationality is a custom searchable dropdown (combobox + panel)', strpos($html, 'class="nat"') !== false && strpos($html, 'role="combobox"') !== false && strpos($html, 'class="natwrap"') !== false && strpos($html, 'class="natpop"') !== false);
+check('the fragile native <datalist> is gone (iOS shows no dropdown)', strpos($html, '<datalist') === false && strpos($html, 'list="nats"') === false);
+check('dropdown data (NATS) has the full set (100+, incl. spread)', preg_match('/var NATS=(\[.*?\]);/', $html, $mm) === 1 && count(json_decode($mm[1], true)) > 100 && strpos($html, '"French"') !== false && strpos($html, '"Japanese"') !== false && strpos($html, '"Nigerian"') !== false && strpos($html, '"Vietnamese"') !== false);
+check('home nations lead the list (British first, before French)', strpos($html, '"British"') !== false && strpos($html, '"British"') < strpos($html, '"French"'));
 check('has the non-British doc + onward inputs', strpos($html, "name=\"doc[]\"") !== false && strpos($html, "name=\"onward[]\"") !== false);
 check('has a save button and NO add-another-guest control (fixed count)', strpos($html, 'Save guest details') !== false && strpos($html, 'Add another guest') === false && strpos($html, 'id="rowtpl"') === false);
 check('posts back to the token action url (& escaped)', strpos($html, 'guest-details.php?b=42&amp;token=abc') !== false);
