@@ -294,6 +294,8 @@ if (typeof ctx.cmdkIntent === 'function') {
     check('"jump to august" → a calendar-jump answer', Array.isArray(jump) && jump.length === 1 && typeof jump[0].run === 'function');
 }
 check('todayGaps returns an array', Array.isArray(ctx.todayGaps && ctx.todayGaps('2026-08-01', '2026-10-01')));
+// The board filter now targets whichever workspace you're on (Today/Inbox/Payments).
+check('cmdkActiveWorkspace() is defined and defaults to a real workspace', typeof ctx.cmdkActiveWorkspace === 'function' && ['view-backoffice', 'view-inbox', 'view-accounts'].includes(ctx.cmdkActiveWorkspace()));
 
 // ---- Summary ----
 console.log('\n== Summary ==');

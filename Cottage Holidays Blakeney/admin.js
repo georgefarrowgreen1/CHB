@@ -312,7 +312,7 @@ function cmdkActions(q) {
         A('csv', 'Export accounts (CSV)', 'Download the spreadsheet for your accountant', 'export csv accountant spreadsheet download income tax accounts report figures', /(export|download|get|save).{0,14}(csv|accountant|spreadsheet|accounts?|income|figures|tax report)/, () => { cmdkOpenAccounts('income'); cmdkPoll(() => (typeof accountsReport !== 'undefined' && accountsReport) ? true : null, () => { if (typeof exportAccountsCSV === 'function') exportAccountsCSV(); }, 50); }),
         A('syncnow', 'Sync calendars now', 'Pull the latest Airbnb / Vrbo blocks', 'sync now refresh import update pull ical airbnb vrbo booking channel calendar blocks', /(sync|refresh|update|pull|import|re.?sync).{0,12}(now|calendar|ical|airbnb|vrbo|booking|channel|block|feed)/, () => { closeCmdK(); if (typeof toast === 'function') toast('Syncing calendars…'); if (typeof autoSyncIcalBlocks === 'function') autoSyncIcalBlocks(true); }),
         A('fixsafe', 'Fix safe issues', 'Auto-repair harmless state drift', 'fix repair safe issues self repair drift problems clean tidy resolve maintenance', /(fix|repair|resolve|clean up|tidy).{0,12}(safe|issue|problem|drift|error|thing)|self.?repair/, () => { closeCmdK(); if (typeof runSelfRepair === 'function') runSelfRepair(); }),
-        A('filterboard', 'Filter the Today board', 'Dim everything that doesn’t match your search', 'filter today board dim narrow highlight only show find on screen calendar timeline bookings', /filter.{0,10}(today|board|screen|calendar|timeline|booking)|(dim|narrow|only ?show).{0,10}(board|today|match)/, () => { const el = document.getElementById('cmdk-input'); const term = ((el ? el.value : '') || '').toLowerCase().replace(/\b(filter|the|today|board|screen|calendar|timeline|bookings?|for|by|only|show|dim|narrow)\b/g, '').replace(/\s+/g, ' ').trim(); applyTodayFilter(term); }),
+        A('filterboard', `Filter the ${{ 'view-inbox': 'Inbox', 'view-accounts': 'Payments' }[typeof cmdkActiveWorkspace === 'function' ? cmdkActiveWorkspace() : ''] || 'Today'} board`, 'Dim everything on this screen that doesn’t match', 'filter today inbox payments board dim narrow highlight only show find on screen calendar timeline bookings enquiries emails expenses', /filter.{0,10}(today|inbox|payment|board|screen|calendar|timeline|booking|enquir|email|expense)|(dim|narrow|only ?show).{0,10}(board|today|inbox|payment|match)/, () => { const el = document.getElementById('cmdk-input'); const term = ((el ? el.value : '') || '').toLowerCase().replace(/\b(filter|the|today|inbox|payments?|board|screen|calendar|timeline|bookings?|enquir(y|ies)|emails?|expenses?|for|by|only|show|dim|narrow)\b/g, '').replace(/\s+/g, ' ').trim(); applyTodayFilter(term); }),
         A('income', 'Income & tax', 'Totals, VAT position & the accountant CSV', 'income tax vat revenue takings earnings accounts total figures accountant year', /(income|tax|vat|revenue|takings|earnings|accounts?|figures).{0,10}(total|report|year|summary|view|show)?|view.{0,8}(income|accounts|tax)/, () => cmdkOpenAccounts('income')),
         A('recentpay', 'Recent payments', 'The latest money in', 'recent payments latest money in received takings feed transactions', /(recent|latest|last).{0,10}(payment|money|takings|transaction)|money in/, () => cmdkOpenAccounts('recent')),
         A('pricingcoach', 'Pricing coach', 'Rate suggestions & demand signals', 'pricing coach rate suggestion demand advice optimise revenue yield recommend', /(pricing|rate).{0,10}(coach|advice|suggestion|help|recommend|optimi)|coach/, () => cmdkOpenAccounts('pricingcoach')),
@@ -1813,11 +1813,23 @@ function cmdkJumpTimeline(iso) {
 // ---- Filter the whole Today board by a query: dim every booking row + timeline
 // bar that doesn't match, with a clearable banner. Uses the data-search haystack
 // on .bk-row / .tl-bar (name · cottage · pay state).
+// The board filter works on whichever workspace you're on — Today, Inbox or
+// Payments — dimming that view's [data-search] rows. (Function names keep the
+// "today" prefix for continuity, but they target the active workspace now.)
 let __todayFilter = '';
+let __wsFilterView = 'view-backoffice';
+const CMDK_WORKSPACES = ['view-backoffice', 'view-inbox', 'view-accounts'];
+function cmdkActiveWorkspace() {
+    const v = typeof document !== 'undefined' && document.querySelector ? document.querySelector('.page-view.active') : null;
+    const id = v ? v.id : '';
+    return CMDK_WORKSPACES.indexOf(id) > -1 ? id : 'view-backoffice';
+}
 function paintTodayFilter() {
+    const view = document.getElementById(__wsFilterView);
+    if (!view) return;
     const q = __todayFilter;
     let shown = 0;
-    document.querySelectorAll('#view-backoffice [data-search]').forEach((el) => {
+    view.querySelectorAll('[data-search]').forEach((el) => {
         const match = !q || (el.getAttribute('data-search') || '').indexOf(q) > -1;
         el.classList.toggle('cmdk-dim', !!q && !match);
         if (match) shown++;
@@ -1826,27 +1838,28 @@ function paintTodayFilter() {
 }
 function applyTodayFilter(q) {
     __todayFilter = (q || '').trim().toLowerCase();
+    __wsFilterView = cmdkActiveWorkspace();
     closeCmdK();
-    if (typeof nav === 'function') nav('view-backoffice');
-    cmdkPoll(() => document.getElementById('cal-body'), () => paintTodayFilter(), 30);
+    if (typeof nav === 'function' && ((document.querySelector('.page-view.active') || {}).id !== __wsFilterView)) nav(__wsFilterView);
+    cmdkPoll(() => document.getElementById(__wsFilterView), () => paintTodayFilter(), 30);
 }
 function clearTodayFilter() {
     __todayFilter = '';
-    document.querySelectorAll('#view-backoffice .cmdk-dim').forEach((el) => el.classList.remove('cmdk-dim'));
+    document.querySelectorAll('.cmdk-dim').forEach((el) => el.classList.remove('cmdk-dim'));
     const bar = document.getElementById('today-filter-bar');
     if (bar) bar.remove();
 }
 function renderTodayFilterBar(q, shown) {
     let bar = document.getElementById('today-filter-bar');
-    const view = document.getElementById('view-backoffice');
+    const view = document.getElementById(__wsFilterView);
     if (!q || !view) { if (bar) bar.remove(); return; }
     if (!bar) {
         bar = document.createElement('div');
         bar.id = 'today-filter-bar';
         bar.className = 'today-filter-bar glass-panel';
-        view.insertBefore(bar, view.firstChild);
     }
-    bar.innerHTML = `<span>Filtering the board for <strong>${escapeHtml(q)}</strong> · ${shown} match${shown === 1 ? '' : 'es'}</span><button type="button" class="btn-sm btn-edit" onclick="clearTodayFilter()">Clear</button>`;
+    if (bar.parentElement !== view) view.insertBefore(bar, view.firstChild);
+    bar.innerHTML = `<span>Filtering for <strong>${escapeHtml(q)}</strong> · ${shown} match${shown === 1 ? '' : 'es'}</span><button type="button" class="btn-sm btn-edit" onclick="clearTodayFilter()">Clear</button>`;
 }
 // ---- Open availability windows (gaps) between bookings + external blocks, per
 // cottage, across [fromIso, toIso). Returns [{propKey, name, from, to, nights}].
@@ -5048,7 +5061,7 @@ function renderExpenses() {
                     <div style="display:flex;justify-content:space-between;font-size:0.8rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:8px;"><span>${taxYearShort(parseInt(y, 10))}</span><span>${gbp(tot)}</span></div>
                     ${items
                         .map(
-                            (x) => `<div>
+                            (x) => `<div data-search="${escapeHtml((x.category + ' ' + (x.description || '') + ' expense').toLowerCase())}">
                       <div class="feed-row" style="grid-template-columns:84px 1fr auto auto auto;gap:10px;">
                         <span class="feed-date">${fmtDate(x.date)}</span>
                         <span class="feed-who">${escapeHtml(x.category)}${x.description ? ' · ' + escapeHtml(x.description) : ''}${x.prop_key && propertyMeta[x.prop_key] ? ' · ' + escapeHtml(propertyMeta[x.prop_key].short || propertyMeta[x.prop_key].name) : ''}${x.recurring ? ' <span class="exp-tag">recurring</span>' : ''}</span>
@@ -10463,7 +10476,7 @@ function renderInbox() {
                     ? `<span class="bk-chip ${av.free ? 'ok' : 'danger'}"><span class="bk-dot"></span>${escapeHtml(av.text)}${stale ? ` · ${days}d waiting` : ''}</span>`
                     : `<span class="bk-chip warn"><span class="bk-dot"></span>${stale ? `${days}d waiting` : 'New enquiry'}</span>`;
                 return `
-                <button type="button" class="bk-row glass-panel${stale ? ' pay-warn' : ''}${e.id === __enqHubId ? ' is-open' : ''}" data-enqid="${e.id}" onclick="openEnquiryHub('${e.id}')">
+                <button type="button" class="bk-row glass-panel${stale ? ' pay-warn' : ''}${e.id === __enqHubId ? ' is-open' : ''}" data-enqid="${e.id}" data-search="${escapeHtml(((e.name || 'guest') + ' ' + propName + ' enquiry ' + (e.email || '')).toLowerCase())}" onclick="openEnquiryHub('${e.id}')">
                     <span class="bk-row-body">
                         <span class="bk-row-top">
                             <span class="prop-tag tag-${e.propKey}">${escapeHtml(propName)}</span>
@@ -11509,7 +11522,7 @@ function renderMailboxList(keepSearchFocus) {
                 // Each row carries its own expansion slot: the email opens
                 // INSIDE the tapped card (accordion), not at the page bottom.
                 return `
-        <div class="mbx-item" data-uid="${mbxEsc(m.uid)}">
+        <div class="mbx-item" data-uid="${mbxEsc(m.uid)}" data-search="${mbxEsc(((m.fromRaw || m.from || '') + ' ' + (m.subject || '')).toLowerCase())}">
         <button type="button" class="bk-row glass-panel${unread ? ' mbx-unread' : ''}${__mbxSelUid != null && String(__mbxSelUid) === String(m.uid) ? ' is-open' : ''}" onclick="mailboxOpen('${mbxEsc(m.uid)}')" aria-expanded="false">
             <span class="bk-row-body">
                 <span class="bk-row-top">
