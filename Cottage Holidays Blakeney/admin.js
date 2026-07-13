@@ -551,6 +551,8 @@ function cmdkActIcon(name) {
 // Trailing chevron + leading magnifier for the quick-actions / related-search rows.
 const CMDK_CHEV = '<svg class="ic cmdk-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
 const CMDK_SEARCH_IC = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.2-4.2"/></svg>';
+// Filter/refine glyph (SF-style "line.3.horizontal.decrease") for the pivot rows.
+const CMDK_FILTER_IC = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"/></svg>';
 function cmdkBookingActions(b, pk) {
     if (!b || b.id == null) return [];
     const acts = [{ key: 'email', label: 'Email', icon: cmdkActIcon('mail'), run: () => { closeCmdK(); openBookingEmail(b.id); } }];
@@ -1659,6 +1661,7 @@ function cmdkBuildResults(ql) {
 // force the literal spelling.
 function cmdkSearchCore(q, allowCorrect) {
     const raw = (q || '').trim().toLowerCase();
+    __cmdkWiden = false; // re-evaluate widen from scratch for this query
     // Show the clear (✕) button in place of the magnifier once there's text.
     const searchWrap = document.querySelector('#cmdk .cmdk-search');
     if (searchWrap) searchWrap.classList.toggle('has-text', (q || '').length > 0);
@@ -1713,8 +1716,9 @@ function cmdkSearchCore(q, allowCorrect) {
         }
     }
     __cmdkWords = ql.split(/\s+/).filter(Boolean); // terms to highlight in the rows
-    __cmdkResults = cmdkArrange(note.concat(built.results).concat(built.fuzzy).slice(0, 18));
-    __cmdkSel = note.length && __cmdkResults.length > 1 ? 1 : 0; // the Top Hit, not the correction note
+    __cmdkResults = cmdkArrangeWide(note.concat(built.results).concat(built.fuzzy).slice(0, 18), 18);
+    const firstReal = __cmdkResults.findIndex((it) => it && !cmdkIsNoteRow(it));
+    __cmdkSel = firstReal >= 0 ? firstReal : 0; // the Top Hit, not the correction/widen note
     cmdkRender();
     // Deep index search runs server-side (emails, messages, invoices, guests,
     // reviews, activity — everything not held in the browser) and merges in when
@@ -1755,9 +1759,16 @@ function cmdkServerSearch(ql) {
             // Re-arrange so the server hits slot into their sections, keeping the
             // currently-selected row selected across the merge.
             const selItem = __cmdkResults[__cmdkSel];
-            __cmdkResults = cmdkArrange(__cmdkResults.concat(mapped).slice(0, 34));
+            __cmdkResults = cmdkArrangeWide(__cmdkResults.concat(mapped).slice(0, 34), 34);
             const ni = __cmdkResults.indexOf(selItem);
-            if (ni >= 0) __cmdkSel = ni;
+            if (ni >= 0) {
+                __cmdkSel = ni;
+            } else {
+                // selection lost across the merge (e.g. we just widened) → re-point
+                // at the first real row, not a note banner.
+                const fr = __cmdkResults.findIndex((it) => it && !cmdkIsNoteRow(it));
+                __cmdkSel = fr >= 0 ? fr : 0;
+            }
             cmdkRender();
         })
         .catch(() => { if (stamp === __cmdkServerStamp) cmdkSetLoading(false); });
@@ -2344,6 +2355,11 @@ function cmdkSection(type) {
 // ENTITY rows — actions, screens, answers and help are always shown, so you can
 // never lose your way back to a destination.
 let __cmdkScope = 'all';
+// Auto-widen latch: set for one query when a scoped search found nothing but
+// "All" would — makes cmdkInScope pass everything so the widened rows survive the
+// async server-search merge (which re-runs cmdkArrange while __cmdkScope is still
+// the narrow scope). Reset at the top of every cmdkSearchCore call.
+let __cmdkWiden = false;
 const CMDK_SCOPES = [['all', 'All'], ['bookings', 'Bookings'], ['inbox', 'Inbox'], ['money', 'Money'], ['guests', 'Guests']];
 const CMDK_SCOPE_OF = { booking: 'bookings', enquiry: 'bookings', external: 'bookings', message: 'inbox', email: 'inbox', payment: 'money', expense: 'money', figure: 'money', guest: 'guests', review: 'guests', subscriber: 'guests', waitlist: 'guests' };
 // Pure (state-free) scope test: does a result TYPE belong in a given scope?
@@ -2355,6 +2371,7 @@ function cmdkScopeMatch(scope, type) {
     return !dom || dom === scope;
 }
 function cmdkInScope(it) {
+    if (__cmdkWiden) return true; // one-query widen: don't re-filter widened rows on the server merge
     return !it || cmdkScopeMatch(__cmdkScope, it.type);
 }
 function cmdkScopeBar() {
@@ -2397,20 +2414,46 @@ function cmdkArrange(list) {
         }
         // Any two rows with the same type + label + subtitle are the same thing
         // arriving from two sources (local + server) — keep the first only. The
-        // correction note is exempt (its id keeps it unique anyway).
-        if (it.id === 'cmdk-correction') return true;
+        // note banners are exempt (their ids keep them unique anyway).
+        if (cmdkIsNoteRow(it)) return true;
         const ex = it.type + '|' + (it.label || '') + '|' + (it.sub || '');
         if (seenExact.has(ex)) return false;
         seenExact.add(ex);
         return true;
     });
     const lead = [];
-    if (out[0] && out[0].id === 'cmdk-correction') lead.push(out.shift());
+    // Leading note banners (correction / auto-widen) pin above the Top Hit.
+    while (out[0] && cmdkIsNoteRow(out[0])) lead.push(out.shift());
     if (out.length) lead.push(out.shift()); // Top Hit
     out.sort((a, b) => cmdkSection(a.type).order - cmdkSection(b.type).order);
     let na = 0;
     out = out.filter((it) => it.type !== 'activity' || ++na <= 5);
     return lead.concat(out);
+}
+// A note banner row (correction / auto-widen) — never counts as a real result.
+function cmdkIsNoteRow(it) {
+    return it && (it.id === 'cmdk-correction' || it.id === 'cmdk-widen');
+}
+// cmdkArrange + auto-widen. A scoped search that finds nothing in its scope
+// shouldn't dead-end on a "No matches in Bookings" wall: if widening to "All"
+// surfaces matches, return the All arrangement led by a widen note and latch
+// __cmdkWiden so the async server-search merge keeps the wide rows (cmdkInScope
+// passes everything while the latch is set). Used by BOTH the local build and the
+// server merge so a hit from either source (e.g. a guest found server-side while
+// scoped to Bookings) widens rather than vanishing.
+function cmdkArrangeWide(rows, cap) {
+    let out = cmdkArrange(rows);
+    if (__cmdkScope !== 'all' && !out.some((it) => it && !cmdkIsNoteRow(it))) {
+        __cmdkWiden = true;
+        const wide = cmdkArrange(rows);
+        if (wide.some((it) => it && !cmdkIsNoteRow(it))) {
+            const label = (CMDK_SCOPES.find(([k]) => k === __cmdkScope) || [null, __cmdkScope])[1];
+            out = [{ type: 'answer', id: 'cmdk-widen', label: `No matches in ${label} — showing all`, sub: 'Tap to search everywhere', run: () => cmdkSetScope('all') }].concat(wide);
+        } else {
+            __cmdkWiden = false; // genuinely nothing anywhere — keep the scope + real empty state
+        }
+    }
+    return cap ? out.slice(0, cap) : out;
 }
 // Conversational refine-chip thread: running a refine chip remembers where you
 // were so a "‹ Back" chip can return, letting you narrow an answer and step back
@@ -2475,7 +2518,10 @@ function cmdkRowHtml(it, i, top) {
                 .join('');
             refine = rel ? `<div class="cmdk-qa cmdk-related-list">${rel}</div>` : '';
         } else {
-            refine = `<div class="cmdk-refine">${it.chips.map((c, k) => `<button type="button" class="cmdk-ex cmdk-refine-chip" onclick="cmdkChipRun(${i},${k})">${escapeHtml(c.label)}</button>`).join('')}</div>`;
+            // Refine pivots render as the same iOS-style menu list as the quick
+            // actions — one tappable row each (filter glyph · label · chevron) —
+            // so every button group in search shares one context-menu language.
+            refine = `<div class="cmdk-qa cmdk-refine-menu">${it.chips.map((c, k) => `<button type="button" class="cmdk-qa-row cmdk-refine-row" data-idx="${i}" data-chip="${k}" onclick="cmdkChipRun(${i},${k})"><span class="cmdk-qa-ic">${CMDK_FILTER_IC}</span><span class="cmdk-qa-lbl">${escapeHtml(c.label)}</span><span class="cmdk-qa-go" aria-hidden="true">${CMDK_CHEV}</span></button>`).join('')}</div>`;
         }
     }
     return row + steps + acts + refine;
@@ -2529,13 +2575,17 @@ function cmdkRenderInner() {
     // Structure longer lists: a Top Hit, then grouped section headers. Short lists
     // stay flat (headers on 1–2 rows are just noise).
     const grouped = __cmdkResults.length >= 3;
-    const firstReal = __cmdkResults[0] && __cmdkResults[0].id === 'cmdk-correction' ? 1 : 0;
+    // Leading note banners (correction / auto-widen) sit above the Top Hit and get
+    // no section label of their own.
+    let firstReal = 0;
+    while (__cmdkResults[firstReal] && cmdkIsNoteRow(__cmdkResults[firstReal])) firstReal++;
     let lastKey = null;
-    // A refine-thread "‹ Back" affordance, shown at the top whenever there's a
-    // previous query to step back to (independent of the current head's chips).
-    const parts = __cmdkHist.length ? ['<div class="cmdk-refine cmdk-refine-top"><button type="button" class="cmdk-ex cmdk-refine-chip cmdk-back" onclick="cmdkChipBack()">‹ Back</button></div>'] : [];
+    // The scope switch sits above every state (see comment above); a refine-thread
+    // "‹ Back" affordance follows it whenever there's a previous query to step back to.
+    const parts = [sb];
+    if (__cmdkHist.length) parts.push('<div class="cmdk-refine cmdk-refine-top"><button type="button" class="cmdk-ex cmdk-refine-chip cmdk-back" onclick="cmdkChipBack()">‹ Back</button></div>');
     __cmdkResults.forEach((it, i) => {
-        if (grouped) {
+        if (grouped && !cmdkIsNoteRow(it)) {
             if (i === firstReal) parts.push('<div class="cmdk-group-label">Top hit</div>');
             else if (i > firstReal) {
                 const sec = cmdkSection(it.type);
