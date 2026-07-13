@@ -9732,8 +9732,61 @@ async function saveGoogleReviewUrl() {
         msg.textContent = val ? 'Saved ✓' : 'Cleared.';
     }
 }
+// ---- Per-cottage review links for EXTERNAL (Airbnb/Vrbo) guests ----
+// Each live, listed cottage gets a /review/<slug> page (review.php) the owner
+// shares after a stay: the guest leaves a star review + their email/phone, which
+// feeds the "book direct next year" follow-up. Rendered from the live list.
+function renderReviewLinks() {
+    const wrap = document.getElementById('review-links');
+    if (!wrap) return;
+    const origin = typeof SITE_ORIGIN === 'string' ? SITE_ORIGIN : location.origin;
+    const keys = typeof liveCottageKeys === 'function' ? liveCottageKeys() : [];
+    if (!keys.length) {
+        wrap.innerHTML = '';
+        return;
+    }
+    const rows = keys
+        .map((k) => {
+            const slug = (typeof COTTAGE_SLUGS === 'object' && COTTAGE_SLUGS[k]) || k;
+            const name = (propertyMeta[k] || {}).name || k;
+            const url = origin + '/review/' + slug;
+            return `<div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+                        <input class="input-glass" readonly id="revlink-${escapeHtml(k)}" onclick="this.select()" value="${escapeHtml(url)}" title="${escapeHtml(name)} review link" aria-label="${escapeHtml(name)} review link" style="font-size:0.8rem;flex:1;min-width:0;">
+                        <button class="btn-sm btn-edit" style="flex-shrink:0;" onclick="copyReviewLink('${escapeHtml(k)}')">Copy</button>
+                    </div>`;
+        })
+        .join('');
+    wrap.innerHTML = `<div style="border:1px solid var(--glass-border);border-radius:14px;padding:16px;margin:0 0 20px;background:var(--glass-bg);">
+                <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px;">Review links to share with guests</div>
+                <p style="font-size:0.8rem;color:var(--text-muted);margin:0 0 12px;line-height:1.5;">Send these to your Airbnb / Vrbo guests after they check out. They leave a review and their contact details — approved reviews appear on the site, and next year we'll invite them back to book direct.</p>
+                ${rows}
+            </div>`;
+}
+// Copy a cottage's review link (mirrors copyIcalExport).
+async function copyReviewLink(key) {
+    const el = document.getElementById('revlink-' + key);
+    const url = el ? el.value : '';
+    if (!url) return;
+    let copied = false;
+    try {
+        await navigator.clipboard.writeText(url);
+        copied = true;
+    } catch (e) {
+        /* clipboard blocked */
+    }
+    if (copied) toast('Review link copied — send it to your guest.');
+    else {
+        if (el) {
+            el.focus();
+            el.select();
+        }
+        await glassAlert('Copy this review link:\n\n' + url);
+    }
+}
+
 async function loadGuestReviewModeration() {
     initGoogleReviewUrl();
+    renderReviewLinks();
     // Set up the "import reviews from Airbnb & other sites" tools (always —
     // independent of whether there are on-site reviews to moderate).
     fillReviewImportControls();

@@ -1404,6 +1404,11 @@
             <div class="settings-sec" id="sec-reviews" style="display:none;">
                 <div class="accounts-stat" style="max-width:640px;">
                     <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 12px;">Guests can write a review from their account once a stay is complete. Nothing appears on the site until you approve it here.</p>
+
+                    <!-- Per-cottage review links to share with EXTERNAL (Airbnb/Vrbo) guests.
+                         Rendered from the live cottage list by renderReviewLinks(). -->
+                    <div id="review-links"></div>
+
                     <div id="guest-review-moderation"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
 
                     <!-- Import + Google-link are occasional setup tasks, tucked under a
@@ -2416,7 +2421,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=378"></script>
+    <script defer src="app.js?v=379"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
