@@ -7235,6 +7235,7 @@ function todayOpsLine() {
     const date = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
     const today = todayDashed();
     let arrivals = 0,
+        staying = 0,
         departures = 0,
         changeovers = 0,
         owed = 0;
@@ -7243,8 +7244,11 @@ function todayOpsLine() {
             outToday = false;
         (dbBookings[k] || []).forEach((b) => {
             if (b.checkIn === today) {
-                arrivals++;
                 inToday = true;
+                // Before their check-in time they're an "arrival"; once it's passed
+                // they've arrived and are "staying" — matches the booking-row badge.
+                if (typeof hasCheckedIn === 'function' && hasCheckedIn(b)) staying++;
+                else arrivals++;
             }
             if (b.checkOut === today) {
                 departures++;
@@ -7259,6 +7263,7 @@ function todayOpsLine() {
     });
     const parts = [];
     if (arrivals) parts.push(arrivals === 1 ? '1 arrival' : arrivals + ' arrivals');
+    if (staying) parts.push(staying === 1 ? '1 staying' : staying + ' staying');
     if (departures) parts.push(departures === 1 ? '1 departure' : departures + ' departures');
     if (changeovers) parts.push(changeovers === 1 ? '1 changeover' : changeovers + ' changeovers');
     if (owed > 0.005) parts.push('£' + Math.round(owed).toLocaleString('en-GB') + ' to collect');
