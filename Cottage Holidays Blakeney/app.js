@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 143;
+const ADMIN_BUNDLE_V = 144;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -2729,6 +2729,7 @@ async function renderGuestBookings() {
                                         : '',
                             })}
                             </div>
+                            ${upcoming ? guestFlowHtml(propKey, b, payToken) : ''}
                             <div class="card-actions">
                                 ${upcoming && !gt.fullyPaid && payToken ? `<button class="btn-glass btn-sm" style="background:rgba(76,175,80,0.22);border-color:var(--booked-border);" onclick="openPayView('${payToken}', ${b.dbId}, 'balance')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay balance ${gbp(gt.balance)}</button>` : ''}
                                 <button class="btn-sm btn-edit" onclick="downloadInvoice('${b.id}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v10M8 11l4 4 4-4M5 19h14"/></svg> Invoice</button>
@@ -5982,6 +5983,34 @@ function bookingFlowCursor(stages) {
     const stayNow = stages.findIndex((s) => s.now && !s.done);
     if (stayNow > -1) cur = stayNow;
     return cur; // -1 when every stage is done
+}
+// Guest-facing render of the unified flow for a My Stays card: the progress dots
+// (guest wording) plus ONE clear next step the guest can act on. The details step
+// is actionable straight from here (the token form is login-free); payment keeps
+// its own prominent Pay button on the card, so the flow just points to it.
+function guestFlowHtml(propKey, b, payToken) {
+    const flow = bookingFlow(propKey, b);
+    const stages = flow.stages;
+    const cur = bookingFlowCursor(stages);
+    const steps = stages
+        .map((s, i) => {
+            // In-progress stay reads GREEN (a live "you're here now" state).
+            const cls = s.done ? 'is-done' : s.now || i === cur ? 'is-now' + (s.key === 'stay' && s.now ? ' is-staying' : '') : '';
+            return `<span class="bkflow-step ${cls}"><span class="bkflow-dot"></span>${escapeHtml(s.glabel)}</span>`;
+        })
+        .join('');
+    const gt = flow.gt;
+    let next;
+    if (flow.hasReg && !b.regSubmitted && b.regUrl) {
+        next = `<div class="bkflow-next"><span>Add your guest details before you arrive — UK law asks for the name &amp; nationality of everyone 16 or over.</span><a class="btn-glass btn-sm bkflow-cta" href="${escapeHtml(b.regUrl)}" target="_blank" rel="noopener">Add your details</a></div>`;
+    } else if (!gt.fullyPaid) {
+        next = `<div class="bkflow-next"><span>${gbp(gt.balance)} balance still to pay${payToken ? ' — use “Pay balance” below.' : '.'}</span></div>`;
+    } else if (!b.preArrivalSent) {
+        next = `<div class="bkflow-next is-clear"><span>You’re paid up. We’ll send your arrival info (directions &amp; key) nearer the time.</span></div>`;
+    } else {
+        next = `<div class="bkflow-next is-clear"><span>You’re all set — we can’t wait to welcome you.</span></div>`;
+    }
+    return `<div class="bkflow"><div class="bkflow-lbl">Your booking progress</div><div class="bkflow-steps">${steps}</div>${next}</div>`;
 }
 
 
@@ -12094,7 +12123,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'bkflow1';
+    const BUILD = 'bkflow2';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

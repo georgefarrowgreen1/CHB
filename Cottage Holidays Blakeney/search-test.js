@@ -373,6 +373,14 @@ if (typeof ctx.bookingFlow === 'function') {
     check('reg booking inserts Guest details after Deposit + adds Deposit-back', JSON.stringify(rkeys) === JSON.stringify(['booked', 'deposit', 'details', 'paid', 'arrival', 'stay', 'depositback']));
     check('paid booking marks Deposit + Guest details + Paid done', withReg.stages[1].done && withReg.stages[2].done && withReg.stages[3].done);
     check('stages carry guest wording (glabel)', withReg.stages.find((s) => s.key === 'details').glabel === 'Your details');
+    // Guest My Stays renderer: progress pills + an actionable next step.
+    if (typeof ctx.guestFlowHtml === 'function') {
+        const html = ctx.guestFlowHtml('x', { agreedPrice: { total: 400, damagesDeposit: 0 }, depositPaid: 0, regUrl: 'https://x/guest-details.php?b=1&token=t', regSubmitted: false, checkIn: '2026-08-01', checkOut: '2026-08-05' }, 'paytok');
+        check('guestFlowHtml renders progress pills + the details CTA', /bkflow-step/.test(html) && /Add your details/.test(html) && /guest-details\.php/.test(html));
+        // A guest who's currently in-house → the Stay step reads GREEN (is-staying).
+        const staying = ctx.guestFlowHtml('x', { agreedPrice: { total: 400, damagesDeposit: 0 }, depositPaid: 400, checkIn: '2000-01-01', checkOut: '2999-01-01' }, 't');
+        check('the Stay step is green (is-staying) while the guest is in-house', /is-now is-staying/.test(staying));
+    }
 }
 
 // ---- Summary ----

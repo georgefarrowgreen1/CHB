@@ -3445,20 +3445,23 @@ function hubPipelineHtml(propKey, b, gt, dh) {
     const pill = (s, cls) => `<span class="pipe-step ${cls}"><span class="pipe-dot"></span>${escapeHtml(s.label)}</span>`;
     const col = (cap, inner) => `<div class="pipe3-col"><span class="pipe3-cap">${cap}</span>${inner}</div>`;
     const arrow = '<span class="pipe3-arrow" aria-hidden="true">›</span>';
+    // The current stage is amber "now" — except an in-progress stay, which reads
+    // GREEN (a live "here now" state) to match the bookings list.
+    const nowCls = (s) => 'is-now' + (s && s.key === 'stay' && s.now ? ' is-staying' : '');
     const curIdx = bookingFlowCursor(stages);
     let strip;
     if (curIdx === -1) {
         // Journey complete — the last stage says so.
         strip = col('All done', pill(stages[stages.length - 1], 'is-done'));
     } else {
-        const parts = [col('Done', pill(stages[curIdx - 1], 'is-done')), arrow, col(`Now · ${curIdx + 1} of ${stages.length}`, pill(stages[curIdx], 'is-now'))];
+        const parts = [col('Done', pill(stages[curIdx - 1], 'is-done')), arrow, col(`Now · ${curIdx + 1} of ${stages.length}`, pill(stages[curIdx], nowCls(stages[curIdx])))];
         if (stages[curIdx + 1]) parts.push(arrow, col('Next', pill(stages[curIdx + 1], '')));
         strip = parts.join('');
     }
     // Desktop shows the WHOLE journey (every stage with its own state); the
     // three-pill window above is the phone/tablet view — CSS swaps them at 900px.
     const fullStrip = stages
-        .map((s, i) => pill(s, s.now || i === curIdx ? 'is-now' : s.done ? 'is-done' : ''))
+        .map((s, i) => pill(s, s.now || i === curIdx ? nowCls(s) : s.done ? 'is-done' : ''))
         .join(arrow);
 
     // ONE next action, derived from state — the answer to "what does this
