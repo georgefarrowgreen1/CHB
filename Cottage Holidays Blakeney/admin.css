@@ -732,11 +732,22 @@
 }.bhub-paypipe {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
+  flex-wrap: nowrap;
+  gap: 5px;
   margin: 2px 0 14px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}.bhub-paypipe::-webkit-scrollbar {
+  display: none;
+}.bhub-paypipe .pipe-step {
+  flex-shrink: 0;
+  white-space: nowrap;
+  padding: 3px 9px;
+  font-size: 0.7rem;
 }.bhub-paypipe .pipe3-arrow {
   padding-bottom: 0;
+  flex-shrink: 0;
 }.bhub-pipe-full {
   display: none;
   align-items: center;
