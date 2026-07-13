@@ -2814,7 +2814,6 @@ async function renderGuestBookings() {
                </div>`
             : '';
     list.innerHTML =
-        guestPushPromptHtml(hasUpcoming) +
         loyaltyBannerHtml(completedStays) +
         (hubCards.length ? gHdr('Your stay') + hubCards.join('') : '') +
         pendingHtml +
@@ -3480,70 +3479,6 @@ function startGuestVersionWatch() {
     };
     __gVerTimer = setInterval(check, 60000); // every 60s, gated on idle above
 }
-async function enableArrivalPush() {
-    try {
-        if (!currentGuest) return;
-        if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
-        if (!('Notification' in window) || Notification.permission !== 'granted') return;
-        const key = await getVapidKey();
-        if (!key) return; // server has no VAPID keys yet — feature off
-        const reg = await registerServiceWorker();
-        if (!reg) return;
-        let sub = await reg.pushManager.getSubscription();
-        if (!sub) {
-            sub = await reg.pushManager.subscribe({
-                userVisibleOnly: true,
-                applicationServerKey: urlB64ToUint8(key),
-            });
-        }
-        await apiPost('push.php', { action: 'subscribe', subscription: sub.toJSON() });
-    } catch (e) {
-        /* push is best-effort; never break the page */
-    }
-}
-// Contextual opt-in shown to a logged-in guest with an upcoming stay. The
-// soft in-app card (guestPushPromptHtml) calls this; we ask for permission
-// and subscribe this device. On iOS, push only works once the site is added
-// to the Home Screen, so we guide the guest there instead of failing silently.
-async function enableGuestPush() {
-    try {
-        if (!currentGuest) return;
-        const supported =
-            'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
-        const standalone =
-            (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
-            window.navigator.standalone === true;
-        if (!supported) {
-            if (isAppleDevice() && !standalone)
-                glassAlert(
-                    'To get notifications on iPhone or iPad, first add this site to your Home Screen (tap Share → Add to Home Screen), then open it from there and try again.',
-                );
-            else glassAlert('This device or browser doesn’t support notifications.');
-            return;
-        }
-        const perm = await Notification.requestPermission();
-        if (perm !== 'granted') {
-            glassAlert(
-                'Notifications are blocked. You can allow them for this site in your browser settings, then try again.',
-            );
-            dismissGuestPushPrompt();
-            return;
-        }
-        await enableArrivalPush(); // subscribes this device under the guest
-        dismissGuestPushPrompt();
-        toast('Notifications on — we’ll keep you posted about your stay.');
-    } catch (e) {
-        glassAlert("Couldn't enable notifications: " + (e.message || e));
-    }
-}
-// Hide (and remember) the opt-in card so we don't nag on every render.
-function dismissGuestPushPrompt() {
-    try {
-        localStorage.setItem('chb-guest-push-prompt', '1');
-    } catch (e) {}
-    const el = document.getElementById('guest-push-prompt');
-    if (el) el.remove();
-}
 // Returning-guest welcome offer — shown once a guest has at least one
 // completed stay. Informational: the owner applies the rate on enquiry
 // (mirrors how pricing/overrides already work), so nothing is auto-discounted.
@@ -3554,27 +3489,6 @@ function loyaltyBannerHtml(n) {
                 <div>
                     <div style="font-weight:600;margin-bottom:2px;">Welcome back!</div>
                     <div style="font-size:0.85rem;color:var(--text-muted);">Thank you for ${n === 1 ? 'staying' : 'returning to stay'} with us. As a returning guest you're entitled to our <strong style="color:var(--text-light);">returning-guest rate</strong> — just mention it when you enquire and we'll apply it to your next booking.</div>
-                </div>
-            </div>`;
-}
-// Markup for the opt-in card — only when there's an upcoming stay, the guest
-// hasn't dismissed it, and they haven't already granted/denied permission.
-function guestPushPromptHtml(hasUpcoming) {
-    if (!hasUpcoming) return '';
-    try {
-        if (localStorage.getItem('chb-guest-push-prompt') === '1') return '';
-    } catch (e) {}
-    const hasNoti = 'Notification' in window;
-    if (hasNoti && Notification.permission !== 'default') return ''; // already decided
-    if (!hasNoti && !isAppleDevice()) return ''; // genuinely unsupported
-    return `<div id="guest-push-prompt" class="glass-panel" style="padding:16px 18px;margin-bottom:16px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;">
-                <div style="flex:1;min-width:200px;">
-                    <div style="font-weight:600;margin-bottom:2px;">Get stay notifications</div>
-                    <div style="font-size:0.85rem;color:var(--text-muted);">Arrival info &amp; your key code, balance reminders and booking updates — straight to this device.</div>
-                </div>
-                <div style="display:flex;gap:8px;">
-                    <button class="btn-glass btn-sm" onclick="enableGuestPush()">Turn on</button>
-                    <button class="btn-sm btn-edit" onclick="dismissGuestPushPrompt()">Not now</button>
                 </div>
             </div>`;
 }
@@ -4655,12 +4569,6 @@ window.addEventListener('DOMContentLoaded', async () => {
                 else setTimeout(warmAdmin, 2500);
             }
         } catch (e) {}
-        try {
-            if (currentGuest && 'Notification' in window && Notification.permission === 'granted')
-                enableArrivalPush();
-        } catch (e) {
-            console.error(e);
-        }
     } catch (e) {
         // Last-resort: never leave the visitor stuck on the loading crown.
         console.error('Bootstrap error:', e);
@@ -12220,7 +12128,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'ddrbox1';
+    const BUILD = 'nonotif1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
