@@ -539,6 +539,11 @@ if ($action === 'add') {
     if ($name === '' || !$checkIn || !$checkOut) {
         json_out(['error' => 'Name and dates required'], 400);
     }
+    // Validate the ISO date shape (like enquiries.php) — a malformed date would
+    // poison the lexical clash comparison and store garbage.
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $checkIn) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $checkOut)) {
+        json_out(['error' => 'Dates must be in YYYY-MM-DD format.'], 400);
+    }
     if ($checkOut <= $checkIn) {
         json_out(['error' => 'Check-out must be after check-in'], 400);
     }
@@ -698,6 +703,9 @@ if ($action === 'update') {
 
     $checkIn = clean($in['check_in'] ?? $b['check_in']);
     $checkOut = clean($in['check_out'] ?? $b['check_out']);
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $checkIn) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $checkOut)) {
+        json_out(['error' => 'Dates must be in YYYY-MM-DD format.'], 400);
+    }
     if ($checkOut <= $checkIn) {
         json_out(['error' => 'Check-out must be after check-in'], 400);
     }
@@ -1252,7 +1260,7 @@ function rental_refund_blocked($b)
     if ($b['check_in'] <= $today) {
         return true;
     }
-    $pol = function_exists('content_value') ? content_value(($b['prop_key'] ?? '') . '-cancellation-policy') : '';
+    $pol = (string) (function_exists('content_value') ? content_value(($b['prop_key'] ?? '') . '-cancellation-policy') : '');
     $within = ['flexible' => 0, 'moderate' => 0, 'limited' => 7][$pol] ?? 0;
     if ($within <= 0) {
         return false;
