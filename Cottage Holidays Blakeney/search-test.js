@@ -383,6 +383,23 @@ if (typeof ctx.bookingFlow === 'function') {
     }
 }
 
+// ---- 16. Booking-hub payments-flow strip (money journey on the Payments card) ----
+check('hubPayFlowHtml is defined', typeof ctx.hubPayFlowHtml === 'function');
+if (typeof ctx.hubPayFlowHtml === 'function') {
+    // No damage deposit → just Deposit paid → Paid in full, first is current.
+    const noDamage = ctx.hubPayFlowHtml({ holdStatus: 'none' }, { dep: 0, paid: 0, fullyPaid: false }, { collected: 0, held: 0 });
+    check('two-step money flow when no damage deposit', (noDamage.match(/pipe-step/g) || []).length === 2 && !/Deposit refunded/.test(noDamage));
+    check('unpaid → Deposit paid is the current (amber) step', /pipe-step is-now"><span class="pipe-dot"><\/span>Deposit paid/.test(noDamage));
+    // A damage deposit still held → the third step appears and is pending.
+    const held = ctx.hubPayFlowHtml({ holdStatus: 'charged' }, { dep: 100, paid: 500, fullyPaid: true }, { collected: 100, held: 100 });
+    check('damage deposit adds a pending "Deposit refunded" step', /Deposit refunded/.test(held) && (held.match(/is-done/g) || []).length === 2);
+    // Returned → the deposit-back step is done; retained → it reads "Deposit kept".
+    const returned = ctx.hubPayFlowHtml({ holdStatus: 'returned' }, { dep: 100, paid: 500, fullyPaid: true }, { collected: 0, held: 0 });
+    check('returned deposit marks the refund step done', /is-done"><span class="pipe-dot"><\/span>Deposit refunded/.test(returned));
+    const kept = ctx.hubPayFlowHtml({ holdStatus: 'kept' }, { dep: 100, paid: 500, fullyPaid: true }, { collected: 0, held: 0 });
+    check('retained deposit reads "Deposit kept"', /Deposit kept/.test(kept) && !/Deposit refunded/.test(kept));
+}
+
 // ---- Summary ----
 console.log('\n== Summary ==');
 if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }
