@@ -142,4 +142,60 @@ $src(function () use (&$results, $like, $PER, $snip) {
     }
 });
 
+// 9) Expenses — category / description; jump to Payments → Expenses.
+$src(function () use (&$results, $like, $PER, $snip) {
+    $st = db()->prepare('SELECT id, category, description, amount, expense_date FROM expenses WHERE category LIKE ? OR description LIKE ? ORDER BY expense_date DESC, id DESC LIMIT ' . $PER);
+    $st->execute([$like, $like]);
+    foreach ($st->fetchAll() as $e) {
+        $results[] = [
+            'type' => 'expense',
+            'id' => (int) $e['id'],
+            'title' => '£' . number_format((float) $e['amount'], 2) . ' · ' . ($e['category'] ?: 'Expense') . ($e['description'] ? ' — ' . $snip($e['description'], 40) : ''),
+            'sub' => 'Expense · ' . ($e['expense_date'] ? uk_date($e['expense_date']) : ''),
+        ];
+    }
+});
+
+// 10) Waitlist — sold-out demand; name, email, note.
+$src(function () use (&$results, $like, $PER) {
+    $st = db()->prepare('SELECT id, prop_key, name, email, check_in FROM waitlist WHERE name LIKE ? OR email LIKE ? OR note LIKE ? ORDER BY id DESC LIMIT ' . $PER);
+    $st->execute([$like, $like, $like]);
+    foreach ($st->fetchAll() as $w) {
+        $results[] = [
+            'type' => 'waitlist',
+            'id' => (int) $w['id'],
+            'title' => ($w['name'] ?: $w['email']) ?: 'Waitlist entry',
+            'sub' => 'Waitlist · ' . prop_display($w['prop_key'])['name'] . ($w['check_in'] ? ' · ' . uk_date($w['check_in']) : ''),
+        ];
+    }
+});
+
+// 11) Newsletter subscribers — email / name.
+$src(function () use (&$results, $like, $PER) {
+    $st = db()->prepare('SELECT id, email, name, unsubscribed_at FROM newsletter_subscribers WHERE email LIKE ? OR name LIKE ? ORDER BY id DESC LIMIT ' . $PER);
+    $st->execute([$like, $like]);
+    foreach ($st->fetchAll() as $s) {
+        $results[] = [
+            'type' => 'subscriber',
+            'id' => (int) $s['id'],
+            'title' => $s['name'] ?: $s['email'],
+            'sub' => 'Subscriber · ' . $s['email'] . ($s['unsubscribed_at'] ? ' · unsubscribed' : ''),
+        ];
+    }
+});
+
+// 12) Experiences (things to do) — title, body, category; flag pending ones.
+$src(function () use (&$results, $like, $PER) {
+    $st = db()->prepare('SELECT id, title, category, status FROM experiences WHERE title LIKE ? OR body LIKE ? OR category LIKE ? ORDER BY (status = \'pending\') DESC, id DESC LIMIT ' . $PER);
+    $st->execute([$like, $like, $like]);
+    foreach ($st->fetchAll() as $x) {
+        $results[] = [
+            'type' => 'experience',
+            'id' => (int) $x['id'],
+            'title' => $x['title'] ?: '(untitled)',
+            'sub' => 'Experience · ' . ($x['category'] ?: 'Local') . ($x['status'] === 'pending' ? ' · awaiting approval' : ''),
+        ];
+    }
+});
+
 json_out(['ok' => true, 'results' => array_slice($results, 0, 40)]);
