@@ -1186,14 +1186,94 @@ body.owner-mode #mobileMenu {
   font-weight: 400;
 }
 .cmdk-results {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
   padding: 8px;
 }
+/* Federated-search progress: a slim indeterminate accent sweep under the search
+   field while the server query (emails, invoices, reviews, activity…) is in
+   flight, so a keystroke never feels like a dead end. Zero-height until active. */
+.cmdk-progress {
+  height: 0;
+  overflow: hidden;
+  transition: height 0.16s var(--fluid-bezier);
+}
+.cmdk-progress.is-loading {
+  height: 2px;
+}
+.cmdk-progress span {
+  display: block;
+  height: 2px;
+  width: 40%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  animation: cmdkSweep 1.05s var(--fluid-bezier) infinite;
+}
+@keyframes cmdkSweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(350%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cmdk-progress span { animation-duration: 2.4s; }
+}
+/* Keyboard hint footer — the "pro tool" affordance. Hidden on touch-only devices
+   where there are no hardware keys to hint at. */
+.cmdk-foot {
+  display: none;
+  align-items: center;
+  gap: 16px;
+  padding: 9px 16px;
+  border-top: 1px solid var(--glass-border);
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+@media (hover: hover) and (pointer: fine) {
+  .cmdk-foot { display: flex; }
+}
+.cmdk-foot-keys {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+.cmdk-kbd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 5px;
+  border: 1px solid var(--glass-border);
+  background: var(--glass-hover);
+  color: var(--text-light);
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1;
+}
 .cmdk-none {
-  padding: 22px 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 34px 20px 30px;
   text-align: center;
   color: var(--text-muted);
-  font-size: 0.88rem;
+  font-size: 0.9rem;
+  line-height: 1.5;
+}
+.cmdk-none .cmdk-none-ic {
+  width: 34px;
+  height: 34px;
+  color: var(--accent);
+  opacity: 0.6;
+}
+.cmdk-none strong {
+  display: block;
+  color: var(--text-light);
+  font-weight: 600;
+  font-size: 0.98rem;
 }
 .cmdk-row {
   display: flex;

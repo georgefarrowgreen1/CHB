@@ -347,6 +347,18 @@ if (typeof ctx.cmdkArrange === 'function') {
     check('distinct rows (different subtitle) are kept', distinct.length === 2);
 }
 
+// ---- 14. Production polish: a11y active-descendant, loading, row ids ----
+check('a11y/loading helpers are defined', typeof ctx.cmdkSyncActive === 'function' && typeof ctx.cmdkSetLoading === 'function' && typeof ctx.cmdkRenderInner === 'function');
+if (typeof ctx.cmdkSetLoading === 'function') {
+    let threw = false;
+    try { ctx.cmdkSetLoading(true); ctx.cmdkSetLoading(false); ctx.cmdkSyncActive(); } catch (e) { threw = true; }
+    check('a11y/loading helpers never throw off-DOM', !threw);
+}
+if (typeof ctx.cmdkRowHtml === 'function') {
+    const html = ctx.cmdkRowHtml({ type: 'screen', label: 'Today', sub: 'Operations' }, 2, false);
+    check('rows carry a stable option id for aria-activedescendant', /id="cmdk-opt-2"/.test(html) && /role="option"/.test(html));
+}
+
 // ---- Summary ----
 console.log('\n== Summary ==');
 if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }
