@@ -1426,6 +1426,53 @@ body.light-mode .cmdk-editor-input {
   gap: 6px;
   padding: 2px 12px 10px 55px;
 }
+/* Guided "Show me where" coach-mark: a spotlight ring on the target button + a
+   dark tooltip. The ring's giant box-shadow dims the rest; the overlay captures a
+   tap-anywhere to dismiss. Always a dark bubble so it reads over the dim scrim in
+   either theme. */
+.coach-ov {
+  position: fixed;
+  inset: 0;
+  z-index: 4000;
+}
+.coach-ring {
+  position: fixed;
+  border: 2px solid var(--accent);
+  border-radius: 14px;
+  box-shadow: 0 0 0 4px rgba(199, 154, 100, 0.35), 0 0 0 9999px rgba(10, 14, 18, 0.58);
+  pointer-events: none;
+  transition: left 0.2s var(--fluid-bezier), top 0.2s var(--fluid-bezier), width 0.2s var(--fluid-bezier), height 0.2s var(--fluid-bezier);
+}
+.coach-tip {
+  position: fixed;
+  max-width: 250px;
+  background: rgba(26, 25, 27, 0.98);
+  color: #f4f5f7;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: var(--r-panel);
+  padding: 12px 14px;
+  box-shadow: var(--shadow-float);
+  z-index: 4001;
+  animation: cmdkFade 0.18s var(--fluid-bezier);
+}
+.coach-tip-text {
+  font-size: 0.9rem;
+  line-height: 1.45;
+  margin-bottom: 10px;
+}
+.coach-tip-btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--r-pill);
+  padding: 7px 18px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.coach-tip-btn:hover {
+  filter: brightness(1.06);
+}
 /* Help topic: numbered steps under the selected how-to answer. */
 .cmdk-help-steps {
   margin: 2px 0 4px;

@@ -1096,7 +1096,7 @@ function helpTopics() {
             kw: 'add create new booking manual reservation book in customer guest enter put',
             steps: ['Tap “+ Add booking” on Today (or the chip below).', 'Choose the cottage and the check-in / check-out dates.', 'Add the guest’s name & email and save — you can take payment straight after.'],
             doIt: { label: 'Add a booking', run: view(() => openAddBooking()) },
-            showMe: { label: 'Open Bookings', run: view(() => openBookings()) },
+            showMe: { label: 'Show me where', run: () => coachAddBooking() },
             related: ['take-payment', 'block-dates'] },
         { id: 'take-payment', title: 'Take a payment or request one', cat: 'Money',
             kw: 'take payment charge card request deposit balance money collect pay invoice link',
@@ -1147,6 +1147,7 @@ function helpTopics() {
             kw: 'block off close unavailable maintenance own use reserve hold dates stop bookings',
             steps: ['Tap “Block dates”.', 'Pick the cottage and the first & last nights to close.', 'They show greyed on the timeline and stop new bookings.'],
             doIt: { label: 'Block dates', run: view(() => openBlockDates()) },
+            showMe: { label: 'Show me where', run: () => coachBlockDates() },
             related: ['connect-airbnb'] },
         { id: 'connect-airbnb', title: 'Sync Airbnb / Vrbo so dates don’t clash', cat: 'System',
             kw: 'airbnb vrbo booking.com ical sync import calendar channel connect ota external link clash double',
@@ -1415,6 +1416,69 @@ function cmdkHelpOpen() {
     cmdkRender();
     if (el) { try { el.focus(); } catch (e) {} }
 }
+// ---- Guided "Show me where" coach-marks: point at the exact button with a
+// tooltip. Instructional (tap anywhere dismisses) — the ring shows WHERE, the tip
+// says WHAT. Used by a few help topics whose flow starts on a stable button. ----
+let __coachTarget = null;
+function coachMark(sel, text, opts) {
+    const el = typeof sel === 'string' ? document.querySelector(sel) : sel;
+    if (!el) { if (opts && typeof opts.fallback === 'function') opts.fallback(); return; }
+    try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) {}
+    setTimeout(() => coachPaint(el, text), 240);
+}
+function coachPaint(el, text) {
+    coachClear();
+    const ov = document.createElement('div');
+    ov.id = 'coach-ov';
+    ov.className = 'coach-ov';
+    const ring = document.createElement('div');
+    ring.className = 'coach-ring';
+    const tip = document.createElement('div');
+    tip.className = 'coach-tip';
+    tip.innerHTML = `<div class="coach-tip-text">${escapeHtml(text)}</div><button type="button" class="coach-tip-btn" onclick="coachClear()">Got it</button>`;
+    ov.appendChild(ring);
+    ov.appendChild(tip);
+    document.body.appendChild(ov);
+    ov.addEventListener('click', (e) => { if (!tip.contains(e.target)) coachClear(); });
+    __coachTarget = el;
+    coachReposition();
+    document.addEventListener('keydown', coachKey);
+    window.addEventListener('scroll', coachReposition, true);
+    window.addEventListener('resize', coachReposition);
+}
+function coachReposition() {
+    const ov = document.getElementById('coach-ov');
+    if (!ov || !__coachTarget) return;
+    const r = __coachTarget.getBoundingClientRect();
+    const pad = 6;
+    const ring = ov.querySelector('.coach-ring');
+    ring.style.left = (r.left - pad) + 'px';
+    ring.style.top = (r.top - pad) + 'px';
+    ring.style.width = (r.width + pad * 2) + 'px';
+    ring.style.height = (r.height + pad * 2) + 'px';
+    const tip = ov.querySelector('.coach-tip');
+    const below = r.bottom + 110 < window.innerHeight;
+    tip.style.left = Math.max(10, Math.min(window.innerWidth - 260, r.left - pad)) + 'px';
+    tip.style.top = (below ? r.bottom + pad + 12 : r.top - pad - 12) + 'px';
+    tip.style.transform = below ? 'none' : 'translateY(-100%)';
+}
+function coachClear() {
+    const ov = document.getElementById('coach-ov');
+    if (ov) ov.remove();
+    __coachTarget = null;
+    document.removeEventListener('keydown', coachKey);
+    window.removeEventListener('scroll', coachReposition, true);
+    window.removeEventListener('resize', coachReposition);
+}
+function coachKey(e) { if (e && e.key === 'Escape') coachClear(); }
+// Flow launchers — close the palette, land on the right screen, then point at the
+// button. If the target can't be found the fallback just does the action.
+function coachTo(navFn, sel, text, fallback) {
+    closeCmdK();
+    Promise.resolve(navFn()).then(() => setTimeout(() => coachMark(sel, text, { fallback }), 320));
+}
+function coachAddBooking() { coachTo(() => tryAccessBackOffice(), 'button[onclick="openAddBooking()"]', 'Tap “+ Add Booking” to start a new booking — you’ll pick the cottage and dates next.', () => openAddBooking()); }
+function coachBlockDates() { coachTo(() => tryAccessBackOffice(), 'button[onclick="openBlockDates()"]', 'Tap “Block dates” to close off dates for maintenance or your own use.', () => openBlockDates()); }
 function cmdkBuildResults(ql) {
     let results = [];
     try {
