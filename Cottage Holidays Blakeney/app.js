@@ -11372,10 +11372,12 @@ function setModalFields(f) {
     const ovEl = document.getElementById('modal-price-override');
     if (ovEl) ovEl.value = f.priceOverride != null ? f.priceOverride : '';
     applyModalPropertyMode(); // sync pricing-field visibility + Save/Next label
-    // Clean slate: release any "move" lock left by a previous arrived-booking edit,
-    // so Add and normal edits always have the dates/cottage editable.
+    // Clean slate: release any "move" lock and restore the payment-entry fields
+    // left hidden by a previous arrived / fully-paid edit, so Add and normal edits
+    // always start with the full, editable form.
     try {
         lockBookingMove(false);
+        trimPaidBookingFields(false);
     } catch (e) {}
     try {
         refreshModalDateTrigger(); // the glass-picker trigger shows the dates
@@ -11557,6 +11559,11 @@ function openEditBooking(bookingId) {
     // Once the guest has arrived, the booking can be edited but not MOVED — the
     // dates and cottage are locked (openModal calls lockBookingMove below).
     const arrived = !!(b.checkIn && typeof todayDashed === 'function' && b.checkIn <= todayDashed());
+    // Once the booking is fully paid, the payment-entry fields (status/date/method,
+    // deposit amount, price override) are just clutter that invites accidental
+    // edits — money is managed on the Payments card from then on. Hide them.
+    const ps = typeof paymentSummary === 'function' ? paymentSummary(loc.propKey, b) : null;
+    const fullyPaid = !!(ps && ps.fullyPaid);
     document.getElementById('modal-title').innerText = arrived ? 'Edit Booking' : 'Edit / Move Booking';
     document.getElementById('modal-mode').value = 'booking';
     document.getElementById('modal-record-id').value = b.id;
@@ -11579,6 +11586,32 @@ function openEditBooking(bookingId) {
     togglePaymentField(true);
     openModal();
     lockBookingMove(arrived);
+    trimPaidBookingFields(fullyPaid);
+}
+
+// Hide (or restore) the payment-entry fields of the booking modal — status/date/
+// method, the damages-deposit amount and the price override. Once a booking is
+// fully paid these only invite accidental edits; money is managed on the Payments
+// card from then on. setModalFields() restores them first, so Add and part-paid
+// edits keep the full form.
+function trimPaidBookingFields(hide) {
+    ['modal-payment-group', 'modal-deposit-group', 'modal-override-group'].forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = hide ? 'none' : '';
+    });
+    let note = document.getElementById('modal-paid-note');
+    if (hide) {
+        const anchor = document.getElementById('modal-price-box');
+        if (!note && anchor && anchor.parentNode) {
+            note = document.createElement('p');
+            note.id = 'modal-paid-note';
+            note.style.cssText = 'font-size:0.8rem;color:var(--text-muted);margin:10px 0 4px;';
+            anchor.parentNode.insertBefore(note, anchor.nextSibling);
+        }
+        if (note) note.textContent = 'Paid in full — manage payments (refunds, deposit return) on the booking’s Payments card.';
+    } else if (note) {
+        note.remove();
+    }
 }
 
 // Lock (or release) the "move" fields of the booking modal — the date picker and
@@ -12187,7 +12220,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'payflw7';
+    const BUILD = 'payflw8';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
