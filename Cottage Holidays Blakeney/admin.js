@@ -3520,14 +3520,18 @@ function hubPayFlowHtml(b, gt, dh) {
         (dh && dh.collected > 0) ||
         ['authorized', 'captured', 'charged', 'returned', 'kept'].includes(hold);
     const steps = [
-        { label: 'Deposit paid', done: gt.paid > 0.001 },
-        { label: 'Paid in full', done: !!gt.fullyPaid },
+        { label: 'Deposit', done: gt.paid > 0.001 },
+        { label: 'Paid', done: !!gt.fullyPaid },
     ];
     if (hasDamage) {
         // Settled either via the hold_status flag or once the collected deposit has
         // been fully returned in the ledger (admin's richer damage view).
         const back = ['returned', 'kept'].includes(hold) || (dh && dh.collected > 0 && dh.held <= 0.001);
-        steps.push({ label: hold === 'kept' ? 'Deposit kept' : 'Deposit refunded', done: back });
+        // Call it "Damages" only when there's genuinely a refundable damages deposit;
+        // any other refund (no damages amount) just reads "Refunded" / "Kept".
+        const isDamages = (gt.dep || 0) > 0 || (dh && ((dh.deposit || 0) > 0 || (dh.collected || 0) > 0));
+        const label = hold === 'kept' ? (isDamages ? 'Damages kept' : 'Kept') : isDamages ? 'Damages refunded' : 'Refunded';
+        steps.push({ label, done: back });
     }
     const cur = steps.findIndex((s) => !s.done); // first unfinished = current
     const pills = steps
