@@ -551,6 +551,8 @@ function cmdkActIcon(name) {
 // Trailing chevron + leading magnifier for the quick-actions / related-search rows.
 const CMDK_CHEV = '<svg class="ic cmdk-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
 const CMDK_SEARCH_IC = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.2-4.2"/></svg>';
+// Filter/refine glyph (SF-style "line.3.horizontal.decrease") for the pivot rows.
+const CMDK_FILTER_IC = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"/></svg>';
 function cmdkBookingActions(b, pk) {
     if (!b || b.id == null) return [];
     const acts = [{ key: 'email', label: 'Email', icon: cmdkActIcon('mail'), run: () => { closeCmdK(); openBookingEmail(b.id); } }];
@@ -2516,7 +2518,10 @@ function cmdkRowHtml(it, i, top) {
                 .join('');
             refine = rel ? `<div class="cmdk-qa cmdk-related-list">${rel}</div>` : '';
         } else {
-            refine = `<div class="cmdk-refine">${it.chips.map((c, k) => `<button type="button" class="cmdk-ex cmdk-refine-chip" onclick="cmdkChipRun(${i},${k})">${escapeHtml(c.label)}</button>`).join('')}</div>`;
+            // Refine pivots render as the same iOS-style menu list as the quick
+            // actions — one tappable row each (filter glyph · label · chevron) —
+            // so every button group in search shares one context-menu language.
+            refine = `<div class="cmdk-qa cmdk-refine-menu">${it.chips.map((c, k) => `<button type="button" class="cmdk-qa-row cmdk-refine-row" data-idx="${i}" data-chip="${k}" onclick="cmdkChipRun(${i},${k})"><span class="cmdk-qa-ic">${CMDK_FILTER_IC}</span><span class="cmdk-qa-lbl">${escapeHtml(c.label)}</span><span class="cmdk-qa-go" aria-hidden="true">${CMDK_CHEV}</span></button>`).join('')}</div>`;
         }
     }
     return row + steps + acts + refine;

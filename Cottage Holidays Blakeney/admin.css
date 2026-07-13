@@ -1659,25 +1659,28 @@ body.light-mode .cmdk-editor-input {
 .cmdk-qa {
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  margin: 2px 12px 10px 55px;
-  padding: 4px;
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--accent) 9%, transparent);
-  border: 1px solid color-mix(in srgb, var(--accent) 16%, transparent);
+  gap: 2px;
+  margin: 4px 12px 12px 55px;
+  padding: 5px;
+  border-radius: 20px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--glass-bg));
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, transparent);
+  -webkit-backdrop-filter: saturate(1.2) blur(8px);
+  backdrop-filter: saturate(1.2) blur(8px);
+  box-shadow: 0 8px 22px -14px rgba(20, 26, 30, 0.4);
 }
 .cmdk-qa-row,
 .cmdk-related {
   display: flex;
   align-items: center;
-  gap: 11px;
+  gap: 13px;
   width: 100%;
-  padding: 9px 12px;
+  padding: 12px 14px;
   border: 0;
   background: transparent;
-  border-radius: 13px;
-  font-size: 0.9rem;
-  font-weight: 600;
+  border-radius: 14px;
+  font-size: 1rem;
+  font-weight: 700;
   color: var(--text-light);
   text-align: left;
   cursor: pointer;
@@ -1700,8 +1703,8 @@ body.light-mode .cmdk-editor-input {
   color: var(--accent);
 }
 .cmdk-qa-ic .ic {
-  width: 17px;
-  height: 17px;
+  width: 19px;
+  height: 19px;
 }
 .cmdk-qa-lbl {
   flex: 1;
@@ -1709,6 +1712,7 @@ body.light-mode .cmdk-editor-input {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  letter-spacing: -0.01em;
 }
 .cmdk-qa-go {
   display: inline-flex;
@@ -1727,9 +1731,14 @@ body.light-mode .cmdk-editor-input {
   padding: 0 4px;
   background: transparent;
   border: 0;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 .cmdk-related {
+  font-size: 0.9rem;
   font-weight: 500;
+  padding: 9px 12px;
   color: var(--text-muted);
 }
 .cmdk-related .cmdk-qa-ic {
