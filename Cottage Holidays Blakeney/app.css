@@ -6069,7 +6069,8 @@ body.admin-screen .site-footer {
   border-bottom: 1px solid var(--glass-border);
 }
 .ana-seg {
-  display: inline-flex;
+  display: flex;
+  width: 100%;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--glass-border);
   border-radius: var(--r-pill);
@@ -6081,7 +6082,9 @@ body.admin-screen .site-footer {
   cursor: pointer;
   font: inherit;
   font-size: 0.8rem;
-  padding: 6px 14px;
+  flex: 1 1 0;
+  text-align: center;
+  padding: 8px 6px;
   border: 0;
   border-radius: var(--r-pill);
   background: transparent;
@@ -6093,19 +6096,36 @@ body.admin-screen .site-footer {
 .ana-seg-btn.on {
   background: var(--accent);
   color: #1b1208;
-  font-weight: 500;
+  font-weight: 600;
 }
+/* CSV export: a calm full-width action at the foot of the report. */
 .ana-export {
   appearance: none;
   cursor: pointer;
   font: inherit;
-  font-size: 0.8rem;
-  padding: 6px 13px;
-  border-radius: var(--r-pill);
+  font-size: 0.82rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 13px;
+  margin: 26px 0 6px;
+  border-radius: var(--r-md, 14px);
   border: 1px solid var(--glass-border);
   background: rgba(255, 255, 255, 0.05);
+  color: var(--text-muted);
+  transition:
+    background 0.2s var(--fluid-bezier),
+    color 0.2s var(--fluid-bezier);
+}
+.ana-export:hover {
+  background: var(--glass-hover, rgba(255, 255, 255, 0.1));
   color: var(--text-light);
-  margin-left: auto;
+}
+.ana-export .ic {
+  opacity: 0.8;
 }
 .ana-group-title {
   font-family: var(--font-serif);
