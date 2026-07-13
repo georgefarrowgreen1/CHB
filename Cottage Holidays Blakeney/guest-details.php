@@ -20,8 +20,10 @@
 
 // Build a clean party array from posted parallel arrays. Only rows with a name
 // are kept; non-British/Irish rows must carry a passport/ID + onward address.
+// $expected is the number of guests aged 16+ on the booking (its `adults`
+// count — children never need recording), and the party must cover all of them.
 // Returns ['party'=>[...], 'error'=>string|''].
-function guest_reg_clean($post)
+function guest_reg_clean($post, $expected = 1)
 {
     $names = (array) ($post['name'] ?? []);
     $nats = (array) ($post['nationality'] ?? []);
@@ -59,8 +61,13 @@ function guest_reg_clean($post)
             break; // sanity cap
         }
     }
-    if (!$error && !$party) {
-        $error = 'Please add at least one guest (full name + nationality).';
+    $need = max(1, (int) $expected);
+    if (!$error && count($party) < $need) {
+        $error = count($party) === 0
+            ? ($need === 1
+                ? 'Please add the guest staying (full name + nationality).'
+                : 'This booking is for ' . $need . ' guests aged 16 or over — please add details for all ' . $need . '.')
+            : 'This booking is for ' . $need . ' guests aged 16 or over — you’ve given ' . count($party) . '. Please add the ' . ($need - count($party)) . ' still missing.';
     }
     return ['party' => $party, 'error' => $error];
 }
@@ -71,7 +78,14 @@ function render_guest_form_html($d)
 {
     $e = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
     $accent = preg_match('/^#[0-9a-fA-F]{6}$/', (string) ($d['accent'] ?? '')) ? $d['accent'] : '#8FB3C7';
-    $party = is_array($d['party'] ?? null) && count($d['party']) ? $d['party'] : [['name' => $d['lead_name'] ?? '', 'nationality' => 'British', 'british' => true]];
+    // Guests aged 16+ we must record (the booking's adult count). Children are
+    // never counted. Show exactly this many rows so the party matches the stay.
+    $expected = max(1, (int) ($d['expected'] ?? 1));
+    $children = max(0, (int) ($d['children'] ?? 0));
+    $party = is_array($d['party'] ?? null) && count($d['party']) ? array_values($d['party']) : [['name' => $d['lead_name'] ?? '', 'nationality' => 'British', 'british' => true]];
+    while (count($party) < $expected) {
+        $party[] = ['nationality' => 'British', 'british' => true]; // empty rows to fill the party
+    }
     $saved = !empty($d['saved']);
     $error = (string) ($d['error'] ?? '');
     $action = $e($d['action_url'] ?? '');
@@ -121,6 +135,7 @@ function render_guest_form_html($d)
         '.tag{color:' . $accent . ';font-size:11px;letter-spacing:4px;font-weight:700;margin-top:10px;}' .
         '.body{padding:8px 32px 32px;}' .
         '.intro{font-size:14px;color:#57524A;line-height:1.6;margin:14px 0 6px;}' .
+        '.count{font-size:13px;color:#1b2a34;background:#faf6ec;border:1px solid #ece4d3;border-radius:12px;padding:10px 14px;line-height:1.5;margin:10px 0 6px;}' .
         '.meta{font-size:13px;color:#8a8378;margin:0 0 12px;}' .
         '.note{border-radius:12px;padding:12px 14px;font-size:14px;margin:12px 0;line-height:1.5;}' .
         '.note.ok{background:#eaf5ec;border:1px solid #bfe0c6;color:#256b39;}' .
@@ -142,6 +157,7 @@ function render_guest_form_html($d)
         '<div class="top"><img class="crown" src="logo.svg" alt="" width="64" height="38"><div class="brand">Cottage Holidays Blakeney</div><div class="sub">North Norfolk Coastal Retreats</div><div class="tag">GUEST DETAILS</div></div>' .
         '<div class="body">' .
         '<p class="intro">By law we need the full name and nationality of everyone staying who is <strong>16 or over</strong>. For guests who aren’t British or Irish we also need a passport/ID number and where they’re travelling to next. We keep this for 12 months and share it only if legally required.</p>' .
+        '<p class="count">This booking is for <strong>' . $expected . ' guest' . ($expected === 1 ? '' : 's') . '</strong> aged 16 or over — please give details for ' . ($expected === 1 ? 'them' : 'all ' . $expected) . '.' . ($children > 0 ? ' Children under 16 don’t need to be listed.' : '') . '</p>' .
         '<p class="meta">' . $e($d['prop_name'] ?? '') . ($d['check_in'] ?? '' ? ' · ' . $e($d['check_in']) . ' → ' . $e($d['check_out'] ?? '') : '') . ($d['ref'] ?? '' ? ' · ' . $e($d['ref']) : '') . '</p>' .
         $banner .
         '<form method="post" action="' . $action . '">' .
@@ -154,10 +170,13 @@ function render_guest_form_html($d)
         '<div class="foot">Cottage Holidays Blakeney · Any questions? Just reply to your confirmation email.<br>Held securely and deleted 12 months after your stay.</div>' .
         '</div>' .
         '<script>' .
+        'var MIN=' . $expected . ';' .
         'function toggleForeign(inp){var fs=inp.closest("[data-row]");var f=fs.querySelector(".foreign");var v=(inp.value||"").trim().toLowerCase();var home=["british","britain","uk","united kingdom","irish","ireland"].indexOf(v)>-1;f.style.display=(v===""||home)?"none":"block";}' .
-        'function addRow(){var t=document.getElementById("rowtpl");var n=t.content.firstElementChild.cloneNode(true);document.getElementById("rows").appendChild(n);var nat=n.querySelector("input[name=\'nationality[]\']");if(nat)toggleForeign(nat);n.querySelector("input").focus();}' .
-        'function rmRow(btn){var rows=document.querySelectorAll("#rows [data-row]");if(rows.length<=1)return;btn.closest("[data-row]").remove();}' .
+        'function addRow(){var t=document.getElementById("rowtpl");var n=t.content.firstElementChild.cloneNode(true);document.getElementById("rows").appendChild(n);var nat=n.querySelector("input[name=\'nationality[]\']");if(nat)toggleForeign(nat);n.querySelector("input").focus();syncRemove();}' .
+        'function rmRow(btn){var rows=document.querySelectorAll("#rows [data-row]");if(rows.length<=Math.max(1,MIN))return;btn.closest("[data-row]").remove();syncRemove();}' .
+        'function syncRemove(){var rows=document.querySelectorAll("#rows [data-row]");var lock=rows.length<=Math.max(1,MIN);rows.forEach(function(r){var b=r.querySelector(".rm");if(b){b.style.display=lock?"none":"";}});}' .
         'document.querySelectorAll("#rows input[name=\'nationality[]\']").forEach(toggleForeign);' .
+        'syncRemove();' .
         '</script>' .
         '</body></html>';
 }
@@ -199,10 +218,14 @@ $actionUrl = 'guest-details.php?b=' . $id . '&token=' . $token;
 $saved = false;
 $error = '';
 $party = null;
+// Guests aged 16+ we must record = the booking's adult count. Children (under
+// 16) are never counted, so a 2-adult + 1-child booking still needs 2 records.
+$expected = max(1, (int) ($b['adults'] ?? 1));
+$children = max(0, (int) ($b['children'] ?? 0));
 
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'POST') {
     rate_limit('guestreg', 30, 10); // per-IP: a leaked token can't be spammed
-    $clean = guest_reg_clean($_POST);
+    $clean = guest_reg_clean($_POST, $expected);
     if ($clean['error']) {
         $error = $clean['error'];
         // Rebuild party from POST so nothing they typed is lost on a bounce.
@@ -264,6 +287,8 @@ echo render_guest_form_html([
     'check_out' => function_exists('uk_date') ? uk_date($b['check_out']) : $b['check_out'],
     'accent' => $accent,
     'party' => $party,
+    'expected' => $expected,
+    'children' => $children,
     'saved' => $saved,
     'error' => $error,
     'action_url' => $actionUrl,

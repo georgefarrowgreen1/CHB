@@ -61,6 +61,13 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-guestreg.php
 
+      # SQL statement splitter: a semicolon inside an inline comment must not
+      # chop a migration in half (regression for the broken guest-registrations
+      # migration — MySQL 1064 "near '' at line 8").
+      - name: Migration SQL splitter
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-migrate.php
+
       # SMTP transport: runs mailer.php's real socket conversation against a
       # scriptable fake SMTP server — happy path, transient-retry, the
       # no-retry-after-payload guarantee (double-send safety), batch-over-one-

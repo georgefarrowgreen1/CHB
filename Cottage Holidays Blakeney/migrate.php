@@ -13,7 +13,18 @@
 //
 //  Idempotent: "already exists / duplicate column" errors are treated as
 //  already-applied, so re-running is safe.
+//
+//  split_sql() / is_idempotent_error() below are PURE (declared unconditionally,
+//  so PHP hoists them); the request bootstrap only runs when this file IS the
+//  request, letting test-migrate.php unit-test the SQL splitter without a DB.
 // ============================================================
+
+// ---- Bootstrap: only when this file IS the request (not when unit-tested) ----
+if (basename($_SERVER['SCRIPT_NAME'] ?? '') !== 'migrate.php') {
+    // still expose the pure helpers (hoisted) to the includer, then stop.
+    return;
+}
+
 require_once __DIR__ . '/db.php';
 
 $isCron = isset($_GET['cron']) && hash_equals(APP_SECRET, (string) $_GET['cron']);
@@ -44,9 +55,11 @@ if (!$force) {
 $files = glob(__DIR__ . '/migration-*.sql');
 sort($files);
 
-// Split a .sql file into individual statements. Strips comments, then splits on
-// ';' — but only OUTSIDE string literals / quoted identifiers, so semicolons that
-// appear inside seed text (e.g. "...sail daily; check tide times...") don't chop a
+// Split a .sql file into individual statements. Strips full-line comments up
+// front, then walks the SQL splitting on ';' — but only OUTSIDE string literals /
+// quoted identifiers AND outside inline '-- ' / '#' comments, so a semicolon that
+// appears inside seed text ("...sail daily; check tide times...") or an inline
+// column comment ("-- checkout + 12 months; purged after") doesn't chop a
 // statement in half. Handles '' / "" doubling and backslash escapes.
 function split_sql($path)
 {
@@ -82,6 +95,17 @@ function split_sql($path)
                 else {
                     $q = '';
                 } // string closed
+            }
+        } elseif ($ch === '-' && $i + 1 < $len && $sql[$i + 1] === '-' && ($i + 2 >= $len || ctype_space($sql[$i + 2]))) {
+            // inline "-- " comment (outside quotes): skip to end of line so a
+            // semicolon inside the comment can't chop the statement in half.
+            while ($i + 1 < $len && $sql[$i + 1] !== "\n") {
+                $i++;
+            }
+        } elseif ($ch === '#') {
+            // inline "#" comment (outside quotes): skip to end of line.
+            while ($i + 1 < $len && $sql[$i + 1] !== "\n") {
+                $i++;
             }
         } elseif ($ch === ';') {
             $parts[] = trim($buf);

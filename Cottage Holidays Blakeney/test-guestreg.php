@@ -57,6 +57,19 @@ check('no guests → error', $r['error'] !== '' && count($r['party']) === 0);
 $r = guest_reg_clean(['name' => ['Al'], 'nationality' => ['United Kingdom']]);
 check('"United Kingdom" treated as home', $r['error'] === '' && $r['party'][0]['british'] === true);
 
+// ---- expected-count enforcement (the booking's adult count) ----
+$r = guest_reg_clean(['name' => ['Only One'], 'nationality' => ['British']], 2);
+check('2 expected but 1 given → error, names the shortfall', $r['error'] !== '' && strpos($r['error'], '2 guests') !== false);
+
+$r = guest_reg_clean(['name' => ['A', 'B'], 'nationality' => ['British', 'British']], 2);
+check('2 expected + 2 given → valid', $r['error'] === '' && count($r['party']) === 2);
+
+$r = guest_reg_clean(['name' => ['A', 'B', 'C'], 'nationality' => ['British', 'British', 'British']], 2);
+check('more than expected is allowed (miscount / 16-17yo counted as child)', $r['error'] === '' && count($r['party']) === 3);
+
+$r = guest_reg_clean(['name' => [], 'nationality' => []], 3);
+check('none given, 3 expected → error', $r['error'] !== '' && count($r['party']) === 0);
+
 // ---- render_guest_form_html ----
 $html = render_guest_form_html([
     'ref' => 'CHB-000042', 'prop_name' => 'Jollyboat', 'lead_name' => 'Jane Smith',
@@ -70,6 +83,29 @@ check('has the non-British doc + onward inputs', strpos($html, "name=\"doc[]\"")
 check('has an add-guest template + save button', strpos($html, 'id="rowtpl"') !== false && strpos($html, 'Save guest details') !== false);
 check('posts back to the token action url (& escaped)', strpos($html, 'guest-details.php?b=42&amp;token=abc') !== false);
 check('pre-fills the lead guest name', strpos($html, 'Jane Smith') !== false);
+
+// ---- render matches the booking's guest count ----
+$html4 = render_guest_form_html([
+    'prop_name' => 'X', 'lead_name' => 'Lead', 'accent' => '#8FB3C7', 'action_url' => 'x',
+    'party' => null, 'expected' => 3, 'children' => 1,
+]);
+check('renders exactly `expected` guest rows (3 → 3 + template)', substr_count($html4, 'name="name[]"') === 4);
+check('shows the "3 guests" count hint', strpos($html4, 'This booking is for <strong>3 guests</strong>') !== false);
+check('sets the JS minimum to expected (MIN=3)', strpos($html4, 'var MIN=3;') !== false);
+check('mentions children are excluded when children>0', strpos($html4, 'Children under 16') !== false);
+
+$html5 = render_guest_form_html([
+    'prop_name' => 'X', 'lead_name' => 'Lead', 'accent' => '#8FB3C7', 'action_url' => 'x',
+    'party' => null, 'expected' => 2, 'children' => 0,
+]);
+check('no children → no "Children under 16" line', strpos($html5, 'Children under 16') === false && strpos($html5, 'This booking is for <strong>2 guests</strong>') !== false);
+
+// A saved party larger than expected is preserved (not truncated).
+$html6 = render_guest_form_html([
+    'prop_name' => 'X', 'accent' => '#8FB3C7', 'action_url' => 'x', 'expected' => 1,
+    'party' => [['name' => 'A', 'nationality' => 'British', 'british' => true], ['name' => 'B', 'nationality' => 'British', 'british' => true]],
+]);
+check('party larger than expected is kept (2 rows + template)', substr_count($html6, 'name="name[]"') === 3);
 
 // XSS: a hostile name/nationality must be escaped in the output.
 $html2 = render_guest_form_html([
