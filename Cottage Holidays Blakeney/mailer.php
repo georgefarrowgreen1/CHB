@@ -1020,40 +1020,91 @@ function send_direct_followup_email($lead)
     if (empty($lead['email'])) {
         return ['ok' => false, 'error' => 'No email on file'];
     }
-    $accent = prop_display($lead['prop_key'] ?? '')['accent'];
     $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
     $name = ($lead['name'] ?? '') !== '' ? preg_split('/\s+/', trim($lead['name']))[0] : 'there';
     $prop = prop_display($lead['prop_key'] ?? '')['name'] ?: 'our cottage';
     $url = function_exists('site_base_url') ? site_base_url() : '';
+    $sans = email_sans();
+    $serif = email_serif();
+
+    // The cottage's own first gallery photo, as an absolute URL, becomes the
+    // hero — this is what turns a note into an invitation back to the place.
+    $img = '';
+    $abs = function ($p) use ($url) {
+        $p = trim((string) $p);
+        if ($p === '') {
+            return '';
+        }
+        if (preg_match('#^https?://#i', $p)) {
+            return $p;
+        }
+        return $url !== '' ? rtrim($url, '/') . '/' . ltrim($p, '/') : '';
+    };
+    if (function_exists('content_json')) {
+        $imgs = content_json('images-' . ($lead['prop_key'] ?? ''), []);
+        if (is_array($imgs) && !empty($imgs[0]) && is_string($imgs[0])) {
+            $img = $abs($imgs[0]);
+        }
+    }
+    if ($img === '' && function_exists('content_value')) {
+        $hb = content_value('hero-bg');
+        if ($hb) {
+            $img = $abs($hb);
+        }
+    }
 
     // Real one-click unsubscribe (this is a marketing email) + RFC 8058 headers.
     $unsub = $url && function_exists('email_optout_token')
         ? $url . 'email-optout.php?e=' . rawurlencode($lead['email']) . '&t=' . email_optout_token($lead['email'])
         : '';
 
-    $subject = "Fancy another Blakeney escape? Book {$prop} direct";
+    $subject = "The coast is calling — come back to {$prop}, direct";
     $text =
         "Hi {$name},\n\n" .
-        "A little while ago you left us a lovely review for {$prop} — thank you again, it means a lot.\n\n" .
-        "If the North Norfolk coast is calling you back, here's the good bit: book DIRECT with us and you skip " .
-        "the booking-site fees entirely. You get the best price, and you deal straight with us — the people who " .
-        "actually look after the cottage.\n\n" .
+        "Thank you again for your lovely review of {$prop} — it genuinely made our week.\n\n" .
+        "If North Norfolk is on your mind again — the big skies over the marshes, the walk down to the " .
+        "quay, the hush once the day-trippers have gone — we'd love to have you back.\n\n" .
+        "And here's the best part: book DIRECT with us and you skip the booking-site fees entirely. Best " .
+        "price, no middle-man — just you and the people who look after the cottage.\n\n" .
         ($url ? "See dates & book direct: {$url}\n\n" : '') .
         "We'd love to welcome you back,\nCottage Holidays Blakeney\n\n" .
         ($unsub ? "Prefer not to get the occasional note like this? Unsubscribe in one tap: {$unsub}" : '');
 
+    // Framed hero photo (rounded; degrades to a plain image in Outlook).
+    $hero = $img !== ''
+        ? '<table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td style="padding:0 0 6px;">' .
+            '<img src="' . email_esc($img) . '" alt="' . $esc($prop) . '" width="528" ' .
+            'style="display:block;width:100%;max-width:528px;height:auto;border-radius:16px;border:0;outline:none;">' .
+            '</td></tr></table>'
+        : '';
+    $tag =
+        '<p style="font-family:' . $sans . ';text-align:center;font-size:11px;font-weight:700;letter-spacing:2.6px;' .
+        'text-transform:uppercase;color:#C79A64;margin:16px 0 0;">Book direct &middot; Best price</p>';
+    $head =
+        '<h1 style="font-family:' . $serif . ';text-align:center;font-size:30px;font-weight:700;color:#262320;' .
+        'margin:6px 0 2px;line-height:1.25;">The coast is calling you back</h1>';
+    $highlights =
+        '<p style="font-family:' . $sans . ';text-align:center;font-size:12px;letter-spacing:1px;color:#8E877A;' .
+        'margin:22px 0 2px;">Blakeney Quay &nbsp;&middot;&nbsp; The Coastal Path &nbsp;&middot;&nbsp; Seal trips to the Point</p>';
+
     $inner =
-        email_h('Come back — and book direct') .
+        $hero .
+        $tag .
+        $head .
         email_p(
             'Hi ' .
                 $esc($name) .
-                ', a little while ago you left us a lovely review for <strong style="color:#2A2622;">' .
+                ', thank you again for your lovely review of <strong style="color:#262320;">' .
                 $esc($prop) .
-                '</strong> — thank you again, it really means a lot.',
+                '</strong> — it genuinely made our week.',
         ) .
         email_p(
-            'If the North Norfolk coast is calling you back, here\'s the good bit: book <strong style="color:#2A2622;">direct</strong> with us and you skip the booking-site fees entirely. You get the <strong style="color:#2A2622;">best price</strong>, and you deal straight with the people who look after the cottage.',
-        );
+            'If North Norfolk is on your mind again — the big skies over the marshes, the walk down to the quay, the hush once the day-trippers have gone — we\'d love to have you back.',
+        ) .
+        email_p(
+            'And here\'s the best part: book <strong style="color:#262320;">direct</strong> with us and you skip the booking-site fees entirely. <strong style="color:#262320;">Best price</strong>, no middle-man — just you and the people who look after the cottage.',
+        ) .
+        $highlights;
     if ($url) {
         $inner .= email_btn($url, 'See dates & book direct');
     }
@@ -1061,7 +1112,8 @@ function send_direct_followup_email($lead)
     $inner .= $unsub
         ? email_p('Prefer not to get the occasional note like this? <a href="' . email_esc($unsub) . '" style="color:#A79E8A;text-decoration:underline;">Unsubscribe in one tap</a>.', true)
         : email_p('Prefer not to get the occasional note like this? Just reply and say so.', true);
-    $html = email_shell('Book ' . $prop . ' direct and skip the fees', $inner, $accent);
+    // Brand rose-gold accent bar (not a per-cottage colour) — one coherent look.
+    $html = email_shell('Come back to ' . $prop . ' — book direct and skip the fees', $inner, '#C79A64');
 
     $headers = $unsub
         ? ['List-Unsubscribe' => '<' . $unsub . '>', 'List-Unsubscribe-Post' => 'List-Unsubscribe=One-Click']
