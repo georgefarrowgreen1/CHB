@@ -1966,30 +1966,6 @@ function cmdkEntityActions(ent) {
     }
     return [];
 }
-// Proactive next-best actions for the hubs, surfaced ON the page (a "Suggested"
-// strip). Same source as the palette suggestions, capped to the top few.
-function cmdkHubSuggestInject(kind) {
-    try {
-        const id = kind === 'enquiry' ? 'enquiry-hub-content' : 'booking-hub-content';
-        const host = document.getElementById(id);
-        if (!host) return;
-        const ent = kind === 'enquiry'
-            ? (typeof __enqHubId !== 'undefined' && __enqHubId && Array.isArray(enquiries) ? (function () { const e = enquiries.find((x) => String(x.id) === String(__enqHubId)); return e ? { type: 'enquiry', id: __enqHubId, name: e.name, e } : null; })() : null)
-            : (typeof __hubBookingId !== 'undefined' && __hubBookingId && typeof findBookingById === 'function' ? (function () { const b = findBookingById(__hubBookingId); return b ? { type: 'booking', id: __hubBookingId, name: b.name, b } : null; })() : null);
-        const old = host.querySelector('.hub-suggest');
-        if (old) old.remove();
-        if (!ent) return;
-        const acts = cmdkEntityActions(ent).slice(0, 3);
-        if (!acts.length) return;
-        const bar = document.createElement('div');
-        bar.className = 'hub-suggest';
-        bar.innerHTML = '<span class="hub-suggest-lbl">Suggested</span>' + acts.map((a, i) => `<button type="button" class="hub-suggest-chip" data-i="${i}">${a.icon || ''}${escapeHtml(a.label)}</button>`).join('');
-        bar.querySelectorAll('.hub-suggest-chip').forEach((btn, i) => { btn.addEventListener('click', () => { try { acts[i].run(); } catch (e) {} }); });
-        const anchor = host.querySelector('.bhub-grid') || host.querySelector('.bhub-card');
-        if (anchor && anchor.parentElement === host) host.insertBefore(bar, anchor);
-        else host.insertBefore(bar, host.firstChild);
-    } catch (e) {}
-}
 // ============================================================
 //  Today × Search — search reaches into the operations workspace itself:
 //  jump to a booking on the calendar, paint open gaps, filter the whole board,
@@ -3657,7 +3633,6 @@ function renderBookingHub() {
             <p class="bhub-mut" style="margin:10px 0 0;font-size:0.8rem;">Full name &amp; nationality of everyone 16+ (plus passport/ID &amp; next destination for non‑British/Irish). Held securely; deleted 12 months after checkout.</p>
         </section>`;
     el.innerHTML = `${header}<div class="bhub-grid">${moneyCard}${emailsCard}${guestCard}${regCard}${historyCard}</div>`;
-    try { cmdkHubSuggestInject('booking'); } catch (e) {}
 }
 // Guest-register (UK 1972 Order) helpers — open the token form to view/edit the
 // party, or copy the request link to send the guest. The token comes from the
