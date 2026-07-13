@@ -118,6 +118,30 @@ check('escapes hostile guest input (no raw <script>)', strpos($html2, '<script>a
 $html3 = render_guest_form_html(['prop_name' => 'X', 'action_url' => 'x', 'saved' => true, 'party' => [['name' => 'A', 'nationality' => 'British', 'british' => true]]]);
 check('saved state shows a confirmation banner', strpos($html3, 'saved') !== false && strpos($html3, 'note ok') !== false);
 
+// ---- Bootstrap dependency guard (static; no DB needed) ----
+// A helper CALLED in the bootstrap but not DEFINED in a required file means every
+// guest hits db.php's global handler ("Something went wrong on our side — please
+// try again."). This is invisible to phpstan (it sees the fn defined elsewhere in
+// the project) and to the pure-function tests above, so guard it explicitly:
+// scan the real `require_once` lines and the functions those files define.
+$src = file_get_contents(__DIR__ . '/guest-details.php');
+$reqFiles = [];
+if (preg_match_all("/require_once __DIR__ \\. '\\/([a-zA-Z0-9_-]+\\.php)'/", $src, $m)) {
+    $reqFiles = array_unique($m[1]);
+}
+$defsInDeps = [];
+foreach ($reqFiles as $rf) {
+    $s = @file_get_contents(__DIR__ . '/' . $rf);
+    if ($s && preg_match_all('/function\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\(/', $s, $mm)) {
+        foreach ($mm[1] as $fn) {
+            $defsInDeps[strtolower($fn)] = true;
+        }
+    }
+}
+foreach (['get_rate', 'rate_limit', 'guest_reg_token', 'encrypt_value', 'decrypt_value'] as $fn) {
+    check("bootstrap helper $fn() is provided by a required file", isset($defsInDeps[strtolower($fn)]));
+}
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";
