@@ -1257,7 +1257,11 @@ function rental_refund_blocked($b)
     if ($within <= 0) {
         return false;
     }
-    $daysUntil = (int) floor((strtotime($b['check_in']) - strtotime($today)) / 86400);
+    // Parse both dates at UTC midnight (like last_minute_factor() in pricing.php)
+    // so the day count is DST-immune and matches the JS mirror rentalRefundBlocked(),
+    // which uses UTC. Local midnights would drift ±1 hour across the clock changes
+    // and could drop a day near the boundary, wrongly blocking a limited-policy refund.
+    $daysUntil = (int) floor((strtotime($b['check_in'] . ' UTC') - strtotime($today . ' UTC')) / 86400);
     return $daysUntil < $within;
 }
 if ($action === 'refund') {

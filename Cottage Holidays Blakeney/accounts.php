@@ -28,7 +28,7 @@ function tax_year_start($dateStr)
 $rows = db()
     ->query(
         'SELECT b.id, b.name, b.prop_key, b.deposit_paid, b.payment_method, b.payment_date,
-            b.agreed_total, b.agreed_booking_fee,
+            b.agreed_total, b.agreed_booking_fee, b.agreed_nightly, b.agreed_txn_fee, b.price_override,
             p.name AS property_name
      FROM bookings b JOIN properties p ON p.prop_key = b.prop_key
      WHERE b.deposit_paid > 0',
@@ -41,9 +41,21 @@ $undatedHeld = 0;
 $undatedCount = 0;
 foreach ($rows as &$r) {
     $received = (float) $r['deposit_paid'];
-    $heldDep = (float) ($r['agreed_booking_fee'] ?? 0); // damages deposit (held)
-    $fullTotal = (float) ($r['agreed_total'] ?? $received);
-    $rentalPrice = max(0.0, $fullTotal - $heldDep);
+    // The rental price EXCLUDES the damages deposit in BOTH eras, so derive it from
+    // the rental components (nightly + txn fee, override raising the floor) exactly
+    // like damages_collected() — NOT as `agreed_total − deposit`. agreed_total is
+    // already rental-only in the current model, so that old formula double-removed
+    // the deposit: it under-reported taxable rental income by the deposit amount and
+    // invented a phantom "held" deposit for every fully-paid modern booking.
+    $rentalPrice = (float) ($r['agreed_nightly'] ?? 0) + (float) ($r['agreed_txn_fee'] ?? 0);
+    if ($r['price_override'] !== null && $r['price_override'] !== '') {
+        $rentalPrice = max($rentalPrice, (float) $r['price_override']);
+    }
+    // Legacy rows with no price snapshot: we can't split out a deposit we have no
+    // figure for, so treat everything received as income (never a phantom deposit).
+    if ($rentalPrice <= 0) {
+        $rentalPrice = $received;
+    }
 
     // Attribute money received to rental income FIRST; only the excess above the
     // rental price counts as the held damages deposit.

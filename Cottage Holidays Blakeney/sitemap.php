@@ -51,10 +51,23 @@ echo '        xmlns:image="http://www.google.com/schemas/sitemap-image/1.1">' . 
 // The homepage hero. index.html's static hero.jpg 404s on the live host, so use
 // the owner's uploaded hero (content 'hero-bg'); omit the image entry entirely if
 // none is set rather than list a 404.
+// This file is deliberately standalone (own PDO, never db.php), so content_value()
+// is NOT available here — read the hero via the local $pdo like home.php does, and
+// never let a hero lookup break the sitemap.
 $heroImg = '';
-$hb = content_value('hero-bg');
-if ($hb !== '' && preg_match('#^[a-z0-9/_.\-]+\.(jpe?g|png|webp)$#i', $hb)) {
-    $heroImg = $origin . '/' . ltrim($hb, '/');
+try {
+    if (isset($pdo)) {
+        $hs = $pdo->prepare("SELECT item_value FROM content WHERE item_key = 'hero-bg'");
+        $hs->execute();
+        $hv = $hs->fetchColumn();
+        $hb = $hv !== false ? json_decode((string) $hv, true) : '';
+        $hb = is_string($hb) ? $hb : '';
+        if ($hb !== '' && preg_match('#^[a-z0-9/_.\-]+\.(jpe?g|png|webp)$#i', $hb)) {
+            $heroImg = $origin . '/' . ltrim($hb, '/');
+        }
+    }
+} catch (\Throwable $e) {
+    // Hero image is optional — a lookup failure must not break the sitemap.
 }
 
 // Home page (with the hero image, when set).
