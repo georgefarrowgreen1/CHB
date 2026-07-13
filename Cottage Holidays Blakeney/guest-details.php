@@ -90,8 +90,13 @@ function render_guest_form_html($d)
     $error = (string) ($d['error'] ?? '');
     $action = $e($d['action_url'] ?? '');
 
-    // A short, flexible nationality suggestion list (free text still allowed).
-    $suggest = ['British', 'Irish', 'American', 'Australian', 'Canadian', 'Chinese', 'Danish', 'Dutch', 'French', 'German', 'Indian', 'Italian', 'Japanese', 'New Zealander', 'Norwegian', 'Polish', 'Portuguese', 'South African', 'Spanish', 'Swedish', 'Swiss'];
+    // Full nationality (demonym) list — the input's datalist makes it a
+    // type-to-search dropdown. Home nations (British/Irish) first, then A–Z.
+    // Free text is still accepted for anything unusual. English/Scottish/Welsh
+    // are deliberately NOT listed separately — nationality is "British" (and the
+    // home-nation check keys off British/Irish), so a separate demonym would
+    // wrongly trip the passport/onward fields.
+    $suggest = ['British', 'Irish', 'Afghan', 'Albanian', 'Algerian', 'American', 'Andorran', 'Angolan', 'Antiguan', 'Argentine', 'Armenian', 'Australian', 'Austrian', 'Azerbaijani', 'Bahamian', 'Bahraini', 'Bangladeshi', 'Barbadian', 'Belarusian', 'Belgian', 'Belizean', 'Beninese', 'Bhutanese', 'Bolivian', 'Bosnian', 'Botswanan', 'Brazilian', 'Bruneian', 'Bulgarian', 'Burkinabé', 'Burmese', 'Burundian', 'Cambodian', 'Cameroonian', 'Canadian', 'Cape Verdean', 'Central African', 'Chadian', 'Chilean', 'Chinese', 'Colombian', 'Comoran', 'Congolese', 'Costa Rican', 'Croatian', 'Cuban', 'Cypriot', 'Czech', 'Danish', 'Djiboutian', 'Dominican', 'Dutch', 'East Timorese', 'Ecuadorean', 'Egyptian', 'Emirati', 'Equatorial Guinean', 'Eritrean', 'Estonian', 'Ethiopian', 'Fijian', 'Finnish', 'French', 'Gabonese', 'Gambian', 'Georgian', 'German', 'Ghanaian', 'Greek', 'Grenadian', 'Guatemalan', 'Guinean', 'Guyanese', 'Haitian', 'Honduran', 'Hungarian', 'Icelandic', 'Indian', 'Indonesian', 'Iranian', 'Iraqi', 'Israeli', 'Italian', 'Ivorian', 'Jamaican', 'Japanese', 'Jordanian', 'Kazakh', 'Kenyan', 'Kittitian', 'Kosovar', 'Kuwaiti', 'Kyrgyz', 'Lao', 'Latvian', 'Lebanese', 'Liberian', 'Libyan', 'Liechtensteiner', 'Lithuanian', 'Luxembourger', 'Macedonian', 'Malagasy', 'Malawian', 'Malaysian', 'Maldivian', 'Malian', 'Maltese', 'Marshallese', 'Mauritanian', 'Mauritian', 'Mexican', 'Micronesian', 'Moldovan', 'Monégasque', 'Mongolian', 'Montenegrin', 'Moroccan', 'Mozambican', 'Namibian', 'Nauruan', 'Nepalese', 'New Zealander', 'Nicaraguan', 'Nigerian', 'Nigerien', 'North Korean', 'Norwegian', 'Omani', 'Pakistani', 'Palauan', 'Palestinian', 'Panamanian', 'Papua New Guinean', 'Paraguayan', 'Peruvian', 'Filipino', 'Polish', 'Portuguese', 'Qatari', 'Romanian', 'Russian', 'Rwandan', 'Saint Lucian', 'Salvadoran', 'Samoan', 'San Marinese', 'Saudi', 'Senegalese', 'Serbian', 'Seychellois', 'Sierra Leonean', 'Singaporean', 'Slovak', 'Slovenian', 'Solomon Islander', 'Somali', 'South African', 'South Korean', 'South Sudanese', 'Spanish', 'Sri Lankan', 'Sudanese', 'Surinamese', 'Swazi', 'Swedish', 'Swiss', 'Syrian', 'Taiwanese', 'Tajik', 'Tanzanian', 'Thai', 'Togolese', 'Tongan', 'Trinidadian', 'Tunisian', 'Turkish', 'Turkmen', 'Tuvaluan', 'Ugandan', 'Ukrainian', 'Uruguayan', 'Uzbek', 'Vanuatuan', 'Venezuelan', 'Vietnamese', 'Yemeni', 'Zambian', 'Zimbabwean'];
     $datalist = '<datalist id="nats">' . implode('', array_map(fn($n) => '<option value="' . $e($n) . '">', $suggest)) . '</datalist>';
 
     // One guest fieldset. $i is the row index; $g the existing values (or empty).
@@ -102,7 +107,7 @@ function render_guest_form_html($d)
         return '<fieldset class="guest" data-row>' .
             '<div class="gnum">Guest ' . ($i + 1) . '</div>' .
             '<label>Full name<input type="text" name="name[]" value="' . $e($g['name'] ?? '') . '" maxlength="120" autocomplete="off" required></label>' .
-            '<label>Nationality<input type="text" name="nationality[]" list="nats" value="' . ($nat === '' ? '' : $nat) . '" maxlength="60" autocomplete="off" oninput="toggleForeign(this)" required></label>' .
+            '<label>Nationality <span class="hint">— tap and start typing to search</span><input class="nat" type="text" name="nationality[]" list="nats" value="' . ($nat === '' ? '' : $nat) . '" maxlength="60" placeholder="Start typing a nationality…" autocomplete="off" oninput="toggleForeign(this)" required></label>' .
             '<div class="foreign" style="' . $extraStyle . '">' .
             '<label>Passport / ID number<input type="text" name="doc[]" value="' . $e($g['doc'] ?? '') . '" maxlength="60" autocomplete="off"></label>' .
             '<label>Place of issue (country)<input type="text" name="docplace[]" value="' . $e($g['docPlace'] ?? '') . '" maxlength="80" autocomplete="off"></label>' .
@@ -141,8 +146,10 @@ function render_guest_form_html($d)
         'fieldset.guest{border:1px solid #ece4d3;border-radius:14px;padding:14px 16px 4px;margin:14px 0;position:relative;background:#fdfbf6;}' .
         '.gnum{font-size:11px;letter-spacing:2px;text-transform:uppercase;font-weight:700;color:' . $accent . ';margin-bottom:2px;}' .
         'label{display:block;font-size:12px;color:#8a8378;font-weight:600;margin:8px 0 12px;}' .
+        '.hint{font-weight:400;color:#b0a892;font-size:11px;}' .
         'input[type=text]{display:block;width:100%;margin-top:5px;padding:11px 12px;border:1px solid #ddd4c2;border-radius:10px;font-size:16px;font-family:inherit;color:#1b2a34;background:#fff;}' .
         'input[type=text]:focus{outline:none;border-color:' . $accent . ';}' .
+        'input.nat{padding-right:34px;background-image:url("data:image/svg+xml;utf8,<svg xmlns=\'http://www.w3.org/2000/svg\' width=\'16\' height=\'16\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'%238a8378\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'><polyline points=\'6 9 12 15 18 9\'/></svg>");background-repeat:no-repeat;background-position:right 12px center;}' .
         '.foreign{border-top:1px dashed #ece4d3;margin-top:4px;padding-top:6px;}' .
         '.actions{margin:18px 0 4px;}' .
         '.btn{display:inline-block;width:100%;background:' . $accent . ';color:#fff;text-decoration:none;font-weight:700;font-size:16px;padding:14px 26px;border:0;border-radius:999px;cursor:pointer;}' .
