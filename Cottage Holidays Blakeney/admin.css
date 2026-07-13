@@ -341,6 +341,7 @@
 }.tl-inner {
   display: inline-block;
   min-width: 100%;
+  position: relative; /* anchor for the live "now" playhead (.tl-nowline) */
 }.tl-row {
   display: flex;
   align-items: stretch;
@@ -403,9 +404,36 @@
 }.tl-cell.is-wknd {
   background: rgba(255, 255, 255, 0.025);
 }.tl-cell.is-today {
-  box-shadow: inset 2px 0 0 var(--accent);
   background: rgba(199, 154, 100, 0.09); /* a whisper of accent anchors today down every lane */
-}.tl-cell:hover {
+}
+/* Live "now" playhead: a thin accent line through today that advances with the
+   clock (positioned in JS by tlPlaceNowLine), so by evening it reaches today's
+   right edge — the boundary with the next booking. Scrolls with the lanes; slides
+   under the sticky label (z-index 3) like the bars. */
+.tl-nowline {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--accent);
+  border-radius: 2px;
+  z-index: 2;
+  pointer-events: none;
+  box-shadow: 0 0 6px rgba(199, 154, 100, 0.55);
+}
+.tl-nowline::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  transform: translate(-50%, -50%);
+}
+.tl-cell:hover {
   background: rgba(255, 255, 255, 0.06);
 }.tl-bar:hover {
   transform: translateY(-1px);
