@@ -241,6 +241,22 @@ if (typeof ctx.cmdkServerItem === 'function') {
     check('cmdkServerItem() is defined', false);
 }
 
+// ---- 9. Search scopes (ubiquity: pre-scope to the current workspace) ----
+check(
+    'scope helpers are defined',
+    typeof ctx.cmdkScopeMatch === 'function' && typeof ctx.cmdkInScope === 'function' && typeof ctx.cmdkScopeBar === 'function' && typeof ctx.cmdkSetScope === 'function' && typeof ctx.cmdkDefaultScope === 'function',
+);
+if (typeof ctx.cmdkScopeMatch === 'function') {
+    const m = ctx.cmdkScopeMatch;
+    check('scope=bookings keeps bookings, drops emails, keeps actions', m('bookings', 'booking') === true && m('bookings', 'email') === false && m('bookings', 'action') === true);
+    check('scope=money keeps payments/expenses, drops bookings', m('money', 'payment') === true && m('money', 'expense') === true && m('money', 'booking') === false);
+    check('scope=inbox keeps messages/emails, drops guests', m('inbox', 'message') === true && m('inbox', 'email') === true && m('inbox', 'guest') === false);
+    check('scope=guests keeps guests/reviews, drops payments', m('guests', 'guest') === true && m('guests', 'review') === true && m('guests', 'payment') === false);
+    check('scope=all keeps everything', m('all', 'booking') === true && m('all', 'email') === true);
+    check('screens/help/answers are never scoped away', m('bookings', 'screen') === true && m('money', 'help') === true && m('guests', 'answer') === true);
+    check('scope bar renders a chip per scope (all/bookings/inbox/money/guests)', (ctx.cmdkScopeBar().match(/class="cmdk-scope/g) || []).length >= 5);
+}
+
 // ---- Summary ----
 console.log('\n== Summary ==');
 if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }
