@@ -116,6 +116,7 @@ const ok = (cond, label) => {
     nowPill: (document.querySelector('.pipe-step.is-now') || {}).textContent || '',
     donePill: (document.querySelector('.pipe-step.is-done') || {}).textContent || '',
     cards: document.querySelectorAll('.bhub-card').length,
+    hasGuestReg: Array.from(document.querySelectorAll('.bhub-card-title')).some((t) => /Guest register/.test(t.textContent || '')),
     notes: (document.querySelector('[id^="bk-notes-"]') || {}).value || '',
   }));
   ok(a.active === 'view-booking-hub', `hub view active (${a.active})`);
@@ -125,7 +126,8 @@ const ok = (cond, label) => {
   ok(a.fullVisible && a.compactHidden, 'desktop shows the FULL strip and hides the compact window');
   ok(a.caps.join('|') === 'Done|Now · 2 of 6|Next', `window captions with step counter (${a.caps.join('|')})`);
   ok(a.donePill.includes('Booked') && a.nowPill.includes('Deposit'), `unpaid → Done:Booked, Now:Deposit (${a.nowPill})`);
-  ok(a.cards === 4, `four cards rendered (${a.cards})`);
+  ok(a.cards === 5, `five cards rendered — incl. Guest register (${a.cards})`);
+  ok(a.hasGuestReg, 'Guest register card present (UK hotel-records duty)');
   ok(a.notes === 'VIP', 'staff note prefilled');
   // Email actions live in ONE place: the Emails card.
   const em1 = await page.evaluate(() => ({
