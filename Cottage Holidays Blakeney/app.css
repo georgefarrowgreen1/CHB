@@ -5068,6 +5068,62 @@ body.owner-mode .chat-widget {
 .sg-table .sg-rate {
   width: 84px;
 }
+/* Phone: the wide season × cottage table can't fit, so reflow each season into
+   a stacked card with labelled rows (the cottage rate cells were scrolling
+   off-screen, leaving the editor looking empty). */
+@media (max-width: 640px) {
+  .sg-table,
+  .sg-table tbody,
+  .sg-table tr,
+  .sg-table td {
+    display: block;
+    width: 100%;
+    min-width: 0;
+  }
+  .sg-table thead {
+    display: none;
+  }
+  .sg-table .sg-band {
+    border: 1px solid var(--glass-border);
+    border-radius: 14px;
+    background: var(--glass-bg);
+    padding: 8px 14px;
+    margin-bottom: 12px;
+  }
+  .sg-table td {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 7px 0;
+  }
+  .sg-table td + td {
+    border-top: 1px solid var(--glass-border);
+  }
+  .sg-table td::before {
+    content: attr(data-label);
+    font-size: 0.74rem;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    color: var(--text-muted);
+    flex: 0 0 auto;
+  }
+  .sg-table td .input-glass {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 62%;
+  }
+  .sg-table .sg-rate {
+    width: auto;
+  }
+  .sg-table td.sg-del {
+    justify-content: flex-end;
+    padding-top: 10px;
+  }
+  .sg-table td.sg-del::before {
+    content: none;
+  }
+}
 .bo-search-empty {
   font-size: 0.85rem;
   color: var(--text-muted);
@@ -6053,29 +6109,22 @@ body.admin-screen .site-footer {
 }
 
 /* Analytics panel: sticky period bar, segmented control, group headings */
+/* The range switch is a clean floating pill on the sheet ground — no stray
+   full-width white band (which read as a rough box floating over the content). */
 .ana-pick {
-  position: sticky;
-  top: 0;
-  z-index: 5;
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  padding: 10px 0 12px;
-  margin-bottom: 4px;
-  background: var(--glass-bg);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border-bottom: 1px solid var(--glass-border);
+  padding: 2px 0 16px;
 }
 .ana-seg {
   display: flex;
   width: 100%;
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--glass-bg);
   border: 1px solid var(--glass-border);
   border-radius: var(--r-pill);
-  padding: 3px;
-  gap: 2px;
+  padding: 4px;
+  gap: 3px;
+  box-shadow: var(--shadow-soft);
 }
 .ana-seg-btn {
   appearance: none;
