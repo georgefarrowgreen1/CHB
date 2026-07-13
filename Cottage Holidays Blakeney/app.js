@@ -1831,6 +1831,28 @@ function applyCancellationText(propKey) {
     const pol = CANCELLATION_POLICIES[cancelPolicyOf(propKey)];
     el.innerHTML = `<strong>${pol.name}.</strong> ${pol.points.map((p) => escapeHtml(p)).join('. ')}.`;
 }
+// Is the standalone RENTAL refund still allowed for this booking? Returning the
+// money a guest paid for the stay is only offered while the booking is genuinely
+// refundable — before they arrive AND before the cancellation policy leaves
+// nothing to give back. Once the guest has arrived, or the policy window has
+// closed, the ONLY money that can still go back is the refundable damages deposit
+// (via Return deposit); Cancel & refund remains the route for a policy-based
+// partial. Mirrored server-side by rental_refund_blocked() in bookings.php — the
+// hidden button is convenience, the server guard is the real enforcement.
+function rentalRefundBlocked(propKey, b) {
+    if (!b || !b.checkIn) return false;
+    const today = typeof todayDashed === 'function' ? todayDashed() : '';
+    if (today && b.checkIn <= today) return true; // arrived / in-house / stayed
+    // Days before check-in inside which NO refund is due under each policy.
+    // flexible/moderate stay at least partially refundable right up to check-in
+    // (0 → only arrival blocks them); limited leaves nothing inside 7 days.
+    const NONREFUND_WITHIN = { flexible: 0, moderate: 0, limited: 7 };
+    const pol = typeof cancelPolicyOf === 'function' ? cancelPolicyOf(propKey) : DEFAULT_CANCEL_POLICY;
+    const within = NONREFUND_WITHIN[pol] != null ? NONREFUND_WITHIN[pol] : 0;
+    if (within <= 0) return false;
+    const daysUntil = Math.round((new Date(b.checkIn) - new Date(today)) / 864e5);
+    return daysUntil < within;
+}
 
 
 // ===================================================================
@@ -6297,6 +6319,11 @@ async function loadBookingPayments(bookingId) {
         el.textContent = '';
         return;
     }
+    // Once the guest has arrived, or the cancellation window has closed, the rental
+    // is no longer refundable — only the damages deposit (Return deposit) can go
+    // back. Hide the per-charge Refund button in that window (the server enforces it).
+    const loc = findBookingLocation(bookingId);
+    const refundOff = rentalRefundBlocked(loc ? loc.propKey : '', booking);
     try {
         const res = await apiPost('bookings.php', { action: 'payments', id: booking.dbId });
         const list = res.payments || [];
@@ -6309,7 +6336,7 @@ async function loadBookingPayments(bookingId) {
                 const isCharge = p.kind === 'deposit' || p.kind === 'balance';
                 const live = p.status === 'COMPLETED' || p.status === 'APPROVED';
                 const refundBtn =
-                    isCharge && live
+                    isCharge && live && !refundOff
                         ? `<button class="btn-sm btn-decline" style="padding:4px 10px;font-size:0.72rem;" onclick="refundPayment('${bookingId}','${p.square_payment_id}',${parseFloat(p.amount)})">Refund</button>`
                         : '';
                 const isReturn = p.kind === 'refund' || p.kind === 'damages_return';
@@ -12123,7 +12150,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'payflw5';
+    const BUILD = 'payflw6';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

@@ -403,6 +403,30 @@ if (typeof ctx.hubPayFlowHtml === 'function') {
     check('non-damages refund reads plain "Refunded"', /Refunded/.test(plainRefund) && !/Damages/.test(plainRefund));
 }
 
+// ---- 17. Rental refund gating (arrived / cancellation-policy unrefundable) ----
+check('rentalRefundBlocked is defined', typeof ctx.rentalRefundBlocked === 'function');
+if (typeof ctx.rentalRefundBlocked === 'function') {
+    const today = ctx.todayDashed();
+    const plus = (n) => {
+        const d = new Date(today + 'T00:00:00Z');
+        d.setUTCDate(d.getUTCDate() + n);
+        return d.toISOString().slice(0, 10);
+    };
+    check('a well-future booking stays rental-refundable', ctx.rentalRefundBlocked('x', { checkIn: plus(30) }) === false);
+    check('an arrived booking blocks the rental refund', ctx.rentalRefundBlocked('x', { checkIn: plus(-1) }) === true);
+    check('a same-day arrival blocks the rental refund', ctx.rentalRefundBlocked('x', { checkIn: today }) === true);
+    // flexible/moderate stay refundable right up to check-in.
+    check('flexible policy still refundable 1 day out', ctx.rentalRefundBlocked('x', { checkIn: plus(1) }) === false);
+    // limited policy: nothing refundable inside 7 days of check-in. siteContent is a
+    // lexical binding (not reachable from the vm ctx), so force the policy via the
+    // globally-hoisted cancelPolicyOf instead.
+    const realPolicyOf = ctx.cancelPolicyOf;
+    ctx.cancelPolicyOf = () => 'limited';
+    check('limited policy blocks a refund inside 7 days', ctx.rentalRefundBlocked('lim', { checkIn: plus(3) }) === true);
+    check('limited policy still refundable outside 7 days', ctx.rentalRefundBlocked('lim', { checkIn: plus(20) }) === false);
+    ctx.cancelPolicyOf = realPolicyOf;
+}
+
 // ---- Summary ----
 console.log('\n== Summary ==');
 if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }

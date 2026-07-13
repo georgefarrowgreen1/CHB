@@ -1237,6 +1237,29 @@ if ($action === 'hold_release') {
 }
 
 // Refund a Square payment (full or partial) and re-reconcile the booking.
+// Whether the standalone RENTAL refund is still allowed for a booking. Mirrors
+// rentalRefundBlocked() in app.js: blocked once the guest has arrived, or once the
+// cancellation policy leaves nothing refundable (flexible/moderate: at arrival;
+// limited: inside 7 days of check-in). After that, only the refundable damages
+// deposit (return_deposit) can go back. Enforced here so the API can't be used to
+// bypass the hidden button.
+function rental_refund_blocked($b)
+{
+    if (!$b || empty($b['check_in'])) {
+        return false;
+    }
+    $today = date('Y-m-d');
+    if ($b['check_in'] <= $today) {
+        return true;
+    }
+    $pol = function_exists('content_value') ? content_value(($b['prop_key'] ?? '') . '-cancellation-policy') : '';
+    $within = ['flexible' => 0, 'moderate' => 0, 'limited' => 7][$pol] ?? 0;
+    if ($within <= 0) {
+        return false;
+    }
+    $daysUntil = (int) floor((strtotime($b['check_in']) - strtotime($today)) / 86400);
+    return $daysUntil < $within;
+}
 if ($action === 'refund') {
     if (!square_enabled()) {
         json_out(['error' => 'Square payments are not switched on yet.'], 400);
@@ -1276,6 +1299,13 @@ if ($action === 'refund') {
     // damages never contributed to) and falsely flips the booking to part-paid. This
     // is also the correct path for a partial return of a captured hold.
     $refundKind = $row['kind'] === 'damages' ? 'damages_return' : 'refund';
+    // Once the guest has arrived or the cancellation window has closed, the RENTAL
+    // is no longer refundable — only the damages deposit can be returned (via
+    // return_deposit). Block a rental refund here; damages_return is unaffected.
+    if ($refundKind === 'refund' && rental_refund_blocked($b)) {
+        book_unlock($gProp ?? '');
+        json_out(['error' => 'This booking is no longer refundable — the guest has arrived or the cancellation window has closed. Only the refundable damages deposit can be returned now.'], 409);
+    }
     // Cap by what's ACTUALLY still refundable on this booking — not just this row's
     // original amount — so repeated refunds can't exceed the money taken (and, with
     // the bundled deposit, can't eat into its Square headroom).
