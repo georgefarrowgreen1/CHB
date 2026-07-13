@@ -3692,19 +3692,21 @@ function renderBookingHub() {
     const discloseBtn = gt.fullyPaid
         ? `<button type="button" class="btn-sm btn-edit bhub-disclose-btn" onclick="bhubMoneyExpand()">Show the full breakdown</button>`
         : '';
-    // Settled bookings: the folded line above already states the deposit, so
-    // the row only appears when it carries an ACTION (return after checkout,
-    // or the legacy card-hold controls). While money is still owed the full
-    // status row stays — the breakdown is the working surface there.
+    // The deposit's return ACTION lives in the pipeline's next-action card at the
+    // top of the hub ("Return the deposit", shown once the stay is over and it's
+    // still held) — so the Payments card never repeats it. This row is now
+    // info-only, and only when it adds something the folded settled line doesn't:
+    // a deposit collected on a stay that's still to come/underway. Settled, and
+    // held-past (where the pipeline owns the action), both drop it.
     const depositLine =
         dh.collected > 0
-            ? gt.fullyPaid && !(dh.held > 0 && past)
+            ? gt.fullyPaid || (dh.held > 0 && past)
                 ? ''
                 : `<div class="money-deposit"><span>Refundable damage deposit: ${
                       dh.held > 0
                           ? `<strong>${gbp(dh.held)} collected</strong>${dh.returned > 0 ? ` · ${gbp(dh.returned)} returned` : ''}`
                           : `<span style="color:var(--ok);">returned${dh.returned < dh.collected - 0.001 ? ` (${gbp(dh.collected - dh.returned)} retained)` : ''}</span>`
-                  }</span>${dh.held > 0 && past ? `<button class="btn-sm btn-edit" onclick="returnDeposit('${b.id}')">Return / settle</button>` : ''}</div>`
+                  }</span></div>`
             : holdControls(b);
     const payHistory =
         squareAdminEnabled && b.email
