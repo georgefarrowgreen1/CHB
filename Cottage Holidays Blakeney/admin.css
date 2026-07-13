@@ -1290,6 +1290,27 @@ body.owner-mode #mobileMenu {
     box-shadow: 0 0 0 0 transparent;
   }
 }
+/* Filter-the-board: dim every Today row/bar that doesn't match the search, and a
+   clearable banner above the workspace. */
+.cmdk-dim {
+  opacity: 0.16;
+  filter: grayscale(0.6);
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+.today-filter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  font-size: 0.85rem;
+  border-radius: var(--r-panel, 14px);
+}
+.today-filter-bar strong {
+  color: var(--accent);
+}
 /* Spotlight-style section headers, Top Hit + empty-state example chips. */
 .cmdk-group-label {
   font-size: 0.68rem;

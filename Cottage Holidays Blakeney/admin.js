@@ -304,6 +304,7 @@ function cmdkActions(q) {
         A('csv', 'Export accounts (CSV)', 'Download the spreadsheet for your accountant', 'export csv accountant spreadsheet download income tax accounts report figures', /(export|download|get|save).{0,14}(csv|accountant|spreadsheet|accounts?|income|figures|tax report)/, () => { cmdkOpenAccounts('income'); cmdkPoll(() => (typeof accountsReport !== 'undefined' && accountsReport) ? true : null, () => { if (typeof exportAccountsCSV === 'function') exportAccountsCSV(); }, 50); }),
         A('syncnow', 'Sync calendars now', 'Pull the latest Airbnb / Vrbo blocks', 'sync now refresh import update pull ical airbnb vrbo booking channel calendar blocks', /(sync|refresh|update|pull|import|re.?sync).{0,12}(now|calendar|ical|airbnb|vrbo|booking|channel|block|feed)/, () => { closeCmdK(); if (typeof toast === 'function') toast('Syncing calendars…'); if (typeof autoSyncIcalBlocks === 'function') autoSyncIcalBlocks(true); }),
         A('fixsafe', 'Fix safe issues', 'Auto-repair harmless state drift', 'fix repair safe issues self repair drift problems clean tidy resolve maintenance', /(fix|repair|resolve|clean up|tidy).{0,12}(safe|issue|problem|drift|error|thing)|self.?repair/, () => { closeCmdK(); if (typeof runSelfRepair === 'function') runSelfRepair(); }),
+        A('filterboard', 'Filter the Today board', 'Dim everything that doesn’t match your search', 'filter today board dim narrow highlight only show find on screen calendar timeline bookings', /filter.{0,10}(today|board|screen|calendar|timeline|booking)|(dim|narrow|only ?show).{0,10}(board|today|match)/, () => { const el = document.getElementById('cmdk-input'); const term = ((el ? el.value : '') || '').toLowerCase().replace(/\b(filter|the|today|board|screen|calendar|timeline|bookings?|for|by|only|show|dim|narrow)\b/g, '').replace(/\s+/g, ' ').trim(); applyTodayFilter(term); }),
         A('income', 'Income & tax', 'Totals, VAT position & the accountant CSV', 'income tax vat revenue takings earnings accounts total figures accountant year', /(income|tax|vat|revenue|takings|earnings|accounts?|figures).{0,10}(total|report|year|summary|view|show)?|view.{0,8}(income|accounts|tax)/, () => cmdkOpenAccounts('income')),
         A('recentpay', 'Recent payments', 'The latest money in', 'recent payments latest money in received takings feed transactions', /(recent|latest|last).{0,10}(payment|money|takings|transaction)|money in/, () => cmdkOpenAccounts('recent')),
         A('pricingcoach', 'Pricing coach', 'Rate suggestions & demand signals', 'pricing coach rate suggestion demand advice optimise revenue yield recommend', /(pricing|rate).{0,10}(coach|advice|suggestion|help|recommend|optimi)|coach/, () => cmdkOpenAccounts('pricingcoach')),
@@ -534,6 +535,7 @@ function cmdkActIcon(name) {
         no: '<circle cx="12" cy="12" r="9"/><path d="M9 9l6 6M15 9l-6 6"/>',
         plus: '<circle cx="12" cy="12" r="9"/><path d="M12 8v8M8 12h8"/>',
         x: '<path d="M18 6L6 18M6 6l12 12"/>',
+        cal: '<rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/>',
     };
     return `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p[name] || p.hub}</svg>`;
 }
@@ -549,6 +551,7 @@ function cmdkBookingActions(b, pk) {
     if ((b.holdStatus || 'none') === 'charged') {
         acts.push({ key: 'deposit', label: 'Return deposit', icon: cmdkActIcon('undo'), run: () => { closeCmdK(); returnDeposit(b.id); } });
     }
+    acts.push({ key: 'cal', label: 'Show on calendar', icon: cmdkActIcon('cal'), run: () => cmdkShowOnCalendar(b.id) });
     return acts;
 }
 function cmdkAll(q) {
@@ -963,6 +966,57 @@ function cmdkIntent(q) {
             A('gdsr-away', 'Away auto-reply', 'Out-of-hours acknowledgement', toMng('chat-away')),
             A('gdsr-ans', 'Instant chat answers', 'Auto-answers to chat chips', toMng('chat-answers')),
         ]);
+    }
+
+    // 0k) Needs-you — pull the prioritised to-do list into the palette so it's
+    //     actionable from any screen ("what needs me", "to-do", "my tasks").
+    if (/\bneeds? (me|you|doing|action|attention)|to.?do list|to.?do\b|my (tasks?|jobs?)|what.*(should i do|needs doing|to action|to sort)|priorit|action list|jobs? to do\b/.test(q)) {
+        const plain = (s) => String(s || '').replace(/<[^>]+>/g, '').replace(/&rsquo;/g, '’').replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&#39;/g, "'");
+        let ny = [];
+        try { ny = needsYouItems(); } catch (e) {}
+        const head = ans(ny.length ? `${ny.length} thing${ny.length === 1 ? '' : 's'} need you` : 'Nothing needs you — all clear', ny.length ? 'Your prioritised to-do list' : 'You’re all caught up', () => { closeCmdK(); if (typeof nav === 'function') nav('view-backoffice'); });
+        return [head].concat(ny.slice(0, 10).map((it, i) => ({
+            type: 'answer', id: 'ny-' + i, label: plain(it.label), sub: plain(it.sub),
+            run: typeof it.run === 'function' ? it.run : () => { closeCmdK(); if (typeof nav === 'function') nav('view-backoffice'); },
+        })));
+    }
+    // 0l) Availability gaps — multi-night open windows over the next 60 days, per
+    //     cottage ("gaps", "when is Jollyboat free", "availability next month").
+    //     Plain "free tonight" still falls through to branch 8 below.
+    if (/\bgaps?\b/.test(q) || (/\b(free|availab|vacan|open|empty|spare)\b/.test(q) && /\b(month|week|weekend|coming|soon|next|window|when|august|september|october|november|december|january|february|march|april|june|july)\b/.test(q))) {
+        const gpk = typeof cmdkCottageFor === 'function' ? cmdkCottageFor(q) : null;
+        const gd = dpParse(today); const ge = new Date(gd.getFullYear(), gd.getMonth(), gd.getDate() + 60);
+        const gTo = formatDashed(ge);
+        const gaps = (typeof todayGaps === 'function' ? todayGaps(today, gTo, gpk) : []).sort((a, b) => a.from.localeCompare(b.from)).slice(0, 10);
+        const scope = gpk && propertyMeta[gpk] ? propertyMeta[gpk].name : 'all cottages';
+        const gHead = ans(gaps.length ? `${gaps.length} open window${gaps.length === 1 ? '' : 's'} · ${scope}` : `No gaps at ${scope} in the next 60 days`, gaps.length ? 'Next 60 days · tap one to see it on the calendar' : 'Fully booked', () => { closeCmdK(); if (typeof nav === 'function') nav('view-backoffice'); });
+        return [gHead].concat(gaps.map((g) => ({
+            type: 'answer', id: 'gap-' + g.propKey + '-' + g.from,
+            label: `${g.name} free ${fmtDate(g.from)} → ${fmtDate(g.to)}`,
+            sub: `${g.nights} night${g.nights === 1 ? '' : 's'} open`,
+            run: () => cmdkJumpTimeline(g.from),
+            chips: [{ label: 'Show on calendar', run: () => cmdkJumpTimeline(g.from) }, { label: 'Add booking', run: () => { closeCmdK(); if (typeof tlAddAt === 'function') tlAddAt(g.propKey, g.from); } }],
+        })));
+    }
+    // 0m) Jump the timeline to a month — "jump to August", "go to next month".
+    {
+        const jm = q.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\b/);
+        if (/\b(jump|scroll|go to|take me|show me the|open the)\b/.test(q) && (jm || /\bnext month|this month|the (calendar|timeline)\b/.test(q))) {
+            const mm = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+            const now = dpParse(today);
+            let target;
+            if (jm) {
+                const mi = mm.indexOf(jm[1].slice(0, 3));
+                let y = now.getFullYear();
+                if (mi < now.getMonth()) y++; // a month already gone this year → next year
+                target = formatDashed(new Date(y, mi, 1));
+            } else if (/next month/.test(q)) {
+                target = formatDashed(new Date(now.getFullYear(), now.getMonth() + 1, 1));
+            } else {
+                target = formatDashed(new Date(now.getFullYear(), now.getMonth(), 1));
+            }
+            return [ans('Jump the calendar to ' + fmtDate(target), 'Scrolls the Today timeline there', () => cmdkJumpTimeline(target))];
+        }
     }
 
     // 1) Payments — who owes, who's paid in full, who's paid a deposit.
@@ -1718,6 +1772,92 @@ async function cmdkOpenEmail(id) {
 function cmdkOpenAccounts(sub) {
     closeCmdK();
     Promise.resolve(openAccounts()).then(() => { if (typeof accountsOpen === 'function') accountsOpen(sub); });
+}
+// ============================================================
+//  Today × Search — search reaches into the operations workspace itself:
+//  jump to a booking on the calendar, paint open gaps, filter the whole board,
+//  scroll to a month, and pull the Needs-you list into the palette.
+// ============================================================
+// Open a booking's bar on the timeline and flash it (the "Show on calendar"
+// pivot). Navigates to Today, scrolls the timeline to the stay, then reveals it.
+function cmdkShowOnCalendar(bookingId) {
+    closeCmdK();
+    if (typeof nav === 'function') nav('view-backoffice');
+    const b = typeof findBookingById === 'function' ? findBookingById(bookingId) : null;
+    const iso = b && b.checkIn ? b.checkIn : null;
+    cmdkPoll(() => document.getElementById('cal-body'), () => {
+        if (iso && typeof tlScrollToDate === 'function') tlScrollToDate(iso);
+        cmdkPoll(() => document.querySelector('.tl-bar[data-bkid="' + bookingId + '"]'), cmdkFlash, 40);
+    }, 30);
+}
+// Scroll the timeline to a date (month jump / gap pivot). No flash — just travel.
+function cmdkJumpTimeline(iso) {
+    closeCmdK();
+    if (typeof nav === 'function') nav('view-backoffice');
+    cmdkPoll(() => document.getElementById('cal-body'), () => { if (typeof tlScrollToDate === 'function') tlScrollToDate(iso); }, 30);
+}
+// ---- Filter the whole Today board by a query: dim every booking row + timeline
+// bar that doesn't match, with a clearable banner. Uses the data-search haystack
+// on .bk-row / .tl-bar (name · cottage · pay state).
+let __todayFilter = '';
+function paintTodayFilter() {
+    const q = __todayFilter;
+    let shown = 0;
+    document.querySelectorAll('#view-backoffice [data-search]').forEach((el) => {
+        const match = !q || (el.getAttribute('data-search') || '').indexOf(q) > -1;
+        el.classList.toggle('cmdk-dim', !!q && !match);
+        if (match) shown++;
+    });
+    renderTodayFilterBar(q, shown);
+}
+function applyTodayFilter(q) {
+    __todayFilter = (q || '').trim().toLowerCase();
+    closeCmdK();
+    if (typeof nav === 'function') nav('view-backoffice');
+    cmdkPoll(() => document.getElementById('cal-body'), () => paintTodayFilter(), 30);
+}
+function clearTodayFilter() {
+    __todayFilter = '';
+    document.querySelectorAll('#view-backoffice .cmdk-dim').forEach((el) => el.classList.remove('cmdk-dim'));
+    const bar = document.getElementById('today-filter-bar');
+    if (bar) bar.remove();
+}
+function renderTodayFilterBar(q, shown) {
+    let bar = document.getElementById('today-filter-bar');
+    const view = document.getElementById('view-backoffice');
+    if (!q || !view) { if (bar) bar.remove(); return; }
+    if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'today-filter-bar';
+        bar.className = 'today-filter-bar glass-panel';
+        view.insertBefore(bar, view.firstChild);
+    }
+    bar.innerHTML = `<span>Filtering the board for <strong>${escapeHtml(q)}</strong> · ${shown} match${shown === 1 ? '' : 'es'}</span><button type="button" class="btn-sm btn-edit" onclick="clearTodayFilter()">Clear</button>`;
+}
+// ---- Open availability windows (gaps) between bookings + external blocks, per
+// cottage, across [fromIso, toIso). Returns [{propKey, name, from, to, nights}].
+function todayGaps(fromIso, toIso, onlyProp) {
+    const gaps = [];
+    const keys = onlyProp ? [onlyProp] : Object.keys(propertyMeta || {});
+    const push = (k, from, to) => {
+        const nights = Math.round((dpParse(to) - dpParse(from)) / 86400000);
+        if (nights >= 1) gaps.push({ propKey: k, name: (propertyMeta[k] || {}).name || k, from, to, nights });
+    };
+    keys.forEach((k) => {
+        if (!propertyMeta[k]) return;
+        const occ = [];
+        (dbBookings[k] || []).forEach((b) => { if (b.checkIn && b.checkOut) occ.push([b.checkIn, b.checkOut]); });
+        ((typeof dbBlocks === 'object' && dbBlocks[k]) || []).forEach((b) => { if (b.checkIn && b.checkOut) occ.push([b.checkIn, b.checkOut]); });
+        occ.sort((a, b) => a[0].localeCompare(b[0]));
+        let cur = fromIso;
+        occ.forEach(([ci, co]) => {
+            if (co <= cur || ci >= toIso) return;       // outside window / already covered
+            if (ci > cur) push(k, cur, ci < toIso ? ci : toIso);
+            if (co > cur) cur = co;                       // advance the cursor past this stay
+        });
+        if (cur < toIso) push(k, cur, toIso);
+    });
+    return gaps;
 }
 // Escape a string AND wrap the current query terms in <mark> so matches stand
 // out. Highlighting is applied only to matched result types (booking, screen,
@@ -2690,7 +2830,7 @@ function bookingListRow(propKey, b, today) {
     const balanceBit = !gt.fullyPaid ? ` · ${gbp(gt.balance)} due` : '';
     // Traffic-light edge on every row: red unpaid · amber part-paid · green paid.
     return `
-        <button type="button" class="bk-row glass-panel pay-${payClass}${b.id === __hubBookingId ? ' is-open' : ''}" data-bkid="${b.id}" onclick="openBookingHub('${b.id}')">
+        <button type="button" class="bk-row glass-panel pay-${payClass}${b.id === __hubBookingId ? ' is-open' : ''}" data-bkid="${b.id}" data-search="${escapeHtml(((b.name || 'guest') + ' ' + meta.name + ' ' + payLabel + ' ' + (past ? 'past' : 'upcoming')).toLowerCase())}" onclick="openBookingHub('${b.id}')">
             <span class="bk-row-body">
                 <span class="bk-row-top">
                     <span class="prop-tag tag-${propKey}">${escapeHtml(meta.name)}</span>
@@ -6589,6 +6729,7 @@ function needsYouItems() {
             label: 'Your daily automation looks stopped',
             sub: 'Reminders, backups and calendar syncs are not running',
             act: 'Check', go: "nav('view-settings'); settingsOpen('diagnostics')",
+            run: () => { closeCmdK(); nav('view-settings'); settingsOpen('diagnostics'); },
         });
     }
     // 2) Enquiries waiting for an answer — the money-makers, oldest first.
@@ -6605,6 +6746,7 @@ function needsYouItems() {
                 label: `${escapeHtml(q.name || 'A guest')}&rsquo;s enquiry — ${age}`,
                 sub: `${fmtStayRange(q.checkIn, q.checkOut)} · ${propName(q.propKey)}`,
                 act: 'Answer', go: `openEnquiryHub('${q.id}')`,
+                run: () => { closeCmdK(); openEnquiryHub(q.id); },
             });
         });
     // 3) Damages deposits to give back (guest has checked out) and
@@ -6618,6 +6760,7 @@ function needsYouItems() {
                     label: `Return ${escapeHtml(b.name || 'the guest')}&rsquo;s damages deposit`,
                     sub: `Checked out ${fmtDate(b.checkOut)} · ${propName(k)}`,
                     act: 'Review', go: `openBookingHub('${b.id}')`,
+                    run: () => { closeCmdK(); openBookingHub(b.id); },
                 });
             }
             const ps = paymentSummary(k, b);
@@ -6636,6 +6779,7 @@ function needsYouItems() {
                 label: `${escapeHtml(b.name || 'A guest')} ${when} — £${ps.balance.toFixed(2)} to collect`,
                 sub: `${fmtStayRange(b.checkIn, b.checkOut)} · ${propName(k)}`,
                 act: 'Chase', go: `openBookingHub('${b.id}')`,
+                run: () => { closeCmdK(); openBookingHub(b.id); },
             });
         });
     // 5) Guest chats waiting on a reply.
@@ -6645,6 +6789,7 @@ function needsYouItems() {
             label: __nyChats === 1 ? 'A guest chat needs a reply' : `${__nyChats} guest chats need a reply`,
             sub: 'Website chat · Inbox → Messages',
             act: 'Reply', go: "openInbox().then(() => inboxFolder('messages'))",
+            run: () => { closeCmdK(); Promise.resolve(openInbox()).then(() => inboxFolder('messages')); },
         });
     }
     // 6) Guest content waiting for approval.
@@ -6660,6 +6805,7 @@ function needsYouItems() {
                 label: n === 1 ? `A ${noun} to approve` : `${n} ${noun}s to approve`,
                 sub: 'Guests see it once you approve',
                 act: 'Approve', go: `nav('view-settings'); settingsOpen('${section}')`,
+                run: () => { closeCmdK(); nav('view-settings'); settingsOpen(section); },
             });
         }
     });
@@ -10150,7 +10296,7 @@ function renderCalendar() {
                 const sp = tlSpan(b.checkIn, b.checkOut);
                 const ps = paymentSummary(k, b);
                 const pay = ps.fullyPaid ? 'ok' : ps.deposit > 0 ? 'warn' : 'danger';
-                bars += `<button type="button" class="tl-bar bar-${k} tl-pay-${pay}${sp.clip}" style="grid-column:${sp.col}" onclick="openBookingHub('${b.id}')" title="${escapeHtml(meta.name)} — ${escapeHtml(b.name || 'Guest')} · ${fmtDate(b.checkIn)} → ${fmtDate(b.checkOut)}">${escapeHtml((b.name || 'Guest').split(' ')[0])}</button>`;
+                bars += `<button type="button" class="tl-bar bar-${k} tl-pay-${pay}${sp.clip}" data-bkid="${b.id}" data-search="${escapeHtml(((b.name || 'guest') + ' ' + meta.name + ' ' + (pay === 'ok' ? 'paid' : pay === 'warn' ? 'part-paid' : 'unpaid')).toLowerCase())}" style="grid-column:${sp.col}" onclick="openBookingHub('${b.id}')" title="${escapeHtml(meta.name)} — ${escapeHtml(b.name || 'Guest')} · ${fmtDate(b.checkIn)} → ${fmtDate(b.checkOut)}">${escapeHtml((b.name || 'Guest').split(' ')[0])}</button>`;
             });
             (dbBlocks[k] || []).forEach((bl) => {
                 if (!bl.checkIn || !bl.checkOut || bl.checkOut <= dates[0] || bl.checkIn >= dates[N - 1]) return;
