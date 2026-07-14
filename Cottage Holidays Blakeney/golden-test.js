@@ -104,8 +104,11 @@ const FIX = {
             mkB(4, 'Dan Epps', d(-10), d(-7), { payment: 'paid', agreedPrice: { total: 390 }, holdStatus: 'charged' }),
         ],
         pimpernel: [
-            // Eve: checks out TODAY (leaving-today case; not "staying now").
-            mkB(5, 'Eve Frost', d(-3), d(0), { payment: 'paid', agreedPrice: { total: 520 } }),
+            // Eve: checks out TODAY (leaving-today case). checkOutTime 00:00 so
+            // she's provably departed at any run time — with time-aware residence
+            // (isInResidence) she's cleanly "leaving today" (a date-match departure)
+            // WITHOUT being counted as "staying now", deterministically.
+            mkB(5, 'Eve Frost', d(-3), d(0), { payment: 'paid', agreedPrice: { total: 520 }, checkOutTime: '00:00' }),
             // Finn: 40 days out, owes £600 but OUTSIDE the 21-day chase window.
             mkB(6, 'Finn Gale', d(40), d(45), { payment: 'deposit', depositPaid: 200, agreedPrice: { total: 800 } }),
         ],
@@ -239,6 +242,20 @@ const CASES = [
     { q: "what's bob's email", head: /Bob Carter.s email is bob@example\.com/ },
     { q: 'bobs phone number', head: /Bob Carter.s phone is 07700 900102/ },
     { q: 'do i have an address for bob', head: /No address on file for Bob Carter/ },
+
+    // ---- SOURCE QUALIFIER — filter by channel (Airbnb / Vrbo / direct) ----
+    // The only OTA block in the fixture is 20 days out, so a source query finds
+    // it while NEVER leaking the direct bookings (the old bug showed both).
+    { q: 'any airbnb bookings', head: /1 Airbnb booking/, any: /Airbnb guest/, not: /Alice|Bob|Cara|Dan/ },
+    { q: 'is there an airbnb booking today', head: /No Airbnb bookings today/ },
+    { q: 'direct bookings this week', head: /direct booking/, not: /Airbnb guest/ },
+    { q: 'any vrbo bookings', head: /No Vrbo bookings/ },
+
+    // ---- DEPOSIT REFUND TIMING (owner → guest, from the hold state) ----
+    // Dan checked out days ago with the deposit still charged → owed back now.
+    { q: 'when do i owe dan his deposit', head: /Dan Epps.s deposit is due back now/, not: /paid in full/ },
+    // Alice is mid-stay with the deposit charged → owed back after her checkout.
+    { q: 'when do i owe alice her deposit', head: /owe Alice Marsh their deposit back after checkout/ },
     // ---- Free tonight (Jollyboat occupied by Alice; Eve leaves today) ----
     { q: "what's free tonight", head: /2 cottages free tonight/ },
     { q: 'any cottage free', head: /2 cottages free tonight/ },
