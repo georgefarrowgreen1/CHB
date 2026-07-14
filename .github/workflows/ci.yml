@@ -40,6 +40,13 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: node search-test.js
 
+      # The answer-shape contract: ~100 real phrasings → expected answers over a
+      # seeded booking set. Catches the "right machinery, wrong answer" class of
+      # regression (e.g. a phrasing answering with the wrong date window).
+      - name: Search golden-query corpus
+        working-directory: "Cottage Holidays Blakeney"
+        run: node golden-test.js
+
       - name: Pricing parity (PHP price_breakdown vs JS fixtures)
         working-directory: "Cottage Holidays Blakeney"
         run: php test-pricing.php
