@@ -449,6 +449,15 @@ switch ($action) {
         if (abs(time() - $ts) > 1800) {
             json_out(['error' => 'This sign-in link has expired — please request a new one.'], 401);
         }
+        // Single-use: atomically CLAIM this link's timestamp. The row updates only if
+        // this ts is strictly newer than the last one consumed for the guest, so a
+        // replay of the same (or an older) captured link within its 30-min window
+        // affects 0 rows and is refused. Race-safe (the DB, not a read-then-write).
+        $claim = db()->prepare('UPDATE guests SET magic_used_ts = ? WHERE id = ? AND magic_used_ts < ?');
+        $claim->execute([$ts, $gid, $ts]);
+        if ($claim->rowCount() < 1) {
+            json_out(['error' => 'This sign-in link has already been used — please request a new one.'], 401);
+        }
         $stmt = db()->prepare('SELECT id, name, email, phone, address, postcode FROM guests WHERE id = ?');
         $stmt->execute([$gid]);
         $row = $stmt->fetch();
