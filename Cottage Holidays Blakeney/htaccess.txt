@@ -44,12 +44,15 @@ RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
 RewriteCond %{QUERY_STRING} (<|>|%3c|%3e) [NC,OR]
 RewriteCond %{QUERY_STRING} (\.\.(/|\\|%2f|%5c)|%2e%2e(/|%2f|%5c)) [NC,OR]
 RewriteCond %{QUERY_STRING} (%00|%0d|%0a) [NC,OR]
+# Encoding-bypass tricks: DOUBLE-encoded (%253c → %3c → <, %252e%252e → ../) and
+# %u-encoded (IIS-style %u003c) payloads never appear in a real CHB URL.
+RewriteCond %{QUERY_STRING} (%25(3c|3e|2f|5c|2e|00|27|22)|%u00[0-9a-f]{2}) [NC,OR]
 RewriteCond %{QUERY_STRING} (union.{0,20}?select([^a-z]|$)|information_schema|\bsleep\s*\(|benchmark\s*\(|updatexml\s*\(|extractvalue\s*\(|pg_sleep) [NC,OR]
 RewriteCond %{QUERY_STRING} ((php|file|data|glob|phar|expect|zip|gopher|dict|jar|netdoc)://) [NC,OR]
 RewriteCond %{QUERY_STRING} (\$\{|\{\{|<\?|<%|base64_decode|\beval\s*\(|\bassert\s*\(|\bsystem\s*\(|passthru|shell_exec|proc_open|popen\s*\() [NC,OR]
 RewriteCond %{QUERY_STRING} (javascript:|vbscript:|\bon(error|load|mouseover|focus|toggle|animationstart)\s*=) [NC,OR]
-RewriteCond %{REQUEST_URI} (<|>|%3c|%3e|\.\.(/|%2f|%5c)|%00|%0d|%0a) [NC,OR]
-RewriteCond %{REQUEST_URI} (/etc/passwd|/etc/shadow|/proc/self|win\.ini|/\.git/|/\.env|/\.aws|wp-admin|wp-login|xmlrpc\.php|/vendor/phpunit|eval-stdin) [NC,OR]
+RewriteCond %{REQUEST_URI} (<|>|%3c|%3e|\.\.(/|%2f|%5c)|%00|%0d|%0a|%25(3c|2e|2f|00)|%u00[0-9a-f]{2}) [NC,OR]
+RewriteCond %{REQUEST_URI} (/etc/passwd|/etc/shadow|/proc/self|win\.ini|/\.git/|/\.env|/\.aws|/\.ssh/|id_rsa|wp-admin|wp-login|xmlrpc\.php|/vendor/phpunit|eval-stdin|/server-status|/phpinfo|/actuator|/\.svn/|/\.hg/|/config\.(json|ya?ml)|/telescope) [NC,OR]
 RewriteCond %{REQUEST_URI} ((php|file|data|phar|expect|gopher)://|union.{0,20}?select([^a-z]|$)|information_schema) [NC]
 RewriteRule ^ /blocked [R=302,QSD,L]
 
@@ -287,6 +290,12 @@ AddDefaultCharset UTF-8
     Header always set Cross-Origin-Opener-Policy "same-origin-allow-popups"
     # Don't let browsers guess content types (blocks some injection tricks)
     Header always set X-Content-Type-Options "nosniff"
+    # Disable the legacy XSS auditor: it's removed from modern browsers and, where
+    # it lingers, has itself introduced info-leak bugs — current OWASP guidance is
+    # to switch it OFF and rely on CSP + output escaping. (0, not 1.)
+    Header always set X-XSS-Protection "0"
+    # No Adobe Flash/Acrobat cross-domain policy files are served or honoured.
+    Header always set X-Permitted-Cross-Domain-Policies "none"
     # This site never needs to be embedded in someone else's frame
     Header always set X-Frame-Options "SAMEORIGIN"
     # Don't leak full URLs to other sites
@@ -319,5 +328,5 @@ AddDefaultCharset UTF-8
     # iframes (method + challenge) from UNPREDICTABLE issuer domains — pinning
     # them broke SCA live ("3DS method timed out" -> CARD_DECLINED_VERIFICATION_
     # REQUIRED). Everything else stays pinned; object-src none, base-uri self.
-    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://*.squarecdn.com https://pay.google.com; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://*.squarecdn.com; font-src 'self' data: https://fonts.gstatic.com https://*.squarecdn.com; img-src 'self' data: blob: https://cdnjs.cloudflare.com https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com https://*.squarecdn.com https://*.gstatic.com; connect-src 'self' blob: https://cdn.jsdelivr.net https://tessdata.projectnaptha.com https://*.squarecdn.com https://connect.squareup.com https://connect.squareupsandbox.com https://pci-connect.squareup.com https://pci-connect.squareupsandbox.com https://pay.google.com https://google.com; frame-src https:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests"
+    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://*.squarecdn.com https://pay.google.com; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://*.squarecdn.com; font-src 'self' data: https://fonts.gstatic.com https://*.squarecdn.com; img-src 'self' data: blob: https://cdnjs.cloudflare.com https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com https://*.squarecdn.com https://*.gstatic.com; connect-src 'self' blob: https://cdn.jsdelivr.net https://tessdata.projectnaptha.com https://*.squarecdn.com https://connect.squareup.com https://connect.squareupsandbox.com https://pci-connect.squareup.com https://pci-connect.squareupsandbox.com https://pay.google.com https://google.com; frame-src https:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests; report-uri /csp-report.php"
 </IfModule>
