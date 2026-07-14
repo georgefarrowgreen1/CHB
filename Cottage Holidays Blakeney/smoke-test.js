@@ -238,13 +238,13 @@ for (const m of html.matchAll(/\bon(?:click|change|input|keydown)\s*=\s*"([^"]*)
 const missing = [...calledInOnclick].filter(n => !definedFns.has(n) && !JS_BUILTINS.has(n));
 check('every inline handler maps to a defined function' + (missing.length ? ' (missing: ' + missing.join(', ') + ')' : ''), missing.length === 0);
 
-// 6a-ii. unsafe-inline migration RATCHET. We're converting inline on* handlers to
-// CSP-clean data-act delegation (app.js chbDelegate) so the CSP can eventually drop
-// script-src 'unsafe-inline'. The count of remaining inline handlers in index.html
-// may only ever DECREASE — a new inline handler (or an un-migrated one sneaking back)
-// fails here. Lower the ceiling as each phase lands; it hits 0 at the final flip.
-const INLINE_HANDLER_CEILING = 81;
-const inlineHandlerCount = (html.match(/\bon(?:click|change|input|keydown|submit|pointerdown)\s*=\s*"/g) || []).length;
+// 6a-ii. unsafe-inline migration RATCHET. index.html is now FULLY migrated off
+// inline on* handlers to CSP-clean data-act delegation (app.js chbDelegate) — the
+// ceiling is 0, so ANY inline event-handler attribute reintroduced here fails the
+// build. (The remaining work to actually drop script-src 'unsafe-inline' is the
+// dynamic handlers generated inside app.js / admin.js innerHTML.)
+const INLINE_HANDLER_CEILING = 0;
+const inlineHandlerCount = (html.match(/\son[a-z]+\s*=\s*"/g) || []).length;
 check(`inline handler count ${inlineHandlerCount} <= ceiling ${INLINE_HANDLER_CEILING} (migration ratchet)`, inlineHandlerCount <= INLINE_HANDLER_CEILING);
 
 // 6a-iii. Every data-act* value resolves to a registered chbAct() action OR a global
