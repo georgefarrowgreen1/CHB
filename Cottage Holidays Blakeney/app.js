@@ -4347,7 +4347,14 @@ function applyContentOverrides(root) {
         const v = siteContent[el.getAttribute('data-edit-img')];
         // Strip quotes/parens/backslash so a stray char in a stored value can't
         // break out of the url('…') (same sanitisation as the hero below).
-        if (typeof v === 'string' && v) el.style.backgroundImage = `url('${v.replace(/['"\\)]/g, '')}')`;
+        if (typeof v === 'string' && v) {
+            const clean = v.replace(/['"\\)]/g, '');
+            // Cottage cards are thumbnails — serve a right-sized WebP via img.php
+            // (uploads/ only; other values pass through). The hero stays full-res:
+            // it's the LCP image.
+            const url = el.classList.contains('card-img') ? resizedUrl(clean, 800) : clean;
+            el.style.backgroundImage = `url('${url}')`;
+        }
     });
     // Expose the live hero to CSS (the auth modals' coastal brand panel uses
     // var(--hero-img)) — the static hero.jpg doesn't exist on the live host.
@@ -4460,7 +4467,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         });
         document.querySelectorAll('[data-edit-img]').forEach((el) => {
             const saved = localStorage.getItem(el.getAttribute('data-edit-img'));
-            if (saved) el.style.backgroundImage = `url('${saved}')`;
+            if (saved) el.style.backgroundImage = `url('${el.classList.contains('card-img') ? resizedUrl(saved, 800) : saved}')`;
         });
         // Load live data from the backend — ONE bootstrap round-trip covers all
         // four parts (rates/content/reviews/Square config). Each loader is still
@@ -8321,7 +8328,7 @@ function cottageCardHtml(k, idPrefix, withFav) {
         : '';
     return `<a class="card glass-panel" data-prop="${k}" href="/cottages/${escapeHtml(slug)}" onclick="return cottageLink(event,'${k}')">
                     <div class="card-img-wrap">
-                        <div class="card-img" data-edit-img="${ck.img}" role="img" aria-label="Photo of ${escapeHtml(title)}" style="background-image: url('${escapeHtml(img)}');"></div>
+                        <div class="card-img" data-edit-img="${ck.img}" role="img" aria-label="Photo of ${escapeHtml(title)}" style="background-image: url('${escapeHtml(resizedUrl(img, 800))}');"></div>
                         ${fav}
                     </div>
                     <div class="cott-head">
@@ -12143,7 +12150,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'cpickfix1';
+    const BUILD = 'perfcard1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
