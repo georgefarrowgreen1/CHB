@@ -128,6 +128,113 @@ chbAct('activate', function (el, event) {
 chbAct('nav', function (el) {
     if (typeof nav === 'function') nav(el.dataset.view);
 });
+// Anchor nav: swallow the href then route (was `event.preventDefault(); nav('x')`).
+chbAct('navLink', function (el, event) {
+    event.preventDefault();
+    nav(el.dataset.view);
+});
+// Mobile-menu nav link: close the drawer, then route.
+chbAct('mobileNavLink', function (el, event) {
+    event.preventDefault();
+    if (typeof toggleMobileMenu === 'function') toggleMobileMenu();
+    nav(el.dataset.view);
+});
+// Open the back office and initialise it (was `nav('view-backoffice'); initBackOffice();`).
+chbAct('navBackoffice', function () {
+    nav('view-backoffice');
+    if (typeof initBackOffice === 'function') initBackOffice();
+});
+// Backdrop close: dismiss only when the click is on the overlay itself (or an
+// opt-in close element via data-close-in), never a click INSIDE the dialog.
+chbAct('backdropClose', function (el, event) {
+    const inClass = el.dataset.closeIn;
+    if (event.target === el || (inClass && event.target.classList && event.target.classList.contains(inClass))) {
+        const fn = window[el.dataset.close];
+        if (typeof fn === 'function') fn();
+    }
+});
+// preventDefault then call a bare global (data-fn) — e.g. openAllReviews.
+chbAct('pdCall', function (el, event) {
+    event.preventDefault();
+    const fn = window[el.dataset.fn];
+    if (typeof fn === 'function') fn();
+});
+// Cottage / route links: keep the return value so the `return false` inline
+// semantics (stop the navigation) survive the migration.
+chbAct('cottageLink', function (el, event) {
+    if (typeof cottageLink === 'function') return cottageLink(event, el.dataset.prop);
+});
+chbAct('routeLink', function (el, event) {
+    if (typeof routeLink === 'function') return routeLink(event, el.dataset.view);
+});
+// Terms: openTermsModal does its own preventDefault/stopPropagation; just hand it the event.
+chbAct('openTerms', function (el, event) {
+    if (typeof openTermsModal === 'function') openTermsModal(event);
+});
+// Lightbox prev/next: stop the click reaching the backdrop-close, then step.
+chbAct('lightboxNav', function (el, event) {
+    event.stopPropagation();
+    if (typeof lightboxNav === 'function') lightboxNav(chbArgVal(el.dataset.arg));
+});
+// Resume-enquiry dismiss: stop propagation, then dismiss (click + Enter/Space).
+chbAct('resumeDismiss', function (el, event) {
+    if (event.type === 'keydown' && !(event.key === 'Enter' || event.key === ' ')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (typeof enquiryResumeDismiss === 'function') enquiryResumeDismiss();
+});
+// Enter-to-submit (no Space): the old `if(event.key==='Enter') fn()` inputs.
+chbAct('enterCall', function (el, event) {
+    if (event.key === 'Enter') {
+        const fn = window[el.dataset.fn];
+        if (typeof fn === 'function') fn();
+    }
+});
+// Chat composer: Enter sends, Shift+Enter makes a newline.
+chbAct('enterSendChat', function (el, event) {
+    if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        if (typeof sendChat === 'function') sendChat();
+    }
+});
+// Owner toggle → saveContent with the checkbox mapped to a stored flag. data-invert
+// flips the sense: default checked→'1'/off→''; inverted checked→''/off→'1'.
+chbAct('saveContentToggle', function (el) {
+    const on = !!el.checked;
+    const stored = el.dataset.invert === '1' ? (on ? '' : '1') : (on ? '1' : '');
+    if (typeof saveContent === 'function') saveContent(el.dataset.key, stored);
+});
+// Small bespoke compound closers from the guest-account modals.
+chbAct('detailsLogout', function () {
+    closeGuestDetailsModal();
+    if (typeof guestLogout === 'function') guestLogout();
+});
+chbAct('detailsSecurity', function () {
+    closeGuestDetailsModal();
+    if (typeof openGuestSecurityModal === 'function') openGuestSecurityModal();
+});
+chbAct('detailsPrivacy', function (el, event) {
+    event.preventDefault();
+    closeGuestDetailsModal();
+    nav('view-privacy');
+});
+chbAct('authPrivacy', function (el, event) {
+    event.preventDefault();
+    closeGuestAuthModal();
+    nav('view-privacy');
+});
+// Click a target element by id (was `document.getElementById('x').click()`).
+chbAct('clickTarget', function (el) {
+    const t = document.getElementById(el.dataset.target);
+    if (t) t.click();
+});
+chbAct('reload', function () {
+    location.reload();
+});
+// Waitlist from the front page (object arg → current front property).
+chbAct('openWaitlistHere', function () {
+    if (typeof openWaitlistModal === 'function') openWaitlistModal({ prop: window.activeFrontProperty });
+});
 // Coerce a data-arg string back to the literal type the inline call used, so
 // fn('diagnostics') stays a string but fn(1) / fn(true) pass a number / boolean
 // (a string "1" would break `month + dir` arithmetic). Only exact integer and
@@ -145,12 +252,19 @@ function chbRunAct(el, name, event) {
         r = fn.call(el, el, event);
     } else if (typeof window[name] === 'function') {
         // Plain global call — exact parity with the old inline `fn(...)` (this =
-        // window). data-arg / data-arg2 carry up to two literal args in order;
-        // with neither present this is the bare `fn()` case from phase 1.
+        // window). data-arg[2|3] carry up to three literal args in order; data-pass
+        // appends one runtime value (this.value / .checked / .files, the element,
+        // or the event) LAST, matching handlers like fn('key', this.value). With
+        // none present this is the bare `fn()` case from phase 1.
         const ds = el.dataset;
         const args = [];
         if ('arg' in ds) args.push(chbArgVal(ds.arg));
         if ('arg2' in ds) args.push(chbArgVal(ds.arg2));
+        if ('arg3' in ds) args.push(chbArgVal(ds.arg3));
+        if ('pass' in ds) {
+            const p = ds.pass;
+            args.push(p === 'value' ? el.value : p === 'checked' ? el.checked : p === 'files' ? el.files : p === 'self' ? el : p === 'event' ? event : undefined);
+        }
         r = window[name].apply(window, args);
     } else {
         return;
@@ -12223,7 +12337,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'cspdeleg2';
+    const BUILD = 'cspdeleg3';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

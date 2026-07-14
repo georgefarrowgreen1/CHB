@@ -191,7 +191,7 @@
         </div>
         <div id="loading-slow-msg">
             <p>This is taking longer than usual.</p>
-            <button onclick="location.reload()">Reload</button>
+            <button data-act="reload">Reload</button>
         </div>
     </div>
     <!-- Discrete offline indicator (shown whenever the device loses its connection,
@@ -209,16 +209,16 @@
 
     <!-- HEADER -->
     <header class="glass-panel">
-        <div class="logo" role="link" tabindex="0" aria-label="Cottage Holidays Blakeney — home" data-act-pointerdown="flareCrown" data-act="nav" data-view="view-main" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();nav('view-main');}">
+        <div class="logo" role="link" tabindex="0" aria-label="Cottage Holidays Blakeney — home" data-act-pointerdown="flareCrown" data-act="nav" data-view="view-main" data-act-keydown="activate">
             <img src="logo.svg" alt="Cottage Holidays Blakeney crown logo" class="logo-mark">
             <span class="logo-text" data-edit-text="site-logo">Cottage Holidays Blakeney</span>
         </div>
         <nav>
             <ul>
                 <span class="nav-indicator" aria-hidden="true"></span>
-                <li><a href="/" onclick="event.preventDefault(); nav('view-main')" data-edit-text="nav-home">Home</a></li>
-                <li><a href="/#cottages" onclick="event.preventDefault(); nav('view-cottages')" data-edit-text="nav-cottages">Cottages</a></li>
-                <li><a href="/experiences" onclick="event.preventDefault(); nav('view-experiences')" data-edit-text="nav-experiences">Experiences</a></li>
+                <li><a href="/" data-act="navLink" data-view="view-main" data-edit-text="nav-home">Home</a></li>
+                <li><a href="/#cottages" data-act="navLink" data-view="view-cottages" data-edit-text="nav-cottages">Cottages</a></li>
+                <li><a href="/experiences" data-act="navLink" data-view="view-experiences" data-edit-text="nav-experiences">Experiences</a></li>
             </ul>
         </nav>
         <button class="account-btn" id="account-btn" data-act="openGuestArea" title="Sign in" aria-label="Sign in / my account">
@@ -261,12 +261,12 @@
          opened by the dock's Search button or ⌘K / Ctrl-K (wired in admin.js);
          starts display:none inline so a guest (who never loads admin.css/admin.js)
          never sees it. -->
-    <div id="cmdk" class="cmdk-overlay" role="dialog" aria-modal="true" aria-label="Search the back office" style="display:none;" onclick="if(event.target===this) closeCmdK()">
+    <div id="cmdk" class="cmdk-overlay" role="dialog" aria-modal="true" aria-label="Search the back office" style="display:none;" data-act="backdropClose" data-close="closeCmdK">
         <div class="cmdk-box">
             <div class="cmdk-search">
                 <svg class="ic cmdk-search-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
                 <button type="button" id="cmdk-clear" class="cmdk-clear" data-act="cmdkClear" aria-label="Clear search" title="Clear"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-                <input id="cmdk-input" type="text" role="combobox" aria-autocomplete="list" aria-expanded="true" aria-haspopup="listbox" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Search, or ask — &quot;who owes money&quot;, &quot;leaving today&quot;…" oninput="cmdkSearch(this.value)" onkeydown="cmdkKey(event)" aria-label="Search bookings and screens, or ask who owes money, who's leaving today, or what's upcoming" aria-controls="cmdk-results">
+                <input id="cmdk-input" type="text" role="combobox" aria-autocomplete="list" aria-expanded="true" aria-haspopup="listbox" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Search, or ask — &quot;who owes money&quot;, &quot;leaving today&quot;…" data-act-input="cmdkSearch" data-pass="value" data-act-keydown="cmdkKey" data-pass="event" aria-label="Search bookings and screens, or ask who owes money, who's leaving today, or what's upcoming" aria-controls="cmdk-results">
                 <button type="button" id="cmdk-mic" class="cmdk-mic" style="display:none;" data-act="cmdkVoice" aria-label="Search by voice" title="Voice search"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg></button>
                 <button type="button" id="cmdk-help" class="cmdk-help-btn" data-act="cmdkHelpOpen" aria-label="Help for this screen" title="Help &amp; how-to"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.2 9.3a2.8 2.8 0 0 1 5.4 1c0 1.9-2.8 2.5-2.8 2.5"/><path d="M12 17h.01"/></svg></button>
             </div>
@@ -281,9 +281,9 @@
     </div>
 
     <div class="mobile-nav-overlay" id="mobileMenu">
-        <a href="/" onclick="event.preventDefault(); toggleMobileMenu(); nav('view-main')" data-edit-text="mnav-home">Home</a>
-        <a href="/#cottages" onclick="event.preventDefault(); toggleMobileMenu(); nav('view-cottages')" data-edit-text="mnav-cottages">Cottages</a>
-        <a href="/experiences" onclick="event.preventDefault(); toggleMobileMenu(); nav('view-experiences')" data-edit-text="mnav-experiences">Experiences</a>
+        <a href="/" data-act="mobileNavLink" data-view="view-main" data-edit-text="mnav-home">Home</a>
+        <a href="/#cottages" data-act="mobileNavLink" data-view="view-cottages" data-edit-text="mnav-cottages">Cottages</a>
+        <a href="/experiences" data-act="mobileNavLink" data-view="view-experiences" data-edit-text="mnav-experiences">Experiences</a>
     </div>
 
     <!-- ================= MAIN VIEW ================= -->
@@ -350,7 +350,7 @@
                  cottage has a decent gap in the next fortnight; empty otherwise. -->
             <div id="late-avail" aria-live="polite"></div>
             <div class="grid grid-3" id="home-cottages-grid" style="margin-top: 18px;">
-              <a class="card glass-panel" data-prop="21a" href="/cottages/21a-westgate" onclick="return cottageLink(event,'21a')">
+              <a class="card glass-panel" data-prop="21a" href="/cottages/21a-westgate" data-act="cottageLink" data-prop="21a">
                 <div class="card-img-wrap">
                     <div class="card-img" data-edit-img="card1-img" role="img" aria-label="Photo of 21A Westgate" style="background-image: url('card-21a.jpg');"></div>
                 </div>
@@ -359,7 +359,7 @@
                 </div>
                 <div class="card-meta" data-edit-text="card1-meta">Sleeps 6 • Townhouse</div>
               </a>
-              <a class="card glass-panel" data-prop="jollyboat" href="/cottages/jollyboat" onclick="return cottageLink(event,'jollyboat')">
+              <a class="card glass-panel" data-prop="jollyboat" href="/cottages/jollyboat" data-act="cottageLink" data-prop="jollyboat">
                 <div class="card-img-wrap">
                     <div class="card-img" data-edit-img="card2-img" role="img" aria-label="Photo of Jollyboat" style="background-image: url('card-jollyboat.jpg');"></div>
                 </div>
@@ -368,7 +368,7 @@
                 </div>
                 <div class="card-meta" data-edit-text="card2-meta">Sleeps 2 • Romantic</div>
               </a>
-              <a class="card glass-panel" data-prop="pimpernel" href="/cottages/pimpernel" onclick="return cottageLink(event,'pimpernel')">
+              <a class="card glass-panel" data-prop="pimpernel" href="/cottages/pimpernel" data-act="cottageLink" data-prop="pimpernel">
                 <div class="card-img-wrap">
                     <div class="card-img" data-edit-img="card3-img" role="img" aria-label="Photo of Pimpernel" style="background-image: url('card-pimpernel.jpg');"></div>
                 </div>
@@ -479,7 +479,7 @@
         <div class="cottages-split">
           <div class="cottages-list">
             <div class="grid grid-3" id="cottages" style="margin-top: 18px;">
-              <a class="card glass-panel" data-prop="21a" href="/cottages/21a-westgate" onclick="return cottageLink(event,'21a')">
+              <a class="card glass-panel" data-prop="21a" href="/cottages/21a-westgate" data-act="cottageLink" data-prop="21a">
                 <div class="card-img-wrap">
                     <div class="card-img" data-edit-img="card1-img" role="img" aria-label="Photo of 21A Westgate" style="background-image: url('card-21a.jpg');"></div>
                     <span class="cott-fav" id="cott-fav-21a" hidden></span>
@@ -491,7 +491,7 @@
                 <div class="card-meta" data-edit-text="card1-meta">Sleeps 6 • Townhouse</div>
                 <div class="card-price" id="card-price-21a"></div>
             </a>
-              <a class="card glass-panel" data-prop="jollyboat" href="/cottages/jollyboat" onclick="return cottageLink(event,'jollyboat')">
+              <a class="card glass-panel" data-prop="jollyboat" href="/cottages/jollyboat" data-act="cottageLink" data-prop="jollyboat">
                 <div class="card-img-wrap">
                     <div class="card-img" data-edit-img="card2-img" role="img" aria-label="Photo of Jollyboat" style="background-image: url('card-jollyboat.jpg');"></div>
                     <span class="cott-fav" id="cott-fav-jollyboat" hidden></span>
@@ -503,7 +503,7 @@
                 <div class="card-meta" data-edit-text="card2-meta">Sleeps 2 • Romantic</div>
                 <div class="card-price" id="card-price-jollyboat"></div>
             </a>
-              <a class="card glass-panel" data-prop="pimpernel" href="/cottages/pimpernel" onclick="return cottageLink(event,'pimpernel')">
+              <a class="card glass-panel" data-prop="pimpernel" href="/cottages/pimpernel" data-act="cottageLink" data-prop="pimpernel">
                 <div class="card-img-wrap">
                     <div class="card-img" data-edit-img="card3-img" role="img" aria-label="Photo of Pimpernel" style="background-image: url('card-pimpernel.jpg');"></div>
                     <span class="cott-fav" id="cott-fav-pimpernel" hidden></span>
@@ -561,7 +561,7 @@
     </main>
 
     <!-- Suggest-an-experience form (guest) -->
-    <div id="exp-suggest-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Suggest an experience" onclick="if(event.target===this) closeExperienceSuggest()">
+    <div id="exp-suggest-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Suggest an experience" data-act="backdropClose" data-close="closeExperienceSuggest">
         <div class="modal-box glass-panel" style="max-width:480px;">
             <div style="display:flex;justify-content:flex-end;margin:-6px -6px 4px 0;">
                 <button class="reviews-modal-close" data-act="closeExperienceSuggest" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
@@ -635,7 +635,7 @@
                     <!-- Waitlist as a first-class action — not only buried in sold-out
                          search results. Prefilled with this cottage. -->
                     <div style="text-align:center;margin-top:10px;">
-                        <a style="font-size:0.8rem;color:var(--accent);cursor:pointer;text-decoration:underline;text-underline-offset:3px;" onclick="openWaitlistModal({ prop: activeFrontProperty })">Dates booked? Get notified if they become available</a>
+                        <a style="font-size:0.8rem;color:var(--accent);cursor:pointer;text-decoration:underline;text-underline-offset:3px;" data-act="openWaitlistHere">Dates booked? Get notified if they become available</a>
                     </div>
                 </div>
                 <div class="prop-divider"></div>
@@ -722,7 +722,7 @@
         </div>
 
         <!-- ===== Airbnb-style two-step enquiry: Review your stay → Your details ===== -->
-        <div id="enquire-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Enquire about your stay" onclick="if(event.target===this) closeEnquireModal()">
+        <div id="enquire-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Enquire about your stay" data-act="backdropClose" data-close="closeEnquireModal">
             <div class="modal-box enquire-box glass-panel">
                 <button class="reviews-modal-close" data-act="closeEnquireModal" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
 
@@ -802,7 +802,7 @@
                         </div>
                         <div>
                             <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-postcode">Postcode</label>
-                            <input type="text" class="input-glass" id="enq-postcode" placeholder="e.g. NR25 7AB" autocomplete="postal-code" autocapitalize="characters" spellcheck="false" style="margin-bottom: 6px;" oninput="postcodeRecognize('enq-postcode','enq-pc-status')" onchange="postcodeRecognize('enq-postcode','enq-pc-status', true)">
+                            <input type="text" class="input-glass" id="enq-postcode" placeholder="e.g. NR25 7AB" autocomplete="postal-code" autocapitalize="characters" spellcheck="false" style="margin-bottom: 6px;" data-act-input="postcodeRecognize" data-arg="enq-postcode" data-arg2="enq-pc-status" data-act-change="postcodeRecognize" data-arg="enq-postcode" data-arg2="enq-pc-status" data-arg3="true">
                             <p id="enq-pc-status" role="status" aria-live="polite" style="font-size: 0.75rem; min-height: 1.1em; margin: 0 0 8px;"></p>
                         </div>
                     </div>
@@ -811,12 +811,12 @@
                     </label>
                     <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-address">UK Address</label>
                     <textarea class="input-glass" id="enq-address" rows="2" placeholder="House name/number, street, town, county" style="resize: vertical; margin-bottom: 6px;"></textarea>
-                    <p style="font-size: 0.72rem; color: var(--text-muted); margin: 0 0 18px;">Used only to manage your booking and contact you. See our <a href="#" onclick="event.preventDefault(); nav('view-privacy')" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy Policy</a>.</p>
+                    <p style="font-size: 0.72rem; color: var(--text-muted); margin: 0 0 18px;">Used only to manage your booking and contact you. See our <a href="#" data-act="navLink" data-view="view-privacy" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy Policy</a>.</p>
                     <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-message">About your party <span style="color: var(--danger);" aria-hidden="true">*</span></label>
                     <textarea class="input-glass" id="enq-message" rows="4" required aria-required="true" placeholder="Here at Cottage Holidays Blakeney we like to know a little bit about our guests! Tell us a bit about your party and we will do what we can to accommodate you better" style="resize: vertical;"></textarea>
                     <label class="terms-accept">
                         <input type="checkbox" id="enq-terms">
-                        <span>I have read and accept the <a href="#" onclick="event.preventDefault(); openTermsModal(event)">Booking Terms &amp; Conditions</a>.</span>
+                        <span>I have read and accept the <a href="#" data-act="openTerms">Booking Terms &amp; Conditions</a>.</span>
                     </label>
                     <p class="enq-modal-msg" id="enq-msg-details" role="alert"></p>
                     <button class="btn-glass btn-accent" style="width: 100%; padding: 18px;" id="enq-submit-btn">Send enquiry</button>
@@ -844,7 +844,7 @@
                         <button class="btn-glass btn-accent" style="width:100%;padding:16px;" data-act="enquireSignInInstead">Sign in</button>
                     </div>
                     <div style="text-align:center;margin-top:14px;">
-                        <a href="#" onclick="event.preventDefault(); enquireSkipAccount()" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);font-size:0.82rem;">No thanks, maybe later</a>
+                        <a href="#" data-act="pdCall" data-fn="enquireSkipAccount" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);font-size:0.82rem;">No thanks, maybe later</a>
                     </div>
                 </div>
             </div>
@@ -995,7 +995,7 @@
 
     <!-- ================= ACTIVITY LOG (full audit trail of changes/actions) ================= -->
     <main id="view-activity-log" class="page-view container">
-        <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" onclick="openArea('manage');">← Back to Manage</span>
+        <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" data-act="openArea" data-arg="manage">← Back to Manage</span>
         <div class="dashboard-header">
             <div>
                 <h1 class="section-title" style="margin-bottom: 5px;">Activity log</h1>
@@ -1003,7 +1003,7 @@
             </div>
         </div>
         <div class="act-log-controls">
-            <input type="search" class="input-glass act-log-search" id="act-log-search" placeholder="Search the log…" autocomplete="off" oninput="activityLogSearch(this.value)">
+            <input type="search" class="input-glass act-log-search" id="act-log-search" placeholder="Search the log…" autocomplete="off" data-act-input="activityLogSearch" data-pass="value">
             <div class="act-log-filters" id="act-log-filters"><!-- chips injected by renderActivityLog() --></div>
         </div>
         <div id="act-log-list"><!-- injected by renderActivityLog() --></div>
@@ -1037,7 +1037,7 @@
              edge); the three-pane split — rail | list | reading pane — sits
              entirely below it. -->
         <div id="inbox-head">
-            <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" onclick="nav('view-backoffice'); initBackOffice();">← Back to Today</span>
+            <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" data-act="navBackoffice">← Back to Today</span>
             <!-- Header mirrors the Today dashboard: big title + a LIVING subline
                  (inboxSubline() keeps it current — what's waiting for a reply). -->
             <div class="dashboard-header">
@@ -1094,7 +1094,7 @@
              drill-down section is open so the section leads with ONE back link
              and its own title, not two stacked headers. -->
         <div id="settings-chrome">
-        <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" onclick="nav('view-backoffice'); initBackOffice();">← Back to Today</span>
+        <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" data-act="navBackoffice">← Back to Today</span>
         <div class="dashboard-header settings-head">
             <div class="settings-head-titles">
                 <h1 class="section-title" style="margin: 0;">Manage</h1>
@@ -1104,8 +1104,8 @@
                  #health-pill = systems rollup incl. "N things need a look"
                  (checkSystemHealth). The full-width cron-alert banner stays below. -->
             <div class="settings-head-pills">
-                <button id="cron-pill" class="cron-pill" style="display:none;" onclick="settingsOpen('diagnostics');" title="Open Status"></button>
-                <button id="health-pill" class="cron-pill" style="display:none;" onclick="settingsOpen('diagnostics');" title="Open Status"></button>
+                <button id="cron-pill" class="cron-pill" style="display:none;" data-act="settingsOpen" data-arg="diagnostics" title="Open Status"></button>
+                <button id="health-pill" class="cron-pill" style="display:none;" data-act="settingsOpen" data-arg="diagnostics" title="Open Status"></button>
             </div>
         </div>
 
@@ -1159,7 +1159,7 @@
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 7.5l15 9M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Cancellation policy</span><span class="settings-row-sub">The refund terms guests see, per cottage</span></span><span class="settings-row-chev">›</span>
                 </button>
-                <button class="settings-row" data-kw="legal t&c conditions contract booking terms" onclick="openTermsModal(event)">
+                <button class="settings-row" data-kw="legal t&c conditions contract booking terms" data-act="openTerms">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/><path d="M10 13h6M10 17h6"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Booking Terms &amp; Conditions</span><span class="settings-row-sub">View the terms guests accept</span></span><span class="settings-row-chev">›</span>
                 </button>
@@ -1313,8 +1313,8 @@
             <!-- Messages → Follow-up emails (enquiry + anniversary nudges) -->
             <div class="settings-sec" id="sec-follow-ups" style="display:none;">
                 <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 16px;">Gentle automatic emails that chase interest without you lifting a finger.</p>
-                <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;color:var(--text-light);max-width:640px;margin:0 0 14px;"><input type="checkbox" id="enq-nudge-toggle" style="width:auto;margin:0;" onchange="saveContent('enquiry-nudge-off', this.checked ? '' : '1')"> Email a friendly follow-up to enquirers who haven't booked after 2 days, plus a one-off "finish your enquiry" note to visitors who started one but never sent it</label>
-                <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;color:var(--text-light);max-width:640px;margin:0 0 14px;"><input type="checkbox" id="anniv-nudge-toggle" style="width:auto;margin:0;" onchange="saveContent('anniversary-nudge-off', this.checked ? '' : '1')"> Invite last year's guests back with a one-off email, timed to how far ahead they book</label>
+                <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;color:var(--text-light);max-width:640px;margin:0 0 14px;"><input type="checkbox" id="enq-nudge-toggle" style="width:auto;margin:0;" data-act-change="saveContentToggle" data-key="enquiry-nudge-off" data-invert="1"> Email a friendly follow-up to enquirers who haven't booked after 2 days, plus a one-off "finish your enquiry" note to visitors who started one but never sent it</label>
+                <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;color:var(--text-light);max-width:640px;margin:0 0 14px;"><input type="checkbox" id="anniv-nudge-toggle" style="width:auto;margin:0;" data-act-change="saveContentToggle" data-key="anniversary-nudge-off" data-invert="1"> Invite last year's guests back with a one-off email, timed to how far ahead they book</label>
             </div>
 
             <!-- API keys / integrations -->
@@ -1350,8 +1350,8 @@
                         <button class="btn-sm btn-edit" data-act="runMigrations">Install updates</button>
                         <button class="btn-sm btn-edit" data-act="backfillWebp">Optimise photos for faster loading</button>
                         <button class="btn-sm btn-edit" data-act="sendTestEmail">Send test email</button>
-                        <button class="btn-sm btn-edit" onclick="sendSampleEmails(this)">Email me samples</button>
-                        <button class="btn-sm btn-edit" onclick="diagnoseReplyEmail(this)">Check reply-by-email</button>
+                        <button class="btn-sm btn-edit" data-act="sendSampleEmails" data-pass="self">Email me samples</button>
+                        <button class="btn-sm btn-edit" data-act="diagnoseReplyEmail" data-pass="self">Check reply-by-email</button>
                     </div>
                     <p style="font-size:0.8rem;color:var(--text-muted);margin:10px 0 0;">Reply-by-email: reply to a "new website message" alert and the guest gets it on the website &amp; by email.</p>
                     <div id="diag-samples" style="font-size:0.82rem;margin-top:8px;"></div>
@@ -1374,18 +1374,18 @@
                         <button type="button" class="btn-sm btn-edit" data-act="uploadHostPhoto">Change photo</button>
                     </div>
                     <label class="host-edit-label" for="host-f-name">Name</label>
-                    <input class="input-glass" id="host-f-name" onchange="saveHostText('host-name', this.value)">
+                    <input class="input-glass" id="host-f-name" data-act-change="saveHostText" data-arg="host-name" data-pass="value">
                     <label class="host-edit-label" for="host-f-badge">Your title (shown to guests, e.g. Owner)</label>
-                    <input class="input-glass" id="host-f-badge" onchange="saveHostText('host-badge', this.value)">
+                    <input class="input-glass" id="host-f-badge" data-act-change="saveHostText" data-arg="host-badge" data-pass="value">
                     <label class="host-edit-label" for="host-f-years">Years of experience</label>
-                    <input class="input-glass" id="host-f-years" onchange="saveHostText('host-years', this.value)">
+                    <input class="input-glass" id="host-f-years" data-act-change="saveHostText" data-arg="host-years" data-pass="value">
                     <p style="font-size:0.78rem;color:var(--text-muted);margin:6px 0 0;">Reviews total &amp; rating are calculated automatically from your published guest reviews.</p>
                     <label class="host-edit-label" for="host-f-school">"Where I studied" line</label>
-                    <input class="input-glass" id="host-f-school" onchange="saveHostText('host-school', this.value)">
+                    <input class="input-glass" id="host-f-school" data-act-change="saveHostText" data-arg="host-school" data-pass="value">
                     <label class="host-edit-label" for="host-f-work">"My work" line</label>
-                    <input class="input-glass" id="host-f-work" onchange="saveHostText('host-work', this.value)">
+                    <input class="input-glass" id="host-f-work" data-act-change="saveHostText" data-arg="host-work" data-pass="value">
                     <label class="host-edit-label" for="host-f-bio">Bio</label>
-                    <textarea class="input-glass" id="host-f-bio" rows="4" style="resize:vertical;" onchange="saveHostText('host-bio', this.value)"></textarea>
+                    <textarea class="input-glass" id="host-f-bio" rows="4" style="resize:vertical;" data-act-change="saveHostText" data-arg="host-bio" data-pass="value"></textarea>
                     <p id="host-save-msg" style="font-size:0.82rem;color:var(--ok);min-height:1em;margin:4px 0 0;"></p>
                     <div style="margin-top:22px;padding-top:20px;border-top:1px solid var(--glass-border);">
                         <label class="host-edit-label" for="contact-phone-dial" style="margin-top:0;">Contact number — "Call to Discuss" buttons</label>
@@ -1509,7 +1509,7 @@
                 <div class="accounts-stat" style="max-width:640px;margin-top:16px;">
                     <div class="label">Two-step sign-in</div>
                     <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 14px;">When on, signing in from a new device also needs a one-time code emailed to your owner address; trusted devices are remembered for 60 days. Needs your owner email set up (Manage → Notifications) — it stays off until then, so you can't be locked out.</p>
-                    <label style="display:flex;align-items:center;gap:10px;font-size:0.9rem;cursor:pointer;"><input type="checkbox" id="admin-2fa-toggle" onchange="saveContent('admin-2fa-enabled', this.checked ? '1' : '')"> Require an email code on new devices</label>
+                    <label style="display:flex;align-items:center;gap:10px;font-size:0.9rem;cursor:pointer;"><input type="checkbox" id="admin-2fa-toggle" data-act-change="saveContentToggle" data-key="admin-2fa-enabled"> Require an email code on new devices</label>
                 </div>
             </div>
 
@@ -1572,7 +1572,7 @@
         <!-- Area-level chrome — hidden while a drill-down section is open (see
              #settings-chrome for the rationale). -->
         <div id="accounts-chrome">
-        <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" onclick="nav('view-backoffice'); initBackOffice();">← Back to Today</span>
+        <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" data-act="navBackoffice">← Back to Today</span>
         <div class="dashboard-header">
             <div>
                 <h1 class="section-title" style="margin: 0;">Payments</h1>
@@ -1651,7 +1651,7 @@
 
     <!-- ================= GUEST LOGIN / REGISTER ================= -->
     <!-- ================= CUSTOMER LOGIN / REGISTER (floating window) ================= -->
-    <div id="guest-auth-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Sign in or create an account" onclick="if(event.target===this) closeGuestAuthModal()">
+    <div id="guest-auth-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Sign in or create an account" data-act="backdropClose" data-close="closeGuestAuthModal">
         <div class="modal-box glass-panel auth-split">
             <!-- Desktop only: branded coastal panel beside the form (hidden on mobile) -->
             <aside class="auth-brand" aria-hidden="true">
@@ -1718,7 +1718,7 @@
                     </div>
                     <label class="modal-label" for="reg-address">UK Address</label>
                     <textarea class="input-glass" id="reg-address" name="address" autocomplete="street-address" rows="2" placeholder="House name/number, street, town, county" style="resize: vertical; margin-bottom: 6px;"></textarea>
-                    <p style="font-size: 0.72rem; color: var(--text-muted); margin: 0 0 18px;">Used only to manage your bookings and contact you. See our <a href="#" onclick="event.preventDefault(); closeGuestAuthModal(); nav('view-privacy')" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy Policy</a>.</p>
+                    <p style="font-size: 0.72rem; color: var(--text-muted); margin: 0 0 18px;">Used only to manage your bookings and contact you. See our <a href="#" data-act="authPrivacy" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy Policy</a>.</p>
                     <label class="modal-label" for="reg-password">Password</label>
                     <input type="password" class="input-glass" id="reg-password" name="new-password" autocomplete="new-password" placeholder="Choose a password">
                     <div id="reg-error" role="alert" style="color:var(--danger);font-size:0.8rem;margin-bottom:12px;display:none;"></div>
@@ -1751,7 +1751,7 @@
     </main>
 
     <!-- ================= GUEST MESSAGE THREAD (admin reply window) ================= -->
-    <div id="messages-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-labelledby="messages-modal-title" onclick="if(event.target===this) closeMessagesModal()">
+    <div id="messages-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-labelledby="messages-modal-title" data-act="backdropClose" data-close="closeMessagesModal">
         <div class="modal-box glass-panel" style="max-width:520px;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px;">
                 <h3 id="messages-modal-title" style="font-family:var(--font-serif);font-size:1.4rem;">Messages</h3>
@@ -1763,7 +1763,7 @@
             </div>
             <div class="msg-ctx" id="messages-modal-ctx"></div>
             <div class="chat-thread" id="messages-modal-thread"></div>
-            <select id="msg-canned" class="input-glass field-sm" onchange="adminCanned(this.value)" style="margin:0 0 8px;" aria-label="Quick replies">
+            <select id="msg-canned" class="input-glass field-sm" data-act-change="adminCanned" data-pass="value" style="margin:0 0 8px;" aria-label="Quick replies">
                 <option value="">Quick replies…</option>
                 <option>Thanks for getting in touch — I'll check and reply shortly.</option>
                 <option>Those dates look available — would you like me to hold them for you?</option>
@@ -1780,7 +1780,7 @@
     </div>
 
     <!-- ================= TRIP PLANNER (curated, tide-aware) ================= -->
-    <div id="trip-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Plan your days" onclick="if(event.target===this) closeTripModal()">
+    <div id="trip-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Plan your days" data-act="backdropClose" data-close="closeTripModal">
         <div class="modal-box glass-panel" style="max-width:560px;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:8px;">
                 <h2 class="section-title" style="font-size:1.4rem;margin:0;">Plan your North Norfolk days</h2>
@@ -1798,14 +1798,14 @@
     </div>
 
     <!-- ================= GUEST PHOTO LIGHTBOX ================= -->
-    <div id="photo-lightbox" class="photo-lightbox" onclick="if(event.target===this||event.target.classList.contains('pl-close'))closePhotoLightbox()">
+    <div id="photo-lightbox" class="photo-lightbox" data-act="backdropClose" data-close="closePhotoLightbox" data-close-in="pl-close">
         <button class="pl-close" aria-label="Close">×</button>
         <img id="pl-img" src="" alt="Guest photo">
         <div class="pl-cap" id="pl-cap"></div>
     </div>
 
     <!-- ================= GUEST PHOTO UPLOAD ================= -->
-    <div id="photo-upload-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Share a photo" onclick="if(event.target===this) closePhotoUpload()">
+    <div id="photo-upload-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Share a photo" data-act="backdropClose" data-close="closePhotoUpload">
         <div class="modal-box glass-panel" style="max-width:460px;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:6px;">
                 <h3 style="font-family:var(--font-serif);font-size:1.5rem;">Share a photo</h3>
@@ -1827,7 +1827,7 @@
     <!-- The settled "Paid in full" line opens the full price breakdown HERE —
          a window over the page, not a reflow of it. Filled + opened by
          bhubMoneyExpand() (admin.js). -->
-    <div id="breakdown-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Price breakdown" onclick="if(event.target===this) closeBreakdownModal()">
+    <div id="breakdown-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Price breakdown" data-act="backdropClose" data-close="closeBreakdownModal">
         <div class="modal-box glass-panel" style="max-width:420px;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:6px;">
                 <h3 id="breakdown-modal-title" style="font-family:var(--font-serif);font-size:1.4rem;">Payment breakdown</h3>
@@ -1838,7 +1838,7 @@
     </div>
 
     <!-- ================= IN-STAY WELCOME BOOK ================= -->
-    <div id="welcome-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Welcome" onclick="if(event.target===this) closeWelcomeModal()">
+    <div id="welcome-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Welcome" data-act="backdropClose" data-close="closeWelcomeModal">
         <div class="modal-box glass-panel" style="max-width:520px;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:6px;">
                 <h3 id="welcome-modal-title" style="font-family:var(--font-serif);font-size:1.4rem;">Welcome book</h3>
@@ -1854,7 +1854,7 @@
     <button type="button" id="enquiry-resume" class="enquiry-resume" style="display:none;" data-act="enquiryResumeOpen">
         <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
         <span id="enquiry-resume-text">Resume your enquiry</span>
-        <span class="er-x" onclick="event.stopPropagation(); enquiryResumeDismiss()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();enquiryResumeDismiss();}" role="button" tabindex="0" aria-label="Dismiss" title="Dismiss">&times;</span>
+        <span class="er-x" data-act="resumeDismiss" data-act-keydown="resumeDismiss" role="button" tabindex="0" aria-label="Dismiss" title="Dismiss">&times;</span>
     </button>
 
     <button id="chat-fab" class="chat-fab" data-act="toggleChat" aria-label="Chat with us" title="Chat with us">
@@ -1884,13 +1884,13 @@
         <div id="chat-attach-preview" class="chat-attach-preview" style="display:none;"></div>
         <div class="chat-composer" style="padding:12px 14px 14px;">
             <button type="button" id="chat-attach-btn" class="chat-attach-btn" data-act="chatAttachPhoto" aria-label="Attach a photo" title="Attach a photo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
-            <textarea id="chat-input" class="input-glass" rows="1" aria-label="Write a message" placeholder="Write a message…" data-act-input="chatTypingPing" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat();}"></textarea>
+            <textarea id="chat-input" class="input-glass" rows="1" aria-label="Write a message" placeholder="Write a message…" data-act-input="chatTypingPing" data-act-keydown="enterSendChat"></textarea>
             <button class="chat-send" data-act="sendChat" aria-label="Send message" title="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="M5.5 11.5 12 5l6.5 6.5"/></svg></button>
         </div>
     </div>
 
     <!-- ================= WAITLIST / NOTIFY ME (guest) ================= -->
-    <div id="waitlist-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Join the waitlist" onclick="if(event.target===this) closeWaitlistModal()">
+    <div id="waitlist-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Join the waitlist" data-act="backdropClose" data-close="closeWaitlistModal">
         <div class="modal-box glass-panel" style="max-width:460px;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:6px;">
                 <h3 style="font-family:var(--font-serif);font-size:1.5rem;">Notify me</h3>
@@ -1913,7 +1913,7 @@
     </div>
 
     <!-- ================= YOUR DETAILS (floating window) ================= -->
-    <div id="guest-details-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Your details" onclick="if(event.target===this) closeGuestDetailsModal()">
+    <div id="guest-details-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Your details" data-act="backdropClose" data-close="closeGuestDetailsModal">
         <div class="modal-box glass-panel auth-split">
             <!-- Desktop only: branded coastal panel beside the form (hidden on mobile) -->
             <aside class="auth-brand" aria-hidden="true">
@@ -1937,19 +1937,19 @@
             <textarea class="input-glass" id="profile-address" rows="2" placeholder="House name/number, street, town, county" style="resize:vertical;"></textarea>
             <label class="modal-label" for="profile-postcode">Postcode</label>
             <input type="text" class="input-glass" id="profile-postcode" placeholder="e.g. NR25 7AB" autocomplete="postal-code" style="margin-bottom:6px;">
-            <p style="font-size:0.72rem;color:var(--text-muted);margin:0 0 10px;">Used only to manage your bookings and contact you. See our <a href="#" onclick="event.preventDefault(); closeGuestDetailsModal(); nav('view-privacy')" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy Policy</a>.</p>
+            <p style="font-size:0.72rem;color:var(--text-muted);margin:0 0 10px;">Used only to manage your bookings and contact you. See our <a href="#" data-act="detailsPrivacy" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy Policy</a>.</p>
             <div id="profile-msg" style="font-size:0.8rem;margin:4px 0 10px;display:none;"></div>
             <button class="btn-glass" style="width:100%;padding:14px;" data-act="saveGuestProfile">Save details</button>
             <div style="display:flex;flex-direction:column;gap:10px;margin-top:16px;padding-top:16px;border-top:1px solid var(--glass-border);">
-                <button class="btn-sm btn-edit" style="width:100%;justify-content:center;" onclick="closeGuestDetailsModal(); openGuestSecurityModal()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="15" cy="9" r="3.6"/><path d="M12.4 11.6L4 20"/><path d="M7 17l2 2M5 19l2 2"/></svg> Account &amp; Security</button>
-                <button class="btn-sm btn-edit" style="width:100%;justify-content:center;color:var(--danger);border-color:rgba(229,115,115,0.4);" onclick="closeGuestDetailsModal(); guestLogout()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l-5-5 5-5"/><path d="M5 12h11"/></svg> Log Out</button>
+                <button class="btn-sm btn-edit" style="width:100%;justify-content:center;" data-act="detailsSecurity"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="15" cy="9" r="3.6"/><path d="M12.4 11.6L4 20"/><path d="M7 17l2 2M5 19l2 2"/></svg> Account &amp; Security</button>
+                <button class="btn-sm btn-edit" style="width:100%;justify-content:center;color:var(--danger);border-color:rgba(229,115,115,0.4);" data-act="detailsLogout"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l-5-5 5-5"/><path d="M5 12h11"/></svg> Log Out</button>
             </div>
             </div><!-- /.auth-form-col -->
         </div>
     </div>
 
     <!-- ================= ACCOUNT & SECURITY (floating window) ================= -->
-    <div id="guest-security-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Sign-in &amp; security" onclick="if(event.target===this) closeGuestSecurityModal()">
+    <div id="guest-security-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Sign-in &amp; security" data-act="backdropClose" data-close="closeGuestSecurityModal">
         <div class="modal-box glass-panel auth-split">
             <!-- Desktop only: branded coastal panel beside the form (hidden on mobile) -->
             <aside class="auth-brand" aria-hidden="true">
@@ -1982,7 +1982,7 @@
 
             <h3 style="font-family:var(--font-serif);font-size:1.1rem;margin:26px 0 6px;">Your data</h3>
             <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:12px;">Download a copy of everything we hold about you — your account, bookings, payments, enquiries, messages and more — as a JSON file.</p>
-            <button class="btn-sm btn-edit" onclick="exportGuestData(this)">Download my data</button>
+            <button class="btn-sm btn-edit" data-act="exportGuestData" data-pass="self">Download my data</button>
 
             <h3 style="font-family:var(--font-serif);font-size:1.1rem;margin:26px 0 6px;color:var(--danger);">Delete my account</h3>
             <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:12px;">Erases your login, contact details, messages, reviews and mailing-list entry. Past bookings are kept as legally-required financial records but anonymised. This can't be undone.</p>
@@ -2023,7 +2023,7 @@
     <!-- ================= EDIT / MOVE MODAL ================= -->
     <!-- TERMS & CONDITIONS MODAL -->
     <!-- CUSTOM DATE-RANGE PICKER (customer booking) -->
-    <div id="date-picker" class="datepicker-pop" role="dialog" aria-modal="true" aria-label="Choose your dates" onclick="if(event.target===this)closeDatePicker()">
+    <div id="date-picker" class="datepicker-pop" role="dialog" aria-modal="true" aria-label="Choose your dates" data-act="backdropClose" data-close="closeDatePicker">
         <div class="glass-panel datepicker-card">
             <div class="dp-head">
                 <button class="dp-nav-btn" data-act="dpChangeMonth" data-arg="-1" aria-label="Previous month">‹</button>
@@ -2069,8 +2069,8 @@
                     <p style="font-size:0.75rem;color:var(--text-muted);margin:6px 0 10px;">Sent in the site's email design with these details attached underneath. Their reply comes back to your inbox.</p>
                     <!-- Optional file attachments (images / PDFs / docs). -->
                     <div style="margin:0 0 12px;">
-                        <input type="file" id="enq-email-file-input" multiple accept="image/*,application/pdf,.doc,.docx,.txt,.ics" style="display:none;" onchange="addComposeAttachments(this.files)">
-                        <button type="button" class="btn-sm btn-edit" onclick="document.getElementById('enq-email-file-input').click()">＋ Attach a file</button>
+                        <input type="file" id="enq-email-file-input" multiple accept="image/*,application/pdf,.doc,.docx,.txt,.ics" style="display:none;" data-act-change="addComposeAttachments" data-pass="files">
+                        <button type="button" class="btn-sm btn-edit" data-act="clickTarget" data-target="enq-email-file-input">＋ Attach a file</button>
                         <div id="enq-email-attach-list" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"></div>
                     </div>
                     <p class="enq-modal-msg" id="enq-email-msg" role="alert"></p>
@@ -2104,11 +2104,11 @@
 
     <!-- GLASS DIALOG (replaces native alert/confirm/prompt) -->
     <!-- Full-screen photo lightbox (opened by clicking any gallery image) -->
-    <div id="lightbox" class="lightbox" onclick="if(event.target===this||event.target.classList.contains('lightbox-stage')) closeLightbox()">
+    <div id="lightbox" class="lightbox" data-act="backdropClose" data-close="closeLightbox" data-close-in="lightbox-stage">
         <button class="lightbox-close" data-act="closeLightbox" aria-label="Close photo viewer">&times;</button>
-        <button class="lightbox-nav prev" onclick="event.stopPropagation(); lightboxNav(-1)" aria-label="Previous photo">&#10094;</button>
+        <button class="lightbox-nav prev" data-act="lightboxNav" data-arg="-1" aria-label="Previous photo">&#10094;</button>
         <div class="lightbox-stage"><img id="lightbox-img" alt="Cottage photo"></div>
-        <button class="lightbox-nav next" onclick="event.stopPropagation(); lightboxNav(1)" aria-label="Next photo">&#10095;</button>
+        <button class="lightbox-nav next" data-act="lightboxNav" data-arg="1" aria-label="Next photo">&#10095;</button>
         <div class="lightbox-counter" id="lightbox-counter"></div>
     </div>
 
@@ -2127,7 +2127,7 @@
     </div>
 
     <!-- ADMIN LOGIN MODAL -->
-    <div id="admin-login-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-label="Owner sign in" onclick="if(event.target===this) closeAdminLogin()">
+    <div id="admin-login-modal" class="modal-overlay" role="dialog" aria-modal="true" aria-label="Owner sign in" data-act="backdropClose" data-close="closeAdminLogin">
         <div class="modal-box glass-panel">
             <h2 class="section-title" style="font-size:1.6rem;margin-bottom:6px;" id="admin-login-title">Owner Login</h2>
             <p class="lead" style="font-size:0.85rem;margin-bottom:22px;" id="admin-login-sub">Sign in to manage your bookings.</p>
@@ -2144,7 +2144,7 @@
                 <input type="text" class="input-glass" id="admin-login-user" placeholder="Username" autocomplete="username">
                 <label class="modal-label">Password</label>
                 <input type="password" class="input-glass" id="admin-login-pass" placeholder="Password" autocomplete="current-password"
-                       onkeydown="if(event.key==='Enter') submitAdminLogin()">
+                       data-act-keydown="enterCall" data-fn="submitAdminLogin">
                 <button class="btn-glass" style="width:100%;padding:15px;margin-top:6px;" data-act="submitAdminLogin">Log In</button>
                 <div id="admin-login-passkey-retry" style="display:none;margin-top:18px;">
                     <div style="display:flex;align-items:center;gap:12px;margin:0 0 16px;">
@@ -2161,7 +2161,7 @@
                 <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 12px;">We've emailed a 6-digit sign-in code to your owner email. Enter it to finish signing in.</p>
                 <label class="modal-label" for="admin-login-2fa-code">Sign-in code</label>
                 <input type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" class="input-glass" id="admin-login-2fa-code" placeholder="123456"
-                       onkeydown="if(event.key==='Enter') submitAdmin2fa()">
+                       data-act-keydown="enterCall" data-fn="submitAdmin2fa">
                 <label style="display:flex;align-items:center;gap:9px;font-size:0.85rem;margin:12px 0;cursor:pointer;"><input type="checkbox" id="admin-login-2fa-remember" checked> Remember this device (skip the code for 60 days)</label>
                 <button class="btn-glass" style="width:100%;padding:15px;margin-top:2px;" data-act="submitAdmin2fa">Verify &amp; sign in</button>
             </div>
@@ -2396,21 +2396,21 @@
              are rebuilt from the live list by renderFooterCottages() — the static
              three are the no-JS fallback. -->
         <nav class="footer-links" aria-label="Footer">
-            <a href="/" onclick="return routeLink(event,'view-main')">Home</a>
+            <a href="/" data-act="routeLink" data-view="view-main">Home</a>
             <span id="footer-cottage-links" style="display:contents">
-                <a href="/cottages/21a-westgate" onclick="return cottageLink(event,'21a')">21A Westgate Street</a>
-                <a href="/cottages/jollyboat" onclick="return cottageLink(event,'jollyboat')">Jollyboat</a>
-                <a href="/cottages/pimpernel" onclick="return cottageLink(event,'pimpernel')">Pimpernel</a>
+                <a href="/cottages/21a-westgate" data-act="cottageLink" data-prop="21a">21A Westgate Street</a>
+                <a href="/cottages/jollyboat" data-act="cottageLink" data-prop="jollyboat">Jollyboat</a>
+                <a href="/cottages/pimpernel" data-act="cottageLink" data-prop="pimpernel">Pimpernel</a>
             </span>
-            <a href="/experiences" onclick="return routeLink(event,'view-experiences')">Things to do</a>
-            <a href="#" onclick="event.preventDefault(); openAllReviews()">Guest reviews</a>
-            <a href="#" onclick="event.preventDefault(); openTermsModal(event)">Booking terms</a>
-            <a href="#" onclick="event.preventDefault(); nav('view-privacy')">Privacy</a>
+            <a href="/experiences" data-act="routeLink" data-view="view-experiences">Things to do</a>
+            <a href="#" data-act="pdCall" data-fn="openAllReviews">Guest reviews</a>
+            <a href="#" data-act="openTerms">Booking terms</a>
+            <a href="#" data-act="navLink" data-view="view-privacy">Privacy</a>
         </nav>
         <!-- Newsletter opt-in: a direct-booking audience the owner owns. -->
         <div class="footer-newsletter" id="footer-newsletter">
             <p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 8px;">Our occasional Blakeney news &amp; offers — no spam, unsubscribe any time.</p>
-            <form onsubmit="submitNewsletter(event)" style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;max-width:420px;margin:0 auto;">
+            <form data-act-submit="submitNewsletter" data-pass="event" style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;max-width:420px;margin:0 auto;">
                 <input type="email" id="nl-email" name="email" autocomplete="email" placeholder="you@example.com" required
                     style="flex:1;min-width:180px;background:var(--glass-bg);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);font-size:0.82rem;">
                 <button type="submit" class="btn-glass" style="padding:9px 18px;font-size:0.82rem;width:auto;">Sign up</button>
@@ -2426,7 +2426,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=395"></script>
+    <script defer src="app.js?v=396"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
