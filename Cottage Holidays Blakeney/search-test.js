@@ -247,6 +247,20 @@ check(
     ['cmdkDeepOpen', 'cmdkDeepClose', 'cmdkDeepFilter', 'cmdkDeepExpand', 'cmdkRenderDeep', 'cmdkDeepApply', 'cmdkDeepCta'].every((f) => typeof ctx[f] === 'function'),
 );
 
+// ---- 8c. Unified search core: the modular source registry (CHB_SEARCH) ----
+if (ctx.CHB_SEARCH && typeof ctx.CHB_SEARCH.registerSource === 'function') {
+    const built = ctx.CHB_SEARCH.sources();
+    check('CHB_SEARCH registry carries the built-in sources', ['records', 'actions', 'screens', 'fields', 'sheets'].every((id) => built.includes(id)), built.join(','));
+    ctx.CHB_SEARCH.registerSource('__unittest', () => [{ type: 'action', id: '__ut', label: '__ut', run() {} }], 5);
+    check('CHB_SEARCH.registerSource() adds a modular source (upgradable)', ctx.CHB_SEARCH.sources().includes('__unittest'));
+    // cmdkAll pools from the registry — even if a data-backed source throws in the
+    // shim, the collector is wrapped, so the runtime source still comes through.
+    check('cmdkAll() pools the registry', typeof ctx.cmdkAll === 'function' && ctx.cmdkAll('x').some((it) => it && it.label === '__ut'));
+    ctx.CHB_SEARCH.registerSource('__unittest', () => [], 5); // reset so nothing leaks
+} else {
+    check('CHB_SEARCH source registry is defined', false);
+}
+
 // ---- 9. Search scopes (ubiquity: pre-scope to the current workspace) ----
 check(
     'scope helpers are defined',
