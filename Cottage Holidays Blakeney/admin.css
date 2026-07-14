@@ -1184,6 +1184,27 @@ body.owner-mode #mobileMenu {
 @media (prefers-reduced-motion: reduce) {
   #cmdk.ml-active .cmdk-ml { animation: none; filter: drop-shadow(0 0 4px var(--ok)); }
 }
+/* LEARNING state: the knot flashes orange while the model absorbs new inputs
+   (taught phrasing / suppression / cross-device merge) and retrains. Applied by
+   chbNluLearnFlash() to the dock's Search knot and the palette indicator slot;
+   it outranks the green answering glow for its ~2s window. */
+.admin-dock-btn.ml-learning svg {
+  color: var(--warn);
+  animation: chb-ml-learn 0.55s ease-in-out infinite;
+}
+.cmdk-ml.ml-learning {
+  display: flex;
+  color: var(--warn);
+  animation: chb-ml-learn 0.55s ease-in-out infinite;
+}
+@keyframes chb-ml-learn {
+  0%, 100% { opacity: 1; filter: drop-shadow(0 0 6px var(--warn)); }
+  50% { opacity: 0.45; filter: drop-shadow(0 0 1px var(--warn)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .admin-dock-btn.ml-learning svg,
+  .cmdk-ml.ml-learning { animation: none; filter: drop-shadow(0 0 5px var(--warn)); }
+}
 /* Clear (✕) button — occupies the search-icon slot once there's text to clear. */
 .cmdk-clear {
   display: none;
