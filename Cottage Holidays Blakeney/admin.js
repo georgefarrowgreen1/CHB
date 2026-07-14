@@ -141,6 +141,11 @@ let __cmdkResults = [];
 let __cmdkSel = 0;
 let __cmdkServerT = null; // debounce timer for the deep server-side search
 let __cmdkServerStamp = 0; // stale-guards late responses when the query moved on
+// DEEP SEARCH state: when set, the palette shows the full "search everything"
+// results (every match across every source, grouped + counted + filterable),
+// instead of the quick top-hits list. { q, all:[items], counts:{type:n}, filter }.
+let __cmdkDeep = null;
+let __cmdkDeepStamp = 0;
 function cmdkIcon(type) {
     if (type === 'booking')
         return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg>';
@@ -1768,6 +1773,7 @@ function cmdkBuildResults(ql) {
 // force the literal spelling.
 function cmdkSearchCore(q, allowCorrect) {
     const raw = (q || '').trim().toLowerCase();
+    __cmdkDeep = null; // a fresh query returns to the quick top-hits palette
     __cmdkWiden = false; // re-evaluate widen from scratch for this query
     // Show the clear (✕) button in place of the magnifier once there's text.
     const searchWrap = document.querySelector('#cmdk .cmdk-search');
@@ -2669,6 +2675,7 @@ function cmdkRender() {
 function cmdkRenderInner() {
     const box = document.getElementById('cmdk-results');
     if (!box) return;
+    if (__cmdkDeep) { cmdkRenderDeep(box); return; } // full "search everything" view
     const sb = cmdkScopeBar(); // scope switch sits above every state
     // Empty palette → the "Your day" brief, then the dock destinations to jump to.
     if (__cmdkEmpty) {
@@ -2695,7 +2702,7 @@ function cmdkRenderInner() {
         box.innerHTML = sb + `<div class="cmdk-none">
             <svg class="cmdk-none-ic ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
             <div><strong>No matches${scoped ? ' in ' + escapeHtml(__cmdkScope) : ''}</strong>${scoped ? 'Tap “All” above to search everywhere.' : 'Try a guest name, a screen, or a question like “who owes me money”.'}</div>
-        </div>`;
+        </div>` + cmdkDeepCta();
         return;
     }
     // Structure longer lists: a Top Hit, then grouped section headers. Short lists
@@ -2721,7 +2728,126 @@ function cmdkRenderInner() {
         }
         parts.push(cmdkRowHtml(it, i, grouped && i === firstReal));
     });
+    parts.push(cmdkDeepCta()); // "Search everything for '…'" → the full deep view
     box.innerHTML = parts.join('');
+}
+// The affordance that opens Deep Search from the quick palette — shown whenever
+// there's a real text query (not on the empty/brief state).
+function cmdkDeepCta() {
+    const inp = document.getElementById('cmdk-input');
+    const q = inp ? inp.value.trim() : '';
+    if (q.length < 2) return '';
+    return `<button type="button" class="cmdk-deep-cta" data-act="cmdkDeepOpen"><span class="cmdk-deep-cta-ic">${CMDK_SEARCH_IC}</span><span class="cmdk-deep-cta-lbl">Search <strong>everything</strong> for “${escapeHtml(q)}”</span><span class="cmdk-qa-go" aria-hidden="true">${CMDK_CHEV}</span></button>`;
+}
+// ---- Deep Search: the full "search everything" mode ----
+// Fetches search.php?deep for the current query (multi-term, every source, with
+// per-source totals), maps each hit to its one-tap destination via cmdkServerItem,
+// and renders a grouped, filterable, counted list. Reuses cmdkRowHtml so rows look
+// and act exactly like the quick palette (icon · label · sub · quick actions).
+const CMDK_DEEP_ORDER = ['booking', 'enquiry', 'guest', 'message', 'email', 'payment', 'review', 'activity', 'expense', 'waitlist', 'subscriber', 'experience'];
+// Deep search names each SOURCE precisely (the quick palette's cmdkSection groups
+// several types under one heading, which is too coarse for "search everything").
+const CMDK_DEEP_LABELS = { booking: 'Bookings', enquiry: 'Enquiries', guest: 'Guests', message: 'Messages', email: 'Emails', payment: 'Payments', review: 'Reviews', activity: 'Activity', expense: 'Expenses', waitlist: 'Waitlist', subscriber: 'Subscribers', experience: 'Experiences' };
+const cmdkDeepLabel = (t) => CMDK_DEEP_LABELS[t] || t;
+function cmdkDeepOpen() {
+    const inp = document.getElementById('cmdk-input');
+    const q = inp ? inp.value.trim() : '';
+    if (q.length < 2) return;
+    const stamp = ++__cmdkDeepStamp;
+    __cmdkServerStamp++; // supersede any in-flight quick federated search
+    cmdkSetLoading(true);
+    apiPost('search.php', { q: q, deep: 1 })
+        .then((r) => {
+            if (stamp !== __cmdkDeepStamp) return;
+            cmdkSetLoading(false);
+            const all = ((r && r.results) || []).map(cmdkServerItem).filter(Boolean);
+            const counts = (r && r.counts) || {};
+            __cmdkDeep = { q: q, all: all, counts: counts, filter: 'all' };
+            cmdkDeepApply();
+            cmdkRender();
+        })
+        .catch(() => { if (stamp === __cmdkDeepStamp) { cmdkSetLoading(false); } });
+}
+function cmdkDeepClose() {
+    __cmdkDeep = null;
+    __cmdkDeepStamp++;
+    const inp = document.getElementById('cmdk-input');
+    cmdkSearchCore(inp ? inp.value : '', true); // back to the quick top-hits
+}
+function cmdkDeepFilter(type) {
+    if (!__cmdkDeep) return;
+    __cmdkDeep.filter = type || 'all';
+    cmdkDeepApply();
+    cmdkRender();
+}
+// Load the rest of one source (the quick deep response caps each at 20).
+function cmdkDeepExpand(type) {
+    if (!__cmdkDeep) return;
+    const stamp = __cmdkDeepStamp;
+    cmdkSetLoading(true);
+    apiPost('search.php', { q: __cmdkDeep.q, deep: 1, expand: type })
+        .then((r) => {
+            if (!__cmdkDeep || stamp !== __cmdkDeepStamp) return;
+            cmdkSetLoading(false);
+            const more = ((r && r.results) || []).map(cmdkServerItem).filter(Boolean);
+            const others = __cmdkDeep.all.filter((x) => x.type !== type);
+            __cmdkDeep.all = others.concat(more);
+            if (r && r.counts && r.counts[type] != null) __cmdkDeep.counts[type] = r.counts[type];
+            __cmdkDeep.filter = type; // focus the source you just expanded
+            cmdkDeepApply();
+            cmdkRender();
+        })
+        .catch(() => { if (stamp === __cmdkDeepStamp) cmdkSetLoading(false); });
+}
+// Rebuild __cmdkResults (what the keyboard navigates + rows index into) from the
+// deep set, honouring the active filter and a stable source order.
+function cmdkDeepApply() {
+    if (!__cmdkDeep) return;
+    const f = __cmdkDeep.filter;
+    const ordered = __cmdkDeep.all
+        .filter((x) => f === 'all' || x.type === f)
+        .sort((a, b) => CMDK_DEEP_ORDER.indexOf(a.type) - CMDK_DEEP_ORDER.indexOf(b.type));
+    __cmdkResults = ordered;
+    __cmdkSel = ordered.length ? 0 : -1;
+}
+function cmdkRenderDeep(box) {
+    const d = __cmdkDeep;
+    const total = Object.values(d.counts).reduce((a, b) => a + (b || 0), 0);
+    const present = CMDK_DEEP_ORDER.filter((t) => (d.counts[t] || 0) > 0);
+    // Header: back to the quick palette + what we searched.
+    let html = `<div class="cmdk-deep-head">
+        <button type="button" class="cmdk-ex cmdk-back" data-act="cmdkDeepClose">‹ Back</button>
+        <span class="cmdk-deep-title">Everything · “${escapeHtml(d.q)}”</span>
+        <span class="cmdk-deep-total">${total} match${total === 1 ? '' : 'es'}</span>
+    </div>`;
+    // Filter chips (All + each source with its total).
+    html += `<div class="cmdk-deep-chips">` +
+        `<button type="button" class="cmdk-deep-chip${d.filter === 'all' ? ' is-on' : ''}" data-act="cmdkDeepFilter" data-arg="all">All <b>${total}</b></button>` +
+        present.map((t) => `<button type="button" class="cmdk-deep-chip${d.filter === t ? ' is-on' : ''}" ${chbAttrs('cmdkDeepFilter', t)}>${escapeHtml(cmdkDeepLabel(t))} <b>${d.counts[t]}</b></button>`).join('') +
+        `</div>`;
+    if (!__cmdkResults.length) {
+        box.innerHTML = html + `<div class="cmdk-none"><div><strong>No matches for “${escapeHtml(d.q)}”</strong>Nothing across bookings, guests, messages, emails, payments or the log.</div></div>`;
+        return;
+    }
+    // Grouped rows (headers only in the unfiltered view). A source shown at its cap
+    // with more behind it gets a "Show all N" that pages it in.
+    let lastType = null;
+    __cmdkResults.forEach((it, i) => {
+        if (d.filter === 'all' && it.type !== lastType) {
+            const tot = d.counts[it.type] || __cmdkResults.filter((x) => x.type === it.type).length;
+            html += `<div class="cmdk-group-label">${escapeHtml(cmdkDeepLabel(it.type))} <span class="cmdk-deep-count">${tot}</span></div>`;
+            lastType = it.type;
+        }
+        html += cmdkRowHtml(it, i, false);
+        // After the last row of a capped source, offer to load the rest.
+        const next = __cmdkResults[i + 1];
+        const shownOfType = __cmdkResults.filter((x) => x.type === it.type).length;
+        const totOfType = d.counts[it.type] || 0;
+        if ((!next || next.type !== it.type) && totOfType > shownOfType) {
+            html += `<button type="button" class="cmdk-deep-more" ${chbAttrs('cmdkDeepExpand', it.type)}>Show all ${totOfType} ${escapeHtml(cmdkDeepLabel(it.type).toLowerCase())} →</button>`;
+        }
+    });
+    box.innerHTML = html;
 }
 function cmdkExec(i) {
     const it = __cmdkResults[i];
@@ -2811,6 +2937,7 @@ function cmdkKey(e) {
         cmdkExec(__cmdkSel);
     } else if (e.key === 'Escape') {
         e.preventDefault();
+        if (__cmdkDeep) { cmdkDeepClose(); return; } // step back to quick hits first
         closeCmdK();
     }
 }
@@ -2989,6 +3116,8 @@ function closeCmdK() {
     // the section can never be left orphaned inside the palette.
     if (__cmdkSheet) { try { cmdkSheetRestore(); } catch (e) {} }
     __cmdkServerStamp++; // supersede any in-flight federated search
+    __cmdkDeep = null;
+    __cmdkDeepStamp++;
     cmdkSetLoading(false);
     if (o) o.style.display = 'none';
 }
