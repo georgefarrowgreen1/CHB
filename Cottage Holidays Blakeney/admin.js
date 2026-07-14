@@ -1232,6 +1232,13 @@ function chbNluWarm(ms) {
     setTimeout(() => { try { if (!CHB_NLU.model) chbNluTrain(); } catch (e) {} }, ms || 300);
 }
 chbNluWarm(800);
+// The semantic tier's 7.6MB asset loads OFF the boot path: idle, owner-only
+// (this whole bundle is), cached by the browser + SW after the first fetch.
+try {
+    if (typeof fetch === 'function' && typeof window !== 'undefined' && window.document && document.createElement) {
+        setTimeout(() => { try { chbEmbedLoad(); } catch (e) {} }, 2500);
+    }
+} catch (e) {}
 // Learning indicator: the assistant knot flashes ORANGE while the model absorbs
 // new inputs (a taught phrasing, a suppression, a cross-device merge) and
 // retrains. Shown on the dock's Search knot — always on screen, since teaching
@@ -1304,6 +1311,134 @@ function chbNluDeep(q) {
 // CLASSIFY: accept only when confident AND unambiguous (margin over runner-up),
 // and never for a phrasing the owner has explicitly suppressed. `loose` returns
 // the best guess regardless of thresholds (tuning/tests only).
+// ============================================================
+//  CHB_EMBED — the MiniLM-class SEMANTIC tier (tier 3 of the cascade).
+//  A Model2Vec static embedding model (potion-base-8M: transformer knowledge
+//  distilled into 29,528 token vectors × 256 dims, bge WordPiece tokenizer)
+//  packed by embed-build.js into assist-embed.bin (int8 + per-token scale,
+//  ~7.6MB). Pure JS — no WASM runtime, no CSP change, ~10µs per query once
+//  loaded. Owner-only and lazy: fetched idle after the admin bundle boots;
+//  until it lands the cascade simply behaves as before (tiers 1–2 only).
+//  Why it earns its place (measured on the same harness as NLU v2): tiers
+//  1–2 alone 48/52 held-out; with this tier on their ABSTAINS 51/52 — still
+//  ZERO wrong intents and all 33 tier-3-duty negatives rejected, because it
+//  only answers when the query beats every "none" exemplar by a clear margin.
+// ============================================================
+const CHB_EMBED = { url: 'assist-embed.bin?v=1', min: 0.3, gap: 0, noneMargin: 0.1, st: null, loading: false };
+// Parse the packed binary (exposed separately from fetch so the Node test
+// harness can feed it a file buffer directly).
+function chbEmbedParse(buf) {
+    const dv = new DataView(buf);
+    if (dv.getUint32(0, false) !== 0x43484245) throw new Error('bad magic'); // 'CHBE'
+    const vocabN = dv.getUint32(8, true);
+    const dim = dv.getUint32(12, true);
+    const tokLen = dv.getUint32(16, true);
+    const tokens = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 20, tokLen)));
+    const scales = new Float32Array(buf.slice(20 + tokLen, 20 + tokLen + vocabN * 4));
+    const q8 = new Int8Array(buf.slice(20 + tokLen + vocabN * 4));
+    const vocab = new Map();
+    tokens.forEach((t, i) => vocab.set(t, i));
+    return { dim, vocabN, scales, q8, vocab, unk: vocab.get('[UNK]') || 0 };
+}
+async function chbEmbedLoad() {
+    if (CHB_EMBED.st || CHB_EMBED.loading) return;
+    CHB_EMBED.loading = true;
+    try {
+        const r = await fetch(CHB_EMBED.url);
+        if (!r.ok) throw new Error('http ' + r.status);
+        CHB_EMBED.st = chbEmbedParse(await r.arrayBuffer());
+        chbEmbedIndex();
+    } catch (e) {
+        // No semantic tier this session — the lexical cascade covers as before.
+    } finally { CHB_EMBED.loading = false; }
+}
+// BERT WordPiece (BertNormalizer lowercase+strip-accents, punctuation split,
+// greedy longest-match with '##' continuations, [UNK] fallback).
+function chbEmbedTokens(text) {
+    const st = CHB_EMBED.st;
+    const clean = String(text || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const words = [];
+    let cur = '';
+    for (const ch of clean) {
+        if (/\s/.test(ch)) { if (cur) words.push(cur); cur = ''; }
+        else if (/[!-/:-@\[-`{-~]/.test(ch)) { if (cur) words.push(cur); cur = ''; words.push(ch); }
+        else cur += ch;
+    }
+    if (cur) words.push(cur);
+    const ids = [];
+    for (const w of words) {
+        if (w.length > 100) { ids.push(st.unk); continue; }
+        let start = 0; const out = []; let bad = false;
+        while (start < w.length) {
+            let end = w.length, id = -1;
+            while (end > start) {
+                const piece = (start > 0 ? '##' : '') + w.slice(start, end);
+                if (st.vocab.has(piece)) { id = st.vocab.get(piece); break; }
+                end--;
+            }
+            if (id < 0) { bad = true; break; }
+            out.push(id); start = end;
+        }
+        if (bad) ids.push(st.unk); else ids.push(...out);
+    }
+    return ids;
+}
+// Embed = L2-normalised mean of the (dequantised) token vectors.
+function chbEmbedVec(text) {
+    const st = CHB_EMBED.st;
+    const ids = chbEmbedTokens(text);
+    const v = new Float32Array(st.dim);
+    if (!ids.length) return v;
+    for (const id of ids) {
+        const off = id * st.dim, s = st.scales[id];
+        for (let i = 0; i < st.dim; i++) v[i] += st.q8[off + i] * s;
+    }
+    let n = 0;
+    for (let i = 0; i < st.dim; i++) n += v[i] * v[i];
+    n = Math.sqrt(n) || 1;
+    for (let i = 0; i < st.dim; i++) v[i] /= n;
+    return v;
+}
+function chbEmbedCos(a, b) { let s = 0; for (let i = 0; i < a.length; i++) s += a[i] * b[i]; return s; }
+// (Re)build the exemplar index: one centroid per intent over corpus examples +
+// canonicals + the owner's LEARNED phrasings for that intent, and one "none"
+// pool (built-in none examples + suppressed phrases). Called after load and
+// after every learn/suppress — ~2ms, so learning stays instant.
+function chbEmbedIndex() {
+    const st = CHB_EMBED.st;
+    if (!st) return;
+    let learned = [];
+    try { learned = chbNluLearned() || []; } catch (e) {}
+    st.cents = CHB_NLU.corpus.map((c) => {
+        const texts = [c.canonical].concat(c.examples).concat(learned.filter((x) => x.c === c.canonical).map((x) => x.t));
+        const cent = new Float32Array(st.dim);
+        texts.forEach((t) => { const v = chbEmbedVec(t); for (let i = 0; i < st.dim; i++) cent[i] += v[i]; });
+        let n = 0;
+        for (let i = 0; i < st.dim; i++) n += cent[i] * cent[i];
+        n = Math.sqrt(n) || 1;
+        for (let i = 0; i < st.dim; i++) cent[i] /= n;
+        return cent;
+    });
+    let sup = [];
+    try { sup = chbNluSuppressed() || []; } catch (e) {}
+    st.nones = (CHB_NLU.noneExamples || []).concat(sup).map(chbEmbedVec);
+}
+// Tier-3 decision: nearest intent centroid, accepted only when it clears the
+// floor AND beats the closest none-exemplar by the margin. Sync (the model is
+// in memory) — returns null while the asset is still loading.
+function chbEmbedClassify(ql) {
+    const st = CHB_EMBED.st;
+    if (!st || !st.cents) return null;
+    const v = chbEmbedVec(ql);
+    let b1 = -1, b2 = -1, bi = -1;
+    st.cents.forEach((c, i) => { const s = chbEmbedCos(v, c); if (s > b1) { b2 = b1; b1 = s; bi = i; } else if (s > b2) b2 = s; });
+    if (b1 < CHB_EMBED.min || b1 - b2 < CHB_EMBED.gap) return null;
+    let nb = -1;
+    st.nones.forEach((nv) => { const s = chbEmbedCos(v, nv); if (s > nb) nb = s; });
+    if (nb >= b1 - CHB_EMBED.noneMargin) return null;
+    return { canonical: CHB_NLU.corpus[bi].canonical, score: b1, margin: b1 - b2, deep: true, em: true };
+}
+
 function chbNluClassify(q, loose) {
     const ql = (q || '').trim().toLowerCase();
     try { if (chbNluSuppressed().includes(ql)) return null; } catch (e) {}
@@ -1326,6 +1461,12 @@ function chbNluClassify(q, loose) {
         if (cosOf >= CHB_NLU.floor2 && deep[0].score >= CHB_NLU.min2 && dm >= CHB_NLU.gap2) {
             return { canonical: deep[0].canonical, score: cosOf, margin: dm, deep: true };
         }
+    } catch (e) {}
+    // Tier 3 — the MiniLM-class semantic tier, consulted only when BOTH
+    // lexical tiers abstain (see CHB_EMBED above for the measured gates).
+    try {
+        const em = chbEmbedClassify(ql);
+        if (em) return em;
     } catch (e) {}
     return null;
 }
@@ -1479,6 +1620,7 @@ function chbNluLearn(phrase, canonical) {
     chbNluStore('chb-nlu-learned', list);
     CHB_NLU.model = null; // retrain with the new example folded in…
     chbNluWarm(); // …off the critical path, so the next classify is instant
+    try { chbEmbedIndex(); } catch (e) {} // the semantic tier learns it too
     chbNluLearnFlash(); // the knot flashes orange: the model is learning
     chbAssistSyncPush();
 }
@@ -1495,6 +1637,7 @@ function chbNluSuppress(phrase) {
     const learned = chbNluLearned();
     const i = learned.findIndex((x) => x.t === t);
     if (i >= 0) { learned.splice(i, 1); chbNluStore('chb-nlu-learned', learned); CHB_NLU.model = null; chbNluWarm(); }
+    try { chbEmbedIndex(); } catch (e) {} // suppressed phrases join the none pool
     chbNluLearnFlash(); // un-teaching is learning too
     chbAssistSyncPush();
 }
