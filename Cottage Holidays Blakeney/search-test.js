@@ -257,6 +257,16 @@ if (ctx.CHB_SEARCH && typeof ctx.CHB_SEARCH.registerSource === 'function') {
     // shim, the collector is wrapped, so the runtime source still comes through.
     check('cmdkAll() pools the registry', typeof ctx.cmdkAll === 'function' && ctx.cmdkAll('x').some((it) => it && it.label === '__ut'));
     ctx.CHB_SEARCH.registerSource('__unittest', () => [], 5); // reset so nothing leaks
+    // Shared query-understanding: tokenise + synonym expansion + intent flags.
+    if (typeof ctx.CHB_SEARCH.understand === 'function') {
+        const u = ctx.CHB_SEARCH.understand('revenue smith');
+        check('CHB_SEARCH.understand() tokenises + expands synonyms', u && Array.isArray(u.words) && u.words.length === 2 && u.synonyms && u.synonyms.revenue && u.synonyms.revenue.includes('money'));
+        const p = ctx.CHB_SEARCH.understand('how do i refund a deposit');
+        const m = ctx.CHB_SEARCH.understand('how much did i earn');
+        check('CHB_SEARCH.understand() classifies procedural vs metric intent', p.flags.procedural === true && m.flags.procedural === false);
+    } else {
+        check('CHB_SEARCH.understand() is defined', false);
+    }
 } else {
     check('CHB_SEARCH source registry is defined', false);
 }
