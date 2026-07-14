@@ -249,5 +249,18 @@ if (!DUMP) {
     });
 }
 
+// ---- Dead-ends review (search-miss capture + teach) ----
+if (!DUMP) {
+    console.log('\n== Golden dead-ends review ==');
+    judge({ q: 'search dead ends', head: /No dead ends/ });
+    vm.runInContext(
+        `chbNluStore('chb-search-misses', [{ t: 'weather for changeover', n: 2, at: '2026-01-01' }, { t: 'paint the fence', n: 1, at: '2026-01-02' }]); CHB_NLU.misses = null;`,
+        ctx, { timeout: 2000 },
+    );
+    judge({ q: 'search dead ends', head: /2 searches found nothing/, any: /weather for changeover.*Searched 2 times|Searched 2 times/ });
+    judge({ q: 'teach the assistant', head: /2 searches found nothing/ });
+    judge({ q: 'search misses', head: /2 searches found nothing/ });
+}
+
 console.log(DUMP ? '\n(dump only — no asserts)' : failures ? `\n${failures} GOLDEN FAILURE(S) ❌` : '\n  ALL GOLDEN CHECKS PASSED ✅');
 process.exit(DUMP ? 0 : failures ? 1 : 0);

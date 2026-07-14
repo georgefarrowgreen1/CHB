@@ -1153,6 +1153,7 @@ function chbNluLearn(phrase, canonical) {
     if (list.length > 200) list.shift();
     chbNluStore('chb-nlu-learned', list);
     CHB_NLU.model = null; // retrain lazily with the new example folded in
+    chbAssistSyncPush();
 }
 function chbNluSuppress(phrase) {
     const t = String(phrase || '').trim().toLowerCase();
@@ -1167,6 +1168,91 @@ function chbNluSuppress(phrase) {
     const learned = chbNluLearned();
     const i = learned.findIndex((x) => x.t === t);
     if (i >= 0) { learned.splice(i, 1); chbNluStore('chb-nlu-learned', learned); CHB_NLU.model = null; }
+    chbAssistSyncPush();
+}
+
+// ---- Cross-device sync: the assistant's learning follows the OWNER, not the
+// device. Taught phrasings, suppressed phrasings and the dead-end list mirror
+// into the content table as internal keys (admin-only — is_internal_content_key
+// keeps them out of the public content GET): PULL once per session on palette
+// open (an admin session's siteContent already carries them), union-merge with
+// this device, PUSH (debounced) whenever a list changes. Single-operator
+// semantics: union-then-last-write-wins is plenty — losing an entry would need
+// two devices teaching simultaneously within one debounce window.
+let __assistPulled = false;
+let __assistPushT = null;
+function chbAssistSyncPush() {
+    clearTimeout(__assistPushT);
+    __assistPushT = setTimeout(() => {
+        try {
+            [['nlu-learned', chbNluLearned()], ['nlu-suppressed', chbNluSuppressed()], ['search-misses', chbMissList()]]
+                .forEach(([key, value]) => { apiPost('content.php', { action: 'set', key, value }).catch(() => {}); });
+        } catch (e) {}
+    }, 1500);
+}
+function chbAssistSyncPull() {
+    if (__assistPulled) return;
+    const sc = typeof siteContent === 'object' && siteContent ? siteContent : {};
+    if (!Object.keys(sc).length) return; // content not fetched yet — retry on the next open
+    __assistPulled = true;
+    let changed = false;
+    const sup = chbNluSuppressed();
+    (Array.isArray(sc['nlu-suppressed']) ? sc['nlu-suppressed'] : []).forEach((t) => {
+        if (typeof t === 'string' && t && !sup.includes(t)) { sup.push(t); changed = true; }
+    });
+    while (sup.length > 100) sup.shift();
+    const learned = chbNluLearned();
+    (Array.isArray(sc['nlu-learned']) ? sc['nlu-learned'] : []).forEach((x) => {
+        if (!x || typeof x.t !== 'string' || !x.t || typeof x.c !== 'string' || !x.c) return;
+        if (sup.includes(x.t)) return; // a suppression on any device beats a learn on another
+        if (!learned.some((y) => y.t === x.t)) { learned.push({ t: x.t, c: x.c }); changed = true; }
+    });
+    while (learned.length > 200) learned.shift();
+    const misses = chbMissList();
+    (Array.isArray(sc['search-misses']) ? sc['search-misses'] : []).forEach((m) => {
+        if (!m || typeof m.t !== 'string' || !m.t) return;
+        const hit = misses.find((y) => y.t === m.t);
+        if (hit) { if ((m.n || 0) > (hit.n || 1)) { hit.n = m.n; changed = true; } }
+        else { misses.push({ t: m.t, n: m.n || 1, at: typeof m.at === 'string' ? m.at : '' }); changed = true; }
+    });
+    while (misses.length > 30) misses.shift();
+    if (changed) {
+        chbNluStore('chb-nlu-suppressed', sup);
+        chbNluStore('chb-nlu-learned', learned);
+        chbNluStore('chb-search-misses', misses);
+        CHB_NLU.model = null; // fold the merged phrasings in on the next classify
+    }
+}
+
+// ---- Search dead ends: the FINAL query of a palette session that produced no
+// direct answer and wasn't acted on is remembered (deduped, capped) so the owner
+// can see what the palette couldn't answer — and TEACH the model what the
+// phrasing meant (the 0n intent branch renders the review UI).
+CHB_NLU.misses = null; // [{t, n, at}]
+let __cmdkMiss = null; // { q, answered } for the query currently on screen
+function chbMissList() {
+    if (!CHB_NLU.misses) CHB_NLU.misses = chbNluLoad('chb-search-misses');
+    return CHB_NLU.misses;
+}
+function chbMissForget(t) {
+    const list = chbMissList();
+    const i = list.findIndex((x) => x.t === t);
+    if (i >= 0) { list.splice(i, 1); chbNluStore('chb-search-misses', list); chbAssistSyncPush(); }
+}
+function chbMissRecord() {
+    const m = __cmdkMiss;
+    __cmdkMiss = null;
+    if (!m || m.answered || !m.q || m.q.length < 4) return;
+    if (/dead.?ends?|search miss|teach/.test(m.q)) return; // the review UI itself can't be a miss
+    const list = chbMissList();
+    const hit = list.find((x) => x.t === m.q);
+    if (hit) { hit.n = (hit.n || 1) + 1; hit.at = todayDashed(); }
+    else {
+        list.push({ t: m.q, n: 1, at: todayDashed() });
+        if (list.length > 30) list.shift();
+    }
+    chbNluStore('chb-search-misses', list);
+    chbAssistSyncPush();
 }
 
 // ---- Near-miss guidance: when the model ISN'T confident enough to act but the
@@ -1644,6 +1730,31 @@ function cmdkIntent(q) {
         }
     }
 
+    // 0n) Search dead ends — the review-and-teach surface for queries that found
+    // nothing (chbMissRecord). Each row retries its query; its chips teach the
+    // model what the phrasing MEANT (chbNluLearn → synced) or forget the entry.
+    if (/^(search )?dead.?ends?$|^search misses$|^teach (the )?(assistant|search|model)\b|what (couldn.?t|didn.?t) (you|search) (answer|find)/.test(q)) {
+        const list = chbMissList().slice().reverse();
+        const head = ans(
+            list.length ? `${list.length} search${list.length === 1 ? '' : 'es'} found nothing` : 'No dead ends — recent searches all found something',
+            list.length ? 'Tap one to retry it, or teach the assistant what it meant' : 'Searches that find nothing are remembered here so you can teach the assistant',
+            null,
+        );
+        return [head].concat(list.slice(0, 8).map((m) => {
+            let sugg = [];
+            try { sugg = chbNluSuggest(m.t) || []; } catch (e) {}
+            return {
+                type: 'answer', id: 'miss-' + chbNluHashStr(m.t),
+                label: `“${m.t}”`,
+                sub: `Searched ${m.n > 1 ? m.n + ' times' : 'once'} · nothing found`,
+                run: () => { const el = document.getElementById('cmdk-input'); if (el) el.value = m.t; cmdkSearchCore(m.t, true); },
+                chips: sugg.slice(0, 2).map((c) => ({
+                    label: `Teach: means “${c}”`,
+                    run: () => { chbNluLearn(m.t, c); chbMissForget(m.t); const el = document.getElementById('cmdk-input'); if (el) el.value = c; cmdkSearchCore(c, true); },
+                })).concat([{ label: 'Forget this', run: () => { chbMissForget(m.t); cmdkSearchCore('search dead ends', false); } }]),
+            };
+        }));
+    }
     // 1) Payments — who owes, who's paid in full, who's paid a deposit.
     if (/\bowe|owes|owing|owed|balance|outstanding|unpaid|to collect|to chase|money|paid|payment|deposit|paying|settle/.test(q)) {
         const withPs = flat.map((x) => ({ ...x, ps: paymentSummary(x.pk, x.b) }));
@@ -2287,6 +2398,7 @@ function cmdkSearchCore(q, allowCorrect) {
         // Empty query → an answer-first "Your day" brief, example chips, then the
         // dock destinations. The brief + screens are the executable rows.
         __cmdkEmpty = true;
+        __cmdkMiss = null; // deliberately cleared — not a dead end
         // The scope switch narrows the empty landing too: the brief + "Jump to"
         // show only the active scope's items ("All" shows the day brief + the
         // top dock destinations).
@@ -2325,6 +2437,17 @@ function cmdkSearchCore(q, allowCorrect) {
                 const cans = CHB_NLU.corpus.map((c) => c.canonical);
                 const day = Math.floor(Date.now() / 864e5);
                 const pick = [0, 1, 2].map((i) => cans[(day * 3 + i) % cans.length]);
+                // Ambient dead-end surfacing: when past searches found nothing,
+                // one quiet row offers the review-and-teach flow.
+                const dead = chbMissList();
+                if (dead.length) {
+                    screens = screens.concat([{
+                        type: 'answer', id: 'cmdk-deadends',
+                        label: `${dead.length} search${dead.length === 1 ? '' : 'es'} found nothing`,
+                        sub: 'Review the dead ends and teach the assistant what you meant',
+                        run: () => { const el = document.getElementById('cmdk-input'); if (el) el.value = 'search dead ends'; cmdkSearchCore('search dead ends', false); },
+                    }]);
+                }
                 screens = screens.concat([{
                     type: 'answer', id: 'cmdk-try',
                     label: 'Ask me about the business',
@@ -2387,6 +2510,10 @@ function cmdkSearchCore(q, allowCorrect) {
         }];
     }
     __cmdkResults = cmdkArrangeWide(note.concat(built.results).concat(built.fuzzy).concat(askRow).slice(0, 18), 18);
+    // Dead-end tracking: remember the query now on screen and whether anything
+    // ANSWERED it (an intent/NLU answer counts; mere fuzzy rows don't). If the
+    // palette closes with this un-acted-on, chbMissRecord() files it to review.
+    __cmdkMiss = { q: raw, answered: built.results.length > 0 };
     const firstReal = __cmdkResults.findIndex((it) => it && !cmdkIsNoteRow(it));
     __cmdkSel = firstReal >= 0 ? firstReal : 0; // the Top Hit, not the correction/widen note
     cmdkRender();
@@ -3140,6 +3267,7 @@ function cmdkChipRun(i, k) {
     const it = __cmdkResults[i];
     const c = it && Array.isArray(it.chips) ? it.chips[k] : null;
     if (!c) return;
+    __cmdkMiss = null; // engaged with a chip → not a dead end
     if (typeof c.run === 'function') { c.run(); return; } // action chip (e.g. Show on calendar)
     const el = document.getElementById('cmdk-input');
     __cmdkHist.push(el ? el.value : '');
@@ -3401,7 +3529,7 @@ function cmdkRenderDeep(box) {
 function cmdkExec(i) {
     const it = __cmdkResults[i];
     if (it && it._nlu && it._nluQ) { try { chbNluLearn(it._nluQ, it._nlu); } catch (e) {} } // accepted → learn this phrasing
-    if (it && typeof it.run === 'function') { cmdkLearn(it); it.run(); }
+    if (it && typeof it.run === 'function') { __cmdkMiss = null; cmdkLearn(it); it.run(); } // acted on → not a dead end
 }
 // Clear the search text (✕ button) and return the palette to its empty state.
 function cmdkClear() {
@@ -3660,6 +3788,7 @@ function openCmdK() {
     __cmdkScope = cmdkDefaultScope(); // open pre-scoped to the workspace you're in
     __cmdkEntity = cmdkCurrentEntity(); // and aware of the record you're viewing
     cmdkVoiceInit(); // reveal the mic where speech recognition is supported
+    try { chbAssistSyncPull(); } catch (e) {} // merge learning taught on other devices (once per session)
     cmdkSearch('');
     // focus after paint so the mobile keyboard opens reliably
     setTimeout(() => inp.focus(), 30);
@@ -3669,6 +3798,7 @@ function closeCmdK() {
     // If a Tier-2 sheet borrowed a Manage section, hand it back before closing so
     // the section can never be left orphaned inside the palette.
     if (__cmdkSheet) { try { cmdkSheetRestore(); } catch (e) {} }
+    try { chbMissRecord(); } catch (e) {} // closing on an unanswered query → file it as a dead end
     __cmdkServerStamp++; // supersede any in-flight federated search
     __cmdkDeep = null;
     __cmdkDeepStamp++;
