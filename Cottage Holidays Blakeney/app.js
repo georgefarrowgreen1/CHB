@@ -1337,10 +1337,15 @@ function toggleMobileMenu() {
     menu.classList.toggle('open');
     const open = menu.classList.contains('open');
     const tog = document.querySelector('.menu-toggle');
-    if (tog) tog.setAttribute('aria-expanded', open ? 'true' : 'false');
-    document.querySelector('.menu-toggle').innerHTML = open
-        ? '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>'
-        : '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>';
+    if (tog) {
+        tog.setAttribute('aria-expanded', open ? 'true' : 'false');
+        // Reuse the already-fetched (and null-checked) node — the old code re-queried
+        // `.menu-toggle` unguarded on the next line, which would throw if the header
+        // is ever conditionally rendered.
+        tog.innerHTML = open
+            ? '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>'
+            : '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>';
+    }
     // Prevent the page scrolling behind the open overlay
     document.body.style.overflow = open ? 'hidden' : '';
 }
@@ -6175,20 +6180,6 @@ function dedupeExternalBlocks() {
         });
         dbBlocks[k] = Array.from(byRange.values());
     });
-}
-
-// Friendly name for an iCal feed source key (e.g. 'airbnb' -> 'Airbnb').
-function sourceLabel(src) {
-    const s = (src || '').toLowerCase();
-    const map = {
-        airbnb: 'Airbnb',
-        vrbo: 'Vrbo',
-        booking: 'Booking.com',
-        bookingcom: 'Booking.com',
-        google: 'Google',
-    };
-    if (map[s]) return map[s];
-    return src ? src.charAt(0).toUpperCase() + src.slice(1) : 'External';
 }
 
 function findBookingById(bookingId) {
@@ -12150,7 +12141,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'a11y1';
+    const BUILD = 'deadcode1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
