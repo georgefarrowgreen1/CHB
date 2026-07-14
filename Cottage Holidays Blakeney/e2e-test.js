@@ -231,8 +231,13 @@ async function waitForServer(url, tries = 40) {
       await page.waitForTimeout(350);
       return page.evaluate(() => {
         const rowVisible = (frag) => {
+          // Wiring is either the legacy inline onclick or the CSP-clean
+          // data-act="fn" data-arg="x" delegation — reconstruct fn('x') from the
+          // latter so the frag check works across the migration.
+          const wiring = (x) => x.getAttribute('onclick')
+            || (x.getAttribute('data-act') ? `${x.getAttribute('data-act')}('${x.getAttribute('data-arg') || ''}')` : '');
           const b = [...document.querySelectorAll('#settings-index .settings-row')]
-            .find((x) => (x.getAttribute('onclick') || '').includes(frag));
+            .find((x) => wiring(x).includes(frag));
           return !!b && b.offsetParent !== null;
         };
         return {

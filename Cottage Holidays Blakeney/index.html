@@ -245,7 +245,7 @@
             <button class="admin-dock-btn" data-view="view-accounts" data-label="Payments" aria-label="Payments" title="Payments" data-act="openAccounts">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><text x="12" y="16.2" font-size="11" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="Georgia, serif">&#163;</text></svg>
             </button>
-            <button class="admin-dock-btn" data-view="view-settings" data-label="Manage" aria-label="Manage" title="Manage" onclick="openArea('manage')">
+            <button class="admin-dock-btn" data-view="view-settings" data-label="Manage" aria-label="Manage" title="Manage" data-act="openArea" data-arg="manage">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             </button>
             <!-- Whole-site search lives in the dock now (rightmost), not a separate
@@ -389,8 +389,8 @@
                 <div class="hero-search">
                     <!-- Search mode: exact dates (default) or flexible (length + month) -->
                     <div class="hs-mode" role="group" aria-label="Search mode">
-                        <button type="button" class="hs-mode-btn is-on" id="hs-mode-exact-btn" onclick="hsSetMode('exact')">Exact dates</button>
-                        <button type="button" class="hs-mode-btn" id="hs-mode-flex-btn" onclick="hsSetMode('flex')">I'm flexible</button>
+                        <button type="button" class="hs-mode-btn is-on" id="hs-mode-exact-btn" data-act="hsSetMode" data-arg="exact">Exact dates</button>
+                        <button type="button" class="hs-mode-btn" id="hs-mode-flex-btn" data-act="hsSetMode" data-arg="flex">I'm flexible</button>
                     </div>
 
                     <!-- EXACT-DATE mode -->
@@ -400,10 +400,10 @@
                             <span class="hs-value" id="hs-dates">Add your dates</span>
                         </button>
                         <div class="hs-flex" role="group" aria-label="Date flexibility">
-                            <button type="button" class="hs-chip is-on" data-flex="0" onclick="hsSetFlex(0)">&plusmn; 0 days</button>
-                            <button type="button" class="hs-chip" data-flex="1" onclick="hsSetFlex(1)">± 1 day</button>
-                            <button type="button" class="hs-chip" data-flex="2" onclick="hsSetFlex(2)">± 2 days</button>
-                            <button type="button" class="hs-chip" data-flex="3" onclick="hsSetFlex(3)">± 3 days</button>
+                            <button type="button" class="hs-chip is-on" data-flex="0" data-act="hsSetFlex" data-arg="0">&plusmn; 0 days</button>
+                            <button type="button" class="hs-chip" data-flex="1" data-act="hsSetFlex" data-arg="1">± 1 day</button>
+                            <button type="button" class="hs-chip" data-flex="2" data-act="hsSetFlex" data-arg="2">± 2 days</button>
+                            <button type="button" class="hs-chip" data-flex="3" data-act="hsSetFlex" data-arg="3">± 3 days</button>
                         </div>
                     </div>
 
@@ -412,10 +412,10 @@
                         <div class="hs-field" style="cursor:default;">
                             <span class="hs-label">How long do you want to stay?</span>
                             <div class="hs-guest" style="margin-top:6px;">
-                                <button type="button" class="hs-step" onclick="hsAdjustNights(-1)" aria-label="Fewer nights">&minus;</button>
+                                <button type="button" class="hs-step" data-act="hsAdjustNights" data-arg="-1" aria-label="Fewer nights">&minus;</button>
                                 <span class="hs-count" id="hs-nights">3</span>
                                 <span class="hs-gtype">night<span id="hs-nights-s">s</span></span>
-                                <button type="button" class="hs-step" onclick="hsAdjustNights(1)" aria-label="More nights">+</button>
+                                <button type="button" class="hs-step" data-act="hsAdjustNights" data-arg="1" aria-label="More nights">+</button>
                             </div>
                         </div>
                         <div class="hs-field" style="cursor:default;">
@@ -428,14 +428,14 @@
                         <span class="hs-label">Guests</span>
                         <div class="hs-guest-rows">
                             <div class="hs-guest"><span class="hs-gtype">Adults</span>
-                                <button type="button" class="hs-step" onclick="hsAdjust('adults',-1)" aria-label="Fewer adults">&minus;</button>
+                                <button type="button" class="hs-step" data-act="hsAdjust" data-arg="adults" data-arg2="-1" aria-label="Fewer adults">&minus;</button>
                                 <span class="hs-count" id="hs-adults">2</span>
-                                <button type="button" class="hs-step" onclick="hsAdjust('adults',1)" aria-label="More adults">+</button>
+                                <button type="button" class="hs-step" data-act="hsAdjust" data-arg="adults" data-arg2="1" aria-label="More adults">+</button>
                             </div>
                             <div class="hs-guest"><span class="hs-gtype">Children</span>
-                                <button type="button" class="hs-step" onclick="hsAdjust('children',-1)" aria-label="Fewer children">&minus;</button>
+                                <button type="button" class="hs-step" data-act="hsAdjust" data-arg="children" data-arg2="-1" aria-label="Fewer children">&minus;</button>
                                 <span class="hs-count" id="hs-children">0</span>
-                                <button type="button" class="hs-step" onclick="hsAdjust('children',1)" aria-label="More children">+</button>
+                                <button type="button" class="hs-step" data-act="hsAdjust" data-arg="children" data-arg2="1" aria-label="More children">+</button>
                             </div>
                         </div>
                     </div>
@@ -593,8 +593,8 @@
             <div class="gallery-track" id="gallery-21a">
                 <!-- slides injected dynamically by renderGallery() -->
             </div>
-            <button class="gallery-nav prev" aria-label="Previous photo" onclick="moveGallery('gallery-21a', -1)">&#10094;</button>
-            <button class="gallery-nav next" aria-label="Next photo" onclick="moveGallery('gallery-21a', 1)">&#10095;</button>
+            <button class="gallery-nav prev" aria-label="Previous photo" data-act="moveGallery" data-arg="gallery-21a" data-arg2="-1">&#10094;</button>
+            <button class="gallery-nav next" aria-label="Next photo" data-act="moveGallery" data-arg="gallery-21a" data-arg2="1">&#10095;</button>
             <div class="gallery-count" id="gallery-count-21a" aria-hidden="true" style="display:none;"></div>
         </div>
         <!-- Desktop photo grid (Airbnb-style 1+4); built by renderGallery, hidden on mobile -->
@@ -623,9 +623,9 @@
                 <div id="cal-mobile-anchor"></div>
                 <div class="avail-cal glass-panel" id="prop-avail-cal">
                     <div class="avail-cal-head">
-                        <button class="avail-nav" onclick="availCalMove(-1)" aria-label="Previous month">‹</button>
+                        <button class="avail-nav" data-act="availCalMove" data-arg="-1" aria-label="Previous month">‹</button>
                         <span id="avail-cal-title" style="font-family:var(--font-serif);font-size:1.1rem;"></span>
-                        <button class="avail-nav" onclick="availCalMove(1)" aria-label="Next month">›</button>
+                        <button class="avail-nav" data-act="availCalMove" data-arg="1" aria-label="Next month">›</button>
                     </div>
                     <div class="avail-cal-grid" id="avail-cal-grid"></div>
                     <div style="display:flex;gap:18px;justify-content:center;margin-top:14px;font-size:0.72rem;color:var(--text-muted);">
@@ -762,17 +762,17 @@
                         <div class="enq-guest-row">
                             <span>Adults</span>
                             <div class="enq-step-group">
-                                <button type="button" class="hs-step" onclick="enqAdjust('adults',-1)" aria-label="Fewer adults">&minus;</button>
+                                <button type="button" class="hs-step" data-act="enqAdjust" data-arg="adults" data-arg2="-1" aria-label="Fewer adults">&minus;</button>
                                 <span class="hs-count" id="enq-adults-count">2</span>
-                                <button type="button" class="hs-step" onclick="enqAdjust('adults',1)" aria-label="More adults">+</button>
+                                <button type="button" class="hs-step" data-act="enqAdjust" data-arg="adults" data-arg2="1" aria-label="More adults">+</button>
                             </div>
                         </div>
                         <div class="enq-guest-row" id="enq-children-field">
                             <span>Children</span>
                             <div class="enq-step-group">
-                                <button type="button" class="hs-step" onclick="enqAdjust('children',-1)" aria-label="Fewer children">&minus;</button>
+                                <button type="button" class="hs-step" data-act="enqAdjust" data-arg="children" data-arg2="-1" aria-label="Fewer children">&minus;</button>
                                 <span class="hs-count" id="enq-children-count">0</span>
-                                <button type="button" class="hs-step" onclick="enqAdjust('children',1)" aria-label="More children">+</button>
+                                <button type="button" class="hs-step" data-act="enqAdjust" data-arg="children" data-arg2="1" aria-label="More children">+</button>
                             </div>
                         </div>
                     </div>
@@ -935,9 +935,9 @@
                     <div class="cal-month-nav">
                         <div class="cal-month-title" id="cal-month-display">June 2026</div>
                         <div class="tl-seg" role="group" aria-label="Move along the timeline">
-                            <button aria-label="Earlier" onclick="changeMonth(-1)">&#10094;</button>
+                            <button aria-label="Earlier" data-act="changeMonth" data-arg="-1">&#10094;</button>
                             <button class="tl-today-btn" data-act="timelineToday">Today</button>
-                            <button aria-label="Later" onclick="changeMonth(1)">&#10095;</button>
+                            <button aria-label="Later" data-act="changeMonth" data-arg="1">&#10095;</button>
                         </div>
                     </div>
                     <div class="cal-actions">
@@ -945,7 +945,7 @@
                         <button class="btn-glass cal-add-btn" data-act="openBlockDates">Block dates</button>
                         <div class="cal-updated">
                             <span id="cal-updated-text"></span>
-                            <button class="cal-refresh-btn" id="cal-refresh-btn" onclick="autoSyncIcalBlocks(true)" title="Refresh external bookings now" aria-label="Refresh external bookings now"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-1.9 5.3"/><path d="M20 5v6h-6"/></svg></button>
+                            <button class="cal-refresh-btn" id="cal-refresh-btn" data-act="autoSyncIcalBlocks" data-arg="true" title="Refresh external bookings now" aria-label="Refresh external bookings now"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-1.9 5.3"/><path d="M20 5v6h-6"/></svg></button>
                         </div>
                     </div>
                 </div>
@@ -973,10 +973,10 @@
             <!-- Per-page search removed — the back-office ⌘K search covers finding a
                  booking by guest, email or reference. The filters below stay. -->
             <div class="inbox-sort seg" id="bookings-filters" role="tablist" aria-label="Filter bookings">
-                <button class="inbox-sort-btn is-on" role="tab" onclick="bookingsSetFilter('upcoming')" data-bfilter="upcoming">Upcoming</button>
-                <button class="inbox-sort-btn" role="tab" onclick="bookingsSetFilter('needspay')" data-bfilter="needspay">Needs payment</button>
-                <button class="inbox-sort-btn" role="tab" onclick="bookingsSetFilter('past')" data-bfilter="past">Past</button>
-                <button class="inbox-sort-btn" role="tab" onclick="bookingsSetFilter('all')" data-bfilter="all">All</button>
+                <button class="inbox-sort-btn is-on" role="tab" data-act="bookingsSetFilter" data-arg="upcoming" data-bfilter="upcoming">Upcoming</button>
+                <button class="inbox-sort-btn" role="tab" data-act="bookingsSetFilter" data-arg="needspay" data-bfilter="needspay">Needs payment</button>
+                <button class="inbox-sort-btn" role="tab" data-act="bookingsSetFilter" data-arg="past" data-bfilter="past">Past</button>
+                <button class="inbox-sort-btn" role="tab" data-act="bookingsSetFilter" data-arg="all" data-bfilter="all">All</button>
             </div>
             <div id="bookings-list"><!-- JS injects booking rows here --></div>
         </div>
@@ -1054,9 +1054,9 @@
                  switch — website enquiries, guest chat, and the cottage EMAIL
                  mailbox (moved here from Manage; one home per task). -->
             <div class="inbox-sort seg" id="inbox-folders" role="tablist" aria-label="Inbox folders">
-                <button class="inbox-sort-btn is-on" role="tab" data-ifolder="enquiries" onclick="inboxFolder('enquiries')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>Enquiries <span class="ifold-count" id="ifold-count-enq"></span></button>
-                <button class="inbox-sort-btn" role="tab" data-ifolder="messages" onclick="inboxFolder('messages')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.6-.8L3 21l1.9-5.7A8.38 8.38 0 0 1 4 11.5 8.5 8.5 0 0 1 12.5 3 8.38 8.38 0 0 1 21 11.5z"/></svg>Messages <span class="ifold-count" id="ifold-count-msg"></span></button>
-                <button class="inbox-sort-btn" role="tab" data-ifolder="email" onclick="inboxFolder('email')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/></svg>Email <span class="ifold-count" id="ifold-count-mbx"></span></button>
+                <button class="inbox-sort-btn is-on" role="tab" data-ifolder="enquiries" data-act="inboxFolder" data-arg="enquiries"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>Enquiries <span class="ifold-count" id="ifold-count-enq"></span></button>
+                <button class="inbox-sort-btn" role="tab" data-ifolder="messages" data-act="inboxFolder" data-arg="messages"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.6-.8L3 21l1.9-5.7A8.38 8.38 0 0 1 4 11.5 8.5 8.5 0 0 1 12.5 3 8.38 8.38 0 0 1 21 11.5z"/></svg>Messages <span class="ifold-count" id="ifold-count-msg"></span></button>
+                <button class="inbox-sort-btn" role="tab" data-ifolder="email" data-act="inboxFolder" data-arg="email"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/></svg>Email <span class="ifold-count" id="ifold-count-mbx"></span></button>
             </div>
             <!-- Enquiries folder -->
             <div id="inbox-folder-enquiries">
@@ -1135,15 +1135,15 @@
             <div class="settings-section-label">Your cottages</div>
             <div id="cottages-overview" class="area-overview"></div>
             <div class="settings-group">
-                <button class="settings-row" data-kw="rates prices fees nightly rules occupancy photos text add remove accommodation property min nights" onclick="settingsOpen('accom')">
+                <button class="settings-row" data-kw="rates prices fees nightly rules occupancy photos text add remove accommodation property min nights" data-act="settingsOpen" data-arg="accom">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Cottages</span><span class="settings-row-sub">Each cottage's rates, fees, rules, photos &amp; text — add or remove a cottage</span></span><span class="settings-row-chev">›</span>
                 </button>
-                <button class="settings-row" data-kw="seasons summer winter holiday peak pricing grid rates all cottages" onclick="settingsOpen('seasongrid')">
+                <button class="settings-row" data-kw="seasons summer winter holiday peak pricing grid rates all cottages" data-act="settingsOpen" data-arg="seasongrid">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Seasonal rates — all cottages</span><span class="settings-row-sub">Summer &amp; holiday pricing for every cottage in one grid</span></span><span class="settings-row-chev">›</span>
                 </button>
-                <button class="settings-row" data-kw="ical airbnb vrbo booking.com sync import export block dates feed" onclick="settingsOpen('calendar')">
+                <button class="settings-row" data-kw="ical airbnb vrbo booking.com sync import export block dates feed" data-act="settingsOpen" data-arg="calendar">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Calendar sync</span><span class="settings-row-sub">Keep dates in step with Airbnb, Vrbo &amp; Booking.com</span></span><span class="settings-row-chev">›</span>
                 </button>
@@ -1151,11 +1151,11 @@
 
             <div class="settings-section-label">Bookings &amp; payments</div>
             <div class="settings-group">
-                <button class="settings-row" data-kw="square card deposit damage hold balance money invoice" onclick="settingsOpen('payments')">
+                <button class="settings-row" data-kw="square card deposit damage hold balance money invoice" data-act="settingsOpen" data-arg="payments">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Payments</span><span class="settings-row-sub">Card payments (Square) &amp; your deposit policy</span></span><span class="settings-row-chev">›</span>
                 </button>
-                <button class="settings-row" data-kw="refund policy terms flexible strict cancellation" onclick="settingsOpen('cancel')">
+                <button class="settings-row" data-kw="refund policy terms flexible strict cancellation" data-act="settingsOpen" data-arg="cancel">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 7.5l15 9M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Cancellation policy</span><span class="settings-row-sub">The refund terms guests see, per cottage</span></span><span class="settings-row-chev">›</span>
                 </button>
@@ -1167,19 +1167,19 @@
 
             <div class="settings-section-label">Your website</div>
             <div class="settings-group">
-                <button class="settings-row" data-kw="hero banner images text logo site name navigation menu labels seo homepage" onclick="settingsOpen('content')">
+                <button class="settings-row" data-kw="hero banner images text logo site name navigation menu labels seo homepage" data-act="settingsOpen" data-arg="content">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h10"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Home page &amp; menu</span><span class="settings-row-sub">Hero banner, menu labels &amp; site name</span></span><span class="settings-row-chev">›</span>
                 </button>
-                <button class="settings-row" data-kw="things to do local guide attractions suggestions moderate" onclick="settingsOpen('experiences')">
+                <button class="settings-row" data-kw="things to do local guide attractions suggestions moderate" data-act="settingsOpen" data-arg="experiences">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15.6 8.4l-2.1 5.1-5.1 2.1 2.1-5.1z"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Experiences <span id="exp-pending-badge" style="display:none;background:#E5533C;color:#fff;font-size:0.62rem;font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:middle;"></span></span><span class="settings-row-sub">Local things to do &amp; approve guest suggestions</span></span><span class="settings-row-chev">›</span>
                 </button>
-                <button class="settings-row" data-kw="stars ratings testimonials airbnb import approve moderate" onclick="settingsOpen('reviews')">
+                <button class="settings-row" data-kw="stars ratings testimonials airbnb import approve moderate" data-act="settingsOpen" data-arg="reviews">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 17.77 6.8 19.5l.99-5.78-4.21-4.1 5.82-.85z"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Reviews <span id="reviews-pending-badge" style="display:none;background:#E5533C;color:#fff;font-size:0.62rem;font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:middle;"></span></span><span class="settings-row-sub">Approve guest reviews &amp; import reviews from Airbnb</span></span><span class="settings-row-chev">›</span>
                 </button>
-                <button class="settings-row" data-kw="ugc pictures gallery approve moderate guest photos" onclick="settingsOpen('photos')">
+                <button class="settings-row" data-kw="ugc pictures gallery approve moderate guest photos" data-act="settingsOpen" data-arg="photos">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.2"/><path d="M8 6l1.5-2h5L16 6"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Guest photos <span id="photos-pending-badge" style="display:none;background:#E5533C;color:#fff;font-size:0.62rem;font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:middle;"></span></span><span class="settings-row-sub">Approve photos guests share</span></span><span class="settings-row-chev">›</span>
                 </button>
@@ -1187,19 +1187,19 @@
 
             <div class="settings-section-label">Guests &amp; marketing</div>
             <div class="settings-group">
-                <button class="settings-row" data-kw="users accounts password reset lookup email login" onclick="settingsOpen('guests')">
+                <button class="settings-row" data-kw="users accounts password reset lookup email login" data-act="settingsOpen" data-arg="guests">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 5.5a3 3 0 0 1 0 5.8M21 19a5.5 5.5 0 0 0-4-5.3"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Guest accounts</span><span class="settings-row-sub">Look up a guest &amp; reset their password</span></span><span class="settings-row-chev">›</span>
                 </button>
-                <button class="settings-row" data-kw="mailing list email broadcast subscribers signup marketing" onclick="settingsOpen('newsletter')">
+                <button class="settings-row" data-kw="mailing list email broadcast subscribers signup marketing" data-act="settingsOpen" data-arg="newsletter">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Newsletter</span><span class="settings-row-sub">Mailing list &amp; seasonal broadcasts</span></span><span class="settings-row-chev">›</span>
                 </button>
-                <button class="settings-row" data-kw="notify me sold out alerts demand" onclick="settingsOpen('waitlist')">
+                <button class="settings-row" data-kw="notify me sold out alerts demand" data-act="settingsOpen" data-arg="waitlist">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M18 8v6M21 11h-6"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Waitlist</span><span class="settings-row-sub">Guests waiting on sold-out dates</span></span><span class="settings-row-chev">›</span>
                 </button>
-                <button class="settings-row" data-kw="stats visits traffic referrers pages searches" onclick="settingsOpen('analytics')">
+                <button class="settings-row" data-kw="stats visits traffic referrers pages searches" data-act="settingsOpen" data-arg="analytics">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16"/><rect x="6" y="11" width="3" height="6" rx="0.5"/><rect x="10.5" y="6" width="3" height="11" rx="0.5"/><rect x="15" y="13" width="3" height="4" rx="0.5"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Analytics</span><span class="settings-row-sub">Visits, referrers &amp; popular pages</span></span><span class="settings-row-chev">›</span>
                 </button>
@@ -1207,15 +1207,15 @@
 
             <div class="settings-section-label">Messages</div>
             <div class="settings-group">
-                <button class="settings-row" data-kw="chat instant answers quick questions auto reply faq bot automation" onclick="settingsOpen('chat-answers')">
+                <button class="settings-row" data-kw="chat instant answers quick questions auto reply faq bot automation" data-act="settingsOpen" data-arg="chat-answers">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.6-.8L3 21l1.9-5.7A8.38 8.38 0 0 1 4 11.5 8.5 8.5 0 0 1 12.5 3 8.38 8.38 0 0 1 21 11.5z"/><path d="M9 10h6M9 13h4"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Instant chat answers</span><span class="settings-row-sub">Auto-answers to the chat's quick-question chips</span></span><span class="settings-row-chev">›</span>
                 </button>
-                <button class="settings-row" data-kw="away auto reply out of office acknowledge message automation" onclick="settingsOpen('chat-away')">
+                <button class="settings-row" data-kw="away auto reply out of office acknowledge message automation" data-act="settingsOpen" data-arg="chat-away">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 1.8"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Away auto-reply</span><span class="settings-row-sub">Auto-acknowledge a guest when you're not around</span></span><span class="settings-row-chev">›</span>
                 </button>
-                <button class="settings-row" data-kw="follow up emails nudge enquiry reminder anniversary past guests automation" onclick="settingsOpen('follow-ups')">
+                <button class="settings-row" data-kw="follow up emails nudge enquiry reminder anniversary past guests automation" data-act="settingsOpen" data-arg="follow-ups">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/><path d="M15.5 14.5l2 2 3.5-3.5"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Follow-up emails</span><span class="settings-row-sub">Automatic nudges to enquirers &amp; past guests</span></span><span class="settings-row-chev">›</span>
                 </button>
@@ -1223,15 +1223,15 @@
 
             <div class="settings-section-label">Your account</div>
             <div class="settings-group">
-                <button class="settings-row" data-kw="bio about phone contact host profile picture" onclick="settingsOpen('host')">
+                <button class="settings-row" data-kw="bio about phone contact host profile picture" data-act="settingsOpen" data-arg="host">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Profile</span><span class="settings-row-sub">Your host bio &amp; contact number</span></span><span class="settings-row-chev">›</span>
                 </button>
-                <button class="settings-row" data-kw="push alerts phone device notifications" onclick="settingsOpen('notify')">
+                <button class="settings-row" data-kw="push alerts phone device notifications" data-act="settingsOpen" data-arg="notify">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Notifications</span><span class="settings-row-sub">Get phone alerts for new bookings &amp; messages</span></span><span class="settings-row-chev">›</span>
                 </button>
-                <button class="settings-row" data-kw="password face id fingerprint passkey sign-in touch id change" onclick="settingsOpen('security')">
+                <button class="settings-row" data-kw="password face id fingerprint passkey sign-in touch id change" data-act="settingsOpen" data-arg="security">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Security</span><span class="settings-row-sub">Your password &amp; quick sign-in (Face ID / fingerprint)</span></span><span class="settings-row-chev">›</span>
                 </button>
@@ -1247,7 +1247,7 @@
 
             <div class="settings-section-label">System</div>
             <div class="settings-group">
-                <button class="settings-row" data-kw="api keys tide times connected services integrations" onclick="settingsOpen('apis')">
+                <button class="settings-row" data-kw="api keys tide times connected services integrations" data-act="settingsOpen" data-arg="apis">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 13.5l-5.3 5.3a2 2 0 0 1-2.8-2.8l5.3-5.3"/><circle cx="15.5" cy="8.5" r="5"/><path d="M13.5 10.5l1.5 1.5"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Integrations</span><span class="settings-row-sub">Tide times &amp; other connected services</span></span><span class="settings-row-chev">›</span>
                 </button>
@@ -1255,7 +1255,7 @@
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Activity log</span><span class="settings-row-sub">Every change &amp; action — bookings, payments, edits</span></span><span class="settings-row-chev">›</span>
                 </button>
-                <button class="settings-row" data-kw="status health system check diagnostics updates migrations backup database export version email test" onclick="settingsOpen('diagnostics')">
+                <button class="settings-row" data-kw="status health system check diagnostics updates migrations backup database export version email test" data-act="settingsOpen" data-arg="diagnostics">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2 5 4-12 2 7h6"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Status</span><span class="settings-row-sub">See everything's running &amp; the maintenance tools</span></span><span class="settings-row-chev">›</span>
                 </button>
@@ -1266,7 +1266,7 @@
             </div>
             <!-- Test centre — shown on the staging sandbox only (revealed by JS when IS_STAGING) -->
             <div class="settings-group" id="testcentre-row" style="display:none;">
-                <button class="settings-row" data-kw="staging sandbox preview sample data" onclick="settingsOpen('testcentre')">
+                <button class="settings-row" data-kw="staging sandbox preview sample data" data-act="settingsOpen" data-arg="testcentre">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6M10 3v5.2L5.4 17a2 2 0 0 0 1.8 3h9.6a2 2 0 0 0 1.8-3L14 8.2V3"/><path d="M8 14h8"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Test centre</span><span class="settings-row-sub">Preview, sample emails, test bookings &amp; data</span></span><span class="settings-row-chev">›</span>
                 </button>
@@ -1325,7 +1325,7 @@
                     <label class="modal-label" for="apikey-tides-input">WorldTides API key</label>
                     <input type="text" id="apikey-tides-input" class="input-glass" placeholder="paste your key…" autocomplete="off" spellcheck="false" style="font-family:monospace;">
                     <div style="margin-top:12px;display:flex;gap:10px;align-items:center;">
-                        <button class="btn-sm btn-edit" onclick="saveApiKey('tides')">Save key</button>
+                        <button class="btn-sm btn-edit" data-act="saveApiKey" data-arg="tides">Save key</button>
                         <span id="apikey-tides-msg" style="font-size:0.82rem;color:var(--ok);"></span>
                     </div>
                 </div>
@@ -1584,27 +1584,27 @@
         <div id="accounts-index" class="settings-index">
             <div id="money-overview" class="money-overview"><!-- JS injects the graphical financial dashboard --></div>
             <div class="settings-group">
-                <button class="settings-row" onclick="accountsOpen('payments')">
+                <button class="settings-row" data-act="accountsOpen" data-arg="payments">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9v6M18 9v6"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Payments &amp; balances</span><span class="settings-row-sub">Take guest payments &amp; refund deposits</span></span><span class="settings-row-chev">›</span>
                 </button>
-                <button class="settings-row" onclick="accountsOpen('recent')">
+                <button class="settings-row" data-act="accountsOpen" data-arg="recent">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 1.8"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Recent payments</span><span class="settings-row-sub">A list of payments you've received</span></span><span class="settings-row-chev">›</span>
                 </button>
             </div>
             <div class="settings-group">
-                <button class="settings-row" onclick="accountsOpen('income')">
+                <button class="settings-row" data-act="accountsOpen" data-arg="income">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16"/><rect x="6" y="11" width="3" height="6" rx="0.5"/><rect x="10.5" y="7" width="3" height="10" rx="0.5"/><rect x="15" y="13" width="3" height="4" rx="0.5"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Income &amp; tax</span><span class="settings-row-sub">Profit, quarterly totals &amp; downloads for your accountant</span></span><span class="settings-row-chev">›</span>
                 </button>
-                <button class="settings-row" onclick="accountsOpen('expenses')">
+                <button class="settings-row" data-act="accountsOpen" data-arg="expenses">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16v13H4z"/><path d="M4 7l2-3h12l2 3"/><path d="M9 12h6"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Expenses</span><span class="settings-row-sub">Receipts, categories &amp; recurring costs</span></span><span class="settings-row-chev">›</span>
                 </button>
             </div>
             <div class="settings-group">
-                <button class="settings-row" onclick="accountsOpen('pricingcoach')">
+                <button class="settings-row" data-act="accountsOpen" data-arg="pricingcoach">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8"/><path d="M21 7v5h-5"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Pricing coach</span><span class="settings-row-sub">Smart pricing ideas from your bookings &amp; demand</span></span><span class="settings-row-chev">›</span>
                 </button>
@@ -1667,8 +1667,8 @@
             </div>
             <div>
                 <div style="display: flex; gap: 10px; margin-bottom: 28px;">
-                    <button class="toggle-btn guest-tab active-mode" id="tab-login" style="flex:1;" onclick="switchGuestTab('login')">Log In</button>
-                    <button class="toggle-btn guest-tab" id="tab-register" style="flex:1;" onclick="switchGuestTab('register')">Create Account</button>
+                    <button class="toggle-btn guest-tab active-mode" id="tab-login" style="flex:1;" data-act="switchGuestTab" data-arg="login">Log In</button>
+                    <button class="toggle-btn guest-tab" id="tab-register" style="flex:1;" data-act="switchGuestTab" data-arg="register">Create Account</button>
                 </div>
 
                 <!-- LOGIN -->
@@ -1876,10 +1876,10 @@
         </div>
         <div class="chat-quick" id="chat-quick">
             <button type="button" class="chat-chip chat-chip-avail" data-act="chatAvailStart">Check availability</button>
-            <button type="button" class="chat-chip" onclick="chatFaq('checkin')">Check-in time?</button>
-            <button type="button" class="chat-chip" onclick="chatFaq('parking')">Parking?</button>
-            <button type="button" class="chat-chip" onclick="chatFaq('wifi')">Wi-Fi?</button>
-            <button type="button" class="chat-chip chat-chip-issue" onclick="chatQuick('__issue')">Report an issue</button>
+            <button type="button" class="chat-chip" data-act="chatFaq" data-arg="checkin">Check-in time?</button>
+            <button type="button" class="chat-chip" data-act="chatFaq" data-arg="parking">Parking?</button>
+            <button type="button" class="chat-chip" data-act="chatFaq" data-arg="wifi">Wi-Fi?</button>
+            <button type="button" class="chat-chip chat-chip-issue" data-act="chatQuick" data-arg="__issue">Report an issue</button>
         </div>
         <div id="chat-attach-preview" class="chat-attach-preview" style="display:none;"></div>
         <div class="chat-composer" style="padding:12px 14px 14px;">
@@ -2026,9 +2026,9 @@
     <div id="date-picker" class="datepicker-pop" role="dialog" aria-modal="true" aria-label="Choose your dates" onclick="if(event.target===this)closeDatePicker()">
         <div class="glass-panel datepicker-card">
             <div class="dp-head">
-                <button class="dp-nav-btn" onclick="dpChangeMonth(-1)" aria-label="Previous month">‹</button>
+                <button class="dp-nav-btn" data-act="dpChangeMonth" data-arg="-1" aria-label="Previous month">‹</button>
                 <div class="dp-title" id="dp-title">Month</div>
-                <button class="dp-nav-btn" onclick="dpChangeMonth(1)" aria-label="Next month">›</button>
+                <button class="dp-nav-btn" data-act="dpChangeMonth" data-arg="1" aria-label="Next month">›</button>
             </div>
             <div class="dp-hint" id="dp-hint">Select your check-in date</div>
             <div class="dp-weekdays">
@@ -2120,8 +2120,8 @@
             <div class="glass-dialog-fields" id="glass-dialog-fields" style="display:none;"></div>
             <input type="text" class="input-glass glass-dialog-input" id="glass-dialog-input" style="display:none;">
             <div class="glass-dialog-btns">
-                <button class="btn-sm btn-edit" id="glass-dialog-cancel" style="display:none;" onclick="glassDialogResolve(false)">Cancel</button>
-                <button class="btn-glass" id="glass-dialog-ok" onclick="glassDialogResolve(true)">OK</button>
+                <button class="btn-sm btn-edit" id="glass-dialog-cancel" style="display:none;" data-act="glassDialogResolve" data-arg="false">Cancel</button>
+                <button class="btn-glass" id="glass-dialog-ok" data-act="glassDialogResolve" data-arg="true">OK</button>
             </div>
         </div>
     </div>
@@ -2426,7 +2426,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=394"></script>
+    <script defer src="app.js?v=395"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
