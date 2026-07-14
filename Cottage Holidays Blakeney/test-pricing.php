@@ -110,6 +110,21 @@ chk('lastmin breakdown: total = 164.80', approxEq($plm['total'], 164.8));
 $plmOut = price_breakdown($rateLM, 2, 0, '2026-02-01', '2026-02-03', null, [], '2026-01-01'); // 31 days out — no discount
 chk('lastmin breakdown: outside window unchanged = 200', approxEq($plmOut['nightly'], 200));
 
+// Rounding-boundary parity: a fractional nightly whose ×3% fee lands exactly on a
+// .xx5 float boundary. round($x,2) and Math.round($x*100)/100 disagree here by 1p,
+// so this fixture pins PHP to the JS scale-then-round (guards the txFee/perNight
+// lockstep the integer fixtures above can never exercise). nightly 178.50 → fee
+// 178.50×0.03 = 5.355 → 5.36 (both engines), total 183.86.
+$rateBoundary = [
+    'prop_key' => 'bd', 'couple_rate' => 178.50, 'extra_adult_rate' => 0, 'child_rate' => 0,
+    'booking_fee' => 0, 'transaction_pct' => 3, 'weekend_pct' => 0, 'weekend_days' => '',
+];
+$pbd = price_breakdown($rateBoundary, 2, 0, '2026-07-01', '2026-07-02', null, []); // 1 night → nightly 178.50
+chk('rounding boundary: nightly = 178.50', approxEq($pbd['nightly'], 178.5));
+chk('rounding boundary: per-night = 178.50 (scale-then-round matches JS)', approxEq($pbd['perNight'], 178.5));
+chk('rounding boundary: txFee = 5.36 (178.50×3% = 5.355 → 5.36, matches JS)', approxEq($pbd['txFee'], 5.36));
+chk('rounding boundary: total = 183.86 (not 183.85)', approxEq($pbd['total'], 183.86));
+
 // booking_price(): confirmed bookings must show their AGREED (locked-in) snapshot,
 // never today's rates — emails and previews route through this helper.
 $rateNow = [
