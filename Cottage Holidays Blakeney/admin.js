@@ -1220,6 +1220,22 @@ function chbNluWarm(ms) {
     setTimeout(() => { try { if (!CHB_NLU.model) chbNluTrain(); } catch (e) {} }, ms || 300);
 }
 chbNluWarm(800);
+// Learning indicator: the assistant knot flashes ORANGE while the model absorbs
+// new inputs (a taught phrasing, a suppression, a cross-device merge) and
+// retrains. Shown on the dock's Search knot — always on screen, since teaching
+// usually closes the palette — and on the palette's indicator slot when open.
+// Held for a couple of flash cycles so the moment is actually visible.
+let __nluLearnFlashT = null;
+function chbNluLearnFlash() {
+    try {
+        [document.querySelector('.admin-dock-btn[data-act="openCmdK"]'), document.getElementById('cmdk-ml')]
+            .forEach((el) => { if (el) el.classList.add('ml-learning'); });
+        clearTimeout(__nluLearnFlashT);
+        __nluLearnFlashT = setTimeout(() => {
+            document.querySelectorAll('.ml-learning').forEach((el) => el.classList.remove('ml-learning'));
+        }, 2200);
+    } catch (e) {}
+}
 // SCORE: IDF-weight the query the same way and cosine against every intent
 // centroid — the full ranked list (best first), shared by classify + suggest.
 function chbNluScores(q) {
@@ -1450,6 +1466,7 @@ function chbNluLearn(phrase, canonical) {
     chbNluStore('chb-nlu-learned', list);
     CHB_NLU.model = null; // retrain with the new example folded in…
     chbNluWarm(); // …off the critical path, so the next classify is instant
+    chbNluLearnFlash(); // the knot flashes orange: the model is learning
     chbAssistSyncPush();
 }
 function chbNluSuppress(phrase) {
@@ -1465,6 +1482,7 @@ function chbNluSuppress(phrase) {
     const learned = chbNluLearned();
     const i = learned.findIndex((x) => x.t === t);
     if (i >= 0) { learned.splice(i, 1); chbNluStore('chb-nlu-learned', learned); CHB_NLU.model = null; chbNluWarm(); }
+    chbNluLearnFlash(); // un-teaching is learning too
     chbAssistSyncPush();
 }
 
@@ -1519,6 +1537,7 @@ function chbAssistSyncPull() {
         chbNluStore('chb-search-misses', misses);
         CHB_NLU.model = null; // fold the merged phrasings in…
         chbNluWarm(); // …retraining off the critical path
+        chbNluLearnFlash(); // learning from another device's teaching
     }
 }
 
