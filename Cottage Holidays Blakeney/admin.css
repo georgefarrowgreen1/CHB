@@ -2343,3 +2343,36 @@ body.light-mode .cmdk-editor-input {
 .abar-panel .cmdk-deep-cta {
   margin: 6px 0 2px;
 }
+
+/* Inbox bar: per-folder match pills on the folder switch while a filter is
+   live; the unread chips step aside so the two counts never collide. */
+.ifold-match {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 0.68rem;
+  font-weight: 700;
+}
+.ifold-match.is-zero {
+  background: var(--glass-border);
+  color: var(--text-muted);
+}
+#inbox-folders.is-filtered .ifold-count {
+  display: none;
+}
+@media (min-width: 1200px) {
+  /* Three-pane Inbox: the bar tops the LIST column, not the folder rail. */
+  #inbox-main > .abar-host {
+    grid-column: 2;
+    margin-top: 0;
+  }
+  #inbox-folders .ifold-match {
+    margin-left: auto;
+  }
+}
