@@ -701,6 +701,30 @@ const CHB_SEARCH = {
         this._sources.sort((a, b) => a.weight - b.weight);
     },
     sources() { return this._sources.map((s) => s.id); },
+    // ONE query-understanding pass, shared by every provider (and sent to the
+    // server). Centralises what used to be scattered inline: tokenisation, the
+    // per-word synonym expansion (CMDK_SYN), and the intent classification
+    // (procedural help vs a soft question). Typo-correction stays a separate,
+    // caller-driven fallback (cmdkCorrect) because it only runs when the literal
+    // query finds nothing — but its corrected text is what reaches the server, so
+    // typos are already shared. `synonyms` is a { word: [alts] } map the server
+    // ORs in so "revenue" also finds "income"/"money" everywhere, not just locally.
+    understand(q) {
+        const raw = (q || '').trim().toLowerCase();
+        const words = raw.split(/\s+/).filter(Boolean);
+        const synonyms = {};
+        for (const w of words) {
+            if (typeof CMDK_SYN !== 'undefined' && CMDK_SYN[w]) {
+                const alts = CMDK_SYN[w].split(' ').filter((s) => s && s !== w);
+                if (alts.length) synonyms[w] = alts;
+            }
+        }
+        const flags = {
+            procedural: /\b(how\s+(do|to|can|does|would|should)|why|help|guide|explain|tutorial|advice|steps?|walk me)\b/.test(raw) && !/\bhow\s+(much|many)\b/.test(raw),
+            softAsk: /\b(what|can i|do i|how)\b/.test(raw),
+        };
+        return { raw, words, synonyms, flags };
+    },
     // Pool every source's items into one flat list (the fuzzy matcher then scores
     // + ranks them). Order follows source weight; a bad module is skipped, not fatal.
     collect(q) {
@@ -1795,8 +1819,10 @@ function cmdkBuildResults(ql) {
     //    Top Hit from a real booking/screen/field.
     let help = [];
     try { help = cmdkHelp(ql) || []; } catch (e) {}
-    const procedural = /\b(how\s+(do|to|can|does|would|should)|why|help|guide|explain|tutorial|advice|steps?|walk me)\b/.test(ql) && !/\bhow\s+(much|many)\b/.test(ql);
-    const softAsk = /\b(what|can i|do i|how)\b/.test(ql);
+    // Intent classification comes from the one shared understanding pass.
+    const uflags = CHB_SEARCH.understand(ql).flags;
+    const procedural = uflags.procedural;
+    const softAsk = uflags.softAsk;
     if (procedural) results = help.concat(results);
     else if (softAsk) results = results.concat(help);
     // A named-guest answer/booking (branch 0b) is the authoritative record for that
@@ -2802,7 +2828,7 @@ function cmdkDeepOpen() {
     const stamp = ++__cmdkDeepStamp;
     __cmdkServerStamp++; // supersede any in-flight quick federated search
     cmdkSetLoading(true);
-    apiPost('search.php', { q: q, deep: 1 })
+    apiPost('search.php', { q: q, deep: 1, syn: CHB_SEARCH.understand(q).synonyms })
         .then((r) => {
             if (stamp !== __cmdkDeepStamp) return;
             cmdkSetLoading(false);
@@ -2831,7 +2857,7 @@ function cmdkDeepExpand(type) {
     if (!__cmdkDeep) return;
     const stamp = __cmdkDeepStamp;
     cmdkSetLoading(true);
-    apiPost('search.php', { q: __cmdkDeep.q, deep: 1, expand: type })
+    apiPost('search.php', { q: __cmdkDeep.q, deep: 1, expand: type, syn: CHB_SEARCH.understand(__cmdkDeep.q).synonyms })
         .then((r) => {
             if (!__cmdkDeep || stamp !== __cmdkDeepStamp) return;
             cmdkSetLoading(false);

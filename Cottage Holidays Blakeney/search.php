@@ -54,16 +54,39 @@ if ($deep) {
     if (!$terms) {
         json_out(['ok' => true, 'deep' => true, 'results' => [], 'counts' => (object) []]);
     }
-    $likes = array_map(fn($t) => '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $t) . '%', $terms);
-    // Build "(cA LIKE ? OR cB LIKE ?) AND (…)" + its bound params for a column set.
-    $wt = function (array $cols) use ($likes) {
+    $mkLike = fn($t) => '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], (string) $t) . '%';
+    // The client sends its shared query-understanding: a { word: [synonyms] } map,
+    // so each term is satisfied by the term OR any of its synonyms ("revenue" also
+    // finds "income"/"money"). Same intelligence client + server; capped for safety.
+    $syn = body()['syn'] ?? ($_GET['syn'] ?? []);
+    if (!is_array($syn)) {
+        $syn = [];
+    }
+    // Per term: a group of LIKE patterns = the term itself + up to 4 synonyms.
+    $groups = array_map(function ($t) use ($syn, $mkLike) {
+        $pats = [$mkLike($t)];
+        $alts = $syn[$t] ?? ($syn[mb_strtolower($t)] ?? []);
+        if (is_array($alts)) {
+            foreach (array_slice($alts, 0, 4) as $a) {
+                if (is_string($a) && $a !== '') {
+                    $pats[] = $mkLike($a);
+                }
+            }
+        }
+        return $pats;
+    }, $terms);
+    // Build "(cA LIKE ? OR cB LIKE ? OR …synonyms…) AND (…)" + its bound params.
+    // Every term must match SOME column via its OWN pattern OR a synonym pattern.
+    $wt = function (array $cols) use ($groups) {
         $clauses = [];
         $params = [];
-        foreach ($likes as $lk) {
+        foreach ($groups as $pats) {
             $ors = [];
             foreach ($cols as $c) {
-                $ors[] = "$c LIKE ?";
-                $params[] = $lk;
+                foreach ($pats as $pat) {
+                    $ors[] = "$c LIKE ?";
+                    $params[] = $pat;
+                }
             }
             $clauses[] = '(' . implode(' OR ', $ors) . ')';
         }
