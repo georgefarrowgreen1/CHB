@@ -581,19 +581,19 @@ if (typeof ctx.hasCheckedIn === 'function') {
 }
 
 
-// ---- 20. Tier-3 semantic embeddings (assist-embed.bin) — cascade gates ----
-// The MiniLM-class static-embedding tier answers ONLY when tiers 1-2 abstain.
+// ---- 20. Tier-3 DARKSTAR semantic model (darkstar.bin) — cascade gates ----
+// Darkstar, our on-device semantic tier, answers ONLY when tiers 1-2 abstain.
 // Floors measured at tuning time on the SAME harness as the v2 tournament:
 // with the packed asset loaded, the cascade recovers 3 specific held-out
 // phrasings (48→51/52) while staying ZERO-wrong and rejecting every negative.
-if (typeof ctx.chbEmbedParse === 'function' && fs.existsSync(path.join(DIR, 'assist-embed.bin'))) {
-    const bin = fs.readFileSync(path.join(DIR, 'assist-embed.bin'));
-    // CHB_EMBED is a top-level const (declarative record) — reach it by running
+if (typeof ctx.darkstarParse === 'function' && fs.existsSync(path.join(DIR, 'darkstar.bin'))) {
+    const bin = fs.readFileSync(path.join(DIR, 'darkstar.bin'));
+    // DARKSTAR is a top-level const (declarative record) — reach it by running
     // code IN the context rather than via a ctx property.
-    ctx.__EMBED_AB = bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength);
-    vm.runInContext('CHB_EMBED.st = chbEmbedParse(__EMBED_AB); chbEmbedIndex();', ctx, { timeout: 30000 });
-    const shape = vm.runInContext('({ v: CHB_EMBED.st.vocabN, d: CHB_EMBED.st.dim })', ctx);
-    check('assist-embed.bin parses (29528 tokens x 256 dims)', shape.v === 29528 && shape.d === 256);
+    ctx.__DARKSTAR_AB = bin.buffer.slice(bin.byteOffset, bin.byteOffset + bin.byteLength);
+    vm.runInContext('DARKSTAR.st = darkstarParse(__DARKSTAR_AB); darkstarIndex();', ctx, { timeout: 30000 });
+    const shape = vm.runInContext('({ v: DARKSTAR.st.vocabN, d: DARKSTAR.st.dim })', ctx);
+    check('darkstar.bin parses (29528 tokens x 256 dims)', shape.v === 29528 && shape.d === 256);
     const recovered = [
         ['guests due to depart', 'leaving today'],
         ['expected guests for tonight', 'arriving today'],
@@ -601,13 +601,13 @@ if (typeof ctx.chbEmbedParse === 'function' && fs.existsSync(path.join(DIR, 'ass
     ];
     for (const [q, want] of recovered) {
         const g = ctx.chbNluClassify(q);
-        check(`tier-3 recovers "${q}" -> ${want}`, !!g && g.canonical === want && g.em === true);
+        check(`Darkstar recovers "${q}" -> ${want}`, !!g && g.canonical === want && g.ds === true);
     }
     // Zero-wrong + full negative rejection stand with the tier live.
     const NEGS = ['sarah pemberton', 'jollyboat photos', 'wifi password for guests', 'seasonal rates grid', 'add booking for smith', 'hero image', 'newsletter subscribers', 'emma richardson', 'block jollyboat next weekend', 'seasonal rates', 'pimpernel description', 'guest wifi details', 'change arrival instructions', 'newsletter', 'add a booking for jones', 'photo gallery', 'welcome book', 'check in time settings', 'best beach nearby', 'tide times', 'zzgrmph blat', 'kitchen inventory', 'email templates'];
     const leaks = NEGS.filter((q) => ctx.chbNluClassify(q));
-    check('all 23 negatives still rejected with tier-3 live', leaks.length === 0, 'leaked: ' + leaks.join(', '));
-    // Train-set accuracy must not degrade (tier-3 only fires on abstains).
+    check('all 23 negatives still rejected with Darkstar live', leaks.length === 0, 'leaked: ' + leaks.join(', '));
+    // Train-set accuracy must not degrade (Darkstar only fires on abstains).
     let ok = 0, n = 0, wrong = [];
     for (const c of ctx.CHB_SEARCH.nlu.corpus) for (const ex of c.examples) {
         n++;
@@ -615,14 +615,14 @@ if (typeof ctx.chbEmbedParse === 'function' && fs.existsSync(path.join(DIR, 'ass
         if (g && g.canonical === c.canonical) ok++;
         else if (g) wrong.push(ex + '->' + g.canonical);
     }
-    check(`train accuracy holds with tier-3 live (${ok}/${n}, wrong: ${wrong.length})`, ok / n >= 0.96 && wrong.length === 0, wrong.join(', '));
-    // The teach loop reaches the semantic tier: a learned phrase joins its
-    // intent centroid; a suppressed phrase joins the none pool.
+    check(`train accuracy holds with Darkstar live (${ok}/${n}, wrong: ${wrong.length})`, ok / n >= 0.96 && wrong.length === 0, wrong.join(', '));
+    // The teach loop reaches Darkstar: a learned phrase joins its intent
+    // centroid; a suppressed phrase joins the none pool.
     ctx.chbNluLearn('utterly bespoke wording zq', 'who owes me money');
-    check('learned phrase folds into the embedding index', vm.runInContext('!!(CHB_EMBED.st && CHB_EMBED.st.cents)', ctx) === true);
-    vm.runInContext('CHB_EMBED.st = null', ctx); // leave the shim lexical-only for any later checks
+    check('learned phrase folds into the Darkstar index', vm.runInContext('!!(DARKSTAR.st && DARKSTAR.st.cents)', ctx) === true);
+    vm.runInContext('DARKSTAR.st = null', ctx); // leave the shim lexical-only for any later checks
 } else {
-    check('tier-3 embedding asset + parser present', false, 'assist-embed.bin or chbEmbedParse missing');
+    check('Darkstar asset + parser present', false, 'darkstar.bin or darkstarParse missing');
 }
 
 // ---- Summary ----

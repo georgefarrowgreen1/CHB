@@ -46,16 +46,18 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
 
   const type = async (q) => { await page.evaluate((x) => { const el = document.getElementById('abar-today-input'); el.value = x; abarRoute('abar-today', x); }, q); await page.waitForTimeout(250); };
 
-  // 1) Injection: knot + input + ambient chips.
+  // 1) Injection: knot + input, and the idle bar shows NO suggestion chips
+  //    (the ambient "suggested searches" were removed at the owner's request).
   const boot = await page.evaluate(() => {
     const host = document.getElementById('abar-today');
     return { has: !!host && host.classList.contains('abar'),
              knot: !!host.querySelector('.abar-ic svg path'), circles: host.querySelectorAll('.abar-ic circle').length,
              input: !!document.getElementById('abar-today-input'),
-             chips: host.querySelectorAll('.abar-ambient .abar-chip').length };
+             chips: host.querySelectorAll('.abar-ambient .abar-chip').length,
+             panel: (document.getElementById('abar-today-panel').innerHTML || '').trim() };
   });
   ok(boot.has && boot.knot && boot.circles === 0 && boot.input, 'bar injected on Today (knot + input)');
-  ok(boot.chips >= 2, `idle ambient chips present (${boot.chips})`);
+  ok(boot.chips === 0 && boot.panel === '', 'idle bar shows no suggested-search chips');
 
   // Duplicate-id sweep: both bars injected → every DOM id still unique.
   const dupes = await page.evaluate(() => {
@@ -64,11 +66,6 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     return [...seen.entries()].filter(([, n]) => n > 1).map(([id]) => id);
   });
   ok(dupes.length === 0, `no duplicate DOM ids with both bars injected${dupes.length ? ' (' + dupes.join(',') + ')' : ''}`);
-
-  // 2) Ambient chip answers inline.
-  await page.evaluate(() => abarAmbientRun('abar-today', 0)); await page.waitForTimeout(300);
-  const amb = await page.evaluate(() => ({ v: document.getElementById('abar-today-input').value, rows: document.querySelectorAll('#abar-today-panel .abar-row').length }));
-  ok(amb.v.length > 3 && amb.rows > 0, `ambient chip fills the input + answers inline (${amb.v.slice(0, 30)}, ${amb.rows} rows)`);
 
   // 3) Plain guest name → FILTER mode.
   await type('alice');
@@ -122,11 +119,11 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(deep.open && deep.q === 'zzqxv' && deep.barV === '', `deep CTA opens the palette with the query (${deep.q})`);
   await page.evaluate(() => { __cmdkMiss = null; closeCmdK(); });
 
-  // 9) Clear restores.
+  // 9) Clear restores the empty resting state (filter released, panel empty).
   await type('alice');
   await page.evaluate(() => abarClear('abar-today')); await page.waitForTimeout(200);
-  const clr = await page.evaluate(() => ({ dims: document.querySelectorAll('#view-backoffice .cmdk-dim').length, amb: document.querySelectorAll('#abar-today-panel .abar-ambient .abar-chip').length, v: document.getElementById('abar-today-input').value }));
-  ok(clr.dims === 0 && clr.amb >= 2 && clr.v === '', 'clear releases the filter + restores ambient chips');
+  const clr = await page.evaluate(() => ({ dims: document.querySelectorAll('#view-backoffice .cmdk-dim').length, panel: (document.getElementById('abar-today-panel').innerHTML || '').trim(), v: document.getElementById('abar-today-input').value }));
+  ok(clr.dims === 0 && clr.panel === '' && clr.v === '', 'clear releases the filter + empties the bar');
 
   // 10) Palette "filter this workspace" adopts into the bar.
   await page.evaluate(() => applyTodayFilter('bob')); await page.waitForTimeout(500);
@@ -149,6 +146,18 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // 13) Phone width: no horizontal overflow.
   const spill = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   ok(spill <= 0, `no horizontal overflow at 390px (spill=${spill})`);
+
+  // 14) Darkstar ONLINE glow — once the semantic model loads, the knot lights
+  //     up. (The owner-side idle auto-loader may already have fired; force it
+  //     to be deterministic, then assert the ready class + the knot glow.)
+  await page.evaluate(() => darkstarLoad()); // real darkstar.bin served by php -S
+  const glow = await page.evaluate(() => {
+    const ready = document.body.classList.contains('darkstar-ready');
+    const cs = getComputedStyle(document.querySelector('#abar-today .abar-ic'));
+    return { ready, filter: cs.filter, color: cs.color };
+  });
+  ok(glow.ready, 'body.darkstar-ready set once Darkstar is loaded + indexed');
+  ok(/drop-shadow/.test(glow.filter) && glow.filter !== 'none', `knot glows (filter: ${glow.filter.slice(0, 40)})`);
 
   await browser.close();
   server.kill();
