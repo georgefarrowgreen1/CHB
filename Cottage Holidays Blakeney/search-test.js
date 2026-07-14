@@ -332,12 +332,15 @@ if (ctx.CHB_SEARCH && typeof ctx.CHB_SEARCH.registerSource === 'function') {
         check('CHB_RANK semantic retrieval is defined', false);
     }
     if (typeof ctx.chbNluLearn === 'function' && typeof ctx.chbNluSuppress === 'function' && typeof ctx.chbNluSuggest === 'function') {
-        check('learning: unknown phrasing starts rejected', ctx.chbNluClassify('gimme the arrears rundown') === null);
-        ctx.chbNluLearn('gimme the arrears rundown', 'who owes me money');
-        const g = ctx.chbNluClassify('gimme the arrears rundown');
+        // (v2 note: the old fixture "gimme the arrears rundown" is now correctly
+        // CLASSIFIED by the deep tier — the model got better — so the unknown-
+        // phrase fixture uses slang with no corpus vocabulary at all.)
+        check('learning: unknown phrasing starts rejected', ctx.chbNluClassify('wheres the wonga at') === null);
+        ctx.chbNluLearn('wheres the wonga at', 'who owes me money');
+        const g = ctx.chbNluClassify('wheres the wonga at');
         check('learning: accepted phrasing now classifies to its intent', !!(g && g.canonical === 'who owes me money'));
-        ctx.chbNluSuppress('gimme the arrears rundown');
-        check('learning: suppression un-teaches it', ctx.chbNluClassify('gimme the arrears rundown') === null);
+        ctx.chbNluSuppress('wheres the wonga at');
+        check('learning: suppression un-teaches it', ctx.chbNluClassify('wheres the wonga at') === null);
         const sug = ctx.chbNluSuggest('who is checking in');
         check('near-miss suggest: ambiguous query offers the closest questions', sug.includes('arriving today') && sug.includes('leaving today'), sug.join(','));
         check('near-miss suggest: gibberish offers nothing', ctx.chbNluSuggest('zzqqxx blorp').length === 0);
