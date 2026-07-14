@@ -2601,7 +2601,20 @@ function cmdkSearchCore(q, allowCorrect) {
             try {
                 const cans = CHB_NLU.corpus.map((c) => c.canonical);
                 const day = Math.floor(Date.now() / 864e5);
-                const pick = [0, 1, 2].map((i) => cans[(day * 3 + i) % cans.length]);
+                let pick = [0, 1, 2].map((i) => cans[(day * 3 + i) % cans.length]);
+                // Time-aware first chip: on a changeover day lead with the moves;
+                // near month-end lead with the money. (Replaces slot 0 so the row
+                // stays three chips.)
+                try {
+                    const tdy = todayDashed();
+                    let live = null;
+                    Object.keys(dbBookings || {}).forEach((pk) => (dbBookings[pk] || []).forEach((b) => {
+                        if (b.checkIn === tdy) live = live || "who's arriving today";
+                        else if (b.checkOut === tdy) live = live || "who's leaving today";
+                    }));
+                    if (!live && +tdy.slice(8, 10) >= 25) live = 'what have i earned this year';
+                    if (live) pick = [live].concat(pick.filter((c) => c !== live)).slice(0, 3);
+                } catch (e) {}
                 // Ambient dead-end surfacing: when past searches found nothing,
                 // one quiet row offers the review-and-teach flow.
                 const dead = chbMissList();
@@ -2693,10 +2706,19 @@ function cmdkSearchCore(q, allowCorrect) {
     if (__cmdkVoiceIn) {
         __cmdkVoiceIn = false;
         const a = __cmdkResults.find((it) => it && it.type === 'answer' && !cmdkIsNoteRow(it));
-        if (a) chbSpeak(a.label + (a.sub ? '. ' + a.sub : ''), () => {
-            const o = document.getElementById('cmdk');
-            if (o && o.style.display !== 'none' && !__cmdkRec) cmdkVoice();
-        });
+        if (a) {
+            // Composed summary: a COUNT answer ("3 guests owe £1,600") also reads
+            // the top of the list, so the spoken reply is usable hands-free.
+            let text = a.label + (a.sub ? '. ' + a.sub : '');
+            if (/^\d+ /.test(a.label)) {
+                const first = __cmdkResults.find((it) => it && it !== a && (it.type === 'booking' || it.type === 'enquiry' || it.type === 'external') && it.label);
+                if (first) text += `. Top of the list: ${first.label}${first.sub ? ', ' + first.sub : ''}`;
+            }
+            chbSpeak(text, () => {
+                const o = document.getElementById('cmdk');
+                if (o && o.style.display !== 'none' && !__cmdkRec) cmdkVoice();
+            });
+        }
     }
     // Deep index search runs server-side (emails, messages, invoices, guests,
     // reviews, activity — everything not held in the browser) and merges in when
@@ -3601,20 +3623,51 @@ const CMDK_DEEP_ORDER = ['booking', 'enquiry', 'guest', 'message', 'email', 'pay
 // several types under one heading, which is too coarse for "search everything").
 const CMDK_DEEP_LABELS = { booking: 'Bookings', enquiry: 'Enquiries', guest: 'Guests', message: 'Messages', email: 'Emails', payment: 'Payments', review: 'Reviews', activity: 'Activity', expense: 'Expenses', waitlist: 'Waitlist', subscriber: 'Subscribers', experience: 'Experiences' };
 const cmdkDeepLabel = (t) => CMDK_DEEP_LABELS[t] || t;
+// The recency window for deep results ('' = all time; else an ISO floor).
+let __cmdkDeepPeriod = 'all';
+function cmdkDeepSince() {
+    if (__cmdkDeepPeriod === 'all') return '';
+    const d = new Date();
+    d.setDate(d.getDate() - (__cmdkDeepPeriod === '90d' ? 90 : 365));
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
 function cmdkDeepOpen() {
     const inp = document.getElementById('cmdk-input');
     const q = inp ? inp.value.trim() : '';
+    cmdkDeepFetch(q, null);
+}
+// Switch the All time / 12 months / 90 days window and re-run the deep search.
+function cmdkDeepPeriodSet(p) {
+    if (!__cmdkDeep) return;
+    __cmdkDeepPeriod = p === '90d' || p === '12m' ? p : 'all';
+    cmdkDeepFetch(__cmdkDeep.q, __cmdkDeep.typo || null);
+}
+// q = what to search; typo = the owner's original misspelling when this is the
+// auto-corrected retry (kept for the "showing results for…" note).
+function cmdkDeepFetch(q, typo) {
     if (q.length < 2) return;
     const stamp = ++__cmdkDeepStamp;
     __cmdkServerStamp++; // supersede any in-flight quick federated search
     cmdkSetLoading(true);
-    apiPost('search.php', { q: q, deep: 1, syn: CHB_SEARCH.understand(q).synonyms })
+    const syn = CHB_SEARCH.understand(q).synonyms;
+    apiPost('search.php', { q: q, deep: 1, syn: syn, since: cmdkDeepSince() })
         .then((r) => {
             if (stamp !== __cmdkDeepStamp) return;
-            cmdkSetLoading(false);
             const all = ((r && r.results) || []).map(cmdkServerItem).filter(Boolean);
             const counts = (r && r.counts) || {};
-            __cmdkDeep = { q: q, all: all, counts: counts, filter: 'all' };
+            const total = Object.values(counts).reduce((a, b) => a + (b || 0), 0);
+            // Typo tolerance: a deep search that finds NOTHING retries once with
+            // the corrected spelling ("recipt" → "receipt"), and says so.
+            if (!total && !typo && typeof cmdkCorrect === 'function') {
+                const corr = cmdkCorrect(q);
+                if (corr.changed) { cmdkDeepFetch(corr.text, q); return; }
+            }
+            cmdkSetLoading(false);
+            // Highlight synonym matches too — the server matched "income" for
+            // "revenue", so the marker must know both words.
+            __cmdkWords = q.split(/\s+/).filter(Boolean)
+                .concat(Object.keys(syn).reduce((a, k) => a.concat(syn[k]), []));
+            __cmdkDeep = { q: q, typo: typo || null, all: all, counts: counts, filter: 'all' };
             cmdkDeepApply();
             cmdkRender();
         })
@@ -3623,6 +3676,7 @@ function cmdkDeepOpen() {
 function cmdkDeepClose() {
     __cmdkDeep = null;
     __cmdkDeepStamp++;
+    __cmdkDeepPeriod = 'all';
     const inp = document.getElementById('cmdk-input');
     cmdkSearchCore(inp ? inp.value : '', true); // back to the quick top-hits
 }
@@ -3637,7 +3691,7 @@ function cmdkDeepExpand(type) {
     if (!__cmdkDeep) return;
     const stamp = __cmdkDeepStamp;
     cmdkSetLoading(true);
-    apiPost('search.php', { q: __cmdkDeep.q, deep: 1, expand: type, syn: CHB_SEARCH.understand(__cmdkDeep.q).synonyms })
+    apiPost('search.php', { q: __cmdkDeep.q, deep: 1, expand: type, syn: CHB_SEARCH.understand(__cmdkDeep.q).synonyms, since: cmdkDeepSince() })
         .then((r) => {
             if (!__cmdkDeep || stamp !== __cmdkDeepStamp) return;
             cmdkSetLoading(false);
@@ -3672,10 +3726,19 @@ function cmdkRenderDeep(box) {
         <span class="cmdk-deep-title">Everything · “${escapeHtml(d.q)}”</span>
         <span class="cmdk-deep-total">${total} match${total === 1 ? '' : 'es'}</span>
     </div>`;
+    // Auto-corrected retry: say what we actually searched, like the quick palette.
+    if (d.typo) {
+        html += `<div class="cmdk-deep-note">Nothing matched “${escapeHtml(d.typo)}” — showing results for <strong>“${escapeHtml(d.q)}”</strong></div>`;
+    }
     // Filter chips (All + each source with its total).
     html += `<div class="cmdk-deep-chips">` +
         `<button type="button" class="cmdk-deep-chip${d.filter === 'all' ? ' is-on' : ''}" data-act="cmdkDeepFilter" data-arg="all">All <b>${total}</b></button>` +
         present.map((t) => `<button type="button" class="cmdk-deep-chip${d.filter === t ? ' is-on' : ''}" ${chbAttrs('cmdkDeepFilter', t)}>${escapeHtml(cmdkDeepLabel(t))} <b>${d.counts[t]}</b></button>`).join('') +
+        `</div>`;
+    // Recency window (each re-queries the server so counts stay truthful).
+    html += `<div class="cmdk-deep-chips cmdk-deep-when">` +
+        [['all', 'All time'], ['12m', 'Last 12 months'], ['90d', 'Last 90 days']]
+            .map(([p, lbl]) => `<button type="button" class="cmdk-deep-chip${__cmdkDeepPeriod === p ? ' is-on' : ''}" ${chbAttrs('cmdkDeepPeriodSet', p)}>${lbl}</button>`).join('') +
         `</div>`;
     if (!__cmdkResults.length) {
         box.innerHTML = html + `<div class="cmdk-none"><div><strong>No matches for “${escapeHtml(d.q)}”</strong>Nothing across bookings, guests, messages, emails, payments or the log.</div></div>`;
