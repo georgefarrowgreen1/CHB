@@ -1228,8 +1228,9 @@ chbNluWarm(800);
 let __nluLearnFlashT = null;
 function chbNluLearnFlash() {
     try {
-        [document.querySelector('.admin-dock-btn[data-act="openCmdK"]'), document.getElementById('cmdk-ml')]
-            .forEach((el) => { if (el) el.classList.add('ml-learning'); });
+        const knots = [document.querySelector('.admin-dock-btn[data-act="openCmdK"]'), document.getElementById('cmdk-ml')]
+            .concat(Array.from(document.querySelectorAll('.abar .abar-ic'))); // the embedded bars' knots flash too
+        knots.forEach((el) => { if (el) el.classList.add('ml-learning'); });
         clearTimeout(__nluLearnFlashT);
         __nluLearnFlashT = setTimeout(() => {
             document.querySelectorAll('.ml-learning').forEach((el) => el.classList.remove('ml-learning'));
@@ -3359,11 +3360,14 @@ function chbAssistBar(hostId, opts) {
     // NB: the keydown handler lives on the WRAPPER (delegation walks up from the
     // input) — data-args/data-pass are single attributes per element, so the
     // input can't carry both the input-handler's pass=value and pass=event.
+    // data-act-blur shares the wrapper's data-args/data-pass with the keydown
+    // handler — both take (id, event), so one attribute set serves both.
     host.innerHTML =
-        `<div class="abar-field" ${chbAttrsFor('keydown', 'abarKey', [hostId, CHB_EVENT])}>` +
+        `<div class="abar-field" data-act-blur="abarBlur" ${chbAttrsFor('keydown', 'abarKey', [hostId, CHB_EVENT])}>` +
         `<span class="abar-ic" aria-hidden="true">${CMDK_SEARCH_IC}</span>` +
         `<input id="${hostId}-input" class="abar-input" type="search" enterkeyhint="search" placeholder="${escapeHtml(opts.placeholder || 'Search or ask anything…')}" autocomplete="off" autocapitalize="off" spellcheck="false" role="searchbox" aria-label="${escapeHtml(opts.placeholder || 'Search or ask')}" ${chbInput('abarInput', hostId, CHB_VALUE)}>` +
         `<span class="abar-count" id="${hostId}-count" aria-live="polite"></span>` +
+        `<button type="button" class="abar-mic" id="${hostId}-mic" style="display:${typeof cmdkVoiceSupported === 'function' && cmdkVoiceSupported() ? 'flex' : 'none'};" ${chbAttrs('abarVoice', hostId)} aria-label="Search by voice" title="Voice search"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg></button>` +
         `<button type="button" class="abar-clear" id="${hostId}-clear" ${chbAttrs('abarClear', hostId)} aria-label="Clear search">✕</button>` +
         `</div>` +
         `<div class="abar-panel" id="${hostId}-panel"></div>`;
@@ -3492,7 +3496,9 @@ function abarRoute(id, q) {
     if (!raw) {
         abarFilterOff(st);
         st.rows = [];
-        if (host) host.classList.remove('has-answer');
+        st.miss = null; // deliberately cleared — not a dead end
+        st.voiceIn = false;
+        if (host) { host.classList.remove('has-answer'); host.classList.remove('ml-active'); }
         if (count) count.textContent = '';
         abarAmbient(id);
         return;
@@ -3506,6 +3512,9 @@ function abarRoute(id, q) {
     const shown = abarFilterQuery(id, raw);
     if (shown > 0) {
         if (panel) panel.innerHTML = '';
+        if (host) host.classList.remove('ml-active');
+        st.miss = { q: raw, answered: true }; // the board answered it
+        if (st.voiceIn) { st.voiceIn = false; try { chbSpeak(shown + (shown === 1 ? ' match' : ' matches') + ' on this page'); } catch (e) {} }
         return;
     }
     let built = null;
@@ -3517,27 +3526,57 @@ function abarRoute(id, q) {
         __cmdkWords = raw.split(/\s+/).filter(Boolean); // cmdkHi highlight terms
         st.rows = built.results.slice(0, 5);
         st.nlu = built.nlu || null;
+        st.miss = { q: raw, answered: true };
         // Conversational memory, same as the palette: an answer that surfaced a
         // booking becomes the referent for the next pronoun follow-up ("email
         // them", "when do they arrive") typed into ANY bar or the palette.
         const convRow = st.rows.find((r) => r && r.type === 'booking' && r.id != null);
         if (convRow) __cmdkConvCtx = { type: 'booking', id: convRow.id };
-        if (host) host.classList.add('has-answer');
+        if (host) {
+            host.classList.add('has-answer');
+            // The knot glows green while the MODEL is the thing answering —
+            // same signal as the palette (NLU paraphrase, suggested questions,
+            // semantic recall).
+            host.classList.toggle('ml-active', !!(built.nlu || (built.ask && built.ask.length) || st.rows.some((r) => r && (r._nlu || r._sem))));
+        }
         if (panel)
             panel.innerHTML =
                 (built.nlu ? `<div class="abar-note">Understood as “${escapeHtml(built.nlu)}”</div>` : '') +
                 st.rows.map((r, i) => abarRowHtml(id, r, i)).join('');
+        // Asked by voice → answer by voice (consumed once per final transcript).
+        if (st.voiceIn) { st.voiceIn = false; try { chbSpeak(st.rows[0].label + (st.rows[0].sub ? '. ' + st.rows[0].sub : '')); } catch (e) {} }
         return;
     }
     // Nothing on the board and no answer — dead end here: offer the deep
-    // "search everything" pivot + the model's nearest askable questions.
+    // "search everything" pivot + the model's nearest askable questions, and
+    // remember the query so walking away files it for the teach flow (the
+    // palette's "search dead ends" review covers bar misses too).
+    st.miss = raw.length >= 4 ? { q: raw, answered: false } : null;
+    st.voiceIn = false;
     if (panel) {
         if (raw.length >= 3) {
             st.ask = (built && built.ask) || [];
             panel.innerHTML = abarEmptyHtml(id, raw, st.ask);
+            if (host) host.classList.toggle('ml-active', st.ask.length > 0);
         } else {
             panel.innerHTML = '';
+            if (host) host.classList.remove('ml-active');
         }
+    }
+}
+// Walking away from the bar with an unanswered query showing files it as a
+// search miss (the bar's equivalent of closing the palette on a dead end).
+// Focus moving WITHIN the bar — tapping the deep CTA, an ask chip, the mic —
+// is not walking away.
+function abarBlur(id, e) {
+    const st = __abars[id];
+    if (!st) return;
+    const host = document.getElementById(id);
+    if (host && e && e.relatedTarget && host.contains(e.relatedTarget)) return;
+    if (st.miss && !st.miss.answered) {
+        __cmdkMiss = st.miss;
+        st.miss = null;
+        try { chbMissRecord(); } catch (e2) {}
     }
 }
 // Force FILTER mode (shared by the router and the palette's abarAdopt).
@@ -3635,6 +3674,7 @@ function abarExec(id, i) {
     const st = __abars[id];
     const it = st && st.rows ? st.rows[i] : null;
     if (!it) return;
+    st.miss = null; // acted on → not a dead end
     if (it._nlu && it._nluQ) { try { chbNluLearn(it._nluQ, it._nlu); } catch (e) {} } // accepted → learn this phrasing
     if (typeof it.run === 'function') it.run(); // closeCmdK() inside runs is a safe no-op here
 }
@@ -3643,6 +3683,7 @@ function abarChip(id, i, k) {
     const it = st && st.rows ? st.rows[i] : null;
     const c = it && Array.isArray(it.chips) ? it.chips[k] : null;
     if (!c) return;
+    st.miss = null; // engaged with a chip → not a dead end
     if (typeof c.run === 'function') { c.run(); return; } // action chip (e.g. Show on calendar)
     abarRunQuery(id, c.q);
 }
@@ -3651,6 +3692,7 @@ function abarChip(id, i, k) {
 function abarDeep(id) {
     const st = __abars[id];
     const q = st ? st.q : '';
+    if (st) st.miss = null; // pivoted to deep search → not a dead end
     abarClear(id);
     openCmdK();
     const el = document.getElementById('cmdk-input');
@@ -4358,11 +4400,12 @@ function cmdkVoiceInit() {
     const mic = document.getElementById('cmdk-mic');
     if (mic && cmdkVoiceSupported()) mic.style.display = 'flex';
 }
-function cmdkVoice() {
+// One recognition session at a time, shared by the palette and every Assist
+// Bar — this is the un-hardwired core; each surface passes its own mic, input
+// and transcript handler.
+function chbVoiceStart(mic, el, onText) {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) return;
-    const mic = document.getElementById('cmdk-mic');
-    const el = document.getElementById('cmdk-input');
     if (__cmdkRec) { try { __cmdkRec.stop(); } catch (e) {} return; } // tap again to stop
     let rec;
     try { rec = new SR(); } catch (e) { return; }
@@ -4377,15 +4420,27 @@ function cmdkVoice() {
         t = t.trim();
         if (el) el.value = t;
         // Final transcript → this query came in BY VOICE, so the answer is
-        // spoken back (consumed once by cmdkSearchCore). Interim chunks don't
-        // count — we only reply to what was actually said.
-        __cmdkVoiceIn = !!(e.results.length && e.results[e.results.length - 1].isFinal);
-        cmdkSearch(t);
+        // spoken back (consumed once by the surface's search). Interim chunks
+        // don't count — we only reply to what was actually said.
+        onText(t, !!(e.results.length && e.results[e.results.length - 1].isFinal));
     };
     const done = () => { __cmdkRec = null; if (mic) mic.classList.remove('is-listening'); if (el) el.focus(); };
     rec.onend = done;
     rec.onerror = done;
     try { rec.start(); } catch (e) { done(); }
+}
+function cmdkVoice() {
+    chbVoiceStart(document.getElementById('cmdk-mic'), document.getElementById('cmdk-input'), (t, fin) => {
+        __cmdkVoiceIn = fin;
+        cmdkSearch(t);
+    });
+}
+function abarVoice(id) {
+    chbVoiceStart(document.getElementById(id + '-mic'), document.getElementById(id + '-input'), (t, fin) => {
+        const st = __abars[id];
+        if (st) st.voiceIn = fin; // final → the bar speaks its answer back
+        abarRoute(id, t);
+    });
 }
 // Run a quick-action (chip) on a result row without dismissing via the row.
 function cmdkAct(i, k) {
