@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=184">
+    <link rel="stylesheet" href="app.css?v=185">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -475,7 +475,7 @@
 
     <!-- ================= COTTAGES (the property collection — reached from the header) ================= -->
     <main id="view-cottages" class="page-view container">
-        <span class="back-link" onclick="nav('view-main')">← Back to Home</span>
+        <span class="back-link" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="nav('view-main')">← Back to Home</span>
         <div class="cottages-split">
           <div class="cottages-list">
             <div class="grid grid-3" id="cottages" style="margin-top: 18px;">
@@ -525,7 +525,7 @@
 
     <!-- ================= EXPERIENCES (local things to do; owner-curated + guest suggestions) ================= -->
     <main id="view-experiences" class="page-view container">
-        <span class="back-link" onclick="nav('view-main')">← Back to Home</span>
+        <span class="back-link" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="nav('view-main')">← Back to Home</span>
         <h1 class="section-title" style="text-align:left;margin:6px 0 4px;">Experiences</h1>
         <p class="lead" style="text-align:left;margin:0 0 16px;">Hand-picked things to do around Blakeney &amp; the North Norfolk coast.</p>
         <div id="exp-filters" class="exp-filters"></div>
@@ -995,7 +995,7 @@
 
     <!-- ================= ACTIVITY LOG (full audit trail of changes/actions) ================= -->
     <main id="view-activity-log" class="page-view container">
-        <span class="back-link" onclick="openArea('manage');">← Back to Manage</span>
+        <span class="back-link" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="openArea('manage');">← Back to Manage</span>
         <div class="dashboard-header">
             <div>
                 <h1 class="section-title" style="margin-bottom: 5px;">Activity log</h1>
@@ -1014,7 +1014,7 @@
     <!-- Same pattern as the booking hub: rendered entirely by admin.js
          renderEnquiryHub(); this is just the shell. -->
     <main id="view-enquiry-hub" class="page-view container">
-        <span class="back-link" onclick="enquiryHubBack()">← Back</span>
+        <span class="back-link" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="enquiryHubBack()">← Back</span>
         <div id="enquiry-hub-content"><!-- admin.js injects the enquiry hub here --></div>
     </main>
 
@@ -1023,7 +1023,7 @@
          action, money, emails, guest history and change history. Rendered
          entirely by admin.js renderBookingHub(); this is just the shell. -->
     <main id="view-booking-hub" class="page-view container">
-        <span class="back-link" onclick="bookingHubBack()">← Back</span>
+        <span class="back-link" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="bookingHubBack()">← Back</span>
         <div id="booking-hub-content"><!-- admin.js injects the hub here --></div>
     </main>
 
@@ -1037,7 +1037,7 @@
              edge); the three-pane split — rail | list | reading pane — sits
              entirely below it. -->
         <div id="inbox-head">
-            <span class="back-link" onclick="nav('view-backoffice'); initBackOffice();">← Back to Today</span>
+            <span class="back-link" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="nav('view-backoffice'); initBackOffice();">← Back to Today</span>
             <!-- Header mirrors the Today dashboard: big title + a LIVING subline
                  (inboxSubline() keeps it current — what's waiting for a reply). -->
             <div class="dashboard-header">
@@ -1094,7 +1094,7 @@
              drill-down section is open so the section leads with ONE back link
              and its own title, not two stacked headers. -->
         <div id="settings-chrome">
-        <span class="back-link" onclick="nav('view-backoffice'); initBackOffice();">← Back to Today</span>
+        <span class="back-link" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="nav('view-backoffice'); initBackOffice();">← Back to Today</span>
         <div class="dashboard-header settings-head">
             <div class="settings-head-titles">
                 <h1 class="section-title" style="margin: 0;">Manage</h1>
@@ -1282,7 +1282,7 @@
 
         <!-- DRILL-DOWN PANEL -->
         <div id="settings-panel" style="display:none;">
-            <span class="back-link" id="settings-back" onclick="settingsBack()">‹ Back</span>
+            <span class="back-link" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" id="settings-back" onclick="settingsBack()">‹ Back</span>
             <h2 class="section-title" id="settings-panel-title" style="text-align:left;font-size:1.6rem;margin:6px 0 18px;"></h2>
 
             <!-- Enquiries -->
@@ -1572,7 +1572,7 @@
         <!-- Area-level chrome — hidden while a drill-down section is open (see
              #settings-chrome for the rationale). -->
         <div id="accounts-chrome">
-        <span class="back-link" onclick="nav('view-backoffice'); initBackOffice();">← Back to Today</span>
+        <span class="back-link" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="nav('view-backoffice'); initBackOffice();">← Back to Today</span>
         <div class="dashboard-header">
             <div>
                 <h1 class="section-title" style="margin: 0;">Payments</h1>
@@ -1613,7 +1613,7 @@
 
         <!-- DRILL-DOWN PANEL -->
         <div id="accounts-panel" style="display:none;">
-            <span class="back-link" id="accounts-back" onclick="accountsBack()">‹ Back</span>
+            <span class="back-link" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" id="accounts-back" onclick="accountsBack()">‹ Back</span>
             <h2 class="section-title" id="accounts-panel-title" style="text-align:left;font-size:1.6rem;margin:6px 0 18px;"></h2>
 
             <!-- Payments & balances -->
@@ -1993,7 +1993,7 @@
 
     <!-- ================= PRIVACY POLICY ================= -->
     <main id="view-privacy" class="page-view container">
-        <span class="back-link" onclick="nav('view-main')">← Back to Home</span>
+        <span class="back-link" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="nav('view-main')">← Back to Home</span>
         <div style="max-width: 760px; margin: 0 auto;">
             <h1 class="section-title" style="margin-bottom: 8px;">Privacy Policy</h1>
             <p class="lead" style="text-align:left;margin:0 0 24px;">How Cottage Holidays Blakeney looks after your personal information.</p>
@@ -2426,7 +2426,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=389"></script>
+    <script defer src="app.js?v=390"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
