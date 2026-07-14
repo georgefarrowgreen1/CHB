@@ -64,6 +64,9 @@ $legit = [
     ['/search.php', 'q=deposit and balance'], ['/search.php', 'q=who owes me money'],
     ['/pay.php', 'action=summary&b=7&k=balance'], ['/search.php', 'q=reunion booking'],
     ['/search.php', 'q=a select of dates'], ['/leads.php', 'from=2026-07-01&to=2026-07-31'],
+    // a literal percent ("20% off") encodes to %25 but is NOT a double-encoding
+    ['/search.php', 'q=20%25 off'], ['/search.php', 'q=100%25 booked'],
+    ['/configure-page', ''], ['/uploads/config-photo.jpg', ''],
 ];
 // MALICIOUS — must ALWAYS be blocked.
 $malicious = [
@@ -80,6 +83,12 @@ $malicious = [
     ['/xmlrpc.php', ''], ['/vendor/phpunit/eval-stdin.php', ''], ['/x.php', 'r=expect://id'],
     ['/x.php', 'p=%2e%2e/%2e%2e/config.php'], ['/index.html', 'x=<svg/onload=alert(1)>'],
     ['/x.php', 'id=1/**/union/**/select/**/1'], ['/x.php', 'u=file:///etc/passwd'],
+    // encoding-bypass tricks: double-encoded + %u-encoded
+    ['/x.php', 'q=%253cscript%253e'], ['/x.php', 'file=%252e%252e%252fetc%252fpasswd'],
+    ['/x.php', 'q=%u003cscript%u003e'], ['/index.html', 'x=%253Cimg%2520onerror%253D'],
+    // more scanner probe paths
+    ['/server-status', ''], ['/actuator/health', ''], ['/.ssh/id_rsa', ''],
+    ['/config.json', ''], ['/config.yaml', ''], ['/.svn/entries', ''], ['/telescope/requests', ''],
 ];
 
 $fails = 0;
