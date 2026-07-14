@@ -89,6 +89,13 @@ foreach ($rows as $b) {
     }
     $emailKey = strtolower($b['email']);
     if (isset($emailedThisRun[$emailKey])) {
+        // Same guest already invited earlier THIS run (they have two past stays in
+        // the send window) — persist the skip like the opted-out / rebooked
+        // branches below. Without this, the second booking is never stamped, so
+        // once the first booking's stamp exists it re-qualifies and sends the guest
+        // a DUPLICATE "come back" email on a later day's run.
+        $sent[$b['id']] = date('Y-m-d') . ' (skipped: dup)';
+        $persist();
         continue;
     }
     // Honour the one-click unsubscribe (email-optout.php suppression list).
