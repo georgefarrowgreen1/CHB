@@ -531,6 +531,7 @@ const CMDK_SYN = {
     settings: 'settings manage preferences', preferences: 'settings manage', config: 'settings',
     stats: 'analytics figures', analytics: 'analytics figures visits', numbers: 'analytics figures money',
     help: 'help guide how', tutorial: 'help guide',
+    reservation: 'booking stay', reserve: 'booking book', create: 'add new', remove: 'delete archive',
 };
 function cmdkSynHit(word, hay) {
     const syn = CMDK_SYN[word];
@@ -950,9 +951,14 @@ function chbNluVec(text) {
 // The same IDF weights are applied to queries at classify time.
 function chbNluTrain() {
     const D = CHB_NLU.dims;
+    // The owner's ACCEPTED phrasings (online learning) train alongside the
+    // authored corpus — the model personalises to how this owner speaks.
+    let learned = [];
+    try { learned = chbNluLearned(); } catch (e) {}
     const raw = CHB_NLU.corpus.map((c) => {
         const cen = new Float32Array(D);
-        [c.canonical].concat(c.examples).forEach((t) => {
+        const mine = learned.filter((x) => x.c === c.canonical).map((x) => x.t);
+        [c.canonical].concat(c.examples, mine).forEach((t) => {
             const v = chbNluVec(t);
             for (let i = 0; i < D; i++) cen[i] += v[i];
         });
@@ -975,10 +981,9 @@ function chbNluTrain() {
         return { canonical: r.canonical, vec: v };
     });
 }
-// CLASSIFY: IDF-weight the query the same way, cosine against every intent
-// centroid, accept only when confident AND unambiguous (margin over runner-up).
-// `loose` returns the best guess regardless of thresholds (tuning/tests only).
-function chbNluClassify(q, loose) {
+// SCORE: IDF-weight the query the same way and cosine against every intent
+// centroid — the full ranked list (best first), shared by classify + suggest.
+function chbNluScores(q) {
     const ql = (q || '').trim();
     if (ql.length < 4) return null;
     if (!CHB_NLU.model) { try { chbNluTrain(); } catch (e) { return null; } }
@@ -988,16 +993,25 @@ function chbNluClassify(q, loose) {
     let n = 0;
     for (let i = 0; i < D; i++) { v[i] = rawV[i] * CHB_NLU.idf[i]; n += v[i] * v[i]; }
     n = Math.sqrt(n) || 1;
-    let best = null, second = 0;
-    for (const m of CHB_NLU.model) {
+    const out = CHB_NLU.model.map((m) => {
         let dot = 0;
         for (let i = 0; i < D; i++) dot += (v[i] / n) * m.vec[i];
-        if (!best || dot > best.score) { second = best ? best.score : second; best = { canonical: m.canonical, score: dot }; }
-        else if (dot > second) second = dot;
-    }
-    if (best) best.margin = best.score - second;
+        return { canonical: m.canonical, score: dot };
+    });
+    out.sort((a, b) => b.score - a.score);
+    return out;
+}
+// CLASSIFY: accept only when confident AND unambiguous (margin over runner-up),
+// and never for a phrasing the owner has explicitly suppressed. `loose` returns
+// the best guess regardless of thresholds (tuning/tests only).
+function chbNluClassify(q, loose) {
+    const ql = (q || '').trim().toLowerCase();
+    try { if (chbNluSuppressed().includes(ql)) return null; } catch (e) {}
+    const scores = chbNluScores(ql);
+    if (!scores || !scores.length) return null;
+    const best = { canonical: scores[0].canonical, score: scores[0].score, margin: scores[0].score - (scores[1] ? scores[1].score : 0) };
     if (loose) return best;
-    if (!best || best.score < CHB_NLU.min || best.margin < CHB_NLU.gap) return null;
+    if (best.score < CHB_NLU.min || best.margin < CHB_NLU.gap) return null;
     return best;
 }
 // ---- Speaking back: the browser's built-in speech synthesis (on-device). A
@@ -1016,6 +1030,156 @@ function chbSpeak(text) {
     } catch (e) {}
 }
 CHB_SEARCH.speak = chbSpeak; // part of the public search-core API
+
+// ===================================================================
+//  CHB_RANK — semantic retrieval over the WHOLE searchable universe, powered by
+//  the same owned model machinery as CHB_NLU (chbNluVec + TF-IDF), no third-party
+//  anything. Every item the CHB_SEARCH registry can produce (bookings, actions,
+//  screens, fields, sheets) is vectorised once (cached by text hash) and IDF-
+//  weighted across the item collection; a query is SYNONYM-EXPANDED (CMDK_SYN)
+//  and vectorised the same way, and cosine similarity recalls items the keyword
+//  scorer missed — "create a reservation" finds "Add a booking" with zero shared
+//  keywords. Purely additive: candidates append BELOW the keyword results.
+// ===================================================================
+const CHB_RANK = { idf: null, index: [], sig: '', cache: new Map(), min: 0.18, topK: 4 };
+CHB_SEARCH.rank = CHB_RANK; // part of the public search-core API
+function chbRankText(it) {
+    return (((it.label || '') + ' ' + (it.sub || '') + ' ' + (it.kw || '')).trim()).slice(0, 300);
+}
+// Synonym-expand a query so the vector carries what the words MEAN, not just
+// their letters ("revenue" → also money/accounts trigrams).
+function chbRankExpand(q) {
+    const words = String(q || '').toLowerCase().split(/\s+/).filter(Boolean);
+    const extra = [];
+    for (const w of words) if (CMDK_SYN[w]) extra.push(CMDK_SYN[w]);
+    return words.join(' ') + (extra.length ? ' ' + extra.join(' ') : '');
+}
+// (Re)build the vector index when the universe changes (cheap: raw vectors are
+// cached by text hash, so unchanged items cost a lookup; IDF is recomputed over
+// the current items so weights track the live collection).
+function chbRankIndex() {
+    const items = CHB_SEARCH.collect('');
+    const seen = new Set();
+    const rows = [];
+    for (const it of items) {
+        if (!it || it.id == null) continue;
+        const k = it.type + ':' + it.id;
+        if (seen.has(k)) continue;
+        seen.add(k);
+        const txt = chbRankText(it);
+        if (txt) rows.push({ k, txt });
+    }
+    const sig = rows.length + ':' + chbNluHashStr(rows.map((r) => r.k).join('|'));
+    if (sig === CHB_RANK.sig && CHB_RANK.idf) return; // universe unchanged
+    const D = CHB_NLU.dims;
+    const raw = rows.map((r) => {
+        let v = CHB_RANK.cache.get(r.txt);
+        if (!v) { v = chbNluVec(r.txt); CHB_RANK.cache.set(r.txt, v); }
+        return { k: r.k, v };
+    });
+    if (CHB_RANK.cache.size > 2000) CHB_RANK.cache.clear(); // universe churned — start fresh
+    const idf = new Float32Array(D);
+    for (let i = 0; i < D; i++) {
+        let df = 0;
+        for (const r of raw) if (r.v[i] > 0) df++;
+        idf[i] = Math.log((raw.length + 1) / (df + 0.5));
+    }
+    CHB_RANK.idf = idf;
+    CHB_RANK.index = raw.map((r) => {
+        const w = new Float32Array(D);
+        let n = 0;
+        for (let i = 0; i < D; i++) { w[i] = r.v[i] * idf[i]; n += w[i] * w[i]; }
+        n = Math.sqrt(n) || 1;
+        for (let i = 0; i < D; i++) w[i] /= n;
+        return { k: r.k, vec: w };
+    });
+    CHB_RANK.sig = sig;
+}
+// Query the index: top-K item keys above the floor, best first.
+function chbRankQuery(q) {
+    const ql = (q || '').trim();
+    if (ql.length < 4) return [];
+    try { chbRankIndex(); } catch (e) { return []; }
+    if (!CHB_RANK.idf) return [];
+    const D = CHB_NLU.dims;
+    const rawV = chbNluVec(chbRankExpand(ql));
+    const v = new Float32Array(D);
+    let n = 0;
+    for (let i = 0; i < D; i++) { v[i] = rawV[i] * CHB_RANK.idf[i]; n += v[i] * v[i]; }
+    n = Math.sqrt(n) || 1;
+    const scored = [];
+    for (const e of CHB_RANK.index) {
+        let dot = 0;
+        for (let i = 0; i < D; i++) dot += (v[i] / n) * e.vec[i];
+        if (dot >= CHB_RANK.min) scored.push({ k: e.k, s: dot });
+    }
+    scored.sort((a, b) => b.s - a.s);
+    return scored.slice(0, CHB_RANK.topK);
+}
+function chbNluHashStr(s) {
+    let h = 5381;
+    for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+    return (h >>> 0).toString(36);
+}
+
+// ---- Online learning: the model learns how THIS owner phrases things. When an
+// NLU-understood answer is ACCEPTED (the owner runs one of its rows), the exact
+// phrasing joins the training set (persisted, capped, retrained in ~1ms). When
+// the owner taps "search the literal words instead", that phrasing is SUPPRESSED
+// so the model never re-interprets it. Both survive reloads via localStorage and
+// degrade gracefully to in-memory when storage is unavailable.
+CHB_NLU.learned = null; // [{t, c}]
+CHB_NLU.suppressed = null; // [t, …]
+function chbNluStore(key, val) {
+    try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {}
+}
+function chbNluLoad(key) {
+    try { const v = JSON.parse(localStorage.getItem(key) || 'null'); return Array.isArray(v) ? v : []; } catch (e) { return []; }
+}
+function chbNluLearned() {
+    if (!CHB_NLU.learned) CHB_NLU.learned = chbNluLoad('chb-nlu-learned');
+    return CHB_NLU.learned;
+}
+function chbNluSuppressed() {
+    if (!CHB_NLU.suppressed) CHB_NLU.suppressed = chbNluLoad('chb-nlu-suppressed');
+    return CHB_NLU.suppressed;
+}
+function chbNluLearn(phrase, canonical) {
+    const t = String(phrase || '').trim().toLowerCase();
+    if (!t || t.length < 4 || !canonical) return;
+    const list = chbNluLearned();
+    if (list.some((x) => x.t === t)) return;
+    list.push({ t, c: canonical });
+    if (list.length > 200) list.shift();
+    chbNluStore('chb-nlu-learned', list);
+    CHB_NLU.model = null; // retrain lazily with the new example folded in
+}
+function chbNluSuppress(phrase) {
+    const t = String(phrase || '').trim().toLowerCase();
+    if (!t) return;
+    const list = chbNluSuppressed();
+    if (!list.includes(t)) {
+        list.push(t);
+        if (list.length > 100) list.shift();
+        chbNluStore('chb-nlu-suppressed', list);
+    }
+    // Un-learn it too, in case it was previously accepted.
+    const learned = chbNluLearned();
+    const i = learned.findIndex((x) => x.t === t);
+    if (i >= 0) { learned.splice(i, 1); chbNluStore('chb-nlu-learned', learned); CHB_NLU.model = null; }
+}
+
+// ---- Near-miss guidance: when the model ISN'T confident enough to act but the
+// query is clearly in an intent's neighbourhood, offer the closest canonical
+// questions as one-tap chips instead of staying silent.
+function chbNluSuggest(q) {
+    const scores = chbNluScores(q);
+    if (!scores) return [];
+    return scores
+        .filter((x) => x.score >= 0.12)
+        .slice(0, 2)
+        .map((x) => x.canonical);
+}
 // ---- Smart queries: answer operational questions ("who owes money", "leaving
 // today", "who's arriving", "upcoming") from the live booking data. Returns an
 // array of result items — an "answer" summary row that routes to the relevant
@@ -2015,14 +2179,19 @@ function cmdkBuildResults(ql) {
             const g = chbNluClassify(ql);
             if (g) {
                 const alt = cmdkIntent(g.canonical);
-                if (alt && alt.length) { results = alt.slice(0, 11); nluUsed = g.canonical; }
+                if (alt && alt.length) {
+                    // Tag the rows so accepting one TEACHES the model this phrasing.
+                    results = alt.slice(0, 11).map((r) => Object.assign({}, r, { _nlu: g.canonical, _nluQ: ql }));
+                    nluUsed = g.canonical;
+                }
             }
         } catch (e) {}
     }
     __cmdkNluOff = false;
     const seen = new Set(results.filter((r) => r.id != null).map((r) => r.type + ':' + r.id));
     const words = ql.split(/\s+/).filter(Boolean);
-    const fuzzy = cmdkAll(ql)
+    const pool = cmdkAll(ql);
+    let fuzzy = pool
         .map((it) => {
             if (it.id != null && seen.has(it.type + ':' + it.id)) return null;
             const score = cmdkScore(it, words, ql);
@@ -2032,6 +2201,22 @@ function cmdkBuildResults(ql) {
         .sort((a, b) => b.score - a.score)
         .slice(0, 12)
         .map((x) => x.it);
+    // Semantic recall (CHB_RANK): the model's vector index surfaces items that
+    // MEAN what was asked with little or no keyword overlap ("create a
+    // reservation" → "Add a booking"). Purely additive, appended below the
+    // keyword hits, deduped against everything already found.
+    try {
+        const have = new Set(results.concat(fuzzy).filter((r) => r.id != null).map((r) => r.type + ':' + r.id));
+        const live = new Map();
+        pool.forEach((it) => { if (it && it.id != null && !live.has(it.type + ':' + it.id)) live.set(it.type + ':' + it.id, it); });
+        const sem = [];
+        for (const hit of chbRankQuery(ql)) {
+            if (have.has(hit.k)) continue;
+            const it = live.get(hit.k);
+            if (it) { have.add(hit.k); sem.push(it); }
+        }
+        if (sem.length) fuzzy = fuzzy.concat(sem);
+    } catch (e) {}
     // Owner content (welcome guide / FAQs / arrival info) matches, deduped, appended.
     const cseen = new Set(results.concat(fuzzy).filter((r) => r.id != null).map((r) => r.type + ':' + r.id));
     const content = cmdkContentMatches(ql).filter((c) => !cseen.has(c.type + ':' + c.id));
@@ -2064,7 +2249,11 @@ function cmdkBuildResults(ql) {
     const fuzzyDeduped = claimed.size
         ? fuzzy.filter((it) => !(['booking', 'enquiry', 'guest', 'payment'].includes(it.type) && claimed.has((it.label || '').toLowerCase().trim())))
         : fuzzy;
-    return { results, fuzzy: fuzzyDeduped.concat(content).concat((procedural || softAsk) ? [] : help), nlu: nluUsed };
+    // Near-miss guidance: nothing understood, so offer the model's closest
+    // canonical questions as one-tap chips (empty when the query isn't close).
+    let ask = [];
+    if (!results.length && !nluUsed) { try { ask = chbNluSuggest(ql); } catch (e) {} }
+    return { results, fuzzy: fuzzyDeduped.concat(content).concat((procedural || softAsk) ? [] : help), nlu: nluUsed, ask };
 }
 // The search engine. The literal query is tried first (never corrected); the
 // typo auto-corrector is a fallback that only runs when the literal query is
@@ -2112,6 +2301,22 @@ function cmdkSearchCore(q, allowCorrect) {
         // Don't list a screen under "Jump to" if it's already up in "Most used".
         screens = screens.filter((it) => { const k = kof(it); return !(k && seenKeys.has(k)); });
         if (__cmdkScope === 'all') screens = screens.slice(0, 6);
+        // Discoverability: the model answers questions — show three (rotating
+        // daily) as tappable chips so the capability is impossible to miss.
+        if (__cmdkScope === 'all') {
+            try {
+                const cans = CHB_NLU.corpus.map((c) => c.canonical);
+                const day = Math.floor(Date.now() / 864e5);
+                const pick = [0, 1, 2].map((i) => cans[(day * 3 + i) % cans.length]);
+                screens = screens.concat([{
+                    type: 'answer', id: 'cmdk-try',
+                    label: 'Ask me about the business',
+                    sub: 'In your own words — or tap the mic and say it',
+                    chips: pick.map((c) => ({ label: c, q: c })),
+                    run: () => { const el = document.getElementById('cmdk-input'); if (el) el.value = pick[0]; cmdkSearchCore(pick[0], true); },
+                }]);
+            } catch (e) {}
+        }
         __cmdkSuggestN = suggestions.length;
         __cmdkFreqN = frequent.length;
         __cmdkBriefN = brief.length;
@@ -2148,11 +2353,23 @@ function cmdkSearchCore(q, allowCorrect) {
             type: 'answer', id: 'cmdk-nlu',
             label: `Understood as “${built.nlu}”`,
             sub: `Matched by your on-device model — tap to search the literal words instead`,
-            run: () => { __cmdkNluOff = true; const el = document.getElementById('cmdk-input'); if (el) el.value = raw; cmdkSearchCore(raw, false); },
+            run: () => { try { chbNluSuppress(raw); } catch (e) {} __cmdkNluOff = true; const el = document.getElementById('cmdk-input'); if (el) el.value = raw; cmdkSearchCore(raw, false); },
         }]);
     }
     __cmdkWords = ql.split(/\s+/).filter(Boolean); // terms to highlight in the rows
-    __cmdkResults = cmdkArrangeWide(note.concat(built.results).concat(built.fuzzy).slice(0, 18), 18);
+    // Near-miss "Ask me" row: the model wasn't sure enough to act, but the query
+    // was in the neighbourhood of questions it CAN answer — offer them as chips.
+    let askRow = [];
+    if (built.ask && built.ask.length) {
+        askRow = [{
+            type: 'answer', id: 'cmdk-ask',
+            label: 'Ask me a question?',
+            sub: 'Closest things I can answer from your data',
+            chips: built.ask.map((c) => ({ label: c, q: c })),
+            run: () => { const el = document.getElementById('cmdk-input'); if (el) el.value = built.ask[0]; cmdkSearchCore(built.ask[0], true); },
+        }];
+    }
+    __cmdkResults = cmdkArrangeWide(note.concat(built.results).concat(built.fuzzy).concat(askRow).slice(0, 18), 18);
     const firstReal = __cmdkResults.findIndex((it) => it && !cmdkIsNoteRow(it));
     __cmdkSel = firstReal >= 0 ? firstReal : 0; // the Top Hit, not the correction/widen note
     cmdkRender();
@@ -2875,7 +3092,7 @@ function cmdkArrange(list) {
 }
 // A note banner row (correction / auto-widen) — never counts as a real result.
 function cmdkIsNoteRow(it) {
-    return it && (it.id === 'cmdk-correction' || it.id === 'cmdk-widen' || it.id === 'cmdk-nlu');
+    return it && (it.id === 'cmdk-correction' || it.id === 'cmdk-widen' || it.id === 'cmdk-nlu' || it.id === 'cmdk-ask');
 }
 // cmdkArrange + auto-widen. A scoped search that finds nothing in its scope
 // shouldn't dead-end on a "No matches in Bookings" wall: if widening to "All"
@@ -3166,6 +3383,7 @@ function cmdkRenderDeep(box) {
 }
 function cmdkExec(i) {
     const it = __cmdkResults[i];
+    if (it && it._nlu && it._nluQ) { try { chbNluLearn(it._nluQ, it._nlu); } catch (e) {} } // accepted → learn this phrasing
     if (it && typeof it.run === 'function') { cmdkLearn(it); it.run(); }
 }
 // Clear the search text (✕ button) and return the palette to its empty state.
