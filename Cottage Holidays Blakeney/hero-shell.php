@@ -40,6 +40,10 @@ function inject_live_hero($out, $hero, $origin)
         'data-edit-img="hero-bg" style="background-image: url(\'' . $safe . '\');"',
         $out,
     );
+    // The static og:image:width/height (1200×630) no longer match: the live hero is
+    // resized to 1920px wide at its ORIGINAL aspect ratio, so declared dims would
+    // make social platforms crop the preview wrong. Drop them (mirrors cottage.php).
+    $out = preg_replace('#\s*<meta property="og:image:(width|height)" content="[^"]*">#', '', $out);
 
     return $out;
 }

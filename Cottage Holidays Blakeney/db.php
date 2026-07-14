@@ -938,12 +938,47 @@ function login_token($guestId, $ts)
 {
     return substr(hash_hmac('sha256', 'login:' . (int) $guestId . ':' . (int) $ts, APP_SECRET), 0, 32);
 }
+// The canonical public host for THIS environment, chosen from a SERVER-SIDE signal
+// (an explicit CANONICAL_HOST constant, else staging-vs-production via the
+// STAGING_SANDBOX constant) — never the client-controlled Host header.
+function site_canonical_host()
+{
+    if (defined('CANONICAL_HOST') && CANONICAL_HOST) {
+        return strtolower(CANONICAL_HOST);
+    }
+    $base = 'cottageholidaysblakeney.co.uk';
+    return defined('STAGING_SANDBOX') && STAGING_SANDBOX ? 'staging.' . $base : $base;
+}
+// Is a request Host header one of OURS (apex / www / staging / localhost)? The
+// Host header is attacker-controlled, so anything else must not be trusted.
+function site_host_trusted($host)
+{
+    $host = strtolower(preg_replace('/:\d+$/', '', (string) $host)); // strip :port
+    if ($host === '') {
+        return false;
+    }
+    if ($host === 'localhost' || $host === '127.0.0.1' || $host === '[::1]') {
+        return true; // dev
+    }
+    $canon = site_canonical_host();
+    $apex = preg_replace('/^staging\./', '', $canon);
+    return $host === $apex || $host === 'www.' . $apex || $host === 'staging.' . $apex;
+}
 // Public site root (scheme + host + the folder this script runs from), used to
-// build guest links (e.g. the pay link). Proxy-aware HTTPS via request_is_https().
+// build the guest links we EMAIL (sign-in / pay / invoice / guest-reg). Because
+// those links carry capability tokens, an attacker who could spoof the Host header
+// would otherwise mint genuine-looking emails pointing at their own domain
+// (phishing / token capture). So we only honour the request Host when it is one of
+// ours; any other value falls back to the canonical host over https.
+// Proxy-aware HTTPS via request_is_https().
 function site_base_url()
 {
+    $host = $_SERVER['HTTP_HOST'] ?? '';
     $scheme = request_is_https() ? 'https' : 'http';
-    $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+    if (!site_host_trusted($host)) {
+        $host = site_canonical_host();
+        $scheme = 'https';
+    }
     $dir = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/')), '/');
     return $scheme . '://' . $host . $dir . '/';
 }

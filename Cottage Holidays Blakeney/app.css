@@ -93,7 +93,7 @@ input:focus-visible,
 select:focus-visible,
 textarea:focus-visible,
 [tabindex]:focus-visible {
-  outline: 2px solid var(--accent-soft);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: 6px;
 }
@@ -166,6 +166,7 @@ textarea:focus-visible,
   --warn: #ffa726;
   --warn-text: #ffb74d;
   --danger: #e57373;
+  --danger-text: #ef9a9a; /* readable red TEXT on dark glass (light mode retunes it) */
   /* Shadow scale: panel = resting glass surface, float = raised/floating
                elements (modals, popovers, FABs), soft = small controls on hover. */
   --shadow-panel: 0 8px 32px rgba(0, 0, 0, 0.2);
@@ -217,6 +218,13 @@ body.light-mode {
   --text-muted: #52646e; /* slate — AA on the linen ground */
   --accent: #c6885e; /* a touch deeper rose-gold for contrast on light */
   --accent-soft: rgba(198, 136, 94, 0.42);
+  /* Status TEXT retuned for the linen ground: the dark-theme tints (pale
+     green/amber/red) fail WCAG AA as text on white glass. The -text tokens are
+     text-only (fills use the base --ok/--warn/--danger), so darkening them here
+     is regression-free. */
+  --ok-text: #2e7d32;
+  --warn-text: #a85a00;
+  --danger-text: #c62828;
   /* Secondary coastal accents (used sparingly for freshness) */
   --sea: #2e8b8b;
   --sky: #5aa9de;
@@ -2631,7 +2639,7 @@ a.card {
   border-radius: var(--r-sm);
   background: rgba(229, 57, 53, 0.12);
   border: 1px solid rgba(229, 57, 53, 0.35);
-  color: #ff9b95;
+  color: var(--danger-text); /* theme-tuned: light red on dark, dark red on light — a payment error must stay legible */
   font-size: 0.85rem;
   line-height: 1.4;
 }
@@ -2691,7 +2699,7 @@ body.owner-mode #reserve-enquire-btn {
 }
 /* Inline date-rule warning shown live under the date picker (overrides the inline muted colour). */
 .hint-warn {
-  color: #f0a33a !important;
+  color: var(--warn-text) !important; /* theme-tuned amber (was raw #f0a33a, illegible on the light ground) */
   font-weight: 500;
 }
 .input-glass option {
@@ -5236,7 +5244,7 @@ body.owner-mode .chat-widget {
 }
 .settings-row-logout,
 .settings-row-logout .settings-row-ic {
-  color: #e5705c;
+  color: var(--danger-text); /* theme-tuned danger (was raw #e5705c, low contrast on light glass) */
 }
 .settings-row-logout:hover,
 .settings-row-logout:focus-visible {
@@ -7322,7 +7330,7 @@ body.admin-screen .site-footer {
   box-shadow: 0 0 0 4px var(--glass-bg);
 }
 .theme-switch:focus-visible {
-  outline: 2px solid var(--accent-soft);
+  outline: 2px solid var(--accent);
   outline-offset: 3px;
 }
 .theme-switch .ts-knob {
@@ -9221,7 +9229,7 @@ body.light-mode .section-title {
 }
 body.light-mode .section-kicker {
   letter-spacing: 3px;
-  color: var(--sea);
+  color: #18696a; /* deeper sea-teal: --sea (#2e8b8b) failed AA at this 0.72rem size on linen */
 }
 body.light-mode .lead {
   line-height: 1.75;

@@ -248,19 +248,19 @@ AddDefaultCharset UTF-8
 <IfModule mod_headers.c>
     # Tell browsers to always use HTTPS for this site (1 year, all subdomains —
     # staging is HTTPS too, so nothing breaks)
-    Header set Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains"
     # This site never uses camera/mic/location — say so explicitly, which also
     # denies them to anything embedded. (payment is deliberately NOT listed:
     # its browser default of 'self' is exactly what Square/Google Pay need.)
-    Header set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
     # Keep our window object isolated from cross-origin openers
-    Header set Cross-Origin-Opener-Policy "same-origin-allow-popups"
+    Header always set Cross-Origin-Opener-Policy "same-origin-allow-popups"
     # Don't let browsers guess content types (blocks some injection tricks)
-    Header set X-Content-Type-Options "nosniff"
+    Header always set X-Content-Type-Options "nosniff"
     # This site never needs to be embedded in someone else's frame
-    Header set X-Frame-Options "SAMEORIGIN"
+    Header always set X-Frame-Options "SAMEORIGIN"
     # Don't leak full URLs to other sites
-    Header set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
     # Content Security Policy: restrict where scripts/styles/images/fonts may load
     # from. Two keywords are load-bearing and CANNOT go without an architecture
     # change — each was verified empirically (full HEIC convert + OCR + jsPDF run
@@ -289,5 +289,5 @@ AddDefaultCharset UTF-8
     # iframes (method + challenge) from UNPREDICTABLE issuer domains — pinning
     # them broke SCA live ("3DS method timed out" -> CARD_DECLINED_VERIFICATION_
     # REQUIRED). Everything else stays pinned; object-src none, base-uri self.
-    Header set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://*.squarecdn.com https://pay.google.com; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://*.squarecdn.com; font-src 'self' data: https://fonts.gstatic.com https://*.squarecdn.com; img-src 'self' data: blob: https://cdnjs.cloudflare.com https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com https://*.squarecdn.com https://*.gstatic.com; connect-src 'self' blob: https://cdn.jsdelivr.net https://tessdata.projectnaptha.com https://*.squarecdn.com https://connect.squareup.com https://connect.squareupsandbox.com https://pci-connect.squareup.com https://pci-connect.squareupsandbox.com https://pay.google.com https://google.com; frame-src https:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests"
+    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://*.squarecdn.com https://pay.google.com; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://*.squarecdn.com; font-src 'self' data: https://fonts.gstatic.com https://*.squarecdn.com; img-src 'self' data: blob: https://cdnjs.cloudflare.com https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com https://*.squarecdn.com https://*.gstatic.com; connect-src 'self' blob: https://cdn.jsdelivr.net https://tessdata.projectnaptha.com https://*.squarecdn.com https://connect.squareup.com https://connect.squareupsandbox.com https://pci-connect.squareup.com https://pci-connect.squareupsandbox.com https://pay.google.com https://google.com; frame-src https:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests"
 </IfModule>

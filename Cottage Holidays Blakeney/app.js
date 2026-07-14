@@ -1337,10 +1337,15 @@ function toggleMobileMenu() {
     menu.classList.toggle('open');
     const open = menu.classList.contains('open');
     const tog = document.querySelector('.menu-toggle');
-    if (tog) tog.setAttribute('aria-expanded', open ? 'true' : 'false');
-    document.querySelector('.menu-toggle').innerHTML = open
-        ? '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>'
-        : '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>';
+    if (tog) {
+        tog.setAttribute('aria-expanded', open ? 'true' : 'false');
+        // Reuse the already-fetched (and null-checked) node — the old code re-queried
+        // `.menu-toggle` unguarded on the next line, which would throw if the header
+        // is ever conditionally rendered.
+        tog.innerHTML = open
+            ? '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>'
+            : '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>';
+    }
     // Prevent the page scrolling behind the open overlay
     document.body.style.overflow = open ? 'hidden' : '';
 }
@@ -4347,7 +4352,14 @@ function applyContentOverrides(root) {
         const v = siteContent[el.getAttribute('data-edit-img')];
         // Strip quotes/parens/backslash so a stray char in a stored value can't
         // break out of the url('…') (same sanitisation as the hero below).
-        if (typeof v === 'string' && v) el.style.backgroundImage = `url('${v.replace(/['"\\)]/g, '')}')`;
+        if (typeof v === 'string' && v) {
+            const clean = v.replace(/['"\\)]/g, '');
+            // Cottage cards are thumbnails — serve a right-sized WebP via img.php
+            // (uploads/ only; other values pass through). The hero stays full-res:
+            // it's the LCP image.
+            const url = el.classList.contains('card-img') ? resizedUrl(clean, 800) : clean;
+            el.style.backgroundImage = `url('${url}')`;
+        }
     });
     // Expose the live hero to CSS (the auth modals' coastal brand panel uses
     // var(--hero-img)) — the static hero.jpg doesn't exist on the live host.
@@ -4460,7 +4472,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         });
         document.querySelectorAll('[data-edit-img]').forEach((el) => {
             const saved = localStorage.getItem(el.getAttribute('data-edit-img'));
-            if (saved) el.style.backgroundImage = `url('${saved}')`;
+            if (saved) el.style.backgroundImage = `url('${el.classList.contains('card-img') ? resizedUrl(saved, 800) : saved}')`;
         });
         // Load live data from the backend — ONE bootstrap round-trip covers all
         // four parts (rates/content/reviews/Square config). Each loader is still
@@ -6168,20 +6180,6 @@ function dedupeExternalBlocks() {
         });
         dbBlocks[k] = Array.from(byRange.values());
     });
-}
-
-// Friendly name for an iCal feed source key (e.g. 'airbnb' -> 'Airbnb').
-function sourceLabel(src) {
-    const s = (src || '').toLowerCase();
-    const map = {
-        airbnb: 'Airbnb',
-        vrbo: 'Vrbo',
-        booking: 'Booking.com',
-        bookingcom: 'Booking.com',
-        google: 'Google',
-    };
-    if (map[s]) return map[s];
-    return src ? src.charAt(0).toUpperCase() + src.slice(1) : 'External';
 }
 
 function findBookingById(bookingId) {
@@ -8321,7 +8319,7 @@ function cottageCardHtml(k, idPrefix, withFav) {
         : '';
     return `<a class="card glass-panel" data-prop="${k}" href="/cottages/${escapeHtml(slug)}" onclick="return cottageLink(event,'${k}')">
                     <div class="card-img-wrap">
-                        <div class="card-img" data-edit-img="${ck.img}" role="img" aria-label="Photo of ${escapeHtml(title)}" style="background-image: url('${escapeHtml(img)}');"></div>
+                        <div class="card-img" data-edit-img="${ck.img}" role="img" aria-label="Photo of ${escapeHtml(title)}" style="background-image: url('${escapeHtml(resizedUrl(img, 800))}');"></div>
                         ${fav}
                     </div>
                     <div class="cott-head">
@@ -12143,7 +12141,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'cpickfix1';
+    const BUILD = 'deadcode1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
