@@ -243,7 +243,7 @@ check('every inline handler maps to a defined function' + (missing.length ? ' (m
 // script-src 'unsafe-inline'. The count of remaining inline handlers in index.html
 // may only ever DECREASE — a new inline handler (or an un-migrated one sneaking back)
 // fails here. Lower the ceiling as each phase lands; it hits 0 at the final flip.
-const INLINE_HANDLER_CEILING = 150;
+const INLINE_HANDLER_CEILING = 81;
 const inlineHandlerCount = (html.match(/\bon(?:click|change|input|keydown|submit|pointerdown)\s*=\s*"/g) || []).length;
 check(`inline handler count ${inlineHandlerCount} <= ceiling ${INLINE_HANDLER_CEILING} (migration ratchet)`, inlineHandlerCount <= INLINE_HANDLER_CEILING);
 

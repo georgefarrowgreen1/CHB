@@ -128,13 +128,30 @@ chbAct('activate', function (el, event) {
 chbAct('nav', function (el) {
     if (typeof nav === 'function') nav(el.dataset.view);
 });
+// Coerce a data-arg string back to the literal type the inline call used, so
+// fn('diagnostics') stays a string but fn(1) / fn(true) pass a number / boolean
+// (a string "1" would break `month + dir` arithmetic). Only exact integer and
+// true/false coerce; everything else stays a string.
+function chbArgVal(raw) {
+    if (raw === 'true') return true;
+    if (raw === 'false') return false;
+    if (/^-?\d+$/.test(raw)) return Number(raw);
+    return raw;
+}
 function chbRunAct(el, name, event) {
     let r;
     const fn = CHB_ACTIONS[name];
     if (typeof fn === 'function') {
         r = fn.call(el, el, event);
     } else if (typeof window[name] === 'function') {
-        r = window[name](); // plain no-arg global — exact parity with inline `fn()` (this = window)
+        // Plain global call — exact parity with the old inline `fn(...)` (this =
+        // window). data-arg / data-arg2 carry up to two literal args in order;
+        // with neither present this is the bare `fn()` case from phase 1.
+        const ds = el.dataset;
+        const args = [];
+        if ('arg' in ds) args.push(chbArgVal(ds.arg));
+        if ('arg2' in ds) args.push(chbArgVal(ds.arg2));
+        r = window[name].apply(window, args);
     } else {
         return;
     }
@@ -12206,7 +12223,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'cspdeleg1';
+    const BUILD = 'cspdeleg2';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
