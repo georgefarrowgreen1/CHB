@@ -680,7 +680,40 @@ function cmdkBookingActions(b, pk) {
     acts.push({ key: 'cal', label: 'Show on calendar', icon: cmdkActIcon('cal'), run: () => cmdkShowOnCalendar(b.id) });
     return acts;
 }
-function cmdkAll(q) {
+// ===================================================================
+//  CHB_SEARCH — the unified, modular search core.
+//
+//  Everything the ⌘K palette can find is produced by registered MODULES, so the
+//  engine is composed, not hard-wired: adding a new searchable source down the
+//  line is one `CHB_SEARCH.registerSource(id, collect, weight)` call — no edits
+//  to cmdkAll / cmdkBuildResults. Lower weight = earlier in the pooled list (the
+//  built-ins keep their historical order: records 10, actions 20, screens 30,
+//  fields 40, sheets 50). Each source is wrapped so one throwing module can never
+//  break the whole search. This is stage 1 of the unification (the SOURCE layer);
+//  the result PROVIDERS (intent / fuzzy / content / help / server / deep) and the
+//  shared query-understanding build on the same registry in later stages.
+// ===================================================================
+const CHB_SEARCH = {
+    _sources: [],
+    registerSource(id, collect, weight = 100) {
+        if (typeof collect !== 'function') return;
+        this._sources = this._sources.filter((s) => s.id !== id).concat([{ id, collect, weight }]);
+        this._sources.sort((a, b) => a.weight - b.weight);
+    },
+    sources() { return this._sources.map((s) => s.id); },
+    // Pool every source's items into one flat list (the fuzzy matcher then scores
+    // + ranks them). Order follows source weight; a bad module is skipped, not fatal.
+    collect(q) {
+        const out = [];
+        for (const s of this._sources) {
+            try { const r = s.collect(q); if (Array.isArray(r)) for (const it of r) out.push(it); } catch (e) {}
+        }
+        return out;
+    },
+};
+if (typeof window !== 'undefined') window.CHB_SEARCH = CHB_SEARCH; // public API for future modules
+// Built-in source: the in-memory records (bookings, enquiries, blocked/OTA ranges).
+function cmdkSourceRecords() {
     const items = [];
     const propName = (k) => (propertyMeta[k] && propertyMeta[k].name) || k || '';
     const today = todayDashed();
@@ -733,7 +766,20 @@ function cmdkAll(q) {
             });
         }));
     }
-    return items.concat(cmdkActions(q)).concat(cmdkScreens()).concat(cmdkFields(q)).concat(cmdkSheets(q));
+    return items;
+}
+// Register the built-in sources in their historical order. Each is a thin adapter
+// over an existing collector, so behaviour is identical — the win is that the list
+// is now data, not a hard-coded concat chain.
+CHB_SEARCH.registerSource('records', () => cmdkSourceRecords(), 10);
+CHB_SEARCH.registerSource('actions', (q) => cmdkActions(q), 20);
+CHB_SEARCH.registerSource('screens', () => cmdkScreens(), 30);
+CHB_SEARCH.registerSource('fields', (q) => cmdkFields(q), 40);
+CHB_SEARCH.registerSource('sheets', (q) => cmdkSheets(q), 50);
+// The searchable universe = every registered source, pooled. cmdkBuildResults
+// scores + ranks this; the fuzzy matcher is unchanged.
+function cmdkAll(q) {
+    return CHB_SEARCH.collect(q);
 }
 // ---- Smart queries: answer operational questions ("who owes money", "leaving
 // today", "who's arriving", "upcoming") from the live booking data. Returns an
