@@ -238,22 +238,49 @@ for (const m of html.matchAll(/\bon(?:click|change|input|keydown)\s*=\s*"([^"]*)
 const missing = [...calledInOnclick].filter(n => !definedFns.has(n) && !JS_BUILTINS.has(n));
 check('every inline handler maps to a defined function' + (missing.length ? ' (missing: ' + missing.join(', ') + ')' : ''), missing.length === 0);
 
-// 6a-ii. unsafe-inline migration RATCHET. index.html is now FULLY migrated off
-// inline on* handlers to CSP-clean data-act delegation (app.js chbDelegate) — the
-// ceiling is 0, so ANY inline event-handler attribute reintroduced here fails the
-// build. (The remaining work to actually drop script-src 'unsafe-inline' is the
-// dynamic handlers generated inside app.js / admin.js innerHTML.)
-const INLINE_HANDLER_CEILING = 0;
-const inlineHandlerCount = (html.match(/\son[a-z]+\s*=\s*"/g) || []).length;
-check(`inline handler count ${inlineHandlerCount} <= ceiling ${INLINE_HANDLER_CEILING} (migration ratchet)`, inlineHandlerCount <= INLINE_HANDLER_CEILING);
+// 6a-ii. unsafe-inline migration RATCHET. The whole front end is now migrated off
+// inline on* handlers to CSP-clean data-act delegation (app.js chbDelegate), and
+// script-src no longer carries 'unsafe-inline' — so ANY inline event-handler
+// attribute reintroduced ANYWHERE (index.html markup OR an app.js/admin.js/
+// guest-app.js innerHTML template) would be silently DEAD in the browser. Ceiling
+// is 0 across all four; add handlers via data-act / chbAttrs only.
+const INLINE_ATTR_RE = /\son[a-z]+\s*=\s*["'`]/g;
+const inlineSources = { 'index.html': html, 'app.js': appScript, 'admin.js': adminScript };
+try { inlineSources['guest-app.js'] = fs.readFileSync(path.join(path.dirname(HTML_PATH), 'guest-app.js'), 'utf8'); } catch (e) {}
+const inlineOffenders = Object.entries(inlineSources)
+    .map(([f, src]) => [f, (src.match(INLINE_ATTR_RE) || []).length])
+    .filter(([, n]) => n > 0);
+check('no inline on* handlers anywhere (migration ratchet)' + (inlineOffenders.length ? ' — ' + inlineOffenders.map(([f, n]) => `${f}:${n}`).join(', ') : ''), inlineOffenders.length === 0);
+
+// 6a-ii-b. The CSP must NOT reintroduce script-src 'unsafe-inline' (the migration's
+// whole point). Parse the script-src directive out of htaccess.txt and assert it's
+// gone; a regression here re-opens the XSS gap the delegation work closed.
+try {
+    const ht = fs.readFileSync(path.join(path.dirname(HTML_PATH), 'htaccess.txt'), 'utf8');
+    const csp = (ht.match(/Content-Security-Policy "([^"]*)"/) || [])[1] || '';
+    const scriptSrc = (csp.match(/script-src[^;]*/) || [''])[0];
+    check("CSP script-src has dropped 'unsafe-inline'" + (scriptSrc.includes("'unsafe-inline'") ? ' (still present!)' : ''), scriptSrc !== '' && !scriptSrc.includes("'unsafe-inline'"));
+    // The ONE allowed inline <script> (the anti-FOUC theme boot) is whitelisted by
+    // a sha256 hash in script-src. If its body is edited without re-hashing, it'd be
+    // silently BLOCKED under CSP — so assert the live hash is in the policy.
+    const boot = (html.match(/<script>([\s\S]*?)<\/script>/) || [])[1];
+    if (boot) {
+        const h = "'sha256-" + require('crypto').createHash('sha256').update(boot, 'utf8').digest('base64') + "'";
+        check('inline theme-boot script hash is whitelisted in the CSP' + (scriptSrc.includes(h) ? '' : ' (expected ' + h + ')'), scriptSrc.includes(h));
+    }
+} catch (e) { check('CSP script-src check ran (' + e.message + ')', false); }
 
 // 6a-iii. Every data-act* value resolves to a registered chbAct() action OR a global
 // function (the window-fallback path in chbRunAct). A typo'd data-act would silently
 // do nothing in the browser — this catches it. data-view etc. are params, not actions.
 const registeredActs = new Set([...appScript.matchAll(/chbAct\('([^']+)'/g)].map(m => m[1]));
 const actValues = new Set();
-for (const m of html.matchAll(/\bdata-act(?:-[a-z]+)?\s*=\s*"([^"]*)"/g)) {
-    if (m[1] && !m[1].includes('${')) actValues.add(m[1]);
+// index.html static attrs + the static data-act literals emitted by app.js/admin.js
+// innerHTML templates (skip ${...}-interpolated names — resolved at runtime).
+for (const src of [html, appScript, adminScript]) {
+    for (const m of src.matchAll(/\bdata-act(?:-[a-z]+)?\s*=\s*["']([^"'${]+)["']/g)) {
+        if (m[1]) actValues.add(m[1]);
+    }
 }
 const unresolvedActs = [...actValues].filter(n => !registeredActs.has(n) && !definedFns.has(n));
 check('every data-act* value resolves to an action or global fn' + (unresolvedActs.length ? ' (unresolved: ' + unresolvedActs.join(', ') + ')' : ''), unresolvedActs.length === 0);

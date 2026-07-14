@@ -304,10 +304,13 @@ AddDefaultCharset UTF-8
     # from. Two keywords are load-bearing and CANNOT go without an architecture
     # change — each was verified empirically (full HEIC convert + OCR + jsPDF run
     # under the exact policy):
-    #  - script-src/style-src 'unsafe-inline': the app is built on inline onclick
-    #    handler and style="" ATTRIBUTES (there are no inline <script>/<style>
-    #    blobs any more — CSS/JS live in cached files). Attributes need
-    #    'unsafe-inline' (per-handler 'unsafe-hashes' is infeasible at this scale).
+    #  - style-src 'unsafe-inline': the app still uses style="" ATTRIBUTES (there
+    #    are no inline <style> blobs — CSS lives in cached files). Attributes need
+    #    'unsafe-inline' (per-attribute 'unsafe-hashes' is infeasible at this scale).
+    #    script-src NO LONGER carries it: every inline on* handler was migrated to
+    #    CSP-clean event delegation (app.js chbDelegate + data-act; smoke-test §6a-ii
+    #    ratchets index.html at 0). A new inline handler would now be BLOCKED — add
+    #    it via data-act/chbAttrs, never onclick. csp-report.php collects violations.
     #  - script-src 'unsafe-eval': heic2any's Emscripten/embind glue calls
     #    new Function() during WASM module init — removing it silently hangs
     #    every guest iPhone (HEIC) photo upload. jsPDF and Tesseract do NOT need
@@ -328,5 +331,5 @@ AddDefaultCharset UTF-8
     # iframes (method + challenge) from UNPREDICTABLE issuer domains — pinning
     # them broke SCA live ("3DS method timed out" -> CARD_DECLINED_VERIFICATION_
     # REQUIRED). Everything else stays pinned; object-src none, base-uri self.
-    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://*.squarecdn.com https://pay.google.com; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://*.squarecdn.com; font-src 'self' data: https://fonts.gstatic.com https://*.squarecdn.com; img-src 'self' data: blob: https://cdnjs.cloudflare.com https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com https://*.squarecdn.com https://*.gstatic.com; connect-src 'self' blob: https://cdn.jsdelivr.net https://tessdata.projectnaptha.com https://*.squarecdn.com https://connect.squareup.com https://connect.squareupsandbox.com https://pci-connect.squareup.com https://pci-connect.squareupsandbox.com https://pay.google.com https://google.com; frame-src https:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests; report-uri /csp-report.php"
+    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-XO9NLu1ehyc6nzHO1YBt2XqOhnCY/70e7MeZtijphUM=' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://*.squarecdn.com https://pay.google.com; worker-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://*.squarecdn.com; font-src 'self' data: https://fonts.gstatic.com https://*.squarecdn.com; img-src 'self' data: blob: https://cdnjs.cloudflare.com https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com https://*.squarecdn.com https://*.gstatic.com; connect-src 'self' blob: https://cdn.jsdelivr.net https://tessdata.projectnaptha.com https://*.squarecdn.com https://connect.squareup.com https://connect.squareupsandbox.com https://pci-connect.squareup.com https://pci-connect.squareupsandbox.com https://pay.google.com https://google.com; frame-src https:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests; report-uri /csp-report.php"
 </IfModule>
