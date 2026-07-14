@@ -2880,7 +2880,12 @@ function cmdkPickCottage(sec) {
     if (old) old.remove();
     const ov = document.createElement('div');
     ov.id = 'cottage-pick-overlay';
-    ov.className = 'modal-overlay';
+    // `.open` makes .modal-overlay display:flex (it's display:none by default), and
+    // the z-index must clear the ⌘K palette (.cmdk-overlay is z-index 3000) — the
+    // palette stays open BEHIND the picker so picking can dock the editor sheet
+    // straight back into it. Without both, the picker is created but never seen.
+    ov.className = 'modal-overlay open';
+    ov.style.zIndex = '3200';
     ov.setAttribute('role', 'dialog');
     ov.setAttribute('aria-modal', 'true');
     const rows = keys
