@@ -3386,6 +3386,55 @@ function chbAssistInitBars() {
             if (__todayFilter) clearTodayFilter();
         },
     });
+    chbAssistBar('abar-inbox', {
+        view: 'view-inbox',
+        placeholder: 'Search enquiries, chats, email — or ask…',
+        filter: (q) => {
+            __todayFilter = q;
+            __wsFilterView = 'view-inbox';
+            __todayFilterSrc = 'abar';
+            const shown = paintTodayFilter();
+            abarInboxCounts(q);
+            return shown;
+        },
+        unfilter: () => {
+            if (__todayFilter) clearTodayFilter();
+            abarInboxCounts('');
+        },
+    });
+}
+// Folder-aware feedback for the Inbox bar: while a filter is live, each folder
+// button shows how many of ITS rows match (a .ifold-match pill; the unread
+// chips hide via .is-filtered so the two counts never sit side by side —
+// unread ≠ matching, and the unread chips repaint on their own schedules).
+// The filter itself already spans every folder: paintTodayFilter dims all
+// [data-search] rows in the view, hidden folders included, so switching
+// folders mid-filter shows that folder's matches. NB: the Email folder's rows
+// exist only after its lazy first open (loadMailbox) — until then it honestly
+// counts 0.
+function abarInboxCounts(q) {
+    const rail = document.getElementById('inbox-folders');
+    if (!rail) return;
+    rail.classList.toggle('is-filtered', !!q);
+    ['enquiries', 'messages', 'email'].forEach((key) => {
+        const btn = rail.querySelector('[data-ifolder="' + key + '"]');
+        if (!btn) return;
+        let pill = btn.querySelector('.ifold-match');
+        if (!q) {
+            if (pill) pill.remove();
+            return;
+        }
+        const box = document.getElementById('inbox-folder-' + key);
+        let n = 0;
+        if (box) box.querySelectorAll('[data-search]').forEach((el) => { if ((el.getAttribute('data-search') || '').indexOf(q) > -1) n++; });
+        if (!pill) {
+            pill = document.createElement('span');
+            pill.className = 'ifold-match';
+            btn.appendChild(pill);
+        }
+        pill.textContent = n;
+        pill.classList.toggle('is-zero', n === 0);
+    });
 }
 // The palette's "filter this workspace" lands here when the target workspace
 // carries a bar: the query appears in the bar with its live count. Returns
@@ -3468,6 +3517,11 @@ function abarRoute(id, q) {
         __cmdkWords = raw.split(/\s+/).filter(Boolean); // cmdkHi highlight terms
         st.rows = built.results.slice(0, 5);
         st.nlu = built.nlu || null;
+        // Conversational memory, same as the palette: an answer that surfaced a
+        // booking becomes the referent for the next pronoun follow-up ("email
+        // them", "when do they arrive") typed into ANY bar or the palette.
+        const convRow = st.rows.find((r) => r && r.type === 'booking' && r.id != null);
+        if (convRow) __cmdkConvCtx = { type: 'booking', id: convRow.id };
         if (host) host.classList.add('has-answer');
         if (panel)
             panel.innerHTML =
@@ -9370,7 +9424,7 @@ function renderMessagesList() {
                   const nm = t.name || t.email || 'Visitor';
                   const unread = (t.unread || 0) > 0;
                   return `
-                <button class="msg-thread-row${unread ? ' unread' : ''}" data-s="${escapeHtml(hay)}" data-needs="${needs ? 1 : 0}" ${chbAttrs('openMessageThread', t.thread_id)}>
+                <button class="msg-thread-row${unread ? ' unread' : ''}" data-s="${escapeHtml(hay)}" data-search="${escapeHtml(hay)}" data-needs="${needs ? 1 : 0}" ${chbAttrs('openMessageThread', t.thread_id)}>
                     <span class="mtr-ava" style="--ava-h:${strHue(nm)};" aria-hidden="true">${escapeHtml(avatarInitial(nm))}</span>
                     <span class="mtr-main">
                         <span class="mtr-top"><span class="mtr-name">${escapeHtml(nm)}${t.is_guest ? '' : ' <span class="mtr-tag">visitor</span>'}</span><span class="mtr-time">${escapeHtml(relTime(t.last_at))}</span></span>

@@ -1059,6 +1059,10 @@
         </div>
         <div class="enq-split">
         <div id="inbox-main">
+            <!-- ASSIST BAR — same embedded search brain as Today: filter every
+                 folder at once (per-folder match pills on the switch) or ask a
+                 question inline. Injected by chbAssistBar() (admin.js). -->
+            <div id="abar-inbox" class="abar-host"></div>
             <!-- (Approvals live in Marketing → "To approve"; the Today card points there.) -->
             <!-- ONE comms dashboard: every conversation channel behind a folder
                  switch — website enquiries, guest chat, and the cottage EMAIL
@@ -2436,7 +2440,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=408"></script>
+    <script defer src="app.js?v=409"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
