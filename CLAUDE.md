@@ -99,6 +99,18 @@ via `settingsOpen(id)` → `#sec-<id>`; the health/cron pills + Activity log liv
 here). `ADMIN_VIEWS` is the
 canonical admin-screen list (used by `nav()`/`forceAdminLogout()`) — keep it complete.
 The two dock pips both show `enquiries.length`, synced from `refreshInboxBadge()`.
+**Assist NLU cascade** — three tiers in `chbNluClassify` (admin.js), each consulted only
+when the previous abstains: tier 1 TF-IDF centroid cosine, tier 2 kNN+ELM fusion, tier 3
+`CHB_EMBED` — a MiniLM-class SEMANTIC model (Model2Vec potion-base-8M distilled static
+embeddings, bge WordPiece) packed by `embed-build.js` (dev-only, deploy-excluded) into
+**`assist-embed.bin`** (int8+scales, ~7.6MB, committed + deployed; versioned by its `?v=`
+in CHB_EMBED.url). Pure JS — no WASM/CSP change; lazy owner-only fetch ~2.5s after the
+admin bundle boots (until it lands the cascade is lexical-only, as before). Measured:
+48→51/52 held-out, zero wrong intents, all negatives rejected (search-test §20 is the CI
+gate — recoveries, negatives, train accuracy, teach-loop reach). chbNluLearn/Suppress
+call `chbEmbedIndex()` so taught phrases join their intent centroid and suppressed ones
+join the none pool.
+
 **Assist Bars** — the palette's brain embedded IN workspaces: `chbAssistBar(hostId, opts)`
 (admin.js) injects a knot+input bar into static host divs (`#abar-today` top of the Today
 operations workspace, `#abar-inbox` above the Inbox folder switch / atop the list column at
