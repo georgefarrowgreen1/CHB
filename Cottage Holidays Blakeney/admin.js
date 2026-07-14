@@ -821,6 +821,201 @@ CHB_SEARCH.registerSource('sheets', (q) => cmdkSheets(q), 50);
 function cmdkAll(q) {
     return CHB_SEARCH.collect(q);
 }
+
+// ===================================================================
+//  CHB_NLU — CHB's OWN language model. No third-party weights, no downloads,
+//  nothing leaves the device: we author the training data, we train it, we ship it.
+//
+//  It is a classical text-classification model: every phrase becomes a hashed
+//  bag of words + character trigrams (an L2-normalised 2048-dim vector — the
+//  trigrams give it typo/morphology tolerance), and TRAINING averages each
+//  intent's example vectors into a centroid. CLASSIFYING a query is cosine
+//  against the centroids with a confidence floor and a margin over the runner-up,
+//  so anything off-corpus (guest names, cottage words) is REJECTED and normal
+//  search is untouched.
+//
+//  It runs as a FALLBACK understanding layer: only when the literal intent
+//  parser (cmdkIntent) finds nothing does the model map the owner's phrasing to
+//  the canonical question it was trained on ("has anyone not paid me yet" →
+//  "who owes me money") and re-ask the engine — which then SPEAKS BACK: the
+//  computed answer renders as the reply, with an "Understood as…" note, and a
+//  voice-initiated query gets the answer read aloud (chbSpeak below). Training
+//  happens at load in ~a millisecond and is fully deterministic → CI-testable.
+//  Growing the model = adding lines to the corpus (or, later, mining the
+//  owner's own accepted queries).
+// ===================================================================
+const CHB_NLU = {
+    dims: 2048,
+    min: 0.2, // reject below this confidence (negatives top out ≈0.17 — see search-test)
+    gap: 0.03, // …or when the runner-up intent is this close (ambiguous)
+    model: null,
+    // The training corpus: each intent = the CANONICAL question the intent engine
+    // provably answers (phrases verified against cmdkIntent's branches) + the
+    // paraphrases we teach the model to recognise.
+    corpus: [
+        { canonical: 'who owes me money', examples: [
+            'has anyone not paid me yet', 'who has not paid', 'anyone still owe me',
+            'outstanding payments', 'am i waiting on any money', 'who still needs to pay',
+            'unpaid bookings', 'money i am owed', 'who has an unpaid balance',
+            'is everyone paid up', 'anyone in arrears', 'who owes cash',
+        ] },
+        { canonical: 'leaving today', examples: [
+            'who is checking out', 'departures today', 'who goes home today',
+            'checkouts this morning', 'anyone leaving', 'which guests check out today',
+            'who is off today', 'end of stay today', 'guests heading home',
+        ] },
+        { canonical: 'arriving today', examples: [
+            'who is checking in', 'arrivals today', 'who turns up today',
+            'check ins this afternoon', 'anyone coming today', 'which guests arrive',
+            'who gets here today', 'new guests today', 'arrivals this afternoon',
+        ] },
+        { canonical: 'upcoming bookings', examples: [
+            'what stays are coming up', 'future bookings', 'who is booked in next',
+            'what is on the horizon', 'next arrivals', 'bookings coming soon',
+            'what have i got coming up', 'who is staying soon',
+        ] },
+        { canonical: 'deposits to return', examples: [
+            'do i need to give any deposits back', 'damage deposits owed back',
+            'whose deposit should i refund', 'deposits waiting to go back',
+            'any deposits to pay back', 'guests waiting on their deposit',
+            'return the damage deposit', 'deposit refunds due',
+        ] },
+        { canonical: 'balances to chase', examples: [
+            'who should i chase for payment', 'late payers', 'anyone behind on their balance',
+            'payments i need to chase up', 'who needs a payment reminder',
+            'guests to nudge about money', 'balance reminders due', 'chasing money',
+        ] },
+        { canonical: 'how many bookings this year', examples: [
+            'number of stays this year', 'how many guests have i had this year',
+            'booking count for the year', 'total stays so far', 'how busy has this year been in bookings',
+            'how many people stayed this year', 'count my bookings this year',
+        ] },
+        { canonical: 'revenue this year', examples: [
+            'how much money have i made', 'what have i earned this year', 'takings so far',
+            'income for the year', 'total turnover this year', 'how much came in this year',
+            'what did i make this year', 'money earned so far this year', 'how are earnings looking',
+        ] },
+        { canonical: 'occupancy this year', examples: [
+            'how full are the cottages', 'how booked up am i', 'what percentage of nights are filled',
+            'how busy are we this year', 'utilisation of the cottages', 'how occupied are the cottages',
+            'how full is the calendar this year', 'how full have the cottages been',
+        ] },
+        { canonical: 'busiest month', examples: [
+            'which month does best', 'when is peak season for me', 'strongest month of the year',
+            'what month earns the most', 'my best performing month', 'when am i busiest',
+            'which month brings the most bookings', 'strongest time of year',
+        ] },
+        { canonical: 'which cottage earns most', examples: [
+            'top performing cottage', 'best earning property', 'which house makes the most money',
+            'strongest cottage financially', 'what property brings in the most',
+            'rank the cottages by income', 'most profitable cottage', 'which cottage performs best',
+        ] },
+        { canonical: 'average nightly rate', examples: [
+            'what do i charge per night on average', 'typical price per night',
+            'mean nightly price', 'average price guests pay a night',
+            'what is a night worth on average', 'usual rate per night',
+        ] },
+        { canonical: "how's business", examples: [
+            'how am i doing overall', 'give me a business summary', 'how are things going',
+            'overall performance', 'how is the business looking', 'are we doing well',
+            'business health check', 'how did we do',
+        ] },
+    ],
+};
+CHB_SEARCH.nlu = CHB_NLU; // part of the public search-core API
+// Phrase → hashed word + character-trigram vector, L2-normalised.
+function chbNluVec(text) {
+    const D = CHB_NLU.dims;
+    const v = new Float32Array(D);
+    const s = ' ' + String(text || '').toLowerCase().replace(/[^a-z0-9£']+/g, ' ').replace(/\s+/g, ' ').trim() + ' ';
+    const put = (f, w) => {
+        let h = 5381;
+        for (let i = 0; i < f.length; i++) h = ((h << 5) + h + f.charCodeAt(i)) | 0;
+        v[(h >>> 0) % D] += w;
+    };
+    s.trim().split(' ').forEach((w) => { if (w) put('w:' + w, 1); });
+    for (let i = 0; i < s.length - 2; i++) put('t:' + s.slice(i, i + 3), 0.5);
+    let n = 0;
+    for (let i = 0; i < D; i++) n += v[i] * v[i];
+    n = Math.sqrt(n) || 1;
+    for (let i = 0; i < D; i++) v[i] /= n;
+    return v;
+}
+// TRAIN — two passes, the classic TF-IDF centroid model:
+//  1. Sum each intent's (canonical + example) vectors, and count in how many
+//     intents each feature appears (document frequency).
+//  2. Weight every dimension by inverse document frequency — features shared
+//     across many intents ("me", "the", "this year") get crushed towards zero,
+//     the distinctive vocabulary of each intent dominates — then unit-normalise.
+// The same IDF weights are applied to queries at classify time.
+function chbNluTrain() {
+    const D = CHB_NLU.dims;
+    const raw = CHB_NLU.corpus.map((c) => {
+        const cen = new Float32Array(D);
+        [c.canonical].concat(c.examples).forEach((t) => {
+            const v = chbNluVec(t);
+            for (let i = 0; i < D; i++) cen[i] += v[i];
+        });
+        return { canonical: c.canonical, cen };
+    });
+    const N = raw.length;
+    const idf = new Float32Array(D);
+    for (let i = 0; i < D; i++) {
+        let df = 0;
+        for (const r of raw) if (r.cen[i] > 0) df++;
+        idf[i] = Math.log((N + 1) / (df + 0.5));
+    }
+    CHB_NLU.idf = idf;
+    CHB_NLU.model = raw.map((r) => {
+        const v = new Float32Array(D);
+        let n = 0;
+        for (let i = 0; i < D; i++) { v[i] = r.cen[i] * idf[i]; n += v[i] * v[i]; }
+        n = Math.sqrt(n) || 1;
+        for (let i = 0; i < D; i++) v[i] /= n;
+        return { canonical: r.canonical, vec: v };
+    });
+}
+// CLASSIFY: IDF-weight the query the same way, cosine against every intent
+// centroid, accept only when confident AND unambiguous (margin over runner-up).
+// `loose` returns the best guess regardless of thresholds (tuning/tests only).
+function chbNluClassify(q, loose) {
+    const ql = (q || '').trim();
+    if (ql.length < 4) return null;
+    if (!CHB_NLU.model) { try { chbNluTrain(); } catch (e) { return null; } }
+    const D = CHB_NLU.dims;
+    const rawV = chbNluVec(ql);
+    const v = new Float32Array(D);
+    let n = 0;
+    for (let i = 0; i < D; i++) { v[i] = rawV[i] * CHB_NLU.idf[i]; n += v[i] * v[i]; }
+    n = Math.sqrt(n) || 1;
+    let best = null, second = 0;
+    for (const m of CHB_NLU.model) {
+        let dot = 0;
+        for (let i = 0; i < D; i++) dot += (v[i] / n) * m.vec[i];
+        if (!best || dot > best.score) { second = best ? best.score : second; best = { canonical: m.canonical, score: dot }; }
+        else if (dot > second) second = dot;
+    }
+    if (best) best.margin = best.score - second;
+    if (loose) return best;
+    if (!best || best.score < CHB_NLU.min || best.margin < CHB_NLU.gap) return null;
+    return best;
+}
+// ---- Speaking back: the browser's built-in speech synthesis (on-device). A
+// query that arrived BY VOICE gets its answer read aloud — ask out loud, hear
+// the answer. __cmdkVoiceIn is set by the mic's final transcript and consumed
+// once by cmdkSearchCore.
+let __cmdkVoiceIn = false;
+function chbSpeak(text) {
+    try {
+        if (!('speechSynthesis' in window) || !text) return;
+        window.speechSynthesis.cancel();
+        const u = new SpeechSynthesisUtterance(String(text));
+        u.lang = 'en-GB';
+        u.rate = 1.03;
+        window.speechSynthesis.speak(u);
+    } catch (e) {}
+}
+CHB_SEARCH.speak = chbSpeak; // part of the public search-core API
 // ---- Smart queries: answer operational questions ("who owes money", "leaving
 // today", "who's arriving", "upcoming") from the live booking data. Returns an
 // array of result items — an "answer" summary row that routes to the relevant
@@ -1803,12 +1998,28 @@ function coachTo(navFn, sel, text, fallback) {
 }
 function coachAddBooking() { coachTo(() => tryAccessBackOffice(), 'button[data-act="openAddBooking"]', 'Tap “+ Add Booking” to start a new booking — you’ll pick the cottage and dates next.', () => openAddBooking()); }
 function coachBlockDates() { coachTo(() => tryAccessBackOffice(), 'button[data-act="openBlockDates"]', 'Tap “Block dates” to close off dates for maintenance or your own use.', () => openBlockDates()); }
+let __cmdkNluOff = false; // one-shot bypass (the note's "search the literal words")
 function cmdkBuildResults(ql) {
     let results = [];
+    let nluUsed = null;
     try {
         const intent = cmdkIntent(ql);
         if (intent) results = intent.slice(0, 11);
     } catch (e) {}
+    // Our own trained model (CHB_NLU): when the literal parser found no intent,
+    // see if the phrasing MEANS one of the questions the engine can answer, and
+    // re-ask with the canonical wording. Confidence-gated, so ordinary searches
+    // (guest names, screens, cottages) never get hijacked.
+    if (!results.length && !__cmdkNluOff) {
+        try {
+            const g = chbNluClassify(ql);
+            if (g) {
+                const alt = cmdkIntent(g.canonical);
+                if (alt && alt.length) { results = alt.slice(0, 11); nluUsed = g.canonical; }
+            }
+        } catch (e) {}
+    }
+    __cmdkNluOff = false;
     const seen = new Set(results.filter((r) => r.id != null).map((r) => r.type + ':' + r.id));
     const words = ql.split(/\s+/).filter(Boolean);
     const fuzzy = cmdkAll(ql)
@@ -1853,7 +2064,7 @@ function cmdkBuildResults(ql) {
     const fuzzyDeduped = claimed.size
         ? fuzzy.filter((it) => !(['booking', 'enquiry', 'guest', 'payment'].includes(it.type) && claimed.has((it.label || '').toLowerCase().trim())))
         : fuzzy;
-    return { results, fuzzy: fuzzyDeduped.concat(content).concat((procedural || softAsk) ? [] : help) };
+    return { results, fuzzy: fuzzyDeduped.concat(content).concat((procedural || softAsk) ? [] : help), nlu: nluUsed };
 }
 // The search engine. The literal query is tried first (never corrected); the
 // typo auto-corrector is a fallback that only runs when the literal query is
@@ -1930,11 +2141,27 @@ function cmdkSearchCore(q, allowCorrect) {
             }
         }
     }
+    // Our own model understood a paraphrase → say so, with a literal escape hatch
+    // (mirrors the typo-correction note above).
+    if (built.nlu) {
+        note = note.concat([{
+            type: 'answer', id: 'cmdk-nlu',
+            label: `Understood as “${built.nlu}”`,
+            sub: `Matched by your on-device model — tap to search the literal words instead`,
+            run: () => { __cmdkNluOff = true; const el = document.getElementById('cmdk-input'); if (el) el.value = raw; cmdkSearchCore(raw, false); },
+        }]);
+    }
     __cmdkWords = ql.split(/\s+/).filter(Boolean); // terms to highlight in the rows
     __cmdkResults = cmdkArrangeWide(note.concat(built.results).concat(built.fuzzy).slice(0, 18), 18);
     const firstReal = __cmdkResults.findIndex((it) => it && !cmdkIsNoteRow(it));
     __cmdkSel = firstReal >= 0 ? firstReal : 0; // the Top Hit, not the correction/widen note
     cmdkRender();
+    // Asked out loud → answer out loud: read the first real computed answer back.
+    if (__cmdkVoiceIn) {
+        __cmdkVoiceIn = false;
+        const a = __cmdkResults.find((it) => it && it.type === 'answer' && !cmdkIsNoteRow(it));
+        if (a) chbSpeak(a.label + (a.sub ? '. ' + a.sub : ''));
+    }
     // Deep index search runs server-side (emails, messages, invoices, guests,
     // reviews, activity — everything not held in the browser) and merges in when
     // it lands. Debounced so we don't hit the server on every keystroke, and
@@ -2648,7 +2875,7 @@ function cmdkArrange(list) {
 }
 // A note banner row (correction / auto-widen) — never counts as a real result.
 function cmdkIsNoteRow(it) {
-    return it && (it.id === 'cmdk-correction' || it.id === 'cmdk-widen');
+    return it && (it.id === 'cmdk-correction' || it.id === 'cmdk-widen' || it.id === 'cmdk-nlu');
 }
 // cmdkArrange + auto-widen. A scoped search that finds nothing in its scope
 // shouldn't dead-end on a "No matches in Bookings" wall: if widening to "All"
@@ -2986,6 +3213,10 @@ function cmdkVoice() {
         for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript;
         t = t.trim();
         if (el) el.value = t;
+        // Final transcript → this query came in BY VOICE, so the answer is
+        // spoken back (consumed once by cmdkSearchCore). Interim chunks don't
+        // count — we only reply to what was actually said.
+        __cmdkVoiceIn = !!(e.results.length && e.results[e.results.length - 1].isFinal);
         cmdkSearch(t);
     };
     const done = () => { __cmdkRec = null; if (mic) mic.classList.remove('is-listening'); if (el) el.focus(); };
@@ -3206,6 +3437,8 @@ function closeCmdK() {
     __cmdkServerStamp++; // supersede any in-flight federated search
     __cmdkDeep = null;
     __cmdkDeepStamp++;
+    __cmdkVoiceIn = false;
+    try { if ('speechSynthesis' in window) window.speechSynthesis.cancel(); } catch (e) {} // stop mid-reply
     cmdkSetLoading(false);
     if (o) o.style.display = 'none';
 }

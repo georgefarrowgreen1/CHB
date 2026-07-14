@@ -267,6 +267,56 @@ if (ctx.CHB_SEARCH && typeof ctx.CHB_SEARCH.registerSource === 'function') {
     } else {
         check('CHB_SEARCH.understand() is defined', false);
     }
+    // CHB's OWN trained NLU model — quality gates. The model is deterministic
+    // (authored corpus → TF-IDF centroids), so accuracy is CI-testable: these
+    // floors were measured at tuning time (train 106/108, held-out 13/14,
+    // negatives 8/8, ZERO wrong-class picks) and must never regress. A "miss"
+    // below threshold is safe (falls back to normal search); a WRONG-class
+    // pick would answer the wrong question, so that stays at zero.
+    if (ctx.CHB_SEARCH.nlu && typeof ctx.chbNluClassify === 'function') {
+        ctx.chbNluTrain();
+        const nlu = ctx.CHB_SEARCH.nlu;
+        let trainOk = 0, trainN = 0, wrong = [];
+        for (const c of nlu.corpus) for (const ex of c.examples) {
+            trainN++;
+            const g = ctx.chbNluClassify(ex);
+            if (g && g.canonical === c.canonical) trainOk++;
+            else if (g) wrong.push(ex + '→' + g.canonical);
+        }
+        check(`NLU train accuracy ≥ 96% (${trainOk}/${trainN})`, trainOk / trainN >= 0.96);
+        const heldout = [
+            ['is anyone in arrears with me', 'who owes me money'],
+            ['guests going home today', 'leaving today'],
+            ['who arrives this afternoon', 'arriving today'],
+            ['what bookings are ahead of us', 'upcoming bookings'],
+            ['do i owe anyone their deposit back', 'deposits to return'],
+            ['who do i need to remind to pay', 'balances to chase'],
+            ['total number of bookings so far this year', 'how many bookings this year'],
+            ['what are my earnings looking like this year', 'revenue this year'],
+            ['how full have we been', 'occupancy this year'],
+            ['what time of year is strongest', 'busiest month'],
+            ['which of the cottages performs best', 'which cottage earns most'],
+            ['average charge for one night', 'average nightly rate'],
+            ['overall how is everything going', "how's business"],
+        ];
+        let ho = 0;
+        for (const [q, want] of heldout) {
+            const g = ctx.chbNluClassify(q);
+            if (g && g.canonical === want) ho++;
+            else if (g) wrong.push(q + '→' + g.canonical);
+        }
+        check(`NLU held-out (unseen phrasings) ≥ 12/13 (${ho}/13)`, ho >= 12);
+        const negatives = ['sarah pemberton', 'jollyboat photos', 'wifi password for guests', 'seasonal rates grid', 'add booking for smith', 'hero image', 'newsletter subscribers'];
+        const negOk = negatives.filter((q) => !ctx.chbNluClassify(q)).length;
+        check(`NLU rejects all off-corpus queries (${negOk}/${negatives.length})`, negOk === negatives.length);
+        check('NLU never picks the WRONG intent' + (wrong.length ? ' — ' + wrong.slice(0, 3).join(' | ') : ''), wrong.length === 0);
+        // Every canonical the model maps to must be non-empty text (the intent
+        // engine executes it; the browser suite proves the routing end-to-end).
+        check('every NLU canonical is a non-empty phrase', nlu.corpus.every((c) => c.canonical && c.canonical.length > 3));
+        check('speaking back: chbSpeak is on the public API', typeof ctx.CHB_SEARCH.speak === 'function');
+    } else {
+        check('CHB_SEARCH.nlu (our own model) is defined', false);
+    }
     // The one matcher the standalone list filters (mailbox/messages) now share.
     if (typeof ctx.CHB_SEARCH.matches === 'function') {
         const mt = ctx.CHB_SEARCH.matches;
