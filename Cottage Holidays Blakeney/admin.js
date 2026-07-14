@@ -1236,7 +1236,7 @@ chbNluWarm(800);
 // (this whole bundle is), cached by the browser + SW after the first fetch.
 try {
     if (typeof fetch === 'function' && typeof window !== 'undefined' && window.document && document.createElement) {
-        setTimeout(() => { try { chbEmbedLoad(); } catch (e) {} }, 2500);
+        setTimeout(() => { try { darkstarLoad(); } catch (e) {} }, 2500);
     }
 } catch (e) {}
 // Learning indicator: the assistant knot flashes ORANGE while the model absorbs
@@ -1312,22 +1312,22 @@ function chbNluDeep(q) {
 // and never for a phrasing the owner has explicitly suppressed. `loose` returns
 // the best guess regardless of thresholds (tuning/tests only).
 // ============================================================
-//  CHB_EMBED — the MiniLM-class SEMANTIC tier (tier 3 of the cascade).
-//  A Model2Vec static embedding model (potion-base-8M: transformer knowledge
-//  distilled into 29,528 token vectors × 256 dims, bge WordPiece tokenizer)
-//  packed by embed-build.js into assist-embed.bin (int8 + per-token scale,
-//  ~7.6MB). Pure JS — no WASM runtime, no CSP change, ~10µs per query once
-//  loaded. Owner-only and lazy: fetched idle after the admin bundle boots;
-//  until it lands the cascade simply behaves as before (tiers 1–2 only).
-//  Why it earns its place (measured on the same harness as NLU v2): tiers
-//  1–2 alone 48/52 held-out; with this tier on their ABSTAINS 51/52 — still
-//  ZERO wrong intents and all 33 tier-3-duty negatives rejected, because it
-//  only answers when the query beats every "none" exemplar by a clear margin.
+//  DARKSTAR — our on-device SEMANTIC tier (tier 3 of the cascade). A static
+//  word-embedding model (29,528 token vectors × 256 dims, WordPiece) shipped
+//  as darkstar.bin (int8 + per-token scale, ~7.6MB) and built by
+//  darkstar-build.js. Pure JS — no WASM runtime, no CSP change, ~10µs per
+//  query once loaded. Owner-only and lazy: fetched idle after the admin
+//  bundle boots; until it lands the cascade simply behaves as before (tiers
+//  1–2 only). Why it earns its place (measured on the same harness as NLU
+//  v2): tiers 1–2 alone 48/52 held-out; with Darkstar on their ABSTAINS
+//  51/52 — still ZERO wrong intents and all 33 tier-3-duty negatives
+//  rejected, because it only answers when the query beats every "none"
+//  exemplar by a clear margin.
 // ============================================================
-const CHB_EMBED = { url: 'assist-embed.bin?v=1', min: 0.3, gap: 0, noneMargin: 0.1, st: null, loading: false };
+const DARKSTAR = { url: 'darkstar.bin?v=1', min: 0.3, gap: 0, noneMargin: 0.1, st: null, loading: false };
 // Parse the packed binary (exposed separately from fetch so the Node test
 // harness can feed it a file buffer directly).
-function chbEmbedParse(buf) {
+function darkstarParse(buf) {
     const dv = new DataView(buf);
     if (dv.getUint32(0, false) !== 0x43484245) throw new Error('bad magic'); // 'CHBE'
     const vocabN = dv.getUint32(8, true);
@@ -1340,22 +1340,30 @@ function chbEmbedParse(buf) {
     tokens.forEach((t, i) => vocab.set(t, i));
     return { dim, vocabN, scales, q8, vocab, unk: vocab.get('[UNK]') || 0 };
 }
-async function chbEmbedLoad() {
-    if (CHB_EMBED.st || CHB_EMBED.loading) return;
-    CHB_EMBED.loading = true;
+async function darkstarLoad() {
+    if (DARKSTAR.st || DARKSTAR.loading) return;
+    DARKSTAR.loading = true;
     try {
-        const r = await fetch(CHB_EMBED.url);
+        const r = await fetch(DARKSTAR.url);
         if (!r.ok) throw new Error('http ' + r.status);
-        CHB_EMBED.st = chbEmbedParse(await r.arrayBuffer());
-        chbEmbedIndex();
+        DARKSTAR.st = darkstarParse(await r.arrayBuffer());
+        darkstarIndex();
+        darkstarSetReady(); // the knot lights up: the full semantic model is online
     } catch (e) {
         // No semantic tier this session — the lexical cascade covers as before.
-    } finally { CHB_EMBED.loading = false; }
+    } finally { DARKSTAR.loading = false; }
+}
+// Once Darkstar is loaded + indexed, mark the body so the assistant knot glows
+// everywhere it appears (dock button, palette input, every Assist Bar) — a
+// steady "brain online" cue, distinct from the green ANSWERING and orange
+// LEARNING states, which still take over transiently on top of it.
+function darkstarSetReady() {
+    try { if (typeof document !== 'undefined' && document.body) document.body.classList.add('darkstar-ready'); } catch (e) {}
 }
 // BERT WordPiece (BertNormalizer lowercase+strip-accents, punctuation split,
 // greedy longest-match with '##' continuations, [UNK] fallback).
-function chbEmbedTokens(text) {
-    const st = CHB_EMBED.st;
+function darkstarTokens(text) {
+    const st = DARKSTAR.st;
     const clean = String(text || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
     const words = [];
     let cur = '';
@@ -1384,9 +1392,9 @@ function chbEmbedTokens(text) {
     return ids;
 }
 // Embed = L2-normalised mean of the (dequantised) token vectors.
-function chbEmbedVec(text) {
-    const st = CHB_EMBED.st;
-    const ids = chbEmbedTokens(text);
+function darkstarVec(text) {
+    const st = DARKSTAR.st;
+    const ids = darkstarTokens(text);
     const v = new Float32Array(st.dim);
     if (!ids.length) return v;
     for (const id of ids) {
@@ -1399,20 +1407,20 @@ function chbEmbedVec(text) {
     for (let i = 0; i < st.dim; i++) v[i] /= n;
     return v;
 }
-function chbEmbedCos(a, b) { let s = 0; for (let i = 0; i < a.length; i++) s += a[i] * b[i]; return s; }
+function darkstarCos(a, b) { let s = 0; for (let i = 0; i < a.length; i++) s += a[i] * b[i]; return s; }
 // (Re)build the exemplar index: one centroid per intent over corpus examples +
 // canonicals + the owner's LEARNED phrasings for that intent, and one "none"
 // pool (built-in none examples + suppressed phrases). Called after load and
 // after every learn/suppress — ~2ms, so learning stays instant.
-function chbEmbedIndex() {
-    const st = CHB_EMBED.st;
+function darkstarIndex() {
+    const st = DARKSTAR.st;
     if (!st) return;
     let learned = [];
     try { learned = chbNluLearned() || []; } catch (e) {}
     st.cents = CHB_NLU.corpus.map((c) => {
         const texts = [c.canonical].concat(c.examples).concat(learned.filter((x) => x.c === c.canonical).map((x) => x.t));
         const cent = new Float32Array(st.dim);
-        texts.forEach((t) => { const v = chbEmbedVec(t); for (let i = 0; i < st.dim; i++) cent[i] += v[i]; });
+        texts.forEach((t) => { const v = darkstarVec(t); for (let i = 0; i < st.dim; i++) cent[i] += v[i]; });
         let n = 0;
         for (let i = 0; i < st.dim; i++) n += cent[i] * cent[i];
         n = Math.sqrt(n) || 1;
@@ -1421,22 +1429,22 @@ function chbEmbedIndex() {
     });
     let sup = [];
     try { sup = chbNluSuppressed() || []; } catch (e) {}
-    st.nones = (CHB_NLU.noneExamples || []).concat(sup).map(chbEmbedVec);
+    st.nones = (CHB_NLU.noneExamples || []).concat(sup).map(darkstarVec);
 }
 // Tier-3 decision: nearest intent centroid, accepted only when it clears the
 // floor AND beats the closest none-exemplar by the margin. Sync (the model is
 // in memory) — returns null while the asset is still loading.
-function chbEmbedClassify(ql) {
-    const st = CHB_EMBED.st;
+function darkstarClassify(ql) {
+    const st = DARKSTAR.st;
     if (!st || !st.cents) return null;
-    const v = chbEmbedVec(ql);
+    const v = darkstarVec(ql);
     let b1 = -1, b2 = -1, bi = -1;
-    st.cents.forEach((c, i) => { const s = chbEmbedCos(v, c); if (s > b1) { b2 = b1; b1 = s; bi = i; } else if (s > b2) b2 = s; });
-    if (b1 < CHB_EMBED.min || b1 - b2 < CHB_EMBED.gap) return null;
+    st.cents.forEach((c, i) => { const s = darkstarCos(v, c); if (s > b1) { b2 = b1; b1 = s; bi = i; } else if (s > b2) b2 = s; });
+    if (b1 < DARKSTAR.min || b1 - b2 < DARKSTAR.gap) return null;
     let nb = -1;
-    st.nones.forEach((nv) => { const s = chbEmbedCos(v, nv); if (s > nb) nb = s; });
-    if (nb >= b1 - CHB_EMBED.noneMargin) return null;
-    return { canonical: CHB_NLU.corpus[bi].canonical, score: b1, margin: b1 - b2, deep: true, em: true };
+    st.nones.forEach((nv) => { const s = darkstarCos(v, nv); if (s > nb) nb = s; });
+    if (nb >= b1 - DARKSTAR.noneMargin) return null;
+    return { canonical: CHB_NLU.corpus[bi].canonical, score: b1, margin: b1 - b2, deep: true, ds: true };
 }
 
 function chbNluClassify(q, loose) {
@@ -1462,11 +1470,11 @@ function chbNluClassify(q, loose) {
             return { canonical: deep[0].canonical, score: cosOf, margin: dm, deep: true };
         }
     } catch (e) {}
-    // Tier 3 — the MiniLM-class semantic tier, consulted only when BOTH
-    // lexical tiers abstain (see CHB_EMBED above for the measured gates).
+    // Tier 3 — Darkstar, our semantic model, consulted only when BOTH lexical
+    // tiers abstain (see DARKSTAR above for the measured gates).
     try {
-        const em = chbEmbedClassify(ql);
-        if (em) return em;
+        const ds = darkstarClassify(ql);
+        if (ds) return ds;
     } catch (e) {}
     return null;
 }
@@ -1620,7 +1628,7 @@ function chbNluLearn(phrase, canonical) {
     chbNluStore('chb-nlu-learned', list);
     CHB_NLU.model = null; // retrain with the new example folded in…
     chbNluWarm(); // …off the critical path, so the next classify is instant
-    try { chbEmbedIndex(); } catch (e) {} // the semantic tier learns it too
+    try { darkstarIndex(); } catch (e) {} // the semantic tier learns it too
     chbNluLearnFlash(); // the knot flashes orange: the model is learning
     chbAssistSyncPush();
 }
@@ -1637,7 +1645,7 @@ function chbNluSuppress(phrase) {
     const learned = chbNluLearned();
     const i = learned.findIndex((x) => x.t === t);
     if (i >= 0) { learned.splice(i, 1); chbNluStore('chb-nlu-learned', learned); CHB_NLU.model = null; chbNluWarm(); }
-    try { chbEmbedIndex(); } catch (e) {} // suppressed phrases join the none pool
+    try { darkstarIndex(); } catch (e) {} // suppressed phrases join the none pool
     chbNluLearnFlash(); // un-teaching is learning too
     chbAssistSyncPush();
 }
@@ -3979,44 +3987,19 @@ function abarEmptyHtml(id, q, ask) {
     const chips = ask && ask.length ? `<div class="abar-chips abar-ask">${ask.map((c, k) => `<button type="button" class="abar-chip" ${chbAttrs('abarAskRun', id, k)}>${escapeHtml(c)}</button>`).join('')}</div>` : '';
     return deep + chips;
 }
-// Idle state: the palette's time-aware "ask me" chips, quiet, under the bar.
+// Idle state: nothing under the bar. (The rotating "suggested searches" chips
+// were removed at the owner's request — the empty bar is the resting state.)
 function abarAmbient(id) {
     const st = __abars[id];
     const panel = document.getElementById(id + '-panel');
-    if (!st || !panel) return;
-    let pick = [];
-    try {
-        const cans = CHB_NLU.corpus.map((c) => c.canonical);
-        const day = Math.floor(Date.now() / 864e5);
-        pick = [0, 1, 2].map((i) => cans[(day * 3 + i) % cans.length]);
-        // Time-aware first chip: changeover day → the moves; month-end → the money.
-        const tdy = todayDashed();
-        let live = null;
-        Object.keys(dbBookings || {}).forEach((pk) =>
-            (dbBookings[pk] || []).forEach((b) => {
-                if (b.checkIn === tdy) live = live || "who's arriving today";
-                else if (b.checkOut === tdy) live = live || "who's leaving today";
-            }),
-        );
-        if (!live && +tdy.slice(8, 10) >= 25) live = 'what have i earned this year';
-        if (live) pick = [live].concat(pick.filter((c) => c !== live)).slice(0, 3);
-    } catch (e) {
-        pick = [];
-    }
-    st.ambient = pick;
-    panel.innerHTML = pick.length
-        ? `<div class="abar-chips abar-ambient">${pick.map((c, k) => `<button type="button" class="abar-chip" ${chbAttrs('abarAmbientRun', id, k)}>${escapeHtml(c)}</button>`).join('')}</div>`
-        : '';
+    if (st) st.ambient = [];
+    if (panel) panel.innerHTML = '';
 }
 function abarRunQuery(id, q) {
     if (!q) return;
     const el = document.getElementById(id + '-input');
     if (el) el.value = q;
     abarRoute(id, q);
-}
-function abarAmbientRun(id, k) {
-    const st = __abars[id];
-    abarRunQuery(id, st && st.ambient ? st.ambient[k] : '');
 }
 function abarAskRun(id, k) {
     const st = __abars[id];

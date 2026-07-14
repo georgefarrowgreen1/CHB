@@ -1,4 +1,10 @@
 #!/usr/bin/env node
+// The runtime reckons "today" in Europe/London (todayDashed / uk_date), so the
+// fixtures — whose relative dates come from new Date() — must too, or a run in
+// the ~1h window after London midnight but before UTC midnight seeds dates one
+// day off and every "in N days" / "today" expectation drifts. Pin the process
+// to London BEFORE the first Date call (same guard as the ui-test-* suites).
+process.env.TZ = 'Europe/London';
 // ============================================================
 //  golden-test.js — the search ANSWER-SHAPE regression corpus (dev/CI only).
 //

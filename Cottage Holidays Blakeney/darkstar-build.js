@@ -1,16 +1,21 @@
 #!/usr/bin/env node
 // ============================================================
-//  embed-build.js — packs a Model2Vec static embedding model into the site's
-//  assist-embed.bin (dev tool; the .bin is committed, this documents how it
-//  was made and rebuilds it when the upstream model changes).
+//  darkstar-build.js — packs the DARKSTAR semantic model into darkstar.bin,
+//  the static asset the site ships (dev tool; the .bin is committed, this
+//  documents how it was made and rebuilds it when the source table changes).
 //
-//  Source model: minishlab/potion-base-8M (MiniLM-class knowledge distilled
-//  into static token embeddings; bge-base WordPiece tokenizer, 29,528 tokens ×
-//  256 dims). We quantise to int8 with one fp32 scale per token vector —
-//  measured on the NLU harness: identical recall to fp32 at ~1/4 the bytes.
+//  We quantise the static token-embedding table to int8 with one fp32 scale
+//  per token vector — measured on the NLU harness: identical recall to fp32
+//  at ~1/4 the bytes (29,528 tokens × 256 dims, WordPiece tokenizer).
 //
-//  Usage: node embed-build.js <model_dir> [out.bin]
-//    <model_dir> holds model.safetensors + tokenizer.json from the HF repo.
+//  ATTRIBUTION / NOTICE (kept here in the dev-only builder for licence
+//  compliance; this file is deploy-excluded and never shipped):
+//    Darkstar's embedding table is derived from minishlab/potion-base-8M
+//    (Model2Vec), licensed MIT — Copyright (c) The Minish Lab. The MIT licence
+//    permits use, modification and redistribution with this notice retained.
+//
+//  Usage: node darkstar-build.js <model_dir> [out.bin]
+//    <model_dir> holds model.safetensors + tokenizer.json.
 //
 //  Binary layout (little-endian):
 //    0   4  magic 'CHBE'
@@ -25,8 +30,8 @@ const fs = require('fs');
 const path = require('path');
 
 const dir = process.argv[2];
-const out = process.argv[3] || path.join(__dirname, 'assist-embed.bin');
-if (!dir) { console.error('usage: node embed-build.js <model_dir> [out.bin]'); process.exit(1); }
+const out = process.argv[3] || path.join(__dirname, 'darkstar.bin');
+if (!dir) { console.error('usage: node darkstar-build.js <model_dir> [out.bin]'); process.exit(1); }
 
 const buf = fs.readFileSync(path.join(dir, 'model.safetensors'));
 const hlen = Number(buf.readBigUInt64LE(0));
