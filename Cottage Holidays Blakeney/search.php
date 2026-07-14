@@ -62,6 +62,10 @@ if ($deep) {
     if (!is_array($syn)) {
         $syn = [];
     }
+    // Optional recency window (the palette's All time / 12 months / 90 days
+    // chips): a validated ISO date each source with a date column ANDs in.
+    $sinceIn = body()['since'] ?? ($_GET['since'] ?? '');
+    $since = is_string($sinceIn) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $sinceIn) ? $sinceIn : '';
     // Per term: a group of LIKE patterns = the term itself + up to 4 synonyms.
     $groups = array_map(function ($t) use ($syn, $mkLike) {
         $pats = [$mkLike($t)];
@@ -115,35 +119,35 @@ if ($deep) {
     // One descriptor per source: how to find it, present it, and (optionally) an
     // `extra` WHERE fragment and a `snip` column for the matched passage.
     $sources = [
-        ['type' => 'booking', 'from' => 'bookings', 'select' => 'id, prop_key, name, email, check_in',
+        ['type' => 'booking', 'from' => 'bookings', 'dcol' => 'check_in', 'select' => 'id, prop_key, name, email, check_in',
             'cols' => ['name', 'email', 'phone', 'address', 'postcode', 'notes', "CONCAT('chb-', LPAD(id, 6, '0'))"],
             'order' => '(check_in >= CURDATE()) DESC, check_in ASC',
             'map' => fn($b) => ['type' => 'booking', 'id' => (int) $b['id'], 'title' => $b['name'] ?: '(no name)',
                 'sub' => 'CHB-' . str_pad((string) $b['id'], 6, '0', STR_PAD_LEFT) . ' · ' . prop_display($b['prop_key'])['name'] . ($b['check_in'] ? ' · ' . uk_date($b['check_in']) : '')]],
-        ['type' => 'enquiry', 'from' => 'enquiries', 'select' => 'id, prop_key, name, email, message', 'cols' => ['name', 'email', 'message'], 'order' => 'id DESC',
+        ['type' => 'enquiry', 'from' => 'enquiries', 'dcol' => 'created_at', 'select' => 'id, prop_key, name, email, message', 'cols' => ['name', 'email', 'message'], 'order' => 'id DESC',
             'map' => fn($e) => ['type' => 'enquiry', 'id' => (int) $e['id'], 'title' => $e['name'] ?: '(no name)', 'sub' => 'Enquiry · ' . prop_display($e['prop_key'])['name'], 'snip' => $around($e['message'])]],
-        ['type' => 'guest', 'from' => 'guests', 'select' => 'id, name, email, phone', 'cols' => ['name', 'email', 'phone'], 'order' => 'id DESC',
+        ['type' => 'guest', 'from' => 'guests', 'dcol' => 'created_at', 'select' => 'id, name, email, phone', 'cols' => ['name', 'email', 'phone'], 'order' => 'id DESC',
             'map' => fn($g) => ['type' => 'guest', 'id' => (int) $g['id'], 'email' => $g['email'], 'title' => $g['name'] ?: $g['email'], 'sub' => 'Guest account · ' . $g['email']]],
-        ['type' => 'message', 'from' => 'messages m LEFT JOIN chat_threads t ON t.id = m.thread_id LEFT JOIN guests g ON g.id = m.guest_id',
+        ['type' => 'message', 'from' => 'messages m LEFT JOIN chat_threads t ON t.id = m.thread_id LEFT JOIN guests g ON g.id = m.guest_id', 'dcol' => 'm.created_at',
             'select' => 'm.thread_id, m.body, m.sender_role, COALESCE(t.name, g.name) AS who', 'cols' => ['m.body', 'COALESCE(t.name, g.name)'], 'extra' => 'm.thread_id IS NOT NULL', 'order' => 'm.id DESC',
             'map' => fn($m) => ['type' => 'message', 'thread_id' => (int) $m['thread_id'], 'title' => mb_substr(trim(preg_replace('/\s+/', ' ', (string) $m['body'])), 0, 90),
                 'sub' => 'Chat · ' . ($m['who'] ?: 'Visitor') . ($m['sender_role'] === 'admin' ? ' (you)' : ''), 'snip' => $around($m['body'])]],
-        ['type' => 'review', 'from' => 'guest_reviews', 'select' => 'id, prop_key, review_text', 'cols' => ['review_text'], 'order' => 'id DESC',
+        ['type' => 'review', 'from' => 'guest_reviews', 'dcol' => 'created_at', 'select' => 'id, prop_key, review_text', 'cols' => ['review_text'], 'order' => 'id DESC',
             'map' => fn($r) => ['type' => 'review', 'id' => (int) $r['id'], 'title' => mb_substr(trim(preg_replace('/\s+/', ' ', (string) $r['review_text'])), 0, 90), 'sub' => 'Review · ' . prop_display($r['prop_key'])['name'], 'snip' => $around($r['review_text'])]],
-        ['type' => 'email', 'from' => 'mail_sent', 'select' => 'id, to_email, subject, body', 'cols' => ['subject', 'to_email', 'body'], 'order' => 'id DESC',
+        ['type' => 'email', 'from' => 'mail_sent', 'dcol' => 'sent_at', 'select' => 'id, to_email, subject, body', 'cols' => ['subject', 'to_email', 'body'], 'order' => 'id DESC',
             'map' => fn($m) => ['type' => 'email', 'id' => (int) $m['id'], 'title' => $m['subject'] ?: '(no subject)', 'sub' => 'Email · to ' . $m['to_email'], 'snip' => $around($m['body'])]],
-        ['type' => 'payment', 'from' => 'payments p LEFT JOIN bookings b ON b.id = p.booking_id', 'select' => 'p.id, p.booking_id, p.amount, p.kind, b.name',
+        ['type' => 'payment', 'from' => 'payments p LEFT JOIN bookings b ON b.id = p.booking_id', 'dcol' => 'p.created_at', 'select' => 'p.id, p.booking_id, p.amount, p.kind, b.name',
             'cols' => ['p.square_payment_id', 'CAST(p.amount AS CHAR)', 'b.name'], 'order' => 'p.id DESC',
             'map' => fn($p) => ['type' => 'payment', 'booking_id' => (int) $p['booking_id'], 'title' => '£' . number_format((float) $p['amount'], 2) . ' ' . $p['kind'], 'sub' => 'Payment · ' . ($p['name'] ?: 'booking #' . $p['booking_id'])]],
-        ['type' => 'activity', 'from' => 'activity_log', 'select' => 'id, summary, category, created_at', 'cols' => ['summary'], 'order' => 'id DESC',
+        ['type' => 'activity', 'from' => 'activity_log', 'dcol' => 'created_at', 'select' => 'id, summary, category, created_at', 'cols' => ['summary'], 'order' => 'id DESC',
             'map' => fn($a) => ['type' => 'activity', 'id' => (int) $a['id'], 'title' => mb_substr(trim(preg_replace('/\s+/', ' ', (string) $a['summary'])), 0, 90), 'sub' => 'Activity · ' . uk_date(substr((string) $a['created_at'], 0, 10)), 'snip' => $around($a['summary'])]],
-        ['type' => 'expense', 'from' => 'expenses', 'select' => 'id, category, description, amount, expense_date', 'cols' => ['category', 'description', 'CAST(amount AS CHAR)'], 'order' => 'expense_date DESC, id DESC',
+        ['type' => 'expense', 'from' => 'expenses', 'dcol' => 'expense_date', 'select' => 'id, category, description, amount, expense_date', 'cols' => ['category', 'description', 'CAST(amount AS CHAR)'], 'order' => 'expense_date DESC, id DESC',
             'map' => fn($e) => ['type' => 'expense', 'id' => (int) $e['id'], 'title' => '£' . number_format((float) $e['amount'], 2) . ' · ' . ($e['category'] ?: 'Expense'), 'sub' => 'Expense · ' . ($e['expense_date'] ? uk_date($e['expense_date']) : ''), 'snip' => $around($e['description'])]],
-        ['type' => 'waitlist', 'from' => 'waitlist', 'select' => 'id, prop_key, name, email, check_in', 'cols' => ['name', 'email', 'note'], 'order' => 'id DESC',
+        ['type' => 'waitlist', 'from' => 'waitlist', 'dcol' => 'created_at', 'select' => 'id, prop_key, name, email, check_in', 'cols' => ['name', 'email', 'note'], 'order' => 'id DESC',
             'map' => fn($w) => ['type' => 'waitlist', 'id' => (int) $w['id'], 'title' => ($w['name'] ?: $w['email']) ?: 'Waitlist entry', 'sub' => 'Waitlist · ' . prop_display($w['prop_key'])['name'] . ($w['check_in'] ? ' · ' . uk_date($w['check_in']) : '')]],
-        ['type' => 'subscriber', 'from' => 'newsletter_subscribers', 'select' => 'id, email, name, unsubscribed_at', 'cols' => ['email', 'name'], 'order' => 'id DESC',
+        ['type' => 'subscriber', 'from' => 'newsletter_subscribers', 'dcol' => 'created_at', 'select' => 'id, email, name, unsubscribed_at', 'cols' => ['email', 'name'], 'order' => 'id DESC',
             'map' => fn($s) => ['type' => 'subscriber', 'id' => (int) $s['id'], 'title' => $s['name'] ?: $s['email'], 'sub' => 'Subscriber · ' . $s['email'] . ($s['unsubscribed_at'] ? ' · unsubscribed' : '')]],
-        ['type' => 'experience', 'from' => 'experiences', 'select' => 'id, title, category, status, body', 'cols' => ['title', 'body', 'category'], 'order' => "(status = 'pending') DESC, id DESC",
+        ['type' => 'experience', 'from' => 'experiences', 'dcol' => 'created_at', 'select' => 'id, title, category, status, body', 'cols' => ['title', 'body', 'category'], 'order' => "(status = 'pending') DESC, id DESC",
             'map' => fn($x) => ['type' => 'experience', 'id' => (int) $x['id'], 'title' => $x['title'] ?: '(untitled)', 'sub' => 'Experience · ' . ($x['category'] ?: 'Local') . ($x['status'] === 'pending' ? ' · awaiting approval' : ''), 'snip' => $around($x['body'] ?? '')]],
     ];
     $counts = [];
@@ -151,10 +155,16 @@ if ($deep) {
         if ($expand && $s['type'] !== $expand) {
             continue;
         }
-        $src(function () use (&$results, &$counts, $s, $wt, $expand) {
+        $src(function () use (&$results, &$counts, $s, $wt, $expand, $since) {
             [$whereSql, $params] = $wt($s['cols']);
             if (!empty($s['extra'])) {
                 $whereSql .= ' AND ' . $s['extra'];
+            }
+            // Recency window — only where the source HAS a date column ($since is
+            // regex-validated ISO, the column name is our own literal).
+            if ($since !== '' && !empty($s['dcol'])) {
+                $whereSql .= ' AND ' . $s['dcol'] . ' >= ?';
+                $params[] = $since;
             }
             $cap = $expand ? 60 : 20;
             try {

@@ -1564,6 +1564,20 @@ body.owner-mode #mobileMenu {
   gap: 6px;
   padding: 2px 2px 10px;
 }
+/* The recency row sits tighter under the source chips. */
+.cmdk-deep-when {
+  padding-top: 0;
+  margin-top: -4px;
+}
+/* Auto-corrected retry note ("nothing matched X - showing Y"). */
+.cmdk-deep-note {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  padding: 2px 2px 8px;
+}
+.cmdk-deep-note strong {
+  color: var(--text);
+}
 .cmdk-deep-chip {
   flex: 0 0 auto;
   font-size: 0.76rem;
