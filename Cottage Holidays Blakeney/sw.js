@@ -14,10 +14,11 @@
 //  show (push.php?action=sw_notify) and relays release reloads to open pages.
 //  Keep this file in the SAME folder as index.html.
 // ============================================================
-const CACHE = 'chb-cache-v450';
+const CACHE = 'chb-cache-v451';
 // admin.js is deliberately NOT precached — it's the owner-only bundle, fetched on
-// demand by loadAdminBundle() (app.js) and cached at runtime like any static asset.
-const CORE = ['./', 'index.html', 'logo.svg', 'favicon.png', 'apple-touch-icon.png', 'manifest.json', 'app.css?v=187', 'app.js?v=399', 'guest-app.css?v=32', 'guest-app.js?v=15'];
+// demand by loadAdminBundle() (app.js); the fetch handler below also bypasses it
+// entirely (network-only) so a new back office is never a reload behind.
+const CORE = ['./', 'index.html', 'logo.svg', 'favicon.png', 'apple-touch-icon.png', 'manifest.json', 'app.css?v=187', 'app.js?v=400', 'guest-app.css?v=32', 'guest-app.js?v=15'];
 // uploads/ images live in their own size-capped bucket so galleries stay fast and
 // available offline WITHOUT growing the main cache without bound (every image ever
 // viewed used to accumulate forever in CACHE).
@@ -66,6 +67,11 @@ self.addEventListener('fetch', (event) => {
     // never let per-date/year query strings grow the cache unbounded. (Covers the
     // version.php update probe too, which must always be live.)
     if (url.pathname.endsWith('.php') && !isImgPhp) return;
+    // admin.js is owner-only and version-pinned by ADMIN_BUNDLE_V inside app.js.
+    // Serving it stale-while-revalidate lets an out-of-date app.js pin an
+    // out-of-date back office for extra reloads — always go to the network
+    // (the browser's own HTTP cache + the ?v= pin still make repeats cheap).
+    if (/(^|\/)admin\.js$/.test(url.pathname)) return;
 
     const accept = req.headers.get('accept') || '';
     const isNav = req.mode === 'navigate' || accept.includes('text/html');
