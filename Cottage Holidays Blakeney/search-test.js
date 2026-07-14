@@ -267,6 +267,14 @@ if (ctx.CHB_SEARCH && typeof ctx.CHB_SEARCH.registerSource === 'function') {
     } else {
         check('CHB_SEARCH.understand() is defined', false);
     }
+    // The one matcher the standalone list filters (mailbox/messages) now share.
+    if (typeof ctx.CHB_SEARCH.matches === 'function') {
+        const mt = ctx.CHB_SEARCH.matches;
+        check('CHB_SEARCH.matches() empty=all, single-term substring (parity)', mt('anything', '') === true && mt('Smith deposit', 'smith') === true && mt('Jones', 'smith') === false);
+        check('CHB_SEARCH.matches() multi-term AND + synonym expansion', mt('Smith, John', 'john smith') === true && mt('Smith only', 'john smith') === false && mt('quarterly money report', 'revenue') === true);
+    } else {
+        check('CHB_SEARCH.matches() is defined', false);
+    }
 } else {
     check('CHB_SEARCH source registry is defined', false);
 }

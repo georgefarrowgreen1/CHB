@@ -725,6 +725,22 @@ const CHB_SEARCH = {
         };
         return { raw, words, synonyms, flags };
     },
+    // Does a haystack satisfy a query, using the shared understanding? Every term
+    // must appear (multi-term AND) via the word itself OR one of its synonyms. This
+    // is the ONE matcher the standalone list filters (mailbox, messages) now share
+    // with the palette — so "revenue" finds "income" and "john smith" finds
+    // "Smith, John" everywhere, not just in ⌘K. Empty query = everything.
+    matches(hay, q) {
+        // Reference the core lexically (not `this`) so a detached call still works.
+        const u = CHB_SEARCH.understand(q);
+        if (!u.words.length) return true;
+        const h = String(hay || '').toLowerCase();
+        return u.words.every((w) => {
+            if (h.indexOf(w) !== -1) return true;
+            const alts = u.synonyms[w];
+            return !!(alts && alts.some((a) => h.indexOf(a) !== -1));
+        });
+    },
     // Pool every source's items into one flat list (the fuzzy matcher then scores
     // + ranks them). Order follows source weight; a bad module is skipped, not fatal.
     collect(q) {
@@ -8050,11 +8066,12 @@ function toggleUnansweredOnly() {
 function applyMsgFilter() {
     const list = document.getElementById('messages-list');
     if (!list) return;
-    const q = __msgSearch.trim().toLowerCase();
+    const q = __msgSearch.trim();
     const rows = list.querySelectorAll('.msg-thread-row');
     let shown = 0;
     rows.forEach((row) => {
-        const matchQ = !q || (row.getAttribute('data-s') || '').includes(q);
+        // Shared matcher (multi-term + synonyms), consistent with the palette.
+        const matchQ = CHB_SEARCH.matches(row.getAttribute('data-s') || '', q);
         const matchNeeds = !__msgUnansweredOnly || row.getAttribute('data-needs') === '1';
         const show = matchQ && matchNeeds;
         row.style.display = show ? '' : 'none';
@@ -12528,11 +12545,11 @@ function renderMailboxList(keepSearchFocus) {
         mbxChip.textContent = u > 0 ? u : '';
     }
     const q = __mbxQuery;
-    const match = (t) => !q || String(t || '').toLowerCase().includes(q);
+    // Shared matcher (multi-term + synonyms), so the mailbox search behaves like ⌘K.
     let rows = '';
     if (__mbxTab === 'inbox') {
         rows = __mbxMessages
-            .filter((m) => match(m.fromRaw) || match(m.from) || match(m.subject))
+            .filter((m) => CHB_SEARCH.matches((m.fromRaw || '') + ' ' + (m.from || '') + ' ' + (m.subject || ''), q))
             .map((m) => {
                 const unread = !m.seen;
                 // Each row carries its own expansion slot: the email opens
@@ -12559,7 +12576,7 @@ function renderMailboxList(keepSearchFocus) {
         }
     } else {
         rows = __mbxSent
-            .filter((m) => match(m.to_email) || match(m.subject))
+            .filter((m) => CHB_SEARCH.matches((m.to_email || '') + ' ' + (m.subject || ''), q))
             .map(
                 (m) => `
         <div class="mbx-item" data-sent-id="${m.id}">
