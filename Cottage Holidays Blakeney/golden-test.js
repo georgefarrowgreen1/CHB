@@ -89,7 +89,7 @@ const FIX = {
             // Alice: MID-STAY right now (the who's-at case), paid, damages deposit charged (not yet returnable — she hasn't left).
             mkB(1, 'Alice Marsh', d(-1), d(2), { payment: 'paid', agreedPrice: { total: 440 }, holdStatus: 'charged' }),
             // Bob: arrives in 10 days, £100 down of £500 → £400 to chase (inside the 21-day window).
-            mkB(2, 'Bob Carter', d(10), d(13), { payment: 'deposit', depositPaid: 100, agreedPrice: { total: 500 } }),
+            mkB(2, 'Bob Carter', d(10), d(13), { payment: 'deposit', depositPaid: 100, agreedPrice: { total: 500 }, email: 'bob@example.com', phone: '07700 900102' }),
         ],
         '21a': [
             // Cara: arrives in 2 days, nothing paid → £600 to chase.
@@ -199,7 +199,40 @@ const CASES = [
     // ---- Upcoming ----
     { q: 'upcoming bookings', head: /Next: Cara Dunn/, any: /Bob Carter/, min: 4 },
     { q: "what's coming up", any: /Cara Dunn/ },
-    { q: "who's next", head: /Next: Cara Dunn/ },
+    // Composed by the generative branch now — a sentence, same correct guest.
+    { q: "who's next", head: /Next arrival: Cara Dunn/ },
+    { q: 'who arrives next', head: /Next arrival: Cara Dunn/, any: /Bob Carter/ },
+    { q: 'next arrival', head: /Next arrival: Cara Dunn/ },
+
+    // ---- COMPOSED answers (the generative branch: parse → compute → phrase) ----
+    // WHEN — arrivals/departures for a NAMED guest read as a sentence.
+    { q: 'when does bob arrive', head: /Bob Carter arrives \w+ \d+ \w+/, any: /in 10 days/ },
+    { q: 'when is bob coming', head: /Bob Carter arrives/ },
+    { q: 'when does alice leave', head: /Alice Marsh leaves/, not: /arrives/ },
+    { q: 'when does eve check out', head: /Eve Frost leaves TODAY/ },
+    { q: 'when did dan leave', head: /Dan Epps left/, any: /days ago/ },
+    // WHEN + money words = a payment answer, not a date.
+    { q: 'when does bob pay', head: /Bob Carter owes £400\.00 — due before the stay/ },
+    // HOW LONG — beats the occupancy aggregate when a guest is named.
+    { q: 'how long is bob staying', head: /Bob Carter is staying 3 nights/ },
+    { q: 'how many nights is cara staying', head: /Cara Dunn is staying 3 nights/, not: /occupancy/ },
+    // NEXT-ARRIVAL phrasing must NOT swallow date windows.
+    { q: 'who is arriving next week', head: /arriving next week/, not: /Next arrival:/ },
+    // AVAILABILITY answers the ASKED window, not tonight.
+    { q: 'is jollyboat free next weekend', head: /No — Jollyboat is taken next weekend/, any: /Bob Carter/ },
+    { q: 'is 21a free tomorrow', head: /Yes — 21A Westgate is free tomorrow/ },
+    { q: 'is pimpernel empty this week', head: /No — Pimpernel is taken this week/, any: /Eve Frost/ },
+    // The airbnb block on 21a counts as taken (d+20..d+24 → "in 3 weeks").
+    { q: 'is 21a available in 3 weeks', head: /No — 21A Westgate is taken in 3 weeks/, any: /airbnb/ },
+    // CAPACITY from the occupancy limits.
+    { q: 'how many people can jollyboat sleep', head: /Jollyboat sleeps up to 2 guests/ },
+    { q: 'what is the capacity of pimpernel', head: /Pimpernel sleeps up to 3 guests/, any: /1 child/ },
+    // "check out" must never be hijacked by the System-check action.
+    { q: 'when does eve check out', not: /System check/ },
+    // CONTACT DETAIL — the VALUE is the answer (and its absence is answered too).
+    { q: "what's bob's email", head: /Bob Carter.s email is bob@example\.com/ },
+    { q: 'bobs phone number', head: /Bob Carter.s phone is 07700 900102/ },
+    { q: 'do i have an address for bob', head: /No address on file for Bob Carter/ },
     // ---- Free tonight (Jollyboat occupied by Alice; Eve leaves today) ----
     { q: "what's free tonight", head: /2 cottages free tonight/ },
     { q: 'any cottage free', head: /2 cottages free tonight/ },

@@ -300,7 +300,7 @@ function cmdkActions(q) {
         A('payset', 'Payment settings', 'Square & deposit policy', 'square card deposit payout stripe money settings takings', /(payment|square|deposit|payout).{0,12}(setting|policy|setup|config)/, toManage('payments')),
         A('cancel', 'Cancellation policy', 'Refund terms', 'cancel refund policy terms', /(cancel|refund).{0,10}(policy|terms)/, toManage('cancel')),
         A('backup', 'Back up your data', 'Download a database backup', 'backup back up download export database save copy', /back ?up|download.{0,10}backup|export.{0,10}(data|database|everything)/, toManage('diagnostics')),
-        A('system', 'System check & updates', 'Health, migrations & status', 'status health migration update system check diagnostics upgrade', /(run|do|system).{0,10}(check|migration|update|diagnostic)|health check|check.{0,8}system/, toManage('diagnostics')),
+        A('system', 'System check & updates', 'Health, migrations & status', 'status health migration update system check diagnostics upgrade', /\b(run|do|system)\b.{0,10}\b(check(?!.{0,2}(in|out)\b)|migration|update|diagnostic)|health check|check.{0,8}system/, toManage('diagnostics')),
         A('security', 'Change your sign-in', 'Password & quick sign-in', 'password passkey 2fa face id fingerprint sign in login security change reset', /(change|reset|update|set).{0,14}(password|sign.?in|log ?in|passkey|security)/, toManage('security')),
         A('notify', 'Notifications', 'Phone alerts', 'notification push alert phone owner', /(edit|change|manage|set|turn).{0,12}notification|push alert/, toManage('notify')),
         A('newsletter', 'Newsletter & broadcasts', 'Mailing list', 'newsletter broadcast mailing subscribers marketing bulk', /(send|manage|edit|write).{0,12}(newsletter|broadcast|mailing)/, toManage('newsletter')),
@@ -840,6 +840,18 @@ function chbEntities(raw) {
     } else if (/\b(this|next|last) year\b/.test(q)) {
         const y = today.getFullYear() + (/next year/.test(q) ? 1 : /last year/.test(q) ? -1 : 0);
         out.dateRange = range(new Date(y, 0, 1), new Date(y, 11, 31), String(y));
+    } else {
+        // Relative offsets — "in 3 weeks", "in 10 days", "in 2 months": the single
+        // day at that distance (availability etc. show the exact dates either way).
+        const rm = q.match(/\bin (\d{1,2}) (day|week|month)s?(?:.?\s|$|\b)/);
+        if (rm) {
+            const n = +rm[1];
+            const t = new Date(today);
+            if (rm[2] === 'day') t.setDate(t.getDate() + n);
+            else if (rm[2] === 'week') t.setDate(t.getDate() + n * 7);
+            else t.setMonth(t.getMonth() + n);
+            out.dateRange = range(t, t, `in ${n} ${rm[2]}${n === 1 ? '' : 's'}`);
+        }
     }
     return out;
 }
@@ -1750,6 +1762,203 @@ function cmdkIntent(q) {
     // "edit the welcome guide for Jollyboat" all land on the right editor.
     for (const a of cmdkActions(q)) {
         if (a.re && a.re.test(q)) return [a];
+    }
+
+    // 0b0) COMPOSED answers — GENERATE a direct English answer to a simple
+    // question instead of returning the record that merely looks relevant.
+    // Parse (measure words + guest via `named` + cottage/date via chbEntities)
+    // → compute over the live data → phrase one sentence, with the record rows
+    // beneath it. Precision-first: every measure needs its trigger words AND a
+    // resolvable target, otherwise the query falls through to the curated
+    // intents and dossiers below exactly as before. (Money questions about a
+    // named guest are already composed by 0b — not duplicated here.)
+    {
+        const ents = (typeof chbEntities === 'function' && chbEntities(q)) || { dateRange: null, prop: null, amount: null };
+        // "Friday 24 July" — sentences read (and SPEAK) better with the weekday
+        // spelled out; DD/MM/YYYY stays on the record rows beneath.
+        const nice = (isoD) => {
+            try {
+                const dt = new Date(isoD + 'T00:00:00');
+                const s = dt.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' });
+                return String(dt.getFullYear()) === today.slice(0, 4) ? s : s + ' ' + dt.getFullYear();
+            } catch (e) { return fmtDate(isoD); }
+        };
+        const rel = (isoD) => {
+            const n = Math.round((new Date(isoD + 'T00:00:00') - new Date(today + 'T00:00:00')) / 864e5);
+            return n === 0 ? 'today' : n === 1 ? 'tomorrow' : n === -1 ? 'yesterday' : n > 1 ? `in ${n} days` : `${-n} days ago`;
+        };
+        const stayNights = (b) => (b.checkIn && b.checkOut ? Math.round((new Date(b.checkOut + 'T00:00:00') - new Date(b.checkIn + 'T00:00:00')) / 864e5) : 0);
+        const nn = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+        // The guest the question is about: prefer in-house, then the next stay,
+        // then the most recent past one. Their other matches ride along below.
+        const byRelevance = (a, b2) => {
+            const tier = (x) => (x.b.checkIn && x.b.checkOut && x.b.checkIn <= today && x.b.checkOut > today ? 0 : x.b.checkIn >= today ? 1 : 2);
+            return tier(a) - tier(b2) || (tier(a) === 2 ? ((a.b.checkIn || '') > (b2.b.checkIn || '') ? -1 : 1) : ((a.b.checkIn || '') < (b2.b.checkIn || '') ? -1 : 1));
+        };
+        const ranked = named.slice().sort(byRelevance);
+        const target = ranked[0] || null;
+        const others = ranked.slice(1, 4).map((x) => bk(x.pk, x.b, `${propName(x.pk)} · ${fmtDate(x.b.checkIn)}–${fmtDate(x.b.checkOut)}`));
+        const safe = !INSIGHTS_RE.test(q) && !OPS_RE.test(q);
+
+        // WHEN — "when does Bob arrive / leave / check out", "what day is Cara coming".
+        if (target && safe && /\bwhen\b|what (day|date|time)/.test(q)) {
+            const b = target.b, nm = b.name || 'This guest';
+            // "when does Bob pay" is a MONEY question wearing a when — compose
+            // the balance + its due point (the balance is collected before the
+            // stay), not the arrival date alone.
+            if (/\bpay|paid|owe|balance|deposit|refund/.test(q)) {
+                const m = moneyState(target.pk, target.b);
+                const head = m.ps.fullyPaid
+                    ? ans(`${nm} is paid in full — nothing left to collect`, `${m.dep ? m.dep + ' · ' : ''}${propName(target.pk)}`, () => { closeCmdK(); openBookingHub(b.id); })
+                    : ans(
+                          `${nm} owes ${gbp(m.ps.balance)} — due before the stay`,
+                          `${b.checkIn ? (b.checkIn < today ? 'Stay already started' : `Arrives ${nice(b.checkIn)} (${rel(b.checkIn)})`) + ' · ' : ''}${propName(target.pk)}`,
+                          () => { closeCmdK(); openBookingHub(b.id); },
+                          b.checkIn ? [calChip(b.checkIn)] : [],
+                      );
+                head.dedupName = (nm || '').toLowerCase().trim();
+                head.actions = cmdkBookingActions(b, target.pk);
+                return [head].concat(others);
+            }
+            const leaving = /leav|check.?out|depart|going home|out\b/.test(q);
+            const inHouse = b.checkIn && b.checkOut && b.checkIn <= today && b.checkOut > today;
+            let label, sub, iso;
+            if (leaving) {
+                iso = b.checkOut;
+                label = `${nm} ${b.checkOut < today ? 'left' : b.checkOut === today ? 'leaves TODAY' : 'leaves'} ${b.checkOut === today ? '' : nice(b.checkOut)}`.trim();
+                sub = `${rel(b.checkOut)} · checkout ${b.checkOutTime || '10:00'} · ${propName(target.pk)}`;
+            } else if (inHouse) {
+                iso = b.checkIn;
+                label = `${nm} is already here — arrived ${nice(b.checkIn)}`;
+                sub = `At ${propName(target.pk)} until ${fmtDate(b.checkOut)} (${rel(b.checkOut)})`;
+            } else {
+                iso = b.checkIn;
+                label = `${nm} ${b.checkIn < today ? 'arrived' : b.checkIn === today ? 'arrives TODAY' : 'arrives'} ${b.checkIn === today ? '' : nice(b.checkIn)}`.trim();
+                sub = `${rel(b.checkIn)} · ${nn(stayNights(b), 'night')} at ${propName(target.pk)} · out ${fmtDate(b.checkOut)}`;
+            }
+            const head = ans(label, sub, () => { closeCmdK(); openBookingHub(b.id); }, iso ? [calChip(iso)] : []);
+            head.dedupName = (nm || '').toLowerCase().trim();
+            head.actions = cmdkBookingActions(b, target.pk);
+            return [head].concat(others);
+        }
+
+        // HOW LONG — "how long is Bob staying", "how many nights has Cara got".
+        // (A NAMED guest beats the occupancy aggregate that shares these words,
+        // so only the ops guard applies — not INSIGHTS_RE.)
+        if (target && !OPS_RE.test(q) && /how long|how many nights/.test(q)) {
+            const b = target.b, n = stayNights(b), nm = b.name || 'This guest';
+            const head = ans(
+                `${nm} is ${b.checkOut && b.checkOut < today ? 'stayed' : 'staying'} ${nn(n, 'night')}`,
+                `${fmtDate(b.checkIn)} → ${fmtDate(b.checkOut)} at ${propName(target.pk)} · ${nn((b.adults || 0) + (b.children || 0) || b.adults || 2, 'guest')}`,
+                () => { closeCmdK(); openBookingHub(b.id); },
+                b.checkIn ? [calChip(b.checkIn)] : [],
+            );
+            head.dedupName = (nm || '').toLowerCase().trim();
+            return [head].concat(others);
+        }
+
+        // CONTACT DETAIL — "what's Bob's email", "Cara's phone number", "do I
+        // have an address for Dan". Answers with the VALUE itself; enquirers
+        // count too (they aren't bookings yet). "email them" stays with 0a.
+        if (/\b(email|e-?mail|phone|mobile|telephone|address|postcode)\b/.test(q)
+            && /what|whats|show|tell|give|find|got|have|need|['’]s\s+(email|e-?mail|phone|mobile|telephone|address|postcode|number)|\b[a-z]{3,}s (email|e-?mail|phone|mobile|number|address|postcode)\b/.test(q)
+            && !/\b(email|phone|call|text)\s+(them|him|her)\b/.test(q) && safe) {
+            let nm = null, rec = null, open = null, where = '';
+            if (target) {
+                nm = target.b.name; rec = target.b; where = `Booking · ${propName(target.pk)}`;
+                open = () => { closeCmdK(); openBookingHub(target.b.id); };
+            } else {
+                const en = (Array.isArray(enquiries) ? enquiries : []).find((e) => e.name && qWords.some((w) => e.name.toLowerCase().split(/\s+/).some((t) => t === w || (w.length >= 4 && (t.startsWith(w) || w.startsWith(t))))));
+                if (en) { nm = en.name; rec = en; where = `Enquiry · ${propName(en.propKey)}`; open = () => { closeCmdK(); openEnquiryHub(en.id); }; }
+            }
+            if (rec) {
+                const want = /phone|mobile|telephone|number/.test(q) ? ['phone', rec.phone] : /address|postcode/.test(q) ? ['address', [rec.address, rec.postcode].filter(Boolean).join(', ')] : ['email', rec.email];
+                const restBits = [rec.email && want[0] !== 'email' ? rec.email : '', rec.phone && want[0] !== 'phone' ? rec.phone : ''].filter(Boolean).join(' · ');
+                const head = ans(
+                    want[1] ? `${nm}’s ${want[0]} is ${want[1]}` : `No ${want[0]} on file for ${nm}`,
+                    (restBits ? restBits + ' · ' : '') + where,
+                    open,
+                );
+                head.dedupName = (nm || '').toLowerCase().trim();
+                if (target) head.actions = cmdkBookingActions(target.b, target.pk);
+                return [head].concat(others);
+            }
+        }
+
+        // NEXT ARRIVAL — "who's next", "next arrival", "when's the next check-in".
+        // ("next week/month/…" stays a date window for the branches below.)
+        if (!named.length && safe && (/\bnext(?!\s+(week|month|year|weekend))\b.*\b(arriv\w*|check.?in|guest|booking|stay)\b/.test(q) || /who.?s (coming |arriving |checking in )?next\b(?!\s+(week|month|year|weekend))/.test(q) || /\b(arriv\w*|check(s|ing)?.?in\w*|comes?|coming)\s+next\b(?!\s+(week|month|year|weekend))/.test(q))) {
+            const fut = flat.filter((x) => x.b.checkIn && x.b.checkIn >= today).sort(byIn);
+            if (!fut.length) return [ans('No upcoming arrivals', 'The calendar is clear from today', () => { closeCmdK(); tryAccessBackOffice(); })];
+            const x = fut[0], b = x.b;
+            const head = ans(
+                `Next arrival: ${b.name || '(no name)'} — ${b.checkIn === today ? 'TODAY' : nice(b.checkIn)}`,
+                `${rel(b.checkIn)} · ${nn(stayNights(b), 'night')} at ${propName(x.pk)}`,
+                () => { closeCmdK(); openBookingHub(b.id); },
+                [calChip(b.checkIn)],
+            );
+            head.actions = cmdkBookingActions(b, x.pk);
+            return [head].concat(fut.slice(1, 4).map((y) => bk(y.pk, y.b, `${propName(y.pk)} · ${fmtDate(y.b.checkIn)} (${rel(y.b.checkIn)})`)));
+        }
+
+        // AVAILABILITY over the ASKED window — "is Jollyboat free next weekend",
+        // "anything available in August", "is 21a empty tomorrow". A cottage or a
+        // date window must be named; the bare "what's free (tonight)" keeps its
+        // branch below. Range semantics: single day = that night; a span = the
+        // nights from `from` up to checkout on `to`.
+        if (safe && !named.length && /\bfree\b|availab|vacan|empty\b/.test(q) && (ents.prop || ents.dateRange)) {
+            const from = ents.dateRange ? ents.dateRange.from : today;
+            const label = ents.dateRange ? ents.dateRange.label : 'tonight';
+            const nightsEnd = ents.dateRange && ents.dateRange.to > from ? ents.dateRange.to : addDays(from, 1);
+            const conflictsFor = (k) => flat
+                .filter((x) => x.pk === k && x.b.checkIn && x.b.checkOut && x.b.checkIn < nightsEnd && x.b.checkOut > from)
+                .map((x) => ({ kind: 'booking', pk: x.pk, b: x.b }))
+                .concat(blocks.filter((x) => x.pk === k && x.bl.checkIn && x.bl.checkOut && x.bl.checkIn < nightsEnd && x.bl.checkOut > from).map((x) => ({ kind: 'block', pk: x.pk, bl: x.bl })));
+            if (ents.prop) {
+                const conf = conflictsFor(ents.prop);
+                if (!conf.length) {
+                    return [ans(
+                        `Yes — ${propName(ents.prop)} is free ${label}`,
+                        `${fmtDate(from)} → ${fmtDate(nightsEnd)} · no bookings or blocks`,
+                        () => { closeCmdK(); tryAccessBackOffice(); },
+                        [calChip(from), { label: 'Add a booking here', run: () => { closeCmdK(); Promise.resolve(tryAccessBackOffice()).then(() => { try { tlAddAt(ents.prop, from); } catch (e) {} }); } }],
+                    )];
+                }
+                const c0 = conf[0];
+                const head = ans(
+                    `No — ${propName(ents.prop)} is taken ${label}`,
+                    c0.kind === 'booking' ? `${c0.b.name || 'A guest'} is booked ${fmtDate(c0.b.checkIn)}–${fmtDate(c0.b.checkOut)}` : `${(c0.bl.source || 'OTA')} block ${fmtDate(c0.bl.checkIn)}–${fmtDate(c0.bl.checkOut)}`,
+                    () => { closeCmdK(); tryAccessBackOffice(); },
+                    [calChip(from)],
+                );
+                return [head].concat(conf.filter((c) => c.kind === 'booking').slice(0, 3).map((c) => bk(c.pk, c.b, `${propName(c.pk)} · ${fmtDate(c.b.checkIn)}–${fmtDate(c.b.checkOut)}`)));
+            }
+            const freeKs = Object.keys(dbBookings || {}).filter((k) => !conflictsFor(k).length);
+            return [ans(
+                freeKs.length ? `${nn(freeKs.length, 'cottage')} free ${label}` : `Nothing free ${label}`,
+                freeKs.length ? freeKs.map(propName).join(', ') + ` · ${fmtDate(from)} → ${fmtDate(nightsEnd)}` : `All cottages have bookings or blocks ${label}`,
+                () => { closeCmdK(); tryAccessBackOffice(); },
+                [calChip(from)],
+            )];
+        }
+
+        // CAPACITY — "how many people can Jollyboat sleep", "does 21a take kids".
+        // The sleep/capacity VERBS are unambiguous alongside a named cottage, so
+        // no OPS/INSIGHTS guard — "how many people can X sleep" must beat the
+        // guest-volume aggregate that also owns "how many people".
+        if (ents.prop && /\bsleeps?\b|capacit|\bfit\b|\bhold\b|accommodat|take (kids|children)/.test(q)) {
+            const m = propertyMeta[ents.prop] || {};
+            const oc = (typeof occupancyLimits === 'object' && occupancyLimits[ents.prop]) || {};
+            const cap = m.maxTotal || m.maxAdults || oc.maxTotal || oc.maxAdults;
+            if (cap) {
+                const kids = m.maxChildren != null ? m.maxChildren : oc.maxChildren || 0;
+                return [ans(
+                    `${propName(ents.prop)} sleeps up to ${nn(cap, 'guest')}`,
+                    `${nn(m.maxAdults || oc.maxAdults || cap, 'adult')}${kids ? ` + up to ${nn(kids, 'child')}` : ' · no children'}`,
+                    () => { closeCmdK(); if (typeof openProperty === 'function') openProperty(ents.prop); },
+                )];
+            }
+        }
     }
 
     // 0b) A specific guest by name — "have I refunded John?", "has Mary paid?",
