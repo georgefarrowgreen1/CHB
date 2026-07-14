@@ -40,19 +40,19 @@
   flex-shrink: 0;
 }.bk-chip.ok {
   background: rgba(76, 175, 80, 0.13);
-  color: var(--ok);
+  color: var(--ok-text);
   border-color: rgba(76, 175, 80, 0.28);
 }.bk-chip.warn {
   background: rgba(255, 167, 38, 0.14);
-  color: var(--warn);
+  color: var(--warn-text);
   border-color: rgba(255, 167, 38, 0.32);
 }.bk-chip.danger {
   background: rgba(229, 115, 115, 0.13);
-  color: var(--danger);
+  color: var(--danger-text);
   border-color: rgba(229, 115, 115, 0.3);
 }.bk-chip.stay {
   background: rgba(76, 175, 80, 0.15);
-  color: var(--ok);
+  color: var(--ok-text);
   border-color: rgba(76, 175, 80, 0.34);
 }
 /* "Arriving" — a paid guest due in LATER today (before their check-in time);
@@ -148,7 +148,7 @@
   cursor: pointer;
   padding: 0 4px;
 }.compose-attach-chip button:hover {
-  color: var(--danger);
+  color: var(--danger-text);
 }.bk-email-log-view {
   display: inline-flex;
   align-items: center;
@@ -501,11 +501,11 @@
   align-items: center;
   justify-content: center;
   background: rgba(127, 127, 127, 0.08);
-  color: var(--warn);
+  color: var(--warn-text);
 }.ny-danger .ny-ic {
-  color: var(--danger);
+  color: var(--danger-text);
 }.ny-ok .ny-ic {
-  color: var(--ok);
+  color: var(--ok-text);
 }.ny-main {
   flex: 1;
   min-width: 0;
@@ -570,7 +570,7 @@
 }.bhub-menu button:hover {
   background: var(--glass-hover);
 }.bhub-menu .bhub-menu-danger {
-  color: var(--danger);
+  color: var(--danger-text);
 }.bhub-disclose-btn {
   margin-top: 10px;
 }@media (max-width: 900px) {.bhub-disclose-btn {
@@ -821,7 +821,7 @@
   padding: 6px 12px;
   font-size: 0.8rem;
   font-weight: 600;
-  color: var(--ok);
+  color: var(--ok-text);
   background: rgba(76, 175, 80, 0.1);
   border: 1px solid rgba(76, 175, 80, 0.26);
   border-radius: var(--r-pill);
@@ -915,10 +915,10 @@
   color: var(--text-light);
   margin: 4px 0 4px;
 }.money-owed strong {
-  color: var(--warn);
+  color: var(--warn-text);
 }.money-owed.all-paid strong,
 .money-owed.all-paid {
-  color: var(--ok);
+  color: var(--ok-text);
 }.money-row.due-soon {
   border-color: rgba(255, 167, 38, 0.5);
 }.inbox-empty-inline {
@@ -984,9 +984,9 @@
   color: var(--text-muted);
   margin-top: 3px;
 }.mo-value.mo-good {
-  color: var(--ok);
+  color: var(--ok-text);
 }.mo-value.mo-warn {
-  color: var(--warn);
+  color: var(--warn-text);
 }.mo-card {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
@@ -1000,7 +1000,7 @@
   color: var(--text-muted);
   margin-bottom: 6px;
 }.yoy-cmp .mo-good {
-  color: var(--ok);
+  color: var(--ok-text);
   font-weight: 600;
 }.yoy-cmp .mo-warn {
   color: var(--warn-text);
@@ -1645,10 +1645,10 @@ body.light-mode .cmdk-editor-input {
   color: var(--text-muted);
 }
 .cmdk-editor-msg.is-ok {
-  color: var(--ok);
+  color: var(--ok-text);
 }
 .cmdk-editor-msg.is-err {
-  color: var(--danger);
+  color: var(--danger-text);
 }
 /* Quick-actions revealed under the selected result — act without leaving search. */
 /* Quick-actions list — a selected record's actions laid out as full-width rows
@@ -1878,7 +1878,7 @@ body.light-mode .cmdk-editor-input {
 }
 .status-count.ok { color: var(--ok-text); }
 .status-count.warn { color: var(--warn-text); }
-.status-count.danger { color: var(--danger); }
+.status-count.danger { color: var(--danger-text); }
 .status-count.optional { color: var(--text-muted); }
 .status-hero-meta {
   font-size: 0.76rem;
@@ -1954,7 +1954,7 @@ body.light-mode .cmdk-editor-input {
 }
 .status-item-chip.ok { color: var(--ok-text); }
 .status-item-chip.warn { color: var(--warn-text); }
-.status-item-chip.fail { color: var(--danger); }
+.status-item-chip.fail { color: var(--danger-text); }
 .status-item-chip.optional { color: var(--text-muted); }
 .status-item-detail {
   font-size: 0.82rem;
