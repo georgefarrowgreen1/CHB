@@ -3279,6 +3279,9 @@ function cmdkJumpTimeline(iso) {
 // "today" prefix for continuity, but they target the active workspace now.)
 let __todayFilter = '';
 let __wsFilterView = 'view-backoffice';
+// Who set the current filter: '' = the palette (banner shows) · 'abar' = a
+// workspace Assist Bar (the bar shows its own live count, so no banner).
+let __todayFilterSrc = '';
 const CMDK_WORKSPACES = ['view-backoffice', 'view-inbox', 'view-accounts'];
 function cmdkActiveWorkspace() {
     const v = typeof document !== 'undefined' && document.querySelector ? document.querySelector('.page-view.active') : null;
@@ -3287,7 +3290,7 @@ function cmdkActiveWorkspace() {
 }
 function paintTodayFilter() {
     const view = document.getElementById(__wsFilterView);
-    if (!view) return;
+    if (!view) return 0;
     const q = __todayFilter;
     let shown = 0;
     view.querySelectorAll('[data-search]').forEach((el) => {
@@ -3296,16 +3299,25 @@ function paintTodayFilter() {
         if (match) shown++;
     });
     renderTodayFilterBar(q, shown);
+    return shown;
 }
 function applyTodayFilter(q) {
     __todayFilter = (q || '').trim().toLowerCase();
     __wsFilterView = cmdkActiveWorkspace();
     closeCmdK();
     if (typeof nav === 'function' && ((document.querySelector('.page-view.active') || {}).id !== __wsFilterView)) nav(__wsFilterView);
-    cmdkPoll(() => document.getElementById(__wsFilterView), () => paintTodayFilter(), 30);
+    cmdkPoll(() => document.getElementById(__wsFilterView), () => {
+        // A workspace that carries an Assist Bar owns filtering there — land the
+        // query IN the bar (input + live count) instead of the floating banner,
+        // so there's exactly one filter UI per workspace.
+        if (abarAdopt(__wsFilterView, __todayFilter)) return;
+        __todayFilterSrc = '';
+        paintTodayFilter();
+    }, 30);
 }
 function clearTodayFilter() {
     __todayFilter = '';
+    __todayFilterSrc = '';
     document.querySelectorAll('.cmdk-dim').forEach((el) => el.classList.remove('cmdk-dim'));
     const bar = document.getElementById('today-filter-bar');
     if (bar) bar.remove();
@@ -3313,7 +3325,8 @@ function clearTodayFilter() {
 function renderTodayFilterBar(q, shown) {
     let bar = document.getElementById('today-filter-bar');
     const view = document.getElementById(__wsFilterView);
-    if (!q || !view) { if (bar) bar.remove(); return; }
+    // Bar-driven filtering shows its count inside the Assist Bar itself.
+    if (!q || !view || __todayFilterSrc === 'abar') { if (bar) bar.remove(); return; }
     if (!bar) {
         bar = document.createElement('div');
         bar.id = 'today-filter-bar';
@@ -3321,6 +3334,275 @@ function renderTodayFilterBar(q, shown) {
     }
     if (bar.parentElement !== view) view.insertBefore(bar, view.firstChild);
     bar.innerHTML = `<span>Filtering for <strong>${escapeHtml(q)}</strong> · ${shown} match${shown === 1 ? '' : 'es'}</span><button type="button" class="btn-sm btn-edit" data-act="clearTodayFilter">Clear</button>`;
+}
+// ============================================================
+//  Assist Bar — the palette's brain embedded IN a workspace. One component,
+//  many hosts (Today now, Inbox next): a static host div in index.html gets a
+//  knot + input injected here (admin.js only ever loads for the owner). Typing
+//  routes ONE of two ways per keystroke, both live:
+//    • the engine ANSWERS it (cmdkBuildResults found an intent/NLU answer)
+//      → an inline answer panel of the same self-contained result rows the
+//        palette renders (label · sub · run · chips), right under the bar;
+//    • plain terms → LIVE-FILTER the workspace (the existing [data-search]
+//      dim machinery), match count in the bar; zero matches offer the deep
+//      "search everything" pivot + the model's nearest askable questions.
+//  Empty + idle it shows the palette's time-aware ambient chips, so the
+//  assistant's capability is visible where the work actually happens.
+// ============================================================
+const __abars = {};
+function chbAssistBar(hostId, opts) {
+    const host = document.getElementById(hostId);
+    if (!host || __abars[hostId]) return;
+    opts = opts || {};
+    __abars[hostId] = { id: hostId, q: '', rows: [], ask: [], ambient: [], filtering: false, opts, t: null };
+    host.classList.add('abar');
+    // NB: the keydown handler lives on the WRAPPER (delegation walks up from the
+    // input) — data-args/data-pass are single attributes per element, so the
+    // input can't carry both the input-handler's pass=value and pass=event.
+    host.innerHTML =
+        `<div class="abar-field" ${chbAttrsFor('keydown', 'abarKey', [hostId, CHB_EVENT])}>` +
+        `<span class="abar-ic" aria-hidden="true">${CMDK_SEARCH_IC}</span>` +
+        `<input id="${hostId}-input" class="abar-input" type="search" enterkeyhint="search" placeholder="${escapeHtml(opts.placeholder || 'Search or ask anything…')}" autocomplete="off" autocapitalize="off" spellcheck="false" role="searchbox" aria-label="${escapeHtml(opts.placeholder || 'Search or ask')}" ${chbInput('abarInput', hostId, CHB_VALUE)}>` +
+        `<span class="abar-count" id="${hostId}-count" aria-live="polite"></span>` +
+        `<button type="button" class="abar-clear" id="${hostId}-clear" ${chbAttrs('abarClear', hostId)} aria-label="Clear search">✕</button>` +
+        `</div>` +
+        `<div class="abar-panel" id="${hostId}-panel"></div>`;
+    abarAmbient(hostId);
+}
+// Register every bar whose host div exists (called once from the admin boot
+// footer). Today's bar filters the operations board via the shared
+// [data-search] dim machinery above.
+function chbAssistInitBars() {
+    chbAssistBar('abar-today', {
+        view: 'view-backoffice',
+        placeholder: 'Search bookings, or ask anything…',
+        filter: (q) => {
+            __todayFilter = q;
+            __wsFilterView = 'view-backoffice';
+            __todayFilterSrc = 'abar';
+            return paintTodayFilter();
+        },
+        unfilter: () => {
+            if (__todayFilter) clearTodayFilter();
+        },
+    });
+}
+// The palette's "filter this workspace" lands here when the target workspace
+// carries a bar: the query appears in the bar with its live count. Returns
+// false when no bar exists (the floating banner path handles it).
+function abarAdopt(viewId, q) {
+    const id = Object.keys(__abars).find((k) => __abars[k].opts.view === viewId);
+    if (!id) return false;
+    const el = document.getElementById(id + '-input');
+    if (!el) return false;
+    el.value = q;
+    const host = document.getElementById(id);
+    if (host) host.classList.remove('has-answer');
+    const panel = document.getElementById(id + '-panel');
+    if (panel) panel.innerHTML = '';
+    abarFilterQuery(id, q);
+    return true;
+}
+function abarInput(id, v) {
+    const st = __abars[id];
+    if (!st) return;
+    clearTimeout(st.t);
+    st.t = setTimeout(() => abarRoute(id, v), 140);
+}
+function abarKey(id, e) {
+    if (!e) return;
+    if (e.key === 'Escape') {
+        abarClear(id);
+        const el = document.getElementById(id + '-input');
+        if (el) el.blur();
+    } else if (e.key === 'Enter') {
+        const st = __abars[id];
+        if (st) {
+            clearTimeout(st.t); // flush the debounce so Enter acts on what's typed
+            const el = document.getElementById(id + '-input');
+            abarRoute(id, el ? el.value : st.q);
+            if (st.rows.length) abarExec(id, 0); // top answer row
+        }
+    }
+}
+function abarClear(id) {
+    const el = document.getElementById(id + '-input');
+    if (el) el.value = '';
+    abarRoute(id, '');
+}
+// The router — one call per (debounced) keystroke.
+function abarRoute(id, q) {
+    const st = __abars[id];
+    if (!st) return;
+    const raw = (q || '').trim().toLowerCase();
+    st.q = raw;
+    const host = document.getElementById(id);
+    const panel = document.getElementById(id + '-panel');
+    const count = document.getElementById(id + '-count');
+    if (host) host.classList.toggle('has-text', raw.length > 0);
+    if (!raw) {
+        abarFilterOff(st);
+        st.rows = [];
+        if (host) host.classList.remove('has-answer');
+        if (count) count.textContent = '';
+        abarAmbient(id);
+        return;
+    }
+    // Workspace-first: if the words literally match rows on THIS board (a guest
+    // name, a cottage, a pay state), filtering them into view beats an answer
+    // card — the records are right there. Questions ("who owes me money") never
+    // match the row haystacks, so they fall through to the engine.
+    st.rows = [];
+    if (host) host.classList.remove('has-answer');
+    const shown = abarFilterQuery(id, raw);
+    if (shown > 0) {
+        if (panel) panel.innerHTML = '';
+        return;
+    }
+    let built = null;
+    try { built = cmdkBuildResults(raw); } catch (e) { built = null; }
+    if (built && built.results.length) {
+        // ANSWERED — inline answer panel of the palette's own rows.
+        abarFilterOff(st);
+        if (count) count.textContent = '';
+        __cmdkWords = raw.split(/\s+/).filter(Boolean); // cmdkHi highlight terms
+        st.rows = built.results.slice(0, 5);
+        st.nlu = built.nlu || null;
+        if (host) host.classList.add('has-answer');
+        if (panel)
+            panel.innerHTML =
+                (built.nlu ? `<div class="abar-note">Understood as “${escapeHtml(built.nlu)}”</div>` : '') +
+                st.rows.map((r, i) => abarRowHtml(id, r, i)).join('');
+        return;
+    }
+    // Nothing on the board and no answer — dead end here: offer the deep
+    // "search everything" pivot + the model's nearest askable questions.
+    if (panel) {
+        if (raw.length >= 3) {
+            st.ask = (built && built.ask) || [];
+            panel.innerHTML = abarEmptyHtml(id, raw, st.ask);
+        } else {
+            panel.innerHTML = '';
+        }
+    }
+}
+// Force FILTER mode (shared by the router and the palette's abarAdopt).
+function abarFilterQuery(id, q) {
+    const st = __abars[id];
+    if (!st) return -1;
+    st.q = q;
+    st.rows = [];
+    const host = document.getElementById(id);
+    if (host) host.classList.toggle('has-text', !!q);
+    let shown = -1;
+    if (q) {
+        st.filtering = true;
+        try { shown = st.opts.filter ? st.opts.filter(q) : -1; } catch (e) {}
+    } else {
+        abarFilterOff(st);
+    }
+    const count = document.getElementById(id + '-count');
+    if (count) count.textContent = q && shown >= 0 ? shown + ' match' + (shown === 1 ? '' : 'es') : '';
+    return shown;
+}
+function abarFilterOff(st) {
+    if (!st.filtering) return;
+    st.filtering = false;
+    try { if (st.opts.unfilter) st.opts.unfilter(); } catch (e) {}
+}
+// One inline answer row — the same anatomy (and CSS) as a palette row, plus its
+// refine chips as a quiet strip beneath. run/chips come straight off the
+// self-contained result objects, so every palette answer works here unchanged.
+function abarRowHtml(id, it, i) {
+    const hi = it.type === 'answer' || it.type === 'figure' ? (s) => escapeHtml(s || '') : cmdkHi;
+    const chips =
+        Array.isArray(it.chips) && it.chips.length
+            ? `<div class="abar-chips">${it.chips.map((c, k) => `<button type="button" class="abar-chip" ${chbAttrs('abarChip', id, i, k)}>${escapeHtml(c.label)}</button>`).join('')}</div>`
+            : '';
+    return (
+        `<button type="button" class="cmdk-row abar-row cmdk-row-${it.type}" ${chbAttrs('abarExec', id, i)}>` +
+        `<span class="cmdk-row-ic cmdk-${it.type}">${cmdkIcon(it.type)}</span>` +
+        `<span class="cmdk-row-main"><span class="cmdk-row-label">${hi(it.label)}</span><span class="cmdk-row-sub">${hi(it.sub || '')}</span></span>` +
+        `</button>` +
+        chips
+    );
+}
+// Zero matches on a filter: the deep "search everything" pivot + the model's
+// nearest askable questions (mirrors the palette's dead-end guidance).
+function abarEmptyHtml(id, q, ask) {
+    const deep = `<button type="button" class="cmdk-deep-cta abar-deep" ${chbAttrs('abarDeep', id)}><span class="cmdk-deep-cta-ic">${CMDK_SEARCH_IC}</span><span class="cmdk-deep-cta-lbl">Nothing here — search <strong>everything</strong> for “${escapeHtml(q)}”</span><span class="cmdk-qa-go" aria-hidden="true">${CMDK_CHEV}</span></button>`;
+    const chips = ask && ask.length ? `<div class="abar-chips abar-ask">${ask.map((c, k) => `<button type="button" class="abar-chip" ${chbAttrs('abarAskRun', id, k)}>${escapeHtml(c)}</button>`).join('')}</div>` : '';
+    return deep + chips;
+}
+// Idle state: the palette's time-aware "ask me" chips, quiet, under the bar.
+function abarAmbient(id) {
+    const st = __abars[id];
+    const panel = document.getElementById(id + '-panel');
+    if (!st || !panel) return;
+    let pick = [];
+    try {
+        const cans = CHB_NLU.corpus.map((c) => c.canonical);
+        const day = Math.floor(Date.now() / 864e5);
+        pick = [0, 1, 2].map((i) => cans[(day * 3 + i) % cans.length]);
+        // Time-aware first chip: changeover day → the moves; month-end → the money.
+        const tdy = todayDashed();
+        let live = null;
+        Object.keys(dbBookings || {}).forEach((pk) =>
+            (dbBookings[pk] || []).forEach((b) => {
+                if (b.checkIn === tdy) live = live || "who's arriving today";
+                else if (b.checkOut === tdy) live = live || "who's leaving today";
+            }),
+        );
+        if (!live && +tdy.slice(8, 10) >= 25) live = 'what have i earned this year';
+        if (live) pick = [live].concat(pick.filter((c) => c !== live)).slice(0, 3);
+    } catch (e) {
+        pick = [];
+    }
+    st.ambient = pick;
+    panel.innerHTML = pick.length
+        ? `<div class="abar-chips abar-ambient">${pick.map((c, k) => `<button type="button" class="abar-chip" ${chbAttrs('abarAmbientRun', id, k)}>${escapeHtml(c)}</button>`).join('')}</div>`
+        : '';
+}
+function abarRunQuery(id, q) {
+    if (!q) return;
+    const el = document.getElementById(id + '-input');
+    if (el) el.value = q;
+    abarRoute(id, q);
+}
+function abarAmbientRun(id, k) {
+    const st = __abars[id];
+    abarRunQuery(id, st && st.ambient ? st.ambient[k] : '');
+}
+function abarAskRun(id, k) {
+    const st = __abars[id];
+    abarRunQuery(id, st && st.ask ? st.ask[k] : '');
+}
+function abarExec(id, i) {
+    const st = __abars[id];
+    const it = st && st.rows ? st.rows[i] : null;
+    if (!it) return;
+    if (it._nlu && it._nluQ) { try { chbNluLearn(it._nluQ, it._nlu); } catch (e) {} } // accepted → learn this phrasing
+    if (typeof it.run === 'function') it.run(); // closeCmdK() inside runs is a safe no-op here
+}
+function abarChip(id, i, k) {
+    const st = __abars[id];
+    const it = st && st.rows ? st.rows[i] : null;
+    const c = it && Array.isArray(it.chips) ? it.chips[k] : null;
+    if (!c) return;
+    if (typeof c.run === 'function') { c.run(); return; } // action chip (e.g. Show on calendar)
+    abarRunQuery(id, c.q);
+}
+// No local match anywhere → hand the query to the palette's deep federated
+// search (server-side, all record types) with the bar reset behind it.
+function abarDeep(id) {
+    const st = __abars[id];
+    const q = st ? st.q : '';
+    abarClear(id);
+    openCmdK();
+    const el = document.getElementById('cmdk-input');
+    if (el) el.value = q;
+    cmdkSearchCore(q, true);
+    cmdkDeepOpen();
 }
 // ---- Open availability windows (gaps) between bookings + external blocks, per
 // cottage, across [fromIso, toIso). Returns [{propKey, name, from, to, nights}].
@@ -13928,4 +14210,7 @@ async function mailboxDelete(uid) {
 [accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, bulkImportReviews, changeAdminPassword, changeMonth, timelineToday, inboxFolder, initBackOffice, loadAdminMessages, loadDiagnostics, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveDepositPct, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
     window[f.name] = f;
 });
+// Embedded Assist Bars: host divs are static in index.html; the bundle only
+// ever loads for the owner, so guests never see (or pay for) any of this.
+try { chbAssistInitBars(); } catch (e) {}
 window.__ADMIN_LOADED = true;

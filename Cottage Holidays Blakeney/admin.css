@@ -2231,3 +2231,115 @@ body.light-mode .cmdk-editor-input {
   margin-left: 6px;
   white-space: nowrap;
 }
+
+/* ---- Assist Bar (the search brain embedded in a workspace — Today, Inbox).
+   Field mirrors the palette's search row; answer rows REUSE .cmdk-row so the
+   two surfaces stay visually identical by construction. ---- */
+.abar-host {
+  margin: 12px 0 4px;
+}
+.abar-field {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  background: var(--glass-hover);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-panel, 14px);
+  transition: border-color 0.2s ease;
+}
+.abar-field:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--glass-border));
+}
+.abar-ic {
+  display: flex;
+  flex-shrink: 0;
+  color: var(--accent);
+  opacity: 0.9;
+}
+.abar-ic .ic {
+  width: 19px;
+  height: 19px;
+}
+.abar-input {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  color: var(--text-light);
+  font: inherit;
+  font-size: 0.98rem;
+  font-weight: 500;
+  letter-spacing: -0.01em;
+}
+.abar-input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.75;
+  font-weight: 400;
+}
+.abar-input::-webkit-search-cancel-button {
+  display: none; /* the bar draws its own ✕ */
+}
+.abar-count {
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.abar-clear {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  background: var(--glass-border);
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.abar.has-text .abar-clear {
+  display: flex;
+}
+.abar-panel {
+  margin-top: 6px;
+}
+.abar-panel:empty {
+  display: none;
+  margin: 0;
+}
+.abar-note {
+  padding: 4px 12px 2px;
+  font-size: 0.74rem;
+  color: var(--ok);
+}
+.abar-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 6px 2px 2px;
+}
+.abar-chip {
+  border: 1px solid var(--glass-border);
+  background: var(--glass-hover);
+  color: var(--text-light);
+  font-size: 0.8rem;
+  padding: 6px 12px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+.abar-chip:hover,
+.abar-chip:focus-visible {
+  border-color: var(--accent);
+}
+.abar-ambient .abar-chip {
+  color: var(--text-muted);
+}
+.abar-panel .cmdk-deep-cta {
+  margin: 6px 0 2px;
+}

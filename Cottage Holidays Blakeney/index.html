@@ -914,6 +914,12 @@
             </div>
         </div>
 
+        <!-- ASSIST BAR — the search brain embedded in the workspace: type a
+             guest name to live-filter the board below, or ask a question and
+             the answer appears inline. Injected by chbAssistBar() (admin.js)
+             so guests never download any of it. -->
+        <div id="abar-today" class="abar-host"></div>
+
         <!-- NEEDS YOU — the one prioritised to-do list: everything across the
              back office that's waiting on the owner (automation warnings,
              enquiries, balances to chase, deposits to return, chats,
@@ -2430,7 +2436,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=407"></script>
+    <script defer src="app.js?v=408"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
