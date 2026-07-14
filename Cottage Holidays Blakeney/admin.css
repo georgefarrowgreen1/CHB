@@ -1499,6 +1499,116 @@ body.owner-mode #mobileMenu {
   opacity: 0.72;
   padding: 15px 12px 5px;
 }
+/* ---- Deep Search ("search everything": full grouped/counted results) ---- */
+.cmdk-deep-cta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin: 8px 0 2px;
+  padding: 12px 14px;
+  background: var(--glass-hover);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-md);
+  color: var(--text-light);
+  font-size: 0.9rem;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+.cmdk-deep-cta:hover,
+.cmdk-deep-cta:focus-visible {
+  background: var(--btn-hover);
+}
+.cmdk-deep-cta-ic {
+  display: inline-flex;
+  color: var(--accent);
+  flex: 0 0 auto;
+}
+.cmdk-deep-cta-lbl {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cmdk-deep-cta .cmdk-qa-go {
+  margin-left: auto;
+  opacity: 0.6;
+}
+.cmdk-deep-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 4px 10px;
+  border-bottom: 1px solid var(--glass-border);
+  margin-bottom: 8px;
+}
+.cmdk-deep-title {
+  font-weight: 650;
+  color: var(--text-light);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cmdk-deep-total {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  flex: 0 0 auto;
+}
+.cmdk-deep-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 2px 2px 10px;
+}
+.cmdk-deep-chip {
+  flex: 0 0 auto;
+  font-size: 0.76rem;
+  padding: 5px 11px;
+  background: var(--glass-bg);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-pill);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.cmdk-deep-chip b {
+  color: var(--text-light);
+  font-weight: 700;
+  margin-left: 3px;
+}
+.cmdk-deep-chip.is-on {
+  background: var(--accent-soft);
+  border-color: transparent;
+  color: var(--text-light);
+}
+.cmdk-deep-chip.is-on b {
+  color: var(--text-light);
+}
+.cmdk-deep-count {
+  font-weight: 700;
+  color: var(--text-muted);
+  opacity: 0.7;
+  margin-left: 4px;
+}
+.cmdk-deep-more {
+  display: block;
+  width: 100%;
+  text-align: left;
+  margin: 2px 0 10px;
+  padding: 9px 12px;
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.cmdk-deep-more:hover {
+  text-decoration: underline;
+}
 /* Search scope switch — a segmented pill row that reads as part of the palette
    chrome (no opaque slab). Bleeds to the box edges (counters the .cmdk-results
    padding) with a hairline underline separating it from the results. */

@@ -21,7 +21,11 @@ if (mb_strlen($q) < 2) {
 }
 // Escape LIKE wildcards so a stray % / _ in the query is treated literally.
 $like = '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $q) . '%';
-$PER = 6; // per-source cap
+// DEEP mode (?deep) runs a heavier multi-term engine below; `expand` asks for one
+// source only (the "show more" load); the quick top-hits path is used otherwise.
+$deep = !empty($_GET['deep']) || !empty(body()['deep'] ?? null);
+$expand = preg_replace('/[^a-z]/', '', strtolower((string) ($_GET['expand'] ?? (body()['expand'] ?? ''))));
+$PER = 6; // per-source cap (quick mode)
 $results = [];
 $snip = function ($s, $n = 90) {
     $s = trim(preg_replace('/\s+/', ' ', (string) $s));
@@ -34,6 +38,117 @@ $src = function (callable $fn) {
         /* a missing table/column must never break the rest of the search */
     }
 };
+
+// ============================================================
+//  DEEP SEARCH (?deep) — the "search everything" mode behind the palette's quick
+//  top-hits. Differs from the quick path in four ways:
+//   • MULTI-TERM: every whitespace term must match SOME column (AND-of-ORs), so
+//     "smith deposit" finds the Smith booking whose note mentions a deposit.
+//   • COUNTS: each source reports its TOTAL match count (not just the shown page).
+//   • DEEPER: higher per-source cap; `expand=<type>` pages one source further.
+//   • SNIPPETS: body sources return a passage centred on the first matched term.
+//  Read-only; each source is still wrapped so one bad table can't sink the rest.
+// ============================================================
+if ($deep) {
+    $terms = array_slice(array_values(array_filter(preg_split('/\s+/', $q), fn($t) => $t !== '')), 0, 6);
+    if (!$terms) {
+        json_out(['ok' => true, 'deep' => true, 'results' => [], 'counts' => (object) []]);
+    }
+    $likes = array_map(fn($t) => '%' . str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $t) . '%', $terms);
+    // Build "(cA LIKE ? OR cB LIKE ?) AND (…)" + its bound params for a column set.
+    $wt = function (array $cols) use ($likes) {
+        $clauses = [];
+        $params = [];
+        foreach ($likes as $lk) {
+            $ors = [];
+            foreach ($cols as $c) {
+                $ors[] = "$c LIKE ?";
+                $params[] = $lk;
+            }
+            $clauses[] = '(' . implode(' OR ', $ors) . ')';
+        }
+        return [implode(' AND ', $clauses), $params];
+    };
+    // A ~120-char passage centred on the first matched term (so the match is visible).
+    $around = function ($s, $n = 120) use ($terms) {
+        $s = trim(preg_replace('/\s+/', ' ', (string) $s));
+        if ($s === '') {
+            return '';
+        }
+        $pos = false;
+        foreach ($terms as $t) {
+            $p = mb_stripos($s, $t);
+            if ($p !== false && ($pos === false || $p < $pos)) {
+                $pos = $p;
+            }
+        }
+        if ($pos === false || $pos <= $n / 3) {
+            return mb_strlen($s) > $n ? mb_substr($s, 0, $n - 1) . '…' : $s;
+        }
+        $start = max(0, (int) ($pos - $n / 3));
+        $out = '…' . mb_substr($s, $start, $n);
+        return mb_strlen($s) > $start + $n ? $out . '…' : $out;
+    };
+    // One descriptor per source: how to find it, present it, and (optionally) an
+    // `extra` WHERE fragment and a `snip` column for the matched passage.
+    $sources = [
+        ['type' => 'booking', 'from' => 'bookings', 'select' => 'id, prop_key, name, email, check_in',
+            'cols' => ['name', 'email', 'phone', 'address', 'postcode', 'notes', "CONCAT('chb-', LPAD(id, 6, '0'))"],
+            'order' => '(check_in >= CURDATE()) DESC, check_in ASC',
+            'map' => fn($b) => ['type' => 'booking', 'id' => (int) $b['id'], 'title' => $b['name'] ?: '(no name)',
+                'sub' => 'CHB-' . str_pad((string) $b['id'], 6, '0', STR_PAD_LEFT) . ' · ' . prop_display($b['prop_key'])['name'] . ($b['check_in'] ? ' · ' . uk_date($b['check_in']) : '')]],
+        ['type' => 'enquiry', 'from' => 'enquiries', 'select' => 'id, prop_key, name, email, message', 'cols' => ['name', 'email', 'message'], 'order' => 'id DESC',
+            'map' => fn($e) => ['type' => 'enquiry', 'id' => (int) $e['id'], 'title' => $e['name'] ?: '(no name)', 'sub' => 'Enquiry · ' . prop_display($e['prop_key'])['name'], 'snip' => $around($e['message'])]],
+        ['type' => 'guest', 'from' => 'guests', 'select' => 'id, name, email, phone', 'cols' => ['name', 'email', 'phone'], 'order' => 'id DESC',
+            'map' => fn($g) => ['type' => 'guest', 'id' => (int) $g['id'], 'email' => $g['email'], 'title' => $g['name'] ?: $g['email'], 'sub' => 'Guest account · ' . $g['email']]],
+        ['type' => 'message', 'from' => 'messages m LEFT JOIN chat_threads t ON t.id = m.thread_id LEFT JOIN guests g ON g.id = m.guest_id',
+            'select' => 'm.thread_id, m.body, m.sender_role, COALESCE(t.name, g.name) AS who', 'cols' => ['m.body', 'COALESCE(t.name, g.name)'], 'extra' => 'm.thread_id IS NOT NULL', 'order' => 'm.id DESC',
+            'map' => fn($m) => ['type' => 'message', 'thread_id' => (int) $m['thread_id'], 'title' => mb_substr(trim(preg_replace('/\s+/', ' ', (string) $m['body'])), 0, 90),
+                'sub' => 'Chat · ' . ($m['who'] ?: 'Visitor') . ($m['sender_role'] === 'admin' ? ' (you)' : ''), 'snip' => $around($m['body'])]],
+        ['type' => 'review', 'from' => 'guest_reviews', 'select' => 'id, prop_key, review_text', 'cols' => ['review_text'], 'order' => 'id DESC',
+            'map' => fn($r) => ['type' => 'review', 'id' => (int) $r['id'], 'title' => mb_substr(trim(preg_replace('/\s+/', ' ', (string) $r['review_text'])), 0, 90), 'sub' => 'Review · ' . prop_display($r['prop_key'])['name'], 'snip' => $around($r['review_text'])]],
+        ['type' => 'email', 'from' => 'mail_sent', 'select' => 'id, to_email, subject, body', 'cols' => ['subject', 'to_email', 'body'], 'order' => 'id DESC',
+            'map' => fn($m) => ['type' => 'email', 'id' => (int) $m['id'], 'title' => $m['subject'] ?: '(no subject)', 'sub' => 'Email · to ' . $m['to_email'], 'snip' => $around($m['body'])]],
+        ['type' => 'payment', 'from' => 'payments p LEFT JOIN bookings b ON b.id = p.booking_id', 'select' => 'p.id, p.booking_id, p.amount, p.kind, b.name',
+            'cols' => ['p.square_payment_id', 'CAST(p.amount AS CHAR)', 'b.name'], 'order' => 'p.id DESC',
+            'map' => fn($p) => ['type' => 'payment', 'booking_id' => (int) $p['booking_id'], 'title' => '£' . number_format((float) $p['amount'], 2) . ' ' . $p['kind'], 'sub' => 'Payment · ' . ($p['name'] ?: 'booking #' . $p['booking_id'])]],
+        ['type' => 'activity', 'from' => 'activity_log', 'select' => 'id, summary, category, created_at', 'cols' => ['summary'], 'order' => 'id DESC',
+            'map' => fn($a) => ['type' => 'activity', 'id' => (int) $a['id'], 'title' => mb_substr(trim(preg_replace('/\s+/', ' ', (string) $a['summary'])), 0, 90), 'sub' => 'Activity · ' . uk_date(substr((string) $a['created_at'], 0, 10)), 'snip' => $around($a['summary'])]],
+        ['type' => 'expense', 'from' => 'expenses', 'select' => 'id, category, description, amount, expense_date', 'cols' => ['category', 'description', 'CAST(amount AS CHAR)'], 'order' => 'expense_date DESC, id DESC',
+            'map' => fn($e) => ['type' => 'expense', 'id' => (int) $e['id'], 'title' => '£' . number_format((float) $e['amount'], 2) . ' · ' . ($e['category'] ?: 'Expense'), 'sub' => 'Expense · ' . ($e['expense_date'] ? uk_date($e['expense_date']) : ''), 'snip' => $around($e['description'])]],
+        ['type' => 'waitlist', 'from' => 'waitlist', 'select' => 'id, prop_key, name, email, check_in', 'cols' => ['name', 'email', 'note'], 'order' => 'id DESC',
+            'map' => fn($w) => ['type' => 'waitlist', 'id' => (int) $w['id'], 'title' => ($w['name'] ?: $w['email']) ?: 'Waitlist entry', 'sub' => 'Waitlist · ' . prop_display($w['prop_key'])['name'] . ($w['check_in'] ? ' · ' . uk_date($w['check_in']) : '')]],
+        ['type' => 'subscriber', 'from' => 'newsletter_subscribers', 'select' => 'id, email, name, unsubscribed_at', 'cols' => ['email', 'name'], 'order' => 'id DESC',
+            'map' => fn($s) => ['type' => 'subscriber', 'id' => (int) $s['id'], 'title' => $s['name'] ?: $s['email'], 'sub' => 'Subscriber · ' . $s['email'] . ($s['unsubscribed_at'] ? ' · unsubscribed' : '')]],
+        ['type' => 'experience', 'from' => 'experiences', 'select' => 'id, title, category, status, body', 'cols' => ['title', 'body', 'category'], 'order' => "(status = 'pending') DESC, id DESC",
+            'map' => fn($x) => ['type' => 'experience', 'id' => (int) $x['id'], 'title' => $x['title'] ?: '(untitled)', 'sub' => 'Experience · ' . ($x['category'] ?: 'Local') . ($x['status'] === 'pending' ? ' · awaiting approval' : ''), 'snip' => $around($x['body'] ?? '')]],
+    ];
+    $counts = [];
+    foreach ($sources as $s) {
+        if ($expand && $s['type'] !== $expand) {
+            continue;
+        }
+        $src(function () use (&$results, &$counts, $s, $wt, $expand) {
+            [$whereSql, $params] = $wt($s['cols']);
+            if (!empty($s['extra'])) {
+                $whereSql .= ' AND ' . $s['extra'];
+            }
+            $cap = $expand ? 60 : 20;
+            try {
+                $cst = db()->prepare('SELECT COUNT(*) FROM ' . $s['from'] . ' WHERE ' . $whereSql);
+                $cst->execute($params);
+                $counts[$s['type']] = (int) $cst->fetchColumn();
+            } catch (\Throwable $e) {
+            }
+            $st = db()->prepare('SELECT ' . $s['select'] . ' FROM ' . $s['from'] . ' WHERE ' . $whereSql . ' ORDER BY ' . $s['order'] . ' LIMIT ' . $cap);
+            $st->execute($params);
+            foreach ($st->fetchAll() as $row) {
+                $results[] = ($s['map'])($row);
+            }
+        });
+    }
+    json_out(['ok' => true, 'deep' => true, 'q' => $q, 'results' => $results, 'counts' => (object) $counts]);
+}
 
 // 1) Bookings — each stay is also its invoice. Name, email, phone, address, notes, ref.
 $src(function () use (&$results, $like, $PER, $q) {

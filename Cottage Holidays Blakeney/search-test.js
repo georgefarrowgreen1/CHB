@@ -241,6 +241,12 @@ if (typeof ctx.cmdkServerItem === 'function') {
     check('cmdkServerItem() is defined', false);
 }
 
+// ---- 8b. Deep Search ("search everything") entrypoints exist + reuse routing ----
+check(
+    'deep search fns are defined (open/close/filter/expand + renderer + cta)',
+    ['cmdkDeepOpen', 'cmdkDeepClose', 'cmdkDeepFilter', 'cmdkDeepExpand', 'cmdkRenderDeep', 'cmdkDeepApply', 'cmdkDeepCta'].every((f) => typeof ctx[f] === 'function'),
+);
+
 // ---- 9. Search scopes (ubiquity: pre-scope to the current workspace) ----
 check(
     'scope helpers are defined',
