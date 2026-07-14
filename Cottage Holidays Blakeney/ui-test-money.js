@@ -81,9 +81,10 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   console.log('1. dock button');
   const dock = await page.evaluate(() => {
     const b = document.querySelector('.admin-dock-btn[data-view="view-accounts"]');
-    return { exists: !!b, label: b ? b.getAttribute('data-label') : '', onclick: b ? b.getAttribute('onclick') : '' };
+    // Wiring is either the legacy inline onclick or the CSP-clean data-act delegation.
+    return { exists: !!b, label: b ? b.getAttribute('data-label') : '', onclick: b ? b.getAttribute('onclick') : '', act: b ? b.getAttribute('data-act') : '' };
   });
-  ok(dock.exists && dock.label === 'Payments' && /openAccounts/.test(dock.onclick), `Payments dock button present + wired (${dock.onclick})`);
+  ok(dock.exists && dock.label === 'Payments' && /openAccounts/.test(dock.onclick || dock.act), `Payments dock button present + wired (${dock.onclick || dock.act})`);
   await page.evaluate(() => document.querySelector('.admin-dock-btn[data-view="view-accounts"]').click());
   await page.waitForTimeout(1100);
   const nav1 = await page.evaluate(() => ({
