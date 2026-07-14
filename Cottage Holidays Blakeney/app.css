@@ -2311,7 +2311,7 @@ a.card {
   margin-top: 8px;
   font-size: 0.74rem;
   font-weight: 600;
-  color: var(--ok);
+  color: var(--ok-text);
   background: rgba(76, 175, 80, 0.12);
   border: 1px solid rgba(76, 175, 80, 0.35);
   border-radius: var(--r-pill);
@@ -2535,7 +2535,7 @@ a.card {
 .enq-cancel-note .ic {
   width: 18px;
   height: 18px;
-  color: var(--ok);
+  color: var(--ok-text);
   flex-shrink: 0;
   margin-top: 1px;
 }
@@ -2654,7 +2654,7 @@ a.card {
 .pay-done-tick .ic {
   width: 64px;
   height: 64px;
-  color: var(--ok);
+  color: var(--ok-text);
 }
 /* Desktop: make use of the wider screen — order summary beside the card form
            (the narrow single column is kept on phones, where it reads as a clean
@@ -3407,7 +3407,7 @@ body.light-mode .tag-pimpernel {
   white-space: nowrap;
 }
 .chat-receipt.seen {
-  color: var(--ok);
+  color: var(--ok-text);
   opacity: 0.95;
 }
 /* Live "typing…" bubble (three bouncing dots), styled like a received message. */
@@ -3705,7 +3705,7 @@ body.light-mode .tag-pimpernel {
   line-height: 1;
 }
 .chat-attach-x:hover {
-  color: var(--danger);
+  color: var(--danger-text);
   border-color: var(--danger);
 }
 /* Quick-reply chips: one tidy swipeable row (no ragged wrapping) */
@@ -4019,7 +4019,7 @@ body.light-mode .tag-pimpernel {
   display: inline-block;
   vertical-align: middle;
   background: rgba(255, 183, 77, 0.16);
-  color: var(--warn);
+  color: var(--warn-text);
   font-size: 0.62rem;
   font-weight: 700;
   letter-spacing: 0.3px;
@@ -4545,7 +4545,7 @@ body.owner-mode .chat-widget {
   font-weight: 600;
   letter-spacing: 0.01em;
   background: rgba(76, 175, 80, 0.13);
-  color: var(--ok);
+  color: var(--ok-text);
   border: 1px solid rgba(76, 175, 80, 0.28);
 }
 .repeat-badge .ic {
@@ -4809,7 +4809,7 @@ body.owner-mode .chat-widget {
 .cron-alert .ic {
   width: 22px;
   height: 22px;
-  color: var(--danger);
+  color: var(--danger-text);
   flex-shrink: 0;
   margin-top: 1px;
 }
@@ -4862,7 +4862,7 @@ body.owner-mode .chat-widget {
   font-weight: 550;
   cursor: pointer;
   background: rgba(76, 175, 80, 0.12);
-  color: var(--ok);
+  color: var(--ok-text);
   border-color: rgba(76, 175, 80, 0.3);
   transition: filter var(--fluid-bezier, ease) 0.2s;
 }
@@ -4871,18 +4871,18 @@ body.owner-mode .chat-widget {
 }
 .cron-pill.warn {
   background: rgba(255, 167, 38, 0.14);
-  color: var(--warn);
+  color: var(--warn-text);
   border-color: rgba(255, 167, 38, 0.35);
 }
 /* Explicit healthy state (same as the base green) + a red hard-failure state. */
 .cron-pill.ok {
   background: rgba(76, 175, 80, 0.12);
-  color: var(--ok);
+  color: var(--ok-text);
   border-color: rgba(76, 175, 80, 0.3);
 }
 .cron-pill.danger {
   background: rgba(229, 57, 53, 0.14);
-  color: var(--danger);
+  color: var(--danger-text);
   border-color: rgba(229, 57, 53, 0.38);
 }
 .cron-pill-dot {
@@ -5043,11 +5043,11 @@ body.owner-mode .chat-widget {
   flex-shrink: 0;
 }
 .act-sev--warn {
-  color: var(--warn);
+  color: var(--warn-text);
   background: color-mix(in srgb, var(--warn) 16%, transparent);
 }
 .act-sev--action {
-  color: var(--danger);
+  color: var(--danger-text);
   background: color-mix(in srgb, var(--danger) 16%, transparent);
 }
 .sg-table {
@@ -5703,7 +5703,7 @@ body.admin-screen .site-footer {
   background: var(--danger);
 }
 .pipe-step.is-done {
-  color: var(--ok);
+  color: var(--ok-text);
   background: rgba(76, 175, 80, 0.1);
   border-color: rgba(76, 175, 80, 0.26);
 }
@@ -5711,7 +5711,7 @@ body.admin-screen .site-footer {
   background: var(--ok);
 }
 .pipe-step.is-now {
-  color: var(--warn);
+  color: var(--warn-text);
   background: rgba(255, 167, 38, 0.12);
   border-color: rgba(255, 167, 38, 0.3);
 }
@@ -5721,7 +5721,7 @@ body.admin-screen .site-footer {
 /* The "Staying" stage reads GREEN while the guest is actually in-house (a live
    "here now" state), not the amber in-progress colour. */
 .pipe-step.is-now.is-staying {
-  color: var(--ok);
+  color: var(--ok-text);
   background: rgba(76, 175, 80, 0.13);
   border-color: rgba(76, 175, 80, 0.3);
 }
@@ -5859,7 +5859,7 @@ body.admin-screen .site-footer {
 .mav-clash {
   margin-top: 8px;
   font-size: 0.78rem;
-  color: var(--warn);
+  color: var(--warn-text);
 }
 
 
@@ -6749,7 +6749,7 @@ body.admin-screen .site-footer {
   flex-shrink: 0;
 }
 .bkflow-step.is-done {
-  color: var(--ok);
+  color: var(--ok-text);
   background: rgba(76, 175, 80, 0.13);
   border-color: rgba(76, 175, 80, 0.26);
 }
@@ -6776,7 +6776,7 @@ body.admin-screen .site-footer {
 }
 /* Green while the guest is actually staying (matches the owner's pipeline). */
 .bkflow-step.is-now.is-staying {
-  color: var(--ok);
+  color: var(--ok-text);
   background: rgba(76, 175, 80, 0.14);
   border-color: rgba(76, 175, 80, 0.3);
 }
@@ -7287,10 +7287,10 @@ body.admin-screen .site-footer {
   flex-shrink: 0;
 }
 .toast.toast-mini.toast-err .ic {
-  color: var(--danger);
+  color: var(--danger-text);
 }
 .toast.toast-mini .ic {
-  color: var(--ok);
+  color: var(--ok-text);
 }
 .toggle-btn {
   background: transparent;
@@ -8651,7 +8651,7 @@ body.light-mode .datepicker-pop {
 }
 .hs-banner-red {
   background: rgba(229, 115, 115, 0.16);
-  color: var(--danger);
+  color: var(--danger-text);
   border-color: rgba(229, 115, 115, 0.4);
 }
 @media (max-width: 640px) {
@@ -9345,6 +9345,6 @@ body.light-mode .hero-scroll-cue {
 }
 .notify-remove:hover {
   background: rgba(229, 115, 115, 0.14);
-  color: var(--danger);
+  color: var(--danger-text);
   border-color: var(--danger);
 }
