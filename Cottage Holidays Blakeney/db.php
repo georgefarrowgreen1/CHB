@@ -649,6 +649,12 @@ function is_internal_content_key($key)
         'uptime-history',
         'error-alert-last',
         'self-repair-state',
+        // The search assistant's cross-device learning (admin.js chbAssistSync*):
+        // owner-taught phrasings, suppressed phrasings and the dead-end query
+        // list. Owner-behaviour data — never exposed to public visitors.
+        'nlu-learned',
+        'nlu-suppressed',
+        'search-misses',
     ], true);
 }
 

@@ -94,7 +94,12 @@ if ($action === 'set') {
                    ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = CURRENT_TIMESTAMP',
         )
         ->execute([$key, $value]);
-    log_activity('content', 'content.set', 'Website content updated: ' . $key, ['entity' => 'content', 'entity_id' => $key]);
+    // The search assistant's sync keys update quietly in the background on every
+    // taught phrasing / dead-end — logging each write would drown the activity
+    // feed. Real content edits keep their audit line.
+    if (!in_array($key, ['nlu-learned', 'nlu-suppressed', 'search-misses'], true)) {
+        log_activity('content', 'content.set', 'Website content updated: ' . $key, ['entity' => 'content', 'entity_id' => $key]);
+    }
     json_out(['ok' => true]);
 }
 
