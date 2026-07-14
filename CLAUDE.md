@@ -99,6 +99,22 @@ via `settingsOpen(id)` → `#sec-<id>`; the health/cron pills + Activity log liv
 here). `ADMIN_VIEWS` is the
 canonical admin-screen list (used by `nav()`/`forceAdminLogout()`) — keep it complete.
 The two dock pips both show `enquiries.length`, synced from `refreshInboxBadge()`.
+**Assist Bars** — the palette's brain embedded IN workspaces: `chbAssistBar(hostId, opts)`
+(admin.js) injects a knot+input bar into static host divs (`#abar-today` top of the Today
+operations workspace, `#abar-inbox` above the Inbox folder switch / atop the list column at
+≥1200px), registered in `chbAssistInitBars()` (admin boot footer — guests never load any of
+it). Routing per keystroke is WORKSPACE-FIRST: terms matching the board's `[data-search]`
+rows live-filter (shared dim machinery; count in the bar; the palette's "filter this
+workspace" adopts INTO the bar via `abarAdopt`, so no floating banner where a bar exists;
+the Inbox bar adds per-folder `.ifold-match` pills + hides the unread chips while
+filtering); otherwise `cmdkBuildResults()` answers INLINE with the palette's own rows
+(chips/actions/`_nlu` learning intact); zero matches → deep-search CTA + ask chips. Full
+intelligence parity: per-bar green `ml-active` knot / orange `ml-learning` flash, walk-away
+(focusout) dead-end capture into the shared miss store, `__cmdkConvCtx` carries across
+bars↔palette, and a per-bar mic via `chbVoiceStart()` (one recognition session shared;
+final dictations get spoken answers). Suites: `ui-test-assist-{today,inbox,parity}.js`;
+the layout gate asserts both bars render.
+
 **Hubs are where you act; index rows are where you find.** The **booking hub**
 (`view-booking-hub`) is the ONE home per booking — `showDetails()` (app.js) only
 delegates to `openBookingHub()` (admin.js): status pipeline + next action, money,
