@@ -171,6 +171,10 @@ chbAct('routeLink', function (el, event) {
 chbAct('openTerms', function (el, event) {
     if (typeof openTermsModal === 'function') openTermsModal(event);
 });
+// Terms for a specific cottage: openTermsModal(event, propKey).
+chbAct('openTermsProp', function (el, event) {
+    if (typeof openTermsModal === 'function') openTermsModal(event, el.dataset.prop);
+});
 // Lightbox prev/next: stop the click reaching the backdrop-close, then step.
 chbAct('lightboxNav', function (el, event) {
     event.stopPropagation();
@@ -231,6 +235,11 @@ chbAct('clickTarget', function (el) {
 chbAct('reload', function () {
     location.reload();
 });
+// Gallery grid keyboard nav: ggKey wants (event, index) in that order, so a
+// registered action rather than data-pass (which appends last).
+chbAct('ggKey', function (el, event) {
+    if (typeof ggKey === 'function') ggKey(event, chbArgVal(el.dataset.arg));
+});
 // Waitlist from the front page (object arg → current front property).
 chbAct('openWaitlistHere', function () {
     if (typeof openWaitlistModal === 'function') openWaitlistModal({ prop: window.activeFrontProperty });
@@ -245,6 +254,22 @@ function chbArgVal(raw) {
     if (/^-?\d+$/.test(raw)) return Number(raw);
     return raw;
 }
+// Escape a string for use inside a SINGLE-quoted HTML attribute (so a JSON blob
+// carrying attacker-influenced data — e.g. a guest email — can't break out of the
+// attribute). Single-quoted, so `"` is safe literally; escape & ' < >.
+function chbEscAttr(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+// Render-time helper for DYNAMIC (innerHTML) handlers: returns the delegation
+// attributes for a click action, carrying its args as a typed JSON list. Replaces
+// `onclick="fn(a,b)"` with `${chbAttrs('fn', a, b)}` — types survive exactly
+// (String() a formerly-quoted arg to keep it a string). Use data-act-* + this
+// helper's data-args for non-click events.
+function chbAttrs(name, ...args) {
+    let out = 'data-act="' + name + '"';
+    if (args.length) out += " data-args='" + chbEscAttr(JSON.stringify(args)) + "'";
+    return out;
+}
 function chbRunAct(el, name, event) {
     let r;
     const fn = CHB_ACTIONS[name];
@@ -257,10 +282,18 @@ function chbRunAct(el, name, event) {
         // or the event) LAST, matching handlers like fn('key', this.value). With
         // none present this is the bare `fn()` case from phase 1.
         const ds = el.dataset;
-        const args = [];
-        if ('arg' in ds) args.push(chbArgVal(ds.arg));
-        if ('arg2' in ds) args.push(chbArgVal(ds.arg2));
-        if ('arg3' in ds) args.push(chbArgVal(ds.arg3));
+        let args = [];
+        if ('args' in ds) {
+            // JSON arg list — carries EXACT types (string "5" vs number 5),
+            // authored by chbAttrs() for dynamic (innerHTML) handlers where a
+            // coerced data-arg could change a `===` comparison.
+            try { args = JSON.parse(ds.args); } catch (e) { args = []; }
+            if (!Array.isArray(args)) args = [];
+        } else {
+            if ('arg' in ds) args.push(chbArgVal(ds.arg));
+            if ('arg2' in ds) args.push(chbArgVal(ds.arg2));
+            if ('arg3' in ds) args.push(chbArgVal(ds.arg3));
+        }
         if ('pass' in ds) {
             const p = ds.pass;
             args.push(p === 'value' ? el.value : p === 'checked' ? el.checked : p === 'files' ? el.files : p === 'self' ? el : p === 'event' ? event : undefined);
@@ -1779,7 +1812,7 @@ function renderGallery(images) {
     track.innerHTML = list
         .map(
             (src, i) =>
-                `<div class="gallery-slide" id="prop-img-${i}" data-bg="${escapeHtml(src)}" role="img" aria-label="Photo ${i + 1} of ${list.length} — ${escapeHtml(galName)}" onclick="openLightbox(${i})"></div>`,
+                `<div class="gallery-slide" id="prop-img-${i}" data-bg="${escapeHtml(src)}" role="img" aria-label="Photo ${i + 1} of ${list.length} — ${escapeHtml(galName)}" ${chbAttrs('openLightbox', i)}></div>`,
         )
         .join('');
     // Clamp index in case photos were removed
@@ -1820,12 +1853,12 @@ function renderGalleryGrid(list) {
     let html = imgs
         .map(
             (src, i) =>
-                `<div class="gg-cell${i === 0 ? big : ''}" style="background-image:url('${escapeHtml(resizedUrl(src, i === 0 ? 1000 : 560))}')" role="button" tabindex="0" aria-label="Photo ${i + 1} of ${n} — ${escapeHtml(ggName)}" onclick="openLightbox(${i})" onkeydown="ggKey(event, ${i})"></div>`,
+                `<div class="gg-cell${i === 0 ? big : ''}" style="background-image:url('${escapeHtml(resizedUrl(src, i === 0 ? 1000 : 560))}')" role="button" tabindex="0" aria-label="Photo ${i + 1} of ${n} — ${escapeHtml(ggName)}" ${chbAttrs('openLightbox', i)} data-act-keydown="ggKey" data-arg="${i}"></div>`,
         )
         .join('');
     const total = Array.isArray(list) ? list.filter(Boolean).length : 0;
     if (total > 5)
-        html += `<button type="button" class="gg-showall" onclick="openLightbox(0)">Show all ${total} photos</button>`;
+        html += `<button type="button" class="gg-showall" data-act="openLightbox" data-arg="0">Show all ${total} photos</button>`;
     grid.innerHTML = html;
 }
 // Keyboard support for the gallery grid cells (role="button", tabindex="0"):
@@ -1941,7 +1974,7 @@ function injectPreviewBanner() {
     const bar = document.createElement('div');
     bar.id = 'preview-banner';
     bar.innerHTML = `<span>Preview mode — viewing the site as a guest. Nothing you do here is saved.</span>
-                <button type="button" onclick="exitPreview()">Exit preview</button>`;
+                <button type="button" data-act="exitPreview">Exit preview</button>`;
     document.body.appendChild(bar);
     document.body.classList.add('has-preview-banner');
 }
@@ -2718,7 +2751,7 @@ async function loadPasskeys() {
                     k,
                 ) => `<div style="display:flex;justify-content:space-between;align-items:center;border:1px solid var(--glass-border);border-radius:10px;padding:10px 14px;margin-bottom:8px;">
                     <span style="font-size:0.88rem;">${escapeHtml(k.label || 'Passkey')}<span style="color:var(--text-muted);font-size:0.75rem;"> · added ${(k.created_at || '').split(' ')[0]}</span></span>
-                    <button class="btn-sm btn-decline" onclick="deletePasskey(${k.id})">Remove</button>
+                    <button class="btn-sm btn-decline" ${chbAttrs('deletePasskey', k.id)}>Remove</button>
                 </div>`,
             )
             .join('');
@@ -2841,7 +2874,7 @@ async function renderGuestBookings() {
         list.innerHTML = `<div class="glass-panel guest-empty">
                     <p style="font-size:1.3rem;font-weight:600;margin-bottom:8px;">No Bookings Yet</p>
                     <p style="font-size:0.95rem;">Once you book one of our cottages, it will appear here.</p>
-                    <button class="btn-glass" style="margin-top:20px;" onclick="nav('view-cottages')">Browse Cottages</button>
+                    <button class="btn-glass" style="margin-top:20px;" data-act="nav" data-view="view-cottages">Browse Cottages</button>
                 </div>`;
         return;
     }
@@ -2891,7 +2924,7 @@ async function renderGuestBookings() {
                             })}
                             </div>
                             <div class="card-actions">
-                                <button class="btn-sm btn-edit" onclick="openTermsModal(event, '${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h9a3 3 0 0 1 3 3v13H9a3 3 0 0 1-3-3z"/><path d="M6 17h12"/></svg> Terms</button>
+                                <button class="btn-sm btn-edit" data-act="openTermsProp" data-prop="${propKey}"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h9a3 3 0 0 1 3 3v13H9a3 3 0 0 1-3-3z"/><path d="M6 17h12"/></svg> Terms</button>
                                 ${faqBlockHtml(propKey)}
                             </div>
                         </div>
@@ -2954,13 +2987,13 @@ async function renderGuestBookings() {
                             </div>
                             ${upcoming ? guestFlowHtml(propKey, b, payToken) : ''}
                             <div class="card-actions">
-                                ${upcoming && !gt.fullyPaid && payToken ? `<button class="btn-glass btn-sm" style="background:rgba(76,175,80,0.22);border-color:var(--booked-border);" onclick="openPayView('${payToken}', ${b.dbId}, 'balance')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay balance ${gbp(gt.balance)}</button>` : ''}
-                                <button class="btn-sm btn-edit" onclick="downloadInvoice('${b.id}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v10M8 11l4 4 4-4M5 19h14"/></svg> Invoice</button>
-                                <button class="btn-sm btn-edit" onclick="addBookingToCalendar('${b.id}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg> Add to Calendar</button>
-                                <button class="btn-sm btn-edit" onclick="openTermsModal(event, '${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h9a3 3 0 0 1 3 3v13H9a3 3 0 0 1-3-3z"/><path d="M6 17h12"/></svg> Terms</button>
+                                ${upcoming && !gt.fullyPaid && payToken ? `<button class="btn-glass btn-sm" style="background:rgba(76,175,80,0.22);border-color:var(--booked-border);" ${chbAttrs('openPayView', String(payToken), b.dbId, 'balance')}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay balance ${gbp(gt.balance)}</button>` : ''}
+                                <button class="btn-sm btn-edit" ${chbAttrs('downloadInvoice', String(b.id))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v10M8 11l4 4 4-4M5 19h14"/></svg> Invoice</button>
+                                <button class="btn-sm btn-edit" ${chbAttrs('addBookingToCalendar', String(b.id))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg> Add to Calendar</button>
+                                <button class="btn-sm btn-edit" data-act="openTermsProp" data-prop="${propKey}"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h9a3 3 0 0 1 3 3v13H9a3 3 0 0 1-3-3z"/><path d="M6 17h12"/></svg> Terms</button>
                                 ${upcoming ? faqBlockHtml(propKey) : ''}
                                 ${upcoming ? guestWelcomeButton(propKey) : ''}
-                                ${!upcoming ? `<button class="btn-sm btn-edit" onclick="rebookCottage('${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 21v-5h5"/></svg> Book again</button>` : ''}
+                                ${!upcoming ? `<button class="btn-sm btn-edit" ${chbAttrs('rebookCottage', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 21v-5h5"/></svg> Book again</button>` : ''}
                                 ${!upcoming && !reviewShown.has(propKey) && reviewShown.add(propKey) ? guestReviewButton(propKey) : ''}
                                 ${!upcoming && !photoShown.has(propKey) && photoShown.add(propKey) ? guestPhotoButton(propKey) : ''}
                             </div>
@@ -2992,11 +3025,11 @@ async function renderGuestBookings() {
                         </div>
                         <div class="instay-tides" style="margin-top:12px;"></div>
                         <div class="hub-grid">
-                            <button class="hub-tile" onclick="openCottageDirections('${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6.5-5.5-6.5-10a6.5 6.5 0 0 1 13 0c0 4.5-6.5 10-6.5 10z"/><circle cx="12" cy="11" r="2.2"/></svg><span>Directions</span></button>
-                            <button class="hub-tile" onclick="openWelcomeBook('${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h6v18H6a2 2 0 0 1-2-2z"/><path d="M20 5a2 2 0 0 0-2-2h-6v18h6a2 2 0 0 0 2-2z"/></svg><span>Welcome book</span></button>
-                            <button class="hub-tile" onclick="openFaqModal('${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 0 1 4.5 1.5c0 1.7-2 2-2 3.2"/><path d="M12 17h.01"/></svg><span>Good to know</span></button>
-                            <button class="hub-tile" onclick="toggleChat()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/></svg><span>Contact host</span></button>
-                            <button class="hub-tile" onclick="openTermsModal(event, '${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h9a3 3 0 0 1 3 3v13H9a3 3 0 0 1-3-3z"/><path d="M6 17h12"/></svg><span>Terms</span></button>
+                            <button class="hub-tile" ${chbAttrs('openCottageDirections', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6.5-5.5-6.5-10a6.5 6.5 0 0 1 13 0c0 4.5-6.5 10-6.5 10z"/><circle cx="12" cy="11" r="2.2"/></svg><span>Directions</span></button>
+                            <button class="hub-tile" ${chbAttrs('openWelcomeBook', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h6v18H6a2 2 0 0 1-2-2z"/><path d="M20 5a2 2 0 0 0-2-2h-6v18h6a2 2 0 0 0 2-2z"/></svg><span>Welcome book</span></button>
+                            <button class="hub-tile" ${chbAttrs('openFaqModal', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 0 1 4.5 1.5c0 1.7-2 2-2 3.2"/><path d="M12 17h.01"/></svg><span>Good to know</span></button>
+                            <button class="hub-tile" data-act="toggleChat"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/></svg><span>Contact host</span></button>
+                            <button class="hub-tile" data-act="openTermsProp" data-prop="${propKey}"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h9a3 3 0 0 1 3 3v13H9a3 3 0 0 1-3-3z"/><path d="M6 17h12"/></svg><span>Terms</span></button>
                         </div>
                     </div>`);
         }
@@ -3011,7 +3044,7 @@ async function renderGuestBookings() {
         !hubCards.length && !pendingHtml && !upcomingCards.length && !pastCards.length
             ? `<div class="glass-panel" style="text-align:center;padding:34px 22px;">
                     <p style="margin:0 0 16px;color:var(--text-muted);">No stays yet — your bookings and enquiries will appear here.</p>
-                    <button class="btn-glass" onclick="nav('view-cottages')">Browse the cottages</button>
+                    <button class="btn-glass" data-act="nav" data-view="view-cottages">Browse the cottages</button>
                </div>`
             : '';
     list.innerHTML =
@@ -3702,7 +3735,7 @@ function renderNotifyEmails(primary, extras) {
     const extraRows = (extras || [])
         .map(
             (e) =>
-                `<div class="notify-row"><span class="notify-addr">${escapeHtml(e)}</span><button class="notify-remove" onclick="removeNotifyEmail('${escapeHtml(e).replace(/'/g, "\\'")}')" aria-label="Remove ${escapeHtml(e)}" title="Remove">&times;</button></div>`,
+                `<div class="notify-row"><span class="notify-addr">${escapeHtml(e)}</span><button class="notify-remove" ${chbAttrs('removeNotifyEmail', e)} aria-label="Remove ${escapeHtml(e)}" title="Remove">&times;</button></div>`,
         )
         .join('');
     box.innerHTML = primaryRow + extraRows;
@@ -3724,19 +3757,19 @@ function guestReviewButton(propKey) {
     const existing = myGuestReviews[propKey];
     const meta = propertyMeta[propKey] || { name: propKey };
     if (!existing)
-        return `<button class="btn-sm btn-edit" onclick="toggleGuestReview('${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.9l-5.2 2.6.99-5.78-4.21-4.1 5.82-.85z" fill="currentColor" stroke="none"/></svg> Review your stay</button>`;
+        return `<button class="btn-sm btn-edit" ${chbAttrs('toggleGuestReview', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.9l-5.2 2.6.99-5.78-4.21-4.1 5.82-.85z" fill="currentColor" stroke="none"/></svg> Review your stay</button>`;
     if (existing.status === 'approved')
-        return `<button class="btn-sm btn-edit" onclick="toggleGuestReview('${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.9l-5.2 2.6.99-5.78-4.21-4.1 5.82-.85z" fill="currentColor" stroke="none"/></svg> Edit your review</button>`;
+        return `<button class="btn-sm btn-edit" ${chbAttrs('toggleGuestReview', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.9l-5.2 2.6.99-5.78-4.21-4.1 5.82-.85z" fill="currentColor" stroke="none"/></svg> Edit your review</button>`;
     if (existing.status === 'pending')
-        return `<button class="btn-sm btn-edit" onclick="toggleGuestReview('${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.9l-5.2 2.6.99-5.78-4.21-4.1 5.82-.85z" fill="currentColor" stroke="none"/></svg> Review submitted</button>`;
-    return `<button class="btn-sm btn-edit" onclick="toggleGuestReview('${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.9l-5.2 2.6.99-5.78-4.21-4.1 5.82-.85z" fill="currentColor" stroke="none"/></svg> Edit your review</button>`;
+        return `<button class="btn-sm btn-edit" ${chbAttrs('toggleGuestReview', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.9l-5.2 2.6.99-5.78-4.21-4.1 5.82-.85z" fill="currentColor" stroke="none"/></svg> Review submitted</button>`;
+    return `<button class="btn-sm btn-edit" ${chbAttrs('toggleGuestReview', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 16.9l-5.2 2.6.99-5.78-4.21-4.1 5.82-.85z" fill="currentColor" stroke="none"/></svg> Edit your review</button>`;
 }
 function guestPhotoButton(propKey) {
-    return `<button class="btn-sm btn-edit" onclick="openPhotoUpload('${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.5"/><path d="M8 6l1.5-2h5L16 6"/></svg> Share a photo</button>`;
+    return `<button class="btn-sm btn-edit" ${chbAttrs('openPhotoUpload', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.5"/><path d="M8 6l1.5-2h5L16 6"/></svg> Share a photo</button>`;
 }
 // ---- In-stay welcome book (guest, booking-gated) ----
 function guestWelcomeButton(propKey) {
-    return `<button class="btn-sm btn-edit" onclick="openWelcomeBook('${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H19v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 5.5V20.5"/></svg> Welcome book</button>`;
+    return `<button class="btn-sm btn-edit" ${chbAttrs('openWelcomeBook', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H19v15H6.5A2.5 2.5 0 0 0 4 20.5z"/><path d="M4 5.5V20.5"/></svg> Welcome book</button>`;
 }
 async function openWelcomeBook(propKey) {
     const meta = propertyMeta[propKey] || { name: propKey };
@@ -3861,7 +3894,7 @@ function guestReviewForm(propKey) {
                     <select id="grf-stars-${propKey}" class="input-glass field-sm" style="margin-bottom:10px;">${starOpts}</select>
                     <textarea id="grf-text-${propKey}" rows="3" maxlength="1000" class="input-glass field-sm" placeholder="How was your stay at ${escapeHtml(meta.name)}?">${existing ? escapeHtml(existing.text) : ''}</textarea>
                     <div style="display:flex;gap:10px;align-items:center;margin-top:10px;">
-                        <button class="btn-glass" style="padding:10px 22px;" onclick="submitGuestReview('${propKey}')">Submit review</button>
+                        <button class="btn-glass" style="padding:10px 22px;" ${chbAttrs('submitGuestReview', String(propKey))}>Submit review</button>
                         <span style="font-size:0.72rem;color:var(--text-muted);">Your review will appear on our site shortly.</span>
                     </div>
                 </div>
@@ -5303,7 +5336,7 @@ async function renderGuestPhotos(propKey) {
                 const label = escapeHtml(
                     p.caption || 'Guest photo at ' + ((propertyMeta[propKey] || {}).name || ''),
                 );
-                return `<div class="guest-photo" role="button" tabindex="0" aria-label="${label}" data-photo="${escapeHtml(data)}" onclick="openPhotoLightbox(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openPhotoLightbox(this)}"><img loading="lazy" src="${escapeHtml(p.url)}" alt="${label}">${cap}</div>`;
+                return `<div class="guest-photo" role="button" tabindex="0" aria-label="${label}" data-photo="${escapeHtml(data)}" data-act="openPhotoLightbox" data-pass="self" data-act-keydown="activate"><img loading="lazy" src="${escapeHtml(p.url)}" alt="${label}">${cap}</div>`;
             })
             .join('');
         section.style.display = '';
@@ -6454,7 +6487,7 @@ async function loadBookingPayments(bookingId) {
                 const live = p.status === 'COMPLETED' || p.status === 'APPROVED';
                 const refundBtn =
                     isCharge && live && !refundOff
-                        ? `<button class="btn-sm btn-decline" style="padding:4px 10px;font-size:0.72rem;" onclick="refundPayment('${bookingId}','${p.square_payment_id}',${parseFloat(p.amount)})">Refund</button>`
+                        ? `<button class="btn-sm btn-decline" style="padding:4px 10px;font-size:0.72rem;" ${chbAttrs('refundPayment', String(bookingId), String(p.square_payment_id), parseFloat(p.amount))}>Refund</button>`
                         : '';
                 const isReturn = p.kind === 'refund' || p.kind === 'damages_return';
                 const label =
@@ -7055,7 +7088,7 @@ function chatAvailStart() {
         "Pick a cottage and your dates — I'll check the live calendar right now." +
             `<select id="${uid}-prop" class="input-glass field-sm">${opts}</select>` +
             `<div style="display:flex;gap:8px;"><input type="date" id="${uid}-ci" class="input-glass field-sm" min="${today}" aria-label="Check-in"><input type="date" id="${uid}-co" class="input-glass field-sm" min="${today}" aria-label="Check-out"></div>` +
-            `<div class="chat-bot-actions"><button type="button" class="btn-glass" onclick="chatAvailRun('${uid}')">Check dates</button></div>`,
+            `<div class="chat-bot-actions"><button type="button" class="btn-glass" ${chbAttrs('chatAvailRun', String(uid))}>Check dates</button></div>`,
     );
 }
 async function chatAvailRun(uid) {
@@ -7081,12 +7114,12 @@ async function chatAvailRun(uid) {
     if (clash) {
         chatBot(
             `Sorry — ${escapeHtml(name)} isn't available for ${span}; those dates overlap an existing booking. Try different dates, or I can let you know if they become available.` +
-                `<div class="chat-bot-actions"><button type="button" class="btn-glass" onclick="chatAvailNotify('${prop}','${ci}','${co}')">Notify me</button></div>`,
+                `<div class="chat-bot-actions"><button type="button" class="btn-glass" ${chbAttrs('chatAvailNotify', String(prop), String(ci), String(co))}>Notify me</button></div>`,
         );
     } else {
         chatBot(
             `Good news — ${escapeHtml(name)} looks free for ${span} (${nm} night${nm === 1 ? '' : 's'}). Shall I start your enquiry? No payment is taken now.` +
-                `<div class="chat-bot-actions"><button type="button" class="btn-glass" onclick="chatAvailEnquire('${prop}','${ci}','${co}')">Enquire now</button></div>`,
+                `<div class="chat-bot-actions"><button type="button" class="btn-glass" ${chbAttrs('chatAvailEnquire', String(prop), String(ci), String(co))}>Enquire now</button></div>`,
         );
     }
 }
@@ -7299,8 +7332,8 @@ function bookingCtxHtml(bookings) {
             const actions =
                 upcoming && b.id
                     ? `<div class="mc-actions">
-                        <button class="btn-sm btn-edit" onclick="chatSendArrival(${b.id})">Send arrival info</button>
-                        ${owed ? `<button class="btn-sm btn-edit" onclick="chatSendBalance(${b.id})">Send balance link</button>` : ''}
+                        <button class="btn-sm btn-edit" ${chbAttrs('chatSendArrival', b.id)}>Send arrival info</button>
+                        ${owed ? `<button class="btn-sm btn-edit" ${chbAttrs('chatSendBalance', b.id)}>Send balance link</button>` : ''}
                        </div>`
                     : '';
             return `<div class="mc-row"><span class="mc-k">Booking</span><span class="mc-v">${escapeHtml(bookingLine(b))}${actions}</span></div>`;
@@ -7534,10 +7567,10 @@ function accomPhotoRow(k, url, i, n) {
                 <div class="exp-edit-thumb" style="background-image:url('${escapeHtml(url)}');"></div>
                 <div class="accom-photo-label">Photo ${i + 1}${i === 0 ? ' <span style="color:var(--accent);">· main</span>' : ''}</div>
                 <div class="accom-photo-actions">
-                    <button class="btn-sm btn-edit" onclick="accomMovePhoto('${k}',${i},-1)" ${i === 0 ? 'disabled' : ''} aria-label="Move up">↑</button>
-                    <button class="btn-sm btn-edit" onclick="accomMovePhoto('${k}',${i},1)" ${i === n - 1 ? 'disabled' : ''} aria-label="Move down">↓</button>
-                    <button class="btn-sm btn-edit" onclick="accomReplacePhoto('${k}',${i})">Replace</button>
-                    <button class="btn-sm btn-delete" onclick="accomRemovePhoto('${k}',${i})">Remove</button>
+                    <button class="btn-sm btn-edit" ${chbAttrs('accomMovePhoto', String(k), i, -1)} ${i === 0 ? 'disabled' : ''} aria-label="Move up">↑</button>
+                    <button class="btn-sm btn-edit" ${chbAttrs('accomMovePhoto', String(k), i, 1)} ${i === n - 1 ? 'disabled' : ''} aria-label="Move down">↓</button>
+                    <button class="btn-sm btn-edit" ${chbAttrs('accomReplacePhoto', String(k), i)}>Replace</button>
+                    <button class="btn-sm btn-delete" ${chbAttrs('accomRemovePhoto', String(k), i)}>Remove</button>
                 </div></div>`;
 }
 async function accomSavePhotos(k, imgs) {
@@ -7666,7 +7699,7 @@ function faqBlockHtml(propKey) {
         : [];
     const valid = faqs.filter((f) => (f.q || '').trim() && (f.a || '').trim());
     if (!valid.length) return '';
-    return `<button class="btn-sm btn-edit" onclick="openFaqModal('${propKey}')"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.8" r="0.7" fill="currentColor" stroke="none"/></svg> Good to Know</button>`;
+    return `<button class="btn-sm btn-edit" ${chbAttrs('openFaqModal', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><circle cx="12" cy="7.8" r="0.7" fill="currentColor" stroke="none"/></svg> Good to Know</button>`;
 }
 // Build the accordion items for a cottage and show them in the floating modal
 function openFaqModal(propKey) {
@@ -7683,7 +7716,7 @@ function openFaqModal(propKey) {
         .map((f) => {
             const id = 'faq-' + ++__faqUid;
             return `<div class="faq-item" id="${id}">
-                    <button class="faq-q" onclick="toggleFaq('${id}')">
+                    <button class="faq-q" ${chbAttrs('toggleFaq', String(id))}>
                         ${f.icon ? `<span class="faq-icon">${escapeHtml(f.icon)}</span>` : ''}
                         <span>${escapeHtml(f.q)}</span>
                     </button>
@@ -7773,7 +7806,7 @@ function renderPropReviews(propKey) {
     const show = list.slice(0, 4);
     const more =
         count > show.length
-            ? `<button class="btn-glass" style="margin-top:18px;padding:12px 28px;" onclick="openAllReviews('${propKey}')">Read all ${count} reviews</button>`
+            ? `<button class="btn-glass" style="margin-top:18px;padding:12px 28px;" ${chbAttrs('openAllReviews', String(propKey))}>Read all ${count} reviews</button>`
             : '';
     wrap.style.display = '';
     wrap.innerHTML = `
@@ -8206,14 +8239,14 @@ async function loadGuestPhotosAdmin() {
             const pend = p.status === 'pending';
             const data = encodeURIComponent(p.url) + '|' + encodeURIComponent(p.caption || '');
             return `<div style="background:var(--glass-bg);border:1px solid var(--glass-border);border-radius:14px;overflow:hidden;">
-                    <div class="guest-photo" style="aspect-ratio:4/3;border:none;border-radius:0;" role="button" tabindex="0" aria-label="${escapeHtml(p.caption || 'Guest photo')}" data-photo="${escapeHtml(data)}" onclick="openPhotoLightbox(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();openPhotoLightbox(this)}"><img loading="lazy" src="${escapeHtml(p.url)}" alt="${escapeHtml(p.caption || 'Guest photo at ' + (meta.name || p.prop_key))}"></div>
+                    <div class="guest-photo" style="aspect-ratio:4/3;border:none;border-radius:0;" role="button" tabindex="0" aria-label="${escapeHtml(p.caption || 'Guest photo')}" data-photo="${escapeHtml(data)}" data-act="openPhotoLightbox" data-pass="self" data-act-keydown="activate"><img loading="lazy" src="${escapeHtml(p.url)}" alt="${escapeHtml(p.caption || 'Guest photo at ' + (meta.name || p.prop_key))}"></div>
                     <div style="padding:9px 11px;">
                         <div style="font-size:0.74rem;color:var(--text-muted);"><span class="prop-tag tag-${p.prop_key}">${escapeHtml(meta.short || meta.name)}</span> ${escapeHtml(p.guest_name || 'Guest')}${pend ? ' · <span style="color:var(--warn-text);">Pending</span>' : ' · <span style="color:var(--ok);">Live</span>'}</div>
                         ${p.caption ? `<div style="font-size:0.8rem;margin:6px 0 0;">${escapeHtml(p.caption)}</div>` : ''}
                         <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap;">
-                            ${pend ? `<button class="btn-sm btn-edit" onclick="moderatePhoto(${p.id},'approve')">Approve</button>` : ''}
-                            ${pend ? `<button class="btn-sm btn-delete" onclick="moderatePhoto(${p.id},'reject')">Reject</button>` : ''}
-                            <button class="btn-sm btn-delete" onclick="moderatePhoto(${p.id},'delete')">Delete</button>
+                            ${pend ? `<button class="btn-sm btn-edit" ${chbAttrs('moderatePhoto', p.id, 'approve')}>Approve</button>` : ''}
+                            ${pend ? `<button class="btn-sm btn-delete" ${chbAttrs('moderatePhoto', p.id, 'reject')}>Reject</button>` : ''}
+                            <button class="btn-sm btn-delete" ${chbAttrs('moderatePhoto', p.id, 'delete')}>Delete</button>
                         </div>
                     </div></div>`;
         })
@@ -8429,7 +8462,7 @@ function renderLateAvailability() {
     el.innerHTML = `<div class="late-avail">
                 <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var(--accent);flex-shrink:0;"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg>
                 <span>Late availability — <strong>${escapeHtml(name)}</strong> is available ${dpPretty(best.g.start)} to ${dpPretty(co)}</span>
-                <button type="button" class="btn-sm btn-edit" onclick="startBooking('${best.k}','${best.g.start}','${co}')">Check dates</button>
+                <button type="button" class="btn-sm btn-edit" ${chbAttrs('startBooking', String(best.k), String(best.g.start), String(co))}>Check dates</button>
             </div>`;
 }
 // Card photos settle in gently once each image has actually loaded —
@@ -8513,7 +8546,7 @@ function cottageCardHtml(k, idPrefix, withFav) {
     const fav = withFav
         ? `<span class="cott-fav" id="cott-fav-${k}" hidden><svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21s-7-4.6-9.3-9C1.4 9 2.7 5.5 6 5.5c2 0 3.2 1.2 4 2.5.8-1.3 2-2.5 4-2.5 3.3 0 4.6 3.5 3.3 6.5C19 16.4 12 21 12 21z"/></svg> Guest favourite</span>`
         : '';
-    return `<a class="card glass-panel" data-prop="${k}" href="/cottages/${escapeHtml(slug)}" onclick="return cottageLink(event,'${k}')">
+    return `<a class="card glass-panel" data-prop="${k}" href="/cottages/${escapeHtml(slug)}" data-act="cottageLink" data-prop="${k}">
                     <div class="card-img-wrap">
                         <div class="card-img" data-edit-img="${ck.img}" role="img" aria-label="Photo of ${escapeHtml(title)}" style="background-image: url('${escapeHtml(resizedUrl(img, 800))}');"></div>
                         ${fav}
@@ -9316,7 +9349,7 @@ function renderDatePicker() {
         if (dpState.end && ds === dpState.end) classes.push('dp-end');
         if (dpState.start && dpState.end && ds > dpState.start && ds < dpState.end)
             classes.push('dp-in-range');
-        const click = clickable ? ` onclick="dpPick('${ds}')"` : '';
+        const click = clickable ? ` ${chbAttrs('dpPick', String(ds))}` : '';
         const title = booked && !clickable ? ' title="Booked"' : '';
         cells += `<div class="${classes.join(' ')}"${click}${title}>${d}</div>`;
     }
@@ -9563,7 +9596,7 @@ function hsRenderMonths() {
             d.getFullYear() === now.getFullYear()
                 ? d.toLocaleDateString('en-GB', { month: 'short' })
                 : d.toLocaleDateString('en-GB', { month: 'short', year: 'numeric' });
-        html += `<button type="button" class="hs-chip${heroSearch.month === ym ? ' is-on' : ''}" data-ym="${ym}" onclick="hsSetMonth('${ym}')">${lbl}</button>`;
+        html += `<button type="button" class="hs-chip${heroSearch.month === ym ? ' is-on' : ''}" data-ym="${ym}" ${chbAttrs('hsSetMonth', String(ym))}>${lbl}</button>`;
     }
     wrap.innerHTML = html;
 }
@@ -9720,7 +9753,7 @@ function renderFlexResults(results, tooSmall, nights, ym) {
     const nightsLbl = `${nights} night${nights === 1 ? '' : 's'}`;
     const optRow = (key, w) => {
         const nn = nightsBetween(w.ci, w.co);
-        return `<button type="button" class="flex-opt" onclick="startBooking('${key}','${w.ci}','${w.co}')">
+        return `<button type="button" class="flex-opt" ${chbAttrs('startBooking', String(key), String(w.ci), String(w.co))}>
                     <span><span class="fo-dates">${dpPretty(w.ci)} → ${dpPretty(w.co)}</span><br><span class="fo-sub">${nn} night${nn === 1 ? '' : 's'}</span></span>
                     <span class="fo-price">From ${gbp(w.price.total)}</span>
                 </button>`;
@@ -9732,7 +9765,7 @@ function renderFlexResults(results, tooSmall, nights, ym) {
                     windows.length
                         ? `<div class="card-meta">${windows.length} free option${windows.length === 1 ? '' : 's'} in ${escapeHtml(monthName)}</div><div class="flex-opts">${windows.map((w) => optRow(key, w)).join('')}</div>`
                         : `<div class="card-meta">No ${nightsLbl} gap in ${escapeHtml(monthName)} — try another month.</div>
-                       <button class="btn-glass" style="width:100%;margin-top:10px;" onclick="openWaitlistModal({prop:'${key}',checkIn:'',checkOut:''})">Notify me if dates become available</button>`
+                       <button class="btn-glass" style="width:100%;margin-top:10px;" ${chbAttrs('openWaitlistModal', { prop: key, checkIn: '', checkOut: '' })}>Notify me if dates become available</button>`
                 }
             </div>`;
     const fitKeys = Object.keys(results);
@@ -9746,12 +9779,12 @@ function renderFlexResults(results, tooSmall, nights, ym) {
         .map((k) => card(k, []))
         .join('');
     if (!fitKeys.length)
-        html = `<div class="glass-panel" style="grid-column:1/-1;text-align:center;padding:28px;"><p style="margin-bottom:14px;">Sorry, none of our cottages can host ${party} guest${party === 1 ? '' : 's'}.</p><button class="btn-glass" onclick="nav('view-cottages')">Browse all cottages</button></div>`;
+        html = `<div class="glass-panel" style="grid-column:1/-1;text-align:center;padding:28px;"><p style="margin-bottom:14px;">Sorry, none of our cottages can host ${party} guest${party === 1 ? '' : 's'}.</p><button class="btn-glass" data-act="nav" data-view="view-cottages">Browse all cottages</button></div>`;
     else if (tooSmall > 0)
         html += `<p style="grid-column:1/-1;text-align:center;font-size:0.8rem;color:var(--text-muted);margin-top:6px;">${tooSmall} cottage${tooSmall === 1 ? ' was' : 's were'} hidden — too small for ${party} guests.</p>`;
     html += `<div class="hs-back-cta" style="grid-column:1/-1;text-align:center;margin-top:22px;">
                 <p style="color:var(--text-muted);font-size:0.88rem;margin-bottom:12px;">Want a different length or month?</p>
-                <button type="button" class="btn-glass btn-glass-ghost" onclick="backToSearch()">Change your search</button>
+                <button type="button" class="btn-glass btn-glass-ghost" data-act="backToSearch">Change your search</button>
             </div>`;
     grid.innerHTML = html;
     showHeroResults();
@@ -9851,7 +9884,7 @@ function renderHeroResults(results, tooSmall) {
                     <div class="card-title">${escapeHtml(propertyMeta[key].name)}</div>
                     <div class="card-meta">${dpPretty(r.ci)} → ${dpPretty(r.co)} · ${nights} night${nights === 1 ? '' : 's'}${moved}</div>
                     <div class="card-price">From ${gbp(r.price.total)}</div>
-                    <button class="btn-glass" style="width:100%;margin-top:10px;" onclick="startBooking('${key}','${r.ci}','${r.co}')">Enquire now</button>
+                    <button class="btn-glass" style="width:100%;margin-top:10px;" ${chbAttrs('startBooking', String(key), String(r.ci), String(r.co))}>Enquire now</button>
                 </div>`;
     };
     // Unavailable: never carry the clashing dates into the enquiry form (that would
@@ -9861,13 +9894,13 @@ function renderHeroResults(results, tooSmall) {
                     <div class="card-img" role="img" aria-label="Photo of ${escapeHtml(propertyMeta[key].name)}" style="background-image:url('${propImg(key)}');"></div>
                     <div class="card-title">${escapeHtml(propertyMeta[key].name)}</div>
                     <div class="card-meta">Pick different dates to book this cottage.</div>
-                    <button class="btn-glass" style="width:100%;margin-top:10px;" onclick="startBooking('${key}','','')">Choose other dates</button>
+                    <button class="btn-glass" style="width:100%;margin-top:10px;" ${chbAttrs('startBooking', String(key), '', '')}>Choose other dates</button>
                 </div>`;
     const noneMsg = (
         txt,
     ) => `<div class="glass-panel" style="grid-column:1/-1;text-align:center;padding:28px;">
                     <p style="margin-bottom:14px;">${escapeHtml(txt)}</p>
-                    <button class="btn-glass" onclick="nav('view-cottages')">Browse all cottages</button>
+                    <button class="btn-glass" data-act="nav" data-view="view-cottages">Browse all cottages</button>
                 </div>`;
 
     const fitKeys = Object.keys(results);
@@ -9934,8 +9967,8 @@ function renderHeroResults(results, tooSmall) {
     html += `<div class="hs-back-cta" style="grid-column:1/-1;text-align:center;margin-top:22px;">
                 <p style="color:var(--text-muted);font-size:0.88rem;margin-bottom:12px;">Can't see what you're looking for?</p>
                 <div style="display:flex;gap:10px;justify-content:center;flex-wrap:wrap;">
-                    <button type="button" class="btn-glass btn-glass-ghost" onclick="backToSearch()">Change your search</button>
-                    <button type="button" class="btn-glass" onclick="openWaitlistModal({prop:'${wlProp}',checkIn:'${heroSearch.checkin || ''}',checkOut:'${heroSearch.checkout || ''}'})">Notify me if dates become available</button>
+                    <button type="button" class="btn-glass btn-glass-ghost" data-act="backToSearch">Change your search</button>
+                    <button type="button" class="btn-glass" ${chbAttrs('openWaitlistModal', { prop: wlProp, checkIn: heroSearch.checkin || '', checkOut: heroSearch.checkout || '' })}>Notify me if dates become available</button>
                 </div>
             </div>`;
     grid.innerHTML = html;
@@ -10488,7 +10521,7 @@ function renderFooterCottages() {
             const meta = propertyMeta[k] || {};
             const slug = COTTAGE_SLUGS[k] || k;
             const name = meta.name || k;
-            return `<a href="/cottages/${escapeHtml(slug)}" onclick="return cottageLink(event,'${k}')">${escapeHtml(name)}</a>`;
+            return `<a href="/cottages/${escapeHtml(slug)}" data-act="cottageLink" data-prop="${k}">${escapeHtml(name)}</a>`;
         })
         .join('');
 }
@@ -12337,7 +12370,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'cspdeleg3';
+    const BUILD = 'cspdeleg4';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
