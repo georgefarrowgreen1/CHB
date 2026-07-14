@@ -113,14 +113,21 @@ function price_breakdown($rate, $adults, $children, $checkIn, $checkOut, $deposi
         2,
     );
     // Average per-night figure (for display and the agreed snapshot).
-    $perNight = $nights > 0 ? round($nightly / $nights, 2) : (float) $rate['couple_rate'] + $extrasPerNight;
+    // Scale-then-round (×100 → round → ÷100) to stay bit-identical to the JS
+    // priceBreakdown(); round($x, 2) diverges from Math.round($x*100)/100 by 1p at
+    // exact .xx5 float boundaries, which would drift the stored snapshot off the
+    // guest's on-screen quote.
+    $perNight = $nights > 0 ? round($nightly / $nights * 100) / 100 : (float) $rate['couple_rate'] + $extrasPerNight;
     // Damages deposit: per-booking override if given, else the property standard
     // (stored in the booking_fee column, which is repurposed for this).
     $depBase =
         $depositOverride !== null && $depositOverride !== '' ? (float) $depositOverride : (float) $rate['booking_fee'];
     $damagesDeposit = $nights > 0 ? max(0.0, $depBase) : 0.0;
     $txPct = (float) $rate['transaction_pct'];
-    $txFee = round($nightly * ($txPct / 100), 2); // income only
+    // Scale-then-round to match the JS engine EXACTLY (see $perNight note above) —
+    // this fee is part of `total`, which is snapshotted/emailed/charged, so a 1p
+    // drift from the guest's quote must never happen.
+    $txFee = round($nightly * ($txPct / 100) * 100) / 100; // income only
     $rentalTotal = $nightly + $txFee; // what the owner earns
     // `total` is RENTAL ONLY. The refundable damages deposit is returned
     // separately as damagesDeposit — pay.php charges it alongside the guest's
