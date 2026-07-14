@@ -3015,7 +3015,7 @@ function emptyState(opts) {
         '<circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/>';
     const action =
         o.actionLabel && o.onClick
-            ? `<button type="button" class="btn-sm btn-edit empty-state-action" onclick="${o.onClick}">${escapeHtml(o.actionLabel)}</button>`
+            ? `<button type="button" class="btn-sm btn-edit empty-state-action" ${o.onClick}>${escapeHtml(o.actionLabel)}</button>`
             : '';
     return `<div class="empty-state">
         <svg class="empty-state-ic ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${icon}</svg>
@@ -3738,37 +3738,37 @@ function hubPipelineHtml(propKey, b, gt, dh) {
         if (!(gt.paid > 0)) {
             next = {
                 text: `Nothing received yet — ${gbp(gt.balance)} due.`,
-                onclick: canCard ? `requestPayment('${b.id}','deposit')` : `recordPayment('${b.id}')`,
+                onclick: canCard ? chbAttrs('requestPayment', String(b.id), 'deposit') : chbAttrs('recordPayment', String(b.id)),
                 btn: canCard ? 'Email a secure card link' : 'Record a payment',
             };
         } else {
             next = {
                 text: `${gbp(gt.balance)} balance remaining.`,
-                onclick: canCard ? `requestPayment('${b.id}','balance')` : `recordPayment('${b.id}')`,
+                onclick: canCard ? chbAttrs('requestPayment', String(b.id), 'balance') : chbAttrs('recordPayment', String(b.id)),
                 btn: canCard ? 'Request the balance by card' : 'Record a payment',
             };
         }
     } else if (flow.hasReg && !b.regSubmitted && !past) {
         next = {
             text: 'Guest details haven’t been provided yet — required before arrival (UK guest records).',
-            onclick: `copyGuestRegLink('${b.id}')`,
+            onclick: chbAttrs('copyGuestRegLink', String(b.id)),
             btn: 'Copy the details link',
         };
     } else if (!past && !b.preArrivalSent && b.email) {
         next = {
             text: 'Paid up — the arrival info (directions, key code) hasn’t gone out yet.',
-            onclick: `sendArrivalInfo('${b.id}')`,
+            onclick: chbAttrs('sendArrivalInfo', String(b.id)),
             btn: 'Send arrival info',
         };
     } else if (past && dh.held > 0.001) {
         next = {
             text: `The stay is over and ${gbp(dh.held)} refundable damage deposit is still held.`,
-            onclick: `returnDeposit('${b.id}')`,
+            onclick: chbAttrs('returnDeposit', String(b.id)),
             btn: 'Return the deposit',
         };
     }
     const nextHtml = next
-        ? `<div class="bhub-next"><span class="bhub-next-text">${next.text}</span><button class="btn-glass bhub-next-btn" onclick="${next.onclick}">${next.btn}</button></div>`
+        ? `<div class="bhub-next"><span class="bhub-next-text">${next.text}</span><button class="btn-glass bhub-next-btn" ${next.onclick}>${next.btn}</button></div>`
         : `<div class="bhub-next is-clear"><span class="bhub-next-text">All set — nothing needs doing on this booking right now.</span></div>`;
     return `<div class="bhub-pipe3">${strip}</div><div class="bhub-pipe-full">${fullStrip}</div>${nextHtml}`;
 }
@@ -4510,7 +4510,7 @@ function cottageRowsHtml(onclickFn) {
     return Object.keys(propertyMeta)
         .map(
             (k) =>
-                `<button class="settings-row" onclick="${onclickFn}('${k}')">
+                `<button class="settings-row" ${chbAttrs(onclickFn, String(k))}>
                     <span class="settings-row-ic"><span class="legend-swatch swatch-${k}" style="width:16px;height:16px;border-radius:5px;"></span></span>
                     <span class="settings-row-main"><span class="settings-row-label">${escapeHtml(propertyMeta[k].name)}</span></span><span class="settings-row-chev">›</span>
                 </button>`,
@@ -7346,7 +7346,7 @@ function needsYouItems() {
             sev: 'danger', ic: 'alert',
             label: 'Your daily automation looks stopped',
             sub: 'Reminders, backups and calendar syncs are not running',
-            act: 'Check', go: "nav('view-settings'); settingsOpen('diagnostics')",
+            act: 'Check', go: 'data-act="navDiagnostics"',
             run: () => { closeCmdK(); nav('view-settings'); settingsOpen('diagnostics'); },
         });
     }
@@ -7363,7 +7363,7 @@ function needsYouItems() {
                 sev: ageDays >= 2 ? 'danger' : 'warn', ic: 'enquiry',
                 label: `${escapeHtml(q.name || 'A guest')}&rsquo;s enquiry — ${age}`,
                 sub: `${fmtStayRange(q.checkIn, q.checkOut)} · ${propName(q.propKey)}`,
-                act: 'Answer', go: `openEnquiryHub('${q.id}')`,
+                act: 'Answer', go: chbAttrs('openEnquiryHub', String(q.id)),
                 run: () => { closeCmdK(); openEnquiryHub(q.id); },
             });
         });
@@ -7377,7 +7377,7 @@ function needsYouItems() {
                     sev: 'warn', ic: 'deposit',
                     label: `Return ${escapeHtml(b.name || 'the guest')}&rsquo;s damages deposit`,
                     sub: `Checked out ${fmtDate(b.checkOut)} · ${propName(k)}`,
-                    act: 'Review', go: `openBookingHub('${b.id}')`,
+                    act: 'Review', go: chbAttrs('openBookingHub', String(b.id)),
                     run: () => { closeCmdK(); openBookingHub(b.id); },
                 });
             }
@@ -7396,7 +7396,7 @@ function needsYouItems() {
                 sev: days <= 7 ? 'danger' : 'warn', ic: 'money',
                 label: `${escapeHtml(b.name || 'A guest')} ${when} — £${ps.balance.toFixed(2)} to collect`,
                 sub: `${fmtStayRange(b.checkIn, b.checkOut)} · ${propName(k)}`,
-                act: 'Chase', go: `openBookingHub('${b.id}')`,
+                act: 'Chase', go: chbAttrs('openBookingHub', String(b.id)),
                 run: () => { closeCmdK(); openBookingHub(b.id); },
             });
         });
@@ -7406,7 +7406,7 @@ function needsYouItems() {
             sev: 'warn', ic: 'chat',
             label: __nyChats === 1 ? 'A guest chat needs a reply' : `${__nyChats} guest chats need a reply`,
             sub: 'Website chat · Inbox → Messages',
-            act: 'Reply', go: "openInbox().then(() => inboxFolder('messages'))",
+            act: 'Reply', go: 'data-act="openInboxMessages"',
             run: () => { closeCmdK(); Promise.resolve(openInbox()).then(() => inboxFolder('messages')); },
         });
     }
@@ -7422,7 +7422,7 @@ function needsYouItems() {
                 sev: 'ok', ic: 'approve',
                 label: n === 1 ? `A ${noun} to approve` : `${n} ${noun}s to approve`,
                 sub: 'Guests see it once you approve',
-                act: 'Approve', go: `nav('view-settings'); settingsOpen('${section}')`,
+                act: 'Approve', go: `data-act="navSettingsSection" data-arg="${section}"`,
                 run: () => { closeCmdK(); nav('view-settings'); settingsOpen(section); },
             });
         }
@@ -7455,7 +7455,7 @@ function renderNeedsYou() {
         shown
             .map(
                 (it) => `
-        <button type="button" class="ny-row glass-panel ny-${it.sev}" onclick="${it.go}">
+        <button type="button" class="ny-row glass-panel ny-${it.sev}" ${it.go}>
             <span class="ny-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${NY_ICONS[it.ic] || NY_ICONS.alert}</svg></span>
             <span class="ny-main"><span class="ny-label">${it.label}</span><span class="ny-sub">${it.sub}</span></span>
             <span class="ny-act">${it.act} ›</span>
@@ -9021,10 +9021,10 @@ async function loadDiagnostics() {
         </div>`;
     // A curated in-app destination for the optional integrations, so a fix is one tap.
     const routeFor = (label) =>
-        /Square/i.test(label) ? { fn: "settingsOpen('payments')", t: 'Set up card payments' }
-        : /Google review/i.test(label) ? { fn: "settingsOpen('reviews')", t: 'Add the review link' }
-        : /Tide data/i.test(label) ? { fn: "settingsOpen('apis')", t: 'Add a tide key' }
-        : /Web push/i.test(label) ? { fn: "settingsOpen('notify')", t: 'Open notifications' }
+        /Square/i.test(label) ? { fn: 'data-act="settingsOpen" data-arg="payments"', t: 'Set up card payments' }
+        : /Google review/i.test(label) ? { fn: 'data-act="settingsOpen" data-arg="reviews"', t: 'Add the review link' }
+        : /Tide data/i.test(label) ? { fn: 'data-act="settingsOpen" data-arg="apis"', t: 'Add a tide key' }
+        : /Web push/i.test(label) ? { fn: 'data-act="settingsOpen" data-arg="notify"', t: 'Open notifications' }
         : null;
     const item = (c) => {
         const route = c.status === 'optional' || c.status === 'warn' ? routeFor(c.label) : null;
@@ -9036,7 +9036,7 @@ async function loadDiagnostics() {
                 <div class="status-item-head"><span class="status-item-label">${escapeHtml(c.label)}</span><span class="status-item-chip ${chipCls}">${word(c.status)}</span></div>
                 <div class="status-item-detail">${escapeHtml(c.detail || '')}</div>
                 ${c.hint ? `<div class="status-item-hint">${escapeHtml(c.hint)}</div>` : ''}
-                ${route ? `<div class="status-item-actions"><button type="button" class="btn-sm btn-edit" onclick="${route.fn}">${route.t}</button></div>` : ''}
+                ${route ? `<div class="status-item-actions"><button type="button" class="btn-sm btn-edit" ${route.fn}>${route.t}</button></div>` : ''}
             </div>
         </div>`;
     };
@@ -9068,7 +9068,7 @@ async function loadDiagnostics() {
             tone: w > 0 ? 'warn' : 'ok',
             label: 'Recent issues',
             value: w > 0 ? `${w} warning${w === 1 ? '' : 's'} in the last 7 days` : dz != null ? `None in ${Math.max(dz, 7)} days` : 'None logged',
-            act: w > 0 || dz != null ? { fn: "nav('view-activity-log')", t: 'View log' } : null,
+            act: w > 0 || dz != null ? { fn: 'data-act="nav" data-view="view-activity-log"', t: 'View log' } : null,
         });
     }
     if (ins.automation) {
@@ -9106,14 +9106,14 @@ async function loadDiagnostics() {
             tone: f > 0 ? 'warn' : 'ok',
             label: 'Email delivery',
             value: f > 0 ? `${f} failed to send in the last 7 days` : 'No send failures',
-            act: f > 0 ? { fn: "nav('view-activity-log')", t: 'View log' } : null,
+            act: f > 0 ? { fn: 'data-act="nav" data-view="view-activity-log"', t: 'View log' } : null,
         });
     }
     if (insRows.length) {
         html += `<div class="status-group"><div class="status-group-title">Insights</div><div class="status-insights">${insRows
             .map(
                 (x) =>
-                    `<div class="status-insight is-${x.tone}"><span class="status-item-dot" style="background:${dotColor(x.tone)};"></span><div class="status-insight-body"><span class="status-insight-label">${escapeHtml(x.label)}</span><span class="status-insight-value">${escapeHtml(x.value)}${x.act ? ` <button type="button" class="status-insight-act" onclick="${x.act.fn}">${x.act.t}</button>` : ''}</span></div></div>`,
+                    `<div class="status-insight is-${x.tone}"><span class="status-item-dot" style="background:${dotColor(x.tone)};"></span><div class="status-insight-body"><span class="status-insight-label">${escapeHtml(x.label)}</span><span class="status-insight-value">${escapeHtml(x.value)}${x.act ? ` <button type="button" class="status-insight-act" ${x.act.fn}>${x.act.t}</button>` : ''}</span></div></div>`,
             )
             .join('')}</div></div>`;
     }
@@ -10180,7 +10180,7 @@ async function loadGuestReviewModeration() {
             title: 'No reviews yet',
             sub: 'Reviews you approve show on your website. Import your existing Airbnb reviews to get started.',
             actionLabel: 'Import reviews',
-            onClick: 'bulkImportReviews()',
+            onClick: 'data-act="bulkImportReviews"',
         });
         return;
     }
@@ -12034,7 +12034,7 @@ async function loadExperiencesAdmin() {
                   title: 'No experiences yet',
                   sub: 'Add local things to do — seal trips, coast walks, the best pubs — to show guests on your site.',
                   actionLabel: '＋ Add experience',
-                  onClick: 'expAddNew()',
+                  onClick: 'data-act="expAddNew"',
               })) +
         `</div>`;
     wrap.innerHTML = html;

@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 166;
+const ADMIN_BUNDLE_V = 167;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -103,9 +103,9 @@ const API_BASE = (function () {
 // ============================================================
 //  CSP-clean event delegation — the migration path OFF inline on* handlers so the
 //  CSP can eventually drop script-src 'unsafe-inline' (the last remaining XSS
-//  defence-in-depth gap). An element opts in with:
-//    data-act="name"            (click)
-//    data-act-change / -input / -keydown / -submit / -pointerdown  (other events)
+//  defence-in-depth gap). An element opts in with a data-act attribute naming the
+//  action (data-act for click; data-act-change / -input / -keydown / -submit /
+//  -pointerdown / -blur for the other events).
 //  A single set of document-level listeners dispatches to a registered action
 //  (chbAct) or, for a plain no-arg call, to the same-named GLOBAL function called
 //  exactly like the old `fn()` (this = window, no args). Delegation means markup
@@ -271,6 +271,15 @@ chbAct('navDiagnostics', function () {
     nav('view-settings');
     settingsOpen('diagnostics');
 });
+// Go to Manage → a specific settings section (needs-you "Approve" rows).
+chbAct('navSettingsSection', function (el) {
+    nav('view-settings');
+    settingsOpen(el.dataset.arg);
+});
+// Open the Inbox on the Messages folder (needs-you "Reply" row).
+chbAct('openInboxMessages', function () {
+    if (typeof openInbox === 'function') openInbox().then(function () { inboxFolder('messages'); });
+});
 // Open the accommodations section then a specific cottage.
 chbAct('openAccomThenSec', function (el) {
     settingsOpen('accom');
@@ -317,9 +326,10 @@ const CHB_FILES = { __chbPass: 'files' };
 const CHB_SELF = { __chbPass: 'self' };
 const CHB_EVENT = { __chbPass: 'event' };
 // Render-time helper for DYNAMIC (innerHTML) handlers: returns the delegation
-// attributes carrying the args as a typed JSON list. Replaces `onclick="fn(a,b)"`
-// with `${chbAttrs('fn', a, b)}` — types survive exactly (String() a formerly-
-// quoted arg to keep it a string). A trailing CHB_* sentinel becomes data-pass.
+// attributes carrying the args as a typed JSON list. Replaces an inline click
+// handler like fn(a,b) with ${chbAttrs('fn', a, b)} — types survive exactly
+// (String() a formerly-quoted arg to keep it a string). A trailing CHB_* sentinel
+// becomes data-pass.
 // `evt` selects the event: '' (default) = click, else 'change'/'input'/'keydown'/
 // 'submit'/'blur' → data-act-<evt>.
 function chbAttrsFor(evt, name, args) {
@@ -12439,7 +12449,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'cspdeleg5';
+    const BUILD = 'cspdeleg6';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
