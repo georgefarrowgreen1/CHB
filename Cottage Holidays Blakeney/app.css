@@ -5698,9 +5698,13 @@ body.admin-screen .site-footer {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  /* Yet-to-be-done stages carry a RED dot — done is green, current amber,
-     so the three states read at a glance. */
-  background: var(--danger);
+  /* One calm colour system across BOTH pill strips (whole-booking status AND the
+     payments flow, which reuse this class): done = green, current = amber,
+     yet-to-come = a muted neutral dot (inherits the pill's muted text). A routine
+     "not yet" step isn't an error, so it no longer carries an alarming red dot —
+     that red was the only colour that appeared in one strip but not the other. */
+  background: currentColor;
+  opacity: 0.4;
 }
 .pipe-step.is-done {
   color: var(--ok-text);
@@ -5709,6 +5713,7 @@ body.admin-screen .site-footer {
 }
 .pipe-step.is-done .pipe-dot {
   background: var(--ok);
+  opacity: 1;
 }
 .pipe-step.is-now {
   color: var(--warn-text);
@@ -5717,6 +5722,7 @@ body.admin-screen .site-footer {
 }
 .pipe-step.is-now .pipe-dot {
   background: var(--warn);
+  opacity: 1;
 }
 /* The "Staying" stage reads GREEN while the guest is actually in-house (a live
    "here now" state), not the amber in-progress colour. */
