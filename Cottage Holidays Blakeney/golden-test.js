@@ -276,6 +276,26 @@ if (!DUMP) {
     function ok2(m, c) { c ? pass(m) : fail(m); }
 }
 
+// ---- Conversational follow-ups (one-turn memory: __cmdkConvCtx) ----
+if (!DUMP) {
+    console.log('\n== Golden conversational follow-ups ==');
+    const setCtx = (id) => vm.runInContext(`__cmdkConvCtx = ${id == null ? 'null' : `{ type: 'booking', id: ${id} }`}`, ctx, { timeout: 2000 });
+    setCtx(1); // Alice Marsh, mid-stay at Jollyboat, paid £440
+    judge({ q: 'when do they leave', head: new RegExp('Alice Marsh leaves ' + uk(d(2)).replace(/\//g, '\\/')) });
+    judge({ q: 'when did she arrive', head: new RegExp('Alice Marsh arrived ' + uk(d(-1)).replace(/\//g, '\\/')) });
+    judge({ q: 'how much do they owe', head: /Alice Marsh is paid in full — £440/ });
+    judge({ q: 'email them', any: /mail|Email/i, min: 2 });
+    setCtx(2); // Bob Carter, £100 down of £500
+    judge({ q: 'how much does he owe', head: /Bob Carter owes £400\.00 of £500\.00/ });
+    judge({ q: 'when does he arrive', head: new RegExp('Bob Carter arrives ' + uk(d(10)).replace(/\//g, '\\/')) });
+    setCtx(null); // no conversation → the generic branches keep these
+    judge({ q: 'when do they leave', head: /checking out|No check-outs/ });
+    judge({ q: "who's paid a deposit", head: /5 guests paid a deposit/ }); // pronoun-free query never hijacked even mid-conversation
+    setCtx(1);
+    judge({ q: "who's paid a deposit", head: /5 guests paid a deposit/ });
+    setCtx(null);
+}
+
 // ---- Dead-ends review (search-miss capture + teach) ----
 if (!DUMP) {
     console.log('\n== Golden dead-ends review ==');
