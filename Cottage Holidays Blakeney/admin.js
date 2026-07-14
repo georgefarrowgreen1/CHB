@@ -1668,7 +1668,7 @@ function coachPaint(el, text) {
     ring.className = 'coach-ring';
     const tip = document.createElement('div');
     tip.className = 'coach-tip';
-    tip.innerHTML = `<div class="coach-tip-text">${escapeHtml(text)}</div><button type="button" class="coach-tip-btn" onclick="coachClear()">Got it</button>`;
+    tip.innerHTML = `<div class="coach-tip-text">${escapeHtml(text)}</div><button type="button" class="coach-tip-btn" data-act="coachClear">Got it</button>`;
     ov.appendChild(ring);
     ov.appendChild(tip);
     document.body.appendChild(ov);
@@ -1710,8 +1710,8 @@ function coachTo(navFn, sel, text, fallback) {
     closeCmdK();
     Promise.resolve(navFn()).then(() => setTimeout(() => coachMark(sel, text, { fallback }), 320));
 }
-function coachAddBooking() { coachTo(() => tryAccessBackOffice(), 'button[onclick="openAddBooking()"]', 'Tap “+ Add Booking” to start a new booking — you’ll pick the cottage and dates next.', () => openAddBooking()); }
-function coachBlockDates() { coachTo(() => tryAccessBackOffice(), 'button[onclick="openBlockDates()"]', 'Tap “Block dates” to close off dates for maintenance or your own use.', () => openBlockDates()); }
+function coachAddBooking() { coachTo(() => tryAccessBackOffice(), 'button[data-act="openAddBooking"]', 'Tap “+ Add Booking” to start a new booking — you’ll pick the cottage and dates next.', () => openAddBooking()); }
+function coachBlockDates() { coachTo(() => tryAccessBackOffice(), 'button[data-act="openBlockDates"]', 'Tap “Block dates” to close off dates for maintenance or your own use.', () => openBlockDates()); }
 function cmdkBuildResults(ql) {
     let results = [];
     try {
@@ -2215,7 +2215,7 @@ function renderTodayFilterBar(q, shown) {
         bar.className = 'today-filter-bar glass-panel';
     }
     if (bar.parentElement !== view) view.insertBefore(bar, view.firstChild);
-    bar.innerHTML = `<span>Filtering for <strong>${escapeHtml(q)}</strong> · ${shown} match${shown === 1 ? '' : 'es'}</span><button type="button" class="btn-sm btn-edit" onclick="clearTodayFilter()">Clear</button>`;
+    bar.innerHTML = `<span>Filtering for <strong>${escapeHtml(q)}</strong> · ${shown} match${shown === 1 ? '' : 'es'}</span><button type="button" class="btn-sm btn-edit" data-act="clearTodayFilter">Clear</button>`;
 }
 // ---- Open availability windows (gaps) between bookings + external blocks, per
 // cottage, across [fromIso, toIso). Returns [{propKey, name, from, to, nights}].
@@ -2385,12 +2385,12 @@ function cmdkFieldOpen(f) {
         `<div class="cmdk-group-label">Edit · ${escapeHtml(f.label)}</div>` +
         (f.hint ? `<p class="cmdk-editor-hint">${escapeHtml(f.hint)}</p>` : '') +
         (big
-            ? `<textarea id="cmdk-editor-field" class="cmdk-editor-input" rows="5" spellcheck="true" onkeydown="cmdkFieldKey(event)">${escapeHtml(cur)}</textarea>`
-            : `<input id="cmdk-editor-field" type="${inputType}"${inputType === 'number' ? ' min="0" step="1" inputmode="decimal"' : ''} class="cmdk-editor-input" value="${escapeHtml(cur)}" onkeydown="cmdkFieldKey(event)">`) +
+            ? `<textarea id="cmdk-editor-field" class="cmdk-editor-input" rows="5" spellcheck="true" data-act-keydown="cmdkFieldKey" data-pass="event">${escapeHtml(cur)}</textarea>`
+            : `<input id="cmdk-editor-field" type="${inputType}"${inputType === 'number' ? ' min="0" step="1" inputmode="decimal"' : ''} class="cmdk-editor-input" value="${escapeHtml(cur)}" data-act-keydown="cmdkFieldKey" data-pass="event">`) +
         `<div class="cmdk-editor-bar">` +
-        `<button type="button" class="cmdk-ex cmdk-back" onclick="cmdkFieldBack()">‹ Back to results</button>` +
+        `<button type="button" class="cmdk-ex cmdk-back" data-act="cmdkFieldBack">‹ Back to results</button>` +
         `<span id="cmdk-editor-msg" class="cmdk-editor-msg" aria-live="polite"></span>` +
-        `<button type="button" class="cmdk-editor-save" onclick="cmdkFieldSave()">Save</button>` +
+        `<button type="button" class="cmdk-editor-save" data-act="cmdkFieldSave">Save</button>` +
         `</div></div>`;
     const inp = document.getElementById('cmdk-editor-field');
     if (inp) { try { inp.focus(); if (f.ftype === 'text') inp.setSelectionRange(inp.value.length, inp.value.length); } catch (e) {} }
@@ -2497,7 +2497,7 @@ function cmdkInScope(it) {
     return !it || cmdkScopeMatch(__cmdkScope, it.type);
 }
 function cmdkScopeBar() {
-    return '<div class="cmdk-scopes" role="tablist">' + CMDK_SCOPES.map(([k, l]) => `<button type="button" role="tab" class="cmdk-scope${__cmdkScope === k ? ' is-on' : ''}" aria-selected="${__cmdkScope === k}" onclick="cmdkSetScope('${k}')">${l}</button>`).join('') + '</div>';
+    return '<div class="cmdk-scopes" role="tablist">' + CMDK_SCOPES.map(([k, l]) => `<button type="button" role="tab" class="cmdk-scope${__cmdkScope === k ? ' is-on' : ''}" aria-selected="${__cmdkScope === k}" ${chbAttrs('cmdkSetScope', String(k))}>${l}</button>`).join('') + '</div>';
 }
 function cmdkSetScope(s) {
     __cmdkScope = s;
@@ -2605,7 +2605,7 @@ function cmdkRowHtml(it, i, top) {
     // Highlight the matched terms — but not on computed summaries (answer/figure),
     // whose text isn't a literal echo of the query.
     const hi = it.type === 'answer' || it.type === 'figure' ? (s) => escapeHtml(s || '') : cmdkHi;
-    const row = `<button type="button" id="cmdk-opt-${i}" class="cmdk-row cmdk-row-${it.type}${sel ? ' is-sel' : ''}${top ? ' cmdk-tophit' : ''}" role="option" aria-selected="${sel}" data-idx="${i}" onclick="cmdkExec(${i})">
+    const row = `<button type="button" id="cmdk-opt-${i}" class="cmdk-row cmdk-row-${it.type}${sel ? ' is-sel' : ''}${top ? ' cmdk-tophit' : ''}" role="option" aria-selected="${sel}" data-idx="${i}" ${chbAttrs('cmdkExec', i)}>
                     <span class="cmdk-row-ic cmdk-${it.type}">${cmdkIcon(it.type)}</span>
                     <span class="cmdk-row-main"><span class="cmdk-row-label">${hi(it.label)}</span><span class="cmdk-row-sub">${hi(it.sub || '')}</span></span>
                 </button>`;
@@ -2617,7 +2617,7 @@ function cmdkRowHtml(it, i, top) {
     const actLabels = hasActions ? new Set(it.actions.map((a) => (a.label || '').toLowerCase())) : null;
     const acts = hasActions
         ? `<div class="cmdk-qa">${it.actions
-              .map((a, k) => `<button type="button" class="cmdk-qa-row" data-idx="${i}" data-act="${k}" onclick="cmdkAct(${i},${k})"><span class="cmdk-qa-ic">${a.icon || cmdkActIcon('hub')}</span><span class="cmdk-qa-lbl">${escapeHtml(a.label)}</span></button>`)
+              .map((a, k) => `<button type="button" class="cmdk-qa-row" data-idx="${i}" data-act="${k}" ${chbAttrs('cmdkAct', i, k)}><span class="cmdk-qa-ic">${a.icon || cmdkActIcon('hub')}</span><span class="cmdk-qa-lbl">${escapeHtml(a.label)}</span></button>`)
               .join('')}</div>`
         : '';
     // Help topics expand their numbered steps when selected (the Top Hit is
@@ -2636,14 +2636,14 @@ function cmdkRowHtml(it, i, top) {
     if (Array.isArray(it.chips) && it.chips.length && (!isHelp || sel)) {
         if (hasActions) {
             const rel = it.chips
-                .map((c, k) => (actLabels && actLabels.has((c.label || '').toLowerCase())) ? '' : `<button type="button" class="cmdk-related" onclick="cmdkChipRun(${i},${k})"><span class="cmdk-qa-ic">${CMDK_SEARCH_IC}</span><span class="cmdk-qa-lbl">${escapeHtml(c.label)}</span><span class="cmdk-qa-go" aria-hidden="true">${CMDK_CHEV}</span></button>`)
+                .map((c, k) => (actLabels && actLabels.has((c.label || '').toLowerCase())) ? '' : `<button type="button" class="cmdk-related" ${chbAttrs('cmdkChipRun', i, k)}><span class="cmdk-qa-ic">${CMDK_SEARCH_IC}</span><span class="cmdk-qa-lbl">${escapeHtml(c.label)}</span><span class="cmdk-qa-go" aria-hidden="true">${CMDK_CHEV}</span></button>`)
                 .join('');
             refine = rel ? `<div class="cmdk-qa cmdk-related-list">${rel}</div>` : '';
         } else {
             // Refine pivots render as the same iOS-style menu list as the quick
             // actions — one tappable row each (filter glyph · label · chevron) —
             // so every button group in search shares one context-menu language.
-            refine = `<div class="cmdk-qa cmdk-refine-menu">${it.chips.map((c, k) => `<button type="button" class="cmdk-qa-row cmdk-refine-row" data-idx="${i}" data-chip="${k}" onclick="cmdkChipRun(${i},${k})"><span class="cmdk-qa-ic">${CMDK_FILTER_IC}</span><span class="cmdk-qa-lbl">${escapeHtml(c.label)}</span><span class="cmdk-qa-go" aria-hidden="true">${CMDK_CHEV}</span></button>`).join('')}</div>`;
+            refine = `<div class="cmdk-qa cmdk-refine-menu">${it.chips.map((c, k) => `<button type="button" class="cmdk-qa-row cmdk-refine-row" data-idx="${i}" data-chip="${k}" ${chbAttrs('cmdkChipRun', i, k)}><span class="cmdk-qa-ic">${CMDK_FILTER_IC}</span><span class="cmdk-qa-lbl">${escapeHtml(c.label)}</span><span class="cmdk-qa-go" aria-hidden="true">${CMDK_CHEV}</span></button>`).join('')}</div>`;
         }
     }
     return row + steps + acts + refine;
@@ -2709,7 +2709,7 @@ function cmdkRenderInner() {
     // The scope switch sits above every state (see comment above); a refine-thread
     // "‹ Back" affordance follows it whenever there's a previous query to step back to.
     const parts = [sb];
-    if (__cmdkHist.length) parts.push('<div class="cmdk-refine cmdk-refine-top"><button type="button" class="cmdk-ex cmdk-refine-chip cmdk-back" onclick="cmdkChipBack()">‹ Back</button></div>');
+    if (__cmdkHist.length) parts.push('<div class="cmdk-refine cmdk-refine-top"><button type="button" class="cmdk-ex cmdk-refine-chip cmdk-back" data-act="cmdkChipBack">‹ Back</button></div>');
     __cmdkResults.forEach((it, i) => {
         if (grouped && !cmdkIsNoteRow(it)) {
             if (i === firstReal) parts.push('<div class="cmdk-group-label">Top hit</div>');
@@ -2946,7 +2946,7 @@ function cmdkSheetOpen(section, title) {
     __cmdkSheet = { node: sec, parent: sec.parentNode, next: sec.nextSibling, display: sec.style.display, section };
     box.innerHTML =
         `<div class="cmdk-group-label">Edit · ${escapeHtml(title || section)}</div>` +
-        `<button type="button" class="cmdk-ex cmdk-back" onclick="cmdkSheetClose()">‹ Back to results</button>` +
+        `<button type="button" class="cmdk-ex cmdk-back" data-act="cmdkSheetClose">‹ Back to results</button>` +
         `<div class="cmdk-sheet-host" id="cmdk-sheet-host"></div>`;
     const host = document.getElementById('cmdk-sheet-host');
     if (host) { sec.style.display = ''; host.appendChild(sec); }
@@ -3080,7 +3080,7 @@ function renderCottagesOverview() {
         // Tap a cottage card → open THAT cottage's editor, not the cottage list.
         // settingsOpen('accom') shows the section (renderAccomList hides the
         // detail first), then settingsOpenAccom drills into this cottage.
-        return `<button class="glass-panel area-ov-card" onclick="settingsOpen('accom');settingsOpenAccom('${k}')" style="text-align:left;padding:15px 16px;cursor:pointer;">
+        return `<button class="glass-panel area-ov-card" data-act="openAccomThenSec" data-arg="${k}" style="text-align:left;padding:15px 16px;cursor:pointer;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:8px;">
                 <span style="font-weight:600;line-height:1.25;">${escapeHtml(meta.name || k)}</span>
                 <span class="settings-row-chev" style="flex-shrink:0;">›</span>
@@ -3385,7 +3385,7 @@ function bookingListRow(propKey, b, today) {
     const balanceBit = !gt.fullyPaid ? ` · ${gbp(gt.balance)} due` : '';
     // Traffic-light edge on every row: red unpaid · amber part-paid · green paid.
     return `
-        <button type="button" class="bk-row glass-panel pay-${payClass}${b.id === __hubBookingId ? ' is-open' : ''}" data-bkid="${b.id}" data-search="${escapeHtml(((b.name || 'guest') + ' ' + meta.name + ' ' + payLabel + ' ' + (past ? 'past' : 'upcoming')).toLowerCase())}" onclick="openBookingHub('${b.id}')">
+        <button type="button" class="bk-row glass-panel pay-${payClass}${b.id === __hubBookingId ? ' is-open' : ''}" data-bkid="${b.id}" data-search="${escapeHtml(((b.name || 'guest') + ' ' + meta.name + ' ' + payLabel + ' ' + (past ? 'past' : 'upcoming')).toLowerCase())}" ${chbAttrs('openBookingHub', String(b.id))}>
             <span class="bk-row-body">
                 <span class="bk-row-top">
                     <span class="prop-tag tag-${propKey}">${escapeHtml(meta.name)}</span>
@@ -3472,7 +3472,7 @@ function showEmailPreview(subject, html, text) {
         ov.innerHTML = `<div class="modal-box email-modal-box glass-panel">
                 <div class="email-modal-head">
                     <span class="email-modal-title">Email preview</span>
-                    <button class="email-modal-close" type="button" aria-label="Close" onclick="closeEmailPreview()">×</button>
+                    <button class="email-modal-close" type="button" aria-label="Close" data-act="closeEmailPreview">×</button>
                 </div>
                 <div class="email-modal-meta">
                     <div class="email-meta-row"><span class="email-meta-label">Subject</span><span class="email-meta-value is-subject" id="email-preview-subject"></span></div>
@@ -3526,7 +3526,7 @@ function bookingEmailLogHtml(b) {
             // Templated emails store no body, but we can regenerate them on demand
             // — offer a "Show email" button that opens a faithful preview.
             if (EMAIL_PREVIEWABLE.includes(l.action)) {
-                return `<div class="bk-email-log-row">${what}<span class="bk-email-log-right">${when}<button type="button" class="bk-email-log-view" onclick="openEmailPreview(${b.dbId},'${l.action}',this)">Show email</button></span></div>`;
+                return `<div class="bk-email-log-row">${what}<span class="bk-email-log-right">${when}<button type="button" class="bk-email-log-view" ${chbAttrs('openEmailPreview', b.dbId, String(l.action), CHB_SELF)}>Show email</button></span></div>`;
             }
             return `<div class="bk-email-log-row">${what}${when}</div>`;
         })
@@ -3846,9 +3846,9 @@ function renderBookingHub() {
     (dbBookings[propKey] || []).forEach((o) => {
         if (o.id === b.id) return;
         if (o.checkIn === b.checkOut)
-            changeover += `<button class="bk-chip warn bhub-changeover" onclick="openBookingHub('${o.id}')" title="Open the other side of this changeover"><span class="bk-dot"></span>Same-day changeover — ${escapeHtml(o.name || 'the next guest')} arrives as this guest leaves →</button>`;
+            changeover += `<button class="bk-chip warn bhub-changeover" ${chbAttrs('openBookingHub', String(o.id))} title="Open the other side of this changeover"><span class="bk-dot"></span>Same-day changeover — ${escapeHtml(o.name || 'the next guest')} arrives as this guest leaves →</button>`;
         else if (o.checkOut === b.checkIn)
-            changeover += `<button class="bk-chip warn bhub-changeover" onclick="openBookingHub('${o.id}')" title="Open the other side of this changeover"><span class="bk-dot"></span>Same-day changeover — ${escapeHtml(o.name || 'the previous guest')} leaves as this guest arrives →</button>`;
+            changeover += `<button class="bk-chip warn bhub-changeover" ${chbAttrs('openBookingHub', String(o.id))} title="Open the other side of this changeover"><span class="bk-dot"></span>Same-day changeover — ${escapeHtml(o.name || 'the previous guest')} leaves as this guest arrives →</button>`;
     });
 
     // ---- Header ----
@@ -3866,16 +3866,16 @@ function renderBookingHub() {
                     <!-- ONE quiet overflow menu instead of a row of buttons: the
                          header stays calm and the destructive action becomes a
                          deliberate two-tap instead of a permanent red button. -->
-                    <button class="btn-sm btn-edit bhub-menu-btn" onclick="bhubMenuToggle(event)" aria-haspopup="menu" aria-expanded="false">${arrived ? 'Edit' : 'Edit/Move/Cancel'}</button>
+                    <button class="btn-sm btn-edit bhub-menu-btn" data-act="bhubMenu" aria-haspopup="menu" aria-expanded="false">${arrived ? 'Edit' : 'Edit/Move/Cancel'}</button>
                     <div class="bhub-menu glass-panel" role="menu" style="display:none;">
-                        <button role="menuitem" onclick="bhubMenuClose(); openEditBooking('${b.id}')">${arrived ? 'Edit details' : 'Edit / Move'}</button>
+                        <button role="menuitem" data-act="bhubEdit" data-arg="${b.id}">${arrived ? 'Edit details' : 'Edit / Move'}</button>
                         ${
                             // After the guest arrives the stay is committed — no
                             // Cancel & refund (only the damages deposit can go back,
                             // handled on the Payments card).
                             arrived
                                 ? ''
-                                : `<button role="menuitem" class="bhub-menu-danger" onclick="bhubMenuClose(); cancelBooking('${b.id}')">Cancel &amp; refund</button>`
+                                : `<button role="menuitem" class="bhub-menu-danger" data-act="bhubCancel" data-arg="${b.id}">Cancel &amp; refund</button>`
                         }
                         ${
                             // Delete exists ONLY while no money is on the booking (same
@@ -3883,7 +3883,7 @@ function renderBookingHub() {
                             // a card hold is live, Cancel & refund is the only way out.
                             bookingHasMoney(b)
                                 ? ''
-                                : `<button role="menuitem" class="bhub-menu-danger" onclick="bhubMenuClose(); deleteBooking('${b.id}')" title="Only for junk/test rows — cancelling is the right way to end a real booking">Delete</button>`
+                                : `<button role="menuitem" class="bhub-menu-danger" data-act="bhubDelete" data-arg="${b.id}" title="Only for junk/test rows — cancelling is the right way to end a real booking">Delete</button>`
                         }
                     </div>
                 </div>
@@ -3936,7 +3936,7 @@ function renderBookingHub() {
         : `${fullBox}${agreedNote}`;
     // The breakdown opener sits AFTER the deposit status line in the card.
     const discloseBtn = gt.fullyPaid
-        ? `<button type="button" class="btn-sm btn-edit bhub-disclose-btn" onclick="bhubMoneyExpand()">Show the full breakdown</button>`
+        ? `<button type="button" class="btn-sm btn-edit bhub-disclose-btn" data-act="bhubMoneyExpand">Show the full breakdown</button>`
         : '';
     // The deposit's return ACTION lives in the pipeline's next-action card at the
     // top of the hub ("Return the deposit", shown once the stay is over and it's
@@ -3966,10 +3966,10 @@ function renderBookingHub() {
             ${depositLine}
             ${discloseBtn}
             <div class="bhub-btn-row">
-                ${!gt.fullyPaid ? `<button class="btn-sm btn-edit" onclick="recordPayment('${b.id}')">Record payment</button>` : ''}
-                ${!gt.fullyPaid && squareAdminEnabled && b.email ? `<button class="btn-sm btn-edit" onclick="requestPayment('${b.id}','${gt.paid > 0 ? 'balance' : 'deposit'}')">Request ${gt.paid > 0 ? 'balance' : 'deposit'} by card</button>` : ''}
-                ${!gt.fullyPaid && squareAdminEnabled && b.email ? `<button class="btn-sm btn-edit" onclick="copyPayLink('${b.id}','balance')">Copy pay link</button>` : ''}
-                <button class="btn-sm btn-edit" onclick="downloadInvoice('${b.id}')">Invoice (PDF)</button>
+                ${!gt.fullyPaid ? `<button class="btn-sm btn-edit" ${chbAttrs('recordPayment', String(b.id))}>Record payment</button>` : ''}
+                ${!gt.fullyPaid && squareAdminEnabled && b.email ? `<button class="btn-sm btn-edit" ${chbAttrs('requestPayment', String(b.id), gt.paid > 0 ? 'balance' : 'deposit')}>Request ${gt.paid > 0 ? 'balance' : 'deposit'} by card</button>` : ''}
+                ${!gt.fullyPaid && squareAdminEnabled && b.email ? `<button class="btn-sm btn-edit" ${chbAttrs('copyPayLink', String(b.id), 'balance')}>Copy pay link</button>` : ''}
+                <button class="btn-sm btn-edit" ${chbAttrs('downloadInvoice', String(b.id))}>Invoice (PDF)</button>
             </div>
             ${payHistory}
         </section>`;
@@ -3987,16 +3987,16 @@ function renderBookingHub() {
                             // Once they've arrived, the card is just "Write an email"
                             // (centred, since it stands alone).
                             (b.checkIn || '') > today
-                                ? `<button class="btn-sm btn-edit" onclick="sendConfirmationEmail('${b.id}')">Send confirmation</button>
+                                ? `<button class="btn-sm btn-edit" ${chbAttrs('sendConfirmationEmail', String(b.id))}>Send confirmation</button>
                         ${
                             b.preArrivalSent
                                 ? `<span class="bhub-sent-tag" title="Sent ${escapeHtml(String(b.preArrivalSent))}">Arrival info sent ✓</span>`
-                                : `<button class="btn-sm btn-edit" onclick="sendArrivalInfo('${b.id}')">Send arrival info</button>`
+                                : `<button class="btn-sm btn-edit" ${chbAttrs('sendArrivalInfo', String(b.id))}>Send arrival info</button>`
                         }
-                        ${gt.paid > 0 ? `<button class="btn-sm btn-edit" onclick="offerUpdatedConfirmationEmail('${b.id}')">Email updated confirmation</button>` : ''}`
+                        ${gt.paid > 0 ? `<button class="btn-sm btn-edit" ${chbAttrs('offerUpdatedConfirmationEmail', String(b.id))}>Email updated confirmation</button>` : ''}`
                                 : ''
                         }
-                        <button class="btn-sm btn-edit" onclick="openBookingEmail('${b.id}')">Write an email</button>
+                        <button class="btn-sm btn-edit" ${chbAttrs('openBookingEmail', String(b.id))}>Write an email</button>
                     </div>`
                     : '<div class="bhub-mut">No guest email on file — add one via Edit / Move to send anything.</div>'
             }
@@ -4020,7 +4020,7 @@ function renderBookingHub() {
               .slice(0, 6)
               .map(
                   ({ pk, x }) =>
-                      `<button class="bhub-stay-row" onclick="openBookingHub('${x.id}')"><span class="prop-tag tag-${pk}">${escapeHtml((propertyMeta[pk] || { name: pk }).name)}</span><span>${fmtDate(x.checkIn)} → ${fmtDate(x.checkOut)}</span><span class="bhub-mut">open →</span></button>`,
+                      `<button class="bhub-stay-row" ${chbAttrs('openBookingHub', String(x.id))}><span class="prop-tag tag-${pk}">${escapeHtml((propertyMeta[pk] || { name: pk }).name)}</span><span>${fmtDate(x.checkIn)} → ${fmtDate(x.checkOut)}</span><span class="bhub-mut">open →</span></button>`,
               )
               .join('')
         : '';
@@ -4046,7 +4046,7 @@ function renderBookingHub() {
             </div>
             <span class="booking-detail-label" style="margin-top:14px;">Staff notes <span class="bhub-mut" style="text-transform:none;letter-spacing:0;">· private, only you see these</span></span>
             <textarea id="bk-notes-${b.id}" class="input-glass" rows="2" maxlength="2000" placeholder="Add a private note — arriving late, allergies, paid cash for extras…" style="margin:6px 0 0;resize:vertical;font-size:0.9rem;">${b.notes ? escapeHtml(b.notes) : ''}</textarea>
-            <div style="display:flex;justify-content:flex-end;margin-top:6px;"><button class="btn-sm btn-edit" id="bk-notes-save-${b.id}" onclick="saveBookingNote('${b.id}')">Save note</button></div>
+            <div style="display:flex;justify-content:flex-end;margin-top:6px;"><button class="btn-sm btn-edit" id="bk-notes-save-${b.id}" ${chbAttrs('saveBookingNote', String(b.id))}>Save note</button></div>
             ${staysHtml}
         </section>`;
 
@@ -4065,8 +4065,8 @@ function renderBookingHub() {
                 ? `<div class="detail-grid" style="margin-top:0;"><div class="booking-detail-item" style="grid-column:1/-1;"><span class="booking-detail-label">Status</span><span class="booking-detail-value" style="color:var(--ok);font-weight:600;">✓ Submitted · ${b.regCount} guest${b.regCount === 1 ? '' : 's'} recorded</span></div></div>`
                 : `<p class="bhub-mut" style="margin:2px 0 10px;">Not yet submitted. The guest gets the form in their confirmation email — you can also fill it in or resend the link.</p>`}
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
-                ${b.regUrl ? `<button class="btn-sm btn-edit" onclick="openGuestRegister('${b.id}')">${b.regSubmitted ? 'View / edit details' : 'Open the form'}</button>` : ''}
-                ${b.regUrl ? `<button class="btn-sm" onclick="copyGuestRegLink('${b.id}')">Copy request link</button>` : ''}
+                ${b.regUrl ? `<button class="btn-sm btn-edit" ${chbAttrs('openGuestRegister', String(b.id))}>${b.regSubmitted ? 'View / edit details' : 'Open the form'}</button>` : ''}
+                ${b.regUrl ? `<button class="btn-sm" ${chbAttrs('copyGuestRegLink', String(b.id))}>Copy request link</button>` : ''}
             </div>
             <p class="bhub-mut" style="margin:10px 0 0;font-size:0.8rem;">Full name &amp; nationality of everyone 16+ (plus passport/ID &amp; next destination for non‑British/Irish). Held securely; deleted 12 months after checkout.</p>
         </section>`;
@@ -4322,7 +4322,7 @@ async function renderPricingCoach() {
     const card = (s) => {
         const op = s.severity === 'opportunity';
         const applyBtn = s.apply
-            ? `<button class="btn-sm btn-edit" onclick="applyPricingSuggestion('${s.prop_key}','${s.apply.field}',${Number(s.apply.value)},'${s.id}')">Apply${s.apply.field === 'weekendPct' ? ' — set ' + Number(s.apply.value) + '% weekend' : ''}</button>`
+            ? `<button class="btn-sm btn-edit" ${chbAttrs('applyPricingSuggestion', String(s.prop_key), String(s.apply.field), Number(s.apply.value), String(s.id))}>Apply${s.apply.field === 'weekendPct' ? ' — set ' + Number(s.apply.value) + '% weekend' : ''}</button>`
             : '';
         return `<div class="accounts-stat" id="psug-${escapeHtml(s.id)}" style="max-width:640px;margin-bottom:12px;">
                     <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;flex-wrap:wrap;">
@@ -4410,7 +4410,7 @@ function loadContentEditor() {
             html +=
                 `<div class="content-edit-row"><div class="exp-edit-thumb" id="ce-thumb-${k}" style="background-image:url('${escapeHtml(contentBgUrl(el))}');"></div>` +
                 `<div style="flex:1;min-width:0;"><div class="modal-label" style="margin:0 0 6px;">${escapeHtml(label(k))}</div>` +
-                `<button class="btn-sm btn-edit" onclick="contentEditImage('${k}')">Replace image</button></div></div>`;
+                `<button class="btn-sm btn-edit" ${chbAttrs('contentEditImage', String(k))}>Replace image</button></div></div>`;
         });
     }
     html +=
@@ -4426,7 +4426,7 @@ function loadContentEditor() {
                 : `<input type="text" class="input-glass" id="ce-${k}" value="${escapeHtml(val)}">`;
         html +=
             `<div style="margin-bottom:14px;max-width:640px;"><label class="modal-label" for="ce-${k}">${escapeHtml(label(k))}</label>${field}` +
-            `<button class="btn-sm btn-edit" style="margin-top:6px;" onclick="contentEditSave('${k}')">Save</button></div>`;
+            `<button class="btn-sm btn-edit" style="margin-top:6px;" ${chbAttrs('contentEditSave', String(k))}>Save</button></div>`;
     });
     wrap.innerHTML = html;
 }
@@ -4557,7 +4557,7 @@ async function renderAccomList() {
                           ? ' <span style="font-size:0.7rem;color:var(--text-muted);font-weight:600;">· private</span>'
                           : '';
                     return `
-                    <button class="settings-row" onclick="settingsOpenAccom('${k}')" ${arch ? 'style="opacity:0.55;"' : ''}>
+                    <button class="settings-row" ${chbAttrs('settingsOpenAccom', String(k))} ${arch ? 'style="opacity:0.55;"' : ''}>
                         <span class="settings-row-ic"><span class="legend-swatch swatch-${k}" style="width:16px;height:16px;border-radius:5px;"></span></span>
                         <span class="settings-row-main"><span class="settings-row-label">${escapeHtml(propertyMeta[k].name)}${badge}</span><span class="settings-row-sub">${sub}</span></span>
                         <span class="settings-row-chev" style="margin-left:10px;">›</span>
@@ -4571,7 +4571,7 @@ async function renderAccomList() {
 // The "Add accommodation" action shown under the cottage list in Preferences.
 function accomAddRowHtml() {
     return `<div class="settings-group" style="margin-top:14px;">
-                <button class="settings-row" onclick="addAccommodationPrompt()">
+                <button class="settings-row" data-act="addAccommodationPrompt">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Add accommodation</span><span class="settings-row-sub">Create a new cottage, then fill in its details</span></span><span class="settings-row-chev">›</span>
                 </button>
@@ -4759,33 +4759,33 @@ function settingsOpenAccom(k) {
             ? ''
             : priv
               ? `<div class="settings-group" style="margin-top:14px;">
-                        <button class="settings-row" onclick="setAccommodationPrivate('${k}', false)">
+                        <button class="settings-row" ${chbAttrs('setAccommodationPrivate', String(k), false)}>
                             <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg></span>
                             <span class="settings-row-main"><span class="settings-row-label">List on the website</span><span class="settings-row-sub">This cottage is private — show it publicly so guests can find and enquire</span></span><span class="settings-row-chev">›</span>
                         </button>
                     </div>`
               : `<div class="settings-group" style="margin-top:14px;">
-                        <button class="settings-row" onclick="setAccommodationPrivate('${k}', true)">
+                        <button class="settings-row" ${chbAttrs('setAccommodationPrivate', String(k), true)}>
                             <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.9 4.24A9.1 9.1 0 0 1 12 4c6.5 0 10 7 10 7a13.2 13.2 0 0 1-2.16 3.19M6.6 6.6C3.6 8.3 2 12 2 12s3.5 7 10 7a9.3 9.3 0 0 0 5.4-1.6M1 1l22 22M9.9 9.9a3 3 0 0 0 4.2 4.2"/></svg></span>
                             <span class="settings-row-main"><span class="settings-row-label">Make private</span><span class="settings-row-sub">Hide from the website but keep booking &amp; taking payments in the back office</span></span><span class="settings-row-chev">›</span>
                         </button>
                     </div>`;
         const removeRow = arch
             ? `<div class="settings-group" style="margin-top:14px;">
-                        <button class="settings-row" onclick="restoreAccommodation('${k}')">
+                        <button class="settings-row" ${chbAttrs('restoreAccommodation', String(k))}>
                             <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg></span>
                             <span class="settings-row-main"><span class="settings-row-label">Restore to the site</span><span class="settings-row-sub">This cottage is currently removed (hidden)</span></span><span class="settings-row-chev">›</span>
                         </button>
                     </div>`
             : `<div class="settings-group" style="margin-top:14px;">
-                        <button class="settings-row" onclick="archiveAccommodation('${k}')">
+                        <button class="settings-row" ${chbAttrs('archiveAccommodation', String(k))}>
                             <span class="settings-row-ic" style="color:var(--danger);"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></span>
                             <span class="settings-row-main"><span class="settings-row-label" style="color:var(--danger);">Remove this accommodation</span><span class="settings-row-sub">Hides it from the site — bookings &amp; history are kept, and you can restore it</span></span><span class="settings-row-chev">›</span>
                         </button>
                     </div>`;
         detail.innerHTML = `<div class="settings-group">${ACCOM_SECTIONS.map(
             (s) =>
-                `<button class="settings-row" onclick="settingsOpenAccomSec('${k}','${s.id}')">
+                `<button class="settings-row" ${chbAttrs('settingsOpenAccomSec', String(k), String(s.id))}>
                         <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${s.ic}</svg></span>
                         <span class="settings-row-main"><span class="settings-row-label">${s.label}</span><span class="settings-row-sub">${s.sub}</span></span><span class="settings-row-chev">›</span>
                     </button>`,
@@ -4858,7 +4858,7 @@ function cancelRowsHtml() {
     return Object.keys(propertyMeta)
         .map((k) => {
             const pol = CANCELLATION_POLICIES[cancelPolicyOf(k)];
-            return `<button class="settings-row" onclick="settingsOpenCancel('${k}')">
+            return `<button class="settings-row" ${chbAttrs('settingsOpenCancel', String(k))}>
                     <span class="settings-row-ic"><span class="legend-swatch swatch-${k}" style="width:16px;height:16px;border-radius:5px;"></span></span>
                     <span class="settings-row-main"><span class="settings-row-label">${escapeHtml(propertyMeta[k].name)}</span><span class="settings-row-sub">${pol.name}</span></span><span class="settings-row-chev">›</span>
                 </button>`;
@@ -4887,7 +4887,7 @@ function cancelPickerHtml(propKey) {
         .map((pk) => {
             const p = CANCELLATION_POLICIES[pk];
             const sel = pk === cur;
-            return `<button type="button" class="cancel-card${sel ? ' selected' : ''}" role="radio" aria-checked="${sel}" onclick="setCancelPolicy('${propKey}','${pk}')">
+            return `<button type="button" class="cancel-card${sel ? ' selected' : ''}" role="radio" aria-checked="${sel}" ${chbAttrs('setCancelPolicy', String(propKey), String(pk))}>
                     <span class="cancel-card-check" aria-hidden="true"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg></span>
                     <span class="cancel-card-name">${p.name}</span>
                     <ul class="cancel-card-points">${p.points.map((pt) => `<li>${escapeHtml(pt)}</li>`).join('')}</ul>
@@ -4960,19 +4960,19 @@ function calendarPropBoxHtml(key, label, data) {
     const status = (data.status && data.status.sources) || {};
     const inputs = SYNC_SOURCES.map((p) => {
         const f = feeds.find((x) => x.source === p.source);
-        return `<input class="input-glass" id="sync-${p.source}-${key}" onblur="saveSyncFeeds('${key}', true)" placeholder="${p.placeholder}" value="${escapeHtml(f ? f.url : '')}" style="font-size:0.8rem;margin-bottom:8px;">${feedStatusHtml(f && f.url ? status[p.source] : null)}`;
+        return `<input class="input-glass" id="sync-${p.source}-${key}" ${chbBlur('saveSyncFeeds', String(key), true)} placeholder="${p.placeholder}" value="${escapeHtml(f ? f.url : '')}" style="font-size:0.8rem;margin-bottom:8px;">${feedStatusHtml(f && f.url ? status[p.source] : null)}`;
     }).join('');
     return `<div style="border:1px solid var(--glass-border);border-radius:12px;padding:16px;">
                     <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px;">Export — paste this into each platform's calendar import</div>
                     <div style="display:flex;gap:8px;margin-bottom:14px;">
-                        <input class="input-glass" readonly id="sync-export-${key}" onclick="this.select()" value="${escapeHtml(data.export_url || '')}" style="font-size:0.8rem;flex:1;min-width:0;">
-                        <button class="btn-sm btn-edit" onclick="copyIcalExport('${key}')" style="flex-shrink:0;">Copy</button>
+                        <input class="input-glass" readonly id="sync-export-${key}" data-act="selectSelf" value="${escapeHtml(data.export_url || '')}" style="font-size:0.8rem;flex:1;min-width:0;">
+                        <button class="btn-sm btn-edit" ${chbAttrs('copyIcalExport', String(key))} style="flex-shrink:0;">Copy</button>
                     </div>
                     <div style="font-size:0.75rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:4px;">Import — paste the platform calendar links here</div>
                     ${inputs}
                     <div style="margin-top:2px;">
-                        <button class="btn-sm btn-edit" onclick="saveSyncFeeds('${key}')">Save links</button>
-                        <button class="btn-sm btn-edit" onclick="runSync('${key}')">Sync now</button>
+                        <button class="btn-sm btn-edit" ${chbAttrs('saveSyncFeeds', String(key))}>Save links</button>
+                        <button class="btn-sm btn-edit" ${chbAttrs('runSync', String(key))}>Sync now</button>
                         <span style="font-size:0.8rem;color:var(--text-muted);margin-left:8px;">${data.blocks || 0} imported blocked range${data.blocks === 1 ? '' : 's'}</span>
                     </div>
                     <div style="font-size:0.72rem;color:var(--text-muted);margin-top:8px;">Links save automatically as you type, and are kept on the server — they stay put across devices and logins. Feeds refresh themselves daily; you'll get an alert if one stops working.</div>
@@ -5127,8 +5127,8 @@ async function loadGuestList() {
                             <td>${g.last_stay ? (typeof fmtDate === 'function' ? fmtDate(g.last_stay) : g.last_stay) : '—'}</td>
                             <td>${escapeHtml(propName(g.fav_prop))}</td>
                             <td class="num" style="white-space:nowrap;">
-                                <button class="btn-sm btn-edit" data-email="${escapeHtml(g.email || '')}" onclick="reinviteGuest(this)" title="Email this guest a returning-guest invitation">Invite back</button>
-                                ${g.has_account ? `<button class="btn-sm btn-edit" data-email="${escapeHtml(g.email || '')}" onclick="resetGuestPassword(this)">Reset password</button>` : ''}
+                                <button class="btn-sm btn-edit" data-email="${escapeHtml(g.email || '')}" ${chbAttrs('reinviteGuest', CHB_SELF)} title="Email this guest a returning-guest invitation">Invite back</button>
+                                ${g.has_account ? `<button class="btn-sm btn-edit" data-email="${escapeHtml(g.email || '')}" ${chbAttrs('resetGuestPassword', CHB_SELF)}>Reset password</button>` : ''}
                             </td>
                         </tr>`,
                             )
@@ -5392,9 +5392,9 @@ async function renderAccounts() {
                 </div>
                 ${quarterly}
                 <div class="accounts-actions" style="margin-top:14px;">
-                    <button class="btn-sm btn-edit" onclick="downloadYearStatement(${startYear})">⤓ Statement (PDF)</button>
-                    <button class="btn-sm btn-edit" onclick="exportAccountsCSV()">⤓ Export (CSV)</button>
-                    <button class="btn-sm btn-edit" onclick="accountsOpen('expenses')">Manage expenses</button>
+                    <button class="btn-sm btn-edit" ${chbAttrs('downloadYearStatement', startYear)}>⤓ Statement (PDF)</button>
+                    <button class="btn-sm btn-edit" data-act="exportAccountsCSV">⤓ Export (CSV)</button>
+                    <button class="btn-sm btn-edit" data-act="accountsOpen" data-arg="expenses">Manage expenses</button>
                 </div>
                 <div class="accounts-note" style="margin-top:12px;">
                     ${heldDeposits > 0 ? gbp(heldDeposits) + ' collected as refundable damages deposits — returned after checkout, <strong>not</strong> income. ' : ''}
@@ -5688,9 +5688,9 @@ function renderExpenses() {
                       <div class="feed-row" style="grid-template-columns:84px 1fr auto auto auto;gap:10px;">
                         <span class="feed-date">${fmtDate(x.date)}</span>
                         <span class="feed-who">${escapeHtml(x.category)}${x.description ? ' · ' + escapeHtml(x.description) : ''}${x.prop_key && propertyMeta[x.prop_key] ? ' · ' + escapeHtml(propertyMeta[x.prop_key].short || propertyMeta[x.prop_key].name) : ''}${x.recurring ? ' <span class="exp-tag">recurring</span>' : ''}</span>
-                        ${__expenseReceipts[x.id] ? `<button class="feed-del" title="View scanned receipt" onclick="toggleReceiptDetail(${x.id})">🧾</button>` : '<span></span>'}
+                        ${__expenseReceipts[x.id] ? `<button class="feed-del" title="View scanned receipt" ${chbAttrs('toggleReceiptDetail', x.id)}>🧾</button>` : '<span></span>'}
                         <span class="feed-amt">${gbp(x.amount)}</span>
-                        <span style="display:flex;gap:2px;"><button class="feed-del" title="Edit" onclick="editExpense(${x.id})">✎</button>${x.recurring ? `<button class="feed-del" title="Add next month's copy" onclick="repeatExpense(${x.id})" style="color:var(--accent);">↻</button>` : ''}<button class="feed-del" title="Remove" onclick="deleteExpense(${x.id})">×</button></span>
+                        <span style="display:flex;gap:2px;"><button class="feed-del" title="Edit" ${chbAttrs('editExpense', x.id)}>✎</button>${x.recurring ? `<button class="feed-del" title="Add next month's copy" ${chbAttrs('repeatExpense', x.id)} style="color:var(--accent);">↻</button>` : ''}<button class="feed-del" title="Remove" ${chbAttrs('deleteExpense', x.id)}>×</button></span>
                       </div>
                       <div id="exp-rd-${x.id}" style="display:none;"></div>
                     </div>`,
@@ -5713,9 +5713,9 @@ function renderExpenses() {
                         <div><label class="modal-label">Cottage</label><select id="exp-prop" class="input-glass field-sm" style="margin:0;">${cottageOpts}</select></div>
                         <div style="flex:1 1 160px;"><label class="modal-label">Note (optional)</label><input type="text" id="exp-desc" class="input-glass field-sm" placeholder="e.g. End-of-stay clean" style="margin:0;width:100%;"></div>
                         <label class="exp-recurring-label" style="display:flex;align-items:center;gap:6px;font-size:0.82rem;color:var(--text-muted);"><input type="checkbox" id="exp-recurring" style="width:auto;margin:0;"> Recurring</label>
-                        <div class="exp-receipt-field"><label class="modal-label">Receipt <span style="text-transform:none;letter-spacing:0;color:var(--text-muted);">· scanned on device, not stored</span></label><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><button class="btn-sm btn-edit exp-scan-btn" type="button" onclick="pickExpenseReceipt()">＋ Scan photo</button><span id="exp-receipt-prev" style="display:inline-flex;align-items:center;gap:6px;"></span></div></div>
-                        <button class="btn-sm btn-edit exp-add-btn" onclick="addExpense()">Add</button>
-                        <button class="btn-sm exp-clear-btn" type="button" onclick="clearExpenseForm()">Clear</button>
+                        <div class="exp-receipt-field"><label class="modal-label">Receipt <span style="text-transform:none;letter-spacing:0;color:var(--text-muted);">· scanned on device, not stored</span></label><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;"><button class="btn-sm btn-edit exp-scan-btn" type="button" data-act="pickExpenseReceipt">＋ Scan photo</button><span id="exp-receipt-prev" style="display:inline-flex;align-items:center;gap:6px;"></span></div></div>
+                        <button class="btn-sm btn-edit exp-add-btn" data-act="addExpense">Add</button>
+                        <button class="btn-sm exp-clear-btn" type="button" data-act="clearExpenseForm">Clear</button>
                     </div>
                     <div id="exp-receipt-card"></div>
                   </div>
@@ -5958,7 +5958,7 @@ function renderDepositsDue() {
                             <span style="color:var(--text-muted);margin-left:8px;font-size:0.85rem;">left ${fmtDate(b.checkOut)}</span></div>
                         <span class="money-status">${gbp(dh.held)} held</span>
                     </div>
-                    <div class="money-actions"><button class="btn-sm btn-edit" onclick="returnDeposit('${b.id}')">Return deposit</button>${b.holdStatus === 'charged' ? `<button class="btn-sm btn-edit" onclick="keepDeposit('${b.id}')">Keep (damage)</button>` : ''}</div>
+                    <div class="money-actions"><button class="btn-sm btn-edit" ${chbAttrs('returnDeposit', String(b.id))}>Return deposit</button>${b.holdStatus === 'charged' ? `<button class="btn-sm btn-edit" ${chbAttrs('keepDeposit', String(b.id))}>Keep (damage)</button>` : ''}</div>
                 </div>`,
         )
         .join('');
@@ -6208,7 +6208,7 @@ function renderMoneyOverview() {
     // "chase" CTA folded into its own tile (no separate duplicate banner).
     const chaseCta =
         owedUpcoming > 0.5
-            ? `<button class="btn-sm btn-edit mo-kpi-cta" onclick="event.stopPropagation();accountsOpen('payments')">Chase balances →</button>`
+            ? `<button class="btn-sm btn-edit mo-kpi-cta" data-act="stopAccountsPayments">Chase balances →</button>`
             : '';
 
     el.innerHTML = `
@@ -6301,7 +6301,7 @@ function renderMoneyPanel() {
             const dh = damageHeld(propKey, b);
             const depBit = dh.held > 0 ? ` · ${gbp(dh.held)} deposit held` : '';
             return `
-                <button type="button" class="bk-row glass-panel pay-${payClass}" data-bkid="${b.id}" onclick="openBookingHub('${b.id}')">
+                <button type="button" class="bk-row glass-panel pay-${payClass}" data-bkid="${b.id}" ${chbAttrs('openBookingHub', String(b.id))}>
                     <span class="bk-row-body">
                         <span class="bk-row-top">
                             <span class="prop-tag tag-${propKey}">${escapeHtml(meta.name)}</span>
@@ -6735,7 +6735,7 @@ async function loadAdminPasskeys() {
                     k,
                 ) => `<div style="display:flex;justify-content:space-between;align-items:center;border:1px solid var(--glass-border);border-radius:10px;padding:10px 14px;margin-bottom:8px;">
                     <span style="font-size:0.88rem;">${escapeHtml(k.label || 'Passkey')}<span style="color:var(--text-muted);font-size:0.75rem;"> · added ${(k.created_at || '').split(' ')[0]}</span></span>
-                    <button class="btn-sm btn-decline" onclick="deleteAdminPasskey(${k.id})">Remove</button>
+                    <button class="btn-sm btn-decline" ${chbAttrs('deleteAdminPasskey', k.id)}>Remove</button>
                 </div>`,
             )
             .join('');
@@ -6821,15 +6821,15 @@ function renderNotifySettings() {
                 <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 12px;">Get a notification on this device for new enquiries, guest messages, payments, and when a new version of your site goes live. Enable it once on each device (phone, laptop) you want alerts on.</p>
                 <p style="font-size:0.82rem;color:var(--text-light);margin:0 0 14px;">${status}</p>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                    <button class="btn-sm btn-edit" onclick="enableOwnerPush()">Enable on this device</button>
-                    <button class="btn-sm btn-edit" onclick="testOwnerPush()">Send test</button>
+                    <button class="btn-sm btn-edit" data-act="enableOwnerPush">Enable on this device</button>
+                    <button class="btn-sm btn-edit" data-act="testOwnerPush">Send test</button>
                 </div>
             </div>
             <div class="accounts-stat" style="max-width:560px;margin-top:16px;">
                 <div class="label">Email recipients</div>
                 <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 12px;">Who gets emailed about new bookings, enquiries, guest messages, payments and reviews. Add a partner or co-host and they're copied on every alert.</p>
                 <div id="notify-emails-list"><p style="font-size:0.82rem;color:var(--text-muted);">Loading…</p></div>
-                <form onsubmit="addNotifyEmail(event)" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
+                <form data-act-submit="addNotifyEmail" data-pass="event" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
                     <input type="email" id="notify-email-input" class="input-glass field-sm" placeholder="name@example.com" autocomplete="off" style="flex:1;min-width:200px;margin:0;">
                     <button type="submit" class="btn-sm btn-edit">Add address</button>
                 </form>
@@ -7235,8 +7235,8 @@ function holdControls(b) {
     // New charge-upfront model.
     if (st === 'charged') {
         const actions = left
-            ? `<button class="btn-sm btn-edit" onclick="returnDeposit('${b.id}')">Approve &amp; refund</button>
-               <button class="btn-sm btn-edit" onclick="keepDeposit('${b.id}')">Keep (damage)</button>`
+            ? `<button class="btn-sm btn-edit" ${chbAttrs('returnDeposit', String(b.id))}>Approve &amp; refund</button>
+               <button class="btn-sm btn-edit" ${chbAttrs('keepDeposit', String(b.id))}>Keep (damage)</button>`
             : `<span style="color:var(--text-muted);font-size:0.78rem;">refundable after checkout</span>`;
         return `<div class="money-deposit"><span>Damage deposit: <strong>${gbp(amt)} collected</strong></span> ${actions}</div>`;
     }
@@ -7247,8 +7247,8 @@ function holdControls(b) {
     // Legacy card-hold model — kept working for any in-flight authorised holds.
     if (st === 'authorized')
         return `<div class="money-deposit"><span>Damage hold: <strong>${gbp(amt)} held</strong></span>
-                <button class="btn-sm btn-edit" onclick="releaseHold('${b.id}')">Release</button>
-                <button class="btn-sm btn-edit" onclick="captureHold('${b.id}')">Capture (damage)</button></div>`;
+                <button class="btn-sm btn-edit" ${chbAttrs('releaseHold', String(b.id))}>Release</button>
+                <button class="btn-sm btn-edit" ${chbAttrs('captureHold', String(b.id))}>Capture (damage)</button></div>`;
     if (st === 'captured')
         return `<div class="money-deposit"><span>Damage hold: <strong style="color:var(--danger);">${gbp(amt)} captured</strong> for damage</span></div>`;
     if (st === 'released')
@@ -7463,7 +7463,7 @@ function renderNeedsYou() {
             )
             .join('') +
         (items.length > shown.length
-            ? `<button type="button" class="btn-sm btn-edit ny-more" onclick="needsYouExpand()">Show ${items.length - shown.length} more</button>`
+            ? `<button type="button" class="btn-sm btn-edit ny-more" data-act="needsYouExpand">Show ${items.length - shown.length} more</button>`
             : '');
 }
 // The header's living second line: the date plus what today actually holds —
@@ -7786,11 +7786,11 @@ function renderMessagesList() {
     // The archived toggle docks to the RIGHT of the "Guest messages" heading
     // (#messages-head-actions), not inline in the controls row — set just after
     // the list renders below.
-    const toggle = `<button class="btn-sm msg-archived-toggle" onclick="toggleArchivedMessages()">${__msgShowArchived ? '← Active conversations' : 'Show archived'}</button>`;
+    const toggle = `<button class="btn-sm msg-archived-toggle" data-act="toggleArchivedMessages">${__msgShowArchived ? '← Active conversations' : 'Show archived'}</button>`;
     const controls = threads.length
         ? `<div class="msg-inbox-controls">
-                <input id="msg-search" class="input-glass field-sm" type="search" placeholder="Search name, email or text…" value="${escapeHtml(__msgSearch)}" oninput="onMsgSearch(this.value)" autocomplete="off">
-                ${needCount && !__msgShowArchived ? `<button id="msg-unanswered" class="msg-filter-chip${__msgUnansweredOnly ? ' on' : ''}" onclick="toggleUnansweredOnly()">Needs reply · ${needCount}</button>` : ''}
+                <input id="msg-search" class="input-glass field-sm" type="search" placeholder="Search name, email or text…" value="${escapeHtml(__msgSearch)}" data-act-input="onMsgSearch" data-pass="value" autocomplete="off">
+                ${needCount && !__msgShowArchived ? `<button id="msg-unanswered" class="msg-filter-chip${__msgUnansweredOnly ? ' on' : ''}" data-act="toggleUnansweredOnly">Needs reply · ${needCount}</button>` : ''}
            </div>`
         : '';
     const rows = threads.length
@@ -7807,7 +7807,7 @@ function renderMessagesList() {
                   const nm = t.name || t.email || 'Visitor';
                   const unread = (t.unread || 0) > 0;
                   return `
-                <button class="msg-thread-row${unread ? ' unread' : ''}" data-s="${escapeHtml(hay)}" data-needs="${needs ? 1 : 0}" onclick="openMessageThread(${t.thread_id})">
+                <button class="msg-thread-row${unread ? ' unread' : ''}" data-s="${escapeHtml(hay)}" data-needs="${needs ? 1 : 0}" ${chbAttrs('openMessageThread', t.thread_id)}>
                     <span class="mtr-ava" style="--ava-h:${strHue(nm)};" aria-hidden="true">${escapeHtml(avatarInitial(nm))}</span>
                     <span class="mtr-main">
                         <span class="mtr-top"><span class="mtr-name">${escapeHtml(nm)}${t.is_guest ? '' : ' <span class="mtr-tag">visitor</span>'}</span><span class="mtr-time">${escapeHtml(relTime(t.last_at))}</span></span>
@@ -7875,7 +7875,7 @@ function renderChatAnswersEditor() {
                 siteContent[f.key] != null && siteContent[f.key] !== '' ? siteContent[f.key] : '';
             return (
                 `<div style="margin-bottom:14px;"><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">${escapeHtml(f.q)}</label>` +
-                `<textarea rows="3" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" placeholder="${escapeHtml(f.def)}" onchange="saveContent('${f.key}', this.value)">${escapeHtml(val)}</textarea></div>`
+                `<textarea rows="3" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" placeholder="${escapeHtml(f.def)}" ${chbChange('saveContent', f.key, CHB_VALUE)}>${escapeHtml(val)}</textarea></div>`
             );
         }).join('');
 }
@@ -7901,11 +7901,11 @@ function renderChatAwayEditor() {
     host.innerHTML =
         '<h3 style="font-family:var(--font-serif);font-size:1.1rem;margin:0 0 4px;">Away auto-reply</h3>' +
         '<p style="font-size:0.8rem;color:var(--text-muted);margin:0 0 14px;">Automatically acknowledge a guest who messages when you can’t reply straight away. Sent at most once every few hours per conversation, and never right after you’ve replied.</p>' +
-        `<label style="display:flex;align-items:center;gap:10px;font-size:0.85rem;margin-bottom:14px;cursor:pointer;"><input type="checkbox" ${enabled ? 'checked' : ''} onchange="saveContent('chat-away-enabled', this.checked ? '1' : '')"> Turn on away auto-reply</label>` +
+        `<label style="display:flex;align-items:center;gap:10px;font-size:0.85rem;margin-bottom:14px;cursor:pointer;"><input type="checkbox" ${enabled ? 'checked' : ''} data-act-change="saveContentToggle" data-key="chat-away-enabled"> Turn on away auto-reply</label>` +
         `<div style="margin-bottom:14px;"><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Auto-reply message</label>` +
-        `<textarea rows="3" style="width:100%;${inputStyle}resize:vertical;" placeholder="Thanks for your message! We’re not at the desk right now but will reply as soon as we can — usually within a few hours." onchange="saveContent('chat-away-msg', this.value)">${escapeHtml(msgVal)}</textarea></div>` +
+        `<textarea rows="3" style="width:100%;${inputStyle}resize:vertical;" placeholder="Thanks for your message! We’re not at the desk right now but will reply as soon as we can — usually within a few hours." ${chbChange('saveContent', 'chat-away-msg', CHB_VALUE)}>${escapeHtml(msgVal)}</textarea></div>` +
         `<label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Only auto-reply outside these hours (optional)</label>` +
-        `<div style="display:flex;align-items:center;gap:10px;"><select style="${inputStyle}flex:1;" aria-label="Available from" onchange="saveContent('chat-away-from', this.value)">${hourOpts(from)}</select><span style="color:var(--text-muted);font-size:0.8rem;">to</span><select style="${inputStyle}flex:1;" aria-label="Available until" onchange="saveContent('chat-away-to', this.value)">${hourOpts(to)}</select></div>` +
+        `<div style="display:flex;align-items:center;gap:10px;"><select style="${inputStyle}flex:1;" aria-label="Available from" ${chbChange('saveContent', 'chat-away-from', CHB_VALUE)}>${hourOpts(from)}</select><span style="color:var(--text-muted);font-size:0.8rem;">to</span><select style="${inputStyle}flex:1;" aria-label="Available until" ${chbChange('saveContent', 'chat-away-to', CHB_VALUE)}>${hourOpts(to)}</select></div>` +
         `<p style="font-size:0.72rem;color:var(--text-muted);margin:8px 0 0;">e.g. 09:00 to 18:00 — the auto-reply only fires outside that window. Leave both as “—” to auto-reply any time you haven’t just replied.</p>`;
 }
 function toggleArchivedMessages() {
@@ -7921,7 +7921,7 @@ function toggleArchivedMessages() {
 function listRowHtml(attr, value, placeholder) {
     return `<div class="list-edit-row" style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
                 <input type="text" class="input-glass field-sm" data-${attr}="1" value="${escapeHtml(value || '')}" placeholder="${escapeHtml(placeholder || '')}" style="flex:1 1 auto;margin:0;">
-                <button class="btn-sm btn-delete list-edit-del" onclick="this.closest('.list-edit-row').remove()" title="Remove" aria-label="Remove"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 12h12"/></svg></button>
+                <button class="btn-sm btn-delete list-edit-del" data-act="closestRemove" data-sel=".list-edit-row" title="Remove" aria-label="Remove"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 12h12"/></svg></button>
             </div>`;
 }
 function collectListRows(wrap, attr) {
@@ -8059,20 +8059,20 @@ function accomSectionHtml(k, sec) {
             const imgUrl = imgEl ? contentBgUrl(imgEl) : siteContent[ck.img] || '';
             return `<p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 14px;">How this cottage appears on the home page (the tile guests tap). Its detail-page photos &amp; text are in the Photos and Text tabs.</p>
                         <div class="content-edit-row"><div class="exp-edit-thumb" id="ce-thumb-${ck.img}" style="background-image:url('${escapeHtml(imgUrl)}');"></div>
-                            <div style="flex:1;min-width:0;"><div class="modal-label" style="margin:0 0 6px;">Home-page photo</div><button class="btn-sm btn-edit" onclick="contentEditImage('${ck.img}')">Replace image</button></div></div>
+                            <div style="flex:1;min-width:0;"><div class="modal-label" style="margin:0 0 6px;">Home-page photo</div><button class="btn-sm btn-edit" ${chbAttrs('contentEditImage', String(ck.img))}>Replace image</button></div></div>
                         <label class="modal-label" for="ce-${ck.title}">Home-page title</label>
                         <input type="text" class="input-glass" id="ce-${ck.title}" value="${escapeHtml(curText(ck.title))}">
-                        <button class="btn-sm btn-edit" style="margin-top:6px;" onclick="contentEditSave('${ck.title}')">Save</button>
+                        <button class="btn-sm btn-edit" style="margin-top:6px;" ${chbAttrs('contentEditSave', String(ck.title))}>Save</button>
                         <label class="modal-label" for="ce-${ck.meta}">Home-page subtitle</label>
                         <input type="text" class="input-glass" id="ce-${ck.meta}" value="${escapeHtml(curText(ck.meta))}">
-                        <button class="btn-sm btn-edit" style="margin-top:6px;" onclick="contentEditSave('${ck.meta}')">Save</button>`;
+                        <button class="btn-sm btn-edit" style="margin-top:6px;" ${chbAttrs('contentEditSave', String(ck.meta))}>Save</button>`;
         }
         case 'photos': {
             const imgs = accomImages(k);
             return `<label class="modal-label" style="margin-top:0;">Gallery photos (shown on the cottage page, in this order)</label>
                         <p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 12px;">Add, replace, reorder or remove. The first photo is the main image.</p>
                         <div id="accom-photos-${k}">${imgs.length ? imgs.map((u, i) => accomPhotoRow(k, u, i, imgs.length)).join('') : '<p style="font-size:0.85rem;color:var(--text-muted);">No photos yet — add the first below.</p>'}</div>
-                        <button class="btn-sm btn-edit" style="margin-top:10px;" onclick="accomAddPhoto('${k}')">＋ Add photo</button>`;
+                        <button class="btn-sm btn-edit" style="margin-top:10px;" ${chbAttrs('accomAddPhoto', String(k))}>＋ Add photo</button>`;
         }
         case 'text': {
             const def = propertyContent[k] || {};
@@ -8091,33 +8091,33 @@ function accomSectionHtml(k, sec) {
                         <textarea class="input-glass" id="accom-t-desc-${k}" rows="4" style="resize:vertical;">${escapeHtml(tv('desc', def.desc))}</textarea>
                         <label class="modal-label">Location blurb</label>
                         <input type="text" class="input-glass" id="accom-t-location-${k}" value="${escapeHtml(tv('location', ''))}">
-                        <div style="margin-top:10px;"><button class="btn-sm btn-edit" onclick="accomSaveText('${k}')">Save text</button> <span id="accom-text-msg-${k}" style="font-size:0.8rem;margin-left:8px;"></span></div>
+                        <div style="margin-top:10px;"><button class="btn-sm btn-edit" ${chbAttrs('accomSaveText', String(k))}>Save text</button> <span id="accom-text-msg-${k}" style="font-size:0.8rem;margin-left:8px;"></span></div>
                         <div class="rule-divider">Features <span style="opacity:0.6;text-transform:none;letter-spacing:0;">(the pills on the cottage page)</span></div>
                         <div id="accom-am-rows-${k}">${ams.map((a) => listRowHtml('am', a, 'e.g. Wood-burning stove')).join('')}</div>
                         <div style="display:flex;gap:10px;margin-top:8px;">
-                            <button class="btn-sm btn-edit" onclick="accomAddAmenity('${k}')">＋ Add feature</button>
-                            <button class="btn-sm btn-edit" onclick="accomSaveAmenities('${k}')">Save features</button>
+                            <button class="btn-sm btn-edit" ${chbAttrs('accomAddAmenity', String(k))}>＋ Add feature</button>
+                            <button class="btn-sm btn-edit" ${chbAttrs('accomSaveAmenities', String(k))}>Save features</button>
                         </div>`;
         }
         case 'rates':
             return `
-                    <div class="rate-field"><label>Couple / night — 2 adults (£)</label><input type="number" min="0" step="1" value="${r.coupleRate}" onchange="updateRate('${k}','coupleRate',this.value)"></div>
-                    <div class="rate-field"><label>Extra adult / night (£)</label><input type="number" min="0" step="1" value="${r.extraAdultRate}" onchange="updateRate('${k}','extraAdultRate',this.value)"></div>
-                    <div class="rate-field"><label>Child / night (£)</label><input type="number" min="0" step="1" value="${r.childRate}" onchange="updateRate('${k}','childRate',this.value)"></div>
-                    <div class="rate-field"><label>Standard damages deposit (£)</label><input type="number" min="0" step="5" value="${r.damagesDeposit}" onchange="updateRate('${k}','damagesDeposit',this.value)"></div>
-                    <div class="rate-field"><label>Transaction fee (%)</label><input type="number" min="0" step="0.1" value="${r.transactionPct}" onchange="updateRate('${k}','transactionPct',this.value)"></div>
-                    <div class="rate-field"><label>Weekend uplift (%) — Fri &amp; Sat <span style="opacity:0.7;">(0 = off)</span></label><input type="number" min="0" max="200" step="1" value="${r.weekendPct || 0}" onchange="updateRate('${k}','weekendPct',this.value)" placeholder="e.g. 20"></div>
-                    <div class="rate-field"><label>Last-minute discount (%) <span style="opacity:0.7;">(0 = off)</span></label><input type="number" min="0" max="90" step="1" value="${r.lastminPct || 0}" onchange="updateRate('${k}','lastminPct',this.value)" placeholder="e.g. 15"></div>
-                    <div class="rate-field"><label>…for stays starting within (days)</label><input type="number" min="0" max="60" step="1" value="${r.lastminDays || 0}" onchange="updateRate('${k}','lastminDays',this.value)" placeholder="e.g. 10"></div>
+                    <div class="rate-field"><label>Couple / night — 2 adults (£)</label><input type="number" min="0" step="1" value="${r.coupleRate}" ${chbChange('updateRate', String(k), 'coupleRate', CHB_VALUE)}></div>
+                    <div class="rate-field"><label>Extra adult / night (£)</label><input type="number" min="0" step="1" value="${r.extraAdultRate}" ${chbChange('updateRate', String(k), 'extraAdultRate', CHB_VALUE)}></div>
+                    <div class="rate-field"><label>Child / night (£)</label><input type="number" min="0" step="1" value="${r.childRate}" ${chbChange('updateRate', String(k), 'childRate', CHB_VALUE)}></div>
+                    <div class="rate-field"><label>Standard damages deposit (£)</label><input type="number" min="0" step="5" value="${r.damagesDeposit}" ${chbChange('updateRate', String(k), 'damagesDeposit', CHB_VALUE)}></div>
+                    <div class="rate-field"><label>Transaction fee (%)</label><input type="number" min="0" step="0.1" value="${r.transactionPct}" ${chbChange('updateRate', String(k), 'transactionPct', CHB_VALUE)}></div>
+                    <div class="rate-field"><label>Weekend uplift (%) — Fri &amp; Sat <span style="opacity:0.7;">(0 = off)</span></label><input type="number" min="0" max="200" step="1" value="${r.weekendPct || 0}" ${chbChange('updateRate', String(k), 'weekendPct', CHB_VALUE)} placeholder="e.g. 20"></div>
+                    <div class="rate-field"><label>Last-minute discount (%) <span style="opacity:0.7;">(0 = off)</span></label><input type="number" min="0" max="90" step="1" value="${r.lastminPct || 0}" ${chbChange('updateRate', String(k), 'lastminPct', CHB_VALUE)} placeholder="e.g. 15"></div>
+                    <div class="rate-field"><label>…for stays starting within (days)</label><input type="number" min="0" max="60" step="1" value="${r.lastminDays || 0}" ${chbChange('updateRate', String(k), 'lastminDays', CHB_VALUE)} placeholder="e.g. 10"></div>
                     <p style="font-size:0.72rem;color:var(--text-muted);margin:4px 0 8px;">Automatically takes the % off the nightly rate for any stay whose check-in is within this many days — a hands-off way to fill near-term gaps. Both 0 to turn off.</p>
-                    <div class="rate-field"><label>Airbnb/OTA price for comparison (£/night, optional)</label><input type="number" min="0" step="1" value="${siteContent['ota-price-' + k] != null ? siteContent['ota-price-' + k] : ''}" placeholder="e.g. 165" onchange="saveLocalContent('ota-price-${k}', this.value)"></div>
+                    <div class="rate-field"><label>Airbnb/OTA price for comparison (£/night, optional)</label><input type="number" min="0" step="1" value="${siteContent['ota-price-' + k] != null ? siteContent['ota-price-' + k] : ''}" placeholder="e.g. 165" ${chbChange('saveLocalContent', `ota-price-${k}`, CHB_VALUE)}></div>
                     <p style="font-size:0.72rem;color:var(--text-muted);margin:4px 0 0;">If set and higher than your couple rate, a "Save £X/night booking direct" badge shows on the cottage page.</p>`;
         case 'house':
             return `
-                    <div class="rate-field"><label>Check-in time</label><input type="time" value="${r.checkInTime || '15:00'}" onchange="updateRuleField('${k}','checkInTime',this.value)" style="text-align:left;width:130px;"></div>
-                    <div class="rate-field"><label>Check-out time</label><input type="time" value="${r.checkOutTime || '10:00'}" onchange="updateRuleField('${k}','checkOutTime',this.value)" style="text-align:left;width:130px;"></div>
-                    <div class="rate-field"><label>Minimum nights</label><input type="number" min="1" step="1" value="${r.minNights || 1}" onchange="updateRuleField('${k}','minNights',this.value)"></div>
-                    <div class="rate-field"><label>Maximum nights <span style="opacity:0.7;">(0 = no limit)</span></label><input type="number" min="0" step="1" value="${r.maxNights || 0}" onchange="updateRuleField('${k}','maxNights',this.value)"></div>
+                    <div class="rate-field"><label>Check-in time</label><input type="time" value="${r.checkInTime || '15:00'}" ${chbChange('updateRuleField', String(k), 'checkInTime', CHB_VALUE)} style="text-align:left;width:130px;"></div>
+                    <div class="rate-field"><label>Check-out time</label><input type="time" value="${r.checkOutTime || '10:00'}" ${chbChange('updateRuleField', String(k), 'checkOutTime', CHB_VALUE)} style="text-align:left;width:130px;"></div>
+                    <div class="rate-field"><label>Minimum nights</label><input type="number" min="1" step="1" value="${r.minNights || 1}" ${chbChange('updateRuleField', String(k), 'minNights', CHB_VALUE)}></div>
+                    <div class="rate-field"><label>Maximum nights <span style="opacity:0.7;">(0 = no limit)</span></label><input type="number" min="0" step="1" value="${r.maxNights || 0}" ${chbChange('updateRuleField', String(k), 'maxNights', CHB_VALUE)}></div>
                     <div style="margin-top:6px;"><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:8px;">Allowed arrival days <span style="opacity:0.7;">(none ticked = any day)</span></label>
                         <div class="arrival-days">${[
                             'Sun',
@@ -8130,7 +8130,7 @@ function accomSectionHtml(k, sec) {
                         ]
                             .map(
                                 (d, di) =>
-                                    `<label class="day-check"><input type="checkbox" ${(r.arrivalDays || []).includes(di) ? 'checked' : ''} onchange="toggleArrivalDay('${k}',${di},this.checked)"> ${d}</label>`,
+                                    `<label class="day-check"><input type="checkbox" ${(r.arrivalDays || []).includes(di) ? 'checked' : ''} ${chbChange('toggleArrivalDay', String(k), di, CHB_CHECKED)}> ${d}</label>`,
                             )
                             .join('')}</div>
                     </div>
@@ -8145,7 +8145,7 @@ function accomSectionHtml(k, sec) {
                     <div class="rate-field"><label>Max adults</label><input type="number" min="1" step="1" id="occ-adults-${k}" value="${o.maxAdults}"></div>
                     <div class="rate-field"><label>Max children</label><input type="number" min="0" step="1" id="occ-children-${k}" value="${o.maxChildren}"></div>
                     <div class="rate-field"><label>Max guests in total</label><input type="number" min="1" step="1" id="occ-total-${k}" value="${o.maxTotal}"></div>
-                    <div style="margin-top:8px;"><button class="btn-sm btn-edit" onclick="saveOccupancy('${k}')">Save guest limits</button></div>`;
+                    <div style="margin-top:8px;"><button class="btn-sm btn-edit" ${chbAttrs('saveOccupancy', String(k))}>Save guest limits</button></div>`;
                     })()}
                     <div class="rule-divider">House rules <span style="opacity:0.6;text-transform:none;letter-spacing:0;">(extra bullets shown to guests)</span></div>
                     <label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:10px;">Shown under "House rules" on the cottage page, after the check-in/out and guest lines. Add or remove rules with the ＋ / − buttons.</label>
@@ -8153,8 +8153,8 @@ function accomSectionHtml(k, sec) {
                         .map((s) => listRowHtml('hr', s, 'e.g. No smoking indoors'))
                         .join('')}</div>
                     <div style="display:flex;gap:10px;margin-top:8px;">
-                        <button class="btn-sm btn-edit" onclick="accomAddHouseRule('${k}')">＋ Add rule</button>
-                        <button class="btn-sm btn-edit" onclick="accomSaveHouseRules('${k}')">Save</button>
+                        <button class="btn-sm btn-edit" ${chbAttrs('accomAddHouseRule', String(k))}>＋ Add rule</button>
+                        <button class="btn-sm btn-edit" ${chbAttrs('accomSaveHouseRules', String(k))}>Save</button>
                     </div>`;
         case 'safety':
             return `
@@ -8163,8 +8163,8 @@ function accomSectionHtml(k, sec) {
                         .map((s) => listRowHtml('sf', s, 'e.g. Smoke alarm'))
                         .join('')}</div>
                     <div style="display:flex;gap:10px;margin-top:8px;">
-                        <button class="btn-sm btn-edit" onclick="accomAddSafety('${k}')">＋ Add item</button>
-                        <button class="btn-sm btn-edit" onclick="accomSaveSafety('${k}')">Save</button>
+                        <button class="btn-sm btn-edit" ${chbAttrs('accomAddSafety', String(k))}>＋ Add item</button>
+                        <button class="btn-sm btn-edit" ${chbAttrs('accomSaveSafety', String(k))}>Save</button>
                     </div>`;
         case 'seasons':
             // Read-only here: seasonal pricing has ONE editor — the all-cottage
@@ -8182,39 +8182,39 @@ function accomSectionHtml(k, sec) {
                                   .join('')
                             : '<p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 8px;">No seasonal rates set for this cottage.</p>'
                     }
-                    <button class="btn-sm btn-edit" style="margin-top:6px;" onclick="settingsOpen('seasongrid')">Edit seasonal rates — all cottages →</button>`;
+                    <button class="btn-sm btn-edit" style="margin-top:6px;" data-act="settingsOpen" data-arg="seasongrid">Edit seasonal rates — all cottages →</button>`;
         case 'arrival':
             return `
-                    <div><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Sent to guests a few days before check-in (directions, key collection, wifi…). Kept private — never shown on the site. Also revealed on a guest's account when they're at the cottage (see Location).</label><textarea rows="5" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" onchange="saveContent('arrival-${k}', this.value)">${escapeHtml(adminPrivateContent['arrival-' + k] || '')}</textarea></div>`;
+                    <div><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Sent to guests a few days before check-in (directions, key collection, wifi…). Kept private — never shown on the site. Also revealed on a guest's account when they're at the cottage (see Location).</label><textarea rows="5" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" ${chbChange('saveContent', `arrival-${k}`, CHB_VALUE)}>${escapeHtml(adminPrivateContent['arrival-' + k] || '')}</textarea></div>`;
         case 'location':
             return `
-                    <div style="margin-bottom:14px;"><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Address (shown to guests)</label><textarea rows="2" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" onchange="updateRateText('${k}','address',this.value)">${escapeHtml(r.address || '')}</textarea></div>
+                    <div style="margin-bottom:14px;"><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Address (shown to guests)</label><textarea rows="2" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" ${chbChange('updateRateText', String(k), 'address', CHB_VALUE)}>${escapeHtml(r.address || '')}</textarea></div>
                     <div class="rule-divider">Key-code unlock location</div>
                     <div>
                         <label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">The cottage's GPS spot. When a guest with a current booking is within 25m of here, the arrival info unlocks on their account page. Stand at the cottage and tap the button.</label>
                         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px;">
-                            <button class="btn-sm btn-edit" onclick="captureGeo('${k}')">${IC_PIN} Use my current location</button>
+                            <button class="btn-sm btn-edit" ${chbAttrs('captureGeo', String(k))}>${IC_PIN} Use my current location</button>
                             <span id="geo-status-${k}" style="font-size:0.8rem;color:var(--text-muted);">${geoStatusText(k)}</span>
-                            <button class="btn-sm btn-delete" onclick="clearGeo('${k}')">Clear</button>
+                            <button class="btn-sm btn-delete" ${chbAttrs('clearGeo', String(k))}>Clear</button>
                         </div>
                         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
                             <input type="number" step="any" inputmode="decimal" id="geo-lat-${k}" placeholder="Latitude" value="${geoVal(k) ? geoVal(k).lat : ''}" style="background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:8px 10px;border-radius:10px;width:150px;font-family:var(--font-sans);">
                             <input type="number" step="any" inputmode="decimal" id="geo-lng-${k}" placeholder="Longitude" value="${geoVal(k) ? geoVal(k).lng : ''}" style="background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:8px 10px;border-radius:10px;width:150px;font-family:var(--font-sans);">
-                            <button class="btn-sm btn-edit" onclick="saveGeoManual('${k}')">Save coordinates</button>
+                            <button class="btn-sm btn-edit" ${chbAttrs('saveGeoManual', String(k))}>Save coordinates</button>
                         </div>
                         <p style="font-size:0.72rem;color:var(--text-muted);margin:6px 0 0;">Tip: in Google Maps, right-click the exact spot and click the latitude/longitude at the top of the menu to copy it, then paste here.</p>
                     </div>`;
         case 'local':
             return `
-                    <div style="margin-bottom:14px;"><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Dark skies / stargazing note — shown on the Experiences page (one shared note across the whole site).</label><textarea rows="3" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" onchange="saveLocalContent('darkskies', this.value)">${escapeHtml(siteContent['darkskies'] || DEFAULT_DARKSKIES)}</textarea></div>
-                    <div><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Accessibility — steps, parking distance, ground-floor sleeping, bathroom layout. Shown on the cottage page.</label><textarea rows="4" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" onchange="saveLocalContent('access-${k}', this.value)">${escapeHtml(siteContent['access-' + k] || DEFAULT_ACCESS)}</textarea></div>`;
+                    <div style="margin-bottom:14px;"><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Dark skies / stargazing note — shown on the Experiences page (one shared note across the whole site).</label><textarea rows="3" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" ${chbChange('saveLocalContent', 'darkskies', CHB_VALUE)}>${escapeHtml(siteContent['darkskies'] || DEFAULT_DARKSKIES)}</textarea></div>
+                    <div><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Accessibility — steps, parking distance, ground-floor sleeping, bathroom layout. Shown on the cottage page.</label><textarea rows="4" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" ${chbChange('saveLocalContent', `access-${k}`, CHB_VALUE)}>${escapeHtml(siteContent['access-' + k] || DEFAULT_ACCESS)}</textarea></div>`;
         case 'faq':
             return `
                     <label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:10px;">FAQ shown in this cottage's bookings (the "Good to Know" button).</label>
                     <div id="faq-editor-${k}">${(Array.isArray(siteContent['faqs-' + k]) ? siteContent['faqs-' + k] : []).map((f) => faqRowHtml(k, f)).join('')}</div>
                     <div style="display:flex;gap:10px;margin-top:8px;">
-                        <button class="btn-sm btn-edit" onclick="addFaqRow('${k}')">＋ Add question</button>
-                        <button class="btn-sm btn-edit" onclick="saveFaqs('${k}')">Save FAQ</button>
+                        <button class="btn-sm btn-edit" ${chbAttrs('addFaqRow', String(k))}>＋ Add question</button>
+                        <button class="btn-sm btn-edit" ${chbAttrs('saveFaqs', String(k))}>Save FAQ</button>
                     </div>`;
         case 'welcome': {
             const secs = Array.isArray(adminPrivateContent['welcome-' + k])
@@ -8224,8 +8224,8 @@ function accomSectionHtml(k, sec) {
                     <label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:10px;">A private in-stay guide your guests can open during their stay (Wi-Fi, how things work, bins, parking, heating, local tips, checkout). Kept private — only shown to guests who've booked this cottage.</label>
                     <div id="welcome-editor-${k}">${secs.map((s) => welcomeRowHtml(k, s)).join('')}</div>
                     <div style="display:flex;gap:10px;margin-top:8px;">
-                        <button class="btn-sm btn-edit" onclick="addWelcomeRow('${k}')">＋ Add section</button>
-                        <button class="btn-sm btn-edit" onclick="saveWelcome('${k}')">Save welcome book</button>
+                        <button class="btn-sm btn-edit" ${chbAttrs('addWelcomeRow', String(k))}>＋ Add section</button>
+                        <button class="btn-sm btn-edit" ${chbAttrs('saveWelcome', String(k))}>Save welcome book</button>
                     </div>`;
         }
         default:
@@ -8260,7 +8260,7 @@ function reviewRowHtml(r) {
                     <select class="input-glass field-sm" data-rf="stars">${starOpts}</select>
                     <select class="input-glass field-sm" data-rf="prop">${propOpts}</select>
                     <select class="input-glass field-sm" data-rf="source" title="Where this review came from">${srcOpts}</select>
-                    <button class="btn-sm btn-delete" onclick="this.closest('.review-row').remove()" title="Remove review"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+                    <button class="btn-sm btn-delete" data-act="closestRemove" data-sel=".review-row" title="Remove review"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
                 </div>
                 <textarea rows="2" class="input-glass field-sm" placeholder="What they said…" data-rf="text">${escapeHtml(r.text || '')}</textarea>
             </div>`;
@@ -8279,7 +8279,7 @@ function faqRowHtml(propKey, f) {
                 <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
                     <input type="text" class="input-glass field-sm" placeholder="Emoji" value="${escapeHtml(f.icon || '')}" data-fq="icon" style="width:64px;text-align:center;" maxlength="4">
                     <input type="text" class="input-glass field-sm" placeholder="Question (e.g. What time is check-in?)" value="${escapeHtml(f.q || '')}" data-fq="q" style="flex:1 1 240px;min-width:160px;">
-                    <button class="btn-sm btn-delete" onclick="this.closest('.faq-row').remove()" title="Remove question"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+                    <button class="btn-sm btn-delete" data-act="closestRemove" data-sel=".faq-row" title="Remove question"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
                 </div>
                 <textarea rows="3" class="input-glass field-sm" placeholder="Answer…" data-fq="a">${escapeHtml(f.a || '')}</textarea>
             </div>`;
@@ -8322,7 +8322,7 @@ function welcomeRowHtml(propKey, s) {
     return `<div class="welcome-row" style="border:1px solid var(--glass-border);border-radius:14px;padding:14px;margin-bottom:10px;background:var(--glass-bg);">
                 <div style="display:flex;gap:8px;margin-bottom:8px;">
                     <input type="text" class="input-glass field-sm" placeholder="Section title (e.g. Wi-Fi, Heating, Bins)" value="${escapeHtml(s.title || '')}" data-wb="title" style="flex:1 1 240px;min-width:160px;">
-                    <button class="btn-sm btn-delete" onclick="this.closest('.welcome-row').remove()" title="Remove section"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+                    <button class="btn-sm btn-delete" data-act="closestRemove" data-sel=".welcome-row" title="Remove section"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
                 </div>
                 <textarea rows="3" class="input-glass field-sm" placeholder="Details…" data-wb="body">${escapeHtml(s.body || '')}</textarea>
             </div>`;
@@ -8775,9 +8775,9 @@ async function loadAnalytics(days = 30) {
 
     // ---- sticky period bar (full-width segmented control). CSV export lives at
     // the very bottom as its own action, so the sticky header stays clean. ----
-    const seg = `<div class="ana-seg" role="tablist">${[7, 30, 90, 365].map((n) => `<button type="button" class="ana-seg-btn${n === winDays ? ' on' : ''}" onclick="loadAnalytics(${n})">${rangeLabel(n)}</button>`).join('')}</div>`;
+    const seg = `<div class="ana-seg" role="tablist">${[7, 30, 90, 365].map((n) => `<button type="button" class="ana-seg-btn${n === winDays ? ' on' : ''}" ${chbAttrs('loadAnalytics', n)}>${rangeLabel(n)}</button>`).join('')}</div>`;
     const pickerRow = `<div class="ana-pick">${seg}</div>`;
-    const exportRow = `<button type="button" class="ana-export" onclick="exportAnalyticsCsv()"><svg class="ic" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg> Export these figures (CSV)</button>`;
+    const exportRow = `<button type="button" class="ana-export" data-act="exportAnalyticsCsv"><svg class="ic" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"/></svg> Export these figures (CSV)</button>`;
 
     // Auto-generated highlights ("so what") from the summary above.
     const insights = buildInsights(d);
@@ -8856,8 +8856,8 @@ async function loadWaitlist() {
                     </div>
                     <div style="font-size:0.86rem;color:var(--text-muted);margin-top:6px;">${escapeHtml(w.name || '—')} · ${escapeHtml(w.email || '')}${w.note ? ' · ' + escapeHtml(w.note) : ''}</div>
                     <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;">
-                        <button class="btn-sm btn-edit" onclick="notifyWaitlist(${w.id})">Email "dates available"</button>
-                        <button class="btn-sm btn-delete" onclick="deleteWaitlist(${w.id})">Remove</button>
+                        <button class="btn-sm btn-edit" ${chbAttrs('notifyWaitlist', w.id)}>Email "dates available"</button>
+                        <button class="btn-sm btn-delete" ${chbAttrs('deleteWaitlist', w.id)}>Remove</button>
                     </div>
                 </div>`;
         })
@@ -9015,8 +9015,8 @@ async function loadDiagnostics() {
                     ${chip(fails.length, 'danger', 'to fix')}
                     ${chip(optionals.length, 'optional', 'optional off')}
                 </div>
-                <div class="status-hero-meta">Checked ${hhmm} · <button type="button" class="status-rerun" onclick="loadDiagnostics()">Re-run</button></div>
-                <div class="status-hero-actions"><button type="button" class="btn-sm btn-edit" onclick="runSelfRepair(this)" title="Safely fixes state drift — dead photo links, lapsed card holds, missing slugs — and flags anything ambiguous. Never touches your code or bookings.">Fix safe issues</button></div>
+                <div class="status-hero-meta">Checked ${hhmm} · <button type="button" class="status-rerun" data-act="loadDiagnostics">Re-run</button></div>
+                <div class="status-hero-actions"><button type="button" class="btn-sm btn-edit" ${chbAttrs('runSelfRepair', CHB_SELF)} title="Safely fixes state drift — dead photo links, lapsed card holds, missing slugs — and flags anything ambiguous. Never touches your code or bookings.">Fix safe issues</button></div>
             </div>
         </div>`;
     // A curated in-app destination for the optional integrations, so a fix is one tap.
@@ -9148,21 +9148,21 @@ async function loadDiagnostics() {
                     <p style="font-size:0.8rem;color:var(--text-muted);margin:8px 0 12px;">A copy of every booking, payment and guest record. Runs automatically each Monday and is emailed to you; the last 8 are kept on the server. Photos &amp; uploads are archived alongside it when they change.</p>
                     <div id="backup-status" style="font-size:0.82rem;color:var(--text-muted);margin-bottom:12px;">Checking…</div>
                     <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                        <button class="btn-sm btn-edit" onclick="runBackupNow(this)">Back up now</button>
-                        <button class="btn-sm btn-edit" onclick="verifyBackupNow(this)">Verify latest</button>
-                        <button class="btn-sm btn-edit" onclick="window.open('backup.php?action=download','_blank')">Download latest</button>
+                        <button class="btn-sm btn-edit" ${chbAttrs('runBackupNow', CHB_SELF)}>Back up now</button>
+                        <button class="btn-sm btn-edit" ${chbAttrs('verifyBackupNow', CHB_SELF)}>Verify latest</button>
+                        <button class="btn-sm btn-edit" data-act="winOpen" data-url="backup.php?action=download">Download latest</button>
                     </div>
                     <div id="files-backup-status" style="font-size:0.82rem;color:var(--text-muted);margin:14px 0 12px;">Checking…</div>
                     <div style="display:flex;gap:8px;flex-wrap:wrap;">
-                        <button class="btn-sm btn-edit" onclick="runFilesBackupNow(this)">Archive files now</button>
-                        <button class="btn-sm btn-edit" onclick="window.open('backup.php?action=download_files','_blank')">Download files</button>
+                        <button class="btn-sm btn-edit" ${chbAttrs('runFilesBackupNow', CHB_SELF)}>Archive files now</button>
+                        <button class="btn-sm btn-edit" data-act="winOpen" data-url="backup.php?action=download_files">Download files</button>
                     </div>
                 </div>
                 <div class="accounts-stat" style="max-width:640px;margin-bottom:14px;">
                     <div class="label">Hero image</div>
                     <p style="font-size:0.8rem;color:var(--text-muted);margin:8px 0 12px;">The homepage photo is the first thing every visitor downloads. If it's a full-resolution upload, one click resizes and re-compresses it (the original is kept, and you can re-upload any time in Website content).</p>
                     <div id="hero-opt-status" style="font-size:0.82rem;color:var(--text-muted);margin-bottom:12px;">Checking…</div>
-                    <button class="btn-sm btn-edit" id="hero-opt-btn" onclick="optimizeHeroNow(this)" style="display:none;">Optimise hero image</button>
+                    <button class="btn-sm btn-edit" id="hero-opt-btn" ${chbAttrs('optimizeHeroNow', CHB_SELF)} style="display:none;">Optimise hero image</button>
                 </div>`;
     refreshBackupStatus();
     refreshHeroStatus();
@@ -9398,7 +9398,7 @@ function renderTestCentreList() {
     list.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 16px;">Try every customer-facing feature without being a guest. Emails arrive in your owner inbox marked <strong>[TEST]</strong>; test bookings are clearly tagged, kept out of your revenue, and removable on the Test data page.</p>
                 <div class="settings-group">${TC_PAGES.map(
                     (p) => `
-                    <button class="settings-row" onclick="tcOpen('${p.id}')">
+                    <button class="settings-row" ${chbAttrs('tcOpen', String(p.id))}>
                         <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p.ic}</svg></span>
                         <span class="settings-row-main"><span class="settings-row-label">${p.label}</span><span class="settings-row-sub">${p.sub}</span></span><span class="settings-row-chev">›</span>
                     </button>`,
@@ -9458,7 +9458,7 @@ function tcPageFeatures() {
     ];
     return `<div class="rate-prop">
                 <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 12px;">Seeds demo data — sample bookings, Airbnb/Vrbo blocks, searches, reviews, GPS pins and a weekend uplift — so you can try everything we've built recently. All of it is tagged and removable in one click via <strong>Test data → Remove all</strong>.</p>
-                <button class="btn-glass" style="width:auto;padding:12px 22px;margin-bottom:6px;" onclick="tcSeedFeatures(this)">Seed demo data</button>
+                <button class="btn-glass" style="width:auto;padding:12px 22px;margin-bottom:6px;" ${chbAttrs('tcSeedFeatures', CHB_SELF)}>Seed demo data</button>
                 <div id="tc-seed-msg" style="font-size:0.82rem;margin:8px 0 14px;"></div>
                 <div class="rule-divider">What to try</div>
                 <div class="settings-group">${items
@@ -9511,12 +9511,12 @@ function tcPagePreview() {
     const cottages = liveCottageKeys()
         .map(
             (k) =>
-                `<button class="btn-sm btn-edit" style="margin:0 8px 8px 0;" onclick="tcPreview('/cottages/${COTTAGE_SLUGS[k] || k}')">${escapeHtml((propertyMeta[k] || {}).name || k)} ↗</button>`,
+                `<button class="btn-sm btn-edit" style="margin:0 8px 8px 0;" ${chbAttrs('tcPreview', `/cottages/${COTTAGE_SLUGS[k] || k}`)}>${escapeHtml((propertyMeta[k] || {}).name || k)} ↗</button>`,
         )
         .join('');
     return `<div class="rate-prop">
                 <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 14px;">Opens the real public site in a new tab, rendered exactly as a guest sees it (you stay signed in, but the admin chrome is hidden). Browse anywhere — home, cottages, experiences, the enquiry form — nothing is saved.</p>
-                <button class="btn-glass" style="width:auto;padding:12px 22px;margin-bottom:8px;" onclick="tcPreview('index.html')">Open homepage as a guest ↗</button>
+                <button class="btn-glass" style="width:auto;padding:12px 22px;margin-bottom:8px;" data-act="tcPreview" data-arg="index.html">Open homepage as a guest ↗</button>
                 <div class="rule-divider">Jump straight to a cottage page</div>
                 ${cottages || '<p style="font-size:0.85rem;color:var(--text-muted);">No live cottages.</p>'}</div>`;
 }
@@ -9541,13 +9541,13 @@ const TC_EMAILS = [
 function tcPageEmails() {
     return `<div class="rate-prop">
                 <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 12px;">Sends real samples to your owner inbox (subject prefixed <strong>[TEST]</strong>) using dummy data, so you can check wording, formatting &amp; delivery.</p>
-                <button class="btn-glass" style="width:auto;padding:12px 22px;margin-bottom:12px;" onclick="tcSendEmail('all',this)">Send all samples</button>
+                <button class="btn-glass" style="width:auto;padding:12px 22px;margin-bottom:12px;" ${chbAttrs('tcSendEmail', 'all', CHB_SELF)}>Send all samples</button>
                 <div id="tc-email-msg" style="font-size:0.82rem;margin-bottom:12px;"></div>
                 <div class="settings-group">${TC_EMAILS.map(
                     ([w, l]) => `
                     <div class="settings-row" style="cursor:default;">
                         <span class="settings-row-main"><span class="settings-row-label">${l}</span></span>
-                        <button class="btn-sm btn-edit" onclick="tcSendEmail('${w}',this)">Send</button>
+                        <button class="btn-sm btn-edit" ${chbAttrs('tcSendEmail', String(w), CHB_SELF)}>Send</button>
                     </div>`,
                 ).join('')}</div></div>`;
 }
@@ -9613,7 +9613,7 @@ async function tcRenderBooking() {
         : tcSquare.enabled
           ? `<p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 12px;">Square is in sandbox — pay flows use test cards, no real money moves.</p>`
           : `<p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 12px;">Square is off — the pay/balance buttons will say so. Emails &amp; arrival still work.</p>`;
-    const guestBtn = `<button class="btn-glass" style="width:auto;padding:12px 22px;margin-bottom:14px;" onclick="tcGuestLogin(this)">Log in as a test guest ↗</button>
+    const guestBtn = `<button class="btn-glass" style="width:auto;padding:12px 22px;margin-bottom:14px;" ${chbAttrs('tcGuestLogin', CHB_SELF)}>Log in as a test guest ↗</button>
                 <p style="font-size:0.78rem;color:var(--text-muted);margin:-6px 0 14px;">Opens the guest app (My Stays, in-stay hub, arrival reveal, chat) signed in as a test guest. Tip: open in a private window to stay signed in as admin here.</p>`;
     if (!bk.length) {
         detail.innerHTML = `<div class="rate-prop">${intro}${tcPresetButtons()}${sqNote}<div id="tc-bk-msg" style="font-size:0.82rem;margin-top:12px;"></div></div>`;
@@ -9627,18 +9627,18 @@ async function tcRenderBooking() {
                     <div style="font-size:0.85rem;color:var(--text-muted);margin:4px 0 10px;">${escapeHtml(fmtDate(b.check_in))} → ${escapeHtml(fmtDate(b.check_out))} · ${gbp(b.agreed_total || 0)}</div>
                     <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:6px;">Payments &amp; emails</div>
                     <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
-                        <button class="btn-sm btn-edit" onclick="tcPay(${b.id},'deposit',this)">Pay deposit ↗</button>
-                        <button class="btn-sm btn-edit" onclick="tcPay(${b.id},'balance',this)">Pay balance ↗</button>
-                        <button class="btn-sm btn-edit" onclick="tcBookingEmail(${b.id},'send_confirmation',this)">Email confirmation</button>
-                        <button class="btn-sm btn-edit" onclick="tcBookingEmail(${b.id},'send_arrival',this)">Email arrival info</button>
-                        <button class="btn-sm btn-edit" onclick="tcBookingEmail(${b.id},'request_payment',this)">Email payment request</button>
+                        <button class="btn-sm btn-edit" ${chbAttrs('tcPay', b.id, 'deposit', CHB_SELF)}>Pay deposit ↗</button>
+                        <button class="btn-sm btn-edit" ${chbAttrs('tcPay', b.id, 'balance', CHB_SELF)}>Pay balance ↗</button>
+                        <button class="btn-sm btn-edit" ${chbAttrs('tcBookingEmail', b.id, 'send_confirmation', CHB_SELF)}>Email confirmation</button>
+                        <button class="btn-sm btn-edit" ${chbAttrs('tcBookingEmail', b.id, 'send_arrival', CHB_SELF)}>Email arrival info</button>
+                        <button class="btn-sm btn-edit" ${chbAttrs('tcBookingEmail', b.id, 'request_payment', CHB_SELF)}>Email payment request</button>
                     </div>
                     <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);margin-bottom:6px;">Daily automations (run now, as the cron would)</div>
                     <div style="display:flex;flex-wrap:wrap;gap:8px;">
-                        <button class="btn-sm btn-edit" onclick="tcAutomation(${b.id},'pre_arrival',this)">Pre-arrival email</button>
-                        <button class="btn-sm btn-edit" onclick="tcAutomation(${b.id},'balance_reminder',this)">Balance reminder</button>
-                        <button class="btn-sm btn-edit" onclick="tcAutomation(${b.id},'review',this)">Review request</button>
-                        <button class="btn-sm btn-edit" style="color:var(--danger);border-color:rgba(229,115,115,0.4);" onclick="tcDeleteBooking(${b.id})">Delete</button>
+                        <button class="btn-sm btn-edit" ${chbAttrs('tcAutomation', b.id, 'pre_arrival', CHB_SELF)}>Pre-arrival email</button>
+                        <button class="btn-sm btn-edit" ${chbAttrs('tcAutomation', b.id, 'balance_reminder', CHB_SELF)}>Balance reminder</button>
+                        <button class="btn-sm btn-edit" ${chbAttrs('tcAutomation', b.id, 'review', CHB_SELF)}>Review request</button>
+                        <button class="btn-sm btn-edit" style="color:var(--danger);border-color:rgba(229,115,115,0.4);" ${chbAttrs('tcDeleteBooking', b.id)}>Delete</button>
                     </div></div>`;
         })
         .join('');
@@ -9650,10 +9650,10 @@ async function tcRenderBooking() {
 // pre-arrival, post-stay review) — not just a far-future booking.
 function tcPresetButtons() {
     return `<div style="display:flex;flex-wrap:wrap;gap:8px;">
-                <button class="btn-sm btn-edit" onclick="tcCreateBooking('midstay',this)">Arriving today (mid-stay)</button>
-                <button class="btn-sm btn-edit" onclick="tcCreateBooking('prearrival',this)">Pre-arrival (in 3 days)</button>
-                <button class="btn-sm btn-edit" onclick="tcCreateBooking('past',this)">Past stay (for review)</button>
-                <button class="btn-sm btn-edit" onclick="tcCreateBooking('future',this)">Future (+30 days)</button>
+                <button class="btn-sm btn-edit" ${chbAttrs('tcCreateBooking', 'midstay', CHB_SELF)}>Arriving today (mid-stay)</button>
+                <button class="btn-sm btn-edit" ${chbAttrs('tcCreateBooking', 'prearrival', CHB_SELF)}>Pre-arrival (in 3 days)</button>
+                <button class="btn-sm btn-edit" ${chbAttrs('tcCreateBooking', 'past', CHB_SELF)}>Past stay (for review)</button>
+                <button class="btn-sm btn-edit" ${chbAttrs('tcCreateBooking', 'future', CHB_SELF)}>Future (+30 days)</button>
             </div>`;
 }
 async function tcCreateBooking(preset, btn) {
@@ -9860,7 +9860,7 @@ async function tcRenderData() {
             return `
                 <div class="settings-row" style="cursor:default;">
                     <span class="settings-row-main"><span class="settings-row-label">${escapeHtml(name)} · #${b.id}</span><span class="settings-row-sub">${escapeHtml(fmtDate(b.check_in))} → ${escapeHtml(fmtDate(b.check_out))} · ${gbp(b.agreed_total || 0)}${b.payments ? ` · ${b.payments} payment${b.payments === 1 ? '' : 's'}` : ''}</span></span>
-                    <button class="btn-sm btn-edit" style="color:var(--danger);border-color:rgba(229,115,115,0.4);" onclick="tcDeleteData('booking',${b.id})">Remove</button>
+                    <button class="btn-sm btn-edit" style="color:var(--danger);border-color:rgba(229,115,115,0.4);" ${chbAttrs('tcDeleteData', 'booking', b.id)}>Remove</button>
                 </div>`;
         })
         .join('');
@@ -9869,7 +9869,7 @@ async function tcRenderData() {
             (e) => `
                 <div class="settings-row" style="cursor:default;">
                     <span class="settings-row-main"><span class="settings-row-label">Enquiry · #${e.id}</span><span class="settings-row-sub">${escapeHtml(fmtDate(e.check_in) || '')} → ${escapeHtml(fmtDate(e.check_out) || '')}</span></span>
-                    <button class="btn-sm btn-edit" style="color:var(--danger);border-color:rgba(229,115,115,0.4);" onclick="tcDeleteData('enquiry',${e.id})">Remove</button>
+                    <button class="btn-sm btn-edit" style="color:var(--danger);border-color:rgba(229,115,115,0.4);" ${chbAttrs('tcDeleteData', 'enquiry', e.id)}>Remove</button>
                 </div>`,
         )
         .join('');
@@ -9877,7 +9877,7 @@ async function tcRenderData() {
         ? `
                 <div class="settings-row" style="cursor:default;">
                     <span class="settings-row-main"><span class="settings-row-label">Test guest account</span><span class="settings-row-sub">${escapeHtml(guest.email || '')}</span></span>
-                    <button class="btn-sm btn-edit" style="color:var(--danger);border-color:rgba(229,115,115,0.4);" onclick="tcDeleteData('guest',${guest.id})">Remove</button>
+                    <button class="btn-sm btn-edit" style="color:var(--danger);border-color:rgba(229,115,115,0.4);" ${chbAttrs('tcDeleteData', 'guest', guest.id)}>Remove</button>
                 </div>`
         : '';
     const total = bk.length + enq.length + (showGuest ? 1 : 0);
@@ -9886,7 +9886,7 @@ async function tcRenderData() {
                 ${bk.length ? `<div class="rule-divider">Test bookings</div><div class="settings-group">${bRows}</div>` : ''}
                 ${enq.length ? `<div class="rule-divider">Test enquiries</div><div class="settings-group">${eRows}</div>` : ''}
                 ${showGuest ? `<div class="rule-divider">Test guest</div><div class="settings-group">${gRows}</div>` : ''}
-                <button class="btn-glass" style="width:auto;padding:12px 22px;margin-top:16px;color:var(--danger);" onclick="tcPurgeData()">Remove all test data</button></div>`;
+                <button class="btn-glass" style="width:auto;padding:12px 22px;margin-top:16px;color:var(--danger);" data-act="tcPurgeData">Remove all test data</button></div>`;
 }
 async function tcDeleteData(type, id) {
     try {
@@ -10001,8 +10001,8 @@ function renderReviewLinks() {
             return `<div style="margin-bottom:14px;">
                         <div style="font-size:0.8rem;font-weight:600;color:var(--text-light);margin-bottom:5px;">${escapeHtml(name)}</div>
                         <div style="display:flex;gap:8px;align-items:center;">
-                            <input class="input-glass" readonly id="revlink-${escapeHtml(k)}" onclick="this.select()" value="${escapeHtml(url)}" title="${escapeHtml(name)} review link" aria-label="${escapeHtml(name)} review link" style="font-size:0.8rem;flex:1;min-width:0;">
-                            <button class="btn-sm btn-edit" style="flex-shrink:0;" onclick="copyReviewLink('${escapeHtml(k)}')">Copy</button>
+                            <input class="input-glass" readonly id="revlink-${escapeHtml(k)}" data-act="selectSelf" value="${escapeHtml(url)}" title="${escapeHtml(name)} review link" aria-label="${escapeHtml(name)} review link" style="font-size:0.8rem;flex:1;min-width:0;">
+                            <button class="btn-sm btn-edit" style="flex-shrink:0;" ${chbAttrs('copyReviewLink', k)}>Copy</button>
                         </div>
                     </div>`;
         })
@@ -10053,14 +10053,14 @@ function leadCardHtml(l) {
     const priv = [1, 2, 3, 4, 5]
         .map(
             (n) =>
-                `<button type="button" data-n="${n}" onclick="pickLeadStar(${l.id},${n})" aria-label="${n} star" style="font-size:19px;line-height:1;background:none;border:0;cursor:pointer;padding:1px;color:${ar >= n ? '#e0a12f' : '#dccfb9'};">★</button>`,
+                `<button type="button" data-n="${n}" ${chbAttrs('pickLeadStar', l.id, n)} aria-label="${n} star" style="font-size:19px;line-height:1;background:none;border:0;cursor:pointer;padding:1px;color:${ar >= n ? '#e0a12f' : '#dccfb9'};">★</button>`,
         )
         .join('');
     const actions =
         l.status === 'approved'
-            ? `<button class="btn-sm btn-edit" onclick="setLeadStatus(${l.id},'pending')">Unpublish</button>`
-            : `<button class="btn-sm btn-edit" onclick="setLeadStatus(${l.id},'approved')">Approve &amp; publish</button>` +
-              (l.status === 'pending' ? `<button class="btn-sm btn-edit" onclick="setLeadStatus(${l.id},'declined')">Decline</button>` : '');
+            ? `<button class="btn-sm btn-edit" ${chbAttrs('setLeadStatus', l.id, 'pending')}>Unpublish</button>`
+            : `<button class="btn-sm btn-edit" ${chbAttrs('setLeadStatus', l.id, 'approved')}>Approve &amp; publish</button>` +
+              (l.status === 'pending' ? `<button class="btn-sm btn-edit" ${chbAttrs('setLeadStatus', l.id, 'declined')}>Decline</button>` : '');
     const excluded = ar > 0 && ar < 3
         ? `<div style="font-size:0.72rem;color:var(--warn);margin-top:6px;">This guest won't be included in the book-direct follow-up.</div>`
         : '';
@@ -10075,7 +10075,7 @@ function leadCardHtml(l) {
                 <div style="font-size:0.88rem;color:var(--text-muted);margin:8px 0;font-style:italic;">“${escapeHtml(l.review_text)}”</div>
                 <div style="font-size:0.76rem;color:var(--text-muted);margin-bottom:10px;">${contact}</div>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;">${actions}
-                    <button class="btn-sm btn-delete" onclick="deleteLead(${l.id})">Delete</button>
+                    <button class="btn-sm btn-delete" ${chbAttrs('deleteLead', l.id)}>Delete</button>
                 </div>
                 <div style="margin-top:12px;border-top:1px dashed var(--glass-border);padding-top:12px;">
                     <div style="font-size:0.72rem;text-transform:uppercase;letter-spacing:.6px;color:var(--text-muted);margin-bottom:6px;">
@@ -10084,7 +10084,7 @@ function leadCardHtml(l) {
                     <div class="lead-prate" data-id="${l.id}" data-val="${ar}" style="display:flex;gap:3px;margin-bottom:8px;">${priv}</div>
                     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
                         <input class="input-glass field-sm" id="lead-note-${l.id}" placeholder="Private note (optional)" value="${escapeHtml(l.admin_note || '')}" style="flex:1;min-width:160px;font-size:0.82rem;">
-                        <button class="btn-sm btn-edit" onclick="saveLeadRating(${l.id})">Save rating</button>
+                        <button class="btn-sm btn-edit" ${chbAttrs('saveLeadRating', l.id)}>Save rating</button>
                     </div>
                     ${excluded}
                 </div>
@@ -10202,9 +10202,9 @@ async function loadGuestReviewModeration() {
                     </div>
                     <div style="font-size:0.88rem;color:var(--text-muted);margin:8px 0;font-style:italic;">“${escapeHtml(r.review_text)}”</div>
                     <div style="display:flex;gap:8px;">
-                        <button class="btn-sm btn-edit" onclick="setReviewStatus(${r.id},'approved')">Approve</button>
-                        <button class="btn-sm btn-edit" onclick="setReviewStatus(${r.id},'declined')">Decline</button>
-                        <button class="btn-sm btn-delete" onclick="deleteGuestReview(${r.id})">Delete</button>
+                        <button class="btn-sm btn-edit" ${chbAttrs('setReviewStatus', r.id, 'approved')}>Approve</button>
+                        <button class="btn-sm btn-edit" ${chbAttrs('setReviewStatus', r.id, 'declined')}>Decline</button>
+                        <button class="btn-sm btn-delete" ${chbAttrs('deleteGuestReview', r.id)}>Delete</button>
                     </div>
                 </div>`,
               )
@@ -10417,7 +10417,7 @@ function seasonGridRowHtml(b) {
                     <td data-label="From"><input type="date" class="input-glass field-sm" value="${b.start || ''}" data-sg="start"></td>
                     <td data-label="Until"><input type="date" class="input-glass field-sm" value="${b.end || ''}" data-sg="end"></td>
                     ${keys.map((k) => `<td data-label="${escapeHtml(propertyMeta[k].short || propertyMeta[k].name || k)}"><input type="number" class="input-glass field-sm sg-rate" min="0" step="1" placeholder="—" value="${b.rates[k] || ''}" data-sg-prop="${k}" title="${escapeHtml(propertyMeta[k].name)} £/night (couple)"></td>`).join('')}
-                    <td class="sg-del"><button class="btn-sm btn-delete" onclick="this.closest('tr').remove()" title="Remove this season everywhere"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></td>
+                    <td class="sg-del"><button class="btn-sm btn-delete" data-act="closestRemove" data-sel="tr" title="Remove this season everywhere"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></td>
                 </tr>`;
 }
 function renderSeasonGrid() {
@@ -10441,8 +10441,8 @@ function renderSeasonGrid() {
                 </table>
                 </div>
                 <div style="display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;">
-                    <button class="btn-sm btn-edit" onclick="addSeasonGridRow()">+ Add a season</button>
-                    <button class="btn-glass" style="width:auto;padding:11px 24px;" onclick="saveSeasonGrid()">Save all cottages</button>
+                    <button class="btn-sm btn-edit" data-act="addSeasonGridRow">+ Add a season</button>
+                    <button class="btn-glass" style="width:auto;padding:11px 24px;" data-act="saveSeasonGrid">Save all cottages</button>
                     <span id="season-grid-msg" style="font-size:0.82rem;align-self:center;"></span>
                 </div>
                 <p style="font-size:0.78rem;color:var(--text-muted);margin:12px 0 0;max-width:640px;">Each cell is that cottage's nightly couple rate for the season. Leave a cell blank and the cottage keeps its normal base rate for those dates. Deleting a row removes the season from every cottage when you save.</p>`;
@@ -10568,7 +10568,7 @@ async function checkCronHealth() {
                 <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4M12 17h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
                 <div>
                     <strong>Your daily automation looks stopped</strong> — ${detail}. While it's off, pre-arrival emails, balance reminders, guest re-invites and weekly backups won't send.
-                    <div style="margin-top:6px;font-size:0.85rem;">Check the scheduled task at your host still points at <code>cron.php</code>, then open <a onclick="nav('view-settings'); settingsOpen('diagnostics');" style="cursor:pointer;text-decoration:underline;">Status</a>.</div>
+                    <div style="margin-top:6px;font-size:0.85rem;">Check the scheduled task at your host still points at <code>cron.php</code>, then open <a data-act="navDiagnostics" style="cursor:pointer;text-decoration:underline;">Status</a>.</div>
                 </div>`;
     el.style.display = '';
 }
@@ -10689,7 +10689,7 @@ async function renderActivityLog() {
     if (filters)
         filters.innerHTML = ACT_LOG_CATS.map(
             ([k, label]) =>
-                `<button type="button" class="act-log-chip${activityLogState.category === k ? ' active' : ''}" onclick="activityLogFilter('${k}')">${label}</button>`,
+                `<button type="button" class="act-log-chip${activityLogState.category === k ? ' active' : ''}" ${chbAttrs('activityLogFilter', String(k))}>${label}</button>`,
         ).join('');
     list.innerHTML = `<div class="act-log-empty">Loading…</div>`;
     let events = [];
@@ -11085,7 +11085,7 @@ function renderCalendar() {
                 const d = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + off + i);
                 const wknd = d.getDay() === 0 || d.getDay() === 6;
                 const past = dates[i] < todayIso;
-                cells += `<span class="tl-cell${wknd ? ' is-wknd' : ''}${dates[i] === todayIso ? ' is-today' : ''}" style="grid-column:${i + 1}"${past ? '' : ` onclick="tlAddAt('${k}','${dates[i]}')" title="Add a booking at ${escapeHtml(meta.name)} from ${fmtDate(dates[i])}"`}></span>`;
+                cells += `<span class="tl-cell${wknd ? ' is-wknd' : ''}${dates[i] === todayIso ? ' is-today' : ''}" style="grid-column:${i + 1}"${past ? '' : ` ${chbAttrs('tlAddAt', String(k), String(dates[i]))} title="Add a booking at ${escapeHtml(meta.name)} from ${fmtDate(dates[i])}"`}></span>`;
             }
             let bars = '';
             // Bars run noon-to-noon (check-in afternoon → checkout morning): the
@@ -11106,7 +11106,7 @@ function renderCalendar() {
                 const sp = tlSpan(b.checkIn, b.checkOut);
                 const ps = paymentSummary(k, b);
                 const pay = ps.fullyPaid ? 'ok' : ps.deposit > 0 ? 'warn' : 'danger';
-                bars += `<button type="button" class="tl-bar bar-${k} tl-pay-${pay}${sp.clip}" data-bkid="${b.id}" data-search="${escapeHtml(((b.name || 'guest') + ' ' + meta.name + ' ' + (pay === 'ok' ? 'paid' : pay === 'warn' ? 'part-paid' : 'unpaid')).toLowerCase())}" style="grid-column:${sp.col}" onclick="openBookingHub('${b.id}')" title="${escapeHtml(meta.name)} — ${escapeHtml(b.name || 'Guest')} · ${fmtDate(b.checkIn)} → ${fmtDate(b.checkOut)}">${escapeHtml((b.name || 'Guest').split(' ')[0])}</button>`;
+                bars += `<button type="button" class="tl-bar bar-${k} tl-pay-${pay}${sp.clip}" data-bkid="${b.id}" data-search="${escapeHtml(((b.name || 'guest') + ' ' + meta.name + ' ' + (pay === 'ok' ? 'paid' : pay === 'warn' ? 'part-paid' : 'unpaid')).toLowerCase())}" style="grid-column:${sp.col}" ${chbAttrs('openBookingHub', String(b.id))} title="${escapeHtml(meta.name)} — ${escapeHtml(b.name || 'Guest')} · ${fmtDate(b.checkIn)} → ${fmtDate(b.checkOut)}">${escapeHtml((b.name || 'Guest').split(' ')[0])}</button>`;
             });
             (dbBlocks[k] || []).forEach((bl) => {
                 if (!bl.checkIn || !bl.checkOut || bl.checkOut <= dates[0] || bl.checkIn >= dates[N - 1]) return;
@@ -11261,7 +11261,7 @@ function renderInbox() {
               ]
                   .map(
                       ([k, lbl]) =>
-                          `<button type="button" class="inbox-sort-btn${inboxSort === k ? ' is-on' : ''}" onclick="setInboxSort('${k}')">${lbl}</button>`,
+                          `<button type="button" class="inbox-sort-btn${inboxSort === k ? ' is-on' : ''}" ${chbAttrs('setInboxSort', String(k))}>${lbl}</button>`,
                   )
                   .join('')}</div>`
             : '';
@@ -11291,7 +11291,7 @@ function renderInbox() {
                     ? `<span class="bk-chip ${av.free ? 'ok' : 'danger'}"><span class="bk-dot"></span>${escapeHtml(av.text)}${stale ? ` · ${days}d waiting` : ''}</span>`
                     : `<span class="bk-chip warn"><span class="bk-dot"></span>${stale ? `${days}d waiting` : 'New enquiry'}</span>`;
                 return `
-                <button type="button" class="bk-row glass-panel${stale ? ' pay-warn' : ''}${e.id === __enqHubId ? ' is-open' : ''}" data-enqid="${e.id}" data-search="${escapeHtml(((e.name || 'guest') + ' ' + propName + ' enquiry ' + (e.email || '')).toLowerCase())}" onclick="openEnquiryHub('${e.id}')">
+                <button type="button" class="bk-row glass-panel${stale ? ' pay-warn' : ''}${e.id === __enqHubId ? ' is-open' : ''}" data-enqid="${e.id}" data-search="${escapeHtml(((e.name || 'guest') + ' ' + propName + ' enquiry ' + (e.email || '')).toLowerCase())}" ${chbAttrs('openEnquiryHub', String(e.id))}>
                     <span class="bk-row-body">
                         <span class="bk-row-top">
                             <span class="prop-tag tag-${e.propKey}">${escapeHtml(propName)}</span>
@@ -11431,10 +11431,10 @@ function renderEnquiryHub() {
                     <div style="margin-top:8px;">${chips}</div>
                 </div>
                 <div class="bhub-actions">
-                    <button class="btn-sm btn-approve" onclick="approveEnquiry('${e.id}')">✓ Approve booking</button>
-                    <button class="btn-sm btn-edit" onclick="openEditEnquiry('${e.id}')">Edit / Move</button>
-                    ${e.email ? `<button class="btn-sm btn-edit" onclick="openEnquiryEmail('${e.id}')">Email guest</button>` : ''}
-                    <button class="btn-sm btn-decline" onclick="declineEnquiry('${e.id}')">Decline</button>
+                    <button class="btn-sm btn-approve" ${chbAttrs('approveEnquiry', String(e.id))}>✓ Approve booking</button>
+                    <button class="btn-sm btn-edit" ${chbAttrs('openEditEnquiry', String(e.id))}>Edit / Move</button>
+                    ${e.email ? `<button class="btn-sm btn-edit" ${chbAttrs('openEnquiryEmail', String(e.id))}>Email guest</button>` : ''}
+                    <button class="btn-sm btn-decline" ${chbAttrs('declineEnquiry', String(e.id))}>Decline</button>
                 </div>
             </div>
             <div class="bhub-next${next.cls}"><span class="bhub-next-text">${next.text}</span></div>
@@ -11453,7 +11453,7 @@ function renderEnquiryHub() {
                 <h3 class="bhub-card-title">Price &amp; history</h3>
                 <div style="font-size:0.95rem;">${priceLine}</div>
                 <div class="bhub-btn-row" style="margin-top:10px;">
-                    <button class="btn-sm btn-edit" onclick="setEnquiryPrice('${e.id}')">${e.priceOverride != null ? 'Change agreed price' : 'Set an agreed price'}</button>
+                    <button class="btn-sm btn-edit" ${chbAttrs('setEnquiryPrice', String(e.id))}>${e.priceOverride != null ? 'Change agreed price' : 'Set an agreed price'}</button>
                 </div>
                 <div style="margin-top:16px;">${repeatGuestBadge(e) || '<span class="bhub-mut" style="margin:0;">First-time guest (no completed stays on this email).</span>'}</div>
             </section>
@@ -11630,7 +11630,7 @@ function renderComposeAttachChips() {
     el.innerHTML = __composeAttachments
         .map((a, i) => {
             const kb = a.size < 1024 * 1024 ? Math.round(a.size / 1024) + ' KB' : (a.size / 1024 / 1024).toFixed(1) + ' MB';
-            return `<span class="compose-attach-chip">${escapeHtml(a.filename)} <span style="color:var(--text-muted);">· ${kb}</span><button type="button" aria-label="Remove" onclick="removeComposeAttachment(${i})">×</button></span>`;
+            return `<span class="compose-attach-chip">${escapeHtml(a.filename)} <span style="color:var(--text-muted);">· ${kb}</span><button type="button" aria-label="Remove" ${chbAttrs('removeComposeAttachment', i)}>×</button></span>`;
         })
         .join('');
 }
@@ -12024,7 +12024,7 @@ async function loadExperiencesAdmin() {
         html += pending.map(expPendingHtml).join('');
         html += `<div class="prop-divider" style="margin:22px 0;"></div>`;
     }
-    html += `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 12px;"><h3 style="font-family:var(--font-serif);font-size:1.15rem;margin:0;">Published (${published.length})</h3><button class="btn-sm btn-edit" onclick="expAddNew()">＋ Add experience</button></div>`;
+    html += `<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin:0 0 12px;"><h3 style="font-family:var(--font-serif);font-size:1.15rem;margin:0;">Published (${published.length})</h3><button class="btn-sm btn-edit" data-act="expAddNew">＋ Add experience</button></div>`;
     html +=
         `<div id="exp-admin-list">` +
         (published.length
@@ -12050,8 +12050,8 @@ function expPendingHtml(r) {
                 <div style="font-size:0.84rem;color:var(--text-muted);margin:6px 0;white-space:pre-line;">${escapeHtml(r.body)}</div>
                 <div style="font-size:0.74rem;color:var(--text-muted);">Suggested by ${escapeHtml(r.suggested_by_name || 'a guest')}${r.link_url ? ` · <a href="${escapeHtml(r.link_url)}" target="_blank" rel="noopener" style="color:var(--text-muted);text-decoration:underline;">link</a>` : ''}${r.phone ? ' · ' + escapeHtml(r.phone) : ''}</div>
                 <div style="display:flex;gap:8px;margin-top:10px;">
-                    <button class="btn-sm btn-edit" style="background:rgba(76,175,80,0.22);border-color:var(--booked-border);" onclick="expApprove(${r.id})">Approve &amp; publish</button>
-                    <button class="btn-sm btn-delete" onclick="expReject(${r.id})">Reject</button>
+                    <button class="btn-sm btn-edit" style="background:rgba(76,175,80,0.22);border-color:var(--booked-border);" ${chbAttrs('expApprove', r.id)}>Approve &amp; publish</button>
+                    <button class="btn-sm btn-delete" ${chbAttrs('expReject', r.id)}>Reject</button>
                 </div>
             </div>`;
 }
@@ -12085,11 +12085,11 @@ function expEditHtml(r) {
                     <input type="text" class="input-glass" id="exp-m-${id}" value="${escapeHtml(r.map_query || '')}" placeholder="Map location (address or place name)" style="flex:1;min-width:150px;">
                 </div>
                 <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;">
-                    <button class="btn-sm btn-edit" onclick="expUpload(${id})">Photo</button>
-                    <button class="btn-sm btn-edit" onclick="expSave(${id})">Save</button>
-                    <button class="btn-sm btn-edit" onclick="expMove(${id},-1)" aria-label="Move up">↑</button>
-                    <button class="btn-sm btn-edit" onclick="expMove(${id},1)" aria-label="Move down">↓</button>
-                    <button class="btn-sm btn-delete" style="margin-left:auto;" onclick="expDelete(${id})">Delete</button>
+                    <button class="btn-sm btn-edit" ${chbAttrs('expUpload', id)}>Photo</button>
+                    <button class="btn-sm btn-edit" ${chbAttrs('expSave', id)}>Save</button>
+                    <button class="btn-sm btn-edit" ${chbAttrs('expMove', id, -1)} aria-label="Move up">↑</button>
+                    <button class="btn-sm btn-edit" ${chbAttrs('expMove', id, 1)} aria-label="Move down">↓</button>
+                    <button class="btn-sm btn-delete" style="margin-left:auto;" ${chbAttrs('expDelete', id)}>Delete</button>
                 </div>
             </div>`;
 }
@@ -12259,12 +12259,12 @@ function mbxContextHtml(fromEmail) {
             const meta = propertyMeta[pk] || { name: pk };
             const past = (b.checkOut || '') < today;
             chips.push(
-                `<button type="button" class="bhub-stay-row" onclick="openBookingHub('${b.id}')"><span class="prop-tag tag-${pk}">${mbxEsc(meta.name)}</span><span>${fmtStayRange(b.checkIn, b.checkOut)}${past ? ' · past' : ''}</span><span class="bhub-mut">open →</span></button>`,
+                `<button type="button" class="bhub-stay-row" ${chbAttrs('openBookingHub', String(b.id))}><span class="prop-tag tag-${pk}">${mbxEsc(meta.name)}</span><span>${fmtStayRange(b.checkIn, b.checkOut)}${past ? ' · past' : ''}</span><span class="bhub-mut">open →</span></button>`,
             );
         });
     g.enquiries.slice(0, 3).forEach((q) => {
         chips.push(
-            `<button type="button" class="bhub-stay-row" onclick="openEnquiryHub('${q.id}')"><span class="bk-chip warn"><span class="bk-dot"></span>Enquiry</span><span>${fmtStayRange(q.checkIn, q.checkOut)}</span><span class="bhub-mut">open →</span></button>`,
+            `<button type="button" class="bhub-stay-row" ${chbAttrs('openEnquiryHub', String(q.id))}><span class="bk-chip warn"><span class="bk-dot"></span>Enquiry</span><span>${fmtStayRange(q.checkIn, q.checkOut)}</span><span class="bhub-mut">open →</span></button>`,
         );
     });
     return `<div class="mbx-ctx">
@@ -12295,7 +12295,7 @@ async function loadMailbox() {
         renderMailboxList();
     } catch (e) {
         el.innerHTML = `<div class="accounts-empty">Couldn't open the mailbox — ${mbxEsc(e.message)}</div>
-            <div class="bhub-btn-row"><button class="btn-sm btn-edit" onclick="loadMailbox()">Try again</button></div>`;
+            <div class="bhub-btn-row"><button class="btn-sm btn-edit" data-act="loadMailbox">Try again</button></div>`;
     }
 }
 async function mailboxOlder() {
@@ -12338,7 +12338,7 @@ function renderMailboxList(keepSearchFocus) {
                 // INSIDE the tapped card (accordion), not at the page bottom.
                 return `
         <div class="mbx-item" data-uid="${mbxEsc(m.uid)}" data-search="${mbxEsc(((m.fromRaw || m.from || '') + ' ' + (m.subject || '')).toLowerCase())}">
-        <button type="button" class="bk-row glass-panel${unread ? ' mbx-unread' : ''}${__mbxSelUid != null && String(__mbxSelUid) === String(m.uid) ? ' is-open' : ''}" onclick="mailboxOpen('${mbxEsc(m.uid)}')" aria-expanded="false">
+        <button type="button" class="bk-row glass-panel${unread ? ' mbx-unread' : ''}${__mbxSelUid != null && String(__mbxSelUid) === String(m.uid) ? ' is-open' : ''}" ${chbAttrs('mailboxOpen', m.uid)} aria-expanded="false">
             <span class="bk-row-body">
                 <span class="bk-row-top">
                     ${unread ? '<span class="bk-chip warn"><span class="bk-dot"></span>New</span>' : ''}
@@ -12354,7 +12354,7 @@ function renderMailboxList(keepSearchFocus) {
             })
             .join('');
         if (__mbxHasMore && !q) {
-            rows += '<div class="bhub-btn-row" style="justify-content:center;"><button class="btn-sm btn-edit" onclick="mailboxOlder()">Load older messages</button></div>';
+            rows += '<div class="bhub-btn-row" style="justify-content:center;"><button class="btn-sm btn-edit" data-act="mailboxOlder">Load older messages</button></div>';
         }
     } else {
         rows = __mbxSent
@@ -12362,7 +12362,7 @@ function renderMailboxList(keepSearchFocus) {
             .map(
                 (m) => `
         <div class="mbx-item" data-sent-id="${m.id}">
-        <button type="button" class="bk-row glass-panel${__mbxSelSent != null && String(__mbxSelSent) === String(m.id) ? ' is-open' : ''}" onclick="mailboxOpenSent(${m.id})" aria-expanded="false">
+        <button type="button" class="bk-row glass-panel${__mbxSelSent != null && String(__mbxSelSent) === String(m.id) ? ' is-open' : ''}" ${chbAttrs('mailboxOpenSent', m.id)} aria-expanded="false">
             <span class="bk-row-body">
                 <span class="bk-row-top"><span class="mbx-when">${mbxEsc(mbxWhen(m.sent_at))}</span></span>
                 <strong class="bk-row-name">To: ${mbxEsc(m.to_email)}</strong>
@@ -12380,12 +12380,12 @@ function renderMailboxList(keepSearchFocus) {
     el.innerHTML = `
         <div class="cal-header-bar" style="margin-bottom:14px;">
             <div class="cal-actions">
-                <button class="btn-glass btn-accent cal-add-btn" onclick="mailboxCompose()">+ New email</button>
-                <button class="cal-refresh-btn" onclick="loadMailbox()" title="Check for new email" aria-label="Check for new email"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-1.9 5.3"/><path d="M20 5v6h-6"/></svg></button>
+                <button class="btn-glass btn-accent cal-add-btn" data-act="mailboxCompose">+ New email</button>
+                <button class="cal-refresh-btn" data-act="loadMailbox" title="Check for new email" aria-label="Check for new email"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-1.9 5.3"/><path d="M20 5v6h-6"/></svg></button>
             </div>
         </div>
         <div class="bo-search" style="margin-bottom:14px;">
-            <input type="search" class="input-glass" id="mbx-search" placeholder="Find an email — sender or subject…" autocomplete="off" value="${mbxEsc(q)}" oninput="mailboxSearch(this.value)" style="margin-bottom:0;">
+            <input type="search" class="input-glass" id="mbx-search" placeholder="Find an email — sender or subject…" autocomplete="off" value="${mbxEsc(q)}" data-act-input="mailboxSearch" data-pass="value" style="margin-bottom:0;">
         </div>
         ${rows || `<div class="accounts-empty">${q ? 'Nothing matches your search.' : __mbxTab === 'sent' ? 'Nothing sent from here yet.' : 'All caught up — nothing in the mailbox.'}</div>`}
         <div id="mbx-reader"></div>`;
@@ -12491,10 +12491,10 @@ async function mailboxOpen(uid) {
             <pre class="mbx-text">${mbxEsc(m.body || '(no text content)')}</pre>
             ${atts ? `<div class="mbx-atts">${atts}</div>` : ''}
             <div class="bhub-btn-row">
-                <button class="btn-sm btn-edit" style="color:var(--accent);border-color:rgba(199,154,100,0.45);" onclick="mailboxReply('${mbxEsc(uid)}')">Reply</button>
-                <button class="btn-sm btn-edit" onclick="mailboxMarkUnread('${mbxEsc(uid)}')">Mark unread</button>
-                <button class="btn-sm btn-edit" style="color:var(--danger);border-color:rgba(229,115,115,0.4);" onclick="mailboxDelete('${mbxEsc(uid)}')">Delete</button>
-                <button class="btn-sm btn-edit" onclick="mailboxCollapse()">Collapse ▴</button>
+                <button class="btn-sm btn-edit" style="color:var(--accent);border-color:rgba(199,154,100,0.45);" ${chbAttrs('mailboxReply', uid)}>Reply</button>
+                <button class="btn-sm btn-edit" ${chbAttrs('mailboxMarkUnread', uid)}>Mark unread</button>
+                <button class="btn-sm btn-edit" style="color:var(--danger);border-color:rgba(229,115,115,0.4);" ${chbAttrs('mailboxDelete', uid)}>Delete</button>
+                <button class="btn-sm btn-edit" data-act="mailboxCollapse">Collapse ▴</button>
             </div>
             <div id="mbx-compose"></div>
         </section>`;
@@ -12521,7 +12521,7 @@ function mailboxOpenSent(id) {
             ${mbxContextHtml(m.to_email)}
             <pre class="mbx-text">${mbxEsc(m.body)}</pre>
             <div class="bhub-btn-row">
-                <button class="btn-sm btn-edit" onclick="mailboxCollapse()">Collapse ▴</button>
+                <button class="btn-sm btn-edit" data-act="mailboxCollapse">Collapse ▴</button>
             </div>
         </section>`;
 }
@@ -12547,8 +12547,8 @@ function mailboxComposeForm(target, presetTo, presetSubject, quoted) {
             <textarea class="input-glass" id="mbx-text" rows="8" maxlength="20000" style="resize:vertical;margin-bottom:10px;">${mbxEsc(quoted || '')}</textarea>
             <p class="bhub-mut" style="margin:0 0 10px;">Sends from the cottage mailbox with the site's coastal styling.</p>
             <div class="bhub-btn-row" style="margin-top:0;">
-                <button class="btn-glass btn-accent cal-add-btn" id="mbx-send-btn" onclick="mailboxSend()">Send</button>
-                <button class="btn-glass cal-add-btn" onclick="renderMailboxList()">Cancel</button>
+                <button class="btn-glass btn-accent cal-add-btn" id="mbx-send-btn" data-act="mailboxSend">Send</button>
+                <button class="btn-glass cal-add-btn" data-act="renderMailboxList">Cancel</button>
             </div>
             <p id="mbx-msg" role="alert" style="font-size:0.85rem;color:var(--danger);margin:8px 0 0;"></p>
         </div>`;

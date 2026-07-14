@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 165;
+const ADMIN_BUNDLE_V = 166;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -240,6 +240,53 @@ chbAct('reload', function () {
 chbAct('ggKey', function (el, event) {
     if (typeof ggKey === 'function') ggKey(event, chbArgVal(el.dataset.arg));
 });
+// Member-call actions from admin.js dynamic rows.
+chbAct('selectSelf', function (el) {
+    if (typeof el.select === 'function') el.select();
+});
+// Remove the nearest matching ancestor (was `this.closest('sel').remove()`).
+chbAct('closestRemove', function (el) {
+    const t = el.closest(el.dataset.sel);
+    if (t) t.remove();
+});
+// Open a URL in a new tab (was `window.open(url,'_blank')`).
+chbAct('winOpen', function (el) {
+    window.open(el.dataset.url, '_blank');
+});
+// Booking-hub overflow-menu items: close the menu, then run the action on the id.
+chbAct('bhubEdit', function (el) {
+    bhubMenuClose();
+    openEditBooking(el.dataset.arg);
+});
+chbAct('bhubDelete', function (el) {
+    bhubMenuClose();
+    deleteBooking(el.dataset.arg);
+});
+chbAct('bhubCancel', function (el) {
+    bhubMenuClose();
+    cancelBooking(el.dataset.arg);
+});
+// Go to Manage → Diagnostics (was `nav('view-settings'); settingsOpen('diagnostics');`).
+chbAct('navDiagnostics', function () {
+    nav('view-settings');
+    settingsOpen('diagnostics');
+});
+// Open the accommodations section then a specific cottage.
+chbAct('openAccomThenSec', function (el) {
+    settingsOpen('accom');
+    settingsOpenAccom(el.dataset.arg);
+});
+// Owed-KPI chase button inside a clickable row: don't let the row's own click fire.
+chbAct('stopAccountsPayments', function (el, event) {
+    event.stopPropagation();
+    accountsOpen('payments');
+});
+// Booking-hub ⋯ menu toggle: bhubMenuToggle reads ev.currentTarget (the button),
+// which delegation can't provide (currentTarget is document), so hand it a shim
+// whose currentTarget is the real button and whose stopPropagation forwards.
+chbAct('bhubMenu', function (el, event) {
+    bhubMenuToggle({ currentTarget: el, stopPropagation: function () { event.stopPropagation(); } });
+});
 // Waitlist from the front page (object arg → current front property).
 chbAct('openWaitlistHere', function () {
     if (typeof openWaitlistModal === 'function') openWaitlistModal({ prop: window.activeFrontProperty });
@@ -260,16 +307,36 @@ function chbArgVal(raw) {
 function chbEscAttr(s) {
     return String(s).replace(/&/g, '&amp;').replace(/'/g, '&#39;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
+// Sentinels for chbAttrs(): a trailing runtime value the handler took from the
+// element/event — `this.value`, `this.checked`, `this.files`, `this` itself, or
+// `event`. chbAttrs emits these as data-pass (appended LAST at dispatch) instead
+// of baking them into the static JSON arg list.
+const CHB_VALUE = { __chbPass: 'value' };
+const CHB_CHECKED = { __chbPass: 'checked' };
+const CHB_FILES = { __chbPass: 'files' };
+const CHB_SELF = { __chbPass: 'self' };
+const CHB_EVENT = { __chbPass: 'event' };
 // Render-time helper for DYNAMIC (innerHTML) handlers: returns the delegation
-// attributes for a click action, carrying its args as a typed JSON list. Replaces
-// `onclick="fn(a,b)"` with `${chbAttrs('fn', a, b)}` — types survive exactly
-// (String() a formerly-quoted arg to keep it a string). Use data-act-* + this
-// helper's data-args for non-click events.
-function chbAttrs(name, ...args) {
-    let out = 'data-act="' + name + '"';
+// attributes carrying the args as a typed JSON list. Replaces `onclick="fn(a,b)"`
+// with `${chbAttrs('fn', a, b)}` — types survive exactly (String() a formerly-
+// quoted arg to keep it a string). A trailing CHB_* sentinel becomes data-pass.
+// `evt` selects the event: '' (default) = click, else 'change'/'input'/'keydown'/
+// 'submit'/'blur' → data-act-<evt>.
+function chbAttrsFor(evt, name, args) {
+    let pass = '';
+    if (args.length && args[args.length - 1] && args[args.length - 1].__chbPass) {
+        pass = args[args.length - 1].__chbPass;
+        args = args.slice(0, -1);
+    }
+    let out = (evt ? 'data-act-' + evt : 'data-act') + '="' + name + '"';
     if (args.length) out += " data-args='" + chbEscAttr(JSON.stringify(args)) + "'";
+    if (pass) out += ' data-pass="' + pass + '"';
     return out;
 }
+function chbAttrs(name, ...args) { return chbAttrsFor('', name, args); }
+function chbChange(name, ...args) { return chbAttrsFor('change', name, args); }
+function chbInput(name, ...args) { return chbAttrsFor('input', name, args); }
+function chbBlur(name, ...args) { return chbAttrsFor('blur', name, args); }
 function chbRunAct(el, name, event) {
     let r;
     const fn = CHB_ACTIONS[name];
@@ -311,6 +378,8 @@ const CHB_EVT_ATTR = {
     keydown: 'actKeydown',
     submit: 'actSubmit',
     pointerdown: 'actPointerdown',
+    // blur doesn't bubble, so delegate its bubbling twin focusout → data-act-blur.
+    focusout: 'actBlur',
 };
 function chbDelegate(event) {
     const key = CHB_EVT_ATTR[event.type];
@@ -12370,7 +12439,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'cspdeleg4';
+    const BUILD = 'cspdeleg5';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
