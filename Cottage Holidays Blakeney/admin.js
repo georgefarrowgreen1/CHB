@@ -1497,10 +1497,15 @@ function cmdkIntent(q) {
         if (dPk && typeof ACCOM_SECTIONS !== 'undefined' && typeof settingsOpenAccomSec === 'function') {
             const cName = propName(dPk);
             const bs = (dbBookings[dPk] || []).filter((b) => b.checkIn);
-            const next = bs.filter((b) => b.checkIn >= today).sort((a, b) => (a.checkIn < b.checkIn ? -1 : 1))[0];
+            const inRes = bs.find((b) => b.checkIn <= today && (b.checkOut || '') > today); // in residence NOW
+            const next = bs.filter((b) => b.checkIn > today).sort((a, b) => (a.checkIn < b.checkIn ? -1 : 1))[0];
             const yr = +today.slice(0, 4);
             const rev = bs.filter((b) => +b.checkIn.slice(0, 4) === yr).reduce((s, b) => s + ((b.agreedPrice && b.agreedPrice.total) || 0), 0);
-            const facts = [next ? `Next in ${fmtDate(next.checkIn)}` : 'Nothing upcoming', rev ? `${gbp(rev)} booked in ${yr}` : null].filter(Boolean).join(' · ');
+            const facts = [
+                inRes ? `${inRes.name || 'Guest'} here until ${fmtDate(inRes.checkOut)}` : next ? `Next in ${fmtDate(next.checkIn)}` : 'Nothing upcoming',
+                inRes && next ? `next in ${fmtDate(next.checkIn)}` : null,
+                rev ? `${gbp(rev)} booked in ${yr}` : null,
+            ].filter(Boolean).join(' · ');
             const openSec = (sec) => () => cmdkOpenAccomSec(dPk, sec);
             const runQ = (query) => () => { const el = document.getElementById('cmdk-input'); if (el) el.value = query; cmdkSearch(query); };
             const head = ans(cName, facts, openSec('rates'), [{ label: 'Bookings', run: runQ(cName + ' bookings') }].concat(next ? [calChip(next.checkIn)] : []));
@@ -1510,21 +1515,33 @@ function cmdkIntent(q) {
     }
 
     // 0i) Cottage pivot — "Jollyboat bookings", "bookings at 21a", "who's at
-    // Pimpernel" — this cottage's upcoming stays. Needs an EXPLICIT cottage name
-    // (not the single-cottage fallback) so it can't swallow "upcoming bookings".
+    // Pimpernel" — this cottage's stays. Needs an EXPLICIT cottage name (not the
+    // single-cottage fallback) so it can't swallow "upcoming bookings". A guest
+    // who is IN RESIDENCE (checked in, not yet out) ALWAYS leads — "who's at
+    // Jollyboat" must answer with the person there NOW, never "Nothing upcoming"
+    // while someone's mid-stay.
     {
         const keys = Object.keys(propertyMeta || {});
         const namedPk = keys.find((k) => q.includes(k.toLowerCase()) || ((propertyMeta[k].name || '').toLowerCase() && q.includes((propertyMeta[k].name || '').toLowerCase())));
-        if (namedPk && /\bbookings?\b|\bstays?\b|\bcalendar\b|who.?s (at|in|staying)/.test(q)) {
+        if (namedPk && /\bbookings?\b|\bstays?\b|\bcalendar\b|who.?s (at|in|staying)|who is (at|in|staying)|anyone (at|in|staying)|staying (at|in)\b|\bcurrently\b/.test(q)) {
             const cName = propName(namedPk);
-            const rows = flat.filter((x) => x.pk === namedPk && x.b.checkIn && x.b.checkIn >= today).sort(byIn);
+            const all = flat.filter((x) => x.pk === namedPk && x.b.checkIn);
+            const inHouse = all.filter((x) => x.b.checkIn <= today && (x.b.checkOut || '') > today).sort(byIn);
+            const upcoming = all.filter((x) => x.b.checkIn > today).sort(byIn);
+            const nowAsk = /who.?s (at|in|staying)|who is (at|in|staying)|anyone (at|in|staying)|staying (at|in)\b|\bcurrently\b|\bright now\b/.test(q);
+            const now = inHouse[0];
             const head = ans(
-                rows.length ? `${rows.length} upcoming at ${cName}` : `Nothing upcoming at ${cName}`,
-                'Bookings for this cottage',
+                now
+                    ? `${now.b.name || 'A guest'} is at ${cName} until ${fmtDate(now.b.checkOut)}`
+                    : upcoming.length
+                        ? (nowAsk ? `Nobody's at ${cName} right now — ${upcoming.length} upcoming` : `${upcoming.length} upcoming at ${cName}`)
+                        : (nowAsk ? `Nobody's at ${cName} right now` : `Nothing upcoming at ${cName}`),
+                now ? (upcoming.length ? `In residence now · ${upcoming.length} upcoming after` : 'In residence now') : 'Bookings for this cottage',
                 () => { closeCmdK(); openBookings(); },
-                [calChip(rows[0] ? rows[0].b.checkIn : today)],
+                [calChip(now ? now.b.checkIn : upcoming[0] ? upcoming[0].b.checkIn : today)],
             );
-            return [head].concat(rows.slice(0, 10).map((x) => bk(x.pk, x.b, `${fmtDate(x.b.checkIn)}–${fmtDate(x.b.checkOut)}`)));
+            const rows = inHouse.concat(upcoming);
+            return [head].concat(rows.slice(0, 10).map((x) => bk(x.pk, x.b, (x.b.checkIn <= today && (x.b.checkOut || '') > today ? 'In residence · until ' + fmtDate(x.b.checkOut) : `${fmtDate(x.b.checkIn)}–${fmtDate(x.b.checkOut)}`))));
         }
     }
 
