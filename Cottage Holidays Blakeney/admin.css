@@ -2376,3 +2376,48 @@ body.light-mode .cmdk-editor-input {
     margin-left: auto;
   }
 }
+
+/* Bar intelligence states — the same signals as the palette, per bar:
+   GREEN breathing while the on-device model is the thing answering,
+   ORANGE flashing while it learns (chbNluLearnFlash hits every knot). */
+.abar.ml-active .abar-ic {
+  color: var(--ok);
+  animation: cmdk-ml-glow 1.8s ease-in-out infinite;
+}
+.abar-ic.ml-learning {
+  color: var(--warn);
+  animation: chb-ml-learn 0.55s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .abar.ml-active .abar-ic {
+    animation: none;
+    filter: drop-shadow(0 0 4px var(--ok));
+  }
+  .abar-ic.ml-learning {
+    animation: none;
+    filter: drop-shadow(0 0 5px var(--warn));
+  }
+}
+/* Per-bar mic — revealed only where speech recognition exists (inline style
+   set at injection); red pulse while listening, like the palette's. */
+.abar-mic {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.abar-mic .ic {
+  width: 17px;
+  height: 17px;
+}
+.abar-mic.is-listening {
+  color: var(--danger);
+  animation: cmdk-ml-glow 1.2s ease-in-out infinite;
+}
