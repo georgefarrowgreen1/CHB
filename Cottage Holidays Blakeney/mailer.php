@@ -1806,7 +1806,9 @@ function request_booking_payment($b, $kind, $reminder = false)
     $damages = 0.0;
     if (($b['hold_status'] ?? 'none') === 'none') {
         $damages = round((float) ($b['agreed_booking_fee'] ?? 0), 2);
-        if ($damages <= 0 && $rate) {
+        // Legacy rows (no snapshot) fall back to a live calc; a modern row with a
+        // waived (£0) deposit stays £0 rather than showing the property standard.
+        if (($b['agreed_total'] ?? null) === null && $rate) {
             $pp = price_breakdown($rate, $b['adults'], $b['children'], $b['check_in'], $b['check_out']);
             $damages = round((float) ($pp['damagesDeposit'] ?? 0), 2);
         }

@@ -279,20 +279,17 @@ function reconcile_booking_payment($bookingId, $b = null)
 // Refundable damage deposit actually RECEIVED for a booking (rental paid first).
 function damages_collected($b)
 {
-    $held = (float) ($b['agreed_booking_fee'] ?? 0);
-    if ($held <= 0) {
-        return 0.0;
-    }
     $hs = $b['hold_status'] ?? 'none';
     // The full deposit amount is actual money the business now holds and can hand
     // back in two cases: 'charged' (charge-upfront model — taken with the booking)
     // and 'captured' (card-hold model — the authorisation was completed, which
-    // inserts a 'damages' ledger row for the full hold_amount). Both are the excess
-    // that hold_capture's own comment says to "refund via the normal refund flow"
-    // when the damage was less than the deposit. damages_returned() then shrinks
-    // this as returns are made, so repeated refunds can't exceed what was taken.
+    // inserts a 'damages' ledger row for the full hold_amount). This is keyed on
+    // hold_amount — the sum ACTUALLY taken — not agreed_booking_fee, so a deposit
+    // that was charged is never stranded even if the per-booking fee reads £0 (a
+    // waived deposit that was nonetheless collected). damages_returned() then
+    // shrinks this as returns are made, so repeated refunds can't exceed what was taken.
     if ($hs === 'charged' || $hs === 'captured') {
-        return round((float) ($b['hold_amount'] ?? $held), 2);
+        return round((float) ($b['hold_amount'] ?? ($b['agreed_booking_fee'] ?? 0)), 2);
     }
     // Already settled (refunded to the guest, or kept for damage) → nothing to return.
     if (in_array($hs, ['returned', 'kept'], true)) {
@@ -301,6 +298,13 @@ function damages_collected($b)
     // Uncaptured card-hold states took nothing into the ledger — an authorisation
     // that's still pending, was released, or expired holds no money to hand back.
     if (in_array($hs, ['authorized', 'released', 'expired'], true)) {
+        return 0.0;
+    }
+    // hold_status 'none' (charge-upfront model, deposit bundled into the first
+    // payment): the returnable deposit is whatever was paid ABOVE the pure rental,
+    // capped at the agreed deposit. A £0/absent agreed deposit → nothing to return.
+    $held = (float) ($b['agreed_booking_fee'] ?? 0);
+    if ($held <= 0) {
         return 0.0;
     }
     // Pure rental (deposit EXCLUDED) — the same in both eras: legacy folded the
@@ -1129,7 +1133,9 @@ if ($action === 'hold_request') {
     require_once __DIR__ . '/mailer.php';
     $rate = get_rate($b['prop_key']);
     $amt = round((float) ($b['agreed_booking_fee'] ?? 0), 2);
-    if ($amt <= 0 && $rate) {
+    // Fall back to a live calc ONLY for legacy rows with no snapshot — a modern row
+    // with a deliberately-waived (£0) deposit must stay £0 (see pay.php).
+    if (($b['agreed_total'] ?? null) === null && $rate) {
         $p = price_breakdown($rate, $b['adults'], $b['children'], $b['check_in'], $b['check_out']);
         $amt = round((float) $p['damagesDeposit'], 2);
     }

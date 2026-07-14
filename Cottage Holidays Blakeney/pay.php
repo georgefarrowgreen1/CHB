@@ -61,10 +61,14 @@ $depPct = square_deposit_pct();
 $depositAmount = round($total * ($depPct / 100), 2);
 $alreadyPaid = round((float) ($b['deposit_paid'] ?? 0), 2);
 
-// Refundable damages deposit (taken as a card HOLD, not a charge). Use the frozen
-// snapshot, falling back to a live calc for legacy rows.
+// Refundable damages deposit (bundled into the first payment). Use the frozen
+// snapshot; fall back to a live calc ONLY for legacy rows that have no snapshot at
+// all (agreed_total === null). A MODERN row that carries a snapshot but a
+// deliberately-waived (£0) deposit must be honoured as £0 — the old `<= 0` gate
+// second-guessed it into the property standard, charging (and then stranding) a
+// deposit the owner had waived.
 $holdAmount = round((float) ($b['agreed_booking_fee'] ?? 0), 2);
-if ($holdAmount <= 0 && $rate) {
+if ($b['agreed_total'] === null && $rate) {
     $pp = price_breakdown($rate, $b['adults'], $b['children'], $b['check_in'], $b['check_out']);
     $holdAmount = round((float) $pp['damagesDeposit'], 2);
 }
