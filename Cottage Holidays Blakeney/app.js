@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 187;
+const ADMIN_BUNDLE_V = 188;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -6218,6 +6218,25 @@ function hasCheckedIn(b) {
     const now = new Date();
     return now.getHours() * 60 + now.getMinutes() >= mins;
 }
+// Departure counterpart of hasCheckedIn: has the guest actually LEFT? Checkout
+// day + past the checkout time = gone; before it, still in the cottage.
+function hasCheckedOut(b) {
+    if (!b || !b.checkOut) return false;
+    const today = typeof todayDashed === 'function' ? todayDashed() : '';
+    if (b.checkOut < today) return true;
+    if (b.checkOut > today) return false;
+    const parts = String(b.checkOutTime || '10:00').split(':');
+    const mins = (parseInt(parts[0], 10) || 0) * 60 + (parseInt(parts[1], 10) || 0);
+    const now = new Date();
+    return now.getHours() * 60 + now.getMinutes() >= mins;
+}
+// In residence RIGHT NOW = arrived (past check-in time) and not yet departed.
+// Time-aware, so a guest arriving today at 15:00 isn't "here" at breakfast.
+function isInResidence(b) { return hasCheckedIn(b) && !hasCheckedOut(b); }
+// An imported iCal block is an OTA booking — a real guest, a booked night —
+// unless it's the owner's own maintenance/personal block (source 'owner',
+// set by ical-import.php add_block). Blocked-out dates aren't booking days.
+function isOtaBlock(bl) { return !!(bl && bl.checkIn && bl.checkOut && bl.source && bl.source !== 'owner'); }
 function bookingFlow(propKey, b) {
     b = b || {};
     const today = typeof todayDashed === 'function' ? todayDashed() : '';
@@ -12449,7 +12468,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'darkstar1';
+    const BUILD = 'timesrc1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

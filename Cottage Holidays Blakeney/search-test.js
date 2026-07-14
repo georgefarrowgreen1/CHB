@@ -578,6 +578,21 @@ if (typeof ctx.hasCheckedIn === 'function') {
     // one effectively never has during the working day.
     check('today arrival at 00:00 reads as checked in', ctx.hasCheckedIn({ checkIn: today, checkInTime: '00:00' }) === true);
     check('today arrival at 23:59 is not yet checked in', ctx.hasCheckedIn({ checkIn: today, checkInTime: '23:59' }) === false);
+    // Departure + in-residence counterparts (the "who's here" fix: a guest
+    // arriving today at 15:00 isn't in the cottage at breakfast).
+    check('a past-checkout booking counts as checked out', ctx.hasCheckedOut({ checkOut: plus(-1), checkOutTime: '10:00' }) === true);
+    check('a future-checkout booking is not checked out', ctx.hasCheckedOut({ checkOut: plus(2), checkOutTime: '10:00' }) === false);
+    check('today checkout at 00:00 reads as checked out', ctx.hasCheckedOut({ checkOut: today, checkOutTime: '00:00' }) === true);
+    check('today checkout at 23:59 is not yet checked out', ctx.hasCheckedOut({ checkOut: today, checkOutTime: '23:59' }) === false);
+    check('arriving-today-at-23:59 is NOT in residence yet', ctx.isInResidence({ checkIn: today, checkInTime: '23:59', checkOut: plus(3), checkOutTime: '10:00' }) === false);
+    check('a mid-stay guest IS in residence', ctx.isInResidence({ checkIn: plus(-1), checkInTime: '15:00', checkOut: plus(2), checkOutTime: '10:00' }) === true);
+}
+// isOtaBlock — an imported OTA booking is a real guest / booked night; the
+// owner's own maintenance block is not (blocked-out dates aren't booking days).
+if (typeof ctx.isOtaBlock === 'function') {
+    check('an Airbnb block is an OTA booking', ctx.isOtaBlock({ source: 'airbnb', checkIn: '2026-01-01', checkOut: '2026-01-03' }) === true);
+    check('an owner maintenance block is NOT a booking', ctx.isOtaBlock({ source: 'owner', checkIn: '2026-01-01', checkOut: '2026-01-03' }) === false);
+    check('a sourceless block is NOT a booking', ctx.isOtaBlock({ checkIn: '2026-01-01', checkOut: '2026-01-03' }) === false);
 }
 
 

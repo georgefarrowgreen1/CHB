@@ -1943,7 +1943,7 @@ function cmdkIntent(q) {
         // The guest the question is about: prefer in-house, then the next stay,
         // then the most recent past one. Their other matches ride along below.
         const byRelevance = (a, b2) => {
-            const tier = (x) => (x.b.checkIn && x.b.checkOut && x.b.checkIn <= today && x.b.checkOut > today ? 0 : x.b.checkIn >= today ? 1 : 2);
+            const tier = (x) => (isInResidence(x.b) ? 0 : x.b.checkIn >= today ? 1 : 2);
             return tier(a) - tier(b2) || (tier(a) === 2 ? ((a.b.checkIn || '') > (b2.b.checkIn || '') ? -1 : 1) : ((a.b.checkIn || '') < (b2.b.checkIn || '') ? -1 : 1));
         };
         const ranked = named.slice().sort(byRelevance);
@@ -1954,6 +1954,33 @@ function cmdkIntent(q) {
         // WHEN — "when does Bob arrive / leave / check out", "what day is Cara coming".
         if (target && safe && /\bwhen\b|what (day|date|time)/.test(q)) {
             const b = target.b, nm = b.name || 'This guest';
+            // DAMAGE-DEPOSIT REFUND timing (owner → guest): "when do I owe Richard
+            // his deposit", "when does she get her deposit back". This is the
+            // return direction — NOT the guest's payment status — so it's answered
+            // from the deposit's hold state, not the balance. The refund happens
+            // AFTER checkout. Guarded off the payment direction ("pay/charge").
+            if (/\bdeposit\b/.test(q) && /\brefund|return|\bback\b|give|\bowe\b/.test(q) && !/\bpay|paid|charge/.test(q)) {
+                const stt = b.holdStatus || 'none';
+                const co = b.checkOut;
+                const go = () => { closeCmdK(); openBookingHub(b.id); };
+                let head;
+                if (stt === 'returned') {
+                    head = ans(`${nm}’s deposit has been refunded`, `Already returned · ${propName(target.pk)}`, go);
+                } else if (stt === 'kept') {
+                    head = ans(`${nm}’s deposit was kept for damage — nothing to return`, `Retained, not refunded · ${propName(target.pk)}`, go);
+                } else {
+                    const gone = co && hasCheckedOut(b);
+                    head = ans(
+                        gone ? `${nm}’s deposit is due back now` : `You’ll owe ${nm} their deposit back after checkout`,
+                        (gone ? `Checked out ${co === today ? 'today' : nice(co)} — return it now` : co ? `After checkout ${nice(co)} (${rel(co)})` : 'After their stay') + ` · ${propName(target.pk)}`,
+                        go,
+                        co ? [calChip(co)] : [],
+                    );
+                }
+                head.dedupName = (nm || '').toLowerCase().trim();
+                head.actions = cmdkBookingActions(b, target.pk);
+                return [head].concat(others);
+            }
             // "when does Bob pay" is a MONEY question wearing a when — compose
             // the balance + its due point (the balance is collected before the
             // stay), not the arrival date alone.
@@ -1972,7 +1999,7 @@ function cmdkIntent(q) {
                 return [head].concat(others);
             }
             const leaving = /leav|check.?out|depart|going home|out\b/.test(q);
-            const inHouse = b.checkIn && b.checkOut && b.checkIn <= today && b.checkOut > today;
+            const inHouse = isInResidence(b); // time-aware, not just date-in-range
             let label, sub, iso;
             if (leaving) {
                 iso = b.checkOut;
@@ -2294,7 +2321,11 @@ function cmdkIntent(q) {
     // their richer answers because they run first.
     {
         const ents = CHB_SEARCH.understand(q).entities || {};
-        if ((ents.dateRange || ents.amount) && /\bbook(ing|ings|ed)?\b|\bstays?\b|\bguests?\b|\bwho\b/.test(q) && !/\barriv|\bleav|check.?(in|out)|\bstaying\b/.test(q)) {
+        // Source qualifier: "airbnb booking", "any vrbo stays", "direct bookings".
+        // OTA channels come from imported blocks (isOtaBlock); "direct" = our own
+        // bookings. A qualifier alone (no date/amount) is enough to compose here.
+        const SRC = /\bairbnb\b/.test(q) ? 'airbnb' : /\bvrbo\b|\bhomeaway\b/.test(q) ? 'vrbo' : /\bbooking\.?com\b/.test(q) ? 'bookingcom' : /\b(ota|channel|platform|external)\b/.test(q) ? 'ota' : /\b(direct|website|own site|my site)\b/.test(q) ? 'direct' : null;
+        if ((ents.dateRange || ents.amount || SRC) && /\bbook(ing|ings|ed)?\b|\bstays?\b|\bguests?\b|\bwho\b/.test(q) && !/\barriv|\bleav|check.?(in|out)|\bstaying\b/.test(q)) {
             const dr = ents.dateRange;
             const within = (ci, co) => !dr || (ci && (co || ci) > dr.from && ci <= dr.to); // stay overlaps the window
             const amtOk = (t) => {
@@ -2302,21 +2333,29 @@ function cmdkIntent(q) {
                 const { op, value } = ents.amount;
                 return op === 'over' ? t > value : op === 'under' ? t < value : Math.abs(t - value) <= 25;
             };
-            let rows = flat.filter((x) => (!ents.prop || x.pk === ents.prop) && within(x.b.checkIn, x.b.checkOut));
+            const wantOta = SRC && SRC !== 'direct'; // asked for a specific/any OTA channel
+            const OTA_LABEL = { airbnb: 'Airbnb', vrbo: 'Vrbo', bookingcom: 'Booking.com' };
+            const srcMatch = (s) => !SRC || SRC === 'ota' || s === SRC; // null/"ota" → any OTA; else the exact channel
+            // Direct bookings — dropped when the query asks specifically for OTA.
+            let rows = wantOta ? [] : flat.filter((x) => (!ents.prop || x.pk === ents.prop) && within(x.b.checkIn, x.b.checkOut));
             rows = rows.map((x) => ({ ...x, _t: paymentSummary(x.pk, x.b).total })).filter((x) => amtOk(x._t)).sort(byIn);
-            const eRows = ents.amount ? [] : blocks.filter((x) => (!ents.prop || x.pk === ents.prop) && within(x.bl.checkIn, x.bl.checkOut));
+            // OTA blocks only — the owner's maintenance blocks are NOT bookings
+            // ("blocked out dates aren't booking days"). Dropped for "direct" and
+            // for amount filters (OTA blocks carry no price).
+            const eRows = (SRC === 'direct' || ents.amount) ? [] : blocks.filter((x) => isOtaBlock(x.bl) && srcMatch(x.bl.source) && (!ents.prop || x.pk === ents.prop) && within(x.bl.checkIn, x.bl.checkOut)).sort(byBlkIn);
+            const srcBit = SRC ? (SRC === 'direct' ? 'direct ' : (OTA_LABEL[SRC] || 'OTA') + ' ') : '';
             const bits = [ents.prop ? `at ${propName(ents.prop)}` : '', dr ? dr.label : '', ents.amount ? `${ents.amount.op} ${gbp(ents.amount.value)}` : ''].filter(Boolean).join(' · ');
             const n = rows.length + eRows.length;
             const sum = rows.reduce((s, x) => s + x._t, 0);
             const head = ans(
-                n ? `${n} booking${n === 1 ? '' : 's'} — ${bits}` : `No bookings ${bits}`,
-                n ? (sum ? `${gbp(sum)} across them` : 'Matching stays') : 'Nothing in that window',
+                n ? `${n} ${srcBit}booking${n === 1 ? '' : 's'}${bits ? ' — ' + bits : ''}` : `No ${srcBit}bookings${bits ? ' ' + bits : ''}`,
+                n ? (sum ? `${gbp(sum)} across them` : (wantOta ? 'Imported from the channel calendar' : 'Matching stays')) : 'Nothing in that window',
                 () => { closeCmdK(); openBookings(); },
                 dr ? [calChip(dr.from)] : null,
             );
             return [head]
                 .concat(rows.slice(0, 10).map((x) => bk(x.pk, x.b, `${fmtDate(x.b.checkIn)}–${fmtDate(x.b.checkOut)} · ${gbp(x._t)} · ${propName(x.pk)}`)))
-                .concat(eRows.slice(0, 4).map((x) => ext(x.pk, x.bl, `${fmtDate(x.bl.checkIn)}–${fmtDate(x.bl.checkOut)} · ${propName(x.pk)}`)));
+                .concat(eRows.slice(0, 6).map((x) => ext(x.pk, x.bl, `${fmtDate(x.bl.checkIn)}–${fmtDate(x.bl.checkOut)} · ${propName(x.pk)}`)));
         }
     }
     // 0h2) Cottage dossier — a cottage name alone (or "…settings/setup/manage")
@@ -2329,7 +2368,7 @@ function cmdkIntent(q) {
         if (dPk && typeof ACCOM_SECTIONS !== 'undefined' && typeof settingsOpenAccomSec === 'function') {
             const cName = propName(dPk);
             const bs = (dbBookings[dPk] || []).filter((b) => b.checkIn);
-            const inRes = bs.find((b) => b.checkIn <= today && (b.checkOut || '') > today); // in residence NOW
+            const inRes = bs.find((b) => isInResidence(b)); // in residence NOW (time-aware)
             const next = bs.filter((b) => b.checkIn > today).sort((a, b) => (a.checkIn < b.checkIn ? -1 : 1))[0];
             const yr = +today.slice(0, 4);
             const rev = bs.filter((b) => +b.checkIn.slice(0, 4) === yr).reduce((s, b) => s + ((b.agreedPrice && b.agreedPrice.total) || 0), 0);
@@ -2358,7 +2397,7 @@ function cmdkIntent(q) {
         if (namedPk && /\bbookings?\b|\bstays?\b|\bcalendar\b|who.?s (at|in|staying)|who is (at|in|staying)|anyone (at|in|staying)|staying (at|in)\b|\bcurrently\b/.test(q)) {
             const cName = propName(namedPk);
             const all = flat.filter((x) => x.pk === namedPk && x.b.checkIn);
-            const inHouse = all.filter((x) => x.b.checkIn <= today && (x.b.checkOut || '') > today).sort(byIn);
+            const inHouse = all.filter((x) => isInResidence(x.b)).sort(byIn);
             const upcoming = all.filter((x) => x.b.checkIn > today).sort(byIn);
             const nowAsk = /who.?s (at|in|staying)|who is (at|in|staying)|anyone (at|in|staying)|staying (at|in)\b|\bcurrently\b|\bright now\b/.test(q);
             const now = inHouse[0];
@@ -2574,10 +2613,14 @@ function cmdkIntent(q) {
             .concat(rows.map((x) => bk(x.pk, x.b, `Checks in ${fmtDate(x.b.checkIn)}${x.b.checkInTime ? ' · ' + x.b.checkInTime : ''} · ${propName(x.pk)}`)))
             .concat(eRows.map((x) => ext(x.pk, x.bl, `Checks in ${fmtDate(x.bl.checkIn)} · ${propName(x.pk)}`)));
     }
-    // 5) Currently staying / in-house right now — direct bookings AND OTA blocks.
+    // 5) Currently staying / in-house right now — direct bookings AND OTA
+    // blocks. TIME-AWARE: a guest arriving today at 15:00 isn't "here" at
+    // 00:07 (isInResidence checks the check-in/out clock, not just the date),
+    // and the owner's own maintenance blocks aren't a guest in-house (OTA
+    // blocks only). OTA blocks carry no check-in time → date-only for those.
     if (/\bstaying|in.?house|here (now|right now|tonight)|current guest|who.?s here|who is here|anyone here|checked in|in residence\b/.test(q)) {
-        const rows = flat.filter((x) => x.b.checkIn && x.b.checkOut && x.b.checkIn <= today && x.b.checkOut > today).sort(byOut);
-        const eRows = blocks.filter((x) => x.bl.checkIn && x.bl.checkOut && x.bl.checkIn <= today && x.bl.checkOut > today).sort(byBlkOut);
+        const rows = flat.filter((x) => isInResidence(x.b)).sort(byOut);
+        const eRows = blocks.filter((x) => isOtaBlock(x.bl) && x.bl.checkIn <= today && x.bl.checkOut > today).sort(byBlkOut);
         const n = rows.length + eRows.length;
         const head = ans(n ? `${n} guest${n === 1 ? '' : 's'} in-house now` : 'No one in-house right now', 'Currently staying · direct & OTA', () => { closeCmdK(); tryAccessBackOffice(); });
         return [head]
