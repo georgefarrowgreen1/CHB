@@ -243,7 +243,7 @@ const ok = (cond, label) => {
     open: document.getElementById('date-picker').classList.contains('open'),
     admin: document.getElementById('date-picker').classList.contains('dp-admin'),
     shaded: document.querySelectorAll('#dp-grid .dp-day.dp-booked').length,
-    shadedClickable: Array.from(document.querySelectorAll('#dp-grid .dp-day.dp-booked')).every((c) => c.getAttribute('onclick')),
+    shadedClickable: Array.from(document.querySelectorAll('#dp-grid .dp-day.dp-booked')).every((c) => c.getAttribute('onclick') || c.getAttribute('data-act')),
   }));
   ok(dp1.open && dp1.admin, 'glass calendar opens from the modal in admin mode');
   ok(dp1.shaded >= 1 && dp1.shadedClickable, `taken nights shaded yet pickable (${dp1.shaded})`);
