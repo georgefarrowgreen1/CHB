@@ -936,9 +936,16 @@ function cmdkAll(q) {
 //  owner's own accepted queries).
 // ===================================================================
 const CHB_NLU = {
-    dims: 2048,
-    min: 0.2, // reject below this confidence (negatives top out ≈0.17 — see search-test)
-    gap: 0.03, // …or when the runner-up intent is this close (ambiguous)
+    dims: 4096, // hashed feature space (doubled in v2 — fewer collisions, measured win)
+    min: 0.17, // tier-1 accept: cosine floor (swept on the tuning harness — see nlu-v2)
+    gap: 0.03, // …and the runner-up must trail by at least this margin
+    // Tier-2 (the deep head, consulted only when tier 1 abstains):
+    min2: 0.08, // fused kNN+hidden-layer score floor
+    gap2: 0.03, // fused margin over the runner-up
+    floor2: 0.08, // the chosen intent's raw cosine must still clear this
+    H: 384, // hidden-layer width
+    lam: 1, // ridge regularisation for the readout
+    T: 4, // softmax temperature on the readout logits
     model: null,
     // The training corpus: each intent = the CANONICAL question the intent engine
     // provably answers (phrases verified against cmdkIntent's branches) + the
@@ -1012,25 +1019,99 @@ const CHB_NLU = {
             'business health check', 'how did we do',
         ] },
     ],
+    // The "none of these" class: phrases the model must NEVER map to a question —
+    // guest names, settings/editing tasks, commands (cmdkCommand's domain) and
+    // local-info lookups. The hidden layer trains an explicit rejection class on
+    // these, and the exemplar tier uses them as a veto.
+    noneExamples: [
+        'john smith', 'mary jones', 'david wilson', 'cottage photos', 'update description',
+        'gallery images', 'send email to guest', 'wifi code', 'booking fee setting',
+        'change prices', 'open the calendar', 'arrival time', 'cleaning schedule',
+        'edit welcome text', 'export csv', 'guest register', 'push notifications',
+        'backup the database', 'icals sync', 'change my password',
+        'add a booking', 'block dates for maintenance', 'edit the description',
+        'open settings', 'show the gallery', 'nearest pub', 'weather forecast',
+        'things to do nearby', 'set a price', 'upload a photo',
+    ],
 };
 CHB_SEARCH.nlu = CHB_NLU; // part of the public search-core API
-// Phrase → hashed word + character-trigram vector, L2-normalised.
-function chbNluVec(text) {
+// Phrase → SPARSE hashed word + character-trigram features, L2-normalised.
+// The sparse form ({idx, val}) is the primitive: a short phrase touches ~40 of
+// the 4096 dimensions, so every downstream pass (centroid dot, exemplar kNN,
+// the hidden-layer projection) iterates non-zeros only.
+function chbNluSparse(text) {
     const D = CHB_NLU.dims;
-    const v = new Float32Array(D);
+    const m = new Map();
     const s = ' ' + String(text || '').toLowerCase().replace(/[^a-z0-9£']+/g, ' ').replace(/\s+/g, ' ').trim() + ' ';
     const put = (f, w) => {
         let h = 5381;
         for (let i = 0; i < f.length; i++) h = ((h << 5) + h + f.charCodeAt(i)) | 0;
-        v[(h >>> 0) % D] += w;
+        const k = (h >>> 0) % D;
+        m.set(k, (m.get(k) || 0) + w);
     };
     s.trim().split(' ').forEach((w) => { if (w) put('w:' + w, 1); });
     for (let i = 0; i < s.length - 2; i++) put('t:' + s.slice(i, i + 3), 0.5);
     let n = 0;
-    for (let i = 0; i < D; i++) n += v[i] * v[i];
+    m.forEach((v) => { n += v * v; });
     n = Math.sqrt(n) || 1;
-    for (let i = 0; i < D; i++) v[i] /= n;
+    const idx = [], val = [];
+    m.forEach((v, k) => { idx.push(k); val.push(v / n); });
+    return { idx, val };
+}
+// Dense view of the same features — CHB_RANK vectorises its items with this.
+function chbNluVec(text) {
+    const v = new Float32Array(CHB_NLU.dims);
+    const e = chbNluSparse(text);
+    for (let i = 0; i < e.idx.length; i++) v[e.idx[i]] = e.val[i];
     return v;
+}
+// IDF-weight a sparse encoding and re-normalise — the space the model lives in.
+function chbNluEncIdf(text) {
+    const e = chbNluSparse(text);
+    const idf = CHB_NLU.idf;
+    let n = 0;
+    for (let i = 0; i < e.idx.length; i++) { e.val[i] *= idf[e.idx[i]]; n += e.val[i] * e.val[i]; }
+    n = Math.sqrt(n) || 1;
+    for (let i = 0; i < e.val.length; i++) e.val[i] /= n;
+    return e;
+}
+// Seeded gaussian row of the hidden-layer projection for input dimension d —
+// derived on demand from the dimension index (mulberry32 + Box-Muller), so the
+// 4096×384 weight matrix is never stored. A small cache keeps hot rows (common
+// words) around between queries. Engines may differ in the last float bit of
+// cos/log, so weights are per-device — nothing is synced, so that's harmless.
+const __nluRowCache = new Map();
+function chbNluRow(d, cache) {
+    const store = cache || __nluRowCache;
+    let r = store.get(d);
+    if (r) return r;
+    const H = CHB_NLU.H;
+    let a = (0x5EED ^ d) >>> 0;
+    const rnd = () => {
+        a |= 0; a = (a + 0x6D2B79F5) | 0;
+        let t = Math.imul(a ^ (a >>> 15), 1 | a);
+        t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+        return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    r = new Float32Array(H);
+    for (let j = 0; j < H; j++) {
+        const u1 = Math.max(rnd(), 1e-9), u2 = rnd();
+        r[j] = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2) * 2; // gain 2 keeps tanh in its live range
+    }
+    if (!cache && __nluRowCache.size > 512) __nluRowCache.clear();
+    store.set(d, r);
+    return r;
+}
+// Hidden layer: sparse projection + tanh. ~40 non-zeros × 384 units per phrase.
+function chbNluHidden(e, cache) {
+    const H = CHB_NLU.H;
+    const h = new Float32Array(H);
+    for (let i = 0; i < e.idx.length; i++) {
+        const r = chbNluRow(e.idx[i], cache), v = e.val[i];
+        for (let j = 0; j < H; j++) h[j] += v * r[j];
+    }
+    for (let j = 0; j < H; j++) h[j] = Math.tanh(h[j]);
+    return h;
 }
 // TRAIN — two passes, the classic TF-IDF centroid model:
 //  1. Sum each intent's (canonical + example) vectors, and count in how many
@@ -1040,19 +1121,22 @@ function chbNluVec(text) {
 //     the distinctive vocabulary of each intent dominates — then unit-normalise.
 // The same IDF weights are applied to queries at classify time.
 function chbNluTrain() {
-    const D = CHB_NLU.dims;
+    const D = CHB_NLU.dims, H = CHB_NLU.H;
     // The owner's ACCEPTED phrasings (online learning) train alongside the
     // authored corpus — the model personalises to how this owner speaks.
     let learned = [];
     try { learned = chbNluLearned(); } catch (e) {}
+    // 1) Per-intent feature sums → per-dimension IDF → unit centroids (tier 1,
+    //    the same calibrated TF-IDF cosine model as v1, now at 4096 dims).
     const raw = CHB_NLU.corpus.map((c) => {
         const cen = new Float32Array(D);
         const mine = learned.filter((x) => x.c === c.canonical).map((x) => x.t);
-        [c.canonical].concat(c.examples, mine).forEach((t) => {
-            const v = chbNluVec(t);
-            for (let i = 0; i < D; i++) cen[i] += v[i];
+        const texts = [c.canonical].concat(c.examples, mine);
+        texts.forEach((t) => {
+            const e = chbNluSparse(t);
+            for (let i = 0; i < e.idx.length; i++) cen[e.idx[i]] += e.val[i];
         });
-        return { canonical: c.canonical, cen };
+        return { canonical: c.canonical, cen, texts };
     });
     const N = raw.length;
     const idf = new Float32Array(D);
@@ -1062,7 +1146,7 @@ function chbNluTrain() {
         idf[i] = Math.log((N + 1) / (df + 0.5));
     }
     CHB_NLU.idf = idf;
-    CHB_NLU.model = raw.map((r) => {
+    const cents = raw.map((r) => {
         const v = new Float32Array(D);
         let n = 0;
         for (let i = 0; i < D; i++) { v[i] = r.cen[i] * idf[i]; n += v[i] * v[i]; }
@@ -1070,24 +1154,121 @@ function chbNluTrain() {
         for (let i = 0; i < D; i++) v[i] /= n;
         return { canonical: r.canonical, vec: v };
     });
+    // 2) Exemplar store (tier 2a): every training phrase in IDF space, plus the
+    //    none-class as a veto (ci -1). Pre-mapped for fast sparse-sparse dots.
+    const exs = [];
+    raw.forEach((r, ci) => r.texts.forEach((t) => exs.push({ ci, e: chbNluEncIdf(t) })));
+    CHB_NLU.noneExamples.forEach((t) => exs.push({ ci: -1, e: chbNluEncIdf(t) }));
+    exs.forEach((x) => {
+        const m = new Map();
+        for (let i = 0; i < x.e.idx.length; i++) m.set(x.e.idx[i], x.e.val[i]);
+        x.map = m;
+    });
+    // 3) Hidden layer + readout (tier 2b): tanh(random projection) features for
+    //    every example, then a RIDGE-REGRESSION readout over N+1 classes solved
+    //    in closed form (Cholesky) — a genuine 2-layer network, fit in ~100ms.
+    //    The +1 class is "none of these", trained on noneExamples.
+    const NC = N + 1;
+    const HtH = new Float64Array(H * H);
+    const HtY = new Float64Array(H * NC);
+    // Training touches ~3k unique feature dims — far past the query cache's cap —
+    // so it uses its own unbounded cache, freed when this function returns.
+    const trainCache = new Map();
+    for (const x of exs) {
+        const h = chbNluHidden(x.e, trainCache);
+        const ci = x.ci === -1 ? N : x.ci;
+        for (let i = 0; i < H; i++) {
+            const hi = h[i];
+            HtY[i * NC + ci] += hi;
+            const base = i * H;
+            for (let j = i; j < H; j++) HtH[base + j] += hi * h[j];
+        }
+    }
+    for (let i = 0; i < H; i++) {
+        for (let j = 0; j < i; j++) HtH[i * H + j] = HtH[j * H + i];
+        HtH[i * H + i] += CHB_NLU.lam;
+    }
+    const L = new Float64Array(H * H);
+    for (let i = 0; i < H; i++) {
+        for (let j = 0; j <= i; j++) {
+            let acc = HtH[i * H + j];
+            for (let k = 0; k < j; k++) acc -= L[i * H + k] * L[j * H + k];
+            if (i === j) L[i * H + i] = Math.sqrt(Math.max(acc, 1e-12));
+            else L[i * H + j] = acc / L[j * H + j];
+        }
+    }
+    const W2 = new Float64Array(H * NC);
+    for (let c = 0; c < NC; c++) {
+        const y = new Float64Array(H), x2 = new Float64Array(H);
+        for (let i = 0; i < H; i++) {
+            let acc = HtY[i * NC + c];
+            for (let k = 0; k < i; k++) acc -= L[i * H + k] * y[k];
+            y[i] = acc / L[i * H + i];
+        }
+        for (let i = H - 1; i >= 0; i--) {
+            let acc = y[i];
+            for (let k = i + 1; k < H; k++) acc -= L[k * H + i] * x2[k];
+            x2[i] = acc / L[i * H + i];
+        }
+        for (let i = 0; i < H; i++) W2[i * NC + c] = x2[i];
+    }
+    CHB_NLU.model = { cents, exs, W2, NC };
 }
+// Train off the critical path (at load, and shortly after each learn/merge) so
+// the first classify never pays the hidden-layer fit.
+function chbNluWarm(ms) {
+    setTimeout(() => { try { if (!CHB_NLU.model) chbNluTrain(); } catch (e) {} }, ms || 300);
+}
+chbNluWarm(800);
 // SCORE: IDF-weight the query the same way and cosine against every intent
 // centroid — the full ranked list (best first), shared by classify + suggest.
 function chbNluScores(q) {
     const ql = (q || '').trim();
     if (ql.length < 4) return null;
     if (!CHB_NLU.model) { try { chbNluTrain(); } catch (e) { return null; } }
-    const D = CHB_NLU.dims;
-    const rawV = chbNluVec(ql);
-    const v = new Float32Array(D);
-    let n = 0;
-    for (let i = 0; i < D; i++) { v[i] = rawV[i] * CHB_NLU.idf[i]; n += v[i] * v[i]; }
-    n = Math.sqrt(n) || 1;
-    const out = CHB_NLU.model.map((m) => {
+    const e = chbNluEncIdf(ql);
+    const out = CHB_NLU.model.cents.map((m) => {
         let dot = 0;
-        for (let i = 0; i < D; i++) dot += (v[i] / n) * m.vec[i];
+        for (let i = 0; i < e.idx.length; i++) dot += e.val[i] * m.vec[e.idx[i]];
         return { canonical: m.canonical, score: dot };
     });
+    out.sort((a, b) => b.score - a.score);
+    return out;
+}
+// Tier 2: the DEEP opinion — exemplar kNN (with the none-class as a veto) fused
+// 50/50 with the hidden layer's softmax. Returns the fused ranking.
+function chbNluDeep(q) {
+    const M = CHB_NLU.model;
+    if (!M) return null;
+    const e = chbNluEncIdf((q || '').trim());
+    const N = M.cents.length;
+    // exemplar kNN: best match per intent; best none-match subtracts from all
+    const knn = new Float32Array(N);
+    let noneBest = 0;
+    for (const x of M.exs) {
+        let dot = 0;
+        for (let i = 0; i < e.idx.length; i++) {
+            const v2 = x.map.get(e.idx[i]);
+            if (v2) dot += e.val[i] * v2;
+        }
+        if (x.ci === -1) { if (dot > noneBest) noneBest = dot; }
+        else if (dot > knn[x.ci]) knn[x.ci] = dot;
+    }
+    if (noneBest > 0) for (let c = 0; c < N; c++) knn[c] = Math.max(0, knn[c] - noneBest);
+    // hidden layer softmax over N+1 classes — the none class dilutes junk
+    const h = chbNluHidden(e);
+    const NC = M.NC, H = CHB_NLU.H;
+    const o = new Float64Array(NC);
+    for (let i = 0; i < H; i++) {
+        const hi = h[i];
+        for (let c = 0; c < NC; c++) o[c] += hi * M.W2[i * NC + c];
+    }
+    let mx = -Infinity;
+    for (let c = 0; c < NC; c++) if (o[c] > mx) mx = o[c];
+    let Z = 0;
+    const sm = new Float64Array(NC);
+    for (let c = 0; c < NC; c++) { sm[c] = Math.exp((o[c] - mx) * CHB_NLU.T); Z += sm[c]; }
+    const out = M.cents.map((m, c) => ({ canonical: m.canonical, score: 0.5 * knn[c] + 0.5 * (sm[c] / Z) }));
     out.sort((a, b) => b.score - a.score);
     return out;
 }
@@ -1101,8 +1282,23 @@ function chbNluClassify(q, loose) {
     if (!scores || !scores.length) return null;
     const best = { canonical: scores[0].canonical, score: scores[0].score, margin: scores[0].score - (scores[1] ? scores[1].score : 0) };
     if (loose) return best;
-    if (best.score < CHB_NLU.min || best.margin < CHB_NLU.gap) return null;
-    return best;
+    // Tier 1 — the calibrated cosine decision (v1's proven behaviour).
+    if (best.score >= CHB_NLU.min && best.margin >= CHB_NLU.gap) return best;
+    // Tier 2 — the deep head is consulted ONLY when tier 1 abstains, and its
+    // answer is accepted only when it AGREES with the cosine top-2 and clears
+    // its own floors — recall goes up, wrong-intent risk stays bounded (all
+    // thresholds swept on the offline harness; see search-test's floors).
+    try {
+        const deep = chbNluDeep(ql);
+        if (!deep || !deep.length) return null;
+        const dm = deep[0].score - (deep[1] ? deep[1].score : 0);
+        const cosOf = deep[0].canonical === scores[0].canonical ? scores[0].score
+            : (scores[1] && deep[0].canonical === scores[1].canonical ? scores[1].score : -1);
+        if (cosOf >= CHB_NLU.floor2 && deep[0].score >= CHB_NLU.min2 && dm >= CHB_NLU.gap2) {
+            return { canonical: deep[0].canonical, score: cosOf, margin: dm, deep: true };
+        }
+    } catch (e) {}
+    return null;
 }
 // ---- Speaking back: the browser's built-in speech synthesis (on-device). A
 // query that arrived BY VOICE gets its answer read aloud — ask out loud, hear
@@ -1252,7 +1448,8 @@ function chbNluLearn(phrase, canonical) {
     list.push({ t, c: canonical });
     if (list.length > 200) list.shift();
     chbNluStore('chb-nlu-learned', list);
-    CHB_NLU.model = null; // retrain lazily with the new example folded in
+    CHB_NLU.model = null; // retrain with the new example folded in…
+    chbNluWarm(); // …off the critical path, so the next classify is instant
     chbAssistSyncPush();
 }
 function chbNluSuppress(phrase) {
@@ -1267,7 +1464,7 @@ function chbNluSuppress(phrase) {
     // Un-learn it too, in case it was previously accepted.
     const learned = chbNluLearned();
     const i = learned.findIndex((x) => x.t === t);
-    if (i >= 0) { learned.splice(i, 1); chbNluStore('chb-nlu-learned', learned); CHB_NLU.model = null; }
+    if (i >= 0) { learned.splice(i, 1); chbNluStore('chb-nlu-learned', learned); CHB_NLU.model = null; chbNluWarm(); }
     chbAssistSyncPush();
 }
 
@@ -1320,7 +1517,8 @@ function chbAssistSyncPull() {
         chbNluStore('chb-nlu-suppressed', sup);
         chbNluStore('chb-nlu-learned', learned);
         chbNluStore('chb-search-misses', misses);
-        CHB_NLU.model = null; // fold the merged phrasings in on the next classify
+        CHB_NLU.model = null; // fold the merged phrasings in…
+        chbNluWarm(); // …retraining off the critical path
     }
 }
 
