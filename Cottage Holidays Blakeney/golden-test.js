@@ -186,9 +186,15 @@ const CASES = [
     { q: "who's arriving today", head: /No arrivals today/ },
     { q: 'arriving this week', any: /Cara Dunn/ },
     { q: "who's staying now", any: /Alice Marsh/, not: /Eve Frost|Bob Carter/ },
-    // NOTE: "who IS here right now" (no apostrophe-s) is a known phrasing gap —
-    // branch 5's /who.?s here/ misses it. Widened in the entity-layer PR.
     { q: "who's here right now", any: /Alice Marsh/ },
+    { q: 'who is here right now', any: /Alice Marsh/ }, // the PR-1 phrasing gap, since widened
+    // ---- Entity-composed filters (dates + money bounds + cottage, one branch) ----
+    { q: 'bookings over £500', head: /3 bookings — over £500/, any: /Finn Gale/, not: /Alice Marsh/ },
+    { q: 'bookings under £450', head: /2 bookings — under £450/, any: /Dan Epps/ },
+    { q: 'jollyboat bookings over £400', head: /2 bookings — at Jollyboat · over £400/, any: /Bob Carter/, not: /Cara Dunn/ },
+    { q: 'stays this year', head: /\d+ bookings? — \d{4}/ },
+    { q: 'guests this weekend', head: /this weekend/ },
+    { q: 'who was here last week', head: /last week/ },
     { q: 'today', any: /Eve Frost/ },
     // ---- Upcoming ----
     { q: 'upcoming bookings', head: /Next: Cara Dunn/, any: /Bob Carter/, min: 4 },
@@ -247,6 +253,27 @@ if (!DUMP) {
         try { got = (ctx.chbNluClassify(q, true) || {}).canonical || ''; } catch (e) { got = 'THREW: ' + e.message; }
         re.test(got) ? pass(`"${q}" → "${got}"`) : fail(`"${q}" classified as "${got}" (wanted ${re})`);
     });
+}
+
+// ---- Entity extraction invariants (chbEntities date maths, day-independent) ----
+if (!DUMP) {
+    console.log('\n== Golden entity extraction ==');
+    const ent = (q) => vm.runInContext(`chbEntities(${JSON.stringify(q)})`, ctx, { timeout: 2000 });
+    const todayIso = d(0);
+    const e1 = ent('bookings in august').dateRange;
+    ok2('"in august" → a full August not already past', e1 && /-08-01$/.test(e1.from) && /-08-31$/.test(e1.to) && e1.to >= todayIso);
+    const e2 = ent('bookings this month').dateRange;
+    ok2('"this month" starts on the 1st of the current month', e2 && e2.from === todayIso.slice(0, 8) + '01');
+    const e3 = ent('stays this weekend').dateRange;
+    ok2('"this weekend" is Friday→Sunday and not past', e3 && new Date(e3.from + 'T00:00:00').getDay() === 5 && new Date(e3.to + 'T00:00:00').getDay() === 0 && e3.to >= todayIso);
+    const e4 = ent('guests last week').dateRange;
+    ok2('"last week" is Monday-anchored and fully past', e4 && new Date(e4.from + 'T00:00:00').getDay() === 1 && e4.to < todayIso);
+    ok2('"may i see bookings" does NOT read "may" as a month', !ent('may i see bookings').dateRange);
+    const e5 = ent('bookings in may 2027').dateRange;
+    ok2('"in may 2027" pins the explicit year', e5 && e5.from === '2027-05-01');
+    ok2('"over £500" parses the money bound', JSON.stringify(ent('paid over £500').amount) === '{"op":"over","value":500}');
+    ok2('cottage name extracted', ent('bookings at jollyboat in august').prop === 'jollyboat');
+    function ok2(m, c) { c ? pass(m) : fail(m); }
 }
 
 // ---- Dead-ends review (search-miss capture + teach) ----

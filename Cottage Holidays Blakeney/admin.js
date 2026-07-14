@@ -724,7 +724,9 @@ const CHB_SEARCH = {
             procedural: /\b(how\s+(do|to|can|does|would|should)|why|help|guide|explain|tutorial|advice|steps?|walk me)\b/.test(raw) && !/\bhow\s+(much|many)\b/.test(raw),
             softAsk: /\b(what|can i|do i|how)\b/.test(raw),
         };
-        return { raw, words, synonyms, flags };
+        let entities = { dateRange: null, prop: null, amount: null };
+        try { entities = chbEntities(raw); } catch (e) {}
+        return { raw, words, synonyms, flags, entities };
     },
     // Does a haystack satisfy a query, using the shared understanding? Every term
     // must appear (multi-term AND) via the word itself OR one of its synonyms. This
@@ -753,6 +755,91 @@ const CHB_SEARCH = {
     },
 };
 if (typeof window !== 'undefined') window.CHB_SEARCH = CHB_SEARCH; // public API for future modules
+
+// ---- Entity extraction: the slots a free-text query carries, pulled out ONCE so
+// intents can COMPOSE ("bookings at jollyboat in august over £500") instead of
+// needing a regex per combination. Pure understanding — reads propertyMeta for
+// cottage names but never touches booking data. Returns:
+//   { dateRange: {from, to, label} | null,   ISO inclusive window
+//     prop: '<propKey>' | null,              named cottage
+//     amount: {op:'over'|'under'|'about', value} | null }
+function chbEntities(raw) {
+    const q = String(raw || '').toLowerCase();
+    const out = { dateRange: null, prop: null, amount: null };
+    const iso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const range = (from, to, label) => ({ from: iso(from), to: iso(to), label });
+
+    // Cottage: any propertyMeta key or display name appearing in the query.
+    try {
+        const keys = Object.keys(propertyMeta || {});
+        out.prop = keys.find((k) => q.includes(k.toLowerCase()) || q.includes(((propertyMeta[k] && propertyMeta[k].name) || '').toLowerCase())) || null;
+    } catch (e) {}
+
+    // Money bound: "over £500", "under 300", "around £450".
+    const am = q.match(/\b(over|above|more than|at least|under|below|less than|up to|around|about|roughly|near)\s*£?\s*(\d{2,6})\b/);
+    if (am) {
+        const op = /under|below|less than|up to/.test(am[1]) ? 'under' : /around|about|roughly|near/.test(am[1]) ? 'about' : 'over';
+        out.amount = { op, value: +am[2] };
+    }
+
+    // Date window — named calendar spans only (explicit d/m dates stay with the
+    // command parser). A bare month with no year means the NEAREST one that isn't
+    // already fully past ("in august" asked in September 2026 → August 2027).
+    const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+    const monthRange = (mi, year) => {
+        let y = year;
+        if (!y) {
+            y = today.getFullYear();
+            if (new Date(y, mi + 1, 0) < today) y++; // this year's instance fully past → next year's
+        }
+        return range(new Date(y, mi, 1), new Date(y, mi + 1, 0), `${MONTHS[mi][0].toUpperCase()}${MONTHS[mi].slice(1)} ${y}`);
+    };
+    // "may" only counts with a preposition or a year — it's usually the verb.
+    const mm = q.match(/\b(?:in|during|for|this|next|last)\s+(january|february|march|april|may|june|july|august|september|october|november|december)\b(?:\s+(\d{4}))?/)
+        || q.match(/\b(january|february|march|april|june|july|august|september|october|november|december)\b(?:\s+(\d{4}))?/)
+        || q.match(/\b(may)\s+(\d{4})\b/);
+    if (mm) {
+        const mi = MONTHS.indexOf(mm[1]);
+        let y = mm[2] ? +mm[2] : 0;
+        if (/\blast\s+(january|february|march|april|may|june|july|august|september|october|november|december)/.test(q) && !y) {
+            y = today.getFullYear();
+            if (new Date(y, mi + 1, 0) >= today) y--; // "last august" → the most recent one fully past
+        }
+        out.dateRange = monthRange(mi, y);
+    } else if (/\btoday\b/.test(q)) {
+        out.dateRange = range(today, today, 'today');
+    } else if (/\btomorrow\b/.test(q)) {
+        const t = new Date(today); t.setDate(t.getDate() + 1);
+        out.dateRange = range(t, t, 'tomorrow');
+    } else if (/\byesterday\b/.test(q)) {
+        const t = new Date(today); t.setDate(t.getDate() - 1);
+        out.dateRange = range(t, t, 'yesterday');
+    } else if (/\b(this|next) weekend\b/.test(q)) {
+        // Weekend = Friday → Sunday. "This weekend" is the one we're in or about
+        // to hit; "next weekend" the one after.
+        const dow = today.getDay(); // 0 Sun … 6 Sat
+        let toFri = (5 - dow + 7) % 7; // days until Friday
+        if (dow === 6 || dow === 0) toFri -= 7; // Sat/Sun → the weekend already started
+        if (/next weekend/.test(q)) toFri += 7;
+        const fri = new Date(today); fri.setDate(fri.getDate() + toFri);
+        const sun = new Date(fri); sun.setDate(sun.getDate() + 2);
+        out.dateRange = range(fri, sun, /next/.test(q) ? 'next weekend' : 'this weekend');
+    } else if (/\b(this|next|last) week\b/.test(q)) {
+        const dow = (today.getDay() + 6) % 7; // 0 Mon … 6 Sun
+        const mon = new Date(today); mon.setDate(mon.getDate() - dow + (/next week/.test(q) ? 7 : /last week/.test(q) ? -7 : 0));
+        const sun = new Date(mon); sun.setDate(sun.getDate() + 6);
+        out.dateRange = range(mon, sun, /next/.test(q) ? 'next week' : /last/.test(q) ? 'last week' : 'this week');
+    } else if (/\b(this|next|last) month\b/.test(q)) {
+        const off = /next month/.test(q) ? 1 : /last month/.test(q) ? -1 : 0;
+        const first = new Date(today.getFullYear(), today.getMonth() + off, 1);
+        out.dateRange = range(first, new Date(first.getFullYear(), first.getMonth() + 1, 0), /next/.test(q) ? 'next month' : /last/.test(q) ? 'last month' : 'this month');
+    } else if (/\b(this|next|last) year\b/.test(q)) {
+        const y = today.getFullYear() + (/next year/.test(q) ? 1 : /last year/.test(q) ? -1 : 0);
+        out.dateRange = range(new Date(y, 0, 1), new Date(y, 11, 31), String(y));
+    }
+    return out;
+}
 // Built-in source: the in-memory records (bookings, enquiries, blocked/OTA ranges).
 function cmdkSourceRecords() {
     const items = [];
@@ -1573,6 +1660,39 @@ function cmdkIntent(q) {
         return [ans(label, `Check-ins during ${yr}`, () => { closeCmdK(); openBookings(); })];
     }
 
+    // 0h3) Entity-composed bookings filter — any query carrying a date window
+    // and/or a money bound (chbEntities) plus a bookings-ish word composes here:
+    // "bookings at jollyboat in august", "stays next month over £500", "guests
+    // this weekend", "bookings over £600". One branch instead of a regex per
+    // combination; the specialist branches above (insights, volume, chase) keep
+    // their richer answers because they run first.
+    {
+        const ents = CHB_SEARCH.understand(q).entities || {};
+        if ((ents.dateRange || ents.amount) && /\bbook(ing|ings|ed)?\b|\bstays?\b|\bguests?\b|\bwho\b/.test(q) && !/\barriv|\bleav|check.?(in|out)|\bstaying\b/.test(q)) {
+            const dr = ents.dateRange;
+            const within = (ci, co) => !dr || (ci && (co || ci) > dr.from && ci <= dr.to); // stay overlaps the window
+            const amtOk = (t) => {
+                if (!ents.amount) return true;
+                const { op, value } = ents.amount;
+                return op === 'over' ? t > value : op === 'under' ? t < value : Math.abs(t - value) <= 25;
+            };
+            let rows = flat.filter((x) => (!ents.prop || x.pk === ents.prop) && within(x.b.checkIn, x.b.checkOut));
+            rows = rows.map((x) => ({ ...x, _t: paymentSummary(x.pk, x.b).total })).filter((x) => amtOk(x._t)).sort(byIn);
+            const eRows = ents.amount ? [] : blocks.filter((x) => (!ents.prop || x.pk === ents.prop) && within(x.bl.checkIn, x.bl.checkOut));
+            const bits = [ents.prop ? `at ${propName(ents.prop)}` : '', dr ? dr.label : '', ents.amount ? `${ents.amount.op} ${gbp(ents.amount.value)}` : ''].filter(Boolean).join(' · ');
+            const n = rows.length + eRows.length;
+            const sum = rows.reduce((s, x) => s + x._t, 0);
+            const head = ans(
+                n ? `${n} booking${n === 1 ? '' : 's'} — ${bits}` : `No bookings ${bits}`,
+                n ? (sum ? `${gbp(sum)} across them` : 'Matching stays') : 'Nothing in that window',
+                () => { closeCmdK(); openBookings(); },
+                dr ? [calChip(dr.from)] : null,
+            );
+            return [head]
+                .concat(rows.slice(0, 10).map((x) => bk(x.pk, x.b, `${fmtDate(x.b.checkIn)}–${fmtDate(x.b.checkOut)} · ${gbp(x._t)} · ${propName(x.pk)}`)))
+                .concat(eRows.slice(0, 4).map((x) => ext(x.pk, x.bl, `${fmtDate(x.bl.checkIn)}–${fmtDate(x.bl.checkOut)} · ${propName(x.pk)}`)));
+        }
+    }
     // 0h2) Cottage dossier — a cottage name alone (or "…settings/setup/manage")
     // returns a CARD: live facts up top, then every editing path for that cottage.
     // This is what lets a cottage's whole settings index live inside search.
@@ -1829,7 +1949,7 @@ function cmdkIntent(q) {
             .concat(eRows.map((x) => ext(x.pk, x.bl, `Checks in ${fmtDate(x.bl.checkIn)} · ${propName(x.pk)}`)));
     }
     // 5) Currently staying / in-house right now — direct bookings AND OTA blocks.
-    if (/\bstaying|in.?house|here now|current guest|who.?s here|checked in|in residence\b/.test(q)) {
+    if (/\bstaying|in.?house|here (now|right now|tonight)|current guest|who.?s here|who is here|anyone here|checked in|in residence\b/.test(q)) {
         const rows = flat.filter((x) => x.b.checkIn && x.b.checkOut && x.b.checkIn <= today && x.b.checkOut > today).sort(byOut);
         const eRows = blocks.filter((x) => x.bl.checkIn && x.bl.checkOut && x.bl.checkIn <= today && x.bl.checkOut > today).sort(byBlkOut);
         const n = rows.length + eRows.length;
