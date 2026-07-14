@@ -1154,6 +1154,35 @@ body.owner-mode #mobileMenu {
   color: var(--accent);
   flex-shrink: 0;
   opacity: 0.9;
+  transition: color 0.35s ease, filter 0.35s ease;
+}
+/* The model-active indicator: the knot appears beside the mic, green and
+   breathing, while the on-device model is the thing answering (ml-active —
+   set in cmdkSearchCore when an NLU/ask/semantic result is on screen). It has
+   its own slot because the LEADING icon becomes the ✕ once there's text. */
+.cmdk-ml {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 22px;
+  height: 22px;
+  color: var(--ok);
+}
+.cmdk-ml .ic {
+  width: 19px;
+  height: 19px;
+}
+#cmdk.ml-active .cmdk-ml {
+  display: flex;
+  animation: cmdk-ml-glow 1.8s ease-in-out infinite;
+}
+@keyframes cmdk-ml-glow {
+  0%, 100% { filter: drop-shadow(0 0 2px var(--ok)); }
+  50% { filter: drop-shadow(0 0 7px var(--ok)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #cmdk.ml-active .cmdk-ml { animation: none; filter: drop-shadow(0 0 4px var(--ok)); }
 }
 /* Clear (✕) button — occupies the search-icon slot once there's text to clear. */
 .cmdk-clear {

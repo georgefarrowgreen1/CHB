@@ -663,7 +663,10 @@ function cmdkActIcon(name) {
 }
 // Trailing chevron + leading magnifier for the quick-actions / related-search rows.
 const CMDK_CHEV = '<svg class="ic cmdk-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"/></svg>';
-const CMDK_SEARCH_IC = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.2-4.2"/></svg>';
+// The assistant's knot glyph — a 7-lobed interlaced rose curve (r = R + A*cos(3.5t),
+// two revolutions), generated once and inlined. The SAME path is used by the dock
+// Search button and the palette's input icon (index.html) — keep them in step.
+const CMDK_SEARCH_IC = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12L20.8 13L20.1 13.9L19.2 14.5L18.1 14.9L17 15.2L16.1 15.2L15.3 15.3L14.8 15.6L14.5 16L14.3 16.7L14 17.6L13.5 18.6L12.9 19.6L12 20.3L11 20.8L10 20.8L9.1 20.3L8.4 19.5L7.9 18.5L7.8 17.3L7.8 16.2L7.9 15.2L8 14.5L7.9 14L7.5 13.6L6.9 13.2L6.1 12.7L5.2 12L4.4 11.1L3.9 10.1L3.7 9.1L3.9 8.1L4.5 7.3L5.5 6.8L6.6 6.6L7.8 6.7L8.8 7L9.7 7.3L10.4 7.5L11 7.6L11.5 7.3L12 6.8L12.7 6.1L13.5 5.4L14.5 4.8L15.6 4.5L16.7 4.5L17.6 5L18.2 5.8L18.5 6.8L18.5 7.9L18.1 9.1L17.6 10L17.1 10.8L16.7 11.5L16.5 12L16.7 12.5L17.1 13.2L17.6 14L18.1 14.9L18.5 16.1L18.5 17.2L18.2 18.2L17.6 19L16.7 19.5L15.6 19.5L14.5 19.2L13.5 18.6L12.7 17.9L12 17.2L11.5 16.7L11 16.4L10.4 16.5L9.7 16.7L8.8 17L7.8 17.3L6.6 17.4L5.5 17.2L4.5 16.7L3.9 15.9L3.7 14.9L3.9 13.9L4.4 12.9L5.2 12L6.1 11.3L6.9 10.8L7.5 10.4L7.9 10L8 9.5L7.9 8.8L7.8 7.8L7.8 6.7L7.9 5.5L8.4 4.5L9.1 3.7L10 3.2L11 3.2L12 3.7L12.9 4.4L13.5 5.4L14 6.4L14.3 7.3L14.5 8L14.8 8.4L15.3 8.7L16.1 8.8L17 8.8L18.1 9.1L19.2 9.5L20.1 10.1L20.8 11Z"/></svg>';
 // Filter/refine glyph (SF-style "line.3.horizontal.decrease") for the pivot rows.
 const CMDK_FILTER_IC = '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M7 12h10M10 18h4"/></svg>';
 function cmdkBookingActions(b, pk) {
@@ -2506,7 +2509,7 @@ function cmdkBuildResults(ql) {
         for (const hit of chbRankQuery(ql)) {
             if (have.has(hit.k)) continue;
             const it = live.get(hit.k);
-            if (it) { have.add(hit.k); sem.push(it); }
+            if (it) { have.add(hit.k); sem.push(Object.assign({}, it, { _sem: true })); } // tagged: recalled by the model
         }
         if (sem.length) fuzzy = fuzzy.concat(sem);
     } catch (e) {}
@@ -2564,6 +2567,8 @@ function cmdkSearchCore(q, allowCorrect) {
         // dock destinations. The brief + screens are the executable rows.
         __cmdkEmpty = true;
         __cmdkMiss = null; // deliberately cleared — not a dead end
+        const mlOff = document.getElementById('cmdk');
+        if (mlOff) mlOff.classList.remove('ml-active'); // no query → the model isn't answering
         // The scope switch narrows the empty landing too: the brief + "Jump to"
         // show only the active scope's items ("All" shows the day brief + the
         // top dock destinations).
@@ -2696,6 +2701,10 @@ function cmdkSearchCore(q, allowCorrect) {
     // the referent for the next pronoun follow-up (see cmdkIntent 0a).
     const convRow = (built.results || []).find((r) => r && r.type === 'booking' && r.id != null);
     if (convRow) __cmdkConvCtx = { type: 'booking', id: convRow.id };
+    // The assistant knot glows green while the MODEL is the thing answering:
+    // an understood paraphrase, model-suggested questions, or semantic recall.
+    const mlEl = document.getElementById('cmdk');
+    if (mlEl) mlEl.classList.toggle('ml-active', !!(built.nlu || (built.ask && built.ask.length) || __cmdkResults.some((r) => r && (r._nlu || r._sem))));
     const firstReal = __cmdkResults.findIndex((it) => it && !cmdkIsNoteRow(it));
     __cmdkSel = firstReal >= 0 ? firstReal : 0; // the Top Hit, not the correction/widen note
     cmdkRender();
@@ -4045,7 +4054,7 @@ function closeCmdK() {
     try { if (__cmdkRec) __cmdkRec.stop(); } catch (e) {} // stop a listening mic
     try { if ('speechSynthesis' in window) window.speechSynthesis.cancel(); } catch (e) {} // stop mid-reply
     cmdkSetLoading(false);
-    if (o) o.style.display = 'none';
+    if (o) { o.style.display = 'none'; o.classList.remove('ml-active'); }
 }
 // ⌘K / Ctrl-K toggles the palette (owner only). Registered once on bundle load.
 document.addEventListener('keydown', (e) => {
