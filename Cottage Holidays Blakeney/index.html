@@ -209,7 +209,7 @@
 
     <!-- HEADER -->
     <header class="glass-panel">
-        <div class="logo" role="link" tabindex="0" aria-label="Cottage Holidays Blakeney — home" onpointerdown="flareCrown()" onclick="nav('view-main')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();nav('view-main');}">
+        <div class="logo" role="link" tabindex="0" aria-label="Cottage Holidays Blakeney — home" data-act-pointerdown="flareCrown" data-act="nav" data-view="view-main" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();nav('view-main');}">
             <img src="logo.svg" alt="Cottage Holidays Blakeney crown logo" class="logo-mark">
             <span class="logo-text" data-edit-text="site-logo">Cottage Holidays Blakeney</span>
         </div>
@@ -221,10 +221,10 @@
                 <li><a href="/experiences" onclick="event.preventDefault(); nav('view-experiences')" data-edit-text="nav-experiences">Experiences</a></li>
             </ul>
         </nav>
-        <button class="account-btn" id="account-btn" onclick="openGuestArea()" title="Sign in" aria-label="Sign in / my account">
+        <button class="account-btn" id="account-btn" data-act="openGuestArea" title="Sign in" aria-label="Sign in / my account">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M5.5 19.5a6.5 6.5 0 0 1 13 0"/></svg>
         </button>
-        <button class="menu-toggle" onclick="toggleMobileMenu()" aria-label="Menu" aria-expanded="false" aria-controls="mobileMenu"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+        <button class="menu-toggle" data-act="toggleMobileMenu" aria-label="Menu" aria-expanded="false" aria-controls="mobileMenu"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
     </header>
 
     <!-- ADMIN FLOATING DOCK (icons only; shown only while an admin is signed in) -->
@@ -234,15 +234,15 @@
             <!-- The inline "Edit text & photos" live editor is retired and removed: all
                  content is now edited via Manage → Website content and
                  Preferences → [cottage] → Photos / Text. -->
-            <button class="admin-dock-btn" data-view="view-backoffice" data-label="Today" aria-label="Today" title="Today" onclick="tryAccessBackOffice()">
+            <button class="admin-dock-btn" data-view="view-backoffice" data-label="Today" aria-label="Today" title="Today" data-act="tryAccessBackOffice">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18"/><path d="M8 2.5v4M16 2.5v4"/></svg>
                 <span class="admin-dock-badge" id="dock-badge-enquiries" style="display:none;">0</span>
             </button>
-            <button class="admin-dock-btn" data-view="view-inbox" data-label="Inbox" aria-label="Inbox" title="Inbox" onclick="openInbox()">
+            <button class="admin-dock-btn" data-view="view-inbox" data-label="Inbox" aria-label="Inbox" title="Inbox" data-act="openInbox">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/></svg>
                 <span class="admin-dock-badge" id="dock-badge-inbox" style="display:none;">0</span>
             </button>
-            <button class="admin-dock-btn" data-view="view-accounts" data-label="Payments" aria-label="Payments" title="Payments" onclick="openAccounts()">
+            <button class="admin-dock-btn" data-view="view-accounts" data-label="Payments" aria-label="Payments" title="Payments" data-act="openAccounts">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><text x="12" y="16.2" font-size="11" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="Georgia, serif">&#163;</text></svg>
             </button>
             <button class="admin-dock-btn" data-view="view-settings" data-label="Manage" aria-label="Manage" title="Manage" onclick="openArea('manage')">
@@ -251,7 +251,7 @@
             <!-- Whole-site search lives in the dock now (rightmost), not a separate
                  floating button. No data-view: it opens the ⌘K palette, it isn't a
                  nav target, so the sliding indicator ignores it. -->
-            <button class="admin-dock-btn" data-label="Search" aria-label="Search" title="Search (⌘K)" onclick="openCmdK()">
+            <button class="admin-dock-btn" data-label="Search" aria-label="Search" title="Search (⌘K)" data-act="openCmdK">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
             </button>
         </nav>
@@ -265,10 +265,10 @@
         <div class="cmdk-box">
             <div class="cmdk-search">
                 <svg class="ic cmdk-search-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-                <button type="button" id="cmdk-clear" class="cmdk-clear" onclick="cmdkClear()" aria-label="Clear search" title="Clear"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+                <button type="button" id="cmdk-clear" class="cmdk-clear" data-act="cmdkClear" aria-label="Clear search" title="Clear"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
                 <input id="cmdk-input" type="text" role="combobox" aria-autocomplete="list" aria-expanded="true" aria-haspopup="listbox" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Search, or ask — &quot;who owes money&quot;, &quot;leaving today&quot;…" oninput="cmdkSearch(this.value)" onkeydown="cmdkKey(event)" aria-label="Search bookings and screens, or ask who owes money, who's leaving today, or what's upcoming" aria-controls="cmdk-results">
-                <button type="button" id="cmdk-mic" class="cmdk-mic" style="display:none;" onclick="cmdkVoice()" aria-label="Search by voice" title="Voice search"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg></button>
-                <button type="button" id="cmdk-help" class="cmdk-help-btn" onclick="cmdkHelpOpen()" aria-label="Help for this screen" title="Help &amp; how-to"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.2 9.3a2.8 2.8 0 0 1 5.4 1c0 1.9-2.8 2.5-2.8 2.5"/><path d="M12 17h.01"/></svg></button>
+                <button type="button" id="cmdk-mic" class="cmdk-mic" style="display:none;" data-act="cmdkVoice" aria-label="Search by voice" title="Voice search"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg></button>
+                <button type="button" id="cmdk-help" class="cmdk-help-btn" data-act="cmdkHelpOpen" aria-label="Help for this screen" title="Help &amp; how-to"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.2 9.3a2.8 2.8 0 0 1 5.4 1c0 1.9-2.8 2.5-2.8 2.5"/><path d="M12 17h.01"/></svg></button>
             </div>
             <div id="cmdk-progress" class="cmdk-progress" aria-hidden="true"><span></span></div>
             <div id="cmdk-results" class="cmdk-results" role="listbox" aria-label="Search results"></div>
@@ -317,9 +317,9 @@
                 <p class="hero-kicker" data-edit-text="hero-kicker">Est. 1983 &middot; Book direct with the owner</p>
                 <h1 data-edit-text="hero-title">Liquid Coastal Luxury</h1>
                 <p data-edit-text="hero-sub">Boutique holiday escapes in Blakeney, Norfolk</p>
-                <button type="button" class="btn-glass btn-accent hero-cta" onclick="scrollToAvailability()">Check availability</button>
+                <button type="button" class="btn-glass btn-accent hero-cta" data-act="scrollToAvailability">Check availability</button>
             </div>
-            <button type="button" class="hero-scroll-cue" onclick="scrollToAvailability()" aria-label="Scroll down to check availability"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
+            <button type="button" class="hero-scroll-cue" data-act="scrollToAvailability" aria-label="Scroll down to check availability"><svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></button>
         </section>
 
         <!-- Heritage band: the numbers that earn trust, in display serif. The cottage
@@ -395,7 +395,7 @@
 
                     <!-- EXACT-DATE mode -->
                     <div class="hs-mode-pane" id="hs-mode-exact">
-                        <button type="button" class="hs-field" onclick="openHeroDatePicker()">
+                        <button type="button" class="hs-field" data-act="openHeroDatePicker">
                             <span class="hs-label">Dates</span>
                             <span class="hs-value" id="hs-dates">Add your dates</span>
                         </button>
@@ -439,14 +439,14 @@
                             </div>
                         </div>
                     </div>
-                    <button type="button" class="btn-glass" id="hs-search-btn" style="width:100%;" onclick="hsRun()">Check availability</button>
+                    <button type="button" class="btn-glass" id="hs-search-btn" style="width:100%;" data-act="hsRun">Check availability</button>
                     <div class="hs-msg" id="hs-msg" role="alert"></div>
                 </div>
             </div>
             <div class="hero-results-wrap" id="hero-results-wrap" style="display:none;">
                 <div class="hero-results-head">
                     <h2 class="section-title" id="hs-results-title" style="margin-bottom: 10px;">Available for your dates</h2>
-                    <button type="button" class="btn-sm btn-edit" onclick="backToSearch()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg> Change search</button>
+                    <button type="button" class="btn-sm btn-edit" data-act="backToSearch"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg> Change search</button>
                 </div>
                 <div class="grid" id="hs-results-grid"></div>
             </div>
@@ -465,7 +465,7 @@
             <div class="reviews-modal-box glass-panel">
                 <div class="reviews-modal-head">
                     <h2 class="section-title" style="margin:0;font-size:1.6rem;">Guest Words</h2>
-                    <button class="reviews-modal-close" onclick="closeAllReviews()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+                    <button class="reviews-modal-close" data-act="closeAllReviews" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
                 </div>
                 <div class="reviews-modal-body" id="reviews-modal-list"></div>
             </div>
@@ -475,7 +475,7 @@
 
     <!-- ================= COTTAGES (the property collection — reached from the header) ================= -->
     <main id="view-cottages" class="page-view container">
-        <span class="back-link" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="nav('view-main')">← Back to Home</span>
+        <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" data-act="nav" data-view="view-main">← Back to Home</span>
         <div class="cottages-split">
           <div class="cottages-list">
             <div class="grid grid-3" id="cottages" style="margin-top: 18px;">
@@ -525,7 +525,7 @@
 
     <!-- ================= EXPERIENCES (local things to do; owner-curated + guest suggestions) ================= -->
     <main id="view-experiences" class="page-view container">
-        <span class="back-link" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="nav('view-main')">← Back to Home</span>
+        <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" data-act="nav" data-view="view-main">← Back to Home</span>
         <h1 class="section-title" style="text-align:left;margin:6px 0 4px;">Experiences</h1>
         <p class="lead" style="text-align:left;margin:0 0 16px;">Hand-picked things to do around Blakeney &amp; the North Norfolk coast.</p>
         <div id="exp-filters" class="exp-filters"></div>
@@ -556,7 +556,7 @@
                 <h3 style="font-family:var(--font-serif);font-size:1.2rem;margin:0 0 4px;">Know a great local spot?</h3>
                 <p style="font-size:0.85rem;color:var(--text-muted);margin:0;">Suggest an experience and we'll review it.</p>
             </div>
-            <button class="btn-glass" style="width:auto;" onclick="openExperienceSuggest()">Suggest an experience</button>
+            <button class="btn-glass" style="width:auto;" data-act="openExperienceSuggest">Suggest an experience</button>
         </div>
     </main>
 
@@ -564,7 +564,7 @@
     <div id="exp-suggest-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Suggest an experience" onclick="if(event.target===this) closeExperienceSuggest()">
         <div class="modal-box glass-panel" style="max-width:480px;">
             <div style="display:flex;justify-content:flex-end;margin:-6px -6px 4px 0;">
-                <button class="reviews-modal-close" onclick="closeExperienceSuggest()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+                <button class="reviews-modal-close" data-act="closeExperienceSuggest" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
             <h2 class="section-title" style="font-size:1.5rem;margin:0 0 6px;">Suggest an experience</h2>
             <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:16px;">Tell us about a local spot you loved — we'll review it before it appears.</p>
@@ -581,13 +581,13 @@
             <label class="modal-label" for="exp-s-photo">Photo (optional)</label>
             <input type="file" class="input-glass" id="exp-s-photo" accept="image/*,.heic,.heif">
             <div id="exp-s-msg" style="font-size:0.8rem;margin:4px 0 10px;display:none;"></div>
-            <button class="btn-glass" style="width:100%;padding:14px;" onclick="submitExperienceSuggestion()">Send suggestion</button>
+            <button class="btn-glass" style="width:100%;padding:14px;" data-act="submitExperienceSuggestion">Send suggestion</button>
         </div>
     </div>
 
     <!-- ================= PROPERTY DETAIL VIEW (template, populated per cottage) ================= -->
     <main id="view-21a" class="page-view container">
-        <span class="back-link"  role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="nav('view-cottages')">← Back to Cottages</span>
+        <span class="back-link"  role="button" tabindex="0" data-act-keydown="activate" data-act="nav" data-view="view-cottages">← Back to Cottages</span>
         
         <div class="gallery-container">
             <div class="gallery-track" id="gallery-21a">
@@ -616,7 +616,7 @@
                 <div class="prop-divider"></div>
                 <!-- About this cottage (long, collapsible description) -->
                 <p class="lead" style="margin: 0; text-align: left;" id="prop-desc"></p>
-                <button type="button" class="prop-desc-toggle" id="prop-desc-toggle" onclick="togglePropDesc()" style="display:none;">Show more</button>
+                <button type="button" class="prop-desc-toggle" id="prop-desc-toggle" data-act="togglePropDesc" style="display:none;">Show more</button>
                 <!-- Availability calendar. On desktop, placeAvailCalendar() relocates
                      #prop-avail-cal into the reserve card, just above "Enquire now".
                      On mobile it stays here in the content flow, right after this anchor. -->
@@ -708,7 +708,7 @@
                 <div class="pr-price" id="pr-price"></div>
                 <div class="pr-savings" id="pr-savings" style="display:none;"></div>
                 <div class="pr-sub">No payment now — enquire to check your dates &amp; price.</div>
-                <button type="button" id="reserve-enquire-btn" class="btn-glass" style="width:100%;padding:17px;margin-top:16px;" onclick="openEnquireModal()">Enquire now</button>
+                <button type="button" id="reserve-enquire-btn" class="btn-glass" style="width:100%;padding:17px;margin-top:16px;" data-act="openEnquireModal">Enquire now</button>
                 <div class="pr-trust">Book direct with the owner &nbsp;&middot;&nbsp; Personally hosted</div>
             </aside>
             <!-- The enquiry now lives in the two-step #enquire-modal (opened by "Enquire now"). -->
@@ -718,13 +718,13 @@
             <div class="pbb-info">
                 <div class="pbb-price" id="pbb-price"></div>
             </div>
-            <button type="button" class="btn-glass pbb-btn" onclick="openEnquireModal()">Enquire now</button>
+            <button type="button" class="btn-glass pbb-btn" data-act="openEnquireModal">Enquire now</button>
         </div>
 
         <!-- ===== Airbnb-style two-step enquiry: Review your stay → Your details ===== -->
         <div id="enquire-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Enquire about your stay" onclick="if(event.target===this) closeEnquireModal()">
             <div class="modal-box enquire-box glass-panel">
-                <button class="reviews-modal-close" onclick="closeEnquireModal()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+                <button class="reviews-modal-close" data-act="closeEnquireModal" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
 
                 <!-- Two-step progress indicator -->
                 <div class="enq-progress" id="enq-progress" aria-hidden="true">
@@ -748,7 +748,7 @@
                     <p style="font-size: 0.8rem; color: var(--text-muted); margin: 0 0 16px;" id="prop-price-tagline">per couple</p>
 
                     <div class="enq-field-label">Dates</div>
-                    <button type="button" class="date-range-trigger" id="enq-date-trigger" onclick="openDatePicker()">
+                    <button type="button" class="date-range-trigger" id="enq-date-trigger" data-act="openDatePicker">
                         <span class="date-range-text" id="enq-date-display">Select your stay dates</span>
                         <span class="date-range-icon"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></span>
                     </button>
@@ -784,12 +784,12 @@
                     </div>
                     <div class="enq-cancel-note"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg> <span>No payment now — we'll confirm your dates &amp; price by email.</span></div>
                     <p class="enq-modal-msg" id="enq-msg-review" role="alert"></p>
-                    <button type="button" class="btn-glass btn-accent" style="width:100%;padding:16px;margin-top:18px;" onclick="enquireContinue()">Continue</button>
+                    <button type="button" class="btn-glass btn-accent" style="width:100%;padding:16px;margin-top:18px;" data-act="enquireContinue">Continue</button>
                 </div>
 
                 <!-- STEP 2: YOUR DETAILS -->
                 <div id="enquire-step-details" style="display:none;">
-                    <span class="back-link" style="margin-bottom:12px;"  role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="enquireBack()">← Back</span>
+                    <span class="back-link" style="margin-bottom:12px;"  role="button" tabindex="0" data-act-keydown="activate" data-act="enquireBack">← Back</span>
                     <h2 class="section-title" style="font-size:1.6rem;margin:0 0 18px;text-align:left;">Your details</h2>
                     <label style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); display: block; margin-bottom: 5px;" for="enq-name">Your Name</label>
                     <input type="text" class="input-glass" id="enq-name" autocomplete="name" placeholder="Full name">
@@ -835,13 +835,13 @@
                         <label class="modal-label" for="enq-acct-password">Choose a password</label>
                         <input type="password" class="input-glass" id="enq-acct-password" autocomplete="new-password" placeholder="Create a password">
                         <p class="enq-modal-msg" id="enq-acct-msg" role="alert"></p>
-                        <button class="btn-glass btn-accent" id="enq-acct-btn" style="width:100%;padding:16px;" onclick="enquireCreateAccount()">Create account</button>
+                        <button class="btn-glass btn-accent" id="enq-acct-btn" style="width:100%;padding:16px;" data-act="enquireCreateAccount">Create account</button>
                     </div>
                     <!-- Returning guest (email already has an account): sign in instead -->
                     <div id="enq-acct-existing" style="display:none;">
                         <h2 class="section-title" style="font-size:1.5rem;margin:18px 0 6px;text-align:left;">Welcome back</h2>
                         <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 16px;">You already have an account with this email — sign in to track this enquiry and manage your bookings.</p>
-                        <button class="btn-glass btn-accent" style="width:100%;padding:16px;" onclick="enquireSignInInstead()">Sign in</button>
+                        <button class="btn-glass btn-accent" style="width:100%;padding:16px;" data-act="enquireSignInInstead">Sign in</button>
                     </div>
                     <div style="text-align:center;margin-top:14px;">
                         <a href="#" onclick="event.preventDefault(); enquireSkipAccount()" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);font-size:0.82rem;">No thanks, maybe later</a>
@@ -881,18 +881,18 @@
                         <div class="enq-field-label">Card details</div>
                         <div id="sq-card" class="sq-card"></div>
                         <p class="pay-msg" id="pay-msg" role="alert"></p>
-                        <button type="button" class="btn-glass" id="pay-btn" style="width:100%;padding:16px;margin-top:14px;" onclick="submitPayment()">Pay now</button>
+                        <button type="button" class="btn-glass" id="pay-btn" style="width:100%;padding:16px;margin-top:14px;" data-act="submitPayment">Pay now</button>
                     </div>
                 </div>
                 <div id="pay-done" class="pay-done" style="display:none;">
                     <div class="pay-done-tick"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9"/></svg></div>
                     <h2 style="font-family:var(--font-serif);margin:14px 0 4px;" id="pay-done-title">Payment received</h2>
                     <p style="color:var(--text-muted);margin:0;" id="pay-done-sub"></p>
-                    <button type="button" class="btn-glass" style="margin-top:22px;padding:13px 30px;" onclick="nav('view-main')">Back to the site</button>
+                    <button type="button" class="btn-glass" style="margin-top:22px;padding:13px 30px;" data-act="nav" data-view="view-main">Back to the site</button>
                 </div>
                 <div id="pay-error" class="pay-error" style="display:none;">
                     <p id="pay-error-msg" style="color:var(--text-muted);"></p>
-                    <button type="button" class="btn-glass" style="margin-top:14px;padding:12px 26px;" onclick="nav('view-main')">Back to the site</button>
+                    <button type="button" class="btn-glass" style="margin-top:14px;padding:12px 26px;" data-act="nav" data-view="view-main">Back to the site</button>
                 </div>
             </div>
         </div>
@@ -936,13 +936,13 @@
                         <div class="cal-month-title" id="cal-month-display">June 2026</div>
                         <div class="tl-seg" role="group" aria-label="Move along the timeline">
                             <button aria-label="Earlier" onclick="changeMonth(-1)">&#10094;</button>
-                            <button class="tl-today-btn" onclick="timelineToday()">Today</button>
+                            <button class="tl-today-btn" data-act="timelineToday">Today</button>
                             <button aria-label="Later" onclick="changeMonth(1)">&#10095;</button>
                         </div>
                     </div>
                     <div class="cal-actions">
-                        <button class="btn-glass btn-accent cal-add-btn" onclick="openAddBooking()" data-edit-text="cal-add-btn">+ Add Booking</button>
-                        <button class="btn-glass cal-add-btn" onclick="openBlockDates()">Block dates</button>
+                        <button class="btn-glass btn-accent cal-add-btn" data-act="openAddBooking" data-edit-text="cal-add-btn">+ Add Booking</button>
+                        <button class="btn-glass cal-add-btn" data-act="openBlockDates">Block dates</button>
                         <div class="cal-updated">
                             <span id="cal-updated-text"></span>
                             <button class="cal-refresh-btn" id="cal-refresh-btn" onclick="autoSyncIcalBlocks(true)" title="Refresh external bookings now" aria-label="Refresh external bookings now"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-1.9 5.3"/><path d="M20 5v6h-6"/></svg></button>
@@ -995,7 +995,7 @@
 
     <!-- ================= ACTIVITY LOG (full audit trail of changes/actions) ================= -->
     <main id="view-activity-log" class="page-view container">
-        <span class="back-link" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="openArea('manage');">← Back to Manage</span>
+        <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" onclick="openArea('manage');">← Back to Manage</span>
         <div class="dashboard-header">
             <div>
                 <h1 class="section-title" style="margin-bottom: 5px;">Activity log</h1>
@@ -1014,7 +1014,7 @@
     <!-- Same pattern as the booking hub: rendered entirely by admin.js
          renderEnquiryHub(); this is just the shell. -->
     <main id="view-enquiry-hub" class="page-view container">
-        <span class="back-link" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="enquiryHubBack()">← Back</span>
+        <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" data-act="enquiryHubBack">← Back</span>
         <div id="enquiry-hub-content"><!-- admin.js injects the enquiry hub here --></div>
     </main>
 
@@ -1023,7 +1023,7 @@
          action, money, emails, guest history and change history. Rendered
          entirely by admin.js renderBookingHub(); this is just the shell. -->
     <main id="view-booking-hub" class="page-view container">
-        <span class="back-link" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="bookingHubBack()">← Back</span>
+        <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" data-act="bookingHubBack">← Back</span>
         <div id="booking-hub-content"><!-- admin.js injects the hub here --></div>
     </main>
 
@@ -1037,7 +1037,7 @@
              edge); the three-pane split — rail | list | reading pane — sits
              entirely below it. -->
         <div id="inbox-head">
-            <span class="back-link" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="nav('view-backoffice'); initBackOffice();">← Back to Today</span>
+            <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" onclick="nav('view-backoffice'); initBackOffice();">← Back to Today</span>
             <!-- Header mirrors the Today dashboard: big title + a LIVING subline
                  (inboxSubline() keeps it current — what's waiting for a reply). -->
             <div class="dashboard-header">
@@ -1094,7 +1094,7 @@
              drill-down section is open so the section leads with ONE back link
              and its own title, not two stacked headers. -->
         <div id="settings-chrome">
-        <span class="back-link" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="nav('view-backoffice'); initBackOffice();">← Back to Today</span>
+        <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" onclick="nav('view-backoffice'); initBackOffice();">← Back to Today</span>
         <div class="dashboard-header settings-head">
             <div class="settings-head-titles">
                 <h1 class="section-title" style="margin: 0;">Manage</h1>
@@ -1235,11 +1235,11 @@
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Security</span><span class="settings-row-sub">Your password &amp; quick sign-in (Face ID / fingerprint)</span></span><span class="settings-row-chev">›</span>
                 </button>
-                <button class="settings-row" data-kw="appearance theme light dark mode colours display" onclick="toggleTheme()">
+                <button class="settings-row" data-kw="appearance theme light dark mode colours display" data-act="toggleTheme">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.8 4.8l1.8 1.8M17.4 17.4l1.8 1.8M19.2 4.8l-1.8 1.8M6.6 17.4l-1.8 1.8"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Appearance</span><span class="settings-row-sub">Tap to switch — currently <strong id="theme-row-value">light</strong> mode</span></span><span class="settings-row-chev">›</span>
                 </button>
-                <button class="settings-row" data-kw="layout dock search first classic minimal home screen back office interface mode buttons pages" onclick="toggleBackofficeMode()">
+                <button class="settings-row" data-kw="layout dock search first classic minimal home screen back office interface mode buttons pages" data-act="toggleBackofficeMode">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 9h18M9 9v11"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Back-office layout</span><span class="settings-row-sub">Tap to switch — currently <strong id="bomode-row-value">classic</strong>. Search-first collapses the dock to Today · Inbox · Search.</span></span><span class="settings-row-chev">›</span>
                 </button>
@@ -1251,7 +1251,7 @@
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 13.5l-5.3 5.3a2 2 0 0 1-2.8-2.8l5.3-5.3"/><circle cx="15.5" cy="8.5" r="5"/><path d="M13.5 10.5l1.5 1.5"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Integrations</span><span class="settings-row-sub">Tide times &amp; other connected services</span></span><span class="settings-row-chev">›</span>
                 </button>
-                <button class="settings-row" data-kw="activity log audit history events changes actions recent" onclick="nav('view-activity-log')">
+                <button class="settings-row" data-kw="activity log audit history events changes actions recent" data-act="nav" data-view="view-activity-log">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Activity log</span><span class="settings-row-sub">Every change &amp; action — bookings, payments, edits</span></span><span class="settings-row-chev">›</span>
                 </button>
@@ -1259,7 +1259,7 @@
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2 5 4-12 2 7h6"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Status</span><span class="settings-row-sub">See everything's running &amp; the maintenance tools</span></span><span class="settings-row-chev">›</span>
                 </button>
-                <button id="staging-link-row" class="settings-row" data-kw="staging sandbox practice preview test copy" onclick="openStagingSite()">
+                <button id="staging-link-row" class="settings-row" data-kw="staging sandbox practice preview test copy" data-act="openStagingSite">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6M10 3v5.2L5.4 17a2 2 0 0 0 1.8 3h9.6a2 2 0 0 0 1.8-3L14 8.2V3"/><path d="M8 14h8"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Test copy ↗</span><span class="settings-row-sub">Open a safe practice copy of your site</span></span><span class="settings-row-chev">›</span>
                 </button>
@@ -1273,7 +1273,7 @@
             </div>
             <!-- Always last: sign out -->
             <div class="settings-group">
-                <button class="settings-row settings-row-logout" data-kw="sign out exit" onclick="logoutStaff()">
+                <button class="settings-row settings-row-logout" data-kw="sign out exit" data-act="logoutStaff">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h3.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H15"/><path d="M10 12h9"/><path d="M16 8.5l3.5 3.5L16 15.5"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Log out</span></span>
                 </button>
@@ -1282,7 +1282,7 @@
 
         <!-- DRILL-DOWN PANEL -->
         <div id="settings-panel" style="display:none;">
-            <span class="back-link" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" id="settings-back" onclick="settingsBack()">‹ Back</span>
+            <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" id="settings-back" data-act="settingsBack">‹ Back</span>
             <h2 class="section-title" id="settings-panel-title" style="text-align:left;font-size:1.6rem;margin:6px 0 18px;"></h2>
 
             <!-- Enquiries -->
@@ -1347,9 +1347,9 @@
                 <details class="help-disclosure" style="margin-top:18px;max-width:640px;">
                     <summary>More tools</summary>
                     <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px;">
-                        <button class="btn-sm btn-edit" onclick="runMigrations()">Install updates</button>
-                        <button class="btn-sm btn-edit" onclick="backfillWebp()">Optimise photos for faster loading</button>
-                        <button class="btn-sm btn-edit" onclick="sendTestEmail()">Send test email</button>
+                        <button class="btn-sm btn-edit" data-act="runMigrations">Install updates</button>
+                        <button class="btn-sm btn-edit" data-act="backfillWebp">Optimise photos for faster loading</button>
+                        <button class="btn-sm btn-edit" data-act="sendTestEmail">Send test email</button>
                         <button class="btn-sm btn-edit" onclick="sendSampleEmails(this)">Email me samples</button>
                         <button class="btn-sm btn-edit" onclick="diagnoseReplyEmail(this)">Check reply-by-email</button>
                     </div>
@@ -1371,7 +1371,7 @@
                 <div class="glass-panel" style="max-width: 640px; padding: 24px 26px; border-radius: 18px;">
                     <div style="display:flex;align-items:center;gap:18px;margin-bottom:8px;">
                         <div id="host-edit-photo" style="width:84px;height:84px;border-radius:50%;background-size:cover;background-position:center;background-color:var(--dark-grey);flex-shrink:0;border:1px solid var(--glass-border);"></div>
-                        <button type="button" class="btn-sm btn-edit" onclick="uploadHostPhoto()">Change photo</button>
+                        <button type="button" class="btn-sm btn-edit" data-act="uploadHostPhoto">Change photo</button>
                     </div>
                     <label class="host-edit-label" for="host-f-name">Name</label>
                     <input class="input-glass" id="host-f-name" onchange="saveHostText('host-name', this.value)">
@@ -1393,7 +1393,7 @@
                         <div style="display:flex;gap:10px;flex-wrap:wrap;">
                             <input type="tel" class="input-glass field-sm" id="contact-phone-dial" placeholder="Dial number (e.g. +441263740512)" style="flex:1 1 220px;">
                             <input type="text" class="input-glass field-sm" id="contact-phone-display" placeholder="Display (e.g. 01263 740512)" style="flex:1 1 180px;">
-                            <button class="btn-sm btn-edit" onclick="saveContactPhone()">Save number</button>
+                            <button class="btn-sm btn-edit" data-act="saveContactPhone">Save number</button>
                         </div>
                     </div>
                 </div>
@@ -1434,12 +1434,12 @@
                         </div>
                         <textarea id="bulk-rev-text" class="input-glass" rows="6" style="resize:vertical;" placeholder="Paste reviews here — one per block, e.g.&#10;&#10;Jane (London)&#10;We loved every minute — spotless cottage, perfect spot for the coast path.&#10;&#10;Mark&#10;Brilliant week. Catherine was a wonderful, attentive host. We'll be back!"></textarea>
                         <p style="font-size:0.74rem;color:var(--text-muted);margin:6px 0 0;line-height:1.5;">Put the guest's name on the first line and their review underneath; leave a blank line between each review. A line that's just ★★★★★ or “5 stars” sets that review's rating. Dates are ignored. You can edit every row below before saving.</p>
-                        <button class="btn-sm btn-edit" style="margin-top:10px;" onclick="bulkImportReviews()">Add pasted reviews below ↓</button>
+                        <button class="btn-sm btn-edit" style="margin-top:10px;" data-act="bulkImportReviews">Add pasted reviews below ↓</button>
 
                         <div id="reviews-editor" style="margin-top:18px;"></div>
                         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:8px;">
-                            <button class="btn-sm btn-edit" onclick="addReviewRow()">+ Add one by hand</button>
-                            <button class="btn-glass" style="width:auto;padding:12px 22px;" onclick="saveReviews()">Save imported reviews</button>
+                            <button class="btn-sm btn-edit" data-act="addReviewRow">+ Add one by hand</button>
+                            <button class="btn-glass" style="width:auto;padding:12px 22px;" data-act="saveReviews">Save imported reviews</button>
                         </div>
                     </div>
 
@@ -1451,7 +1451,7 @@
                         <p style="font-size:0.78rem;color:var(--text-muted);margin:2px 0 8px;line-height:1.5;">In Google Business Profile, choose “Get more reviews” and copy the short link (e.g. <code>https://g.page/r/…/review</code>). Added to the post-stay review email.</p>
                         <input type="url" id="google-review-url-input" class="input-glass" placeholder="https://g.page/r/…/review" autocomplete="off" spellcheck="false">
                         <div style="margin-top:10px;display:flex;gap:10px;align-items:center;">
-                            <button class="btn-sm btn-edit" onclick="saveGoogleReviewUrl()">Save link</button>
+                            <button class="btn-sm btn-edit" data-act="saveGoogleReviewUrl">Save link</button>
                             <span id="google-review-url-msg" style="font-size:0.8rem;"></span>
                         </div>
                     </div>
@@ -1487,7 +1487,7 @@
                     <label class="modal-label" for="nl-body">Message</label>
                     <textarea id="nl-body" class="input-glass" rows="8" placeholder="Write your update…" style="resize:vertical;"></textarea>
                     <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
-                        <button class="btn-glass" style="width:auto;padding:11px 22px;" onclick="sendBroadcast()">Send to subscribers</button>
+                        <button class="btn-glass" style="width:auto;padding:11px 22px;" data-act="sendBroadcast">Send to subscribers</button>
                         <span id="nl-send-msg" style="font-size:0.82rem;"></span>
                     </div>
                 </div>
@@ -1498,12 +1498,12 @@
                 <div class="accounts-stat" style="max-width:640px;">
                     <div class="label">Admin Password</div>
                     <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 16px;">This password protects the whole back office — bookings, money and settings.</p>
-                    <button class="btn-sm btn-edit" onclick="changeAdminPassword()">Change Password</button>
+                    <button class="btn-sm btn-edit" data-act="changeAdminPassword">Change Password</button>
                 </div>
                 <div class="accounts-stat" style="max-width:640px;margin-top:16px;">
                     <div class="label">Passkeys (Face ID / Touch ID)</div>
                     <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 16px;">Sign in to the Back Office faster with a passkey. Your password still works as a backup. <strong>Tip:</strong> add a passkey on two devices (e.g. phone and laptop) so you're never locked out.</p>
-                    <button class="btn-sm btn-edit" onclick="addAdminPasskey()">＋ Add a passkey</button>
+                    <button class="btn-sm btn-edit" data-act="addAdminPasskey">＋ Add a passkey</button>
                     <div id="admin-passkey-list" style="margin-top:14px;"></div>
                 </div>
                 <div class="accounts-stat" style="max-width:640px;margin-top:16px;">
@@ -1545,7 +1545,7 @@
                         <label style="font-size:0.85rem;color:var(--text-muted);">Deposit to request</label>
                         <input type="number" id="sq-deposit-pct" class="input-glass field-sm" min="1" max="100" step="1" style="width:90px;margin:0;">
                         <span style="color:var(--text-muted);">% of the total</span>
-                        <button class="btn-sm btn-edit" onclick="saveDepositPct()">Save</button>
+                        <button class="btn-sm btn-edit" data-act="saveDepositPct">Save</button>
                     </div>
                     <details class="help-disclosure">
                         <summary>How payment reminders work</summary>
@@ -1572,7 +1572,7 @@
         <!-- Area-level chrome — hidden while a drill-down section is open (see
              #settings-chrome for the rationale). -->
         <div id="accounts-chrome">
-        <span class="back-link" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="nav('view-backoffice'); initBackOffice();">← Back to Today</span>
+        <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" onclick="nav('view-backoffice'); initBackOffice();">← Back to Today</span>
         <div class="dashboard-header">
             <div>
                 <h1 class="section-title" style="margin: 0;">Payments</h1>
@@ -1613,7 +1613,7 @@
 
         <!-- DRILL-DOWN PANEL -->
         <div id="accounts-panel" style="display:none;">
-            <span class="back-link" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" id="accounts-back" onclick="accountsBack()">‹ Back</span>
+            <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" id="accounts-back" data-act="accountsBack">‹ Back</span>
             <h2 class="section-title" id="accounts-panel-title" style="text-align:left;font-size:1.6rem;margin:6px 0 18px;"></h2>
 
             <!-- Payments & balances -->
@@ -1631,7 +1631,7 @@
             <div class="accounts-sec" id="asec-income" style="display:none;">
                 <div style="margin-bottom:8px;">
                     <label style="font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);display:block;margin-bottom:6px;">Tax Year (6 April – 5 April)</label>
-                    <select class="input-glass" id="accounts-year" style="margin:0;min-width:200px;" onchange="renderAccounts()"></select>
+                    <select class="input-glass" id="accounts-year" style="margin:0;min-width:200px;" data-act-change="renderAccounts"></select>
                 </div>
                 <div id="accounts-content"><!-- JS injects the net profit headline + income/expenses/net lines + CSV export here --></div>
                 <div id="money-forecast" style="margin-top:34px;"><!-- income forecast by month (renders its own heading) --></div>
@@ -1663,7 +1663,7 @@
             </aside>
             <div class="auth-form-col">
             <div class="auth-close-row">
-                <button class="reviews-modal-close" onclick="closeGuestAuthModal()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+                <button class="reviews-modal-close" data-act="closeGuestAuthModal" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
             <div>
                 <div style="display: flex; gap: 10px; margin-bottom: 28px;">
@@ -1677,7 +1677,7 @@
                     <p class="lead" style="font-size: 0.85rem; margin-bottom: 20px;">Sign in to manage your stay, messages and bookings.</p>
                     <!-- Passkey: the prominent, primary way in (Face ID / Touch ID / device PIN) -->
                     <div id="passkey-login-wrap" style="display:none;">
-                        <button class="btn-glass" style="width:100%;padding:15px;font-size:0.85rem;" onclick="passkeyLogin()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg> Secure sign in</button>
+                        <button class="btn-glass" style="width:100%;padding:15px;font-size:0.85rem;" data-act="passkeyLogin"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg> Secure sign in</button>
                         <p style="font-size:0.75rem;color:var(--text-muted);text-align:center;margin-top:10px;">Fast, password-free sign-in with your device.</p>
                         <div style="display:flex;align-items:center;gap:12px;margin:22px 0 18px;">
                             <span style="flex:1;height:1px;background:var(--glass-border);"></span>
@@ -1690,9 +1690,9 @@
                     <label class="modal-label" for="login-password">Password</label>
                     <input type="password" class="input-glass" id="login-password" name="password" autocomplete="current-password" placeholder="Your password">
                     <div id="login-error" role="alert" style="color:var(--danger);font-size:0.8rem;margin-bottom:12px;display:none;"></div>
-                    <button class="btn-glass btn-accent" style="width:100%;padding:16px;" onclick="guestLogin()">Log In</button>
+                    <button class="btn-glass btn-accent" style="width:100%;padding:16px;" data-act="guestLogin">Log In</button>
                     <div style="text-align:center;margin-top:14px;">
-                        <a id="magic-link-cta" onclick="requestMagicLink()" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);font-size:0.82rem;">Email me a sign-in link instead</a>
+                        <a id="magic-link-cta" data-act="requestMagicLink" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);font-size:0.82rem;">Email me a sign-in link instead</a>
                         <div id="magic-link-msg" style="display:none;font-size:0.82rem;margin-top:10px;"></div>
                     </div>
                     <p id="passkey-hint" style="display:none;font-size:0.75rem;color:var(--text-muted);text-align:center;margin-top:16px;">Tip: after logging in, add a passkey in your account for one-tap sign-in next time.</p>
@@ -1722,7 +1722,7 @@
                     <label class="modal-label" for="reg-password">Password</label>
                     <input type="password" class="input-glass" id="reg-password" name="new-password" autocomplete="new-password" placeholder="Choose a password">
                     <div id="reg-error" role="alert" style="color:var(--danger);font-size:0.8rem;margin-bottom:12px;display:none;"></div>
-                    <button class="btn-glass btn-accent" style="width:100%;padding:16px;" onclick="guestRegister()">Create Account</button>
+                    <button class="btn-glass btn-accent" style="width:100%;padding:16px;" data-act="guestRegister">Create Account</button>
                 </div>
             </div>
             </div><!-- /.auth-form-col -->
@@ -1741,7 +1741,7 @@
                  mobile shell via CSS so it isn't duplicated there. Grouped with the
                  call button so the two sit together, not at opposite ends. -->
             <div class="guest-head-actions">
-                <button id="acct-settings-btn" class="btn-sm btn-edit" onclick="openGuestDetailsModal()" title="Account &amp; settings"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg> Account &amp; settings</button>
+                <button id="acct-settings-btn" class="btn-sm btn-edit" data-act="openGuestDetailsModal" title="Account &amp; settings"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg> Account &amp; settings</button>
                 <a id="acct-call-btn" class="btn-sm btn-edit" title="Call to discuss"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.6 3.5l2.1.4 1 3-1.5 1.4a12 12 0 0 0 5 5l1.4-1.5 3 1 .4 2.1a2 2 0 0 1-2 2.3A15.5 15.5 0 0 1 4.3 5.5a2 2 0 0 1 2.3-2z"/></svg> Call to Discuss</a>
             </div>
         </div>
@@ -1756,9 +1756,9 @@
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:14px;">
                 <h3 id="messages-modal-title" style="font-family:var(--font-serif);font-size:1.4rem;">Messages</h3>
                 <div style="display:flex;gap:8px;align-items:center;flex-shrink:0;">
-                    <button class="btn-sm btn-edit" id="msg-archive-btn" onclick="archiveCurrentThread()">Archive</button>
-                    <button class="btn-sm" id="msg-delete-btn" onclick="deleteCurrentThread()" style="color:var(--danger);">Delete</button>
-                    <button class="reviews-modal-close" onclick="closeMessagesModal()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+                    <button class="btn-sm btn-edit" id="msg-archive-btn" data-act="archiveCurrentThread">Archive</button>
+                    <button class="btn-sm" id="msg-delete-btn" data-act="deleteCurrentThread" style="color:var(--danger);">Delete</button>
+                    <button class="reviews-modal-close" data-act="closeMessagesModal" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
                 </div>
             </div>
             <div class="msg-ctx" id="messages-modal-ctx"></div>
@@ -1772,9 +1772,9 @@
             </select>
             <div id="msg-attach-preview" class="chat-attach-preview" style="display:none;"></div>
             <div class="chat-composer">
-                <button type="button" id="msg-attach-btn" class="chat-attach-btn" onclick="adminAttachPhoto()" aria-label="Attach a photo" title="Attach a photo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
-                <textarea id="messages-modal-input" class="input-glass" rows="2" placeholder="Write a reply…" oninput="adminTypingPing()"></textarea>
-                <button class="btn-glass" onclick="adminSendMessage()">Send</button>
+                <button type="button" id="msg-attach-btn" class="chat-attach-btn" data-act="adminAttachPhoto" aria-label="Attach a photo" title="Attach a photo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
+                <textarea id="messages-modal-input" class="input-glass" rows="2" placeholder="Write a reply…" data-act-input="adminTypingPing"></textarea>
+                <button class="btn-glass" data-act="adminSendMessage">Send</button>
             </div>
         </div>
     </div>
@@ -1784,14 +1784,14 @@
         <div class="modal-box glass-panel" style="max-width:560px;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:8px;">
                 <h2 class="section-title" style="font-size:1.4rem;margin:0;">Plan your North Norfolk days</h2>
-                <button class="reviews-modal-close" onclick="closeTripModal()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+                <button class="reviews-modal-close" data-act="closeTripModal" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
             <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 12px;">Tell us what you're into and we'll sketch a tide-aware itinerary for your stay.</p>
             <div class="trip-interests" id="trip-interests"></div>
             <div style="display:flex;align-items:center;gap:10px;margin:14px 0;flex-wrap:wrap;">
                 <label style="font-size:0.85rem;color:var(--text-muted);" for="trip-days">Days</label>
                 <select id="trip-days" class="input-glass field-sm" style="width:80px;margin:0;"></select>
-                <button class="btn-glass" onclick="runTripPlan()" style="margin-left:auto;">Plan my days</button>
+                <button class="btn-glass" data-act="runTripPlan" style="margin-left:auto;">Plan my days</button>
             </div>
             <div id="trip-result"></div>
         </div>
@@ -1809,7 +1809,7 @@
         <div class="modal-box glass-panel" style="max-width:460px;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:6px;">
                 <h3 style="font-family:var(--font-serif);font-size:1.5rem;">Share a photo</h3>
-                <button class="reviews-modal-close" onclick="closePhotoUpload()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+                <button class="reviews-modal-close" data-act="closePhotoUpload" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
             <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:14px;">Add a photo from your stay at <strong id="pu-prop-name">your cottage</strong>. We'll review it before it appears on the cottage page.</p>
             <label class="modal-label" for="pu-file">Photo</label>
@@ -1817,7 +1817,7 @@
             <label class="modal-label" for="pu-caption">Caption (optional)</label>
             <input type="text" id="pu-caption" class="input-glass" maxlength="280" placeholder="e.g. Sunset over the marshes">
             <div style="margin-top:14px;display:flex;gap:10px;align-items:center;">
-                <button class="btn-glass" style="width:auto;padding:11px 22px;" onclick="submitGuestPhoto()">Submit photo</button>
+                <button class="btn-glass" style="width:auto;padding:11px 22px;" data-act="submitGuestPhoto">Submit photo</button>
                 <span id="pu-msg" style="font-size:0.82rem;" aria-live="polite"></span>
             </div>
         </div>
@@ -1831,7 +1831,7 @@
         <div class="modal-box glass-panel" style="max-width:420px;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:6px;">
                 <h3 id="breakdown-modal-title" style="font-family:var(--font-serif);font-size:1.4rem;">Payment breakdown</h3>
-                <button class="reviews-modal-close" onclick="closeBreakdownModal()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+                <button class="reviews-modal-close" data-act="closeBreakdownModal" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
             <div id="breakdown-modal-body" style="margin-top:8px;"></div>
         </div>
@@ -1842,7 +1842,7 @@
         <div class="modal-box glass-panel" style="max-width:520px;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:6px;">
                 <h3 id="welcome-modal-title" style="font-family:var(--font-serif);font-size:1.4rem;">Welcome book</h3>
-                <button class="reviews-modal-close" onclick="closeWelcomeModal()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+                <button class="reviews-modal-close" data-act="closeWelcomeModal" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
             <div id="welcome-modal-body" style="margin-top:8px;"></div>
         </div>
@@ -1851,20 +1851,20 @@
     <!-- ================= FLOATING CHAT (everyone) ================= -->
     <!-- Resume an abandoned enquiry (shown by enquiryResumeShow when a fresh
          local draft exists; the draft never leaves this browser). -->
-    <button type="button" id="enquiry-resume" class="enquiry-resume" style="display:none;" onclick="enquiryResumeOpen()">
+    <button type="button" id="enquiry-resume" class="enquiry-resume" style="display:none;" data-act="enquiryResumeOpen">
         <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
         <span id="enquiry-resume-text">Resume your enquiry</span>
         <span class="er-x" onclick="event.stopPropagation(); enquiryResumeDismiss()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();event.stopPropagation();enquiryResumeDismiss();}" role="button" tabindex="0" aria-label="Dismiss" title="Dismiss">&times;</span>
     </button>
 
-    <button id="chat-fab" class="chat-fab" onclick="toggleChat()" aria-label="Chat with us" title="Chat with us">
+    <button id="chat-fab" class="chat-fab" data-act="toggleChat" aria-label="Chat with us" title="Chat with us">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.6-.8L3 21l1.9-5.7A8.38 8.38 0 0 1 4 11.5 8.5 8.5 0 0 1 12.5 3 8.38 8.38 0 0 1 21 11.5z"/></svg>
     </button>
     <div id="chat-widget" class="chat-widget" role="dialog" aria-label="Chat with Cottage Holidays Blakeney">
         <div class="chat-widget-head">
             <div class="chat-head-ava" aria-hidden="true"><img src="logo.svg" alt="Cottage Holidays Blakeney"></div>
             <div style="flex:1;min-width:0;"><div class="chat-widget-title">Chat with us</div><div class="chat-widget-sub"><span class="chat-presence-dot" aria-hidden="true"></span>Personally answered by the owner</div></div>
-            <button class="reviews-modal-close" onclick="closeChat()" aria-label="Close chat"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+            <button class="reviews-modal-close" data-act="closeChat" aria-label="Close chat"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
         </div>
         <div class="chat-thread" id="chat-thread"></div>
         <div id="chat-intro" class="chat-intro" style="display:none;">
@@ -1875,7 +1875,7 @@
             </div>
         </div>
         <div class="chat-quick" id="chat-quick">
-            <button type="button" class="chat-chip chat-chip-avail" onclick="chatAvailStart()">Check availability</button>
+            <button type="button" class="chat-chip chat-chip-avail" data-act="chatAvailStart">Check availability</button>
             <button type="button" class="chat-chip" onclick="chatFaq('checkin')">Check-in time?</button>
             <button type="button" class="chat-chip" onclick="chatFaq('parking')">Parking?</button>
             <button type="button" class="chat-chip" onclick="chatFaq('wifi')">Wi-Fi?</button>
@@ -1883,9 +1883,9 @@
         </div>
         <div id="chat-attach-preview" class="chat-attach-preview" style="display:none;"></div>
         <div class="chat-composer" style="padding:12px 14px 14px;">
-            <button type="button" id="chat-attach-btn" class="chat-attach-btn" onclick="chatAttachPhoto()" aria-label="Attach a photo" title="Attach a photo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
-            <textarea id="chat-input" class="input-glass" rows="1" aria-label="Write a message" placeholder="Write a message…" oninput="chatTypingPing()" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat();}"></textarea>
-            <button class="chat-send" onclick="sendChat()" aria-label="Send message" title="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="M5.5 11.5 12 5l6.5 6.5"/></svg></button>
+            <button type="button" id="chat-attach-btn" class="chat-attach-btn" data-act="chatAttachPhoto" aria-label="Attach a photo" title="Attach a photo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21.44 11.05l-9.19 9.19a5 5 0 0 1-7.07-7.07l9.19-9.19a3.5 3.5 0 0 1 4.95 4.95l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>
+            <textarea id="chat-input" class="input-glass" rows="1" aria-label="Write a message" placeholder="Write a message…" data-act-input="chatTypingPing" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat();}"></textarea>
+            <button class="chat-send" data-act="sendChat" aria-label="Send message" title="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"/><path d="M5.5 11.5 12 5l6.5 6.5"/></svg></button>
         </div>
     </div>
 
@@ -1894,7 +1894,7 @@
         <div class="modal-box glass-panel" style="max-width:460px;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:6px;">
                 <h3 style="font-family:var(--font-serif);font-size:1.5rem;">Notify me</h3>
-                <button class="reviews-modal-close" onclick="closeWaitlistModal()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+                <button class="reviews-modal-close" data-act="closeWaitlistModal" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
             <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:14px;">Leave your details and we'll email you if these dates become available. Dates are optional.</p>
             <label class="modal-label">Cottage</label>
@@ -1908,7 +1908,7 @@
             <label class="modal-label">Email</label>
             <input type="email" class="input-glass" id="wl-email" name="email" autocomplete="email">
             <div class="enq-modal-msg" id="wl-msg"></div>
-            <button class="btn-glass" style="width:100%;padding:15px;margin-top:14px;" onclick="submitWaitlist()">Join the waitlist</button>
+            <button class="btn-glass" style="width:100%;padding:15px;margin-top:14px;" data-act="submitWaitlist">Join the waitlist</button>
         </div>
     </div>
 
@@ -1925,7 +1925,7 @@
             </aside>
             <div class="auth-form-col">
             <div class="auth-close-row">
-                <button class="reviews-modal-close" onclick="closeGuestDetailsModal()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+                <button class="reviews-modal-close" data-act="closeGuestDetailsModal" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
             <h2 class="section-title" style="font-size:1.5rem;margin:0 0 6px;">Your details</h2>
             <p style="font-size:0.85rem;color:var(--text-muted);margin-bottom:16px;">Keep your contact details up to date — we use these for your bookings. Your bookings are linked to your email, so to change your email please contact us.</p>
@@ -1939,7 +1939,7 @@
             <input type="text" class="input-glass" id="profile-postcode" placeholder="e.g. NR25 7AB" autocomplete="postal-code" style="margin-bottom:6px;">
             <p style="font-size:0.72rem;color:var(--text-muted);margin:0 0 10px;">Used only to manage your bookings and contact you. See our <a href="#" onclick="event.preventDefault(); closeGuestDetailsModal(); nav('view-privacy')" style="cursor:pointer;text-decoration:underline;color:var(--text-muted);">Privacy Policy</a>.</p>
             <div id="profile-msg" style="font-size:0.8rem;margin:4px 0 10px;display:none;"></div>
-            <button class="btn-glass" style="width:100%;padding:14px;" onclick="saveGuestProfile()">Save details</button>
+            <button class="btn-glass" style="width:100%;padding:14px;" data-act="saveGuestProfile">Save details</button>
             <div style="display:flex;flex-direction:column;gap:10px;margin-top:16px;padding-top:16px;border-top:1px solid var(--glass-border);">
                 <button class="btn-sm btn-edit" style="width:100%;justify-content:center;" onclick="closeGuestDetailsModal(); openGuestSecurityModal()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="15" cy="9" r="3.6"/><path d="M12.4 11.6L4 20"/><path d="M7 17l2 2M5 19l2 2"/></svg> Account &amp; Security</button>
                 <button class="btn-sm btn-edit" style="width:100%;justify-content:center;color:var(--danger);border-color:rgba(229,115,115,0.4);" onclick="closeGuestDetailsModal(); guestLogout()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 17l-5-5 5-5"/><path d="M5 12h11"/></svg> Log Out</button>
@@ -1961,7 +1961,7 @@
             </aside>
             <div class="auth-form-col">
             <div class="auth-close-row">
-                <button class="reviews-modal-close" onclick="closeGuestSecurityModal()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+                <button class="reviews-modal-close" data-act="closeGuestSecurityModal" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
             <h2 class="section-title" style="font-size:1.5rem;margin:0 0 18px;">Account &amp; Security</h2>
 
@@ -1973,11 +1973,11 @@
             <label class="modal-label">Confirm new password</label>
             <input type="password" class="input-glass" id="pw-confirm" autocomplete="new-password" placeholder="Re-type the new password">
             <div id="pw-msg" style="font-size:0.8rem;margin:4px 0 10px;display:none;"></div>
-            <button class="btn-glass" style="width:100%;padding:13px;" onclick="changeGuestPassword()">Update password</button>
+            <button class="btn-glass" style="width:100%;padding:13px;" data-act="changeGuestPassword">Update password</button>
 
             <h3 style="font-family:var(--font-serif);font-size:1.1rem;margin:26px 0 6px;">Passkeys</h3>
             <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:12px;">Sign in with Face ID, Touch ID or your device PIN — no password to remember. Your password still works as a backup.</p>
-            <button class="btn-sm btn-edit" onclick="addPasskey()">＋ Add a passkey</button>
+            <button class="btn-sm btn-edit" data-act="addPasskey">＋ Add a passkey</button>
             <div id="passkey-list" style="margin-top:14px;"></div>
 
             <h3 style="font-family:var(--font-serif);font-size:1.1rem;margin:26px 0 6px;">Your data</h3>
@@ -1986,14 +1986,14 @@
 
             <h3 style="font-family:var(--font-serif);font-size:1.1rem;margin:26px 0 6px;color:var(--danger);">Delete my account</h3>
             <p style="font-size:0.82rem;color:var(--text-muted);margin-bottom:12px;">Erases your login, contact details, messages, reviews and mailing-list entry. Past bookings are kept as legally-required financial records but anonymised. This can't be undone.</p>
-            <button class="btn-sm btn-decline" onclick="deleteGuestAccount()">Delete my account</button>
+            <button class="btn-sm btn-decline" data-act="deleteGuestAccount">Delete my account</button>
             </div><!-- /.auth-form-col -->
         </div>
     </div>
 
     <!-- ================= PRIVACY POLICY ================= -->
     <main id="view-privacy" class="page-view container">
-        <span class="back-link" role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}" onclick="nav('view-main')">← Back to Home</span>
+        <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" data-act="nav" data-view="view-main">← Back to Home</span>
         <div style="max-width: 760px; margin: 0 auto;">
             <h1 class="section-title" style="margin-bottom: 8px;">Privacy Policy</h1>
             <p class="lead" style="text-align:left;margin:0 0 24px;">How Cottage Holidays Blakeney looks after your personal information.</p>
@@ -2038,8 +2038,8 @@
             <div class="dp-grid" id="dp-grid"></div>
             <div style="font-size:0.72rem;color:var(--text-muted);text-align:center;margin-top:10px;">Crossed-out dates are already booked</div>
             <div class="dp-foot">
-                <button class="toggle-btn dp-clear" id="dp-clear" onclick="dpClear()">Clear dates</button>
-                <button class="btn-glass" id="dp-done" onclick="dpDone()">Done</button>
+                <button class="toggle-btn dp-clear" id="dp-clear" data-act="dpClear">Clear dates</button>
+                <button class="btn-glass" id="dp-done" data-act="dpDone">Done</button>
             </div>
         </div>
     </div>
@@ -2055,7 +2055,7 @@
         <div class="reviews-modal-box glass-panel" style="max-width:560px;">
             <div class="reviews-modal-head">
                 <h2 class="section-title" id="enq-email-title" style="margin:0;font-size:1.5rem;">Email guest</h2>
-                <button class="reviews-modal-close" onclick="closeEnquiryEmailModal()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+                <button class="reviews-modal-close" data-act="closeEnquiryEmailModal" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
             <div class="reviews-modal-body" style="display:block;">
                 <!-- Compose view -->
@@ -2075,8 +2075,8 @@
                     </div>
                     <p class="enq-modal-msg" id="enq-email-msg" role="alert"></p>
                     <div style="display:flex;gap:10px;">
-                        <button class="toggle-btn" id="enq-email-preview-btn" style="flex:1;padding:14px;" onclick="previewComposedEmail()">Preview</button>
-                        <button class="btn-glass btn-accent" id="enq-email-send" style="flex:1;padding:14px;" onclick="sendEnquiryEmail()">Send email</button>
+                        <button class="toggle-btn" id="enq-email-preview-btn" style="flex:1;padding:14px;" data-act="previewComposedEmail">Preview</button>
+                        <button class="btn-glass btn-accent" id="enq-email-send" style="flex:1;padding:14px;" data-act="sendEnquiryEmail">Send email</button>
                     </div>
                 </div>
                 <!-- Preview view (the exact email the guest will receive) -->
@@ -2084,8 +2084,8 @@
                     <p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 10px;">This is exactly what your guest will receive.</p>
                     <iframe id="enq-email-preview-frame" title="Email preview" sandbox="allow-same-origin" style="width:100%;height:440px;border:1px solid var(--glass-border);border-radius:12px;background:#ECE5D7;"></iframe>
                     <div style="display:flex;gap:10px;margin-top:14px;">
-                        <button class="toggle-btn" style="flex:1;padding:14px;" onclick="backToComposeEdit()">← Back to editing</button>
-                        <button class="btn-glass btn-accent" style="flex:1;padding:14px;" onclick="sendEnquiryEmail()">Send email</button>
+                        <button class="toggle-btn" style="flex:1;padding:14px;" data-act="backToComposeEdit">← Back to editing</button>
+                        <button class="btn-glass btn-accent" style="flex:1;padding:14px;" data-act="sendEnquiryEmail">Send email</button>
                     </div>
                 </div>
             </div>
@@ -2096,7 +2096,7 @@
         <div class="reviews-modal-box glass-panel">
             <div class="reviews-modal-head">
                 <h2 class="section-title" id="faq-modal-title" style="margin:0;font-size:1.5rem;">Good to Know</h2>
-                <button class="reviews-modal-close" onclick="closeFaqModal()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+                <button class="reviews-modal-close" data-act="closeFaqModal" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
             <div class="reviews-modal-body" id="faq-modal-list" style="display:block;"></div>
         </div>
@@ -2105,7 +2105,7 @@
     <!-- GLASS DIALOG (replaces native alert/confirm/prompt) -->
     <!-- Full-screen photo lightbox (opened by clicking any gallery image) -->
     <div id="lightbox" class="lightbox" onclick="if(event.target===this||event.target.classList.contains('lightbox-stage')) closeLightbox()">
-        <button class="lightbox-close" onclick="closeLightbox()" aria-label="Close photo viewer">&times;</button>
+        <button class="lightbox-close" data-act="closeLightbox" aria-label="Close photo viewer">&times;</button>
         <button class="lightbox-nav prev" onclick="event.stopPropagation(); lightboxNav(-1)" aria-label="Previous photo">&#10094;</button>
         <div class="lightbox-stage"><img id="lightbox-img" alt="Cottage photo"></div>
         <button class="lightbox-nav next" onclick="event.stopPropagation(); lightboxNav(1)" aria-label="Next photo">&#10095;</button>
@@ -2145,14 +2145,14 @@
                 <label class="modal-label">Password</label>
                 <input type="password" class="input-glass" id="admin-login-pass" placeholder="Password" autocomplete="current-password"
                        onkeydown="if(event.key==='Enter') submitAdminLogin()">
-                <button class="btn-glass" style="width:100%;padding:15px;margin-top:6px;" onclick="submitAdminLogin()">Log In</button>
+                <button class="btn-glass" style="width:100%;padding:15px;margin-top:6px;" data-act="submitAdminLogin">Log In</button>
                 <div id="admin-login-passkey-retry" style="display:none;margin-top:18px;">
                     <div style="display:flex;align-items:center;gap:12px;margin:0 0 16px;">
                         <span style="flex:1;height:1px;background:var(--glass-border);"></span>
                         <span style="font-size:0.7rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:1px;">or</span>
                         <span style="flex:1;height:1px;background:var(--glass-border);"></span>
                     </div>
-                    <button class="btn-sm btn-edit" style="width:100%;" onclick="submitAdminPasskey()"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg> Sign in with a passkey</button>
+                    <button class="btn-sm btn-edit" style="width:100%;" data-act="submitAdminPasskey"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg> Sign in with a passkey</button>
                 </div>
             </div>
 
@@ -2163,7 +2163,7 @@
                 <input type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" class="input-glass" id="admin-login-2fa-code" placeholder="123456"
                        onkeydown="if(event.key==='Enter') submitAdmin2fa()">
                 <label style="display:flex;align-items:center;gap:9px;font-size:0.85rem;margin:12px 0;cursor:pointer;"><input type="checkbox" id="admin-login-2fa-remember" checked> Remember this device (skip the code for 60 days)</label>
-                <button class="btn-glass" style="width:100%;padding:15px;margin-top:2px;" onclick="submitAdmin2fa()">Verify &amp; sign in</button>
+                <button class="btn-glass" style="width:100%;padding:15px;margin-top:2px;" data-act="submitAdmin2fa">Verify &amp; sign in</button>
             </div>
 
             <div id="admin-login-error" role="alert" style="color:var(--danger);font-size:0.8rem;margin:12px 0 0;display:none;"></div>
@@ -2177,13 +2177,13 @@
                     <h2 data-edit-text="terms-title">Booking Terms &amp; Conditions</h2>
                     <p class="terms-modal-sub">Please read these before you book — they're the terms you accept with your booking.</p>
                 </div>
-                <button class="toast-close" onclick="closeTermsModal()" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+                <button class="toast-close" data-act="closeTermsModal" aria-label="Close"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
             </div>
             <div class="terms-modal-body" id="terms-modal-body">
                 <!-- terms rendered here by renderTerms() -->
             </div>
             <div class="terms-modal-foot">
-                <button class="btn-sm" onclick="closeTermsModal()">Close</button>
+                <button class="btn-sm" data-act="closeTermsModal">Close</button>
             </div>
         </div>
     </div>
@@ -2195,13 +2195,13 @@
             <input type="hidden" id="modal-mode">
 
             <label class="modal-label">Property</label>
-            <select class="input-glass" id="modal-property" onchange="onModalPropertyChange()">
+            <select class="input-glass" id="modal-property" data-act-change="onModalPropertyChange">
                 <option value="21a">21A Westgate</option>
                 <option value="jollyboat">Jollyboat</option>
                 <option value="pimpernel">Pimpernel</option>
                 <option value="__new__">➕ New property…</option>
             </select>
-            <input class="input-glass" id="modal-property-new" autocomplete="off" placeholder="New property name" oninput="updateModalPrice()" style="display:none;margin-top:10px;">
+            <input class="input-glass" id="modal-property-new" autocomplete="off" placeholder="New property name" data-act-input="updateModalPrice" style="display:none;margin-top:10px;">
 
             <label class="modal-label">Guest Name</label>
             <input type="text" class="input-glass" id="modal-name">
@@ -2226,7 +2226,7 @@
                  taken nights shaded from loaded data, everything still pickable —
                  the availability strip + server clash confirm guard the save). -->
             <label class="modal-label">Stay Dates</label>
-            <button type="button" class="date-range-trigger" id="modal-date-trigger" onclick="openBookingDatePicker()">
+            <button type="button" class="date-range-trigger" id="modal-date-trigger" data-act="openBookingDatePicker">
                 <span class="date-range-text" id="modal-date-display">Select the stay dates</span>
                 <span class="date-range-icon"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></span>
             </button>
@@ -2248,11 +2248,11 @@
             <div class="modal-2col">
                 <div>
                     <label class="modal-label">Adults</label>
-                    <input type="number" class="input-glass" id="modal-adults" min="1" value="2" oninput="updateModalPrice()">
+                    <input type="number" class="input-glass" id="modal-adults" min="1" value="2" data-act-input="updateModalPrice">
                 </div>
                 <div>
                     <label class="modal-label">Children</label>
-                    <input type="number" class="input-glass" id="modal-children" min="0" value="0" oninput="updateModalPrice()">
+                    <input type="number" class="input-glass" id="modal-children" min="0" value="0" data-act-input="updateModalPrice">
                 </div>
             </div>
 
@@ -2262,7 +2262,7 @@
 
             <div id="modal-payment-group">
                 <label class="modal-label">Payment Status</label>
-                <select class="input-glass" id="modal-payment" onchange="togglePaymentDetails()">
+                <select class="input-glass" id="modal-payment" data-act-change="togglePaymentDetails">
                     <option value="unpaid">Unpaid</option>
                     <option value="deposit">Deposit Paid</option>
                     <option value="paid">Paid in Full</option>
@@ -2286,12 +2286,12 @@
 
             <div id="modal-deposit-group">
                 <label class="modal-label">Refundable damages deposit (£) — charged with the first payment, refunded after the stay; not income</label>
-                <input type="number" class="input-glass" id="modal-damages-deposit" min="0" step="5" placeholder="e.g. 75" oninput="updateModalPrice()">
+                <input type="number" class="input-glass" id="modal-damages-deposit" min="0" step="5" placeholder="e.g. 75" data-act-input="updateModalPrice">
             </div>
 
             <div id="modal-override-group">
                 <label class="modal-label">Override total price (£) — optional</label>
-                <input type="number" class="input-glass" id="modal-price-override" min="0" step="0.01" placeholder="Leave blank to use calculated price" oninput="updateModalPrice()">
+                <input type="number" class="input-glass" id="modal-price-override" min="0" step="0.01" placeholder="Leave blank to use calculated price" data-act-input="updateModalPrice">
                 <p style="font-size:0.72rem;color:var(--text-muted);margin:-12px 0 18px;">Set a custom total for this booking only. The customer enquiry form still uses the standard prices from Manage &rarr; Preferences.</p>
             </div>
 
@@ -2301,8 +2301,8 @@
             <div id="modal-error" style="color: var(--danger); font-size: 0.8rem; margin-bottom: 15px; display: none;"></div>
 
             <div style="display: flex; gap: 12px; margin-top: 10px;">
-                <button class="btn-glass" style="flex: 1;" id="modal-save-btn" onclick="saveModal()">Save</button>
-                <button class="toggle-btn" style="flex: 1;" onclick="closeModal()">Cancel</button>
+                <button class="btn-glass" style="flex: 1;" id="modal-save-btn" data-act="saveModal">Save</button>
+                <button class="toggle-btn" style="flex: 1;" data-act="closeModal">Cancel</button>
             </div>
         </div>
     </div>
@@ -2315,7 +2315,7 @@
             <p id="newprop-sub" style="font-size: 0.82rem; color: var(--text-muted); margin: 0 0 18px;">These prices apply to this cottage. You can change them later in Manage → Preferences.</p>
 
             <label class="modal-label">Nightly price — couple (£)</label>
-            <input type="number" min="0" step="1" inputmode="decimal" class="input-glass" id="newprop-couple" placeholder="e.g. 120" oninput="updateModalPrice()">
+            <input type="number" min="0" step="1" inputmode="decimal" class="input-glass" id="newprop-couple" placeholder="e.g. 120" data-act-input="updateModalPrice">
 
             <div style="display: flex; gap: 15px;">
                 <div style="flex: 1;">
@@ -2346,8 +2346,8 @@
             <div id="newprop-error" style="color: var(--danger); font-size: 0.8rem; margin: 12px 0 0; display: none;"></div>
 
             <div style="display: flex; gap: 12px; margin-top: 18px;">
-                <button class="btn-glass" style="flex: 1;" onclick="customSetupNext()">Review booking →</button>
-                <button class="toggle-btn" style="flex: 1;" onclick="newPropCancel()">Cancel</button>
+                <button class="btn-glass" style="flex: 1;" data-act="customSetupNext">Review booking →</button>
+                <button class="toggle-btn" style="flex: 1;" data-act="newPropCancel">Cancel</button>
             </div>
         </div>
     </div>
@@ -2374,8 +2374,8 @@
             <div id="overview-error" style="color: var(--danger); font-size: 0.8rem; margin: 12px 0 0; display: none;"></div>
 
             <div style="display: flex; gap: 12px; margin-top: 18px;">
-                <button class="btn-glass" style="flex: 1;" onclick="confirmCustomBooking()">Confirm booking</button>
-                <button class="toggle-btn" style="flex: 1;" onclick="customOverviewBack()">← Back</button>
+                <button class="btn-glass" style="flex: 1;" data-act="confirmCustomBooking">Confirm booking</button>
+                <button class="toggle-btn" style="flex: 1;" data-act="customOverviewBack">← Back</button>
             </div>
         </div>
     </div>
@@ -2383,7 +2383,7 @@
     <!-- FOOTER -->
     <footer class="site-footer">
         <div class="footer-controls">
-            <button id="theme-toggle" class="theme-switch" role="switch" aria-checked="false" onclick="toggleTheme()" title="Switch to light mode" aria-label="Switch to light mode">
+            <button id="theme-toggle" class="theme-switch" role="switch" aria-checked="false" data-act="toggleTheme" title="Switch to light mode" aria-label="Switch to light mode">
                 <span class="ts-knob" aria-hidden="true">
                     <svg class="ts-i ts-i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5z"/></svg>
                     <svg class="ts-i ts-i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.8 4.8l1.8 1.8M17.4 17.4l1.8 1.8M19.2 4.8l-1.8 1.8M6.6 17.4l-1.8 1.8"/></svg>
@@ -2418,7 +2418,7 @@
             <p id="nl-msg" style="font-size:0.76rem;margin:8px 0 0;min-height:1em;" aria-live="polite"></p>
         </div>
         <p class="footer-nap" style="font-size:0.7rem;color:var(--text-muted);opacity:0.55;margin:14px 0 4px;letter-spacing:0.2px;">Self-catering holiday cottages in Blakeney, North Norfolk · NR25</p>
-        <p class="footer-meta" style="font-size:0.74rem;color:var(--text-muted);"><span class="footer-legal">&copy; <span id="footer-year">2026</span> Cottage Holidays Blakeney &nbsp;·&nbsp; <a onclick="nav('view-privacy')" style="cursor:pointer;color:var(--text-muted);text-decoration:underline;">Privacy Policy</a> &nbsp;·&nbsp; </span><span class="footer-credit">Made by George with <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var(--danger);"><path d="M12 20s-7-4.6-7-9.5A3.7 3.7 0 0 1 12 7a3.7 3.7 0 0 1 7 3.5C19 15.4 12 20 12 20z" fill="currentColor" stroke="none"/></svg></span></p>
+        <p class="footer-meta" style="font-size:0.74rem;color:var(--text-muted);"><span class="footer-legal">&copy; <span id="footer-year">2026</span> Cottage Holidays Blakeney &nbsp;·&nbsp; <a data-act="nav" data-view="view-privacy" style="cursor:pointer;color:var(--text-muted);text-decoration:underline;">Privacy Policy</a> &nbsp;·&nbsp; </span><span class="footer-credit">Made by George with <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="color:var(--danger);"><path d="M12 20s-7-4.6-7-9.5A3.7 3.7 0 0 1 12 7a3.7 3.7 0 0 1 7 3.5C19 15.4 12 20 12 20z" fill="currentColor" stroke="none"/></svg></span></p>
         <p style="margin-top: 4px; font-size: 0.68rem; color: var(--text-muted); opacity: 0.6;">Build <span id="build-stamp">—</span></p>
     </footer>
 
@@ -2426,7 +2426,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=393"></script>
+    <script defer src="app.js?v=394"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

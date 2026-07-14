@@ -238,6 +238,26 @@ for (const m of html.matchAll(/\bon(?:click|change|input|keydown)\s*=\s*"([^"]*)
 const missing = [...calledInOnclick].filter(n => !definedFns.has(n) && !JS_BUILTINS.has(n));
 check('every inline handler maps to a defined function' + (missing.length ? ' (missing: ' + missing.join(', ') + ')' : ''), missing.length === 0);
 
+// 6a-ii. unsafe-inline migration RATCHET. We're converting inline on* handlers to
+// CSP-clean data-act delegation (app.js chbDelegate) so the CSP can eventually drop
+// script-src 'unsafe-inline'. The count of remaining inline handlers in index.html
+// may only ever DECREASE — a new inline handler (or an un-migrated one sneaking back)
+// fails here. Lower the ceiling as each phase lands; it hits 0 at the final flip.
+const INLINE_HANDLER_CEILING = 150;
+const inlineHandlerCount = (html.match(/\bon(?:click|change|input|keydown|submit|pointerdown)\s*=\s*"/g) || []).length;
+check(`inline handler count ${inlineHandlerCount} <= ceiling ${INLINE_HANDLER_CEILING} (migration ratchet)`, inlineHandlerCount <= INLINE_HANDLER_CEILING);
+
+// 6a-iii. Every data-act* value resolves to a registered chbAct() action OR a global
+// function (the window-fallback path in chbRunAct). A typo'd data-act would silently
+// do nothing in the browser — this catches it. data-view etc. are params, not actions.
+const registeredActs = new Set([...appScript.matchAll(/chbAct\('([^']+)'/g)].map(m => m[1]));
+const actValues = new Set();
+for (const m of html.matchAll(/\bdata-act(?:-[a-z]+)?\s*=\s*"([^"]*)"/g)) {
+    if (m[1] && !m[1].includes('${')) actValues.add(m[1]);
+}
+const unresolvedActs = [...actValues].filter(n => !registeredActs.has(n) && !definedFns.has(n));
+check('every data-act* value resolves to an action or global fn' + (unresolvedActs.length ? ' (unresolved: ' + unresolvedActs.join(', ') + ')' : ''), unresolvedActs.length === 0);
+
 // 6b. No duplicate element ids (ignore JS template-literal ids like id="x-${k}")
 const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map(m => m[1]).filter(id => !id.includes('${'));
 const dupes = ids.filter((id, i) => ids.indexOf(id) !== i);

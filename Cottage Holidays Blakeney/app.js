@@ -99,6 +99,71 @@ const API_BASE = (function () {
     if (ci !== -1) path = path.slice(0, ci + 1);
     return path; // e.g. "/something/" — PHP files live here
 })();
+
+// ============================================================
+//  CSP-clean event delegation — the migration path OFF inline on* handlers so the
+//  CSP can eventually drop script-src 'unsafe-inline' (the last remaining XSS
+//  defence-in-depth gap). An element opts in with:
+//    data-act="name"            (click)
+//    data-act-change / -input / -keydown / -submit / -pointerdown  (other events)
+//  A single set of document-level listeners dispatches to a registered action
+//  (chbAct) or, for a plain no-arg call, to the same-named GLOBAL function called
+//  exactly like the old `fn()` (this = window, no args). Delegation means markup
+//  inserted later via innerHTML is covered too, so dynamic handlers migrate the
+//  same way. Inline handlers keep working during the migration; the CSP only drops
+//  'unsafe-inline' once every handler is converted (smoke-test ratchets the count).
+// ============================================================
+const CHB_ACTIONS = Object.create(null);
+function chbAct(name, fn) {
+    CHB_ACTIONS[name] = fn;
+}
+// Reusable, parameterised actions shared across many elements:
+chbAct('activate', function (el, event) {
+    // Keyboard "click": Enter or Space activates the element (a11y for role=button).
+    if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        el.click();
+    }
+});
+chbAct('nav', function (el) {
+    if (typeof nav === 'function') nav(el.dataset.view);
+});
+function chbRunAct(el, name, event) {
+    let r;
+    const fn = CHB_ACTIONS[name];
+    if (typeof fn === 'function') {
+        r = fn.call(el, el, event);
+    } else if (typeof window[name] === 'function') {
+        r = window[name](); // plain no-arg global — exact parity with inline `fn()` (this = window)
+    } else {
+        return;
+    }
+    if (r === false) event.preventDefault(); // inline `return false` semantics
+}
+const CHB_EVT_ATTR = {
+    click: 'act',
+    change: 'actChange',
+    input: 'actInput',
+    keydown: 'actKeydown',
+    submit: 'actSubmit',
+    pointerdown: 'actPointerdown',
+};
+function chbDelegate(event) {
+    const key = CHB_EVT_ATTR[event.type];
+    if (!key) return;
+    // Walk up from the event target to the nearest element carrying the action for
+    // this event type (mirrors how a delegated click resolves its intended target).
+    let el = event.target;
+    while (el && el.nodeType === 1) {
+        if (el.dataset && el.dataset[key]) {
+            chbRunAct(el, el.dataset[key], event);
+            return;
+        }
+        el = el.parentElement;
+    }
+}
+Object.keys(CHB_EVT_ATTR).forEach((t) => document.addEventListener(t, chbDelegate));
+
 // --- Front-end error capture ---
 // Report uncaught JS errors + unhandled promise rejections to the server so the
 // owner sees breakage in the activity log before a guest emails about it. Capped
@@ -12141,7 +12206,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'pillunify1';
+    const BUILD = 'cspdeleg1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
