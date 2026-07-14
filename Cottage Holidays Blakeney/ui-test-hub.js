@@ -131,9 +131,9 @@ const ok = (cond, label) => {
   ok(a.notes === 'VIP', 'staff note prefilled');
   // Email actions live in ONE place: the Emails card.
   const em1 = await page.evaluate(() => ({
-    headerEmail: !!document.querySelector('.bhub-actions [onclick^="openBookingEmail"]'),
-    writeBtns: document.querySelectorAll('#booking-hub-content [onclick^="openBookingEmail"]').length,
-    updConf: document.querySelectorAll('#booking-hub-content [onclick^="offerUpdatedConfirmationEmail"]').length,
+    headerEmail: !!document.querySelector('.bhub-actions [data-act="openBookingEmail"]'),
+    writeBtns: document.querySelectorAll('#booking-hub-content [data-act="openBookingEmail"]').length,
+    updConf: document.querySelectorAll('#booking-hub-content [data-act="offerUpdatedConfirmationEmail"]').length,
   }));
   ok(!em1.headerEmail && em1.writeBtns === 1, 'ONE email entry point (Emails card), none in the header');
   ok(em1.updConf === 0, 'no updated-confirmation button while nothing is paid');
@@ -174,14 +174,14 @@ const ok = (cond, label) => {
   const fold = await page.evaluate(() => {
     const box = document.querySelector('#booking-hub-content .price-box');
     return {
-      folded: !!document.querySelector('.bhub-disclose-btn[onclick*="bhubMoneyExpand"]'),
+      folded: !!document.querySelector('.bhub-disclose-btn[data-act="bhubMoneyExpand"]'),
       rows: box ? box.querySelectorAll('.price-row').length : -1,
       line: box ? ((box.querySelector('.price-row.total') || {}).textContent || '') : '',
     };
   });
   ok(fold.folded && fold.rows === 1 && /Paid in full/.test(fold.line), `settled money folds to one line (${fold.rows} row)`);
   // The full breakdown opens as a WINDOW over the page, not a reflow of it.
-  await page.evaluate(() => document.querySelector('.bhub-disclose-btn[onclick*="bhubMoneyExpand"]').click());
+  await page.evaluate(() => document.querySelector('.bhub-disclose-btn[data-act="bhubMoneyExpand"]').click());
   await page.waitForTimeout(400);
   const modal = await page.evaluate(() => ({
     open: document.getElementById('breakdown-modal').classList.contains('open'),
@@ -196,9 +196,9 @@ const ok = (cond, label) => {
   await page.evaluate(() => { findBookingById('b1').payment = 'deposit'; openBookingHub('b1', true); });
   await page.waitForTimeout(400);
   const em2 = await page.evaluate(() => ({
-    inEmails: !!document.querySelector('#booking-hub-content .bhub-card:nth-of-type(2) [onclick^="offerUpdatedConfirmationEmail"]') ||
-      Array.from(document.querySelectorAll('.bhub-card')).some((c) => /Emails/.test((c.querySelector('.bhub-card-title') || {}).textContent || '') && c.querySelector('[onclick^="offerUpdatedConfirmationEmail"]')),
-    inMoney: Array.from(document.querySelectorAll('.bhub-card')).some((c) => /Payments/.test((c.querySelector('.bhub-card-title') || {}).textContent || '') && c.querySelector('[onclick^="offerUpdatedConfirmationEmail"]')),
+    inEmails: !!document.querySelector('#booking-hub-content .bhub-card:nth-of-type(2) [data-act="offerUpdatedConfirmationEmail"]') ||
+      Array.from(document.querySelectorAll('.bhub-card')).some((c) => /Emails/.test((c.querySelector('.bhub-card-title') || {}).textContent || '') && c.querySelector('[data-act="offerUpdatedConfirmationEmail"]')),
+    inMoney: Array.from(document.querySelectorAll('.bhub-card')).some((c) => /Payments/.test((c.querySelector('.bhub-card-title') || {}).textContent || '') && c.querySelector('[data-act="offerUpdatedConfirmationEmail"]')),
   }));
   ok(em2.inEmails && !em2.inMoney, 'updated-confirmation button lives in the Emails card (not Money)');
 
@@ -295,7 +295,7 @@ const ok = (cond, label) => {
   // b1 now has £100 recorded — Delete must be hidden on its hub…
   await page.evaluate(() => window.openBookingHub('b1'));
   await page.waitForTimeout(500);
-  const delBtnPaid = await page.evaluate(() => !!document.querySelector('.bhub-actions [onclick*="deleteBooking"]'));
+  const delBtnPaid = await page.evaluate(() => !!document.querySelector('.bhub-actions [data-act="bhubDelete"]'));
   ok(!delBtnPaid, 'Delete button hidden on a booking that has taken money');
   // Header declutter: secondary + destructive actions live in ONE ⋯ menu.
   const menu1 = await page.evaluate(() => {
@@ -308,7 +308,7 @@ const ok = (cond, label) => {
   });
   ok(menu1.hidden, 'overflow menu starts closed');
   ok(menu1.headerBtns === 1, `header shows just the Edit/Move/Cancel button (${menu1.headerBtns})`);
-  ok(/openEditBooking/.test(menu1.items) && /cancelBooking/.test(menu1.items) && !/addBookingToCalendar/.test(menu1.items), 'Edit/Move + Cancel & refund live in the menu; no Add to calendar');
+  ok(/openEditBooking|bhubEdit/.test(menu1.items) && /cancelBooking|bhubCancel/.test(menu1.items) && !/addBookingToCalendar/.test(menu1.items), 'Edit/Move + Cancel & refund live in the menu; no Add to calendar');
   await page.evaluate(() => document.querySelector('.bhub-menu-btn').click());
   await page.waitForTimeout(200);
   ok(await page.evaluate(() => document.querySelector('.bhub-menu').style.display !== 'none'), 'tapping Edit/Move/Cancel opens the menu');
@@ -326,7 +326,7 @@ const ok = (cond, label) => {
   // b2 is money-free — Delete shows, works, and the hub exits to Bookings.
   await page.evaluate(() => window.openBookingHub('b2'));
   await page.waitForTimeout(500);
-  const delBtnFree = await page.evaluate(() => !!document.querySelector('.bhub-actions [onclick*="deleteBooking"]'));
+  const delBtnFree = await page.evaluate(() => !!document.querySelector('.bhub-actions [data-act="bhubDelete"]'));
   ok(delBtnFree, 'Delete present in the menu on a money-free booking');
   const del = page.evaluate(() => deleteBooking('b2'));
   await page.waitForTimeout(500);
@@ -348,16 +348,16 @@ const ok = (cond, label) => {
   await page.waitForTimeout(400);
   const cal = await page.evaluate(() => ({
     bars: document.querySelectorAll('#cal-body .tl-bar:not(.tl-ext)').length,
-    barClick: !!document.querySelector('#cal-body .tl-bar:not(.tl-ext)[onclick^="openBookingHub"]'),
+    barClick: !!document.querySelector('#cal-body .tl-bar:not(.tl-ext)[data-act="openBookingHub"]'),
     extBars: document.querySelectorAll('#cal-body .tl-ext').length,
-    extClickable: Array.from(document.querySelectorAll('#cal-body .tl-ext')).some((x) => x.getAttribute('onclick')),
+    extClickable: Array.from(document.querySelectorAll('#cal-body .tl-ext')).some((x) => x.getAttribute('onclick') || x.getAttribute('data-act')),
     days: document.querySelectorAll('#cal-body .tl-day').length,
   }));
   ok(cal.days > 100 && cal.bars > 0 && cal.barClick, `timeline rendered — booking bars open the hub (${cal.bars} bars)`);
   ok(cal.extBars > 0 && !cal.extClickable, `external bars greyed + display-only (${cal.extBars})`);
   // A free day cell starts an Add Booking on that cottage/date.
   await page.evaluate(() => {
-    const cell = Array.from(document.querySelectorAll('#cal-body .tl-cell[onclick]')).pop();
+    const cell = Array.from(document.querySelectorAll('#cal-body .tl-cell[data-act="tlAddAt"]')).pop();
     cell.click();
   });
   await page.waitForTimeout(400);
@@ -451,7 +451,7 @@ const ok = (cond, label) => {
     name: (document.querySelector('#inbox-detail-pane .bhub-name') || {}).textContent || '',
     openRows: document.querySelectorAll('#inbox-list .bk-row.is-open').length,
     actions: document.querySelectorAll('#inbox-detail-pane .bhub-actions .btn-sm').length,
-    priceBtn: !!document.querySelector('#inbox-detail-pane [onclick^="setEnquiryPrice"]'),
+    priceBtn: !!document.querySelector('#inbox-detail-pane [data-act="setEnquiryPrice"]'),
   }));
   ok(j1.active === 'view-inbox' && j1.rows === 2 && j1.oldCards === 0, `compact enquiry rows (${j1.rows}), old cards gone`);
   ok(j1.paneHub && j1.name !== '' && j1.openRows === 1, `enquiry hub auto-docked (${j1.name})`);
