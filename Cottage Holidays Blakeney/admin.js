@@ -1106,13 +1106,23 @@ function chbNluClassify(q, loose) {
 // the answer. __cmdkVoiceIn is set by the mic's final transcript and consumed
 // once by cmdkSearchCore.
 let __cmdkVoiceIn = false;
-function chbSpeak(text) {
+// Conversational memory: the specific booking the palette's LAST answer put on
+// screen, so a pronoun follow-up ("when do they leave", "email them") resolves
+// without a hub being open. Lives for the palette session; cleared on close.
+let __cmdkConvCtx = null; // { type: 'booking', id }
+function chbSpeak(text, onend) {
     try {
         if (!('speechSynthesis' in window) || !text) return;
         window.speechSynthesis.cancel();
         const u = new SpeechSynthesisUtterance(String(text));
         u.lang = 'en-GB';
         u.rate = 1.03;
+        if (typeof onend === 'function') {
+            // Fires when the reply finishes NATURALLY. A cancel() (new query,
+            // palette closed) also ends the utterance — the guard below keeps a
+            // superseded reply from triggering the follow-up hook.
+            u.onend = () => { try { if (!window.speechSynthesis.speaking && !window.speechSynthesis.pending) onend(); } catch (e) {} };
+        }
         window.speechSynthesis.speak(u);
     } catch (e) {}
 }
@@ -1457,13 +1467,48 @@ function cmdkIntent(q) {
         return { ps, st, money, dep };
     };
 
-    // 0a) Entity context — when a booking/enquiry hub is open, "email them",
-    //     "their other stays", "refund the deposit" act on THAT record.
-    if (__cmdkEntity && /\b(them|their|this (one|guest|booking|enquiry|stay|person)|refund|deposit|balance|pay|email|reply|approve|decline|other (stay|booking|enquir))\b/.test(q)) {
-        const ent = __cmdkEntity;
-        const eacts = cmdkEntityActions(ent);
-        return [ans(ent.name || 'This record', ent.type === 'booking' ? 'This booking' : 'This enquiry', () => { closeCmdK(); if (ent.type === 'booking') openBookingHub(ent.id); else openEnquiryHub(ent.id); })]
-            .concat(eacts.map((a, i) => ({ type: 'action', id: 'entq-' + i, label: a.label, sub: '', run: a.run })));
+    // 0a) Entity context — the record you're LOOKING AT (an open hub) or the one
+    //     this palette conversation just SURFACED (__cmdkConvCtx): "email them",
+    //     "when do they leave", "how much do they owe" act on THAT record.
+    //     Hub context keeps its wide trigger (task words alone suffice on the
+    //     record's own page); conversational context requires a real pronoun so
+    //     a fresh generic query ("who's paid a deposit") is never hijacked.
+    {
+        const anaphor = /\b(them|their|they|he|she|him|her|this (one|guest|booking|stay|person))\b/.test(q);
+        let ent = __cmdkEntity || null;
+        if (!ent && anaphor && __cmdkConvCtx && __cmdkConvCtx.type === 'booking' && typeof findBookingById === 'function') {
+            const cb = findBookingById(__cmdkConvCtx.id);
+            if (cb) ent = { type: 'booking', id: __cmdkConvCtx.id, name: cb.name || 'this guest', b: cb };
+        }
+        const trigger = __cmdkEntity ? /\b(them|their|this (one|guest|booking|enquiry|stay|person)|refund|deposit|balance|pay|email|reply|approve|decline|other (stay|booking|enquir))\b/.test(q) : anaphor;
+        if (ent && trigger) {
+            // A question about the record gets a direct ANSWER row first — the
+            // action list is the fallback, not the reply.
+            if (ent.type === 'booking' && ent.b) {
+                const b = ent.b;
+                const loc = typeof findBookingLocation === 'function' ? findBookingLocation(ent.id) : null;
+                const pk = loc ? loc.propKey : null;
+                const go = () => { closeCmdK(); openBookingHub(ent.id); };
+                const isWhen = /\bwhen\b|what (day|date|time)/.test(q);
+                if (isWhen && /leav|check.?out|depart|go(ing)? home/.test(q) && b.checkOut) {
+                    return [ans(`${ent.name} ${b.checkOut > today ? 'leaves' : 'left'} ${fmtDate(b.checkOut)}`, `${b.checkOutTime ? 'Checks out ' + b.checkOutTime + ' · ' : ''}${pk ? propName(pk) : 'This booking'}`, go, [calChip(b.checkOut)])];
+                }
+                if (isWhen && /arriv|check.?in|come|get here|start/.test(q) && b.checkIn) {
+                    return [ans(`${ent.name} ${b.checkIn > today ? 'arrives' : 'arrived'} ${fmtDate(b.checkIn)}`, `${b.checkInTime ? 'Checks in ' + b.checkInTime + ' · ' : ''}${pk ? propName(pk) : 'This booking'}`, go, [calChip(b.checkIn)])];
+                }
+                if (/\bowe|balance|how much|paid\b/.test(q)) {
+                    const ps = paymentSummary(pk, b);
+                    return [ans(
+                        ps.fullyPaid ? `${ent.name} is paid in full — ${gbp(ps.total)}` : `${ent.name} owes ${gbp(ps.balance)} of ${gbp(ps.total)}`,
+                        ps.fullyPaid ? 'Nothing outstanding' : `${gbp(ps.deposit)} paid so far`,
+                        go,
+                    )];
+                }
+            }
+            const eacts = cmdkEntityActions(ent);
+            return [ans(ent.name || 'This record', ent.type === 'booking' ? 'This booking' : 'This enquiry', () => { closeCmdK(); if (ent.type === 'booking') openBookingHub(ent.id); else openEnquiryHub(ent.id); })]
+                .concat(eacts.map((a, i) => ({ type: 'action', id: 'entq-' + i, label: a.label, sub: '', run: a.run })));
+        }
     }
     // 0a2) Page context — a bare, page-relative query inherits the cottage whose
     //      editor is open, so "its rates", "the photos", "prices", "description"
@@ -2634,14 +2679,24 @@ function cmdkSearchCore(q, allowCorrect) {
     // ANSWERED it (an intent/NLU answer counts; mere fuzzy rows don't). If the
     // palette closes with this un-acted-on, chbMissRecord() files it to review.
     __cmdkMiss = { q: raw, answered: built.results.length > 0 };
+    // Conversational memory: an answer that surfaced a specific booking becomes
+    // the referent for the next pronoun follow-up (see cmdkIntent 0a).
+    const convRow = (built.results || []).find((r) => r && r.type === 'booking' && r.id != null);
+    if (convRow) __cmdkConvCtx = { type: 'booking', id: convRow.id };
     const firstReal = __cmdkResults.findIndex((it) => it && !cmdkIsNoteRow(it));
     __cmdkSel = firstReal >= 0 ? firstReal : 0; // the Top Hit, not the correction/widen note
     cmdkRender();
     // Asked out loud → answer out loud: read the first real computed answer back.
+    // CONVERSATION MODE: when the spoken reply finishes, the mic reopens for the
+    // follow-up ("who's at jollyboat" → 🔊 → "when do they leave"). Staying
+    // silent simply times the recognition out, so quiet ends the conversation.
     if (__cmdkVoiceIn) {
         __cmdkVoiceIn = false;
         const a = __cmdkResults.find((it) => it && it.type === 'answer' && !cmdkIsNoteRow(it));
-        if (a) chbSpeak(a.label + (a.sub ? '. ' + a.sub : ''));
+        if (a) chbSpeak(a.label + (a.sub ? '. ' + a.sub : ''), () => {
+            const o = document.getElementById('cmdk');
+            if (o && o.style.display !== 'none' && !__cmdkRec) cmdkVoice();
+        });
     }
     // Deep index search runs server-side (emails, messages, invoices, guests,
     // reviews, activity — everything not held in the browser) and merges in when
@@ -3923,6 +3978,8 @@ function closeCmdK() {
     __cmdkDeep = null;
     __cmdkDeepStamp++;
     __cmdkVoiceIn = false;
+    __cmdkConvCtx = null; // the conversation ends with the palette
+    try { if (__cmdkRec) __cmdkRec.stop(); } catch (e) {} // stop a listening mic
     try { if ('speechSynthesis' in window) window.speechSynthesis.cancel(); } catch (e) {} // stop mid-reply
     cmdkSetLoading(false);
     if (o) o.style.display = 'none';
