@@ -84,10 +84,20 @@ try {
         'line' => (int) ($r['line-number'] ?? $r['lineNumber'] ?? 0),
         'sig' => $sig,
     ]);
+    // Severity. A blocked INLINE / EVAL script is auto-handled and NOT an owner
+    // to-do: our own inline boot script is hash-allowed in the CSP, so a blocked
+    // inline is almost always a browser EXTENSION or a carrier/proxy injecting a
+    // script into the page (or, less often, a CSP-stopped XSS — still auto-handled).
+    // Log those as INFO so they stay in the log for forensics but never nag "Needs
+    // attention" / the weekly digest. A block pointing at an external HOST is rarer
+    // and more worth the owner's awareness, so keep it a low 'warn'.
+    $lb = strtolower($blocked);
+    $isInlineOrEval = ($lb === '' || strpos($lb, 'inline') !== false || strpos($lb, 'eval') !== false || strpos($lb, 'data') === 0);
+    $sev = $isInlineOrEval ? 'info' : 'warn';
     $pdo->prepare(
         "INSERT INTO activity_log (actor, category, action, summary, ip, meta, severity)
-         VALUES ('system', 'security', 'csp.violation', ?, ?, ?, 'warn')",
-    )->execute([mb_substr('CSP blocked ' . ($directive ?: '?') . ' → ' . ($blocked ?: '?') . ' [' . $sig . ']', 0, 240), $ip, $meta]);
+         VALUES ('system', 'security', 'csp.violation', ?, ?, ?, ?)",
+    )->execute([mb_substr('CSP blocked ' . ($directive ?: '?') . ' → ' . ($blocked ?: '?') . ' [' . $sig . ']', 0, 240), $ip, $meta, $sev]);
 } catch (\Throwable $e) {
     // never let reporting affect the response
 }
