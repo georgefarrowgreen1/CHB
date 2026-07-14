@@ -256,6 +256,12 @@ const CASES = [
     { q: 'when do i owe dan his deposit', head: /Dan Epps.s deposit is due back now/, not: /paid in full/ },
     // Alice is mid-stay with the deposit charged → owed back after her checkout.
     { q: 'when do i owe alice her deposit', head: /owe Alice Marsh their deposit back after checkout/ },
+
+    // ---- "THE guest" (no name) — HOW LONG resolves to the salient stay (Alice,
+    // in residence). The arriving-with-time path is covered in search-test with
+    // its own fixture (a today-arrival can't live in this interlocked fixture).
+    { q: 'how long is the guest staying', head: /Alice Marsh is staying 3 nights/ },
+    { q: 'how long are they staying', head: /Alice Marsh is staying 3 nights/ },
     // ---- Free tonight (Jollyboat occupied by Alice; Eve leaves today) ----
     { q: "what's free tonight", head: /2 cottages free tonight/ },
     { q: 'any cottage free', head: /2 cottages free tonight/ },

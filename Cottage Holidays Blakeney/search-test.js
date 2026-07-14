@@ -1,4 +1,9 @@
 #!/usr/bin/env node
+// The runtime reckons "today" in Europe/London (todayDashed) while the
+// time-of-day helpers (hasCheckedIn/Out) read the wall clock — pin the process
+// to London BEFORE the first Date call so the two agree (else a run in the ~1h
+// window after London midnight sees a 15:00 arrival as already arrived).
+process.env.TZ = 'Europe/London';
 /* ============================================================
  *  search-test.js — completeness gate for the ⌘K search registry.
  *
@@ -638,6 +643,28 @@ if (typeof ctx.darkstarParse === 'function' && fs.existsSync(path.join(DIR, 'dar
     vm.runInContext('DARKSTAR.st = null', ctx); // leave the shim lexical-only for any later checks
 } else {
     check('Darkstar asset + parser present', false, 'darkstar.bin or darkstarParse missing');
+}
+
+// ---- 21. "The guest" composer (unnamed singular) — needs a controlled fixture
+// (a today-arrival with a check-in time), which can't live in golden's
+// interlocked corpus, so seed one here and drive cmdkIntent directly.
+if (typeof ctx.cmdkIntent === 'function') {
+    const today = ctx.todayDashed();
+    const plus = (nn) => { const dd = new Date(today + 'T00:00:00Z'); dd.setUTCDate(dd.getUTCDate() + nn); return dd.toISOString().slice(0, 10); };
+    const mk = (id, name, ci, co) => ({ id, name, checkIn: ci, checkOut: co, checkInTime: '15:00', checkOutTime: '10:00', adults: 2, children: 0, payment: 'paid', holdStatus: 'none', agreedPrice: { total: 400 } });
+    // Richard arrives TODAY at 15:00 (not in residence yet at test time); Alice
+    // is mid-stay; one future OTA block.
+    ctx.__seedA = { jb: [mk(1, 'Richard Berry', today, plus(3)), mk(2, 'Alice Marsh', plus(-1), plus(2))], blk: [{ id: 901, source: 'airbnb', checkIn: plus(5), checkOut: plus(9) }] };
+    vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);dbBookings.jollyboat=__seedA.jb;dbBlocks["21a"]=__seedA.blk;', ctx);
+    const head = (q) => { const r = ctx.cmdkIntent(q); return r && r[0] ? (r[0].label || '') + ' | ' + (r[0].sub || '') : '(none)'; };
+    check('"when is the guest arriving today" → the arrival with the 15:00 TIME', /Richard Berry arrives TODAY at 15:00/.test(head('when is the guest arriving today')));
+    check('"how long is the guest staying" → the in-residence guest, 3 nights', /Alice Marsh is staying 3 nights/.test(head('how long is the guest staying')));
+    // OTA-only arrival today → honest "the channel doesn't share a time".
+    ctx.__seedB = { blk: [{ id: 902, source: 'airbnb', checkIn: today, checkOut: plus(5) }] };
+    vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);dbBlocks["21a"]=__seedB.blk;', ctx);
+    const otaWhen = head('when is the guest arriving today');
+    check('OTA arrival today → Airbnb guest, honest "no channel time"', /Airbnb guest arrives TODAY/.test(otaWhen) && /doesn.t share a check-in time/.test(otaWhen));
+    vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);', ctx);
 }
 
 // ---- Summary ----

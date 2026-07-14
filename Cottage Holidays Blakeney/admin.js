@@ -2137,6 +2137,64 @@ function cmdkIntent(q) {
                 )];
             }
         }
+
+        // "THE guest" / "this booking" — a WHEN or HOW-LONG question with NO name
+        // still deserves a composed answer when it resolves to ONE salient stay.
+        // Works for direct bookings AND OTA blocks (an OTA guest has dates but no
+        // check-in time the channel shares). More than one candidate → fall
+        // through to the generic list branches below.
+        if (!named.length) {
+            const askWhen = /\bwhen\b|what time/.test(q) && /\barriv|check.?in|coming|leav|check.?out|depart/.test(q);
+            const askLong = /how long|how many nights/.test(q) && /\bguest|book|stay|they|them\b/.test(q);
+            if (askWhen || askLong) {
+                const leaving = /\bleav|check.?out|depart|going home/.test(q);
+                const norm = (kind, pk, r) => ({
+                    kind, pk, name: kind === 'direct' ? (r.name || 'The guest') : otaName(r.source) + ' guest',
+                    chan: kind === 'direct' ? null : otaName(r.source),
+                    checkIn: r.checkIn, checkOut: r.checkOut,
+                    ci: kind === 'direct' ? (r.checkInTime || '15:00') : null,
+                    co: kind === 'direct' ? (r.checkOutTime || '10:00') : null,
+                    b: kind === 'direct' ? r : null,
+                    open: kind === 'direct' ? (() => { closeCmdK(); openBookingHub(r.id); }) : (() => { closeCmdK(); tryAccessBackOffice(); }),
+                });
+                const all = flat.map((x) => norm('direct', x.pk, x.b)).concat(blocks.filter((x) => isOtaBlock(x.bl)).map((x) => norm('ota', x.pk, x.bl)));
+                let set;
+                if (askWhen) {
+                    const win = ents.dateRange;
+                    const key = leaving ? 'checkOut' : 'checkIn';
+                    const to = win ? (win.to > win.from ? win.to : win.from) : null;
+                    set = (win ? all.filter((r) => r[key] >= win.from && r[key] <= to) : all.filter((r) => r[key] >= today)).sort((a, b) => (a[key] < b[key] ? -1 : 1));
+                } else {
+                    const inres = all.filter((r) => (r.kind === 'direct' ? isInResidence(r.b) : r.checkIn <= today && r.checkOut > today));
+                    set = inres.length ? inres : all.filter((r) => r.checkIn >= today).sort((a, b) => (a.checkIn < b.checkIn ? -1 : 1)).slice(0, 1);
+                }
+                if (set.length === 1) {
+                    const r = set[0];
+                    const nights = Math.round((new Date(r.checkOut + 'T00:00:00') - new Date(r.checkIn + 'T00:00:00')) / 864e5);
+                    if (askLong) {
+                        const head = ans(`${r.name} is staying ${nn(nights, 'night')}`, `${fmtDate(r.checkIn)} → ${fmtDate(r.checkOut)} at ${propName(r.pk)}`, r.open, [calChip(r.checkIn)]);
+                        if (r.b) head.actions = cmdkBookingActions(r.b, r.pk);
+                        return [head];
+                    }
+                    const iso = leaving ? r.checkOut : r.checkIn;
+                    const tm = leaving ? r.co : r.ci; // null for OTA
+                    const verb = leaving
+                        ? (iso < today ? 'left' : iso === today ? 'leaves TODAY' : 'leaves')
+                        : (iso < today ? 'arrived' : iso === today ? 'arrives TODAY' : 'arrives');
+                    const label = (`${r.name} ${verb} ${iso === today ? '' : nice(iso)}`).replace(/\s+/g, ' ').trim() + (tm ? ` at ${tm}` : '');
+                    const head = ans(
+                        label,
+                        tm
+                            ? `${rel(iso)} · ${leaving ? 'checkout' : 'check-in'} ${tm} · ${propName(r.pk)}`
+                            : `${rel(iso)} · ${r.chan} doesn’t share a ${leaving ? 'checkout' : 'check-in'} time · ${propName(r.pk)}`,
+                        r.open, [calChip(iso)],
+                    );
+                    if (r.b) head.actions = cmdkBookingActions(r.b, r.pk);
+                    return [head];
+                }
+                // 0 or >1 → the generic arriving/leaving/staying branches answer.
+            }
+        }
     }
 
     // 0b) A specific guest by name — "have I refunded John?", "has Mary paid?",
