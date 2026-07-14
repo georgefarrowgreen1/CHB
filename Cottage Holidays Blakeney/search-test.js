@@ -317,6 +317,33 @@ if (ctx.CHB_SEARCH && typeof ctx.CHB_SEARCH.registerSource === 'function') {
     } else {
         check('CHB_SEARCH.nlu (our own model) is defined', false);
     }
+    // ML-powered search layer (rides the same owned model machinery) —
+    // semantic retrieval, online learning, and near-miss suggestions.
+    if (typeof ctx.chbRankQuery === 'function' && ctx.CHB_SEARCH.rank) {
+        const pool = ctx.cmdkAll('');
+        const lab = new Map();
+        pool.forEach((it) => { if (it && it.id != null) lab.set(it.type + ':' + it.id, it.label); });
+        const hits = ctx.chbRankQuery('create a reservation').map((h) => lab.get(h.k) || '');
+        check('semantic retrieval: "create a reservation" recalls "Add a booking"', hits.some((l) => /add a booking/i.test(l)), hits.join(' | '));
+        const season = ctx.chbRankQuery('season pricing').map((h) => lab.get(h.k) || '');
+        check('semantic retrieval: "season pricing" recalls the seasonal rates', season.some((l) => /seasonal rate/i.test(l)));
+        check('semantic retrieval rejects junk + names', ctx.chbRankQuery('zzqqxx blorp').length === 0 && ctx.chbRankQuery('sarah pemberton').length === 0);
+    } else {
+        check('CHB_RANK semantic retrieval is defined', false);
+    }
+    if (typeof ctx.chbNluLearn === 'function' && typeof ctx.chbNluSuppress === 'function' && typeof ctx.chbNluSuggest === 'function') {
+        check('learning: unknown phrasing starts rejected', ctx.chbNluClassify('gimme the arrears rundown') === null);
+        ctx.chbNluLearn('gimme the arrears rundown', 'who owes me money');
+        const g = ctx.chbNluClassify('gimme the arrears rundown');
+        check('learning: accepted phrasing now classifies to its intent', !!(g && g.canonical === 'who owes me money'));
+        ctx.chbNluSuppress('gimme the arrears rundown');
+        check('learning: suppression un-teaches it', ctx.chbNluClassify('gimme the arrears rundown') === null);
+        const sug = ctx.chbNluSuggest('who is checking in');
+        check('near-miss suggest: ambiguous query offers the closest questions', sug.includes('arriving today') && sug.includes('leaving today'), sug.join(','));
+        check('near-miss suggest: gibberish offers nothing', ctx.chbNluSuggest('zzqqxx blorp').length === 0);
+    } else {
+        check('NLU learning + suggest fns are defined', false);
+    }
     // The one matcher the standalone list filters (mailbox/messages) now share.
     if (typeof ctx.CHB_SEARCH.matches === 'function') {
         const mt = ctx.CHB_SEARCH.matches;
