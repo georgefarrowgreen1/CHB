@@ -249,6 +249,14 @@ RewriteRule ^(.+)\.(js|css)$ $1.$2.br [L]
         Header unset Vary
         Header unset Set-Cookie
     </FilesMatch>
+    # On-device model weights are versioned with ?v=… exactly like JS/CSS
+    # (darkstar.bin, encoder.onnx + its vocab) — cache them forever too; they're
+    # the largest assets on the site and a re-download is pure waste.
+    <FilesMatch "(?i)^(darkstar\.bin|encoder\.onnx|encoder-vocab\.json)$">
+        Header set Cache-Control "public, max-age=31536000, immutable"
+        Header unset Vary
+        Header unset Set-Cookie
+    </FilesMatch>
     # EXCEPTION: the service worker must never be long-cached, or browsers won't
     # pick up new releases. Keep it revalidated. (This block runs last, so it wins.)
     <FilesMatch "(?i)^sw\.js$">
