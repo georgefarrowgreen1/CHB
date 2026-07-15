@@ -7137,6 +7137,68 @@ const CHAT_FAQ = {
         def: "There's free Wi-Fi throughout the cottage — fine for browsing, email and streaming.",
     },
 };
+// ---- Guest FAQ assistant: answer a TYPED question instantly from the cottage's
+// own FAQ content, on-device, before it ever pings the owner — 24/7, no server,
+// no cost. Deflects the repetitive "parking? wifi? can we bring the dog?" that
+// the owner otherwise answers by hand; anything it can't confidently answer
+// still reaches a person. Guest-side only (this is app.js — admin.js's NLU never
+// loads for visitors), so it's a small, self-contained lexical matcher. ----
+const GUEST_FAQ_SYN = {
+    dog: 'dogs pet pets puppy', pet: 'dog dogs pets', park: 'parking car', parking: 'park car cars vehicle',
+    wifi: 'internet broadband wi-fi', internet: 'wifi broadband', 'wi-fi': 'wifi internet',
+    checkin: 'arrive arrival check', arrive: 'arrival checkin time early', arrival: 'arrive checkin',
+    checkout: 'leave departure', leave: 'checkout departure', departure: 'checkout leave',
+    cot: 'baby crib child children infant', baby: 'cot crib child infant', child: 'children baby cot',
+    towels: 'towel linen bedding sheets', linen: 'towels bedding sheets', bedding: 'linen towels sheets',
+    heating: 'heat warm radiators temperature', smoking: 'smoke cigarette vape',
+    beach: 'sea coast sand quay', pub: 'pubs restaurant restaurants food eat eating dining',
+    shop: 'shops supermarket store groceries', keys: 'key access lockbox entry code',
+    ev: 'charge charger charging electric tesla', tv: 'television netflix streaming freeview',
+    kitchen: 'cooker oven hob dishwasher fridge microwave', luggage: 'bags store early late',
+    accessible: 'wheelchair disabled access stairs mobility', highchair: 'high-chair child baby',
+};
+const GUEST_FAQ_STOP = new Set(['the', 'a', 'an', 'is', 'are', 'do', 'does', 'can', 'could', 'would', 'will', 'i', 'we', 'you', 'my', 'our', 'to', 'at', 'for', 'and', 'of', 'it', 'in', 'on', 'with', 'have', 'has', 'any', 'there', 'be', 'if', 'how', 'what', 'whats', 'when', 'where', 'which', 'get', 'got', 'this', 'that', 'your', 'their', 'am', 'me', 'us', 'or', 'please', 'thanks', 'thank', 'hi', 'hello', 'hey']);
+function guestFaqCorpus() {
+    const out = [];
+    try {
+        Object.keys(CHAT_FAQ).forEach((k) => { const f = CHAT_FAQ[k]; out.push({ q: f.q, a: ((typeof siteContent === 'object' && siteContent && siteContent[f.key]) || '').trim() || f.def }); });
+    } catch (e) {}
+    try {
+        const meta = typeof propertyMeta === 'object' && propertyMeta ? propertyMeta : {};
+        const active = typeof activeFrontProperty !== 'undefined' && activeFrontProperty ? [activeFrontProperty] : Object.keys(meta);
+        const keys = active.length ? active : Object.keys(meta);
+        const seenQ = new Set();
+        keys.forEach((pk) => {
+            const faqs = typeof siteContent === 'object' && siteContent && Array.isArray(siteContent['faqs-' + pk]) ? siteContent['faqs-' + pk] : [];
+            faqs.forEach((f) => { const q = (f && f.q || '').trim(), a = (f && f.a || '').trim(); const key = q.toLowerCase(); if (q && a && !seenQ.has(key)) { seenQ.add(key); out.push({ q, a }); } });
+        });
+    } catch (e) {}
+    return out;
+}
+// Returns the best-matching FAQ {q,a} for a typed question, or null when nothing
+// confidently matches (precision-biased: a wrong guest answer is worse than
+// none, so it needs a real question-word hit, not just answer-text coincidence).
+function guestFaqAnswer(text) {
+    const q = (text || '').toLowerCase().trim();
+    if (q.length < 4 || /^🛠/.test(text || '')) return null; // "Report an issue" bypasses
+    const words = q.split(/[^a-z0-9-]+/).filter((w) => w.length > 1 && !GUEST_FAQ_STOP.has(w));
+    if (!words.length) return null;
+    const qset = new Set();
+    words.forEach((w) => { qset.add(w); (GUEST_FAQ_SYN[w] || '').split(' ').filter(Boolean).forEach((s) => qset.add(s)); });
+    const tok = (s) => new Set((s || '').toLowerCase().split(/[^a-z0-9-]+/).filter((w) => w.length > 1));
+    let best = null, bestScore = 0, bestQHits = 0;
+    guestFaqCorpus().forEach((c) => {
+        // Whole-word match (so "cot" doesn't hit "cottage"); a word in BOTH the
+        // question and the answer is the strongest signal (+3).
+        const qtoks = tok(c.q), atoks = tok(c.a);
+        let s = 0, qh = 0;
+        qset.forEach((w) => { if (qtoks.has(w)) { qh++; s += 2; } if (atoks.has(w)) s += 1; });
+        if (s > bestScore) { bestScore = s; bestQHits = qh; best = c; }
+    });
+    // Precision-biased: need a real question-word hit AND a total worth ≥ 3 (a
+    // distinctive word echoed in both Q & A, or two overlapping words).
+    return best && bestQHits >= 1 && bestScore >= 3 ? best : null;
+}
 function chatThreadEl() {
     return document.getElementById('chat-thread');
 }
@@ -7175,6 +7237,26 @@ function chatFaq(which) {
     chatAppendMe(f.q);
     const ans = ((siteContent && siteContent[f.key]) || '').trim() || f.def;
     chatBot(escapeHtml(ans).replace(/\n/g, '<br>'));
+}
+// An instant FAQ answer to a TYPED question, with a one-tap "reach a person"
+// fallback (re-sends the exact question to the owner, bypassing the matcher).
+function chatFaqReply(hit, original) {
+    const t = chatThreadEl();
+    if (!t) return;
+    const d = document.createElement('div');
+    d.className = 'chat-bot';
+    d.innerHTML =
+        escapeHtml(hit.a).replace(/\n/g, '<br>') +
+        `<div class="cb-meta">Instant answer from this cottage's info.</div>` +
+        `<div class="chat-bot-actions"><button type="button" class="btn-glass btn-sm" ${chbAttrs('chatReachPerson', encodeURIComponent(original || ''))}>Message a person instead</button></div>`;
+    t.appendChild(d);
+    chatScroll();
+}
+function chatReachPerson(encoded) {
+    const input = document.getElementById('chat-input');
+    if (input) input.value = decodeURIComponent(encoded || '');
+    __faqBypass = true; // this exact question should now reach the owner
+    sendChat();
 }
 // Live availability check, in the chat thread.
 let __chatAvailUid = 0;
@@ -7260,10 +7342,27 @@ function adminCanned(text) {
     const s = document.getElementById('msg-canned');
     if (s) s.value = '';
 }
+let __faqBypass = false; // set by "message a person" so the same question reaches the owner
 async function sendChat() {
     const input = document.getElementById('chat-input');
     const body = ((input && input.value) || '').trim();
     if (!body && !__chatPendingAttach) return;
+    // Guest FAQ assistant: a typed question that confidently matches a cottage FAQ
+    // is answered instantly here, no owner ping — unless they asked for a person.
+    if (body && !__chatPendingAttach && !__faqBypass) {
+        let hit = null;
+        try { hit = guestFaqAnswer(body); } catch (e) {}
+        if (hit) {
+            chatClearEmpty();
+            chatAppendMe(body);
+            if (input) input.value = '';
+            const intro0 = document.getElementById('chat-intro');
+            if (intro0) intro0.style.display = 'none';
+            chatFaqReply(hit, body);
+            return;
+        }
+    }
+    __faqBypass = false;
     const loggedIn = !!currentGuest;
     let payload;
     if (loggedIn) {
@@ -12478,7 +12577,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'unified1';
+    const BUILD = 'guestfaq1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

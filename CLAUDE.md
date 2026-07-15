@@ -221,6 +221,16 @@ actions belong on the hubs, not new surfaces. Dates display DD/MM/YYYY everywher
 (`smtp_send`, `send_*`). Crons run daily via `cron.php` (pre-arrival, payments-due,
 tide-push, push checkin, enquiry-nudge).
 
+**Guest FAQ assistant** (app.js — guest-side, so admin.js's NLU never loads for visitors):
+a TYPED question in the guest chat is answered instantly ON-DEVICE from the cottage's own FAQ
+content before it ever pings the owner — `guestFaqAnswer(text)` runs a small precision-biased
+lexical matcher (whole-word token overlap + `GUEST_FAQ_SYN` synonyms, Q&A-weighted, threshold
+≥3 with a question hit) over `CHAT_FAQ` + the active cottage's `siteContent['faqs-<prop>']`;
+`sendChat()` intercepts a confident match (`chatFaqReply` shows the answer + a "Message a
+person instead" fallback that re-sends bypassing the matcher via `__faqBypass`), and anything
+unmatched reaches a human as before. Deflects the repetitive parking/wifi/dogs enquiries 24/7,
+no server. Gated by smoke-test (matches from content + synonyms; nulls on unrelated/greeting).
+
 **Accommodations are dynamic** — the owner adds/removes cottages from the back office
 (Settings → Preferences → "Add accommodation"; per-cottage "Remove" / "Restore"). The
 `properties` table is the single source of truth (`prop_key`, `name`, `couple_rate`…,
