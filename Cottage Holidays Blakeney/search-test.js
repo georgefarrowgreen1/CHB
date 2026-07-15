@@ -828,6 +828,35 @@ if (typeof ctx.cmdkIdfOf === 'function' && typeof ctx.cmdkScore === 'function') 
     vm.runInContext('__cmdkExp = []; __cmdkIdf = null;', ctx);
 }
 
+// ---- 26. AI-drafted enquiry reply: a new enquiry → a warm, ready-to-send draft
+// (greeting, availability, live quote, the FAQ answer to what they asked, CTA,
+// host sign-off). Deterministic — the owner edits, then sends. ----
+if (typeof ctx.chbDraftEnquiryReply === 'function') {
+    vm.runInContext(`
+        propertyMeta.jollyboat = { name: 'Jollyboat' };
+        propertyRates.jollyboat = { coupleRate: 130, extraAdultRate: 0, childRate: 0, damagesDeposit: 50, transactionPct: 0 };
+        siteContent['host-name'] = 'George';
+        siteContent['faqs-jollyboat'] = [{ q: 'Are dogs welcome?', a: 'Yes, up to two well-behaved dogs are welcome at no extra charge.' }];
+        activeFrontProperty = 'jollyboat';
+        Object.keys(dbBookings).forEach((k) => dbBookings[k] = []); Object.keys(dbBlocks).forEach((k) => dbBlocks[k] = []);
+    `, ctx);
+    const enq = { id: 99, name: 'Priya Shah', email: 'p@x.co', propKey: 'jollyboat', checkIn: '2026-09-10', checkOut: '2026-09-13', adults: 2, children: 0, guests: '2 adults', message: 'Hi, can we bring our dog?' };
+    const draft = ctx.chbDraftEnquiryReply(enq);
+    check('draft greets the guest by first name', /^Hi Priya,/.test(draft), draft.split('\n')[0]);
+    check('draft names the cottage + dates', /Jollyboat/.test(draft) && /10\/09\/2026/.test(draft) && /13\/09\/2026/.test(draft));
+    check('draft states availability when free', /those dates are free/i.test(draft));
+    check('draft includes the live quote + refundable deposit', /total for your stay would be £\d/.test(draft) && /refundable damage deposit/.test(draft));
+    check('draft answers the asked question from the cottage FAQ (dogs)', /two well-behaved dogs are welcome/i.test(draft));
+    check('draft signs off with the host name', /Warm wishes,\nGeorge$/.test(draft.trim()));
+    // A clashing enquiry flags "just taken" instead of "free".
+    vm.runInContext(`dbBookings.jollyboat = [{ id: 1, name: 'Xavier Blake', checkIn: '2026-09-11', checkOut: '2026-09-14' }];`, ctx);
+    check('draft flags a clash when the dates are taken', /just taken/i.test(ctx.chbDraftEnquiryReply(enq)));
+    // No host name → falls back to the business name.
+    vm.runInContext(`dbBookings.jollyboat = []; siteContent['host-name'] = '';`, ctx);
+    check('draft falls back to the business name with no host name set', /Cottage Holidays Blakeney$/.test(ctx.chbDraftEnquiryReply(enq).trim()));
+    vm.runInContext(`siteContent['faqs-jollyboat'] = []; activeFrontProperty = '21a';`, ctx);
+}
+
 // ---- Summary ----
 console.log('\n== Summary ==');
 if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }
