@@ -149,18 +149,20 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const spill = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   ok(spill <= 0, `no horizontal overflow at 390px (spill=${spill})`);
 
-  // 14) Darkstar ONLINE → the knot turns PURPLE (--darkstar #a855f7). No glow.
+  // 14) Darkstar ONLINE → the status pill rests on "AI ready" (purple, no glow),
+  //     so the model's presence is shown as a WORD, not just a knot colour.
   //     (The owner-side idle auto-loader may already have fired; force it to be
-  //     deterministic, then assert the ready class + the purple colour.)
+  //     deterministic, then assert the ready class + the ready pill.)
   await page.evaluate(() => darkstarLoad()); // real darkstar.bin served by php -S
   const online = await page.evaluate(() => {
     const ready = document.body.classList.contains('darkstar-ready');
-    const cs = getComputedStyle(document.querySelector('#abar-today .abar-ic'));
-    return { ready, filter: cs.filter, color: cs.color };
+    const s = document.querySelector('#abar-today .abar-status');
+    const cs = getComputedStyle(s);
+    return { ready, state: s.dataset.mstate, txt: s.textContent.trim(), color: cs.color, shown: cs.display !== 'none' };
   });
   ok(online.ready, 'body.darkstar-ready set once Darkstar is loaded + indexed');
-  ok(online.color === 'rgb(168, 85, 247)', `knot turns purple (${online.color})`);
-  ok(!/drop-shadow/.test(online.filter), 'no glow filter on the online knot');
+  ok(online.state === 'ready' && /AI ready/i.test(online.txt) && online.shown, `status rests on "${online.txt}" (${online.state})`);
+  ok(online.color === 'rgb(168, 85, 247)', `the ready pill is the Darkstar purple (${online.color})`);
 
   await browser.close();
   server.kill();

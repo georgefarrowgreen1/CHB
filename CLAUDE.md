@@ -146,7 +146,11 @@ workspace" adopts INTO the bar via `abarAdopt`, so no floating banner where a ba
 the Inbox bar adds per-folder `.ifold-match` pills + hides the unread chips while
 filtering); otherwise `cmdkBuildResults()` answers INLINE with the palette's own rows
 (chips/actions/`_nlu` learning intact); zero matches → deep-search CTA + ask chips. Full
-intelligence parity: per-bar green `ml-active` knot / orange `ml-learning` flash, walk-away
+intelligence parity: the **model-status pill** (palette `#cmdk-ml`, per-bar `.abar-status`,
+`data-mstate` set by `chbSetModelStatus`/`chbModelState`) NAMES what the assistant is doing —
+`ready` (Darkstar loaded, idle), `understood` (paraphrase→intent), `meaning` (semantic
+recall), `guess` (near-miss suggestions), `learning` (teaching) — a word with a quiet colour
+accent, NOT a colour to decode; the dock button keeps a purple Darkstar tint. Plus walk-away
 (focusout) dead-end capture into the shared miss store, and `__cmdkConvCtx` carries across
 bars↔palette. Both bars sit ABOVE the header divider line (Today: `#abar-today` in
 `#view-backoffice`; Inbox: `#abar-inbox` moved up into `#inbox-head`, full-width above the

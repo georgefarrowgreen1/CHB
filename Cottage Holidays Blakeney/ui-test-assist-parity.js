@@ -43,26 +43,27 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.evaluate(() => nav('view-backoffice')); await page.waitForTimeout(500);
   const type = async (q) => { await page.evaluate((x) => { const el = document.getElementById('abar-today-input'); el.value = x; abarRoute('abar-today', x); }, q); await page.waitForTimeout(250); };
 
-  // 1) GREEN on NLU paraphrase; not on a literal intent.
+  // 1) Status pill NAMES the state: an NLU paraphrase reads "Understood" (or "By
+  //    meaning"); a literal intent doesn't light the model status.
   await type('is anyone in arrears with me');
-  let g = await page.evaluate(() => ({ ml: document.getElementById('abar-today').classList.contains('ml-active'), color: getComputedStyle(document.querySelector('#abar-today .abar-ic')).color, anim: getComputedStyle(document.querySelector('#abar-today .abar-ic')).animationName }));
-  ok(g.ml && g.color === 'rgb(76, 175, 80)' && /cmdk-ml-glow/.test(g.anim), `NLU paraphrase → bar knot GREEN + breathing (${g.color})`);
+  let g = await page.evaluate(() => { const s = document.querySelector('#abar-today .abar-status'); return { ml: document.getElementById('abar-today').classList.contains('ml-active'), state: s.dataset.mstate, txt: s.textContent.trim() }; });
+  ok(g.ml && /understood|meaning/.test(g.state) && /Understood|meaning/i.test(g.txt), `NLU paraphrase → status says "${g.txt}" (${g.state})`);
   await type('who owes me money');
-  g = await page.evaluate(() => document.getElementById('abar-today').classList.contains('ml-active'));
-  ok(!g, 'literal intent → no glow');
+  g = await page.evaluate(() => { const s = document.querySelector('#abar-today .abar-status'); return { ml: document.getElementById('abar-today').classList.contains('ml-active'), state: s.dataset.mstate }; });
+  ok(!g.ml && !/understood|meaning|guess/.test(g.state), `literal intent → no model-status (${g.state || 'none'})`);
   await page.evaluate(() => abarClear('abar-today'));
 
-  // 2) ORANGE learning flash reaches the bar knots, then clears.
+  // 2) Teaching → the status pill reads "Learning…" on the bar (with the dock
+  //    knot), then clears back to its resting state.
   await page.evaluate(() => chbNluLearn('utterly novel phrasing zq', 'who owes me money'));
   await page.waitForTimeout(150);
-  const o = await page.evaluate(() => ({
-    bar: document.querySelector('#abar-today .abar-ic').classList.contains('ml-learning'),
-    color: getComputedStyle(document.querySelector('#abar-today .abar-ic')).color,
-    dock: document.querySelector('.admin-dock-btn[data-act="openCmdK"]').classList.contains('ml-learning') }));
-  ok(o.bar && o.dock && o.color === 'rgb(255, 167, 38)', `teach → bar knot flashes ORANGE with the dock (${o.color})`);
+  const o = await page.evaluate(() => { const s = document.querySelector('#abar-today .abar-status'); return {
+    state: s.dataset.mstate, txt: s.textContent.trim(),
+    dock: document.querySelector('.admin-dock-btn[data-act="openCmdK"]').classList.contains('ml-learning') }; });
+  ok(o.state === 'learning' && /Learning/i.test(o.txt) && o.dock, `teach → status says "${o.txt}" with the dock knot`);
   await page.waitForTimeout(2400);
-  const oc = await page.evaluate(() => document.querySelectorAll('.ml-learning').length);
-  ok(oc === 0, 'flash clears');
+  const oc = await page.evaluate(() => ({ learning: document.querySelectorAll('.ml-learning').length, barState: document.querySelector('#abar-today .abar-status').dataset.mstate }));
+  ok(oc.learning === 0 && oc.barState !== 'learning', 'the learning state clears');
 
   // 3) Dead-end capture on walk-away + exemptions.
   await page.evaluate(() => chbNluStore('chb-search-misses', []));
