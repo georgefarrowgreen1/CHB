@@ -773,6 +773,19 @@ if (typeof ctx.cmdkIntent === 'function') {
         check('destructive-action guard: the customer row exposes no delete/refund', (rows[0].actions || []).every((a) => a.key === 'email'));
         const ranked = vm.runInContext("(function(){const p=CHB_SEARCH.collect('sarah');return p.map(it=>({c:!!it._customer,s:cmdkScore(it,['sarah'],'sarah')})).filter(x=>x.s>0).sort((a,b)=>b.s-a.s)[0];})()", ctx);
         check('search returns the CUSTOMER first, above their scattered stays', !!ranked && ranked.c === true);
+        // Full cmdkBuildResults pipeline (audit fix): a repeat guest LEADS with the
+        // unified customer instead of "N bookings match that name"; two DIFFERENT
+        // people who share a name still disambiguate (false-merge holds end-to-end).
+        const lead = (q) => { const b = vm.runInContext(`cmdkBuildResults(${JSON.stringify(q)})`, ctx); return (b.results || [])[0] || {}; };
+        check('pipeline: a repeat guest LEADS with the unified customer', lead('Sarah Wingate')._customer === true);
+        check('pipeline: two same-name PEOPLE disambiguate (not merged)', !lead('John Smith')._customer && /bookings match that name/.test(lead('John Smith').label || ''));
+        // Audit fix: the DIRECT insight regex no longer false-answers a cottage
+        // FEATURE question (the NLU fallback is separately veto-gated once Darkstar
+        // loads — see §20). Tests cmdkIntent so it's independent of the model.
+        const di = (q) => { const r = vm.runInContext(`cmdkIntent(${JSON.stringify(q)})`, ctx); return (r && r[0]) || {}; };
+        check('precision: "which cottage has a hot tub" hits no insight figure', di('which cottage has a hot tub').type !== 'figure');
+        check('precision: "which cottage is dog friendly" hits no insight figure', di('which cottage is dog friendly').type !== 'figure');
+        check('regression: "which cottage earns most" STILL answers the figure', di('which cottage earns most').type === 'figure');
         vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);', ctx);
     }
 }

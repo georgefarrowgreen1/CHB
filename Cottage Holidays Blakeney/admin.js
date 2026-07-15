@@ -2139,7 +2139,11 @@ function cmdkIntent(q) {
     // Business-insight queries take priority over guest-name matching (so "which
     // cottage earns most" is never mistaken for a guest). Defined once, used by
     // the insights branch AND to suppress the named-guest handler.
-    const INSIGHTS_RE = /\brevenue\b|\bincome\b|\bearn(ed|ings?|ing)?\b|\btakings?\b|\bturnover\b|\bgross\b|occupanc|occupied|\bnights? (booked|sold)\b|how many nights|average (rate|price|nightly)|\bavg\b|busiest|quietest|best month|worst month|which (cottage|month)|top cottage|how.?s business|how am i doing|\bperformance\b|how much (did i |have i |i )?(make|made|earn|take)/;
+    // NB `which (cottage|month)` is QUALIFIED with an earnings/performance word — a
+    // bare "which cottage …" (e.g. "which cottage has a hot tub") is a FEATURE
+    // question, not an insight, and must not enter this section (which always emits
+    // a figure). Audit finding: the bare form false-answered feature questions.
+    const INSIGHTS_RE = /\brevenue\b|\bincome\b|\bearn(ed|ings?|ing)?\b|\btakings?\b|\bturnover\b|\bgross\b|occupanc|occupied|\bnights? (booked|sold)\b|how many nights|average (rate|price|nightly)|\bavg\b|busiest|quietest|best month|worst month|which (cottage|property|house|month).{0,24}(earn|make|most|best|top|perform|money|revenue|income|busiest|profit|lucrative)|top cottage|how.?s business|how am i doing|\bperformance\b|how much (did i |have i |i )?(make|made|earn|take)/;
     // Operational list queries (deposits to return, balances to chase, volume) —
     // like insights, they must beat guest-name matching (a query like "overdue
     // balances" must not be read as guest "Olive Over").
@@ -2623,17 +2627,35 @@ function cmdkIntent(q) {
             row.dedupName = nm.toLowerCase().trim();
             return [row];
         }
+        const stayRows = () => rows.map((x) => {
+            const m = moneyState(x.pk, x.b);
+            const bits = [m.money];
+            if (m.dep) bits.push(m.dep);
+            bits.push(propName(x.pk));
+            if (x.b.checkIn) bits.push(`${fmtDate(x.b.checkIn)}–${fmtDate(x.b.checkOut)}`);
+            return bk(x.pk, x.b, bits.join(' · '));
+        });
+        // If every same-name match is the SAME person (one strong identity —
+        // email/phone), LEAD with the unified customer (lifetime stats) instead of
+        // "N bookings match that name" — the directory's whole point — then list
+        // their stays. Two DIFFERENT people who share a name (distinct identities)
+        // still get the "pick the guest you mean" disambiguation.
+        try {
+            if (rows.length >= 2 && new Set(rows.map((x) => chbCustomerKey(x.b))).size === 1) {
+                const c = (chbCustomers() || []).find((cc) => cc.key === chbCustomerKey(rows[0].b));
+                if (c) {
+                    const chead = ans(c.name || rows[0].b.name || 'This guest',
+                        `${c.stays.length} stays · ${gbp(c.revenue)} lifetime${c.last ? ' · last ' + fmtDate(c.last) : ''}`,
+                        () => openCustomer(c.key));
+                    chead._customer = true;
+                    chead.dedupName = (c.name || '').toLowerCase().trim();
+                    chead.actions = [{ key: 'email', label: 'Email', icon: cmdkActIcon('mail'), run: () => { closeCmdK(); if (c.latestId != null && typeof openBookingEmail === 'function') openBookingEmail(c.latestId); } }];
+                    return [chead].concat(stayRows());
+                }
+            }
+        } catch (e) {}
         const head = ans(`${rows.length} bookings match that name`, 'Pick the guest you mean', () => { closeCmdK(); openBookings(); });
-        return [head].concat(
-            rows.map((x) => {
-                const m = moneyState(x.pk, x.b);
-                const bits = [m.money];
-                if (m.dep) bits.push(m.dep);
-                bits.push(propName(x.pk));
-                if (x.b.checkIn) bits.push(`${fmtDate(x.b.checkIn)}–${fmtDate(x.b.checkOut)}`);
-                return bk(x.pk, x.b, bits.join(' · '));
-            }),
-        );
+        return [head].concat(stayRows());
     }
 
     // 0c) Business insights — revenue, occupancy, nights, average rate, best month,
@@ -2700,7 +2722,7 @@ function cmdkIntent(q) {
         const ranked = Object.keys(byC).map((k) => ({ k, v: byC[k] })).sort((a, b) => b.v - a.v);
         const rankedN = Object.keys(byCn).map((k) => ({ k, n: byCn[k], v: byC[k] || 0 })).sort((a, b) => b.n - a.n);
         const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
-        if (/which cottage|top cottage|best cottage|earns? (the )?most|most (money|revenue|income)/.test(q) && ranked.length) {
+        if (/which (cottage|property|house).{0,24}(earn|make|most|best|top|perform|money|revenue|income|profit|lucrative)|(top|best|highest.?earning|most profitable|strongest) (cottage|property|house)|earns? (the )?most|most (money|revenue|income)/.test(q) && ranked.length) {
             const head = { type: 'figure', id: 'ins', label: `${propName(ranked[0].k)} earns most · ${gbp(ranked[0].v)}`, sub: `${cap(plabel)} · ${gbp(revenue)} across all cottages`, run: openMoney };
             return [head].concat(ranked.map((r) => ({ type: 'answer', id: 'ins-' + r.k, label: `${propName(r.k)} · ${gbp(r.v)}`, sub: `${Math.round((100 * r.v) / (revenue || 1))}% of revenue ${plabel}`, run: openMoney })));
         }
