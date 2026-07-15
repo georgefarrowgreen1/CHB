@@ -218,7 +218,17 @@ semantic at a glance), `guess` (near-miss only · tentative rose-gold, hollow/da
 (NOT a code to decode), and each pill's hover title (`CHB_MSTATE_TITLE`) explains itself. Bar
 pills carry a scannable leading state pip (`.abar-status::before`, the palette has its knot);
 all pills pop in (`chb-ms-in`) and honour `prefers-reduced-motion`. The dock button keeps a
-purple Darkstar tint. Plus walk-away
+purple Darkstar tint. A sixth state, **`loading` ("Downloading…")**, owns the idle slot while
+a model file streams down (darkstar.bin at boot, encoder.onnx on the first history query): a
+circular PROGRESS ring — conic-gradient driven by `--mload` (0..1), radial-mask ring cut —
+around the dock Search knot (`.ml-loading::before`; ::after is the hover label), the palette
+knot and each bar pip. Plumbing: `chbFetchProgress` (streamed fetch → ArrayBuffer + per-chunk
+fractions; plain-arrayBuffer fallback when reader/length hidden) feeds
+`chbModelLoadProgress(key, frac)` (per-source map; overlapping downloads show the
+LEAST-finished; null clears). Active answer states always beat the ring; `chbSetModelStatus('')`
+falls back to `loading` while a download runs, then `ready`. The ring is progress, not
+animation — no reduced-motion exemption needed. Gated by ui-test-modelring.js (real browser:
+ring on/track/hand-back/clear) + search-test §31 (stream math, min-of-loads, idle fallback). Plus walk-away
 (focusout) dead-end capture into the shared miss store, and `__cmdkConvCtx` carries across
 bars↔palette. **Cross-page context memory** (`__cmdkLastEntity`, `chbStampRecent`/
 `cmdkRecentEntity`, `CMDK_RECENT_MS` 6min): the record you last engaged with — a hub you opened

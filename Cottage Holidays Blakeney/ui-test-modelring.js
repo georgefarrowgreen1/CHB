@@ -1,0 +1,85 @@
+// Model-download progress ring, end to end in a real browser:
+//  1. reporting progress puts the dock Search knot into ml-loading with a
+//     conic-gradient ring sized by --mload, and flips the palette + bar pills
+//     to the "Downloading…" state carrying the same ring
+//  2. the ring tracks progress updates
+//  3. an ACTIVE answer state keeps the pill (the ring only owns the idle slot),
+//     and clearing the active state hands the pill back to the ring
+//  4. completion clears the ring everywhere and returns the pills to rest
+process.env.TZ = 'Europe/London';
+const { chromium } = require('playwright');
+const { spawn } = require('child_process');
+const PORT = 8281;
+let fails = 0;
+const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
+
+(async () => {
+  const server = spawn('php', ['-S', `127.0.0.1:${PORT}`, '-t', __dirname], { stdio: 'ignore' });
+  for (let i = 0; i < 60; i++) { try { if ((await fetch(`http://127.0.0.1:${PORT}/index.html`)).ok) break; } catch (e) {} await new Promise((r) => setTimeout(r, 250)); }
+  const browser = await chromium.launch(process.env.CHB_CHROMIUM ? { executablePath: process.env.CHB_CHROMIUM } : {});
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  page.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
+  await page.addInitScript(() => { if (navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {}); });
+  await page.route(/\.php/, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, bookings: [], events: [], logs: {}, results: [], threads: [], enquiries: [], reviews: [], photos: [], value: null, properties: [], seasons: {}, occupancy: {} }) }));
+  await page.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'networkidle' });
+  await page.evaluate(async () => { isAuthenticated = true; document.body.classList.add('owner-mode'); await window.loadAdminBundle(); });
+  // Pin the real model loads off so the assertions own the ring deterministically.
+  await page.evaluate(() => { DARKSTAR.st = DARKSTAR.st || { pinned: true }; CHB_ENC.failed = true; });
+  await page.evaluate(() => nav('view-backoffice')); await page.waitForTimeout(400);
+
+  // 1) Progress on → ring on the dock knot + pills in "Downloading…".
+  await page.evaluate(() => chbModelLoadProgress('enc', 0.4));
+  let st = await page.evaluate(() => {
+    const dock = document.querySelector('.admin-dock-btn[data-act="openCmdK"]');
+    const ring = dock ? getComputedStyle(dock, '::before') : null;
+    const bar = document.querySelector('#abar-today .abar-status');
+    const barRing = bar ? getComputedStyle(bar, '::before') : null;
+    return {
+      cls: dock && dock.classList.contains('ml-loading'),
+      mload: dock && dock.style.getPropertyValue('--mload'),
+      conic: !!(ring && /conic-gradient/.test(ring.backgroundImage)),
+      barState: bar && bar.dataset.mstate,
+      barTxt: bar ? (bar.querySelector('.abar-status-txt') || {}).textContent : '',
+      barConic: !!(barRing && /conic-gradient/.test(barRing.backgroundImage)),
+    };
+  });
+  ok(st.cls, 'dock Search knot enters ml-loading');
+  ok(st.mload === '0.4', `dock carries --mload 0.4 (${st.mload})`);
+  ok(st.conic, 'dock ring renders as a conic-gradient ::before');
+  ok(st.barState === 'loading', `bar pill switches to loading (${st.barState})`);
+  ok(/Downloading/.test(st.barTxt || ''), `bar pill reads "Downloading…" (${st.barTxt})`);
+  ok(st.barConic, 'bar pip renders the same conic ring');
+
+  // 2) The ring tracks progress.
+  await page.evaluate(() => chbModelLoadProgress('enc', 0.85));
+  const m2 = await page.evaluate(() => document.querySelector('.admin-dock-btn[data-act="openCmdK"]').style.getPropertyValue('--mload'));
+  ok(m2 === '0.85', `ring tracks progress updates (--mload ${m2})`);
+
+  // 3) An active answer state keeps the pill; clearing it hands back to the ring.
+  st = await page.evaluate(() => {
+    const bar = document.querySelector('#abar-today .abar-status');
+    chbSetModelStatus(bar, 'understood');
+    const during = bar.dataset.mstate;
+    chbModelLoadProgress('enc', 0.9);
+    const after = bar.dataset.mstate;
+    chbSetModelStatus(bar, '');
+    return { during, after, idle: bar.dataset.mstate };
+  });
+  ok(st.during === 'understood' && st.after === 'understood', 'an active answer state is never overwritten by the ring');
+  ok(st.idle === 'loading', `clearing the active state hands the idle slot back to the ring (${st.idle})`);
+
+  // 4) Completion clears everything back to rest.
+  st = await page.evaluate(() => {
+    chbModelLoadProgress('enc', null);
+    const dock = document.querySelector('.admin-dock-btn[data-act="openCmdK"]');
+    const bar = document.querySelector('#abar-today .abar-status');
+    return { cls: dock.classList.contains('ml-loading'), mload: dock.style.getPropertyValue('--mload'), barState: bar.dataset.mstate };
+  });
+  ok(!st.cls && !st.mload, 'completion removes the dock ring + --mload');
+  ok(st.barState !== 'loading', `completion returns the pill to rest (${st.barState || 'hidden'})`);
+
+  await browser.close();
+  server.kill();
+  console.log(fails ? `\n  ${fails} MODEL-RING CHECK(S) FAILED ❌` : '\n  MODEL-RING SUITE PASSED ✅');
+  process.exit(fails ? 1 : 0);
+})();
