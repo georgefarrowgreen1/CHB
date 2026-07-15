@@ -362,6 +362,30 @@ So "did any guests complain about noise" finds a review that says "the neighbour
 — **zero shared words**. Owner-only (Darkstar never loads for guests). Gated by search-test §20
 (seeds embedded docs, asserts pet→dog / noise recall by meaning + unrelated rejected).
 
+**Darkstar-C** (admin.js) — the CONTEXTUAL sentence encoder that upgrades the history
+meaning-index. Where the static Darkstar table is an order-blind mean of word vectors,
+this is a full transformer: **all-MiniLM-L6-v2** (Apache-2.0), quantised int8 ONNX —
+committed + deployed as **`encoder.onnx`** (~23MB, versioned by `?v=` in `CHB_ENC.url`)
+with its BERT WordPiece vocab in **`encoder-vocab.json`** (ids differ from Darkstar's
+trimmed table — the tokenizers can't be shared; `chbEncTokens`). Runtime is
+**onnxruntime-web** (MIT) SRI-pinned from jsdelivr — the CSP already allows it
+(script/connect: jsdelivr; WASM under 'unsafe-eval'; `ort.env.wasm.proxy=true` runs
+inference in a blob worker so index builds never jank the UI; numThreads=1 — no
+COOP/COEP on the host). Measured (multi-label history bench): right record first
+**9/14 vs 6/14**, MRR .760 vs .584; browser-verified ~40ms/embed, ~1-2s session load.
+LAZY + owner-only: `chbEncLoad()` kicks on the first history-shaped query
+(`cmdkSemanticHistory`); until it lands (old device, blocked CDN, CI) the static path
+serves as before; an index built pre-encoder REBUILDS once it arrives (`CHB_HIST.enc`
+stamp; embeddings reused across ~10-min refreshes by `type:id:len` key); any load
+failure stands down for the session. Floors differ per space: static 0.35, encoder
+`CHB_ENC.thresh` 0.30. **The NLU cascade + precision veto stay on the static table**
+(measured ceiling, zero-wrong gate — do NOT wire the encoder into them without
+re-running §20). `chbHistorySemantic` stays the SYNC static path (returns [] on an
+encoder index — different space/dims); the encoder query path goes through
+`chbHistoryRank` inside `cmdkSemanticHistory`. Model files are long-cached immutable
+via htaccess (versioned by ?v=). Gated by search-test §30 (tokenizer, encoder-built
+index + threshold, static-path decline, rebuild-on-upgrade, no-model fallback).
+
 **Breadth tier** (admin.js) — deterministic GENERAL answers, consulted by `cmdkBuildResults`
 right after the intent branches and before the NLU model. When it fires it is **prepended** —
 an exact sum beats a keyword-matched action row ("vat on £480" leads with the figure, the

@@ -1075,8 +1075,65 @@ if (typeof ctx.cmdkIntent === 'function') {
     vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);__cmdkCustomers=null;', ctx);
 }
 
-// ---- Summary ----
-console.log('\n== Summary ==');
-if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }
-console.log('  ALL CHECKS PASSED ✅\n');
-process.exit(0);
+// ---- 30. Darkstar-C (contextual encoder) plumbing. The encoder itself is
+// benched offline (it can't run in CI); what MUST hold here is the machinery:
+// the WordPiece tokenizer, the encoder-built index (tagged CHB_HIST.enc, its
+// own threshold), the sync static path declining an encoder index it can't
+// query, rebuild-on-upgrade, and full graceful fallback with no model at all.
+// This section is async (index builds await), so the summary lives at its end.
+(async () => {
+    if (typeof ctx.chbEncTokens === 'function') {
+        // Tokenizer against a stub vocab: greedy longest-match, ## continuation,
+        // punctuation split, [UNK] fallback, [CLS]/[SEP] framing.
+        const V = new Map(['[PAD]', '[UNK]', '[CLS]', '[SEP]', 'the', 'dog', 'play', '##ing', '##s', ','].map((t, i) => [t, i]));
+        const ids = (s) => ctx.chbEncTokens(s, V);
+        check('encoder tokenizer: "the dog playing" → CLS the dog play ##ing SEP', ids('the dog playing').join(',') === [2, 4, 5, 6, 7, 3].join(','), ids('the dog playing').join(','));
+        check('encoder tokenizer: plural continuation + punctuation split', ids('dogs, playing').join(',') === [2, 5, 8, 9, 6, 7, 3].join(','), ids('dogs, playing').join(','));
+        check('encoder tokenizer: un-tokenizable word → [UNK]', ids('zebra').join(',') === [2, 1, 3].join(','), ids('zebra').join(','));
+
+        // No model at all → the build declines quietly (keyword search unaffected).
+        vm.runInContext('DARKSTAR.st = null; CHB_ENC.st = null; CHB_ENC.failed = true; CHB_HIST.built = false; CHB_HIST.docs = []; CHB_HIST.enc = 0;', ctx);
+        await ctx.chbHistoryIndexBuild();
+        check('no encoder + no static model → index build declines, no crash', vm.runInContext('CHB_HIST.built', ctx) === false);
+
+        // Encoder-built index: stub the encoder (pure keyword-bucket vectors — the
+        // real model is benched offline; this gates the PLUMBING) + the corpus.
+        vm.runInContext(`
+            __encStubApi = apiPost;
+            apiPost = async (u, b) => (b && b.corpus) ? { corpus: [
+                { type: 'review', id: 1, text: 'we brought our labrador and he loved the garden', date: '2026-06-01' },
+                { type: 'review', id: 2, text: 'the neighbours were awfully loud at night', date: '2026-06-02' },
+                { type: 'message', id: 3, text: 'the radiators never warmed up', date: '2026-06-03' },
+            ] } : __encStubApi(u, b);
+            CHB_ENC.st = { embed: async (t) => {
+                t = String(t).toLowerCase();
+                if (/dog|pet|labrador|puppy/.test(t)) return [1, 0, 0, 0];
+                if (/noise|noisy|loud/.test(t)) return [0, 1, 0, 0];
+                if (/heating|radiator|boiler/.test(t)) return [0, 0, 1, 0];
+                return [0, 0, 0, 1];
+            } };
+            CHB_ENC.failed = false;
+        `, ctx);
+        await ctx.chbHistoryIndexBuild(true);
+        check('encoder-built index: built + stamped with the encoder version', vm.runInContext('CHB_HIST.built && CHB_HIST.enc === CHB_ENC.ver', ctx) === true, 'enc=' + vm.runInContext('CHB_HIST.enc', ctx));
+        check('sync static path DECLINES an encoder-built index (different space)', ctx.chbHistorySemantic('any pets', 3).length === 0);
+        const encRows = vm.runInContext('CHB_ENC.st.embed("did anyone bring a pet").then((qv) => chbHistoryRank(qv, 3))', ctx);
+        const pet = await encRows;
+        check('encoder query path: "pet" recalls the labrador review by meaning', !!(pet[0] && /labrador/i.test(pet[0].label)), pet[0] ? pet[0].label : 'none');
+        const off = await vm.runInContext('CHB_ENC.st.embed("quarterly vat figures").then((qv) => chbHistoryRank(qv, 3))', ctx);
+        check('encoder query path: unrelated query recalls nothing (threshold holds)', off.length === 0, off.map((r) => r.label).join(' | '));
+
+        // Rebuild-on-upgrade: an index built BEFORE the encoder landed rebuilds
+        // (and re-embeds) the first time a history query runs with it loaded.
+        vm.runInContext('CHB_HIST.enc = 0; CHB_HIST.at = Date.now();', ctx);
+        await ctx.cmdkSemanticHistory('what did guests say about the dog');
+        check('an index built pre-encoder rebuilds once the encoder lands', vm.runInContext('CHB_HIST.enc === CHB_ENC.ver', ctx) === true, 'enc=' + vm.runInContext('CHB_HIST.enc', ctx));
+        vm.runInContext('apiPost = __encStubApi; CHB_ENC.st = null; CHB_HIST.built = false; CHB_HIST.docs = []; CHB_HIST.enc = 0;', ctx);
+    } else fail('chbEncTokens missing from the bundle');
+
+    // ---- Summary ----
+    console.log('\n== Summary ==');
+    if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }
+    console.log('  ALL CHECKS PASSED ✅\n');
+    process.exit(0);
+})();

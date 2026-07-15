@@ -4358,14 +4358,119 @@ function chbHistoryClean(q) {
     const words = raw.toLowerCase().split(/[^a-z0-9']+/).filter((w) => w.length > 1 && !CHB_HISTORY_STOP.has(w));
     return words.length ? words.join(' ') : raw;
 }
+// ---- Darkstar-C: the CONTEXTUAL sentence encoder. The static Darkstar table
+// embeds WORDS (an order-blind mean of token vectors); this is a full
+// transformer sentence encoder — all-MiniLM-L6-v2 (Apache-2.0), quantised int8
+// ONNX (~23MB, committed + deployed as encoder.onnx like darkstar.bin; its
+// WordPiece vocab in encoder-vocab.json) — run fully on-device by
+// onnxruntime-web (MIT, SRI-pinned from jsdelivr; script/connect/worker CSP
+// already allow it; single-threaded WASM — the host has no COOP/COEP so
+// threads can't spin up). It upgrades the HISTORY meaning-index ONLY
+// (measured on the history-recall bench: right record first 9/14 vs the
+// static table's 6/14, MRR .760 vs .584). The NLU cascade + precision veto
+// stay on the static table — that stack is at its measured ceiling and gated
+// zero-wrong; do NOT wire the encoder into it without re-running §20.
+// Owner-only and LAZY: the fetch starts on the first history-shaped query;
+// until it lands (old device, blocked CDN, CI) the static path serves exactly
+// as before, and an index built pre-encoder rebuilds once it arrives (the
+// CHB_HIST.enc stamp). On any load failure it stands down for the session.
+const CHB_ENC = {
+    url: 'encoder.onnx?v=1',
+    vocabUrl: 'encoder-vocab.json?v=1',
+    ortUrl: 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js',
+    ortSri: 'sha384-RPL/K8tc0JVaNWsunkEmCzLeieefvFX2UCRLKLmLVChCI6P+CTKhzqF7VIeCc3Zp',
+    ver: 1, // stamps CHB_HIST.enc so pre-encoder indexes rebuild once it lands
+    thresh: 0.3, // MiniLM cosine floor — genuine matches ~0.35-0.55, unrelated mostly <0.25 (bench-swept)
+    st: null, loading: false, failed: false,
+};
+// BERT WordPiece against the encoder's own vocab (ids differ from Darkstar's
+// trimmed table, so the two tokenizers can't be shared). [CLS] … [SEP], capped
+// to the model's window.
+function chbEncTokens(text, vocab) {
+    const clean = String(text || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const words = [];
+    let cur = '';
+    for (const ch of clean) {
+        if (/\s/.test(ch)) { if (cur) { words.push(cur); cur = ''; } }
+        else if (/[^\w£]/.test(ch) || ch === '_') { if (cur) { words.push(cur); cur = ''; } words.push(ch); }
+        else cur += ch;
+    }
+    if (cur) words.push(cur);
+    const unk = vocab.get('[UNK]');
+    const ids = [vocab.get('[CLS]')];
+    for (const w of words) {
+        if (ids.length >= 126) break;
+        if (vocab.has(w)) { ids.push(vocab.get(w)); continue; }
+        const sub = [];
+        let start = 0, ok = true;
+        while (start < w.length) {
+            let end = w.length, id = null;
+            while (start < end) { const piece = (start > 0 ? '##' : '') + w.slice(start, end); if (vocab.has(piece)) { id = vocab.get(piece); break; } end--; }
+            if (id == null) { ok = false; break; }
+            sub.push(id);
+            start = end;
+        }
+        for (const id of (ok ? sub : [unk])) { if (ids.length < 126) ids.push(id); }
+    }
+    ids.push(vocab.get('[SEP]'));
+    return ids;
+}
+async function chbEncLoad() {
+    if (CHB_ENC.st || CHB_ENC.loading || CHB_ENC.failed) return;
+    CHB_ENC.loading = true;
+    try {
+        if (!window.ort) {
+            await new Promise((resolve, reject) => {
+                const s = document.createElement('script');
+                s.src = CHB_ENC.ortUrl;
+                s.integrity = CHB_ENC.ortSri;
+                s.crossOrigin = 'anonymous';
+                s.onload = resolve;
+                s.onerror = () => reject(new Error('ort load failed'));
+                document.head.appendChild(s);
+            });
+        }
+        ort.env.wasm.numThreads = 1; // no COOP/COEP on the host, so threads can't spin up
+        ort.env.wasm.proxy = true; // inference in a worker (worker-src blob: is CSP-allowed) — an index build never janks the UI
+        ort.env.wasm.wasmPaths = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/';
+        const [tokens, session] = await Promise.all([
+            fetch(CHB_ENC.vocabUrl).then((r) => { if (!r.ok) throw new Error('vocab http ' + r.status); return r.json(); }),
+            ort.InferenceSession.create(CHB_ENC.url, { executionProviders: ['wasm'] }),
+        ]);
+        const vocab = new Map();
+        tokens.forEach((t, i) => vocab.set(t, i));
+        // Mean-pool the last hidden state, L2-normalise — the standard
+        // sentence-transformers recipe (no padding, so a plain mean is exact).
+        const embed = async (text) => {
+            const ids = chbEncTokens(text, vocab);
+            const n = ids.length;
+            const T = (a) => new ort.Tensor('int64', BigInt64Array.from(a.map(BigInt)), [1, n]);
+            const out = await session.run({ input_ids: T(ids), attention_mask: T(ids.map(() => 1)), token_type_ids: T(ids.map(() => 0)) });
+            const h = out.last_hidden_state || out[session.outputNames[0]];
+            const seq = h.dims[1], dim = h.dims[2], data = h.data;
+            const v = new Float32Array(dim);
+            for (let t = 0; t < seq; t++) for (let d = 0; d < dim; d++) v[d] += data[t * dim + d];
+            let norm = 0;
+            for (let d = 0; d < dim; d++) { v[d] /= seq; norm += v[d] * v[d]; }
+            norm = Math.sqrt(norm) || 1;
+            for (let d = 0; d < dim; d++) v[d] /= norm;
+            return v;
+        };
+        CHB_ENC.st = { embed, vocab };
+    } catch (e) {
+        CHB_ENC.failed = true; // stand down — the static path keeps serving
+    } finally { CHB_ENC.loading = false; }
+}
 // ---- TRUE semantic recall over history. The on-device Darkstar model already
 // embeds text (darkstarVec = L2-normalised mean of token vectors); we fetch a
 // bounded dump of the history TEXT (search.php?corpus), embed every row ONCE,
 // and cosine-search that index — so a question finds records by MEANING even
 // with zero shared words ("guests unhappy about noise" → a review that says "the
 // neighbours were rather loud"). Owner-only, lazy, in-memory, ~one embed per row;
-// merges into the palette alongside the keyword server search, tagged `_sem`. ----
-const CHB_HIST = { built: false, building: false, docs: [], at: 0, p: null };
+// merges into the palette alongside the keyword server search, tagged `_sem`.
+// When Darkstar-C has landed the index is built (and queried) with the
+// contextual encoder instead — CHB_HIST.enc records which one built it. ----
+const CHB_HIST = { built: false, building: false, docs: [], at: 0, p: null, enc: 0 };
 // Embedding stop-words: pooling token vectors over filler dilutes the meaning
 // (two stopword-heavy sentences look similar). Embed CONTENT words only, so
 // "pet" lands near "dog / labrador" and "noisy" near "loud neighbours".
@@ -4377,14 +4482,30 @@ function chbEmbedText(text) {
 async function chbHistoryIndexBuild(force) {
     if (CHB_HIST.built && !force && Date.now() - CHB_HIST.at < 600000) return; // ~10-min freshness
     if (CHB_HIST.building) return CHB_HIST.p;
-    if (!DARKSTAR.st) { try { await darkstarLoad(); } catch (e) {} }
-    if (!DARKSTAR.st) return; // no model → semantic recall stays off (keyword still runs)
+    if (!DARKSTAR.st && !CHB_ENC.st) { try { await darkstarLoad(); } catch (e) {} }
+    if (!DARKSTAR.st && !CHB_ENC.st) return; // no model → semantic recall stays off (keyword still runs)
     CHB_HIST.building = true;
     CHB_HIST.p = (async () => {
         try {
             const r = await apiPost('search.php', { corpus: 1 });
             const rows = (r && r.corpus) || [];
-            CHB_HIST.docs = rows.map((x) => ({ type: x.type, id: x.id, text: x.text, date: x.date, extra: x, vec: chbEmbedText(x.text) }));
+            const enc = CHB_ENC.st; // pin: don't mix encoders mid-build
+            if (enc) {
+                // Reuse embeddings for unchanged rows across the ~10-min refreshes —
+                // only NEW history embeds (~40ms each), not the whole corpus.
+                const prev = new Map();
+                if (CHB_HIST.enc === CHB_ENC.ver) CHB_HIST.docs.forEach((d) => { if (d.vec) prev.set(d.type + ':' + d.id + ':' + (d.text || '').length, d.vec); });
+                const docs = [];
+                for (const x of rows) {
+                    const k = x.type + ':' + x.id + ':' + (x.text || '').length;
+                    docs.push({ type: x.type, id: x.id, text: x.text, date: x.date, extra: x, vec: prev.get(k) || await enc.embed(x.text) });
+                }
+                CHB_HIST.docs = docs;
+                CHB_HIST.enc = CHB_ENC.ver;
+            } else {
+                CHB_HIST.docs = rows.map((x) => ({ type: x.type, id: x.id, text: x.text, date: x.date, extra: x, vec: chbEmbedText(x.text) }));
+                CHB_HIST.enc = 0;
+            }
             CHB_HIST.built = true;
             CHB_HIST.at = Date.now();
         } catch (e) {} finally { CHB_HIST.building = false; }
@@ -4406,29 +4527,43 @@ function chbHistoryRow(d) {
     if (it) it._sem = true; // recalled by MEANING → the model-status pill reads "By meaning"
     return it;
 }
-// Nearest history records to a query, by cosine over the embedded index.
-function chbHistorySemantic(query, k) {
-    if (!CHB_HIST.built || !DARKSTAR.st) return [];
-    const qv = chbEmbedText(query || '');
+// Shared ranker: cosine over the embedded index with a floor matched to
+// whichever encoder BUILT it (the two live on different scales).
+function chbHistoryRank(qv, k) {
     if (!qv || !qv.length) return [];
+    const floor = CHB_HIST.enc ? CHB_ENC.thresh : 0.35; // static: genuine ~0.4-0.65, unrelated ~0
     return CHB_HIST.docs
         .map((d) => ({ d, s: darkstarCos(qv, d.vec) }))
-        .filter((x) => x.s >= 0.35) // meaning-close only — genuine matches ~0.4-0.65, unrelated ~0
+        .filter((x) => x.s >= floor)
         .sort((a, b) => b.s - a.s)
         .slice(0, k || 5)
         .map((x) => chbHistoryRow(x.d))
         .filter(Boolean);
+}
+// Nearest history records to a query — the SYNC static-embedding path (also the
+// CI gate). An encoder-built index needs an encoder-embedded query (different
+// space + dims), which is async — cmdkSemanticHistory handles that branch.
+function chbHistorySemantic(query, k) {
+    if (!CHB_HIST.built || !DARKSTAR.st || CHB_HIST.enc) return [];
+    return chbHistoryRank(chbEmbedText(query || ''), k);
 }
 // Fire the semantic pass for a history-shaped query: build the index if needed,
 // then merge the nearest records into the live palette (stamp-guarded like the
 // server search, so a stale build doesn't clobber a newer query).
 let __cmdkSemStamp = 0;
 async function cmdkSemanticHistory(ql) {
-    if (!DARKSTAR.st && !CHB_HIST.built) { chbHistoryIndexBuild(); return; } // model not up yet
+    try { chbEncLoad(); } catch (e) {} // kick the contextual encoder (no-op once resolved/failed)
+    if (!DARKSTAR.st && !CHB_ENC.st && !CHB_HIST.built) { chbHistoryIndexBuild(); return; } // model not up yet
     const stamp = ++__cmdkSemStamp;
-    await chbHistoryIndexBuild();
+    // The encoder landed after a static build → rebuild once so meaning-recall
+    // runs at contextual quality from here on.
+    if (CHB_HIST.built && !CHB_HIST.enc && CHB_ENC.st) await chbHistoryIndexBuild(true);
+    else await chbHistoryIndexBuild();
     if (stamp !== __cmdkSemStamp) return; // superseded
-    const rows = chbHistorySemantic(chbHistoryClean(ql), 5);
+    const rows = (CHB_HIST.enc && CHB_ENC.st)
+        ? chbHistoryRank(await CHB_ENC.st.embed(chbHistoryClean(ql)), 5)
+        : chbHistorySemantic(chbHistoryClean(ql), 5);
+    if (stamp !== __cmdkSemStamp) return; // the query embed awaited — re-check
     if (!rows.length) return;
     const have = new Set(__cmdkResults.filter((x) => x && x.id != null).map((x) => x.type + ':' + x.id));
     const fresh = rows.filter((r) => !(r.id != null && have.has(r.type + ':' + r.id)));
