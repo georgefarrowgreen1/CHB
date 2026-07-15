@@ -103,6 +103,35 @@ exports.HELD = [
   ['state of the business right now', "how's business"],
   ['hows the venture holding up', "how's business"],
   ['how healthy is the business', "how's business"],
+  // ---- Batch 2: a fresh round of owner-realistic prompts, measured through the
+  // full cascade (0 wrong, 1 known abstain) — grows the exam so future changes must
+  // keep answering these too. "who's due to arrive soon" is the tolerated abstain.
+  ['has anybody not settled their bill yet', ['who owes me money', 'balances to chase']],
+  ["who still hasn't paid up", 'who owes me money'],
+  ['who is checking out of their cottage today', 'leaving today'],
+  ['any guests leaving this morning', 'leaving today'],
+  ['who is arriving at the cottages today', 'arriving today'],
+  ['any new guests checking in today', 'arriving today'],
+  ['what bookings have i got coming', 'upcoming bookings'],
+  ["who's due to arrive soon", 'upcoming bookings'],
+  ['whose damage deposit do i owe back', 'deposits to return'],
+  ['deposits i need to give back', 'deposits to return'],
+  ['who should i remind about their balance', 'balances to chase'],
+  ['payments i need to nudge', 'balances to chase'],
+  ['how many bookings have i taken this year', 'how many bookings this year'],
+  ['count of this years stays', 'how many bookings this year'],
+  ['what money has come in this year', 'revenue this year'],
+  ["what's my income for the year", 'revenue this year'],
+  ['how booked up are the cottages', 'occupancy this year'],
+  ["what's our occupancy rate", 'occupancy this year'],
+  ['what is my busiest month', 'busiest month'],
+  ['when do i get the most stays', 'busiest month'],
+  ['which of my cottages earns the most', 'which cottage earns most'],
+  ['most profitable of my cottages', 'which cottage earns most'],
+  ["what's the average price per night", 'average nightly rate'],
+  ['typical nightly charge', 'average nightly rate'],
+  ['how is the business doing this year', "how's business"],
+  ['give me an overview of how were doing', "how's business"],
 ];
 exports.NEG = [
   'sarah pemberton', 'emma richardson', 'oliver hartley', 'jollyboat photos',
@@ -126,4 +155,8 @@ exports.NEG = [
   // examples added to CHB_NLU.noneExamples. Fresh wording (NOT the training
   // phrases) so this checks the reject class GENERALISES, not memorises.
   'cottage with a hot tub', 'is the cottage dog friendly', 'can i pay by card',
+  // Cottage CAPACITY questions — a feature question ("which cottage sleeps four"),
+  // not "which cottage earns most"; rejected via the capacity none-example. Fresh
+  // wording so this checks the reject class GENERALISES.
+  'which cottage sleeps four', 'how many people can the cottage sleep',
 ];

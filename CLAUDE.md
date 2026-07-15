@@ -119,11 +119,14 @@ false-matching *which cottage earns most* on the shared word "cottage". Monotoni
 ever turns an accept into an ABSTAIN — never invents an intent), so the zero-wrong guarantee
 can only tighten; no model loaded → no veto (unchanged). Margin swept to hold held-out at
 86/86 + every committed negative while lifting hard-negative rejection. The model's accuracy is
-gated on a committed held-out set: **`nlu-testset.js`** (dev/CI, deploy-excluded — 86 unseen
-paraphrases + 38 negatives incl. in-domain distractors: veto + none-class cottage-feature /
-directions / card-payment cases, fresh-worded to check the reject class GENERALISES) run
-through the full cascade in search-test §20: recall ≥ 82/86, ZERO wrong intents, all negatives
-rejected. NB the corpus is precision-tuned: `noneExamples` carry TARGETED in-domain distractors
+gated on a committed held-out set: **`nlu-testset.js`** (dev/CI, deploy-excluded — 112 unseen
+paraphrases + 40 negatives incl. in-domain distractors: veto + none-class cottage-feature /
+capacity / directions / card-payment cases, fresh-worded to check the reject class GENERALISES)
+run through the full cascade in search-test §20: recall ≥ 95% (scales with the set), ZERO wrong
+intents, all negatives rejected. The model is at its PRECISION/RECALL CEILING — measured 3× this
+session that ADDING positive corpus examples (recall) OR a Darkstar arbiter blurs the boundaries
+and breaks the zero-wrong guarantee, so recall is grown only via the per-owner teach loop
+(`chbNluLearn`) and precision only via TARGETED, measured none-examples. NB the corpus is precision-tuned: `noneExamples` carry TARGETED in-domain distractors
 (re-measure — several collide with real paraphrases and cost held-out; the excluded ones are
 noted inline), and adding POSITIVE examples blurs the centroids (measured: +12 introduced 5
 held-out wrong intents, reverted). Retune with
