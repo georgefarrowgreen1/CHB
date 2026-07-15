@@ -940,10 +940,9 @@ function cmdkAll(q) {
 //  It runs as a FALLBACK understanding layer: only when the literal intent
 //  parser (cmdkIntent) finds nothing does the model map the owner's phrasing to
 //  the canonical question it was trained on ("has anyone not paid me yet" →
-//  "who owes me money") and re-ask the engine — which then SPEAKS BACK: the
-//  computed answer renders as the reply, with an "Understood as…" note, and a
-//  voice-initiated query gets the answer read aloud (chbSpeak below). Training
-//  happens at load in ~a millisecond and is fully deterministic → CI-testable.
+//  "who owes me money") and re-ask the engine — the computed answer renders as
+//  the reply, with an "Understood as…" note. Training happens at load in ~a
+//  millisecond and is fully deterministic → CI-testable.
 //  Growing the model = adding lines to the corpus (or, later, mining the
 //  owner's own accepted queries).
 // ===================================================================
@@ -1493,32 +1492,10 @@ function chbNluClassify(q, loose) {
     } catch (e) {}
     return null;
 }
-// ---- Speaking back: the browser's built-in speech synthesis (on-device). A
-// query that arrived BY VOICE gets its answer read aloud — ask out loud, hear
-// the answer. __cmdkVoiceIn is set by the mic's final transcript and consumed
-// once by cmdkSearchCore.
-let __cmdkVoiceIn = false;
 // Conversational memory: the specific booking the palette's LAST answer put on
 // screen, so a pronoun follow-up ("when do they leave", "email them") resolves
 // without a hub being open. Lives for the palette session; cleared on close.
 let __cmdkConvCtx = null; // { type: 'booking', id }
-function chbSpeak(text, onend) {
-    try {
-        if (!('speechSynthesis' in window) || !text) return;
-        window.speechSynthesis.cancel();
-        const u = new SpeechSynthesisUtterance(String(text));
-        u.lang = 'en-GB';
-        u.rate = 1.03;
-        if (typeof onend === 'function') {
-            // Fires when the reply finishes NATURALLY. A cancel() (new query,
-            // palette closed) also ends the utterance — the guard below keeps a
-            // superseded reply from triggering the follow-up hook.
-            u.onend = () => { try { if (!window.speechSynthesis.speaking && !window.speechSynthesis.pending) onend(); } catch (e) {} };
-        }
-        window.speechSynthesis.speak(u);
-    } catch (e) {}
-}
-CHB_SEARCH.speak = chbSpeak; // part of the public search-core API
 
 // ===================================================================
 //  CHB_RANK — semantic retrieval over the WHOLE searchable universe, powered by
@@ -1763,25 +1740,11 @@ function chbNluSuggest(q) {
         .map((x) => x.canonical);
 }
 // ============================================================
-//  chbNlg — the assistant's natural-language voice. Data + intent → fluent
-//  English. Two jobs: (1) realize a display answer into a SPOKEN sentence
-//  (drop the "·" separators, say numeric dates in words, tidy dashes) so the
-//  voice reply sounds human, not like a form; (2) generate conversational
-//  replies to social input (greetings, thanks, "what can you do", "who are
-//  you") with deterministic variation so it never sounds canned.
+//  chbNlg — the assistant's natural-language VOICE (as text): generates the
+//  conversational replies — aware greetings, thanks, capability, identity, and
+//  the dead-end fallback — with deterministic variation so it never sounds
+//  canned. Shown on screen (the listen/speak feature was removed).
 // ============================================================
-const NLG_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
-function nlgOrdinal(n) {
-    const s = ['th', 'st', 'nd', 'rd'], v = n % 100;
-    return n + (s[(v - 20) % 10] || s[v] || s[0]);
-}
-// A DD/MM/YYYY date → spoken words: "the 24th of July" (+ year unless current).
-function nlgDateWords(dd, mm, yyyy) {
-    const d = parseInt(dd, 10), mi = parseInt(mm, 10) - 1;
-    if (mi < 0 || mi > 11 || !d) return `${dd}/${mm}/${yyyy}`;
-    const nowY = (typeof todayDashed === 'function' ? todayDashed() : '0000').slice(0, 4);
-    return `the ${nlgOrdinal(d)} of ${NLG_MONTHS[mi]}${yyyy === nowY ? '' : ' ' + yyyy}`;
-}
 // Deterministic pick — same query always picks the same phrasing (so a repeated
 // question is stable), but different queries vary. djb2 over the seed.
 function nlgPick(seed, arr) {
@@ -1791,19 +1754,6 @@ function nlgPick(seed, arr) {
     for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
     return arr[(h >>> 0) % arr.length];
 }
-// Realize any answer text into a fluent SPOKEN sentence.
-function chbNlgSpeak(text) {
-    let s = String(text || '');
-    s = s.replace(/(\d{1,2})\/(\d{2})\/(\d{4})/g, (m, d, mo, y) => nlgDateWords(d, mo, y));
-    s = s.replace(/\s*[–→]\s*/g, ' to ');       // ranges (en-dash / arrow) read as "X to Y"
-    s = s.replace(/\s*[·—▸▪|]\s*/g, ', ');       // separators → natural clause breaks
-    s = s.replace(/,\s*,/g, ',').replace(/\.\s*,/g, '.').replace(/\s{2,}/g, ' ');
-    s = s.replace(/,\s*$/, '').trim();
-    return s;
-}
-// Social / conversational input → a natural spoken+shown reply, or null. Kept
-// precise (whole-query greetings/thanks/capability/identity) so it never
-// hijacks a real search.
 // A live one-line status for a greeting — "2 arriving and 1 leaving today,
 // £290 still to collect" — so a hello gets an AWARE reply, not a canned one.
 // Empty on a quiet day or before the data loads.
@@ -1868,7 +1818,6 @@ function chbNlgFallback(q) {
     return {
         label: nlgPick(s, ["I can't answer that one directly.", "That's not something I can pull up.", "I'm not sure about that one."]),
         sub: "I can tell you who's staying, who owes you money, arrivals and departures, deposits to return, or how the year's going.",
-        spoken: "I can't answer that one directly. Try asking who's staying, who owes you money, or how the year's going.",
     };
 }
 // ---- Smart queries: answer operational questions ("who owes money", "leaving
@@ -1882,7 +1831,7 @@ function cmdkIntent(q) {
     // not a search. Precise matcher, so real questions never land here.
     try {
         const soc = chbNlgSocial(q);
-        if (soc) return [{ type: 'answer', id: 'nlg-' + soc.kind, label: soc.text, sub: soc.kind === 'capability' || soc.kind === 'identity' ? 'Your on-device assistant' : '', _nlgSpoken: soc.text, run: () => { const el = document.getElementById('cmdk-input'); if (el) { el.value = ''; el.focus(); } cmdkSearch(''); } }];
+        if (soc) return [{ type: 'answer', id: 'nlg-' + soc.kind, label: soc.text, sub: soc.kind === 'capability' || soc.kind === 'identity' ? 'Your on-device assistant' : '', run: () => { const el = document.getElementById('cmdk-input'); if (el) { el.value = ''; el.focus(); } cmdkSearch(''); } }];
     } catch (e) {}
     // -1) Natural-language commands — a fully-specified task ("block Jollyboat
     // next weekend", "add booking for Smith 12–15 Aug") wins over everything else
@@ -3369,7 +3318,7 @@ function cmdkBuildResults(ql) {
             const fb = chbNlgFallback(ql);
             if (fb) {
                 results = [{
-                    type: 'answer', id: 'nlg-fallback', label: fb.label, sub: fb.sub, _nlgSpoken: fb.spoken,
+                    type: 'answer', id: 'nlg-fallback', label: fb.label, sub: fb.sub,
                     chips: ask.map((c) => ({ label: c, q: c })),
                     run: () => { const el = document.getElementById('cmdk-input'); if (el) el.focus(); },
                 }];
@@ -3536,28 +3485,6 @@ function cmdkSearchCore(q, allowCorrect) {
     const firstReal = __cmdkResults.findIndex((it) => it && !cmdkIsNoteRow(it));
     __cmdkSel = firstReal >= 0 ? firstReal : 0; // the Top Hit, not the correction/widen note
     cmdkRender();
-    // Asked out loud → answer out loud: read the first real computed answer back.
-    // CONVERSATION MODE: when the spoken reply finishes, the mic reopens for the
-    // follow-up ("who's at jollyboat" → 🔊 → "when do they leave"). Staying
-    // silent simply times the recognition out, so quiet ends the conversation.
-    if (__cmdkVoiceIn) {
-        __cmdkVoiceIn = false;
-        const a = __cmdkResults.find((it) => it && it.type === 'answer' && !cmdkIsNoteRow(it));
-        if (a) {
-            // Composed summary: a COUNT answer ("3 guests owe £1,600") also reads
-            // the top of the list, so the spoken reply is usable hands-free.
-            // A social reply (chbNlgSocial) carries its own spoken text.
-            let text = a._nlgSpoken || a.label + (a.sub ? '. ' + a.sub : '');
-            if (!a._nlgSpoken && /^\d+ /.test(a.label)) {
-                const first = __cmdkResults.find((it) => it && it !== a && (it.type === 'booking' || it.type === 'enquiry' || it.type === 'external') && it.label);
-                if (first) text += `. Top of the list: ${first.label}${first.sub ? ', ' + first.sub : ''}`;
-            }
-            chbSpeak(chbNlgSpeak(text), () => {
-                const o = document.getElementById('cmdk');
-                if (o && o.style.display !== 'none' && !__cmdkRec) cmdkVoice();
-            });
-        }
-    }
     // Deep index search runs server-side (emails, messages, invoices, guests,
     // reviews, activity — everything not held in the browser) and merges in when
     // it lands. Debounced so we don't hit the server on every keystroke, and
@@ -3978,7 +3905,6 @@ function chbAssistBar(hostId, opts) {
         `<span class="abar-ic" aria-hidden="true">${CMDK_SEARCH_IC}</span>` +
         `<input id="${hostId}-input" class="abar-input" type="search" enterkeyhint="search" placeholder="${escapeHtml(opts.placeholder || 'Search or ask anything…')}" autocomplete="off" autocapitalize="off" spellcheck="false" role="searchbox" aria-label="${escapeHtml(opts.placeholder || 'Search or ask')}" ${chbInput('abarInput', hostId, CHB_VALUE)}>` +
         `<span class="abar-count" id="${hostId}-count" aria-live="polite"></span>` +
-        `<button type="button" class="abar-mic" id="${hostId}-mic" style="display:${typeof cmdkVoiceSupported === 'function' && cmdkVoiceSupported() ? 'flex' : 'none'};" ${chbAttrs('abarVoice', hostId)} aria-label="Search by voice" title="Voice search"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v4"/></svg></button>` +
         `<button type="button" class="abar-clear" id="${hostId}-clear" ${chbAttrs('abarClear', hostId)} aria-label="Clear search">✕</button>` +
         `</div>` +
         `<div class="abar-panel" id="${hostId}-panel"></div>`;
@@ -4108,7 +4034,6 @@ function abarRoute(id, q) {
         abarFilterOff(st);
         st.rows = [];
         st.miss = null; // deliberately cleared — not a dead end
-        st.voiceIn = false;
         if (host) { host.classList.remove('has-answer'); host.classList.remove('ml-active'); }
         if (count) count.textContent = '';
         abarAmbient(id);
@@ -4125,7 +4050,6 @@ function abarRoute(id, q) {
         if (panel) panel.innerHTML = '';
         if (host) host.classList.remove('ml-active');
         st.miss = { q: raw, answered: true }; // the board answered it
-        if (st.voiceIn) { st.voiceIn = false; try { chbSpeak(shown + (shown === 1 ? ' match' : ' matches') + ' on this page'); } catch (e) {} }
         return;
     }
     let built = null;
@@ -4154,8 +4078,6 @@ function abarRoute(id, q) {
             panel.innerHTML =
                 (built.nlu ? `<div class="abar-note">Understood as “${escapeHtml(built.nlu)}”</div>` : '') +
                 st.rows.map((r, i) => abarRowHtml(id, r, i)).join('');
-        // Asked by voice → answer by voice (consumed once per final transcript).
-        if (st.voiceIn) { st.voiceIn = false; try { chbSpeak(chbNlgSpeak(st.rows[0]._nlgSpoken || st.rows[0].label + (st.rows[0].sub ? '. ' + st.rows[0].sub : ''))); } catch (e) {} }
         return;
     }
     // Nothing on the board and no answer — dead end here: offer the deep
@@ -4163,7 +4085,6 @@ function abarRoute(id, q) {
     // remember the query so walking away files it for the teach flow (the
     // palette's "search dead ends" review covers bar misses too).
     st.miss = raw.length >= 4 ? { q: raw, answered: false } : null;
-    st.voiceIn = false;
     if (panel) {
         if (raw.length >= 3) {
             st.ask = (built && built.ask) || [];
@@ -4177,8 +4098,8 @@ function abarRoute(id, q) {
 }
 // Walking away from the bar with an unanswered query showing files it as a
 // search miss (the bar's equivalent of closing the palette on a dead end).
-// Focus moving WITHIN the bar — tapping the deep CTA, an ask chip, the mic —
-// is not walking away.
+// Focus moving WITHIN the bar — tapping the deep CTA or an ask chip — is not
+// walking away.
 function abarBlur(id, e) {
     const st = __abars[id];
     if (!st) return;
@@ -4974,60 +4895,6 @@ function cmdkGreeting() {
     const h = new Date().getHours();
     return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : h < 22 ? 'Good evening' : 'Late tonight';
 }
-// Voice input — dictate a query with the browser's own speech recognition where
-// it exists (desktop / most Android). Progressive enhancement: the mic button is
-// only revealed when supported; on iPhone the keyboard's dictation mic already
-// fills the field, so nothing is lost where this API is absent.
-let __cmdkRec = null;
-function cmdkVoiceSupported() {
-    return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
-}
-function cmdkVoiceInit() {
-    const mic = document.getElementById('cmdk-mic');
-    if (mic && cmdkVoiceSupported()) mic.style.display = 'flex';
-}
-// One recognition session at a time, shared by the palette and every Assist
-// Bar — this is the un-hardwired core; each surface passes its own mic, input
-// and transcript handler.
-function chbVoiceStart(mic, el, onText) {
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SR) return;
-    if (__cmdkRec) { try { __cmdkRec.stop(); } catch (e) {} return; } // tap again to stop
-    let rec;
-    try { rec = new SR(); } catch (e) { return; }
-    rec.lang = 'en-GB';
-    rec.interimResults = true;
-    rec.maxAlternatives = 1;
-    __cmdkRec = rec;
-    if (mic) mic.classList.add('is-listening');
-    rec.onresult = (e) => {
-        let t = '';
-        for (let i = 0; i < e.results.length; i++) t += e.results[i][0].transcript;
-        t = t.trim();
-        if (el) el.value = t;
-        // Final transcript → this query came in BY VOICE, so the answer is
-        // spoken back (consumed once by the surface's search). Interim chunks
-        // don't count — we only reply to what was actually said.
-        onText(t, !!(e.results.length && e.results[e.results.length - 1].isFinal));
-    };
-    const done = () => { __cmdkRec = null; if (mic) mic.classList.remove('is-listening'); if (el) el.focus(); };
-    rec.onend = done;
-    rec.onerror = done;
-    try { rec.start(); } catch (e) { done(); }
-}
-function cmdkVoice() {
-    chbVoiceStart(document.getElementById('cmdk-mic'), document.getElementById('cmdk-input'), (t, fin) => {
-        __cmdkVoiceIn = fin;
-        cmdkSearch(t);
-    });
-}
-function abarVoice(id) {
-    chbVoiceStart(document.getElementById(id + '-mic'), document.getElementById(id + '-input'), (t, fin) => {
-        const st = __abars[id];
-        if (st) st.voiceIn = fin; // final → the bar speaks its answer back
-        abarRoute(id, t);
-    });
-}
 // Run a quick-action (chip) on a result row without dismissing via the row.
 function cmdkAct(i, k) {
     const it = __cmdkResults[i];
@@ -5228,7 +5095,6 @@ function openCmdK() {
     inp.value = '';
     __cmdkScope = cmdkDefaultScope(); // open pre-scoped to the workspace you're in
     __cmdkEntity = cmdkCurrentEntity(); // and aware of the record you're viewing
-    cmdkVoiceInit(); // reveal the mic where speech recognition is supported
     try { chbAssistSyncPull(); } catch (e) {} // merge learning taught on other devices (once per session)
     cmdkSearch('');
     // focus after paint so the mobile keyboard opens reliably
@@ -5243,10 +5109,7 @@ function closeCmdK() {
     __cmdkServerStamp++; // supersede any in-flight federated search
     __cmdkDeep = null;
     __cmdkDeepStamp++;
-    __cmdkVoiceIn = false;
     __cmdkConvCtx = null; // the conversation ends with the palette
-    try { if (__cmdkRec) __cmdkRec.stop(); } catch (e) {} // stop a listening mic
-    try { if ('speechSynthesis' in window) window.speechSynthesis.cancel(); } catch (e) {} // stop mid-reply
     cmdkSetLoading(false);
     if (o) { o.style.display = 'none'; o.classList.remove('ml-active'); }
 }

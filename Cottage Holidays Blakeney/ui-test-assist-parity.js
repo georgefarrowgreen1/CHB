@@ -5,10 +5,7 @@
 //  2. dead-end capture: walking away (focusout leaving the host) with an
 //     unanswered query files a search miss; acting/deep-pivot/clearing don't;
 //     bar misses surface in the palette's "search dead ends" teach flow
-//  3. voice: per-bar mic via the shared chbVoiceStart core (fake
-//     SpeechRecognition) — dictation routes, a FINAL transcript's answer is
-//     SPOKEN (fake speechSynthesis records it), typed queries stay silent
-//  4. conversation carry palette → bar
+//  3. conversation carry palette → bar
 process.env.TZ = 'Europe/London';
 const { chromium } = require('playwright');
 const { spawn } = require('child_process');
@@ -24,18 +21,6 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   page.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
   await page.addInitScript(() => {
     if (navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {});
-    // Controllable speech APIs, present BEFORE any app script runs.
-    window.__fakeRecs = [];
-    window.SpeechRecognition = class {
-      constructor() { window.__fakeRecs.push(this); }
-      start() { this.started = true; }
-      stop() { if (this.onend) this.onend(); }
-      fire(text, isFinal) { const r = [{ transcript: text }]; r.isFinal = !!isFinal; if (this.onresult) this.onresult({ results: [r] }); }
-      end() { if (this.onend) this.onend(); }
-    };
-    window.__spoken = [];
-    window.SpeechSynthesisUtterance = function (t) { this.text = t; this.lang = ''; this.rate = 1; };
-    Object.defineProperty(window, 'speechSynthesis', { value: { cancel() {}, speak(u) { window.__spoken.push(u.text); if (u.onend) setTimeout(u.onend, 5); }, speaking: false, pending: false }, configurable: true });
   });
 
   const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.getMonth(), t.getDate() + n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
@@ -103,24 +88,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(/fizzlewick doodah/.test(teach), 'bar miss appears in the palette teach flow');
   await page.evaluate(() => closeCmdK());
 
-  // 4) Voice: mic revealed, dictation routes, final answers are SPOKEN.
-  const micVis = await page.evaluate(() => getComputedStyle(document.getElementById('abar-today-mic')).display);
-  ok(micVis === 'flex', `bar mic revealed when speech recognition exists (${micVis})`);
-  await page.evaluate(() => { window.__spoken.length = 0; abarVoice('abar-today'); });
-  const listening = await page.evaluate(() => ({ started: window.__fakeRecs.length > 0 && window.__fakeRecs[window.__fakeRecs.length - 1].started, cls: document.getElementById('abar-today-mic').classList.contains('is-listening') }));
-  ok(listening.started && listening.cls, 'mic tap starts recognition + listening state');
-  await page.evaluate(() => { const r = window.__fakeRecs[window.__fakeRecs.length - 1]; r.fire('who owes me money', true); r.end(); });
-  await page.waitForTimeout(300);
-  const voiced = await page.evaluate(() => ({ v: document.getElementById('abar-today-input').value, rows: document.querySelectorAll('#abar-today-panel .abar-row').length, spoken: window.__spoken.slice() }));
-  ok(voiced.v === 'who owes me money' && voiced.rows > 0, `dictation fills the bar + answers inline (${voiced.v})`);
-  ok(voiced.spoken.length > 0 && /owes/i.test(voiced.spoken[0]), `the answer is SPOKEN back (${String(voiced.spoken[0] || '').slice(0, 40)})`);
-  await page.evaluate(() => { window.__spoken.length = 0; });
-  await type('who owes me money');
-  const silent = await page.evaluate(() => window.__spoken.length);
-  ok(silent === 0, 'typed query is not spoken');
-  await page.evaluate(() => abarClear('abar-today'));
-
-  // 5) Conversation carry palette → bar: ask there, follow up here.
+  // 4) Conversation carry palette → bar: ask there, follow up here.
   await page.evaluate(() => { openCmdK(); const i = document.getElementById('cmdk-input'); i.value = 'who owes me money'; cmdkSearchCore('who owes me money', true); });
   await page.waitForTimeout(250);
   const carried = await page.evaluate(() => { document.getElementById('cmdk').style.display = 'none'; return __cmdkConvCtx ? __cmdkConvCtx.id : null; });

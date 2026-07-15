@@ -1,6 +1,6 @@
 // ASSIST BAR on the Inbox, end to end against mocked endpoints:
-//  1. injection above the folder switch (phone); tops the LIST column in the
-//     three-pane layout at 1280px (not the folder rail)
+//  1. injection above the folder switch (phone); full-width above the split in
+//     the three-pane layout at 1280px (in #inbox-head, above the header line)
 //  2. folder-aware filtering: one query dims [data-search] rows across ALL
 //     folders (chat threads included), per-folder .ifold-match pills on the
 //     switch, unread chips step aside (.is-filtered), no floating banner
@@ -127,16 +127,18 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const spill = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   ok(spill <= 0, `no horizontal overflow at 390px (spill=${spill})`);
 
-  // 9) Three-pane 1280px: the bar tops the LIST column, right of the rail.
+  // 9) Three-pane 1280px: the bar now spans FULL width above the split (in
+  //    #inbox-head, above the header divider) — sitting above the folder rail,
+  //    not inside the list column.
   await page.setViewportSize({ width: 1280, height: 900 });
   await page.waitForTimeout(400);
   const wide = await page.evaluate(() => {
     const host = document.getElementById('abar-inbox').getBoundingClientRect();
-    const rail = document.getElementById('inbox-folders').getBoundingClientRect();
-    const list = document.getElementById('inbox-folder-enquiries').getBoundingClientRect();
-    return { hostX: Math.round(host.x), railR: Math.round(rail.right), listX: Math.round(list.x) };
+    const split = document.querySelector('.enq-split').getBoundingClientRect();
+    const inHead = !!document.getElementById('abar-inbox').closest('#inbox-head');
+    return { hostBottom: Math.round(host.bottom), splitTop: Math.round(split.top), width: Math.round(host.width), inHead };
   });
-  ok(wide.hostX >= wide.railR && Math.abs(wide.hostX - wide.listX) < 8, `1280px: bar over the list column, not the rail (host x ${wide.hostX} vs rail right ${wide.railR})`);
+  ok(wide.inHead && wide.hostBottom <= wide.splitTop + 2 && wide.width > 600, `1280px: bar full-width above the split (w=${wide.width}, in #inbox-head=${wide.inHead})`);
 
   await browser.close();
   server.kill();
