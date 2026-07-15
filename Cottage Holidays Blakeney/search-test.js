@@ -729,6 +729,28 @@ if (typeof ctx.cmdkIntent === 'function') {
     const otaWhen = head('when is the guest arriving today');
     check('OTA arrival today → Airbnb guest, honest "no channel time"', /Airbnb guest arrives TODAY/.test(otaWhen) && /doesn.t share a check-in time/.test(otaWhen));
     vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);', ctx);
+
+    // ---- 21b. Cross-page context memory — a record read on ANOTHER page stays the
+    // referent for a pronoun follow-up (no hub open, no palette conv-ctx). Guards
+    // chbStampRecent / cmdkRecentEntity: fresh + real pronoun resolves; a generic
+    // query is NOT hijacked; stale (past CMDK_RECENT_MS) stops resolving. Driven
+    // only through the public fns (the __cmdk* state is closure-scoped) — and both
+    // __cmdkEntity/__cmdkConvCtx are already unset here (set only at palette open).
+    if (typeof ctx.chbStampRecent === 'function') {
+        vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);dbBookings.jollyboat=[{id:77,name:"Sarah Wingate",checkIn:"' + plus(-1) + '",checkOut:"' + plus(3) + '",adults:2,children:0,payment:"deposit",agreedPrice:{total:600},holdStatus:"none"}];', ctx);
+        vm.runInContext("chbStampRecent('booking',77,'Sarah Wingate');", ctx);
+        check('cross-page: "email them" resolves to the record read on another page', /Sarah Wingate/.test(head('email them')));
+        check('cross-page: "their balance" answers about that record', /Sarah Wingate owes/.test(head('their balance')));
+        const generic = head('who owes me money');
+        check('cross-page: a generic query is NOT hijacked by the recent record', /guest[s]? owe/.test(generic));
+        // Age it past the freshness window → must stop resolving. Save & restore
+        // the real clock so later sections are unaffected (Date.now is an own method).
+        const far = Date.now() + 7 * 60 * 1000;
+        vm.runInContext('globalThis.__realNow = Date.now; Date.now = () => ' + far + ';', ctx);
+        check('cross-page: stale memory (past 6 min) no longer resolves to it', !/Sarah Wingate/.test(head('email them')));
+        vm.runInContext('Date.now = globalThis.__realNow; delete globalThis.__realNow;', ctx);
+        vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);', ctx); // clear → recent memory can't resolve (existence check)
+    }
 }
 
 // ---- 22. chbNlg — conversational replies (social + fallback, shown as text) ----
