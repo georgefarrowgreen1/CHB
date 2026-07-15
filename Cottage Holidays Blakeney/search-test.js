@@ -581,8 +581,8 @@ if (typeof ctx.cmdkRowHtml === 'function') {
         chips: [{ label: 'Jollyboat bookings' }, { label: 'Show on calendar' }],
     };
     const html = ctx.cmdkRowHtml(it, 0, true);
-    check('entity actions render as a vertical quick-actions list (not pills)', /cmdk-qa-row/.test(html) && !/cmdk-actbar/.test(html));
-    check('a related-search pivot renders as a quiet footer row', /class="cmdk-related"/.test(html) && /Jollyboat bookings/.test(html));
+    check('entity ACTIONS (verbs) render as a vertical quick-actions list of rows', /cmdk-qa-row/.test(html) && !/cmdk-actbar/.test(html));
+    check('refine/related pivots render as PILLS (one chip language with the bars)', /class="cmdk-chips"/.test(html) && /class="cmdk-chip"/.test(html) && /Jollyboat bookings/.test(html));
     check('a related chip duplicating an action is suppressed', (html.match(/Show on calendar/g) || []).length === 1);
     ctx.__cmdkSel = prevSel;
 }
