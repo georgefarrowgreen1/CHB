@@ -3675,11 +3675,26 @@ function cmdkSearchCore(q, allowCorrect) {
         cmdkSetLoading(false);
     }
 }
+// ---- Natural-language history recall. The server search (search.php) already
+// covers ALL history — messages, emails, reviews, the activity log — and fires
+// on every query. But a natural QUESTION ("what did Sarah say about the
+// boiler?", "when did I change the Jollyboat price?") buries the key terms in
+// question-words, so a keyword search matches poorly. When the query is
+// history-SHAPED, strip the framing to the content terms so the comprehensive
+// server search actually finds it. A no-op for a plain keyword query. ----
+const CHB_HISTORY_Q = /\b(said|say|says|saying|tell|told|wrote|writ|mention|email|emailed|messaged?|complain|history|log|when did|last time|find (the |my |a )?(email|message|note|review|chat|conversation|record))\b/;
+const CHB_HISTORY_STOP = new Set(['what', 'whats', 'when', 'where', 'which', 'who', 'why', 'how', 'did', 'do', 'does', 'is', 'are', 'was', 'were', 'the', 'a', 'an', 'about', 'for', 'to', 'in', 'on', 'of', 'my', 'our', 'me', 'us', 'i', 'we', 'you', 'they', 'them', 'he', 'she', 'it', 'his', 'her', 'their', 'guest', 'guests', 'say', 'said', 'says', 'tell', 'told', 'wrote', 'write', 'mention', 'mentioned', 'email', 'emailed', 'emails', 'message', 'messaged', 'messages', 'find', 'search', 'show', 'history', 'log', 'last', 'time', 'ever', 'any', 'that', 'this', 'anyone', 'someone', 'ask', 'asked', 'change', 'changed', 'and', 'or', 'with', 'from', 'get', 'got', 'give', 'note', 'chat', 'review', 'record', 'conversation']);
+function chbHistoryClean(q) {
+    const raw = (q || '').trim();
+    if (!CHB_HISTORY_Q.test(raw.toLowerCase())) return raw; // plain keyword — send as-is
+    const words = raw.toLowerCase().split(/[^a-z0-9']+/).filter((w) => w.length > 1 && !CHB_HISTORY_STOP.has(w));
+    return words.length ? words.join(' ') : raw;
+}
 // Fire the federated search.php query and merge its typed results in below the
 // local answers, deduped and mapped to the right destination per type.
 function cmdkServerSearch(ql) {
     const stamp = ++__cmdkServerStamp;
-    apiPost('search.php', { q: ql })
+    apiPost('search.php', { q: chbHistoryClean(ql) })
         .then((r) => {
             if (stamp !== __cmdkServerStamp) return; // a newer query superseded this (it owns the loader)
             cmdkSetLoading(false);
@@ -5181,7 +5196,7 @@ function cmdkDeepExpand(type) {
     if (!__cmdkDeep) return;
     const stamp = __cmdkDeepStamp;
     cmdkSetLoading(true);
-    apiPost('search.php', { q: __cmdkDeep.q, deep: 1, expand: type, syn: CHB_SEARCH.understand(__cmdkDeep.q).synonyms, since: cmdkDeepSince() })
+    apiPost('search.php', { q: chbHistoryClean(__cmdkDeep.q), deep: 1, expand: type, syn: CHB_SEARCH.understand(__cmdkDeep.q).synonyms, since: cmdkDeepSince() })
         .then((r) => {
             if (!__cmdkDeep || stamp !== __cmdkDeepStamp) return;
             cmdkSetLoading(false);

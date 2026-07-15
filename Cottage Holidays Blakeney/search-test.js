@@ -885,6 +885,19 @@ if (typeof ctx.chbBusinessPulse === 'function') {
     vm.runInContext('Object.keys(dbBookings).forEach((k)=>dbBookings[k]=[]);', ctx);
 }
 
+// ---- 28. Natural-language history recall: a history-SHAPED question is cleaned
+// to its content terms before the server search (which covers messages / emails
+// / reviews / the activity log); a plain keyword query is sent untouched. ----
+if (typeof ctx.chbHistoryClean === 'function') {
+    const cl = ctx.chbHistoryClean;
+    check('"what did Sarah say about the boiler" → "sarah boiler"', cl('what did Sarah say about the boiler') === 'sarah boiler', cl('what did Sarah say about the boiler'));
+    check('"when did I change the Jollyboat price" → "jollyboat price"', cl('when did I change the Jollyboat price') === 'jollyboat price', cl('when did I change the Jollyboat price'));
+    check('"find the email about parking" → "parking"', cl('find the email about parking') === 'parking', cl('find the email about parking'));
+    check('a plain keyword is sent untouched', cl('boiler') === 'boiler' && cl('Sarah Pemberton') === 'Sarah Pemberton');
+    check('a non-history question is untouched', cl('who owes me money') === 'who owes me money');
+    check('an over-stripped history query falls back to the raw text', cl('any history') === 'any history');
+}
+
 // ---- Summary ----
 console.log('\n== Summary ==');
 if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }

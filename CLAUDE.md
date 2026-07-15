@@ -249,6 +249,18 @@ am I doing / performance" (the numbers still follow; an explicit-period query li
 this month" keeps its nights-led figure). NB `monthName`/`propName` are locals elsewhere — inlined
 here. Gated by search-test §27.
 
+**Natural-language history recall** (admin.js) — the federated `search.php` deep search already
+covers ALL history (messages, emails, reviews, the activity log) and fires on every palette query,
+but a natural QUESTION buries the key terms in question-words, so keyword recall suffers.
+`chbHistoryClean(q)` detects a history-SHAPED query (`CHB_HISTORY_Q`: said/wrote/emailed/mention/
+history/"when did"/"find the email…") and strips the framing to content terms (`CHB_HISTORY_STOP`)
+before sending — "what did Sarah say about the boiler" → "sarah boiler", "when did I change the
+Jollyboat price" → "jollyboat price". A plain keyword query is sent untouched; an over-stripped one
+falls back to the raw text. Wired into both the auto server search (`cmdkServerSearch`) and the
+"search everything" deep fetch. Gated by search-test §28. (True semantic recall over history would
+need a server-side embedding index — a separate build; this makes the existing comprehensive
+keyword search answer natural questions.)
+
 **Accommodations are dynamic** — the owner adds/removes cottages from the back office
 (Settings → Preferences → "Add accommodation"; per-cottage "Remove" / "Restore"). The
 `properties` table is the single source of truth (`prop_key`, `name`, `couple_rate`…,
