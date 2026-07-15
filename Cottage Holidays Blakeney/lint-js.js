@@ -26,9 +26,11 @@ const path = require('path');
 // fetched on demand but shares the same global scope, so include it too.
 const ORDER = ['app.js', 'admin.js', 'guest-app.js'];
 
-// Library globals loaded at runtime (not bundled): Leaflet (maps) + the Square
-// Web Payments SDK. Everything else comes from the standard browser/worker sets.
-const EXTRA = { L: 'readonly', Square: 'readonly', jspdf: 'readonly', jsPDF: 'readonly' };
+// Library globals loaded at runtime (not bundled): Leaflet (maps), the Square
+// Web Payments SDK, and onnxruntime-web (`ort` — the Darkstar-C encoder
+// runtime, SRI-pinned lazy load). Everything else comes from the standard
+// browser/worker sets.
+const EXTRA = { L: 'readonly', Square: 'readonly', jspdf: 'readonly', jsPDF: 'readonly', ort: 'readonly' };
 
 (async () => {
   const dir = __dirname;
