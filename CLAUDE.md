@@ -130,8 +130,11 @@ more)` REALIZES a help topic into a spoken how-to answer: it stitches the topic'
 and rides its `doIt`/`showMe` + "More:" runners-up as chips — so an explicit "how do I…"
 question GENERATES a single natural-language answer instead of a stack of topic rows. `cmdkHelp`
 returns it (in place of `cmdkHelpItem` rows) when `wantHelp` and the top topic scores ≥ 3; a
-plain keyword still returns the browsable `type:'help'` rows. Additive — the tested answer rows
-are unchanged. Gated by search-test §22 + §8 (how-to) + golden social cases.
+plain keyword still returns the browsable `type:'help'` rows. Conversational answer rows
+(social greetings, fallbacks, generated how-tos) carry `wrap:true` → the row renders
+`.cmdk-row-wrap` so full sentences wrap over multiple lines instead of clamping to one
+ellipsised line (palette + both Assist Bars). Additive — the tested answer rows are
+unchanged. Gated by search-test §22 + §8 (how-to) + golden social cases.
 
 **Assist Bars** — the palette's brain embedded IN workspaces: `chbAssistBar(hostId, opts)`
 (admin.js) injects a knot+input bar into static host divs (`#abar-today` top of the Today
