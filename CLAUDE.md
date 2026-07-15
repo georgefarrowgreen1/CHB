@@ -116,12 +116,17 @@ gated on a committed held-out set: **`nlu-testset.js`** (dev/CI, deploy-excluded
 paraphrases + 32 negatives) run through the full cascade in search-test §20: recall ≥ 82/86,
 ZERO wrong intents, all negatives rejected. Retune with scratchpad `model-bench.js`.
 
-**chbNlg** (admin.js) — the assistant's natural-language VOICE, on top of the intents:
-`chbNlgSpeak(text)` realizes a display answer into a fluent SPOKEN sentence (numeric dates →
-words, `·`/`—`/`▸` → clause breaks, ranges → "X to Y") — used by every voice reply;
-`chbNlgSocial(q)` generates conversational replies (greetings/thanks/capability/identity,
-deterministic variation) surfaced through cmdkIntent's `0-social` branch. Additive — the
-tested answer rows are unchanged. Gated by search-test §22.
+**chbNlg** (admin.js) — the assistant's natural-language VOICE + conversational awareness,
+on top of the intents. `chbNlgSpeak(text)` realizes a display answer into a fluent SPOKEN
+sentence (numeric dates → words, `·`/`—`/`▸` → clause breaks, ranges → "X to Y") — used by
+every voice reply. `chbNlgSocial(q)` generates conversational replies — AWARE greetings
+(with a live `chbNlgBrief()` day status: arrivals/departures today + money to collect),
+thanks / bye / ack / capability / identity, deterministic variation — surfaced through
+cmdkIntent's `0-social` branch. `chbNlgFallback(q)` is the safety net: a question-shaped
+query that finds NOTHING (empty intent AND fuzzy) gets a natural "I can't answer that, but
+I can tell you about…" reply with the model's nearest guesses as chips, injected in
+`cmdkBuildResults` — so a question never dead-ends silently. Additive — the tested answer
+rows are unchanged. Gated by search-test §22 + golden social cases.
 
 **Assist Bars** — the palette's brain embedded IN workspaces: `chbAssistBar(hostId, opts)`
 (admin.js) injects a knot+input bar into static host divs (`#abar-today` top of the Today
