@@ -116,17 +116,16 @@ gated on a committed held-out set: **`nlu-testset.js`** (dev/CI, deploy-excluded
 paraphrases + 32 negatives) run through the full cascade in search-test §20: recall ≥ 82/86,
 ZERO wrong intents, all negatives rejected. Retune with scratchpad `model-bench.js`.
 
-**chbNlg** (admin.js) — the assistant's natural-language VOICE + conversational awareness,
-on top of the intents. `chbNlgSpeak(text)` realizes a display answer into a fluent SPOKEN
-sentence (numeric dates → words, `·`/`—`/`▸` → clause breaks, ranges → "X to Y") — used by
-every voice reply. `chbNlgSocial(q)` generates conversational replies — AWARE greetings
-(with a live `chbNlgBrief()` day status: arrivals/departures today + money to collect),
-thanks / bye / ack / capability / identity, deterministic variation — surfaced through
-cmdkIntent's `0-social` branch. `chbNlgFallback(q)` is the safety net: a question-shaped
-query that finds NOTHING (empty intent AND fuzzy) gets a natural "I can't answer that, but
-I can tell you about…" reply with the model's nearest guesses as chips, injected in
-`cmdkBuildResults` — so a question never dead-ends silently. Additive — the tested answer
-rows are unchanged. Gated by search-test §22 + golden social cases.
+**chbNlg** (admin.js) — the assistant's conversational-awareness layer (TEXT, shown on
+screen — there is NO listen/speak feature; it was removed). `chbNlgSocial(q)` generates
+conversational replies — AWARE greetings (with a live `chbNlgBrief()` day status:
+arrivals/departures today + money to collect), thanks / bye / ack / capability / identity,
+deterministic variation (`nlgPick`) — surfaced through cmdkIntent's `0-social` branch.
+`chbNlgFallback(q)` is the safety net: a question-shaped query that finds NOTHING (empty
+intent AND fuzzy) gets a natural "I can't answer that, but I can tell you about…" reply
+with the model's nearest guesses as chips, injected in `cmdkBuildResults` — so a question
+never dead-ends silently. Matchers are precise so real searches pass through. Additive —
+the tested answer rows are unchanged. Gated by search-test §22 + golden social cases.
 
 **Assist Bars** — the palette's brain embedded IN workspaces: `chbAssistBar(hostId, opts)`
 (admin.js) injects a knot+input bar into static host divs (`#abar-today` top of the Today
@@ -139,10 +138,11 @@ the Inbox bar adds per-folder `.ifold-match` pills + hides the unread chips whil
 filtering); otherwise `cmdkBuildResults()` answers INLINE with the palette's own rows
 (chips/actions/`_nlu` learning intact); zero matches → deep-search CTA + ask chips. Full
 intelligence parity: per-bar green `ml-active` knot / orange `ml-learning` flash, walk-away
-(focusout) dead-end capture into the shared miss store, `__cmdkConvCtx` carries across
-bars↔palette, and a per-bar mic via `chbVoiceStart()` (one recognition session shared;
-final dictations get spoken answers). Suites: `ui-test-assist-{today,inbox,parity}.js`;
-the layout gate asserts both bars render.
+(focusout) dead-end capture into the shared miss store, and `__cmdkConvCtx` carries across
+bars↔palette. Both bars sit ABOVE the header divider line (Today: `#abar-today` in
+`#view-backoffice`; Inbox: `#abar-inbox` moved up into `#inbox-head`, full-width above the
+three-pane split) — the divider hangs under the bar. Suites:
+`ui-test-assist-{today,inbox,parity}.js`; the layout gate asserts both bars render.
 
 **Hubs are where you act; index rows are where you find.** The **booking hub**
 (`view-booking-hub`) is the ONE home per booking — `showDetails()` (app.js) only

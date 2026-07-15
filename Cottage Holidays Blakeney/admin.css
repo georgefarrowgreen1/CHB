@@ -1245,16 +1245,15 @@ body.owner-mode #mobileMenu {
 .cmdk-search.has-text .cmdk-clear {
   display: flex;
 }
-/* Voice mic — revealed by JS only where speech recognition is supported. */
-.cmdk-mic,
+/* The palette's "?" help button. */
 .cmdk-help-btn {
-  display: none;
+  display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
   width: 32px;
   height: 32px;
-  margin: -4px -2px -4px 0;
+  margin: -4px -2px -4px 4px;
   padding: 0;
   border: none;
   border-radius: 999px;
@@ -1263,32 +1262,15 @@ body.owner-mode #mobileMenu {
   cursor: pointer;
   transition: background 0.14s var(--fluid-bezier), color 0.14s var(--fluid-bezier);
 }
-/* The "?" is always available (voice is feature-gated on show). */
-.cmdk-help-btn {
-  display: flex;
-  margin-left: 4px;
-}
-.cmdk-mic .ic,
 .cmdk-help-btn .ic {
   width: 17px;
   height: 17px;
 }
-.cmdk-mic:hover,
-.cmdk-mic:focus-visible,
 .cmdk-help-btn:hover,
 .cmdk-help-btn:focus-visible {
   background: var(--glass-hover);
   color: var(--text-light);
   outline: none;
-}
-.cmdk-mic.is-listening {
-  background: var(--danger);
-  color: #fff;
-  animation: cmdk-mic-pulse 1.2s ease-in-out infinite;
-}
-@keyframes cmdk-mic-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
 }
 .cmdk-search input {
   flex: 1;
@@ -2245,6 +2227,22 @@ body.light-mode .cmdk-editor-input {
 .abar-host {
   margin: 12px 0 4px;
 }
+/* Search bar ABOVE the header divider (Today + Inbox): drop the divider from
+   the header itself and hang it under the search bar, so the order reads
+   title → subline → SEARCH → line → content. */
+#view-backoffice > .dashboard-header,
+#inbox-head > .dashboard-header {
+  border-bottom: none;
+  padding-bottom: 0;
+  margin-bottom: 16px;
+}
+#view-backoffice > #abar-today,
+#inbox-head > #abar-inbox {
+  margin-top: 0;
+  margin-bottom: 24px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--glass-border);
+}
 .abar-field {
   display: flex;
   align-items: center;
@@ -2374,11 +2372,8 @@ body.light-mode .cmdk-editor-input {
   display: none;
 }
 @media (min-width: 1200px) {
-  /* Three-pane Inbox: the bar tops the LIST column, not the folder rail. */
-  #inbox-main > .abar-host {
-    grid-column: 2;
-    margin-top: 0;
-  }
+  /* (The Inbox bar now spans full width in #inbox-head, above the three-pane
+     split — no longer in the list column.) */
   #inbox-folders .ifold-match {
     margin-left: auto;
   }
@@ -2416,27 +2411,4 @@ body.darkstar-ready #cmdk:not(.ml-active) .cmdk-search-ic,
 body.darkstar-ready .admin-dock-btn[data-act="openCmdK"]:not(.ml-learning) svg {
   color: var(--darkstar);
   transition: color 0.5s ease; /* fades to purple as the model comes online */
-}
-/* Per-bar mic — revealed only where speech recognition exists (inline style
-   set at injection); red pulse while listening, like the palette's. */
-.abar-mic {
-  display: none;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 26px;
-  height: 26px;
-  border: none;
-  border-radius: 50%;
-  background: none;
-  color: var(--text-muted);
-  cursor: pointer;
-}
-.abar-mic .ic {
-  width: 17px;
-  height: 17px;
-}
-.abar-mic.is-listening {
-  color: var(--danger);
-  animation: cmdk-ml-glow 1.2s ease-in-out infinite;
 }

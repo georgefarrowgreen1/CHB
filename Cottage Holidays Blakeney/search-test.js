@@ -319,7 +319,6 @@ if (ctx.CHB_SEARCH && typeof ctx.CHB_SEARCH.registerSource === 'function') {
         // Every canonical the model maps to must be non-empty text (the intent
         // engine executes it; the browser suite proves the routing end-to-end).
         check('every NLU canonical is a non-empty phrase', nlu.corpus.every((c) => c.canonical && c.canonical.length > 3));
-        check('speaking back: chbSpeak is on the public API', typeof ctx.CHB_SEARCH.speak === 'function');
     } else {
         check('CHB_SEARCH.nlu (our own model) is defined', false);
     }
@@ -687,16 +686,7 @@ if (typeof ctx.cmdkIntent === 'function') {
     vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);', ctx);
 }
 
-// ---- 22. chbNlg — natural-language voice (spoken realization + social replies) ----
-if (typeof ctx.chbNlgSpeak === 'function') {
-    // Display answer → fluent spoken sentence: numeric dates spoken, "·"/"—"/"▸"
-    // become clause breaks, ranges read "X to Y".
-    const spoken = ctx.chbNlgSpeak('Bob arrives Friday 24 July · 3 nights at Jollyboat · out 27/07/2026');
-    check('chbNlgSpeak says numeric dates in words', /the 27th of July/.test(spoken) && !/27\/07\/2026/.test(spoken));
-    check('chbNlgSpeak drops the "·" separators', !/·/.test(spoken) && /Jollyboat, out/.test(spoken));
-    check('chbNlgSpeak reads a date range as "to"', /the 14th of July to the 17th of July/.test(ctx.chbNlgSpeak('14/07/2026–17/07/2026')));
-    check('chbNlgSpeak drops the ▸ nav glyph', !/▸/.test(ctx.chbNlgSpeak('open Bookings ▸ Needs payment')));
-}
+// ---- 22. chbNlg — conversational replies (social + fallback, shown as text) ----
 if (typeof ctx.chbNlgSocial === 'function') {
     const kind = (q) => { const r = ctx.chbNlgSocial(q); return r ? r.kind : null; };
     check('greeting → a greet reply', kind('hello') === 'greet' && kind('good morning') === 'greet');
@@ -723,9 +713,9 @@ if (typeof ctx.chbNlgFallback === 'function') {
         const rq = ctx.cmdkBuildResults('who owes me money');
         check('a real question does NOT get the fallback', !(rq && rq.results && rq.results[0] && rq.results[0].id === 'nlg-fallback'));
     }
-    // The social branch surfaces through cmdkIntent as a spoken answer row.
+    // The social branch surfaces through cmdkIntent as an answer row.
     const soc = ctx.cmdkIntent('thanks');
-    check('cmdkIntent answers a greeting/thanks with an nlg row', !!(soc && soc[0] && /^nlg-/.test(soc[0].id) && soc[0]._nlgSpoken));
+    check('cmdkIntent answers a greeting/thanks with an nlg row', !!(soc && soc[0] && /^nlg-/.test(soc[0].id)));
     check('cmdkIntent does NOT route a real question to nlg', !/^nlg-/.test(((ctx.cmdkIntent('who owes me money') || [{}])[0].id) || ''));
 }
 
