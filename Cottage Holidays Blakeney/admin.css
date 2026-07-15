@@ -14,6 +14,13 @@
    Today/Inbox scaffolding) keep their rules in app.css by design. Edit admin
    styles here and bump ADMIN_CSS_V.
    ============================================================ */
+/* Darkstar's brand colour — the assistant knot turns this purple once the
+   on-device semantic model has downloaded. Admin-only, so it lives here rather
+   than in app.css's :root (keeps it a one-file change). Mid-violet: reads on
+   both dark and light back-office themes. */
+:root {
+  --darkstar: #a855f7;
+}
 .tl-bar.bar-21a {
   background: var(--prop-21a-bg);
   border-left-color: var(--prop-21a);
@@ -2399,34 +2406,16 @@ body.light-mode .cmdk-editor-input {
   }
 }
 /* DARKSTAR ONLINE — the semantic model has finished loading. The assistant
-   knot glows in its own accent light wherever it appears: a one-time bloom the
-   moment it comes online, settling to a soft steady glow. Distinct from the
-   green ANSWERING and orange LEARNING states, which still take over
-   transiently on top of it — so the ready-glow is scoped to :not() those. */
+   knot turns PURPLE wherever it appears (dock button, palette input, every
+   Assist Bar) — a calm, steady state colour, no glow. Distinct from the green
+   ANSWERING and orange LEARNING states, which still take over transiently on
+   top of it (so the purple is scoped to :not() those). --darkstar is the
+   model's own brand colour. */
 body.darkstar-ready .abar:not(.ml-active) .abar-ic:not(.ml-learning),
 body.darkstar-ready #cmdk:not(.ml-active) .cmdk-search-ic,
 body.darkstar-ready .admin-dock-btn[data-act="openCmdK"]:not(.ml-learning) svg {
-  color: var(--accent);
-  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--accent) 65%, transparent));
-  animation: darkstar-bloom 1.7s var(--fluid-bezier, ease-out);
-}
-@keyframes darkstar-bloom {
-  0% {
-    filter: drop-shadow(0 0 0 transparent);
-  }
-  45% {
-    filter: drop-shadow(0 0 12px color-mix(in srgb, var(--accent) 90%, transparent));
-  }
-  100% {
-    filter: drop-shadow(0 0 5px color-mix(in srgb, var(--accent) 65%, transparent));
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  body.darkstar-ready .abar:not(.ml-active) .abar-ic:not(.ml-learning),
-  body.darkstar-ready #cmdk:not(.ml-active) .cmdk-search-ic,
-  body.darkstar-ready .admin-dock-btn[data-act="openCmdK"]:not(.ml-learning) svg {
-    animation: none;
-  }
+  color: var(--darkstar);
+  transition: color 0.5s ease; /* fades to purple as the model comes online */
 }
 /* Per-bar mic — revealed only where speech recognition exists (inline style
    set at injection); red pulse while listening, like the palette's. */

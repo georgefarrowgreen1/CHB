@@ -147,17 +147,18 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const spill = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   ok(spill <= 0, `no horizontal overflow at 390px (spill=${spill})`);
 
-  // 14) Darkstar ONLINE glow — once the semantic model loads, the knot lights
-  //     up. (The owner-side idle auto-loader may already have fired; force it
-  //     to be deterministic, then assert the ready class + the knot glow.)
+  // 14) Darkstar ONLINE → the knot turns PURPLE (--darkstar #a855f7). No glow.
+  //     (The owner-side idle auto-loader may already have fired; force it to be
+  //     deterministic, then assert the ready class + the purple colour.)
   await page.evaluate(() => darkstarLoad()); // real darkstar.bin served by php -S
-  const glow = await page.evaluate(() => {
+  const online = await page.evaluate(() => {
     const ready = document.body.classList.contains('darkstar-ready');
     const cs = getComputedStyle(document.querySelector('#abar-today .abar-ic'));
     return { ready, filter: cs.filter, color: cs.color };
   });
-  ok(glow.ready, 'body.darkstar-ready set once Darkstar is loaded + indexed');
-  ok(/drop-shadow/.test(glow.filter) && glow.filter !== 'none', `knot glows (filter: ${glow.filter.slice(0, 40)})`);
+  ok(online.ready, 'body.darkstar-ready set once Darkstar is loaded + indexed');
+  ok(online.color === 'rgb(168, 85, 247)', `knot turns purple (${online.color})`);
+  ok(!/drop-shadow/.test(online.filter), 'no glow filter on the online knot');
 
   await browser.close();
   server.kill();
