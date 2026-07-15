@@ -111,10 +111,18 @@ before). Measured: 48→51/52 held-out, zero wrong intents, all negatives reject
 reach). chbNluLearn/Suppress call `darkstarIndex()` so taught phrases join their intent
 centroid and suppressed ones join the none pool. (`darkstar-build.js` carries the source
 table's MIT attribution notice.) The corpus is ~117 TARGETED examples — brute expansion
-blurs the TF-IDF centroids (measured), so add disambiguators only. The model's accuracy is
+blurs the TF-IDF centroids (measured), so add disambiguators only. **Semantic precision
+veto** (`darkstarNoneDominates`, `DARKSTAR.veto` 0.12): once Darkstar is loaded it can
+VETO a confident tier-1/2 answer when its best none-exemplar beats its best intent-centroid
+by the margin — so "directions to the cottage" / "which cottage has a hot tub" stop
+false-matching *which cottage earns most* on the shared word "cottage". Monotonic-safe (only
+ever turns an accept into an ABSTAIN — never invents an intent), so the zero-wrong guarantee
+can only tighten; no model loaded → no veto (unchanged). Margin swept to hold held-out at
+86/86 + every committed negative while lifting hard-negative rejection. The model's accuracy is
 gated on a committed held-out set: **`nlu-testset.js`** (dev/CI, deploy-excluded — 86 unseen
-paraphrases + 32 negatives) run through the full cascade in search-test §20: recall ≥ 82/86,
-ZERO wrong intents, all negatives rejected. Retune with scratchpad `model-bench.js`.
+paraphrases + 35 negatives incl. in-domain veto distractors) run through the full cascade in
+search-test §20: recall ≥ 82/86, ZERO wrong intents, all negatives rejected. Retune with
+scratchpad `model-bench.js` (+ `stress-bench.js`/`sweep-veto.js` for the hard set/veto margin).
 
 **chbNlg** (admin.js) — the assistant's conversational-awareness layer (TEXT, shown on
 screen — there is NO listen/speak feature; it was removed). `chbNlgSocial(q)` generates

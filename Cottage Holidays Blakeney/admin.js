@@ -1434,7 +1434,7 @@ function chbNluDeep(q) {
 //  rejected, because it only answers when the query beats every "none"
 //  exemplar by a clear margin.
 // ============================================================
-const DARKSTAR = { url: 'darkstar.bin?v=1', min: 0.3, gap: 0, noneMargin: 0.1, st: null, loading: false };
+const DARKSTAR = { url: 'darkstar.bin?v=1', min: 0.3, gap: 0, noneMargin: 0.1, veto: 0.12, st: null, loading: false };
 // Parse the packed binary (exposed separately from fetch so the Node test
 // harness can feed it a file buffer directly).
 function darkstarParse(buf) {
@@ -1561,6 +1561,28 @@ function darkstarClassify(ql) {
     if (nb >= b1 - DARKSTAR.noneMargin) return null;
     return { canonical: CHB_NLU.corpus[bi].canonical, score: b1, margin: b1 - b2, deep: true, ds: true };
 }
+// SEMANTIC PRECISION VETO — the lexical tiers (1–2) can fire CONFIDENTLY yet
+// wrongly on inputs that only SHARE vocabulary with an intent: "directions to
+// the cottage" / "which cottage has a hot tub" both keyword-match "which cottage
+// earns most". Darkstar KNOWS these are none-like (they sit nearer the none pool
+// — settings/edits/local-info — than any business question). So once the model
+// is loaded we let it VETO a lexical answer when its best none-exemplar beats its
+// best intent-centroid by a clear margin. Monotonic-safe: it only ever turns an
+// accept into an ABSTAIN (never invents a new intent), so the zero-wrong-intent
+// guarantee can only tighten. No model loaded → returns false → unchanged.
+// (Margin 0.12 swept on the offline harness: it holds held-out recall at 86/86
+// and every committed negative rejected, while lifting HARD-negative rejection
+// 11→14/18 — a pure precision gain on adversarial input, zero cost to the gate.)
+function darkstarNoneDominates(ql) {
+    const st = DARKSTAR.st;
+    if (!st || !st.cents) return false;
+    const v = darkstarVec(ql);
+    let bi = -1;
+    st.cents.forEach((c) => { const s = darkstarCos(v, c); if (s > bi) bi = s; });
+    let bn = -1;
+    st.nones.forEach((nv) => { const s = darkstarCos(v, nv); if (s > bn) bn = s; });
+    return bn - bi >= DARKSTAR.veto;
+}
 
 function chbNluClassify(q, loose) {
     const ql = (q || '').trim().toLowerCase();
@@ -1569,8 +1591,13 @@ function chbNluClassify(q, loose) {
     if (!scores || !scores.length) return null;
     const best = { canonical: scores[0].canonical, score: scores[0].score, margin: scores[0].score - (scores[1] ? scores[1].score : 0) };
     if (loose) return best;
+    // The semantic veto guards BOTH lexical tiers: if Darkstar (once loaded)
+    // reads the query as none-like, no lexical answer is trustworthy — abstain
+    // and let the near-miss / dead-end capture take over.
+    let vetoed = false;
+    try { vetoed = darkstarNoneDominates(ql); } catch (e) {}
     // Tier 1 — the calibrated cosine decision (v1's proven behaviour).
-    if (best.score >= CHB_NLU.min && best.margin >= CHB_NLU.gap) return best;
+    if (best.score >= CHB_NLU.min && best.margin >= CHB_NLU.gap) return vetoed ? null : best;
     // Tier 2 — the deep head is consulted ONLY when tier 1 abstains, and its
     // answer is accepted only when it AGREES with the cosine top-2 and clears
     // its own floors — recall goes up, wrong-intent risk stays bounded (all
@@ -1582,7 +1609,7 @@ function chbNluClassify(q, loose) {
         const cosOf = deep[0].canonical === scores[0].canonical ? scores[0].score
             : (scores[1] && deep[0].canonical === scores[1].canonical ? scores[1].score : -1);
         if (cosOf >= CHB_NLU.floor2 && deep[0].score >= CHB_NLU.min2 && dm >= CHB_NLU.gap2) {
-            return { canonical: deep[0].canonical, score: cosOf, margin: dm, deep: true };
+            return vetoed ? null : { canonical: deep[0].canonical, score: cosOf, margin: dm, deep: true };
         }
     } catch (e) {}
     // Tier 3 — Darkstar, our semantic model, consulted only when BOTH lexical
@@ -1839,6 +1866,28 @@ function chbNluSuggest(q) {
         .filter((x) => x.score >= 0.12)
         .slice(0, 2)
         .map((x) => x.canonical);
+}
+// Darkstar's nearest intents by MEANING (no veto — here we want the best guess,
+// not a decision), floored so a genuine none query returns nothing to suggest.
+function darkstarNearest(q, k) {
+    const st = DARKSTAR.st;
+    if (!st || !st.cents) return [];
+    const v = darkstarVec(q);
+    const scored = st.cents.map((c, i) => ({ c: CHB_NLU.corpus[i].canonical, s: darkstarCos(v, c) }));
+    scored.sort((a, b) => b.s - a.s);
+    return scored.filter((x) => x.s >= 0.2).slice(0, k || 2).map((x) => x.c);
+}
+// Teach-suggestion for a DEAD END: what the phrase most likely MEANT, so one tap
+// teaches the right intent. Darkstar's semantic guesses LEAD (they recover the
+// intent the keywords confused — "whats my fill rate" reads as occupancy, not
+// "rate"), then any lexical near-misses fill in. A true none (settings, local
+// info) clears both floors → no suggestion → the owner just forgets it.
+function chbNluSuggestSmart(q) {
+    const out = [];
+    const push = (c) => { if (c && !out.includes(c)) out.push(c); };
+    try { darkstarNearest(q, 2).forEach(push); } catch (e) {}
+    try { (chbNluSuggest(q) || []).forEach(push); } catch (e) {}
+    return out.slice(0, 3);
 }
 // ============================================================
 //  chbNlg — the assistant's natural-language VOICE (as text): generates the
@@ -2800,7 +2849,7 @@ function cmdkIntent(q) {
         );
         return [head].concat(list.slice(0, 8).map((m) => {
             let sugg = [];
-            try { sugg = chbNluSuggest(m.t) || []; } catch (e) {}
+            try { sugg = chbNluSuggestSmart(m.t) || []; } catch (e) {}
             return {
                 type: 'answer', id: 'miss-' + chbNluHashStr(m.t),
                 label: `“${m.t}”`,
