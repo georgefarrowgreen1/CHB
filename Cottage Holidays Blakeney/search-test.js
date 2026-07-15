@@ -1131,6 +1131,41 @@ if (typeof ctx.cmdkIntent === 'function') {
         vm.runInContext('apiPost = __encStubApi; CHB_ENC.st = null; CHB_HIST.built = false; CHB_HIST.docs = []; CHB_HIST.enc = 0;', ctx);
     } else fail('chbEncTokens missing from the bundle');
 
+    // ---- 31. Model-download progress: the streamed fetch reports fractions and
+    // reassembles the exact bytes; multiple in-flight downloads show the
+    // least-finished; the idle pill slot falls back to `loading` while a
+    // download runs. (The visual ring is gated by ui-test-modelring.js.) ----
+    if (typeof ctx.chbFetchProgress === 'function') {
+        vm.runInContext(`
+            __ringOldFetch = fetch;
+            fetch = async () => ({
+                ok: true,
+                headers: { get: () => '10' },
+                body: { getReader: () => { const chunks = [new Uint8Array([1,2,3,4,5]), new Uint8Array([6,7,8,9,10])]; let i = 0; return { read: () => Promise.resolve(i < chunks.length ? { done: false, value: chunks[i++] } : { done: true }) }; } },
+            });
+        `, ctx);
+        const fracs = [];
+        const buf = await ctx.chbFetchProgress('x', (f) => fracs.push(f));
+        check('streamed fetch reports per-chunk fractions (0.5, 1)', fracs.join(',') === '0.5,1', fracs.join(','));
+        check('streamed fetch reassembles the exact bytes', Array.from(new Uint8Array(buf)).join(',') === '1,2,3,4,5,6,7,8,9,10');
+        vm.runInContext('fetch = async () => ({ ok: true, headers: { get: () => null }, arrayBuffer: async () => new Uint8Array([9, 9]).buffer })', ctx);
+        const fb = await ctx.chbFetchProgress('x', () => {});
+        check('no length/reader → falls back to a plain arrayBuffer (no ring)', new Uint8Array(fb).length === 2);
+        vm.runInContext('fetch = __ringOldFetch', ctx);
+        ctx.chbModelLoadProgress('a', 0.2);
+        ctx.chbModelLoadProgress('b', 0.7);
+        check('two in-flight downloads → the ring shows the least-finished', ctx.chbModelLoadFrac() === 0.2);
+        ctx.chbModelLoadProgress('a', null);
+        check('finishing one download hands the ring to the other', ctx.chbModelLoadFrac() === 0.7);
+        const fakeEl = { dataset: {}, style: { setProperty() {}, removeProperty() {} }, querySelector: () => null, title: '' };
+        ctx.chbSetModelStatus(fakeEl, '');
+        check('idle pill slot reads `loading` while a download is in flight', fakeEl.dataset.mstate === 'loading', fakeEl.dataset.mstate);
+        ctx.chbModelLoadProgress('b', null);
+        check('all downloads done → the load fraction clears', ctx.chbModelLoadFrac() === null);
+        ctx.chbSetModelStatus(fakeEl, '');
+        check('…and the idle slot returns to rest', fakeEl.dataset.mstate === '', fakeEl.dataset.mstate);
+    } else fail('chbFetchProgress missing from the bundle');
+
     // ---- Summary ----
     console.log('\n== Summary ==');
     if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }

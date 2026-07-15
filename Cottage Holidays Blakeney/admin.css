@@ -1245,6 +1245,67 @@ body.owner-mode #mobileMenu {
   color: var(--darkstar);
   background: color-mix(in srgb, var(--darkstar) 13%, transparent);
 }
+/* DOWNLOADING — a model file is streaming down (darkstar.bin / encoder.onnx):
+   the pip/knot carries a circular PROGRESS ring, filled by `--mload` (0..1,
+   set in JS per chunk) via a conic-gradient with a radial mask cutting the
+   centre out. Not an animation — the arc IS the downloaded fraction — so it
+   needs no reduced-motion exemption. */
+.cmdk-ml[data-mstate="loading"],
+.abar-status[data-mstate="loading"] {
+  color: var(--darkstar);
+  background: color-mix(in srgb, var(--darkstar) 10%, transparent);
+}
+/* Bar pill: the state pip grows into the ring itself. */
+.abar-status[data-mstate="loading"]::before {
+  width: 11px;
+  height: 11px;
+  background: conic-gradient(
+      currentColor calc(var(--mload, 0) * 360deg),
+      color-mix(in srgb, currentColor 22%, transparent) 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
+  box-shadow: none;
+}
+/* Palette pill: the ring wraps AROUND the brand knot (14px icon at 7px pad →
+   icon centre x = 14px; a 22px ring centred there starts at x = 3px). */
+.cmdk-ml {
+  position: relative;
+}
+.cmdk-ml[data-mstate="loading"]::before {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 50%;
+  width: 22px;
+  height: 22px;
+  margin-top: -11px;
+  border-radius: 50%;
+  pointer-events: none;
+  background: conic-gradient(
+      currentColor calc(var(--mload, 0) * 360deg),
+      color-mix(in srgb, currentColor 20%, transparent) 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
+}
+/* Dock Search knot — always on screen, so this is where the download shows
+   even with the palette closed: a ring around the glyph (27px icon centred in
+   the 60px button). ::after is the hover label, so the ring is ::before. */
+.admin-dock-btn.ml-loading::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 40px;
+  height: 40px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  pointer-events: none;
+  background: conic-gradient(
+      color-mix(in srgb, var(--darkstar) 55%, #fff) calc(var(--mload, 0) * 360deg),
+      rgba(255, 255, 255, 0.18) 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3.5px), #000 calc(100% - 3px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3.5px), #000 calc(100% - 3px));
+}
 /* UNDERSTOOD — a paraphrase mapped to a known intent (lexical/deep): confident
    green, gently breathing. */
 .cmdk-ml[data-mstate="understood"],
