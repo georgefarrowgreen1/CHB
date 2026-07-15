@@ -55,6 +55,10 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-reply.php
 
+      - name: Customer directory grouping (strong-identity unify + false-merge guard)
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-customers.php
+
       - name: Request firewall (htaccess injection filter — no false positives, real coverage)
         working-directory: "Cottage Holidays Blakeney"
         run: php test-waf.php
