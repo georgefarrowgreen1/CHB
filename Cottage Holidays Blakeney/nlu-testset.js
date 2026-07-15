@@ -115,4 +115,9 @@ exports.NEG = [
   'connect airbnb calendar', 'gift voucher idea', 'update my phone number',
   'norfolk coast path', 'resend confirmation email', 'change the hero photo',
   'reset my password',
+  // In-domain DISTRACTORS — they share vocabulary with an intent ("cottage",
+  // "cleaner") but are settings / local-info, not business questions. Each one
+  // false-accepted at the lexical tiers until the Darkstar semantic veto
+  // (darkstarNoneDominates) landed; they guard that the veto stays effective.
+  'edit the cottage description', 'directions to the cottage', 'when does the cleaner come',
 ];
