@@ -1393,6 +1393,16 @@ body.owner-mode #mobileMenu {
   .abar-status[data-mstate="meaning"] .abar-status-txt,
   .admin-dock-btn.ml-learning svg { animation: none !important; }
 }
+/* Ambient guest intelligence (booking hub): the directory + history speak up. */
+.bhub-intel-line {
+  font-size: 0.95rem;
+  margin: 2px 0 6px;
+}
+#hub-intel-card .bhub-stay-row span:nth-child(2) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* Clear (✕) button — occupies the search-icon slot once there's text to clear. */
 .cmdk-clear {
   display: none;

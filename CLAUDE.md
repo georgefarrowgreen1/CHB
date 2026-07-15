@@ -396,6 +396,25 @@ encoder index — different space/dims); the encoder query path goes through
 via htaccess (versioned by ?v=). Gated by search-test §30 (tokenizer, encoder-built
 index + threshold, static-path decline, rebuild-on-upgrade, no-model fallback).
 
+**Ambient intelligence** (admin.js) — the search indexes VOLUNTEER what they know instead of
+waiting to be asked. (1) **"Knows your guest"** card leads the booking-hub grid
+(`chbGuestIntel` → `hubIntelCardHtml`): visit ordinal + lifetime nights/revenue + favourite
+cottage + last-stay from the unified customer directory (STRONG identity only — a name-only
+booking gets NO card, so two John Smiths never cross-pollinate), plus up to 2 history
+**mentions** from the in-memory corpus index (`chbGuestMentions` — email rows by address,
+enquiries by recorded name, free text only by 2+-word full name; activity log excluded as
+log-spam; strong key required; rows open their source via `chbHistoryRow`). Renders NOTHING
+for a first-timer with no history; if `CHB_HIST` isn't built, `openBookingHub` builds it in
+the background and slots mentions in when it lands. (2) **`chbAnomalies()`** appends
+OPPORTUNITY rows (sev `ok`, `spark` icon, lowest priority) to the Needs-you strip: bounded
+2–4-night gaps between guest stays starting ≤45 days out (owner-blocked holes = deliberately
+held, skipped; 1-night = changeover slack; unbounded space ≠ gap; cap 2 → `nyGapAdd` prefills
+Add Booking via `tlAddAt`) and a next-month shortfall vs the same month last year (fires only
+under 50% of last year with last year ≥8 nights → `nyPacingReview` opens the pricing coach).
+Gated by search-test §32 (16 checks: gap bounds/blocks/window, pacing thresholds, intel
+composition, false-merge + no-card guards, mention matching) + ui-test-intel.js (real
+browser: card renders/withholds, gap row → prefilled modal).
+
 **Breadth tier** (admin.js) — deterministic GENERAL answers, consulted by `cmdkBuildResults`
 right after the intent branches and before the NLU model. When it fires it is **prepended** —
 an exact sum beats a keyword-matched action row ("vat on £480" leads with the figure, the

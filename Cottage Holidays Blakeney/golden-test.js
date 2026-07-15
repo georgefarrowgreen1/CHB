@@ -236,10 +236,15 @@ const CASES = [
     { q: 'how many nights is cara staying', head: /Cara Dunn is staying 3 nights/, not: /occupancy/ },
     // NEXT-ARRIVAL phrasing must NOT swallow date windows.
     { q: 'who is arriving next week', head: /next week/i, not: /Next arrival:/ },
-    // AVAILABILITY answers the ASKED window, not tonight.
-    { q: 'is jollyboat free next weekend', head: /No — Jollyboat is taken next weekend/, any: /Bob Carter/ },
+    // AVAILABILITY answers the ASKED window, not tonight. Whether Bob's
+    // d(+10) stay overlaps "next weekend" DEPENDS ON TODAY'S WEEKDAY (from a
+    // Thursday, next weekend ends before he arrives), so the relative-window
+    // phrasings assert the WINDOW ECHO (the real intent: not "tonight"), and a
+    // separate day-anchored case pins the taken-answer deterministically.
+    { q: 'is jollyboat free next weekend', head: /Jollyboat is (free|taken) next weekend/, not: /tonight/ },
+    { q: 'is jollyboat free in 10 days', head: /No — Jollyboat is taken in 10 days/, any: /Bob Carter/ },
     { q: 'is 21a free tomorrow', head: /Yes — 21A Westgate is free tomorrow/ },
-    { q: 'is pimpernel empty this week', head: /No — Pimpernel is taken this week/, any: /Eve Frost/ },
+    { q: 'is pimpernel empty this week', head: /Pimpernel is (free|taken) this week/, not: /tonight/ },
     // The airbnb block on 21a counts as taken (d+20..d+24 → "in 3 weeks").
     { q: 'is 21a available in 3 weeks', head: /No — 21A Westgate is taken in 3 weeks/, any: /airbnb/ },
     // CAPACITY from the occupancy limits.

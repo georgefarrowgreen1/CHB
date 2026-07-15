@@ -7168,6 +7168,25 @@ async function openBookingHub(bookingId, quiet) {
             loadBookingPayments(b.id);
         } catch (e) {}
     }
+    // Guest-intel mentions ride the history corpus index: if it isn't built yet,
+    // build it in the background (10-min freshness; also warms semantic search)
+    // and slot the mention rows in when it lands — same guarded pattern as the
+    // other async cards. If the card wasn't rendered (nothing known) but
+    // mentions ARRIVE, the whole hub repaints once to add it.
+    try {
+        if (!CHB_HIST.built && (DARKSTAR.st || CHB_ENC.st)) {
+            Promise.resolve(chbHistoryIndexBuild()).then(() => {
+                if (__hubBookingId !== bookingId || !CHB_HIST.built) return;
+                const fresh = findBookingById(bookingId);
+                if (!fresh) return;
+                const mentions = chbGuestMentions(fresh);
+                if (!mentions.length) return;
+                const holder = document.getElementById('hub-intel-mentions');
+                if (holder) { __hubIntelMentions = mentions; holder.innerHTML = hubIntelMentionRowsHtml(mentions); }
+                else renderBookingHub();
+            }).catch(() => {});
+        }
+    } catch (e) {}
 }
 
 function bookingHubBack() {
@@ -7305,6 +7324,103 @@ function hubPayFlowHtml(b, gt, dh) {
     return `<div class="bhub-paypipe">${pills}</div>`;
 }
 
+// ============================================================
+//  Ambient guest intelligence — the search engine's indexes VOLUNTEER what
+//  they know the moment a booking opens, instead of waiting to be asked.
+//  Composed from the unified customer directory (STRONG identity — exact
+//  email, else phone; never name alone, so two "John Smith"s can never
+//  cross-pollinate) plus history MENTIONS from the in-memory corpus index
+//  (CHB_HIST). Pure reader: no server call of its own, no destructive action
+//  on the card, and it renders NOTHING for a first-time guest with no history
+//  (an empty dossier is noise, not intelligence).
+// ============================================================
+function chbGuestIntel(propKey, b) {
+    if (!b) return null;
+    let cust = null;
+    try {
+        const key = chbCustomerKey(b);
+        if (key && key.slice(0, 2) !== 'b:') cust = chbCustomers().find((c) => c.key === key) || null;
+    } catch (e) {}
+    const out = { stays: 0, ordinal: '', nights: 0, revenue: 0, favName: '', lastStay: '', mentions: [] };
+    if (cust && cust.stays.length >= 2) {
+        out.stays = cust.stays.length;
+        // Which visit is THIS one? Position by check-in among their stays.
+        const asc = cust.stays.slice().sort((a, z) => String(a.checkIn || '').localeCompare(String(z.checkIn || '')));
+        const pos = asc.findIndex((s) => s.id === b.id) + 1;
+        if (pos > 0) { const ord = pos === 1 ? '1st' : pos === 2 ? '2nd' : pos === 3 ? '3rd' : pos + 'th'; out.ordinal = ord + ' stay'; }
+        out.nights = cust.nights;
+        out.revenue = cust.revenue;
+        // Favourite cottage: the clear mode of their stays (ties stay quiet).
+        const byPk = {};
+        cust.stays.forEach((s) => { byPk[s.pk] = (byPk[s.pk] || 0) + 1; });
+        const ranked = Object.keys(byPk).sort((a, z) => byPk[z] - byPk[a]);
+        if (ranked.length && byPk[ranked[0]] >= 2 && (!ranked[1] || byPk[ranked[0]] > byPk[ranked[1]])) {
+            out.favName = (propertyMeta[ranked[0]] && propertyMeta[ranked[0]].name) || ranked[0];
+        }
+        const prevStay = asc.filter((s) => s.id !== b.id && (s.checkIn || '') < (b.checkIn || '')).pop();
+        if (prevStay && prevStay.checkIn) out.lastStay = new Date(prevStay.checkIn + 'T00:00:00').toLocaleDateString('en-GB', { month: 'long', year: 'numeric' });
+    }
+    out.mentions = chbGuestMentions(b);
+    return (out.stays >= 2 || out.mentions.length) ? out : null;
+}
+// History rows that MENTION this guest, from the already-built in-memory
+// corpus index. Strong-first matching: an email row must match the guest's
+// email address; an enquiry row their recorded name; free text (messages /
+// reviews) only ever matches a FULL name of two-plus words — a bare "John"
+// never pulls in someone else's John. Activity log is excluded (every edit
+// mentions the name — log spam, not insight). Display-only recall: mentions
+// never merge records or drive an action beyond opening their source.
+function chbGuestMentions(b) {
+    if (!CHB_HIST.built || !CHB_HIST.docs.length) return [];
+    // Strong identity required — a name-only booking has no customer record to
+    // pin mentions to, and "John Smith" in a message could be a different John.
+    try { if (chbCustomerKey(b).slice(0, 2) === 'b:') return []; } catch (e) { return []; }
+    const email = String(b.email || '').trim().toLowerCase();
+    const name = String(b.name || '').trim().toLowerCase();
+    const fullName = name.split(/\s+/).length >= 2 ? name : '';
+    const hits = [];
+    for (const d of CHB_HIST.docs) {
+        if (d.type === 'activity') continue;
+        const x = d.extra || {};
+        let hit = false;
+        if (d.type === 'email') hit = !!(email && String(x.to || '').toLowerCase() === email);
+        else if (d.type === 'enquiry') hit = !!(fullName && String(x.name || '').toLowerCase() === fullName);
+        else hit = !!(fullName && String(d.text || '').toLowerCase().includes(fullName));
+        if (hit) hits.push(d);
+    }
+    hits.sort((a, z) => String(z.date || '').localeCompare(String(a.date || '')));
+    return hits.slice(0, 2);
+}
+// The card's mention rows re-open their source record via the same per-type
+// handlers search results use (chbHistoryRow → cmdkServerItem).
+let __hubIntelMentions = [];
+function hubIntelOpen(i) {
+    const d = __hubIntelMentions[+i];
+    if (!d) return;
+    try { const row = chbHistoryRow(d); if (row && typeof row.run === 'function') row.run(); } catch (e) {}
+}
+function hubIntelCardHtml(intel) {
+    if (!intel) return '';
+    const bits = [];
+    if (intel.ordinal) bits.push(`<strong>${escapeHtml(intel.ordinal)}</strong>`);
+    if (intel.stays >= 2) bits.push(`${gbp(intel.revenue)} lifetime`, `${intel.nights} night${intel.nights === 1 ? '' : 's'} all-time`);
+    const line2 = [];
+    if (intel.favName) line2.push(`Usually books ${escapeHtml(intel.favName)}`);
+    if (intel.lastStay) line2.push(`last stayed ${escapeHtml(intel.lastStay)}`);
+    return `
+        <section class="bhub-card glass-panel" id="hub-intel-card">
+            <h3 class="bhub-card-title">Knows your guest <span class="bhub-mut" style="text-transform:none;letter-spacing:0;font-weight:400;">· from your own records</span></h3>
+            ${bits.length ? `<div class="bhub-intel-line">${bits.join(' · ')}</div>` : ''}
+            ${line2.length ? `<div class="bhub-intel-line bhub-mut">${line2.join(' · ')}</div>` : ''}
+            <div id="hub-intel-mentions">${hubIntelMentionRowsHtml(intel.mentions)}</div>
+        </section>`;
+}
+function hubIntelMentionRowsHtml(mentions) {
+    const snip = (s) => { s = String(s || '').replace(/\s+/g, ' ').trim(); return s.length > 110 ? s.slice(0, 109) + '…' : s; };
+    return (mentions || [])
+        .map((d, i) => `<button class="bhub-stay-row" ${chbAttrs('hubIntelOpen', String(i))}><span class="bhub-mut" style="text-transform:capitalize;flex-shrink:0;">${escapeHtml(d.type)}</span><span style="text-align:left;">“${escapeHtml(snip(d.text))}”</span><span class="bhub-mut">open →</span></button>`)
+        .join('');
+}
 function renderBookingHub() {
     const el = document.getElementById('booking-hub-content');
     if (!el) return;
@@ -7566,7 +7682,16 @@ function renderBookingHub() {
             </div>
             <p class="bhub-mut" style="margin:10px 0 0;font-size:0.8rem;">Full name &amp; nationality of everyone 16+ (plus passport/ID &amp; next destination for non‑British/Irish). Held securely; deleted 12 months after checkout.</p>
         </section>`;
-    el.innerHTML = `${header}<div class="bhub-grid">${moneyCard}${emailsCard}${guestCard}${regCard}${historyCard}</div>`;
+    // Ambient guest intelligence LEADS the grid — context before actions. It
+    // renders only when there is something worth knowing (repeat guest or
+    // real history mentions), so most first-time bookings see no extra card.
+    let intelCard = '';
+    try {
+        const intel = chbGuestIntel(propKey, b);
+        __hubIntelMentions = (intel && intel.mentions) || [];
+        intelCard = hubIntelCardHtml(intel);
+    } catch (e) { __hubIntelMentions = []; }
+    el.innerHTML = `${header}<div class="bhub-grid">${intelCard}${moneyCard}${emailsCard}${guestCard}${regCard}${historyCard}</div>`;
 }
 // Guest-register (UK 1972 Order) helpers — open the token form to view/edit the
 // party, or copy the request link to send the guest. The token comes from the
@@ -10829,7 +10954,86 @@ const NY_ICONS = {
     deposit: '<path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/>',
     chat: '<path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.6-.8L3 21l1.9-5.7A8.38 8.38 0 0 1 4 11.5 8.5 8.5 0 0 1 12.5 3 8.38 8.38 0 0 1 21 11.5z"/>',
     approve: '<path d="M12 2.5l2.9 6 6.6.9-4.8 4.6 1.2 6.5-5.9-3.2-5.9 3.2 1.2-6.5L2.5 9.4l6.6-.9z"/>',
+    spark: '<path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-4 10.5c.6.5 1 1.5 1 2.5h6c0-1 .4-2 1-2.5A6 6 0 0 0 12 3z"/>',
 };
+// ============================================================
+//  Deterministic anomaly detection — the booking data VOLUNTEERS what it can
+//  see, in the breadth-tier spirit: cheap never-wrong rules over data already
+//  in memory, silent when there's nothing, capped so the Needs-you strip stays
+//  a to-do list. Every row is an OPPORTUNITY (sev ok), never an alarm.
+function chbAnomalies() {
+    const items = [];
+    const today = todayDashed();
+    const t0 = dpParse(today).getTime();
+    const dayMs = 86400e3;
+    const propName = (k) => escapeHtml((propertyMeta[k] || {}).name || k);
+    // 1) BOUNDED short gaps — 2-4 free nights sandwiched between two guest
+    // stays (direct or OTA) starting in the next 45 days. Unbounded future
+    // space isn't a gap, 1-night holes are changeover slack not sellable
+    // stock, and an owner block over the hole means it's deliberately held.
+    const gaps = [];
+    Object.keys(dbBookings || {}).forEach((pk) => {
+        const stays = (dbBookings[pk] || [])
+            .filter((b) => b.checkIn && b.checkOut)
+            .map((b) => ({ in: b.checkIn, out: b.checkOut }))
+            .concat((((dbBlocks || {})[pk]) || []).filter((bl) => isOtaBlock(bl)).map((bl) => ({ in: bl.checkIn, out: bl.checkOut })))
+            .sort((a, z) => a.in.localeCompare(z.in));
+        const ownerBlocks = (((dbBlocks || {})[pk]) || []).filter((bl) => bl && bl.checkIn && bl.checkOut && !isOtaBlock(bl));
+        for (let i = 0; i + 1 < stays.length; i++) {
+            const from = stays[i].out, to = stays[i + 1].in;
+            if (to <= from || from < today) continue;
+            const nights = Math.round((dpParse(to) - dpParse(from)) / dayMs);
+            if (nights < 2 || nights > 4) continue;
+            const startDays = Math.round((dpParse(from).getTime() - t0) / dayMs);
+            if (startDays > 45) continue;
+            if (ownerBlocks.some((bl) => bl.checkIn < to && bl.checkOut > from)) continue; // deliberately held
+            gaps.push({ pk, from, to, nights, startDays });
+        }
+    });
+    gaps.sort((a, z) => a.startDays - z.startDays).slice(0, 2).forEach((g) => {
+        items.push({
+            sev: 'ok', ic: 'spark',
+            label: `${g.nights} free nights between stays on ${propName(g.pk)}`,
+            sub: `${fmtStayRange(g.from, g.to)} · a last-minute offer could fill them`,
+            act: 'Book', go: chbAttrs('nyGapAdd', g.pk, g.from),
+            run: () => { closeCmdK(); nyGapAdd(g.pk, g.from); },
+        });
+    });
+    // 2) NEXT MONTH vs what the same month did LAST YEAR. Flags only a real
+    // shortfall — under HALF of last year's nights with a meaningful season
+    // to compare against (≥8 nights) — so a naturally quiet month never nags.
+    const d0 = new Date(t0);
+    const nmY = d0.getMonth() === 11 ? d0.getFullYear() + 1 : d0.getFullYear();
+    const nmM = (d0.getMonth() + 1) % 12;
+    const isoD = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+    const allStays = [];
+    Object.keys(dbBookings || {}).forEach((pk) => {
+        (dbBookings[pk] || []).forEach((b) => { if (b.checkIn && b.checkOut) allStays.push([b.checkIn, b.checkOut]); });
+        ((((dbBlocks || {})[pk]) || [])).forEach((bl) => { if (isOtaBlock(bl)) allStays.push([bl.checkIn, bl.checkOut]); });
+    });
+    const overlapNights = (a, bExcl) => allStays.reduce((s, [ci, co]) => {
+        const from = ci > a ? ci : a, to = co < bExcl ? co : bExcl;
+        return s + (to > from ? Math.round((dpParse(to) - dpParse(from)) / dayMs) : 0);
+    }, 0);
+    const cur = overlapNights(isoD(new Date(nmY, nmM, 1)), isoD(new Date(nmY, nmM + 1, 1)));
+    const ly = overlapNights(isoD(new Date(nmY - 1, nmM, 1)), isoD(new Date(nmY - 1, nmM + 1, 1)));
+    if (ly >= 8 && cur < ly * 0.5) {
+        const mn = new Date(nmY, nmM, 1).toLocaleDateString('en-GB', { month: 'long' });
+        items.push({
+            sev: 'ok', ic: 'spark',
+            label: `${mn} is looking light — ${cur} night${cur === 1 ? '' : 's'} booked vs ${ly} last year`,
+            sub: 'A price nudge or a short-break offer could close the gap',
+            act: 'Review', go: 'data-act="nyPacingReview"',
+            run: () => { closeCmdK(); nyPacingReview(); },
+        });
+    }
+    return items;
+}
+// Anomaly routes: Book lands on the Add-Booking modal prefilled with the
+// cottage + gap start (the timeline's own tap-to-add); Review opens the
+// pricing coach. Both are safe launches — nothing saves without the owner.
+function nyGapAdd(pk, iso) { nav('view-backoffice'); try { tlAddAt(pk, iso); } catch (e) {} }
+function nyPacingReview() { openAccounts(); try { accountsOpen('pricingcoach'); } catch (e) {} }
 function needsYouItems() {
     const items = [];
     const today = todayDashed();
@@ -10923,6 +11127,9 @@ function needsYouItems() {
             });
         }
     });
+    // 7) Opportunities the data can see — bounded gaps worth a last-minute
+    // offer, a light month vs last year. Lowest priority: obligations first.
+    try { items.push(...chbAnomalies()); } catch (e) {}
     return items;
 }
 function needsYouExpand() {
