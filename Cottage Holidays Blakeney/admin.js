@@ -1253,7 +1253,7 @@ const CHB_NLU = {
         // wording (↔ "whose bond needs refunding").
         'take a card payment', 'which cottage has a hot tub',
         'does the cottage have parking', 'is the cottage pet friendly',
-        'how to get to the cottage',
+        'how to get to the cottage', 'how many does the cottage sleep',
     ],
 };
 CHB_SEARCH.nlu = CHB_NLU; // part of the public search-core API

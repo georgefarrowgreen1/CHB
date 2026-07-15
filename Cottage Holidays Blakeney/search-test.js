@@ -672,7 +672,8 @@ if (typeof ctx.darkstarParse === 'function' && fs.existsSync(path.join(DIR, 'dar
         if (g && (Array.isArray(want) ? want.includes(g.canonical) : g.canonical === want)) ho++;
         else if (g) { hw++; hwrong.push(q + '→' + g.canonical); }
     }
-    check(`NLU held-out recall ≥ 82/${TS.HELD.length} across the full cascade (got ${ho})`, ho >= 82, `only ${ho}/${TS.HELD.length}`);
+    const heldFloor = Math.ceil(TS.HELD.length * 0.95); // ≥95% recall, scales with the set
+    check(`NLU held-out recall ≥ ${heldFloor}/${TS.HELD.length} across the full cascade (got ${ho})`, ho >= heldFloor, `only ${ho}/${TS.HELD.length}`);
     check(`NLU held-out has ZERO wrong intents (${TS.HELD.length} phrases)`, hw === 0, hwrong.join(', '));
     let tn = 0; const tleak = [];
     for (const q of TS.NEG) if (ctx.chbNluClassify(q)) { tn++; tleak.push(q); }
