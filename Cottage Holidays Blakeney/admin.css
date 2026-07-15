@@ -1163,54 +1163,84 @@ body.owner-mode #mobileMenu {
   opacity: 0.9;
   transition: color 0.35s ease, filter 0.35s ease;
 }
-/* The model-active indicator: the knot appears beside the mic, green and
-   breathing, while the on-device model is the thing answering (ml-active —
-   set in cmdkSearchCore when an NLU/ask/semantic result is on screen). It has
-   its own slot because the LEADING icon becomes the ✕ once there's text. */
-.cmdk-ml {
+/* MODEL-STATUS PILL — instead of a colour to decode, the indicator SAYS what the
+   assistant is doing (a word), with colour as a quiet accent. Shared shape for the
+   palette (#cmdk-ml) and each Assist Bar (.abar-status); the `data-mstate`
+   attribute (set in JS: ready / understood / meaning / guess / learning) drives
+   both the label and the accent. Empty state = hidden. */
+.cmdk-ml,
+.abar-status {
   display: none;
   align-items: center;
-  justify-content: center;
+  gap: 5px;
   flex-shrink: 0;
-  width: 22px;
-  height: 22px;
-  color: var(--ok);
+  padding: 3px 9px 3px 7px;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1;
+  white-space: nowrap;
+  transition: color 0.3s ease, background 0.3s ease;
 }
 .cmdk-ml .ic {
-  width: 19px;
-  height: 19px;
+  width: 14px;
+  height: 14px;
 }
-#cmdk.ml-active .cmdk-ml {
-  display: flex;
-  animation: cmdk-ml-glow 1.8s ease-in-out infinite;
+.cmdk-ml:not([data-mstate=""]),
+.abar-status:not([data-mstate=""]) {
+  display: inline-flex;
 }
-@keyframes cmdk-ml-glow {
-  0%, 100% { filter: drop-shadow(0 0 2px var(--ok)); }
-  50% { filter: drop-shadow(0 0 7px var(--ok)); }
+/* READY — Darkstar is loaded and idle: a quiet purple pip so the model's
+   presence is always shown (no animation). */
+.cmdk-ml[data-mstate="ready"],
+.abar-status[data-mstate="ready"] {
+  color: var(--darkstar);
+  background: color-mix(in srgb, var(--darkstar) 13%, transparent);
 }
-@media (prefers-reduced-motion: reduce) {
-  #cmdk.ml-active .cmdk-ml { animation: none; filter: drop-shadow(0 0 4px var(--ok)); }
+/* UNDERSTOOD / BY MEANING — the model drove the answer: green, gently breathing. */
+.cmdk-ml[data-mstate="understood"],
+.cmdk-ml[data-mstate="meaning"],
+.abar-status[data-mstate="understood"],
+.abar-status[data-mstate="meaning"] {
+  color: var(--ok);
+  background: color-mix(in srgb, var(--ok) 15%, transparent);
+  animation: chb-ms-breathe 2.2s ease-in-out infinite;
 }
-/* LEARNING state: the knot flashes orange while the model absorbs new inputs
-   (taught phrasing / suppression / cross-device merge) and retrains. Applied by
-   chbNluLearnFlash() to the dock's Search knot and the palette indicator slot;
-   it outranks the green answering glow for its ~2s window. */
+/* BEST GUESS — only near-miss suggestions: the brand accent, steady. */
+.cmdk-ml[data-mstate="guess"],
+.abar-status[data-mstate="guess"] {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 15%, transparent);
+}
+/* LEARNING — absorbing a taught phrase / suppression / merge: orange, pulsing;
+   overrides the resting/answering states for its ~2s window. */
+.cmdk-ml[data-mstate="learning"],
+.abar-status[data-mstate="learning"] {
+  color: var(--warn);
+  background: color-mix(in srgb, var(--warn) 17%, transparent);
+  animation: chb-ms-pulse 0.6s ease-in-out infinite;
+}
 .admin-dock-btn.ml-learning svg {
   color: var(--warn);
   animation: chb-ml-learn 0.55s ease-in-out infinite;
 }
-.cmdk-ml.ml-learning {
-  display: flex;
-  color: var(--warn);
-  animation: chb-ml-learn 0.55s ease-in-out infinite;
+@keyframes chb-ms-breathe {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.66; }
+}
+@keyframes chb-ms-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
 @keyframes chb-ml-learn {
   0%, 100% { opacity: 1; filter: drop-shadow(0 0 6px var(--warn)); }
   50% { opacity: 0.45; filter: drop-shadow(0 0 1px var(--warn)); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .admin-dock-btn.ml-learning svg,
-  .cmdk-ml.ml-learning { animation: none; filter: drop-shadow(0 0 5px var(--warn)); }
+  .cmdk-ml,
+  .abar-status,
+  .admin-dock-btn.ml-learning svg { animation: none !important; }
 }
 /* Clear (✕) button — occupies the search-icon slot once there's text to clear. */
 .cmdk-clear {
@@ -2403,35 +2433,14 @@ body.light-mode .cmdk-editor-input {
   }
 }
 
-/* Bar intelligence states — the same signals as the palette, per bar:
-   GREEN breathing while the on-device model is the thing answering,
-   ORANGE flashing while it learns (chbNluLearnFlash hits every knot). */
-.abar.ml-active .abar-ic {
-  color: var(--ok);
-  animation: cmdk-ml-glow 1.8s ease-in-out infinite;
-}
-.abar-ic.ml-learning {
-  color: var(--warn);
-  animation: chb-ml-learn 0.55s ease-in-out infinite;
-}
-@media (prefers-reduced-motion: reduce) {
-  .abar.ml-active .abar-ic {
-    animation: none;
-    filter: drop-shadow(0 0 4px var(--ok));
-  }
-  .abar-ic.ml-learning {
-    animation: none;
-    filter: drop-shadow(0 0 5px var(--warn));
-  }
-}
-/* DARKSTAR ONLINE — the semantic model has finished loading. The assistant
-   knot turns PURPLE wherever it appears (dock button, palette input, every
-   Assist Bar) — a calm, steady state colour, no glow. Distinct from the green
-   ANSWERING and orange LEARNING states, which still take over transiently on
-   top of it (so the purple is scoped to :not() those). --darkstar is the
-   model's own brand colour. */
-body.darkstar-ready .abar:not(.ml-active) .abar-ic:not(.ml-learning),
-body.darkstar-ready #cmdk:not(.ml-active) .cmdk-search-ic,
+/* The bar's model status is now the labelled `.abar-status` pill (styled with
+   the palette pill above) — the knot glyph itself stays a plain search icon, so
+   the STATE is read as a word, not a knot colour. */
+
+/* DARKSTAR ONLINE — the semantic model has finished loading. The status pills
+   show a quiet "AI ready" (see [data-mstate="ready"] above); on the DOCK button
+   — the off-search entry point — a calm purple tint mirrors that the model is
+   online. No glow; the ANSWERING / LEARNING states are shown by the pills. */
 body.darkstar-ready .admin-dock-btn[data-act="openCmdK"]:not(.ml-learning) svg {
   color: var(--darkstar);
   transition: color 0.5s ease; /* fades to purple as the model comes online */

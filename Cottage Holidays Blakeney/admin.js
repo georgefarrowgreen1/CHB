@@ -1300,20 +1300,57 @@ try {
         setTimeout(() => { try { darkstarLoad(); } catch (e) {} }, 2500);
     }
 } catch (e) {}
+// ---- Model status: instead of a colour to decode, the indicator SAYS what the
+// on-device assistant is doing — a small labelled pill. States, highest signal
+// first: LEARNING (absorbing a taught phrase), UNDERSTOOD (a paraphrase mapped to
+// a canonical intent), BY MEANING (a semantic/Darkstar recall), BEST GUESS (only
+// near-miss suggestions), READY (Darkstar loaded, idle). Colour is a quiet accent
+// on top of the word, not the message itself. Shared by the palette + both bars. ----
+const CHB_MSTATE_LABEL = { learning: 'Learning…', understood: 'Understood', meaning: 'By meaning', guess: 'Best guess', ready: 'AI ready' };
+// Which state a finished search represents. `rows` is the on-screen result list
+// (carries _nlu / _sem tags); `built` carries nlu + ask. '' = the model didn't
+// drive this answer (a plain literal match).
+function chbModelState(built, rows) {
+    if (!built) return '';
+    if (built.nlu || (rows || []).some((r) => r && r._nlu)) return 'understood';
+    if ((rows || []).some((r) => r && r._sem)) return 'meaning';
+    if (built.ask && built.ask.length) return 'guess';
+    return '';
+}
+// Paint a status element with a state. '' clears to the quiet "AI ready" pip when
+// Darkstar is loaded (so the model's presence is always shown), else blank.
+function chbSetModelStatus(el, state) {
+    if (!el) return;
+    let s = state || '';
+    if (!s) { try { if (document.body && document.body.classList.contains('darkstar-ready')) s = 'ready'; } catch (e) {} }
+    el.dataset.mstate = s;
+    const t = el.querySelector('.cmdk-ml-txt, .abar-status-txt');
+    if (t) t.textContent = CHB_MSTATE_LABEL[s] || '';
+}
+// Every status surface on screen (palette pill + each bar's pill).
+function chbModelStatusEls() {
+    const els = [];
+    const p = document.getElementById('cmdk-ml');
+    if (p) els.push(p);
+    document.querySelectorAll('.abar-status').forEach((e) => els.push(e));
+    return els;
+}
 // Learning indicator: the assistant knot flashes ORANGE while the model absorbs
 // new inputs (a taught phrasing, a suppression, a cross-device merge) and
 // retrains. Shown on the dock's Search knot — always on screen, since teaching
-// usually closes the palette — and on the palette's indicator slot when open.
-// Held for a couple of flash cycles so the moment is actually visible.
+// usually closes the palette — and on the palette + bar status pills (which read
+// "Learning…") when open. Held for a couple of flash cycles so it's visible.
 let __nluLearnFlashT = null;
 function chbNluLearnFlash() {
     try {
-        const knots = [document.querySelector('.admin-dock-btn[data-act="openCmdK"]'), document.getElementById('cmdk-ml')]
-            .concat(Array.from(document.querySelectorAll('.abar .abar-ic'))); // the embedded bars' knots flash too
-        knots.forEach((el) => { if (el) el.classList.add('ml-learning'); });
+        const dock = document.querySelector('.admin-dock-btn[data-act="openCmdK"]');
+        if (dock) dock.classList.add('ml-learning');
+        chbModelStatusEls().forEach((el) => chbSetModelStatus(el, 'learning'));
         clearTimeout(__nluLearnFlashT);
         __nluLearnFlashT = setTimeout(() => {
-            document.querySelectorAll('.ml-learning').forEach((el) => el.classList.remove('ml-learning'));
+            if (dock) dock.classList.remove('ml-learning');
+            // Fall back to each surface's resting state (→ "AI ready" if loaded).
+            chbModelStatusEls().forEach((el) => { if (el.dataset.mstate === 'learning') chbSetModelStatus(el, ''); });
         }, 2200);
     } catch (e) {}
 }
@@ -1419,7 +1456,12 @@ async function darkstarLoad() {
 // steady "brain online" cue, distinct from the green ANSWERING and orange
 // LEARNING states, which still take over transiently on top of it.
 function darkstarSetReady() {
-    try { if (typeof document !== 'undefined' && document.body) document.body.classList.add('darkstar-ready'); } catch (e) {}
+    try {
+        if (typeof document !== 'undefined' && document.body) document.body.classList.add('darkstar-ready');
+        // Light up the resting "AI ready" pill on every idle status surface now
+        // the on-device model has landed (active/learning states override it).
+        chbModelStatusEls().forEach((el) => { if (!el.dataset.mstate || el.dataset.mstate === 'ready') chbSetModelStatus(el, ''); });
+    } catch (e) {}
 }
 // BERT WordPiece (BertNormalizer lowercase+strip-accents, punctuation split,
 // greedy longest-match with '##' continuations, [UNK] fallback).
@@ -3457,6 +3499,7 @@ function cmdkSearchCore(q, allowCorrect) {
         __cmdkMiss = null; // deliberately cleared — not a dead end
         const mlOff = document.getElementById('cmdk');
         if (mlOff) mlOff.classList.remove('ml-active'); // no query → the model isn't answering
+        chbSetModelStatus(document.getElementById('cmdk-ml'), ''); // → quiet "AI ready" when loaded
         // The scope switch narrows the empty landing too: the brief + "Jump to"
         // show only the active scope's items ("All" shows the day brief + the
         // top dock destinations).
@@ -3589,10 +3632,13 @@ function cmdkSearchCore(q, allowCorrect) {
     // the referent for the next pronoun follow-up (see cmdkIntent 0a).
     const convRow = (built.results || []).find((r) => r && r.type === 'booking' && r.id != null);
     if (convRow) __cmdkConvCtx = { type: 'booking', id: convRow.id };
-    // The assistant knot glows green while the MODEL is the thing answering:
-    // an understood paraphrase, model-suggested questions, or semantic recall.
+    // The status pill NAMES what the model just did — Understood / By meaning /
+    // Best guess — instead of only changing colour. ml-active stays as the boolean
+    // "the model drove this" for the surrounding CSS.
+    const mstate = chbModelState(built, __cmdkResults);
     const mlEl = document.getElementById('cmdk');
-    if (mlEl) mlEl.classList.toggle('ml-active', !!(built.nlu || (built.ask && built.ask.length) || __cmdkResults.some((r) => r && (r._nlu || r._sem))));
+    if (mlEl) mlEl.classList.toggle('ml-active', !!mstate);
+    chbSetModelStatus(document.getElementById('cmdk-ml'), mstate);
     const firstReal = __cmdkResults.findIndex((it) => it && !cmdkIsNoteRow(it));
     __cmdkSel = firstReal >= 0 ? firstReal : 0; // the Top Hit, not the correction/widen note
     cmdkRender();
@@ -4019,12 +4065,14 @@ function chbAssistBar(hostId, opts) {
     host.innerHTML =
         `<div class="abar-field" data-act-blur="abarBlur" ${chbAttrsFor('keydown', 'abarKey', [hostId, CHB_EVENT])}>` +
         `<span class="abar-ic" aria-hidden="true">${CMDK_SEARCH_IC}</span>` +
+        `<span class="abar-status" data-mstate="" aria-live="polite"><span class="abar-status-txt"></span></span>` +
         `<input id="${hostId}-input" class="abar-input" type="search" enterkeyhint="search" placeholder="${escapeHtml(opts.placeholder || 'Search or ask anything…')}" autocomplete="off" autocapitalize="off" spellcheck="false" role="searchbox" aria-label="${escapeHtml(opts.placeholder || 'Search or ask')}" ${chbInput('abarInput', hostId, CHB_VALUE)}>` +
         `<span class="abar-count" id="${hostId}-count" aria-live="polite"></span>` +
         `<button type="button" class="abar-clear" id="${hostId}-clear" ${chbAttrs('abarClear', hostId)} aria-label="Clear search">✕</button>` +
         `</div>` +
         `<div class="abar-panel" id="${hostId}-panel"></div>`;
     abarAmbient(hostId);
+    chbSetModelStatus(host.querySelector('.abar-status'), ''); // resting "AI ready" pip if Darkstar's loaded
 }
 // Register every bar whose host div exists (called once from the admin boot
 // footer). Today's bar filters the operations board via the shared
@@ -4145,12 +4193,14 @@ function abarRoute(id, q) {
     const host = document.getElementById(id);
     const panel = document.getElementById(id + '-panel');
     const count = document.getElementById(id + '-count');
+    const statusEl = host ? host.querySelector('.abar-status') : null;
     if (host) host.classList.toggle('has-text', raw.length > 0);
     if (!raw) {
         abarFilterOff(st);
         st.rows = [];
         st.miss = null; // deliberately cleared — not a dead end
         if (host) { host.classList.remove('has-answer'); host.classList.remove('ml-active'); }
+        chbSetModelStatus(statusEl, ''); // → quiet "AI ready" when loaded
         if (count) count.textContent = '';
         abarAmbient(id);
         return;
@@ -4165,6 +4215,7 @@ function abarRoute(id, q) {
     if (shown > 0) {
         if (panel) panel.innerHTML = '';
         if (host) host.classList.remove('ml-active');
+        chbSetModelStatus(statusEl, ''); // the board answered — not the model
         st.miss = { q: raw, answered: true }; // the board answered it
         return;
     }
@@ -4188,13 +4239,12 @@ function abarRoute(id, q) {
         // them", "when do they arrive") typed into ANY bar or the palette.
         const convRow = st.rows.find((r) => r && r.type === 'booking' && r.id != null);
         if (convRow) __cmdkConvCtx = { type: 'booking', id: convRow.id };
-        if (host) {
-            host.classList.add('has-answer');
-            // The knot glows green while the MODEL is the thing answering —
-            // same signal as the palette (NLU paraphrase, suggested questions,
-            // semantic recall).
-            host.classList.toggle('ml-active', !!(built.nlu || (built.ask && built.ask.length) || st.rows.some((r) => r && (r._nlu || r._sem))));
-        }
+        if (host) host.classList.add('has-answer');
+        // The status pill NAMES what the model did (Understood / By meaning / Best
+        // guess) — same signal as the palette, now legible without decoding colour.
+        const mstate = chbModelState(built, st.rows);
+        if (host) host.classList.toggle('ml-active', !!mstate);
+        chbSetModelStatus(statusEl, mstate);
         if (panel)
             panel.innerHTML =
                 (built.nlu ? `<div class="abar-note">Understood as “${escapeHtml(built.nlu)}”</div>` : '') +
@@ -4209,11 +4259,13 @@ function abarRoute(id, q) {
     if (panel) {
         if (raw.length >= 3) {
             st.ask = (built && built.ask) || [];
-            panel.innerHTML = abarEmptyHtml(id, raw, st.ask);
             if (host) host.classList.toggle('ml-active', st.ask.length > 0);
+            chbSetModelStatus(statusEl, st.ask.length ? 'guess' : ''); // near-miss suggestions = a best guess
+            panel.innerHTML = abarEmptyHtml(id, raw, st.ask);
         } else {
             panel.innerHTML = '';
             if (host) host.classList.remove('ml-active');
+            chbSetModelStatus(statusEl, '');
         }
     }
 }
