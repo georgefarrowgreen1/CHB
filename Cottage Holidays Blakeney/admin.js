@@ -13908,6 +13908,69 @@ function renderEnquiryHub() {
 }
 
 // ---- Email a guest straight from the Inbox / Bookings (house style + details attached) ----
+// ---- AI-drafted replies: turn a new enquiry into a warm, ready-to-send draft
+// the owner just edits — greeting, availability, the live quote, the answer to
+// whatever they asked (reusing guestFaqAnswer over the cottage's own content), a
+// call to action and a sign-off. Deterministic template NLG (no model call →
+// instant, always on-brand); the owner stays in control (it fills the box, never
+// sends). Turns the assistant from "find the enquiry" into "write the reply". ----
+function chbHostSignoff() {
+    try {
+        const n = ((typeof siteContent === 'object' && siteContent && siteContent['host-name']) || '').trim();
+        if (n) return n;
+    } catch (e) {}
+    return 'Cottage Holidays Blakeney';
+}
+// If the enquiry asks something the cottage FAQ covers, weave in the owner's own
+// answer (reuses the guest FAQ matcher, scoped to this cottage).
+function chbEnqTopicAnswer(message, propKey) {
+    if (!message || typeof guestFaqAnswer !== 'function') return '';
+    let hit = null;
+    try {
+        const prev = typeof activeFrontProperty !== 'undefined' ? activeFrontProperty : undefined;
+        if (typeof activeFrontProperty !== 'undefined' && propKey) activeFrontProperty = propKey;
+        hit = guestFaqAnswer(message);
+        if (prev !== undefined) activeFrontProperty = prev;
+    } catch (e) {}
+    return hit && hit.a ? String(hit.a).trim() : '';
+}
+function chbDraftEnquiryReply(enq) {
+    if (!enq) return '';
+    const first = String(enq.name || '').trim().split(/\s+/)[0] || 'there';
+    const propName = (propertyMeta[enq.propKey] && propertyMeta[enq.propKey].name) || enq.propKey || 'the cottage';
+    const dates = fmtDate(enq.checkIn) + ' to ' + fmtDate(enq.checkOut);
+    const L = ['Hi ' + first + ',', ''];
+    L.push('Thanks so much for your enquiry about ' + propName + ' for ' + dates + ' — lovely to hear from you.');
+    let avail = null;
+    try { avail = enquiryAvailability(enq); } catch (e) {}
+    const free = !avail || avail.free;
+    if (avail && avail.free) L.push("Good news — those dates are free, and we'd love to welcome you.");
+    else if (avail && !avail.free) L.push("Those exact dates are just taken, I'm afraid — but if you have any flexibility I'll gladly find the nearest we can offer.");
+    try {
+        const p = priceBreakdown(enq.propKey, enq.adults, enq.children, enq.checkIn, enq.checkOut);
+        if (p && p.total) {
+            let pl = 'The total for your stay would be ' + gbp(p.total) + ' (' + p.nights + ' night' + (p.nights === 1 ? '' : 's') + ')';
+            if (p.damagesDeposit) pl += ', plus a ' + gbp(p.damagesDeposit) + ' refundable damage deposit';
+            L.push(pl + '.');
+        }
+    } catch (e) {}
+    const topic = chbEnqTopicAnswer(enq.message || '', enq.propKey);
+    if (topic) L.push('', 'To your question — ' + topic.charAt(0).toLowerCase() + topic.slice(1));
+    L.push('');
+    L.push(free ? "If you'd like to go ahead, just say the word and I'll get everything confirmed. Any questions at all, I'm happy to help." : "Just let me know your thoughts and I'll do my best to help.");
+    L.push('', 'Warm wishes,', chbHostSignoff());
+    return L.join('\n');
+}
+async function draftEnquiryReply() {
+    const t = __composeTarget;
+    if (!t || t.kind !== 'enquiry' || !t.enq) return;
+    const body = document.getElementById('enq-email-body');
+    if (!body) return;
+    if (body.value.trim() && typeof glassConfirm === 'function' && !(await glassConfirm("Replace what you've written with a fresh draft?"))) return;
+    body.value = chbDraftEnquiryReply(t.enq);
+    body.focus();
+    try { body.setSelectionRange(0, 0); body.scrollTop = 0; } catch (e) {}
+}
 // One shared composer (#enq-email-modal). __composeTarget carries which kind of
 // record we're emailing so sendEnquiryEmail() posts to the right endpoint.
 let __composeTarget = null;

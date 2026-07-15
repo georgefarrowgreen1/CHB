@@ -231,6 +231,15 @@ person instead" fallback that re-sends bypassing the matcher via `__faqBypass`),
 unmatched reaches a human as before. Deflects the repetitive parking/wifi/dogs enquiries 24/7,
 no server. Gated by smoke-test (matches from content + synonyms; nulls on unrelated/greeting).
 
+**AI-drafted enquiry replies** (admin.js) — the enquiry email composer (`openEnquiryEmail`) has a
+"✨ Draft reply" button (`draftEnquiryReply` fills `#enq-email-body`). `chbDraftEnquiryReply(enq)`
+is deterministic template NLG (no model call → instant, on-brand; the owner edits then sends):
+greeting by first name, availability (`enquiryAvailability` — free vs "just taken"), the live quote
+(`priceBreakdown` + refundable deposit), the answer to whatever they asked (reuses the guest-side
+`guestFaqAnswer` scoped to the cottage), a CTA, and the host sign-off (`siteContent['host-name']`,
+falling back to the business name). Turns the assistant from "find the enquiry" into "write the
+reply". Gated by search-test §26.
+
 **Accommodations are dynamic** — the owner adds/removes cottages from the back office
 (Settings → Preferences → "Add accommodation"; per-cottage "Remove" / "Restore"). The
 `properties` table is the single source of truth (`prop_key`, `name`, `couple_rate`…,
