@@ -1465,6 +1465,17 @@ body.owner-mode #mobileMenu {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Conversational answers (greetings, fallbacks) are full sentences — let them
+   wrap and take the space they need instead of clamping to one ellipsised line. */
+.cmdk-row-wrap {
+  align-items: flex-start;
+}
+.cmdk-row-wrap .cmdk-row-label,
+.cmdk-row-wrap .cmdk-row-sub {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+}
 .cmdk-row-ic.cmdk-action .ic {
   color: var(--accent);
 }

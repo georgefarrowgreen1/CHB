@@ -744,7 +744,43 @@ if (typeof ctx.chbNlgFallback === 'function') {
     // The social branch surfaces through cmdkIntent as an answer row.
     const soc = ctx.cmdkIntent('thanks');
     check('cmdkIntent answers a greeting/thanks with an nlg row', !!(soc && soc[0] && /^nlg-/.test(soc[0].id)));
+    // Conversational replies are full sentences → they carry wrap:true so the row
+    // renders multi-line instead of clamping to one ellipsised line.
+    check('a conversational reply row is marked wrap:true', soc[0].wrap === true);
     check('cmdkIntent does NOT route a real question to nlg', !/^nlg-/.test(((ctx.cmdkIntent('who owes me money') || [{}])[0].id) || ''));
+}
+
+// ---- 23. Business insights lead with NIGHTS booked (OTA-aware); owner
+// maintenance blocks are NOT booking days. Seed a month with one paying stay
+// (2 nights, £400), one OTA guest stay (3 nights, no price) and one owner
+// maintenance block (must not count). ----
+if (typeof ctx.cmdkIntent === 'function') {
+    const mm = ctx.todayDashed().slice(0, 8); // 'YYYY-MM-'
+    const dir = { id: 5, name: 'Ada Vale', checkIn: mm + '01', checkOut: mm + '03', checkInTime: '15:00', checkOutTime: '10:00', adults: 2, children: 0, payment: 'paid', holdStatus: 'none', agreedPrice: { total: 400 } };
+    const ota = { id: 951, source: 'airbnb', checkIn: mm + '05', checkOut: mm + '08' }; // 3 nights, no price
+    const own = { id: 952, source: 'owner', checkIn: mm + '10', checkOut: mm + '13' }; // maintenance, NOT a booking
+    ctx.__seedI = { dir: [dir], blk: [ota, own] };
+    vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);dbBookings.jollyboat=__seedI.dir;dbBlocks["21a"]=__seedI.blk;', ctx);
+    const ihead = (q) => { const r = ctx.cmdkIntent(q); return r && r[0] ? (r[0].label || '') + ' | ' + (r[0].sub || '') : '(none)'; };
+    // Generic business summary → nights booked (direct 2 + OTA 3 = 5), maintenance
+    // (3) excluded, OTA nights flagged as carrying no price.
+    const biz = ihead("how's business this month");
+    check('generic business summary leads with NIGHTS (OTA counted, maintenance excluded)', /^5 nights booked/.test(biz) && /incl\. 3 OTA nights/.test(biz), biz);
+    // Explicit money question still leads with the revenue figure. (Bare "revenue"
+    // routes to the Income & tax screen via the command registry, so probe the
+    // composer's money path with "how much did I make".)
+    const rev = ihead('how much did i make this month');
+    check('an explicit money question still leads with revenue (avg over PAID nights only)', /^£400(\.00)? booked/.test(rev) && /avg £200(\.00)?\/night/.test(rev), rev);
+    // "nights booked" counts OTA guest nights, not the owner block.
+    const nb = ihead('how many nights booked this month');
+    check('nights booked counts OTA, excludes owner maintenance (5, not 8)', /^5 nights booked/.test(nb), nb);
+    // Occupancy flags the OTA nights too.
+    const occ = ihead('occupancy this month');
+    check('occupancy is OTA-aware (flags the 3 OTA nights)', /incl\. 3 OTA nights/.test(occ), occ);
+    // Per-cottage split row shows nights (and honest "OTA, no price" where £0).
+    const rows = ctx.cmdkIntent("how's business this month") || [];
+    check('per-cottage split rows read in nights', rows.some((r) => /\d+ nights?$/.test(r.label || '')), (rows[1] || {}).label);
+    vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);', ctx);
 }
 
 // ---- Summary ----

@@ -1831,7 +1831,7 @@ function cmdkIntent(q) {
     // not a search. Precise matcher, so real questions never land here.
     try {
         const soc = chbNlgSocial(q);
-        if (soc) return [{ type: 'answer', id: 'nlg-' + soc.kind, label: soc.text, sub: soc.kind === 'capability' || soc.kind === 'identity' ? 'Your on-device assistant' : '', run: () => { const el = document.getElementById('cmdk-input'); if (el) { el.value = ''; el.focus(); } cmdkSearch(''); } }];
+        if (soc) return [{ type: 'answer', id: 'nlg-' + soc.kind, label: soc.text, wrap: true, sub: soc.kind === 'capability' || soc.kind === 'identity' ? 'Your on-device assistant' : '', run: () => { const el = document.getElementById('cmdk-input'); if (el) { el.value = ''; el.focus(); } cmdkSearch(''); } }];
     } catch (e) {}
     // -1) Natural-language commands — a fully-specified task ("block Jollyboat
     // next weekend", "add booking for Smith 12–15 Aug") wins over everything else
@@ -2342,18 +2342,29 @@ function cmdkIntent(q) {
         const total = (b) => (b.agreedPrice && b.agreedPrice.total) || 0;
         const openMoney = () => { closeCmdK(); openAccounts(); };
         const MON3 = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
-        // "busiest / best / quietest month" — rank the year's months by revenue.
+        // Booked nights come from BOTH paying bookings AND imported OTA guest stays —
+        // Airbnb / Vrbo carry no price, only dates, so revenue alone hides them. Owner
+        // MAINTENANCE blocks are NOT bookings; isOtaBlock() excludes them (source
+        // falsy or 'owner'), so blocked-out dates never count as booking days.
+        const otaStays = blocks.filter((x) => isOtaBlock(x.bl)).map((x) => ({ pk: x.pk, b: { checkIn: x.bl.checkIn, checkOut: x.bl.checkOut }, ota: true }));
+        const allStays = flat.map((x) => ({ pk: x.pk, b: x.b, ota: false })).concat(otaStays);
+        const nights = (x) => (x.b.checkIn && x.b.checkOut ? dnights(x.b.checkIn, x.b.checkOut) : 0);
+        // "busiest / quietest month" ranks by NIGHTS (occupancy, OTA-aware); "best /
+        // worst month" ranks by REVENUE (money). Both carry the other figure alongside.
         if (/busiest|best month|quietest|worst month|which month/.test(q)) {
+            const byMoney = /best month|worst month/.test(q);
             const yr = /last year/.test(q) ? dd0.getFullYear() - 1 : dd0.getFullYear();
-            const byM = Array.from({ length: 12 }, () => 0);
-            flat.forEach((x) => { if (x.b.checkIn && +x.b.checkIn.slice(0, 4) === yr) byM[+x.b.checkIn.slice(5, 7) - 1] += total(x.b); });
-            const rankedM = byM.map((v, mi) => ({ mi, v })).filter((m) => m.v > 0).sort((a, b) => b.v - a.v);
+            const rev = Array.from({ length: 12 }, () => 0);
+            const nts = Array.from({ length: 12 }, () => 0);
+            allStays.forEach((x) => { if (x.b.checkIn && +x.b.checkIn.slice(0, 4) === yr) { const mi = +x.b.checkIn.slice(5, 7) - 1; rev[mi] += total(x.b); nts[mi] += nights(x); } });
+            const rankedM = Array.from({ length: 12 }, (_, mi) => ({ mi, rev: rev[mi], nt: nts[mi], v: byMoney ? rev[mi] : nts[mi] })).filter((m) => m.v > 0).sort((a, b) => b.v - a.v);
             if (!rankedM.length) return [{ type: 'figure', id: 'ins', label: `No bookings in ${yr} yet`, sub: 'Nothing to rank', run: openMoney }];
             const quiet = /quietest|worst/.test(q);
             const pick = quiet ? rankedM[rankedM.length - 1] : rankedM[0];
-            const yrTot = rankedM.reduce((s, x) => s + x.v, 0);
-            const head = { type: 'figure', id: 'ins', label: `${monthName(pick.mi)} — ${quiet ? 'quietest' : 'busiest'} · ${gbp(pick.v)}`, sub: `By revenue in ${yr}`, run: openMoney };
-            return [head].concat(rankedM.slice(0, 6).map((m) => ({ type: 'answer', id: 'ins-m' + m.mi, label: `${monthName(m.mi)} · ${gbp(m.v)}`, sub: `${Math.round((100 * m.v) / (yrTot || 1))}% of ${yr}`, run: openMoney })));
+            const figV = (m) => (byMoney ? gbp(m.rev) : `${m.nt} night${m.nt === 1 ? '' : 's'}`);
+            const otherV = (m) => (byMoney ? `${m.nt} night${m.nt === 1 ? '' : 's'}` : gbp(m.rev));
+            const head = { type: 'figure', id: 'ins', label: `${monthName(pick.mi)} — ${quiet ? 'quietest' : 'busiest'} · ${figV(pick)}`, sub: `By ${byMoney ? 'revenue' : 'nights booked'} in ${yr} · ${otherV(pick)}`, run: openMoney };
+            return [head].concat(rankedM.slice(0, 6).map((m) => ({ type: 'answer', id: 'ins-m' + m.mi, label: `${monthName(m.mi)} · ${figV(m)}`, sub: `${otherV(m)}`, run: openMoney })));
         }
         // Period for the point-in-time metrics.
         let pStart, pEnd, plabel;
@@ -2364,36 +2375,52 @@ function cmdkIntent(q) {
         else if (/next month/.test(q)) { const s = new Date(dd0.getFullYear(), dd0.getMonth() + 1, 1), e = new Date(dd0.getFullYear(), dd0.getMonth() + 2, 0); pStart = isoD(s); pEnd = isoD(e); plabel = 'in ' + monthName(s.getMonth()); }
         else if (nm) { const mi = MON3.indexOf(nm[1].slice(0, 3)); const yr = dd0.getFullYear(); pStart = isoD(new Date(yr, mi, 1)); pEnd = isoD(new Date(yr, mi + 1, 0)); plabel = 'in ' + monthName(mi); }
         else { const s = new Date(dd0.getFullYear(), dd0.getMonth(), 1), e = new Date(dd0.getFullYear(), dd0.getMonth() + 1, 0); pStart = isoD(s); pEnd = isoD(e); plabel = 'this month'; }
-        const stays = flat.filter((x) => x.b.checkIn && x.b.checkIn >= pStart && x.b.checkIn <= pEnd);
+        const stays = allStays.filter((x) => x.b.checkIn && x.b.checkIn >= pStart && x.b.checkIn <= pEnd);
         const revenue = stays.reduce((s, x) => s + total(x.b), 0);
-        const soldNights = stays.reduce((s, x) => s + (x.b.checkOut ? dnights(x.b.checkIn, x.b.checkOut) : 0), 0);
-        const avgRate = soldNights ? revenue / soldNights : 0;
+        const soldNights = stays.reduce((s, x) => s + nights(x), 0);
+        const otaNights = stays.filter((x) => x.ota).reduce((s, x) => s + nights(x), 0);
+        // Average nightly rate divides revenue by the PAYING nights only — OTA nights
+        // carry no price, so folding them in would fake-deflate the rate.
+        const payingNights = soldNights - otaNights;
+        const avgRate = payingNights ? revenue / payingNights : 0;
+        const otaNote = otaNights ? ` · incl. ${otaNights} OTA night${otaNights === 1 ? '' : 's'} (no price)` : '';
         const cottages = Object.keys(dbBookings || {}).length || 1;
         const periodDays = dnights(pStart, pEnd) + 1;
         const endPlus = isoD(new Date(new Date(pEnd + 'T00:00:00').getTime() + 86400000));
         let occNights = 0;
-        flat.forEach((x) => { if (x.b.checkIn && x.b.checkOut) { const inN = x.b.checkIn > pStart ? x.b.checkIn : pStart; const outN = x.b.checkOut < endPlus ? x.b.checkOut : endPlus; const n = dnights(inN, outN); if (n > 0) occNights += n; } });
+        stays.forEach((x) => { if (x.b.checkIn && x.b.checkOut) { const inN = x.b.checkIn > pStart ? x.b.checkIn : pStart; const outN = x.b.checkOut < endPlus ? x.b.checkOut : endPlus; const n = dnights(inN, outN); if (n > 0) occNights += n; } });
         const occPct = Math.round((100 * occNights) / (cottages * periodDays));
         const byC = {};
-        stays.forEach((x) => { byC[x.pk] = (byC[x.pk] || 0) + total(x.b); });
+        const byCn = {};
+        stays.forEach((x) => { byC[x.pk] = (byC[x.pk] || 0) + total(x.b); byCn[x.pk] = (byCn[x.pk] || 0) + nights(x); });
         const ranked = Object.keys(byC).map((k) => ({ k, v: byC[k] })).sort((a, b) => b.v - a.v);
+        const rankedN = Object.keys(byCn).map((k) => ({ k, n: byCn[k], v: byC[k] || 0 })).sort((a, b) => b.n - a.n);
         const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
         if (/which cottage|top cottage|best cottage|earns? (the )?most|most (money|revenue|income)/.test(q) && ranked.length) {
             const head = { type: 'figure', id: 'ins', label: `${propName(ranked[0].k)} earns most · ${gbp(ranked[0].v)}`, sub: `${cap(plabel)} · ${gbp(revenue)} across all cottages`, run: openMoney };
             return [head].concat(ranked.map((r) => ({ type: 'answer', id: 'ins-' + r.k, label: `${propName(r.k)} · ${gbp(r.v)}`, sub: `${Math.round((100 * r.v) / (revenue || 1))}% of revenue ${plabel}`, run: openMoney })));
         }
         if (/occupanc|occupied|how (full|busy)/.test(q)) {
-            return [{ type: 'figure', id: 'ins', label: `${occPct}% occupancy ${plabel}`, sub: `${occNights} of ${cottages * periodDays} cottage-nights · ${gbp(revenue)} revenue`, run: openMoney }];
+            return [{ type: 'figure', id: 'ins', label: `${occPct}% occupancy ${plabel}`, sub: `${occNights} of ${cottages * periodDays} cottage-nights${otaNote}`, run: openMoney }];
         }
         if (/nights? (booked|sold)|how many nights/.test(q)) {
-            return [{ type: 'figure', id: 'ins', label: `${soldNights} night${soldNights === 1 ? '' : 's'} booked ${plabel}`, sub: `${occPct}% occupancy · ${gbp(revenue)} revenue`, run: openMoney }];
+            return [{ type: 'figure', id: 'ins', label: `${soldNights} night${soldNights === 1 ? '' : 's'} booked ${plabel}`, sub: `${occPct}% occupancy · ${gbp(revenue)} revenue${otaNote}`, run: openMoney }];
         }
         if (/average (rate|price|nightly)|\bavg\b/.test(q)) {
-            return [{ type: 'figure', id: 'ins', label: `${gbp(avgRate)} avg/night ${plabel}`, sub: `${gbp(revenue)} over ${soldNights} night${soldNights === 1 ? '' : 's'}`, run: openMoney }];
+            return [{ type: 'figure', id: 'ins', label: `${gbp(avgRate)} avg/night ${plabel}`, sub: `${gbp(revenue)} over ${payingNights} paid night${payingNights === 1 ? '' : 's'}${otaNote}`, run: openMoney }];
         }
-        // Default: revenue headline + the numbers + per-cottage split.
-        const head = { type: 'figure', id: 'ins', label: `${gbp(revenue)} booked ${plabel}`, sub: `${soldNights} night${soldNights === 1 ? '' : 's'} · ${occPct}% occupancy${avgRate ? ' · avg ' + gbp(avgRate) + '/night' : ''}`, run: openMoney, chips: [{ label: 'Last month', q: 'revenue last month' }, { label: 'This year', q: 'revenue this year' }, { label: 'Busiest month', q: 'busiest month' }, { label: 'Top cottage', q: 'which cottage earns most' }] };
-        return [head].concat(ranked.filter((r) => r.v > 0).map((r) => ({ type: 'answer', id: 'ins-' + r.k, label: `${propName(r.k)} · ${gbp(r.v)}`, sub: `${Math.round((100 * r.v) / (revenue || 1))}% of revenue`, run: openMoney })));
+        // Default headline. An explicit MONEY question ("revenue / income / how
+        // much did I make") leads with the figure; a generic business summary
+        // ("how's business", "performance") leads with NIGHTS BOOKED — money taken
+        // hides the Airbnb / Vrbo stays that carry no price. Either way the OTA note
+        // flags that revenue excludes those nights.
+        const moneyLed = /\brevenue\b|\bincome\b|\bearn|\btakings?\b|\bturnover\b|\bgross\b|how much/.test(q);
+        if (moneyLed) {
+            const head = { type: 'figure', id: 'ins', label: `${gbp(revenue)} booked ${plabel}`, sub: `${soldNights} night${soldNights === 1 ? '' : 's'} · ${occPct}% occupancy${avgRate ? ' · avg ' + gbp(avgRate) + '/night' : ''}${otaNote}`, run: openMoney, chips: [{ label: 'Last month', q: 'revenue last month' }, { label: 'This year', q: 'revenue this year' }, { label: 'Busiest month', q: 'busiest month' }, { label: 'Top cottage', q: 'which cottage earns most' }] };
+            return [head].concat(ranked.filter((r) => r.v > 0).map((r) => ({ type: 'answer', id: 'ins-' + r.k, label: `${propName(r.k)} · ${gbp(r.v)}`, sub: `${Math.round((100 * r.v) / (revenue || 1))}% of revenue`, run: openMoney })));
+        }
+        const head = { type: 'figure', id: 'ins', label: `${soldNights} night${soldNights === 1 ? '' : 's'} booked ${plabel}`, sub: `${occPct}% occupancy · ${gbp(revenue)} revenue${avgRate ? ' · avg ' + gbp(avgRate) + '/night' : ''}${otaNote}`, run: openMoney, chips: [{ label: 'Last month', q: 'nights booked last month' }, { label: 'This year', q: 'nights booked this year' }, { label: 'Busiest month', q: 'busiest month' }, { label: 'Top cottage', q: 'which cottage earns most' }] };
+        return [head].concat(rankedN.filter((r) => r.n > 0).map((r) => ({ type: 'answer', id: 'ins-' + r.k, label: `${propName(r.k)} · ${r.n} night${r.n === 1 ? '' : 's'}`, sub: `${gbp(r.v)}${r.v ? ' revenue' : ' · OTA, no price'} · ${Math.round((100 * r.n) / (soldNights || 1))}% of nights`, run: openMoney })));
     }
 
     // 0d) Booking reference — "CHB-000123", "#123", "booking 123" → open it.
@@ -3353,7 +3380,7 @@ function cmdkBuildResults(ql) {
             const fb = chbNlgFallback(ql);
             if (fb) {
                 results = [{
-                    type: 'answer', id: 'nlg-fallback', label: fb.label, sub: fb.sub,
+                    type: 'answer', id: 'nlg-fallback', label: fb.label, sub: fb.sub, wrap: true,
                     chips: ask.map((c) => ({ label: c, q: c })),
                     run: () => { const el = document.getElementById('cmdk-input'); if (el) el.focus(); },
                 }];
@@ -4181,7 +4208,7 @@ function abarRowHtml(id, it, i) {
             : '';
     const nlg = it.nlgBody ? `<p class="cmdk-nlg-body">${escapeHtml(it.nlgBody)}</p>` : '';
     return (
-        `<button type="button" class="cmdk-row abar-row cmdk-row-${it.type}" ${chbAttrs('abarExec', id, i)}>` +
+        `<button type="button" class="cmdk-row abar-row cmdk-row-${it.type}${it.wrap ? ' cmdk-row-wrap' : ''}" ${chbAttrs('abarExec', id, i)}>` +
         `<span class="cmdk-row-ic cmdk-${it.type}">${cmdkIcon(it.type)}</span>` +
         `<span class="cmdk-row-main"><span class="cmdk-row-label">${hi(it.label)}</span><span class="cmdk-row-sub">${hi(it.sub || '')}</span></span>` +
         `</button>` +
@@ -4633,7 +4660,7 @@ function cmdkRowHtml(it, i, top) {
     // Highlight the matched terms — but not on computed summaries (answer/figure),
     // whose text isn't a literal echo of the query.
     const hi = it.type === 'answer' || it.type === 'figure' ? (s) => escapeHtml(s || '') : cmdkHi;
-    const row = `<button type="button" id="cmdk-opt-${i}" class="cmdk-row cmdk-row-${it.type}${sel ? ' is-sel' : ''}${top ? ' cmdk-tophit' : ''}" role="option" aria-selected="${sel}" data-idx="${i}" ${chbAttrs('cmdkExec', i)}>
+    const row = `<button type="button" id="cmdk-opt-${i}" class="cmdk-row cmdk-row-${it.type}${sel ? ' is-sel' : ''}${top ? ' cmdk-tophit' : ''}${it.wrap ? ' cmdk-row-wrap' : ''}" role="option" aria-selected="${sel}" data-idx="${i}" ${chbAttrs('cmdkExec', i)}>
                     <span class="cmdk-row-ic cmdk-${it.type}">${cmdkIcon(it.type)}</span>
                     <span class="cmdk-row-main"><span class="cmdk-row-label">${hi(it.label)}</span><span class="cmdk-row-sub">${hi(it.sub || '')}</span></span>
                 </button>`;
