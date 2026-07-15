@@ -1973,6 +1973,19 @@ body.light-mode .cmdk-editor-input {
   margin: 4px 0;
   padding-left: 2px;
 }
+/* Generated how-to: the natural-language paragraph under the answer head. Wraps
+   (unlike the clamped one-line sub) so the whole spoken guidance reads out. */
+.cmdk-nlg-body {
+  margin: -2px 0 6px;
+  padding: 0 14px 0 74px;
+  font-size: 0.86rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+  white-space: normal;
+}
+.abar-row .cmdk-nlg-body {
+  padding-left: 14px;
+}
 .cmdk-refine-chip {
   font-size: 0.75rem;
   font-weight: 600;
