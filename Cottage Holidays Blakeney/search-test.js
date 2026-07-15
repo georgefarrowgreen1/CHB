@@ -716,6 +716,12 @@ if (typeof ctx.cmdkIntent === 'function') {
     vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);dbBookings.jollyboat=__seedA.jb;dbBlocks["21a"]=__seedA.blk;', ctx);
     const head = (q) => { const r = ctx.cmdkIntent(q); return r && r[0] ? (r[0].label || '') + ' | ' + (r[0].sub || '') : '(none)'; };
     check('"when is the guest arriving today" → the arrival with the 15:00 TIME', /Richard Berry arrives TODAY at 15:00/.test(head('when is the guest arriving today')));
+    // "how long is the guest staying" needs exactly ONE in-residence guest. Richard
+    // arrives TODAY at 15:00, so once the wall-clock passes 15:00 he ALSO counts as
+    // in-house and the singular composer sees two guests (this test flaked after
+    // 3pm regardless of the model). Reseed to Alice alone so it's time-of-day safe.
+    ctx.__seedHL = { jb: [mk(2, 'Alice Marsh', plus(-1), plus(2))] };
+    vm.runInContext('dbBookings.jollyboat = __seedHL.jb; dbBlocks["21a"] = [];', ctx);
     check('"how long is the guest staying" → the in-residence guest, 3 nights', /Alice Marsh is staying 3 nights/.test(head('how long is the guest staying')));
     // OTA-only arrival today → honest "the channel doesn't share a time".
     ctx.__seedB = { blk: [{ id: 902, source: 'airbnb', checkIn: today, checkOut: plus(5) }] };
