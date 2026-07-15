@@ -3056,6 +3056,33 @@ function cmdkHelpItem(t, byId) {
     (t.related || []).forEach((rid) => { if (byId[rid]) chips.push({ label: 'More: ' + byId[rid].title, q: byId[rid].title }); });
     return { type: 'help', id: 'help-' + t.id, label: t.title, sub: (t.cat ? t.cat + ' · ' : '') + (t.steps && t.steps[0] ? t.steps[0] : 'How-to'), steps: t.steps, chips, run: (t.showMe && t.showMe.run) || (t.doIt && t.doIt.run) || (() => {}) };
 }
+// Realize a help topic into a NATURAL-LANGUAGE how-to answer — a flowing
+// paragraph of the steps plus the one action that actually does it — instead of
+// a stack of topic rows. Used for explicit "how do I…" questions. Runners-up
+// ride along as "More: …" chips.
+function chbNlgHowTo(t, more) {
+    const steps = (t.steps || []).map((s) => String(s).trim()).filter(Boolean);
+    const title = t.title.replace(/\?$/, '');
+    const lead = /^(how|why|what|when)\b/i.test(title) ? title : 'How to ' + title.charAt(0).toLowerCase() + title.slice(1);
+    // Realize the steps into ONE flowing paragraph: stitch the full-sentence steps
+    // with connectives ("First… Then… After that… Finally…") so it reads as spoken
+    // guidance rather than a bullet list. One step → just the sentence.
+    const joiners = ['First,', 'Then,', 'After that,', 'Next,', 'Finally,'];
+    let body;
+    if (steps.length <= 1) body = steps[0] || '';
+    else body = steps.map((s, i) => {
+        const j = i === 0 ? joiners[0] : i === steps.length - 1 ? 'Finally,' : joiners[Math.min(i, joiners.length - 2)];
+        const first = s.charAt(0).toLowerCase() + s.slice(1);
+        return j + ' ' + first;
+    }).join(' ');
+    // The clamped sub-line carries a short précis; the full paragraph renders below.
+    const sub = t.cat ? t.cat + ' · ' + steps.length + ' step' + (steps.length === 1 ? '' : 's') : steps.length + ' step' + (steps.length === 1 ? '' : 's');
+    const chips = [];
+    if (t.doIt) chips.push(t.doIt);
+    if (t.showMe) chips.push(t.showMe);
+    (more || []).forEach((mt) => chips.push({ label: 'More: ' + mt.title, q: mt.title }));
+    return { type: 'answer', id: 'nlg-howto-' + t.id, label: lead, sub, nlgBody: body, steps, chips, run: (t.showMe && t.showMe.run) || (t.doIt && t.doIt.run) || (() => {}) };
+}
 // Turn a list of topic ids into help items (order preserved, unknowns dropped).
 function cmdkHelpItems(ids) {
     const topics = helpTopics();
@@ -3089,6 +3116,14 @@ function cmdkHelp(q) {
         if (score && wantHelp) score += 1;
         return { t, score };
     }).filter((x) => x.score > 0).sort((a, b) => b.score - a.score);
+    // Explicit "how do I…" with a solid top match → GENERATE the answer: one
+    // natural-language how-to for the best topic, runners-up as "More:" chips. The
+    // stable sort keeps the canonical action topic first on a score tie (e.g.
+    // "refund a deposit" → the return-deposit topic, not the explainer). A weak
+    // lead (score < 3, i.e. a single glancing keyword) still falls to the index.
+    if (wantHelp && scored.length && scored[0].score >= 3 && scored[0].t.steps && scored[0].t.steps.length) {
+        return [chbNlgHowTo(scored[0].t, scored.slice(1, 3).map((x) => x.t))];
+    }
     return scored.slice(0, wantHelp ? 4 : 3).map((x) => cmdkHelpItem(x.t, byId));
 }
 // ---- Context-aware help: the palette "?" shows how-to for whatever screen the
@@ -4144,11 +4179,13 @@ function abarRowHtml(id, it, i) {
         Array.isArray(it.chips) && it.chips.length
             ? `<div class="abar-chips">${it.chips.map((c, k) => `<button type="button" class="abar-chip" ${chbAttrs('abarChip', id, i, k)}>${escapeHtml(c.label)}</button>`).join('')}</div>`
             : '';
+    const nlg = it.nlgBody ? `<p class="cmdk-nlg-body">${escapeHtml(it.nlgBody)}</p>` : '';
     return (
         `<button type="button" class="cmdk-row abar-row cmdk-row-${it.type}" ${chbAttrs('abarExec', id, i)}>` +
         `<span class="cmdk-row-ic cmdk-${it.type}">${cmdkIcon(it.type)}</span>` +
         `<span class="cmdk-row-main"><span class="cmdk-row-label">${hi(it.label)}</span><span class="cmdk-row-sub">${hi(it.sub || '')}</span></span>` +
         `</button>` +
+        nlg +
         chips
     );
 }
@@ -4614,6 +4651,9 @@ function cmdkRowHtml(it, i, top) {
     // Help topics expand their numbered steps when selected (the Top Hit is
     // pre-selected, so the best answer opens straight away; the rest stay tidy).
     const isHelp = it.type === 'help';
+    // A generated how-to answer renders its flowing paragraph as a wrapping block
+    // (the one-line sub can't hold it). Shown whenever present — it IS the answer.
+    const nlg = it.nlgBody ? `<p class="cmdk-nlg-body">${escapeHtml(it.nlgBody)}</p>` : '';
     const steps =
         isHelp && sel && Array.isArray(it.steps) && it.steps.length
             ? `<ol class="cmdk-help-steps">${it.steps.map((s) => `<li>${escapeHtml(s)}</li>`).join('')}</ol>`
@@ -4637,7 +4677,7 @@ function cmdkRowHtml(it, i, top) {
             refine = `<div class="cmdk-qa cmdk-refine-menu">${it.chips.map((c, k) => `<button type="button" class="cmdk-qa-row cmdk-refine-row" data-idx="${i}" data-chip="${k}" ${chbAttrs('cmdkChipRun', i, k)}><span class="cmdk-qa-ic">${CMDK_FILTER_IC}</span><span class="cmdk-qa-lbl">${escapeHtml(c.label)}</span><span class="cmdk-qa-go" aria-hidden="true">${CMDK_CHEV}</span></button>`).join('')}</div>`;
         }
     }
-    return row + steps + acts + refine;
+    return row + nlg + steps + acts + refine;
 }
 // Point the combobox's aria-activedescendant at the highlighted option so screen
 // readers announce the selection as you arrow through (the rows carry matching

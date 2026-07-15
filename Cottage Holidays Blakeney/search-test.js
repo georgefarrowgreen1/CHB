@@ -204,8 +204,27 @@ if (Array.isArray(help)) {
     const badRel = help.flatMap((t) => (t.related || []).filter((r) => !hset.has(r)));
     check('every "related" id resolves to a real topic', badRel.length === 0, 'unknown: ' + badRel.join(', '));
 }
+// An explicit "how do I…" with a decisive winner GENERATES a natural-language
+// how-to: ONE answer row whose flowing paragraph (nlgBody) realizes the steps,
+// not a stack of topic rows.
 const helpAns = typeof ctx.cmdkHelp === 'function' ? ctx.cmdkHelp('how do i refund a deposit') : null;
-check('cmdkHelp() answers a "how do I…" question with a help item', Array.isArray(helpAns) && helpAns.length > 0 && helpAns[0].type === 'help' && Array.isArray(helpAns[0].steps), 'got ' + (helpAns ? helpAns.length : 'null'));
+check('cmdkHelp() generates a single how-to ANSWER for a decisive question',
+    Array.isArray(helpAns) && helpAns.length === 1 && helpAns[0].type === 'answer' && /^nlg-howto-/.test(helpAns[0].id || ''),
+    'got ' + (helpAns ? JSON.stringify(helpAns.map((h) => h.type + ':' + h.id)) : 'null'));
+check('the generated how-to reads as a flowing paragraph (nlgBody), keeps its action + steps',
+    !!helpAns && typeof helpAns[0].nlgBody === 'string' && helpAns[0].nlgBody.length > 40 && Array.isArray(helpAns[0].steps) && helpAns[0].steps.length > 0 && Array.isArray(helpAns[0].chips) && helpAns[0].chips.length > 0,
+    'body=' + (helpAns && helpAns[0] ? (helpAns[0].nlgBody || '').slice(0, 60) : 'n/a'));
+check('the how-to leads with a "How to …" phrasing', !!helpAns && /^how (to|do|can)\b/i.test(helpAns[0].label || ''), 'label=' + (helpAns && helpAns[0] ? helpAns[0].label : 'n/a'));
+// chbNlgHowTo is a pure realizer over a topic — spot-check it directly.
+if (typeof ctx.chbNlgHowTo === 'function' && Array.isArray(help)) {
+    const bk = help.find((t) => t.id === 'add-booking');
+    const ht = bk ? ctx.chbNlgHowTo(bk, []) : null;
+    check('chbNlgHowTo() stitches steps with connectives (First…/Finally…)',
+        !!ht && /\bFirst,/.test(ht.nlgBody) && /\bFinally,/.test(ht.nlgBody), 'body=' + (ht ? ht.nlgBody.slice(0, 80) : 'n/a'));
+}
+// A vague keyword (no decisive question) still returns the browsable topic rows.
+const helpKw = typeof ctx.cmdkHelp === 'function' ? ctx.cmdkHelp('deposit') : null;
+check('a plain keyword still returns browsable help topic rows', Array.isArray(helpKw) && helpKw.length > 0 && helpKw.every((h) => h.type === 'help'), 'got ' + (helpKw ? helpKw.map((h) => h.type).join(',') : 'null'));
 check('cmdkHelp() ignores a non-matching non-question', Array.isArray(ctx.cmdkHelp && ctx.cmdkHelp('xyzzy')) && ctx.cmdkHelp('xyzzy').length === 0);
 
 // Context-aware "?" — every id in HELP_INDEX / HELP_CONTEXT must be a real topic.
@@ -712,6 +731,15 @@ if (typeof ctx.chbNlgFallback === 'function') {
         check('dead-end question → nlg-fallback answer row', !!(fb && fb.results && fb.results[0] && fb.results[0].id === 'nlg-fallback'));
         const rq = ctx.cmdkBuildResults('who owes me money');
         check('a real question does NOT get the fallback', !(rq && rq.results && rq.results[0] && rq.results[0].id === 'nlg-fallback'));
+        // A procedural "how do I…" leads with the GENERATED how-to answer (Top Hit),
+        // not a stack of topic rows — that's the whole point of the composer.
+        const hb = ctx.cmdkBuildResults('how do i take a payment');
+        check('how-to question → generated how-to answer leads the results',
+            !!(hb && hb.results && hb.results[0] && /^nlg-howto-/.test(hb.results[0].id) && hb.results[0].nlgBody),
+            'top=' + (hb && hb.results && hb.results[0] ? hb.results[0].id : 'none'));
+        check('the how-to answer does NOT bring a duplicate stack of topic rows',
+            !!(hb && hb.results && hb.results.filter((r) => /^(help-|nlg-howto-)/.test(r.id || '')).length === 1),
+            'howto rows=' + (hb && hb.results ? hb.results.filter((r) => /^(help-|nlg-howto-)/.test(r.id || '')).length : '?'));
     }
     // The social branch surfaces through cmdkIntent as an answer row.
     const soc = ctx.cmdkIntent('thanks');
