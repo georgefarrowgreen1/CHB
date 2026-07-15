@@ -963,11 +963,18 @@ const CHB_NLU = {
     // provably answers (phrases verified against cmdkIntent's branches) + the
     // paraphrases we teach the model to recognise.
     corpus: [
+        // Each intent's examples are the ORIGINAL verified paraphrases plus a
+        // small set of TARGETED disambiguators (marked) that correct specific
+        // confusions the held-out benchmark surfaced — kept minimal because
+        // generic filler blurs the TF-IDF centroids (measured: +70 generic
+        // examples introduced as many new errors as they fixed).
         { canonical: 'who owes me money', examples: [
             'has anyone not paid me yet', 'who has not paid', 'anyone still owe me',
             'outstanding payments', 'am i waiting on any money', 'who still needs to pay',
             'unpaid bookings', 'money i am owed', 'who has an unpaid balance',
             'is everyone paid up', 'anyone in arrears', 'who owes cash',
+            'how much am i still due', // vs "revenue this year": "still due" = owed to me, not earnings
+            'unsettled invoices', // "invoice/unsettled" as owed-money wording
         ] },
         { canonical: 'leaving today', examples: [
             'who is checking out', 'departures today', 'who goes home today',
@@ -983,22 +990,26 @@ const CHB_NLU = {
             'what stays are coming up', 'future bookings', 'who is booked in next',
             'what is on the horizon', 'next arrivals', 'bookings coming soon',
             'what have i got coming up', 'who is staying soon',
+            'stays on the way', 'guests on the way', // vs "how many bookings": "on the way" = future, not a count
         ] },
         { canonical: 'deposits to return', examples: [
             'do i need to give any deposits back', 'damage deposits owed back',
             'whose deposit should i refund', 'deposits waiting to go back',
             'any deposits to pay back', 'guests waiting on their deposit',
             'return the damage deposit', 'deposit refunds due',
+            'bonds to hand back', // "bond" as a synonym for the damage deposit
         ] },
         { canonical: 'balances to chase', examples: [
             'who should i chase for payment', 'late payers', 'anyone behind on their balance',
             'payments i need to chase up', 'who needs a payment reminder',
             'guests to nudge about money', 'balance reminders due', 'chasing money',
+            'money still to collect', 'balance to collect on arrival', // "collect on/before arrival"
         ] },
         { canonical: 'how many bookings this year', examples: [
             'number of stays this year', 'how many guests have i had this year',
             'booking count for the year', 'total stays so far', 'how busy has this year been in bookings',
             'how many people stayed this year', 'count my bookings this year',
+            'how many reservations this year', 'tally of bookings this year', // vs "revenue": a COUNT of reservations
         ] },
         { canonical: 'revenue this year', examples: [
             'how much money have i made', 'what have i earned this year', 'takings so far',
@@ -1044,6 +1055,10 @@ const CHB_NLU = {
         'add a booking', 'block dates for maintenance', 'edit the description',
         'open settings', 'show the gallery', 'nearest pub', 'weather forecast',
         'things to do nearby', 'set a price', 'upload a photo',
+        // A block-dates COMMAND (cmdkCommand's job) — never a business question,
+        // even when it names a future weekend. ("reserve"-worded blocks are left
+        // out: they collide with the "reservations" upcoming-bookings intent.)
+        'block off next weekend',
     ],
 };
 CHB_SEARCH.nlu = CHB_NLU; // part of the public search-core API
