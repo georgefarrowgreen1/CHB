@@ -15,6 +15,56 @@
 require_once __DIR__ . '/db.php';
 require_admin();
 
+// CORPUS mode (?corpus) — a bounded dump of the text-bearing history (chat
+// messages, sent emails, reviews, activity log, enquiries) so the client can
+// EMBED it with the on-device model and run TRUE semantic recall locally
+// (meaning-based, not keyword). Text + a stable per-row handle to open it. No
+// query needed; capped per source to bound the payload.
+if (!empty($_GET['corpus']) || !empty(body()['corpus'] ?? null)) {
+    $out = [];
+    $cap = 300;
+    $add = function ($type, $id, $text, $date, $extra = []) use (&$out) {
+        $text = trim(preg_replace('/\s+/', ' ', (string) $text));
+        if ($text === '') {
+            return;
+        }
+        $out[] = array_merge(['type' => $type, 'id' => (int) $id, 'text' => mb_substr($text, 0, 600), 'date' => substr((string) $date, 0, 10)], $extra);
+    };
+    $safe = function (callable $fn) {
+        try {
+            $fn();
+        } catch (\Throwable $e) {
+            /* a missing table/column must not sink the whole dump */
+        }
+    };
+    $safe(function () use ($add, $cap) {
+        foreach (db()->query("SELECT thread_id, body, created_at FROM messages WHERE body <> '' AND thread_id IS NOT NULL ORDER BY id DESC LIMIT $cap") as $m) {
+            $add('message', $m['thread_id'], $m['body'], $m['created_at']);
+        }
+    });
+    $safe(function () use ($add, $cap) {
+        foreach (db()->query("SELECT id, prop_key, review_text, created_at FROM guest_reviews WHERE review_text <> '' ORDER BY id DESC LIMIT $cap") as $r) {
+            $add('review', $r['id'], $r['review_text'], $r['created_at'], ['prop' => $r['prop_key']]);
+        }
+    });
+    $safe(function () use ($add, $cap) {
+        foreach (db()->query("SELECT id, to_email, subject, body, sent_at FROM mail_sent ORDER BY id DESC LIMIT $cap") as $e) {
+            $add('email', $e['id'], ($e['subject'] ?? '') . ' — ' . strip_tags((string) ($e['body'] ?? '')), $e['sent_at'], ['to' => $e['to_email'], 'subject' => $e['subject']]);
+        }
+    });
+    $safe(function () use ($add, $cap) {
+        foreach (db()->query("SELECT id, summary, created_at FROM activity_log WHERE summary <> '' ORDER BY id DESC LIMIT $cap") as $a) {
+            $add('activity', $a['id'], $a['summary'], $a['created_at']);
+        }
+    });
+    $safe(function () use ($add, $cap) {
+        foreach (db()->query("SELECT id, name, message, created_at FROM enquiries WHERE message IS NOT NULL AND message <> '' ORDER BY id DESC LIMIT $cap") as $q2) {
+            $add('enquiry', $q2['id'], ($q2['name'] ?? '') . ': ' . $q2['message'], $q2['created_at'], ['name' => $q2['name']]);
+        }
+    });
+    json_out(['ok' => true, 'corpus' => $out]);
+}
+
 $q = trim((string) ($_GET['q'] ?? (body()['q'] ?? '')));
 if (mb_strlen($q) < 2) {
     json_out(['ok' => true, 'results' => []]);

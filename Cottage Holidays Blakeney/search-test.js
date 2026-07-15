@@ -678,6 +678,26 @@ if (typeof ctx.darkstarParse === 'function' && fs.existsSync(path.join(DIR, 'dar
     for (const q of TS.NEG) if (ctx.chbNluClassify(q)) { tn++; tleak.push(q); }
     check(`NLU test-set negatives all rejected (${TS.NEG.length})`, tn === 0, tleak.join(', '));
 
+    // TRUE semantic recall over history — embed a few history docs with the live
+    // model and find one by MEANING with no shared words.
+    if (typeof ctx.chbHistorySemantic === 'function') {
+        vm.runInContext(`
+            CHB_HIST.docs = [
+              { type: 'review', id: 1, text: 'The neighbours were rather loud and noisy late at night', date: '2026-06-01', extra: {}, vec: darkstarVec('The neighbours were rather loud and noisy late at night') },
+              { type: 'review', id: 2, text: 'The kitchen was well equipped and spotlessly clean', date: '2026-06-02', extra: {}, vec: darkstarVec('The kitchen was well equipped and spotlessly clean') },
+              { type: 'message', id: 3, text: 'Is the cottage dog friendly, can we bring our labrador', date: '2026-06-03', extra: {}, vec: darkstarVec('Is the cottage dog friendly, can we bring our labrador') }
+            ];
+            CHB_HIST.built = true;
+        `, ctx);
+        const noise = ctx.chbHistorySemantic('a review complaining the neighbours were noisy', 3);
+        check('semantic history recalls the noisy-neighbours review by meaning', !!(noise[0] && /neighbours were rather loud/i.test(noise[0].label)), noise[0] ? noise[0].label : 'none');
+        const pet = ctx.chbHistorySemantic('did anyone ask about bringing a pet', 3);
+        check('semantic history maps "pet" → the dog-friendly message', !!(pet[0] && /dog friendly/i.test(pet[0].label)), pet[0] ? pet[0].label : 'none');
+        const off = ctx.chbHistorySemantic('quarterly VAT return figures', 3);
+        check('an unrelated query recalls nothing (threshold holds)', off.length === 0, off.map((r) => r.label).join(' | '));
+        vm.runInContext('CHB_HIST.docs = []; CHB_HIST.built = false;', ctx);
+    }
+
     vm.runInContext('DARKSTAR.st = null', ctx); // leave the shim lexical-only for any later checks
 } else {
     check('Darkstar asset + parser present', false, 'darkstar.bin or darkstarParse missing');
