@@ -416,7 +416,10 @@ function cmdkCommand(q, today) {
     // ADD BOOKING — "add booking for <name> <dates> [cottage]" / "book <name>…".
     const addVerb = /\b(add|new|make|create|take|enter).{0,20}\bbooking\b/.test(q) || /\bbook\s+(in\s+)?(?:for\s+)?[a-z]{2,}/.test(q);
     const nameM = q.match(/\bfor\s+([a-z][a-z .'-]*?)(?=\s+\d|\s+(?:on|from|in|next|this|tomorrow|tonight|jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\b|$)/);
-    if (addVerb && (nameM || dates)) {
+    // Fire on ANY concrete slot — a name, dates, OR a named cottage. "create a
+    // booking for 21a" carries only the cottage (a digit-led name the capture
+    // skips), so without the pk cue it fell through to the empty "Add a booking".
+    if (addVerb && (nameM || dates || pk)) {
         let raw = nameM ? nameM[1].trim() : '';
         // The cottage name/key can sit inside the captured name ("Jones Jollyboat")
         // — strip its words so the guest name is just the guest.

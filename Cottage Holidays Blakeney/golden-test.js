@@ -156,6 +156,10 @@ function judge(c) {
 }
 
 const CASES = [
+    // ---- NL command: "create a booking for <cottage>" prefills that cottage ----
+    { q: 'create a booking for 21a', head: /Add booking · 21A Westgate/ },
+    { q: 'add a booking for jollyboat', head: /Add booking · Jollyboat/ },
+    { q: 'new booking for pimpernel', head: /Add booking · Pimpernel/ },
     // ---- Cottage pivot: who's at / staying in (the Jollyboat regression) ----
     { q: "who's at jollyboat", head: /Alice Marsh is at Jollyboat until/, not: /Nothing upcoming/, any: /In residence/ },
     { q: "who's staying in jollyboat", head: /Alice Marsh is at Jollyboat until/, not: /Nothing upcoming/ },
