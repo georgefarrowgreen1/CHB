@@ -4747,21 +4747,6 @@ body.owner-mode .chat-widget {
 }
 /* Collapsed to a slim pill; the full input appears when .open (toggleBoSearch). */
 
-/* "Waiting for approval" reads as a slim full-width banner rather than an
-           orphan card leaving two empty grid cells (it appears only when needed). */
-#today-approve-card {
-  grid-column: 1 / -1;
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  border-color: rgba(255, 167, 38, 0.35);
-}
-#today-approve-card .today-card-value {
-  margin: 0;
-}
-/* Per-type links inside the "Waiting for approval" card — each pending type
-   (reviews / photos / experiences) navigates to its own queue. */
-
 /* Waitlist modal date pair: date inputs have an intrinsic min-width and flex
    items default to min-width:auto, so without these the check-out field
    punches out of the modal on phones. min-width:0 lets them shrink; the

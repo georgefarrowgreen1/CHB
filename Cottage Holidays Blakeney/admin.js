@@ -4552,15 +4552,14 @@ function renderTodayFilterBar(q, shown) {
 //    • plain terms → LIVE-FILTER the workspace (the existing [data-search]
 //      dim machinery), match count in the bar; zero matches offer the deep
 //      "search everything" pivot + the model's nearest askable questions.
-//  Empty + idle it shows the palette's time-aware ambient chips, so the
-//  assistant's capability is visible where the work actually happens.
+//  Empty + idle it rests quietly (the model-status pill still shows it's ready).
 // ============================================================
 const __abars = {};
 function chbAssistBar(hostId, opts) {
     const host = document.getElementById(hostId);
     if (!host || __abars[hostId]) return;
     opts = opts || {};
-    __abars[hostId] = { id: hostId, q: '', rows: [], ask: [], ambient: [], filtering: false, opts, t: null };
+    __abars[hostId] = { id: hostId, q: '', rows: [], ask: [], filtering: false, opts, t: null };
     host.classList.add('abar');
     // NB: the keydown handler lives on the WRAPPER (delegation walks up from the
     // input) — data-args/data-pass are single attributes per element, so the
@@ -4576,7 +4575,7 @@ function chbAssistBar(hostId, opts) {
         `<button type="button" class="abar-clear" id="${hostId}-clear" ${chbAttrs('abarClear', hostId)} aria-label="Clear search">✕</button>` +
         `</div>` +
         `<div class="abar-panel" id="${hostId}-panel"></div>`;
-    abarAmbient(hostId);
+    abarClearPanel(hostId);
     chbSetModelStatus(host.querySelector('.abar-status'), ''); // resting "AI ready" pip if Darkstar's loaded
 }
 // Register every bar whose host div exists (called once from the admin boot
@@ -4780,7 +4779,7 @@ function abarRoute(id, q) {
         if (host) { host.classList.remove('has-answer'); host.classList.remove('ml-active'); }
         chbSetModelStatus(statusEl, ''); // → quiet "AI ready" when loaded
         if (count) count.textContent = '';
-        abarAmbient(id);
+        abarClearPanel(id);
         return;
     }
     // Workspace-first: terms matching rows on THIS board (a guest name, a
@@ -4956,10 +4955,10 @@ function abarEmptyHtml(id, q, ask) {
 }
 // Idle state: nothing under the bar. (The rotating "suggested searches" chips
 // were removed at the owner's request — the empty bar is the resting state.)
-function abarAmbient(id) {
-    const st = __abars[id];
+// Clear the bar's result panel (idle/reset). Named for the old ambient-chips idea
+// that lived here; now it simply empties the panel on init and on each new query.
+function abarClearPanel(id) {
     const panel = document.getElementById(id + '-panel');
-    if (st) st.ambient = [];
     if (panel) panel.innerHTML = '';
 }
 function abarRunQuery(id, q) {
@@ -15064,8 +15063,8 @@ async function refreshExpPendingBadge(known) {
         badge.style.display = 'none';
     }
 }
-// Pending guest reviews/photos: badge the Settings rows and fill the
-// dashboard "Waiting for approval" card (hidden when there's nothing).
+// Pending guest reviews/photos/experiences: badge the Settings rows + the dock
+// pips (the old dashboard "Waiting for approval" card is now the Needs-you strip).
 async function refreshModerationCounts() {
     const setBadge = (id, n) => {
         const b = document.getElementById(id);
