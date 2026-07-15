@@ -173,9 +173,15 @@ fresh for the next query. A guest **typeahead** in Add Booking (`modalNameSugges
 `#modal-name-suggest`) suggests past guests → a pick fills name+email+phone. Full
 intelligence parity: the **model-status pill** (palette `#cmdk-ml`, per-bar `.abar-status`,
 `data-mstate` set by `chbSetModelStatus`/`chbModelState`) NAMES what the assistant is doing —
-`ready` (Darkstar loaded, idle), `understood` (paraphrase→intent), `meaning` (semantic
-recall), `guess` (near-miss suggestions), `learning` (teaching) — a word with a quiet colour
-accent, NOT a colour to decode; the dock button keeps a purple Darkstar tint. Plus walk-away
+`ready` (Darkstar loaded, idle · quiet purple), `understood` (paraphrase→intent · confident
+green, breathing), `meaning` (semantic recall · its OWN Darkstar identity — a teal→purple Siri
+gradient wordmark that shimmers, distinct from understood's green so a meaning-match reads as
+semantic at a glance), `guess` (near-miss only · tentative rose-gold, hollow/dashed pip),
+`learning` (teaching · orange pulse) — the WORD carries the state, colour is a quiet accent
+(NOT a code to decode), and each pill's hover title (`CHB_MSTATE_TITLE`) explains itself. Bar
+pills carry a scannable leading state pip (`.abar-status::before`, the palette has its knot);
+all pills pop in (`chb-ms-in`) and honour `prefers-reduced-motion`. The dock button keeps a
+purple Darkstar tint. Plus walk-away
 (focusout) dead-end capture into the shared miss store, and `__cmdkConvCtx` carries across
 bars↔palette. Both bars sit ABOVE the header divider line (Today: `#abar-today` in
 `#view-backoffice`; Inbox: `#abar-inbox` moved up into `#inbox-head`, full-width above the

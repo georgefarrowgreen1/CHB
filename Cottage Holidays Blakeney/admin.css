@@ -1220,31 +1220,81 @@ body.owner-mode #mobileMenu {
   width: 14px;
   height: 14px;
 }
+/* Each pill pops in when its state appears (both palette + bars). State rules
+   below re-declare `animation` with this as the first layer, so the enter is
+   never lost to an ongoing breathe/shimmer/pulse. */
 .cmdk-ml:not([data-mstate=""]),
 .abar-status:not([data-mstate=""]) {
   display: inline-flex;
+  animation: chb-ms-in 0.26s var(--spring, cubic-bezier(0.2, 0.9, 0.3, 1.2)) both;
+}
+/* The Assist-Bar pill has no brand knot (that's the palette's), so it carries a
+   small leading STATE PIP instead — the state colour + a soft glow, scannable
+   before the word is even read. It inherits `color`, so it tracks every state. */
+.abar-status::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: currentColor;
+  box-shadow: 0 0 7px -1px currentColor;
 }
 /* READY — Darkstar is loaded and idle: a quiet purple pip so the model's
-   presence is always shown (no animation). */
+   presence is always shown (no ongoing motion, just the enter pop). */
 .cmdk-ml[data-mstate="ready"],
 .abar-status[data-mstate="ready"] {
   color: var(--darkstar);
   background: color-mix(in srgb, var(--darkstar) 13%, transparent);
 }
-/* UNDERSTOOD / BY MEANING — the model drove the answer: green, gently breathing. */
+/* UNDERSTOOD — a paraphrase mapped to a known intent (lexical/deep): confident
+   green, gently breathing. */
 .cmdk-ml[data-mstate="understood"],
-.cmdk-ml[data-mstate="meaning"],
-.abar-status[data-mstate="understood"],
-.abar-status[data-mstate="meaning"] {
+.abar-status[data-mstate="understood"] {
   color: var(--ok);
   background: color-mix(in srgb, var(--ok) 15%, transparent);
-  animation: chb-ms-breathe 2.2s ease-in-out infinite;
+  animation: chb-ms-in 0.26s var(--spring, ease) both, chb-ms-breathe 2.2s ease-in-out infinite;
 }
-/* BEST GUESS — only near-miss suggestions: the brand accent, steady. */
+/* BY MEANING — the on-device SEMANTIC model recalled this (Darkstar embeddings,
+   not keywords). It gets its OWN identity, not understood's green: a teal→purple
+   Siri gradient wordmark that shimmers, over a faint semantic-tinted fill, so a
+   meaning-match is instantly distinct from a lexical one. The pill `color`
+   (hence the palette knot) stays Darkstar purple; only the WORD carries the
+   gradient. */
+.cmdk-ml[data-mstate="meaning"],
+.abar-status[data-mstate="meaning"] {
+  color: var(--darkstar);
+  background: linear-gradient(100deg,
+      color-mix(in srgb, hsl(var(--siri-4)) 16%, transparent),
+      color-mix(in srgb, hsl(var(--siri-2)) 18%, transparent));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, hsl(var(--siri-2)) 24%, transparent);
+  animation: chb-ms-in 0.26s var(--spring, ease) both;
+}
+.cmdk-ml[data-mstate="meaning"] .cmdk-ml-txt,
+.abar-status[data-mstate="meaning"] .abar-status-txt {
+  background: linear-gradient(100deg,
+      hsl(var(--siri-4)) 0%, hsl(var(--siri-3)) 32%, hsl(var(--siri-2)) 58%, hsl(var(--siri-4)) 100%);
+  background-size: 220% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+  animation: chb-ms-shimmer 2.8s linear infinite;
+}
+/* BEST GUESS — only near-miss suggestions, so it reads TENTATIVE: the brand
+   accent, a hollow (dashed) ring instead of a solid fill, no confident motion. */
 .cmdk-ml[data-mstate="guess"],
 .abar-status[data-mstate="guess"] {
   color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 15%, transparent);
+  background: color-mix(in srgb, var(--accent) 9%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 42%, transparent);
+}
+.abar-status[data-mstate="guess"]::before {
+  box-shadow: none;
+  background: transparent;
+  border: 1.5px dashed currentColor;
+  width: 8px;
+  height: 8px;
 }
 /* LEARNING — absorbing a taught phrase / suppression / merge: orange, pulsing;
    overrides the resting/answering states for its ~2s window. */
@@ -1252,15 +1302,22 @@ body.owner-mode #mobileMenu {
 .abar-status[data-mstate="learning"] {
   color: var(--warn);
   background: color-mix(in srgb, var(--warn) 17%, transparent);
-  animation: chb-ms-pulse 0.6s ease-in-out infinite;
+  animation: chb-ms-in 0.26s var(--spring, ease) both, chb-ms-pulse 0.6s ease-in-out infinite;
 }
 .admin-dock-btn.ml-learning svg {
   color: var(--warn);
   animation: chb-ml-learn 0.55s ease-in-out infinite;
 }
+@keyframes chb-ms-in {
+  from { opacity: 0; transform: translateY(2px) scale(0.9); }
+  to { opacity: 1; transform: none; }
+}
 @keyframes chb-ms-breathe {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.66; }
+}
+@keyframes chb-ms-shimmer {
+  to { background-position: -220% 0; }
 }
 @keyframes chb-ms-pulse {
   0%, 100% { opacity: 1; }
@@ -1273,6 +1330,8 @@ body.owner-mode #mobileMenu {
 @media (prefers-reduced-motion: reduce) {
   .cmdk-ml,
   .abar-status,
+  .cmdk-ml[data-mstate="meaning"] .cmdk-ml-txt,
+  .abar-status[data-mstate="meaning"] .abar-status-txt,
   .admin-dock-btn.ml-learning svg { animation: none !important; }
 }
 /* Clear (✕) button — occupies the search-icon slot once there's text to clear. */

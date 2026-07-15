@@ -1319,6 +1319,16 @@ try {
 // near-miss suggestions), READY (Darkstar loaded, idle). Colour is a quiet accent
 // on top of the word, not the message itself. Shared by the palette + both bars. ----
 const CHB_MSTATE_LABEL = { learning: 'Learning…', understood: 'Understood', meaning: 'By meaning', guess: 'Best guess', ready: 'AI ready' };
+// The word says WHAT; the hover title says WHY — so the status teaches its own
+// meaning (a colour never has to be decoded). Kept plain-language and short.
+const CHB_MSTATE_TITLE = {
+    learning: 'Learning this phrasing so it works next time',
+    understood: 'Matched your wording to a question I can answer',
+    meaning: 'Found by meaning with the on-device model — not just keywords',
+    guess: "Not certain — showing the closest questions I can answer",
+    ready: 'The on-device assistant is loaded and ready',
+};
+const CHB_MSTATE_TITLE_DEFAULT = 'What the assistant is doing';
 // Which state a finished search represents. `rows` is the on-screen result list
 // (carries _nlu / _sem tags); `built` carries nlu + ask. '' = the model didn't
 // drive this answer (a plain literal match).
@@ -1330,7 +1340,8 @@ function chbModelState(built, rows) {
     return '';
 }
 // Paint a status element with a state. '' clears to the quiet "AI ready" pip when
-// Darkstar is loaded (so the model's presence is always shown), else blank.
+// Darkstar is loaded (so the model's presence is always shown), else blank. The
+// hover title tracks the state so each pill explains itself.
 function chbSetModelStatus(el, state) {
     if (!el) return;
     let s = state || '';
@@ -1338,6 +1349,7 @@ function chbSetModelStatus(el, state) {
     el.dataset.mstate = s;
     const t = el.querySelector('.cmdk-ml-txt, .abar-status-txt');
     if (t) t.textContent = CHB_MSTATE_LABEL[s] || '';
+    try { el.title = CHB_MSTATE_TITLE[s] || CHB_MSTATE_TITLE_DEFAULT; } catch (e) {}
 }
 // Every status surface on screen (palette pill + each bar's pill).
 function chbModelStatusEls() {
