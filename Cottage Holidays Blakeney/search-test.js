@@ -751,6 +751,30 @@ if (typeof ctx.cmdkIntent === 'function') {
         vm.runInContext('Date.now = globalThis.__realNow; delete globalThis.__realNow;', ctx);
         vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);', ctx); // clear → recent memory can't resolve (existence check)
     }
+
+    // ---- 21c. Unified customer directory + safeguards. chbCustomers groups
+    // bookings into ONE customer by STRONG identity only; the search source floats
+    // the person above their scattered stays; the row carries no destructive action.
+    if (typeof ctx.chbCustomers === 'function') {
+        vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);dbBookings.jollyboat=[
+          {id:1,name:"Sarah Wingate",email:"SARAH@x.co",checkIn:"2025-06-01",checkOut:"2025-06-04",agreedPrice:{total:600}},
+          {id:2,name:"Sarah Wingate",email:"sarah@x.co",checkIn:"2026-07-10",checkOut:"2026-07-13",agreedPrice:{total:660}},
+          {id:3,name:"John Smith",email:"john1@x.co",checkIn:"2026-01-01",checkOut:"2026-01-03",agreedPrice:{total:300}},
+          {id:4,name:"John Smith",email:"john2@x.co",checkIn:"2026-02-01",checkOut:"2026-02-03",agreedPrice:{total:300}},
+          {id:5,name:"Nomail Ned",checkIn:"2026-03-01",checkOut:"2026-03-02",agreedPrice:{total:100}},
+          {id:6,name:"Nomail Ned",checkIn:"2026-04-01",checkOut:"2026-04-02",agreedPrice:{total:100}}];`, ctx);
+        const cs = vm.runInContext('chbCustomers()', ctx);
+        const sarah = cs.find((c) => /sarah/i.test(c.name));
+        check('customer: same email (case-insensitive) unifies the stays', !!sarah && sarah.stays.length === 2 && sarah.nights === 6 && Math.round(sarah.revenue) === 1260);
+        check('false-merge: two same-name guests with DIFFERENT emails stay separate', cs.filter((c) => c.name === 'John Smith').length === 2);
+        check('false-merge: same name with NO email/phone is never merged', cs.filter((c) => c.name === 'Nomail Ned').length === 2);
+        const rows = vm.runInContext('cmdkSourceCustomers()', ctx);
+        check('directory: only REPEAT customers (≥2 stays) get a unified row', rows.length === 1 && /2 stays/.test(rows[0].sub) && rows[0]._customer === true);
+        check('destructive-action guard: the customer row exposes no delete/refund', (rows[0].actions || []).every((a) => a.key === 'email'));
+        const ranked = vm.runInContext("(function(){const p=CHB_SEARCH.collect('sarah');return p.map(it=>({c:!!it._customer,s:cmdkScore(it,['sarah'],'sarah')})).filter(x=>x.s>0).sort((a,b)=>b.s-a.s)[0];})()", ctx);
+        check('search returns the CUSTOMER first, above their scattered stays', !!ranked && ranked.c === true);
+        vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);', ctx);
+    }
 }
 
 // ---- 22. chbNlg — conversational replies (social + fallback, shown as text) ----

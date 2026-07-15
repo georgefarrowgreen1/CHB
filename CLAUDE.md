@@ -247,8 +247,26 @@ actions belong on the hubs, not new surfaces. Dates display DD/MM/YYYY everywher
 `pricing.php` (authoritative price model), `reviews.php`/`photos.php`/`experiences.php`
 (moderated guest UGC: GET public, `suggest`/`submit` guest, admin list/approve/reject),
 `messages.php` (chat), `webpush.php` (`alert_owner`, `notify_guest`), `mailer.php`
-(`smtp_send`, `send_*`). Crons run daily via `cron.php` (pre-arrival, payments-due,
+(`smtp_send`, `send_*`), `customers.php` (`audit` — the customer-directory lookup
+trail; see below). Crons run daily via `cron.php` (pre-arrival, payments-due,
 tide-push, push checkin, enquiry-nudge).
+
+**Unified customer directory** (admin.js — owner-side) — `dbBookings` is per-STAY, so
+a repeat guest is scattered across booking rows. `chbCustomers()` groups them into ONE
+customer by a STRONG identity ONLY — exact email, else exact phone (digits,
+country-code tolerant via last-10) — **never by name alone** (`chbCustomerKey`): two
+different "John Smith"s, or a name-only booking with no contact, stay SEPARATE
+(false-merge protection). Each customer carries stays, lifetime nights + revenue, first/
+last stay, cottages. `cmdkSourceCustomers()` (registered search source, weight 8) turns
+every REPEAT customer (≥2 stays) into ONE `type:'guest'` row with lifetime stats; a
+`_customer` boost in `cmdkScore` floats the person above their own scattered stays, so
+searching a name returns the CUSTOMER first, then their bookings (single-stay guests are
+unchanged booking rows). `openCustomer(key)` lands on their most recent stay's hub.
+Safeguards (all gated by search-test §21c): **false-merge** (strong-key only),
+**audit trail** (`openCustomer` → `customers.php` `audit` logs a `customer.lookup` to
+`activity_log`, deduped 1h, storing the NAME + a NON-PII ref hash, never raw email/phone;
+admin-only), and **no destructive one-tap** (the directory row exposes only Email — a
+delete/refund is never one tap from a fuzzy match; those stay on the booking hub).
 
 **Guest FAQ assistant** (app.js — guest-side, so admin.js's NLU never loads for visitors):
 a TYPED question in the guest chat is answered instantly ON-DEVICE from the cottage's own FAQ

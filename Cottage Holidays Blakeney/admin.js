@@ -620,6 +620,7 @@ function cmdkScore(it, words, ql) {
     const typeW = { booking: 3, enquiry: 3, action: 3, field: 2.5, sheet: 2.5, guest: 2, payment: 2, review: 1.5, screen: 1 };
     score += typeW[it.type] != null ? typeW[it.type] : 1.5;
     if (it.type === 'booking' && it._urgent) score += 2; // arriving soon / in-house = more important
+    if (it._customer) score += 3; // the unified customer leads above their own scattered stays
     score += cmdkFrecencyBoost(it); // your habits break ties in your favour (0..~3)
     if (typoUsed) score -= 1.5; // prefer exact matches over corrected ones
     if (synUsed) score -= 0.6; // a direct word beats a synonym match
@@ -970,9 +971,84 @@ function cmdkSourceRecords() {
     }
     return items;
 }
+// ---- Unified customer directory --------------------------------------------
+// dbBookings is per-STAY, so a repeat guest is scattered across rows. This groups
+// bookings into ONE customer by a STRONG identity ONLY — exact email, else exact
+// phone (digits, country-code tolerant). NEVER by name alone: two different
+// "John Smith"s must stay separate, so a booking with no email/phone is its own
+// customer (false-merge protection). Memoised on the booking store's shape.
+function chbCustomerKey(b) {
+    const email = String((b && b.email) || '').trim().toLowerCase();
+    if (email && email.indexOf('@') > 0) return 'e:' + email;
+    const phone = String((b && b.phone) || '').replace(/[^0-9]/g, '');
+    if (phone.length >= 7) return 'p:' + phone.slice(-10);
+    return 'b:' + (b && b.id != null ? b.id : Math.random()); // no strong id → its OWN customer
+}
+let __cmdkCustomers = null, __cmdkCustStamp = '';
+function chbCustomers() {
+    let stamp = '';
+    try { stamp = Object.keys(dbBookings || {}).map((k) => k + ':' + (dbBookings[k] || []).length).join('|'); } catch (e) {}
+    if (__cmdkCustomers && stamp === __cmdkCustStamp) return __cmdkCustomers;
+    const map = new Map();
+    const nightsOf = (b) => (b.checkIn && b.checkOut) ? Math.max(0, Math.round((new Date(b.checkOut + 'T00:00:00') - new Date(b.checkIn + 'T00:00:00')) / 864e5)) : 0;
+    try {
+        Object.keys(dbBookings || {}).forEach((pk) => (dbBookings[pk] || []).forEach((b) => {
+            if (!b || b.id == null) return;
+            const key = chbCustomerKey(b);
+            let c = map.get(key);
+            if (!c) { c = { key, name: '', email: '', phone: '', stays: [], nights: 0, revenue: 0, first: null, last: null, props: [] }; map.set(key, c); }
+            c.stays.push({ id: b.id, pk, checkIn: b.checkIn, checkOut: b.checkOut });
+            if (!c.name && (b.name || '').trim()) c.name = b.name.trim();
+            if (!c.email && b.email) c.email = b.email;
+            if (!c.phone && b.phone) c.phone = b.phone;
+            if (c.props.indexOf(pk) < 0) c.props.push(pk);
+            c.nights += nightsOf(b);
+            let tot = 0;
+            try { const ps = paymentSummary(pk, b); tot = (ps && ps.total) || 0; } catch (e) {}
+            if (!tot) tot = (b.agreedPrice && b.agreedPrice.total) || 0;
+            c.revenue += tot;
+            if (b.checkIn && (!c.first || b.checkIn < c.first)) c.first = b.checkIn;
+            if (b.checkIn && (!c.last || b.checkIn > c.last)) c.last = b.checkIn;
+        }));
+    } catch (e) {}
+    map.forEach((c) => { c.stays.sort((a, z) => String(z.checkIn || '').localeCompare(String(a.checkIn || ''))); c.latestId = c.stays[0] ? c.stays[0].id : null; });
+    __cmdkCustomers = [...map.values()];
+    __cmdkCustStamp = stamp;
+    return __cmdkCustomers;
+}
+// Search source: a REPEAT customer (≥2 stays) surfaces as ONE unified row carrying
+// lifetime stats; single-stay guests stay as their booking row (records source). A
+// cmdkScore boost (see _customer) floats the person above their own scattered
+// stays, so "search returns the customer, then their bookings".
+function cmdkSourceCustomers() {
+    const propName = (k) => (propertyMeta[k] && propertyMeta[k].name) || k || '';
+    return chbCustomers().filter((c) => c.stays.length >= 2).map((c) => ({
+        type: 'guest',
+        id: c.key,
+        _customer: true,
+        label: c.name || '(no name)',
+        sub: `${c.stays.length} stays · ${gbp(c.revenue)} lifetime${c.last ? ' · last ' + fmtDate(c.last) : ''}`,
+        kw: `customer repeat guest ${c.email} ${c.phone} ${c.props.map(propName).join(' ')}`,
+        actions: [{ key: 'email', label: 'Email', icon: cmdkActIcon('mail'), run: () => { closeCmdK(); if (c.latestId != null && typeof openBookingEmail === 'function') openBookingEmail(c.latestId); } }],
+        run: () => openCustomer(c.key),
+    }));
+}
+// Open a customer: AUDIT the lookup (a GDPR-friendly access trail — the server
+// dedupes within the hour and stores the NAME + a non-PII ref hash, never the raw
+// email/phone), then land on their most recent stay's hub. Deliberately NO
+// destructive action here — a delete / refund is never one tap from a directory
+// match; those live on the booking hub where the single stay's context is explicit.
+function openCustomer(key) {
+    const c = chbCustomers().find((x) => x.key === key);
+    if (!c) return;
+    try { apiPost('customers.php', { action: 'audit', name: c.name || '', ref: chbNluHashStr(key) }).catch(() => {}); } catch (e) {}
+    closeCmdK();
+    if (c.latestId != null && typeof openBookingHub === 'function') openBookingHub(c.latestId);
+}
 // Register the built-in sources in their historical order. Each is a thin adapter
 // over an existing collector, so behaviour is identical — the win is that the list
 // is now data, not a hard-coded concat chain.
+CHB_SEARCH.registerSource('customers', () => cmdkSourceCustomers(), 8);
 CHB_SEARCH.registerSource('records', () => cmdkSourceRecords(), 10);
 CHB_SEARCH.registerSource('actions', (q) => cmdkActions(q), 20);
 CHB_SEARCH.registerSource('screens', () => cmdkScreens(), 30);
