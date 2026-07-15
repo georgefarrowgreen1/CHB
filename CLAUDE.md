@@ -110,7 +110,18 @@ before). Measured: 48→51/52 held-out, zero wrong intents, all negatives reject
 (search-test §20 is the CI gate — recoveries, negatives, train accuracy, teach-loop
 reach). chbNluLearn/Suppress call `darkstarIndex()` so taught phrases join their intent
 centroid and suppressed ones join the none pool. (`darkstar-build.js` carries the source
-table's MIT attribution notice.)
+table's MIT attribution notice.) The corpus is ~117 TARGETED examples — brute expansion
+blurs the TF-IDF centroids (measured), so add disambiguators only. The model's accuracy is
+gated on a committed held-out set: **`nlu-testset.js`** (dev/CI, deploy-excluded — 86 unseen
+paraphrases + 32 negatives) run through the full cascade in search-test §20: recall ≥ 82/86,
+ZERO wrong intents, all negatives rejected. Retune with scratchpad `model-bench.js`.
+
+**chbNlg** (admin.js) — the assistant's natural-language VOICE, on top of the intents:
+`chbNlgSpeak(text)` realizes a display answer into a fluent SPOKEN sentence (numeric dates →
+words, `·`/`—`/`▸` → clause breaks, ranges → "X to Y") — used by every voice reply;
+`chbNlgSocial(q)` generates conversational replies (greetings/thanks/capability/identity,
+deterministic variation) surfaced through cmdkIntent's `0-social` branch. Additive — the
+tested answer rows are unchanged. Gated by search-test §22.
 
 **Assist Bars** — the palette's brain embedded IN workspaces: `chbAssistBar(hostId, opts)`
 (admin.js) injects a knot+input bar into static host divs (`#abar-today` top of the Today
