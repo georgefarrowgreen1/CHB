@@ -240,6 +240,15 @@ greeting by first name, availability (`enquiryAvailability` — free vs "just ta
 falling back to the business name). Turns the assistant from "find the enquiry" into "write the
 reply". Gated by search-test §26.
 
+**Proactive business pulse** (admin.js) — `chbBusinessPulse()` compares THIS month to last in plain
+English (nights + revenue, unioning paying bookings with OTA guest stays, owner blocks excluded —
+same rule as the insights composer), names the leading cottage and flags a real dip ("worth a
+nudge — maybe a last-minute offer"). Surfaced two ways: proactively as a row on the palette's empty
+landing (`cmdkBrief`, unasked), and as the LEADING narrative answer to a bare "how's business / how
+am I doing / performance" (the numbers still follow; an explicit-period query like "how's business
+this month" keeps its nights-led figure). NB `monthName`/`propName` are locals elsewhere — inlined
+here. Gated by search-test §27.
+
 **Accommodations are dynamic** — the owner adds/removes cottages from the back office
 (Settings → Preferences → "Add accommodation"; per-cottage "Remove" / "Restore"). The
 `properties` table is the single source of truth (`prop_key`, `name`, `couple_rate`…,

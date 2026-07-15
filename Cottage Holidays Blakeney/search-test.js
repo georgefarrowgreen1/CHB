@@ -857,6 +857,34 @@ if (typeof ctx.chbDraftEnquiryReply === 'function') {
     vm.runInContext(`siteContent['faqs-jollyboat'] = []; activeFrontProperty = '21a';`, ctx);
 }
 
+// ---- 27. Proactive business pulse: this month vs last, in plain English, and
+// it leads a generic "how's business" answer. ----
+if (typeof ctx.chbBusinessPulse === 'function') {
+    const today = ctx.todayDashed();
+    const mm = today.slice(0, 8); // this month "YYYY-MM-"
+    const Y = +today.slice(0, 4), M = +today.slice(5, 7);
+    const lm = M === 1 ? `${Y - 1}-12-` : `${Y}-${String(M - 1).padStart(2, '0')}-`; // last month
+    const seed = (rows) => vm.runInContext(`Object.keys(dbBookings).forEach((k)=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach((k)=>dbBlocks[k]=[]);dbBookings.jollyboat=${JSON.stringify(rows)};`, ctx);
+    // This month 5 nights (£650), last month 2 nights → up 3.
+    seed([
+        { id: 1, name: 'A', checkIn: mm + '05', checkOut: mm + '10', agreedPrice: { total: 650 } },
+        { id: 2, name: 'B', checkIn: lm + '04', checkOut: lm + '06', agreedPrice: { total: 260 } },
+    ]);
+    const p = ctx.chbBusinessPulse();
+    check('business pulse compares this month vs last (up 3)', !!p && p.arrow === '↑' && /up 3 on last month/.test(p.label), p ? p.label : 'null');
+    check('business pulse states the revenue + leading cottage', !!p && /£650/.test(p.sub) && /leading/i.test(p.sub), p ? p.sub : 'null');
+    const hb = ctx.cmdkIntent("how's business");
+    check('"how\'s business" leads with the pulse narrative', !!(hb && hb[0] && hb[0].id === 'ins-pulse' && /night/.test(hb[0].label)), hb && hb[0] ? hb[0].id + ':' + hb[0].label : 'none');
+    // A real dip flags a nudge.
+    seed([
+        { id: 1, name: 'A', checkIn: mm + '05', checkOut: mm + '07', agreedPrice: { total: 260 } },
+        { id: 2, name: 'B', checkIn: lm + '02', checkOut: lm + '09', agreedPrice: { total: 900 } },
+    ]);
+    const pd = ctx.chbBusinessPulse();
+    check('a real dip flags a nudge (down + offer)', !!pd && pd.down && pd.arrow === '↓' && /nudge|offer/i.test(pd.sub), pd ? pd.arrow + ' ' + pd.sub : 'null');
+    vm.runInContext('Object.keys(dbBookings).forEach((k)=>dbBookings[k]=[]);', ctx);
+}
+
 // ---- Summary ----
 console.log('\n== Summary ==');
 if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }
