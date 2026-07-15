@@ -257,9 +257,20 @@ history/"when did"/"find the email…") and strips the framing to content terms 
 before sending — "what did Sarah say about the boiler" → "sarah boiler", "when did I change the
 Jollyboat price" → "jollyboat price". A plain keyword query is sent untouched; an over-stripped one
 falls back to the raw text. Wired into both the auto server search (`cmdkServerSearch`) and the
-"search everything" deep fetch. Gated by search-test §28. (True semantic recall over history would
-need a server-side embedding index — a separate build; this makes the existing comprehensive
-keyword search answer natural questions.)
+"search everything" deep fetch. Gated by search-test §28.
+
+**TRUE semantic history recall** (admin.js + search.php) — meaning-based, not keyword. `search.php`
+gains a **`?corpus`** mode: a bounded dump (`$cap` 300/source) of the text-bearing history —
+messages, sent emails, reviews, activity log, enquiries — as `{type,id,text,date,…}`. The client
+embeds every row ONCE with the on-device model (`chbEmbedText` = `darkstarVec` over CONTENT words
+only — stopwords diluted the signal, measured) into an in-memory index (`CHB_HIST`, lazy build on
+the first history-shaped query, ~10-min freshness). `chbHistorySemantic(q)` cosine-searches it
+(`darkstarCos`, threshold ≥0.35 — genuine matches score ~0.4–0.65, unrelated ~0), maps hits via
+`chbHistoryRow`→`cmdkServerItem` (per-type open handlers reused), tags them `_sem` ("By meaning"),
+and `cmdkSemanticHistory` merges them into the live palette (stamp-guarded like the server search).
+So "did any guests complain about noise" finds a review that says "the neighbours were rather loud"
+— **zero shared words**. Owner-only (Darkstar never loads for guests). Gated by search-test §20
+(seeds embedded docs, asserts pet→dog / noise recall by meaning + unrelated rejected).
 
 **Accommodations are dynamic** — the owner adds/removes cottages from the back office
 (Settings → Preferences → "Add accommodation"; per-cottage "Remove" / "Restore"). The

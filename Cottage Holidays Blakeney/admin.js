@@ -3670,6 +3670,10 @@ function cmdkSearchCore(q, allowCorrect) {
     if (ql.length >= 2) {
         cmdkSetLoading(true);
         __cmdkServerT = setTimeout(() => cmdkServerSearch(ql), 180);
+        // A history-SHAPED question also runs the on-device SEMANTIC pass —
+        // meaning-based recall over the embedded history index, merged in when the
+        // vectors land (finds records with no shared words the keyword pass misses).
+        if (CHB_HISTORY_Q.test(ql)) { try { cmdkSemanticHistory(ql); } catch (e) {} }
     } else {
         __cmdkServerStamp++;
         cmdkSetLoading(false);
@@ -3682,13 +3686,92 @@ function cmdkSearchCore(q, allowCorrect) {
 // question-words, so a keyword search matches poorly. When the query is
 // history-SHAPED, strip the framing to the content terms so the comprehensive
 // server search actually finds it. A no-op for a plain keyword query. ----
-const CHB_HISTORY_Q = /\b(said|say|says|saying|tell|told|wrote|writ|mention|email|emailed|messaged?|complain|history|log|when did|last time|find (the |my |a )?(email|message|note|review|chat|conversation|record))\b/;
+const CHB_HISTORY_Q = /\b(said|say|says|saying|tell|told|wrote|writ|mention|email|emailed|messaged?|complain|ask(ed)?|request(ed)?|review(s|ed)?|history|log|when did|last time|find (the |my |a )?(email|message|note|review|chat|conversation|record))\b/;
 const CHB_HISTORY_STOP = new Set(['what', 'whats', 'when', 'where', 'which', 'who', 'why', 'how', 'did', 'do', 'does', 'is', 'are', 'was', 'were', 'the', 'a', 'an', 'about', 'for', 'to', 'in', 'on', 'of', 'my', 'our', 'me', 'us', 'i', 'we', 'you', 'they', 'them', 'he', 'she', 'it', 'his', 'her', 'their', 'guest', 'guests', 'say', 'said', 'says', 'tell', 'told', 'wrote', 'write', 'mention', 'mentioned', 'email', 'emailed', 'emails', 'message', 'messaged', 'messages', 'find', 'search', 'show', 'history', 'log', 'last', 'time', 'ever', 'any', 'that', 'this', 'anyone', 'someone', 'ask', 'asked', 'change', 'changed', 'and', 'or', 'with', 'from', 'get', 'got', 'give', 'note', 'chat', 'review', 'record', 'conversation']);
 function chbHistoryClean(q) {
     const raw = (q || '').trim();
     if (!CHB_HISTORY_Q.test(raw.toLowerCase())) return raw; // plain keyword — send as-is
     const words = raw.toLowerCase().split(/[^a-z0-9']+/).filter((w) => w.length > 1 && !CHB_HISTORY_STOP.has(w));
     return words.length ? words.join(' ') : raw;
+}
+// ---- TRUE semantic recall over history. The on-device Darkstar model already
+// embeds text (darkstarVec = L2-normalised mean of token vectors); we fetch a
+// bounded dump of the history TEXT (search.php?corpus), embed every row ONCE,
+// and cosine-search that index — so a question finds records by MEANING even
+// with zero shared words ("guests unhappy about noise" → a review that says "the
+// neighbours were rather loud"). Owner-only, lazy, in-memory, ~one embed per row;
+// merges into the palette alongside the keyword server search, tagged `_sem`. ----
+const CHB_HIST = { built: false, building: false, docs: [], at: 0, p: null };
+// Embedding stop-words: pooling token vectors over filler dilutes the meaning
+// (two stopword-heavy sentences look similar). Embed CONTENT words only, so
+// "pet" lands near "dog / labrador" and "noisy" near "loud neighbours".
+const CHB_EMBED_STOP = new Set(('a an the and or but if then of to in on at for with from by as is are was were be been being do does did have has had will would can could should may might must i we you he she it they them us me my our your his her their this that these those there here what which who whom whose when where why how not no yes so up out about into over after before under again more most some any all each other than too very just only also about re its it\'s i\'m i\'ve you\'re don\'t didn\'t was wasn\'t').split(/\s+/));
+function chbEmbedText(text) {
+    const words = String(text || '').toLowerCase().split(/[^a-z0-9']+/).filter((w) => w.length > 1 && !CHB_EMBED_STOP.has(w));
+    return darkstarVec(words.length ? words.join(' ') : String(text || ''));
+}
+async function chbHistoryIndexBuild(force) {
+    if (CHB_HIST.built && !force && Date.now() - CHB_HIST.at < 600000) return; // ~10-min freshness
+    if (CHB_HIST.building) return CHB_HIST.p;
+    if (!DARKSTAR.st) { try { await darkstarLoad(); } catch (e) {} }
+    if (!DARKSTAR.st) return; // no model → semantic recall stays off (keyword still runs)
+    CHB_HIST.building = true;
+    CHB_HIST.p = (async () => {
+        try {
+            const r = await apiPost('search.php', { corpus: 1 });
+            const rows = (r && r.corpus) || [];
+            CHB_HIST.docs = rows.map((x) => ({ type: x.type, id: x.id, text: x.text, date: x.date, extra: x, vec: chbEmbedText(x.text) }));
+            CHB_HIST.built = true;
+            CHB_HIST.at = Date.now();
+        } catch (e) {} finally { CHB_HIST.building = false; }
+    })();
+    return CHB_HIST.p;
+}
+// One history doc → a palette row (reuses cmdkServerItem's per-type open handlers).
+function chbHistoryRow(d) {
+    const snip = (s, n) => { s = String(s || '').replace(/\s+/g, ' ').trim(); return s.length > (n || 82) ? s.slice(0, (n || 82) - 1) + '…' : s; };
+    const nm = (k) => (propertyMeta[k] && propertyMeta[k].name) || k || '';
+    const x = { type: d.type, id: d.id };
+    if (d.type === 'message') { x.thread_id = d.id; x.title = snip(d.text); x.sub = 'Chat message'; }
+    else if (d.type === 'review') { x.title = snip(d.text); x.sub = 'Review' + (d.extra && d.extra.prop ? ' · ' + nm(d.extra.prop) : ''); }
+    else if (d.type === 'email') { x.title = (d.extra && d.extra.subject) || snip(d.text); x.sub = 'Email' + (d.extra && d.extra.to ? ' · to ' + d.extra.to : ''); }
+    else if (d.type === 'activity') { x.title = snip(d.text); x.sub = 'Activity' + (d.date ? ' · ' + d.date : ''); }
+    else if (d.type === 'enquiry') { x.title = snip(d.text); x.sub = 'Enquiry' + (d.extra && d.extra.name ? ' · ' + d.extra.name : ''); }
+    else return null;
+    const it = cmdkServerItem(x);
+    if (it) it._sem = true; // recalled by MEANING → the model-status pill reads "By meaning"
+    return it;
+}
+// Nearest history records to a query, by cosine over the embedded index.
+function chbHistorySemantic(query, k) {
+    if (!CHB_HIST.built || !DARKSTAR.st) return [];
+    const qv = chbEmbedText(query || '');
+    if (!qv || !qv.length) return [];
+    return CHB_HIST.docs
+        .map((d) => ({ d, s: darkstarCos(qv, d.vec) }))
+        .filter((x) => x.s >= 0.35) // meaning-close only — genuine matches ~0.4-0.65, unrelated ~0
+        .sort((a, b) => b.s - a.s)
+        .slice(0, k || 5)
+        .map((x) => chbHistoryRow(x.d))
+        .filter(Boolean);
+}
+// Fire the semantic pass for a history-shaped query: build the index if needed,
+// then merge the nearest records into the live palette (stamp-guarded like the
+// server search, so a stale build doesn't clobber a newer query).
+let __cmdkSemStamp = 0;
+async function cmdkSemanticHistory(ql) {
+    if (!DARKSTAR.st && !CHB_HIST.built) { chbHistoryIndexBuild(); return; } // model not up yet
+    const stamp = ++__cmdkSemStamp;
+    await chbHistoryIndexBuild();
+    if (stamp !== __cmdkSemStamp) return; // superseded
+    const rows = chbHistorySemantic(chbHistoryClean(ql), 5);
+    if (!rows.length) return;
+    const have = new Set(__cmdkResults.filter((x) => x && x.id != null).map((x) => x.type + ':' + x.id));
+    const fresh = rows.filter((r) => !(r.id != null && have.has(r.type + ':' + r.id)));
+    if (!fresh.length) return;
+    __cmdkResults = cmdkArrangeWide(__cmdkResults.concat(fresh).slice(0, 34), 34);
+    cmdkRender();
+    try { chbSetModelStatus(document.getElementById('cmdk-ml'), 'meaning'); } catch (e) {}
 }
 // Fire the federated search.php query and merge its typed results in below the
 // local answers, deduped and mapped to the right destination per type.
