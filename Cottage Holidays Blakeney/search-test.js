@@ -687,6 +687,31 @@ if (typeof ctx.cmdkIntent === 'function') {
     vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);', ctx);
 }
 
+// ---- 22. chbNlg — natural-language voice (spoken realization + social replies) ----
+if (typeof ctx.chbNlgSpeak === 'function') {
+    // Display answer → fluent spoken sentence: numeric dates spoken, "·"/"—"/"▸"
+    // become clause breaks, ranges read "X to Y".
+    const spoken = ctx.chbNlgSpeak('Bob arrives Friday 24 July · 3 nights at Jollyboat · out 27/07/2026');
+    check('chbNlgSpeak says numeric dates in words', /the 27th of July/.test(spoken) && !/27\/07\/2026/.test(spoken));
+    check('chbNlgSpeak drops the "·" separators', !/·/.test(spoken) && /Jollyboat, out/.test(spoken));
+    check('chbNlgSpeak reads a date range as "to"', /the 14th of July to the 17th of July/.test(ctx.chbNlgSpeak('14/07/2026–17/07/2026')));
+    check('chbNlgSpeak drops the ▸ nav glyph', !/▸/.test(ctx.chbNlgSpeak('open Bookings ▸ Needs payment')));
+}
+if (typeof ctx.chbNlgSocial === 'function') {
+    const kind = (q) => { const r = ctx.chbNlgSocial(q); return r ? r.kind : null; };
+    check('greeting → a greet reply', kind('hello') === 'greet' && kind('good morning') === 'greet');
+    check('thanks → a thanks reply', kind('thanks') === 'thanks' && kind('cheers') === 'thanks');
+    check('"what can you do" → capability reply', kind('what can you do') === 'capability');
+    check('"who are you" → identity reply', kind('who are you') === 'identity');
+    check('a social reply carries non-empty text', (ctx.chbNlgSocial('hi') || {}).text && ctx.chbNlgSocial('hi').text.length > 3);
+    // Real queries must NOT be swallowed as social.
+    check('real queries are not social', kind('who owes me money') === null && kind('high earners') === null && kind('history') === null && kind('hire a cleaner') === null);
+    // The social branch surfaces through cmdkIntent as a spoken answer row.
+    const soc = ctx.cmdkIntent('thanks');
+    check('cmdkIntent answers a greeting/thanks with an nlg row', !!(soc && soc[0] && /^nlg-/.test(soc[0].id) && soc[0]._nlgSpoken));
+    check('cmdkIntent does NOT route a real question to nlg', !/^nlg-/.test(((ctx.cmdkIntent('who owes me money') || [{}])[0].id) || ''));
+}
+
 // ---- Summary ----
 console.log('\n== Summary ==');
 if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }

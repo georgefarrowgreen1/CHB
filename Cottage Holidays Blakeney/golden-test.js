@@ -262,6 +262,14 @@ const CASES = [
     // its own fixture (a today-arrival can't live in this interlocked fixture).
     { q: 'how long is the guest staying', head: /Alice Marsh is staying 3 nights/ },
     { q: 'how long are they staying', head: /Alice Marsh is staying 3 nights/ },
+
+    // ---- chbNlg — social / conversational replies (natural language) ----
+    // The exact phrasing varies (deterministic pick + time of day), so match the
+    // union of the possible replies rather than one fixed string.
+    { q: 'hi', head: /would you like to know|ask me anything|Who or what are you after|Morning|Afternoon|Evening/ },
+    { q: 'thanks', head: /Anytime|You.re welcome|No trouble|Happy to help/ },
+    { q: 'what can you do', head: /I read your live calendar|answer in your own words/ },
+    { q: 'who are you', head: /your booking assistant/ },
     // ---- Free tonight (Jollyboat occupied by Alice; Eve leaves today) ----
     { q: "what's free tonight", head: /2 cottages free tonight/ },
     { q: 'any cottage free', head: /2 cottages free tonight/ },

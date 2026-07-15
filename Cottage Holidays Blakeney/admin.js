@@ -1762,6 +1762,70 @@ function chbNluSuggest(q) {
         .slice(0, 2)
         .map((x) => x.canonical);
 }
+// ============================================================
+//  chbNlg — the assistant's natural-language voice. Data + intent → fluent
+//  English. Two jobs: (1) realize a display answer into a SPOKEN sentence
+//  (drop the "·" separators, say numeric dates in words, tidy dashes) so the
+//  voice reply sounds human, not like a form; (2) generate conversational
+//  replies to social input (greetings, thanks, "what can you do", "who are
+//  you") with deterministic variation so it never sounds canned.
+// ============================================================
+const NLG_MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+function nlgOrdinal(n) {
+    const s = ['th', 'st', 'nd', 'rd'], v = n % 100;
+    return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+// A DD/MM/YYYY date → spoken words: "the 24th of July" (+ year unless current).
+function nlgDateWords(dd, mm, yyyy) {
+    const d = parseInt(dd, 10), mi = parseInt(mm, 10) - 1;
+    if (mi < 0 || mi > 11 || !d) return `${dd}/${mm}/${yyyy}`;
+    const nowY = (typeof todayDashed === 'function' ? todayDashed() : '0000').slice(0, 4);
+    return `the ${nlgOrdinal(d)} of ${NLG_MONTHS[mi]}${yyyy === nowY ? '' : ' ' + yyyy}`;
+}
+// Deterministic pick — same query always picks the same phrasing (so a repeated
+// question is stable), but different queries vary. djb2 over the seed.
+function nlgPick(seed, arr) {
+    if (!arr.length) return '';
+    let h = 5381;
+    const s = String(seed || '');
+    for (let i = 0; i < s.length; i++) h = ((h << 5) + h + s.charCodeAt(i)) | 0;
+    return arr[(h >>> 0) % arr.length];
+}
+// Realize any answer text into a fluent SPOKEN sentence.
+function chbNlgSpeak(text) {
+    let s = String(text || '');
+    s = s.replace(/(\d{1,2})\/(\d{2})\/(\d{4})/g, (m, d, mo, y) => nlgDateWords(d, mo, y));
+    s = s.replace(/\s*[–→]\s*/g, ' to ');       // ranges (en-dash / arrow) read as "X to Y"
+    s = s.replace(/\s*[·—▸▪|]\s*/g, ', ');       // separators → natural clause breaks
+    s = s.replace(/,\s*,/g, ',').replace(/\.\s*,/g, '.').replace(/\s{2,}/g, ' ');
+    s = s.replace(/,\s*$/, '').trim();
+    return s;
+}
+// Social / conversational input → a natural spoken+shown reply, or null. Kept
+// precise (whole-query greetings/thanks/capability/identity) so it never
+// hijacks a real search.
+function chbNlgSocial(q) {
+    const s = String(q || '').toLowerCase().replace(/[^a-z\s'?]/g, '').replace(/\s+/g, ' ').trim();
+    if (!s) return null;
+    if (/^(hi|hii|hey|hello|hiya|yo|good (morning|afternoon|evening)|morning|evening|howdy)$/.test(s)) {
+        const hr = new Date().getHours();
+        const tod = hr < 12 ? 'Morning' : hr < 18 ? 'Afternoon' : 'Evening';
+        return { kind: 'greet', text: nlgPick(s, [`${tod}! What would you like to know?`, `Hello — ask me anything about your bookings.`, `Hi there. Who or what are you after?`]) };
+    }
+    if (/^(thanks|thank you|thankyou|cheers|ta|nice one|great|perfect|lovely|brilliant|thx|cool)$/.test(s)) {
+        return { kind: 'thanks', text: nlgPick(s, ['Anytime.', "You're welcome!", 'No trouble at all.', 'Happy to help.']) };
+    }
+    if (/^(bye|goodbye|see you|thats all|that is all|nothing else|done)$/.test(s)) {
+        return { kind: 'bye', text: nlgPick(s, ['Right you are.', 'Cheerio!', "I'm here whenever you need me."]) };
+    }
+    if (/(what can you (do|help)|what do you do|how (can|do) you help|what are you for|help me|^help$|your capabilities|what can i ask)/.test(s)) {
+        return { kind: 'capability', text: "I read your live calendar and can answer in your own words — who's staying, arriving or leaving, who owes you money, deposits to return, how the year's going, which cottage earns most, and plenty more. Try asking one." };
+    }
+    if (/(who are you|what are you|are you (a bot|ai|human|real)|whats your name|who am i talking to)/.test(s)) {
+        return { kind: 'identity', text: "I'm your booking assistant — I run on your device, read your live bookings, and answer questions about them. No names, just here to help." };
+    }
+    return null;
+}
 // ---- Smart queries: answer operational questions ("who owes money", "leaving
 // today", "who's arriving", "upcoming") from the live booking data. Returns an
 // array of result items — an "answer" summary row that routes to the relevant
@@ -1769,6 +1833,12 @@ function chbNluSuggest(q) {
 // recognised question.
 function cmdkIntent(q) {
     const today = todayDashed();
+    // 0-social — a greeting, thanks or "what can you do" gets a natural reply,
+    // not a search. Precise matcher, so real questions never land here.
+    try {
+        const soc = chbNlgSocial(q);
+        if (soc) return [{ type: 'answer', id: 'nlg-' + soc.kind, label: soc.text, sub: soc.kind === 'capability' || soc.kind === 'identity' ? 'Your on-device assistant' : '', _nlgSpoken: soc.text, run: () => { const el = document.getElementById('cmdk-input'); if (el) { el.value = ''; el.focus(); } cmdkSearch(''); } }];
+    } catch (e) {}
     // -1) Natural-language commands — a fully-specified task ("block Jollyboat
     // next weekend", "add booking for Smith 12–15 Aug") wins over everything else
     // and opens the target pre-filled.
@@ -3412,12 +3482,13 @@ function cmdkSearchCore(q, allowCorrect) {
         if (a) {
             // Composed summary: a COUNT answer ("3 guests owe £1,600") also reads
             // the top of the list, so the spoken reply is usable hands-free.
-            let text = a.label + (a.sub ? '. ' + a.sub : '');
-            if (/^\d+ /.test(a.label)) {
+            // A social reply (chbNlgSocial) carries its own spoken text.
+            let text = a._nlgSpoken || a.label + (a.sub ? '. ' + a.sub : '');
+            if (!a._nlgSpoken && /^\d+ /.test(a.label)) {
                 const first = __cmdkResults.find((it) => it && it !== a && (it.type === 'booking' || it.type === 'enquiry' || it.type === 'external') && it.label);
                 if (first) text += `. Top of the list: ${first.label}${first.sub ? ', ' + first.sub : ''}`;
             }
-            chbSpeak(text, () => {
+            chbSpeak(chbNlgSpeak(text), () => {
                 const o = document.getElementById('cmdk');
                 if (o && o.style.display !== 'none' && !__cmdkRec) cmdkVoice();
             });
@@ -4020,7 +4091,7 @@ function abarRoute(id, q) {
                 (built.nlu ? `<div class="abar-note">Understood as “${escapeHtml(built.nlu)}”</div>` : '') +
                 st.rows.map((r, i) => abarRowHtml(id, r, i)).join('');
         // Asked by voice → answer by voice (consumed once per final transcript).
-        if (st.voiceIn) { st.voiceIn = false; try { chbSpeak(st.rows[0].label + (st.rows[0].sub ? '. ' + st.rows[0].sub : '')); } catch (e) {} }
+        if (st.voiceIn) { st.voiceIn = false; try { chbSpeak(chbNlgSpeak(st.rows[0]._nlgSpoken || st.rows[0].label + (st.rows[0].sub ? '. ' + st.rows[0].sub : ''))); } catch (e) {} }
         return;
     }
     // Nothing on the board and no answer — dead end here: offer the deep
