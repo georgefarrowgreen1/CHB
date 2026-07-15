@@ -4123,12 +4123,17 @@ function abarRoute(id, q) {
     }
     let built = null;
     try { built = cmdkBuildResults(raw); } catch (e) { built = null; }
-    if (built && built.results.length) {
+    // Direct answers (intents, named guests) lead; otherwise fall back to the
+    // fuzzy pool — records AND site content (experiences, website text) — so the
+    // bar "scans everything" and a card like "Folks Coffee" surfaces here instead
+    // of dead-ending to the deep CTA.
+    const answerRows = built ? (built.results.length ? built.results : built.fuzzy) : [];
+    if (answerRows.length) {
         // ANSWERED — inline answer panel of the palette's own rows.
         abarFilterOff(st);
         if (count) count.textContent = '';
         __cmdkWords = raw.split(/\s+/).filter(Boolean); // cmdkHi highlight terms
-        st.rows = built.results.slice(0, 5);
+        st.rows = answerRows.slice(0, 5);
         st.nlu = built.nlu || null;
         st.miss = { q: raw, answered: true };
         // Conversational memory, same as the palette: an answer that surfaced a
@@ -4326,6 +4331,13 @@ function cmdkHi(text) {
 // already decrypted into adminPrivateContent on this admin session — so "wifi"
 // jumps straight to the welcome-book editor. Client-side only (welcome content is
 // encrypted at rest, so the server can't LIKE it). Hyphen/case-insensitive.
+// Published experiences (things-to-do) cached for search, so a card like "Folks
+// Coffee" is findable ANYWHERE — not just on the experiences page. collect() is
+// synchronous, so we prefetch the public list once on owner boot.
+let __cmdkExp = [];
+async function cmdkPrefetchExperiences() {
+    try { const r = await apiGet('experiences.php'); __cmdkExp = (r && r.experiences) || []; } catch (e) { __cmdkExp = []; }
+}
 function cmdkContentMatches(ql) {
     if (!ql || ql.length < 3) return [];
     const asStr = (s) => (typeof s === 'string' ? s : JSON.stringify(s || '')).toLowerCase();
@@ -4336,6 +4348,21 @@ function cmdkContentMatches(ql) {
     const apc = (typeof adminPrivateContent === 'object' && adminPrivateContent) || {};
     const pub = (typeof siteContent === 'object' && siteContent) || {};
     const out = [];
+    // Experiences first, so a searched thing-to-do always surfaces (the property
+    // content below caps the list). Match title / category / description.
+    (Array.isArray(__cmdkExp) ? __cmdkExp : []).forEach((x) => {
+        if (out.length >= 8) return;
+        const hay = (x.title || '') + ' ' + (x.category || '') + ' ' + (x.description || '');
+        if (!(normSp(hay).includes(qs) || normNo(hay).includes(qn))) return;
+        const desc = String(x.description || x.category || '').replace(/\s+/g, ' ').trim();
+        out.push({
+            type: 'content',
+            id: 'exp-' + (x.id != null ? x.id : normNo(x.title)),
+            label: x.title || 'Experience',
+            sub: 'Experiences · ' + (desc.length > 64 ? desc.slice(0, 63) + '…' : desc || 'things to do'),
+            run: () => { closeCmdK(); if (typeof nav === 'function') nav('view-experiences'); },
+        });
+    });
     const add = (pk, sec, label, raw) => {
         if (!raw || out.length >= 6) return;
         if (!(normSp(raw).includes(qs) || normNo(raw).includes(qn))) return;
@@ -14845,4 +14872,5 @@ async function mailboxDelete(uid) {
 // Embedded Assist Bars: host divs are static in index.html; the bundle only
 // ever loads for the owner, so guests never see (or pay for) any of this.
 try { chbAssistInitBars(); } catch (e) {}
+try { cmdkPrefetchExperiences(); } catch (e) {} // published things-to-do → searchable
 window.__ADMIN_LOADED = true;

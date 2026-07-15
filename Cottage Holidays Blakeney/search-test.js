@@ -783,6 +783,24 @@ if (typeof ctx.cmdkIntent === 'function') {
     vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);', ctx);
 }
 
+// ---- 24. Federated site content: published experiences are searchable, so a
+// thing-to-do like "Folks Coffee" is findable anywhere, not just its page. ----
+if (typeof ctx.cmdkContentMatches === 'function') {
+    vm.runInContext('__cmdkExp = [{ id: 3, title: "Folks Coffee", category: "Food & drink", description: "Speciality roastery on the quay." }, { id: 4, title: "Blakeney Point seals", category: "Boat trips & wildlife", description: "Seal-watching boat trips." }];', ctx);
+    const cm = ctx.cmdkContentMatches('folks coffee');
+    check('experiences surface in content search ("folks coffee" → the card)', Array.isArray(cm) && cm.some((r) => r.type === 'content' && /folks coffee/i.test(r.label)), 'got ' + JSON.stringify((cm || []).map((r) => r.label)));
+    check('a partial word finds the experience ("seals")', ctx.cmdkContentMatches('seals').some((r) => /seals/i.test(r.label)));
+    // Integration: it reaches the search results (in the fuzzy pool) so the palette
+    // AND the Assist Bar (which now falls back to fuzzy) surface it.
+    if (typeof ctx.cmdkBuildResults === 'function') {
+        vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);enquiries=[];', ctx);
+        const b = ctx.cmdkBuildResults('folks coffee');
+        const pool = [].concat(b.results || [], b.fuzzy || []);
+        check('cmdkBuildResults surfaces the experience for "folks coffee"', pool.some((r) => /folks coffee/i.test(r.label || '')), 'pool: ' + pool.map((r) => r.label).join(', '));
+    }
+    vm.runInContext('__cmdkExp = [];', ctx);
+}
+
 // ---- Summary ----
 console.log('\n== Summary ==');
 if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }
