@@ -1024,6 +1024,9 @@
          renderEnquiryHub(); this is just the shell. -->
     <main id="view-enquiry-hub" class="page-view container">
         <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" data-act="enquiryHubBack">← Back</span>
+        <!-- Record-scoped Assist Bar: act on THIS enquiry by typing ("approve",
+             "email them", "change the price"). Pre-scoped via __cmdkEntity. -->
+        <div id="abar-enquiryhub" class="abar-host abar-hub"></div>
         <div id="enquiry-hub-content"><!-- admin.js injects the enquiry hub here --></div>
     </main>
 
@@ -1033,6 +1036,9 @@
          entirely by admin.js renderBookingHub(); this is just the shell. -->
     <main id="view-booking-hub" class="page-view container">
         <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" data-act="bookingHubBack">← Back</span>
+        <!-- Record-scoped Assist Bar: act on THIS booking by typing ("take payment",
+             "email them", "return deposit"). Pre-scoped via __cmdkEntity. -->
+        <div id="abar-bookinghub" class="abar-host abar-hub"></div>
         <div id="booking-hub-content"><!-- admin.js injects the hub here --></div>
     </main>
 
@@ -1130,6 +1136,9 @@
              Per-page search removed — the back-office ⌘K search finds any setting;
              the grouped index below is the browse path. -->
         <p id="settings-noresults" class="settings-noresults" style="display:none;">Nothing matches — try another word, or browse below.</p>
+        <!-- Assist Bar: search any setting + ask, embedded (replaces the old
+             per-page search, unifying it with the ⌘K brain). -->
+        <div id="abar-manage" class="abar-host"></div>
         </div>
 
         <div id="settings-index" class="settings-index">
@@ -1590,6 +1599,8 @@
                 <h1 class="section-title" style="margin: 0;">Payments</h1>
             </div>
         </div>
+        <!-- Assist Bar: search payments/balances + ask money questions inline. -->
+        <div id="abar-accounts" class="abar-host"></div>
         </div>
 
         <!-- INDEX -->
@@ -2216,7 +2227,11 @@
             <input class="input-glass" id="modal-property-new" autocomplete="off" placeholder="New property name" data-act-input="updateModalPrice" style="display:none;margin-top:10px;">
 
             <label class="modal-label">Guest Name</label>
-            <input type="text" class="input-glass" id="modal-name">
+            <div class="modal-name-wrap">
+                <input type="text" class="input-glass" id="modal-name" autocomplete="off" data-act-input="modalNameSuggest" data-pass="value">
+                <!-- Typeahead: past guests matching what you're typing (repeat guests are one tap). -->
+                <div id="modal-name-suggest" class="modal-suggest" style="display:none;" role="listbox" aria-label="Matching past guests"></div>
+            </div>
 
             <div class="modal-2col">
                 <div>
@@ -2438,7 +2453,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=427"></script>
+    <script defer src="app.js?v=428"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 200;
+const ADMIN_BUNDLE_V = 201;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 56;
+const ADMIN_CSS_V = 57;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -11302,6 +11302,9 @@ function openModal() {
 function closeModal() {
     document.getElementById('edit-modal').classList.remove('open');
     document.getElementById('modal-error').style.display = 'none';
+    // Dismiss the guest typeahead dropdown (pure DOM — no admin dependency).
+    const sg = document.getElementById('modal-name-suggest');
+    if (sg) { sg.style.display = 'none'; sg.innerHTML = ''; }
 }
 
 // ===== Custom (brand-new property) booking wizard =====
@@ -12468,7 +12471,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'mstatus1';
+    const BUILD = 'deepsrch1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
