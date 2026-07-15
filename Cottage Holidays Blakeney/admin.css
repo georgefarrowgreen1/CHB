@@ -2281,6 +2281,64 @@ body.light-mode .cmdk-editor-input {
 .abar-host {
   margin: 12px 0 4px;
 }
+/* Record-scoped hub Assist Bar — a touch more separation from the hub below. */
+.abar-host.abar-hub {
+  margin: 4px 0 16px;
+}
+/* Inline quick-actions on a bar answer row (act in place) — reuses the palette's
+   .cmdk-qa list; just tighten the gap under the row. */
+.abar-qa {
+  margin-top: 6px;
+}
+/* Guest typeahead in Add Booking — a dropdown of past guests under the name
+   field, so a repeat guest is one tap. Glass surface to match the modal. */
+.modal-name-wrap {
+  position: relative;
+}
+.modal-suggest {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 60;
+  background: var(--glass-bg);
+  backdrop-filter: var(--glass-filter);
+  -webkit-backdrop-filter: var(--glass-filter);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-panel, 14px);
+  box-shadow: var(--shadow-panel, 0 10px 34px rgba(0, 0, 0, 0.28));
+  overflow-y: auto;
+  max-height: 232px;
+}
+.modal-suggest-row {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  width: 100%;
+  text-align: left;
+  padding: 9px 13px;
+  background: none;
+  border: 0;
+  border-bottom: 1px solid var(--glass-border);
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+}
+.modal-suggest-row:last-child {
+  border-bottom: 0;
+}
+.modal-suggest-row:hover,
+.modal-suggest-row:focus-visible {
+  background: var(--glass-hover);
+}
+.modal-suggest-nm {
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+.modal-suggest-sub {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
 /* Search bar ABOVE the header divider (Today + Inbox): drop the divider from
    the header itself and hang it under the search bar, so the order reads
    title → subline → SEARCH → line → content. */

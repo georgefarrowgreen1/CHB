@@ -14,11 +14,11 @@
 //  show (push.php?action=sw_notify) and relays release reloads to open pages.
 //  Keep this file in the SAME folder as index.html.
 // ============================================================
-const CACHE = 'chb-cache-v478';
+const CACHE = 'chb-cache-v479';
 // admin.js is deliberately NOT precached — it's the owner-only bundle, fetched on
 // demand by loadAdminBundle() (app.js); the fetch handler below also bypasses it
 // entirely (network-only) so a new back office is never a reload behind.
-const CORE = ['./', 'index.html', 'logo.svg', 'favicon.png', 'apple-touch-icon.png', 'manifest.json', 'app.css?v=187', 'app.js?v=427', 'guest-app.css?v=32', 'guest-app.js?v=15'];
+const CORE = ['./', 'index.html', 'logo.svg', 'favicon.png', 'apple-touch-icon.png', 'manifest.json', 'app.css?v=187', 'app.js?v=428', 'guest-app.css?v=32', 'guest-app.js?v=15'];
 // uploads/ images live in their own size-capped bucket so galleries stay fast and
 // available offline WITHOUT growing the main cache without bound (every image ever
 // viewed used to accumulate forever in CACHE).

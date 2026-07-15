@@ -4107,6 +4107,59 @@ function chbAssistInitBars() {
             abarInboxCounts('');
         },
     });
+    // Payments + Manage complete the set — every back-office workspace now carries
+    // the same embedded brain. Their browse-index rows are static markup without a
+    // data-search haystack, so stamp one (label + sub + kw) before filtering.
+    chbAssistBar('abar-accounts', {
+        view: 'view-accounts',
+        placeholder: 'Search payments, or ask about money…',
+        filter: (q) => {
+            abarStampSearchRows('view-accounts');
+            __todayFilter = q;
+            __wsFilterView = 'view-accounts';
+            __todayFilterSrc = 'abar';
+            return paintTodayFilter();
+        },
+        unfilter: () => { if (__todayFilter) clearTodayFilter(); },
+    });
+    chbAssistBar('abar-manage', {
+        view: 'view-settings',
+        placeholder: 'Search settings, or ask…',
+        filter: (q) => {
+            abarStampSearchRows('view-settings');
+            __todayFilter = q;
+            __wsFilterView = 'view-settings';
+            __todayFilterSrc = 'abar';
+            return paintTodayFilter();
+        },
+        unfilter: () => { if (__todayFilter) clearTodayFilter(); },
+    });
+    // Record-scoped bars ON the hubs — no board to filter; every query routes to
+    // the engine with __cmdkEntity set to the open record, so "email them", "take
+    // payment", "approve", "change the price" act on THIS booking / enquiry.
+    chbAssistBar('abar-bookinghub', {
+        view: 'view-booking-hub',
+        placeholder: 'Do something with this booking — “take payment”, “email them”…',
+        scopeEntity: true,
+    });
+    chbAssistBar('abar-enquiryhub', {
+        view: 'view-enquiry-hub',
+        placeholder: 'Do something with this enquiry — “approve”, “email them”…',
+        scopeEntity: true,
+    });
+}
+// Give a workspace's static browse-index rows (.settings-row) a data-search
+// haystack the first time its bar filters, so the shared paintTodayFilter dim
+// machinery can light the matches. Idempotent (skips rows already stamped).
+function abarStampSearchRows(viewId) {
+    const view = document.getElementById(viewId);
+    if (!view) return;
+    view.querySelectorAll('.settings-row:not([data-search])').forEach((el) => {
+        const lab = (el.querySelector('.settings-row-label') || {}).textContent || '';
+        const sub = (el.querySelector('.settings-row-sub') || {}).textContent || '';
+        const kw = el.getAttribute('data-kw') || '';
+        el.setAttribute('data-search', (lab + ' ' + sub + ' ' + kw).toLowerCase());
+    });
 }
 // Folder-aware feedback for the Inbox bar: while a filter is live, each folder
 // button shows how many of ITS rows match (a .ifold-match pill; the unread
@@ -4219,6 +4272,9 @@ function abarRoute(id, q) {
         st.miss = { q: raw, answered: true }; // the board answered it
         return;
     }
+    // A hub bar scopes every query to the record on screen, so anaphora ("email
+    // them"), commands ("take payment", "approve") and follow-ups act on it.
+    if (st.opts.scopeEntity) { try { __cmdkEntity = cmdkCurrentEntity(); } catch (e) {} }
     let built = null;
     try { built = cmdkBuildResults(raw); } catch (e) { built = null; }
     // Direct answers (intents, named guests) lead; otherwise fall back to the
@@ -4232,6 +4288,10 @@ function abarRoute(id, q) {
         if (count) count.textContent = '';
         __cmdkWords = raw.split(/\s+/).filter(Boolean); // cmdkHi highlight terms
         st.rows = answerRows.slice(0, 5);
+        // Act in place: surface the quick-actions of the FIRST actionable record
+        // (a summary head often carries none — the booking row beneath does).
+        const ai = st.rows.findIndex((r) => r && Array.isArray(r.actions) && r.actions.length);
+        if (ai >= 0) st.rows[ai]._showActs = true;
         st.nlu = built.nlu || null;
         st.miss = { q: raw, answered: true };
         // Conversational memory, same as the palette: an answer that surfaced a
@@ -4313,6 +4373,15 @@ function abarFilterOff(st) {
 // self-contained result objects, so every palette answer works here unchanged.
 function abarRowHtml(id, it, i) {
     const hi = it.type === 'answer' || it.type === 'figure' ? (s) => escapeHtml(s || '') : cmdkHi;
+    // ACT IN PLACE — the lead answer's quick-actions render inline (same list as
+    // the palette), so "who owes me money" → [Request payment] without a hop to
+    // the hub. Only on the top row to keep the panel tidy.
+    const acts =
+        it._showActs && Array.isArray(it.actions) && it.actions.length
+            ? `<div class="cmdk-qa abar-qa">${it.actions
+                  .map((a, k) => `<button type="button" class="cmdk-qa-row" ${chbAttrs('abarAct', id, i, k)}><span class="cmdk-qa-ic">${a.icon || cmdkActIcon('hub')}</span><span class="cmdk-qa-lbl">${escapeHtml(a.label)}</span><span class="cmdk-qa-go" aria-hidden="true">${CMDK_CHEV}</span></button>`)
+                  .join('')}</div>`
+            : '';
     const chips =
         Array.isArray(it.chips) && it.chips.length
             ? `<div class="abar-chips">${it.chips.map((c, k) => `<button type="button" class="abar-chip" ${chbAttrs('abarChip', id, i, k)}>${escapeHtml(c.label)}</button>`).join('')}</div>`
@@ -4324,8 +4393,18 @@ function abarRowHtml(id, it, i) {
         `<span class="cmdk-row-main"><span class="cmdk-row-label">${hi(it.label)}</span><span class="cmdk-row-sub">${hi(it.sub || '')}</span></span>` +
         `</button>` +
         nlg +
+        acts +
         chips
     );
+}
+// Run a quick-action off an inline answer row (the bar's equivalent of cmdkAct).
+function abarAct(id, i, k) {
+    const st = __abars[id];
+    const it = st && st.rows ? st.rows[i] : null;
+    const a = it && Array.isArray(it.actions) ? it.actions[k] : null;
+    if (!a) return;
+    st.miss = null; // acted on → not a dead end
+    if (typeof a.run === 'function') a.run();
 }
 // Zero matches on a filter: the deep "search everything" pivot + the model's
 // nearest askable questions (mirrors the palette's dead-end guidance).
@@ -14240,8 +14319,53 @@ function openAddBooking() {
     document.getElementById('modal-mode').value = 'add';
     document.getElementById('modal-record-id').value = '';
     setModalFields({}); // blank form, default times
+    modalNameSuggestClose();
     togglePaymentField(true);
     openModal();
+}
+// ---- Guest typeahead (Add Booking): as you type a name, suggest guests you've
+// hosted before (from past bookings) so a repeat guest is one tap — name, email
+// and phone filled — instead of re-keying. Search woven into data entry. ----
+let __modalNameHits = [];
+function modalGuests() {
+    const seen = new Map();
+    try {
+        Object.keys(dbBookings || {}).forEach((pk) => (dbBookings[pk] || []).forEach((b) => {
+            const nm = (b.name || '').trim();
+            if (!nm) return;
+            const key = nm.toLowerCase();
+            const prev = seen.get(key);
+            // Keep the richest contact details seen for a repeat name.
+            seen.set(key, { name: nm, email: b.email || (prev && prev.email) || '', phone: b.phone || (prev && prev.phone) || '' });
+        }));
+    } catch (e) {}
+    return [...seen.values()];
+}
+function modalNameSuggest(v) {
+    const box = document.getElementById('modal-name-suggest');
+    if (!box) return;
+    const q = (v || '').trim().toLowerCase();
+    if (q.length < 2) { modalNameSuggestClose(); return; }
+    const hits = modalGuests().filter((g) => g.name.toLowerCase().includes(q)).slice(0, 5);
+    __modalNameHits = hits;
+    if (!hits.length) { modalNameSuggestClose(); return; }
+    box.innerHTML = hits
+        .map((g, i) => `<button type="button" class="modal-suggest-row" role="option" ${chbAttrs('modalNamePick', String(i))}><span class="modal-suggest-nm">${escapeHtml(g.name)}</span>${g.email ? `<span class="modal-suggest-sub">${escapeHtml(g.email)}</span>` : ''}</button>`)
+        .join('');
+    box.style.display = 'block';
+}
+function modalNamePick(i) {
+    const g = __modalNameHits[+i];
+    if (!g) return;
+    const n = document.getElementById('modal-name'); if (n) n.value = g.name;
+    const e = document.getElementById('modal-email'); if (e && g.email) e.value = g.email;
+    const p = document.getElementById('modal-phone'); if (p && g.phone) p.value = g.phone;
+    modalNameSuggestClose();
+}
+function modalNameSuggestClose() {
+    const box = document.getElementById('modal-name-suggest');
+    if (box) { box.style.display = 'none'; box.innerHTML = ''; }
+    __modalNameHits = [];
 }
 
 function openEditEnquiry(enqId) {

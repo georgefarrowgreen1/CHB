@@ -137,15 +137,24 @@ ellipsised line (palette + both Assist Bars). Additive — the tested answer row
 unchanged. Gated by search-test §22 + §8 (how-to) + golden social cases.
 
 **Assist Bars** — the palette's brain embedded IN workspaces: `chbAssistBar(hostId, opts)`
-(admin.js) injects a knot+input bar into static host divs (`#abar-today` top of the Today
-operations workspace, `#abar-inbox` above the Inbox folder switch / atop the list column at
-≥1200px), registered in `chbAssistInitBars()` (admin boot footer — guests never load any of
-it). Routing per keystroke is WORKSPACE-FIRST: terms matching the board's `[data-search]`
-rows live-filter (shared dim machinery; count in the bar; the palette's "filter this
-workspace" adopts INTO the bar via `abarAdopt`, so no floating banner where a bar exists;
-the Inbox bar adds per-folder `.ifold-match` pills + hides the unread chips while
-filtering); otherwise `cmdkBuildResults()` answers INLINE with the palette's own rows
-(chips/actions/`_nlu` learning intact); zero matches → deep-search CTA + ask chips. Full
+(admin.js) injects a knot+input bar into static host divs, registered in
+`chbAssistInitBars()` (admin boot footer — guests never load any of it). ALL FOUR back-office
+workspaces carry one — `#abar-today` (Today), `#abar-inbox` (Inbox), `#abar-accounts`
+(Payments) and `#abar-manage` (Manage) — PLUS a record-scoped bar on each hub
+(`#abar-bookinghub`, `#abar-enquiryhub`). The Payments/Manage index rows are static markup
+without a haystack, so `abarStampSearchRows(view)` stamps `data-search` (label+sub+kw) on
+`.settings-row`s the first time their bar filters. The HUB bars set `opts.scopeEntity` → each
+keystroke sets `__cmdkEntity = cmdkCurrentEntity()` before building, so "email them", "their
+balance", "this booking" act on the OPEN record. Routing per keystroke is WORKSPACE-FIRST:
+terms matching the board's `[data-search]` rows live-filter (shared dim machinery; count in
+the bar; the palette's "filter this workspace" adopts INTO the bar via `abarAdopt`, so no
+floating banner where a bar exists; the Inbox bar adds per-folder `.ifold-match` pills + hides
+the unread chips while filtering); otherwise `cmdkBuildResults()` answers INLINE with the
+palette's own rows — the LEAD actionable record's quick-actions render on the row
+(`abarRowHtml` marks the first row carrying `actions` with `_showActs`; `abarAct` runs them),
+so "who owes me money" → [Request payment] without a hop (chips/`_nlu` learning intact); zero
+matches → deep-search CTA + ask chips. A guest **typeahead** in Add Booking (`modalNameSuggest`
+/ `#modal-name-suggest`) suggests past guests → a pick fills name+email+phone. Full
 intelligence parity: the **model-status pill** (palette `#cmdk-ml`, per-bar `.abar-status`,
 `data-mstate` set by `chbSetModelStatus`/`chbModelState`) NAMES what the assistant is doing —
 `ready` (Darkstar loaded, idle), `understood` (paraphrase→intent), `meaning` (semantic
@@ -155,7 +164,8 @@ accent, NOT a colour to decode; the dock button keeps a purple Darkstar tint. Pl
 bars↔palette. Both bars sit ABOVE the header divider line (Today: `#abar-today` in
 `#view-backoffice`; Inbox: `#abar-inbox` moved up into `#inbox-head`, full-width above the
 three-pane split) — the divider hangs under the bar. Suites:
-`ui-test-assist-{today,inbox,parity}.js`; the layout gate asserts both bars render.
+`ui-test-assist-{today,inbox,parity,deep}.js` (deep = the Payments/Manage bars, act-in-place,
+hub scoping + Add-Booking typeahead); the layout gate asserts the bars render.
 
 **Hubs are where you act; index rows are where you find.** The **booking hub**
 (`view-booking-hub`) is the ONE home per booking — `showDetails()` (app.js) only
