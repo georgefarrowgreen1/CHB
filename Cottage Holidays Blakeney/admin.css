@@ -2078,6 +2078,44 @@ body.light-mode .cmdk-editor-input {
 .coach-tip-btn:hover {
   filter: brightness(1.06);
 }
+/* Guided WALKTHROUGH overlay: sits ABOVE modals (so it can spotlight a field
+   inside the Add-Booking box) and is click-THROUGH — only the tip is interactive,
+   so you actually use the field beneath while the ring dims everything else. */
+.coach-ov-seq {
+  z-index: 7000;
+  pointer-events: none;
+}
+.coach-ov-seq .coach-tip {
+  z-index: 7001;
+  pointer-events: auto;
+}
+.coach-tip-step {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+.coach-tip-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 4px;
+}
+.coach-tip-back {
+  background: none;
+  border: none;
+  color: rgba(244, 245, 247, 0.7);
+  font-size: 0.85rem;
+  font-weight: 600;
+  padding: 7px 4px;
+  cursor: pointer;
+}
+.coach-tip-back:hover {
+  color: #fff;
+}
 /* Help topic: numbered steps under the selected how-to answer. */
 .cmdk-help-steps {
   margin: 2px 0 4px;
