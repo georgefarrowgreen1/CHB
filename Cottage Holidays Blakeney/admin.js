@@ -4148,6 +4148,26 @@ function chbAssistInitBars() {
         scopeEntity: true,
     });
 }
+// SMART CLEAR — moving to another page resets the Assist Bars you're LEAVING
+// (query, filter dim, panel) so returning finds them fresh, ready for the next
+// search. Bars in the view you're going TO are left alone: the palette's "filter
+// this workspace" adopt flow re-fills the target bar right after nav, and a
+// re-nav to the same view mustn't wipe an in-progress search. Wired into app.js
+// nav() via `window.chbSmartClear` (facade-safe: app.js only touches the slot,
+// admin.js fills it — a no-op before the bundle loads / for guests).
+function chbSmartClear(viewId) {
+    try {
+        if (typeof __abars !== 'object' || !__abars) return;
+        const view = viewId ? document.getElementById(viewId) : null;
+        Object.keys(__abars).forEach((id) => {
+            const st = __abars[id];
+            const hostEl = document.getElementById(id);
+            if (!st || !hostEl) return;
+            const busy = !!(st.q || st.filtering || hostEl.classList.contains('has-text'));
+            if (busy && (!view || !view.contains(hostEl))) abarClear(id);
+        });
+    } catch (e) {}
+}
 // Give a workspace's static browse-index rows (.settings-row) a data-search
 // haystack the first time its bar filters, so the shared paintTodayFilter dim
 // machinery can light the matches. Idempotent (skips rows already stamped).
@@ -4258,20 +4278,17 @@ function abarRoute(id, q) {
         abarAmbient(id);
         return;
     }
-    // Workspace-first: if the words literally match rows on THIS board (a guest
-    // name, a cottage, a pay state), filtering them into view beats an answer
-    // card — the records are right there. Questions ("who owes me money") never
-    // match the row haystacks, so they fall through to the engine.
+    // Workspace-first: terms matching rows on THIS board (a guest name, a
+    // cottage, a pay state) live-filter it (dim + count). But the matching
+    // records are NOT always "right there" — a future booking sits outside the
+    // timeline window, a bk-row hides below the keyboard — so we ALSO run the
+    // engine and, when the query resolves to actual RECORDS (a customer), show
+    // them in the panel as tappable rows. So typing a name always SHOWS the
+    // customer, not just "1 match" over a dimmed board. Questions never match the
+    // row haystacks, so they're pure answers with the filter released.
     st.rows = [];
     if (host) host.classList.remove('has-answer');
     const shown = abarFilterQuery(id, raw);
-    if (shown > 0) {
-        if (panel) panel.innerHTML = '';
-        if (host) host.classList.remove('ml-active');
-        chbSetModelStatus(statusEl, ''); // the board answered — not the model
-        st.miss = { q: raw, answered: true }; // the board answered it
-        return;
-    }
     // A hub bar scopes every query to the record on screen, so anaphora ("email
     // them"), commands ("take payment", "approve") and follow-ups act on it.
     if (st.opts.scopeEntity) { try { __cmdkEntity = cmdkCurrentEntity(); } catch (e) {} }
@@ -4282,10 +4299,19 @@ function abarRoute(id, q) {
     // bar "scans everything" and a card like "Folks Coffee" surfaces here instead
     // of dead-ending to the deep CTA.
     const answerRows = built ? (built.results.length ? built.results : built.fuzzy) : [];
-    if (answerRows.length) {
-        // ANSWERED — inline answer panel of the palette's own rows.
-        abarFilterOff(st);
-        if (count) count.textContent = '';
+    const hasRecord = answerRows.some((r) => r && ['booking', 'enquiry', 'guest', 'payment'].includes(r.type));
+    // Show the answer panel when the query resolved to something worth showing:
+    // a question's answer (no board match), OR — even while the board filters —
+    // an actual customer/record (so it's always visible + tappable).
+    if (answerRows.length && (shown <= 0 || hasRecord)) {
+        // Keep the board dim + count as CONTEXT when a name also filtered the
+        // board; otherwise (a pure question) release the filter.
+        if (shown > 0 && hasRecord) {
+            st.miss = { q: raw, answered: true }; // filtered AND showing the record
+        } else {
+            abarFilterOff(st);
+            if (count) count.textContent = '';
+        }
         __cmdkWords = raw.split(/\s+/).filter(Boolean); // cmdkHi highlight terms
         st.rows = answerRows.slice(0, 5);
         // Act in place: surface the quick-actions of the FIRST actionable record
@@ -4309,6 +4335,15 @@ function abarRoute(id, q) {
             panel.innerHTML =
                 (built.nlu ? `<div class="abar-note">Understood as “${escapeHtml(built.nlu)}”</div>` : '') +
                 st.rows.map((r, i) => abarRowHtml(id, r, i)).join('');
+        return;
+    }
+    // Board matched but the query isn't a record lookup (a pay-state / broad
+    // filter) — keep the filter + count as the answer, no panel.
+    if (shown > 0) {
+        if (panel) panel.innerHTML = '';
+        if (host) { host.classList.remove('has-answer'); host.classList.remove('ml-active'); }
+        chbSetModelStatus(statusEl, ''); // the board answered — not the model
+        st.miss = { q: raw, answered: true };
         return;
     }
     // Nothing on the board and no answer — dead end here: offer the deep
@@ -4405,6 +4440,7 @@ function abarAct(id, i, k) {
     if (!a) return;
     st.miss = null; // acted on → not a dead end
     if (typeof a.run === 'function') a.run();
+    abarClear(id); // smart clear: action done → fresh for the next search
 }
 // Zero matches on a filter: the deep "search everything" pivot + the model's
 // nearest askable questions (mirrors the palette's dead-end guidance).
@@ -4438,6 +4474,7 @@ function abarExec(id, i) {
     st.miss = null; // acted on → not a dead end
     if (it._nlu && it._nluQ) { try { chbNluLearn(it._nluQ, it._nlu); } catch (e) {} } // accepted → learn this phrasing
     if (typeof it.run === 'function') it.run(); // closeCmdK() inside runs is a safe no-op here
+    abarClear(id); // smart clear: acted on a result → fresh for the next search
 }
 function abarChip(id, i, k) {
     const st = __abars[id];
@@ -4445,8 +4482,8 @@ function abarChip(id, i, k) {
     const c = it && Array.isArray(it.chips) ? it.chips[k] : null;
     if (!c) return;
     st.miss = null; // engaged with a chip → not a dead end
-    if (typeof c.run === 'function') { c.run(); return; } // action chip (e.g. Show on calendar)
-    abarRunQuery(id, c.q);
+    if (typeof c.run === 'function') { c.run(); abarClear(id); return; } // action chip (e.g. Show on calendar) → clear after
+    abarRunQuery(id, c.q); // a refine chip re-queries the bar — keep it live
 }
 // No local match anywhere → hand the query to the palette's deep federated
 // search (server-side, all record types) with the bar reset behind it.
