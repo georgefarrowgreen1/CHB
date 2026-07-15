@@ -175,7 +175,11 @@ three-pane split) — the divider hangs under the bar. **Siri look**: the search
 a luminous cycling glow when engaged — the palette card breathes `cmdkSiriAura` while open, an
 Assist Bar field breathes `abarSiriAura` while focused (with a rounder pill + firmer focused
 surface), driven by the `--siri-1..5` hue tokens (`:root` in admin.css); both are box-shadow
-auras (overflow-safe) and honour `prefers-reduced-motion`. Suites:
+auras (overflow-safe) and honour `prefers-reduced-motion`. **Unified interface**: one button
+language across the palette + bars — RESULTS/JUMP-TO/quick-ACTIONS are rows (`.cmdk-row` /
+`.cmdk-qa-row`, distinct destination glyphs via a registry `icon` + a row's `iconType`);
+refine/related/ask PIVOTS are pills (`.cmdk-chip` in the palette === `.abar-chip` in the bars);
+one hover tint (`--cmdk-sel`), one pill spec (scope/chip share padding/radius/border). Suites:
 `ui-test-assist-{today,inbox,parity,deep}.js` (deep = the Payments/Manage bars, act-in-place,
 hub scoping + Add-Booking typeahead); the layout gate asserts the bars render.
 

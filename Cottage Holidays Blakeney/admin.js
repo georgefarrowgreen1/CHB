@@ -187,6 +187,18 @@ function cmdkIcon(type) {
         return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/></svg>';
     if (type === 'experience')
         return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-7-5.5-7-11a7 7 0 0 1 14 0c0 5.5-7 11-7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>';
+    // Distinct destination glyphs so the "Jump to" list reads as real places, not
+    // a stack of identical rows (passed via a row's iconType; see cmdkRowHtml).
+    if (type === 'home')
+        return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/></svg>';
+    if (type === 'gear')
+        return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3.2"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/></svg>';
+    if (type === 'house')
+        return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 21h18M5 21V9l7-5 7 5v12"/><path d="M9.5 21v-5h5v5"/></svg>';
+    if (type === 'tag')
+        return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 13.3 11.8 22l-9.3-9.3V3h9.7l8.3 8.3a1.4 1.4 0 0 1 0 2z"/><circle cx="7.5" cy="7.5" r="1.4"/></svg>';
+    if (type === 'sync')
+        return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 4v4h-4M3 20v-4h4"/></svg>';
     return '<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h10"/></svg>';
 }
 // ============================================================
@@ -202,19 +214,19 @@ function cmdkIcon(type) {
 function cmdkRegistry() {
     return [
         // Top-level destinations (dock + standalone views).
-        { id: 'today', label: 'Today', sub: 'Operations dashboard', kw: 'home dashboard calendar timeline arrivals departures', go: () => tryAccessBackOffice() },
-        { id: 'bookings', label: 'Bookings', sub: 'All bookings', kw: 'reservations stays guests list', go: () => openBookings() },
-        { id: 'inbox', label: 'Inbox', sub: 'Enquiries, messages & email', kw: 'chat conversations', go: () => openInbox() },
-        { id: 'messages', label: 'Messages', sub: 'Guest chat folder', kw: 'chat conversations inbox', go: () => Promise.resolve(openInbox()).then(() => inboxFolder('messages')) },
-        { id: 'email', label: 'Email', sub: 'Mailbox folder', kw: 'mailbox sent compose inbox', go: () => Promise.resolve(openInbox()).then(() => inboxFolder('email')) },
-        { id: 'payments-area', label: 'Payments', sub: 'Money & reconciliation', kw: 'money accounts income deposits balances expenses owed', go: () => openAccounts() },
-        { id: 'manage', label: 'Manage', sub: 'All settings', kw: 'settings admin', go: () => openArea('manage') },
-        { id: 'activity', label: 'Activity log', sub: 'Every change & action', kw: 'history audit errors', go: () => nav('view-activity-log') },
+        { id: 'today', label: 'Today', sub: 'Operations dashboard', icon: 'home', kw: 'home dashboard calendar timeline arrivals departures', go: () => tryAccessBackOffice() },
+        { id: 'bookings', label: 'Bookings', sub: 'All bookings', icon: 'booking', kw: 'reservations stays guests list', go: () => openBookings() },
+        { id: 'inbox', label: 'Inbox', sub: 'Enquiries, messages & email', icon: 'enquiry', kw: 'chat conversations', go: () => openInbox() },
+        { id: 'messages', label: 'Messages', sub: 'Guest chat folder', icon: 'message', kw: 'chat conversations inbox', go: () => Promise.resolve(openInbox()).then(() => inboxFolder('messages')) },
+        { id: 'email', label: 'Email', sub: 'Mailbox folder', icon: 'email', kw: 'mailbox sent compose inbox', go: () => Promise.resolve(openInbox()).then(() => inboxFolder('email')) },
+        { id: 'payments-area', label: 'Payments', sub: 'Money & reconciliation', icon: 'payment', kw: 'money accounts income deposits balances expenses owed', go: () => openAccounts() },
+        { id: 'manage', label: 'Manage', sub: 'All settings', icon: 'gear', kw: 'settings admin', go: () => openArea('manage') },
+        { id: 'activity', label: 'Activity log', sub: 'Every change & action', icon: 'activity', kw: 'history audit errors', go: () => nav('view-activity-log') },
         // Manage sections — each `sec` opens #sec-<sec> via settingsOpen().
-        { id: 'accom', label: 'Cottages', sub: 'Rates, fees, rules & photos', kw: 'property add remove cottage price occupancy', sec: 'accom' },
-        { id: 'seasongrid', label: 'Seasonal rates', sub: 'Summer & holiday pricing', kw: 'rates price season', sec: 'seasongrid' },
-        { id: 'calendar', label: 'Calendar sync', sub: 'Airbnb, Vrbo & Booking.com', kw: 'ical import export channel airbnb vrbo booking.com feed', sec: 'calendar' },
-        { id: 'payments', label: 'Payments settings', sub: 'Square & deposit policy', kw: 'square card deposit refund', sec: 'payments' },
+        { id: 'accom', label: 'Cottages', sub: 'Rates, fees, rules & photos', icon: 'house', kw: 'property add remove cottage price occupancy', sec: 'accom' },
+        { id: 'seasongrid', label: 'Seasonal rates', sub: 'Summer & holiday pricing', icon: 'tag', kw: 'rates price season', sec: 'seasongrid' },
+        { id: 'calendar', label: 'Calendar sync', sub: 'Airbnb, Vrbo & Booking.com', icon: 'sync', kw: 'ical import export channel airbnb vrbo booking.com feed', sec: 'calendar' },
+        { id: 'payments', label: 'Payments settings', sub: 'Square & deposit policy', icon: 'payment', kw: 'square card deposit refund', sec: 'payments' },
         { id: 'cancel', label: 'Cancellation policy', sub: 'Refund terms', kw: 'refund cancel', sec: 'cancel' },
         { id: 'content', label: 'Home page & menu', sub: 'Hero, menu & site name', kw: 'website hero photo text logo homepage', sec: 'content' },
         { id: 'experiences', label: 'Experiences', sub: 'Local things to do', kw: 'things to do activities', sec: 'experiences' },
@@ -254,7 +266,7 @@ const CMDK_SCREEN_SCOPE = {
     guests: 'guests', reviews: 'guests', photos: 'guests', newsletter: 'guests', waitlist: 'guests',
 };
 function cmdkScreens() {
-    return cmdkRegistry().map((e) => ({ type: 'screen', id: 'scr-' + e.id, label: e.label, sub: e.sub, kw: e.kw || '', scope: CMDK_SCREEN_SCOPE[e.id] || null, run: () => cmdkRegGo(e)() }));
+    return cmdkRegistry().map((e) => ({ type: 'screen', id: 'scr-' + e.id, iconType: e.icon || null, label: e.label, sub: e.sub, kw: e.kw || '', scope: CMDK_SCREEN_SCOPE[e.id] || null, run: () => cmdkRegGo(e)() }));
 }
 // Which cottage does the query name? Matches a prop key or a cottage name; if
 // none is named and only one cottage is live, that one is assumed (so "edit the
@@ -3565,7 +3577,7 @@ function cmdkSearchCore(q, allowCorrect) {
                 screens = screens.concat([{
                     type: 'answer', id: 'cmdk-try',
                     label: 'Ask me about the business',
-                    sub: 'In your own words — or tap the mic and say it',
+                    sub: 'In your own words — try "how are we doing?"',
                     chips: pick.map((c) => ({ label: c, q: c })),
                     run: () => { const el = document.getElementById('cmdk-input'); if (el) el.value = pick[0]; cmdkSearchCore(pick[0], true); },
                 }]);
@@ -4424,7 +4436,7 @@ function abarRowHtml(id, it, i) {
     const nlg = it.nlgBody ? `<p class="cmdk-nlg-body">${escapeHtml(it.nlgBody)}</p>` : '';
     return (
         `<button type="button" class="cmdk-row abar-row cmdk-row-${it.type}${it.wrap ? ' cmdk-row-wrap' : ''}" ${chbAttrs('abarExec', id, i)}>` +
-        `<span class="cmdk-row-ic cmdk-${it.type}">${cmdkIcon(it.type)}</span>` +
+        `<span class="cmdk-row-ic cmdk-${it.type}">${cmdkIcon(it.iconType || it.type)}</span>` +
         `<span class="cmdk-row-main"><span class="cmdk-row-label">${hi(it.label)}</span><span class="cmdk-row-sub">${hi(it.sub || '')}</span></span>` +
         `</button>` +
         nlg +
@@ -4910,7 +4922,7 @@ function cmdkRowHtml(it, i, top) {
     // whose text isn't a literal echo of the query.
     const hi = it.type === 'answer' || it.type === 'figure' ? (s) => escapeHtml(s || '') : cmdkHi;
     const row = `<button type="button" id="cmdk-opt-${i}" class="cmdk-row cmdk-row-${it.type}${sel ? ' is-sel' : ''}${top ? ' cmdk-tophit' : ''}${it.wrap ? ' cmdk-row-wrap' : ''}" role="option" aria-selected="${sel}" data-idx="${i}" ${chbAttrs('cmdkExec', i)}>
-                    <span class="cmdk-row-ic cmdk-${it.type}">${cmdkIcon(it.type)}</span>
+                    <span class="cmdk-row-ic cmdk-${it.type}">${cmdkIcon(it.iconType || it.type)}</span>
                     <span class="cmdk-row-main"><span class="cmdk-row-label">${hi(it.label)}</span><span class="cmdk-row-sub">${hi(it.sub || '')}</span></span>
                 </button>`;
     // A selected record's actions are a proper QUICK-ACTIONS LIST — full-width
@@ -4939,19 +4951,16 @@ function cmdkRowHtml(it, i, top) {
     // never a duplicate of an action. For an answer/help head they stay as the
     // inline refine chips (narrow/pivot without retyping). Original chip indices
     // preserved either way so cmdkChipRun targets the right one.
+    // Refine / related "run another search" suggestions render as PILLS — the same
+    // chip language as the Assist Bars — so every button group in search is
+    // consistent: primary ACTIONS (verbs) are the rows above; these are the
+    // secondary pivots below. A chip that just duplicates an action is dropped.
     let refine = '';
     if (Array.isArray(it.chips) && it.chips.length && (!isHelp || sel)) {
-        if (hasActions) {
-            const rel = it.chips
-                .map((c, k) => (actLabels && actLabels.has((c.label || '').toLowerCase())) ? '' : `<button type="button" class="cmdk-related" ${chbAttrs('cmdkChipRun', i, k)}><span class="cmdk-qa-ic">${CMDK_SEARCH_IC}</span><span class="cmdk-qa-lbl">${escapeHtml(c.label)}</span><span class="cmdk-qa-go" aria-hidden="true">${CMDK_CHEV}</span></button>`)
-                .join('');
-            refine = rel ? `<div class="cmdk-qa cmdk-related-list">${rel}</div>` : '';
-        } else {
-            // Refine pivots render as the same iOS-style menu list as the quick
-            // actions — one tappable row each (filter glyph · label · chevron) —
-            // so every button group in search shares one context-menu language.
-            refine = `<div class="cmdk-qa cmdk-refine-menu">${it.chips.map((c, k) => `<button type="button" class="cmdk-qa-row cmdk-refine-row" data-idx="${i}" data-chip="${k}" ${chbAttrs('cmdkChipRun', i, k)}><span class="cmdk-qa-ic">${CMDK_FILTER_IC}</span><span class="cmdk-qa-lbl">${escapeHtml(c.label)}</span><span class="cmdk-qa-go" aria-hidden="true">${CMDK_CHEV}</span></button>`).join('')}</div>`;
-        }
+        const pills = it.chips
+            .map((c, k) => (hasActions && actLabels && actLabels.has((c.label || '').toLowerCase())) ? '' : `<button type="button" class="cmdk-chip" data-idx="${i}" data-chip="${k}" ${chbAttrs('cmdkChipRun', i, k)}>${escapeHtml(c.label)}</button>`)
+            .join('');
+        refine = pills ? `<div class="cmdk-chips">${pills}</div>` : '';
     }
     return row + nlg + steps + acts + refine;
 }
