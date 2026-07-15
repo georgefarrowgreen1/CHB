@@ -1117,6 +1117,20 @@ const CHB_NLU = {
         // even when it names a future weekend. ("reserve"-worded blocks are left
         // out: they collide with the "reservations" upcoming-bookings intent.)
         'block off next weekend',
+        // IN-DOMAIN DISTRACTORS — admin actions / guest-facing facts that share
+        // vocabulary with a business question but are NOT one (measured leaks on
+        // the hard/fresh sets): taking a card payment (an action, not "who owes")
+        // and cottage FEATURES / directions (facts about a cottage, not which one
+        // earns). These strengthen the reject class, the Darkstar none pool and
+        // the semantic veto together. Several tempting additions are deliberately
+        // EXCLUDED because they collided with real paraphrases (each measured to
+        // cost held-out recall): "cancel a booking/reservation" (↔ "guests due to
+        // depart" / "reservations lie ahead"), any "check in/out time" wording (↔
+        // "who checks out before noon" — the check token is shared), and refund
+        // wording (↔ "whose bond needs refunding").
+        'take a card payment', 'which cottage has a hot tub',
+        'does the cottage have parking', 'is the cottage pet friendly',
+        'how to get to the cottage',
     ],
 };
 CHB_SEARCH.nlu = CHB_NLU; // part of the public search-core API

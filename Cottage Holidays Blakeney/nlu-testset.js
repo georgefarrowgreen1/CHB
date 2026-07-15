@@ -120,4 +120,10 @@ exports.NEG = [
   // false-accepted at the lexical tiers until the Darkstar semantic veto
   // (darkstarNoneDominates) landed; they guard that the veto stays effective.
   'edit the cottage description', 'directions to the cottage', 'when does the cleaner come',
+  // Cottage FEATURE / policy / directions questions + a card-payment action —
+  // they keyword-collide with "which cottage earns most" / "who owes me money"
+  // but are facts/actions, not business questions. Rejected via the none-class
+  // examples added to CHB_NLU.noneExamples. Fresh wording (NOT the training
+  // phrases) so this checks the reject class GENERALISES, not memorises.
+  'cottage with a hot tub', 'is the cottage dog friendly', 'can i pay by card',
 ];
