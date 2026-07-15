@@ -2521,7 +2521,15 @@ function cmdkIntent(q) {
             return [head].concat(ranked.filter((r) => r.v > 0).map((r) => ({ type: 'answer', id: 'ins-' + r.k, label: `${propName(r.k)} · ${gbp(r.v)}`, sub: `${Math.round((100 * r.v) / (revenue || 1))}% of revenue`, run: openMoney })));
         }
         const head = { type: 'figure', id: 'ins', label: `${soldNights} night${soldNights === 1 ? '' : 's'} booked ${plabel}`, sub: `${occPct}% occupancy · ${gbp(revenue)} revenue${avgRate ? ' · avg ' + gbp(avgRate) + '/night' : ''}${otaNote}`, run: openMoney, chips: [{ label: 'Last month', q: 'nights booked last month' }, { label: 'This year', q: 'nights booked this year' }, { label: 'Busiest month', q: 'busiest month' }, { label: 'Top cottage', q: 'which cottage earns most' }] };
-        return [head].concat(rankedN.filter((r) => r.n > 0).map((r) => ({ type: 'answer', id: 'ins-' + r.k, label: `${propName(r.k)} · ${r.n} night${r.n === 1 ? '' : 's'}`, sub: `${gbp(r.v)}${r.v ? ' revenue' : ' · OTA, no price'} · ${Math.round((100 * r.n) / (soldNights || 1))}% of nights`, run: openMoney })));
+        // A GENERIC "how's business / how am I doing / performance" leads with a
+        // plain-English NARRATIVE (this month vs last, trend + a nudge if it dips)
+        // — the numbers still follow. An explicit metric query skips it.
+        let lead = [];
+        const hasPeriod = !!nm || /this year|last year|last month|next month|this month/.test(q);
+        if (!hasPeriod && /how.?s business|how am i doing|how are we doing|\bperformance\b|how.?s it going/.test(q)) {
+            try { const p = chbBusinessPulse(); if (p) lead = [{ type: 'answer', id: 'ins-pulse', wrap: true, label: `${p.arrow} ${p.label}`, sub: p.sub, run: openMoney }]; } catch (e) {}
+        }
+        return lead.concat([head]).concat(rankedN.filter((r) => r.n > 0).map((r) => ({ type: 'answer', id: 'ins-' + r.k, label: `${propName(r.k)} · ${r.n} night${r.n === 1 ? '' : 's'}`, sub: `${gbp(r.v)}${r.v ? ' revenue' : ' · OTA, no price'} · ${Math.round((100 * r.n) / (soldNights || 1))}% of nights`, run: openMoney })));
     }
 
     // 0d) Booking reference — "CHB-000123", "#123", "booking 123" → open it.
@@ -4754,6 +4762,47 @@ async function cmdkFieldBack() {
 // to return), computed from the loaded data. Each row routes to where you act.
 let __cmdkBriefN = 0;
 let __cmdkFreqN = 0; // count of "Most used" rows in the empty palette
+// ---- Proactive business pulse: this month vs last, in plain English. Unions
+// paying bookings with OTA guest stays (owner maintenance blocks excluded — same
+// rule as the insights composer), compares nights + revenue to last month, names
+// the leading cottage and flags a real dip so the owner can act before it bites.
+// Reused by cmdkBrief (proactive landing) and the "how's business" answer. ----
+function chbBusinessPulse() {
+    try {
+        const today = todayDashed();
+        const dd0 = new Date(today + 'T00:00:00');
+        const isoD = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+        const dn = (a, b) => Math.max(0, Math.round((new Date(b + 'T00:00:00') - new Date(a + 'T00:00:00')) / 86400000));
+        const total = (b) => (b.agreedPrice && b.agreedPrice.total) || 0;
+        const stays = [];
+        Object.keys(dbBookings || {}).forEach((pk) => (dbBookings[pk] || []).forEach((b) => stays.push({ pk, b })));
+        Object.keys(dbBlocks || {}).forEach((pk) => (dbBlocks[pk] || []).forEach((bl) => { if (typeof isOtaBlock === 'function' ? isOtaBlock(bl) : (bl.source && bl.source !== 'owner')) stays.push({ pk, b: { checkIn: bl.checkIn, checkOut: bl.checkOut } }); }));
+        const metrics = (s, e) => {
+            const w = stays.filter((x) => x.b.checkIn && x.b.checkIn >= s && x.b.checkIn <= e);
+            const byC = {};
+            let nights = 0, revenue = 0;
+            w.forEach((x) => { const n = x.b.checkOut ? dn(x.b.checkIn, x.b.checkOut) : 0; nights += n; revenue += total(x.b); byC[x.pk] = (byC[x.pk] || 0) + n; });
+            return { nights, revenue, byC };
+        };
+        const cur = metrics(isoD(new Date(dd0.getFullYear(), dd0.getMonth(), 1)), isoD(new Date(dd0.getFullYear(), dd0.getMonth() + 1, 0)));
+        const prv = metrics(isoD(new Date(dd0.getFullYear(), dd0.getMonth() - 1, 1)), isoD(new Date(dd0.getFullYear(), dd0.getMonth(), 0)));
+        if (!cur.nights && !prv.nights) return null; // nothing to say yet
+        const dNn = cur.nights - prv.nights;
+        const arrow = dNn > 0 ? '↑' : dNn < 0 ? '↓' : '→';
+        const trend = prv.nights === 0 ? (cur.nights ? 'off the mark' : 'nothing yet') : dNn > 0 ? `up ${dNn} on last month` : dNn < 0 ? `down ${-dNn} on last month` : 'level with last month';
+        const topK = Object.keys(cur.byC).sort((a, b) => cur.byC[b] - cur.byC[a])[0];
+        // monthName/propName are locals elsewhere — inline them here.
+        const nm = (k) => (propertyMeta[k] && propertyMeta[k].name) || k || '';
+        const top = topK && cur.byC[topK] ? nm(topK) + ' leading' : '';
+        const down = prv.nights > 0 && (dNn <= -3 || cur.nights < prv.nights * 0.6);
+        const monthNm = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][dd0.getMonth()];
+        return {
+            arrow, down, nights: cur.nights, revenue: cur.revenue,
+            label: `${monthNm}: ${cur.nights} night${cur.nights === 1 ? '' : 's'} booked, ${trend}`,
+            sub: `${gbp(cur.revenue)} in${top ? ' · ' + top : ''}${down ? ' · worth a nudge — maybe a last-minute offer' : ''}`,
+        };
+    } catch (e) { return null; }
+}
 function cmdkBrief() {
     const items = [];
     const today = todayDashed();
@@ -4770,7 +4819,12 @@ function cmdkBrief() {
     const enq = Array.isArray(enquiries) ? enquiries.length : 0;
     if (enq) items.push({ type: 'answer', scope: 'inbox', id: 'brief-enq', label: `${enq} enquir${enq === 1 ? 'y' : 'ies'} waiting`, sub: 'Reply to win the booking', run: () => { closeCmdK(); openInbox(); } });
     if (depN) items.push({ type: 'answer', scope: 'money', id: 'brief-dep', label: `${depN} deposit${depN === 1 ? '' : 's'} to return`, sub: 'Guests have checked out', run: () => { closeCmdK(); openBookings(); } });
-    return items.slice(0, 4);
+    // Proactive monthly pulse — how the month's shaping up vs last, unasked.
+    try {
+        const pulse = chbBusinessPulse();
+        if (pulse) items.push({ type: 'answer', scope: 'money', id: 'brief-pulse', wrap: true, label: `${pulse.arrow} ${pulse.label}`, sub: pulse.sub, run: () => { closeCmdK(); openAccounts(); } });
+    } catch (e) {}
+    return items.slice(0, 5);
 }
 // ---- Spotlight-style presentation: a Top Hit + grouped section headers. ----
 let __cmdkEmpty = false;
