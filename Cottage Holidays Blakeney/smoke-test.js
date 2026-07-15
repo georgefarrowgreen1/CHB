@@ -512,6 +512,28 @@ for (const [name, src] of [['app.js', appScript], ['admin.js', adminScript]]) {
 check('updateModalPrice keeps the locked-price branch', /locked at the rates in effect when booked/.test(appScript));
 check('updateModalPrice keeps the replaces-the-agreed reprice note', /saving replaces the agreed/.test(appScript));
 
+// ---- Guest FAQ assistant: a TYPED guest question is answered on-device from the
+// cottage's own FAQ content; anything unrelated returns null (→ reaches a person).
+if (typeof get('guestFaqAnswer') === 'function') {
+    vm.runInContext(`
+        siteContent['faqs-jollyboat'] = [
+          { q: 'Are dogs welcome?', a: 'Yes — up to two well-behaved dogs stay free of charge.' },
+          { q: 'Is there a cot?', a: 'A travel cot and high-chair are in the utility cupboard.' }
+        ];
+        propertyMeta.jollyboat = { name: 'Jollyboat' };
+        activeFrontProperty = 'jollyboat';
+    `, ctx);
+    const faq = get('guestFaqAnswer');
+    const dog = faq('can I bring my dog?');
+    check('guest FAQ answers a typed question from cottage content (dog → dogs FAQ)', !!dog && /dogs stay free/.test(dog.a), dog ? dog.q : 'null');
+    const cot = faq('do you have a cot for the baby');
+    check('guest FAQ matches on synonyms (baby → cot FAQ)', !!cot && /cot/i.test(cot.q), cot ? cot.q : 'null');
+    const park = faq('where can I park the car');
+    check('guest FAQ answers a built-in topic (parking)', !!park && /park/i.test(park.q + ' ' + park.a), park ? park.q : 'null');
+    check('guest FAQ returns null for an unrelated question (→ owner)', faq('what is the airspeed of a swallow') === null);
+    check('guest FAQ ignores a bare greeting', faq('hi there') === null);
+}
+
 console.log('\n== Summary ==');
 if (failures === 0) { console.log('  ALL CHECKS PASSED ✅\n'); process.exit(0); }
 console.log('  ' + failures + ' CHECK(S) FAILED ❌\n'); process.exit(1);
