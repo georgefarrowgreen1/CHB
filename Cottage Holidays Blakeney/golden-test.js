@@ -266,10 +266,17 @@ const CASES = [
     // ---- chbNlg — social / conversational replies (natural language) ----
     // The exact phrasing varies (deterministic pick + time of day), so match the
     // union of the possible replies rather than one fixed string.
-    { q: 'hi', head: /would you like to know|ask me anything|Who or what are you after|Morning|Afternoon|Evening/ },
-    { q: 'thanks', head: /Anytime|You.re welcome|No trouble|Happy to help/ },
+    { q: 'hi', head: /would you like to know|ask me anything|What can I get you|Morning|Afternoon|Evening/ },
+    { q: 'how are you', head: /would you like to know|ask me anything|What can I get you|Morning|Afternoon|Evening/ },
+    { q: 'thanks', head: /Anytime|You.re welcome|No trouble|Happy to help|My pleasure/ },
     { q: 'what can you do', head: /I read your live calendar|answer in your own words/ },
     { q: 'who are you', head: /your booking assistant/ },
+    // "who's in" (the missing in-residence phrasing) now answers.
+    { q: "who's in", any: /in-house now/, not: /Nothing here|no answer/ },
+    { q: 'who is in', any: /in-house now/ },
+    // (The dead-end-question FALLBACK is a cmdkBuildResults concern — it only
+    // fires when the intent AND fuzzy search are both empty — so it's covered in
+    // search-test, not here where only cmdkIntent runs.)
     // ---- Free tonight (Jollyboat occupied by Alice; Eve leaves today) ----
     { q: "what's free tonight", head: /2 cottages free tonight/ },
     { q: 'any cottage free', head: /2 cottages free tonight/ },

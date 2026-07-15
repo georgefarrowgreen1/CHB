@@ -703,9 +703,26 @@ if (typeof ctx.chbNlgSocial === 'function') {
     check('thanks → a thanks reply', kind('thanks') === 'thanks' && kind('cheers') === 'thanks');
     check('"what can you do" → capability reply', kind('what can you do') === 'capability');
     check('"who are you" → identity reply', kind('who are you') === 'identity');
+    check('"how are you"/"you there" → a greet reply', kind('how are you') === 'greet' && kind('you there') === 'greet');
+    check('"ok"/"sorry" → an ack reply', kind('ok') === 'ack' && kind('sorry') === 'ack');
     check('a social reply carries non-empty text', (ctx.chbNlgSocial('hi') || {}).text && ctx.chbNlgSocial('hi').text.length > 3);
     // Real queries must NOT be swallowed as social.
     check('real queries are not social', kind('who owes me money') === null && kind('high earners') === null && kind('history') === null && kind('hire a cleaner') === null);
+}
+// chbNlgFallback — a dead-end QUESTION gets a reply; a keyword/name does not.
+if (typeof ctx.chbNlgFallback === 'function') {
+    check('a dead-end question gets a fallback reply', !!(ctx.chbNlgFallback('what is the meaning of life') || {}).label);
+    check('a "?"-ended query gets a fallback reply', !!ctx.chbNlgFallback('will it rain tomorrow?'));
+    check('a bare keyword/name is NOT a fallback', ctx.chbNlgFallback('richard') === null && ctx.chbNlgFallback('jollyboat') === null);
+    // Integration: the fallback surfaces through cmdkBuildResults ONLY when the
+    // intent AND fuzzy search both come up empty (empty data → nothing matches).
+    if (typeof ctx.cmdkBuildResults === 'function') {
+        vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);enquiries=[];', ctx);
+        const fb = ctx.cmdkBuildResults('what is the meaning of life');
+        check('dead-end question → nlg-fallback answer row', !!(fb && fb.results && fb.results[0] && fb.results[0].id === 'nlg-fallback'));
+        const rq = ctx.cmdkBuildResults('who owes me money');
+        check('a real question does NOT get the fallback', !(rq && rq.results && rq.results[0] && rq.results[0].id === 'nlg-fallback'));
+    }
     // The social branch surfaces through cmdkIntent as a spoken answer row.
     const soc = ctx.cmdkIntent('thanks');
     check('cmdkIntent answers a greeting/thanks with an nlg row', !!(soc && soc[0] && /^nlg-/.test(soc[0].id) && soc[0]._nlgSpoken));

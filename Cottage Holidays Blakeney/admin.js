@@ -1804,27 +1804,72 @@ function chbNlgSpeak(text) {
 // Social / conversational input → a natural spoken+shown reply, or null. Kept
 // precise (whole-query greetings/thanks/capability/identity) so it never
 // hijacks a real search.
+// A live one-line status for a greeting — "2 arriving and 1 leaving today,
+// £290 still to collect" — so a hello gets an AWARE reply, not a canned one.
+// Empty on a quiet day or before the data loads.
+function chbNlgBrief() {
+    try {
+        const today = todayDashed();
+        let arr = 0, dep = 0, owed = 0;
+        Object.keys(dbBookings || {}).forEach((pk) => (dbBookings[pk] || []).forEach((b) => {
+            if (b.checkIn === today) arr++;
+            if (b.checkOut === today) dep++;
+            try { const ps = paymentSummary(pk, b); if (!ps.fullyPaid && ps.balance > 0.5 && (b.checkOut || '') >= today) owed += ps.balance; } catch (e) {}
+        }));
+        Object.keys((typeof dbBlocks === 'object' && dbBlocks) || {}).forEach((pk) => (dbBlocks[pk] || []).forEach((bl) => {
+            if (isOtaBlock(bl)) { if (bl.checkIn === today) arr++; if (bl.checkOut === today) dep++; }
+        }));
+        const bits = [];
+        if (arr) bits.push(`${arr} arriving`);
+        if (dep) bits.push(`${dep} leaving`);
+        let s = bits.length ? bits.join(' and ') + ' today' : '';
+        if (owed > 0.5) s += (s ? ', ' : '') + `${gbp(Math.round(owed))} still to collect`;
+        return s;
+    } catch (e) { return ''; }
+}
 function chbNlgSocial(q) {
     const s = String(q || '').toLowerCase().replace(/[^a-z\s'?]/g, '').replace(/\s+/g, ' ').trim();
     if (!s) return null;
-    if (/^(hi|hii|hey|hello|hiya|yo|good (morning|afternoon|evening)|morning|evening|howdy)$/.test(s)) {
+    if (/^(hi+|hey+|hello+|hiya|yo|good (morning|afternoon|evening|day)|(good )?(morning|afternoon|evening)|howdy|greetings|hows it going|how are you|you (there|about|around)|are you (there|awake|listening))\??$/.test(s)) {
         const hr = new Date().getHours();
         const tod = hr < 12 ? 'Morning' : hr < 18 ? 'Afternoon' : 'Evening';
-        return { kind: 'greet', text: nlgPick(s, [`${tod}! What would you like to know?`, `Hello — ask me anything about your bookings.`, `Hi there. Who or what are you after?`]) };
+        const brief = chbNlgBrief();
+        const briefCap = brief ? ' ' + brief.charAt(0).toUpperCase() + brief.slice(1) + '.' : '';
+        return { kind: 'greet', text: `${tod}!${briefCap} ${nlgPick(s, ['What would you like to know?', 'What can I get you?', 'Ask me anything about your bookings.'])}` };
     }
-    if (/^(thanks|thank you|thankyou|cheers|ta|nice one|great|perfect|lovely|brilliant|thx|cool)$/.test(s)) {
-        return { kind: 'thanks', text: nlgPick(s, ['Anytime.', "You're welcome!", 'No trouble at all.', 'Happy to help.']) };
+    if (/^(thanks?|thank you|thankyou|cheers|ta|nice one|great|perfect|lovely|brilliant|thx|cool|good|nice|excellent|amazing|magic|spot on|thats great|thats brilliant)$/.test(s)) {
+        return { kind: 'thanks', text: nlgPick(s, ['Anytime.', "You're welcome!", 'No trouble at all.', 'Happy to help.', 'My pleasure.']) };
     }
-    if (/^(bye|goodbye|see you|thats all|that is all|nothing else|done)$/.test(s)) {
-        return { kind: 'bye', text: nlgPick(s, ['Right you are.', 'Cheerio!', "I'm here whenever you need me."]) };
+    if (/^(bye|goodbye|see you|see ya|thats all|that is all|nothing else|nothing more|done|thats it|im done|no thanks|no thank you)$/.test(s)) {
+        return { kind: 'bye', text: nlgPick(s, ['Right you are.', 'Cheerio!', "I'm here whenever you need me.", 'Any time you need me.']) };
     }
-    if (/(what can you (do|help)|what do you do|how (can|do) you help|what are you for|help me|^help$|your capabilities|what can i ask)/.test(s)) {
+    if (/^(ok|okay|kk|right|righto|got it|understood|sure|fine|alright|no worries|no problem)$/.test(s)) {
+        return { kind: 'ack', text: nlgPick(s, ['👍', 'Right.', 'Whenever you\'re ready.', 'Just say the word.']) };
+    }
+    if (/^(sorry|my bad|oops|whoops|ignore that|scrap that|never mind|nevermind|forget it)$/.test(s)) {
+        return { kind: 'ack', text: nlgPick(s, ['No bother.', 'All good.', "No harm done — what next?"]) };
+    }
+    if (/(what can you (do|help)|what do you do|how (can|do) you help|what are you for|help me|^help$|your capabilities|what can i ask|what should i ask|give me examples|how do i use (you|this)|what questions)/.test(s)) {
         return { kind: 'capability', text: "I read your live calendar and can answer in your own words — who's staying, arriving or leaving, who owes you money, deposits to return, how the year's going, which cottage earns most, and plenty more. Try asking one." };
     }
-    if (/(who are you|what are you|are you (a bot|ai|human|real)|whats your name|who am i talking to)/.test(s)) {
+    if (/(who are you|what are you|are you (a bot|ai|human|real|there)|whats your name|who am i talking to|are you clever|are you smart)/.test(s)) {
         return { kind: 'identity', text: "I'm your booking assistant — I run on your device, read your live bookings, and answer questions about them. No names, just here to help." };
     }
     return null;
+}
+// A question that found NOTHING still deserves a reply, not silence. Given a
+// question-shaped dead-end, offer a natural apology + what CAN be asked (the
+// caller adds the model's nearest guesses as chips). Returns null when the
+// query isn't really a question (a partial name/keyword search keeps its rows).
+function chbNlgFallback(q) {
+    const s = String(q || '').toLowerCase().trim();
+    const isQuestion = /^(who|whos|what|whats|when|wheres?|why|how|is|are|am|do|does|did|can|could|should|would|will|has|have|any|anyone|which|got)\b/.test(s) || /\?\s*$/.test(s);
+    if (!isQuestion || s.length < 3) return null;
+    return {
+        label: nlgPick(s, ["I can't answer that one directly.", "That's not something I can pull up.", "I'm not sure about that one."]),
+        sub: "I can tell you who's staying, who owes you money, arrivals and departures, deposits to return, or how the year's going.",
+        spoken: "I can't answer that one directly. Try asking who's staying, who owes you money, or how the year's going.",
+    };
 }
 // ---- Smart queries: answer operational questions ("who owes money", "leaving
 // today", "who's arriving", "upcoming") from the live booking data. Returns an
@@ -2761,7 +2806,7 @@ function cmdkIntent(q) {
     // 00:07 (isInResidence checks the check-in/out clock, not just the date),
     // and the owner's own maintenance blocks aren't a guest in-house (OTA
     // blocks only). OTA blocks carry no check-in time → date-only for those.
-    if (/\bstaying|in.?house|here (now|right now|tonight)|current guest|who.?s here|who is here|anyone here|checked in|in residence\b/.test(q)) {
+    if (/\bstaying|in.?house|here (now|right now|tonight)|current guest|who.?s here|who is here|anyone here|checked in|in residence\b|who.?s in\??\s*$|who is in\??\s*$|anyone in\??\s*$|who.?s in (residence|now|tonight|the (cottages?|house))|who.?s staying in\b/.test(q)) {
         const rows = flat.filter((x) => isInResidence(x.b)).sort(byOut);
         const eRows = blocks.filter((x) => isOtaBlock(x.bl) && x.bl.checkIn <= today && x.bl.checkOut > today).sort(byBlkOut);
         const n = rows.length + eRows.length;
@@ -3313,7 +3358,26 @@ function cmdkBuildResults(ql) {
     // canonical questions as one-tap chips (empty when the query isn't close).
     let ask = [];
     if (!results.length && !nluUsed) { try { ask = chbNluSuggest(ql); } catch (e) {} }
-    return { results, fuzzy: fuzzyDeduped.concat(content).concat((procedural || softAsk) ? [] : help), nlu: nluUsed, ask };
+    const finalFuzzy = fuzzyDeduped.concat(content).concat((procedural || softAsk) ? [] : help);
+    // A QUESTION that still found nothing gets a natural reply, not a bare
+    // dead-end — "I can't answer that, but I can tell you about…" — with the
+    // model's nearest guesses (ask) as chips. Only fires on question-shaped
+    // queries with zero results AND zero fuzzy, so a partial name/keyword
+    // search keeps its rows.
+    if (!results.length && !nluUsed && !finalFuzzy.length) {
+        try {
+            const fb = chbNlgFallback(ql);
+            if (fb) {
+                results = [{
+                    type: 'answer', id: 'nlg-fallback', label: fb.label, sub: fb.sub, _nlgSpoken: fb.spoken,
+                    chips: ask.map((c) => ({ label: c, q: c })),
+                    run: () => { const el = document.getElementById('cmdk-input'); if (el) el.focus(); },
+                }];
+                ask = []; // folded into the fallback row's chips
+            }
+        } catch (e) {}
+    }
+    return { results, fuzzy: finalFuzzy, nlu: nluUsed, ask };
 }
 // The search engine. The literal query is tried first (never corrected); the
 // typo auto-corrector is a fallback that only runs when the literal query is
