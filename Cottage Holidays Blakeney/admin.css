@@ -2417,17 +2417,23 @@ body.light-mode .cmdk-editor-input {
   font-size: 0.78rem;
   color: var(--text-muted);
 }
-/* Search bar ABOVE the header divider (Today + Inbox): drop the divider from
-   the header itself and hang it under the search bar, so the order reads
-   title → subline → SEARCH → line → content. */
+/* Search bar ABOVE the header divider on EVERY back-office page (Today, Inbox,
+   Manage, Payments): drop the divider from the header itself and hang it under
+   the search bar, so the order always reads title → subline → SEARCH → line →
+   content. (Manage/Payments keep the bar inside their #…-chrome wrapper, which
+   hides on drill-down — so the divider follows the bar in and out.) */
 #view-backoffice > .dashboard-header,
-#inbox-head > .dashboard-header {
+#inbox-head > .dashboard-header,
+#settings-chrome > .dashboard-header,
+#accounts-chrome > .dashboard-header {
   border-bottom: none;
   padding-bottom: 0;
   margin-bottom: 16px;
 }
 #view-backoffice > #abar-today,
-#inbox-head > #abar-inbox {
+#inbox-head > #abar-inbox,
+#settings-chrome > #abar-manage,
+#accounts-chrome > #abar-accounts {
   margin-top: 0;
   margin-bottom: 24px;
   padding-bottom: 22px;

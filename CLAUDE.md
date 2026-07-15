@@ -188,9 +188,12 @@ pills carry a scannable leading state pip (`.abar-status::before`, the palette h
 all pills pop in (`chb-ms-in`) and honour `prefers-reduced-motion`. The dock button keeps a
 purple Darkstar tint. Plus walk-away
 (focusout) dead-end capture into the shared miss store, and `__cmdkConvCtx` carries across
-bars↔palette. Both bars sit ABOVE the header divider line (Today: `#abar-today` in
-`#view-backoffice`; Inbox: `#abar-inbox` moved up into `#inbox-head`, full-width above the
-three-pane split) — the divider hangs under the bar. **Siri look**: the search lights up with
+bars↔palette. EVERY back-office bar sits ABOVE the header divider line (one admin.css rule:
+`#view-backoffice > #abar-today`, `#inbox-head > #abar-inbox`, `#settings-chrome > #abar-manage`,
+`#accounts-chrome > #abar-accounts` — the header's own `border-bottom` is dropped and re-hung
+under the bar, so the order always reads title → SEARCH → line → content; on Manage/Payments the
+bar lives inside the `#…-chrome` wrapper that hides on drill-down, so the divider follows it in
+and out). **Siri look**: the search lights up with
 a luminous cycling glow when engaged — the palette card breathes `cmdkSiriAura` while open, an
 Assist Bar field breathes `abarSiriAura` while focused (with a rounder pill + firmer focused
 surface), driven by the `--siri-1..5` hue tokens (`:root` in admin.css); both are box-shadow
