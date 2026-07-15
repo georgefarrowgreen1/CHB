@@ -801,6 +801,33 @@ if (typeof ctx.cmdkContentMatches === 'function') {
     vm.runInContext('__cmdkExp = [];', ctx);
 }
 
+// ---- 25. Token-importance (IDF) weighting: a distinctive query word outweighs
+// a common one, and matching it in a higher field wins. Seed a content corpus
+// where "kayak" is common (5 docs) and "zephyrine" rare (1 doc). ----
+if (typeof ctx.cmdkIdfOf === 'function' && typeof ctx.cmdkScore === 'function') {
+    vm.runInContext(`__cmdkExp = [
+        { title: 'Kayak hire', category: 'Water', description: 'kayak' },
+        { title: 'Kayak tour', category: 'Water', description: 'kayak trip' },
+        { title: 'Sea kayak', category: 'Water', description: 'kayak coast' },
+        { title: 'River kayak', category: 'Water', description: 'kayak calm' },
+        { title: 'Kayak lesson', category: 'Water', description: 'learn kayak' },
+        { title: 'Zephyrine special', category: 'Rare', description: 'zephyrine only' }
+    ]; __cmdkIdf = null;`, ctx);
+    const idfRare = ctx.cmdkIdfOf('zephyrine');
+    const idfCommon = ctx.cmdkIdfOf('kayak');
+    check('a rare word carries MORE weight than a common one (idf)', idfRare > idfCommon, `zephyrine=${idfRare.toFixed(2)} kayak=${idfCommon.toFixed(2)}`);
+    check('a super-common word is floored, not zeroed', idfCommon >= 0.3);
+    // Same base (identical labels/type, no query word in the label) → only the
+    // IDF-weighted field placement differs: the item with the RARE word in the
+    // higher field (sub) must outscore the one with only the common word there.
+    const mk = (sub, kw) => ({ type: 'guest', label: 'record row', sub, kw });
+    const q = ['zephyrine', 'kayak'];
+    const sA = ctx.cmdkScore(mk('zephyrine', 'kayak'), q, 'zephyrine kayak'); // rare word in sub
+    const sB = ctx.cmdkScore(mk('kayak', 'zephyrine'), q, 'zephyrine kayak'); // rare word in keywords
+    check('the distinctive word in a higher field wins the tie', sA > sB, `rare-in-sub=${sA.toFixed(2)} rare-in-kw=${sB.toFixed(2)}`);
+    vm.runInContext('__cmdkExp = []; __cmdkIdf = null;', ctx);
+}
+
 // ---- Summary ----
 console.log('\n== Summary ==');
 if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }

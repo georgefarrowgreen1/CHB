@@ -541,18 +541,59 @@ function cmdkSynHit(word, hay) {
     if (!syn) return false;
     return syn.split(' ').some((s) => hay.includes(s));
 }
+// ---- Token importance (IDF) over the searchable corpus. Every query word is
+// weighted by how DISTINCTIVE it is: a word in nearly every row ("booking",
+// "cottage") carries almost nothing, a rare one (a guest surname, "folks") a
+// lot — so ranking leans on the word the owner actually reached for, not the
+// filler. Built once from the pooled items (records/screens/fields/sheets) plus
+// the searchable content (experiences) and cached until the data changes. ----
+let __cmdkIdf = null;
+let __cmdkIdfStamp = '';
+function cmdkIdf() {
+    const stamp =
+        Object.keys(dbBookings || {}).map((k) => (dbBookings[k] || []).length).join(',') +
+        '|' + Object.keys(propertyMeta || {}).join(',') +
+        '|' + (Array.isArray(__cmdkExp) ? __cmdkExp.length : 0);
+    if (__cmdkIdf && __cmdkIdfStamp === stamp) return __cmdkIdf;
+    const docs = [];
+    try { cmdkAll('').forEach((it) => docs.push(((it.label || '') + ' ' + (it.sub || '') + ' ' + (it.kw || '')).toLowerCase())); } catch (e) {}
+    try { if (Array.isArray(__cmdkExp)) __cmdkExp.forEach((x) => docs.push(((x.title || '') + ' ' + (x.category || '') + ' ' + (x.description || '')).toLowerCase())); } catch (e) {}
+    const df = new Map();
+    for (const d of docs) {
+        const seen = new Set(d.split(/[^a-z0-9]+/).filter((t) => t.length > 1));
+        seen.forEach((t) => df.set(t, (df.get(t) || 0) + 1));
+    }
+    const N = docs.length || 1;
+    const map = new Map();
+    df.forEach((c, t) => map.set(t, Math.log((N + 1) / (c + 0.5))));
+    __cmdkIdf = { N, map, def: Math.log((N + 1) / 0.5) }; // unknown word → treated as distinctive
+    __cmdkIdfStamp = stamp;
+    return __cmdkIdf;
+}
+// IDF weight for one query word — floored so a super-common word still counts a
+// little; an unknown (rare) word gets the corpus max (`def`).
+function cmdkIdfOf(word) {
+    const idf = cmdkIdf();
+    return Math.max(0.3, idf.map.has(word) ? idf.map.get(word) : idf.def);
+}
 function cmdkScore(it, words, ql) {
     const lab = (it.label || '').toLowerCase();
-    const hay = (lab + ' ' + (it.sub || '') + ' ' + (it.kw || '') + ' ' + it.type).toLowerCase();
+    const subL = (it.sub || '').toLowerCase();
+    const hay = (lab + ' ' + subL + ' ' + (it.kw || '') + ' ' + it.type).toLowerCase();
     const tokens = hay.split(/[^a-z0-9.]+/).filter(Boolean);
     let typoUsed = false;
     let synUsed = false;
+    // Σ idf(word) × where-it-landed — the field weight (label > subline >
+    // keywords/type) times the word's distinctiveness. Matching a rare word in
+    // the label is worth far more than a common word buried in the keyword bag.
+    let importance = 0;
     for (const w of words) {
-        if (hay.includes(w)) continue;
-        if (cmdkSynHit(w, hay)) { synUsed = true; continue; }
+        const field = lab.includes(w) ? 1 : subL.includes(w) ? 0.55 : hay.includes(w) ? 0.35 : 0;
+        if (field) { importance += cmdkIdfOf(w) * field; continue; }
+        if (cmdkSynHit(w, hay)) { synUsed = true; importance += cmdkIdfOf(w) * 0.3; continue; }
         const max = w.length <= 5 ? 1 : 2;
         const near = tokens.some((t) => Math.abs(t.length - w.length) <= max && cmdkLev(w, t, max) <= max);
-        if (near) { typoUsed = true; continue; }
+        if (near) { typoUsed = true; importance += cmdkIdfOf(w) * 0.3; continue; }
         return 0; // a query word this item can't satisfy → not a match
     }
     let score = 1;
@@ -561,6 +602,9 @@ function cmdkScore(it, words, ql) {
     else if (lab.startsWith(words[0])) score += 4;
     else if (lab.includes(' ' + words[0])) score += 2;
     if (words.every((w) => lab.includes(w))) score += 2; // all words hit the label itself
+    // Token-importance term — normalised by word count so a long query doesn't
+    // inflate, scaled to sit alongside the type/exactness weights.
+    score += (importance / Math.max(1, words.length)) * 0.7;
     const typeW = { booking: 3, enquiry: 3, action: 3, field: 2.5, sheet: 2.5, guest: 2, payment: 2, review: 1.5, screen: 1 };
     score += typeW[it.type] != null ? typeW[it.type] : 1.5;
     if (it.type === 'booking' && it._urgent) score += 2; // arriving soon / in-house = more important
