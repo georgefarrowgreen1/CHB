@@ -132,6 +132,18 @@ noted inline), and adding POSITIVE examples blurs the centroids (measured: +12 i
 held-out wrong intents, reverted). Retune with
 scratchpad `model-bench.js` (+ `stress-bench.js`/`sweep-veto.js` for the hard set/veto margin).
 
+**chbSay** (admin.js) — the ANSWER VOICE. The data answers (money, arrivals/leaving/staying/
+next, deposits) are now warm SPOKEN sentences, not database read-outs — "You're owed £1,000
+across 2 guests, Cara leading at £600", "Eve's your only departure today", "Just one deposit to
+hand back — Dan's". Each family passes its numbers to `nlgPick`-seeded frames (deterministic per
+query → stable + golden-testable; different questions vary) via helpers `chbSayFirst` (first name
+in prose), `chbSayNames` (aggregation with a named lead), `chbSayN` (small counts as words). It
+LEADS with the key figure/name so search stays scannable, then the human frame. **Figure cards**
+(revenue / occupancy / nights / top cottage / busiest month) keep their number-forward stat
+format by design (a big number reads better than prose) but get warmer labels/subs with stance
+("Jollyboat's your top earner — £2,240"). golden-test asserts the CORRECT content (total, salient
+guest, count) not the exact phrasing (which varies by design).
+
 **chbNlg** (admin.js) — the assistant's conversational-awareness layer (TEXT, shown on
 screen — there is NO listen/speak feature; it was removed). `chbNlgSocial(q)` generates
 conversational replies — AWARE greetings (with a live `chbNlgBrief()` day status:
