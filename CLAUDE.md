@@ -362,6 +362,24 @@ So "did any guests complain about noise" finds a review that says "the neighbour
 — **zero shared words**. Owner-only (Darkstar never loads for guests). Gated by search-test §20
 (seeds embedded docs, asserts pet→dog / noise recall by meaning + unrelated rejected).
 
+**Breadth tier** (admin.js) — deterministic GENERAL answers, consulted by `cmdkBuildResults`
+right after the intent branches and before the NLU model. When it fires it is **prepended** —
+an exact sum beats a keyword-matched action row ("vat on £480" leads with the figure, the
+Income & tax row rides below). `chbCompute`: safe arithmetic (`chbCalc`, recursive-descent —
+never eval), UK VAT @20%, percentages (of/off/plus/minus/what-%), unit conversions
+(kg/lb/st/mi/km/m/ft/cm/in/l/pt/gal/°C/°F), date arithmetic ("days until christmas", "what day
+is 20 august" — `chbComputeDate` incl. named days + an `easter` table 2026–30) and a world
+clock (`CHB_CITY_TZ`). `chbAlmanac`: curated fact pack — `CHB_COUNTRIES` (~120 countries →
+capital + currency) and `CHB_BANK_HOLS` (England & Wales, 2026–27 — **extend yearly**).
+Retrieval/computation only — never wrong, just silent off-pack. Every pattern requires
+explicit digits / units / date words, so business queries can never fire it (search-test §29:
+answers, abstains on 13 business shapes, pipeline lead). New insight families in `cmdkIntent`:
+**repeat-guest rate** (from `chbCustomers`, all-time by nature, strong-identity so name-only
+guests never fake a repeat) and **average length of stay** (a habitual "how long do guests
+stay" widens to the year; an explicit period keeps it; checked before the average-RATE family)
+— §29b. The NLU corpus stays frozen (ceiling — see above); breadth grows by new deterministic
+families, not classifier examples.
+
 **Accommodations are dynamic** — the owner adds/removes cottages from the back office
 (Settings → Preferences → "Add accommodation"; per-cottage "Remove" / "Restore"). The
 `properties` table is the single source of truth (`prop_key`, `name`, `couple_rate`…,

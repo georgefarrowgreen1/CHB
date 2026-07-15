@@ -984,6 +984,97 @@ if (typeof ctx.chbHistoryClean === 'function') {
     check('an over-stripped history query falls back to the raw text', cl('any history') === 'any history');
 }
 
+// ---- 29. Breadth tier: chbCompute (maths / VAT / percentages / conversions /
+// date arithmetic / world clock) + chbAlmanac (capitals / currencies / bank
+// holidays) answer exactly, abstain on EVERYTHING business-shaped, and the
+// exact answer LEADS in the pipeline (prepended before keyword action rows). ----
+if (typeof ctx.chbCompute === 'function' && typeof ctx.chbAlmanac === 'function') {
+    const comp = (q) => { try { return ctx.chbCompute(q) || null; } catch (e) { return { label: 'THREW: ' + e.message, threw: true }; } };
+    const alm = (q) => { try { return ctx.chbAlmanac(q) || null; } catch (e) { return { label: 'THREW: ' + e.message, threw: true }; } };
+    const lbl = (r) => (r ? String(r.label) : '(abstain)');
+    // Compute — each family answers with the right figure.
+    let r = comp('20% of 480');
+    check('percentage: "20% of 480" → 96', r && /\b96\b/.test(r.label), lbl(r));
+    r = comp('15% off £600');
+    check('discount: "15% off £600" → £510', r && /£510/.test(r.label), lbl(r));
+    r = comp('vat on £480');
+    check('VAT: "vat on £480" → £96 / £576 inc', r && /£96/.test(r.label) && /£576/.test(r.label), lbl(r));
+    r = comp('£400 plus vat');
+    check('"£400 plus vat" → £480', r && /£480/.test(r.label), lbl(r));
+    r = comp('£480 plus 10%');
+    check('"£480 plus 10%" → £528 (regression: this pattern once threw)', r && !r.threw && /£528/.test(r.label), lbl(r));
+    r = comp('what is 12 * 7');
+    check('arithmetic: "12 * 7" → 84', r && /= 84\b/.test(r.label), lbl(r));
+    r = comp('10 miles in km');
+    check('conversion: "10 miles in km" → 16.09', r && /16\.09/.test(r.label), lbl(r));
+    r = comp('70 f to c');
+    check('conversion: "70 f to c" → 21.11 °C', r && /21\.11/.test(r.label), lbl(r));
+    r = comp('what day is 25 december');
+    check('date: "what day is 25 december" names the weekday', r && /is a (Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day/.test(r.label), lbl(r));
+    r = comp('days until christmas');
+    check('date arithmetic: "days until christmas" counts days', r && /\d+ days until/.test(r.label), lbl(r));
+    r = comp('how long until 20 august');
+    check('"how long until 20 august" answers (regression: alt phrasing once threw)', r && !r.threw && /days until/.test(r.label), lbl(r));
+    r = comp('time in tokyo');
+    check('world clock: "time in tokyo" gives a time', r && /\d{2}:\d{2}/.test(r.label), lbl(r));
+    // Almanac.
+    r = alm('capital of france');
+    check('almanac: "capital of france" → Paris', r && /Paris/.test(r.label), lbl(r));
+    r = alm("what is spain's capital");
+    check('almanac: possessive phrasing → Madrid', r && /Madrid/.test(r.label), lbl(r));
+    r = alm('currency in japan');
+    check('almanac: "currency in japan" → yen', r && /yen/.test(r.label), lbl(r));
+    r = alm('next bank holiday');
+    check('almanac: "next bank holiday" names one with a date', r && /bank holiday is .+ — /.test(r.label), lbl(r));
+    // Precision: business / name / plain queries NEVER fire the breadth tier.
+    ['who owes money', 'sarah wingate', 'bookings in august', 'price for 2 nights', 'how much have i earned',
+     'revenue this month', '£500 balance', 'add a booking', 'deposit for jollyboat', 'time in blakeney',
+     'capital of narnia', 'who is arriving on 20 august', 'occupancy in december'].forEach((q) => {
+        const hit = comp(q) || alm(q);
+        check(`breadth tier abstains on "${q}"`, !hit, hit && lbl(hit));
+    });
+    // Pipeline: the exact answer LEADS even when a keyword matches an action row.
+    if (typeof ctx.cmdkBuildResults === 'function') {
+        const top = (q) => { try { return ((ctx.cmdkBuildResults(q) || {}).results || [])[0] || null; } catch (e) { return null; } };
+        let t = top('vat on £480');
+        check('pipeline: "vat on £480" leads with the computed answer, not the Income & tax row', t && t.id === 'compute' && /£576/.test(t.label), t && `[${t.type}/${t.id}] ${t.label}`);
+        t = top('capital of italy');
+        check('pipeline: "capital of italy" leads with Rome', t && t.id === 'almanac' && /Rome/.test(t.label), t && t.label);
+        t = top('who owes money');
+        check('pipeline: business question still answered by the ops engine, not compute', t && t.id !== 'compute' && t.id !== 'almanac', t && `[${t.type}/${t.id}]`);
+    }
+} else fail('chbCompute / chbAlmanac missing from the bundle');
+
+// ---- 29b. New business answer families: repeat-guest rate (from the unified
+// customer directory — strong identity, so two John Smiths never fake a repeat)
+// and average LENGTH of stay (habitual ask widens to the year). ----
+if (typeof ctx.cmdkIntent === 'function') {
+    const yr = ctx.todayDashed().slice(0, 4);
+    const mkb = (id, name, email, ci, co) => ({ id, name, email, checkIn: `${yr}-${ci}`, checkOut: `${yr}-${co}`, adults: 2, children: 0, payment: 'paid', holdStatus: 'none', agreedPrice: { total: 400 } });
+    ctx.__seedR = [
+        mkb(11, 'Sarah Holt', 'sarah@example.com', '01-10', '01-14'), // 4 nights
+        mkb(12, 'Sarah Holt', 'sarah@example.com', '02-03', '02-05'), // 2 nights — repeat by email
+        mkb(13, 'Tom Reed', 'tom@example.com', '03-01', '03-08'), // 7 nights
+        mkb(14, 'John Smith', '', '05-02', '05-04'), // 2 nights, name-only
+        mkb(15, 'John Smith', '', '06-01', '06-03'), // 2 nights, name-only — must NOT merge
+    ];
+    vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);dbBookings.jollyboat=__seedR;__cmdkCustomers=null;', ctx);
+    const head = (q) => { const r = ctx.cmdkIntent(q); return r && r[0] ? (r[0].label || '') + ' | ' + (r[0].sub || '') : '(none)'; };
+    let h = head('how many repeat guests do i have');
+    check('repeat rate: 1 repeat of 4 customers (25%), Sarah leads with 2 stays', /1 repeat guest — 25% come back/.test(h) && /Sarah leads with 2 stays/.test(h), h);
+    const repRows = ctx.cmdkIntent('repeat guests') || [];
+    check('repeat rate: the two name-only John Smiths did NOT merge into a repeat', repRows.length && !repRows.some((r2) => /John/.test(r2.label || '')), repRows.map((r2) => r2.label).join(' / '));
+    h = head('what is the average stay');
+    check(`average stay: (4+2+7+2+2)/5 = 3.4 nights, widened to ${yr}`, new RegExp(`3\\.4-night average stay in ${yr}`).test(h) && /shortest 2, longest 7/.test(h), h);
+    h = head('how long do guests stay');
+    check('habitual "how long do guests stay" answers the average, not one guest', /average stay/.test(h), h);
+    h = head('average stay in march');
+    check('explicit period keeps it: "average stay in march" → 7 nights', /7-night average stay in March/.test(h), h);
+    h = head('average nightly rate');
+    check('average RATE family still intact (not hijacked by average stay)', /avg\/night/.test(h), h);
+    vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);__cmdkCustomers=null;', ctx);
+}
+
 // ---- Summary ----
 console.log('\n== Summary ==');
 if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }
