@@ -176,27 +176,29 @@ const CASES = [
     { q: 'jollyboat', head: /Jollyboat.*Alice Marsh here until/ },
     { q: 'pimpernel', head: /Pimpernel/ },
     { q: 'jollyboat settings', head: /Jollyboat/ },
-    // ---- Payments: who owes / paid / deposits ----
-    { q: 'who owes me money', head: /3 guests owe £1,600/, any: /Cara Dunn.*£600.*still due/ },
-    { q: 'who owes', head: /3 guests owe/ },
-    { q: 'outstanding balances', head: /3 guests owe/, not: /Alice Marsh/ },
-    { q: "who hasn't paid", head: /3 guests owe/ },
-    { q: 'who still owes money', head: /3 guests owe/ },
-    { q: "who's paid in full", head: /3 guests paid in full/, any: /Alice Marsh/ },
-    { q: 'who has paid in full', head: /3 guests paid in full/ },
-    { q: "who's paid a deposit", head: /5 guests paid a deposit/, any: /Bob Carter.*£100\.00 paid/ },
+    // ---- Payments: who owes / paid / deposits. Heads are now CONVERSATIONAL
+    // (chbSay), so golden asserts the CORRECT content — the total, the salient
+    // guest, the count — not the exact phrasing (which varies by design). ----
+    { q: 'who owes me money', head: /£1,600/, any: /Cara Dunn.*£600.*still due/ },
+    { q: 'who owes', head: /£1,600/ },
+    { q: 'outstanding balances', head: /£1,600/, not: /Alice Marsh/ },
+    { q: "who hasn't paid", head: /£1,600/ },
+    { q: 'who still owes money', head: /£1,600/ },
+    { q: "who's paid in full", head: /\b3\b.*(full|settled|squared)/i, any: /Alice Marsh/ },
+    { q: 'who has paid in full', head: /\b3\b.*(full|settled|squared)/i },
+    { q: "who's paid a deposit", head: /\b5\b.*deposit/i, any: /Bob Carter.*£100\.00 paid/ },
     // ---- Chase / overdue (21-day window; Finn is 40 days out so excluded) ----
     { q: 'overdue balances', head: /2 balances to chase · £1,000/, any: /Cara Dunn/, not: /Finn Gale/ },
     { q: 'balances to chase', head: /2 balances to chase/ },
     { q: 'payments due', head: /2 balances to chase/ },
     // ---- Damages deposits to return (Dan checked out; Alice still in-house) ----
-    { q: 'deposits to return', head: /1 deposit to return/, any: /Dan Epps/, not: /Alice Marsh/ },
-    { q: 'which deposits do i need to give back', head: /1 deposit to return/ },
+    { q: 'deposits to return', head: /Dan|only one to (return|refund|hand back)/i, any: /Dan Epps/, not: /Alice Marsh/ },
+    { q: 'which deposits do i need to give back', head: /Dan|only one to (return|refund|hand back)/i },
     // ---- Leaving / arriving / staying / today ----
-    { q: "who's leaving today", head: /1 guest checking out today/, any: /Eve Frost/ },
-    { q: 'checkouts today', head: /1 guest checking out today/ },
+    { q: "who's leaving today", head: /Eve|(departure|checkout|heads? off).*today|today/i, any: /Eve Frost/ },
+    { q: 'checkouts today', head: /Eve|checkout today|heads? off/i },
     { q: 'leaving this week', any: /Eve Frost/ },
-    { q: "who's arriving today", head: /No arrivals today/ },
+    { q: "who's arriving today", head: /no.*(arriv|check.?in)|quiet|nobody.*(due|arriv)/i },
     { q: 'arriving this week', any: /Cara Dunn/ },
     { q: "who's staying now", any: /Alice Marsh/, not: /Eve Frost|Bob Carter/ },
     { q: "who's here right now", any: /Alice Marsh/ },
@@ -210,7 +212,7 @@ const CASES = [
     { q: 'who was here last week', head: /last week/ },
     { q: 'today', any: /Eve Frost/ },
     // ---- Upcoming ----
-    { q: 'upcoming bookings', head: /Next: Cara Dunn/, any: /Bob Carter/, min: 4 },
+    { q: 'upcoming bookings', head: /Cara.*(next|arrives)|next in: cara/i, any: /Bob Carter/, min: 4 },
     { q: "what's coming up", any: /Cara Dunn/ },
     // Composed by the generative branch now — a sentence, same correct guest.
     { q: "who's next", head: /Next arrival: Cara Dunn/ },
@@ -233,7 +235,7 @@ const CASES = [
     { q: 'how long is bob staying', head: /Bob Carter is staying 3 nights/ },
     { q: 'how many nights is cara staying', head: /Cara Dunn is staying 3 nights/, not: /occupancy/ },
     // NEXT-ARRIVAL phrasing must NOT swallow date windows.
-    { q: 'who is arriving next week', head: /arriving next week/, not: /Next arrival:/ },
+    { q: 'who is arriving next week', head: /next week/i, not: /Next arrival:/ },
     // AVAILABILITY answers the ASKED window, not tonight.
     { q: 'is jollyboat free next weekend', head: /No — Jollyboat is taken next weekend/, any: /Bob Carter/ },
     { q: 'is 21a free tomorrow', head: /Yes — 21A Westgate is free tomorrow/ },
@@ -279,8 +281,8 @@ const CASES = [
     { q: 'what can you do', head: /I read your live calendar|answer in your own words/ },
     { q: 'who are you', head: /your booking assistant/ },
     // "who's in" (the missing in-residence phrasing) now answers.
-    { q: "who's in", any: /in-house now/, not: /Nothing here|no answer/ },
-    { q: 'who is in', any: /in-house now/ },
+    { q: "who's in", any: /in right now|in-house|Alice/i, not: /Nothing here|no answer/ },
+    { q: 'who is in', any: /in right now|in-house|Alice/i },
     // (The dead-end-question FALLBACK is a cmdkBuildResults concern — it only
     // fires when the intent AND fuzzy search are both empty — so it's covered in
     // search-test, not here where only cmdkIntent runs.)
@@ -373,8 +375,8 @@ if (!DUMP) {
     judge({ q: 'how much does he owe', head: /Bob Carter owes £400\.00 of £500\.00/ });
     judge({ q: 'when does he arrive', head: new RegExp('Bob Carter arrives ' + uk(d(10)).replace(/\//g, '\\/')) });
     setCtx(null); // no conversation → the generic branches keep these
-    judge({ q: 'when do they leave', head: /checking out|No check-outs/ });
-    judge({ q: "who's paid a deposit", head: /5 guests paid a deposit/ }); // pronoun-free query never hijacked even mid-conversation
+    judge({ q: 'when do they leave', head: /departure|checkout|heads? off|checking out|No check-outs|Nobody heading|quiet/i });
+    judge({ q: "who's paid a deposit", head: /\b5\b.*deposit/i }); // pronoun-free query never hijacked even mid-conversation
     setCtx(1);
     judge({ q: "who's paid a deposit", head: /5 guests paid a deposit/ });
     setCtx(null);

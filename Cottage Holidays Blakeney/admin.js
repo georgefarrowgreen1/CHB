@@ -2119,6 +2119,27 @@ function chbNlgFallback(q) {
         sub: "I can tell you who's staying, who owes you money, arrivals and departures, deposits to return, or how the year's going.",
     };
 }
+// ============================================================
+//  chbSay — the answer VOICE. Turns a structured result into a warm, SPOKEN
+//  sentence instead of a database read-out, while keeping search scannable: the
+//  key figure still leads (a number/name up front), then a human frame. Variation
+//  is deterministic (seeded by the query via nlgPick) so a given question always
+//  reads the same — stable + testable — but different questions vary. Used by the
+//  answer heads below; each family passes the numbers, chbSay does the phrasing.
+// ============================================================
+// First name only (guests are "Sarah", not "Sarah Wingate", in conversation).
+function chbSayFirst(name) { return String(name || '').trim().split(/\s+/)[0] || 'a guest'; }
+// "Sarah", "Sarah and Tom", "Sarah, plus 2 more" — aggregation with a named lead.
+function chbSayNames(names, shown) {
+    const a = (names || []).map(chbSayFirst).filter(Boolean);
+    if (!a.length) return '';
+    if (a.length === 1) return a[0];
+    if (a.length === 2) return a[0] + ' and ' + a[1];
+    const s = shown || 1;
+    return a.slice(0, s).join(', ') + `, plus ${a.length - s} more`;
+}
+// small counts read as words in prose: 1→"one", 2→"a couple", 3→"three".
+function chbSayN(n) { return ({ 1: 'one', 2: 'a couple', 3: 'three' })[n] || String(n); }
 // ---- Smart queries: answer operational questions ("who owes money", "leaving
 // today", "who's arriving", "upcoming") from the live booking data. Returns an
 // array of result items — an "answer" summary row that routes to the relevant
@@ -2689,7 +2710,7 @@ function cmdkIntent(q) {
             const pick = quiet ? rankedM[rankedM.length - 1] : rankedM[0];
             const figV = (m) => (byMoney ? gbp(m.rev) : `${m.nt} night${m.nt === 1 ? '' : 's'}`);
             const otherV = (m) => (byMoney ? `${m.nt} night${m.nt === 1 ? '' : 's'}` : gbp(m.rev));
-            const head = { type: 'figure', id: 'ins', label: `${monthName(pick.mi)} — ${quiet ? 'quietest' : 'busiest'} · ${figV(pick)}`, sub: `By ${byMoney ? 'revenue' : 'nights booked'} in ${yr} · ${otherV(pick)}`, run: openMoney };
+            const head = { type: 'figure', id: 'ins', label: `${monthName(pick.mi)}’s your ${quiet ? 'quietest' : 'busiest'} — ${figV(pick)}`, sub: `By ${byMoney ? 'revenue' : 'nights booked'} in ${yr} · ${otherV(pick)}`, run: openMoney };
             return [head].concat(rankedM.slice(0, 6).map((m) => ({ type: 'answer', id: 'ins-m' + m.mi, label: `${monthName(m.mi)} · ${figV(m)}`, sub: `${otherV(m)}`, run: openMoney })));
         }
         // Period for the point-in-time metrics.
@@ -2723,7 +2744,7 @@ function cmdkIntent(q) {
         const rankedN = Object.keys(byCn).map((k) => ({ k, n: byCn[k], v: byC[k] || 0 })).sort((a, b) => b.n - a.n);
         const cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
         if (/which (cottage|property|house).{0,24}(earn|make|most|best|top|perform|money|revenue|income|profit|lucrative)|(top|best|highest.?earning|most profitable|strongest) (cottage|property|house)|earns? (the )?most|most (money|revenue|income)/.test(q) && ranked.length) {
-            const head = { type: 'figure', id: 'ins', label: `${propName(ranked[0].k)} earns most · ${gbp(ranked[0].v)}`, sub: `${cap(plabel)} · ${gbp(revenue)} across all cottages`, run: openMoney };
+            const head = { type: 'figure', id: 'ins', label: `${propName(ranked[0].k)}’s your top earner — ${gbp(ranked[0].v)}`, sub: `Ahead of the rest ${plabel} · ${gbp(revenue)} across all cottages`, run: openMoney };
             return [head].concat(ranked.map((r) => ({ type: 'answer', id: 'ins-' + r.k, label: `${propName(r.k)} · ${gbp(r.v)}`, sub: `${Math.round((100 * r.v) / (revenue || 1))}% of revenue ${plabel}`, run: openMoney })));
         }
         if (/occupanc|occupied|how (full|busy)/.test(q)) {
@@ -2782,7 +2803,12 @@ function cmdkIntent(q) {
     // 0f) Damage deposits to return — charged, and the guest has checked out.
     if (/deposit/.test(q) && /return|give back|owed back|hand back|refund|\bback\b/.test(q)) {
         const rows = flat.filter((x) => (x.b.holdStatus || 'none') === 'charged' && (x.b.checkOut || '') <= today).sort(byOut);
-        const head = ans(rows.length ? `${rows.length} deposit${rows.length === 1 ? '' : 's'} to return` : 'No deposits to return', rows.length ? 'Guests have checked out — refund the damages deposit' : 'Nothing waiting', () => { closeCmdK(); openBookings(); });
+        const n = rows.length;
+        const lead = n ? chbSayFirst(rows[0].b.name) : '';
+        const dHead = !n ? nlgPick('dret0' + q, ['No deposits to hand back right now.', 'Nothing to refund at the moment.'])
+            : n === 1 ? nlgPick('dret1' + q, [`Just one deposit to hand back — ${lead}’s.`, `${lead}’s deposit is the only one to return.`, `One to refund: ${lead}’s damages deposit.`])
+                : nlgPick('dretN' + q, [`${n} deposits to hand back — ${lead} and ${chbSayN(n - 1)} other${n - 1 === 1 ? '' : 's'}.`, `${n} damages deposits waiting to go back.`]);
+        const head = ans(dHead, n ? 'They’ve checked out — refund the damages deposit' : 'Nothing waiting', () => { closeCmdK(); openBookings(); });
         return [head].concat(rows.map((x) => bk(x.pk, x.b, `Checked out ${fmtDate(x.b.checkOut)} · ${propName(x.pk)}`)));
     }
     // 0g) Balances to chase — unpaid, arriving within three weeks or already overdue.
@@ -3045,23 +3071,42 @@ function cmdkIntent(q) {
         // "who's paid a deposit" — something down (whether or not fully paid).
         if (/deposit/.test(q) && !negative) {
             const rows = withPs.filter((x) => x.ps.deposit > 0.5).sort(byIn);
-            const head = ans(rows.length ? `${rows.length} guest${rows.length === 1 ? '' : 's'} paid a deposit` : 'No deposits taken yet', 'Deposits received', () => { closeCmdK(); openBookings(); });
+            const n = rows.length;
+            const dHead = !n ? nlgPick('dep0' + q, ['No deposits down yet.', 'Nobody’s put a deposit down so far.'])
+                : nlgPick('depN' + q, [`${n} guest${n === 1 ? ' has' : 's have'} a deposit down.`, `${n} guest${n === 1 ? '' : 's'} paid a deposit so far.`]);
+            const head = ans(dHead, n ? 'Deposits received — tap to see them' : 'Nothing taken', () => { closeCmdK(); openBookings(); });
             return [head].concat(rows.map((x) => bk(x.pk, x.b, `${gbp(x.ps.deposit)} paid${x.ps.fullyPaid ? ' · in full' : ' · ' + gbp(x.ps.balance) + ' due'} · ${propName(x.pk)}`)));
         }
         // "who's paid / paid in full / settled" — fully-paid bookings.
         if ((/\bpaid\b|paid in full|fully paid|settled|paid up/.test(q)) && !negative) {
             const rows = withPs.filter((x) => x.ps.fullyPaid && x.ps.total > 0).sort(byIn);
-            const head = ans(rows.length ? `${rows.length} guest${rows.length === 1 ? '' : 's'} paid in full` : 'No one has paid in full yet', 'Settled bookings', () => { closeCmdK(); openBookings(); });
+            const n = rows.length;
+            const pHead = !n ? nlgPick('paid0' + q, ['Nobody’s paid in full yet.', 'No one settled up so far.'])
+                : nlgPick('paidN' + q, [`${n} guest${n === 1 ? '' : 's'} all squared up in full.`, `${n === 1 ? 'One booking' : n + ' bookings'} paid in full.`, `${n} guest${n === 1 ? ' is' : 's are'} fully settled.`]);
+            const head = ans(pHead, n ? 'Settled bookings' : 'Nothing settled yet', () => { closeCmdK(); openBookings(); });
             return [head].concat(rows.map((x) => bk(x.pk, x.b, `Paid ${gbp(x.ps.total)} · ${propName(x.pk)}${x.b.checkIn ? ' · ' + fmtDate(x.b.checkIn) : ''}`)));
         }
-        // Default (owes / hasn't paid in full) — outstanding balances.
+        // Default (owes / hasn't paid in full) — outstanding balances, led by the total
+        // and the biggest single ower so the answer reads like a person, not a table.
         const rows = withPs.filter((x) => !x.ps.fullyPaid && x.ps.balance > 0.5).sort(byIn);
         const total = rows.reduce((s, x) => s + x.ps.balance, 0);
+        const n = rows.length;
+        const big = rows.slice().sort((a, b) => b.ps.balance - a.ps.balance)[0];
+        const lead = big ? chbSayFirst(big.b.name) : '';
+        const owedHead = !n
+            ? nlgPick('owed0' + q, ['You’re all square — nothing to collect.', 'Everyone’s paid up.', 'Nothing outstanding — all settled up.'])
+            : n === 1
+                ? nlgPick('owed1' + q, [`${gbp(total)} to collect — all from ${lead}.`, `Just ${lead} to chase, for ${gbp(total)}.`, `${lead} owes you ${gbp(total)} — the only one outstanding.`])
+                : nlgPick('owedN' + q, [
+                    `${gbp(total)} to collect from ${n} guests — ${lead}’s the biggest at ${gbp(big.ps.balance)}.`,
+                    `You’re owed ${gbp(total)} across ${n} guests, ${lead} leading at ${gbp(big.ps.balance)}.`,
+                    `Looks like ${gbp(total)} still to come in — ${lead}’s the big one (${gbp(big.ps.balance)}), then ${chbSayN(n - 1)} more.`,
+                ]);
         const head = ans(
-            rows.length ? `${rows.length} guest${rows.length === 1 ? '' : 's'} owe${rows.length === 1 ? 's' : ''} ${gbp(total)}` : 'Everyone’s paid up',
-            rows.length ? 'Outstanding balances — open Bookings ▸ Needs payment' : 'No balances outstanding',
+            owedHead,
+            n ? 'Tap to chase them — Bookings ▸ Needs payment' : 'No balances outstanding',
             () => { closeCmdK(); Promise.resolve(openBookings()).then(() => bookingsSetFilter('needspay')); },
-            rows.length ? [{ label: 'Overdue only', q: 'overdue balances' }, { label: 'Deposits to return', q: 'deposits to return' }, { label: 'Who’s paid in full', q: 'who has paid in full' }] : null,
+            n ? [{ label: 'Overdue only', q: 'overdue balances' }, { label: 'Deposits to return', q: 'deposits to return' }, { label: 'Who’s paid in full', q: 'who has paid in full' }] : null,
         );
         return [head].concat(rows.map((x) => bk(x.pk, x.b, `${gbp(x.ps.balance)} still due · ${propName(x.pk)}${x.b.checkOut ? ' · out ' + fmtDate(x.b.checkOut) : ''}`)));
     }
@@ -3070,7 +3115,11 @@ function cmdkIntent(q) {
         const rows = flat.filter((x) => x.b.checkOut && x.b.checkOut >= rStart && x.b.checkOut <= rEnd).sort(byOut);
         const eRows = blocks.filter((x) => x.bl.checkOut && x.bl.checkOut >= rStart && x.bl.checkOut <= rEnd).sort(byBlkOut);
         const n = rows.length + eRows.length;
-        const head = ans(n ? `${n} guest${n === 1 ? '' : 's'} checking out ${when}` : `No check-outs ${when}`, 'Departures · direct & OTA', () => { closeCmdK(); tryAccessBackOffice(); }, [{ label: 'Arriving', q: 'who’s arriving today' }, { label: 'This week', q: 'leaving this week' }, { label: 'Staying now', q: 'who’s staying now' }, calChip(rStart)]);
+        const lead = n ? chbSayFirst((rows[0] && rows[0].b.name) || (eRows[0] && otaName(eRows[0].bl.source) + ' guest') || '') : '';
+        const lHead = !n ? nlgPick('leave0' + q, [`Nobody heading off ${when}.`, `No check-outs ${when} — a calm one.`])
+            : n === 1 ? nlgPick('leave1' + q, [`Just one checkout ${when} — ${lead} heads off.`, `${lead}’s your only departure ${when}.`, `One heading home ${when}: ${lead}.`])
+                : nlgPick('leaveN' + q, [`${n} checking out ${when} — ${lead} and ${chbSayN(n - 1)} more.`, `${n} guests heading off ${when}.`]);
+        const head = ans(lHead, 'Departures · direct & OTA', () => { closeCmdK(); tryAccessBackOffice(); }, [{ label: 'Arriving', q: 'who’s arriving today' }, { label: 'This week', q: 'leaving this week' }, { label: 'Staying now', q: 'who’s staying now' }, calChip(rStart)]);
         return [head]
             .concat(rows.map((x) => bk(x.pk, x.b, `Checks out ${fmtDate(x.b.checkOut)}${x.b.checkOutTime ? ' · ' + x.b.checkOutTime : ''} · ${propName(x.pk)}`)))
             .concat(eRows.map((x) => ext(x.pk, x.bl, `Checks out ${fmtDate(x.bl.checkOut)} · ${propName(x.pk)}`)));
@@ -3086,8 +3135,11 @@ function cmdkIntent(q) {
         const nextIn = dFirst ? nd.b.checkIn : ne && ne.bl.checkIn;
         const nextWho = dFirst ? nd.b.name || 'Guest' : ne && otaName(ne.bl.source) + ' guest';
         const n = rows.length + eRows.length;
+        const nextFirst = chbSayFirst(nextWho);
+        const uHead = !n ? nlgPick('up0' + q, ['Nothing on the horizon yet.', 'No arrivals booked ahead.'])
+            : nlgPick('upN' + q, [`${nextFirst}’s your next one in, ${fmtDate(nextIn)}.`, `Next in: ${nextFirst}, ${fmtDate(nextIn)}.`, `${nextFirst} arrives next, on ${fmtDate(nextIn)}.`]);
         const head = ans(
-            n ? `Next: ${nextWho} · ${fmtDate(nextIn)}` : 'Nothing upcoming',
+            uHead,
             n ? `${n} upcoming booking${n === 1 ? '' : 's'} — open Bookings ▸ Upcoming` : 'No future arrivals',
             () => { closeCmdK(); Promise.resolve(openBookings()).then(() => bookingsSetFilter('upcoming')); },
         );
@@ -3104,11 +3156,15 @@ function cmdkIntent(q) {
         // children on the direct bookings (OTA blocks don't share headcount).
         const heads = rows.reduce((s, x) => s + (Number(x.b.adults) || 0) + (Number(x.b.children) || 0), 0);
         const wantsPeople = /how many|number of|head ?count|\bpeople\b|persons?\b|\bguests? (are|coming|arriv)/.test(q);
+        const aLead = n ? chbSayFirst((rows[0] && rows[0].b.name) || (eRows[0] && otaName(eRows[0].bl.source) + ' guest') || '') : '';
         const head = !n
-            ? ans(`No arrivals ${when}`, 'Check-ins · direct & OTA', () => { closeCmdK(); tryAccessBackOffice(); })
+            ? ans(nlgPick('arr0' + q, [`All quiet ${when} — nobody due in.`, `Nobody arriving ${when}.`, `No check-ins ${when}.`]), 'Check-ins · direct & OTA', () => { closeCmdK(); tryAccessBackOffice(); })
             : wantsPeople && heads > 0
               ? ans(`${heads} ${heads === 1 ? 'person' : 'people'} arriving ${when}`, `Across ${n} booking${n === 1 ? '' : 's'}${eRows.length ? ' · OTA headcount not shared' : ''}`, () => { closeCmdK(); tryAccessBackOffice(); })
-              : ans(`${n} guest${n === 1 ? '' : 's'} arriving ${when}`, 'Check-ins · direct & OTA', () => { closeCmdK(); tryAccessBackOffice(); }, [{ label: 'This week', q: 'arriving this week' }, { label: 'Next month', q: 'arriving next month' }, { label: 'Leaving today', q: 'who’s leaving today' }, calChip(rStart)]);
+              : ans(
+                  n === 1 ? nlgPick('arr1' + q, [`Just ${aLead} in ${when}.`, `One arrival ${when} — ${aLead}.`, `${aLead}’s your only check-in ${when}.`])
+                      : nlgPick('arrN' + q, [`${n} arriving ${when} — ${aLead} and ${chbSayN(n - 1)} more.`, `${n} guests checking in ${when}.`]),
+                  'Check-ins · direct & OTA', () => { closeCmdK(); tryAccessBackOffice(); }, [{ label: 'This week', q: 'arriving this week' }, { label: 'Next month', q: 'arriving next month' }, { label: 'Leaving today', q: 'who’s leaving today' }, calChip(rStart)]);
         return [head]
             .concat(rows.map((x) => bk(x.pk, x.b, `Checks in ${fmtDate(x.b.checkIn)}${x.b.checkInTime ? ' · ' + x.b.checkInTime : ''} · ${propName(x.pk)}`)))
             .concat(eRows.map((x) => ext(x.pk, x.bl, `Checks in ${fmtDate(x.bl.checkIn)} · ${propName(x.pk)}`)));
@@ -3122,7 +3178,11 @@ function cmdkIntent(q) {
         const rows = flat.filter((x) => isInResidence(x.b)).sort(byOut);
         const eRows = blocks.filter((x) => isOtaBlock(x.bl) && x.bl.checkIn <= today && x.bl.checkOut > today).sort(byBlkOut);
         const n = rows.length + eRows.length;
-        const head = ans(n ? `${n} guest${n === 1 ? '' : 's'} in-house now` : 'No one in-house right now', 'Currently staying · direct & OTA', () => { closeCmdK(); tryAccessBackOffice(); });
+        const sLead = n ? chbSayFirst((rows[0] && rows[0].b.name) || (eRows[0] && otaName(eRows[0].bl.source) + ' guest') || '') : '';
+        const sHead = !n ? nlgPick('stay0' + q, ['Nobody in right now — all empty.', 'No guests in-house at the moment.'])
+            : n === 1 ? nlgPick('stay1' + q, [`${sLead}’s in right now.`, `Just ${sLead} in-house at the moment.`, `${sLead}’s your only guest in just now.`])
+                : nlgPick('stayN' + q, [`${n} in-house now — ${sLead} and ${chbSayN(n - 1)} more.`, `${n} guests staying right now.`]);
+        const head = ans(sHead, 'Currently staying · direct & OTA', () => { closeCmdK(); tryAccessBackOffice(); });
         return [head]
             .concat(rows.map((x) => bk(x.pk, x.b, `In until ${fmtDate(x.b.checkOut)} · ${propName(x.pk)}`)))
             .concat(eRows.map((x) => ext(x.pk, x.bl, `In until ${fmtDate(x.bl.checkOut)} · ${propName(x.pk)}`)));

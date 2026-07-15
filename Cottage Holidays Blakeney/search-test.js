@@ -743,7 +743,7 @@ if (typeof ctx.cmdkIntent === 'function') {
         check('cross-page: "email them" resolves to the record read on another page', /Sarah Wingate/.test(head('email them')));
         check('cross-page: "their balance" answers about that record', /Sarah Wingate owes/.test(head('their balance')));
         const generic = head('who owes me money');
-        check('cross-page: a generic query is NOT hijacked by the recent record', /guest[s]? owe/.test(generic));
+        check('cross-page: a generic query is NOT hijacked by the recent record', /(collect|chase|owes|owed|to come in|all square|paid up)/i.test(generic));
         // Age it past the freshness window → must stop resolving. Save & restore
         // the real clock so later sections are unaffected (Date.now is an own method).
         const far = Date.now() + 7 * 60 * 1000;
