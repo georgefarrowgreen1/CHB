@@ -1041,9 +1041,56 @@ function cmdkSourceCustomers() {
 function openCustomer(key) {
     const c = chbCustomers().find((x) => x.key === key);
     if (!c) return;
-    try { apiPost('customers.php', { action: 'audit', name: c.name || '', ref: chbNluHashStr(key) }).catch(() => {}); } catch (e) {}
+    chbCustomerAudit(c.name, key);
     closeCmdK();
     if (c.latestId != null && typeof openBookingHub === 'function') openBookingHub(c.latestId);
+}
+// Shared audit write (both the in-memory directory and the server one). Sends the
+// NAME + a non-PII ref hash; the server logs + dedupes. Best-effort, never blocks.
+function chbCustomerAudit(name, key) {
+    try { apiPost('customers.php', { action: 'audit', name: name || '', ref: chbNluHashStr(String(key || '')) }).catch(() => {}); } catch (e) {}
+}
+// A customer surfaced from the SERVER directory (full history — may not be in the
+// in-memory store). Its most recent stay opens via the hub, which fetches the
+// booking when it isn't loaded locally. Same safeguards: audit, and NO one-tap
+// destructive action (only Email on the row).
+function openCustomerRecord(c) {
+    if (!c) return;
+    chbCustomerAudit(c.name, c.key);
+    closeCmdK();
+    if (c.latest_id != null && typeof openBookingHub === 'function') openBookingHub(c.latest_id);
+}
+// ---- Full-history customer directory (server) ------------------------------
+// The in-memory sources only see loaded bookings; this asks customers.php to group
+// the WHOLE bookings table into unified customers (same STRONG-identity rule) so a
+// PAST guest still surfaces as one person. Stale-guarded, deduped against the
+// in-memory customers (chbCustomers keys) so nobody is listed twice.
+let __cmdkCustDirStamp = 0;
+async function cmdkCustomerDirectory(ql) {
+    const q = (ql || '').trim();
+    if (q.length < 3) return;
+    const stamp = ++__cmdkCustDirStamp;
+    let data = null;
+    try { data = await apiPost('customers.php', { action: 'directory', q }); } catch (e) { return; }
+    if (stamp !== __cmdkCustDirStamp) return; // a newer query moved on
+    const custs = (data && data.customers) || [];
+    if (!custs.length) return;
+    let localKeys = new Set();
+    try { localKeys = new Set(chbCustomers().map((c) => c.key)); } catch (e) {}
+    const shown = new Set(__cmdkResults.filter((r) => r && r.type === 'guest' && r.id != null).map((r) => String(r.id)));
+    const rows = custs
+        .filter((c) => c && c.key && !localKeys.has(c.key) && !shown.has(String(c.key)))
+        .map((c) => ({
+            type: 'guest', id: c.key, _customer: true,
+            label: c.name || '(no name)',
+            sub: `${c.stays} stays · ${gbp(c.revenue)} lifetime${c.last ? ' · last ' + fmtDate(c.last) : ''} · from history`,
+            kw: 'customer repeat guest history',
+            actions: [{ key: 'email', label: 'Email', icon: cmdkActIcon('mail'), run: () => { closeCmdK(); if (c.latest_id != null && typeof openBookingEmail === 'function') openBookingEmail(c.latest_id); } }],
+            run: () => openCustomerRecord(c),
+        }));
+    if (!rows.length) return;
+    __cmdkResults = cmdkArrangeWide(__cmdkResults.concat(rows).slice(0, 34), 34);
+    cmdkRender();
 }
 // Register the built-in sources in their historical order. Each is a thin adapter
 // over an existing collector, so behaviour is identical — the win is that the list
@@ -3839,6 +3886,12 @@ function cmdkSearchCore(q, allowCorrect) {
         // meaning-based recall over the embedded history index, merged in when the
         // vectors land (finds records with no shared words the keyword pass misses).
         if (CHB_HISTORY_Q.test(ql)) { try { cmdkSemanticHistory(ql); } catch (e) {} }
+        // A name-ish query (not a question) also groups the WHOLE bookings history
+        // into unified customers server-side, so a PAST guest not held in the
+        // browser still surfaces as one person (deduped against the in-memory ones).
+        if (ql.length >= 3 && !/[?]|^(how|what|who|when|why|where|which|is|are|do|does|can|should|list|show)\b/.test(ql)) {
+            try { cmdkCustomerDirectory(ql); } catch (e) {}
+        }
     } else {
         __cmdkServerStamp++;
         cmdkSetLoading(false);

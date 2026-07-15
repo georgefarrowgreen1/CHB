@@ -267,6 +267,17 @@ Safeguards (all gated by search-test §21c): **false-merge** (strong-key only),
 `activity_log`, deduped 1h, storing the NAME + a NON-PII ref hash, never raw email/phone;
 admin-only), and **no destructive one-tap** (the directory row exposes only Email — a
 delete/refund is never one tap from a fuzzy match; those stay on the booking hub).
+**Full-history (server) directory**: the in-memory sources only see loaded bookings, so
+`customers.php` `directory` groups the WHOLE `bookings` table (bounded LIKE over name/
+email/phone/postcode) into unified customers by the SAME strong-identity rule —
+`customers-lib.php` `customers_key`/`customers_group` mirror the client `chbCustomerKey`
+so both agree by construction (unit-tested by `test-customers.php`, wired into CI, incl.
+phone-only unification + both false-merge cases). `cmdkCustomerDirectory(ql)` fires on a
+name-ish (non-question) query beside the server search, maps past customers to `_customer`
+rows tagged "· from history", deduped against the in-memory customer keys, and
+`openCustomerRecord` opens their latest stay (the hub fetches it when not loaded). Same
+safeguards (audit + no destructive action). `customers-lib.php` deploys; `test-customers.php`
+is deploy-excluded.
 
 **Guest FAQ assistant** (app.js — guest-side, so admin.js's NLU never loads for visitors):
 a TYPED question in the guest chat is answered instantly ON-DEVICE from the cottage's own FAQ

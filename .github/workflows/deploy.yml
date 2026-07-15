@@ -67,7 +67,7 @@ jobs:
           # Repo-only / non-served files: tests, docs, stale backups.
           # NOTE: the *.sql files ARE shipped so migrate.php can apply them; they
           # can't be downloaded because .htaccess denies serving *.sql.
-          rm -f "$OUT"/ui-test-*.js "$OUT/ui-tests.js" "$OUT/test-emails.php" "$OUT/smoke-test.js" "$OUT/search-test.js" "$OUT/golden-test.js" "$OUT/test-pricing.php" "$OUT/test-waf.php" "$OUT/test-reply.php" "$OUT/test-guestreg.php" "$OUT/test-migrate.php" "$OUT/test-smtp.php" "$OUT/test-smtp-server.php" "$OUT/e2e-test.js" "$OUT/layout-test.js" "$OUT/lint-js.js" "$OUT/darkstar-build.js" "$OUT/nlu-testset.js" "$OUT/phpstan.neon.dist" "$OUT/phpstan-baseline.neon" "$OUT/package.json" "$OUT/package-lock.json"
+          rm -f "$OUT"/ui-test-*.js "$OUT/ui-tests.js" "$OUT/test-emails.php" "$OUT/smoke-test.js" "$OUT/search-test.js" "$OUT/golden-test.js" "$OUT/test-pricing.php" "$OUT/test-waf.php" "$OUT/test-reply.php" "$OUT/test-customers.php" "$OUT/test-guestreg.php" "$OUT/test-migrate.php" "$OUT/test-smtp.php" "$OUT/test-smtp-server.php" "$OUT/e2e-test.js" "$OUT/layout-test.js" "$OUT/lint-js.js" "$OUT/darkstar-build.js" "$OUT/nlu-testset.js" "$OUT/phpstan.neon.dist" "$OUT/phpstan-baseline.neon" "$OUT/package.json" "$OUT/package-lock.json"
           rm -rf "$OUT/layout-shots"
           rm -f "$OUT"/*.md
           rm -f "$OUT"/index.backup-*.html
@@ -182,7 +182,7 @@ jobs:
           [ -f "$OUT/htaccess.txt" ] && mv -f "$OUT/htaccess.txt" "$OUT/.htaccess"
           rm -f "$OUT/setup.php" "$OUT/health.php" "$OUT/vapid-keygen.php"
           rm -f "$OUT/config.php"          # staging keeps its OWN config.php (sandbox DB + sandbox Square/email)
-          rm -f "$OUT"/ui-test-*.js "$OUT/ui-tests.js" "$OUT/test-emails.php" "$OUT/smoke-test.js" "$OUT/search-test.js" "$OUT/golden-test.js" "$OUT/test-pricing.php" "$OUT/test-waf.php" "$OUT/test-reply.php" "$OUT/test-guestreg.php" "$OUT/test-migrate.php" "$OUT/test-smtp.php" "$OUT/test-smtp-server.php" "$OUT/e2e-test.js" "$OUT/layout-test.js" "$OUT/lint-js.js" "$OUT/darkstar-build.js" "$OUT/nlu-testset.js" "$OUT/phpstan.neon.dist" "$OUT/phpstan-baseline.neon" "$OUT/package.json" "$OUT/package-lock.json"
+          rm -f "$OUT"/ui-test-*.js "$OUT/ui-tests.js" "$OUT/test-emails.php" "$OUT/smoke-test.js" "$OUT/search-test.js" "$OUT/golden-test.js" "$OUT/test-pricing.php" "$OUT/test-waf.php" "$OUT/test-reply.php" "$OUT/test-customers.php" "$OUT/test-guestreg.php" "$OUT/test-migrate.php" "$OUT/test-smtp.php" "$OUT/test-smtp-server.php" "$OUT/e2e-test.js" "$OUT/layout-test.js" "$OUT/lint-js.js" "$OUT/darkstar-build.js" "$OUT/nlu-testset.js" "$OUT/phpstan.neon.dist" "$OUT/phpstan-baseline.neon" "$OUT/package.json" "$OUT/package-lock.json"
           rm -rf "$OUT/layout-shots"
           rm -f "$OUT"/*.md
           rm -f "$OUT"/index.backup-*.html
