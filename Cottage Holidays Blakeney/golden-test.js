@@ -212,6 +212,9 @@ const CASES = [
     { q: "who's next", head: /Next arrival: Cara Dunn/ },
     { q: 'who arrives next', head: /Next arrival: Cara Dunn/, any: /Bob Carter/ },
     { q: 'next arrival', head: /Next arrival: Cara Dunn/ },
+    // "staying next" reads as the NEXT arrival, never "in-house now".
+    { q: "who's staying next", any: /Cara Dunn|Next/, not: /in-house now|staying now|In residence now/ },
+    { q: 'who is staying next', any: /Cara Dunn|Next/, not: /in-house now|staying now/ },
 
     // ---- COMPOSED answers (the generative branch: parse → compute → phrase) ----
     // WHEN — arrivals/departures for a NAMED guest read as a sentence.

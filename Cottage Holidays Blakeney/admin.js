@@ -2742,7 +2742,9 @@ function cmdkIntent(q) {
             .concat(eRows.map((x) => ext(x.pk, x.bl, `Checks out ${fmtDate(x.bl.checkOut)} · ${propName(x.pk)}`)));
     }
     // 3) Upcoming / next bookings — future arrivals, soonest first (direct & OTA).
-    if (/\bupcoming|next book|next arriv|next guest|next stay|coming up|who.?s next|future book|future guest\b/.test(q)) {
+    // "who's staying next" reads as the NEXT arrival, not who's in-house now — so
+    // "staying/stay/in next" is an upcoming cue and must beat the staying branch.
+    if (/\bupcoming|next book|next arriv|next guest|next stay|staying next|stay(ing)? next|(who.?s |whos )?in next|coming up|who.?s next|future book|future guest\b/.test(q)) {
         const rows = flat.filter((x) => x.b.checkIn && x.b.checkIn > today).sort(byIn);
         const eRows = blocks.filter((x) => x.bl.checkIn && x.bl.checkIn > today).sort(byBlkIn);
         const nd = rows[0], ne = eRows[0];
@@ -3897,7 +3899,12 @@ function paintTodayFilter() {
     view.querySelectorAll('[data-search]').forEach((el) => {
         const match = !q || (el.getAttribute('data-search') || '').indexOf(q) > -1;
         el.classList.toggle('cmdk-dim', !!q && !match);
-        if (match) shown++;
+        // Count RECORDS, not DOM nodes: a direct booking shows as both an index
+        // row AND a timeline bar (`.tl-bar`, same data-bkid), so counting both
+        // reports "2 matches" for one guest. Skip the timeline mirror — except an
+        // external OTA bar (`.tl-ext`), which has no index row, so it's the only
+        // place that record appears and must be counted once.
+        if (match && !(el.classList.contains('tl-bar') && !el.classList.contains('tl-ext'))) shown++;
     });
     renderTodayFilterBar(q, shown);
     return shown;
@@ -13301,7 +13308,7 @@ function renderCalendar() {
                 if (!bl.checkIn || !bl.checkOut || bl.checkOut <= dates[0] || bl.checkIn >= dates[N - 1]) return;
                 const sp = tlSpan(bl.checkIn, bl.checkOut);
                 const src = bl.source ? bl.source.charAt(0).toUpperCase() + bl.source.slice(1) : 'External';
-                bars += `<span class="tl-bar tl-ext${sp.clip}" style="grid-column:${sp.col}" title="${escapeHtml(meta.name)} — ${escapeHtml(src)} booking · ${fmtDate(bl.checkIn)} → ${fmtDate(bl.checkOut)}">${escapeHtml(src)}</span>`;
+                bars += `<span class="tl-bar tl-ext${sp.clip}" data-search="${escapeHtml((src + ' ' + meta.name + ' ota external booking').toLowerCase())}" style="grid-column:${sp.col}" title="${escapeHtml(meta.name)} — ${escapeHtml(src)} booking · ${fmtDate(bl.checkIn)} → ${fmtDate(bl.checkOut)}">${escapeHtml(src)}</span>`;
             });
             const priv = meta.unlisted ? lock : '';
             // The lane label carries the cottage's accent dot, tying it to its bars.

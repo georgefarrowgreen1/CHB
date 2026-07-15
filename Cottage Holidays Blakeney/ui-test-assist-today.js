@@ -81,7 +81,9 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   });
   ok(flt.total >= 3 && flt.dim >= 2, `plain name live-filters the board (${flt.dim}/${flt.total} dimmed)`);
   ok(/Alice/.test(flt.lit), 'Alice stays lit');
-  ok(/\d+ match/.test(flt.count), `match count in the bar (${flt.count})`);
+  // ONE Alice booking → "1 match", not "2" — the count is per-record, not per
+  // DOM node (she appears as both an index row and a timeline bar).
+  ok(/^1 match\b/.test(flt.count), `match count is per-record, not doubled (${flt.count})`);
   ok(!flt.banner, 'no floating banner (the bar IS the filter UI)');
   ok(flt.tlDim >= 1, `timeline bars dim too (${flt.tlDim})`);
   ok(!flt.answer, 'not answer mode');
