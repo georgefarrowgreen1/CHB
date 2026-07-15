@@ -1075,6 +1075,84 @@ if (typeof ctx.cmdkIntent === 'function') {
     vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);__cmdkCustomers=null;', ctx);
 }
 
+// ---- 32. Ambient intelligence: chbAnomalies (deterministic opportunity rows —
+// bounded 2-4-night gaps, next-month shortfall vs last year) and chbGuestIntel
+// (the "Knows your guest" hub card — strong identity only, mentions from the
+// in-memory history index, null when there's nothing worth knowing). ----
+if (typeof ctx.chbAnomalies === 'function' && typeof ctx.chbGuestIntel === 'function') {
+    const today = ctx.todayDashed();
+    const plus = (nn) => { const dd = new Date(today + 'T00:00:00Z'); dd.setUTCDate(dd.getUTCDate() + nn); return dd.toISOString().slice(0, 10); };
+    const mkb = (id, name, email, inD, outD) => ({ id, name, email, checkIn: inD, checkOut: outD, adults: 2, children: 0, payment: 'paid', holdStatus: 'none', agreedPrice: { total: 400 } });
+    const seed = (rows, blocks) => { ctx.__seedAn = { rows: rows || [], blocks: blocks || [] }; vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);dbBookings.jollyboat=__seedAn.rows;dbBlocks.jollyboat=__seedAn.blocks;__cmdkCustomers=null;', ctx); };
+    const anomalies = () => ctx.chbAnomalies();
+    const gapRows = () => anomalies().filter((a) => /free nights between stays/.test(a.label));
+
+    // Gaps.
+    seed([mkb(1, 'Bob A', 'b@x.co', plus(5), plus(8)), mkb(2, 'Cara B', 'c@x.co', plus(11), plus(14))]);
+    let g = gapRows();
+    check('a bounded 3-night gap 8 days out is flagged', g.length === 1 && /3 free nights/.test(g[0].label), g.map((x) => x.label).join(' | '));
+    seed([mkb(1, 'Bob A', 'b@x.co', plus(5), plus(8)), mkb(2, 'Cara B', 'c@x.co', plus(9), plus(12))]);
+    check('a 1-night hole (changeover slack) stays silent', gapRows().length === 0);
+    seed([mkb(1, 'Bob A', 'b@x.co', plus(5), plus(8)), mkb(2, 'Cara B', 'c@x.co', plus(14), plus(17))]);
+    check('a 6-night hole is not a "gap" (silent)', gapRows().length === 0);
+    seed([mkb(1, 'Bob A', 'b@x.co', plus(5), plus(8))]);
+    check('unbounded future space is not a gap (silent)', gapRows().length === 0);
+    seed([mkb(1, 'Bob A', 'b@x.co', plus(5), plus(8)), mkb(2, 'Cara B', 'c@x.co', plus(11), plus(14))], [{ id: 900, source: 'owner', checkIn: plus(8), checkOut: plus(11) }]);
+    check('an owner block over the hole = deliberately held (silent)', gapRows().length === 0);
+    seed([mkb(1, 'Bob A', 'b@x.co', plus(50), plus(53)), mkb(2, 'Cara B', 'c@x.co', plus(56), plus(59))]);
+    check('a gap starting beyond 45 days stays silent', gapRows().length === 0);
+    seed([mkb(1, 'Bob A', 'b@x.co', plus(5), plus(8))], [{ id: 901, source: 'airbnb', checkIn: plus(11), checkOut: plus(14) }]);
+    g = gapRows();
+    check('an OTA-bounded gap counts (booking → gap → Airbnb stay)', g.length === 1, g.map((x) => x.label).join(' | '));
+
+    // Next-month shortfall vs last year.
+    const d0 = new Date(today + 'T00:00:00');
+    const nmY = d0.getMonth() === 11 ? d0.getFullYear() + 1 : d0.getFullYear();
+    const nmM = (d0.getMonth() + 1) % 12;
+    const nm = (y, day) => `${y}-${String(nmM + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+    const pacingRows = () => anomalies().filter((a) => /looking light/.test(a.label));
+    seed([mkb(1, 'Old A', 'o@x.co', nm(nmY - 1, 2), nm(nmY - 1, 14)), mkb(2, 'New B', 'n@x.co', nm(nmY, 2), nm(nmY, 4))]);
+    let p = pacingRows();
+    check('next month at 2 nights vs 12 last year → "looking light" flagged', p.length === 1 && /2 nights booked vs 12 last year/.test(p[0].label), p.map((x) => x.label).join(' | '));
+    seed([mkb(1, 'Old A', 'o@x.co', nm(nmY - 1, 2), nm(nmY - 1, 14)), mkb(2, 'New B', 'n@x.co', nm(nmY, 2), nm(nmY, 10))]);
+    check('a month at ≥50% of last year stays silent', pacingRows().length === 0);
+    seed([mkb(1, 'Old A', 'o@x.co', nm(nmY - 1, 2), nm(nmY - 1, 8))]);
+    check('a naturally quiet month (last year <8 nights) never nags', pacingRows().length === 0);
+
+    // Guest intel.
+    const yr = today.slice(0, 4);
+    seed([
+        mkb(11, 'Sarah Holt', 'sarah@example.com', `${yr}-01-10`, `${yr}-01-14`),
+        mkb(12, 'Sarah Holt', 'sarah@example.com', `${yr}-03-03`, `${yr}-03-05`),
+        mkb(13, 'Sarah Holt', 'sarah@example.com', `${yr}-06-01`, `${yr}-06-03`),
+        mkb(14, 'John Smith', '', `${yr}-05-02`, `${yr}-05-04`),
+        mkb(15, 'John Smith', '', `${yr}-07-01`, `${yr}-07-03`),
+        mkb(16, 'First Timer', 'ft@x.co', `${yr}-08-01`, `${yr}-08-03`),
+    ]);
+    const bk = (id) => vm.runInContext(`dbBookings.jollyboat.find((b)=>b.id===${id})`, ctx);
+    let intel = ctx.chbGuestIntel('jollyboat', bk(12));
+    check('repeat guest: ordinal + lifetime + favourite cottage composed', !!(intel && intel.ordinal === '2nd stay' && intel.stays === 3 && /Jollyboat/i.test(intel.favName)), JSON.stringify(intel && { o: intel.ordinal, s: intel.stays, f: intel.favName }));
+    check('repeat guest: last stay names the month of the PREVIOUS visit', !!(intel && /January/.test(intel.lastStay)), intel && intel.lastStay);
+    check('a name-only John Smith gets NO card (weak identity, false-merge guard)', ctx.chbGuestIntel('jollyboat', bk(14)) === null);
+    check('a first-time guest with no history gets NO card (empty dossier = noise)', ctx.chbGuestIntel('jollyboat', bk(16)) === null);
+    // Mentions from the in-memory history index — strong-first matching.
+    vm.runInContext(`
+        CHB_HIST.docs = [
+            { type: 'email', id: 1, text: 'Booking confirmed — your stay details', date: '2026-05-01', extra: { to: 'sarah@example.com' } },
+            { type: 'message', id: 2, text: 'Hi this is Sarah Holt, can we arrive early?', date: '2026-05-02', extra: {} },
+            { type: 'message', id: 3, text: 'Sarah Jones here about the parking', date: '2026-05-03', extra: {} },
+            { type: 'activity', id: 4, text: 'Booking edited for Sarah Holt', date: '2026-05-04', extra: {} },
+            { type: 'email', id: 5, text: 'Your balance reminder', date: '2026-05-05', extra: { to: 'sarah@example.com' } },
+        ];
+        CHB_HIST.built = true; CHB_HIST.enc = 0;
+    `, ctx);
+    intel = ctx.chbGuestIntel('jollyboat', bk(12));
+    const mTypes = ((intel && intel.mentions) || []).map((m) => m.type + ':' + m.id).join(',');
+    check('mentions: email-address + full-name matches only, capped at 2, newest first', mTypes === 'email:5,message:2' || mTypes === 'email:5,email:1', mTypes);
+    check('mentions: the other Sarah (Jones) and the activity log never leak in', !/id.?:.?[34]/.test(JSON.stringify(intel && intel.mentions)) && mTypes.indexOf('3') < 0 && mTypes.indexOf('activity') < 0, mTypes);
+    vm.runInContext('CHB_HIST.docs = []; CHB_HIST.built = false; Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);__cmdkCustomers=null;', ctx);
+} else fail('chbAnomalies / chbGuestIntel missing from the bundle');
+
 // ---- 30. Darkstar-C (contextual encoder) plumbing. The encoder itself is
 // benched offline (it can't run in CI); what MUST hold here is the machinery:
 // the WordPiece tokenizer, the encoder-built index (tagged CHB_HIST.enc, its
