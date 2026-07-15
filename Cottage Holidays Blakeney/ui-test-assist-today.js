@@ -71,7 +71,9 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   });
   ok(dupes.length === 0, `no duplicate DOM ids with both bars injected${dupes.length ? ' (' + dupes.join(',') + ')' : ''}`);
 
-  // 3) Plain guest name → FILTER mode.
+  // 3) Plain guest name → filters the board AND shows the customer as a tappable
+  //    row (so an off-screen booking is never just a "1 match" over a dimmed
+  //    board — you can always see and open the guest).
   await type('alice');
   const flt = await page.evaluate(() => {
     const rowsAll = [...document.querySelectorAll('#view-backoffice .bk-row')];
@@ -81,6 +83,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
              count: document.getElementById('abar-today-count').textContent,
              banner: !!document.getElementById('today-filter-bar'),
              answer: document.getElementById('abar-today').classList.contains('has-answer'),
+             panel: [...document.querySelectorAll('#abar-today-panel .abar-row')].map((r) => r.textContent).join(' '),
              tlDim: document.querySelectorAll('#view-backoffice .tl-bar.cmdk-dim').length };
   });
   ok(flt.total >= 3 && flt.dim >= 2, `plain name live-filters the board (${flt.dim}/${flt.total} dimmed)`);
@@ -90,7 +93,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(/^1 match\b/.test(flt.count), `match count is per-record, not doubled (${flt.count})`);
   ok(!flt.banner, 'no floating banner (the bar IS the filter UI)');
   ok(flt.tlDim >= 1, `timeline bars dim too (${flt.tlDim})`);
-  ok(!flt.answer, 'not answer mode');
+  ok(flt.answer && /Alice/.test(flt.panel), `the matched customer is shown as a tappable row (${(flt.panel || '(none)').slice(0, 30)})`);
 
   // 4) A question → ANSWER mode, filter released.
   await type('who owes me money');
@@ -102,12 +105,24 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(ans.answer && ans.rows.length > 0 && /Bob|balance|owe|Outstanding/i.test(ans.rows.join(' ')), `question answers inline (${(ans.rows[0] || '').slice(0, 50)})`);
   ok(ans.dims === 0 && ans.count === '', 'board filter released (no dims)');
 
-  // 5) Answer row executes: booking row → its hub.
+  // 5) Answer row executes: booking row → its hub, and SMART CLEAR leaves the
+  //    bar fresh for the next search.
   const execI = await page.evaluate(() => { const st = __abars['abar-today']; const i = st.rows.findIndex((r) => r.type === 'booking'); if (i >= 0) abarExec('abar-today', i); return i; });
   await page.waitForTimeout(600);
   const execV = await page.evaluate(() => (document.querySelector('.page-view.active') || {}).id);
   ok(execI >= 0 && execV === 'view-booking-hub', `answer row runs (booking → hub, view=${execV})`);
+  const acted = await page.evaluate(() => ({ val: document.getElementById('abar-today-input').value, panel: (document.getElementById('abar-today-panel').innerHTML || '').trim() }));
+  ok(acted.val === '' && acted.panel === '', 'smart clear: acting on a result clears the bar');
   await page.evaluate(() => nav('view-backoffice')); await page.waitForTimeout(400);
+
+  // 5b) Smart clear on navigation: a live filter resets when you leave the page,
+  //     so the workspace is fresh next visit.
+  await type('bob');
+  const filtered = await page.evaluate(() => document.getElementById('abar-today-input').value);
+  await page.evaluate(() => nav('view-inbox')); await page.waitForTimeout(200);
+  await page.evaluate(() => nav('view-backoffice')); await page.waitForTimeout(200);
+  const navCleared = await page.evaluate(() => ({ val: document.getElementById('abar-today-input').value, dims: document.querySelectorAll('#view-backoffice .cmdk-dim').length }));
+  ok(filtered === 'bob' && navCleared.val === '' && navCleared.dims === 0, `smart clear: leaving the page clears the bar + filter (was "${filtered}")`);
 
   // 6) NLU paraphrase → Understood-as note.
   await type('is anyone in arrears with me');

@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 201;
+const ADMIN_BUNDLE_V = 202;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -1392,6 +1392,13 @@ function nav(viewId, anchorId = null) {
     // (guest-app.js defines this; safe no-op before it loads / for admins).
     try {
         if (window.setActiveTab) window.setActiveTab(viewId);
+    } catch (e) {}
+
+    // Smart clear: leaving a workspace resets the Assist Bars there so it's fresh
+    // for the next search (admin.js defines this; safe no-op before it loads /
+    // for guests). Runs after the view switch so it can read the target view.
+    try {
+        if (window.chbSmartClear) window.chbSmartClear(viewId);
     } catch (e) {}
 
     // Keep the address bar in sync: leaving a cottage page restores the root URL.
@@ -12471,7 +12478,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'deepsrch1';
+    const BUILD = 'smartclr1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

@@ -145,16 +145,24 @@ workspaces carry one — `#abar-today` (Today), `#abar-inbox` (Inbox), `#abar-ac
 without a haystack, so `abarStampSearchRows(view)` stamps `data-search` (label+sub+kw) on
 `.settings-row`s the first time their bar filters. The HUB bars set `opts.scopeEntity` → each
 keystroke sets `__cmdkEntity = cmdkCurrentEntity()` before building, so "email them", "their
-balance", "this booking" act on the OPEN record. Routing per keystroke is WORKSPACE-FIRST:
-terms matching the board's `[data-search]` rows live-filter (shared dim machinery; count in
-the bar; the palette's "filter this workspace" adopts INTO the bar via `abarAdopt`, so no
-floating banner where a bar exists; the Inbox bar adds per-folder `.ifold-match` pills + hides
-the unread chips while filtering); otherwise `cmdkBuildResults()` answers INLINE with the
-palette's own rows — the LEAD actionable record's quick-actions render on the row
-(`abarRowHtml` marks the first row carrying `actions` with `_showActs`; `abarAct` runs them),
-so "who owes me money" → [Request payment] without a hop (chips/`_nlu` learning intact); zero
-matches → deep-search CTA + ask chips. A guest **typeahead** in Add Booking (`modalNameSuggest`
-/ `#modal-name-suggest`) suggests past guests → a pick fills name+email+phone. Full
+balance", "this booking" act on the OPEN record. Routing per keystroke: terms matching the
+board's `[data-search]` rows live-filter it (shared dim machinery; count in the bar; the
+palette's "filter this workspace" adopts INTO the bar via `abarAdopt`, so no floating banner
+where a bar exists; the Inbox bar adds per-folder `.ifold-match` pills + hides the unread chips
+while filtering). But filtering ALONE isn't enough — a matched record can sit off-screen (a
+future booking outside the timeline window, a bk-row below the keyboard) — so `cmdkBuildResults()`
+ALSO runs every keystroke and, when the query resolves to an actual RECORD (`hasRecord`:
+booking/enquiry/guest/payment), its rows render in the panel too: typing a NAME both dims the
+board AND shows the customer as a tappable row (never just "1 match" over a dimmed board).
+Questions release the filter (pure answer); a pay-state / broad filter with no record answer
+stays filter-only. The LEAD actionable record's quick-actions render on the row (`abarRowHtml`
+marks the first row carrying `actions` with `_showActs`; `abarAct` runs them), so "who owes me
+money" → [Request payment] without a hop (chips/`_nlu` learning intact); zero matches →
+deep-search CTA + ask chips. **Smart clear**: acting on a result (`abarExec`/`abarAct`/an action
+`abarChip`) resets the bar, and leaving a workspace (`chbSmartClear(viewId)`, wired into app.js
+`nav()` via a facade-safe `window.` slot) clears the bars you're LEAVING — so search is always
+fresh for the next query. A guest **typeahead** in Add Booking (`modalNameSuggest` /
+`#modal-name-suggest`) suggests past guests → a pick fills name+email+phone. Full
 intelligence parity: the **model-status pill** (palette `#cmdk-ml`, per-bar `.abar-status`,
 `data-mstate` set by `chbSetModelStatus`/`chbModelState`) NAMES what the assistant is doing —
 `ready` (Darkstar loaded, idle), `understood` (paraphrase→intent), `meaning` (semantic
