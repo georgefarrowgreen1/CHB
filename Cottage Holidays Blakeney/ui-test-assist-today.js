@@ -43,6 +43,10 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.evaluate(async () => { isAuthenticated = true; document.body.classList.add('owner-mode'); await window.loadAdminBundle(); });
   await page.evaluate(() => loadData()); await page.waitForTimeout(600);
   await page.evaluate(() => nav('view-backoffice')); await page.waitForTimeout(600);
+  // The timeline renders its bars asynchronously; wait for them so the plain-name
+  // filter below has something to dim. Under parallel CI load (suites run 3 at a
+  // time) the fixed wait above can lose the race, leaving 0 timeline bars.
+  await page.waitForFunction(() => document.querySelectorAll('#view-backoffice .tl-bar').length > 0, { timeout: 6000 }).catch(() => {});
 
   const type = async (q) => { await page.evaluate((x) => { const el = document.getElementById('abar-today-input'); el.value = x; abarRoute('abar-today', x); }, q); await page.waitForTimeout(250); };
 
