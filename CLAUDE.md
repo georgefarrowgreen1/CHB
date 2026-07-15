@@ -431,7 +431,12 @@ answers, abstains on 13 business shapes, pipeline lead). New insight families in
 guests never fake a repeat) and **average length of stay** (a habitual "how long do guests
 stay" widens to the year; an explicit period keeps it; checked before the average-RATE family)
 — §29b. The NLU corpus stays frozen (ceiling — see above); breadth grows by new deterministic
-families, not classifier examples.
+families, not classifier examples. Business-SLANG synonyms ride the family regexes the same
+way (measured on the stress set, gated in golden): `adr` → average rate, `fill rate` →
+occupancy, `top line` → revenue, `how's trade` / `state of play` → the pulse narrative,
+`pipeline` / `round the corner` → upcoming. NB "check-in/out time" wording must NEVER become
+a none-example (measured: collides with "who checks out before noon"); the intent tier
+already answers it end-to-end, so the tier-3 model-level accept is harmless.
 
 **Accommodations are dynamic** — the owner adds/removes cottages from the back office
 (Settings → Preferences → "Add accommodation"; per-cottage "Remove" / "Restore"). The

@@ -301,6 +301,15 @@ const CASES = [
     { q: 'revenue this year', head: /Income & tax|£/ },
     { q: 'which cottage earns most', head: /Jollyboat|21A Westgate|Pimpernel/ },
     { q: 'busiest month', head: /January|February|March|April|May|June|July|August|September|October|November|December/ },
+    // Business SLANG the stress set surfaced — each maps to its deterministic
+    // family, not the classifier (adr → rate, fill rate → occupancy, trade /
+    // state of play → the pulse narrative, pipeline → upcoming, top line → revenue).
+    { q: 'whats my adr', head: /avg\/night/ },
+    { q: 'whats my fill rate', head: /% occupancy/, not: /avg\/night/ },
+    { q: 'hows trade', head: /night|quiet|booked/i, any: /nights booked|revenue/ },
+    { q: 'state of play', head: /night|quiet|booked/i },
+    { q: 'whats in the pipeline', head: /Next arrival|next one in|arrives next|Cara/ },
+    { q: 'whats my top line this year', head: /£[\d,.]+ booked in \d{4}/ },
     // ---- Guest by name ----
     { q: 'alice marsh', head: /Alice Marsh/ },
     { q: 'has alice paid', head: /Alice/ },

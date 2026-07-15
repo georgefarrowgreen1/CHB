@@ -2439,7 +2439,7 @@ function cmdkIntent(q) {
     // bare "which cottage …" (e.g. "which cottage has a hot tub") is a FEATURE
     // question, not an insight, and must not enter this section (which always emits
     // a figure). Audit finding: the bare form false-answered feature questions.
-    const INSIGHTS_RE = /\brevenue\b|\bincome\b|\bearn(ed|ings?|ing)?\b|\btakings?\b|\bturnover\b|\bgross\b|occupanc|occupied|\bnights? (booked|sold)\b|how many nights|average (rate|price|nightly)|\bavg\b|busiest|quietest|best month|worst month|which (cottage|property|house|month).{0,24}(earn|make|most|best|top|perform|money|revenue|income|busiest|profit|lucrative)|top cottage|how.?s business|how am i doing|\bperformance\b|how much (did i |have i |i )?(make|made|earn|take)|average (stay|length)|length of stay|how long do (guests|people)|typical (stay|visit)|repeat (guest|customer|visitor)|returning (guest|customer)|\brebook|guests? (who |that )?(come|came|keep coming) back/;
+    const INSIGHTS_RE = /\brevenue\b|\bincome\b|\bearn(ed|ings?|ing)?\b|\btakings?\b|\bturnover\b|\bgross\b|occupanc|occupied|\bnights? (booked|sold)\b|how many nights|average (rate|price|nightly)|\bavg\b|busiest|quietest|best month|worst month|which (cottage|property|house|month).{0,24}(earn|make|most|best|top|perform|money|revenue|income|busiest|profit|lucrative)|top cottage|how.?s business|how am i doing|\bperformance\b|how much (did i |have i |i )?(make|made|earn|take)|average (stay|length)|length of stay|how long do (guests|people)|typical (stay|visit)|repeat (guest|customer|visitor)|returning (guest|customer)|\brebook|guests? (who |that )?(come|came|keep coming) back|\badr\b|fill rate|how.?s trade|state of play|top.?line/;
     // Operational list queries (deposits to return, balances to chase, volume) —
     // like insights, they must beat guest-name matching (a query like "overdue
     // balances" must not be read as guest "Olive Over").
@@ -3036,7 +3036,7 @@ function cmdkIntent(q) {
             const head = { type: 'figure', id: 'ins', label: `${propName(ranked[0].k)}’s your top earner — ${gbp(ranked[0].v)}`, sub: `Ahead of the rest ${plabel} · ${gbp(revenue)} across all cottages`, run: openMoney };
             return [head].concat(ranked.map((r) => ({ type: 'answer', id: 'ins-' + r.k, label: `${propName(r.k)} · ${gbp(r.v)}`, sub: `${Math.round((100 * r.v) / (revenue || 1))}% of revenue ${plabel}`, run: openMoney })));
         }
-        if (/occupanc|occupied|how (full|busy)/.test(q)) {
+        if (/occupanc|occupied|how (full|busy)|fill rate/.test(q)) {
             return [{ type: 'figure', id: 'ins', label: `${occPct}% occupancy ${plabel}`, sub: `${occNights} of ${cottages * periodDays} cottage-nights${otaNote}`, run: openMoney }];
         }
         if (/nights? (booked|sold)|how many nights/.test(q)) {
@@ -3057,7 +3057,7 @@ function cmdkIntent(q) {
             const minN = Math.min(...withN), maxN = Math.max(...withN);
             return [{ type: 'figure', id: 'ins', label: `${avgN}-night average stay ${lbl2}`, sub: `Across ${withN.length} stay${withN.length === 1 ? '' : 's'} · shortest ${minN}, longest ${maxN}`, run: openMoney }];
         }
-        if (/average (rate|price|nightly)|\bavg\b/.test(q)) {
+        if (/average (rate|price|nightly)|\bavg\b|\badr\b/.test(q)) {
             return [{ type: 'figure', id: 'ins', label: `${gbp(avgRate)} avg/night ${plabel}`, sub: `${gbp(revenue)} over ${payingNights} paid night${payingNights === 1 ? '' : 's'}${otaNote}`, run: openMoney }];
         }
         // Default headline. An explicit MONEY question ("revenue / income / how
@@ -3065,7 +3065,7 @@ function cmdkIntent(q) {
         // ("how's business", "performance") leads with NIGHTS BOOKED — money taken
         // hides the Airbnb / Vrbo stays that carry no price. Either way the OTA note
         // flags that revenue excludes those nights.
-        const moneyLed = /\brevenue\b|\bincome\b|\bearn|\btakings?\b|\bturnover\b|\bgross\b|how much/.test(q);
+        const moneyLed = /\brevenue\b|\bincome\b|\bearn|\btakings?\b|\bturnover\b|\bgross\b|how much|top.?line/.test(q);
         if (moneyLed) {
             const head = { type: 'figure', id: 'ins', label: `${gbp(revenue)} booked ${plabel}`, sub: `${soldNights} night${soldNights === 1 ? '' : 's'} · ${occPct}% occupancy${avgRate ? ' · avg ' + gbp(avgRate) + '/night' : ''}${otaNote}`, run: openMoney, chips: [{ label: 'Last month', q: 'revenue last month' }, { label: 'This year', q: 'revenue this year' }, { label: 'Busiest month', q: 'busiest month' }, { label: 'Top cottage', q: 'which cottage earns most' }] };
             return [head].concat(ranked.filter((r) => r.v > 0).map((r) => ({ type: 'answer', id: 'ins-' + r.k, label: `${propName(r.k)} · ${gbp(r.v)}`, sub: `${Math.round((100 * r.v) / (revenue || 1))}% of revenue`, run: openMoney })));
@@ -3076,7 +3076,7 @@ function cmdkIntent(q) {
         // — the numbers still follow. An explicit metric query skips it.
         let lead = [];
         const hasPeriod = !!nm || /this year|last year|last month|next month|this month/.test(q);
-        if (!hasPeriod && /how.?s business|how am i doing|how are we doing|\bperformance\b|how.?s it going/.test(q)) {
+        if (!hasPeriod && /how.?s business|how am i doing|how are we doing|\bperformance\b|how.?s it going|how.?s trade|state of play/.test(q)) {
             try { const p = chbBusinessPulse(); if (p) lead = [{ type: 'answer', id: 'ins-pulse', wrap: true, label: `${p.arrow} ${p.label}`, sub: p.sub, run: openMoney }]; } catch (e) {}
         }
         return lead.concat([head]).concat(rankedN.filter((r) => r.n > 0).map((r) => ({ type: 'answer', id: 'ins-' + r.k, label: `${propName(r.k)} · ${r.n} night${r.n === 1 ? '' : 's'}`, sub: `${gbp(r.v)}${r.v ? ' revenue' : ' · OTA, no price'} · ${Math.round((100 * r.n) / (soldNights || 1))}% of nights`, run: openMoney })));
@@ -3431,7 +3431,7 @@ function cmdkIntent(q) {
     // 3) Upcoming / next bookings — future arrivals, soonest first (direct & OTA).
     // "who's staying next" reads as the NEXT arrival, not who's in-house now — so
     // "staying/stay/in next" is an upcoming cue and must beat the staying branch.
-    if (/\bupcoming|next book|next arriv|next guest|next stay|staying next|stay(ing)? next|(who.?s |whos )?in next|coming up|who.?s next|future book|future guest\b/.test(q)) {
+    if (/\bupcoming|next book|next arriv|next guest|next stay|staying next|stay(ing)? next|(who.?s |whos )?in next|coming up|who.?s next|future book|future guest|\bpipeline\b|round the corner\b/.test(q)) {
         const rows = flat.filter((x) => x.b.checkIn && x.b.checkIn > today).sort(byIn);
         const eRows = blocks.filter((x) => x.bl.checkIn && x.bl.checkIn > today).sort(byBlkIn);
         const nd = rows[0], ne = eRows[0];
