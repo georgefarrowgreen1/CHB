@@ -171,7 +171,11 @@ accent, NOT a colour to decode; the dock button keeps a purple Darkstar tint. Pl
 (focusout) dead-end capture into the shared miss store, and `__cmdkConvCtx` carries across
 bars↔palette. Both bars sit ABOVE the header divider line (Today: `#abar-today` in
 `#view-backoffice`; Inbox: `#abar-inbox` moved up into `#inbox-head`, full-width above the
-three-pane split) — the divider hangs under the bar. Suites:
+three-pane split) — the divider hangs under the bar. **Siri look**: the search lights up with
+a luminous cycling glow when engaged — the palette card breathes `cmdkSiriAura` while open, an
+Assist Bar field breathes `abarSiriAura` while focused (with a rounder pill + firmer focused
+surface), driven by the `--siri-1..5` hue tokens (`:root` in admin.css); both are box-shadow
+auras (overflow-safe) and honour `prefers-reduced-motion`. Suites:
 `ui-test-assist-{today,inbox,parity,deep}.js` (deep = the Payments/Manage bars, act-in-place,
 hub scoping + Add-Booking typeahead); the layout gate asserts the bars render.
 

@@ -20,6 +20,31 @@
    both dark and light back-office themes. */
 :root {
   --darkstar: #a855f7;
+  /* Siri-style luminous glow palette — the search lights up with this spectrum
+     when you engage it (see .cmdk-box / .abar-field). HSL parts so alpha can be
+     mixed inline; the hues sweep pink → purple → blue → teal → amber. */
+  --siri-1: 330 92% 63%;
+  --siri-2: 268 86% 66%;
+  --siri-3: 210 92% 62%;
+  --siri-4: 168 78% 55%;
+  --siri-5: 34 96% 60%;
+}
+/* The aura the palette card breathes while open — Siri's colours cycling around
+   the edges, layered ON TOP of the card's own depth shadow. */
+@keyframes cmdkSiriAura {
+  0%, 100% {
+    box-shadow: var(--shadow-float), 0 1px 0 var(--glass-highlight) inset, 0 40px 80px -32px rgba(8, 11, 14, 0.55),
+      0 0 30px -2px hsl(var(--siri-1) / 0.55), 0 0 60px 4px hsl(var(--siri-2) / 0.38), 0 0 92px 10px hsl(var(--siri-3) / 0.22);
+  }
+  50% {
+    box-shadow: var(--shadow-float), 0 1px 0 var(--glass-highlight) inset, 0 40px 80px -32px rgba(8, 11, 14, 0.55),
+      0 0 30px -2px hsl(var(--siri-3) / 0.55), 0 0 60px 4px hsl(var(--siri-5) / 0.38), 0 0 92px 10px hsl(var(--siri-1) / 0.22);
+  }
+}
+/* The aura an Assist Bar field breathes while focused. */
+@keyframes abarSiriAura {
+  0%, 100% { box-shadow: 0 0 20px -3px hsl(var(--siri-1) / 0.5), 0 0 40px 1px hsl(var(--siri-2) / 0.32), 0 0 62px 6px hsl(var(--siri-3) / 0.18); }
+  50% { box-shadow: 0 0 20px -3px hsl(var(--siri-3) / 0.5), 0 0 40px 1px hsl(var(--siri-5) / 0.32), 0 0 62px 6px hsl(var(--siri-1) / 0.18); }
 }
 .tl-bar.bar-21a {
   background: var(--prop-21a-bg);
@@ -1140,7 +1165,15 @@ body.owner-mode #mobileMenu {
   backdrop-filter: var(--glass-filter);
   -webkit-backdrop-filter: var(--glass-filter);
   overflow: hidden;
-  animation: cmdkRise 0.26s var(--spring, var(--fluid-bezier));
+  /* Rise in, then breathe the Siri aura for as long as the palette is open. */
+  animation: cmdkRise 0.26s var(--spring, var(--fluid-bezier)), cmdkSiriAura 6s ease-in-out 0.26s infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cmdk-box {
+    animation: none;
+    box-shadow: var(--shadow-float), 0 1px 0 var(--glass-highlight) inset, 0 40px 80px -32px rgba(8, 11, 14, 0.55),
+      0 0 30px -4px hsl(var(--siri-2) / 0.34);
+  }
 }
 @keyframes cmdkRise {
   from {
@@ -2359,14 +2392,24 @@ body.light-mode .cmdk-editor-input {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 11px 14px;
+  padding: 12px 16px;
   background: var(--glass-hover);
   border: 1px solid var(--glass-border);
-  border-radius: var(--r-panel, 14px);
-  transition: border-color 0.2s ease;
+  border-radius: 18px; /* Siri-style rounded pill */
+  transition: border-color 0.25s ease, background 0.3s ease, box-shadow 0.5s ease;
 }
+/* Siri glow: the field lights up with the cycling spectrum while focused, and
+   the surface firms up so the typed text stays crisp over the aura. */
 .abar-field:focus-within {
-  border-color: color-mix(in srgb, var(--accent) 45%, var(--glass-border));
+  border-color: color-mix(in srgb, hsl(var(--siri-2)) 40%, var(--glass-border));
+  background: var(--glass-bg);
+  animation: abarSiriAura 4.5s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .abar-field:focus-within {
+    animation: none;
+    box-shadow: 0 0 22px -3px hsl(var(--siri-2) / 0.4);
+  }
 }
 .abar-ic {
   display: flex;
