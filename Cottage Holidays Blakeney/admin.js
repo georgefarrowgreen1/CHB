@@ -2140,6 +2140,215 @@ function chbSayNames(names, shown) {
 }
 // small counts read as words in prose: 1→"one", 2→"a couple", 3→"three".
 function chbSayN(n) { return ({ 1: 'one', 2: 'a couple', 3: 'three' })[n] || String(n); }
+// ============================================================
+//  chbCompute — the deterministic COMPUTE tier. Maths, percentages, VAT, date
+//  arithmetic, unit conversions and world-clock questions answered on-device
+//  with no model, no network and no hallucination risk. Every pattern requires
+//  digits / units / date words, so business queries can never be hijacked.
+//  Consulted by cmdkBuildResults AFTER the intent branches and BEFORE the NLU
+//  model — an exact computation always beats a classifier's guess.
+// ============================================================
+// Tiny safe arithmetic parser (+ - * / parentheses) — never eval().
+function chbCalc(s) {
+    let i = 0;
+    const skip = () => { while (i < s.length && s[i] === ' ') i++; };
+    function atom() {
+        skip();
+        let neg = false;
+        while (s[i] === '-' || s[i] === '+') { if (s[i] === '-') neg = !neg; i++; skip(); }
+        if (s[i] === '(') { i++; const v = expr(); skip(); if (s[i] !== ')') throw 0; i++; return neg ? -v : v; }
+        let j = i;
+        while (j < s.length && /[0-9.]/.test(s[j])) j++;
+        if (j === i) throw 0;
+        const v = parseFloat(s.slice(i, j));
+        if (!isFinite(v)) throw 0;
+        i = j;
+        return neg ? -v : v;
+    }
+    function term() { let v = atom(); for (;;) { skip(); if (s[i] === '*') { i++; v *= atom(); } else if (s[i] === '/') { i++; const d = atom(); if (!d) throw 0; v /= d; } else return v; } }
+    function expr() { let v = term(); for (;;) { skip(); if (s[i] === '+') { i++; v += term(); } else if (s[i] === '-') { i++; v -= term(); } else return v; } }
+    const v = expr();
+    skip();
+    if (i !== s.length) throw 0;
+    return v;
+}
+function chbNum(v) { const r = Math.round(v * 100) / 100; return r.toLocaleString('en-GB', { maximumFractionDigits: 2 }); }
+// Parse a spoken date — "20 august", "august 20th", "20/08", "christmas" — to the
+// NEXT occurrence (a passed date without an explicit year rolls to next year).
+function chbComputeDate(str) {
+    const s = String(str || '').toLowerCase().replace(/(\d+)(st|nd|rd|th)\b/g, '$1').replace(/\bof\b/g, ' ').replace(/\s+/g, ' ').trim();
+    const now = new Date();
+    const named = { christmas: [12, 25], 'christmas day': [12, 25], 'christmas eve': [12, 24], 'boxing day': [12, 26], 'new years eve': [12, 31], "new year's eve": [12, 31], 'new year': [1, 1], "new year's day": [1, 1], 'new years day': [1, 1], halloween: [10, 31], 'bonfire night': [11, 5], 'valentines day': [2, 14], "valentine's day": [2, 14], valentines: [2, 14] };
+    const easter = { 2026: [4, 5], 2027: [3, 28], 2028: [4, 16], 2029: [4, 1], 2030: [4, 21] };
+    let m = null, d = null, y = null;
+    if (named[s]) { [m, d] = named[s]; }
+    else if (/^easter( sunday)?$/.test(s)) {
+        let e = easter[now.getFullYear()];
+        if (e && new Date(now.getFullYear(), e[0] - 1, e[1]) < now) e = easter[now.getFullYear() + 1] ? easter[now.getFullYear() + 1] : null;
+        if (!e) return null;
+        [m, d] = e;
+        y = new Date(now.getFullYear(), e[0] - 1, e[1]) < now ? now.getFullYear() + 1 : now.getFullYear();
+    } else {
+        const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+        let mm = s.match(/^(\d{1,2}) ([a-z]+)(?: (\d{4}))?$/) || null; // 20 august [2026]
+        if (mm) { m = MONTHS.findIndex((x) => x.startsWith(mm[2])) + 1; d = +mm[1]; y = mm[3] ? +mm[3] : null; }
+        if (!m) { mm = s.match(/^([a-z]+) (\d{1,2})(?: (\d{4}))?$/); if (mm) { m = MONTHS.findIndex((x) => x.startsWith(mm[1])) + 1; d = +mm[2]; y = mm[3] ? +mm[3] : null; } }
+        if (!m) { mm = s.match(/^(\d{1,2})[/.](\d{1,2})(?:[/.](\d{2,4}))?$/); if (mm) { d = +mm[1]; m = +mm[2]; y = mm[3] ? (+mm[3] < 100 ? 2000 + +mm[3] : +mm[3]) : null; } }
+        if (!m || m < 1 || m > 12 || !d || d < 1 || d > 31) return null;
+    }
+    if (y == null) {
+        y = now.getFullYear();
+        const cand = new Date(y, m - 1, d, 23, 59, 59);
+        if (cand < now) y++;
+    }
+    const out = new Date(y, m - 1, d);
+    return isNaN(out.getTime()) ? null : out;
+}
+const CHB_CITY_TZ = { london: 'Europe/London', paris: 'Europe/Paris', madrid: 'Europe/Madrid', rome: 'Europe/Rome', berlin: 'Europe/Berlin', amsterdam: 'Europe/Amsterdam', dublin: 'Europe/Dublin', lisbon: 'Europe/Lisbon', athens: 'Europe/Athens', istanbul: 'Europe/Istanbul', moscow: 'Europe/Moscow', dubai: 'Asia/Dubai', mumbai: 'Asia/Kolkata', delhi: 'Asia/Kolkata', bangkok: 'Asia/Bangkok', singapore: 'Asia/Singapore', 'hong kong': 'Asia/Hong_Kong', shanghai: 'Asia/Shanghai', beijing: 'Asia/Shanghai', tokyo: 'Asia/Tokyo', seoul: 'Asia/Seoul', sydney: 'Australia/Sydney', melbourne: 'Australia/Melbourne', perth: 'Australia/Perth', auckland: 'Pacific/Auckland', 'new york': 'America/New_York', boston: 'America/New_York', toronto: 'America/Toronto', chicago: 'America/Chicago', denver: 'America/Denver', 'los angeles': 'America/Los_Angeles', 'san francisco': 'America/Los_Angeles', seattle: 'America/Los_Angeles', vancouver: 'America/Vancouver', honolulu: 'Pacific/Honolulu', 'mexico city': 'America/Mexico_City', 'rio de janeiro': 'America/Sao_Paulo', 'sao paulo': 'America/Sao_Paulo', 'buenos aires': 'America/Argentina/Buenos_Aires', 'cape town': 'Africa/Johannesburg', johannesburg: 'Africa/Johannesburg', cairo: 'Africa/Cairo', nairobi: 'Africa/Nairobi', lagos: 'Africa/Lagos' };
+function chbCompute(q0) {
+    const q = String(q0 || '').toLowerCase().replace(/[?]+\s*$/, '').trim();
+    if (!/[0-9]/.test(q) && !/christmas|easter|new year|boxing day|halloween|bonfire|valentine|time (is it )?in /.test(q)) return null;
+    const money = /£|\bpounds?\b(?!\s*(?:in|to|into|as)\s)/.test(q);
+    const fmt = (v) => (money ? gbp(Math.round(v * 100) / 100) : chbNum(v));
+    const row = (label, sub) => ({ type: 'answer', id: 'compute', label, sub: sub || 'Worked out on-device — exact, not a guess', wrap: true, run: () => { try { closeCmdK(); } catch (e) {} } });
+    let m;
+    // -- VAT (UK 20%) --
+    if ((m = q.match(/vat on £?([\d,]+(?:\.\d+)?)/))) {
+        const n = parseFloat(m[1].replace(/,/g, ''));
+        return row(`VAT on ${gbp(n)} is ${gbp(n * 0.2)} — ${gbp(n * 1.2)} including VAT.`, 'UK VAT at 20%');
+    }
+    if ((m = q.match(/£?([\d,]+(?:\.\d+)?)\s*(?:plus|\+)\s*vat/))) {
+        const n = parseFloat(m[1].replace(/,/g, ''));
+        return row(`${gbp(n)} plus VAT is ${gbp(n * 1.2)}.`, `VAT portion ${gbp(n * 0.2)} at 20%`);
+    }
+    if ((m = q.match(/£?([\d,]+(?:\.\d+)?)\s*(?:inc(?:luding|\.)?|with)\s*vat/))) {
+        const n = parseFloat(m[1].replace(/,/g, ''));
+        return row(`${gbp(n)} including VAT is ${gbp(n / 1.2)} before VAT.`, `VAT portion ${gbp(n - n / 1.2)} at 20%`);
+    }
+    // -- Percentages --
+    if ((m = q.match(/([\d.]+)\s*(?:%|percent|per cent)\s*(of|off)\s*£?([\d,]+(?:\.\d+)?)/))) {
+        const p = parseFloat(m[1]), n = parseFloat(m[3].replace(/,/g, '')), part = (p / 100) * n;
+        return m[2] === 'off'
+            ? row(`${p}% off ${fmt(n)} leaves ${fmt(n - part)}.`, `The discount is ${fmt(part)}`)
+            : row(`${p}% of ${fmt(n)} is ${fmt(part)}.`);
+    }
+    m = q.match(/(?:add\s+)?([\d.]+)\s*(?:%|percent)\s*(?:to|on(?:to)?)\s*£?([\d,]+(?:\.\d+)?)/);
+    if (!m) { const mm = q.match(/£?([\d,]+(?:\.\d+)?)\s*(?:plus|\+)\s*([\d.]+)\s*(?:%|percent)/); if (mm) m = [mm[0], mm[2], mm[1]]; }
+    if (m) {
+        const p = parseFloat(m[1]), n = parseFloat(String(m[2]).replace(/,/g, ''));
+        return row(`${fmt(n)} plus ${p}% is ${fmt(n * (1 + p / 100))}.`, `The ${p}% adds ${fmt(n * (p / 100))}`);
+    }
+    if ((m = q.match(/£?([\d,]+(?:\.\d+)?)\s*(?:minus|less|-)\s*([\d.]+)\s*(?:%|percent)/))) {
+        const n = parseFloat(m[1].replace(/,/g, '')), p = parseFloat(m[2]);
+        return row(`${fmt(n)} minus ${p}% is ${fmt(n * (1 - p / 100))}.`, `The ${p}% is ${fmt(n * (p / 100))}`);
+    }
+    if ((m = q.match(/what (?:%|percent(?:age)?) (?:is|of) £?([\d,.]+) (?:of|out of) £?([\d,.]+)/))) {
+        const a = parseFloat(m[1].replace(/,/g, '')), b = parseFloat(m[2].replace(/,/g, ''));
+        if (b) return row(`${fmt(a)} is ${chbNum((a / b) * 100)}% of ${fmt(b)}.`);
+    }
+    // -- Unit conversions --
+    const UNIT = { kg: 'kg', kilo: 'kg', kilos: 'kg', kilogram: 'kg', kilograms: 'kg', lb: 'lb', lbs: 'lb', pound: 'lb', pounds: 'lb', stone: 'st', st: 'st', mile: 'mi', miles: 'mi', km: 'km', kilometre: 'km', kilometres: 'km', kilometer: 'km', kilometers: 'km', m: 'm', metre: 'm', metres: 'm', meter: 'm', meters: 'm', ft: 'ft', foot: 'ft', feet: 'ft', cm: 'cm', centimetre: 'cm', centimetres: 'cm', inch: 'inch', inches: 'inch', litre: 'l', litres: 'l', liter: 'l', liters: 'l', l: 'l', pint: 'pt', pints: 'pt', gallon: 'gal', gallons: 'gal', c: 'c', celsius: 'c', centigrade: 'c', '°c': 'c', f: 'f', fahrenheit: 'f', '°f': 'f' };
+    if ((m = q.match(/(-?[\d,]+(?:\.\d+)?)\s*°?\s*([a-z°]+)\s+(?:in|to|into|as)\s+°?([a-z°]+)\b/))) {
+        const v = parseFloat(m[1].replace(/,/g, '')), a = UNIT[m[2]], b = UNIT[m[3]];
+        const CONV = { 'kg>lb': (x) => x * 2.20462, 'lb>kg': (x) => x / 2.20462, 'st>kg': (x) => x * 6.35029, 'kg>st': (x) => x / 6.35029, 'st>lb': (x) => x * 14, 'lb>st': (x) => x / 14, 'mi>km': (x) => x * 1.60934, 'km>mi': (x) => x / 1.60934, 'm>ft': (x) => x * 3.28084, 'ft>m': (x) => x / 3.28084, 'cm>inch': (x) => x / 2.54, 'inch>cm': (x) => x * 2.54, 'l>pt': (x) => x * 1.75975, 'pt>l': (x) => x / 1.75975, 'l>gal': (x) => x / 4.54609, 'gal>l': (x) => x * 4.54609, 'c>f': (x) => (x * 9) / 5 + 32, 'f>c': (x) => ((x - 32) * 5) / 9 };
+        const f2 = a && b ? CONV[a + '>' + b] : null;
+        if (f2) {
+            const NAME = { kg: 'kg', lb: 'lb', st: 'stone', mi: 'miles', km: 'km', m: 'metres', ft: 'feet', cm: 'cm', inch: 'inches', l: 'litres', pt: 'pints', gal: 'gallons', c: '°C', f: '°F' };
+            return row(`${chbNum(v)} ${NAME[a]} is ${chbNum(f2(v))} ${NAME[b]}.`, 'Converted on-device');
+        }
+    }
+    // -- Date arithmetic --
+    m = q.match(/(?:how (?:many|long)\s+)?(days?|weeks?)\s*(?:until|till|til|to go (?:until|to)|left (?:until|till))\s+(.+)$/);
+    if (!m) { const mm = q.match(/^how long until\s+(.+)$/); if (mm) m = [mm[0], 'days', mm[1]]; }
+    if (m) {
+        const target = chbComputeDate(m[2]);
+        if (target) {
+            const today = new Date(); today.setHours(0, 0, 0, 0);
+            const days = Math.round((target - today) / 864e5);
+            const pretty = target.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: target.getFullYear() !== today.getFullYear() ? 'numeric' : undefined });
+            const wk = days >= 21 ? ` — about ${Math.round(days / 7)} weeks` : days >= 14 ? ' — about a fortnight' : '';
+            if (/week/.test(m[1])) return row(`${chbNum(days / 7)} weeks (${days} days) until ${pretty}.`);
+            return row(days === 0 ? `That's today — ${pretty}.` : days === 1 ? `Tomorrow — ${pretty}.` : `${days} days until ${pretty}${wk}.`);
+        }
+    }
+    if ((m = q.match(/what day (?:of the week )?(?:is|was|does|will)\s+(.+?)(?:\s+(?:fall|land)(?:\s+on)?)?$/))) {
+        const target = chbComputeDate(m[1]);
+        if (target) return row(`${target.toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' })} is a ${target.toLocaleDateString('en-GB', { weekday: 'long' })}.`);
+    }
+    // -- World clock --
+    if ((m = q.match(/time (?:is it )?in ([a-z' ]+)$/))) {
+        const tz = CHB_CITY_TZ[m[1].trim()];
+        if (tz) {
+            try {
+                const t = new Date().toLocaleTimeString('en-GB', { timeZone: tz, hour: '2-digit', minute: '2-digit' });
+                const day = new Date().toLocaleDateString('en-GB', { timeZone: tz, weekday: 'long' });
+                return row(`It's ${t} on ${day} in ${m[1].trim().replace(/\b[a-z]/g, (c) => c.toUpperCase())}.`, 'Live local time');
+            } catch (e) {}
+        }
+    }
+    // -- Plain arithmetic ("12 * 7", "480 / 3", "(2+3)*4") --
+    const exprQ = q.replace(/^what(?:'s| is)\s+/, '').replace(/[£,]/g, '').replace(/x|×/g, '*').replace(/÷/g, '/').replace(/\bdivided by\b/g, '/').replace(/\btimes\b/g, '*').replace(/\bplus\b/g, '+').replace(/\bminus\b/g, '-').trim();
+    if (/^[\d\s+\-*/().]+$/.test(exprQ) && /[+\-*/]/.test(exprQ) && /\d/.test(exprQ)) {
+        try {
+            const v = chbCalc(exprQ);
+            if (isFinite(v)) return row(`${exprQ.replace(/\s+/g, ' ')} = ${fmt(v)}`);
+        } catch (e) {}
+    }
+    return null;
+}
+// ============================================================
+//  chbAlmanac — deterministic world-facts tier: capitals, currencies and UK bank
+//  holidays from a curated on-device pack. Retrieval, not generation — it can
+//  only quote what's in the pack, so it is never wrong, just occasionally silent.
+// ============================================================
+// [names (| separated aliases), capital, currency]
+const CHB_COUNTRIES = [
+    ['united kingdom|uk|britain|great britain', 'London', 'the pound sterling (GBP)'], ['england', 'London', 'the pound sterling (GBP)'], ['scotland', 'Edinburgh', 'the pound sterling (GBP)'], ['wales', 'Cardiff', 'the pound sterling (GBP)'], ['northern ireland', 'Belfast', 'the pound sterling (GBP)'],
+    ['france', 'Paris', 'the euro (EUR)'], ['germany', 'Berlin', 'the euro (EUR)'], ['spain', 'Madrid', 'the euro (EUR)'], ['portugal', 'Lisbon', 'the euro (EUR)'], ['italy', 'Rome', 'the euro (EUR)'], ['netherlands|holland', 'Amsterdam', 'the euro (EUR)'], ['belgium', 'Brussels', 'the euro (EUR)'], ['luxembourg', 'Luxembourg City', 'the euro (EUR)'], ['ireland', 'Dublin', 'the euro (EUR)'], ['austria', 'Vienna', 'the euro (EUR)'], ['switzerland', 'Bern', 'the Swiss franc (CHF)'], ['denmark', 'Copenhagen', 'the Danish krone (DKK)'], ['norway', 'Oslo', 'the Norwegian krone (NOK)'], ['sweden', 'Stockholm', 'the Swedish krona (SEK)'], ['finland', 'Helsinki', 'the euro (EUR)'], ['iceland', 'Reykjavik', 'the Icelandic krona (ISK)'],
+    ['poland', 'Warsaw', 'the zloty (PLN)'], ['czech republic|czechia', 'Prague', 'the Czech koruna (CZK)'], ['slovakia', 'Bratislava', 'the euro (EUR)'], ['hungary', 'Budapest', 'the forint (HUF)'], ['romania', 'Bucharest', 'the leu (RON)'], ['bulgaria', 'Sofia', 'the euro (EUR)'], ['greece', 'Athens', 'the euro (EUR)'], ['croatia', 'Zagreb', 'the euro (EUR)'], ['slovenia', 'Ljubljana', 'the euro (EUR)'], ['serbia', 'Belgrade', 'the Serbian dinar (RSD)'], ['albania', 'Tirana', 'the lek (ALL)'], ['montenegro', 'Podgorica', 'the euro (EUR)'], ['estonia', 'Tallinn', 'the euro (EUR)'], ['latvia', 'Riga', 'the euro (EUR)'], ['lithuania', 'Vilnius', 'the euro (EUR)'], ['ukraine', 'Kyiv', 'the hryvnia (UAH)'], ['russia', 'Moscow', 'the Russian rouble (RUB)'], ['turkey|turkiye', 'Ankara', 'the Turkish lira (TRY)'], ['cyprus', 'Nicosia', 'the euro (EUR)'], ['malta', 'Valletta', 'the euro (EUR)'], ['monaco', 'Monaco', 'the euro (EUR)'], ['vatican city|vatican', 'Vatican City', 'the euro (EUR)'], ['andorra', 'Andorra la Vella', 'the euro (EUR)'], ['liechtenstein', 'Vaduz', 'the Swiss franc (CHF)'], ['san marino', 'San Marino', 'the euro (EUR)'],
+    ['united states|usa|america|us|the states', 'Washington, D.C.', 'the US dollar (USD)'], ['canada', 'Ottawa', 'the Canadian dollar (CAD)'], ['mexico', 'Mexico City', 'the Mexican peso (MXN)'], ['brazil', 'Brasília', 'the Brazilian real (BRL)'], ['argentina', 'Buenos Aires', 'the Argentine peso (ARS)'], ['chile', 'Santiago', 'the Chilean peso (CLP)'], ['colombia', 'Bogotá', 'the Colombian peso (COP)'], ['peru', 'Lima', 'the sol (PEN)'], ['ecuador', 'Quito', 'the US dollar (USD)'], ['bolivia', 'La Paz', 'the boliviano (BOB)'], ['uruguay', 'Montevideo', 'the Uruguayan peso (UYU)'], ['paraguay', 'Asunción', 'the guaraní (PYG)'], ['venezuela', 'Caracas', 'the bolívar (VES)'], ['cuba', 'Havana', 'the Cuban peso (CUP)'], ['jamaica', 'Kingston', 'the Jamaican dollar (JMD)'], ['costa rica', 'San José', 'the colón (CRC)'], ['panama', 'Panama City', 'the balboa and US dollar'], ['guatemala', 'Guatemala City', 'the quetzal (GTQ)'], ['dominican republic', 'Santo Domingo', 'the Dominican peso (DOP)'],
+    ['china', 'Beijing', 'the yuan / renminbi (CNY)'], ['japan', 'Tokyo', 'the yen (JPY)'], ['south korea|korea', 'Seoul', 'the won (KRW)'], ['north korea', 'Pyongyang', 'the North Korean won (KPW)'], ['india', 'New Delhi', 'the Indian rupee (INR)'], ['pakistan', 'Islamabad', 'the Pakistani rupee (PKR)'], ['bangladesh', 'Dhaka', 'the taka (BDT)'], ['sri lanka', 'Sri Jayawardenepura Kotte (Colombo is the commercial capital)', 'the Sri Lankan rupee (LKR)'], ['nepal', 'Kathmandu', 'the Nepalese rupee (NPR)'], ['thailand', 'Bangkok', 'the baht (THB)'], ['vietnam', 'Hanoi', 'the dong (VND)'], ['cambodia', 'Phnom Penh', 'the riel (KHR)'], ['laos', 'Vientiane', 'the kip (LAK)'], ['myanmar|burma', 'Naypyidaw', 'the kyat (MMK)'], ['malaysia', 'Kuala Lumpur', 'the ringgit (MYR)'], ['singapore', 'Singapore', 'the Singapore dollar (SGD)'], ['indonesia', 'Jakarta', 'the rupiah (IDR)'], ['philippines', 'Manila', 'the Philippine peso (PHP)'], ['taiwan', 'Taipei', 'the New Taiwan dollar (TWD)'], ['hong kong', 'Hong Kong', 'the Hong Kong dollar (HKD)'], ['mongolia', 'Ulaanbaatar', 'the tugrik (MNT)'], ['kazakhstan', 'Astana', 'the tenge (KZT)'], ['uzbekistan', 'Tashkent', 'the som (UZS)'], ['afghanistan', 'Kabul', 'the afghani (AFN)'], ['iran', 'Tehran', 'the rial (IRR)'], ['iraq', 'Baghdad', 'the Iraqi dinar (IQD)'], ['israel', 'Jerusalem', 'the shekel (ILS)'], ['jordan', 'Amman', 'the Jordanian dinar (JOD)'], ['lebanon', 'Beirut', 'the Lebanese pound (LBP)'], ['saudi arabia', 'Riyadh', 'the riyal (SAR)'], ['united arab emirates|uae', 'Abu Dhabi', 'the dirham (AED)'], ['qatar', 'Doha', 'the Qatari riyal (QAR)'], ['kuwait', 'Kuwait City', 'the Kuwaiti dinar (KWD)'], ['bahrain', 'Manama', 'the Bahraini dinar (BHD)'], ['oman', 'Muscat', 'the Omani rial (OMR)'], ['georgia', 'Tbilisi', 'the lari (GEL)'], ['armenia', 'Yerevan', 'the dram (AMD)'], ['azerbaijan', 'Baku', 'the manat (AZN)'],
+    ['egypt', 'Cairo', 'the Egyptian pound (EGP)'], ['morocco', 'Rabat', 'the Moroccan dirham (MAD)'], ['tunisia', 'Tunis', 'the Tunisian dinar (TND)'], ['algeria', 'Algiers', 'the Algerian dinar (DZD)'], ['libya', 'Tripoli', 'the Libyan dinar (LYD)'], ['nigeria', 'Abuja', 'the naira (NGN)'], ['ghana', 'Accra', 'the cedi (GHS)'], ['kenya', 'Nairobi', 'the Kenyan shilling (KES)'], ['tanzania', 'Dodoma', 'the Tanzanian shilling (TZS)'], ['uganda', 'Kampala', 'the Ugandan shilling (UGX)'], ['ethiopia', 'Addis Ababa', 'the birr (ETB)'], ['south africa', 'Pretoria (executive; Cape Town is legislative)', 'the rand (ZAR)'], ['zambia', 'Lusaka', 'the kwacha (ZMW)'], ['botswana', 'Gaborone', 'the pula (BWP)'], ['namibia', 'Windhoek', 'the Namibian dollar (NAD)'], ['senegal', 'Dakar', 'the West African CFA franc (XOF)'], ['cameroon', 'Yaoundé', 'the Central African CFA franc (XAF)'], ['angola', 'Luanda', 'the kwanza (AOA)'], ['mozambique', 'Maputo', 'the metical (MZN)'], ['madagascar', 'Antananarivo', 'the ariary (MGA)'], ['mauritius', 'Port Louis', 'the Mauritian rupee (MUR)'], ['seychelles', 'Victoria', 'the Seychellois rupee (SCR)'], ['rwanda', 'Kigali', 'the Rwandan franc (RWF)'],
+    ['australia', 'Canberra', 'the Australian dollar (AUD)'], ['new zealand', 'Wellington', 'the New Zealand dollar (NZD)'], ['fiji', 'Suva', 'the Fijian dollar (FJD)'], ['papua new guinea', 'Port Moresby', 'the kina (PGK)'], ['greenland', 'Nuuk', 'the Danish krone (DKK)'],
+];
+// England & Wales bank holidays (extend yearly — cheap, exact).
+const CHB_BANK_HOLS = [
+    ['2026-01-01', "New Year's Day"], ['2026-04-03', 'Good Friday'], ['2026-04-06', 'Easter Monday'], ['2026-05-04', 'Early May bank holiday'], ['2026-05-25', 'Spring bank holiday'], ['2026-08-31', 'Summer bank holiday'], ['2026-12-25', 'Christmas Day'], ['2026-12-28', 'Boxing Day (substitute day)'],
+    ['2027-01-01', "New Year's Day"], ['2027-03-26', 'Good Friday'], ['2027-03-29', 'Easter Monday'], ['2027-05-03', 'Early May bank holiday'], ['2027-05-31', 'Spring bank holiday'], ['2027-08-30', 'Summer bank holiday'], ['2027-12-27', 'Christmas Day (substitute day)'], ['2027-12-28', 'Boxing Day (substitute day)'],
+];
+function chbAlmanacCountry(name) {
+    const n = String(name || '').toLowerCase().replace(/^the\s+/, '').replace(/[?.!]+$/, '').trim();
+    if (!n) return null;
+    return CHB_COUNTRIES.find((c) => c[0].split('|').includes(n)) || null;
+}
+function chbAlmanac(q0) {
+    const q = String(q0 || '').toLowerCase().replace(/[?]+\s*$/, '').trim();
+    const row = (label, sub) => ({ type: 'answer', id: 'almanac', label, sub: sub || 'From the on-device fact pack', wrap: true, run: () => { try { closeCmdK(); } catch (e) {} } });
+    let m;
+    if ((m = q.match(/capital (?:city )?of (.+)$/)) || (m = q.match(/what(?:'s| is) (.+?)'?s? capital(?: city)?$/))) {
+        const c = chbAlmanacCountry(m[1]);
+        if (c) return row(`${c[1]} is the capital of ${c[0].split('|')[0].replace(/\b[a-z]/g, (ch) => ch.toUpperCase())}.`);
+    }
+    if ((m = q.match(/(?:what )?currency (?:do(?:es)? (?:they|people)? ?use |used |is (?:it |used )?)?(?:in|of|for) (.+)$/)) || (m = q.match(/what (?:money|currency) do(?:es)? (.+?) (?:use|have)$/))) {
+        const c = chbAlmanacCountry(m[1]);
+        if (c) return row(`${c[0].split('|')[0].replace(/\b[a-z]/g, (ch) => ch.toUpperCase())} uses ${c[2]}.`);
+    }
+    if (/bank holiday/.test(q)) {
+        const today = todayDashed();
+        if (/next/.test(q) || !/list|all|this year|\d{4}/.test(q)) {
+            const next = CHB_BANK_HOLS.find(([d]) => d >= today);
+            if (next) {
+                const dt = new Date(next[0] + 'T00:00:00');
+                const days = Math.round((dt - new Date(today + 'T00:00:00')) / 864e5);
+                return row(`The next bank holiday is ${next[1]} — ${dt.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long' })}${days > 0 ? `, ${days} days away` : ' — today!'}.`, 'England & Wales');
+            }
+        }
+        const yr = (q.match(/\b(20\d\d)\b/) || [null, today.slice(0, 4)])[1];
+        const list = CHB_BANK_HOLS.filter(([d]) => d.startsWith(yr));
+        if (list.length) return row(`${yr} bank holidays: ` + list.map(([d, n]) => `${n} (${fmtDate(d)})`).join(' · '), 'England & Wales');
+    }
+    return null;
+}
 // ---- Smart queries: answer operational questions ("who owes money", "leaving
 // today", "who's arriving", "upcoming") from the live booking data. Returns an
 // array of result items — an "answer" summary row that routes to the relevant
@@ -2164,7 +2373,7 @@ function cmdkIntent(q) {
     // bare "which cottage …" (e.g. "which cottage has a hot tub") is a FEATURE
     // question, not an insight, and must not enter this section (which always emits
     // a figure). Audit finding: the bare form false-answered feature questions.
-    const INSIGHTS_RE = /\brevenue\b|\bincome\b|\bearn(ed|ings?|ing)?\b|\btakings?\b|\bturnover\b|\bgross\b|occupanc|occupied|\bnights? (booked|sold)\b|how many nights|average (rate|price|nightly)|\bavg\b|busiest|quietest|best month|worst month|which (cottage|property|house|month).{0,24}(earn|make|most|best|top|perform|money|revenue|income|busiest|profit|lucrative)|top cottage|how.?s business|how am i doing|\bperformance\b|how much (did i |have i |i )?(make|made|earn|take)/;
+    const INSIGHTS_RE = /\brevenue\b|\bincome\b|\bearn(ed|ings?|ing)?\b|\btakings?\b|\bturnover\b|\bgross\b|occupanc|occupied|\bnights? (booked|sold)\b|how many nights|average (rate|price|nightly)|\bavg\b|busiest|quietest|best month|worst month|which (cottage|property|house|month).{0,24}(earn|make|most|best|top|perform|money|revenue|income|busiest|profit|lucrative)|top cottage|how.?s business|how am i doing|\bperformance\b|how much (did i |have i |i )?(make|made|earn|take)|average (stay|length)|length of stay|how long do (guests|people)|typical (stay|visit)|repeat (guest|customer|visitor)|returning (guest|customer)|\brebook|guests? (who |that )?(come|came|keep coming) back/;
     // Operational list queries (deposits to return, balances to chase, volume) —
     // like insights, they must beat guest-name matching (a query like "overdue
     // balances" must not be read as guest "Olive Over").
@@ -2696,6 +2905,20 @@ function cmdkIntent(q) {
         const otaStays = blocks.filter((x) => isOtaBlock(x.bl)).map((x) => ({ pk: x.pk, b: { checkIn: x.bl.checkIn, checkOut: x.bl.checkOut }, ota: true }));
         const allStays = flat.map((x) => ({ pk: x.pk, b: x.b, ota: false })).concat(otaStays);
         const nights = (x) => (x.b.checkIn && x.b.checkOut ? dnights(x.b.checkIn, x.b.checkOut) : 0);
+        // Repeat-guest rate — from the unified customer directory (strong identity
+        // only, so two different "John Smith"s can never fake a repeat). All-time
+        // by nature: loyalty isn't a monthly figure.
+        if (/repeat (guest|customer|visitor)|returning (guest|customer)|\brebook|guests? (who |that )?(come|came|keep coming) back/.test(q)) {
+            let cust = [];
+            try { cust = chbCustomers(); } catch (e) {}
+            const withStay = cust.filter((c) => c.stays.length >= 1);
+            const rep = cust.filter((c) => c.stays.length >= 2).sort((a, z) => z.stays.length - a.stays.length || z.revenue - a.revenue);
+            if (!rep.length) return [{ type: 'figure', id: 'ins', label: 'No repeat guests yet', sub: `${withStay.length} guest${withStay.length === 1 ? '' : 's'} so far — every stay is a first stay`, run: openMoney }];
+            const pct = Math.round((100 * rep.length) / (withStay.length || 1));
+            const lead = rep[0];
+            const head = { type: 'figure', id: 'ins', label: `${rep.length} repeat guest${rep.length === 1 ? '' : 's'} — ${pct}% come back`, sub: `Of ${withStay.length} guest${withStay.length === 1 ? '' : 's'} all-time · ${chbSayFirst(lead.name)} leads with ${lead.stays.length} stays`, run: openMoney };
+            return [head].concat(rep.slice(0, 5).map((c) => ({ type: 'answer', id: 'ins-rep-' + c.key, label: `${c.name || 'Unnamed guest'} · ${c.stays.length} stays`, sub: `${c.nights} night${c.nights === 1 ? '' : 's'} · ${gbp(c.revenue)} lifetime`, run: () => { closeCmdK(); try { openCustomer(c.key); } catch (e) {} } })));
+        }
         // "busiest / quietest month" ranks by NIGHTS (occupancy, OTA-aware); "best /
         // worst month" ranks by REVENUE (money). Both carry the other figure alongside.
         if (/busiest|best month|quietest|worst month|which month/.test(q)) {
@@ -2752,6 +2975,21 @@ function cmdkIntent(q) {
         }
         if (/nights? (booked|sold)|how many nights/.test(q)) {
             return [{ type: 'figure', id: 'ins', label: `${soldNights} night${soldNights === 1 ? '' : 's'} booked ${plabel}`, sub: `${occPct}% occupancy · ${gbp(revenue)} revenue${otaNote}`, run: openMoney }];
+        }
+        // Average LENGTH of stay — a habitual question ("how long do guests stay")
+        // reads as all-year, so an unqualified ask widens to the current year; an
+        // explicit period ("average stay in august") keeps it. Checked before the
+        // average-RATE family so "avg stay" can't be misread as a price question.
+        if (/average (stay|length)|length of stay|how long do (guests|people)|typical (stay|visit)|\bavg\b.{0,8}\bstay/.test(q)) {
+            const hasP = !!nm || /this year|last year|last month|next month|this month/.test(q);
+            const yr2 = /last year/.test(q) ? dd0.getFullYear() - 1 : dd0.getFullYear();
+            const pool2 = hasP ? stays : allStays.filter((x) => x.b.checkIn && +x.b.checkIn.slice(0, 4) === yr2);
+            const lbl2 = hasP ? plabel : `in ${yr2}`;
+            const withN = pool2.map((x) => nights(x)).filter((n) => n > 0);
+            if (!withN.length) return [{ type: 'figure', id: 'ins', label: `No stays ${lbl2} yet`, sub: 'Nothing to average', run: openMoney }];
+            const avgN = Math.round((withN.reduce((s, n) => s + n, 0) / withN.length) * 10) / 10;
+            const minN = Math.min(...withN), maxN = Math.max(...withN);
+            return [{ type: 'figure', id: 'ins', label: `${avgN}-night average stay ${lbl2}`, sub: `Across ${withN.length} stay${withN.length === 1 ? '' : 's'} · shortest ${minN}, longest ${maxN}`, run: openMoney }];
         }
         if (/average (rate|price|nightly)|\bavg\b/.test(q)) {
             return [{ type: 'figure', id: 'ins', label: `${gbp(avgRate)} avg/night ${plabel}`, sub: `${gbp(revenue)} over ${payingNights} paid night${payingNights === 1 ? '' : 's'}${otaNote}`, run: openMoney }];
@@ -3800,6 +4038,14 @@ function cmdkBuildResults(ql) {
         const intent = cmdkIntent(ql);
         if (intent) results = intent.slice(0, 11);
     } catch (e) {}
+    // Breadth tier: deterministic compute (maths / VAT / percentages / unit
+    // conversions / date arithmetic / world clock) and the almanac fact pack.
+    // Every pattern needs explicit digits / units / date words, so business
+    // queries never fire it — which makes PREPENDING safe: "vat on £480" is a
+    // sum and the exact answer leads, while a keyword-matched business row
+    // (Income & tax) still rides below. Runs before the NLU model, so a sum can
+    // never be misread as a business question.
+    try { const c = chbCompute(ql) || chbAlmanac(ql); if (c) results = [c].concat(results).slice(0, 11); } catch (e) {}
     // Our own trained model (CHB_NLU): when the literal parser found no intent,
     // see if the phrasing MEANS one of the questions the engine can answer, and
     // re-ask with the canonical wording. Confidence-gated, so ordinary searches
