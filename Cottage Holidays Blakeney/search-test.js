@@ -640,6 +640,26 @@ if (typeof ctx.darkstarParse === 'function' && fs.existsSync(path.join(DIR, 'dar
     // centroid; a suppressed phrase joins the none pool.
     ctx.chbNluLearn('utterly bespoke wording zq', 'who owes me money');
     check('learned phrase folds into the Darkstar index', vm.runInContext('!!(DARKSTAR.st && DARKSTAR.st.cents)', ctx) === true);
+
+    // Comprehensive held-out accuracy floor — the FULL evaluation set
+    // (nlu-testset.js, 86 unseen paraphrases + 32 negatives) run through the
+    // whole cascade with all three tiers live. Measured 86/86 · 0 wrong · 32/32
+    // reject; the floor allows a little slack for future corpus edits but ZERO
+    // wrong intents and full negative rejection are hard gates. This is the
+    // durable guard on the model's real-world accuracy.
+    const TS = require('./nlu-testset.js');
+    let ho = 0, hw = 0; const hwrong = [];
+    for (const [q, want] of TS.HELD) {
+        const g = ctx.chbNluClassify(q);
+        if (g && (Array.isArray(want) ? want.includes(g.canonical) : g.canonical === want)) ho++;
+        else if (g) { hw++; hwrong.push(q + '→' + g.canonical); }
+    }
+    check(`NLU held-out recall ≥ 82/${TS.HELD.length} across the full cascade (got ${ho})`, ho >= 82, `only ${ho}/${TS.HELD.length}`);
+    check(`NLU held-out has ZERO wrong intents (${TS.HELD.length} phrases)`, hw === 0, hwrong.join(', '));
+    let tn = 0; const tleak = [];
+    for (const q of TS.NEG) if (ctx.chbNluClassify(q)) { tn++; tleak.push(q); }
+    check(`NLU test-set negatives all rejected (${TS.NEG.length})`, tn === 0, tleak.join(', '));
+
     vm.runInContext('DARKSTAR.st = null', ctx); // leave the shim lexical-only for any later checks
 } else {
     check('Darkstar asset + parser present', false, 'darkstar.bin or darkstarParse missing');
