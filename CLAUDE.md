@@ -149,6 +149,23 @@ plain keyword still returns the browsable `type:'help'` rows. Conversational ans
 ellipsised line (palette + both Assist Bars). Additive — the tested answer rows are
 unchanged. Gated by search-test §22 + §8 (how-to) + golden social cases.
 
+**Guided walkthroughs** (admin.js — help that HELPS ALL THE WAY THROUGH a task, not just
+describes it). Where the single-step `coachMark`/`coachTo` ("Show me where") points at ONE
+button and stops, `coachSequence(steps, i)` chains coach-marks INTO the task: each step
+spotlights its target (`coachPaintStep`, reusing the ring + `coachReposition`) with the
+sentence you'd have read, shows "Step N of M" + Next/Back, and AUTO-ADVANCES the instant the
+step's `until` signal fires (you picked the cottage / typed the name / set the dates). It waits
+for each target to appear (30×200ms), ends when the target vanishes or the last step's Done, and
+Escape stops it (`coachSeqStop`). The sequence overlay (`.coach-ov-seq`) is click-THROUGH
+(`pointer-events:none`, only the tip interactive) and sits ABOVE modals (`z-index:7000`) so it
+can spotlight fields INSIDE the Add-Booking box. Crucially SAFE: it only points and waits — it
+never submits or edits (you tap Save). Flows in `CHB_WALK`: `add-booking` (5-step field-by-field
+on the shared `#modal-*` ids), `block-dates` (the `#glass-dialog-fields` step), `take-payment` +
+`refund-deposit` (cross-navigation — open a `.bk-row`, then the hub's `[data-act="requestPayment"]`
+/ `[data-act="returnDeposit"]`, advancing on presence). `coachWalk(topicId)` launches; `chbNlgHowTo`
+prepends a **"Walk me through it"** chip for any topic with a `CHB_WALK[id]`. Gated by
+`ui-test-coach.js` (start, click-through + z-order, Next/Back, auto-advance, Done, Escape).
+
 **Assist Bars** — the palette's brain embedded IN workspaces: `chbAssistBar(hostId, opts)`
 (admin.js) injects a knot+input bar into static host divs, registered in
 `chbAssistInitBars()` (admin boot footer — guests never load any of it). ALL FOUR back-office

@@ -3419,6 +3419,9 @@ function chbNlgHowTo(t, more) {
     // The clamped sub-line carries a short précis; the full paragraph renders below.
     const sub = t.cat ? t.cat + ' · ' + steps.length + ' step' + (steps.length === 1 ? '' : 's') : steps.length + ' step' + (steps.length === 1 ? '' : 's');
     const chips = [];
+    // "Walk me through it" — for flows that have a guided walkthrough, lead with the
+    // hands-on option: help doesn't just describe the task, it drives it to the end.
+    if (typeof CHB_WALK !== 'undefined' && CHB_WALK[t.id]) chips.push({ label: 'Walk me through it', run: () => coachWalk(t.id) });
     if (t.doIt) chips.push(t.doIt);
     if (t.showMe) chips.push(t.showMe);
     (more || []).forEach((mt) => chips.push({ label: 'More: ' + mt.title, q: mt.title }));
@@ -3583,7 +3586,7 @@ function coachClear() {
     window.removeEventListener('scroll', coachReposition, true);
     window.removeEventListener('resize', coachReposition);
 }
-function coachKey(e) { if (e && e.key === 'Escape') coachClear(); }
+function coachKey(e) { if (e && e.key === 'Escape') { if (__coachSeq) coachSeqStop(); else coachClear(); } }
 // Flow launchers — close the palette, land on the right screen, then point at the
 // button. If the target can't be found the fallback just does the action.
 function coachTo(navFn, sel, text, fallback) {
@@ -3592,6 +3595,121 @@ function coachTo(navFn, sel, text, fallback) {
 }
 function coachAddBooking() { coachTo(() => tryAccessBackOffice(), 'button[data-act="openAddBooking"]', 'Tap “+ Add Booking” to start a new booking — you’ll pick the cottage and dates next.', () => openAddBooking()); }
 function coachBlockDates() { coachTo(() => tryAccessBackOffice(), 'button[data-act="openBlockDates"]', 'Tap “Block dates” to close off dates for maintenance or your own use.', () => openBlockDates()); }
+// ===================================================================
+//  Guided walkthroughs — help that HELPS ALL THE WAY THROUGH a task. Where
+//  "Show me where" points at ONE button and stops, a walkthrough chains
+//  coach-marks INTO the task: it spotlights each step with the sentence you'd
+//  have read and AUTO-ADVANCES the moment you finish it (its `until` goes true —
+//  you picked the cottage, typed the name…), with Next/Back for control. It only
+//  ever points and waits — it NEVER submits or edits for you (you tap Save), so
+//  it's safe on any flow. Entry: the "Walk me through it" chip on a how-to answer.
+// ===================================================================
+const coachVal = (s) => { const el = document.querySelector(s); return el ? String(el.value || '').trim() : ''; };
+const coachHas = (s) => { try { return !!document.querySelector(s); } catch (e) { return false; } };
+let __coachSeq = null; // { steps, i, poll, appearT, wasDone, at }
+function coachSeqStop() {
+    if (__coachSeq) { if (__coachSeq.poll) clearInterval(__coachSeq.poll); if (__coachSeq.appearT) clearTimeout(__coachSeq.appearT); }
+    __coachSeq = null;
+    coachClear();
+}
+function coachSequence(steps, i) {
+    if (!Array.isArray(steps) || !steps.length) return;
+    i = Math.max(0, i || 0);
+    if (__coachSeq) { if (__coachSeq.poll) clearInterval(__coachSeq.poll); if (__coachSeq.appearT) clearTimeout(__coachSeq.appearT); }
+    if (i >= steps.length) { coachSeqStop(); try { if (typeof toast === 'function') toast('You’re all set'); } catch (e) {} return; }
+    const step = steps[i];
+    __coachSeq = { steps, i, poll: null, appearT: null, wasDone: false, at: 0 };
+    let tries = 0;
+    const paint = () => {
+        if (!__coachSeq || __coachSeq.steps !== steps || __coachSeq.i !== i) return; // superseded
+        const el = typeof step.sel === 'function' ? step.sel() : document.querySelector(step.sel);
+        if (!el) {
+            if (++tries > 30) { coachSeqStop(); return; } // target never appeared — bail cleanly
+            __coachSeq.appearT = setTimeout(paint, 200);
+            return;
+        }
+        coachPaintStep(el, step.say, { i, n: steps.length,
+            onNext: () => coachSequence(steps, i + 1),
+            onBack: () => coachSequence(steps, i - 1),
+            onDone: () => coachSequence(steps, steps.length) });
+        __coachSeq.wasDone = typeof step.until === 'function' ? (() => { try { return !!step.until(); } catch (e) { return false; } })() : false;
+        __coachSeq.at = Date.now();
+        __coachSeq.poll = setInterval(() => {
+            if (!__coachSeq) return;
+            // Target completed / closed (modal shut, action taken) → move on (or finish).
+            if (__coachTarget && !document.contains(__coachTarget)) { coachSequence(steps, i + 1); return; }
+            if (typeof step.until === 'function') {
+                let done = false; try { done = !!step.until(); } catch (e) {}
+                // A pre-satisfied step still shows for a beat before it advances.
+                if (done && (!__coachSeq.wasDone || Date.now() - __coachSeq.at > 1400)) coachSequence(steps, i + 1);
+            }
+        }, 350);
+    };
+    paint();
+}
+// The ring + a Step N of M bubble with Next/Back. Reuses coachReposition/coachClear;
+// the overlay is click-THROUGH (CSS .coach-ov-seq) so you can actually use the field
+// beneath, and sits above modals so it can spotlight fields inside the Add-Booking box.
+function coachPaintStep(el, text, ctx) {
+    coachClear();
+    try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) {}
+    const ov = document.createElement('div');
+    ov.id = 'coach-ov';
+    ov.className = 'coach-ov coach-ov-seq';
+    const ring = document.createElement('div');
+    ring.className = 'coach-ring';
+    const tip = document.createElement('div');
+    tip.className = 'coach-tip';
+    const isLast = ctx.i >= ctx.n - 1;
+    tip.innerHTML =
+        `<div class="coach-tip-step">Step ${ctx.i + 1} of ${ctx.n}</div>` +
+        `<div class="coach-tip-text">${escapeHtml(text)}</div>` +
+        `<div class="coach-tip-actions">` +
+        (ctx.i > 0 ? '<button type="button" class="coach-tip-back">Back</button>' : '<span></span>') +
+        `<button type="button" class="coach-tip-btn">${isLast ? 'Done' : 'Next'}</button>` +
+        `</div>`;
+    ov.appendChild(ring);
+    ov.appendChild(tip);
+    document.body.appendChild(ov);
+    const back = tip.querySelector('.coach-tip-back');
+    if (back) back.addEventListener('click', ctx.onBack);
+    tip.querySelector('.coach-tip-btn').addEventListener('click', isLast ? ctx.onDone : ctx.onNext);
+    __coachTarget = el;
+    coachReposition();
+    document.addEventListener('keydown', coachKey);
+    window.addEventListener('scroll', coachReposition, true);
+    window.addEventListener('resize', coachReposition);
+}
+// The four flows (the ones that walk cleanly). Each `start` opens the surface; the
+// steps spotlight it through to the finish. `until` is the auto-advance signal.
+const CHB_WALK = {
+    'add-booking': { start: () => openAddBooking(), steps: [
+        { sel: '#modal-property', say: 'Choose which cottage this booking is for.', until: () => coachVal('#modal-property').length > 0 },
+        { sel: '#modal-date-trigger', say: 'Tap here to pick the check-in and check-out dates.', until: () => coachVal('#modal-checkin') !== '' && coachVal('#modal-checkout') !== '' },
+        { sel: '#modal-name', say: 'Type the guest’s name — past guests suggest as you type.', until: () => coachVal('#modal-name').length > 1 },
+        { sel: '#modal-email', say: 'Add their email so booking emails reach them.', until: () => /@/.test(coachVal('#modal-email')) },
+        { sel: '#modal-save-btn', say: 'Tap Save — you can take payment straight after.' },
+    ] },
+    'block-dates': { start: () => openBlockDates(), steps: [
+        { sel: '#glass-dialog-fields', say: 'Pick the cottage and the first & last nights to close off, then tap Block.' },
+    ] },
+    'take-payment': { start: () => { Promise.resolve(openBookings()).then(() => { try { bookingsSetFilter('needspay'); } catch (e) {} }); }, steps: [
+        { sel: '#bookings-list .bk-row', say: 'Open a booking that still owes money.', until: () => coachHas('[data-act="requestPayment"]') },
+        { sel: '[data-act="requestPayment"]', say: 'In the Money card, tap Request payment to email a secure pay link.' },
+    ] },
+    'refund-deposit': { start: () => { openBookings(); }, steps: [
+        { sel: '#bookings-list .bk-row', say: 'Open the booking whose deposit you’re returning (after checkout).', until: () => coachHas('[data-act="returnDeposit"]') },
+        { sel: '[data-act="returnDeposit"]', say: 'Tap Return deposit to refund in full — or Keep (damage) to retain some.' },
+    ] },
+};
+function coachWalk(topicId) {
+    const w = CHB_WALK[topicId];
+    if (!w) return;
+    coachSeqStop();
+    closeCmdK();
+    try { if (w.start) w.start(); } catch (e) {}
+    setTimeout(() => coachSequence(w.steps, 0), 400);
+}
 let __cmdkNluOff = false; // one-shot bypass (the note's "search the literal words")
 function cmdkBuildResults(ql) {
     let results = [];
