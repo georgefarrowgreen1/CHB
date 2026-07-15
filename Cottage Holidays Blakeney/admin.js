@@ -2119,6 +2119,11 @@ function cmdkIntent(q) {
             const cb = findBookingById(__cmdkConvCtx.id);
             if (cb) ent = { type: 'booking', id: __cmdkConvCtx.id, name: cb.name || 'this guest', b: cb };
         }
+        // Cross-page memory: no hub open and this palette didn't surface a record,
+        // but you were reading one moments ago on another page — a pronoun
+        // ("email them", "their balance") resolves to it. Requires a real pronoun
+        // (anaphor), so a fresh generic query is never hijacked by stale context.
+        if (!ent && anaphor) { try { ent = cmdkRecentEntity(); } catch (e) {} }
         const trigger = __cmdkEntity ? /\b(them|their|this (one|guest|booking|enquiry|stay|person)|refund|deposit|balance|pay|email|reply|approve|decline|other (stay|booking|enquir))\b/.test(q) : anaphor;
         if (ent && trigger) {
             // A question about the record gets a direct ANSWER row first — the
@@ -3609,7 +3614,16 @@ function cmdkSearchCore(q, allowCorrect) {
             suggestions = cmdkEntityActions(__cmdkEntity).map((a, i) => ({ type: 'action', id: 'sug-' + i, label: a.label, sub: 'For ' + (__cmdkEntity.name || 'this'), run: a.run }));
             __cmdkSugLabel = __cmdkEntity.name || 'this';
         } else if (__cmdkScope === 'all') {
-            try { suggestions = cmdkContextSuggest() || []; } catch (e) { suggestions = []; }
+            // Cross-page pickup: not on its hub, but you were reading a record moments
+            // ago — offer to continue with it from wherever you are now, before the
+            // generic page suggestions. Ages out with the memory (CMDK_RECENT_MS).
+            const recent = (() => { try { return cmdkRecentEntity(); } catch (e) { return null; } })();
+            if (recent) {
+                suggestions = cmdkEntityActions(recent).map((a, i) => ({ type: 'action', id: 'recent-' + i, label: a.label, sub: 'Continue with ' + (recent.name || 'this'), run: a.run }));
+                __cmdkSugLabel = recent.name || 'Recently viewed';
+            } else {
+                try { suggestions = cmdkContextSuggest() || []; } catch (e) { suggestions = []; }
+            }
         }
         const kof = (it) => (it && it.id != null ? it.type + ':' + it.id : null);
         const seenKeys = new Set(suggestions.map(kof).filter(Boolean));
@@ -3726,7 +3740,7 @@ function cmdkSearchCore(q, allowCorrect) {
     // Conversational memory: an answer that surfaced a specific booking becomes
     // the referent for the next pronoun follow-up (see cmdkIntent 0a).
     const convRow = (built.results || []).find((r) => r && r.type === 'booking' && r.id != null);
-    if (convRow) __cmdkConvCtx = { type: 'booking', id: convRow.id };
+    if (convRow) { __cmdkConvCtx = { type: 'booking', id: convRow.id }; try { chbStampRecent('booking', convRow.id, convRow.name); } catch (e) {} }
     // The status pill NAMES what the model just did — Understood / By meaning /
     // Best guess — instead of only changing colour. ml-active stays as the boolean
     // "the model drove this" for the surrounding CSS.
@@ -4009,6 +4023,35 @@ function cmdkCurrentEntity() {
     if (v === 'view-enquiry-hub' && typeof __enqHubId !== 'undefined' && __enqHubId) {
         const e = Array.isArray(enquiries) ? enquiries.find((x) => String(x.id) === String(__enqHubId)) : null;
         if (e) return { type: 'enquiry', id: __enqHubId, name: e.name || 'this enquiry', e };
+    }
+    return null;
+}
+// ---- Cross-page record memory ---------------------------------------------
+// The record you MOST RECENTLY engaged with — a hub you opened, or one the
+// palette surfaced — remembered ACROSS navigation so the assistant stays
+// contextually aware after you've LEFT its page. Where __cmdkEntity is only the
+// record whose hub is open right now, and __cmdkConvCtx only lives for the
+// current palette session, this persists through page changes and ages out — so
+// from the Payments page you can still say "email them" or continue "their
+// balance" about the booking you were reading a moment ago. Stamped on hub open
+// and on any palette answer that surfaces a booking; resolved only while fresh
+// AND the record still exists, so stale context can never hijack a later query.
+let __cmdkLastEntity = null; // { type:'booking'|'enquiry', id, name, at }
+const CMDK_RECENT_MS = 6 * 60 * 1000;
+function chbStampRecent(type, id, name) {
+    if (!type || id == null) return;
+    try { __cmdkLastEntity = { type, id, name: name || '', at: Date.now() }; } catch (e) {}
+}
+function cmdkRecentEntity() {
+    const r = __cmdkLastEntity;
+    if (!r || (Date.now() - r.at) > CMDK_RECENT_MS) return null;
+    if (r.type === 'booking' && typeof findBookingById === 'function') {
+        const b = findBookingById(r.id);
+        if (b) return { type: 'booking', id: r.id, name: b.name || r.name || 'this guest', b };
+    }
+    if (r.type === 'enquiry' && typeof enquiries !== 'undefined' && Array.isArray(enquiries)) {
+        const e = enquiries.find((x) => String(x.id) === String(r.id));
+        if (e) return { type: 'enquiry', id: r.id, name: e.name || r.name || 'this enquiry', e };
     }
     return null;
 }
@@ -4517,7 +4560,7 @@ function abarRoute(id, q) {
         // booking becomes the referent for the next pronoun follow-up ("email
         // them", "when do they arrive") typed into ANY bar or the palette.
         const convRow = st.rows.find((r) => r && r.type === 'booking' && r.id != null);
-        if (convRow) __cmdkConvCtx = { type: 'booking', id: convRow.id };
+        if (convRow) { __cmdkConvCtx = { type: 'booking', id: convRow.id }; try { chbStampRecent('booking', convRow.id, convRow.name); } catch (e) {} }
         if (host) host.classList.add('has-answer');
         // The status pill NAMES what the model did (Understood / By meaning / Best
         // guess) — same signal as the palette, now legible without decoding colour.
@@ -6282,6 +6325,7 @@ async function openBookingHub(bookingId, quiet) {
     const alreadyHere = prev && prev.id === 'view-booking-hub' && __hubBookingId === bookingId;
     if (prev && prev.id !== 'view-booking-hub') __hubReturnView = prev.id;
     __hubBookingId = bookingId;
+    try { chbStampRecent('booking', bookingId, b && b.name); } catch (e) {} // cross-page memory
     const content = document.getElementById('booking-hub-content');
     if (bookingsSplitWide()) {
         // Master–detail: dock the hub beside the bookings index (the shared
@@ -14036,6 +14080,7 @@ async function openEnquiryHub(enqId) {
         return;
     }
     __enqHubId = enqId;
+    try { chbStampRecent('enquiry', enqId, e && e.name); } catch (er) {} // cross-page memory
     const content = document.getElementById('enquiry-hub-content');
     const prev = document.querySelector('.page-view.active');
     if (inboxSplitWide()) {

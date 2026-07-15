@@ -188,7 +188,14 @@ pills carry a scannable leading state pip (`.abar-status::before`, the palette h
 all pills pop in (`chb-ms-in`) and honour `prefers-reduced-motion`. The dock button keeps a
 purple Darkstar tint. Plus walk-away
 (focusout) dead-end capture into the shared miss store, and `__cmdkConvCtx` carries across
-bars↔palette. EVERY back-office bar sits ABOVE the header divider line (one admin.css rule:
+bars↔palette. **Cross-page context memory** (`__cmdkLastEntity`, `chbStampRecent`/
+`cmdkRecentEntity`, `CMDK_RECENT_MS` 6min): the record you last engaged with — a hub you opened
+(`openBookingHub`/`openEnquiryHub`) or one a palette/bar answer surfaced — is remembered ACROSS
+navigation, so from ANY page a pronoun ("email them", "their balance") resolves to it and the
+empty landing offers a "Continue with [name]" row. Distinct from `__cmdkEntity` (only the OPEN
+hub) and `__cmdkConvCtx` (only this palette session); resolved only while fresh AND the record
+still exists, so stale/deleted context never hijacks a later query, and a real pronoun is
+required so a generic query is never captured (search-test §21b). EVERY back-office bar sits ABOVE the header divider line (one admin.css rule:
 `#view-backoffice > #abar-today`, `#inbox-head > #abar-inbox`, `#settings-chrome > #abar-manage`,
 `#accounts-chrome > #abar-accounts` — the header's own `border-bottom` is dropped and re-hung
 under the bar, so the order always reads title → SEARCH → line → content; on Manage/Payments the
