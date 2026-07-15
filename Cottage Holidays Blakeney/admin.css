@@ -1072,8 +1072,6 @@
   margin-top: 24px;
   line-height: 1.6;
   max-width: 720px;
-}body.owner-mode #footer-backoffice {
-  display: none;
 }body.owner-mode header,
 body.owner-mode #mobileMenu {
   display: none !important;
@@ -2601,9 +2599,6 @@ body.light-mode .cmdk-editor-input {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 8%, var(--glass-hover));
   outline: none;
-}
-.abar-ambient .abar-chip {
-  color: var(--text-muted);
 }
 .abar-panel .cmdk-deep-cta {
   margin: 6px 0 2px;
