@@ -331,6 +331,10 @@ const CASES = [
     // ---- Month jump + commands (shape only) ----
     { q: 'jump to august', head: /Jump the calendar to 01\/08/ },
     { q: 'block jollyboat next weekend', any: /[Bb]lock.*Jollyboat|Jollyboat.*[Bb]lock/ },
+    // ---- Booking logic: quotes + move/extend proposals (shape-level) ----
+    { q: 'how much for 3 nights from 20 december at jollyboat', head: /£[\d,.]+ for 3 nights at Jollyboat/ },
+    { q: 'move bob back a week', head: /Move Bob Carter: \d{2}\/\d{2}\/\d{4} → \d{2}\/\d{2}\/\d{4}/ },
+    { q: 'extend bob by 2 nights', head: /Extend Bob Carter: .*5 nights/ },
     // ---- Out of scope must stay quiet ----
     { q: 'zxqv plumbus fandangle', nul: true },
     { q: 'welcome text wording ideas', nul: true },

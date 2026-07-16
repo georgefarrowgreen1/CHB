@@ -1201,6 +1201,65 @@ if (typeof ctx.chbConvResolve === 'function' && typeof ctx.cmdkBuildResults === 
     vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);__cmdkCustomers=null;__cmdkFrame=null;', ctx);
 } else fail('chbConvResolve missing from the bundle');
 
+// ---- 34. Booking logic in search: live QUOTES (priced from the model, checked
+// against the calendar, one-tap prefilled booking), clash-aware add/block
+// commands, and MOVE/EXTEND/SHORTEN proposals that compute + verify new dates
+// and open the editor prefilled — never saving anything themselves. ----
+if (typeof ctx.cmdkBookClash === 'function') {
+    const today = ctx.todayDashed();
+    const plus = (nn) => { const dd = new Date(today + 'T00:00:00Z'); dd.setUTCDate(dd.getUTCDate() + nn); return dd.toISOString().slice(0, 10); };
+    const mkb = (id, name, ci, co) => ({ id, name, email: 'x@x.co', checkIn: ci, checkOut: co, adults: 2, children: 0, payment: 'paid', holdStatus: 'none', agreedPrice: { total: 500 } });
+    ctx.__seedBk = { jb: [mkb(1, 'Bob Carter', plus(10), plus(13)), mkb(2, 'Alice Marsh', plus(-1), plus(2))], ta: [mkb(3, 'Cara Dunn', plus(20), plus(23))] };
+    vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);dbBookings.jollyboat=__seedBk.jb;dbBookings["21a"]=__seedBk.ta;__cmdkCustomers=null;__cmdkFrame=null;', ctx);
+    const d = (n) => { const x = new Date(today + 'T00:00:00'); x.setDate(x.getDate() + n); return x.getDate() + ' ' + x.toLocaleDateString('en-GB', { month: 'short' }).toLowerCase(); };
+    const rows = (q) => ctx.cmdkIntent(q) || [];
+    const head = (q) => { const r = rows(q)[0]; return r ? `${r.label} | ${r.sub || ''}` : '(none)'; };
+
+    // Quotes.
+    let h = head(`how much for ${d(30)} to ${d(33)} at jollyboat`);
+    check('quote: free dates → £ total, nights, free ✓, avg/night', /£[\d,.]+ for 3 nights at Jollyboat \|.*free ✓.*\/night/.test(h), h);
+    const exp = ctx.priceBreakdown('jollyboat', 2, 0, plus(30), plus(33));
+    check('quote: the figure IS the live price model’s total', h.indexOf(exp.total.toFixed(2)) >= 0, `${h} vs ${exp.total}`);
+    h = head(`quote for jollyboat ${d(10)} to ${d(12)}`);
+    check('quote: taken dates say WHO has them', /⚠ taken then \(Bob Carter\)/.test(h), h);
+    const alt = rows(`quote for jollyboat ${d(10)} to ${d(12)}`).slice(1);
+    check('quote: free ALTERNATIVES ride beneath, priced', alt.length >= 1 && /is free those dates — £[\d,.]+/.test(alt[0].label), alt.map((r) => r.label).join(' | '));
+    h = head(`how much for 3 nights from ${d(40)}`);
+    check('quote: no cottage named → "From £X" across the fleet', /^From £[\d,.]+ — /.test(h), h);
+    h = head('price for next weekend 2 adults 1 child');
+    check('quote: party size parsed into the sub', /2 adults \+ 1 child/.test(h), h);
+    // Clash-aware commands.
+    h = head(`add booking for smith ${d(10)} to ${d(12)} jollyboat`);
+    check('add-booking command warns on a clash + names the free cottages', /⚠ Jollyboat is taken then \(Bob Carter\) — .*(free|nothing else)/.test(h), h);
+    h = head(`add booking for smith ${d(30)} to ${d(32)} jollyboat`);
+    check('add-booking command confirms free dates', /Dates are free ✓/.test(h), h);
+    h = head(`block jollyboat ${d(10)} to ${d(12)}`);
+    check('block command warns when a GUEST is booked over the range', /⚠ Bob Carter is booked/.test(h), h);
+    // Move / extend / shorten proposals.
+    h = head('move bob back a week');
+    check('"move bob back a week" → computed dates + free verdict + editor route', /Move Bob Carter: \d{2}\/\d{2}\/\d{4} → \d{2}\/\d{2}\/\d{4} \(3 nights\) \| Free ✓/.test(h), h);
+    h = head(`move bob to ${d(19)}`);
+    check('"move bob to <date>" keeps the stay length', /\(3 nights\)/.test(h), h);
+    h = head('extend bob by 2 nights');
+    check('"extend bob by 2 nights" → 5-night proposal', /Extend Bob Carter: .*\(5 nights\)/.test(h), h);
+    h = head('shorten bob by a night');
+    check('"shorten bob by a night" → 2-night proposal', /Shorten Bob Carter: .*\(2 nights\)/.test(h), h);
+    // Clash on the proposed dates is NAMED (move Bob onto Cara's cottage dates
+    // is fine — different cottage — so clash-check within the same cottage).
+    vm.runInContext('dbBookings.jollyboat.push({ id: 9, name: "Wall Guest", checkIn: "' + plus(17) + '", checkOut: "' + plus(20) + '", adults: 2, children: 0, payment: "paid", holdStatus: "none", agreedPrice: { total: 100 } });', ctx);
+    h = head('move bob back a week');
+    check('a proposal that clashes NAMES the blocker', /⚠ Clashes with Wall Guest/.test(h), h);
+    vm.runInContext('dbBookings.jollyboat = dbBookings.jollyboat.filter((b) => b.id !== 9);', ctx);
+    h = head('move alice back a week');
+    check('an arrived guest’s dates are locked (no move proposal)', /Alice Marsh has already arrived — dates are locked/.test(h), h);
+    // Guards.
+    h = head('how much have i earned this year');
+    check('money-insights question is NEVER a quote', /booked in \d{4}/.test(h) && !/night at|From £/.test(h), h);
+    check('"move the calendar to august" is not a guest command (falls through)', !/Move .*:/.test(head('move the calendar to august')), head('move the calendar to august'));
+    check('quote without any dates falls through', !/^From £|for \d+ nights at/.test(head('how much does it cost')), head('how much does it cost'));
+    vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);__cmdkCustomers=null;', ctx);
+} else fail('cmdkBookClash missing from the bundle');
+
 // ---- 30. Darkstar-C (contextual encoder) plumbing. The encoder itself is
 // benched offline (it can't run in CI); what MUST hold here is the machinery:
 // the WordPiece tokenizer, the encoder-built index (tagged CHB_HIST.enc, its

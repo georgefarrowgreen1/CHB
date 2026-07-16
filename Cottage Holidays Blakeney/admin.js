@@ -372,6 +372,12 @@ function cmdkParseDates(q, today) {
         const mi = monIdx(m[1]), yr = yearFor(mi);
         return { from: iso(new Date(yr, mi, +m[2])), to: iso(new Date(yr, mi, +m[3])) };
     }
+    // "15 aug to 18 aug" (month named on both sides — spans month ends too)
+    if ((m = q.match(new RegExp('\\b(\\d{1,2})\\s+(' + MO + ')[a-z]*\\s*(?:-|–|to|until|till|thru)\\s*(\\d{1,2})\\s+(' + MO + ')[a-z]*\\b')))) {
+        const mi1 = monIdx(m[2]), mi2 = monIdx(m[4]);
+        const y1 = yearFor(mi1), y2 = mi2 < mi1 ? y1 + 1 : yearFor(mi2);
+        return { from: iso(new Date(y1, mi1, +m[1])), to: iso(new Date(y2, mi2, +m[3])) };
+    }
     // single "12 aug" or "aug 12" → check-in only
     if ((m = q.match(new RegExp('\\b(\\d{1,2})\\s+(' + MO + ')[a-z]*\\b'))) || (m = q.match(new RegExp('\\b(' + MO + ')[a-z]*\\s+(\\d{1,2})\\b')))) {
         const dayStr = /^\d/.test(m[1]) ? m[1] : m[2];
@@ -391,6 +397,30 @@ function cmdkParseDates(q, today) {
     if (/\bnext week\b/.test(q)) { const f = addOn(upcoming(1), 7); return { from: iso(f), to: iso(addOn(f, 7)) }; }
     if (/\bthis week\b/.test(q)) { const f = upcoming(1); return { from: iso(f), to: iso(addOn(f, 7)) }; }
     return null;
+}
+// First booking/block occupying [from, to) on a cottage — the calendar truth
+// behind every booking command and quote. excludeId skips the booking being
+// moved so it never clashes with itself.
+function cmdkBookClash(pk, from, to, excludeId) {
+    if (!pk || !from || !to) return null;
+    const b = (dbBookings[pk] || []).find((o) => o.id !== excludeId && o.checkIn && o.checkOut && o.checkIn < to && o.checkOut > from);
+    if (b) return { name: b.name || 'a guest', checkIn: b.checkIn, checkOut: b.checkOut };
+    const bl = (((dbBlocks || {})[pk]) || []).find((x) => x.checkIn && x.checkOut && x.checkIn < to && x.checkOut > from);
+    if (bl) return { name: (bl.source && bl.source !== 'owner' ? bl.source + ' booking' : 'an owner block'), checkIn: bl.checkIn, checkOut: bl.checkOut };
+    return null;
+}
+// Open the EDIT form for a booking with proposed new dates dropped in — the
+// move/extend commands' landing. Never saves; the owner reviews and taps Save.
+function cmdkPrefillEditDates(bookingId, checkIn, checkOut) {
+    openEditBooking(bookingId);
+    try {
+        const ci = document.getElementById('modal-checkin');
+        const co = document.getElementById('modal-checkout');
+        if (ci) ci.value = checkIn;
+        if (co) co.value = checkOut;
+        refreshModalDateTrigger();
+        updateModalPrice();
+    } catch (e) {}
 }
 // Open the Add-Booking form pre-filled (used by the "add booking for…" command).
 function cmdkPrefillAddBooking(p) {
@@ -419,9 +449,16 @@ function cmdkCommand(q, today) {
     const cmd = (label, sub, run) => [{ type: 'answer', id: 'cmdk-command', label, sub, run }];
     // BLOCK — "block <cottage> <dates>"; needs a cottage or dates to be a command.
     if (/\bblock(ed|ing|s)?\b/.test(q) && (pk || dates)) {
+        // Calendar-aware: blocking over a GUEST's stay is almost always a
+        // mistake — say so up front rather than after the form.
+        let bSub = 'Opens Block-dates pre-filled — just confirm';
+        if (pk && dates && dates.to) {
+            const c = cmdkBookClash(pk, dates.from, dates.to, null);
+            if (c) bSub = `⚠ ${c.name} is booked ${fmtDate(c.checkIn)}–${fmtDate(c.checkOut)} — check before you block`;
+        }
         return cmd(
             `Block ${cName || 'dates'}${range ? ' · ' + range : ''}`,
-            'Opens Block-dates pre-filled — just confirm',
+            bSub,
             () => { closeCmdK(); openBlockDates({ prop: pk || '', from: dates ? dates.from : '', to: dates ? dates.to || '' : '' }); },
         );
     }
@@ -440,11 +477,90 @@ function cmdkCommand(q, today) {
             raw = raw.split(/\s+/).filter((w) => !drop.has(w.toLowerCase())).join(' ');
         }
         const name = raw.replace(/\b[a-z]/g, (c) => c.toUpperCase());
+        // Calendar-aware: check the asked cottage + dates BEFORE the form opens,
+        // and name the free alternatives when they're taken.
+        let aSub = 'Opens the new-booking form, pre-filled';
+        if (pk && dates && dates.to) {
+            const c = cmdkBookClash(pk, dates.from, dates.to, null);
+            if (c) {
+                const free = Object.keys(dbBookings || {}).filter((k) => k !== pk && !cmdkBookClash(k, dates.from, dates.to, null))
+                    .map((k) => (propertyMeta[k] || {}).name || k);
+                aSub = `⚠ ${cName} is taken then (${c.name}) — ${free.length ? free.join(' or ') + ' is free' : 'nothing else is free those dates'}`;
+            } else aSub = 'Dates are free ✓ · opens the new-booking form, pre-filled';
+        }
         return cmd(
             `Add booking${name ? ' · ' + name : ''}${range ? ' · ' + range : ''}${cName ? ' · ' + cName : ''}`,
-            'Opens the new-booking form, pre-filled',
+            aSub,
             () => { closeCmdK(); cmdkPrefillAddBooking({ propKey: pk, checkIn: dates ? dates.from : '', checkOut: dates ? dates.to || '' : '', name }); },
         );
+    }
+    // MOVE / EXTEND / SHORTEN a named guest's booking — search COMPUTES the new
+    // dates, VERIFIES them against the calendar, and opens the editor
+    // pre-filled with the proposal. It NEVER saves: the owner reviews the
+    // change (price recalculates live) and taps Save. English note: "move back
+    // / later" pushes the stay LATER; "forward / earlier" brings it EARLIER.
+    const findGuestBooking = (raw) => {
+        const words = String(raw || '').trim().toLowerCase().split(/\s+/).filter((w) => w.length >= 3);
+        if (!words.length) return null;
+        let best = null;
+        Object.keys(dbBookings || {}).forEach((k) => (dbBookings[k] || []).forEach((b) => {
+            if (!b.name || !b.checkIn || !b.checkOut) return;
+            if (!words.some((w) => b.name.toLowerCase().includes(w))) return;
+            const fut = b.checkIn >= t;
+            if (!best || (fut && !best.fut) || (fut === best.fut && b.checkIn < best.b.checkIn)) best = { pk: k, b, fut };
+        }));
+        return best;
+    };
+    const shiftDays = (isoD, n) => { const x = new Date(isoD + 'T00:00:00'); x.setDate(x.getDate() + n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
+    const num1 = (s) => (/^\d+$/.test(s || '') ? +s : /^(a|an|one)$/.test(s || '') ? 1 : /^two$/.test(s || '') ? 2 : /^three$/.test(s || '') ? 3 : null);
+    const proposeRow = (hit, newIn, newOut, verb) => {
+        const b = hit.b;
+        if (b.checkIn <= t) {
+            return cmd(`${b.name} has already arrived — dates are locked`, 'Open their booking to see the stay', () => { closeCmdK(); openBookingHub(b.id); });
+        }
+        if (!newOut || newOut <= newIn) return null;
+        const conflict = cmdkBookClash(hit.pk, newIn, newOut, b.id);
+        const nights = Math.round((new Date(newOut + 'T00:00:00') - new Date(newIn + 'T00:00:00')) / 864e5);
+        return cmd(
+            `${verb} ${b.name}: ${fmtDate(newIn)} → ${fmtDate(newOut)} (${nights} night${nights === 1 ? '' : 's'})`,
+            conflict
+                ? `⚠ Clashes with ${conflict.name} (${fmtDate(conflict.checkIn)}–${fmtDate(conflict.checkOut)}) — the editor opens anyway so you can adjust`
+                : 'Free ✓ · opens the editor pre-filled — nothing changes until you save',
+            () => { closeCmdK(); cmdkPrefillEditDates(b.id, newIn, newOut); },
+        );
+    };
+    const t = today || todayDashed();
+    let mv;
+    // "extend cara('s stay) by 2 nights" / "shorten bob by a night"
+    if ((mv = q.match(/\b(extend|lengthen|shorten|cut)\s+([a-z][a-z .'-]+?)(?:'s)?(?:\s+(?:stay|booking|dates?))?\s+(?:by\s+)?(a|an|one|two|three|\d+)\s*(night|day)s?\b/))) {
+        const hit = findGuestBooking(mv[2]);
+        const n = num1(mv[3]);
+        if (hit && n) {
+            const grow = /extend|lengthen/.test(mv[1]);
+            const newOut = shiftDays(hit.b.checkOut, grow ? n : -n);
+            const row = proposeRow(hit, hit.b.checkIn, newOut, grow ? 'Extend' : 'Shorten');
+            if (row) return row;
+        }
+    }
+    // "move bob back a week" / "move cara forward 2 days"
+    if ((mv = q.match(/\b(?:move|shift|push)\s+([a-z][a-z .'-]+?)(?:'s)?(?:\s+(?:stay|booking|dates?))?\s+(back|later|forward|earlier)\s*(?:by\s+)?(a|an|one|two|three|\d+)?\s*(day|week|night)s?\b/))) {
+        const hit = findGuestBooking(mv[1]);
+        const n = num1(mv[3] || 'a');
+        if (hit && n) {
+            const days = /week/.test(mv[4]) ? n * 7 : n;
+            const delta = /back|later/.test(mv[2]) ? days : -days;
+            const row = proposeRow(hit, shiftDays(hit.b.checkIn, delta), shiftDays(hit.b.checkOut, delta), 'Move');
+            if (row) return row;
+        }
+    }
+    // "move bob to 19 aug" — keep the stay length, start on the asked date.
+    if ((mv = q.match(/\b(?:move|shift|push)\s+([a-z][a-z .'-]+?)(?:'s)?(?:\s+(?:stay|booking|dates?))?\s+to\b/)) && dates) {
+        const hit = findGuestBooking(mv[1]);
+        if (hit) {
+            const len = Math.round((new Date(hit.b.checkOut + 'T00:00:00') - new Date(hit.b.checkIn + 'T00:00:00')) / 864e5);
+            const row = proposeRow(hit, dates.from, shiftDays(dates.from, len), 'Move');
+            if (row) return row;
+        }
     }
     // MESSAGE / EMAIL a named guest — resolve the name to a booking.
     const msgM = q.match(/\b(?:message|email|text|msg|write to|contact)\s+([a-z][a-z .'-]+)/);
@@ -2800,6 +2916,67 @@ function cmdkIntent(q) {
                 () => { closeCmdK(); tryAccessBackOffice(); },
                 [calChip(from)],
             )];
+        }
+
+        // QUOTE — "how much for 12–15 aug at jollyboat", "quote 3 nights from 20
+        // september, 2 adults 1 child": price the ASKED stay with the live
+        // model, check the calendar, and offer the one-tap prefilled booking.
+        // Money-INSIGHTS questions ("how much did I earn…") are kept out by the
+        // `safe` guard + the future-start requirement; a query with no dates
+        // falls through untouched.
+        if (safe && !named.length && /\b(quote|how much|price|cost)\b/.test(q) && !/coach|change|set |edit|update/.test(q)) {
+            let qFrom = ents.dateRange ? ents.dateRange.from : null;
+            let qTo = ents.dateRange ? ents.dateRange.to : null;
+            const nightsM = q.match(/(\d+)\s*nights?/);
+            if (nightsM) {
+                // "3 nights from 20 december": the nights word fixes the LENGTH,
+                // so a precise day-level parse beats a whole-month entity range.
+                const pd = cmdkParseDates(q, today);
+                if (pd && pd.from) { qFrom = pd.from; qTo = pd.to || addDays(pd.from, +nightsM[1]); }
+                else if (qFrom) qTo = addDays(qFrom, +nightsM[1]);
+            } else if (!qFrom) { const pd = cmdkParseDates(q, today); if (pd) { qFrom = pd.from; qTo = pd.to; } }
+            if (qFrom && qTo && qTo > qFrom && qFrom >= today) {
+                const adults = +(q.match(/(\d+)\s*adults?/) || [])[1] || 2;
+                const children = +(q.match(/(\d+)\s*(?:children|kids?|child)\b/) || [])[1] || 0;
+                const quoteFor = (k) => {
+                    try {
+                        const p = priceBreakdown(k, adults, children, qFrom, qTo);
+                        if (!p || !isFinite(p.total) || p.total <= 0) return null;
+                        return { k, p, clash: cmdkBookClash(k, qFrom, qTo, null) };
+                    } catch (e) { return null; }
+                };
+                const bookRun = (k) => () => { closeCmdK(); cmdkPrefillAddBooking({ propKey: k, checkIn: qFrom, checkOut: qTo }); };
+                if (ents.prop) {
+                    const x = quoteFor(ents.prop);
+                    if (x) {
+                        const head = ans(
+                            `${gbp(x.p.total)} for ${nn(x.p.nights, 'night')} at ${propName(x.k)}`,
+                            `${fmtDate(qFrom)} → ${fmtDate(qTo)} · ${x.clash ? `⚠ taken then (${x.clash.name})` : 'free ✓ · tap to start the booking'} · £${Math.round(x.p.total / x.p.nights)}/night avg${x.p.damagesDeposit ? ` · + ${gbp(x.p.damagesDeposit)} refundable deposit` : ''}`,
+                            bookRun(x.k),
+                        );
+                        const alts = x.clash
+                            ? Object.keys(dbBookings || {}).filter((k) => k !== x.k).map(quoteFor).filter((y) => y && !y.clash).slice(0, 3)
+                            : [];
+                        return [head].concat(alts.map((y) => ans(`${propName(y.k)} is free those dates — ${gbp(y.p.total)}`, 'Same stay · tap to start the booking', bookRun(y.k))));
+                    }
+                } else {
+                    const all = Object.keys(dbBookings || {}).map(quoteFor).filter(Boolean);
+                    const free = all.filter((x) => !x.clash);
+                    if (all.length) {
+                        const cheapest = (free.length ? free : all).slice().sort((a, z) => a.p.total - z.p.total)[0];
+                        const head = ans(
+                            `From ${gbp(cheapest.p.total)} — ${fmtDate(qFrom)} → ${fmtDate(qTo)}`,
+                            `${nn(free.length, 'cottage')} free of ${all.length} · ${adults} adult${adults === 1 ? '' : 's'}${children ? ` + ${children} child${children === 1 ? '' : 'ren'}` : ''}`,
+                            bookRun(cheapest.k),
+                        );
+                        return [head].concat(all.map((x) => ans(
+                            `${propName(x.k)} · ${gbp(x.p.total)}${x.clash ? ' · ⚠ taken' : ' · free ✓'}`,
+                            x.clash ? `${x.clash.name} is there ${fmtDate(x.clash.checkIn)}–${fmtDate(x.clash.checkOut)}` : 'Tap to start the booking',
+                            bookRun(x.k),
+                        )));
+                    }
+                }
+            }
         }
 
         // CAPACITY — "how many people can Jollyboat sleep", "does 21a take kids".
