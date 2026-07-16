@@ -149,6 +149,28 @@ try {
 } catch (\Throwable $e) {
 }
 
+// ---- Teach your assistant: searches that found nothing this week ---------
+// The palette syncs its dead-end queries to the content table (admin.js
+// chbAssistSyncPush → 'search-misses'); the digest surfaces the week's, so
+// teaching the assistant becomes a Monday habit rather than a buried screen.
+$misses = [];
+try {
+    $weekAgo = date('Y-m-d', time() - 7 * 86400);
+    foreach (content_json('search-misses', []) as $m) {
+        if (!is_array($m) || empty($m['t']) || !is_string($m['t'])) {
+            continue;
+        }
+        if ((string) ($m['at'] ?? '') < $weekAgo) {
+            continue;
+        }
+        $misses[] = ['t' => mb_substr($m['t'], 0, 80), 'n' => max(1, (int) ($m['n'] ?? 1))];
+    }
+    usort($misses, fn($a, $b) => $b['n'] <=> $a['n']);
+    $misses = array_slice($misses, 0, 5);
+} catch (\Throwable $e) {
+    $misses = [];
+}
+
 // ---- Compose ------------------------------------------------------------
 // Names + accents come from the cottage rows, so any owner-added cottage is labelled correctly.
 $nameOf = fn($k) => prop_display($k)['name'];
@@ -200,6 +222,18 @@ $text =
     (count($actAttention)
         ? "  • Needs attention:\n" . implode("\n", array_map(fn($a) => '     - ' . $a['summary'], $actAttention)) . "\n"
         : "  • Nothing needs your attention.\n") .
+    (count($misses)
+        ? "\nTEACH YOUR ASSISTANT\n  • " .
+            count($misses) .
+            ' search' .
+            (count($misses) === 1 ? '' : 'es') .
+            " found nothing this week:\n" .
+            implode(
+                "\n",
+                array_map(fn($m) => '     - "' . $m['t'] . '"' . ($m['n'] > 1 ? " (asked {$m['n']} times)" : ''), $misses),
+            ) .
+            "\n  • Open Search and type \"teach the assistant\" — each fix takes one tap.\n"
+        : '') .
     "\nHave a good week,\nyour website";
 
 $sectionLabel = fn($t) => '<div style="font-family:' .
@@ -267,6 +301,31 @@ $inner =
             ) .
             '</table>'
         : email_p('Nothing needs your attention.', true)) .
+    (count($misses)
+        ? $sectionLabel('Teach your assistant') .
+            email_p(
+                count($misses) .
+                    ' search' .
+                    (count($misses) === 1 ? '' : 'es') .
+                    ' found nothing this week — open Search and type <strong>"teach the assistant"</strong>; each fix takes one tap.',
+                true,
+            ) .
+            '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:6px 0;">' .
+            implode(
+                '',
+                array_map(
+                    fn($m) => '<tr><td style="padding:6px 0;border-bottom:1px solid #ECE4D3;font-family:' .
+                        email_sans() .
+                        ';font-size:13px;color:#57524A;">“' .
+                        htmlspecialchars($m['t']) .
+                        '”' .
+                        ($m['n'] > 1 ? ' <span style="color:#8E877A;">· asked ' . $m['n'] . ' times</span>' : '') .
+                        '</td></tr>',
+                    $misses,
+                ),
+            ) .
+            '</table>'
+        : '') .
     email_p('Have a good week.', true);
 $html = email_shell('Your Blakeney week at a glance', $inner, '#D6A785');
 

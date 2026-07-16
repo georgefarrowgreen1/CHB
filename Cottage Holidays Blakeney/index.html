@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=189">
+    <link rel="stylesheet" href="app.css?v=190">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -628,6 +628,18 @@
                 <!-- Availability calendar. On desktop, placeAvailCalendar() relocates
                      #prop-avail-cal into the reserve card, just above "Enquire now".
                      On mobile it stays here in the content flow, right after this anchor. -->
+                <!-- Ask us anything — the chat's on-device FAQ matcher surfaced where
+                     guests actually wonder (guestFaqAnswer over this cottage's own
+                     content; instant, no server). Unmatched questions route to chat
+                     with the question pre-typed, so a person always answers. -->
+                <div class="ask-box glass-panel" id="ask-box">
+                    <div class="ask-box-title">Ask us anything</div>
+                    <div class="ask-box-row">
+                        <input id="ask-input" class="input-glass" type="text" maxlength="200" placeholder="Dogs? Parking? Check-in time?…" aria-label="Ask a question about this cottage" data-act-keydown="askBoxKey" data-pass="event">
+                        <button type="button" class="btn-glass btn-accent" data-act="askBoxSubmit">Ask</button>
+                    </div>
+                    <div id="ask-answer" aria-live="polite"></div>
+                </div>
                 <!-- "You've stayed here before" — filled by renderStayedBefore() for a
                      signed-in guest with a past stay at THIS cottage; empty otherwise. -->
                 <div id="stayed-before"></div>
@@ -2467,7 +2479,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=449"></script>
+    <script defer src="app.js?v=450"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

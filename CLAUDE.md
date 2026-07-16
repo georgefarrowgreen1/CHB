@@ -323,6 +323,22 @@ rows tagged "· from history", deduped against the in-memory customer keys, and
 safeguards (audit + no destructive action). `customers-lib.php` deploys; `test-customers.php`
 is deploy-excluded.
 
+**Owner's picks** — the habit/trust/revenue layer. (1) **Teach-loop nudges**: the synced
+dead-end searches (`search-misses` in the content table) surface BOTH in the weekly digest
+email (owner-digest.php "Teach your assistant" section, last-7-days, top 5 by count) and as
+a morning-brief row (`brief-teach`, ≥2 fresh misses → one tap opens the dead-ends review).
+(2) **Richer morning brief** (`cmdkBrief`): today's arrivals are NAMED with context (check-in
+time, repeat ordinal from the customer directory, balance to take), the soonest gap rides as
+a ready-made 15%-off offer row, pulse unchanged; cap 7 rows. (3) **UNDO** (`chbUndoRecord`/
+`__cmdkUndo`, one level, session-only): every change search itself saves (dated price
+override, weekend-uplift apply) records its exact restore; the `undo` command in cmdkCommand
+reverses it through the same validated endpoints, with an honest "Nothing to undo" otherwise.
+(4) **Guest ask box** (`#ask-box` on the cottage page, app.js `askBoxSubmit`/`askBoxToChat`):
+guestFaqAnswer surfaced on-page; unmatched questions open the chat with the question
+pre-typed + `__faqBypass` so a person gets it untouched. Gated by search-test §36 (brief
+composition, stale-miss silence, undo round-trip incl. prior-state payload) +
+ui-test-askbox.js (real browser: instant answer, honest fallback, chat handoff).
+
 **Welcome back** (app.js — guest-side): a RETURNING signed-in guest gets a personal homepage
 rebook nudge (`#welcome-back`, `renderWelcomeBack` — "Fancy Jollyboat again?" with their
 favourite cottage = mode of COMPLETED stays, live cottages only; an upcoming-only first

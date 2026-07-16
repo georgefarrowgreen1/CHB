@@ -463,16 +463,31 @@ function chbSeasonSplice(existing, ov) {
     out.push({ label: ov.label, start: ov.start, end: ov.end, rate: ov.rate });
     return out.sort((a, z) => String(a.start).localeCompare(String(z.start)));
 }
+// ---- UNDO for search's write paths. Confidence to act fast comes from
+// knowing you can take it back: every change search itself saves (a dated
+// price override, a weekend-uplift apply) records how to restore the exact
+// prior state, and typing "undo" reverses it — through the same validated
+// endpoints, one level deep, this session only. ----
+let __cmdkUndo = null; // { label, run: async () => restore }
+function chbUndoRecord(label, run) { __cmdkUndo = { label, run }; }
 // Save a dated couple-rate override (a rate_seasons row) — the landing for the
 // price command and the gap offers. Splices, saves through the existing
 // validated endpoint, updates local state and repaints the public prices.
 async function cmdkApplyPriceOverride(propKey, start, endIncl, rate, label) {
-    const existing = (propertySeasons[propKey] || []).map((s) => ({ label: s.label || '', start: s.start_date, end: s.end_date, rate: parseFloat(s.couple_rate) || 0 }));
-    const next = chbSeasonSplice(existing, { label: label || 'Search override', start, end: endIncl, rate });
-    await apiPost('rates.php', { action: 'seasons_save', prop_key: propKey, seasons: next });
-    propertySeasons[propKey] = next.map((s) => ({ label: s.label, start_date: s.start, end_date: s.end, couple_rate: s.rate }));
-    try { renderCardPrices(); updatePropPriceHeading(); } catch (e) {}
-    try { toast(`Price set — £${rate}/night ${fmtDate(start)}–${fmtDate(endIncl)} on ${(propertyMeta[propKey] || {}).name || propKey}.`); } catch (e) {}
+    const prev = (propertySeasons[propKey] || []).map((s) => ({ label: s.label || '', start: s.start_date, end: s.end_date, rate: parseFloat(s.couple_rate) || 0 }));
+    const next = chbSeasonSplice(prev, { label: label || 'Search override', start, end: endIncl, rate });
+    const put = async (list) => {
+        await apiPost('rates.php', { action: 'seasons_save', prop_key: propKey, seasons: list });
+        propertySeasons[propKey] = list.map((s) => ({ label: s.label, start_date: s.start, end_date: s.end, couple_rate: s.rate }));
+        try { renderCardPrices(); updatePropPriceHeading(); } catch (e) {}
+    };
+    await put(next);
+    const nm = (propertyMeta[propKey] || {}).name || propKey;
+    chbUndoRecord(`£${rate}/night ${fmtDate(start)}–${fmtDate(endIncl)} on ${nm}`, async () => {
+        await put(prev);
+        try { toast(`Undone — ${nm}'s prices are back as they were.`); } catch (e) {}
+    });
+    try { toast(`Price set — £${rate}/night ${fmtDate(start)}–${fmtDate(endIncl)} on ${nm}. Type "undo" to reverse.`); } catch (e) {}
 }
 // The current season-aware couple rate for a night (what an override replaces).
 function chbCoupleRateOn(propKey, iso) {
@@ -654,6 +669,20 @@ function cmdkCommand(q, today) {
                 () => { closeCmdK(); cmdkApplyPriceOverride(pk, dates.from, endIncl, newRate, 'Search override').catch((e) => glassAlert("Couldn't save the price: " + e.message)); },
             );
         }
+    }
+    // UNDO — reverse the LAST change search itself saved (price override /
+    // weekend uplift), through the same validated endpoints. One level, this
+    // session; an honest "nothing to undo" otherwise.
+    if (/^undo( that| last| the last)?( change)?[.!]?$/.test(q.trim())) {
+        if (__cmdkUndo) {
+            const u = __cmdkUndo;
+            return cmd(`Undo — ${u.label}`, 'Puts things back exactly as they were', () => {
+                closeCmdK();
+                __cmdkUndo = null;
+                u.run().catch((e) => { __cmdkUndo = u; glassAlert("Couldn't undo: " + e.message); });
+            });
+        }
+        return cmd('Nothing to undo', "Search hasn't saved any changes this session", () => { closeCmdK(); });
     }
     // PRICING SUGGESTIONS — "should i change my prices", "pricing suggestions":
     // instant dated ideas from the gap scan (each a one-tap Apply that saves a
@@ -6290,7 +6319,23 @@ function cmdkBrief() {
         if ((b.holdStatus || 'none') === 'charged' && (b.checkOut || '') <= today) depN++;
     }));
     if (typeof dbBlocks === 'object' && dbBlocks) Object.keys(dbBlocks).forEach((k) => (dbBlocks[k] || []).forEach((bl) => { if (bl.checkIn === today) ins++; if (bl.checkOut === today) outs++; }));
-    if (ins || outs) items.push({ type: 'figure', scope: 'bookings', id: 'brief-today', label: `Today · ${ins} in · ${outs} out`, sub: 'Arrivals & departures', run: () => { closeCmdK(); tryAccessBackOffice(); } });
+    // Arrivals get NAMES + CONTEXT (repeat guest? money to take at the door?) —
+    // the brief should read like a person who knows the day, not a tally.
+    const arrToday = [];
+    Object.keys(dbBookings || {}).forEach((k) => (dbBookings[k] || []).forEach((b) => { if (b.checkIn === today && b.name) arrToday.push({ pk: k, b }); }));
+    arrToday.slice(0, 2).forEach(({ pk, b }) => {
+        const bits = [(propertyMeta[pk] || {}).name || pk];
+        try {
+            const key = chbCustomerKey(b);
+            if (key.slice(0, 2) !== 'b:') {
+                const c = chbCustomers().find((x) => x.key === key);
+                if (c && c.stays.length >= 2) bits.push(`${c.stays.length}th stay with you`.replace(/^2th/, '2nd').replace(/^3th/, '3rd'));
+            }
+        } catch (e) {}
+        try { const ps = paymentSummary(pk, b); bits.push(ps.fullyPaid ? 'paid in full' : `${gbp(ps.balance)} to take`); } catch (e) {}
+        items.push({ type: 'answer', scope: 'bookings', id: 'brief-arr-' + b.id, label: `${chbSayFirst(b.name)} arrives today${b.checkInTime ? ' · ' + b.checkInTime : ''}`, sub: bits.join(' · '), run: () => { closeCmdK(); openBookingHub(b.id); } });
+    });
+    if (arrToday.length > 2 || outs) items.push({ type: 'figure', scope: 'bookings', id: 'brief-today', label: `Today · ${ins} in · ${outs} out`, sub: 'Arrivals & departures', run: () => { closeCmdK(); tryAccessBackOffice(); } });
     if (owers) items.push({ type: 'answer', scope: 'money', id: 'brief-money', label: `${gbp(owed)} to collect`, sub: `${owers} balance${owers === 1 ? '' : 's'} outstanding — tap to chase`, run: () => { closeCmdK(); Promise.resolve(openBookings()).then(() => bookingsSetFilter('needspay')); } });
     const enq = Array.isArray(enquiries) ? enquiries.length : 0;
     if (enq) items.push({ type: 'answer', scope: 'inbox', id: 'brief-enq', label: `${enq} enquir${enq === 1 ? 'y' : 'ies'} waiting`, sub: 'Reply to win the booking', run: () => { closeCmdK(); openInbox(); } });
@@ -6300,7 +6345,27 @@ function cmdkBrief() {
         const pulse = chbBusinessPulse();
         if (pulse) items.push({ type: 'answer', scope: 'money', id: 'brief-pulse', wrap: true, label: `${pulse.arrow} ${pulse.label}`, sub: pulse.sub, run: () => { closeCmdK(); openAccounts(); } });
     } catch (e) {}
-    return items.slice(0, 5);
+    // One opportunity, unasked: the soonest bookable gap with its ready-made offer.
+    try {
+        const g = chbGapScan()[0];
+        if (g) {
+            const cur = chbCoupleRateOn(g.pk, g.from);
+            if (cur) {
+                const offer = Math.round(cur * 0.85);
+                const endIncl = chbIsoShift(g.to, -1);
+                items.push({ type: 'answer', scope: 'bookings', id: 'brief-gap', wrap: true, label: `Worth a look: ${g.nights} free nights on ${(propertyMeta[g.pk] || {}).name || g.pk}`, sub: `${fmtDate(g.from)}–${fmtDate(endIncl)} · try £${offer}/night (15% off) — tap to apply`, run: () => { closeCmdK(); cmdkApplyPriceOverride(g.pk, g.from, endIncl, offer, 'Gap offer').catch((e) => glassAlert("Couldn't save: " + e.message)); } });
+            }
+        }
+    } catch (e) {}
+    // The teach-loop nudge: dead-end searches from the last 7 days, one tap to fix.
+    try {
+        const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
+        const misses = chbMissList().filter((m) => m && (m.at || '') >= weekAgo);
+        if (misses.length >= 2) {
+            items.push({ type: 'answer', id: 'brief-teach', label: `${misses.length} searches found nothing this week`, sub: 'Teach the assistant — each fix takes one tap', run: () => { const el = document.getElementById('cmdk-input'); if (el) el.value = 'search misses'; cmdkSearchCore('search misses', false); } });
+        }
+    } catch (e) {}
+    return items.slice(0, 7);
 }
 // ---- Spotlight-style presentation: a Top Hit + grouped section headers. ----
 let __cmdkEmpty = false;
@@ -8438,8 +8503,13 @@ async function renderPricingCoach() {
 }
 async function applyPricingSuggestion(propKey, field, value, id) {
     if (field !== 'weekendPct' || !propKey) return;
+    const prevPct = parseFloat((propertyRates[propKey] || {}).weekendPct) || 0;
     try {
         await updateRate(propKey, 'weekendPct', value); // existing validated save path
+        chbUndoRecord(`${Number(value)}% weekend uplift on ${(propertyMeta[propKey] || {}).name || propKey}`, async () => {
+            await updateRate(propKey, 'weekendPct', prevPct);
+            try { toast(`Undone — weekend uplift back to ${prevPct}%.`); } catch (e) {}
+        });
         const el = document.getElementById('psug-' + id);
         if (el)
             el.innerHTML = `<p style="font-size:0.92rem;color:#7FD68A;margin:0;">✓ Applied — weekend uplift set to ${Number(value)}% for ${escapeHtml((propertyMeta[propKey] || {}).name || propKey)}. Adjust any time in Cottages → ${escapeHtml((propertyMeta[propKey] || {}).name || propKey)} → Rates.</p>`;
