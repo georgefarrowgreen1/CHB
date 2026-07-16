@@ -428,6 +428,25 @@ Gated by search-test §32 (16 checks: gap bounds/blocks/window, pacing threshold
 composition, false-merge + no-card guards, mention matching) + ui-test-intel.js (real
 browser: card renders/withholds, gap row → prefilled modal).
 
+**Booking logic in search** (admin.js) — search REASONS about the calendar, not just finds
+it. (1) **QUOTES**: "how much for 15–18 aug at jollyboat (2 adults 1 child)" prices the asked
+stay with the LIVE model (`priceBreakdown`), checks the calendar (`cmdkBookClash` — bookings
++ blocks, end-exclusive), and one-tap-prefills Add Booking; taken dates name WHO has them and
+price the free alternatives beneath; no cottage named → "From £X" across the fleet with
+per-cottage rows. A nights-count ("3 nights from 20 december") makes the day-level
+`cmdkParseDates` parse beat a whole-month entity range (golden-caught bug), and
+`cmdkParseDates` now also handles "15 aug to 18 aug" (month named both sides, cross-month
+safe). Guards: `safe` (INSIGHTS/OPS), named-guest, future-start, no-dates → falls through.
+(2) **Clash-aware commands**: "add booking …" / "block …" check the range FIRST — the sub
+says "⚠ taken then (Bob Carter) — 21A or Pimpernel is free" / "⚠ Bob is booked — check
+before you block" (labels unchanged, golden-pinned). (3) **MOVE/EXTEND/SHORTEN proposals**:
+"move bob back a week" (back/later = LATER, forward/earlier = earlier), "move bob to 4 aug"
+(keeps length), "extend/shorten cara by N nights" — resolve the guest (upcoming preferred),
+compute + VERIFY the new dates (clash names the blocker), and open the EDIT modal prefilled
+via `cmdkPrefillEditDates` — **never saves**; arrived guests are move-locked and say so.
+Gated by search-test §34 (18 checks) + golden shape cases + ui-test-bookcmd.js (real
+browser: edit modal carries the proposed dates; quote run prefills Add Booking).
+
 **Conversational frame** (admin.js) — search is a DIALOGUE, not one-shots. The last METRIC
 answer's frame (`__cmdkFrame` = metric · period · cottage, 3-min TTL, stored by
 `chbFrameStore` whenever an intent/NLU answer carries a `CHB_FRAME_METRIC_Q` metric) lets a
