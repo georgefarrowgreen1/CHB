@@ -1455,7 +1455,6 @@ try {
 // a canonical intent), BY MEANING (a semantic/Darkstar recall), BEST GUESS (only
 // near-miss suggestions), READY (Darkstar loaded, idle). Colour is a quiet accent
 // on top of the word, not the message itself. Shared by the palette + both bars. ----
-const CHB_MSTATE_LABEL = { learning: 'Learning…', understood: 'Understood', meaning: 'By meaning', guess: 'Best guess', ready: 'AI ready', loading: 'Downloading…' };
 // The word says WHAT; the hover title says WHY — so the status teaches its own
 // meaning (a colour never has to be decoded). Kept plain-language and short.
 const CHB_MSTATE_TITLE = {
@@ -1477,28 +1476,28 @@ function chbModelState(built, rows) {
     if (built.ask && built.ask.length) return 'guess';
     return '';
 }
-// Paint a status element with a state. '' clears to the quiet "AI ready" pip when
-// Darkstar is loaded (so the model's presence is always shown), else blank. The
-// hover title tracks the state so each pill explains itself.
+// Paint a status element with a state. The status lives IN THE LOGO: the knot
+// glyph's COLOUR names the state (no words on screen — the hover title carries
+// the plain-language explanation). '' clears to the quiet "AI ready" tint when
+// Darkstar is loaded (so the model's presence is always shown), else the
+// default accent knot.
 function chbSetModelStatus(el, state) {
     if (!el) return;
     let s = state || '';
     // The idle slot: a download in flight shows its progress ring; otherwise the
-    // quiet "AI ready" pip once the model is loaded. Active answer states
+    // quiet "AI ready" tint once the model is loaded. Active answer states
     // (understood / meaning / guess / learning) always take the slot over both.
     if (!s && chbModelLoadFrac() != null) s = 'loading';
     if (!s) { try { if (document.body && document.body.classList.contains('darkstar-ready')) s = 'ready'; } catch (e) {} }
     el.dataset.mstate = s;
-    const t = el.querySelector('.cmdk-ml-txt, .abar-status-txt');
-    if (t) t.textContent = CHB_MSTATE_LABEL[s] || '';
     try { el.title = CHB_MSTATE_TITLE[s] || CHB_MSTATE_TITLE_DEFAULT; } catch (e) {}
 }
-// Every status surface on screen (palette pill + each bar's pill).
+// Every status surface on screen (the palette's logo knot + each bar's).
 function chbModelStatusEls() {
     const els = [];
     const p = document.getElementById('cmdk-ml');
     if (p) els.push(p);
-    document.querySelectorAll('.abar-status').forEach((e) => els.push(e));
+    document.querySelectorAll('.abar-ic').forEach((e) => els.push(e));
     return els;
 }
 // ---- Model-download progress ring. While a model file streams down
@@ -5079,15 +5078,14 @@ function chbAssistBar(hostId, opts) {
     // handler — both take (id, event), so one attribute set serves both.
     host.innerHTML =
         `<div class="abar-field" data-act-blur="abarBlur" ${chbAttrsFor('keydown', 'abarKey', [hostId, CHB_EVENT])}>` +
-        `<span class="abar-ic" aria-hidden="true">${CMDK_SEARCH_IC}</span>` +
-        `<span class="abar-status" data-mstate="" aria-live="polite"><span class="abar-status-txt"></span></span>` +
+        `<span class="abar-ic" data-mstate="" title="${escapeHtml(CHB_MSTATE_TITLE_DEFAULT)}">${CMDK_SEARCH_IC}</span>` +
         `<input id="${hostId}-input" class="abar-input" type="search" enterkeyhint="search" placeholder="${escapeHtml(opts.placeholder || 'Search or ask anything…')}" autocomplete="off" autocapitalize="off" spellcheck="false" role="searchbox" aria-label="${escapeHtml(opts.placeholder || 'Search or ask')}" ${chbInput('abarInput', hostId, CHB_VALUE)}>` +
         `<span class="abar-count" id="${hostId}-count" aria-live="polite"></span>` +
         `<button type="button" class="abar-clear" id="${hostId}-clear" ${chbAttrs('abarClear', hostId)} aria-label="Clear search">✕</button>` +
         `</div>` +
         `<div class="abar-panel" id="${hostId}-panel"></div>`;
     abarClearPanel(hostId);
-    chbSetModelStatus(host.querySelector('.abar-status'), ''); // resting "AI ready" pip if Darkstar's loaded
+    chbSetModelStatus(host.querySelector('.abar-ic'), ''); // resting "AI ready" logo tint if Darkstar's loaded
 }
 // Register every bar whose host div exists (called once from the admin boot
 // footer). Today's bar filters the operations board via the shared
@@ -5281,7 +5279,7 @@ function abarRoute(id, q) {
     const host = document.getElementById(id);
     const panel = document.getElementById(id + '-panel');
     const count = document.getElementById(id + '-count');
-    const statusEl = host ? host.querySelector('.abar-status') : null;
+    const statusEl = host ? host.querySelector('.abar-ic') : null;
     if (host) host.classList.toggle('has-text', raw.length > 0);
     if (!raw) {
         abarFilterOff(st);

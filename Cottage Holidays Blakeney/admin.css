@@ -1194,91 +1194,78 @@ body.owner-mode #mobileMenu {
   opacity: 0.9;
   transition: color 0.35s ease, filter 0.35s ease;
 }
-/* MODEL-STATUS PILL — instead of a colour to decode, the indicator SAYS what the
-   assistant is doing (a word), with colour as a quiet accent. Shared shape for the
-   palette (#cmdk-ml) and each Assist Bar (.abar-status); the `data-mstate`
-   attribute (set in JS: ready / understood / meaning / guess / learning) drives
-   both the label and the accent. Empty state = hidden. */
-.cmdk-ml,
-.abar-status {
-  display: none;
-  align-items: center;
-  gap: 5px;
+/* AI STATUS LIVES IN THE LOGO — the knot glyph itself (the palette's leading
+   icon, wrapped as #cmdk-ml, and each Assist Bar's .abar-ic) carries the model
+   state as COLOUR. No words on screen: the hover title explains each state in
+   plain language, so the colour never has to be decoded blind. `data-mstate`
+   (set in JS: ready / understood / meaning / guess / learning / loading)
+   drives the tint; '' = the default accent knot. */
+#cmdk-ml {
+  display: flex;
   flex-shrink: 0;
-  padding: 3px 9px 3px 7px;
-  border-radius: 999px;
-  font-size: 0.7rem;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  line-height: 1;
-  white-space: nowrap;
-  transition: color 0.3s ease, background 0.3s ease;
+  position: relative;
+  color: var(--accent);
+  transition: color 0.35s ease, opacity 0.35s ease;
 }
-.cmdk-ml .ic {
-  width: 14px;
-  height: 14px;
+#cmdk-ml:not([data-mstate=""]) .cmdk-search-ic {
+  color: inherit;
+  opacity: 1;
 }
-/* Each pill pops in when its state appears (both palette + bars). State rules
-   below re-declare `animation` with this as the first layer, so the enter is
-   never lost to an ongoing breathe/shimmer/pulse. */
-.cmdk-ml:not([data-mstate=""]),
-.abar-status:not([data-mstate=""]) {
-  display: inline-flex;
-  animation: chb-ms-in 0.26s var(--spring, cubic-bezier(0.2, 0.9, 0.3, 1.2)) both;
+.abar-ic {
+  position: relative;
+  transition: color 0.35s ease, opacity 0.35s ease;
 }
-/* The Assist-Bar pill has no brand knot (that's the palette's), so it carries a
-   small leading STATE PIP instead — the state colour + a soft glow, scannable
-   before the word is even read. It inherits `color`, so it tracks every state. */
-.abar-status::before {
-  content: "";
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  background: currentColor;
-  box-shadow: 0 0 7px -1px currentColor;
-}
-/* READY — Darkstar is loaded and idle: a quiet purple pip so the model's
-   presence is always shown (no ongoing motion, just the enter pop). */
-.cmdk-ml[data-mstate="ready"],
-.abar-status[data-mstate="ready"] {
+/* READY — quiet purple: the model is loaded and idle, its presence always shown. */
+#cmdk-ml[data-mstate="ready"],
+.abar-ic[data-mstate="ready"] {
   color: var(--darkstar);
-  background: color-mix(in srgb, var(--darkstar) 13%, transparent);
+  opacity: 1;
+}
+/* UNDERSTOOD — a paraphrase mapped to a known intent: confident green, breathing. */
+#cmdk-ml[data-mstate="understood"],
+.abar-ic[data-mstate="understood"] {
+  color: var(--ok);
+  opacity: 1;
+  animation: chb-ms-breathe 2.2s ease-in-out infinite;
+}
+/* BY MEANING — the on-device SEMANTIC model recalled this. Its own Siri
+   identity: the knot cycles teal→purple with a soft glow — instantly distinct
+   from understood's steady green. Reduced motion gets the static teal base. */
+#cmdk-ml[data-mstate="meaning"],
+.abar-ic[data-mstate="meaning"] {
+  color: hsl(var(--siri-3));
+  opacity: 1;
+  animation: chb-knot-siri 2.8s ease-in-out infinite;
+}
+/* BEST GUESS — only near-miss suggestions, so it reads TENTATIVE: the accent
+   knot, dimmed, no motion. */
+#cmdk-ml[data-mstate="guess"],
+.abar-ic[data-mstate="guess"] {
+  color: var(--accent);
+  opacity: 0.6;
+}
+/* LEARNING — absorbing a taught phrase / suppression: orange, pulsing ~2s. */
+#cmdk-ml[data-mstate="learning"],
+.abar-ic[data-mstate="learning"] {
+  color: var(--warn);
+  opacity: 1;
+  animation: chb-ms-pulse 0.6s ease-in-out infinite;
 }
 /* DOWNLOADING — a model file is streaming down (darkstar.bin / encoder.onnx):
-   the pip/knot carries a circular PROGRESS ring, filled by `--mload` (0..1,
-   set in JS per chunk) via a conic-gradient with a radial mask cutting the
-   centre out. Not an animation — the arc IS the downloaded fraction — so it
-   needs no reduced-motion exemption. */
-.cmdk-ml[data-mstate="loading"],
-.abar-status[data-mstate="loading"] {
+   a circular PROGRESS ring around the knot, filled by `--mload` (0..1, set in
+   JS per chunk) via a conic-gradient with a radial mask cutting the centre
+   out. Not an animation — the arc IS the downloaded fraction — so it needs no
+   reduced-motion exemption. */
+#cmdk-ml[data-mstate="loading"],
+.abar-ic[data-mstate="loading"] {
   color: var(--darkstar);
-  background: color-mix(in srgb, var(--darkstar) 10%, transparent);
+  opacity: 1;
 }
-/* Bar pill: the state pip grows into the ring itself. */
-.abar-status[data-mstate="loading"]::before {
-  width: 11px;
-  height: 11px;
-  background: conic-gradient(
-      currentColor calc(var(--mload, 0) * 360deg),
-      color-mix(in srgb, currentColor 22%, transparent) 0);
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
-  mask: radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 2.5px));
-  box-shadow: none;
-}
-/* Palette pill: the ring wraps AROUND the brand knot (14px icon at 7px pad →
-   icon centre x = 14px; a 22px ring centred there starts at x = 3px). */
-.cmdk-ml {
-  position: relative;
-}
-.cmdk-ml[data-mstate="loading"]::before {
+#cmdk-ml[data-mstate="loading"]::before,
+.abar-ic[data-mstate="loading"]::before {
   content: "";
   position: absolute;
-  left: 3px;
-  top: 50%;
-  width: 22px;
-  height: 22px;
-  margin-top: -11px;
+  inset: -4px;
   border-radius: 50%;
   pointer-events: none;
   background: conic-gradient(
@@ -1306,91 +1293,29 @@ body.owner-mode #mobileMenu {
   -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3.5px), #000 calc(100% - 3px));
   mask: radial-gradient(farthest-side, transparent calc(100% - 3.5px), #000 calc(100% - 3px));
 }
-/* UNDERSTOOD — a paraphrase mapped to a known intent (lexical/deep): confident
-   green, gently breathing. */
-.cmdk-ml[data-mstate="understood"],
-.abar-status[data-mstate="understood"] {
-  color: var(--ok);
-  background: color-mix(in srgb, var(--ok) 15%, transparent);
-  animation: chb-ms-in 0.26s var(--spring, ease) both, chb-ms-breathe 2.2s ease-in-out infinite;
-}
-/* BY MEANING — the on-device SEMANTIC model recalled this (Darkstar embeddings,
-   not keywords). It gets its OWN identity, not understood's green: a teal→purple
-   Siri gradient wordmark that shimmers, over a faint semantic-tinted fill, so a
-   meaning-match is instantly distinct from a lexical one. The pill `color`
-   (hence the palette knot) stays Darkstar purple; only the WORD carries the
-   gradient. */
-.cmdk-ml[data-mstate="meaning"],
-.abar-status[data-mstate="meaning"] {
-  color: var(--darkstar);
-  background: linear-gradient(100deg,
-      color-mix(in srgb, hsl(var(--siri-4)) 16%, transparent),
-      color-mix(in srgb, hsl(var(--siri-2)) 18%, transparent));
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, hsl(var(--siri-2)) 24%, transparent);
-  animation: chb-ms-in 0.26s var(--spring, ease) both;
-}
-.cmdk-ml[data-mstate="meaning"] .cmdk-ml-txt,
-.abar-status[data-mstate="meaning"] .abar-status-txt {
-  background: linear-gradient(100deg,
-      hsl(var(--siri-4)) 0%, hsl(var(--siri-3)) 32%, hsl(var(--siri-2)) 58%, hsl(var(--siri-4)) 100%);
-  background-size: 220% 100%;
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
-  animation: chb-ms-shimmer 2.8s linear infinite;
-}
-/* BEST GUESS — only near-miss suggestions, so it reads TENTATIVE: the brand
-   accent, a hollow (dashed) ring instead of a solid fill, no confident motion. */
-.cmdk-ml[data-mstate="guess"],
-.abar-status[data-mstate="guess"] {
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 9%, transparent);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 42%, transparent);
-}
-.abar-status[data-mstate="guess"]::before {
-  box-shadow: none;
-  background: transparent;
-  border: 1.5px dashed currentColor;
-  width: 8px;
-  height: 8px;
-}
-/* LEARNING — absorbing a taught phrase / suppression / merge: orange, pulsing;
-   overrides the resting/answering states for its ~2s window. */
-.cmdk-ml[data-mstate="learning"],
-.abar-status[data-mstate="learning"] {
-  color: var(--warn);
-  background: color-mix(in srgb, var(--warn) 17%, transparent);
-  animation: chb-ms-in 0.26s var(--spring, ease) both, chb-ms-pulse 0.6s ease-in-out infinite;
-}
 .admin-dock-btn.ml-learning svg {
   color: var(--warn);
   animation: chb-ml-learn 0.55s ease-in-out infinite;
-}
-@keyframes chb-ms-in {
-  from { opacity: 0; transform: translateY(2px) scale(0.9); }
-  to { opacity: 1; transform: none; }
 }
 @keyframes chb-ms-breathe {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.66; }
 }
-@keyframes chb-ms-shimmer {
-  to { background-position: -220% 0; }
-}
 @keyframes chb-ms-pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.5; }
+}
+@keyframes chb-knot-siri {
+  0%, 100% { color: hsl(var(--siri-4)); filter: drop-shadow(0 0 5px hsl(var(--siri-4) / 0.5)); }
+  50% { color: hsl(var(--siri-2)); filter: drop-shadow(0 0 7px hsl(var(--siri-2) / 0.5)); }
 }
 @keyframes chb-ml-learn {
   0%, 100% { opacity: 1; filter: drop-shadow(0 0 6px var(--warn)); }
   50% { opacity: 0.45; filter: drop-shadow(0 0 1px var(--warn)); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .cmdk-ml,
-  .abar-status,
-  .cmdk-ml[data-mstate="meaning"] .cmdk-ml-txt,
-  .abar-status[data-mstate="meaning"] .abar-status-txt,
+  #cmdk-ml,
+  .abar-ic,
   .admin-dock-btn.ml-learning svg { animation: none !important; }
 }
 /* Ambient guest intelligence (booking hub): the directory + history speak up. */
@@ -1430,9 +1355,8 @@ body.owner-mode #mobileMenu {
   color: var(--text-light);
   outline: none;
 }
-.cmdk-search.has-text .cmdk-search-ic {
-  display: none;
-}
+/* The knot never hides — it IS the AI status. The ✕ clear sits on the RIGHT
+   (after the input, before help) and simply appears once there's text. */
 .cmdk-search.has-text .cmdk-clear {
   display: flex;
 }
@@ -2705,14 +2629,13 @@ body.light-mode .cmdk-editor-input {
   }
 }
 
-/* The bar's model status is now the labelled `.abar-status` pill (styled with
-   the palette pill above) — the knot glyph itself stays a plain search icon, so
-   the STATE is read as a word, not a knot colour. */
+/* The bar's model status lives IN its knot glyph (.abar-ic carries data-mstate
+   — see the AI-STATUS block above): the logo's COLOUR is the state. */
 
-/* DARKSTAR ONLINE — the semantic model has finished loading. The status pills
-   show a quiet "AI ready" (see [data-mstate="ready"] above); on the DOCK button
-   — the off-search entry point — a calm purple tint mirrors that the model is
-   online. No glow; the ANSWERING / LEARNING states are shown by the pills. */
+/* DARKSTAR ONLINE — the semantic model has finished loading. The logo knots
+   show the quiet purple "AI ready" tint (see [data-mstate="ready"] above); on
+   the DOCK button — the off-search entry point — the same calm purple mirrors
+   that the model is online. */
 body.darkstar-ready .admin-dock-btn[data-act="openCmdK"]:not(.ml-learning) svg {
   color: var(--darkstar);
   transition: color 0.5s ease; /* fades to purple as the model comes online */

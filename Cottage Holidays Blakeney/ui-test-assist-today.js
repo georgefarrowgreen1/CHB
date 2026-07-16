@@ -169,19 +169,19 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(spill <= 0, `no horizontal overflow at 390px (spill=${spill})`);
 
   // 14) Darkstar ONLINE → the status pill rests on "AI ready" (purple, no glow),
-  //     so the model's presence is shown as a WORD, not just a knot colour.
-  //     (The owner-side idle auto-loader may already have fired; force it to be
-  //     deterministic, then assert the ready class + the ready pill.)
+  //     so the model's presence is shown by the LOGO's colour (hover title
+  //     carries the words). (The owner-side idle auto-loader may already have
+  //     fired; force it to be deterministic, then assert the ready tint.)
   await page.evaluate(() => darkstarLoad()); // real darkstar.bin served by php -S
   const online = await page.evaluate(() => {
     const ready = document.body.classList.contains('darkstar-ready');
-    const s = document.querySelector('#abar-today .abar-status');
+    const s = document.querySelector('#abar-today .abar-ic');
     const cs = getComputedStyle(s);
-    return { ready, state: s.dataset.mstate, txt: s.textContent.trim(), color: cs.color, shown: cs.display !== 'none' };
+    return { ready, state: s.dataset.mstate, title: s.title, color: cs.color, shown: cs.display !== 'none' };
   });
   ok(online.ready, 'body.darkstar-ready set once Darkstar is loaded + indexed');
-  ok(online.state === 'ready' && /AI ready/i.test(online.txt) && online.shown, `status rests on "${online.txt}" (${online.state})`);
-  ok(online.color === 'rgb(168, 85, 247)', `the ready pill is the Darkstar purple (${online.color})`);
+  ok(online.state === 'ready' && /loaded and ready/i.test(online.title) && online.shown, `logo rests on "ready" (title: ${online.title.slice(0, 40)}…)`);
+  ok(online.color === 'rgb(168, 85, 247)', `the ready logo is the Darkstar purple (${online.color})`);
 
   await browser.close();
   server.kill();
