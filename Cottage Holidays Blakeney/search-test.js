@@ -1153,6 +1153,54 @@ if (typeof ctx.chbAnomalies === 'function' && typeof ctx.chbGuestIntel === 'func
     vm.runInContext('CHB_HIST.docs = []; CHB_HIST.built = false; Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);__cmdkCustomers=null;', ctx);
 } else fail('chbAnomalies / chbGuestIntel missing from the bundle');
 
+// ---- 33. Conversational frame: a one-slot follow-up ("and last year",
+// "just jollyboat", "occupancy", "vs last month") patches the previous metric
+// answer's frame and re-runs the same families; "vs" composes the delta.
+// Monotonic-safe: full questions, bare names, ops queries, no-frame and
+// stale-frame cases all fall through to the normal pipeline untouched. ----
+if (typeof ctx.chbConvResolve === 'function' && typeof ctx.cmdkBuildResults === 'function') {
+    const yr = +ctx.todayDashed().slice(0, 4);
+    const mkb = (id, name, ci, co, tot) => ({ id, name, email: name.replace(/\s+/g, '') + '@x.co', checkIn: ci, checkOut: co, adults: 2, children: 0, payment: 'paid', holdStatus: 'none', agreedPrice: { total: tot } });
+    ctx.__seedCv = {
+        jb: [mkb(1, 'Ann A', `${yr}-02-10`, `${yr}-02-13`, 400), mkb(2, 'Ben B', `${yr}-05-01`, `${yr}-05-03`, 300), mkb(3, 'Old C', `${yr - 1}-06-01`, `${yr - 1}-06-09`, 1000)],
+        ta: [mkb(4, 'Cat D', `${yr}-03-01`, `${yr}-03-04`, 600), mkb(5, 'Old E', `${yr - 1}-04-01`, `${yr - 1}-04-03`, 200)],
+    };
+    vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);dbBookings.jollyboat=__seedCv.jb;dbBookings["21a"]=__seedCv.ta;__cmdkCustomers=null;__cmdkFrame=null;', ctx);
+    const top = (q) => { const r = ctx.cmdkBuildResults(q); const t = (r.results || [])[0]; return t ? `[${t.type}/${t.id}] ${t.label}` : '(none)'; };
+    top('revenue this year'); // frames the conversation (head stays the golden-pinned action row)
+    let h = top('and last year');
+    check(`"and last year" refines to last year's revenue figure (£1,200)`, /£1,200\.00 booked in \d{4}/.test(h), h);
+    h = top('just jollyboat');
+    check('"just jollyboat" scopes the SAME frame to the cottage (£1,000)', /£1,000\.00 booked in \d{4} at Jollyboat/.test(h), h);
+    h = top('occupancy');
+    check('bare "occupancy" swaps the metric, KEEPING period + cottage', /% occupancy in \d{4} at Jollyboat/.test(h), h);
+    h = top('this year');
+    check('bare period patches back to this year (chain continues)', new RegExp(`% occupancy in ${yr} at Jollyboat`).test(h), h);
+    h = top('vs last year');
+    check('"vs last year" composes the delta from BOTH frames', /^\[answer\/cmp\] this year: .+ · last year: .+ — (up|down|level)/.test(h), h);
+    h = top('as nights');
+    check('"as nights" swaps to the nights family, scope intact', /nights booked in \d{4} at Jollyboat/.test(h), h);
+    // Guards — none of these are refinements.
+    h = top('who owes money');
+    check('a standalone ops question is never read as a refinement', !/at Jollyboat|booked in/.test(h), h);
+    vm.runInContext(`__cmdkFrame = { slots: { metric: 'revenue', period: 'this year', prop: null }, at: Date.now() }`, ctx);
+    h = top('jollyboat');
+    check('a BARE cottage name stays the identity dossier (marker required to scope)', !/booked in|£1,000/.test(h), h);
+    vm.runInContext('__cmdkFrame = null', ctx);
+    h = top('occupancy');
+    check('bare metric with NO frame keeps its own default (this month)', /occupancy this month/.test(h), h);
+    vm.runInContext(`__cmdkFrame = { slots: { metric: 'revenue', period: 'this year', prop: null }, at: Date.now() - 200000 }`, ctx);
+    h = top('and last year');
+    check('a STALE frame (>3 min) never hijacks a follow-up', !/booked in/.test(h), h);
+    // Prop-scoped insights stand alone too (what the refinement composes).
+    vm.runInContext('__cmdkFrame = null', ctx);
+    h = top('occupancy at 21a this year');
+    check('standalone prop-scoped insights: "occupancy at 21a this year"', /% occupancy in \d{4} at 21A/.test(h), h);
+    h = top('jollyboat earned last year');
+    check('standalone prop-scoped money figure', /£1,000\.00 booked in \d{4} at Jollyboat/.test(h), h);
+    vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);__cmdkCustomers=null;__cmdkFrame=null;', ctx);
+} else fail('chbConvResolve missing from the bundle');
+
 // ---- 30. Darkstar-C (contextual encoder) plumbing. The encoder itself is
 // benched offline (it can't run in CI); what MUST hold here is the machinery:
 // the WordPiece tokenizer, the encoder-built index (tagged CHB_HIST.enc, its

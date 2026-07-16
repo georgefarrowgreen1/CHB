@@ -2968,7 +2968,12 @@ function cmdkIntent(q) {
         // MAINTENANCE blocks are NOT bookings; isOtaBlock() excludes them (source
         // falsy or 'owner'), so blocked-out dates never count as booking days.
         const otaStays = blocks.filter((x) => isOtaBlock(x.bl)).map((x) => ({ pk: x.pk, b: { checkIn: x.bl.checkIn, checkOut: x.bl.checkOut }, ota: true }));
-        const allStays = flat.map((x) => ({ pk: x.pk, b: x.b, ota: false })).concat(otaStays);
+        // A NAMED cottage scopes every figure in this branch — "jollyboat revenue
+        // this year", "occupancy at 21a last month" (and the conversational
+        // "just jollyboat" refinement composes exactly these queries).
+        let insProp = null;
+        try { insProp = (((typeof chbEntities === 'function' && chbEntities(q)) || {}).prop) || null; } catch (e) {}
+        const allStays = flat.map((x) => ({ pk: x.pk, b: x.b, ota: false })).concat(otaStays).filter((x) => !insProp || x.pk === insProp);
         const nights = (x) => (x.b.checkIn && x.b.checkOut ? dnights(x.b.checkIn, x.b.checkOut) : 0);
         // Repeat-guest rate — from the unified customer directory (strong identity
         // only, so two different "John Smith"s can never fake a repeat). All-time
@@ -3010,6 +3015,7 @@ function cmdkIntent(q) {
         else if (/next month/.test(q)) { const s = new Date(dd0.getFullYear(), dd0.getMonth() + 1, 1), e = new Date(dd0.getFullYear(), dd0.getMonth() + 2, 0); pStart = isoD(s); pEnd = isoD(e); plabel = 'in ' + monthName(s.getMonth()); }
         else if (nm) { const mi = MON3.indexOf(nm[1].slice(0, 3)); const yr = dd0.getFullYear(); pStart = isoD(new Date(yr, mi, 1)); pEnd = isoD(new Date(yr, mi + 1, 0)); plabel = 'in ' + monthName(mi); }
         else { const s = new Date(dd0.getFullYear(), dd0.getMonth(), 1), e = new Date(dd0.getFullYear(), dd0.getMonth() + 1, 0); pStart = isoD(s); pEnd = isoD(e); plabel = 'this month'; }
+        if (insProp) plabel += ` at ${propName(insProp)}`;
         const stays = allStays.filter((x) => x.b.checkIn && x.b.checkIn >= pStart && x.b.checkIn <= pEnd);
         const revenue = stays.reduce((s, x) => s + total(x.b), 0);
         const soldNights = stays.reduce((s, x) => s + nights(x), 0);
@@ -3019,7 +3025,7 @@ function cmdkIntent(q) {
         const payingNights = soldNights - otaNights;
         const avgRate = payingNights ? revenue / payingNights : 0;
         const otaNote = otaNights ? ` · incl. ${otaNights} OTA night${otaNights === 1 ? '' : 's'} (no price)` : '';
-        const cottages = Object.keys(dbBookings || {}).length || 1;
+        const cottages = insProp ? 1 : Object.keys(dbBookings || {}).length || 1;
         const periodDays = dnights(pStart, pEnd) + 1;
         const endPlus = isoD(new Date(new Date(pEnd + 'T00:00:00').getTime() + 86400000));
         let occNights = 0;
@@ -4095,13 +4101,188 @@ function coachWalk(topicId) {
     try { if (w.start) w.start(); } catch (e) {}
     setTimeout(() => coachSequence(w.steps, 0), 400);
 }
+// ============================================================
+//  CONVERSATIONAL FRAME — search remembers what the last metric answer was
+//  ABOUT (metric · period · cottage) so a short follow-up REFINES it instead
+//  of starting over: "revenue this year" → "and last year" → "just jollyboat"
+//  → "occupancy" each patch ONE slot and re-run the same deterministic
+//  families; "vs last year" runs the frame twice and speaks the delta.
+//  Monotonic-safe like the veto: a refinement must be EXACTLY one slot (a
+//  cottage additionally needs a marker word — bare "jollyboat" stays the
+//  identity dossier), the frame lives 3 minutes, and when the recomposed
+//  query doesn't answer, the raw query falls through to the normal pipeline
+//  untouched. A full standalone question always wins — metric + period in one
+//  query is never read as a refinement.
+// ============================================================
+let __cmdkFrame = null; // { slots: { metric, period, prop }, at }
+const CHB_FRAME_TTL = 180000; // a conversation goes quiet after ~3 minutes
+// Metric families the frame can carry: key · the CANONICAL phrase recomposition
+// uses (guaranteed to hit its deterministic family) · the whole-string detector
+// a bare follow-up must match ("occupancy", "as nights", "adr").
+const CHB_FRAME_METRICS = [
+    // NB recomposition uses 'earned', not 'revenue' — 'revenue …' is claimed by
+    // the Income & tax ACTION row (golden-pinned), while 'earned …' goes
+    // straight to the money-led insights FIGURE the conversation wants.
+    ['revenue', 'earned', /^(?:revenue|income|earnings|takings|turnover|top.?line)$/],
+    ['nights', 'nights booked', /^(?:nights?(?: booked| sold)?|how many nights)$/],
+    ['occupancy', 'occupancy', /^(?:occupancy|fill rate|how full)$/],
+    ['avgrate', 'average nightly rate', /^(?:average (?:rate|price|nightly rate|nightly)|avg rate|adr)$/],
+    ['avgstay', 'average stay', /^(?:average stay|length of stay|average length of stay|typical stay)$/],
+    ['bookings', 'how many bookings', /^(?:bookings|how many bookings|reservations|booking count)$/],
+];
+// Store-side detectors: does a FULL query carry one of those metrics? (Loose —
+// mirrors each family's own vocabulary.)
+const CHB_FRAME_METRIC_Q = [
+    ['revenue', /\brevenue\b|\bincome\b|\bearn(ed|ings)?\b|\btakings?\b|\bturnover\b|top.?line|how much (did|have) i (made?|earned?|taken?)/],
+    ['nights', /nights? (booked|sold)|how many nights/],
+    ['occupancy', /occupanc|fill rate|how (full|busy)/],
+    ['avgrate', /average (rate|price|nightly)|\badr\b/],
+    ['avgstay', /average (stay|length)|length of stay|how long do (guests|people)|typical (stay|visit)/],
+    ['bookings', /how many (bookings|reservations)/],
+];
+const CHB_FRAME_MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+function chbFramePeriod(s) {
+    s = s.replace(/^(?:in|for|during)\s+/, '');
+    if (/^(this|last|next) (week|month|year)$/.test(s)) return s;
+    if (CHB_FRAME_MONTHS.indexOf(s) >= 0) return 'in ' + s;
+    return null;
+}
+function chbFrameProp(s) {
+    s = s.replace(/^(?:just|only|at|for|on)\s+/, '');
+    for (const k of Object.keys(propertyMeta || {})) {
+        const nm = String((propertyMeta[k] || {}).name || '').toLowerCase();
+        if (s === k.toLowerCase() || (nm && s === nm)) return k;
+    }
+    return null;
+}
+function chbFrameMetric(s) {
+    s = s.replace(/^(?:as|in|by|show(?: me)?)\s+/, '');
+    for (const [key, , re] of CHB_FRAME_METRICS) if (re.test(s)) return key;
+    return null;
+}
+// Does this FULL query carry a frame? (Called after an intent answers, so the
+// NEXT query can refine it.) Only metric questions frame — an ops question or
+// a name search never captures the conversation.
+function chbFrameParse(q) {
+    const ql = String(q || '').toLowerCase();
+    let metric = null;
+    for (const [key, re] of CHB_FRAME_METRIC_Q) { if (re.test(ql)) { metric = key; break; } }
+    if (!metric) return null;
+    let period = null;
+    const mp = ql.match(/\b(this|last|next) (week|month|year)\b/);
+    if (mp) period = mp[0];
+    else { const mm = ql.match(new RegExp('\\b(' + CHB_FRAME_MONTHS.join('|') + ')\\b')); if (mm) period = 'in ' + mm[1]; }
+    let prop = null;
+    try { prop = (((typeof chbEntities === 'function' && chbEntities(ql)) || {}).prop) || null; } catch (e) {}
+    return { metric, period, prop };
+}
+function chbFrameStore(q) {
+    try { const sl = chbFrameParse(q); if (sl) __cmdkFrame = { slots: sl, at: Date.now() }; } catch (e) {}
+}
+function chbFrameCompose(slots) {
+    const meta = CHB_FRAME_METRICS.find((m) => m[0] === slots.metric);
+    if (!meta) return null;
+    const nm = slots.prop && propertyMeta[slots.prop] ? propertyMeta[slots.prop].name : '';
+    return [nm, meta[1], slots.period || ''].filter(Boolean).join(' ').toLowerCase();
+}
+// One-slot patch: the WHOLE remaining text must be exactly a period, a marked
+// cottage, or a metric — anything more is a standalone question, not a patch.
+function chbConvPatch(s, marked) {
+    const period = chbFramePeriod(s);
+    if (period) return { period };
+    const prop = chbFrameProp(s);
+    if (prop && (marked || /^(?:just|only|at|for|on)\s/.test(s))) return { prop };
+    const metric = chbFrameMetric(s);
+    if (metric) return { metric };
+    return null;
+}
+function chbConvResolve(q0) {
+    const f = __cmdkFrame;
+    if (!f || Date.now() - f.at > CHB_FRAME_TTL) return null;
+    let q = String(q0 || '').toLowerCase().replace(/[?!.]+\s*$/, '').trim();
+    const hadLead = /^(?:and|what about|how about|now|also|ok(?:ay)?)\b/.test(q);
+    q = q.replace(/^(?:and|what about|how about|now|also|ok(?:ay)?)[\s,]+/, '').trim();
+    if (!q || q.split(/\s+/).length > 4) return null;
+    const mCmp = q.match(/^(?:vs|versus|compared? (?:to|with)|against)\s+(.+)$/);
+    if (mCmp) {
+        const patch = chbConvPatch(mCmp[1].trim(), true);
+        if (!patch) return null;
+        const b = Object.assign({}, f.slots, patch);
+        if (chbFrameCompose(f.slots) === chbFrameCompose(b)) return null; // nothing to compare
+        return { cmp: true, a: f.slots, b, diff: Object.keys(patch)[0] };
+    }
+    const patch = chbConvPatch(q, hadLead);
+    if (!patch) return null;
+    const slots = Object.assign({}, f.slots, patch);
+    const q2 = chbFrameCompose(slots);
+    return q2 ? { q: q2, slots } : null;
+}
+// A conversation is metric-talk: the FIGURE row is the answer, even where the
+// standalone query would lead with a matched action row ("revenue" also
+// surfaces the Income & tax screen — right for a fresh search, wrong for a
+// follow-up that asked for a number).
+function chbConvFigure(rows) {
+    return (rows || []).find((r) => r && (r.type === 'figure' || r.type === 'answer') && /£[\d,]+|\d/.test(String(r.label || ''))) || null;
+}
+// "vs" composer: answer BOTH frames through the same families, lift each
+// figure and SPEAK the delta; the two source answers ride beneath as evidence.
+function chbConvCompare(conv) {
+    const qA = chbFrameCompose(conv.a), qB = chbFrameCompose(conv.b);
+    const rA = qA ? chbConvFigure(cmdkIntent(qA)) : null;
+    const rB = qB ? chbConvFigure(cmdkIntent(qB)) : null;
+    if (!rA || !rB) return null;
+    const pick = (r) => {
+        const m = String(r.label || '').match(/£[\d,]+(?:\.\d+)?|[\d.]+%|\d+(?:\.\d+)?/);
+        return m ? { txt: m[0], val: parseFloat(m[0].replace(/[£,%]/g, '').replace(/,/g, '')) } : null;
+    };
+    const a = pick(rA), b = pick(rB);
+    if (!a || !b || !isFinite(a.val) || !isFinite(b.val)) return null;
+    const dim = (sl) => (conv.diff === 'prop'
+        ? ((propertyMeta[sl.prop] || {}).name || (sl.prop ? sl.prop : 'all cottages'))
+        : (sl.period || 'now'));
+    let verdict = 'level';
+    if (b.val > 0.0001) {
+        const pct = Math.round(((a.val - b.val) / b.val) * 100);
+        verdict = pct > 0 ? `up ${pct}%` : pct < 0 ? `down ${-pct}%` : 'level';
+    } else if (a.val > 0) verdict = 'up from nothing';
+    const meta = CHB_FRAME_METRICS.find((m) => m[0] === conv.a.metric);
+    const head = {
+        type: 'answer', id: 'cmp', wrap: true,
+        label: `${dim(conv.a)}: ${a.txt} · ${dim(conv.b)}: ${b.txt} — ${verdict}`,
+        sub: `${meta ? meta[1] : 'compared'}${conv.a.prop && conv.diff !== 'prop' ? ' · ' + (((propertyMeta[conv.a.prop] || {}).name) || '') : ''}`,
+        run: rA.run || (() => {}),
+    };
+    return [head, Object.assign({}, rA, { id: 'cmp-a' }), Object.assign({}, rB, { id: 'cmp-b' })];
+}
 let __cmdkNluOff = false; // one-shot bypass (the note's "search the literal words")
 function cmdkBuildResults(ql) {
     let results = [];
     let nluUsed = null;
+    // Conversational frame first: a one-slot follow-up ("and last year",
+    // "just jollyboat", "occupancy", "vs last month") patches the previous
+    // metric answer's frame and re-runs the same families. Any failure —
+    // stale frame, not refinement-shaped, recomposed query unanswered —
+    // falls through to the normal pipeline with the raw query untouched.
     try {
-        const intent = cmdkIntent(ql);
-        if (intent) results = intent.slice(0, 11);
+        const conv = chbConvResolve(ql);
+        if (conv) {
+            let rows = conv.cmp ? chbConvCompare(conv) : cmdkIntent(conv.q);
+            if (rows && rows.length && !conv.cmp) {
+                // Hoist the figure to the head — the follow-up asked for a number.
+                const fig = chbConvFigure(rows);
+                if (fig && rows[0] !== fig) rows = [fig].concat(rows.filter((r) => r !== fig));
+            }
+            if (rows && rows.length) {
+                results = rows.slice(0, 11);
+                __cmdkFrame = { slots: conv.cmp ? conv.a : conv.slots, at: Date.now() }; // the chain continues
+            }
+        }
+    } catch (e) {}
+    try {
+        if (!results.length) {
+            const intent = cmdkIntent(ql);
+            if (intent) { results = intent.slice(0, 11); chbFrameStore(ql); }
+        }
     } catch (e) {}
     // Breadth tier: deterministic compute (maths / VAT / percentages / unit
     // conversions / date arithmetic / world clock) and the almanac fact pack.
@@ -4124,6 +4305,7 @@ function cmdkBuildResults(ql) {
                     // Tag the rows so accepting one TEACHES the model this phrasing.
                     results = alt.slice(0, 11).map((r) => Object.assign({}, r, { _nlu: g.canonical, _nluQ: ql }));
                     nluUsed = g.canonical;
+                    chbFrameStore(g.canonical); // an NLU-mapped metric answer frames the conversation too
                 }
             }
         } catch (e) {}
