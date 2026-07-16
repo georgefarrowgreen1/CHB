@@ -145,6 +145,38 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(q.hidden, 'strip hides when nothing needs the owner');
   ok(/all quiet/.test(q.ops), `ops line says all quiet (${q.ops})`);
 
+  console.log('5. heading adapts: pure opportunities read "Worth a look"');
+  await page.evaluate(() => {
+    __nyCronQuiet = false; __nyChats = 0; __nyMod = {}; enquiries = [];
+    Object.keys(dbBookings).forEach((k) => { dbBookings[k] = []; });
+    Object.keys(dbBlocks).forEach((k) => { dbBlocks[k] = []; });
+    const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.getMonth(), t.getDate() + n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
+    const mk = (id, ci, co) => ({ id, name: 'G' + id, checkIn: ci, checkOut: co, adults: 2, children: 0, payment: 'paid', holdStatus: 'none', agreedPrice: { total: 100 } });
+    dbBookings.jollyboat = [mk(91, d(5), d(8)), mk(92, d(11), d(14))]; // → one 3-night gap, no duties
+    renderNeedsYou();
+  });
+  await page.waitForTimeout(300);
+  const w = await page.evaluate(() => ({
+    word: (document.getElementById('needs-you-word') || {}).textContent,
+    count: (document.getElementById('needs-you-count') || {}).textContent,
+    opp: (document.getElementById('needs-you-count') || { classList: { contains: () => false } }).classList.contains('is-opp'),
+    labels: [...document.querySelectorAll('#needs-you-list .ny-label')].map((e) => e.textContent),
+  }));
+  ok(w.word === 'Worth a look', `opportunities-only heading reads "Worth a look" (${w.word})`);
+  ok(w.count === '1' && w.opp, `calm green badge counts the ideas (${w.count}, is-opp=${w.opp})`);
+  ok(w.labels.some((l) => /free nights between stays/.test(l)), 'the gap idea is the only row');
+  await page.evaluate(() => {
+    enquiries = [{ id: 7, name: 'Duty Guest', propKey: 'jollyboat', checkIn: '2027-01-05', checkOut: '2027-01-08', receivedAt: new Date().toISOString().slice(0, 19).replace('T', ' ') }];
+    renderNeedsYou();
+  });
+  await page.waitForTimeout(200);
+  const w2 = await page.evaluate(() => ({
+    word: (document.getElementById('needs-you-word') || {}).textContent,
+    count: (document.getElementById('needs-you-count') || {}).textContent,
+    opp: document.getElementById('needs-you-count').classList.contains('is-opp'),
+  }));
+  ok(w2.word === 'Needs you' && w2.count === '1' && !w2.opp, `a duty flips it back — badge counts DUTIES only (${w2.word} ${w2.count})`);
+
   await browser.close(); server.kill();
   console.log(fails ? `NEEDS-YOU TEST FAILED ❌ (${fails})` : 'NEEDS-YOU TEST PASSED ✅');
   process.exit(fails ? 1 : 0);

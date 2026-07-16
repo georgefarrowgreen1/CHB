@@ -11481,7 +11481,7 @@ function chbAnomalies() {
     // 1) BOUNDED short gaps (chbGapScan) — worth a last-minute offer.
     chbGapScan().slice(0, 2).forEach((g) => {
         items.push({
-            sev: 'ok', ic: 'spark',
+            sev: 'ok', ic: 'spark', opp: true,
             label: `${g.nights} free nights between stays on ${propName(g.pk)}`,
             sub: `${fmtStayRange(g.from, g.to)} · a last-minute offer could fill them`,
             act: 'Book', go: chbAttrs('nyGapAdd', g.pk, g.from),
@@ -11509,7 +11509,7 @@ function chbAnomalies() {
     if (ly >= 8 && cur < ly * 0.5) {
         const mn = new Date(nmY, nmM, 1).toLocaleDateString('en-GB', { month: 'long' });
         items.push({
-            sev: 'ok', ic: 'spark',
+            sev: 'ok', ic: 'spark', opp: true,
             label: `${mn} is looking light — ${cur} night${cur === 1 ? '' : 's'} booked vs ${ly} last year`,
             sub: 'A price nudge or a short-break offer could close the gap',
             act: 'Review', go: 'data-act="nyPacingReview"',
@@ -11633,8 +11633,19 @@ function renderNeedsYou() {
     try {
         items = needsYouItems();
     } catch (e) {}
+    // The heading tells the truth about the CONTENTS: duties (enquiries,
+    // balances, deposits, approvals…) "need you"; a strip that's PURE
+    // opportunity (gap offers, pacing ideas) is just "worth a look" — the
+    // badge counts the duties when there are any, and turns calm green when
+    // everything shown is optional.
+    const duties = items.filter((it) => !it.opp).length;
+    const word = document.getElementById('needs-you-word');
+    if (word) word.textContent = duties ? 'Needs you' : 'Worth a look';
     const count = document.getElementById('needs-you-count');
-    if (count) count.textContent = items.length;
+    if (count) {
+        count.textContent = duties || items.length;
+        count.classList.toggle('is-opp', !duties && items.length > 0);
+    }
     if (!items.length) {
         wrap.style.display = 'none';
         list.innerHTML = '';

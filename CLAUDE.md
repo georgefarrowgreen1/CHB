@@ -419,7 +419,7 @@ enquiries by recorded name, free text only by 2+-word full name; activity log ex
 log-spam; strong key required; rows open their source via `chbHistoryRow`). Renders NOTHING
 for a first-timer with no history; if `CHB_HIST` isn't built, `openBookingHub` builds it in
 the background and slots mentions in when it lands. (2) **`chbAnomalies()`** appends
-OPPORTUNITY rows (sev `ok`, `spark` icon, lowest priority) to the Needs-you strip: bounded
+OPPORTUNITY rows (sev `ok`, `spark` icon, `opp: true`, lowest priority) to the Needs-you strip — whose HEADING adapts: any duty keeps "Needs you" (amber badge counts DUTIES only); a pure-opportunity strip reads "Worth a look" with a calm green badge (`#needs-you-count.is-opp`, `#needs-you-word` set in `renderNeedsYou`): bounded
 2–4-night gaps between guest stays starting ≤45 days out (owner-blocked holes = deliberately
 held, skipped; 1-night = changeover slack; unbounded space ≠ gap; cap 2 → `nyGapAdd` prefills
 Add Booking via `tlAddAt`) and a next-month shortfall vs the same month last year (fires only
