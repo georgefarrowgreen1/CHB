@@ -2,8 +2,10 @@
 //  1. a repeat guest's booking hub leads with the "Knows your guest" card
 //     (ordinal + lifetime from the unified directory, strong identity)
 //  2. a first-time guest's hub has NO intel card (empty dossier = noise)
-//  3. the Needs-you strip carries the bounded-gap opportunity row
-//  4. tapping it lands on the Add-Booking modal prefilled with cottage + date
+//  3. the Needs-you strip carries the gap row with chbGapPlan's DECISION —
+//     a one-tap dated offer (15% off the current rate), not a Book action
+//  4. tapping Offer SAVES the 'Gap offer' override through seasons_save and
+//     the row flips to its live status (routing to Rates)
 process.env.TZ = 'Europe/London';
 const { chromium } = require('playwright');
 const { spawn } = require('child_process');
@@ -29,13 +31,20 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     mk(3, 'Bob Mills', 'b@x.co', d(5), d(8)),
     mk(4, 'Carol Reeve', 'c@x.co', d(11), d(14)),
   ];
+  const saved = []; // seasons_save payloads the page writes
   await page.route(/\.php/, (route) => {
     const url = route.request().url();
     const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
     if (url.includes('bookings.php') && route.request().method() !== 'POST') return json({ bookings });
-    if (url.includes('rates.php') && route.request().method() !== 'POST') return json({ properties: [
-      { prop_key: 'jollyboat', name: 'Jollyboat', slug: 'jollyboat', couple_rate: 130, booking_fee: 50, max_adults: 2, max_children: 0, max_total: 2, sort_order: 1 },
-    ], seasons: {}, occupancy: {} });
+    if (url.includes('rates.php')) {
+      if (route.request().method() === 'POST') {
+        try { const b = JSON.parse(route.request().postData() || '{}'); if (b.action === 'seasons_save') saved.push(b); } catch (e) {}
+        return json({ ok: true });
+      }
+      return json({ properties: [
+        { prop_key: 'jollyboat', name: 'Jollyboat', slug: 'jollyboat', couple_rate: 130, booking_fee: 50, max_adults: 2, max_children: 0, max_total: 2, sort_order: 1 },
+      ], seasons: {}, occupancy: {} });
+    }
     return json({ ok: true, events: [], logs: {}, results: [], threads: [], enquiries: [], reviews: [], photos: [], value: null, corpus: [] });
   });
   await page.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'networkidle' });
@@ -63,24 +72,29 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const none = await page.evaluate(() => !document.getElementById('hub-intel-card'));
   ok(none, 'first-time guest: no intel card (nothing worth knowing)');
 
-  // 3) The Needs-you strip carries the gap-opportunity row.
+  // 3) The Needs-you strip decides the gap's best outcome: a one-tap offer
+  // (15% off the £130 rate → £111), never a manual Book.
   await page.evaluate(() => nav('view-backoffice')); await page.waitForTimeout(300);
   await page.evaluate(() => renderNeedsYou());
   const gap = await page.evaluate(() => {
-    const row = [...document.querySelectorAll('#needs-you-list .ny-row')].find((r) => /free nights between stays/.test(r.textContent));
+    const row = [...document.querySelectorAll('#needs-you-list .ny-row')].find((r) => /night gap on/.test(r.textContent));
     return row ? row.textContent : null;
   });
-  ok(!!gap && /3 free nights/.test(gap), `Needs-you shows the bounded-gap opportunity (${(gap || 'none').slice(0, 70).trim()})`);
+  ok(!!gap && /Fill the 3-night gap on Jollyboat: offer £111\/night/.test(gap), `Needs-you leads with the priced offer (${(gap || 'none').slice(0, 90).trim()})`);
+  ok(!!gap && /15% off the usual £130/.test(gap) && /Offer ›/.test(gap), `…with the discount maths + an Offer action, not Book (${(gap || 'none').slice(-60).trim()})`);
 
-  // 4) Tapping it prefills Add Booking with the cottage + gap start.
-  await page.evaluate(() => { [...document.querySelectorAll('#needs-you-list .ny-row')].find((r) => /free nights/.test(r.textContent)).click(); });
-  await page.waitForTimeout(500);
-  const modal = await page.evaluate(() => ({
-    prop: (document.getElementById('modal-property') || {}).value,
-    checkin: (document.getElementById('modal-checkin') || {}).value,
-  }));
-  ok(modal.prop === 'jollyboat', `gap row opens Add Booking on the right cottage (${modal.prop})`);
-  ok(modal.checkin === d(8), `…prefilled with the gap's first free night (${modal.checkin})`);
+  // 4) Tapping Offer SAVES the dated 'Gap offer' override and the row flips
+  // to its live status.
+  await page.evaluate(() => { [...document.querySelectorAll('#needs-you-list .ny-row')].find((r) => /night gap on/.test(r.textContent)).click(); });
+  await page.waitForTimeout(600);
+  const pay = saved.find((b) => b.prop_key === 'jollyboat');
+  const season = pay && (pay.seasons || []).find((s) => s.label === 'Gap offer');
+  ok(!!season && season.rate === 111 && season.start === d(8) && season.end === d(10), `Offer saved the dated override via seasons_save (${JSON.stringify(season)})`);
+  const live = await page.evaluate(() => {
+    const row = [...document.querySelectorAll('#needs-you-list .ny-row')].find((r) => /Offer live on/.test(r.textContent));
+    return row ? row.textContent : null;
+  });
+  ok(!!live && /Offer live on Jollyboat — £111\/night/.test(live) && /Rates ›/.test(live), `the row flips to its live status routing to Rates (${(live || 'none').slice(0, 90).trim()})`);
 
   await browser.close();
   server.kill();

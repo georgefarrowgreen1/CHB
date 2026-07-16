@@ -1076,7 +1076,9 @@ if (typeof ctx.cmdkIntent === 'function') {
 }
 
 // ---- 32. Ambient intelligence: chbAnomalies (deterministic opportunity rows —
-// bounded 2-4-night gaps, next-month shortfall vs last year) and chbGuestIntel
+// bounded 2-4-night gaps carrying chbGapPlan's best-outcome decision (one-tap
+// dated offer, 20% when imminent, live-status when already set), next-month
+// shortfall vs last year) and chbGuestIntel
 // (the "Knows your guest" hub card — strong identity only, mentions from the
 // in-memory history index, null when there's nothing worth knowing). ----
 if (typeof ctx.chbAnomalies === 'function' && typeof ctx.chbGuestIntel === 'function') {
@@ -1085,12 +1087,20 @@ if (typeof ctx.chbAnomalies === 'function' && typeof ctx.chbGuestIntel === 'func
     const mkb = (id, name, email, inD, outD) => ({ id, name, email, checkIn: inD, checkOut: outD, adults: 2, children: 0, payment: 'paid', holdStatus: 'none', agreedPrice: { total: 400 } });
     const seed = (rows, blocks) => { ctx.__seedAn = { rows: rows || [], blocks: blocks || [] }; vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);dbBookings.jollyboat=__seedAn.rows;dbBlocks.jollyboat=__seedAn.blocks;__cmdkCustomers=null;', ctx); };
     const anomalies = () => ctx.chbAnomalies();
-    const gapRows = () => anomalies().filter((a) => /free nights between stays/.test(a.label));
+    const gapRows = () => anomalies().filter((a) => /night gap on|Offer live on/.test(a.label));
 
-    // Gaps.
+    // Gaps — each row carries chbGapPlan's DECISION (offer vs live status).
     seed([mkb(1, 'Bob A', 'b@x.co', plus(5), plus(8)), mkb(2, 'Cara B', 'c@x.co', plus(11), plus(14))]);
     let g = gapRows();
-    check('a bounded 3-night gap 8 days out is flagged', g.length === 1 && /3 free nights/.test(g[0].label), g.map((x) => x.label).join(' | '));
+    check('a bounded 3-night gap 8 days out proposes the 15% offer (£130→£111)', g.length === 1 && /Fill the 3-night gap on .*: offer £111\/night/.test(g[0].label) && g[0].act === 'Offer' && /15% off the usual £130/.test(g[0].sub), g.map((x) => `${x.label} | ${x.sub} [${x.act}]`).join(' || '));
+    seed([mkb(1, 'Bob A', 'b@x.co', plus(2), plus(5)), mkb(2, 'Cara B', 'c@x.co', plus(8), plus(11))]);
+    g = gapRows();
+    check('an IMMINENT gap (≤7 days out) cuts deeper — 20% (£130→£104)', g.length === 1 && /offer £104\/night/.test(g[0].label) && /20% off/.test(g[0].sub), g.map((x) => `${x.label} | ${x.sub}`).join(' || '));
+    seed([mkb(1, 'Bob A', 'b@x.co', plus(5), plus(8)), mkb(2, 'Cara B', 'c@x.co', plus(11), plus(14))]);
+    vm.runInContext(`propertySeasons.jollyboat = [{ label: 'Gap offer', start_date: '${plus(8)}', end_date: '${plus(10)}', couple_rate: 111 }];`, ctx);
+    g = gapRows();
+    check('an offer ALREADY LIVE is reported as live and routes to Rates, never re-suggested', g.length === 1 && /Offer live on .* — £111\/night/.test(g[0].label) && g[0].act === 'Rates' && !/one tap sets/.test(g[0].sub), g.map((x) => `${x.label} [${x.act}]`).join(' || '));
+    vm.runInContext('propertySeasons.jollyboat = [];', ctx);
     seed([mkb(1, 'Bob A', 'b@x.co', plus(5), plus(8)), mkb(2, 'Cara B', 'c@x.co', plus(9), plus(12))]);
     check('a 1-night hole (changeover slack) stays silent', gapRows().length === 0);
     seed([mkb(1, 'Bob A', 'b@x.co', plus(5), plus(8)), mkb(2, 'Cara B', 'c@x.co', plus(14), plus(17))]);
@@ -1332,7 +1342,7 @@ if (typeof ctx.cmdkBrief === 'function') {
     const lbl = (id) => { const r = brief.find((x) => x.id === id || String(x.id).startsWith(id)); return r ? `${r.label} | ${r.sub}` : '(none)'; };
     check('brief: today’s arrival is NAMED with her check-in time', /Rita arrives today · 15:00/.test(lbl('brief-arr')), lbl('brief-arr'));
     check('brief: arrival context carries the repeat ordinal + money to take', /2nd stay with you/.test(lbl('brief-arr')) && /£400\.00 to take/.test(lbl('brief-arr')), lbl('brief-arr'));
-    check('brief: the SOONEST gap rides as a ready-made offer', /Worth a look: \d free nights on Jollyboat/.test(lbl('brief-gap')) && /15% off.*tap to apply/.test(lbl('brief-gap')), lbl('brief-gap'));
+    check('brief: the SOONEST gap rides as a ready-made offer (imminent → 20%)', /Worth a look: \d free nights on Jollyboat/.test(lbl('brief-gap')) && /offer £\d+\/night \(20% off\).*tap to apply/.test(lbl('brief-gap')), lbl('brief-gap'));
     check('brief: the teach-loop nudge counts this week’s dead ends', /2 searches found nothing this week/.test(lbl('brief-teach')), lbl('brief-teach'));
     vm.runInContext(`chbNluStore('chb-search-misses', [{ t: 'old one', n: 1, at: '2020-01-01' }]); CHB_NLU.misses = null;`, ctx);
     const brief2 = ctx.cmdkBrief();

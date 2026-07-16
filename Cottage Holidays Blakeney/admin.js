@@ -698,16 +698,24 @@ function cmdkCommand(q, today) {
         }];
         try {
             chbGapScan().slice(0, 3).forEach((g) => {
-                const cur = chbCoupleRateOn(g.pk, g.from);
-                if (!cur) return;
-                const offer = Math.round(cur * 0.85);
-                const endIncl = chbIsoShift(g.to, -1);
-                rows.push({
-                    type: 'answer', id: 'price-gap-' + g.pk + '-' + g.from, wrap: true,
-                    label: `${g.nights}-night gap on ${(propertyMeta[g.pk] || {}).name || g.pk}: try £${offer}/night (15% off)`,
-                    sub: `${fmtDate(g.from)}–${fmtDate(endIncl)} sits empty between stays · £${cur} → £${offer} · one tap saves the dated offer`,
-                    run: () => { closeCmdK(); cmdkApplyPriceOverride(g.pk, g.from, endIncl, offer, 'Gap offer').catch((e) => glassAlert("Couldn't save: " + e.message)); },
-                });
+                const plan = chbGapPlan(g);
+                if (!plan) return;
+                const nm = (propertyMeta[g.pk] || {}).name || g.pk;
+                if (plan.kind === 'live') {
+                    rows.push({
+                        type: 'answer', id: 'price-gap-' + g.pk + '-' + g.from, wrap: true,
+                        label: `Offer already live on ${nm} — £${plan.rate}/night`,
+                        sub: `${fmtDate(g.from)}–${fmtDate(plan.endIncl)} · covering the ${g.nights}-night gap · edit it in Rates`,
+                        run: () => { closeCmdK(); nyOfferRates(); },
+                    });
+                } else {
+                    rows.push({
+                        type: 'answer', id: 'price-gap-' + g.pk + '-' + g.from, wrap: true,
+                        label: `${g.nights}-night gap on ${nm}: try £${plan.offer}/night (${plan.pct}% off)`,
+                        sub: `${fmtDate(g.from)}–${fmtDate(plan.endIncl)} sits empty between stays · £${plan.cur} → £${plan.offer} · one tap saves the dated offer`,
+                        run: () => { closeCmdK(); cmdkApplyPriceOverride(g.pk, g.from, plan.endIncl, plan.offer, 'Gap offer').catch((e) => glassAlert("Couldn't save: " + e.message)); },
+                    });
+                }
             });
         } catch (e) {}
         return rows;
@@ -5881,16 +5889,15 @@ function cmdkBrief() {
         const pulse = chbBusinessPulse();
         if (pulse) items.push({ type: 'answer', scope: 'money', id: 'brief-pulse', wrap: true, label: `${pulse.arrow} ${pulse.label}`, sub: pulse.sub, run: () => { closeCmdK(); openAccounts(); } });
     } catch (e) {}
-    // One opportunity, unasked: the soonest bookable gap with its ready-made offer.
+    // One opportunity, unasked: the soonest bookable gap, carrying chbGapPlan's
+    // decision — the ready-made offer, or the live status of one already set.
     try {
         const g = chbGapScan()[0];
-        if (g) {
-            const cur = chbCoupleRateOn(g.pk, g.from);
-            if (cur) {
-                const offer = Math.round(cur * 0.85);
-                const endIncl = chbIsoShift(g.to, -1);
-                items.push({ type: 'answer', scope: 'bookings', id: 'brief-gap', wrap: true, label: `Worth a look: ${g.nights} free nights on ${(propertyMeta[g.pk] || {}).name || g.pk}`, sub: `${fmtDate(g.from)}–${fmtDate(endIncl)} · try £${offer}/night (15% off) — tap to apply`, run: () => { closeCmdK(); cmdkApplyPriceOverride(g.pk, g.from, endIncl, offer, 'Gap offer').catch((e) => glassAlert("Couldn't save: " + e.message)); } });
-            }
+        const plan = g && chbGapPlan(g);
+        if (plan) {
+            const nm = (propertyMeta[g.pk] || {}).name || g.pk;
+            if (plan.kind === 'offer') items.push({ type: 'answer', scope: 'bookings', id: 'brief-gap', wrap: true, label: `Worth a look: ${g.nights} free nights on ${nm}`, sub: `${fmtDate(g.from)}–${fmtDate(plan.endIncl)} · offer £${plan.offer}/night (${plan.pct}% off) — tap to apply`, run: () => { closeCmdK(); cmdkApplyPriceOverride(g.pk, g.from, plan.endIncl, plan.offer, 'Gap offer').catch((e) => glassAlert("Couldn't save: " + e.message)); } });
+            else items.push({ type: 'answer', scope: 'bookings', id: 'brief-gap', wrap: true, label: `Offer live: £${plan.rate}/night on ${nm}`, sub: `${fmtDate(g.from)}–${fmtDate(plan.endIncl)} · the ${g.nights}-night gap is priced to sell — edit in Rates`, run: () => { closeCmdK(); nyOfferRates(); } });
         }
     } catch (e) {}
     // The teach-loop nudge: dead-end searches from the last 7 days, one tap to fix.
@@ -11095,21 +11102,53 @@ function chbGapScan() {
     });
     return gaps.sort((a, z) => a.startDays - z.startDays);
 }
+// The DECISION for a gap — look at the data and pick the best commercial
+// outcome, not a one-size action. A hole between two stays isn't something
+// you book by hand; it's something you PRICE to sell. If a 'Gap offer'
+// override already covers the hole, the honest answer is its live status
+// (route to Rates to edit — never re-suggest what's already done). Otherwise
+// propose a one-tap dated offer from the season-aware current rate: 20% off
+// when the gap is imminent (≤7 days — a last-minute price is the only lever
+// left), 15% otherwise, floored at the model's own £20 sanity bound. Null
+// when there's no rate to work from. Shared by the Needs-you strip, the
+// morning brief and the pricing suggester so every surface agrees.
+function chbGapPlan(g) {
+    const endIncl = chbIsoShift(g.to, -1);
+    const live = (propertySeasons[g.pk] || []).find((s) => (s.label || '') === 'Gap offer' && s.start_date <= endIncl && s.end_date >= g.from);
+    if (live) return { kind: 'live', rate: Math.round(parseFloat(live.couple_rate) || 0), endIncl };
+    const cur = chbCoupleRateOn(g.pk, g.from);
+    if (!cur) return null;
+    const pct = g.startDays <= 7 ? 20 : 15;
+    return { kind: 'offer', pct, offer: Math.max(20, Math.round(cur * (1 - pct / 100))), cur, endIncl };
+}
 function chbAnomalies() {
     const items = [];
     const today = todayDashed();
     const t0 = dpParse(today).getTime();
     const dayMs = 86400e3;
     const propName = (k) => escapeHtml((propertyMeta[k] || {}).name || k);
-    // 1) BOUNDED short gaps (chbGapScan) — worth a last-minute offer.
+    // 1) BOUNDED short gaps (chbGapScan) — each row carries chbGapPlan's
+    // decision: a one-tap dated offer, or the live status of one already set.
     chbGapScan().slice(0, 2).forEach((g) => {
-        items.push({
-            sev: 'ok', ic: 'spark', opp: true,
-            label: `${g.nights} free nights between stays on ${propName(g.pk)}`,
-            sub: `${fmtStayRange(g.from, g.to)} · a last-minute offer could fill them`,
-            act: 'Book', go: chbAttrs('nyGapAdd', g.pk, g.from),
-            run: () => { closeCmdK(); nyGapAdd(g.pk, g.from); },
-        });
+        const plan = chbGapPlan(g);
+        if (!plan) return;
+        if (plan.kind === 'live') {
+            items.push({
+                sev: 'ok', ic: 'spark', opp: true,
+                label: `Offer live on ${propName(g.pk)} — £${plan.rate}/night for the ${g.nights}-night gap`,
+                sub: `${fmtStayRange(g.from, g.to)} · priced to sell, waiting for a taker`,
+                act: 'Rates', go: 'data-act="nyOfferRates"',
+                run: () => { closeCmdK(); nyOfferRates(); },
+            });
+        } else {
+            items.push({
+                sev: 'ok', ic: 'spark', opp: true,
+                label: `Fill the ${g.nights}-night gap on ${propName(g.pk)}: offer £${plan.offer}/night`,
+                sub: `${fmtStayRange(g.from, g.to)} · ${plan.pct}% off the usual £${plan.cur} — one tap sets the dated offer`,
+                act: 'Offer', go: chbAttrs('nyGapOffer', g.pk, g.from),
+                run: () => { closeCmdK(); nyGapOffer(g.pk, g.from); },
+            });
+        }
     });
     // 2) NEXT MONTH vs what the same month did LAST YEAR. Flags only a real
     // shortfall — under HALF of last year's nights with a meaningful season
@@ -11141,10 +11180,20 @@ function chbAnomalies() {
     }
     return items;
 }
-// Anomaly routes: Book lands on the Add-Booking modal prefilled with the
-// cottage + gap start (the timeline's own tap-to-add); Review opens the
-// pricing coach. Both are safe launches — nothing saves without the owner.
-function nyGapAdd(pk, iso) { nav('view-backoffice'); try { tlAddAt(pk, iso); } catch (e) {} }
+// Anomaly routes. Offer: re-derive the plan at tap time (the strip may be
+// stale) and save the dated 'Gap offer' override through the one validated
+// write path — undo-able like every search save — then re-render so the row
+// flips to its live state. Rates: where a live offer is edited. Review:
+// the pricing coach.
+function nyGapOffer(pk, iso) {
+    const g = chbGapScan().find((x) => x.pk === pk && x.from === iso);
+    const plan = g && chbGapPlan(g);
+    if (!plan || plan.kind !== 'offer') { try { renderNeedsYou(); } catch (e) {} return; }
+    cmdkApplyPriceOverride(pk, g.from, plan.endIncl, plan.offer, 'Gap offer')
+        .then(() => { try { renderNeedsYou(); } catch (e) {} })
+        .catch((e) => glassAlert("Couldn't save: " + e.message));
+}
+function nyOfferRates() { Promise.resolve(openArea('cottages')).then(() => settingsOpen('seasongrid')); }
 function nyPacingReview() { openAccounts(); try { accountsOpen('pricingcoach'); } catch (e) {} }
 function needsYouItems() {
     const items = [];

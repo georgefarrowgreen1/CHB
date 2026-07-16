@@ -413,12 +413,21 @@ for a first-timer with no history; if `CHB_HIST` isn't built, `openBookingHub` b
 the background and slots mentions in when it lands. (2) **`chbAnomalies()`** appends
 OPPORTUNITY rows (sev `ok`, `spark` icon, `opp: true`, lowest priority) to the Needs-you strip — whose HEADING adapts: any duty keeps "Needs you" (amber badge counts DUTIES only); a pure-opportunity strip reads "Worth a look" with a calm green badge (`#needs-you-count.is-opp`, `#needs-you-word` set in `renderNeedsYou`): bounded
 2–4-night gaps between guest stays starting ≤45 days out (owner-blocked holes = deliberately
-held, skipped; 1-night = changeover slack; unbounded space ≠ gap; cap 2 → `nyGapAdd` prefills
-Add Booking via `tlAddAt`) and a next-month shortfall vs the same month last year (fires only
-under 50% of last year with last year ≥8 nights → `nyPacingReview` opens the pricing coach).
-Gated by search-test §32 (16 checks: gap bounds/blocks/window, pacing thresholds, intel
-composition, false-merge + no-card guards, mention matching) + ui-test-intel.js (real
-browser: card renders/withholds, gap row → prefilled modal).
+held, skipped; 1-night = changeover slack; unbounded space ≠ gap; cap 2) and a next-month
+shortfall vs the same month last year (fires only under 50% of last year with last year
+≥8 nights → `nyPacingReview` opens the pricing coach). **Gap rows carry a DECISION, not a
+generic action**: `chbGapPlan(g)` picks the best commercial outcome — a hole between stays is
+PRICED to sell, never hand-booked. No offer yet → a one-tap dated offer off the season-aware
+current rate (`chbCoupleRateOn`), 20% when the gap is imminent (≤7 days — last-minute price is
+the only lever left) else 15%, floor £20; act **Offer** → `nyGapOffer` saves the 'Gap offer'
+override via `cmdkApplyPriceOverride` (undo-able) and re-renders so the row flips. A 'Gap
+offer' season already covering the hole → the row reports it LIVE (act **Rates** →
+`nyOfferRates` = Manage → seasongrid) instead of re-suggesting. The SAME plan drives the strip,
+the brief's gap row, and the CHB_PRICE_Q suggestion rows, so every surface agrees.
+Gated by search-test §32 (18 checks: gap bounds/blocks/window, offer/imminent/live decisions,
+pacing thresholds, intel composition, false-merge + no-card guards, mention matching) +
+ui-test-intel.js (real browser: card renders/withholds, Offer tap → seasons_save payload +
+row flips to live).
 
 **Booking logic in search** (admin.js) — search REASONS about the calendar, not just finds
 it. (1) **QUOTES**: "how much for 15–18 aug at jollyboat (2 adults 1 child)" prices the asked
