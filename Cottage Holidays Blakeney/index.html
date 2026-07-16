@@ -934,7 +934,10 @@
              Hidden when all clear — the ops line above already says
              "all quiet". Rendered by renderNeedsYou() (admin.js). -->
         <div id="needs-you" style="display:none;">
-            <h2 class="bo-sec-title" style="margin-top:14px;">Needs you <span class="inbox-badge" id="needs-you-count">0</span></h2>
+            <!-- The heading tells the truth about the CONTENTS: duties "need you";
+                 a strip of pure opportunities reads "Worth a look" (set in
+                 renderNeedsYou, calmer green badge). -->
+            <h2 class="bo-sec-title" style="margin-top:14px;"><span id="needs-you-word">Needs you</span> <span class="inbox-badge" id="needs-you-count">0</span></h2>
             <div id="needs-you-list"></div>
         </div>
 
@@ -2464,7 +2467,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=448"></script>
+    <script defer src="app.js?v=449"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

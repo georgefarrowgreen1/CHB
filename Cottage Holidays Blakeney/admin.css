@@ -1318,6 +1318,11 @@ body.owner-mode #mobileMenu {
   .abar-ic,
   .admin-dock-btn.ml-learning svg { animation: none !important; }
 }
+/* A pure-opportunity strip ("Worth a look") gets a calm green count, not the
+   urgent amber — nothing in it is a duty. */
+#needs-you-count.is-opp {
+  background: var(--ok);
+}
 /* Ambient guest intelligence (booking hub): the directory + history speak up. */
 .bhub-intel-line {
   font-size: 0.95rem;
