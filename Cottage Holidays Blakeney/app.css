@@ -6392,6 +6392,43 @@ body.admin-screen .site-footer {
   gap: 3px 14px;
   flex-wrap: wrap;
 }
+/* Ask us anything — the cottage page's instant answer box. */
+.ask-box {
+  margin: 18px 0 4px;
+  padding: 16px 18px;
+  border-radius: var(--r-md);
+}
+.ask-box-title {
+  font-family: var(--font-serif);
+  font-size: 1.1rem;
+  margin-bottom: 10px;
+}
+.ask-box-row {
+  display: flex;
+  gap: 10px;
+}
+.ask-box-row .input-glass {
+  flex: 1;
+  min-width: 0;
+}
+.ask-hit {
+  margin-top: 12px;
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+.ask-hit p {
+  margin: 4px 0 10px;
+  color: var(--text-muted);
+}
+.ask-fallback {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  font-size: 0.82rem;
+  cursor: pointer;
+  text-decoration: underline;
+}
 /* Welcome back — the returning guest's personal rebook nudge (homepage) and
    the quiet "stayed here before" note on their cottage's page. */
 #welcome-back {

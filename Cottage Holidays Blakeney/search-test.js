@@ -1312,6 +1312,34 @@ if (typeof ctx.chbSeasonSplice === 'function') {
     if (applyRow) applyRow.run(); else fail('no apply row for the December set');
 } else fail('chbSeasonSplice missing from the bundle');
 
+// ---- 36. Owner's picks: the RICHER MORNING BRIEF (named arrivals with
+// repeat/balance context, the soonest gap offer, the teach-loop nudge) — the
+// undo command's async checks live in the async tail. ----
+if (typeof ctx.cmdkBrief === 'function') {
+    const today = ctx.todayDashed();
+    const plus = (nn) => { const dd = new Date(today + 'T00:00:00Z'); dd.setUTCDate(dd.getUTCDate() + nn); return dd.toISOString().slice(0, 10); };
+    ctx.__seedBr = {
+        jb: [
+            { id: 1, name: 'Rita Song', email: 'rita@x.co', checkIn: today, checkOut: plus(3), checkInTime: '15:00', adults: 2, children: 0, payment: 'deposit', depositPaid: 100, holdStatus: 'none', agreedPrice: { total: 500 } },
+            { id: 2, name: 'Rita Song', email: 'rita@x.co', checkIn: plus(-200), checkOut: plus(-197), adults: 2, children: 0, payment: 'paid', holdStatus: 'none', agreedPrice: { total: 400 } },
+            { id: 3, name: 'Gap A', email: 'a@x.co', checkIn: plus(5), checkOut: plus(8), adults: 2, children: 0, payment: 'paid', holdStatus: 'none', agreedPrice: { total: 300 } },
+            { id: 4, name: 'Gap B', email: 'b@x.co', checkIn: plus(11), checkOut: plus(14), adults: 2, children: 0, payment: 'paid', holdStatus: 'none', agreedPrice: { total: 300 } },
+        ],
+    };
+    vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);dbBookings.jollyboat=__seedBr.jb;__cmdkCustomers=null;
+        chbNluStore('chb-search-misses', [{ t: 'weather for changeover', n: 2, at: '${today}' }, { t: 'paint the fence', n: 1, at: '${today}' }]); CHB_NLU.misses = null;`, ctx);
+    const brief = ctx.cmdkBrief();
+    const lbl = (id) => { const r = brief.find((x) => x.id === id || String(x.id).startsWith(id)); return r ? `${r.label} | ${r.sub}` : '(none)'; };
+    check('brief: today’s arrival is NAMED with her check-in time', /Rita arrives today · 15:00/.test(lbl('brief-arr')), lbl('brief-arr'));
+    check('brief: arrival context carries the repeat ordinal + money to take', /2nd stay with you/.test(lbl('brief-arr')) && /£400\.00 to take/.test(lbl('brief-arr')), lbl('brief-arr'));
+    check('brief: the SOONEST gap rides as a ready-made offer', /Worth a look: \d free nights on Jollyboat/.test(lbl('brief-gap')) && /15% off.*tap to apply/.test(lbl('brief-gap')), lbl('brief-gap'));
+    check('brief: the teach-loop nudge counts this week’s dead ends', /2 searches found nothing this week/.test(lbl('brief-teach')), lbl('brief-teach'));
+    vm.runInContext(`chbNluStore('chb-search-misses', [{ t: 'old one', n: 1, at: '2020-01-01' }]); CHB_NLU.misses = null;`, ctx);
+    const brief2 = ctx.cmdkBrief();
+    check('brief: STALE misses (older than a week) never nag', !brief2.some((x) => x.id === 'brief-teach'));
+    vm.runInContext(`chbNluStore('chb-search-misses', []); CHB_NLU.misses = null; Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);__cmdkCustomers=null;`, ctx);
+} else fail('cmdkBrief missing from the bundle');
+
 // ---- 30. Darkstar-C (contextual encoder) plumbing. The encoder itself is
 // benched offline (it can't run in CI); what MUST hold here is the machinery:
 // the WordPiece tokenizer, the encoder-built index (tagged CHB_HIST.enc, its
@@ -1332,6 +1360,20 @@ if (typeof ctx.chbSeasonSplice === 'function') {
             JSON.stringify(list));
         const st = vm.runInContext('propertySeasons.jollyboat', ctx);
         check('local propertySeasons updated with the override', Array.isArray(st) && st.some((s) => +s.couple_rate === 150), JSON.stringify(st));
+        // §36 (async tail): UNDO reverses the very change §35 just applied —
+        // through the same endpoint, restoring the exact prior season list.
+        let h = (ctx.cmdkIntent('undo') || [])[0];
+        check('"undo" offers to reverse the last search-saved change', !!(h && /Undo — £150\/night/.test(h.label)), h && h.label);
+        vm.runInContext('__prSaved = null;', ctx);
+        h.run();
+        await null; await null; await null;
+        const undone = vm.runInContext('__prSaved', ctx);
+        check('undo re-saves the PRIOR season list (override gone, Summer intact)',
+            !!(undone && undone.b && undone.b.action === 'seasons_save') &&
+            undone.b.seasons.some((s) => s.label === 'Summer') && !undone.b.seasons.some((s) => s.rate === 150),
+            JSON.stringify(undone && undone.b && undone.b.seasons));
+        h = (ctx.cmdkIntent('undo') || [])[0];
+        check('a second "undo" is honest: nothing to undo', !!(h && /Nothing to undo/.test(h.label)), h && h.label);
         vm.runInContext('apiPost = __prOldApi; propertySeasons.jollyboat = []; Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);__cmdkCustomers=null;', ctx);
     }
     if (typeof ctx.chbEncTokens === 'function') {
