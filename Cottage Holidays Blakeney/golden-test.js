@@ -396,6 +396,27 @@ if (!DUMP) {
     setCtx(null);
 }
 
+// ---- Conversational FRAME (metric · period · cottage) — a one-slot follow-up
+// refines the LAST metric answer. Lives in cmdkBuildResults (not cmdkIntent),
+// so this section drives the full build. ----
+if (!DUMP) {
+    console.log('\n== Golden conversational frame ==');
+    const runB = (q) => vm.runInContext(`(cmdkBuildResults(${JSON.stringify(q.toLowerCase())}) || {}).results || []`, ctx, { timeout: 2000 });
+    const judgeB = (q, re, label) => {
+        let rows = [];
+        try { rows = runB(q); } catch (e) { return fail(`"${q}" — build threw: ${e.message}`); }
+        const t = rows[0] ? `${rows[0].label} | ${rows[0].sub || ''}` : '(none)';
+        return re.test(t) ? pass(`"${q}" → ${label}`) : fail(`"${q}" frame mismatch — got: ${t}`);
+    };
+    vm.runInContext('__cmdkFrame = null', ctx);
+    runB('how much have i earned this year'); // frames revenue · this year
+    judgeB('and last year', /£[\d,.]+ booked in \d{4}/, 'last year’s revenue figure');
+    judgeB('vs this year', /last year: £[\d,.]+ · this year: £[\d,.]+ — (up|down|level)/, 'composed comparison delta');
+    judgeB('occupancy', /% occupancy in \d{4}/, 'metric swap keeps the inherited period');
+    judgeB('who owes money', /£1,600/, 'standalone ops query never hijacked mid-conversation');
+    vm.runInContext('__cmdkFrame = null', ctx);
+}
+
 // ---- Dead-ends review (search-miss capture + teach) ----
 if (!DUMP) {
     console.log('\n== Golden dead-ends review ==');

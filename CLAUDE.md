@@ -417,6 +417,27 @@ Gated by search-test §32 (16 checks: gap bounds/blocks/window, pacing threshold
 composition, false-merge + no-card guards, mention matching) + ui-test-intel.js (real
 browser: card renders/withholds, gap row → prefilled modal).
 
+**Conversational frame** (admin.js) — search is a DIALOGUE, not one-shots. The last METRIC
+answer's frame (`__cmdkFrame` = metric · period · cottage, 3-min TTL, stored by
+`chbFrameStore` whenever an intent/NLU answer carries a `CHB_FRAME_METRIC_Q` metric) lets a
+one-slot follow-up REFINE it instead of starting over: "revenue this year" → "and last year"
+→ "just jollyboat" → "occupancy" → "as nights" each patch ONE slot (`chbConvResolve` →
+`chbConvPatch`) and recompose a canonical query (`chbFrameCompose`) re-run through the SAME
+deterministic families — checked FIRST in `cmdkBuildResults`, figure row hoisted to the head
+(`chbConvFigure` — a follow-up asked for a number, not the Income & tax action row; NB
+recomposition says "earned", not "revenue", because 'revenue …' is claimed by that
+golden-pinned action). "vs last year / versus / compared to" runs BOTH frames and SPEAKS the
+delta (`chbConvCompare` — "this year: 1% · last year: 2% — down 50%", sources beneath).
+Monotonic-safe like the veto: a refinement must be EXACTLY one slot; a bare cottage name
+needs a marker ("just/only/at jollyboat" — bare "jollyboat" stays the dossier); full
+questions (metric+period) are never refinements; stale/absent frame or an unanswered
+recomposition falls through untouched. Enables **prop-scoped insights** as a standalone
+feature too: a named cottage now scopes every figure in the insights branch (`insProp` —
+"jollyboat earned last year", "occupancy at 21a this year"; occupancy denominator = 1
+cottage). Gated by search-test §33 (12 checks: the full chain, all five guards, standalone
+prop-scoping) + a golden "conversational frame" section (drives cmdkBuildResults, incl. the
+composed delta and the mid-conversation ops guard).
+
 **Breadth tier** (admin.js) — deterministic GENERAL answers, consulted by `cmdkBuildResults`
 right after the intent branches and before the NLU model. When it fires it is **prepended** —
 an exact sum beats a keyword-matched action row ("vat on £480" leads with the figure, the
