@@ -2246,6 +2246,11 @@ function setGuestUI() {
     // Drives the guest-shell bar: My Stays / Experiences appear only when
     // signed in, so re-sync the dock highlight/indicator after the change.
     document.body.classList.toggle('guest-signed-in', !!currentGuest);
+    // Returning guest? Load their stays (once) and paint the welcome-back
+    // nudge + "stayed here before" notes; clears them on logout.
+    try {
+        loadWelcomeBack();
+    } catch (e) {}
     try {
         if (window.setActiveTab) {
             const av = document.querySelector('.page-view.active');
@@ -2254,6 +2259,116 @@ function setGuestUI() {
     } catch (e) {}
 }
 
+// ============================================================
+//  Welcome back — a RETURNING signed-in guest gets a personal homepage nudge
+//  ("Fancy Jollyboat again?") built from their own past stays, plus a quiet
+//  "you've stayed here before" note on that cottage's page. Their stays come
+//  from my-bookings.php (their own session — nothing new is exposed), fetched
+//  once per session, lazily, after the guest session lands. Everyone else
+//  (logged out, owner, first-time guest, upcoming-only guest) sees nothing.
+// ============================================================
+let __wbStays = null; // this guest's stays, loaded once per session
+async function loadWelcomeBack() {
+    if (!currentGuest || isAuthenticated) {
+        __wbStays = null; // logout / role change: drop the cache with the session
+        renderWelcomeBack();
+        renderStayedBefore();
+        return;
+    }
+    if (__wbStays === null) {
+        try {
+            const res = await apiGet('my-bookings.php');
+            __wbStays = (res.bookings || []).map((r) => ({
+                propKey: r.prop_key,
+                checkIn: r.check_in,
+                checkOut: r.check_out,
+            }));
+        } catch (e) {
+            __wbStays = [];
+        }
+    }
+    renderWelcomeBack();
+    renderStayedBefore();
+}
+// The guest's favourite cottage, from COMPLETED stays only — an upcoming first
+// booking isn't "back". Mode of cottage, live cottages only; last stay for the
+// "you stayed in May" line.
+function wbFavourite() {
+    if (!currentGuest || !Array.isArray(__wbStays) || !__wbStays.length) return null;
+    const today = todayDashed();
+    const past = __wbStays.filter((s) => s.checkOut && s.checkOut <= today);
+    if (!past.length) return null;
+    const live = liveCottageKeys();
+    const byPk = {};
+    past.forEach((s) => {
+        if (live.includes(s.propKey)) byPk[s.propKey] = (byPk[s.propKey] || 0) + 1;
+    });
+    const ranked = Object.keys(byPk).sort((a, z) => byPk[z] - byPk[a]);
+    if (!ranked.length) return null;
+    const pk = ranked[0];
+    const last = past
+        .filter((s) => s.propKey === pk)
+        .sort((a, z) => (z.checkIn || '').localeCompare(a.checkIn || ''))[0];
+    return { pk, stays: past.length, last };
+}
+function renderWelcomeBack() {
+    const el = document.getElementById('welcome-back');
+    if (!el) return;
+    const fav = !isAuthenticated && currentGuest ? wbFavourite() : null;
+    if (!fav) {
+        el.innerHTML = '';
+        return;
+    }
+    const name = String(currentGuest.name || '').split(' ')[0];
+    const cname = (propertyMeta[fav.pk] && propertyMeta[fav.pk].name) || fav.pk;
+    const when =
+        fav.last && fav.last.checkIn
+            ? new Date(fav.last.checkIn + 'T00:00:00').toLocaleDateString('en-GB', {
+                  month: 'long',
+                  year: 'numeric',
+              })
+            : '';
+    const slug = COTTAGE_SLUGS[fav.pk] || fav.pk;
+    el.innerHTML = `
+        <div class="glass-panel wb-panel">
+            <div class="wb-text">
+                <div class="wb-title">Welcome back${name ? ', ' + escapeHtml(name) : ''}</div>
+                <div class="wb-sub">Fancy ${escapeHtml(cname)} again?${when ? ' You last stayed with us in ' + escapeHtml(when) + '.' : ''}</div>
+            </div>
+            <div class="wb-actions">
+                <a class="btn-glass btn-accent" href="/cottages/${escapeHtml(slug)}" data-act="cottageLink" data-prop="${fav.pk}">Check ${escapeHtml(cname)} dates</a>
+                <button type="button" class="btn-glass" data-act="wbOpenStays">Your stays</button>
+            </div>
+        </div>`;
+}
+function wbOpenStays() {
+    nav('view-guest-bookings');
+    try {
+        renderGuestBookings();
+    } catch (e) {}
+}
+// Quiet trust note on a cottage page the guest has actually stayed in.
+function renderStayedBefore() {
+    const el = document.getElementById('stayed-before');
+    if (!el) return;
+    let html = '';
+    if (!isAuthenticated && currentGuest && Array.isArray(__wbStays) && activeFrontProperty) {
+        const today = todayDashed();
+        const here = __wbStays
+            .filter((s) => s.propKey === activeFrontProperty && s.checkOut && s.checkOut <= today)
+            .sort((a, z) => (z.checkIn || '').localeCompare(a.checkIn || ''));
+        if (here.length) {
+            const when = here[0].checkIn
+                ? new Date(here[0].checkIn + 'T00:00:00').toLocaleDateString('en-GB', {
+                      month: 'long',
+                      year: 'numeric',
+                  })
+                : '';
+            html = `<div class="stayed-before-chip">You've stayed here before${when ? ' — ' + escapeHtml(when) : ''}. Welcome back.</div>`;
+        }
+    }
+    el.innerHTML = html;
+}
 // Populate the account "Your details" panel from the logged-in guest.
 function fillGuestProfile() {
     if (!currentGuest) return;
@@ -10751,6 +10866,9 @@ function openProperty(propKey) {
     availCalMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
     renderAvailCal();
     loadPropContentOverrides();
+    try {
+        renderStayedBefore(); // "you've stayed here before" for a returning guest
+    } catch (e) {}
     const c = propertyContent[propKey];
 
     // Title + description + subtitle (guests/beds/baths — editable per cottage)
@@ -12577,7 +12695,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'convframe1';
+    const BUILD = 'welcome1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

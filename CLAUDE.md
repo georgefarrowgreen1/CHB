@@ -323,6 +323,17 @@ rows tagged "· from history", deduped against the in-memory customer keys, and
 safeguards (audit + no destructive action). `customers-lib.php` deploys; `test-customers.php`
 is deploy-excluded.
 
+**Welcome back** (app.js — guest-side): a RETURNING signed-in guest gets a personal homepage
+rebook nudge (`#welcome-back`, `renderWelcomeBack` — "Fancy Jollyboat again?" with their
+favourite cottage = mode of COMPLETED stays, live cottages only; an upcoming-only first
+booking is NOT "back") plus a quiet `#stayed-before` note on any cottage page they've
+actually stayed in (`renderStayedBefore`, hooked into `openProperty`). Their stays come from
+their own `my-bookings.php` session (nothing new exposed), fetched once per session by
+`loadWelcomeBack()` (kicked from `setGuestUI`, cache dropped on logout/role change).
+Logged-out, owner, first-time and upcoming-only guests see nothing. Gated by
+ui-test-welcomeback.js (nudge + favourite, CTA → cottage page + note, upcoming-only and
+logged-out stay empty).
+
 **Guest FAQ assistant** (app.js — guest-side, so admin.js's NLU never loads for visitors):
 a TYPED question in the guest chat is answered instantly ON-DEVICE from the cottage's own FAQ
 content before it ever pings the owner — `guestFaqAnswer(text)` runs a small precision-biased

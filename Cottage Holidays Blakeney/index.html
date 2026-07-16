@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=188">
+    <link rel="stylesheet" href="app.css?v=189">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -350,6 +350,10 @@
         <section class="home-cottages reveal" id="home-cottages">
             <p class="section-kicker reveal">Stay with us</p>
             <h2 class="section-title text-center reveal">Our cottages</h2>
+            <!-- Welcome back: a returning signed-in guest gets a personal rebook
+                 nudge (their favourite cottage) — filled by renderWelcomeBack(),
+                 empty for everyone else. -->
+            <div id="welcome-back" aria-live="polite"></div>
             <!-- Late-availability spotlight: filled by renderLateAvailability() when a
                  cottage has a decent gap in the next fortnight; empty otherwise. -->
             <div id="late-avail" aria-live="polite"></div>
@@ -624,6 +628,9 @@
                 <!-- Availability calendar. On desktop, placeAvailCalendar() relocates
                      #prop-avail-cal into the reserve card, just above "Enquire now".
                      On mobile it stays here in the content flow, right after this anchor. -->
+                <!-- "You've stayed here before" — filled by renderStayedBefore() for a
+                     signed-in guest with a past stay at THIS cottage; empty otherwise. -->
+                <div id="stayed-before"></div>
                 <div id="cal-mobile-anchor"></div>
                 <div class="avail-cal glass-panel" id="prop-avail-cal">
                     <div class="avail-cal-head">
@@ -2457,7 +2464,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=445"></script>
+    <script defer src="app.js?v=446"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
