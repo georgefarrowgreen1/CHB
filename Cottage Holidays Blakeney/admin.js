@@ -390,6 +390,12 @@ function cmdkParseDates(q, today) {
         const yr = m[3] ? (m[3].length === 2 ? 2000 + +m[3] : +m[3]) : d0.getFullYear();
         return { from: iso(new Date(yr, +m[2] - 1, +m[1])), to: null };
     }
+    // bare "in august" / "for september" — the WHOLE month (checkout-style end).
+    // Reached only when no day-level pattern above matched.
+    if ((m = q.match(new RegExp('\\b(?:in|for|over)\\s+(' + MO + ')[a-z]*\\b')))) {
+        const mi = monIdx(m[1]), yr = yearFor(mi);
+        return { from: iso(new Date(yr, mi, 1)), to: iso(new Date(yr, mi + 1, 1)) };
+    }
     if (/\bnext weekend\b/.test(q)) { const f = addOn(upcoming(6), 7); return { from: iso(f), to: iso(addOn(f, 2)) }; }
     if (/\b(this )?weekend\b/.test(q)) { const f = upcoming(6); return { from: iso(f), to: iso(addOn(f, 2)) }; }
     if (/\btomorrow\b/.test(q)) { const f = addOn(d0, 1); return { from: iso(f), to: iso(addOn(f, 1)) }; }
@@ -408,6 +414,70 @@ function cmdkBookClash(pk, from, to, excludeId) {
     const bl = (((dbBlocks || {})[pk]) || []).find((x) => x.checkIn && x.checkOut && x.checkIn < to && x.checkOut > from);
     if (bl) return { name: (bl.source && bl.source !== 'owner' ? bl.source + ' booking' : 'an owner block'), checkIn: bl.checkIn, checkOut: bl.checkOut };
     return null;
+}
+// A pricing-review question — surfaces the instant gap offers + routes to the
+// coach, and fires the async server-suggestion merge below.
+const CHB_PRICE_Q = /should i (raise|lower|change|adjust|review).{0,12}(price|rate)|pric(e|ing) (suggestion|idea|advice|review)s?|review (my )?pricing|any pricing (ideas|changes)/;
+let __cmdkPriceStamp = 0;
+// Merge the server's demand-signal suggestions (pricing-suggest.php — guest
+// searches, unmet demand, weekend uplift) into the live palette, stamp-guarded
+// like the server search. Rows with a one-tap apply use the coach's own
+// validated path; the rest route to the coach.
+async function cmdkPricingMerge() {
+    const stamp = ++__cmdkPriceStamp;
+    let d = null;
+    try { d = await apiGet('pricing-suggest.php?action=suggest'); } catch (e) { return; }
+    if (stamp !== __cmdkPriceStamp) return;
+    const sugg = (d && d.suggestions) || [];
+    if (!sugg.length) return;
+    const have = new Set(__cmdkResults.filter((x) => x && x.id != null).map((x) => x.type + ':' + x.id));
+    const rows = sugg.slice(0, 4)
+        .map((s) => ({
+            type: 'answer', id: 'psug-' + s.id, wrap: true,
+            label: s.title, sub: String(s.detail || '').slice(0, 140),
+            run: s.apply && s.apply.field === 'weekendPct'
+                ? () => { closeCmdK(); applyPricingSuggestion(s.prop_key, s.apply.field, s.apply.value, s.id); }
+                : () => { closeCmdK(); openAccounts(); accountsOpen('pricingcoach'); },
+        }))
+        .filter((r) => !have.has('answer:' + r.id));
+    if (!rows.length) return;
+    __cmdkResults = cmdkArrangeWide(__cmdkResults.concat(rows).slice(0, 34), 34);
+    cmdkRender();
+}
+function chbIsoShift(iso, n) {
+    const x = new Date(iso + 'T00:00:00');
+    x.setDate(x.getDate() + n);
+    return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+}
+// Weave a dated price override into a property's season list WITHOUT overlap:
+// seasons resolve first-match by start date (lockstep with pricing.php), so an
+// override dropped INSIDE an existing season would silently lose — instead any
+// overlapped season is SPLIT around the override. Pure; rows {label,start,end,rate}.
+function chbSeasonSplice(existing, ov) {
+    const out = [];
+    (existing || []).forEach((s) => {
+        if (!s.start || !s.end || s.end < ov.start || s.start > ov.end) { out.push(s); return; }
+        if (s.start < ov.start) out.push({ label: s.label, start: s.start, end: chbIsoShift(ov.start, -1), rate: s.rate });
+        if (s.end > ov.end) out.push({ label: s.label, start: chbIsoShift(ov.end, 1), end: s.end, rate: s.rate });
+    });
+    out.push({ label: ov.label, start: ov.start, end: ov.end, rate: ov.rate });
+    return out.sort((a, z) => String(a.start).localeCompare(String(z.start)));
+}
+// Save a dated couple-rate override (a rate_seasons row) — the landing for the
+// price command and the gap offers. Splices, saves through the existing
+// validated endpoint, updates local state and repaints the public prices.
+async function cmdkApplyPriceOverride(propKey, start, endIncl, rate, label) {
+    const existing = (propertySeasons[propKey] || []).map((s) => ({ label: s.label || '', start: s.start_date, end: s.end_date, rate: parseFloat(s.couple_rate) || 0 }));
+    const next = chbSeasonSplice(existing, { label: label || 'Search override', start, end: endIncl, rate });
+    await apiPost('rates.php', { action: 'seasons_save', prop_key: propKey, seasons: next });
+    propertySeasons[propKey] = next.map((s) => ({ label: s.label, start_date: s.start, end_date: s.end, couple_rate: s.rate }));
+    try { renderCardPrices(); updatePropPriceHeading(); } catch (e) {}
+    try { toast(`Price set — £${rate}/night ${fmtDate(start)}–${fmtDate(endIncl)} on ${(propertyMeta[propKey] || {}).name || propKey}.`); } catch (e) {}
+}
+// The current season-aware couple rate for a night (what an override replaces).
+function chbCoupleRateOn(propKey, iso) {
+    const r = propertyRates[propKey] || defaultRates[propKey] || {};
+    return Math.round(coupleRateForNight(iso, parseFloat(r.coupleRate) || 0, propertySeasons[propKey] || []));
 }
 // Open the EDIT form for a booking with proposed new dates dropped in — the
 // move/extend commands' landing. Never saves; the owner reviews and taps Save.
@@ -561,6 +631,57 @@ function cmdkCommand(q, today) {
             const row = proposeRow(hit, dates.from, shiftDays(dates.from, len), 'Move');
             if (row) return row;
         }
+    }
+    // PRICE — "set jollyboat to £150 for 20-23 aug", "discount 21a by 10% next
+    // weekend", "raise pimpernel 15% for august": compute the dated override
+    // from the CURRENT season-aware rate, preview the maths, and save a
+    // rate_seasons row ON TAP (spliced around existing seasons so it can never
+    // be silently shadowed; visible + editable any time in Rates).
+    if ((/\bdiscount\b/.test(q) || (/\b(set|change|raise|increase|lower|drop|reduce|cut|put)\b/.test(q) && /\bprices?\b|\brates?\b|£\s*\d/.test(q))) && pk && dates && dates.from >= t) {
+        const endIncl = dates.to && dates.to > dates.from ? chbIsoShift(dates.to, -1) : dates.from;
+        const cur = chbCoupleRateOn(pk, dates.from);
+        let newRate = null, pm;
+        if ((pm = q.match(/(?:to|at)\s*£\s*(\d+(?:\.\d+)?)/))) newRate = Math.round(+pm[1]);
+        else if ((pm = q.match(/(\d+(?:\.\d+)?)\s*(?:%|percent)/))) {
+            const down = /\b(discount|off|lower|drop|reduce|cut|down)\b/.test(q);
+            newRate = cur > 0 ? Math.round(cur * (1 + ((down ? -1 : 1) * +pm[1]) / 100)) : null;
+        }
+        if (newRate && newRate >= 20 && newRate <= 2000 && cur > 0) {
+            const delta = Math.round(((newRate - cur) / cur) * 100);
+            return cmd(
+                `Set ${cName} to £${newRate}/night · ${fmtDate(dates.from)}–${fmtDate(endIncl)}`,
+                `Currently £${cur}/night → £${newRate} (${delta > 0 ? '+' : ''}${delta}%) · one tap saves a dated override — editable any time in Rates`,
+                () => { closeCmdK(); cmdkApplyPriceOverride(pk, dates.from, endIncl, newRate, 'Search override').catch((e) => glassAlert("Couldn't save the price: " + e.message)); },
+            );
+        }
+    }
+    // PRICING SUGGESTIONS — "should i change my prices", "pricing suggestions":
+    // instant dated ideas from the gap scan (each a one-tap Apply that saves a
+    // spliced rate_seasons offer), the coach as the full surface, and the
+    // server's demand-signal suggestions merging in async (cmdkPricingMerge).
+    // Lives HERE (before the action catalogue) so the question isn't swallowed
+    // by the generic "Change prices & rates" action.
+    if (CHB_PRICE_Q.test(q)) {
+        const rows = [{
+            type: 'answer', id: 'price-coach', label: 'Pricing coach — demand signals & suggestions',
+            sub: 'Guest searches, unmet demand, weekend uplift ideas',
+            run: () => { closeCmdK(); openAccounts(); accountsOpen('pricingcoach'); },
+        }];
+        try {
+            chbGapScan().slice(0, 3).forEach((g) => {
+                const cur = chbCoupleRateOn(g.pk, g.from);
+                if (!cur) return;
+                const offer = Math.round(cur * 0.85);
+                const endIncl = chbIsoShift(g.to, -1);
+                rows.push({
+                    type: 'answer', id: 'price-gap-' + g.pk + '-' + g.from, wrap: true,
+                    label: `${g.nights}-night gap on ${(propertyMeta[g.pk] || {}).name || g.pk}: try £${offer}/night (15% off)`,
+                    sub: `${fmtDate(g.from)}–${fmtDate(endIncl)} sits empty between stays · £${cur} → £${offer} · one tap saves the dated offer`,
+                    run: () => { closeCmdK(); cmdkApplyPriceOverride(g.pk, g.from, endIncl, offer, 'Gap offer').catch((e) => glassAlert("Couldn't save: " + e.message)); },
+                });
+            });
+        } catch (e) {}
+        return rows;
     }
     // MESSAGE / EMAIL a named guest — resolve the name to a booking.
     const msgM = q.match(/\b(?:message|email|text|msg|write to|contact)\s+([a-z][a-z .'-]+)/);
@@ -4756,6 +4877,9 @@ function cmdkSearchCore(q, allowCorrect) {
         // meaning-based recall over the embedded history index, merged in when the
         // vectors land (finds records with no shared words the keyword pass misses).
         if (CHB_HISTORY_Q.test(ql)) { try { cmdkSemanticHistory(ql); } catch (e) {} }
+        // A pricing-review question also pulls the server's demand-signal
+        // suggestions into the palette once they land.
+        if (CHB_PRICE_Q.test(ql)) { try { cmdkPricingMerge(); } catch (e) {} }
         // A name-ish query (not a question) also groups the WHOLE bookings history
         // into unified customers server-side, so a PAST guest not held in the
         // browser still surfaces as one person (deduped against the in-memory ones).
@@ -11318,16 +11442,15 @@ const NY_ICONS = {
 //  see, in the breadth-tier spirit: cheap never-wrong rules over data already
 //  in memory, silent when there's nothing, capped so the Needs-you strip stays
 //  a to-do list. Every row is an OPPORTUNITY (sev ok), never an alarm.
-function chbAnomalies() {
-    const items = [];
+// BOUNDED short gaps — 2-4 free nights sandwiched between two guest stays
+// (direct or OTA) starting in the next 45 days, soonest first. Unbounded
+// future space isn't a gap, 1-night holes are changeover slack not sellable
+// stock, and an owner block over the hole means it's deliberately held.
+// Shared by the Needs-you strip and the pricing suggester.
+function chbGapScan() {
     const today = todayDashed();
     const t0 = dpParse(today).getTime();
     const dayMs = 86400e3;
-    const propName = (k) => escapeHtml((propertyMeta[k] || {}).name || k);
-    // 1) BOUNDED short gaps — 2-4 free nights sandwiched between two guest
-    // stays (direct or OTA) starting in the next 45 days. Unbounded future
-    // space isn't a gap, 1-night holes are changeover slack not sellable
-    // stock, and an owner block over the hole means it's deliberately held.
     const gaps = [];
     Object.keys(dbBookings || {}).forEach((pk) => {
         const stays = (dbBookings[pk] || [])
@@ -11347,7 +11470,16 @@ function chbAnomalies() {
             gaps.push({ pk, from, to, nights, startDays });
         }
     });
-    gaps.sort((a, z) => a.startDays - z.startDays).slice(0, 2).forEach((g) => {
+    return gaps.sort((a, z) => a.startDays - z.startDays);
+}
+function chbAnomalies() {
+    const items = [];
+    const today = todayDashed();
+    const t0 = dpParse(today).getTime();
+    const dayMs = 86400e3;
+    const propName = (k) => escapeHtml((propertyMeta[k] || {}).name || k);
+    // 1) BOUNDED short gaps (chbGapScan) — worth a last-minute offer.
+    chbGapScan().slice(0, 2).forEach((g) => {
         items.push({
             sev: 'ok', ic: 'spark',
             label: `${g.nights} free nights between stays on ${propName(g.pk)}`,
