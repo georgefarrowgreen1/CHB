@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 230;
+const ADMIN_BUNDLE_V = 231;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 68;
+const ADMIN_CSS_V = 69;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -1147,7 +1147,7 @@ function mapEnquiryFromApi(row) {
 const CUSTOMER_FACING_VIEWS = ['view-main', 'view-cottages', 'view-21a'];
 // The only views an admin ever sees — everything else is the customer site,
 // which a signed-in admin has no use for (nav() bounces it to the back office).
-const ADMIN_VIEWS = ['view-backoffice', 'view-booking-hub', 'view-inbox', 'view-enquiry-hub', 'view-settings', 'view-accounts', 'view-activity-log'];
+const ADMIN_VIEWS = ['view-backoffice', 'view-booking-hub', 'view-inbox', 'view-enquiry-hub', 'view-settings', 'view-accounts', 'view-activity-log', 'view-search'];
 // Preview-as-guest: opening the site with ?preview=1 renders the customer
 // experience even though an admin is signed in (owner-mode + the admin bounce
 // are suppressed). Read-only — used by the staging Test centre to view the site.
@@ -1392,13 +1392,6 @@ function nav(viewId, anchorId = null) {
     // (guest-app.js defines this; safe no-op before it loads / for admins).
     try {
         if (window.setActiveTab) window.setActiveTab(viewId);
-    } catch (e) {}
-
-    // Smart clear: leaving a workspace resets the Assist Bars there so it's fresh
-    // for the next search (admin.js defines this; safe no-op before it loads /
-    // for guests). Runs after the view switch so it can read the target view.
-    try {
-        if (window.chbSmartClear) window.chbSmartClear(viewId);
     } catch (e) {}
 
     // Keep the address bar in sync: leaving a cottage page restores the root URL.
@@ -12738,7 +12731,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'ownerpicks1';
+    const BUILD = 'searchpage1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

@@ -25,15 +25,15 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.evaluate(async () => { isAuthenticated = true; document.body.classList.add('owner-mode'); await window.loadAdminBundle(); });
   // Pin the real model loads off so the assertions own the ring deterministically.
   await page.evaluate(() => { DARKSTAR.st = DARKSTAR.st || { pinned: true }; CHB_ENC.failed = true; });
-  await page.evaluate(() => nav('view-backoffice')); await page.waitForTimeout(400);
+  await page.evaluate(() => openCmdK()); await page.waitForTimeout(400);
 
-  // 1) Progress on → ring on the dock knot + the bar/palette LOGOS in the
+  // 1) Progress on → ring on the dock knot + the SEARCH PAGE's logo in the
   //    loading state (ring around the knot; the hover title carries the words).
   await page.evaluate(() => chbModelLoadProgress('enc', 0.4));
   let st = await page.evaluate(() => {
     const dock = document.querySelector('.admin-dock-btn[data-act="openCmdK"]');
     const ring = dock ? getComputedStyle(dock, '::before') : null;
-    const bar = document.querySelector('#abar-today .abar-ic');
+    const bar = document.querySelector('#cmdk-ml');
     const barRing = bar ? getComputedStyle(bar, '::before') : null;
     return {
       cls: dock && dock.classList.contains('ml-loading'),
@@ -58,7 +58,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
 
   // 3) An active answer state keeps the pill; clearing it hands back to the ring.
   st = await page.evaluate(() => {
-    const bar = document.querySelector('#abar-today .abar-ic');
+    const bar = document.querySelector('#cmdk-ml');
     chbSetModelStatus(bar, 'understood');
     const during = bar.dataset.mstate;
     chbModelLoadProgress('enc', 0.9);
@@ -73,7 +73,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   st = await page.evaluate(() => {
     chbModelLoadProgress('enc', null);
     const dock = document.querySelector('.admin-dock-btn[data-act="openCmdK"]');
-    const bar = document.querySelector('#abar-today .abar-ic');
+    const bar = document.querySelector('#cmdk-ml');
     return { cls: dock.classList.contains('ml-loading'), mload: dock.style.getPropertyValue('--mload'), barState: bar.dataset.mstate };
   });
   ok(!st.cls && !st.mload, 'completion removes the dock ring + --mload');

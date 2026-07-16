@@ -161,7 +161,7 @@ returns it (in place of `cmdkHelpItem` rows) when `wantHelp` and the top topic s
 plain keyword still returns the browsable `type:'help'` rows. Conversational answer rows
 (social greetings, fallbacks, generated how-tos) carry `wrap:true` → the row renders
 `.cmdk-row-wrap` so full sentences wrap over multiple lines instead of clamping to one
-ellipsised line (palette + both Assist Bars). Additive — the tested answer rows are
+ellipsised line on the search page. Additive — the tested answer rows are
 unchanged. Gated by search-test §22 + §8 (how-to) + golden social cases.
 
 **Guided walkthroughs** (admin.js — help that HELPS ALL THE WAY THROUGH a task, not just
@@ -181,35 +181,20 @@ on the shared `#modal-*` ids), `block-dates` (the `#glass-dialog-fields` step), 
 prepends a **"Walk me through it"** chip for any topic with a `CHB_WALK[id]`. Gated by
 `ui-test-coach.js` (start, click-through + z-order, Next/Back, auto-advance, Done, Escape).
 
-**Assist Bars** — the palette's brain embedded IN workspaces: `chbAssistBar(hostId, opts)`
-(admin.js) injects a knot+input bar into static host divs, registered in
-`chbAssistInitBars()` (admin boot footer — guests never load any of it). ALL FOUR back-office
-workspaces carry one — `#abar-today` (Today), `#abar-inbox` (Inbox), `#abar-accounts`
-(Payments) and `#abar-manage` (Manage) — PLUS a record-scoped bar on each hub
-(`#abar-bookinghub`, `#abar-enquiryhub`). The Payments/Manage index rows are static markup
-without a haystack, so `abarStampSearchRows(view)` stamps `data-search` (label+sub+kw) on
-`.settings-row`s the first time their bar filters. The HUB bars set `opts.scopeEntity` → each
-keystroke sets `__cmdkEntity = cmdkCurrentEntity()` before building, so "email them", "their
-balance", "this booking" act on the OPEN record. Routing per keystroke: terms matching the
-board's `[data-search]` rows live-filter it (shared dim machinery; count in the bar; the
-palette's "filter this workspace" adopts INTO the bar via `abarAdopt`, so no floating banner
-where a bar exists; the Inbox bar adds per-folder `.ifold-match` pills + hides the unread chips
-while filtering). But filtering ALONE isn't enough — a matched record can sit off-screen (a
-future booking outside the timeline window, a bk-row below the keyboard) — so `cmdkBuildResults()`
-ALSO runs every keystroke and, when the query resolves to an actual RECORD (`hasRecord`:
-booking/enquiry/guest/payment), its rows render in the panel too: typing a NAME both dims the
-board AND shows the customer as a tappable row (never just "1 match" over a dimmed board).
-Questions release the filter (pure answer); a pay-state / broad filter with no record answer
-stays filter-only. The LEAD actionable record's quick-actions render on the row (`abarRowHtml`
-marks the first row carrying `actions` with `_showActs`; `abarAct` runs them), so "who owes me
-money" → [Request payment] without a hop (chips/`_nlu` learning intact); zero matches →
-deep-search CTA + ask chips. **Smart clear**: acting on a result (`abarExec`/`abarAct`/an action
-`abarChip`) resets the bar, and leaving a workspace (`chbSmartClear(viewId)`, wired into app.js
-`nav()` via a facade-safe `window.` slot) clears the bars you're LEAVING — so search is always
-fresh for the next query. A guest **typeahead** in Add Booking (`modalNameSuggest` /
-`#modal-name-suggest`) suggests past guests → a pick fills name+email+phone. Full
-intelligence parity: the **AI status lives IN THE LOGO** — the knot glyph itself (the palette's
-leading icon, wrapped as `#cmdk-ml`, and each bar's `.abar-ic`; `data-mstate` set by
+**The SEARCH PAGE** — search lives on ONE dedicated page (`view-search`, in `ADMIN_VIEWS`),
+opened by the dock's knot logo (`openCmdK`) or ⌘K; the per-workspace Assist Bars were RETIRED
+in its favour (the whole `abar*` module, host divs and CSS are gone — do not resurrect). The
+`#cmdk` node lives statically inside the view (class `cmdk-page`, no overlay/backdrop; page
+scroll, `.cmdk-box` max-width 680px/940px sheet) and keeps every inner id, so the entire
+intelligence stack is unchanged. `openCmdK` snapshots the workspace you came FROM before
+navigating — `__cmdkReturnView`, `__cmdkScope = cmdkDefaultScope()`, `__cmdkEntity =
+cmdkCurrentEntity()` — so scoping and record pronouns still resolve; `closeCmdK` is STATE
+CLEANUP ONLY (no nav — result runs navigate themselves and call it first); `cmdkBack()` =
+cleanup + return to `__cmdkReturnView` (Esc and the ⌘K toggle both use it). The palette's
+"filter this workspace" now always uses the floating banner (`renderTodayFilterBar`) + dim
+machinery. A guest **typeahead** in Add Booking (`modalNameSuggest` / `#modal-name-suggest`)
+suggests past guests → a pick fills name+email+phone. The **AI status lives IN THE LOGO** —
+the search page's knot glyph (the leading icon, wrapped as `#cmdk-ml`; `data-mstate` set by
 `chbSetModelStatus`/`chbModelState`) carries the state as COLOUR, no words on screen: `ready`
 (Darkstar loaded, idle · quiet purple), `understood` (paraphrase→intent · confident green,
 breathing), `meaning` (semantic recall · its OWN Siri identity — the knot cycles teal→purple
@@ -219,42 +204,33 @@ file streams down (darkstar.bin at boot, encoder.onnx on the first history query
 PROGRESS ring around the knot, conic-gradient driven by `--mload` (0..1) with a radial-mask
 ring cut, also on the dock Search knot (`.ml-loading::before`; ::after is the hover label).
 Each knot's hover title (`CHB_MSTATE_TITLE`) explains the state in plain language, so the
-colour never has to be decoded blind; there is NO worded pill any more (the old
-`.cmdk-ml`/`.abar-status` pills + `CHB_MSTATE_LABEL` are REMOVED). The palette knot never
-hides — the ✕ clear sits on the RIGHT of the input (after it, before help); `has-text` only
-shows the ✕. All state animation honours `prefers-reduced-motion` (meaning falls back to a
-static teal). Plumbing: `chbFetchProgress` (streamed fetch → ArrayBuffer + per-chunk
-fractions; plain-arrayBuffer fallback when reader/length hidden) feeds
+colour never has to be decoded blind; there is NO worded pill any more (`CHB_MSTATE_LABEL` is
+REMOVED). The knot never hides — the ✕ clear sits on the RIGHT of the input (after it, before
+help); `has-text` only shows the ✕. All state animation honours `prefers-reduced-motion`
+(meaning falls back to a static teal). Plumbing: `chbFetchProgress` (streamed fetch →
+ArrayBuffer + per-chunk fractions; plain-arrayBuffer fallback when reader/length hidden) feeds
 `chbModelLoadProgress(key, frac)` (per-source map; overlapping downloads show the
 LEAST-finished; null clears). Active answer states always beat the ring; `chbSetModelStatus('')`
 falls back to `loading` while a download runs, then `ready`. The ring is progress, not
 animation — no reduced-motion exemption needed. Gated by ui-test-modelring.js (real browser:
-ring on/track/hand-back/clear) + search-test §31 (stream math, min-of-loads, idle fallback) +
-ui-test-assist-{parity,today} (state tints + titles on the bar logos). Plus walk-away
-(focusout) dead-end capture into the shared miss store, and `__cmdkConvCtx` carries across
-bars↔palette. **Cross-page context memory** (`__cmdkLastEntity`, `chbStampRecent`/
+ring on/track/hand-back/clear, on the search page) + search-test §31 (stream math,
+min-of-loads, idle fallback). Leaving the page on an unanswered query files it into the shared
+miss store (`cmdkBack`/`closeCmdK` → `chbMissRecord`). **Cross-page context memory**
+(`__cmdkLastEntity`, `chbStampRecent`/
 `cmdkRecentEntity`, `CMDK_RECENT_MS` 6min): the record you last engaged with — a hub you opened
-(`openBookingHub`/`openEnquiryHub`) or one a palette/bar answer surfaced — is remembered ACROSS
-navigation, so from ANY page a pronoun ("email them", "their balance") resolves to it and the
-empty landing offers a "Continue with [name]" row. Distinct from `__cmdkEntity` (only the OPEN
-hub) and `__cmdkConvCtx` (only this palette session); resolved only while fresh AND the record
-still exists, so stale/deleted context never hijacks a later query, and a real pronoun is
-required so a generic query is never captured (search-test §21b). EVERY back-office bar sits ABOVE the header divider line (one admin.css rule:
-`#view-backoffice > #abar-today`, `#inbox-head > #abar-inbox`, `#settings-chrome > #abar-manage`,
-`#accounts-chrome > #abar-accounts` — the header's own `border-bottom` is dropped and re-hung
-under the bar, so the order always reads title → SEARCH → line → content; on Manage/Payments the
-bar lives inside the `#…-chrome` wrapper that hides on drill-down, so the divider follows it in
-and out). **Siri look**: the search lights up with
-a luminous cycling glow when engaged — the palette card breathes `cmdkSiriAura` while open, an
-Assist Bar field breathes `abarSiriAura` while focused (with a rounder pill + firmer focused
-surface), driven by the `--siri-1..5` hue tokens (`:root` in admin.css); both are box-shadow
-auras (overflow-safe) and honour `prefers-reduced-motion`. **Unified interface**: one button
-language across the palette + bars — RESULTS/JUMP-TO/quick-ACTIONS are rows (`.cmdk-row` /
-`.cmdk-qa-row`, distinct destination glyphs via a registry `icon` + a row's `iconType`);
-refine/related/ask PIVOTS are pills (`.cmdk-chip` in the palette === `.abar-chip` in the bars);
-one hover tint (`--cmdk-sel`), one pill spec (scope/chip share padding/radius/border). Suites:
-`ui-test-assist-{today,inbox,parity,deep}.js` (deep = the Payments/Manage bars, act-in-place,
-hub scoping + Add-Booking typeahead); the layout gate asserts the bars render.
+(`openBookingHub`/`openEnquiryHub`) or one a search answer surfaced — is remembered ACROSS
+navigation, so a pronoun ("email them", "their balance") resolves to it on the search page and
+the empty landing offers a "Continue with [name]" row. Distinct from `__cmdkEntity` (only the
+OPEN hub, snapshotted by openCmdK) and `__cmdkConvCtx` (only this search session); resolved
+only while fresh AND the record still exists, so stale/deleted context never hijacks a later
+query, and a real pronoun is required so a generic query is never captured (search-test §21b).
+**Siri look**: the search card breathes `cmdkSiriAura` while the page is open, driven by the
+`--siri-1..5` hue tokens (`:root` in admin.css); box-shadow aura (overflow-safe), honours
+`prefers-reduced-motion`. **Unified interface**: RESULTS/JUMP-TO/quick-ACTIONS are rows
+(`.cmdk-row` / `.cmdk-qa-row`, distinct destination glyphs via a registry `icon` + a row's
+`iconType`); refine/related/ask PIVOTS are pills (`.cmdk-chip`); one hover tint (`--cmdk-sel`),
+one pill spec. Suite: `ui-test-searchpage.js` (page open/toggle/back, answers, logo states,
+teach flash, conv follow-up, miss capture); the layout gate covers the page at phone width.
 
 **Hubs are where you act; index rows are where you find.** The **booking hub**
 (`view-booking-hub`) is the ONE home per booking — `showDetails()` (app.js) only
