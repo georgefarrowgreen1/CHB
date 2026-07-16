@@ -1260,6 +1260,58 @@ if (typeof ctx.cmdkBookClash === 'function') {
     vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);__cmdkCustomers=null;', ctx);
 } else fail('cmdkBookClash missing from the bundle');
 
+// ---- 35. Demand-based pricing in search: dated price-change COMMANDS (preview
+// maths from the season-aware current rate; Apply saves a spliced rate_seasons
+// override through the existing validated endpoint) and pricing SUGGESTIONS
+// (gap offers + the coach; server demand signals merge async). ----
+if (typeof ctx.chbSeasonSplice === 'function') {
+    const today = ctx.todayDashed();
+    const plus = (nn) => { const dd = new Date(today + 'T00:00:00Z'); dd.setUTCDate(dd.getUTCDate() + nn); return dd.toISOString().slice(0, 10); };
+    const mkb = (id, name, ci, co) => ({ id, name, email: 'x@x.co', checkIn: ci, checkOut: co, adults: 2, children: 0, payment: 'paid', holdStatus: 'none', agreedPrice: { total: 500 } });
+    ctx.__seedPr = [mkb(1, 'Bob', plus(5), plus(8)), mkb(2, 'Cara', plus(11), plus(14))]; // 3-night gap +8..+11
+    vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);dbBookings.jollyboat=__seedPr;__cmdkCustomers=null;__cmdkFrame=null;
+        propertySeasons.jollyboat = [{ label: 'Summer', start_date: '${plus(0)}', end_date: '${plus(60)}', couple_rate: 140 }];
+        __prSaved = null; __prOldApi = apiPost; apiPost = async (u, b) => { __prSaved = { u, b }; return { ok: true }; };`, ctx);
+    const head = (q) => { const r = ctx.cmdkIntent(q); return r && r[0] ? `${r[0].label} | ${r[0].sub || ''}` : '(none)'; };
+
+    // Command parsing + preview maths (current rate derived, not hardcoded —
+    // the shim's defaults own the December base).
+    const decCur = ctx.chbCoupleRateOn('jollyboat', `${+today.slice(0, 4) + (today.slice(5) > '12-20' ? 1 : 0)}-12-20`);
+    let h = head('set jollyboat to £150 for 20 to 23 december');
+    check('SET absolute: dated preview with current→new maths', new RegExp(`Set Jollyboat to £150/night · 20/12/\\d{4}–22/12/\\d{4} \\| Currently £${decCur}/night → £150`).test(h), h);
+    h = head('discount jollyboat by 10% for next weekend');
+    check('DISCOUNT %: computed from the SEASON-aware current rate (£140→£126)', /£126\/night/.test(h) && /£140\/night → £126 \(-10%\)/.test(h), h);
+    h = head('raise jollyboat prices 15% for september');
+    check('RAISE % for a bare month: whole-month override (1st–30th)', /£161\/night · 01\/09\/\d{4}–30\/09\/\d{4}/.test(h), h);
+    // Guards.
+    check('"change prices" (no cottage/dates) keeps the generic rates action', /Change prices & rates/.test(head('change prices')), head('change prices'));
+    check('nonsense with a set-verb falls through', head('set the table for dinner') === '(none)');
+
+    // Suggestions: gap offer at 15% off the season rate + the coach lead.
+    const sugg = ctx.cmdkIntent('should i change my prices') || [];
+    check('pricing question leads with the coach route', sugg[0] && /Pricing coach/.test(sugg[0].label), sugg[0] && sugg[0].label);
+    const gapRow = sugg.find((r) => /gap on Jollyboat/.test(r.label || ''));
+    check('gap offer suggests 15% off the season rate (£140→£119) with the dates', !!gapRow && /£119\/night \(15% off\)/.test(gapRow.label) && /£140 → £119/.test(gapRow.sub), gapRow && `${gapRow.label} | ${gapRow.sub}`);
+
+    // Splice: an override INSIDE an existing season splits it (never shadowed).
+    const spliced = ctx.chbSeasonSplice(
+        [{ label: 'Summer', start: '2026-07-01', end: '2026-08-31', rate: 140 }],
+        { label: 'Offer', start: '2026-07-20', end: '2026-07-23', rate: 119 },
+    );
+    check('splice: override inside a season → before-part + override + after-part',
+        spliced.length === 3 &&
+        spliced[0].end === '2026-07-19' && spliced[1].label === 'Offer' && spliced[2].start === '2026-07-24' &&
+        spliced[0].rate === 140 && spliced[2].rate === 140,
+        JSON.stringify(spliced));
+    const noTouch = ctx.chbSeasonSplice([{ label: 'Xmas', start: '2026-12-20', end: '2026-12-28', rate: 200 }], { label: 'Offer', start: '2026-07-20', end: '2026-07-23', rate: 119 });
+    check('splice: non-overlapping seasons pass through untouched', noTouch.length === 2 && noTouch.find((s) => s.label === 'Xmas').rate === 200);
+
+    // Apply: run the December SET — the async payload assertion lives in the
+    // async tail below (the shim's setTimeout is inert; microtasks flush there).
+    const applyRow = (ctx.cmdkIntent('set jollyboat to £150 for 20 to 23 december') || [])[0];
+    if (applyRow) applyRow.run(); else fail('no apply row for the December set');
+} else fail('chbSeasonSplice missing from the bundle');
+
 // ---- 30. Darkstar-C (contextual encoder) plumbing. The encoder itself is
 // benched offline (it can't run in CI); what MUST hold here is the machinery:
 // the WordPiece tokenizer, the encoder-built index (tagged CHB_HIST.enc, its
@@ -1267,6 +1319,21 @@ if (typeof ctx.cmdkBookClash === 'function') {
 // query, rebuild-on-upgrade, and full graceful fallback with no model at all.
 // This section is async (index builds await), so the summary lives at its end.
 (async () => {
+    // §35 async tail: the price-command Apply saved the SPLICED season list
+    // through the validated endpoint and updated local state. Yield first so
+    // the apply's microtask chain (await apiPost → state update) flushes.
+    await null; await null; await null;
+    if (typeof ctx.chbSeasonSplice === 'function') {
+        const saved = vm.runInContext('__prSaved', ctx);
+        check('apply posted seasons_save for the right cottage', !!(saved && saved.b && saved.b.action === 'seasons_save' && saved.b.prop_key === 'jollyboat'), JSON.stringify(saved && saved.b && { a: saved.b.action, p: saved.b.prop_key }));
+        const list = (saved && saved.b && saved.b.seasons) || [];
+        check('apply payload KEEPS the existing season and ADDS the dated override',
+            list.some((s) => s.label === 'Summer' && s.rate === 140) && list.some((s) => s.rate === 150 && /-12-20$/.test(s.start) && /-12-22$/.test(s.end)),
+            JSON.stringify(list));
+        const st = vm.runInContext('propertySeasons.jollyboat', ctx);
+        check('local propertySeasons updated with the override', Array.isArray(st) && st.some((s) => +s.couple_rate === 150), JSON.stringify(st));
+        vm.runInContext('apiPost = __prOldApi; propertySeasons.jollyboat = []; Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);__cmdkCustomers=null;', ctx);
+    }
     if (typeof ctx.chbEncTokens === 'function') {
         // Tokenizer against a stub vocab: greedy longest-match, ## continuation,
         // punctuation split, [UNK] fallback, [CLS]/[SEP] framing.

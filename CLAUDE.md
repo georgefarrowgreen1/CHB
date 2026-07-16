@@ -447,6 +447,24 @@ via `cmdkPrefillEditDates` — **never saves**; arrived guests are move-locked a
 Gated by search-test §34 (18 checks) + golden shape cases + ui-test-bookcmd.js (real
 browser: edit modal carries the proposed dates; quote run prefills Add Booking).
 
+**Pricing in search** (admin.js) — search suggests AND applies demand-based pricing.
+(1) **Dated price-change COMMAND** (in `cmdkCommand`, so it beats the generic rates action):
+"set jollyboat to £150 for 20–23 aug" / "discount 21a by 10% next weekend" / "raise pimpernel
+15% for september" (bare "in/for <month>" now parses as the WHOLE month in `cmdkParseDates`,
+checkout-style end) — previews the maths from the season-aware CURRENT rate
+(`chbCoupleRateOn`), and Apply saves a dated override through the existing validated
+`seasons_save` endpoint. Seasons resolve first-match by start date (lockstep with
+pricing.php), so `chbSeasonSplice` SPLITS any overlapped season around the override — an
+override can never be silently shadowed; rows stay visible/editable in Rates. Sanity bounds
+£20–£2000, future-start only. (2) **Suggestions** ("should i change my prices", `CHB_PRICE_Q`):
+instant gap offers from `chbGapScan` (extracted from `chbAnomalies`, shared) — 15% off the
+2–4-night holes, one-tap Apply — plus the coach as the full surface, and the server's
+demand-signal suggestions (`pricing-suggest.php`: guest searches, unmet demand) merging into
+the palette async (`cmdkPricingMerge`, stamp-guarded; weekendPct ones apply via the coach's
+own `applyPricingSuggestion`, the rest route to the coach). Gated by search-test §35
+(12 checks: preview maths incl. season-aware current rate, whole-month ranges, splice
+before/override/after, apply payload keeps existing seasons, guards) + golden shape cases.
+
 **Conversational frame** (admin.js) — search is a DIALOGUE, not one-shots. The last METRIC
 answer's frame (`__cmdkFrame` = metric · period · cottage, 3-min TTL, stored by
 `chbFrameStore` whenever an intent/NLU answer carries a `CHB_FRAME_METRIC_Q` metric) lets a
