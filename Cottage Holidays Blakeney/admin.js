@@ -1758,12 +1758,11 @@ function chbSetModelStatus(el, state) {
     el.dataset.mstate = s;
     try { el.title = CHB_MSTATE_TITLE[s] || CHB_MSTATE_TITLE_DEFAULT; } catch (e) {}
 }
-// Every status surface on screen (the palette's logo knot + each bar's).
+// Every status surface on screen (the search page's logo knot).
 function chbModelStatusEls() {
     const els = [];
     const p = document.getElementById('cmdk-ml');
     if (p) els.push(p);
-    document.querySelectorAll('.abar-ic').forEach((e) => els.push(e));
     return els;
 }
 // ---- Model-download progress ring. While a model file streams down
@@ -5502,9 +5501,7 @@ function cmdkJumpTimeline(iso) {
 // "today" prefix for continuity, but they target the active workspace now.)
 let __todayFilter = '';
 let __wsFilterView = 'view-backoffice';
-// Who set the current filter: '' = the palette (banner shows) · 'abar' = a
-// workspace Assist Bar (the bar shows its own live count, so no banner).
-let __todayFilterSrc = '';
+let __todayFilterSrc = ''; // kept for continuity — the search page's filter always shows the banner
 const CMDK_WORKSPACES = ['view-backoffice', 'view-inbox', 'view-accounts'];
 function cmdkActiveWorkspace() {
     const v = typeof document !== 'undefined' && document.querySelector ? document.querySelector('.page-view.active') : null;
@@ -5535,12 +5532,8 @@ function applyTodayFilter(q) {
     closeCmdK();
     if (typeof nav === 'function' && ((document.querySelector('.page-view.active') || {}).id !== __wsFilterView)) nav(__wsFilterView);
     cmdkPoll(() => document.getElementById(__wsFilterView), () => {
-        // A workspace that carries an Assist Bar owns filtering there — land the
-        // query IN the bar (input + live count) instead of the floating banner,
-        // so there's exactly one filter UI per workspace.
-        if (abarAdopt(__wsFilterView, __todayFilter)) return;
         __todayFilterSrc = '';
-        paintTodayFilter();
+        paintTodayFilter(); // the floating filter banner + dim machinery
     }, 30);
 }
 function clearTodayFilter() {
@@ -5553,8 +5546,7 @@ function clearTodayFilter() {
 function renderTodayFilterBar(q, shown) {
     let bar = document.getElementById('today-filter-bar');
     const view = document.getElementById(__wsFilterView);
-    // Bar-driven filtering shows its count inside the Assist Bar itself.
-    if (!q || !view || __todayFilterSrc === 'abar') { if (bar) bar.remove(); return; }
+    if (!q || !view) { if (bar) bar.remove(); return; }
     if (!bar) {
         bar = document.createElement('div');
         bar.id = 'today-filter-bar';
@@ -5563,466 +5555,10 @@ function renderTodayFilterBar(q, shown) {
     if (bar.parentElement !== view) view.insertBefore(bar, view.firstChild);
     bar.innerHTML = `<span>Filtering for <strong>${escapeHtml(q)}</strong> · ${shown} match${shown === 1 ? '' : 'es'}</span><button type="button" class="btn-sm btn-edit" data-act="clearTodayFilter">Clear</button>`;
 }
-// ============================================================
-//  Assist Bar — the palette's brain embedded IN a workspace. One component,
-//  many hosts (Today now, Inbox next): a static host div in index.html gets a
-//  knot + input injected here (admin.js only ever loads for the owner). Typing
-//  routes ONE of two ways per keystroke, both live:
-//    • the engine ANSWERS it (cmdkBuildResults found an intent/NLU answer)
-//      → an inline answer panel of the same self-contained result rows the
-//        palette renders (label · sub · run · chips), right under the bar;
-//    • plain terms → LIVE-FILTER the workspace (the existing [data-search]
-//      dim machinery), match count in the bar; zero matches offer the deep
-//      "search everything" pivot + the model's nearest askable questions.
-//  Empty + idle it rests quietly (the model-status pill still shows it's ready).
-// ============================================================
-const __abars = {};
-function chbAssistBar(hostId, opts) {
-    const host = document.getElementById(hostId);
-    if (!host || __abars[hostId]) return;
-    opts = opts || {};
-    __abars[hostId] = { id: hostId, q: '', rows: [], ask: [], filtering: false, opts, t: null };
-    host.classList.add('abar');
-    // NB: the keydown handler lives on the WRAPPER (delegation walks up from the
-    // input) — data-args/data-pass are single attributes per element, so the
-    // input can't carry both the input-handler's pass=value and pass=event.
-    // data-act-blur shares the wrapper's data-args/data-pass with the keydown
-    // handler — both take (id, event), so one attribute set serves both.
-    host.innerHTML =
-        `<div class="abar-field" data-act-blur="abarBlur" ${chbAttrsFor('keydown', 'abarKey', [hostId, CHB_EVENT])}>` +
-        `<span class="abar-ic" data-mstate="" title="${escapeHtml(CHB_MSTATE_TITLE_DEFAULT)}">${CMDK_SEARCH_IC}</span>` +
-        `<input id="${hostId}-input" class="abar-input" type="search" enterkeyhint="search" placeholder="${escapeHtml(opts.placeholder || 'Search or ask anything…')}" autocomplete="off" autocapitalize="off" spellcheck="false" role="searchbox" aria-label="${escapeHtml(opts.placeholder || 'Search or ask')}" ${chbInput('abarInput', hostId, CHB_VALUE)}>` +
-        `<span class="abar-count" id="${hostId}-count" aria-live="polite"></span>` +
-        `<button type="button" class="abar-clear" id="${hostId}-clear" ${chbAttrs('abarClear', hostId)} aria-label="Clear search">✕</button>` +
-        `</div>` +
-        `<div class="abar-panel" id="${hostId}-panel"></div>`;
-    abarClearPanel(hostId);
-    chbSetModelStatus(host.querySelector('.abar-ic'), ''); // resting "AI ready" logo tint if Darkstar's loaded
-}
-// Register every bar whose host div exists (called once from the admin boot
-// footer). Today's bar filters the operations board via the shared
-// [data-search] dim machinery above.
-function chbAssistInitBars() {
-    chbAssistBar('abar-today', {
-        view: 'view-backoffice',
-        placeholder: 'Search bookings, or ask anything…',
-        filter: (q) => {
-            __todayFilter = q;
-            __wsFilterView = 'view-backoffice';
-            __todayFilterSrc = 'abar';
-            return paintTodayFilter();
-        },
-        unfilter: () => {
-            if (__todayFilter) clearTodayFilter();
-        },
-    });
-    chbAssistBar('abar-inbox', {
-        view: 'view-inbox',
-        placeholder: 'Search enquiries, chats, email — or ask…',
-        filter: (q) => {
-            __todayFilter = q;
-            __wsFilterView = 'view-inbox';
-            __todayFilterSrc = 'abar';
-            const shown = paintTodayFilter();
-            abarInboxCounts(q);
-            return shown;
-        },
-        unfilter: () => {
-            if (__todayFilter) clearTodayFilter();
-            abarInboxCounts('');
-        },
-    });
-    // Payments + Manage complete the set — every back-office workspace now carries
-    // the same embedded brain. Their browse-index rows are static markup without a
-    // data-search haystack, so stamp one (label + sub + kw) before filtering.
-    chbAssistBar('abar-accounts', {
-        view: 'view-accounts',
-        placeholder: 'Search payments, or ask about money…',
-        filter: (q) => {
-            abarStampSearchRows('view-accounts');
-            __todayFilter = q;
-            __wsFilterView = 'view-accounts';
-            __todayFilterSrc = 'abar';
-            return paintTodayFilter();
-        },
-        unfilter: () => { if (__todayFilter) clearTodayFilter(); },
-    });
-    chbAssistBar('abar-manage', {
-        view: 'view-settings',
-        placeholder: 'Search settings, or ask…',
-        filter: (q) => {
-            abarStampSearchRows('view-settings');
-            __todayFilter = q;
-            __wsFilterView = 'view-settings';
-            __todayFilterSrc = 'abar';
-            return paintTodayFilter();
-        },
-        unfilter: () => { if (__todayFilter) clearTodayFilter(); },
-    });
-    // Record-scoped bars ON the hubs — no board to filter; every query routes to
-    // the engine with __cmdkEntity set to the open record, so "email them", "take
-    // payment", "approve", "change the price" act on THIS booking / enquiry.
-    chbAssistBar('abar-bookinghub', {
-        view: 'view-booking-hub',
-        placeholder: 'Do something with this booking — “take payment”, “email them”…',
-        scopeEntity: true,
-    });
-    chbAssistBar('abar-enquiryhub', {
-        view: 'view-enquiry-hub',
-        placeholder: 'Do something with this enquiry — “approve”, “email them”…',
-        scopeEntity: true,
-    });
-}
-// SMART CLEAR — moving to another page resets the Assist Bars you're LEAVING
-// (query, filter dim, panel) so returning finds them fresh, ready for the next
-// search. Bars in the view you're going TO are left alone: the palette's "filter
-// this workspace" adopt flow re-fills the target bar right after nav, and a
-// re-nav to the same view mustn't wipe an in-progress search. Wired into app.js
-// nav() via `window.chbSmartClear` (facade-safe: app.js only touches the slot,
-// admin.js fills it — a no-op before the bundle loads / for guests).
-function chbSmartClear(viewId) {
-    try {
-        if (typeof __abars !== 'object' || !__abars) return;
-        const view = viewId ? document.getElementById(viewId) : null;
-        Object.keys(__abars).forEach((id) => {
-            const st = __abars[id];
-            const hostEl = document.getElementById(id);
-            if (!st || !hostEl) return;
-            const busy = !!(st.q || st.filtering || hostEl.classList.contains('has-text'));
-            if (busy && (!view || !view.contains(hostEl))) abarClear(id);
-        });
-    } catch (e) {}
-}
-// Give a workspace's static browse-index rows (.settings-row) a data-search
-// haystack the first time its bar filters, so the shared paintTodayFilter dim
-// machinery can light the matches. Idempotent (skips rows already stamped).
-function abarStampSearchRows(viewId) {
-    const view = document.getElementById(viewId);
-    if (!view) return;
-    view.querySelectorAll('.settings-row:not([data-search])').forEach((el) => {
-        const lab = (el.querySelector('.settings-row-label') || {}).textContent || '';
-        const sub = (el.querySelector('.settings-row-sub') || {}).textContent || '';
-        const kw = el.getAttribute('data-kw') || '';
-        el.setAttribute('data-search', (lab + ' ' + sub + ' ' + kw).toLowerCase());
-    });
-}
-// Folder-aware feedback for the Inbox bar: while a filter is live, each folder
-// button shows how many of ITS rows match (a .ifold-match pill; the unread
-// chips hide via .is-filtered so the two counts never sit side by side —
-// unread ≠ matching, and the unread chips repaint on their own schedules).
-// The filter itself already spans every folder: paintTodayFilter dims all
-// [data-search] rows in the view, hidden folders included, so switching
-// folders mid-filter shows that folder's matches. NB: the Email folder's rows
-// exist only after its lazy first open (loadMailbox) — until then it honestly
-// counts 0.
-function abarInboxCounts(q) {
-    const rail = document.getElementById('inbox-folders');
-    if (!rail) return;
-    rail.classList.toggle('is-filtered', !!q);
-    ['enquiries', 'messages', 'email'].forEach((key) => {
-        const btn = rail.querySelector('[data-ifolder="' + key + '"]');
-        if (!btn) return;
-        let pill = btn.querySelector('.ifold-match');
-        if (!q) {
-            if (pill) pill.remove();
-            return;
-        }
-        const box = document.getElementById('inbox-folder-' + key);
-        let n = 0;
-        if (box) box.querySelectorAll('[data-search]').forEach((el) => { if ((el.getAttribute('data-search') || '').indexOf(q) > -1) n++; });
-        if (!pill) {
-            pill = document.createElement('span');
-            pill.className = 'ifold-match';
-            btn.appendChild(pill);
-        }
-        pill.textContent = n;
-        pill.classList.toggle('is-zero', n === 0);
-    });
-}
-// The palette's "filter this workspace" lands here when the target workspace
-// carries a bar: the query appears in the bar with its live count. Returns
-// false when no bar exists (the floating banner path handles it).
-function abarAdopt(viewId, q) {
-    const id = Object.keys(__abars).find((k) => __abars[k].opts.view === viewId);
-    if (!id) return false;
-    const el = document.getElementById(id + '-input');
-    if (!el) return false;
-    el.value = q;
-    const host = document.getElementById(id);
-    if (host) host.classList.remove('has-answer');
-    const panel = document.getElementById(id + '-panel');
-    if (panel) panel.innerHTML = '';
-    abarFilterQuery(id, q);
-    return true;
-}
-function abarInput(id, v) {
-    const st = __abars[id];
-    if (!st) return;
-    clearTimeout(st.t);
-    st.t = setTimeout(() => abarRoute(id, v), 140);
-}
-function abarKey(id, e) {
-    if (!e) return;
-    if (e.key === 'Escape') {
-        abarClear(id);
-        const el = document.getElementById(id + '-input');
-        if (el) el.blur();
-    } else if (e.key === 'Enter') {
-        const st = __abars[id];
-        if (st) {
-            clearTimeout(st.t); // flush the debounce so Enter acts on what's typed
-            const el = document.getElementById(id + '-input');
-            abarRoute(id, el ? el.value : st.q);
-            if (st.rows.length) abarExec(id, 0); // top answer row
-        }
-    }
-}
-function abarClear(id) {
-    const el = document.getElementById(id + '-input');
-    if (el) el.value = '';
-    abarRoute(id, '');
-}
-// The router — one call per (debounced) keystroke.
-function abarRoute(id, q) {
-    const st = __abars[id];
-    if (!st) return;
-    const raw = (q || '').trim().toLowerCase();
-    st.q = raw;
-    const host = document.getElementById(id);
-    const panel = document.getElementById(id + '-panel');
-    const count = document.getElementById(id + '-count');
-    const statusEl = host ? host.querySelector('.abar-ic') : null;
-    if (host) host.classList.toggle('has-text', raw.length > 0);
-    if (!raw) {
-        abarFilterOff(st);
-        st.rows = [];
-        st.miss = null; // deliberately cleared — not a dead end
-        if (host) { host.classList.remove('has-answer'); host.classList.remove('ml-active'); }
-        chbSetModelStatus(statusEl, ''); // → quiet "AI ready" when loaded
-        if (count) count.textContent = '';
-        abarClearPanel(id);
-        return;
-    }
-    // Workspace-first: terms matching rows on THIS board (a guest name, a
-    // cottage, a pay state) live-filter it (dim + count). But the matching
-    // records are NOT always "right there" — a future booking sits outside the
-    // timeline window, a bk-row hides below the keyboard — so we ALSO run the
-    // engine and, when the query resolves to actual RECORDS (a customer), show
-    // them in the panel as tappable rows. So typing a name always SHOWS the
-    // customer, not just "1 match" over a dimmed board. Questions never match the
-    // row haystacks, so they're pure answers with the filter released.
-    st.rows = [];
-    if (host) host.classList.remove('has-answer');
-    const shown = abarFilterQuery(id, raw);
-    // A hub bar scopes every query to the record on screen, so anaphora ("email
-    // them"), commands ("take payment", "approve") and follow-ups act on it.
-    if (st.opts.scopeEntity) { try { __cmdkEntity = cmdkCurrentEntity(); } catch (e) {} }
-    let built = null;
-    try { built = cmdkBuildResults(raw); } catch (e) { built = null; }
-    // Direct answers (intents, named guests) lead; otherwise fall back to the
-    // fuzzy pool — records AND site content (experiences, website text) — so the
-    // bar "scans everything" and a card like "Folks Coffee" surfaces here instead
-    // of dead-ending to the deep CTA.
-    const answerRows = built ? (built.results.length ? built.results : built.fuzzy) : [];
-    const hasRecord = answerRows.some((r) => r && ['booking', 'enquiry', 'guest', 'payment'].includes(r.type));
-    // Show the answer panel when the query resolved to something worth showing:
-    // a question's answer (no board match), OR — even while the board filters —
-    // an actual customer/record (so it's always visible + tappable).
-    if (answerRows.length && (shown <= 0 || hasRecord)) {
-        // Keep the board dim + count as CONTEXT when a name also filtered the
-        // board; otherwise (a pure question) release the filter.
-        if (shown > 0 && hasRecord) {
-            st.miss = { q: raw, answered: true }; // filtered AND showing the record
-        } else {
-            abarFilterOff(st);
-            if (count) count.textContent = '';
-        }
-        __cmdkWords = raw.split(/\s+/).filter(Boolean); // cmdkHi highlight terms
-        st.rows = answerRows.slice(0, 5);
-        // Act in place: surface the quick-actions of the FIRST actionable record
-        // (a summary head often carries none — the booking row beneath does).
-        const ai = st.rows.findIndex((r) => r && Array.isArray(r.actions) && r.actions.length);
-        if (ai >= 0) st.rows[ai]._showActs = true;
-        st.nlu = built.nlu || null;
-        st.miss = { q: raw, answered: true };
-        // Conversational memory, same as the palette: an answer that surfaced a
-        // booking becomes the referent for the next pronoun follow-up ("email
-        // them", "when do they arrive") typed into ANY bar or the palette.
-        const convRow = st.rows.find((r) => r && r.type === 'booking' && r.id != null);
-        if (convRow) { __cmdkConvCtx = { type: 'booking', id: convRow.id }; try { chbStampRecent('booking', convRow.id, convRow.name); } catch (e) {} }
-        if (host) host.classList.add('has-answer');
-        // The status pill NAMES what the model did (Understood / By meaning / Best
-        // guess) — same signal as the palette, now legible without decoding colour.
-        const mstate = chbModelState(built, st.rows);
-        if (host) host.classList.toggle('ml-active', !!mstate);
-        chbSetModelStatus(statusEl, mstate);
-        if (panel)
-            panel.innerHTML =
-                (built.nlu ? `<div class="abar-note">Understood as “${escapeHtml(built.nlu)}”</div>` : '') +
-                st.rows.map((r, i) => abarRowHtml(id, r, i)).join('');
-        return;
-    }
-    // Board matched but the query isn't a record lookup (a pay-state / broad
-    // filter) — keep the filter + count as the answer, no panel.
-    if (shown > 0) {
-        if (panel) panel.innerHTML = '';
-        if (host) { host.classList.remove('has-answer'); host.classList.remove('ml-active'); }
-        chbSetModelStatus(statusEl, ''); // the board answered — not the model
-        st.miss = { q: raw, answered: true };
-        return;
-    }
-    // Nothing on the board and no answer — dead end here: offer the deep
-    // "search everything" pivot + the model's nearest askable questions, and
-    // remember the query so walking away files it for the teach flow (the
-    // palette's "search dead ends" review covers bar misses too).
-    st.miss = raw.length >= 4 ? { q: raw, answered: false } : null;
-    if (panel) {
-        if (raw.length >= 3) {
-            st.ask = (built && built.ask) || [];
-            if (host) host.classList.toggle('ml-active', st.ask.length > 0);
-            chbSetModelStatus(statusEl, st.ask.length ? 'guess' : ''); // near-miss suggestions = a best guess
-            panel.innerHTML = abarEmptyHtml(id, raw, st.ask);
-        } else {
-            panel.innerHTML = '';
-            if (host) host.classList.remove('ml-active');
-            chbSetModelStatus(statusEl, '');
-        }
-    }
-}
-// Walking away from the bar with an unanswered query showing files it as a
-// search miss (the bar's equivalent of closing the palette on a dead end).
-// Focus moving WITHIN the bar — tapping the deep CTA or an ask chip — is not
-// walking away.
-function abarBlur(id, e) {
-    const st = __abars[id];
-    if (!st) return;
-    const host = document.getElementById(id);
-    if (host && e && e.relatedTarget && host.contains(e.relatedTarget)) return;
-    if (st.miss && !st.miss.answered) {
-        __cmdkMiss = st.miss;
-        st.miss = null;
-        try { chbMissRecord(); } catch (e2) {}
-    }
-}
-// Force FILTER mode (shared by the router and the palette's abarAdopt).
-function abarFilterQuery(id, q) {
-    const st = __abars[id];
-    if (!st) return -1;
-    st.q = q;
-    st.rows = [];
-    const host = document.getElementById(id);
-    if (host) host.classList.toggle('has-text', !!q);
-    let shown = -1;
-    if (q) {
-        st.filtering = true;
-        try { shown = st.opts.filter ? st.opts.filter(q) : -1; } catch (e) {}
-    } else {
-        abarFilterOff(st);
-    }
-    const count = document.getElementById(id + '-count');
-    if (count) count.textContent = q && shown >= 0 ? shown + ' match' + (shown === 1 ? '' : 'es') : '';
-    return shown;
-}
-function abarFilterOff(st) {
-    if (!st.filtering) return;
-    st.filtering = false;
-    try { if (st.opts.unfilter) st.opts.unfilter(); } catch (e) {}
-}
-// One inline answer row — the same anatomy (and CSS) as a palette row, plus its
-// refine chips as a quiet strip beneath. run/chips come straight off the
-// self-contained result objects, so every palette answer works here unchanged.
-function abarRowHtml(id, it, i) {
-    const hi = it.type === 'answer' || it.type === 'figure' ? (s) => escapeHtml(s || '') : cmdkHi;
-    // ACT IN PLACE — the lead answer's quick-actions render inline (same list as
-    // the palette), so "who owes me money" → [Request payment] without a hop to
-    // the hub. Only on the top row to keep the panel tidy.
-    const acts =
-        it._showActs && Array.isArray(it.actions) && it.actions.length
-            ? `<div class="cmdk-qa abar-qa">${it.actions
-                  .map((a, k) => `<button type="button" class="cmdk-qa-row" ${chbAttrs('abarAct', id, i, k)}><span class="cmdk-qa-ic">${a.icon || cmdkActIcon('hub')}</span><span class="cmdk-qa-lbl">${escapeHtml(a.label)}</span><span class="cmdk-qa-go" aria-hidden="true">${CMDK_CHEV}</span></button>`)
-                  .join('')}</div>`
-            : '';
-    const chips =
-        Array.isArray(it.chips) && it.chips.length
-            ? `<div class="abar-chips">${it.chips.map((c, k) => `<button type="button" class="abar-chip" ${chbAttrs('abarChip', id, i, k)}>${escapeHtml(c.label)}</button>`).join('')}</div>`
-            : '';
-    const nlg = it.nlgBody ? `<p class="cmdk-nlg-body">${escapeHtml(it.nlgBody)}</p>` : '';
-    return (
-        `<button type="button" class="cmdk-row abar-row cmdk-row-${it.type}${it.wrap ? ' cmdk-row-wrap' : ''}" ${chbAttrs('abarExec', id, i)}>` +
-        `<span class="cmdk-row-ic cmdk-${it.type}">${cmdkIcon(it.iconType || it.type)}</span>` +
-        `<span class="cmdk-row-main"><span class="cmdk-row-label">${hi(it.label)}</span><span class="cmdk-row-sub">${hi(it.sub || '')}</span></span>` +
-        `</button>` +
-        nlg +
-        acts +
-        chips
-    );
-}
-// Run a quick-action off an inline answer row (the bar's equivalent of cmdkAct).
-function abarAct(id, i, k) {
-    const st = __abars[id];
-    const it = st && st.rows ? st.rows[i] : null;
-    const a = it && Array.isArray(it.actions) ? it.actions[k] : null;
-    if (!a) return;
-    st.miss = null; // acted on → not a dead end
-    if (typeof a.run === 'function') a.run();
-    abarClear(id); // smart clear: action done → fresh for the next search
-}
-// Zero matches on a filter: the deep "search everything" pivot + the model's
-// nearest askable questions (mirrors the palette's dead-end guidance).
-function abarEmptyHtml(id, q, ask) {
-    const deep = `<button type="button" class="cmdk-deep-cta abar-deep" ${chbAttrs('abarDeep', id)}><span class="cmdk-deep-cta-ic">${CMDK_SEARCH_IC}</span><span class="cmdk-deep-cta-lbl">Nothing here — search <strong>everything</strong> for “${escapeHtml(q)}”</span><span class="cmdk-qa-go" aria-hidden="true">${CMDK_CHEV}</span></button>`;
-    const chips = ask && ask.length ? `<div class="abar-chips abar-ask">${ask.map((c, k) => `<button type="button" class="abar-chip" ${chbAttrs('abarAskRun', id, k)}>${escapeHtml(c)}</button>`).join('')}</div>` : '';
-    return deep + chips;
-}
-// Idle state: nothing under the bar. (The rotating "suggested searches" chips
-// were removed at the owner's request — the empty bar is the resting state.)
-// Clear the bar's result panel (idle/reset). Named for the old ambient-chips idea
-// that lived here; now it simply empties the panel on init and on each new query.
-function abarClearPanel(id) {
-    const panel = document.getElementById(id + '-panel');
-    if (panel) panel.innerHTML = '';
-}
-function abarRunQuery(id, q) {
-    if (!q) return;
-    const el = document.getElementById(id + '-input');
-    if (el) el.value = q;
-    abarRoute(id, q);
-}
-function abarAskRun(id, k) {
-    const st = __abars[id];
-    abarRunQuery(id, st && st.ask ? st.ask[k] : '');
-}
-function abarExec(id, i) {
-    const st = __abars[id];
-    const it = st && st.rows ? st.rows[i] : null;
-    if (!it) return;
-    st.miss = null; // acted on → not a dead end
-    if (it._nlu && it._nluQ) { try { chbNluLearn(it._nluQ, it._nlu); } catch (e) {} } // accepted → learn this phrasing
-    if (typeof it.run === 'function') it.run(); // closeCmdK() inside runs is a safe no-op here
-    abarClear(id); // smart clear: acted on a result → fresh for the next search
-}
-function abarChip(id, i, k) {
-    const st = __abars[id];
-    const it = st && st.rows ? st.rows[i] : null;
-    const c = it && Array.isArray(it.chips) ? it.chips[k] : null;
-    if (!c) return;
-    st.miss = null; // engaged with a chip → not a dead end
-    if (typeof c.run === 'function') { c.run(); abarClear(id); return; } // action chip (e.g. Show on calendar) → clear after
-    abarRunQuery(id, c.q); // a refine chip re-queries the bar — keep it live
-}
-// No local match anywhere → hand the query to the palette's deep federated
-// search (server-side, all record types) with the bar reset behind it.
-function abarDeep(id) {
-    const st = __abars[id];
-    const q = st ? st.q : '';
-    if (st) st.miss = null; // pivoted to deep search → not a dead end
-    abarClear(id);
-    openCmdK();
-    const el = document.getElementById('cmdk-input');
-    if (el) el.value = q;
-    cmdkSearchCore(q, true);
-    cmdkDeepOpen();
-}
+// (The per-workspace Assist Bars were RETIRED in favour of the dedicated
+// search page — the dock's knot logo / ⌘K is the one search entry. All the
+// intelligence they carried lives on in the page: same engine, same rows,
+// same context capture via openCmdK's scope + entity snapshot.)
 // ---- Open availability windows (gaps) between bookings + external blocks, per
 // cottage, across [fromIso, toIso). Returns [{propKey, name, from, to, nights}].
 function todayGaps(fromIso, toIso, onlyProp) {
@@ -6848,7 +6384,7 @@ function cmdkKey(e) {
     } else if (e.key === 'Escape') {
         e.preventDefault();
         if (__cmdkDeep) { cmdkDeepClose(); return; } // step back to quick hits first
-        closeCmdK();
+        cmdkBack(); // leave the search page for the workspace you came from
     }
 }
 function cmdkScrollSel() {
@@ -7007,39 +6543,56 @@ function cmdkSheetClose() {
     if (el) { try { el.focus(); } catch (e) {} }
     cmdkSearchCore(el ? el.value : '', true);
 }
+// Search is a dedicated PAGE (view-search): the dock's knot logo and ⌘K both
+// land here, capturing the workspace you came from (scope + record context)
+// so pronouns and "filter this workspace" still resolve. Esc / ⌘K again go
+// BACK to that workspace (cmdkBack); a result's own run() navigates wherever
+// it opens, calling closeCmdK() only for state cleanup.
+let __cmdkReturnView = null;
 function openCmdK() {
-    const o = document.getElementById('cmdk');
     const inp = document.getElementById('cmdk-input');
-    if (!o || !inp) return;
-    o.style.display = 'flex';
+    if (!inp) return;
+    const av = document.querySelector('.page-view.active');
+    // Scope + record context come from the page you were ON, so read them
+    // BEFORE navigating to the search page.
+    if (av && av.id !== 'view-search') __cmdkReturnView = av.id;
+    __cmdkScope = cmdkDefaultScope(); // open pre-scoped to the workspace you came from
+    __cmdkEntity = cmdkCurrentEntity(); // and aware of the record you were viewing
+    nav('view-search');
     inp.value = '';
-    __cmdkScope = cmdkDefaultScope(); // open pre-scoped to the workspace you're in
-    __cmdkEntity = cmdkCurrentEntity(); // and aware of the record you're viewing
     try { chbAssistSyncPull(); } catch (e) {} // merge learning taught on other devices (once per session)
     cmdkSearch('');
     // focus after paint so the mobile keyboard opens reliably
     setTimeout(() => inp.focus(), 30);
 }
+// State cleanup when leaving search (a result run navigating away, or Back).
+// Deliberately does NOT navigate — the caller decides where to go next.
 function closeCmdK() {
     const o = document.getElementById('cmdk');
     // If a Tier-2 sheet borrowed a Manage section, hand it back before closing so
     // the section can never be left orphaned inside the palette.
     if (__cmdkSheet) { try { cmdkSheetRestore(); } catch (e) {} }
-    try { chbMissRecord(); } catch (e) {} // closing on an unanswered query → file it as a dead end
+    try { chbMissRecord(); } catch (e) {} // leaving on an unanswered query → file it as a dead end
     __cmdkServerStamp++; // supersede any in-flight federated search
     __cmdkDeep = null;
     __cmdkDeepStamp++;
-    __cmdkConvCtx = null; // the conversation ends with the palette
+    __cmdkConvCtx = null; // the conversation ends with the search session
     cmdkSetLoading(false);
-    if (o) { o.style.display = 'none'; o.classList.remove('ml-active'); }
+    if (o) o.classList.remove('ml-active');
 }
-// ⌘K / Ctrl-K toggles the palette (owner only). Registered once on bundle load.
+// Explicit "leave search": clean up and return to the workspace you came from.
+function cmdkBack() {
+    closeCmdK();
+    const back = __cmdkReturnView && document.getElementById(__cmdkReturnView) ? __cmdkReturnView : 'view-backoffice';
+    nav(back);
+}
+// ⌘K / Ctrl-K toggles the search page (owner only). Registered once on bundle load.
 document.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
         if (typeof isAuthenticated === 'undefined' || !isAuthenticated) return;
         e.preventDefault();
-        const o = document.getElementById('cmdk');
-        if (o && o.style.display !== 'none') closeCmdK();
+        const av = document.querySelector('.page-view.active');
+        if (av && av.id === 'view-search') cmdkBack();
         else openCmdK();
     }
 });
@@ -17029,8 +16582,5 @@ async function mailboxDelete(uid) {
 [accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, bulkImportReviews, changeAdminPassword, changeMonth, timelineToday, inboxFolder, initBackOffice, loadAdminMessages, loadDiagnostics, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveDepositPct, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
     window[f.name] = f;
 });
-// Embedded Assist Bars: host divs are static in index.html; the bundle only
-// ever loads for the owner, so guests never see (or pay for) any of this.
-try { chbAssistInitBars(); } catch (e) {}
 try { cmdkPrefetchExperiences(); } catch (e) {} // published things-to-do → searchable
 window.__ADMIN_LOADED = true;

@@ -21,8 +21,8 @@
 :root {
   --darkstar: #a855f7;
   /* Siri-style luminous glow palette — the search lights up with this spectrum
-     when you engage it (see .cmdk-box / .abar-field). HSL parts so alpha can be
-     mixed inline; the hues sweep pink → purple → blue → teal → amber. */
+     when you engage it (see .cmdk-box). HSL parts so alpha can be mixed
+     inline; the hues sweep pink → purple → blue → teal → amber. */
   --siri-1: 330 92% 63%;
   --siri-2: 268 86% 66%;
   --siri-3: 210 92% 62%;
@@ -40,11 +40,6 @@
     box-shadow: var(--shadow-float), 0 1px 0 var(--glass-highlight) inset, 0 40px 80px -32px rgba(8, 11, 14, 0.55),
       0 0 30px -2px hsl(var(--siri-3) / 0.55), 0 0 60px 4px hsl(var(--siri-5) / 0.38), 0 0 92px 10px hsl(var(--siri-1) / 0.22);
   }
-}
-/* The aura an Assist Bar field breathes while focused. */
-@keyframes abarSiriAura {
-  0%, 100% { box-shadow: 0 0 20px -3px hsl(var(--siri-1) / 0.5), 0 0 40px 1px hsl(var(--siri-2) / 0.32), 0 0 62px 6px hsl(var(--siri-3) / 0.18); }
-  50% { box-shadow: 0 0 20px -3px hsl(var(--siri-3) / 0.5), 0 0 40px 1px hsl(var(--siri-5) / 0.32), 0 0 62px 6px hsl(var(--siri-1) / 0.18); }
 }
 .tl-bar.bar-21a {
   background: var(--prop-21a-bg);
@@ -1113,20 +1108,13 @@ body.owner-mode #mobileMenu {
 /* ---- Command palette (⌘K) — owner-only. Opened from the dock's Search
    button (or ⌘K); the overlay starts display:none inline so guests never
    see it. ---- */
-.cmdk-overlay {
-  position: fixed;
-  inset: 0;
-  z-index: 3000;
-  /* display toggled inline by openCmdK/closeCmdK */
-  align-items: flex-start;
+/* Search is a dedicated PAGE now (view-search hosts #cmdk.cmdk-page): the same
+   card, sitting in the page flow — no backdrop, page scroll instead of an
+   inner cap, comfortable width on desktop. */
+.cmdk-page {
+  display: flex;
   justify-content: center;
-  padding: 11vh 16px 16px;
-  /* A soft vignette rather than a flat wash — the palette reads as lifted above
-     a dimmed, gently blurred workspace. */
-  background: radial-gradient(120% 90% at 50% 0%, rgba(12, 16, 20, 0.42), rgba(8, 11, 14, 0.62));
-  backdrop-filter: blur(7px) saturate(1.1);
-  -webkit-backdrop-filter: blur(7px) saturate(1.1);
-  animation: cmdkFade 0.18s var(--fluid-bezier);
+  padding: 22px 0 40px;
 }
 @keyframes cmdkFade {
   from {
@@ -1135,12 +1123,8 @@ body.owner-mode #mobileMenu {
 }
 /* Tier-2 section sheet: the palette grows to host a whole re-parented editor
    (e.g. the seasonal rate grid). Collapses back to the normal size on close. */
-.cmdk-overlay.cmdk-sheet {
-  padding-top: 6vh;
-}
-.cmdk-overlay.cmdk-sheet .cmdk-box {
+.cmdk-page.cmdk-sheet .cmdk-box {
   max-width: 940px;
-  max-height: 86vh;
 }
 .cmdk-sheet-host {
   padding: 6px 2px 10px;
@@ -1152,8 +1136,8 @@ body.owner-mode #mobileMenu {
   --cmdk-sel: color-mix(in srgb, var(--accent) 13%, transparent);
   --cmdk-sel-edge: color-mix(in srgb, var(--accent) 55%, transparent);
   width: 100%;
-  max-width: 580px;
-  max-height: 72vh;
+  max-width: 680px;
+  max-height: none;
   display: flex;
   flex-direction: column;
   background: var(--glass-bg);
@@ -1194,12 +1178,12 @@ body.owner-mode #mobileMenu {
   opacity: 0.9;
   transition: color 0.35s ease, filter 0.35s ease;
 }
-/* AI STATUS LIVES IN THE LOGO — the knot glyph itself (the palette's leading
-   icon, wrapped as #cmdk-ml, and each Assist Bar's .abar-ic) carries the model
-   state as COLOUR. No words on screen: the hover title explains each state in
-   plain language, so the colour never has to be decoded blind. `data-mstate`
-   (set in JS: ready / understood / meaning / guess / learning / loading)
-   drives the tint; '' = the default accent knot. */
+/* AI STATUS LIVES IN THE LOGO — the search page's knot glyph (the leading
+   icon, wrapped as #cmdk-ml) carries the model state as COLOUR. No words on
+   screen: the hover title explains each state in plain language, so the
+   colour never has to be decoded blind. `data-mstate` (set in JS: ready /
+   understood / meaning / guess / learning / loading) drives the tint;
+   '' = the default accent knot. */
 #cmdk-ml {
   display: flex;
   flex-shrink: 0;
@@ -1211,19 +1195,13 @@ body.owner-mode #mobileMenu {
   color: inherit;
   opacity: 1;
 }
-.abar-ic {
-  position: relative;
-  transition: color 0.35s ease, opacity 0.35s ease;
-}
 /* READY — quiet purple: the model is loaded and idle, its presence always shown. */
-#cmdk-ml[data-mstate="ready"],
-.abar-ic[data-mstate="ready"] {
+#cmdk-ml[data-mstate="ready"] {
   color: var(--darkstar);
   opacity: 1;
 }
 /* UNDERSTOOD — a paraphrase mapped to a known intent: confident green, breathing. */
-#cmdk-ml[data-mstate="understood"],
-.abar-ic[data-mstate="understood"] {
+#cmdk-ml[data-mstate="understood"] {
   color: var(--ok);
   opacity: 1;
   animation: chb-ms-breathe 2.2s ease-in-out infinite;
@@ -1231,22 +1209,19 @@ body.owner-mode #mobileMenu {
 /* BY MEANING — the on-device SEMANTIC model recalled this. Its own Siri
    identity: the knot cycles teal→purple with a soft glow — instantly distinct
    from understood's steady green. Reduced motion gets the static teal base. */
-#cmdk-ml[data-mstate="meaning"],
-.abar-ic[data-mstate="meaning"] {
+#cmdk-ml[data-mstate="meaning"] {
   color: hsl(var(--siri-3));
   opacity: 1;
   animation: chb-knot-siri 2.8s ease-in-out infinite;
 }
 /* BEST GUESS — only near-miss suggestions, so it reads TENTATIVE: the accent
    knot, dimmed, no motion. */
-#cmdk-ml[data-mstate="guess"],
-.abar-ic[data-mstate="guess"] {
+#cmdk-ml[data-mstate="guess"] {
   color: var(--accent);
   opacity: 0.6;
 }
 /* LEARNING — absorbing a taught phrase / suppression: orange, pulsing ~2s. */
-#cmdk-ml[data-mstate="learning"],
-.abar-ic[data-mstate="learning"] {
+#cmdk-ml[data-mstate="learning"] {
   color: var(--warn);
   opacity: 1;
   animation: chb-ms-pulse 0.6s ease-in-out infinite;
@@ -1256,13 +1231,11 @@ body.owner-mode #mobileMenu {
    JS per chunk) via a conic-gradient with a radial mask cutting the centre
    out. Not an animation — the arc IS the downloaded fraction — so it needs no
    reduced-motion exemption. */
-#cmdk-ml[data-mstate="loading"],
-.abar-ic[data-mstate="loading"] {
+#cmdk-ml[data-mstate="loading"] {
   color: var(--darkstar);
   opacity: 1;
 }
-#cmdk-ml[data-mstate="loading"]::before,
-.abar-ic[data-mstate="loading"]::before {
+#cmdk-ml[data-mstate="loading"]::before {
   content: "";
   position: absolute;
   inset: -4px;
@@ -1315,7 +1288,6 @@ body.owner-mode #mobileMenu {
 }
 @media (prefers-reduced-motion: reduce) {
   #cmdk-ml,
-  .abar-ic,
   .admin-dock-btn.ml-learning svg { animation: none !important; }
 }
 /* A pure-opportunity strip ("Worth a look") gets a calm green count, not the
@@ -2136,9 +2108,6 @@ body.light-mode .cmdk-editor-input {
   color: var(--text-muted);
   white-space: normal;
 }
-.abar-row .cmdk-nlg-body {
-  padding-left: 14px;
-}
 .cmdk-refine-chip {
   font-size: 0.78rem;
   font-weight: 600;
@@ -2389,21 +2358,6 @@ body.light-mode .cmdk-editor-input {
   white-space: nowrap;
 }
 
-/* ---- Assist Bar (the search brain embedded in a workspace — Today, Inbox).
-   Field mirrors the palette's search row; answer rows REUSE .cmdk-row so the
-   two surfaces stay visually identical by construction. ---- */
-.abar-host {
-  margin: 12px 0 4px;
-}
-/* Record-scoped hub Assist Bar — a touch more separation from the hub below. */
-.abar-host.abar-hub {
-  margin: 4px 0 16px;
-}
-/* Inline quick-actions on a bar answer row (act in place) — reuses the palette's
-   .cmdk-qa list; just tighten the gap under the row. */
-.abar-qa {
-  margin-top: 6px;
-}
 /* Guest typeahead in Add Booking — a dropdown of past guests under the name
    field, so a repeat guest is one tap. Glass surface to match the modal. */
 .modal-name-wrap {
@@ -2453,134 +2407,15 @@ body.light-mode .cmdk-editor-input {
   font-size: 0.78rem;
   color: var(--text-muted);
 }
-/* Search bar ABOVE the header divider on EVERY back-office page (Today, Inbox,
-   Manage, Payments): drop the divider from the header itself and hang it under
-   the search bar, so the order always reads title → subline → SEARCH → line →
-   content. (Manage/Payments keep the bar inside their #…-chrome wrapper, which
-   hides on drill-down — so the divider follows the bar in and out.) */
-#view-backoffice > .dashboard-header,
-#inbox-head > .dashboard-header,
-#settings-chrome > .dashboard-header,
-#accounts-chrome > .dashboard-header {
-  border-bottom: none;
-  padding-bottom: 0;
-  margin-bottom: 16px;
-}
-#view-backoffice > #abar-today,
-#inbox-head > #abar-inbox,
-#settings-chrome > #abar-manage,
-#accounts-chrome > #abar-accounts {
-  margin-top: 0;
-  margin-bottom: 24px;
-  padding-bottom: 22px;
-  border-bottom: 1px solid var(--glass-border);
-}
-.abar-field {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 16px;
-  background: var(--glass-hover);
-  border: 1px solid var(--glass-border);
-  border-radius: 18px; /* Siri-style rounded pill */
-  transition: border-color 0.25s ease, background 0.3s ease, box-shadow 0.5s ease;
-}
-/* Siri glow: the field lights up with the cycling spectrum while focused, and
-   the surface firms up so the typed text stays crisp over the aura. */
-.abar-field:focus-within {
-  border-color: color-mix(in srgb, hsl(var(--siri-2)) 40%, var(--glass-border));
-  background: var(--glass-bg);
-  animation: abarSiriAura 4.5s ease-in-out infinite;
-}
-@media (prefers-reduced-motion: reduce) {
-  .abar-field:focus-within {
-    animation: none;
-    box-shadow: 0 0 22px -3px hsl(var(--siri-2) / 0.4);
-  }
-}
-.abar-ic {
-  display: flex;
-  flex-shrink: 0;
-  color: var(--accent);
-  opacity: 0.9;
-}
-.abar-ic .ic {
-  width: 19px;
-  height: 19px;
-}
-.abar-input {
-  flex: 1;
-  min-width: 0;
-  background: none;
-  border: none;
-  outline: none;
-  color: var(--text-light);
-  font: inherit;
-  font-size: 0.98rem;
-  font-weight: 500;
-  letter-spacing: -0.01em;
-}
-.abar-input::placeholder {
-  color: var(--text-muted);
-  opacity: 0.75;
-  font-weight: 400;
-}
-.abar-input::-webkit-search-cancel-button {
-  display: none; /* the bar draws its own ✕ */
-}
-.abar-count {
-  flex-shrink: 0;
-  font-size: 0.78rem;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-.abar-clear {
-  display: none;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 24px;
-  height: 24px;
-  border: none;
-  border-radius: 50%;
-  background: var(--glass-border);
-  color: var(--text-muted);
-  font-size: 0.72rem;
-  line-height: 1;
-  cursor: pointer;
-}
-.abar.has-text .abar-clear {
-  display: flex;
-}
-.abar-panel {
-  margin-top: 6px;
-}
-.abar-panel:empty {
-  display: none;
-  margin: 0;
-}
-.abar-note {
-  padding: 4px 12px 2px;
-  font-size: 0.74rem;
-  color: var(--ok);
-}
-.abar-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 6px 2px 2px;
-}
-/* ONE chip language — refine/pivot/ask suggestions render as the same pill in
-   the palette (.cmdk-chip) and the Assist Bars (.abar-chip). Primary ACTIONS
-   (verbs) stay as rows; these pills are "run another search / narrow it". */
+/* ONE chip language — refine/pivot/ask suggestion pills (.cmdk-chip). Primary
+   ACTIONS (verbs) stay as rows; these pills are "run another search / narrow it". */
 .cmdk-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 7px;
   padding: 2px 12px 10px 54px; /* aligns the pills under the row label */
 }
-.cmdk-chip,
-.abar-chip {
+.cmdk-chip {
   border: 1px solid var(--glass-border);
   background: var(--glass-hover);
   color: var(--text-light);
@@ -2593,49 +2428,11 @@ body.light-mode .cmdk-editor-input {
   transition: border-color 0.2s ease, background 0.2s ease;
 }
 .cmdk-chip:hover,
-.cmdk-chip:focus-visible,
-.abar-chip:hover,
-.abar-chip:focus-visible {
+.cmdk-chip:focus-visible {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 8%, var(--glass-hover));
   outline: none;
 }
-.abar-panel .cmdk-deep-cta {
-  margin: 6px 0 2px;
-}
-
-/* Inbox bar: per-folder match pills on the folder switch while a filter is
-   live; the unread chips step aside so the two counts never collide. */
-.ifold-match {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 6px;
-  border-radius: 999px;
-  background: var(--accent);
-  color: #fff;
-  font-size: 0.68rem;
-  font-weight: 700;
-}
-.ifold-match.is-zero {
-  background: var(--glass-border);
-  color: var(--text-muted);
-}
-#inbox-folders.is-filtered .ifold-count {
-  display: none;
-}
-@media (min-width: 1200px) {
-  /* (The Inbox bar now spans full width in #inbox-head, above the three-pane
-     split — no longer in the list column.) */
-  #inbox-folders .ifold-match {
-    margin-left: auto;
-  }
-}
-
-/* The bar's model status lives IN its knot glyph (.abar-ic carries data-mstate
-   — see the AI-STATUS block above): the logo's COLOUR is the state. */
 
 /* DARKSTAR ONLINE — the semantic model has finished loading. The logo knots
    show the quiet purple "AI ready" tint (see [data-mstate="ready"] above); on

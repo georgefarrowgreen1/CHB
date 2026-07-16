@@ -261,7 +261,14 @@
          opened by the dock's Search button or ⌘K / Ctrl-K (wired in admin.js);
          starts display:none inline so a guest (who never loads admin.css/admin.js)
          never sees it. -->
-    <div id="cmdk" class="cmdk-overlay" role="dialog" aria-modal="true" aria-label="Search the back office" style="display:none;" data-act="backdropClose" data-close="closeCmdK">
+    <!-- ================= SEARCH (dedicated page) =================
+         The assistant lives on ONE page now — opened by the dock's knot logo
+         (openCmdK) or ⌘K; every workspace Assist Bar was retired in its
+         favour. The #cmdk node keeps its ids (input/results/logo) so the whole
+         intelligence stack carries over unchanged; Esc / the dock take you
+         back to where you were (cmdkBack). -->
+    <main id="view-search" class="page-view container">
+    <div id="cmdk" class="cmdk-page" role="search" aria-label="Search the back office">
         <div class="cmdk-box">
             <div class="cmdk-search">
                 <!-- The AI status lives IN the logo: this knot is #cmdk-ml — its COLOUR
@@ -279,10 +286,11 @@
             <div class="cmdk-foot" aria-hidden="true">
                 <span class="cmdk-foot-keys"><kbd class="cmdk-kbd">↑</kbd><kbd class="cmdk-kbd">↓</kbd> Navigate</span>
                 <span class="cmdk-foot-keys"><kbd class="cmdk-kbd">↵</kbd> Open</span>
-                <span class="cmdk-foot-keys"><kbd class="cmdk-kbd">esc</kbd> Close</span>
+                <span class="cmdk-foot-keys"><kbd class="cmdk-kbd">esc</kbd> Back</span>
             </div>
         </div>
     </div>
+    </main>
 
     <div class="mobile-nav-overlay" id="mobileMenu">
         <a href="/" data-act="mobileNavLink" data-view="view-main" data-edit-text="mnav-home">Home</a>
@@ -937,7 +945,6 @@
              guest name to live-filter the board below, or ask a question and
              the answer appears inline. Injected by chbAssistBar() (admin.js)
              so guests never download any of it. -->
-        <div id="abar-today" class="abar-host"></div>
 
         <!-- NEEDS YOU — the one prioritised to-do list: everything across the
              back office that's waiting on the owner (automation warnings,
@@ -1049,7 +1056,6 @@
         <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" data-act="enquiryHubBack">← Back</span>
         <!-- Record-scoped Assist Bar: act on THIS enquiry by typing ("approve",
              "email them", "change the price"). Pre-scoped via __cmdkEntity. -->
-        <div id="abar-enquiryhub" class="abar-host abar-hub"></div>
         <div id="enquiry-hub-content"><!-- admin.js injects the enquiry hub here --></div>
     </main>
 
@@ -1061,7 +1067,6 @@
         <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" data-act="bookingHubBack">← Back</span>
         <!-- Record-scoped Assist Bar: act on THIS booking by typing ("take payment",
              "email them", "return deposit"). Pre-scoped via __cmdkEntity. -->
-        <div id="abar-bookinghub" class="abar-host abar-hub"></div>
         <div id="booking-hub-content"><!-- admin.js injects the hub here --></div>
     </main>
 
@@ -1086,7 +1091,6 @@
             </div>
             <!-- ASSIST BAR — above the header divider (full width across the
                  three-pane split): filter every folder at once or ask inline. -->
-            <div id="abar-inbox" class="abar-host"></div>
         </div>
         <div class="enq-split">
         <div id="inbox-main">
@@ -1161,7 +1165,6 @@
         <p id="settings-noresults" class="settings-noresults" style="display:none;">Nothing matches — try another word, or browse below.</p>
         <!-- Assist Bar: search any setting + ask, embedded (replaces the old
              per-page search, unifying it with the ⌘K brain). -->
-        <div id="abar-manage" class="abar-host"></div>
         </div>
 
         <div id="settings-index" class="settings-index">
@@ -1623,7 +1626,6 @@
             </div>
         </div>
         <!-- Assist Bar: search payments/balances + ask money questions inline. -->
-        <div id="abar-accounts" class="abar-host"></div>
         </div>
 
         <!-- INDEX -->
@@ -2479,7 +2481,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=450"></script>
+    <script defer src="app.js?v=451"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
