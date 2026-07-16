@@ -208,27 +208,29 @@ deep-search CTA + ask chips. **Smart clear**: acting on a result (`abarExec`/`ab
 `nav()` via a facade-safe `window.` slot) clears the bars you're LEAVING — so search is always
 fresh for the next query. A guest **typeahead** in Add Booking (`modalNameSuggest` /
 `#modal-name-suggest`) suggests past guests → a pick fills name+email+phone. Full
-intelligence parity: the **model-status pill** (palette `#cmdk-ml`, per-bar `.abar-status`,
-`data-mstate` set by `chbSetModelStatus`/`chbModelState`) NAMES what the assistant is doing —
-`ready` (Darkstar loaded, idle · quiet purple), `understood` (paraphrase→intent · confident
-green, breathing), `meaning` (semantic recall · its OWN Darkstar identity — a teal→purple Siri
-gradient wordmark that shimmers, distinct from understood's green so a meaning-match reads as
-semantic at a glance), `guess` (near-miss only · tentative rose-gold, hollow/dashed pip),
-`learning` (teaching · orange pulse) — the WORD carries the state, colour is a quiet accent
-(NOT a code to decode), and each pill's hover title (`CHB_MSTATE_TITLE`) explains itself. Bar
-pills carry a scannable leading state pip (`.abar-status::before`, the palette has its knot);
-all pills pop in (`chb-ms-in`) and honour `prefers-reduced-motion`. The dock button keeps a
-purple Darkstar tint. A sixth state, **`loading` ("Downloading…")**, owns the idle slot while
-a model file streams down (darkstar.bin at boot, encoder.onnx on the first history query): a
-circular PROGRESS ring — conic-gradient driven by `--mload` (0..1), radial-mask ring cut —
-around the dock Search knot (`.ml-loading::before`; ::after is the hover label), the palette
-knot and each bar pip. Plumbing: `chbFetchProgress` (streamed fetch → ArrayBuffer + per-chunk
+intelligence parity: the **AI status lives IN THE LOGO** — the knot glyph itself (the palette's
+leading icon, wrapped as `#cmdk-ml`, and each bar's `.abar-ic`; `data-mstate` set by
+`chbSetModelStatus`/`chbModelState`) carries the state as COLOUR, no words on screen: `ready`
+(Darkstar loaded, idle · quiet purple), `understood` (paraphrase→intent · confident green,
+breathing), `meaning` (semantic recall · its OWN Siri identity — the knot cycles teal→purple
+with a soft glow, `chb-knot-siri`, distinct from understood's steady green), `guess` (near-miss
+only · dimmed accent), `learning` (teaching · orange pulse), and **`loading`** while a model
+file streams down (darkstar.bin at boot, encoder.onnx on the first history query) — a circular
+PROGRESS ring around the knot, conic-gradient driven by `--mload` (0..1) with a radial-mask
+ring cut, also on the dock Search knot (`.ml-loading::before`; ::after is the hover label).
+Each knot's hover title (`CHB_MSTATE_TITLE`) explains the state in plain language, so the
+colour never has to be decoded blind; there is NO worded pill any more (the old
+`.cmdk-ml`/`.abar-status` pills + `CHB_MSTATE_LABEL` are REMOVED). The palette knot never
+hides — the ✕ clear sits on the RIGHT of the input (after it, before help); `has-text` only
+shows the ✕. All state animation honours `prefers-reduced-motion` (meaning falls back to a
+static teal). Plumbing: `chbFetchProgress` (streamed fetch → ArrayBuffer + per-chunk
 fractions; plain-arrayBuffer fallback when reader/length hidden) feeds
 `chbModelLoadProgress(key, frac)` (per-source map; overlapping downloads show the
 LEAST-finished; null clears). Active answer states always beat the ring; `chbSetModelStatus('')`
 falls back to `loading` while a download runs, then `ready`. The ring is progress, not
 animation — no reduced-motion exemption needed. Gated by ui-test-modelring.js (real browser:
-ring on/track/hand-back/clear) + search-test §31 (stream math, min-of-loads, idle fallback). Plus walk-away
+ring on/track/hand-back/clear) + search-test §31 (stream math, min-of-loads, idle fallback) +
+ui-test-assist-{parity,today} (state tints + titles on the bar logos). Plus walk-away
 (focusout) dead-end capture into the shared miss store, and `__cmdkConvCtx` carries across
 bars↔palette. **Cross-page context memory** (`__cmdkLastEntity`, `chbStampRecent`/
 `cmdkRecentEntity`, `CMDK_RECENT_MS` 6min): the record you last engaged with — a hub you opened

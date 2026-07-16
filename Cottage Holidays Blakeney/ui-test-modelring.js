@@ -27,28 +27,29 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.evaluate(() => { DARKSTAR.st = DARKSTAR.st || { pinned: true }; CHB_ENC.failed = true; });
   await page.evaluate(() => nav('view-backoffice')); await page.waitForTimeout(400);
 
-  // 1) Progress on → ring on the dock knot + pills in "Downloading…".
+  // 1) Progress on → ring on the dock knot + the bar/palette LOGOS in the
+  //    loading state (ring around the knot; the hover title carries the words).
   await page.evaluate(() => chbModelLoadProgress('enc', 0.4));
   let st = await page.evaluate(() => {
     const dock = document.querySelector('.admin-dock-btn[data-act="openCmdK"]');
     const ring = dock ? getComputedStyle(dock, '::before') : null;
-    const bar = document.querySelector('#abar-today .abar-status');
+    const bar = document.querySelector('#abar-today .abar-ic');
     const barRing = bar ? getComputedStyle(bar, '::before') : null;
     return {
       cls: dock && dock.classList.contains('ml-loading'),
       mload: dock && dock.style.getPropertyValue('--mload'),
       conic: !!(ring && /conic-gradient/.test(ring.backgroundImage)),
       barState: bar && bar.dataset.mstate,
-      barTxt: bar ? (bar.querySelector('.abar-status-txt') || {}).textContent : '',
+      barTitle: bar ? bar.title : '',
       barConic: !!(barRing && /conic-gradient/.test(barRing.backgroundImage)),
     };
   });
   ok(st.cls, 'dock Search knot enters ml-loading');
   ok(st.mload === '0.4', `dock carries --mload 0.4 (${st.mload})`);
   ok(st.conic, 'dock ring renders as a conic-gradient ::before');
-  ok(st.barState === 'loading', `bar pill switches to loading (${st.barState})`);
-  ok(/Downloading/.test(st.barTxt || ''), `bar pill reads "Downloading…" (${st.barTxt})`);
-  ok(st.barConic, 'bar pip renders the same conic ring');
+  ok(st.barState === 'loading', `bar logo switches to loading (${st.barState})`);
+  ok(/Downloading/.test(st.barTitle || ''), `bar logo's title explains "Downloading…" (${st.barTitle.slice(0, 30)}…)`);
+  ok(st.barConic, 'bar logo carries the conic progress ring');
 
   // 2) The ring tracks progress.
   await page.evaluate(() => chbModelLoadProgress('enc', 0.85));
@@ -57,7 +58,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
 
   // 3) An active answer state keeps the pill; clearing it hands back to the ring.
   st = await page.evaluate(() => {
-    const bar = document.querySelector('#abar-today .abar-status');
+    const bar = document.querySelector('#abar-today .abar-ic');
     chbSetModelStatus(bar, 'understood');
     const during = bar.dataset.mstate;
     chbModelLoadProgress('enc', 0.9);
@@ -72,7 +73,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   st = await page.evaluate(() => {
     chbModelLoadProgress('enc', null);
     const dock = document.querySelector('.admin-dock-btn[data-act="openCmdK"]');
-    const bar = document.querySelector('#abar-today .abar-status');
+    const bar = document.querySelector('#abar-today .abar-ic');
     return { cls: dock.classList.contains('ml-loading'), mload: dock.style.getPropertyValue('--mload'), barState: bar.dataset.mstate };
   });
   ok(!st.cls && !st.mload, 'completion removes the dock ring + --mload');
