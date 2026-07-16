@@ -6392,6 +6392,54 @@ body.admin-screen .site-footer {
   gap: 3px 14px;
   flex-wrap: wrap;
 }
+/* Welcome back — the returning guest's personal rebook nudge (homepage) and
+   the quiet "stayed here before" note on their cottage's page. */
+#welcome-back {
+  max-width: 760px;
+  margin: 16px auto 2px;
+}
+.wb-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  padding: 16px 20px;
+  border-radius: var(--r-md);
+}
+.wb-title {
+  font-family: var(--font-serif);
+  font-size: 1.2rem;
+  margin-bottom: 2px;
+}
+.wb-sub {
+  color: var(--text-muted);
+  font-size: 0.92rem;
+}
+.wb-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.wb-actions .btn-glass {
+  white-space: nowrap;
+}
+@media (max-width: 640px) {
+  .wb-panel {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+.stayed-before-chip {
+  display: inline-block;
+  margin: 10px 0 2px;
+  padding: 7px 13px;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  color: var(--accent);
+  background: rgba(214, 167, 133, 0.1);
+  border: 1px solid rgba(214, 167, 133, 0.25);
+}
 /* Homepage live availability: per-card chip + late-availability spotlight */
 .card-avail {
   min-height: 1.1em;
