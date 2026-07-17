@@ -78,6 +78,30 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const follow = await page.evaluate(() => { const r = cmdkIntent('email them') || []; return { head: r[0] ? r[0].label : '(none)', mail: r.some((x) => /email|mail/i.test((x && x.label) || '')) }; });
   ok(/Bob Carter/.test(follow.head) && follow.mail, `"email them" resolves the surfaced booking (${follow.head})`);
 
+  // 4b) Keyboard reaches a selected row's quick-actions (Left/Right) + two-stage
+  // Escape (clear the query, then leave). Bob's booking row carries actions.
+  await page.evaluate(() => { const el = document.getElementById('cmdk-input'); el.value = 'bob carter'; cmdkSearchCore('bob carter', false); });
+  await page.waitForTimeout(200);
+  const kb0 = await page.evaluate(() => {
+    // Select the first row that actually has quick-actions.
+    const idx = __cmdkResults.findIndex((r) => Array.isArray(r.actions) && r.actions.length);
+    __cmdkSel = idx; __cmdkActSel = -1; cmdkRender();
+    return { idx, acts: (__cmdkResults[idx] || {}).actions ? __cmdkResults[idx].actions.length : 0 };
+  });
+  ok(kb0.idx >= 0 && kb0.acts > 0, `a booking row exposes quick-actions (${kb0.acts})`);
+  const kb1 = await page.evaluate(() => { cmdkKey({ key: 'ArrowRight', preventDefault() {} }); return { sub: __cmdkActSel, marked: !!document.querySelector('#cmdk-results .cmdk-qa-row.is-kbd') }; });
+  ok(kb1.sub === 0 && kb1.marked, `ArrowRight steps into the first quick-action + marks it (sub=${kb1.sub})`);
+  const kb2 = await page.evaluate(() => { cmdkKey({ key: 'ArrowLeft', preventDefault() {} }); return { sub: __cmdkActSel, marked: !!document.querySelector('#cmdk-results .cmdk-qa-row.is-kbd') }; });
+  ok(kb2.sub === -1 && !kb2.marked, 'ArrowLeft steps back out to the row itself');
+  // Two-stage Escape: first clears the query, second leaves.
+  await page.evaluate(() => { document.getElementById('cmdk-input').value = 'bob carter'; });
+  const esc1 = await page.evaluate(() => { cmdkKey({ key: 'Escape', preventDefault() {} }); return { val: document.getElementById('cmdk-input').value, view: (document.querySelector('.page-view.active') || {}).id }; });
+  ok(esc1.val === '' && esc1.view === 'view-search', `first Escape clears the query, stays on the page (${esc1.view})`);
+  await page.evaluate(() => { cmdkKey({ key: 'Escape', preventDefault() {} }); }); await page.waitForTimeout(200);
+  const esc2 = await page.evaluate(() => (document.querySelector('.page-view.active') || {}).id);
+  ok(esc2 !== 'view-search', `second Escape leaves the search page (${esc2})`);
+  await page.evaluate(() => openCmdK()); await page.waitForTimeout(200);
+
   // 5) Teaching flashes the logo + dock orange, then clears.
   await page.evaluate(() => chbNluLearn('utterly novel phrasing zq', 'who owes me money'));
   await page.waitForTimeout(150);
