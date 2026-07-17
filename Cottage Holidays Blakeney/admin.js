@@ -2572,15 +2572,15 @@ function chbComputeDate(str) {
     // US time near midnight would otherwise disagree by a day / pick the wrong year).
     const now = typeof todayDashed === 'function' ? new Date(todayDashed() + 'T00:00:00') : new Date();
     const named = { christmas: [12, 25], 'christmas day': [12, 25], 'christmas eve': [12, 24], 'boxing day': [12, 26], 'new years eve': [12, 31], "new year's eve": [12, 31], 'new year': [1, 1], "new year's day": [1, 1], 'new years day': [1, 1], halloween: [10, 31], 'bonfire night': [11, 5], 'valentines day': [2, 14], "valentine's day": [2, 14], valentines: [2, 14] };
-    const easter = { 2026: [4, 5], 2027: [3, 28], 2028: [4, 16], 2029: [4, 1], 2030: [4, 21] };
     let m = null, d = null, y = null;
     if (named[s]) { [m, d] = named[s]; }
     else if (/^easter( sunday)?$/.test(s)) {
-        let e = easter[now.getFullYear()];
-        if (e && new Date(now.getFullYear(), e[0] - 1, e[1]) < now) e = easter[now.getFullYear() + 1] ? easter[now.getFullYear() + 1] : null;
-        if (!e) return null;
+        // Computed, not tabled — never goes stale. Pick this year's unless past.
+        const eThis = chbEaster(now.getFullYear());
+        const past = new Date(now.getFullYear(), eThis[0] - 1, eThis[1]) < now;
+        y = past ? now.getFullYear() + 1 : now.getFullYear();
+        const e = past ? chbEaster(y) : eThis;
         [m, d] = e;
-        y = new Date(now.getFullYear(), e[0] - 1, e[1]) < now ? now.getFullYear() + 1 : now.getFullYear();
     } else {
         const MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
         let mm = s.match(/^(\d{1,2}) ([a-z]+)(?: (\d{4}))?$/) || null; // 20 august [2026]
@@ -2709,11 +2709,53 @@ const CHB_COUNTRIES = [
     ['egypt', 'Cairo', 'the Egyptian pound (EGP)'], ['morocco', 'Rabat', 'the Moroccan dirham (MAD)'], ['tunisia', 'Tunis', 'the Tunisian dinar (TND)'], ['algeria', 'Algiers', 'the Algerian dinar (DZD)'], ['libya', 'Tripoli', 'the Libyan dinar (LYD)'], ['nigeria', 'Abuja', 'the naira (NGN)'], ['ghana', 'Accra', 'the cedi (GHS)'], ['kenya', 'Nairobi', 'the Kenyan shilling (KES)'], ['tanzania', 'Dodoma', 'the Tanzanian shilling (TZS)'], ['uganda', 'Kampala', 'the Ugandan shilling (UGX)'], ['ethiopia', 'Addis Ababa', 'the birr (ETB)'], ['south africa', 'Pretoria (executive; Cape Town is legislative)', 'the rand (ZAR)'], ['zambia', 'Lusaka', 'the kwacha (ZMW)'], ['botswana', 'Gaborone', 'the pula (BWP)'], ['namibia', 'Windhoek', 'the Namibian dollar (NAD)'], ['senegal', 'Dakar', 'the West African CFA franc (XOF)'], ['cameroon', 'Yaoundé', 'the Central African CFA franc (XAF)'], ['angola', 'Luanda', 'the kwanza (AOA)'], ['mozambique', 'Maputo', 'the metical (MZN)'], ['madagascar', 'Antananarivo', 'the ariary (MGA)'], ['mauritius', 'Port Louis', 'the Mauritian rupee (MUR)'], ['seychelles', 'Victoria', 'the Seychellois rupee (SCR)'], ['rwanda', 'Kigali', 'the Rwandan franc (RWF)'],
     ['australia', 'Canberra', 'the Australian dollar (AUD)'], ['new zealand', 'Wellington', 'the New Zealand dollar (NZD)'], ['fiji', 'Suva', 'the Fijian dollar (FJD)'], ['papua new guinea', 'Port Moresby', 'the kina (PGK)'], ['greenland', 'Nuuk', 'the Danish krone (DKK)'],
 ];
-// England & Wales bank holidays (extend yearly — cheap, exact).
-const CHB_BANK_HOLS = [
-    ['2026-01-01', "New Year's Day"], ['2026-04-03', 'Good Friday'], ['2026-04-06', 'Easter Monday'], ['2026-05-04', 'Early May bank holiday'], ['2026-05-25', 'Spring bank holiday'], ['2026-08-31', 'Summer bank holiday'], ['2026-12-25', 'Christmas Day'], ['2026-12-28', 'Boxing Day (substitute day)'],
-    ['2027-01-01', "New Year's Day"], ['2027-03-26', 'Good Friday'], ['2027-03-29', 'Easter Monday'], ['2027-05-03', 'Early May bank holiday'], ['2027-05-31', 'Spring bank holiday'], ['2027-08-30', 'Summer bank holiday'], ['2027-12-27', 'Christmas Day (substitute day)'], ['2027-12-28', 'Boxing Day (substitute day)'],
-];
+// Easter Sunday (Gregorian) by the Meeus/Jones/Butcher algorithm — exact for
+// any year, so nothing to extend. Returns [month(1-12), day].
+function chbEaster(year) {
+    const a = year % 19, b = Math.floor(year / 100), c = year % 100;
+    const dd = Math.floor(b / 4), e = b % 4, f = Math.floor((b + 8) / 25);
+    const g = Math.floor((b - f + 1) / 3), h = (19 * a + b - dd - g + 15) % 30;
+    const i = Math.floor(c / 4), k = c % 4;
+    const l = (32 + 2 * e + 2 * i - h - k) % 7;
+    const mth = Math.floor((a + 11 * h + 22 * l) / 451);
+    const month = Math.floor((h + l - 7 * mth + 114) / 31);
+    const day = ((h + l - 7 * mth + 114) % 31) + 1;
+    return [month, day];
+}
+// England & Wales bank holidays for ANY year, computed (Easter derived, the
+// fixed dates given a substitute weekday when they fall on a weekend, the May/
+// summer ones the first/last Monday). Self-maintaining — no yearly table to
+// extend. Returns [[iso, name], …] sorted by date.
+function chbBankHols(year) {
+    const iso = (dt) => `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+    const mk = (mo, day) => new Date(year, mo - 1, day);
+    const nthMon = (mo, last) => { // first (last=false) or last Monday of a month
+        if (last) { const d = new Date(year, mo, 0); while (d.getDay() !== 1) d.setDate(d.getDate() - 1); return d; }
+        const d = new Date(year, mo - 1, 1); while (d.getDay() !== 1) d.setDate(d.getDate() + 1); return d;
+    };
+    const [em, ed] = chbEaster(year);
+    const easterSun = mk(em, ed);
+    const goodFri = new Date(easterSun); goodFri.setDate(goodFri.getDate() - 2);
+    const easterMon = new Date(easterSun); easterMon.setDate(easterSun.getDate() + 1);
+    // Fixed dates get a substitute weekday when on a weekend (or when the
+    // Monday is already taken, e.g. Christmas Sat → Mon, Boxing Sun → Tue).
+    const taken = new Set();
+    const observed = (dt) => { const d = new Date(dt); while (d.getDay() === 0 || d.getDay() === 6 || taken.has(iso(d))) d.setDate(d.getDate() + 1); taken.add(iso(d)); return d; };
+    const nyd = observed(mk(1, 1));
+    const xmas = observed(mk(12, 25));
+    const boxing = observed(mk(12, 26));
+    const sub = (dt, base) => dt.getTime() !== base.getTime() ? ' (substitute day)' : '';
+    return [
+        [iso(nyd), "New Year's Day" + sub(nyd, mk(1, 1))],
+        [iso(goodFri), 'Good Friday'],
+        [iso(easterMon), 'Easter Monday'],
+        [iso(nthMon(5, false)), 'Early May bank holiday'],
+        [iso(nthMon(5, true)), 'Spring bank holiday'],
+        [iso(nthMon(8, true)), 'Summer bank holiday'],
+        [iso(xmas), 'Christmas Day' + sub(xmas, mk(12, 25))],
+        [iso(boxing), 'Boxing Day' + sub(boxing, mk(12, 26))],
+    ].sort((a, b) => a[0].localeCompare(b[0]));
+}
 function chbAlmanacCountry(name) {
     const n = String(name || '').toLowerCase().replace(/^the\s+/, '').replace(/[?.!]+$/, '').trim();
     if (!n) return null;
@@ -2733,8 +2775,11 @@ function chbAlmanac(q0) {
     }
     if (/bank holiday/.test(q)) {
         const today = todayDashed();
+        const cy = +today.slice(0, 4);
         if (/next/.test(q) || !/list|all|this year|\d{4}/.test(q)) {
-            const next = CHB_BANK_HOLS.find(([d]) => d >= today);
+            // Computed on the fly across this year + next, so "next bank holiday"
+            // never runs dry at a year boundary.
+            const next = chbBankHols(cy).concat(chbBankHols(cy + 1)).find(([d]) => d >= today);
             if (next) {
                 const dt = new Date(next[0] + 'T00:00:00');
                 const days = Math.round((dt - new Date(today + 'T00:00:00')) / 864e5);
@@ -2742,7 +2787,7 @@ function chbAlmanac(q0) {
             }
         }
         const yr = (q.match(/\b(20\d\d)\b/) || [null, today.slice(0, 4)])[1];
-        const list = CHB_BANK_HOLS.filter(([d]) => d.startsWith(yr));
+        const list = chbBankHols(+yr);
         if (list.length) return row(`${yr} bank holidays: ` + list.map(([d, n]) => `${n} (${fmtDate(d)})`).join(' · '), 'England & Wales');
     }
     return null;
