@@ -12806,7 +12806,14 @@ async function runMigrations() {
     }
     if (out) out.style.display = 'none';
     try {
-        const r = await fetch(API_BASE + 'migrate.php', { credentials: 'same-origin' });
+        // POST + CSRF header (not apiPost — a failed run returns 500 WITH the
+        // per-migration report, which apiPost would throw away).
+        const r = await fetch(API_BASE + 'migrate.php', {
+            method: 'POST',
+            headers: Object.assign({ 'Content-Type': 'application/json' }, csrfHeader()),
+            credentials: 'same-origin',
+            body: '{}',
+        });
         const data = await r.json().catch(() => ({}));
         const list = (data && data.migrations) || [];
         const changed = list.filter((m) => /^(applied|re-applied|baselined)/i.test(m.status || ''));

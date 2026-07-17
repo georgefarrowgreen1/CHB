@@ -17,8 +17,14 @@ require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/pricing.php';
 
 $isCron = isset($_GET['cron']) && hash_equals(APP_SECRET, (string) $_GET['cron']);
-if (!$isCron && empty($_SESSION['admin_id'])) {
-    json_out(['error' => 'Not authorised'], 401);
+if (!$isCron) {
+    // A signed-in admin's manual run must be a POST so require_admin() enforces the
+    // CSRF token — a cross-site GET link in the owner's browser must not be able to
+    // fire this job via their session (same guard as cron.php / self-repair.php).
+    require_admin();
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+        json_out(['error' => 'Run this from the back office, or use the cron URL with your secret.'], 405);
+    }
 }
 
 // Owner opt-out.
@@ -43,6 +49,14 @@ try {
 
 $sent = 0;
 foreach ($rows as $e) {
+    // Re-check the world before promising anything: an archived cottage gets no
+    // nudge at all, and dates taken since the enquiry (another booking or an
+    // imported OTA block) must not be described as "still held" — the approval
+    // path re-checks both (enquiry-actions.php), so the nudge must too.
+    if (function_exists('prop_is_archived') && prop_is_archived($e['prop_key'])) {
+        continue;
+    }
+    $datesGone = function_exists('dates_clash') && dates_clash($e['prop_key'], $e['check_in'], $e['check_out']);
     $rate = get_rate($e['prop_key']);
     $propName = $rate['name'] ?? '' ?: $e['prop_key'];
     $name = $e['name'] ?: 'there';
@@ -51,6 +65,11 @@ foreach ($rows as $e) {
     $slug = prop_display($e['prop_key'])['slug']; // pretty URL for any cottage, owner-added included
     $link = $base ? $base . ($slug ? 'cottages/' . $slug : '') : '';
     $subject = 'Still thinking about your Blakeney stay?';
+    // Honest status line: only claim a hold while the dates really are free.
+    $holdLine = $datesGone
+        ? "Those exact dates have since been booked, but we'd love to help you find another stay that suits."
+        : "We're still holding those dates for you.";
+    $ctaLabel = $datesGone ? 'See available dates' : 'Pick up where you left off';
     $text =
         'Hello ' .
         $name .
@@ -62,9 +81,11 @@ foreach ($rows as $e) {
         ' to ' .
         uk_date($e['check_out']) .
         ".\n\n" .
-        "We're still holding those dates for you. " .
-        ($link ? "You can pick up where you left off here:\n" . $link . "\n\n" : '') .
-        "Or just reply to this email (or message us on the website) and we'll get your booking confirmed.\n\n" .
+        $holdLine . ' ' .
+        ($link ? ($datesGone ? "You can see what's free here:\n" : "You can pick up where you left off here:\n") . $link . "\n\n" : '') .
+        "Or just reply to this email (or message us on the website) and we'll " .
+        ($datesGone ? 'happily sort out an alternative.' : 'get your booking confirmed.') .
+        "\n\n" .
         "Warm wishes,\nCottage Holidays Blakeney";
     // House email design (this and the rescue below were the only guest emails
     // still going out as bare plain text).
@@ -75,9 +96,9 @@ foreach ($rows as $e) {
         $inner =
             email_h('Still thinking it over?') .
             email_p('Hello ' . $esc($name) . ', thanks for your enquiry about <strong style="color:#2A2622;">' . $esc($propName) . '</strong> for ' . $esc(uk_date($e['check_in'])) . ' to ' . $esc(uk_date($e['check_out'])) . '.') .
-            email_p("We're still holding those dates for you.") .
-            ($link ? email_btn($link, 'Pick up where you left off', $accent, '#ffffff') : '') .
-            email_p("Or just reply to this email (or message us on the website) and we'll get your booking confirmed.", true);
+            email_p($esc($holdLine)) .
+            ($link ? email_btn($link, $ctaLabel, $accent, '#ffffff') : '') .
+            email_p("Or just reply to this email (or message us on the website) and we'll " . ($datesGone ? 'happily sort out an alternative.' : 'get your booking confirmed.'), true);
         $html = email_shell('Still thinking about your Blakeney stay?', $inner, $accent);
     }
     try {

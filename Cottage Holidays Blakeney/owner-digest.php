@@ -14,8 +14,14 @@ require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/mailer.php';
 
 $isCron = isset($_GET['cron']) && hash_equals(APP_SECRET, (string) $_GET['cron']);
-if (!$isCron && empty($_SESSION['admin_id'])) {
-    json_out(['error' => 'Not authorised'], 401);
+if (!$isCron) {
+    // A signed-in admin's manual run must be a POST so require_admin() enforces the
+    // CSRF token — a cross-site GET link in the owner's browser must not be able to
+    // fire this job via their session (same guard as cron.php / self-repair.php).
+    require_admin();
+    if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
+        json_out(['error' => 'Run this from the back office, or use the cron URL with your secret.'], 405);
+    }
 }
 
 $force = !empty($_GET['force']);

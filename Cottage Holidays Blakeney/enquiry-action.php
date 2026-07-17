@@ -66,6 +66,15 @@ if (!$e) {
         '<h1>Already handled</h1><p>This enquiry is no longer pending &mdash; it was approved or declined earlier (possibly from the inbox).</p>',
     );
 }
+// Decline is a SOFT delete now (declined_at stamped, row kept for Undo) — a
+// declined enquiry must read as handled here too, or a stale Approve link
+// renders a normal confirmation page for a stay the owner turned down.
+if (!empty($e['declined_at']) && $action === 'approve') {
+    ea_page(
+        'Already handled',
+        '<h1>Already handled</h1><p>This enquiry was declined earlier. If you&rsquo;ve changed your mind, restore it from the Inbox in your back office first.</p>',
+    );
+}
 
 $prop = function_exists('prop_display') ? prop_display($e['prop_key'])['name'] ?? $e['prop_key'] : $e['prop_key'];
 $summary =
