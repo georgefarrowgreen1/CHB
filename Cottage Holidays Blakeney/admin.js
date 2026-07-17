@@ -358,31 +358,35 @@ function cmdkParseDates(q, today) {
     const addOn = (dt, n) => { const x = new Date(dt); x.setDate(x.getDate() + n); return x; };
     const MON = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
     const monIdx = (s) => MON.indexOf(s.slice(0, 3));
-    const yearFor = (mi) => d0.getFullYear() + (mi < d0.getMonth() ? 1 : 0);
+    // Roll to next year when the month is past OR it's THIS month but the day
+    // already went by — a booking date always means the future, so "5 July"
+    // asked on 17 July is next July, not a past date the quote/price guards
+    // then silently reject. A bare whole-month (no day) keeps month-only logic.
+    const yearFor = (mi, day) => d0.getFullYear() + (mi < d0.getMonth() || (mi === d0.getMonth() && day != null && day < d0.getDate()) ? 1 : 0);
     const upcoming = (dow) => { const x = new Date(d0); x.setDate(x.getDate() + ((dow - x.getDay() + 7) % 7)); return x; }; // today if it matches
     const MO = 'jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec';
     let m;
     // "12-15 aug" / "12 to 15 august"
     if ((m = q.match(new RegExp('\\b(\\d{1,2})\\s*(?:-|–|to|until|till|thru)\\s*(\\d{1,2})\\s+(' + MO + ')[a-z]*\\b')))) {
-        const mi = monIdx(m[3]), yr = yearFor(mi);
+        const mi = monIdx(m[3]), yr = yearFor(mi, +m[1]);
         return { from: iso(new Date(yr, mi, +m[1])), to: iso(new Date(yr, mi, +m[2])) };
     }
     // "aug 12-15"
     if ((m = q.match(new RegExp('\\b(' + MO + ')[a-z]*\\s+(\\d{1,2})\\s*(?:-|–|to|until|till|thru)\\s*(\\d{1,2})\\b')))) {
-        const mi = monIdx(m[1]), yr = yearFor(mi);
+        const mi = monIdx(m[1]), yr = yearFor(mi, +m[2]);
         return { from: iso(new Date(yr, mi, +m[2])), to: iso(new Date(yr, mi, +m[3])) };
     }
     // "15 aug to 18 aug" (month named on both sides — spans month ends too)
     if ((m = q.match(new RegExp('\\b(\\d{1,2})\\s+(' + MO + ')[a-z]*\\s*(?:-|–|to|until|till|thru)\\s*(\\d{1,2})\\s+(' + MO + ')[a-z]*\\b')))) {
         const mi1 = monIdx(m[2]), mi2 = monIdx(m[4]);
-        const y1 = yearFor(mi1), y2 = mi2 < mi1 ? y1 + 1 : yearFor(mi2);
+        const y1 = yearFor(mi1, +m[1]), y2 = mi2 < mi1 ? y1 + 1 : yearFor(mi2, +m[3]);
         return { from: iso(new Date(y1, mi1, +m[1])), to: iso(new Date(y2, mi2, +m[3])) };
     }
     // single "12 aug" or "aug 12" → check-in only
     if ((m = q.match(new RegExp('\\b(\\d{1,2})\\s+(' + MO + ')[a-z]*\\b'))) || (m = q.match(new RegExp('\\b(' + MO + ')[a-z]*\\s+(\\d{1,2})\\b')))) {
         const dayStr = /^\d/.test(m[1]) ? m[1] : m[2];
         const monStr = /^\d/.test(m[1]) ? m[2] : m[1];
-        const mi = monIdx(monStr), yr = yearFor(mi);
+        const mi = monIdx(monStr), yr = yearFor(mi, +dayStr);
         return { from: iso(new Date(yr, mi, +dayStr)), to: null };
     }
     if ((m = q.match(/\b(\d{4})-(\d{2})-(\d{2})\b/))) return { from: `${m[1]}-${m[2]}-${m[3]}`, to: null };
@@ -2563,7 +2567,10 @@ function chbNum(v) { const r = Math.round(v * 100) / 100; return r.toLocaleStrin
 // NEXT occurrence (a passed date without an explicit year rolls to next year).
 function chbComputeDate(str) {
     const s = String(str || '').toLowerCase().replace(/(\d+)(st|nd|rd|th)\b/g, '$1').replace(/\bof\b/g, ' ').replace(/\s+/g, ' ').trim();
-    const now = new Date();
+    // Seed "now" from the UK-canonical day so "days until christmas" / next-
+    // occurrence rollovers match every calendar answer on screen (a device on
+    // US time near midnight would otherwise disagree by a day / pick the wrong year).
+    const now = typeof todayDashed === 'function' ? new Date(todayDashed() + 'T00:00:00') : new Date();
     const named = { christmas: [12, 25], 'christmas day': [12, 25], 'christmas eve': [12, 24], 'boxing day': [12, 26], 'new years eve': [12, 31], "new year's eve": [12, 31], 'new year': [1, 1], "new year's day": [1, 1], 'new years day': [1, 1], halloween: [10, 31], 'bonfire night': [11, 5], 'valentines day': [2, 14], "valentine's day": [2, 14], valentines: [2, 14] };
     const easter = { 2026: [4, 5], 2027: [3, 28], 2028: [4, 16], 2029: [4, 1], 2030: [4, 21] };
     let m = null, d = null, y = null;
@@ -2649,7 +2656,7 @@ function chbCompute(q0) {
     if (m) {
         const target = chbComputeDate(m[2]);
         if (target) {
-            const today = new Date(); today.setHours(0, 0, 0, 0);
+            const today = typeof todayDashed === 'function' ? new Date(todayDashed() + 'T00:00:00') : (() => { const x = new Date(); x.setHours(0, 0, 0, 0); return x; })();
             const days = Math.round((target - today) / 864e5);
             const pretty = target.toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: target.getFullYear() !== today.getFullYear() ? 'numeric' : undefined });
             const wk = days >= 21 ? ` — about ${Math.round(days / 7)} weeks` : days >= 14 ? ' — about a fortnight' : '';
@@ -2674,7 +2681,12 @@ function chbCompute(q0) {
     }
     // -- Plain arithmetic ("12 * 7", "480 / 3", "(2+3)*4") --
     const exprQ = q.replace(/^what(?:'s| is)\s+/, '').replace(/[£,]/g, '').replace(/x|×/g, '*').replace(/÷/g, '/').replace(/\bdivided by\b/g, '/').replace(/\btimes\b/g, '*').replace(/\bplus\b/g, '+').replace(/\bminus\b/g, '-').trim();
-    if (/^[\d\s+\-*/().]+$/.test(exprQ) && /[+\-*/]/.test(exprQ) && /\d/.test(exprQ)) {
+    // A bare "12-15" / "20-24" is far more likely a date range or a reference
+    // fragment than subtraction — don't compute (and prepend) "= -3" over the
+    // owner's real intent. Two integers joined by a single '-' need an explicit
+    // calc cue ("what's 12-15", "=12-15"); every other arithmetic form still runs.
+    const bareIntPair = /^\d+\s*-\s*\d+$/.test(exprQ) && !/^what|^=/.test(q.trim());
+    if (!bareIntPair && /^[\d\s+\-*/().]+$/.test(exprQ) && /[+\-*/]/.test(exprQ) && /\d/.test(exprQ)) {
         try {
             const v = chbCalc(exprQ);
             if (isFinite(v)) return row(`${exprQ.replace(/\s+/g, ' ')} = ${fmt(v)}`);
@@ -3095,7 +3107,14 @@ function cmdkIntent(q) {
         if (safe && !named.length && /\bfree\b|availab|vacan|empty\b/.test(q) && (ents.prop || ents.dateRange)) {
             const from = ents.dateRange ? ents.dateRange.from : today;
             const label = ents.dateRange ? ents.dateRange.label : 'tonight';
-            const nightsEnd = ents.dateRange && ents.dateRange.to > from ? ents.dateRange.to : addDays(from, 1);
+            // chbEntities.to is inclusive-last-DAY for week/month/year/named-month
+            // (golden-pinned: "August" → Aug 31) but checkout-style for weekend
+            // (→ Sunday). As an EXCLUSIVE night bound, the named spans need +1 or
+            // the last night is never tested (a booking checking in Aug 31 read
+            // as "free in August"). Weekend's .to is already the checkout.
+            const nightsEnd = ents.dateRange && ents.dateRange.to > from
+                ? (/weekend/.test(label) ? ents.dateRange.to : addDays(ents.dateRange.to, 1))
+                : addDays(from, 1);
             const conflictsFor = (k) => flat
                 .filter((x) => x.pk === k && x.b.checkIn && x.b.checkOut && x.b.checkIn < nightsEnd && x.b.checkOut > from)
                 .map((x) => ({ kind: 'booking', pk: x.pk, b: x.b }))
@@ -3136,7 +3155,13 @@ function cmdkIntent(q) {
         // falls through untouched.
         if (safe && !named.length && /\b(quote|how much|price|cost)\b/.test(q) && !/coach|change|set |edit|update/.test(q)) {
             let qFrom = ents.dateRange ? ents.dateRange.from : null;
-            let qTo = ents.dateRange ? ents.dateRange.to : null;
+            // Same inclusive-last-day → checkout correction as the availability
+            // branch, so a whole-month quote ("how much for august") prices all
+            // 31 nights, not 30. (Specific-date quotes come from cmdkParseDates
+            // below, which is already checkout-style.)
+            let qTo = ents.dateRange
+                ? (ents.dateRange.to > ents.dateRange.from && !/weekend/.test(ents.dateRange.label || '') ? addDays(ents.dateRange.to, 1) : ents.dateRange.to)
+                : null;
             const nightsM = q.match(/(\d+)\s*nights?/);
             if (nightsM) {
                 // "3 nights from 20 december": the nights word fixes the LENGTH,
@@ -3403,7 +3428,17 @@ function cmdkIntent(q) {
         else if (/last year/.test(q)) { const y = dd0.getFullYear() - 1; pStart = `${y}-01-01`; pEnd = `${y}-12-31`; plabel = `in ${y}`; }
         else if (/last month/.test(q)) { const s = new Date(dd0.getFullYear(), dd0.getMonth() - 1, 1), e = new Date(dd0.getFullYear(), dd0.getMonth(), 0); pStart = isoD(s); pEnd = isoD(e); plabel = 'in ' + monthName(s.getMonth()); }
         else if (/next month/.test(q)) { const s = new Date(dd0.getFullYear(), dd0.getMonth() + 1, 1), e = new Date(dd0.getFullYear(), dd0.getMonth() + 2, 0); pStart = isoD(s); pEnd = isoD(e); plabel = 'in ' + monthName(s.getMonth()); }
-        else if (nm) { const mi = MON3.indexOf(nm[1].slice(0, 3)); const yr = dd0.getFullYear(); pStart = isoD(new Date(yr, mi, 1)); pEnd = isoD(new Date(yr, mi + 1, 0)); plabel = 'in ' + monthName(mi); }
+        else if (nm) {
+            // Revenue/occupancy are HISTORICAL — a bare month name means the most
+            // recent instance, not this year's future one ("how much did I earn in
+            // December" asked in Feb means LAST December, not a £0 future month).
+            // An explicit year in the query is honoured as typed.
+            const mi = MON3.indexOf(nm[1].slice(0, 3));
+            const ym = q.match(/\b(20\d{2})\b/);
+            let yr = ym ? +ym[1] : dd0.getFullYear();
+            if (!ym && new Date(yr, mi, 1) > dd0) yr--;
+            pStart = isoD(new Date(yr, mi, 1)); pEnd = isoD(new Date(yr, mi + 1, 0)); plabel = 'in ' + monthName(mi) + (ym ? ' ' + yr : '');
+        }
         else { const s = new Date(dd0.getFullYear(), dd0.getMonth(), 1), e = new Date(dd0.getFullYear(), dd0.getMonth() + 1, 0); pStart = isoD(s); pEnd = isoD(e); plabel = 'this month'; }
         if (insProp) plabel += ` at ${propName(insProp)}`;
         const stays = allStays.filter((x) => x.b.checkIn && x.b.checkIn >= pStart && x.b.checkIn <= pEnd);
