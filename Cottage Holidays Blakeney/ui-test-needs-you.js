@@ -164,7 +164,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   }));
   ok(w.word === 'Worth a look', `opportunities-only heading reads "Worth a look" (${w.word})`);
   ok(w.count === '1' && w.opp, `calm green badge counts the ideas (${w.count}, is-opp=${w.opp})`);
-  ok(w.labels.some((l) => /free nights between stays/.test(l)), 'the gap idea is the only row');
+  ok(w.labels.some((l) => /Fill the 3-night gap on .*: offer £\d+\/night/.test(l)), 'the gap idea is the only row (offer-led)');
   await page.evaluate(() => {
     enquiries = [{ id: 7, name: 'Duty Guest', propKey: 'jollyboat', checkIn: '2027-01-05', checkOut: '2027-01-08', receivedAt: new Date().toISOString().slice(0, 19).replace('T', ' ') }];
     renderNeedsYou();
