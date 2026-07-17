@@ -1302,6 +1302,10 @@
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Activity log</span><span class="settings-row-sub">Every change &amp; action — bookings, payments, edits</span></span><span class="settings-row-chev">›</span>
                 </button>
+                <button class="settings-row" data-kw="search learning assistant teach train dead ends misses model ai darkstar taught suppressed phrases understand" data-act="settingsOpen" data-arg="search-learning">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Search learning</span><span class="settings-row-sub">Teach the assistant &amp; see what it's learned</span></span><span class="settings-row-chev">›</span>
+                </button>
                 <button class="settings-row" data-kw="status health system check diagnostics updates migrations backup database export version email test" data-act="settingsOpen" data-arg="diagnostics">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2 5 4-12 2 7h6"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Status</span><span class="settings-row-sub">See everything's running &amp; the maintenance tools</span></span><span class="settings-row-chev">›</span>
@@ -1404,6 +1408,13 @@
                     <div id="diag-samples" style="font-size:0.82rem;margin-top:8px;"></div>
                     <div id="reply-diag" style="font-size:0.8rem;margin-top:10px;"></div>
                 </details>
+            </div>
+
+            <!-- Search learning: teach the assistant (dead-ends), see taught &
+                 suppressed phrases, and the on-device model status. Built live by
+                 renderSearchLearning() from the per-owner teach-loop data. -->
+            <div class="settings-sec" id="sec-search-learning" style="display:none;">
+                <div id="search-learning-body"></div>
             </div>
 
             <!-- Test centre (staging only): preview, sample emails, test booking, test data -->
@@ -2481,7 +2492,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=461"></script>
+    <script defer src="app.js?v=462"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

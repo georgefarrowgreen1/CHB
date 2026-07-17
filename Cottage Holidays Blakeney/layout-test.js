@@ -246,6 +246,7 @@ async function waitForServer(url, tries = 40) {
       { key: 'admin-calendar-sync', open: "(async () => { await openArea('cottages'); settingsOpen('calendar'); await settingsOpenCalendar('21a'); })()", mustSee: ['#sync-export-21a', '#sync-airbnb-21a', '#sync-bookingcom-21a'] },
       { key: 'admin-reviews', open: "(async () => { await openArea('marketing'); settingsOpen('reviews'); })()", mustSee: ['#sec-reviews'] },
       { key: 'admin-health', open: "(async () => { await openArea('settings'); settingsOpen('diagnostics'); })()", mustSee: ['#sec-diagnostics'] },
+      { key: 'admin-search-learning', open: "(async () => { await openArea('settings'); settingsOpen('search-learning'); })()", mustSee: ['#sec-search-learning'] },
       { key: 'admin-mailbox', open: "(async () => { await openInbox(); inboxFolder('email'); })()", mustSee: ['#inbox-folder-email'] },
     ];
     for (const vp of WIDTHS) {

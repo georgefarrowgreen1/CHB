@@ -257,6 +257,7 @@ function cmdkRegistry() {
         { id: 'security', label: 'Security', sub: 'Password & quick sign-in', kw: 'password passkey 2fa face id fingerprint', sec: 'security' },
         { id: 'apis', label: 'Integrations', sub: 'Tide times & services', kw: 'api key tide worldtides', sec: 'apis' },
         { id: 'diagnostics', label: 'Status', sub: 'System health, insights & updates', kw: 'health check backup diagnostics updates migrations database storage', sec: 'diagnostics' },
+        { id: 'search-learning', label: 'Search learning', sub: "Teach the assistant & see what it's learned", kw: 'search learning assistant teach train dead ends misses model ai darkstar taught suppressed phrases understand', sec: 'search-learning' },
     ];
 }
 // The navigation thunk for a registry entry — a Manage section opens via
@@ -2335,6 +2336,36 @@ function chbNluSuppress(phrase) {
     if (i >= 0) { learned.splice(i, 1); chbNluStore('chb-nlu-learned', learned); CHB_NLU.model = null; chbNluWarm(); }
     try { darkstarIndex(); } catch (e) {} // suppressed phrases join the none pool
     chbNluLearnFlash(); // un-teaching is learning too
+    chbAssistSyncPush();
+}
+// Forget ONE taught phrase (remove it from the learned list) without suppressing
+// it — the assistant goes back to its default behaviour for that wording. The
+// Search-learning page's "Un-teach" uses this.
+function chbNluUnlearn(phrase) {
+    const t = String(phrase || '').trim().toLowerCase();
+    if (!t) return;
+    const learned = chbNluLearned();
+    const i = learned.findIndex((x) => x.t === t);
+    if (i < 0) return;
+    learned.splice(i, 1);
+    chbNluStore('chb-nlu-learned', learned);
+    CHB_NLU.model = null; chbNluWarm();
+    try { darkstarIndex(); } catch (e) {}
+    chbNluLearnFlash();
+    chbAssistSyncPush();
+}
+// Restore a phrase the owner had made literal (remove it from the suppressed
+// list) so the assistant may interpret it again. The page's "Restore" uses this.
+function chbNluRestore(phrase) {
+    const t = String(phrase || '').trim().toLowerCase();
+    if (!t) return;
+    const sup = chbNluSuppressed();
+    const i = sup.indexOf(t);
+    if (i < 0) return;
+    sup.splice(i, 1);
+    chbNluStore('chb-nlu-suppressed', sup);
+    try { darkstarIndex(); } catch (e) {}
+    chbNluLearnFlash();
     chbAssistSyncPush();
 }
 
@@ -8162,6 +8193,7 @@ const SETTINGS_TITLES = {
     'chat-answers': 'Instant chat answers',
     'chat-away': 'Away auto-reply',
     'follow-ups': 'Follow-up emails',
+    'search-learning': 'Search learning',
 };
 // Open the separate staging sandbox (where all testing now happens) in a new tab.
 const STAGING_URL = 'https://staging.cottageholidaysblakeney.co.uk/';
@@ -8311,10 +8343,94 @@ function settingsRenderSection(section) {
     else if (section === 'calendar') renderCalendarList();
     else if (section === 'cancel') renderCancelList();
     else if (section === 'seasongrid') renderSeasonGrid();
+    else if (section === 'search-learning') renderSearchLearning();
 }
 function settingsBack() {
     if (settingsBackTarget) settingsBackTarget();
     else settingsShowIndex();
+}
+
+// ---- Manage → Search learning ---------------------------------------------
+// One page for the assistant's per-owner teach loop: the dead-end searches to
+// teach, the phrasings you've taught it, the phrasings you've made literal, and
+// the on-device model status. Built live from the same functions the in-search
+// review uses — it never touches the frozen training corpus, only the owner's
+// learned/suppressed/miss lists.
+function slTeach(t, c) { try { chbNluLearn(t, c); chbMissForget(t); } catch (e) {} renderSearchLearning(); }
+function slForget(t) { try { chbMissForget(t); } catch (e) {} renderSearchLearning(); }
+function slUnlearn(t) { try { chbNluUnlearn(t); } catch (e) {} renderSearchLearning(); }
+function slRestore(t) { try { chbNluRestore(t); } catch (e) {} renderSearchLearning(); }
+function slTry(t) { try { openCmdK(); const el = document.getElementById('cmdk-input'); if (el) el.value = t; cmdkSearchCore(t, true); } catch (e) {} }
+function renderSearchLearning() {
+    const wrap = document.getElementById('search-learning-body');
+    if (!wrap) return;
+    let misses = [], learned = [], suppressed = [];
+    try { misses = chbMissList().slice().reverse(); } catch (e) {}
+    try { learned = chbNluLearned().slice(); } catch (e) {}
+    try { suppressed = chbNluSuppressed().slice(); } catch (e) {}
+    const esc = (s) => escapeHtml(String(s == null ? '' : s));
+
+    // 1) Plain-language model status. No jargon: what's loaded, how much it's
+    // been taught, how many dead-ends are waiting.
+    const darkstarUp = (typeof DARKSTAR === 'object' && DARKSTAR.st) || (typeof document !== 'undefined' && document.body && document.body.classList.contains('darkstar-ready'));
+    const encoderUp = typeof CHB_ENC === 'object' && CHB_ENC.st;
+    const modelLine = darkstarUp
+        ? (encoderUp ? 'Both on-device models are loaded — the assistant understands wording by meaning, not just keywords.' : 'The on-device meaning model is loaded — the assistant matches your wording to what it can answer.')
+        : 'Running on keywords for now — the on-device meaning model loads a moment after you open search.';
+    const statTiles = [
+        ['Taught phrasings', learned.length],
+        ['Made literal', suppressed.length],
+        ['Dead-ends waiting', misses.length],
+    ].map(([lbl, n]) => `<div class="sl-stat"><span class="sl-stat-n">${n}</span><span class="sl-stat-l">${esc(lbl)}</span></div>`).join('');
+    const statusHtml = `
+        <section class="glass-panel sl-card">
+            <p class="sl-model">${esc(modelLine)}</p>
+            <div class="sl-stats">${statTiles}</div>
+            <p class="sl-note">Everything here follows YOU, not this device — teaching on your phone shows up on your laptop too.</p>
+        </section>`;
+
+    // 2) Teach the assistant — the dead-end searches. Each row: the query, how
+    // often it came up, a "Try again", up to 3 "Means: …" suggestions, and Forget.
+    const missRows = misses.length
+        ? misses.slice(0, 30).map((m) => {
+            let sugg = [];
+            try { sugg = (chbNluSuggestSmart(m.t) || []).slice(0, 3); } catch (e) {}
+            const suggBtns = sugg.map((c) => `<button type="button" class="btn-sm btn-edit sl-teach" ${chbAttrs('slTeach', m.t, c)}>Means: “${esc(c)}”</button>`).join('');
+            return `<div class="sl-row">
+                <div class="sl-row-main"><span class="sl-q">“${esc(m.t)}”</span><span class="sl-meta">Searched ${m.n > 1 ? m.n + ' times' : 'once'} · found nothing</span></div>
+                <div class="sl-row-acts">
+                    <button type="button" class="btn-sm btn-edit" ${chbAttrs('slTry', m.t)}>Try again</button>
+                    ${suggBtns}
+                    <button type="button" class="btn-sm btn-edit sl-ghost" ${chbAttrs('slForget', m.t)}>Forget</button>
+                </div>
+            </div>`;
+        }).join('')
+        : `<p class="sl-empty">Nothing to teach — recent searches all found something. Dead-ends land here so you can teach the assistant what they meant.</p>`;
+
+    // 3) What you've taught it — the learned phrasings, each un-teachable.
+    const learnRows = learned.length
+        ? learned.slice().reverse().map((x) => `<div class="sl-row sl-row-tight">
+                <div class="sl-row-main"><span class="sl-q">“${esc(x.t)}”</span><span class="sl-meta">means “${esc(x.c)}”</span></div>
+                <div class="sl-row-acts"><button type="button" class="btn-sm btn-edit sl-ghost" ${chbAttrs('slUnlearn', x.t)}>Un-teach</button></div>
+            </div>`).join('')
+        : `<p class="sl-empty">You haven't taught it any wording yet. When a dead-end search is tagged “Means: …”, it appears here.</p>`;
+
+    // 4) Made literal — suppressed phrasings, each restorable.
+    const supRows = suppressed.length
+        ? suppressed.slice().reverse().map((t) => `<div class="sl-row sl-row-tight">
+                <div class="sl-row-main"><span class="sl-q">“${esc(t)}”</span><span class="sl-meta">kept literal — searched word-for-word</span></div>
+                <div class="sl-row-acts"><button type="button" class="btn-sm btn-edit sl-ghost" ${chbAttrs('slRestore', t)}>Restore</button></div>
+            </div>`).join('')
+        : `<p class="sl-empty">None. If you ever tell search to “use the literal words”, that phrasing is remembered here so you can undo it.</p>`;
+
+    wrap.innerHTML = `
+        ${statusHtml}
+        <div class="settings-section-label">Teach the assistant</div>
+        <section class="glass-panel sl-card">${missRows}</section>
+        <div class="settings-section-label">What you've taught it</div>
+        <section class="glass-panel sl-card">${learnRows}</section>
+        <div class="settings-section-label">Made literal</div>
+        <section class="glass-panel sl-card">${supRows}</section>`;
 }
 
 // ---- Money → Pricing coach (data-driven suggestions; apply is opt-in) ----
