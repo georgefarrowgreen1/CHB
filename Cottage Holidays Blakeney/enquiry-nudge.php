@@ -59,7 +59,7 @@ foreach ($rows as $e) {
     $datesGone = function_exists('dates_clash') && dates_clash($e['prop_key'], $e['check_in'], $e['check_out']);
     $rate = get_rate($e['prop_key']);
     $propName = $rate['name'] ?? '' ?: $e['prop_key'];
-    $name = $e['name'] ?: 'there';
+    $name = first_name($e['name'], 'there');
     // A direct link back to the cottage so they can pick up and book in one tap.
     $base = function_exists('site_base_url') ? site_base_url() : '';
     $slug = prop_display($e['prop_key'])['slug']; // pretty URL for any cottage, owner-added included
@@ -168,7 +168,7 @@ foreach ($drafts as $d) {
 
         $rate = get_rate($d['prop_key']);
         $propName = $rate['name'] ?? '' ?: $d['prop_key'];
-        $name = $d['name'] ?: 'there';
+        $name = first_name($d['name'], 'there');
         $base = function_exists('site_base_url') ? site_base_url() : '';
         $slug = prop_display($d['prop_key'])['slug'];
         $link = $base ? $base . ($slug ? 'cottages/' . $slug : '') : '';

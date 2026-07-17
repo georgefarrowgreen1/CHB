@@ -394,6 +394,17 @@ function uk_date($iso)
 {
     return preg_match('/^(\d{4})-(\d{2})-(\d{2})/', (string) $iso, $m) ? "{$m[3]}/{$m[2]}/{$m[1]}" : (string) $iso;
 }
+// First name only, for email SALUTATIONS ("Hi John," not "Hi John Smith,").
+// Falls back to $fallback when there's no name to greet.
+function first_name($full, $fallback = '')
+{
+    $full = trim((string) $full);
+    if ($full === '') {
+        return $fallback;
+    }
+    $parts = preg_split('/\s+/', $full);
+    return isset($parts[0]) && $parts[0] !== '' ? $parts[0] : $fallback;
+}
 function uk_postcode_valid($s)
 {
     return (bool) preg_match('/^[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}$/i', trim((string) $s));

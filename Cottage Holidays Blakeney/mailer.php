@@ -904,7 +904,7 @@ function send_review_request_email($b)
     }
     $accent = prop_display($b['prop_key'] ?? '')['accent']; // per-cottage accent (works for owner-added cottages too)
     $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
-    $name = $b['name'] ?: 'there';
+    $name = first_name($b['name'], 'there');
     $prop = $b['prop_name'] ?: 'your cottage';
     $url = $b['reviewUrl'] ?? '';
     // Google review funnel: if the owner has set a Google review link, make it the
@@ -1132,7 +1132,7 @@ function send_enquiry_ack($enq, $accountExists = false)
     if ($email === '') {
         return ['ok' => false, 'error' => 'no email'];
     }
-    $name = trim((string) ($enq['name'] ?? '')) ?: 'there';
+    $name = first_name($enq['name'] ?? '', 'there');
     $first = explode(' ', $name)[0] ?: 'there';
     $prop = function_exists('prop_display') ? prop_display($enq['prop_key'] ?? '')['name'] ?? '' : '';
     $pretty = fn($d) => $d ? uk_date($d) : '';
@@ -1187,7 +1187,7 @@ function build_enquiry_reply_email($e, $subject, $message, $ctx = 'enquiry')
         ? prop_display($e['prop_key'] ?? '')['name'] ?? ($e['prop_key'] ?? '')
         : $e['prop_key'] ?? '';
     $accent = function_exists('prop_display') ? prop_display($e['prop_key'] ?? '')['accent'] ?? '#C79A64' : '#C79A64';
-    $name = $e['name'] ?: 'Guest';
+    $name = first_name($e['name'], 'Guest');
     $party =
         (int) ($e['adults'] ?? 0) .
         ' adult' .
@@ -1460,7 +1460,7 @@ function send_booking_emails($b)
         $subject = "Your booking is confirmed — {$b['prop_name']}";
 
         // Plain-text fallback (clients that block HTML still get this)
-        $body = "Dear {$b['name']},\n\n";
+        $body = "Dear " . first_name($b['name'], 'Guest') . ",\n\n";
         $body .= "Good news — your booking at {$b['prop_name']} is confirmed.\n\n";
         $body .= "Booking reference: {$b['ref']}\n";
         $body .= "Check in:  " . uk_date($b['check_in']) . " from {$b['check_in_time']}\n";
@@ -1557,7 +1557,7 @@ function send_booking_emails($b)
             ' &nbsp;&middot;&nbsp; ' .
             $statusBadge .
             '</div>' .
-            email_p('Dear ' . $esc($b['name']) . ', good news — your stay is confirmed. Here are the details:') .
+            email_p('Dear ' . $esc(first_name($b['name'], 'Guest')) . ', good news — your stay is confirmed. Here are the details:') .
             email_rows([
                 ['Check in', $esc(uk_date($b['check_in'])) . ' &middot; ' . $esc($b['check_in_time'])],
                 ['Check out', $esc(uk_date($b['check_out'])) . ' &middot; ' . $esc($b['check_out_time'])],
@@ -1627,7 +1627,7 @@ function send_arrival_email($b)
         return ['ok' => false, 'error' => 'No guest email on file'];
     }
     $accent = prop_display($b['prop_key'] ?? '')['accent']; // per-cottage accent (works for owner-added cottages too)
-    $name = $b['name'] ?: 'Guest';
+    $name = first_name($b['name'], 'Guest');
     $prop = $b['prop_name'] ?: 'your cottage';
     $inDate = uk_date($b['check_in']);
     $time = $b['check_in_time'] ?: '15:00';
@@ -1678,7 +1678,7 @@ function send_magic_link_email($g, $url)
     }
     $accent = '#D6A785';
     $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
-    $name = $g['name'] ?: 'there';
+    $name = first_name($g['name'], 'there');
 
     $subject = 'Your sign-in link — Cottage Holidays Blakeney';
     $text =
@@ -1717,7 +1717,7 @@ function send_payment_request($b, $payUrl)
     $accent = prop_display($b['prop_key'] ?? '')['accent']; // per-cottage accent (works for owner-added cottages too)
     $money = fn($n) => '£' . number_format((float) $n, 2);
     $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
-    $name = $b['name'] ?: 'Guest';
+    $name = first_name($b['name'], 'Guest');
     $prop = $b['prop_name'] ?: 'your cottage';
     $what = $b['kind'] === 'balance' ? 'remaining balance' : 'deposit';
 
@@ -1844,7 +1844,7 @@ function send_payment_reminder($b, $payUrl)
     $accent = prop_display($b['prop_key'] ?? '')['accent']; // per-cottage accent (works for owner-added cottages too)
     $money = fn($n) => '£' . number_format((float) $n, 2);
     $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
-    $name = $b['name'] ?: 'Guest';
+    $name = first_name($b['name'], 'Guest');
     $prop = $b['prop_name'] ?: 'your cottage';
     $days = max(0, (int) floor((strtotime($b['check_in']) - strtotime(date('Y-m-d'))) / 86400));
     $when = $days <= 1 ? 'tomorrow' : "in {$days} days";
@@ -1894,7 +1894,7 @@ function send_hold_request($b, $url)
     $accent = prop_display($b['prop_key'] ?? '')['accent'];
     $money = fn($n) => '£' . number_format((float) $n, 2);
     $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
-    $name = $b['name'] ?: 'Guest';
+    $name = first_name($b['name'], 'Guest');
     $prop = $b['prop_name'] ?: 'your cottage';
 
     $subject = "Secure your stay — refundable card hold for {$prop}";
@@ -1942,7 +1942,7 @@ function send_hold_released($b)
     $accent = prop_display($b['prop_key'] ?? '')['accent'];
     $money = fn($n) => '£' . number_format((float) $n, 2);
     $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
-    $name = $b['name'] ?: 'Guest';
+    $name = first_name($b['name'], 'Guest');
     $prop = $b['prop_name'] ?: 'your cottage';
 
     $subject = "Your security hold has been released — {$prop}";
@@ -1980,7 +1980,7 @@ function send_refund_email($b)
     $accent = prop_display($b['prop_key'] ?? '')['accent']; // per-cottage accent (works for owner-added cottages too)
     $money = fn($n) => '£' . number_format((float) $n, 2);
     $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
-    $name = $b['name'] ?: 'Guest';
+    $name = first_name($b['name'], 'Guest');
     $prop = $b['prop_name'] ?: 'your cottage';
     $reason = trim((string) ($b['reason'] ?? ''));
 
@@ -2032,7 +2032,7 @@ function send_deposit_return_email($b)
     $accent = prop_display($b['prop_key'] ?? '')['accent']; // per-cottage accent (works for owner-added cottages too)
     $money = fn($n) => '£' . number_format((float) $n, 2);
     $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
-    $name = $b['name'] ?: 'Guest';
+    $name = first_name($b['name'], 'Guest');
     $prop = $b['prop_name'] ?: 'your cottage';
     $reason = trim((string) ($b['reason'] ?? ''));
     $held = (float) ($b['held'] ?? $b['amount']);
@@ -2089,7 +2089,7 @@ function send_cancellation_email($b)
     }
     $money = fn($n) => '£' . number_format((float) $n, 2);
     $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
-    $name = $b['name'] ?: 'Guest';
+    $name = first_name($b['name'], 'Guest');
     $prop = $b['prop_name'] ?: 'your cottage';
     $reason = trim((string) ($b['reason'] ?? ''));
     $refund = (float) ($b['refund'] ?? 0);
@@ -2137,7 +2137,7 @@ function send_payment_receipt($b)
     }
     $money = fn($n) => '£' . number_format((float) $n, 2);
     $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
-    $name = $b['name'] ?: 'Guest';
+    $name = first_name($b['name'], 'Guest');
     $prop = $b['prop_name'] ?: 'your cottage';
     $what = $b['kind'] === 'balance' ? 'balance' : 'deposit';
     // The refundable damage deposit is charged WITH this payment and refunded after
