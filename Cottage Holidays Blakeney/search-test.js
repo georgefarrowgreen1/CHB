@@ -1350,6 +1350,55 @@ if (typeof ctx.cmdkBrief === 'function') {
     vm.runInContext(`chbNluStore('chb-search-misses', []); CHB_NLU.misses = null; Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);__cmdkCustomers=null;`, ctx);
 } else fail('cmdkBrief missing from the bundle');
 
+// ---- 37. Search precision hardening (audit iteration 1): matcher word-
+// boundaries kill substring false-matches, capacity/insights branches stop
+// stealing feature/deposit questions, the teach loop survives suppress→teach,
+// a suppressed phrase isn't re-filed as a miss, bare social adjectives don't
+// hijack the Top Hit, and more history-shaped verbs trigger meaning recall. ----
+if (typeof ctx.cmdkIntent === 'function' && typeof ctx.chbNlgSocial === 'function') {
+    const yr = ctx.todayDashed().slice(0, 4);
+    const mkb = (id, name, ci, co, tot, pay, dep) => ({ id, name, email: name.replace(/\s+/g, '') + '@x.co', checkIn: `${yr}-${ci}`, checkOut: `${yr}-${co}`, adults: 2, children: 0, payment: pay || 'paid', depositPaid: dep || 0, holdStatus: 'none', agreedPrice: { total: tot } });
+    vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);__cmdkCustomers=null;__cmdkFrame=null;
+        propertyMeta.jollyboat = propertyMeta.jollyboat || { name: 'Jollyboat' };`, ctx);
+    ctx.__seedP37 = [mkb(1, 'Zed Ray', '02-10', '02-13', 400)];
+    vm.runInContext('dbBookings.jollyboat = __seedP37;', ctx);
+    const iHead = (q) => { const r = ctx.cmdkIntent(q); const t = r && r[0]; return t ? `[${t.type}/${t.id || '?'}] ${(t.label || '')}` : '(none)'; };
+    // Substring false-matches on the Income & tax catch-all.
+    ['book me a taxi', 'private booking', 'taxidermy', 'a taxing day'].forEach((q) => {
+        check(`"${q}" no longer false-matches Income & tax`, !/Income & tax/.test(iHead(q)), iHead(q));
+    });
+    // Legit money words still reach it.
+    check('"revenue this year" still reaches Income & tax (or a figure)', /Income & tax|£/.test(iHead('revenue this year')), iHead('revenue this year'));
+    check('"revenues" (plural) still reaches Income & tax', /Income & tax/.test(iHead('revenues')), iHead('revenues'));
+    check('"view accounts" still reaches Income & tax', /Income & tax/.test(iHead('view accounts')), iHead('view accounts'));
+    // Capacity branch no longer steals "hold my deposit" / "sofa fit".
+    check('"does jollyboat hold my deposit" is NOT answered "sleeps N"', !/sleeps up to/.test(iHead('does jollyboat hold my deposit')), iHead('does jollyboat hold my deposit'));
+    check('capacity still answers with people-context', /sleeps up to/.test(iHead('how many people does jollyboat hold')), iHead('how many people does jollyboat hold'));
+    // Insights best/top no longer swallow feature questions.
+    check('"which cottage is best for families" is NOT a revenue figure', !/top earner|booked (this|last)|£[\d,]/.test(iHead('which cottage is best for families')), iHead('which cottage is best for families'));
+    check('"which cottage is best for dogs" is NOT a revenue figure', !/top earner|booked (this|last)|£[\d,]/.test(iHead('which cottage is best for dogs')), iHead('which cottage is best for dogs'));
+    // Social single-word hijack gone; real gratitude kept.
+    ['good', 'right', 'magic', 'nice', 'cool', 'sure', 'fine'].forEach((w) => check(`bare "${w}" no longer fires a social reply`, !ctx.chbNlgSocial(w)));
+    ['thanks', 'cheers', 'perfect', 'hello', 'bye', 'thank you'].forEach((w) => check(`real "${w}" still gets a social reply`, !!ctx.chbNlgSocial(w)));
+    // Teach loop survives suppress→teach; suppressed phrase isn't a miss.
+    // (The offline shim can't warm the model, so the fix under test is the
+    // list-maintenance: re-teaching must REMOVE the phrase from the suppressed
+    // list, whose gate hard-aborts chbNluClassify before any tier — the actual
+    // silent-drop bug. Whether it then classifies depends on a warm model.)
+    vm.runInContext(`chbNluStore('chb-nlu-suppressed', []); CHB_NLU.suppressed = null; chbNluStore('chb-nlu-learned', []); CHB_NLU.learned = null;`, ctx);
+    ctx.chbNluSuppress('hows the takings looking today');
+    check('a suppressed phrase classifies null (gate hard-aborts)', ctx.chbNluClassify('hows the takings looking today') === null && ctx.chbNluSuppressed().includes('hows the takings looking today'));
+    ctx.chbNluLearn('hows the takings looking today', 'who owes me money');
+    check('re-teaching REMOVES it from the suppressed list (lesson no longer silently dropped)', !ctx.chbNluSuppressed().includes('hows the takings looking today') && ctx.chbNluLearned().some((x) => x.t === 'hows the takings looking today'));
+    vm.runInContext(`__cmdkMiss = { q: 'literal phrase i made stick', answered: false }; chbNluStore('chb-nlu-suppressed', ['literal phrase i made stick']); CHB_NLU.suppressed = null; chbNluStore('chb-search-misses', []); CHB_NLU.misses = null;`, ctx);
+    ctx.chbMissRecord();
+    check('a suppressed phrase is NOT re-filed as a dead-end miss', !ctx.chbMissList().some((m) => m.t === 'literal phrase i made stick'));
+    // History-shaped verbs now trigger the clean/recall path.
+    check('"call" is history-shaped (framing stripped to content)', ctx.chbHistoryClean('did the guest call about the heating') === 'heating');
+    check('"flagged" is history-shaped', ctx.chbHistoryClean('who flagged the hot tub') === 'hot tub');
+    vm.runInContext(`chbNluStore('chb-nlu-suppressed', []); chbNluStore('chb-nlu-learned', []); chbNluStore('chb-search-misses', []); CHB_NLU.misses = null; Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);__cmdkCustomers=null; __cmdkMiss = null;`, ctx);
+} else fail('cmdkIntent / chbNlgSocial missing from the bundle');
+
 // ---- 30. Darkstar-C (contextual encoder) plumbing. The encoder itself is
 // benched offline (it can't run in CI); what MUST hold here is the machinery:
 // the WordPiece tokenizer, the encoder-built index (tagged CHB_HIST.enc, its
