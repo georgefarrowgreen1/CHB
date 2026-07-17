@@ -6731,6 +6731,7 @@ function openCmdK() {
     if (av && av.id !== 'view-search') __cmdkReturnView = av.id;
     __cmdkScope = cmdkDefaultScope(); // open pre-scoped to the workspace you came from
     __cmdkEntity = cmdkCurrentEntity(); // and aware of the record you were viewing
+    __cmdkConvCtx = null; // a fresh session — never inherit the LAST session's pronoun referent
     nav('view-search');
     inp.value = '';
     try { chbAssistSyncPull(); } catch (e) {} // merge learning taught on other devices (once per session)

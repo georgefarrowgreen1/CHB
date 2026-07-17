@@ -122,6 +122,23 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const misses = await page.evaluate(() => chbMissList().map((m) => m.t));
   ok(misses.includes('fizzlewick doodah'), `dead-end query filed as a miss (${misses.join(', ')})`);
 
+  // 9) Leaving via ANY other route (a dock nav, not the back button) also tears
+  // the palette down — the miss is still filed and the conv-context cleared.
+  await page.evaluate(() => { chbNluStore('chb-search-misses', []); CHB_NLU.misses = null; });
+  await page.evaluate(() => openCmdK()); await page.waitForTimeout(150);
+  await page.evaluate(() => { document.getElementById('cmdk-input').value = 'fizzlewick doodah'; cmdkSearchCore('fizzlewick doodah', false); });
+  await page.waitForTimeout(150);
+  await page.evaluate(() => { __cmdkConvCtx = { key: 'stale', name: 'Ghost' }; nav('view-inbox'); }); // leave via a dock view, NOT cmdkBack
+  await page.waitForTimeout(200);
+  const navLeave = await page.evaluate(() => ({
+    view: (document.querySelector('.page-view.active') || {}).id,
+    filed: chbMissList().map((m) => m.t).includes('fizzlewick doodah'),
+    conv: (typeof __cmdkConvCtx === 'undefined' ? 'undef' : __cmdkConvCtx),
+  }));
+  ok(navLeave.view === 'view-inbox', `nav away lands on the target view (${navLeave.view})`);
+  ok(navLeave.filed, 'leaving search by a dock nav still files the dead-end miss');
+  ok(!navLeave.conv, 'the conversation context is cleared on dock-leave (no cross-session pronoun leak)');
+
   await browser.close();
   server.kill();
   console.log(fails ? `\n  ${fails} SEARCH-PAGE CHECK(S) FAILED ❌` : '\n  SEARCH-PAGE SUITE PASSED ✅');

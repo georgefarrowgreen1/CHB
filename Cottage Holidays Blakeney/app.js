@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 237;
+const ADMIN_BUNDLE_V = 238;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -1365,6 +1365,15 @@ function nav(viewId, anchorId = null) {
     if (!target) {
         console.warn(`nav(): unknown view "${viewId}"`);
         return;
+    }
+    // Leaving the dedicated search page by ANY route other than its own back
+    // button (a dock tap, a result run, a deep link) must still tear the palette
+    // down: file the dead-end miss, supersede any in-flight federated search, and
+    // clear the conversation context. closeCmdK is cleanup-only (no nav), so this
+    // is safe to call mid-navigation. Owner-only view, so admin.js is loaded.
+    const __prevView = (document.querySelector('.page-view.active') || {}).id;
+    if (__prevView === 'view-search' && viewId !== 'view-search') {
+        try { if (window.closeCmdK) window.closeCmdK(); } catch (e) {}
     }
     document.querySelectorAll('.page-view').forEach((v) => v.classList.remove('active'));
     target.classList.add('active');
@@ -12840,7 +12849,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'almanac1';
+    const BUILD = 'srchlife1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
