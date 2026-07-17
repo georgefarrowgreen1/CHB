@@ -391,8 +391,13 @@ function cmdkParseDates(q, today) {
     }
     if ((m = q.match(/\b(\d{4})-(\d{2})-(\d{2})\b/))) return { from: `${m[1]}-${m[2]}-${m[3]}`, to: null };
     if ((m = q.match(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/))) {
-        const yr = m[3] ? (m[3].length === 2 ? 2000 + +m[3] : +m[3]) : d0.getFullYear();
-        return { from: iso(new Date(yr, +m[2] - 1, +m[1])), to: null };
+        const day = +m[1], mon = +m[2];
+        // Bound the fields — "08/13" is not 8 January next year (month 13 rolling
+        // over). An out-of-range DD/MM isn't a date; fall through, don't invent one.
+        if (day >= 1 && day <= 31 && mon >= 1 && mon <= 12) {
+            const yr = m[3] ? (m[3].length === 2 ? 2000 + +m[3] : +m[3]) : d0.getFullYear();
+            return { from: iso(new Date(yr, mon - 1, day)), to: null };
+        }
     }
     // bare "in august" / "for september" — the WHOLE month (checkout-style end).
     // Reached only when no day-level pattern above matched.
@@ -746,8 +751,11 @@ function cmdkCommand(q, today) {
         } catch (e) {}
         return rows;
     }
-    // MESSAGE / EMAIL a named guest — resolve the name to a booking.
-    const msgM = q.match(/\b(?:message|email|text|msg|write to|contact)\s+([a-z][a-z .'-]+)/);
+    // MESSAGE / EMAIL a named guest — resolve the name to a booking. Capture only
+    // the NAME (up to a preposition): "email Bob about the deposit" must resolve
+    // Bob, not match a guest named after a trailing word ("about"/"the").
+    const msgM = q.match(/\b(?:message|email|text|msg|write to|contact)\s+([a-z][a-z.'-]*(?:\s+[a-z][a-z.'-]*)?)(?=\s+(?:about|re|regarding|concerning|saying|to say|that|and|with)\b|[.,!?]|\s*$)/)
+        || q.match(/\b(?:message|email|text|msg|write to|contact)\s+([a-z][a-z .'-]+)/);
     if (msgM) {
         // Upcoming-preferred (findGuestBooking), not first-in-store-order — a
         // repeat guest's oldest past stay used to win, attaching the composer's
@@ -1387,11 +1395,17 @@ async function cmdkCustomerDirectory(ql) {
     if (stamp !== __cmdkCustDirStamp || gen !== __cmdkQueryGen) return; // a newer query moved on
     const custs = (data && data.customers) || [];
     if (!custs.length) return;
-    let localKeys = new Set();
-    try { localKeys = new Set(chbCustomers().map((c) => c.key)); } catch (e) {}
+    // Dedup only against local customers ALREADY surfaced as repeats (≥2 loaded
+    // stays produced their own _customer row) — NOT every local key. A repeat
+    // guest with just ONE stay loaded has their key in the local set but no
+    // lifetime row on screen, so suppressing the server's richer multi-stay row
+    // (as the old all-keys check did) hid the lifetime stats entirely. Only
+    // genuine repeats (server stays ≥ 2) get a lifetime row anyway.
+    let localRepeatKeys = new Set();
+    try { localRepeatKeys = new Set(chbCustomers().filter((c) => (c.stays || []).length >= 2).map((c) => c.key)); } catch (e) {}
     const shown = new Set(__cmdkResults.filter((r) => r && r.type === 'guest' && r.id != null).map((r) => String(r.id)));
     const rows = custs
-        .filter((c) => c && c.key && !localKeys.has(c.key) && !shown.has(String(c.key)))
+        .filter((c) => c && c.key && (c.stays || 0) >= 2 && !localRepeatKeys.has(c.key) && !shown.has(String(c.key)))
         .map((c) => ({
             type: 'guest', id: c.key, _customer: true,
             label: c.name || '(no name)',
@@ -4848,7 +4862,15 @@ function cmdkBuildResults(ql) {
     const uflags = CHB_SEARCH.understand(ql).flags;
     const procedural = uflags.procedural;
     const softAsk = uflags.softAsk;
-    if (procedural) results = help.concat(results);
+    if (procedural) {
+        // Help LEADS a generic procedural question ("how do I refund a deposit").
+        // But when the query also resolved a SPECIFIC record (a named guest's
+        // answer carries dedupName / _customer), that direct answer stays on top
+        // and the how-to rides below — "how do I refund Smith's deposit" should
+        // lead with Smith's record, not the generic steps.
+        const specific = results[0] && (results[0].dedupName || results[0]._customer);
+        results = specific ? results.concat(help) : help.concat(results);
+    }
     else if (softAsk) results = results.concat(help);
     // A named-guest answer/booking (branch 0b) is the authoritative record for that
     // person — drop any fuzzy booking/enquiry/guest row for the same name so the
@@ -5240,7 +5262,15 @@ function chbEmbedText(text) {
 }
 async function chbHistoryIndexBuild(force) {
     if (CHB_HIST.built && !force && Date.now() - CHB_HIST.at < 600000) return; // ~10-min freshness
-    if (CHB_HIST.building) return CHB_HIST.p;
+    if (CHB_HIST.building) {
+        // A forced UPGRADE (the contextual encoder just landed) must not be
+        // swallowed by an in-flight periodic build — chain a rebuild AFTER it
+        // rather than returning the stale in-flight promise, or the query that
+        // paid to load the encoder still ranks with the static index. The
+        // caller only forces while an upgrade is pending, so this converges.
+        if (force) return CHB_HIST.p.then(() => chbHistoryIndexBuild(true));
+        return CHB_HIST.p;
+    }
     if (!DARKSTAR.st && !CHB_ENC.st) { try { await darkstarLoad(); } catch (e) {} }
     if (!DARKSTAR.st && !CHB_ENC.st) return; // no model → semantic recall stays off (keyword still runs)
     CHB_HIST.building = true;
@@ -5252,11 +5282,14 @@ async function chbHistoryIndexBuild(force) {
             if (enc) {
                 // Reuse embeddings for unchanged rows across the ~10-min refreshes —
                 // only NEW history embeds (~40ms each), not the whole corpus.
+                // Cache key on a CONTENT hash, not text length — an edited row
+                // whose length is unchanged (typo fix, "loud"→"busy") would keep
+                // its pre-edit vector forever with a length key.
                 const prev = new Map();
-                if (CHB_HIST.enc === CHB_ENC.ver) CHB_HIST.docs.forEach((d) => { if (d.vec) prev.set(d.type + ':' + d.id + ':' + (d.text || '').length, d.vec); });
+                if (CHB_HIST.enc === CHB_ENC.ver) CHB_HIST.docs.forEach((d) => { if (d.vec) prev.set(d.type + ':' + d.id + ':' + chbNluHashStr(d.text || ''), d.vec); });
                 const docs = [];
                 for (const x of rows) {
-                    const k = x.type + ':' + x.id + ':' + (x.text || '').length;
+                    const k = x.type + ':' + x.id + ':' + chbNluHashStr(x.text || '');
                     docs.push({ type: x.type, id: x.id, text: x.text, date: x.date, extra: x, vec: prev.get(k) || await enc.embed(x.text) });
                 }
                 CHB_HIST.docs = docs;
