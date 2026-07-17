@@ -97,7 +97,19 @@ textarea:focus-visible,
   outline-offset: 2px;
   border-radius: 6px;
 }
-/* On-brand text selection (visible in form fields and the Live Editor). */
+/* Visually-hidden but available to screen readers (status announcements etc). */
+.sr-only {
+  position: absolute !important;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+/* On-brand text selection in form fields. */
 ::selection {
   background: var(--accent-soft);
   color: #1a191b;
@@ -139,6 +151,9 @@ textarea:focus-visible,
   --text-muted: #b4b8c6;
   /* Brand accent (rose-gold) — used for focus rings & subtle highlights. */
   --accent: #d6a785;
+  /* Ink for text/icons on an accent fill — the rose-gold is mid-light, so white
+     fails WCAG contrast; every accent-filled control uses this dark ink. */
+  --accent-ink: #1b1208;
   --accent-soft: rgba(214, 167, 133, 0.55);
   /* Radius scale — use these for new components: sm = small controls,
                md = cards/fields, lg = nested/mid cards, panel = top-level surfaces
@@ -167,6 +182,10 @@ textarea:focus-visible,
   --warn-text: #ffb74d;
   --danger: #e57373;
   --danger-text: #ef9a9a; /* readable red TEXT on dark glass (light mode retunes it) */
+  /* Info (sea-blue) — the "Arriving" status. -text is the tint readable on dark
+     glass; light mode retunes it below like the other -text tokens. */
+  --info: #4682a0;
+  --info-text: #6fa8c4;
   /* Shadow scale: panel = resting glass surface, float = raised/floating
                elements (modals, popovers, FABs), soft = small controls on hover. */
   --shadow-panel: 0 8px 32px rgba(0, 0, 0, 0.2);
@@ -225,6 +244,7 @@ body.light-mode {
   --ok-text: #2e7d32;
   --warn-text: #a85a00;
   --danger-text: #c62828;
+  --info-text: #35708f; /* darker sea-blue for readable text on light glass */
   /* Secondary coastal accents (used sparingly for freshness) */
   --sea: #2e8b8b;
   --sky: #5aa9de;
@@ -7701,7 +7721,7 @@ p.lead[data-edit-text] {
 
 
 /* ---------- TABLET & BELOW (≤900px) ---------- */
-@media (max-width: 900px) {
+@media (max-width: 899px) {
   .prop-layout {
     grid-template-columns: 1fr;
     gap: 28px;
@@ -7984,8 +8004,7 @@ body.owner-mode .site-footer {
 }
 
 /* ----- ADMIN ICON DOCK (floating bottom pill nav, icons only) ----- */
-/* Hidden by default; only shown while an admin is signed in (owner-mode),
-           and hidden again while the Live Editor is open so it can't clash. */
+/* Hidden by default; only shown while an admin is signed in (owner-mode). */
 .admin-dock-wrap {
   position: fixed;
   left: 50%;
@@ -8000,14 +8019,6 @@ body.owner-mode .site-footer {
 }
 body.owner-mode .admin-dock-wrap {
   display: flex;
-}
-/* Active (green) state for the Edit icon while the Live Editor is open. */
-.admin-dock-btn.active-mode {
-  background: var(--ok);
-  color: #fff;
-}
-.admin-dock-btn.active-mode:hover {
-  background: #43a047;
 }
 /* Search-first layout: collapse the dock to Today · Inbox · Search. Payments and
    Manage move into the ⌘K palette; their buttons are hidden (not removed), so
@@ -8153,7 +8164,15 @@ body.owner-mode.search-first .admin-dock-btn[data-view="view-settings"] { displa
     opacity 0.18s var(--fluid-bezier),
     transform 0.18s var(--fluid-bezier);
 }
-.admin-dock-btn:hover::after,
+/* Tooltip reveal on pointer devices only — a tap otherwise leaves the label
+   stuck above the dock (the back office is phone-supported); :focus-visible
+   keeps keyboard access unconditional. */
+@media (hover: hover) {
+  .admin-dock-btn:hover::after {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
 .admin-dock-btn:focus-visible::after {
   opacity: 1;
   transform: translateX(-50%) translateY(0);

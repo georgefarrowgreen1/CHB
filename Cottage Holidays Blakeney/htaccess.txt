@@ -168,18 +168,9 @@ RewriteRule (?i)^uploads/.*\.(php|php[0-9]?|phtml|phps|pht|pl|py|cgi|sh|lua|asp|
     Allow from all
 </Files>
 
-# ---- Serve WebP automatically when the browser supports it ----
-# For any .jpg/.jpeg/.png request, if the browser accepts WebP AND a matching
-# "<image>.webp" file exists next to it, serve that smaller file instead.
-# 100% safe: when no .webp is present the original image is served unchanged,
-# so nothing breaks. To enable an image, upload a WebP copy whose name is the
-# original filename + ".webp"  —  e.g.  hero.jpg  ->  hero.jpg.webp
-<IfModule mod_rewrite.c>
-    RewriteCond %{HTTP_ACCEPT} image/webp
-    RewriteCond %{REQUEST_FILENAME} (?i)\.(jpe?g|png)$
-    RewriteCond %{REQUEST_FILENAME}.webp -f
-    RewriteRule (?i)^(.+)\.(jpe?g|png)$ $1.$2.webp [T=image/webp,L]
-</IfModule>
+# (The WebP-negotiation rewrite lives once at the top of this file — a second
+# identical block used to sit here but was unreachable dead config behind the
+# first block's [L] flag, and its Vary/FilesMatch doubled 'Vary: Accept'.)
 
 # ---- Image caching + correct negotiation ----
 <IfModule mod_headers.c>
@@ -246,7 +237,12 @@ RewriteRule ^(.+)\.(js|css)$ $1.$2.br [L]
 <IfModule mod_headers.c>
     <FilesMatch "(?i)\.(css|js|mjs|woff2?|ttf|otf|eot)$">
         Header set Cache-Control "public, max-age=31536000, immutable"
-        Header unset Vary
+        # These URLs ARE content-negotiated (mod_deflate gzip, or the .br rewrite
+        # above), so a blanket `unset Vary` risked a shared cache storing one
+        # encoding for a year and serving it to a client that negotiated the
+        # other. Set Vary to Accept-Encoding — still drops the host's cookie-keyed
+        # Vary, but keeps the response encoding-safe to cache.
+        Header set Vary "Accept-Encoding"
         Header unset Set-Cookie
     </FilesMatch>
     # On-device model weights are versioned with ?v=… exactly like JS/CSS
@@ -254,7 +250,7 @@ RewriteRule ^(.+)\.(js|css)$ $1.$2.br [L]
     # the largest assets on the site and a re-download is pure waste.
     <FilesMatch "(?i)^(darkstar\.bin|encoder\.onnx|encoder-vocab\.json)$">
         Header set Cache-Control "public, max-age=31536000, immutable"
-        Header unset Vary
+        Header set Vary "Accept-Encoding"
         Header unset Set-Cookie
     </FilesMatch>
     # EXCEPTION: the service worker must never be long-cached, or browsers won't

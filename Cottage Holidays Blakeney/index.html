@@ -160,13 +160,13 @@
     <link rel="apple-touch-icon" href="apple-touch-icon.png?v=3">
     <!-- Installable PWA + Web Push (arrival check-in notifications) -->
     <link rel="manifest" href="manifest.json">
-    <link rel="stylesheet" href="guest-app.css?v=32">
+    <link rel="stylesheet" href="guest-app.css?v=33">
     <meta name="theme-color" content="#f5f1e9">
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=190">
+    <link rel="stylesheet" href="app.css?v=191">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -1810,7 +1810,7 @@
                 </div>
             </div>
             <div class="msg-ctx" id="messages-modal-ctx"></div>
-            <div class="chat-thread" id="messages-modal-thread"></div>
+            <div class="chat-thread" id="messages-modal-thread" role="log" aria-live="polite" aria-label="Conversation"></div>
             <select id="msg-canned" class="input-glass field-sm" data-act-change="adminCanned" data-pass="value" style="margin:0 0 8px;" aria-label="Quick replies">
                 <option value="">Quick replies…</option>
                 <option>Thanks for getting in touch — I'll check and reply shortly.</option>
@@ -1914,7 +1914,7 @@
             <div style="flex:1;min-width:0;"><div class="chat-widget-title">Chat with us</div><div class="chat-widget-sub"><span class="chat-presence-dot" aria-hidden="true"></span>Personally answered by the owner</div></div>
             <button class="reviews-modal-close" data-act="closeChat" aria-label="Close chat"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
         </div>
-        <div class="chat-thread" id="chat-thread"></div>
+        <div class="chat-thread" id="chat-thread" role="log" aria-live="polite" aria-label="Conversation"></div>
         <div id="chat-intro" class="chat-intro" style="display:none;">
             <div class="chat-intro-label">So we can reply</div>
             <div class="chat-intro-fields">
@@ -2245,7 +2245,7 @@
             <input type="hidden" id="modal-record-id">
             <input type="hidden" id="modal-mode">
 
-            <label class="modal-label">Property</label>
+            <label class="modal-label" for="modal-property">Property</label>
             <select class="input-glass" id="modal-property" data-act-change="onModalPropertyChange">
                 <option value="21a">21A Westgate</option>
                 <option value="jollyboat">Jollyboat</option>
@@ -2254,7 +2254,7 @@
             </select>
             <input class="input-glass" id="modal-property-new" autocomplete="off" placeholder="New property name" data-act-input="updateModalPrice" style="display:none;margin-top:10px;">
 
-            <label class="modal-label">Guest Name</label>
+            <label class="modal-label" for="modal-name">Guest Name</label>
             <div class="modal-name-wrap">
                 <input type="text" class="input-glass" id="modal-name" autocomplete="off" data-act-input="modalNameSuggest" data-pass="value">
                 <!-- Typeahead: past guests matching what you're typing (repeat guests are one tap). -->
@@ -2263,16 +2263,16 @@
 
             <div class="modal-2col">
                 <div>
-                    <label class="modal-label">Email</label>
+                    <label class="modal-label" for="modal-email">Email</label>
                     <input type="email" class="input-glass" id="modal-email" placeholder="guest@email.com">
                 </div>
                 <div>
-                    <label class="modal-label">Phone</label>
+                    <label class="modal-label" for="modal-phone">Phone</label>
                     <input type="tel" class="input-glass" id="modal-phone" placeholder="07…">
                 </div>
             </div>
 
-            <label class="modal-label">Home Address</label>
+            <label class="modal-label" for="modal-address">Home Address</label>
             <textarea class="input-glass" id="modal-address" rows="2" placeholder="House name/number, street, town, county" style="resize: vertical;"></textarea>
             <label class="modal-label" for="modal-postcode">Postcode</label>
             <input type="text" class="input-glass" id="modal-postcode" placeholder="e.g. NR25 7AB">
@@ -2281,18 +2281,18 @@
                  taken nights shaded from loaded data, everything still pickable —
                  the availability strip + server clash confirm guard the save). -->
             <label class="modal-label">Stay Dates</label>
-            <button type="button" class="date-range-trigger" id="modal-date-trigger" data-act="openBookingDatePicker">
+            <button type="button" class="date-range-trigger" id="modal-date-trigger" data-act="openBookingDatePicker" aria-label="Select the stay dates">
                 <span class="date-range-text" id="modal-date-display">Select the stay dates</span>
                 <span class="date-range-icon"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></span>
             </button>
             <input type="hidden" id="modal-checkin"><input type="hidden" id="modal-checkout">
             <div class="modal-2col">
                 <div>
-                    <label class="modal-label">In Time</label>
+                    <label class="modal-label" for="modal-checkin-time">In Time</label>
                     <input type="time" class="input-glass" id="modal-checkin-time" value="15:00">
                 </div>
                 <div>
-                    <label class="modal-label">Out Time</label>
+                    <label class="modal-label" for="modal-checkout-time">Out Time</label>
                     <input type="time" class="input-glass" id="modal-checkout-time" value="10:00">
                 </div>
             </div>
@@ -2302,11 +2302,11 @@
 
             <div class="modal-2col">
                 <div>
-                    <label class="modal-label">Adults</label>
+                    <label class="modal-label" for="modal-adults">Adults</label>
                     <input type="number" class="input-glass" id="modal-adults" min="1" value="2" data-act-input="updateModalPrice">
                 </div>
                 <div>
-                    <label class="modal-label">Children</label>
+                    <label class="modal-label" for="modal-children">Children</label>
                     <input type="number" class="input-glass" id="modal-children" min="0" value="0" data-act-input="updateModalPrice">
                 </div>
             </div>
@@ -2316,7 +2316,7 @@
             </div>
 
             <div id="modal-payment-group">
-                <label class="modal-label">Payment Status</label>
+                <label class="modal-label" for="modal-payment">Payment Status</label>
                 <select class="input-glass" id="modal-payment" data-act-change="togglePaymentDetails">
                     <option value="unpaid">Unpaid</option>
                     <option value="deposit">Deposit Paid</option>
@@ -2340,17 +2340,17 @@
             </div>
 
             <div id="modal-deposit-group">
-                <label class="modal-label">Refundable damages deposit (£) — charged with the first payment, refunded after the stay; not income</label>
+                <label class="modal-label" for="modal-damages-deposit">Refundable damages deposit (£) — charged with the first payment, refunded after the stay; not income</label>
                 <input type="number" class="input-glass" id="modal-damages-deposit" min="0" step="5" placeholder="e.g. 75" data-act-input="updateModalPrice">
             </div>
 
             <div id="modal-override-group">
-                <label class="modal-label">Override total price (£) — optional</label>
+                <label class="modal-label" for="modal-price-override">Override total price (£) — optional</label>
                 <input type="number" class="input-glass" id="modal-price-override" min="0" step="0.01" placeholder="Leave blank to use calculated price" data-act-input="updateModalPrice">
                 <p style="font-size:0.72rem;color:var(--text-muted);margin:-12px 0 18px;">Set a custom total for this booking only. The customer enquiry form still uses the standard prices from Manage &rarr; Preferences.</p>
             </div>
 
-            <label class="modal-label">Staff Notes</label>
+            <label class="modal-label" for="modal-notes">Staff Notes</label>
             <textarea class="input-glass" id="modal-notes" rows="2" style="resize: vertical;"></textarea>
 
             <div id="modal-error" style="color: var(--danger); font-size: 0.8rem; margin-bottom: 15px; display: none;"></div>
@@ -2481,7 +2481,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=453"></script>
+    <script defer src="app.js?v=454"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

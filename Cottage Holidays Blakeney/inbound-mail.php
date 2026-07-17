@@ -100,10 +100,30 @@ if ($threadId <= 0) {
 } // 200 — nothing to do
 
 // ---- Only the owner / co-hosts may post an admin reply ----
+// The From header is trivially spoofable, so it is NOT the security boundary on
+// its own: the HMAC thread token (msg_reply_verify, above) is the real gate. As
+// defence-in-depth, when the inbound provider posts an email-authentication
+// verdict (SPF/DKIM/spam), REJECT a hard failure — a spoofed From from a
+// third party who obtained a reply token can't then pass a DKIM-aligned check.
 $fromAddr = inb_addr($from);
 $allowed = array_map('strtolower', function_exists('owner_recipients') ? owner_recipients() : []);
 if ($fromAddr === '' || !in_array($fromAddr, $allowed, true)) {
     echo 'sender not allowed';
+    exit();
+}
+// Provider auth verdicts (Mailgun X-Mailgun-*, SendGrid dkim/spf, CloudMailin
+// spf/dkim). Only act on an explicit FAIL — absent fields leave the flow
+// exactly as before, so no working route breaks.
+$authFail = false;
+foreach (['dkim', 'DKIM', 'spf', 'SPF', 'X-Mailgun-Dkim-Check-Result', 'X-Mailgun-Spf'] as $k) {
+    $v = strtolower((string) ($_POST[$k] ?? ''));
+    if ($v !== '' && (strpos($v, 'fail') !== false || $v === 'softfail')) {
+        $authFail = true;
+        break;
+    }
+}
+if ($authFail) {
+    echo 'sender failed email authentication';
     exit();
 }
 

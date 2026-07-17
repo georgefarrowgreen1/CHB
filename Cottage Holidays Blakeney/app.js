@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 233;
+const ADMIN_BUNDLE_V = 234;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 69;
+const ADMIN_CSS_V = 70;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -1891,7 +1891,7 @@ function renderGallery(images) {
     track.innerHTML = list
         .map(
             (src, i) =>
-                `<div class="gallery-slide" id="prop-img-${i}" data-bg="${escapeHtml(src)}" role="img" aria-label="Photo ${i + 1} of ${list.length} — ${escapeHtml(galName)}" ${chbAttrs('openLightbox', i)}></div>`,
+                `<div class="gallery-slide" id="prop-img-${i}" data-bg="${escapeHtml(src)}" role="button" tabindex="0" aria-label="Photo ${i + 1} of ${list.length} — ${escapeHtml(galName)}, open photo viewer" ${chbAttrs('openLightbox', i)} data-act-keydown="ggKey" data-arg="${i}"></div>`,
         )
         .join('');
     // Clamp index in case photos were removed
@@ -3506,9 +3506,12 @@ async function payWithToken(sourceId) {
         source_id: sourceId,
     });
     document.getElementById('pay-body').style.display = 'none';
+    // Show what the card was CHARGED (incl. the bundled refundable deposit) —
+    // quoting only the rental portion after a "Pay £450" button read like a
+    // mis-charge to the guest.
     document.getElementById('pay-done-sub').textContent = res.fullyPaid
         ? 'Your booking is now paid in full. We look forward to welcoming you.'
-        : `Thank you — ${gbp(res.paid)} received. We'll be in touch about the remaining balance before your stay.`;
+        : `Thank you — ${gbp(res.charged != null ? res.charged : res.paid)} received. We'll be in touch about the remaining balance before your stay.`;
     document.getElementById('pay-done').style.display = '';
     try {
         toast('Payment received — thank you!');
@@ -7688,7 +7691,7 @@ let __msgThreadId = null;
 let __msgThreadArchived = false;
 function bookingLine(b) {
     const name = (propertyMeta[b.prop_key] || {}).name || b.prop_key;
-    return `${escapeHtml(name)} · ${b.check_in} → ${b.check_out}${b.payment ? ' · ' + escapeHtml(b.payment) : ''}`;
+    return `${escapeHtml(name)} · ${fmtDate(b.check_in)} → ${fmtDate(b.check_out)}${b.payment ? ' · ' + escapeHtml(b.payment) : ''}`;
 }
 // Bookings block in the reply modal, with one-tap "Send arrival info / balance
 // link" actions for any upcoming stay (reuses the normal arrival/payment senders).
@@ -9314,7 +9317,8 @@ function toast(message, type, action) {
     const hasAction = action && typeof action.fn === 'function';
     const el = document.createElement('div');
     el.className = 'toast toast-mini' + (ok ? '' : ' toast-err');
-    el.setAttribute('role', 'status');
+    // An error is a higher-priority announcement than a routine "saved" toast.
+    el.setAttribute('role', ok ? 'status' : 'alert');
     el.innerHTML =
         `<div class="toast-body">${icon}<span>${escapeHtml(message)}</span></div>` +
         (hasAction ? `<button type="button" class="toast-action">${escapeHtml(action.label || 'Undo')}</button>` : '');
@@ -9327,8 +9331,6 @@ function toast(message, type, action) {
         setTimeout(() => el.remove(), 360);
     };
     if (hasAction) {
-        // Reachable window (~6.5s), and the action button runs fn without the
-        // body's dismiss-on-click swallowing it.
         el.querySelector('.toast-action').addEventListener('click', (e) => {
             e.stopPropagation();
             remove();
@@ -9337,7 +9339,18 @@ function toast(message, type, action) {
             } catch (_) {}
         });
         el.querySelector('.toast-body').addEventListener('click', remove);
-        setTimeout(remove, 6500);
+        // An action toast (e.g. "Undo") carries a real affordance, so its timer
+        // PAUSES while the toast has hover or focus and restarts on leave —
+        // a keyboard user can't realistically Tab to the button inside 6.5s
+        // otherwise (WCAG 2.2.1 Timing Adjustable). Longer base window too.
+        let timer = null;
+        const arm = () => { timer = setTimeout(remove, 8000); };
+        const hold = () => { if (timer) { clearTimeout(timer); timer = null; } };
+        el.addEventListener('mouseenter', hold);
+        el.addEventListener('focusin', hold);
+        el.addEventListener('mouseleave', () => { if (!gone && !timer) arm(); });
+        el.addEventListener('focusout', () => { if (!gone && !timer) arm(); });
+        arm();
     } else {
         el.addEventListener('click', remove);
         setTimeout(remove, 3600);
@@ -9486,8 +9499,15 @@ document.addEventListener('keydown', (e) => {
             }
         }
     };
-    document.querySelectorAll(SEL).forEach((el) => {
+    const wired = new WeakSet();
+    const wire = (el) => {
+        if (wired.has(el)) return;
+        wired.add(el);
         let was = isOpen(el);
+        // A dialog appended already-open (e.g. cmdkPickCottage builds
+        // "modal-overlay open" in one go) fires no class mutation, so move focus
+        // in on the spot; otherwise watch its class for the open/close toggle.
+        if (was) onToggle(el, false);
         new MutationObserver(() => {
             const now = isOpen(el);
             if (now !== was) {
@@ -9495,7 +9515,19 @@ document.addEventListener('keydown', (e) => {
                 was = now;
             }
         }).observe(el, { attributes: true, attributeFilter: ['class'] });
-    });
+    };
+    if (typeof MutationObserver !== 'function') return; // non-browser shim (tests)
+    document.querySelectorAll(SEL).forEach(wire);
+    // Dialogs created AFTER boot (cmdkPickCottage, showEmailPreview…) were never
+    // observed, so focus stayed on the page behind an aria-modal overlay and was
+    // never restored on close. Watch the body for late .modal-overlay additions.
+    new MutationObserver((muts) => {
+        muts.forEach((m) => m.addedNodes && m.addedNodes.forEach((n) => {
+            if (n.nodeType !== 1) return;
+            if (n.matches && n.matches(SEL)) wire(n);
+            if (n.querySelectorAll) n.querySelectorAll(SEL).forEach(wire);
+        }));
+    }).observe(document.body, { childList: true, subtree: true });
 })();
 
 // Phone number for the "Call to Discuss" buttons. The live value is set in
@@ -9730,7 +9762,13 @@ function renderDatePicker() {
         if (dpState.end && ds === dpState.end) classes.push('dp-end');
         if (dpState.start && dpState.end && ds > dpState.start && ds < dpState.end)
             classes.push('dp-in-range');
-        const click = clickable ? ` ${chbAttrs('dpPick', String(ds))}` : '';
+        // Keyboard-accessible: a clickable day is a real button role with
+        // Enter/Space wired (data-act-keydown="activate", the site's keyboard
+        // pattern) and a full-date accessible name incl. its state — the cell's
+        // bare number alone gave screen-reader users no way to enter dates, the
+        // only path through the entire booking/enquiry funnel.
+        const aria = ` role="button" tabindex="0" aria-label="${fmtDate(ds)}${booked ? ' — booked' : ''}"`;
+        const click = clickable ? ` ${chbAttrs('dpPick', String(ds))} data-act-keydown="activate"${aria}` : (booked ? ` aria-label="${fmtDate(ds)} — booked, unavailable"` : '');
         const title = booked && !clickable ? ' title="Booked"' : '';
         cells += `<div class="${classes.join(' ')}"${click}${title}>${d}</div>`;
     }
@@ -10664,7 +10702,21 @@ function injectSeoSchema() {
 const COTTAGE_SLUGS = { '21a': '21a-westgate', jollyboat: 'jollyboat', pimpernel: 'pimpernel' };
 const SLUG_TO_KEY = { '21a-westgate': '21a', jollyboat: 'jollyboat', pimpernel: 'pimpernel' };
 const SITE_ORIGIN = 'https://cottageholidaysblakeney.co.uk';
-const DEFAULT_DOC_TITLE = document.title;
+// The HOMEPAGE title/description are pinned to index.html's static values, NOT
+// read from the live document: a guest can LAND on a server-rendered
+// /cottages/<slug> or /experiences page (cottage.php/experiences-page.php have
+// already injected that page's title/meta), so capturing document.* at boot
+// poisoned the "defaults" with the cottage's copy for the whole session.
+// og:image is deliberately still captured live — home.php injects the real
+// uploaded hero there, which IS the correct homepage default.
+const CHB_HOME_SEO = {
+    title: 'Cottage Holidays Blakeney | Self-Catering Cottages, Norfolk',
+    desc: 'Self-catering holiday cottages in Blakeney, North Norfolk — cosy retreats near the quay, coastal path and beaches. Book direct with the owner.',
+    ogTitle: 'Cottage Holidays Blakeney | Holiday Cottages in Blakeney, Norfolk',
+    ogDesc: 'Cosy self-catering holiday cottages on the North Norfolk coast. Near the quay, coastal path and beaches — book directly with the owner.',
+};
+const __chbLandedRouted = /\/cottages\//.test(location.pathname || '') || /^\/experiences\/?$/.test(location.pathname || '');
+const DEFAULT_DOC_TITLE = __chbLandedRouted ? CHB_HOME_SEO.title : document.title;
 let __suppressRouteSync = false; // set while reacting to back/forward so we don't re-push
 
 // Update <title> + canonical + og:url so each cottage URL has its own SEO snippet.
@@ -10675,15 +10727,32 @@ function updateRouteSeo(propKey) {
     const ogDesc = document.querySelector('meta[property="og:description"]');
     const ogImage = document.querySelector('meta[property="og:image"]');
     const metaDesc = document.querySelector('meta[name="description"]');
-    // Remember the homepage defaults the first time, so we can restore them on the way out.
+    // twitter:* ride along with og:* — cottage.php injects them server-side, so
+    // leaving them untouched made the head self-contradictory after in-app nav.
+    const twTitle = document.querySelector('meta[name="twitter:title"]');
+    const twDesc = document.querySelector('meta[name="twitter:description"]');
+    const twImage = document.querySelector('meta[name="twitter:image"]');
+    // Remember the homepage defaults the first time, so we can restore them on
+    // the way out. On an SSR cottage/experiences landing the live DOM carries
+    // THAT page's copy, so the text fields come from the pinned CHB_HOME_SEO;
+    // og:image stays live-captured (home.php's uploaded hero) unless the SSR
+    // route replaced it, in which case there's nothing homepage-true to keep.
     if (!window.__seoDefaults) {
-        window.__seoDefaults = {
-            title: DEFAULT_DOC_TITLE,
-            desc: metaDesc ? metaDesc.getAttribute('content') : '',
-            ogTitle: ogTitle ? ogTitle.getAttribute('content') : '',
-            ogDesc: ogDesc ? ogDesc.getAttribute('content') : '',
-            ogImage: ogImage ? ogImage.getAttribute('content') : '',
-        };
+        window.__seoDefaults = __chbLandedRouted
+            ? {
+                title: CHB_HOME_SEO.title,
+                desc: CHB_HOME_SEO.desc,
+                ogTitle: CHB_HOME_SEO.ogTitle,
+                ogDesc: CHB_HOME_SEO.ogDesc,
+                ogImage: '', // SSR page's image — never restore it onto the homepage
+            }
+            : {
+                title: DEFAULT_DOC_TITLE,
+                desc: metaDesc ? metaDesc.getAttribute('content') : '',
+                ogTitle: ogTitle ? ogTitle.getAttribute('content') : '',
+                ogDesc: ogDesc ? ogDesc.getAttribute('content') : '',
+                ogImage: ogImage ? ogImage.getAttribute('content') : '',
+            };
     }
     const D = window.__seoDefaults;
     if (!propKey) {
@@ -10693,7 +10762,10 @@ function updateRouteSeo(propKey) {
         if (ogTitle) ogTitle.setAttribute('content', D.ogTitle);
         if (metaDesc) metaDesc.setAttribute('content', D.desc);
         if (ogDesc) ogDesc.setAttribute('content', D.ogDesc);
-        if (ogImage) ogImage.setAttribute('content', D.ogImage);
+        if (ogImage && D.ogImage) ogImage.setAttribute('content', D.ogImage);
+        if (twTitle) twTitle.setAttribute('content', D.ogTitle);
+        if (twDesc) twDesc.setAttribute('content', D.ogDesc);
+        if (twImage && D.ogImage) twImage.setAttribute('content', D.ogImage);
         return;
     }
     const meta = propertyMeta[propKey] || {};
@@ -10720,6 +10792,9 @@ function updateRouteSeo(propKey) {
     if (metaDesc) metaDesc.setAttribute('content', desc);
     if (ogDesc) ogDesc.setAttribute('content', desc);
     if (ogImage && img) ogImage.setAttribute('content', img);
+    if (twTitle) twTitle.setAttribute('content', title);
+    if (twDesc) twDesc.setAttribute('content', desc);
+    if (twImage && img) twImage.setAttribute('content', img);
 }
 // Reflect the open cottage in the address bar (push, or replace if already there).
 function syncCottageUrl(propKey) {
@@ -10748,7 +10823,10 @@ function clearCottageUrl() {
             history.pushState({}, '', '/');
         } catch (e) {}
     }
-    if (/\/cottages\//.test(location.pathname || '')) updateRouteSeo(null);
+    // Decide from the PRE-push state (onRouted) — pushState above already reset
+    // the pathname, so re-testing it here always said "not a cottage page" and
+    // the homepage kept the cottage's title/canonical/og for the whole session.
+    if (onRouted) updateRouteSeo(null);
 }
 // On first load (or back/forward), open the cottage named in the URL, if any.
 function maybeOpenCottageRoute() {
@@ -12762,7 +12840,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'sweep1';
+    const BUILD = 'sweep2';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

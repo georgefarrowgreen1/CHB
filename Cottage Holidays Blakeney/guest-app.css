@@ -140,8 +140,13 @@ body.guest-app:not(.owner-mode) #prop-book-bar {
   display: block;
   transition: transform 0.4s var(--spring);
 }
-.guest-dock-btn:hover {
-  background: rgba(255, 255, 255, 0.16);
+/* Gate the hover tint to real pointers — on a touch device a tap applies
+   sticky :hover, leaving the tint (and the label below) stuck until the next
+   tap elsewhere. :focus-visible below keeps keyboard access unconditional. */
+@media (hover: hover) {
+  .guest-dock-btn:hover {
+    background: rgba(255, 255, 255, 0.16);
+  }
 }
 .guest-dock-btn:focus-visible {
   background: rgba(255, 255, 255, 0.16);
@@ -216,7 +221,7 @@ body.guest-app:not(.owner-mode).guest-signed-in .gt-stays {
     left 0.5s var(--spring),
     width 0.5s var(--spring),
     height 0.3s var(--fluid-bezier),
-    opacity 0.28s ease;
+    opacity 0.28s var(--fluid-bezier);
 }
 .guest-dock-indicator.show {
   opacity: 1;
@@ -255,7 +260,14 @@ body.guest-app:not(.owner-mode) #guest-msg-fab {
     opacity 0.18s var(--fluid-bezier),
     transform 0.18s var(--fluid-bezier);
 }
-.guest-dock-btn:hover::after,
+/* Tooltip reveal: :hover only on pointer devices (a tap otherwise leaves the
+   label stuck floating above the dock); :focus-visible stays unconditional. */
+@media (hover: hover) {
+  .guest-dock-btn:hover::after {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
 .guest-dock-btn:focus-visible::after {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
@@ -422,9 +434,11 @@ body.guest-app:not(.owner-mode) .page-view.active {
 
 /* ============================================================
    COASTAL FRESH — light dock. When a guest is in light mode (the default),
-   the floating dock matches the light theme instead of staying dark. Admin
-   (owner-mode) is never light, so its dark dock is untouched; a guest who
-   toggles to dark also keeps the dark dock. Mirrors the desktop refresh.
+   the floating dock matches the light theme instead of staying dark. These
+   rules are gated to :not(.owner-mode), so the admin dock deliberately stays
+   dark even though light is now the default everywhere (incl. the back office);
+   a guest who toggles to dark also keeps the dark dock. Mirrors the desktop
+   refresh.
    ============================================================ */
 body.light-mode.guest-app:not(.owner-mode) .guest-dock {
   background: rgba(255, 255, 255, 0.82);

@@ -41,8 +41,10 @@ if (!$force && content_value('analytics-digest-last') === $today) {
 if (!$force && content_value('analytics-digest-off') === '1') {
     json_out(['ok' => true, 'sent' => false, 'reason' => 'opted out']);
 }
-if (!defined('OWNER_NOTIFY_EMAIL') || !OWNER_NOTIFY_EMAIL) {
-    json_out(['ok' => false, 'error' => 'OWNER_NOTIFY_EMAIL is not set in config.php']);
+// send_owner() also delivers to the Settings co-host list ('notify-emails'),
+// so gate on the full recipient set, not the constant alone.
+if (!owner_recipients()) {
+    json_out(['ok' => false, 'error' => 'No owner email — set OWNER_NOTIFY_EMAIL in config.php or add a recipient in Settings → Notifications']);
 }
 
 // ---- Pull the same numbers the dashboard shows (last 7 days) ----

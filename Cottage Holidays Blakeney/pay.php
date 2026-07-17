@@ -431,7 +431,10 @@ if ($action === 'charge') {
         }
     });
 
-    json_out(['ok' => true, 'status' => $newStatus, 'paid' => $amountDue, 'fullyPaid' => $newStatus === 'paid']);
+    // 'charged' is what the CARD was actually charged (rental + bundled damages
+    // deposit) — the figure the guest just saw on the Pay button. 'paid' stays
+    // the rental portion for compatibility.
+    json_out(['ok' => true, 'status' => $newStatus, 'paid' => $amountDue, 'charged' => $chargeTotal, 'fullyPaid' => $newStatus === 'paid']);
 }
 
 json_out(['error' => 'Unknown action'], 400);
