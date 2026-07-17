@@ -159,8 +159,16 @@ if ($paid < (float) $b['deposit_paid'] - 0.001) {
 }
 $newStatus = $total > 0 && $paid >= $total - 0.001 ? 'paid' : ($paid > 0 ? 'deposit' : 'unpaid');
 
-db()
-    ->prepare('UPDATE bookings SET payment=?, deposit_paid=?, payment_method=?, payment_date=? WHERE id=?')
-    ->execute([$newStatus, $paid, $paid > 0 ? 'Square card' : '', $paid > 0 ? date('Y-m-d') : null, $bookingId]);
+// Only stamp payment_date/payment_method when the reconciled figures actually
+// CHANGED. Square routinely re-sends payment.updated days later (the settlement
+// fee back-fill, hold releases), and an unconditional write drifted the
+// recorded payment date to the event date — desyncing the owner's records from
+// when the money really arrived, and overwriting a manually recorded method
+// (e.g. bank transfer) with 'Square card'.
+if ($newStatus !== ($b['payment'] ?? '') || abs($paid - (float) $b['deposit_paid']) > 0.001) {
+    db()
+        ->prepare('UPDATE bookings SET payment=?, deposit_paid=?, payment_method=?, payment_date=? WHERE id=?')
+        ->execute([$newStatus, $paid, $paid > 0 ? 'Square card' : '', $paid > 0 ? date('Y-m-d') : null, $bookingId]);
+}
 
 json_out(['ok' => true]);

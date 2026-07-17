@@ -1789,6 +1789,16 @@ function chbSetModelStatus(el, state) {
     if (!s) { try { if (document.body && document.body.classList.contains('darkstar-ready')) s = 'ready'; } catch (e) {} }
     el.dataset.mstate = s;
     try { el.title = CHB_MSTATE_TITLE[s] || CHB_MSTATE_TITLE_DEFAULT; } catch (e) {}
+    // The state is COLOUR-only, so a screen-reader user hears nothing — the
+    // element's aria-live never fires because only attributes changed. Mirror
+    // the plain-language title into a visually-hidden span whose TEXT change
+    // aria-live announces. Skip 'loading' (progress spam) and blanks.
+    try {
+        let sr = el.querySelector('.cmdk-ml-sr');
+        if (!sr) { sr = document.createElement('span'); sr.className = 'cmdk-ml-sr sr-only'; el.appendChild(sr); }
+        const say = s && s !== 'loading' ? (CHB_MSTATE_TITLE[s] || '') : '';
+        if (sr.textContent !== say) sr.textContent = say;
+    } catch (e) {}
 }
 // Every status surface on screen (the search page's logo knot).
 function chbModelStatusEls() {
@@ -4945,20 +4955,26 @@ function cmdkSearchCore(q, allowCorrect) {
     clearTimeout(__cmdkServerT);
     if (ql.length >= 2) {
         cmdkSetLoading(true);
-        __cmdkServerT = setTimeout(() => cmdkServerSearch(ql), 180);
-        // A history-SHAPED question also runs the on-device SEMANTIC pass —
-        // meaning-based recall over the embedded history index, merged in when the
-        // vectors land (finds records with no shared words the keyword pass misses).
+        // The two SERVER-hitting mergers ride the same debounce as the federated
+        // search — they used to fire synchronously on EVERY keystroke, so typing
+        // "sarah brown" issued ~9 full-table directory queries (the stamp guard
+        // only discards stale responses; the requests still went out).
+        __cmdkServerT = setTimeout(() => {
+            cmdkServerSearch(ql);
+            // A pricing-review question also pulls the server's demand-signal
+            // suggestions into the palette once they land.
+            if (CHB_PRICE_Q.test(ql)) { try { cmdkPricingMerge(); } catch (e) {} }
+            // A name-ish query (not a question) also groups the WHOLE bookings history
+            // into unified customers server-side, so a PAST guest not held in the
+            // browser still surfaces as one person (deduped against the in-memory ones).
+            if (ql.length >= 3 && !/[?]|^(how|what|who|when|why|where|which|is|are|do|does|can|should|list|show)\b/.test(ql)) {
+                try { cmdkCustomerDirectory(ql); } catch (e) {}
+            }
+        }, 180);
+        // The on-device SEMANTIC pass stays synchronous (no server hit) — a
+        // history-SHAPED question runs meaning-based recall over the embedded
+        // history index, merged in when the vectors land.
         if (CHB_HISTORY_Q.test(ql)) { try { cmdkSemanticHistory(ql); } catch (e) {} }
-        // A pricing-review question also pulls the server's demand-signal
-        // suggestions into the palette once they land.
-        if (CHB_PRICE_Q.test(ql)) { try { cmdkPricingMerge(); } catch (e) {} }
-        // A name-ish query (not a question) also groups the WHOLE bookings history
-        // into unified customers server-side, so a PAST guest not held in the
-        // browser still surfaces as one person (deduped against the in-memory ones).
-        if (ql.length >= 3 && !/[?]|^(how|what|who|when|why|where|which|is|are|do|does|can|should|list|show)\b/.test(ql)) {
-            try { cmdkCustomerDirectory(ql); } catch (e) {}
-        }
     } else {
         __cmdkServerStamp++;
         cmdkSetLoading(false);
@@ -15037,7 +15053,7 @@ function renderCalendar() {
                 const d = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + off + i);
                 const wknd = d.getDay() === 0 || d.getDay() === 6;
                 const past = dates[i] < todayIso;
-                cells += `<span class="tl-cell${wknd ? ' is-wknd' : ''}${dates[i] === todayIso ? ' is-today' : ''}" style="grid-column:${i + 1}"${past ? '' : ` ${chbAttrs('tlAddAt', String(k), String(dates[i]))} title="Add a booking at ${escapeHtml(meta.name)} from ${fmtDate(dates[i])}"`}></span>`;
+                cells += `<span class="tl-cell${wknd ? ' is-wknd' : ''}${dates[i] === todayIso ? ' is-today' : ''}" style="grid-column:${i + 1}"${past ? '' : ` ${chbAttrs('tlAddAt', String(k), String(dates[i]))} data-act-keydown="activate" role="button" tabindex="0" aria-label="Add a booking at ${escapeHtml(meta.name)} from ${fmtDate(dates[i])}" title="Add a booking at ${escapeHtml(meta.name)} from ${fmtDate(dates[i])}"`}></span>`;
             }
             let bars = '';
             // Bars run noon-to-noon (check-in afternoon → checkout morning): the

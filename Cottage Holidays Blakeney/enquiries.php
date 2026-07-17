@@ -131,6 +131,12 @@ if ($action === 'submit') {
     $isAdminEdit = !empty($_SESSION['admin_id']);
     if (!$isAdminEdit) {
         rate_limit('enquiry', 6, 15);
+    } else {
+        // The admin-edit path skips the rate limit and validation exemptions
+        // below, so it must pass the same CSRF layer as every other admin
+        // mutation (require_admin validates the X-CSRF-Token header on POST) —
+        // it was the one admin-reachable write relying on SameSite alone.
+        require_admin();
     }
     $propKey = clean($in['prop_key'] ?? '');
     if (!get_rate($propKey)) {

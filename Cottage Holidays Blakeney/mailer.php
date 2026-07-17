@@ -870,7 +870,10 @@ function email_shell($preheader, $inner, $accentBar = '#C79A64', $opts = [])
 // Let the owner know money has landed. $b: name, prop_name, kind, amount, status.
 function send_owner_payment_notice($b)
 {
-    if (!defined('OWNER_NOTIFY_EMAIL') || !OWNER_NOTIFY_EMAIL) {
+    // Guard on what send_owner() can actually deliver to: the co-host list
+    // ('notify-emails') counts too — an owner relying on it with a cleared
+    // OWNER_NOTIFY_EMAIL silently got NO payment notices from this path.
+    if (!owner_recipients()) {
         return ['ok' => false, 'error' => 'No owner email'];
     }
     $money = fn($n) => '£' . number_format((float) $n, 2);
@@ -1308,7 +1311,8 @@ function sanitize_email_attachments($raw)
 // the enquiry fields + prebuilt approve_url / decline_url (enquiry-action.php).
 function send_owner_enquiry_email($e)
 {
-    if (!defined('OWNER_NOTIFY_EMAIL') || !OWNER_NOTIFY_EMAIL) {
+    // Co-host recipients count too (see send_owner_payment_notice above).
+    if (!owner_recipients()) {
         return ['ok' => false, 'error' => 'No owner email'];
     }
     $prop = function_exists('prop_display')
@@ -1581,7 +1585,7 @@ function send_booking_emails($b)
     // ---- Owner notification ----
     // Skipped on a payment re-send (skip_owner) so the owner isn't re-pinged with
     // "new booking" each time a payment is recorded.
-    if (empty($b['skip_owner']) && defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL) {
+    if (empty($b['skip_owner']) && owner_recipients()) {
         $subject = "New confirmed booking — {$b['prop_name']} (" . uk_date($b['check_in']) . ")";
         $body = "A booking has just been confirmed.\n\n";
         $body .= "Reference: {$b['ref']}\n";

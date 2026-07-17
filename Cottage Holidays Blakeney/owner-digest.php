@@ -36,8 +36,10 @@ if (!$force && content_value('owner-digest-last') === $today) {
     json_out(['ok' => true, 'sent' => false, 'reason' => 'already sent today']);
 }
 
-if (!defined('OWNER_NOTIFY_EMAIL') || !OWNER_NOTIFY_EMAIL) {
-    json_out(['ok' => false, 'error' => 'OWNER_NOTIFY_EMAIL is not set in config.php']);
+// send_owner() also delivers to the Settings co-host list ('notify-emails'),
+// so gate on the full recipient set, not the constant alone.
+if (!owner_recipients()) {
+    json_out(['ok' => false, 'error' => 'No owner email — set OWNER_NOTIFY_EMAIL in config.php or add a recipient in Settings → Notifications']);
 }
 
 $money = fn($n) => '£' . number_format((float) $n, 2);
@@ -71,6 +73,9 @@ try {
 }
 
 // ---- The week ahead: arrivals -------------------------------------------
+// Direct bookings PLUS imported OTA guest stays (ical_blocks, source != owner —
+// the same rule as the in-app insights), so an Airbnb guest arriving Wednesday
+// shows in the Monday email like they do on the timeline.
 $arrivals = [];
 try {
     $s = db()->query("SELECT name, prop_key, check_in, check_out FROM bookings
@@ -78,6 +83,17 @@ try {
                       ORDER BY check_in ASC");
     $arrivals = $s->fetchAll();
 } catch (\Throwable $e) {
+}
+try {
+    $s = db()->query("SELECT source, prop_key, check_in, check_out FROM ical_blocks
+                      WHERE source <> 'owner' AND check_in >= CURDATE() AND check_in <= (CURDATE() + INTERVAL 7 DAY)");
+    foreach ($s->fetchAll() as $bl) {
+        $src = ucfirst((string) $bl['source']);
+        $arrivals[] = ['name' => 'Guest via ' . $src, 'prop_key' => $bl['prop_key'], 'check_in' => $bl['check_in'], 'check_out' => $bl['check_out']];
+    }
+    usort($arrivals, fn($a, $z) => strcmp((string) $a['check_in'], (string) $z['check_in']));
+} catch (\Throwable $e) {
+    /* pre-migration — direct arrivals still listed */
 }
 
 // ---- Money owed: future, not fully paid ---------------------------------
@@ -116,13 +132,21 @@ try {
     if ($cottages < 1) {
         $cottages = 3;
     }
-    // Count booked nights in [today, today+30) across all cottages.
-    $s = db()->query("SELECT check_in, check_out FROM bookings
-                      WHERE check_out > CURDATE() AND check_in < (CURDATE() + INTERVAL 30 DAY)");
+    // Count booked nights in [today, today+30) across all cottages — direct
+    // bookings UNION imported OTA guest stays (source != owner), the same rule
+    // as the in-app pulse/insights, so an Airbnb-full month doesn't read 0%.
+    $rows = db()->query("SELECT check_in, check_out FROM bookings
+                      WHERE check_out > CURDATE() AND check_in < (CURDATE() + INTERVAL 30 DAY)")->fetchAll();
+    try {
+        $rows = array_merge($rows, db()->query("SELECT check_in, check_out FROM ical_blocks
+                      WHERE source <> 'owner' AND check_out > CURDATE() AND check_in < (CURDATE() + INTERVAL 30 DAY)")->fetchAll());
+    } catch (\Throwable $e) {
+        /* pre-migration — direct bookings still counted */
+    }
     $start = strtotime($today);
     $end = strtotime('+30 day', $start);
     $bookedNights = 0;
-    foreach ($s->fetchAll() as $b) {
+    foreach ($rows as $b) {
         $ci = max($start, strtotime($b['check_in']));
         $co = min($end, strtotime($b['check_out']));
         if ($co > $ci) {
