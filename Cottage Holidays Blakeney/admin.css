@@ -1958,10 +1958,21 @@ body.light-mode .cmdk-editor-input {
 }
 .cmdk-qa-row:hover,
 .cmdk-qa-row:focus-visible,
+.cmdk-qa-row.is-kbd,
 .cmdk-related:hover,
 .cmdk-related:focus-visible {
   background: var(--cmdk-sel); /* same accent tint as a selected row — one hover language */
   outline: none;
+}
+/* Keyboard sub-focus (Left/Right stepped onto this quick-action / chip) reads
+   the same as hover, plus an accent ring so it's unmistakable without a mouse. */
+.cmdk-qa-row.is-kbd {
+  box-shadow: inset 0 0 0 1.5px var(--cmdk-sel-edge);
+}
+.cmdk-chip.is-kbd {
+  background: var(--cmdk-sel);
+  border-color: var(--cmdk-sel-edge);
+  box-shadow: inset 0 0 0 1.5px var(--cmdk-sel-edge);
 }
 .cmdk-qa-row:active,
 .cmdk-related:active {

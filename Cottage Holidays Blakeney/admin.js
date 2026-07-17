@@ -139,6 +139,19 @@ async function openSettings(section) {
 // ===================================================================
 let __cmdkResults = [];
 let __cmdkSel = 0;
+// Sub-focus WITHIN the selected row: -1 = the row itself, 0..n index into the
+// row's navigable sub-items (its quick-actions, then its refine chips), so the
+// keyboard can reach "email them / take payment / refund" and the pivot pills,
+// not just the row's default action. Reset whenever the row selection moves.
+let __cmdkActSel = -1;
+// The selected row's navigable sub-items in render order: quick-actions first,
+// then the refine chips that survive the action-dedup. Returns [{kind, k}].
+function cmdkRowSubItems(it, actLabels) {
+    const out = [];
+    if (it && Array.isArray(it.actions)) it.actions.forEach((a, k) => out.push({ kind: 'act', k }));
+    if (it && Array.isArray(it.chips)) it.chips.forEach((c, k) => { if (!(actLabels && actLabels.has((c.label || '').toLowerCase()))) out.push({ kind: 'chip', k }); });
+    return out;
+}
 let __cmdkServerT = null; // debounce timer for the deep server-side search
 let __cmdkServerStamp = 0; // stale-guards late responses when the query moved on
 // DEEP SEARCH state: when set, the palette shows the full "search everything"
@@ -452,7 +465,7 @@ async function cmdkPricingMerge() {
         .filter((r) => !have.has('answer:' + r.id));
     if (!rows.length) return;
     __cmdkResults = cmdkArrangeWide(__cmdkResults.concat(rows).slice(0, 34), 34);
-    cmdkRender();
+    cmdkRender(true); // late merge — keep the reader's scroll position
 }
 // Proper English ordinal — 1st/2nd/3rd/4th…, with the 11th/12th/13th
 // exceptions (the inline 2/3 patches emitted "21th"-style labels).
@@ -1416,7 +1429,7 @@ async function cmdkCustomerDirectory(ql) {
         }));
     if (!rows.length) return;
     __cmdkResults = cmdkArrangeWide(__cmdkResults.concat(rows).slice(0, 34), 34);
-    cmdkRender();
+    cmdkRender(true); // late merge — keep the reader's scroll position
 }
 // Register the built-in sources in their historical order. Each is a thin adapter
 // over an existing collector, so behaviour is identical — the win is that the list
@@ -4923,6 +4936,7 @@ let __cmdkQueryGen = 0;
 // force the literal spelling.
 function cmdkSearchCore(q, allowCorrect) {
     __cmdkQueryGen++;
+    __cmdkActSel = -1; // a fresh query starts on the row, not a stale sub-action
     const raw = (q || '').trim().toLowerCase();
     __cmdkDeep = null; // a fresh query returns to the quick top-hits palette
     __cmdkWiden = false; // re-evaluate widen from scratch for this query
@@ -5260,6 +5274,13 @@ function chbEmbedText(text) {
     const words = String(text || '').toLowerCase().split(/[^a-z0-9']+/).filter((w) => w.length > 1 && !CHB_EMBED_STOP.has(w));
     return darkstarVec(words.length ? words.join(' ') : String(text || ''));
 }
+// Mark the semantic history index STALE so the next history-shaped query
+// rebuilds it — called from the owner write paths that create new history
+// (a sent email, a chat reply, an approved review), so "what did I just say
+// to them" finds it by MEANING immediately instead of after the 10-min window.
+// The keyword server search already sees new rows at once; this closes the
+// semantic-only gap without a full rebuild on every write.
+function chbHistoryDirty() { try { CHB_HIST.at = 0; } catch (e) {} }
 async function chbHistoryIndexBuild(force) {
     if (CHB_HIST.built && !force && Date.now() - CHB_HIST.at < 600000) return; // ~10-min freshness
     if (CHB_HIST.building) {
@@ -5366,7 +5387,7 @@ async function cmdkSemanticHistory(ql) {
     const fresh = rows.filter((r) => !(r.id != null && have.has(r.type + ':' + r.id)));
     if (!fresh.length) return;
     __cmdkResults = cmdkArrangeWide(__cmdkResults.concat(fresh).slice(0, 34), 34);
-    cmdkRender();
+    cmdkRender(true); // late semantic merge — keep the reader's scroll position
     try { chbSetModelStatus(document.getElementById('cmdk-ml'), 'meaning'); } catch (e) {}
 }
 // Fire the federated search.php query and merge its typed results in below the
@@ -5405,7 +5426,7 @@ function cmdkServerSearch(ql) {
                 const fr = __cmdkResults.findIndex((it) => it && !cmdkIsNoteRow(it));
                 __cmdkSel = fr >= 0 ? fr : 0;
             }
-            cmdkRender();
+            cmdkRender(true); // late federated merge — keep the reader's scroll position
         })
         .catch(() => { if (stamp === __cmdkServerStamp) cmdkSetLoading(false); });
 }
@@ -6061,7 +6082,28 @@ function chbBusinessPulse() {
         };
     } catch (e) { return null; }
 }
+// The empty-landing brief is a read-only day snapshot — but it's rebuilt on
+// EVERY empty render (open, clear, backspace-to-empty), each doing a
+// paymentSummary per booking + chbCustomers + the pulse + the gap scan. Memoize
+// it by a cheap data stamp with a short TTL: repeated opens in quick succession
+// reuse the last build, while an add/remove (count change) or a content edit
+// (TTL lapse) refreshes it.
+let __cmdkBriefCache = null; // { stamp, at, items }
+function cmdkBriefStamp() {
+    let bk = ''; try { bk = Object.keys(dbBookings || {}).map((k) => k + (dbBookings[k] || []).length).join(''); } catch (e) {}
+    let bl = ''; try { bl = Object.keys((typeof dbBlocks === 'object' && dbBlocks) || {}).map((k) => k + (dbBlocks[k] || []).length).join(''); } catch (e) {}
+    const enq = Array.isArray(enquiries) ? enquiries.length : 0;
+    let ms = 0, mf = ''; try { const l = chbMissList(); ms = l.length; mf = (l[0] || {}).at || ''; } catch (e) {}
+    return todayDashed() + '|' + bk + '|' + bl + '|' + enq + '|' + ms + ':' + mf;
+}
 function cmdkBrief() {
+    const stamp = cmdkBriefStamp();
+    if (__cmdkBriefCache && __cmdkBriefCache.stamp === stamp && Date.now() - __cmdkBriefCache.at < 8000) return __cmdkBriefCache.items;
+    const items = cmdkBriefBuild();
+    __cmdkBriefCache = { stamp, at: Date.now(), items };
+    return items;
+}
+function cmdkBriefBuild() {
     const items = [];
     const today = todayDashed();
     let ins = 0, outs = 0, owed = 0, owers = 0, depN = 0;
@@ -6288,9 +6330,15 @@ function cmdkRowHtml(it, i, top) {
     // targets, no reflow. Only entity results carry `actions`.
     const hasActions = sel && Array.isArray(it.actions) && it.actions.length;
     const actLabels = hasActions ? new Set(it.actions.map((a) => (a.label || '').toLowerCase())) : null;
+    // On the selected row, mark the keyboard sub-focus (Left/Right cycles through
+    // the quick-actions then the chips) so a keyboard/screen-reader user can see
+    // and reach each one. subItems is the SAME order cmdkKey navigates.
+    const subItems = sel ? cmdkRowSubItems(it, actLabels) : [];
+    const focused = sel && __cmdkActSel >= 0 ? subItems[__cmdkActSel] : null;
+    const subFocus = (kind, k) => (focused && focused.kind === kind && focused.k === k) ? ' is-kbd' : '';
     const acts = hasActions
         ? `<div class="cmdk-qa">${it.actions
-              .map((a, k) => `<button type="button" class="cmdk-qa-row" data-idx="${i}" data-act="${k}" ${chbAttrs('cmdkAct', i, k)}><span class="cmdk-qa-ic">${a.icon || cmdkActIcon('hub')}</span><span class="cmdk-qa-lbl">${escapeHtml(a.label)}</span></button>`)
+              .map((a, k) => `<button type="button" class="cmdk-qa-row${subFocus('act', k)}" data-idx="${i}" data-act="${k}" ${chbAttrs('cmdkAct', i, k)}><span class="cmdk-qa-ic">${a.icon || cmdkActIcon('hub')}</span><span class="cmdk-qa-lbl">${escapeHtml(a.label)}</span></button>`)
               .join('')}</div>`
         : '';
     // Help topics expand their numbered steps when selected (the Top Hit is
@@ -6315,7 +6363,7 @@ function cmdkRowHtml(it, i, top) {
     let refine = '';
     if (Array.isArray(it.chips) && it.chips.length && (!isHelp || sel)) {
         const pills = it.chips
-            .map((c, k) => (hasActions && actLabels && actLabels.has((c.label || '').toLowerCase())) ? '' : `<button type="button" class="cmdk-chip" data-idx="${i}" data-chip="${k}" ${chbAttrs('cmdkChipRun', i, k)}>${escapeHtml(c.label)}</button>`)
+            .map((c, k) => (hasActions && actLabels && actLabels.has((c.label || '').toLowerCase())) ? '' : `<button type="button" class="cmdk-chip${subFocus('chip', k)}" data-idx="${i}" data-chip="${k}" ${chbAttrs('cmdkChipRun', i, k)}>${escapeHtml(c.label)}</button>`)
             .join('');
         refine = pills ? `<div class="cmdk-chips">${pills}</div>` : '';
     }
@@ -6335,9 +6383,17 @@ function cmdkSetLoading(on) {
     const p = document.getElementById('cmdk-progress');
     if (p) p.classList.toggle('is-loading', !!on);
 }
-function cmdkRender() {
+function cmdkRender(preserveScroll) {
+    // A late async merge (server / semantic / pricing / directory rows landing
+    // ~200ms after a fresh render) rebuilds innerHTML, which resets scrollTop to
+    // 0 — yanking the list to the top mid-read. Capture the scroll before the
+    // rebuild and restore it after for those merges; a fresh query (no flag)
+    // still starts at the top.
+    const box = document.getElementById('cmdk-results');
+    const keep = (preserveScroll && box) ? box.scrollTop : null;
     cmdkRenderInner();
     cmdkSyncActive();
+    if (keep != null && box) box.scrollTop = keep;
 }
 function cmdkRenderInner() {
     const box = document.getElementById('cmdk-results');
@@ -6583,34 +6639,68 @@ function cmdkAct(i, k) {
     const a = it && Array.isArray(it.actions) ? it.actions[k] : null;
     if (a && typeof a.run === 'function') a.run();
 }
+// The selected row's navigable sub-items (quick-actions then chips), in render
+// order — what Left/Right cycles through and Enter runs.
+function cmdkSelSubItems() {
+    const it = __cmdkResults[__cmdkSel];
+    if (!it) return [];
+    const actLabels = Array.isArray(it.actions) && it.actions.length ? new Set(it.actions.map((a) => (a.label || '').toLowerCase())) : null;
+    return cmdkRowSubItems(it, actLabels);
+}
 function cmdkKey(e) {
     if (e.key === 'ArrowDown') {
         e.preventDefault();
         __cmdkSel = Math.min(__cmdkSel + 1, __cmdkResults.length - 1);
+        __cmdkActSel = -1; // new row → back to the row itself
         cmdkRender();
         cmdkScrollSel();
     } else if (e.key === 'ArrowUp') {
         e.preventDefault();
         __cmdkSel = Math.max(__cmdkSel - 1, 0);
+        __cmdkActSel = -1;
         cmdkRender();
         cmdkScrollSel();
+    } else if (e.key === 'ArrowRight') {
+        // Step INTO / across the selected row's quick-actions + chips.
+        const sub = cmdkSelSubItems();
+        if (!sub.length) return; // nothing to step into — let the caret move
+        e.preventDefault();
+        __cmdkActSel = Math.min(__cmdkActSel + 1, sub.length - 1);
+        cmdkRender();
+    } else if (e.key === 'ArrowLeft') {
+        if (__cmdkActSel < 0) return; // on the row itself — let the caret move
+        e.preventDefault();
+        __cmdkActSel = __cmdkActSel - 1; // back toward the row (-1 = the row)
+        cmdkRender();
     } else if (e.key === 'Home' && __cmdkResults.length) {
         e.preventDefault();
         __cmdkSel = 0;
+        __cmdkActSel = -1;
         cmdkRender();
         cmdkScrollSel();
     } else if (e.key === 'End' && __cmdkResults.length) {
         e.preventDefault();
         __cmdkSel = __cmdkResults.length - 1;
+        __cmdkActSel = -1;
         cmdkRender();
         cmdkScrollSel();
     } else if (e.key === 'Enter') {
         e.preventDefault();
+        // Enter runs the focused sub-item (a quick-action / chip) if the keyboard
+        // stepped into one; otherwise the row's default.
+        if (__cmdkActSel >= 0) {
+            const sub = cmdkSelSubItems()[__cmdkActSel];
+            if (sub && sub.kind === 'act') { cmdkAct(__cmdkSel, sub.k); return; }
+            if (sub && sub.kind === 'chip') { cmdkChipRun(__cmdkSel, sub.k); return; }
+        }
         cmdkExec(__cmdkSel);
     } else if (e.key === 'Escape') {
         e.preventDefault();
         if (__cmdkDeep) { cmdkDeepClose(); return; } // step back to quick hits first
-        cmdkBack(); // leave the search page for the workspace you came from
+        if (__cmdkActSel >= 0) { __cmdkActSel = -1; cmdkRender(); return; } // step out of sub-focus first
+        const inp = document.getElementById('cmdk-input');
+        if (inp && inp.value) { cmdkClear(); return; } // first Escape clears the query (two-stage, like Spotlight)
+        cmdkBack(); // empty → leave the search page for the workspace you came from
     }
 }
 function cmdkScrollSel() {
@@ -15855,6 +15945,7 @@ async function sendEnquiryEmail() {
         });
         closeEnquiryEmailModal();
         toast(`Email sent to ${rec.name || rec.email}.`);
+        try { chbHistoryDirty(); } catch (e) {} // new sent email → semantic recall refreshes on the next query
         // Refresh the per-booking email log so the new send appears immediately.
         if (t.kind === 'booking') {
             try {
@@ -16844,6 +16935,7 @@ async function mailboxSend() {
         await apiPost('mailbox.php', { action: 'send', to, cc, subject, body });
         __mbxSent.unshift({ id: Date.now(), to_email: to, cc_email: cc || null, subject, body, sent_at: '' });
         toast('Email sent.');
+        try { chbHistoryDirty(); } catch (e) {} // new sent email → semantic recall refreshes on the next query
         renderMailboxList();
     } catch (e) {
         if (msg) msg.textContent = e.message;
