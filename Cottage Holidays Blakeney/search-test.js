@@ -1399,6 +1399,37 @@ if (typeof ctx.cmdkIntent === 'function' && typeof ctx.chbNlgSocial === 'functio
     vm.runInContext(`chbNluStore('chb-nlu-suppressed', []); chbNluStore('chb-nlu-learned', []); chbNluStore('chb-search-misses', []); CHB_NLU.misses = null; Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);__cmdkCustomers=null; __cmdkMiss = null;`, ctx);
 } else fail('cmdkIntent / chbNlgSocial missing from the bundle');
 
+// ---- 37b. Date & window correctness (audit iteration 2): a booking on the LAST
+// night of a named span is no longer read as "free", a same-month past day rolls
+// to next year, breadth date maths use the UK day, a bare numeric range isn't
+// computed, and a historical named-month resolves to its most recent instance. ----
+if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.chbCompute === 'function') {
+    const t = ctx.todayDashed();
+    const d0 = new Date(t + 'T00:00:00');
+    // Inclusive-window off-by-one: a stay checking in on the last day of "August"
+    // must be a conflict, not "free in August".
+    const yr = d0.getFullYear() + (d0.getMonth() > 7 ? 1 : 0); // an August not fully past
+    vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);__cmdkCustomers=null;
+        dbBookings.jollyboat = [{ id: 'bwin', propKey: 'jollyboat', name: 'Last Night', checkIn: '${yr}-08-31', checkOut: '${yr}-09-02', adults: 2, children: 0, payment: 'paid', holdStatus: 'none', agreedPrice: { total: 200 } }];`, ctx);
+    const aH = (q) => { const r = ctx.cmdkIntent(q); const t2 = r && r[0]; return t2 ? (t2.label || '') : '(none)'; };
+    check('a booking on the LAST night of "August" is not reported free', /taken|No —/.test(aH('is jollyboat free in august')) && !/is free in august/i.test(aH('is jollyboat free in august')), aH('is jollyboat free in august'));
+    vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);__cmdkCustomers=null;`, ctx);
+    // cmdkParseDates: a same-month day already past rolls to next year (a booking
+    // date is always the future); a future-month day stays this year.
+    const mon = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'][d0.getMonth()];
+    if (d0.getDate() > 2) {
+        const pd = ctx.cmdkParseDates('book smith 1 ' + mon, t);
+        check('a same-month past day parses to NEXT year, not a past date', pd && pd.from > t, JSON.stringify(pd));
+    }
+    // Breadth date maths seed from the UK day (not the device clock).
+    const xmas = ctx.chbCompute('days until christmas');
+    check('breadth "days until christmas" answers from the UK day', !!(xmas && /\d+ days until Friday 25 December/.test(xmas.label)), xmas && xmas.label);
+    // A bare numeric range isn't treated as subtraction.
+    check('"12-15" is NOT computed as -3', !ctx.chbCompute('12-15'), (ctx.chbCompute('12-15') || {}).label);
+    check('"20-24" is NOT computed', !ctx.chbCompute('20-24'));
+    check('real arithmetic still computes ("480 / 3")', !!ctx.chbCompute('480 / 3') && /160/.test(ctx.chbCompute('480 / 3').label));
+} else fail('cmdkParseDates / chbCompute missing from the bundle');
+
 // ---- 30. Darkstar-C (contextual encoder) plumbing. The encoder itself is
 // benched offline (it can't run in CI); what MUST hold here is the machinery:
 // the WordPiece tokenizer, the encoder-built index (tagged CHB_HIST.enc, its
