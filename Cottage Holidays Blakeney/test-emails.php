@@ -19,6 +19,17 @@ if (!function_exists('site_base_url')) {
         return 'https://example.test/';
     }
 }
+if (!function_exists('first_name')) {
+    function first_name($full, $fallback = '')
+    {
+        $full = trim((string) $full);
+        if ($full === '') {
+            return $fallback;
+        }
+        $parts = preg_split('/\s+/', $full);
+        return isset($parts[0]) && $parts[0] !== '' ? $parts[0] : $fallback;
+    }
+}
 require_once __DIR__ . '/pricing.php';
 require_once __DIR__ . '/mailer.php';
 
