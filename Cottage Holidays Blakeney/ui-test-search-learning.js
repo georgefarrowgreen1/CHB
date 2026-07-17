@@ -78,6 +78,28 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(cleaned.supGone, 'Restore removes a suppressed phrase');
   ok(cleaned.bodyClean, 'the page re-renders without the removed entries');
 
+  // 4) Test-the-assistant sandbox: a known ops phrasing reports "answered".
+  const probe = await page.evaluate(() => {
+    slProbe('who owes me money');
+    const out = document.getElementById('sl-probe-out');
+    return { badge: (out.querySelector('.sl-probe-badge') || {}).textContent || '', ok: !!out.querySelector('.sl-probe-ok') };
+  });
+  ok(probe.ok && /Understood|Answered|meaning/.test(probe.badge), `sandbox reports a real question as answered (${probe.badge})`);
+  const probeNone = await page.evaluate(() => { slProbe('zxqw plmk nonsense'); const out = document.getElementById('sl-probe-out'); return !!out.querySelector('.sl-probe-muted'); });
+  ok(probeNone, 'sandbox reports gibberish as "nothing yet"');
+
+  // 5) Teach-to-any-answer picker: seed a fresh dead-end, pick a canonical, teach.
+  await page.evaluate(() => { chbNluStore('chb-search-misses', [{ t: 'takings so far', n: 1, at: '2026-07-17' }]); CHB_NLU.misses = null; chbNluStore('chb-nlu-learned', []); CHB_NLU.learned = null; renderSearchLearning(); });
+  const picker = await page.evaluate(() => {
+    const canon = slCanonicals()[0]; // any real answerable question-type
+    const sel = document.getElementById('sl-canon-' + chbNluHashStr('takings so far'));
+    const hasOpts = sel && sel.options.length > 3;
+    sel.value = canon; slTeachSelect('takings so far');
+    return { hasOpts, taught: chbNluLearned().some((x) => x.t === 'takings so far' && x.c === canon), missGone: !chbMissList().some((m) => m.t === 'takings so far') };
+  });
+  ok(picker.hasOpts, 'the dead-end carries a full answer-type picker');
+  ok(picker.taught && picker.missGone, 'picking an answer teaches the dead-end + clears it');
+
   await browser.close();
   server.kill();
   console.log(fails ? `\n  ${fails} SEARCH-LEARNING CHECK(S) FAILED ❌` : '\n  SEARCH-LEARNING SUITE PASSED ✅');
