@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 243;
+const ADMIN_BUNDLE_V = 244;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -7330,6 +7330,23 @@ function guestFaqAnswer(text) {
     // distinctive word echoed in both Q & A, or two overlapping words).
     return best && bestQHits >= 1 && bestScore >= 3 ? best : null;
 }
+// A typed guest question the on-device FAQ assistant couldn't answer is recorded
+// (fire-and-forget, best-effort) so the owner can see recurring gaps and turn
+// them into instant answers (Manage → Search learning → "Guests asked these").
+// Only QUESTION-shaped text is captured — a greeting or a one-word message isn't
+// a teachable FAQ. Never blocks or affects the message reaching a person.
+const GUEST_Q_WORD = /^(who|what|whats|when|where|why|how|can|could|do|does|is|are|any|which|will|would|should)\b/i;
+function guestQuestionShaped(text) {
+    const t = String(text || '').trim();
+    if (t.length < 6) return false;
+    return /\?\s*$/.test(t) || GUEST_Q_WORD.test(t);
+}
+function guestFaqMissRecord(text, prop) {
+    try {
+        if (!guestQuestionShaped(text)) return;
+        apiPost('guest-faq.php', { action: 'record', q: String(text).slice(0, 200), prop: prop || '' }).catch(() => {});
+    } catch (e) {}
+}
 function chatThreadEl() {
     return document.getElementById('chat-thread');
 }
@@ -7538,6 +7555,11 @@ async function sendChat() {
             if (intro0) intro0.style.display = 'none';
             chatFaqReply(hit, body);
             return;
+        }
+        // Unanswered here: the message still reaches a person below, but record
+        // the question so the owner can turn recurring gaps into instant answers.
+        if (!document.body.classList.contains('owner-mode')) {
+            guestFaqMissRecord(body, typeof activeFrontProperty !== 'undefined' ? activeFrontProperty : '');
         }
     }
     __faqBypass = false;
@@ -12849,7 +12871,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'srchlearn2';
+    const BUILD = 'srchlearn3';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

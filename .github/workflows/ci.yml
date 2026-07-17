@@ -59,6 +59,10 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-customers.php
 
+      - name: Guest FAQ-miss capture (dedupe + count + cap aggregation)
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-guestfaq.php
+
       - name: Request firewall (htaccess injection filter — no false positives, real coverage)
         working-directory: "Cottage Holidays Blakeney"
         run: php test-waf.php

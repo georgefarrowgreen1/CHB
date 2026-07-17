@@ -352,6 +352,20 @@ lexical matcher (whole-word token overlap + `GUEST_FAQ_SYN` synonyms, Q&A-weight
 person instead" fallback that re-sends bypassing the matcher via `__faqBypass`), and anything
 unmatched reaches a human as before. Deflects the repetitive parking/wifi/dogs enquiries 24/7,
 no server. Gated by smoke-test (matches from content + synonyms; nulls on unrelated/greeting).
+**Guest-side learning loop**: a QUESTION-shaped guest message the on-device FAQ couldn't answer
+(`guestQuestionShaped` gate: ≥6 chars + trailing `?` or a leading question word) is ALSO recorded
+— fire-and-forget from `sendChat`'s fall-through (never owner-mode) via `guestFaqMissRecord` →
+**`guest-faq.php`** `record` (public, rate-limited; pure `guest_faq_merge` dedupes by lowered
+question, bumps count + recency, tags the cottage, caps 40) into the internal content key
+**`guest-faq-misses`** (admin-only in the content GET — added to `is_internal_content_key`). The
+owner sees the recurring ones on the Search learning page's **"Guests asked these"** panel
+(`slGuestQuestions`, most-asked first) and turns one into an instant answer in one tap
+(`slAddFaq` → `glassPrompt` the answer → append `{icon,q,a}` to `faqs-<prop>` via `saveContent` →
+clears the question) or dismisses it (`slDismissGuestQ`). So a repeated unanswered question
+becomes a permanent on-device answer. Gated by `test-guestfaq.php` (merge/dedupe/cap, CI-wired),
+smoke-test (`guestQuestionShaped`), and ui-test-search-learning.js (panel renders, dismiss,
+add-answer appends to the FAQ + clears). `guest-faq.php` deploys; `test-guestfaq.php` is
+deploy-excluded.
 
 **AI-drafted enquiry replies** (admin.js) — the enquiry email composer (`openEnquiryEmail`) has a
 "✨ Draft reply" button (`draftEnquiryReply` fills `#enq-email-body`). `chbDraftEnquiryReply(enq)`
