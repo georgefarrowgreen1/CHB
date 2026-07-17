@@ -220,7 +220,11 @@ falls back to `loading` while a download runs, then `ready`. The ring is progres
 animation — no reduced-motion exemption needed. Gated by ui-test-modelring.js (real browser:
 ring on/track/hand-back/clear, on the search page) + search-test §31 (stream math,
 min-of-loads, idle fallback). Leaving the page on an unanswered query files it into the shared
-miss store (`cmdkBack`/`closeCmdK` → `chbMissRecord`). **Cross-page context memory**
+miss store (`chbMissRecord`) — via `cmdkBack`/`closeCmdK` AND via `nav()`, which calls
+`closeCmdK` when leaving `view-search` by ANY route (a dock tap, a result run) so the teach
+loop, in-flight-search supersede and conv-context clear can't be skipped; `openCmdK` also
+resets `__cmdkConvCtx` so a session never inherits the last one's pronoun referent.
+**Cross-page context memory**
 (`__cmdkLastEntity`, `chbStampRecent`/
 `cmdkRecentEntity`, `CMDK_RECENT_MS` 6min): the record you last engaged with — a hub you opened
 (`openBookingHub`/`openEnquiryHub`) or one a search answer surfaced — is remembered ACROSS
@@ -498,10 +502,12 @@ an exact sum beats a keyword-matched action row ("vat on £480" leads with the f
 Income & tax row rides below). `chbCompute`: safe arithmetic (`chbCalc`, recursive-descent —
 never eval), UK VAT @20%, percentages (of/off/plus/minus/what-%), unit conversions
 (kg/lb/st/mi/km/m/ft/cm/in/l/pt/gal/°C/°F), date arithmetic ("days until christmas", "what day
-is 20 august" — `chbComputeDate` incl. named days + an `easter` table 2026–30) and a world
-clock (`CHB_CITY_TZ`). `chbAlmanac`: curated fact pack — `CHB_COUNTRIES` (~120 countries →
-capital + currency) and `CHB_BANK_HOLS` (England & Wales, 2026–27 — **extend yearly**).
-Retrieval/computation only — never wrong, just silent off-pack. Every pattern requires
+is 20 august" — `chbComputeDate`, UK-day-seeded via `todayDashed`, incl. named days + Easter
+from `chbEaster` (Meeus/Jones/Butcher — computed, never tabled)) and a world clock
+(`CHB_CITY_TZ`). `chbAlmanac`: curated fact pack — `CHB_COUNTRIES` (~120 countries → capital +
+currency) and **computed** England & Wales bank holidays (`chbBankHols(year)` — Easter-derived
++ first/last-Monday + weekend substitute days; NO yearly table to extend, "next bank holiday"
+spans this year + next). Retrieval/computation only — never wrong, just silent off-pack. Every pattern requires
 explicit digits / units / date words, so business queries can never fire it (search-test §29:
 answers, abstains on 13 business shapes, pipeline lead). New insight families in `cmdkIntent`:
 **repeat-guest rate** (from `chbCustomers`, all-time by nature, strong-identity so name-only
