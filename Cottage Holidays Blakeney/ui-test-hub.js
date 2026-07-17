@@ -270,7 +270,10 @@ const ok = (cond, label) => {
     external: document.querySelectorAll('#modal-availability .mav-day.is-external').length,
     clash: (document.querySelector('#modal-availability .mav-clash') || {}).textContent || '',
   }));
-  ok(g1.shown && g1.booked >= 3, `strip visible with booked days shaded (${g1.booked})`);
+  // ≥2 not ≥3: the strip starts on the MONDAY of check-in week (by design), so
+  // when d(31) falls on a Monday the booking's first night d(30) sits outside
+  // the window — only the two overlapped nights are guaranteed visible.
+  ok(g1.shown && g1.booked >= 2, `strip visible with booked days shaded (${g1.booked})`);
   ok(/overlap/.test(g1.clash) && /Walk-in Guest/.test(g1.clash), `clash note names the conflict (${g1.clash.trim().slice(0, 60)})`);
   await page.evaluate((v) => { document.getElementById('modal-checkin').value = v; updateModalPrice(); }, d(60)); // free dates
   await page.evaluate((v) => { document.getElementById('modal-checkout').value = v; updateModalPrice(); }, d(63));
