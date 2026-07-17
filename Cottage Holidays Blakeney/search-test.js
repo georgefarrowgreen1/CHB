@@ -1452,6 +1452,23 @@ if (typeof ctx.chbEaster === 'function' && typeof ctx.chbBankHols === 'function'
     check('"next bank holiday" answers (spans this year + next)', !!(nbh && /next bank holiday is/.test(nbh.label)), nbh && nbh.label);
 } else fail('chbEaster / chbBankHols missing from the bundle');
 
+// ---- 37d. Ranking quality (audit iteration 5): a whole-word label hit beats an
+// incidental substring, and the row TYPE no longer leaks into the match haystack
+// as free-text noise. Measured additive changes — golden/search ordering held. ----
+if (typeof ctx.cmdkScore === 'function') {
+    const mk = (label, type, kw) => ({ type: type || 'guest', label, sub: '', kw: kw || '' });
+    // Word-boundary bonus: "ann" ranks a whole-word "Ann" above "Joanna".
+    check('whole-word label hit outranks an incidental substring ("ann": Ann > Joanna)',
+        ctx.cmdkScore(mk('Ann Reed'), ['ann'], 'ann') > ctx.cmdkScore(mk('Joanna Pike'), ['ann'], 'ann'));
+    check('"art": Art > Bart (substring no longer ties)',
+        ctx.cmdkScore(mk('Art Show'), ['art'], 'art') > ctx.cmdkScore(mk('Bart Lyle'), ['art'], 'art'));
+    // it.type no longer matched as free text: a row whose ONLY "guest" occurrence
+    // is its type name doesn't match the query "guest".
+    check('the row TYPE is not matched as free-text ("guest" ≠ every guest-type row)',
+        ctx.cmdkScore({ type: 'guest', label: 'Zeb Quill', sub: '', kw: '' }, ['guest'], 'guest') === 0);
+    check('a real "guest" in the label still matches', ctx.cmdkScore({ type: 'booking', label: 'Guest House block', sub: '', kw: '' }, ['guest'], 'guest') > 0);
+} else fail('cmdkScore missing from the bundle');
+
 // ---- 30. Darkstar-C (contextual encoder) plumbing. The encoder itself is
 // benched offline (it can't run in CI); what MUST hold here is the machinery:
 // the WordPiece tokenizer, the encoder-built index (tagged CHB_HIST.enc, its

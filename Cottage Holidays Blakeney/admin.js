@@ -892,7 +892,11 @@ function cmdkIdfOf(word) {
 function cmdkScore(it, words, ql) {
     const lab = (it.label || '').toLowerCase();
     const subL = (it.sub || '').toLowerCase();
-    const hay = (lab + ' ' + subL + ' ' + (it.kw || '') + ' ' + it.type).toLowerCase();
+    // it.type is NOT in the match haystack — a query word must land in real text
+    // (label/sub/keywords), not merely coincide with the row's type name, or
+    // "guest"/"payment"/"booking" match every item of that type as free-text
+    // noise. Type IMPORTANCE is captured by typeW below, not by text matching.
+    const hay = (lab + ' ' + subL + ' ' + (it.kw || '')).toLowerCase();
     const tokens = hay.split(/[^a-z0-9.]+/).filter(Boolean);
     let typoUsed = false;
     let synUsed = false;
@@ -915,6 +919,12 @@ function cmdkScore(it, words, ql) {
     else if (lab.startsWith(words[0])) score += 4;
     else if (lab.includes(' ' + words[0])) score += 2;
     if (words.every((w) => lab.includes(w))) score += 2; // all words hit the label itself
+    // Whole-word (boundary) label hits beat incidental substrings — "ann" should
+    // rank "Ann" above "Joanna", "art" shouldn't tie "Bart". Purely additive (a
+    // substring still matches at field 1), so it only ever LIFTS a real word hit.
+    let wordBonus = 0;
+    for (const w of words) { try { if (new RegExp('\\b' + w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).test(lab)) wordBonus++; } catch (e) {} }
+    score += (wordBonus / Math.max(1, words.length)) * 1.5;
     // Token-importance term — normalised by word count so a long query doesn't
     // inflate, scaled to sit alongside the type/exactness weights.
     score += (importance / Math.max(1, words.length)) * 0.7;
@@ -4788,6 +4798,10 @@ function cmdkBuildResults(ql) {
     const seen = new Set(results.filter((r) => r.id != null).map((r) => r.type + ':' + r.id));
     const words = ql.split(/\s+/).filter(Boolean);
     const pool = cmdkAll(ql);
+    // Secondary tie-breaks so equal scores break on RELEVANCE, not the pool's
+    // source-registration order: an exact-label hit first, then the row's type
+    // priority (a booking/guest over a screen). Stable sort keeps it deterministic.
+    const typePri = { booking: 6, enquiry: 6, guest: 5, payment: 5, review: 4, action: 3, field: 3, sheet: 3, screen: 1 };
     let fuzzy = pool
         .map((it) => {
             if (it.id != null && seen.has(it.type + ':' + it.id)) return null;
@@ -4795,7 +4809,9 @@ function cmdkBuildResults(ql) {
             return score > 0 ? { it, score } : null;
         })
         .filter(Boolean)
-        .sort((a, b) => b.score - a.score)
+        .sort((a, b) => (b.score - a.score)
+            || ((((b.it.label || '').toLowerCase() === ql) ? 1 : 0) - (((a.it.label || '').toLowerCase() === ql) ? 1 : 0))
+            || ((typePri[b.it.type] || 2) - (typePri[a.it.type] || 2)))
         .slice(0, 12)
         .map((x) => x.it);
     // Semantic recall (CHB_RANK): the model's vector index surfaces items that
@@ -5304,8 +5320,12 @@ async function cmdkSemanticHistory(ql) {
     if (CHB_HIST.built && !CHB_HIST.enc && CHB_ENC.st) await chbHistoryIndexBuild(true);
     else await chbHistoryIndexBuild();
     if (stamp !== __cmdkSemStamp || gen !== __cmdkQueryGen) return; // superseded
+    // The CONTEXTUAL encoder (MiniLM) is a SENTENCE model and its docs are
+    // embedded from full natural text — so feed it the natural query, not the
+    // keyword-stripped bag chbHistoryClean produces for the LIKE/static path
+    // (the style mismatch is exactly what a sentence transformer handles worst).
     const rows = (CHB_HIST.enc && CHB_ENC.st)
-        ? chbHistoryRank(await CHB_ENC.st.embed(chbHistoryClean(ql)), 5)
+        ? chbHistoryRank(await CHB_ENC.st.embed(String(ql || '').trim()), 5)
         : chbHistorySemantic(chbHistoryClean(ql), 5);
     if (stamp !== __cmdkSemStamp || gen !== __cmdkQueryGen) return; // the query embed awaited — re-check
     if (!rows.length) return;
