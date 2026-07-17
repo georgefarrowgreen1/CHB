@@ -197,7 +197,11 @@ if ($action === 'charge') {
     if ($sourceId === '') {
         json_out(['error' => 'Missing card details — please try again.'], 400);
     }
-    if ($amountDue <= 0) {
+    // Gate on the FULL charge (rental + bundled damages deposit), mirroring the
+    // under-lock $chargeTotal check below. Rental settled off-Square leaves
+    // $amountDue at 0 while the deposit is still uncollected — a rental-only
+    // gate here made that deposit permanently unchargeable online.
+    if ($amountDue + $damagesDue <= 0) {
         json_out(['error' => 'This booking is already paid in full.'], 409);
     }
 

@@ -425,9 +425,10 @@ let __cmdkPriceStamp = 0;
 // validated path; the rest route to the coach.
 async function cmdkPricingMerge() {
     const stamp = ++__cmdkPriceStamp;
+    const gen = __cmdkQueryGen; // abort if ANY newer query (or close) moved on
     let d = null;
     try { d = await apiGet('pricing-suggest.php?action=suggest'); } catch (e) { return; }
-    if (stamp !== __cmdkPriceStamp) return;
+    if (stamp !== __cmdkPriceStamp || gen !== __cmdkQueryGen) return;
     const sugg = (d && d.suggestions) || [];
     if (!sugg.length) return;
     const have = new Set(__cmdkResults.filter((x) => x && x.id != null).map((x) => x.type + ':' + x.id));
@@ -443,6 +444,27 @@ async function cmdkPricingMerge() {
     if (!rows.length) return;
     __cmdkResults = cmdkArrangeWide(__cmdkResults.concat(rows).slice(0, 34), 34);
     cmdkRender();
+}
+// Proper English ordinal — 1st/2nd/3rd/4th…, with the 11th/12th/13th
+// exceptions (the inline 2/3 patches emitted "21th"-style labels).
+function chbOrdinal(n) {
+    n = Math.max(0, Math.round(n));
+    const v = n % 100;
+    const suf = v >= 11 && v <= 13 ? 'th' : ['th', 'st', 'nd', 'rd'][n % 10] || 'th';
+    return n + suf;
+}
+// The FLEET for search answers (availability, quotes, clash alternatives,
+// occupancy denominators): live non-archived cottages from the property list —
+// NOT Object.keys(dbBookings), which keeps an archived cottage alive (its old
+// bookings keep the key) and misses a newly added cottage with no bookings yet
+// (always free, exactly when the owner would ask). Falls back to the booking
+// store's keys only when the property list hasn't loaded.
+function chbFleetKeys() {
+    try {
+        const ks = bookableCottageKeys();
+        if (ks.length) return ks;
+    } catch (e) {}
+    return Object.keys(dbBookings || {});
 }
 function chbIsoShift(iso, n) {
     const x = new Date(iso + 'T00:00:00');
@@ -568,7 +590,7 @@ function cmdkCommand(q, today) {
         if (pk && dates && dates.to) {
             const c = cmdkBookClash(pk, dates.from, dates.to, null);
             if (c) {
-                const free = Object.keys(dbBookings || {}).filter((k) => k !== pk && !cmdkBookClash(k, dates.from, dates.to, null))
+                const free = chbFleetKeys().filter((k) => k !== pk && !cmdkBookClash(k, dates.from, dates.to, null))
                     .map((k) => (propertyMeta[k] || {}).name || k);
                 aSub = `⚠ ${cName} is taken then (${c.name}) — ${free.length ? free.join(' or ') + ' is free' : 'nothing else is free those dates'}`;
             } else aSub = 'Dates are free ✓ · opens the new-booking form, pre-filled';
@@ -723,10 +745,11 @@ function cmdkCommand(q, today) {
     // MESSAGE / EMAIL a named guest — resolve the name to a booking.
     const msgM = q.match(/\b(?:message|email|text|msg|write to|contact)\s+([a-z][a-z .'-]+)/);
     if (msgM) {
-        const words = msgM[1].trim().toLowerCase().split(/\s+/).filter((w) => w.length >= 3);
-        let hit = null;
-        Object.keys(dbBookings || {}).forEach((k) => (dbBookings[k] || []).forEach((b) => { if (!hit && b.name && words.some((w) => b.name.toLowerCase().includes(w))) hit = b; }));
-        if (hit) return cmd(`Email ${hit.name}`, 'Opens the email composer for their booking', () => { closeCmdK(); openBookingEmail(hit.id); });
+        // Upcoming-preferred (findGuestBooking), not first-in-store-order — a
+        // repeat guest's oldest past stay used to win, attaching the composer's
+        // booking details to the wrong stay.
+        const hit = findGuestBooking(msgM[1]);
+        if (hit) return cmd(`Email ${hit.b.name}`, 'Opens the email composer for their booking', () => { closeCmdK(); openBookingEmail(hit.b.id); });
     }
     return null;
 }
@@ -1344,9 +1367,10 @@ async function cmdkCustomerDirectory(ql) {
     const q = (ql || '').trim();
     if (q.length < 3) return;
     const stamp = ++__cmdkCustDirStamp;
+    const gen = __cmdkQueryGen; // abort if ANY newer query (or close) moved on
     let data = null;
     try { data = await apiPost('customers.php', { action: 'directory', q }); } catch (e) { return; }
-    if (stamp !== __cmdkCustDirStamp) return; // a newer query moved on
+    if (stamp !== __cmdkCustDirStamp || gen !== __cmdkQueryGen) return; // a newer query moved on
     const custs = (data && data.customers) || [];
     if (!custs.length) return;
     let localKeys = new Set();
@@ -3066,7 +3090,7 @@ function cmdkIntent(q) {
                 );
                 return [head].concat(conf.filter((c) => c.kind === 'booking').slice(0, 3).map((c) => bk(c.pk, c.b, `${propName(c.pk)} · ${fmtDate(c.b.checkIn)}–${fmtDate(c.b.checkOut)}`)));
             }
-            const freeKs = Object.keys(dbBookings || {}).filter((k) => !conflictsFor(k).length);
+            const freeKs = chbFleetKeys().filter((k) => !conflictsFor(k).length);
             return [ans(
                 freeKs.length ? `${nn(freeKs.length, 'cottage')} free ${label}` : `Nothing free ${label}`,
                 freeKs.length ? freeKs.map(propName).join(', ') + ` · ${fmtDate(from)} → ${fmtDate(nightsEnd)}` : `All cottages have bookings or blocks ${label}`,
@@ -3112,12 +3136,12 @@ function cmdkIntent(q) {
                             bookRun(x.k),
                         );
                         const alts = x.clash
-                            ? Object.keys(dbBookings || {}).filter((k) => k !== x.k).map(quoteFor).filter((y) => y && !y.clash).slice(0, 3)
+                            ? chbFleetKeys().filter((k) => k !== x.k).map(quoteFor).filter((y) => y && !y.clash).slice(0, 3)
                             : [];
                         return [head].concat(alts.map((y) => ans(`${propName(y.k)} is free those dates — ${gbp(y.p.total)}`, 'Same stay · tap to start the booking', bookRun(y.k))));
                     }
                 } else {
-                    const all = Object.keys(dbBookings || {}).map(quoteFor).filter(Boolean);
+                    const all = chbFleetKeys().map(quoteFor).filter(Boolean);
                     const free = all.filter((x) => !x.clash);
                     if (all.length) {
                         const cheapest = (free.length ? free : all).slice().sort((a, z) => a.p.total - z.p.total)[0];
@@ -3359,7 +3383,7 @@ function cmdkIntent(q) {
         const payingNights = soldNights - otaNights;
         const avgRate = payingNights ? revenue / payingNights : 0;
         const otaNote = otaNights ? ` · incl. ${otaNights} OTA night${otaNights === 1 ? '' : 's'} (no price)` : '';
-        const cottages = insProp ? 1 : Object.keys(dbBookings || {}).length || 1;
+        const cottages = insProp ? 1 : chbFleetKeys().length || 1;
         const periodDays = dnights(pStart, pEnd) + 1;
         const endPlus = isoD(new Date(new Date(pEnd + 'T00:00:00').getTime() + 86400000));
         let occNights = 0;
@@ -3445,7 +3469,9 @@ function cmdkIntent(q) {
     }
     // 0f) Damage deposits to return — charged, and the guest has checked out.
     if (/deposit/.test(q) && /return|give back|owed back|hand back|refund|\bback\b/.test(q)) {
-        const rows = flat.filter((x) => (x.b.holdStatus || 'none') === 'charged' && (x.b.checkOut || '') <= today).sort(byOut);
+        // hasCheckedOut (time-aware) — from midnight on checkout day the guest is
+        // still in until the checkout time; the WHEN answer already says so.
+        const rows = flat.filter((x) => (x.b.holdStatus || 'none') === 'charged' && hasCheckedOut(x.b)).sort(byOut);
         const n = rows.length;
         const lead = n ? chbSayFirst(rows[0].b.name) : '';
         const dHead = !n ? nlgPick('dret0' + q, ['No deposits to hand back right now.', 'Nothing to refund at the moment.'])
@@ -3854,7 +3880,7 @@ function cmdkIntent(q) {
         const occ = new Set();
         flat.forEach((x) => { if (x.b.checkIn && x.b.checkOut && x.b.checkIn <= today && x.b.checkOut > today) occ.add(x.pk); });
         blocks.forEach((x) => { if (x.bl.checkIn && x.bl.checkOut && x.bl.checkIn <= today && x.bl.checkOut > today) occ.add(x.pk); });
-        const free = Object.keys(dbBookings || {}).filter((k) => !occ.has(k));
+        const free = chbFleetKeys().filter((k) => !occ.has(k));
         return [ans(
             free.length ? `${free.length} cottage${free.length === 1 ? '' : 's'} free tonight` : 'All cottages are booked tonight',
             free.length ? free.map(propName).join(', ') : 'Fully booked',
@@ -4556,7 +4582,9 @@ function chbConvResolve(q0) {
 // surfaces the Income & tax screen — right for a fresh search, wrong for a
 // follow-up that asked for a number).
 function chbConvFigure(rows) {
-    return (rows || []).find((r) => r && (r.type === 'figure' || r.type === 'answer') && /£[\d,]+|\d/.test(String(r.label || ''))) || null;
+    // A "No bookings in 2025 yet"-style empty answer carries a digit (the YEAR)
+    // but no figure — picking it up composed deltas like "last year: 2025".
+    return (rows || []).find((r) => r && (r.type === 'figure' || r.type === 'answer') && /£[\d,]+|\d/.test(String(r.label || '')) && !/^no\s/i.test(String(r.label || ''))) || null;
 }
 // "vs" composer: answer BOTH frames through the same families, lift each
 // figure and SPEAK the delta; the two source answers ride beneath as evidence.
@@ -4731,11 +4759,20 @@ function cmdkBuildResults(ql) {
     }
     return { results, fuzzy: finalFuzzy, nlu: nluUsed, ask };
 }
+// One shared QUERY GENERATION for every async merger (semantic history,
+// pricing suggestions, customer directory). Each merger's own stamp only
+// bumps when THAT merger re-fires, so a newer query that didn't match its
+// trigger never invalidated an in-flight pass — stale rows then merged into
+// the wrong query's results (or the empty landing after close). Bumped on
+// every keystroke here and in closeCmdK; mergers capture it and abort when
+// it moved on.
+let __cmdkQueryGen = 0;
 // The search engine. The literal query is tried first (never corrected); the
 // typo auto-corrector is a fallback that only runs when the literal query is
 // empty — the "Showing results for…" note re-runs with it off so the owner can
 // force the literal spelling.
 function cmdkSearchCore(q, allowCorrect) {
+    __cmdkQueryGen++;
     const raw = (q || '').trim().toLowerCase();
     __cmdkDeep = null; // a fresh query returns to the quick top-hits palette
     __cmdkWiden = false; // re-evaluate widen from scratch for this query
@@ -5143,15 +5180,16 @@ async function cmdkSemanticHistory(ql) {
     try { chbEncLoad(); } catch (e) {} // kick the contextual encoder (no-op once resolved/failed)
     if (!DARKSTAR.st && !CHB_ENC.st && !CHB_HIST.built) { chbHistoryIndexBuild(); return; } // model not up yet
     const stamp = ++__cmdkSemStamp;
+    const gen = __cmdkQueryGen; // abort if ANY newer query (or close) moved on
     // The encoder landed after a static build → rebuild once so meaning-recall
     // runs at contextual quality from here on.
     if (CHB_HIST.built && !CHB_HIST.enc && CHB_ENC.st) await chbHistoryIndexBuild(true);
     else await chbHistoryIndexBuild();
-    if (stamp !== __cmdkSemStamp) return; // superseded
+    if (stamp !== __cmdkSemStamp || gen !== __cmdkQueryGen) return; // superseded
     const rows = (CHB_HIST.enc && CHB_ENC.st)
         ? chbHistoryRank(await CHB_ENC.st.embed(chbHistoryClean(ql)), 5)
         : chbHistorySemantic(chbHistoryClean(ql), 5);
-    if (stamp !== __cmdkSemStamp) return; // the query embed awaited — re-check
+    if (stamp !== __cmdkSemStamp || gen !== __cmdkQueryGen) return; // the query embed awaited — re-check
     if (!rows.length) return;
     const have = new Set(__cmdkResults.filter((x) => x && x.id != null).map((x) => x.type + ':' + x.id));
     const fresh = rows.filter((r) => !(r.id != null && have.has(r.type + ':' + r.id)));
@@ -5860,9 +5898,12 @@ function cmdkBrief() {
         if (b.checkIn === today) ins++;
         if (b.checkOut === today) outs++;
         try { const ps = paymentSummary(k, b); if (!ps.fullyPaid && ps.balance > 0.5) { owed += ps.balance; owers++; } } catch (e) {}
-        if ((b.holdStatus || 'none') === 'charged' && (b.checkOut || '') <= today) depN++;
+        if ((b.holdStatus || 'none') === 'charged' && hasCheckedOut(b)) depN++;
     }));
-    if (typeof dbBlocks === 'object' && dbBlocks) Object.keys(dbBlocks).forEach((k) => (dbBlocks[k] || []).forEach((bl) => { if (bl.checkIn === today) ins++; if (bl.checkOut === today) outs++; }));
+    // Only genuine OTA guest stays count as arrivals/departures — an owner
+    // maintenance block is not a guest (same isOtaBlock rule as the pulse,
+    // insights and the gap scan; todayOpsLine counts bookings only).
+    if (typeof dbBlocks === 'object' && dbBlocks) Object.keys(dbBlocks).forEach((k) => (dbBlocks[k] || []).forEach((bl) => { if (!isOtaBlock(bl)) return; if (bl.checkIn === today) ins++; if (bl.checkOut === today) outs++; }));
     // Arrivals get NAMES + CONTEXT (repeat guest? money to take at the door?) —
     // the brief should read like a person who knows the day, not a tally.
     const arrToday = [];
@@ -5873,7 +5914,14 @@ function cmdkBrief() {
             const key = chbCustomerKey(b);
             if (key.slice(0, 2) !== 'b:') {
                 const c = chbCustomers().find((x) => x.key === key);
-                if (c && c.stays.length >= 2) bits.push(`${c.stays.length}th stay with you`.replace(/^2th/, '2nd').replace(/^3th/, '3rd'));
+                if (c && c.stays.length >= 2) {
+                    // THIS stay's position by check-in (like the hub intel card) —
+                    // the lifetime COUNT read "3rd stay" on a 2nd visit whenever a
+                    // future booking already existed.
+                    const asc = c.stays.slice().sort((a, z) => String(a.checkIn || '').localeCompare(String(z.checkIn || '')));
+                    const pos = asc.findIndex((s) => s.id === b.id) + 1;
+                    if (pos >= 2) bits.push(`${chbOrdinal(pos)} stay with you`);
+                }
             }
         } catch (e) {}
         try { const ps = paymentSummary(pk, b); bits.push(ps.fullyPaid ? 'paid in full' : `${gbp(ps.balance)} to take`); } catch (e) {}
@@ -6581,6 +6629,7 @@ function closeCmdK() {
     if (__cmdkSheet) { try { cmdkSheetRestore(); } catch (e) {} }
     try { chbMissRecord(); } catch (e) {} // leaving on an unanswered query → file it as a dead end
     __cmdkServerStamp++; // supersede any in-flight federated search
+    __cmdkQueryGen++; // …and every in-flight async merger (semantic/pricing/directory)
     __cmdkDeep = null;
     __cmdkDeepStamp++;
     __cmdkConvCtx = null; // the conversation ends with the search session
@@ -7382,11 +7431,22 @@ function hubPipelineHtml(propKey, b, gt, dh) {
             btn: 'Send arrival info',
         };
     } else if (past && dh.held > 0.001) {
-        next = {
-            text: `The stay is over and ${gbp(dh.held)} refundable damage deposit is still held.`,
-            onclick: chbAttrs('returnDeposit', String(b.id)),
-            btn: 'Return the deposit',
-        };
+        // Time-aware for the checkout-morning window: `past` is date-only (it
+        // also gates the payment/reg/arrival branches above, correctly), but the
+        // deposit nudge must wait until the guest has actually LEFT.
+        if (hasCheckedOut(b)) {
+            next = {
+                text: `The stay is over and ${gbp(dh.held)} refundable damage deposit is still held.`,
+                onclick: chbAttrs('returnDeposit', String(b.id)),
+                btn: 'Return the deposit',
+            };
+        } else {
+            next = {
+                text: `Checkout is today — ${gbp(dh.held)} refundable damage deposit goes back once they've left.`,
+                onclick: chbAttrs('openBookingHub', String(b.id)),
+                btn: 'Review after checkout',
+            };
+        }
     }
     const nextHtml = next
         ? `<div class="bhub-next"><span class="bhub-next-text">${next.text}</span><button class="btn-glass bhub-next-btn" ${next.onclick}>${next.btn}</button></div>`
@@ -7453,7 +7513,7 @@ function chbGuestIntel(propKey, b) {
         // Which visit is THIS one? Position by check-in among their stays.
         const asc = cust.stays.slice().sort((a, z) => String(a.checkIn || '').localeCompare(String(z.checkIn || '')));
         const pos = asc.findIndex((s) => s.id === b.id) + 1;
-        if (pos > 0) { const ord = pos === 1 ? '1st' : pos === 2 ? '2nd' : pos === 3 ? '3rd' : pos + 'th'; out.ordinal = ord + ' stay'; }
+        if (pos > 0) out.ordinal = chbOrdinal(pos) + ' stay';
         out.nights = cust.nights;
         out.revenue = cust.revenue;
         // Favourite cottage: the clear mode of their stays (ties stay quiet).
@@ -11233,7 +11293,10 @@ function needsYouItems() {
     const chase = [];
     Object.keys(dbBookings || {}).forEach((k) =>
         (dbBookings[k] || []).forEach((b) => {
-            if ((b.holdStatus || 'none') === 'charged' && (b.checkOut || '') <= today) {
+            // Time-aware, not date-only: from midnight on checkout day the guest
+            // is still IN the cottage until the checkout time — don't nudge a
+            // refund before they've left (and before any damage inspection).
+            if ((b.holdStatus || 'none') === 'charged' && hasCheckedOut(b)) {
                 items.push({
                     sev: 'warn', ic: 'deposit',
                     label: `Return ${escapeHtml(b.name || 'the guest')}&rsquo;s damages deposit`,
@@ -11242,17 +11305,23 @@ function needsYouItems() {
                     run: () => { closeCmdK(); openBookingHub(b.id); },
                 });
             }
+            // Balances: ≤21 days before arrival AND — the worst case the old
+            // `checkIn >= today` guard silently dropped — a guest already arrived
+            // (or gone up to 14 days) still owing. Bounded so an ancient
+            // never-reconciled booking can't nag forever; floored like family 0g.
             const ps = paymentSummary(k, b);
-            if (!ps.fullyPaid && (b.checkIn || '') >= today) {
+            if (!ps.fullyPaid && ps.balance > 0.5 && b.checkIn) {
                 const days = Math.round((dpParse(b.checkIn).getTime() - t0) / dayMs);
-                if (days <= 21) chase.push({ days, b, k, ps });
+                const outAgo = b.checkOut ? Math.round((t0 - dpParse(b.checkOut).getTime()) / dayMs) : 0;
+                if (days <= 21 && outAgo <= 14) chase.push({ days, b, k, ps });
             }
         }),
     );
     chase
         .sort((a, b) => a.days - b.days)
         .forEach(({ days, b, k, ps }) => {
-            const when = days === 0 ? 'arrives today' : days === 1 ? 'arrives tomorrow' : `arrives in ${days} days`;
+            const gone = (b.checkOut || '') < today;
+            const when = days === 0 ? 'arrives today' : days === 1 ? 'arrives tomorrow' : days > 1 ? `arrives in ${days} days` : gone ? `left ${fmtDate(b.checkOut)} — overdue` : 'is here now — overdue';
             items.push({
                 sev: days <= 7 ? 'danger' : 'warn', ic: 'money',
                 label: `${escapeHtml(b.name || 'A guest')} ${when} — £${ps.balance.toFixed(2)} to collect`,
@@ -12806,7 +12875,14 @@ async function runMigrations() {
     }
     if (out) out.style.display = 'none';
     try {
-        const r = await fetch(API_BASE + 'migrate.php', { credentials: 'same-origin' });
+        // POST + CSRF header (not apiPost — a failed run returns 500 WITH the
+        // per-migration report, which apiPost would throw away).
+        const r = await fetch(API_BASE + 'migrate.php', {
+            method: 'POST',
+            headers: Object.assign({ 'Content-Type': 'application/json' }, csrfHeader()),
+            credentials: 'same-origin',
+            body: '{}',
+        });
         const data = await r.json().catch(() => ({}));
         const list = (data && data.migrations) || [];
         const changed = list.filter((m) => /^(applied|re-applied|baselined)/i.test(m.status || ''));

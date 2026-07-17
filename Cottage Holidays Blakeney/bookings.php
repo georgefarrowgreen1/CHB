@@ -1414,11 +1414,16 @@ if ($action === 'return_deposit') {
     }
     // Charge-upfront deposits ride on their own Square payment (hold_payment_id) —
     // refund straight against it. (find_charge_for_refund only sees the rental
-    // ledger rows, which may be smaller than the deposit.)
+    // ledger rows, which may be smaller than the deposit.) Legacy CAPTURED card
+    // holds route the same way: their ledger row is kind 'damages', invisible to
+    // find_charge_for_refund, so falling through would refund against a rental
+    // payment (mis-attributed at Square) or record a MANUAL return while the
+    // captured money never moves. (The UI serves captured holds via the per-row
+    // 'refund' action instead — this is the server-side guard for direct calls.)
     $charge = null;
     if (square_enabled()) {
         $charge =
-            ($b['hold_status'] ?? '') === 'charged' && !empty($b['hold_payment_id'])
+            in_array($b['hold_status'] ?? '', ['charged', 'captured'], true) && !empty($b['hold_payment_id'])
                 ? $b['hold_payment_id']
                 : find_charge_for_refund($id, $amount);
     }
@@ -1444,8 +1449,9 @@ if ($action === 'return_deposit') {
         );
         $status = 'MANUAL';
     }
-    // New model: once the whole deposit is handed back, mark it settled.
-    if (($b['hold_status'] ?? '') === 'charged' && $held - $amount <= 0.001) {
+    // New model (and a fully-returned legacy captured hold): once the whole
+    // deposit is handed back, mark it settled.
+    if (in_array($b['hold_status'] ?? '', ['charged', 'captured'], true) && $held - $amount <= 0.001) {
         try {
             db()
                 ->prepare('UPDATE bookings SET hold_status = ?, hold_settled_at = NOW() WHERE id = ?')

@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 232;
+const ADMIN_BUNDLE_V = 233;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -3105,8 +3105,8 @@ async function renderGuestBookings() {
                             <div class="guest-ref">Awaiting confirmation</div>
                             <div class="guest-booking-cols">
                             <div class="guest-detail-grid">
-                                <div class="booking-detail-item"><span class="booking-detail-label">Check In</span><span class="booking-detail-value" style="font-size:1rem;">${checkIn} · ${checkInTime}</span></div>
-                                <div class="booking-detail-item"><span class="booking-detail-label">Check Out</span><span class="booking-detail-value" style="font-size:1rem;">${checkOut} · ${checkOutTime}</span></div>
+                                <div class="booking-detail-item"><span class="booking-detail-label">Check In</span><span class="booking-detail-value" style="font-size:1rem;">${fmtDate(checkIn)} · ${checkInTime}</span></div>
+                                <div class="booking-detail-item"><span class="booking-detail-label">Check Out</span><span class="booking-detail-value" style="font-size:1rem;">${fmtDate(checkOut)} · ${checkOutTime}</span></div>
                                 <div class="booking-detail-item"><span class="booking-detail-label">Party</span><span class="booking-detail-value" style="font-size:1rem;">${escapeHtml(party)}</span></div>
                                 <div class="booking-detail-item"><span class="booking-detail-label">Status</span><span class="booking-detail-value" style="font-size:1rem;color:var(--warn-text);">Awaiting confirmation</span></div>
                                 <div class="booking-detail-item" style="grid-column:1/-1;"><span class="booking-detail-label">Address</span><span class="booking-detail-value" style="font-size:0.95rem;">${escapeHtml(addr || 'Address available on confirmation.')}</span></div>
@@ -3153,6 +3153,13 @@ async function renderGuestBookings() {
         const statusTag = upcoming
             ? `<span class="guest-status-badge" style="background:rgba(76,175,80,0.25);color:#fff;border:1px solid var(--booked-border);">Upcoming</span>`
             : `<span class="guest-status-badge" style="background:rgba(255,255,255,0.06);color:var(--text-muted);">Past stay</span>`;
+        // One review/photo block per PROPERTY — decide on THIS card, not via
+        // reviewShown.has() inside the template (has() is true for every later
+        // past card of the same cottage, which duplicated the form + its ids).
+        const showReview = !upcoming && !reviewShown.has(propKey);
+        if (showReview) reviewShown.add(propKey);
+        const showPhoto = !upcoming && !photoShown.has(propKey);
+        if (showPhoto) photoShown.add(propKey);
         const __card = `
                 <div class="glass-panel guest-booking">
                     <div class="guest-booking-head">
@@ -3188,10 +3195,10 @@ async function renderGuestBookings() {
                                 ${upcoming ? faqBlockHtml(propKey) : ''}
                                 ${upcoming ? guestWelcomeButton(propKey) : ''}
                                 ${!upcoming ? `<button class="btn-sm btn-edit" ${chbAttrs('rebookCottage', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 1 3 6.7"/><path d="M3 21v-5h5"/></svg> Book again</button>` : ''}
-                                ${!upcoming && !reviewShown.has(propKey) && reviewShown.add(propKey) ? guestReviewButton(propKey) : ''}
-                                ${!upcoming && !photoShown.has(propKey) && photoShown.add(propKey) ? guestPhotoButton(propKey) : ''}
+                                ${showReview ? guestReviewButton(propKey) : ''}
+                                ${showPhoto ? guestPhotoButton(propKey) : ''}
                             </div>
-                            ${!upcoming && reviewShown.has(propKey) ? guestReviewForm(propKey) : ''}
+                            ${showReview ? guestReviewForm(propKey) : ''}
                         </div>
                     </div>
                 </div>`;
@@ -6210,7 +6217,10 @@ function priceBreakdown(propKey, adults, children, checkIn, checkOut, depositOve
         nightly += nightlyRateFor(d, r, seasons) + extrasPerNight;
     }
     // Last-minute discount on the nightly rental (never the held damages deposit).
-    const lmToday = today || new Date().toISOString().slice(0, 10);
+    // Anchor "today" in UK time like the rest of the site — the UTC date lags UK
+    // by a day between 23:00-00:00 UTC during BST, which made the JS quote and
+    // pricing.php (Europe/London) disagree at the lead-time boundary.
+    const lmToday = today || (typeof todayDashed === 'function' ? todayDashed() : new Date().toISOString().slice(0, 10));
     nightly = Math.round(nightly * lastMinuteFactor(checkIn, lmToday, r.lastminPct, r.lastminDays) * 100) / 100;
     const perNight =
         nights > 0 ? Math.round((nightly / nights) * 100) / 100 : r.coupleRate + extrasPerNight;
@@ -6327,11 +6337,12 @@ function hasCheckedIn(b) {
     const today = typeof todayDashed === 'function' ? todayDashed() : '';
     if (b.checkIn < today) return true; // arrival day already gone
     if (b.checkIn > today) return false; // still to come
-    // Arrival is TODAY — compare the wall clock to the check-in time.
+    // Arrival is TODAY — compare the UK wall clock (the cottage's clock, not
+    // the visitor's device) to the check-in time.
     const parts = String(b.checkInTime || '15:00').split(':');
     const mins = (parseInt(parts[0], 10) || 0) * 60 + (parseInt(parts[1], 10) || 0);
-    const now = new Date();
-    return now.getHours() * 60 + now.getMinutes() >= mins;
+    const nowMins = typeof ukNowMinutes === 'function' ? ukNowMinutes() : new Date().getHours() * 60 + new Date().getMinutes();
+    return nowMins >= mins;
 }
 // Departure counterpart of hasCheckedIn: has the guest actually LEFT? Checkout
 // day + past the checkout time = gone; before it, still in the cottage.
@@ -6342,8 +6353,8 @@ function hasCheckedOut(b) {
     if (b.checkOut > today) return false;
     const parts = String(b.checkOutTime || '10:00').split(':');
     const mins = (parseInt(parts[0], 10) || 0) * 60 + (parseInt(parts[1], 10) || 0);
-    const now = new Date();
-    return now.getHours() * 60 + now.getMinutes() >= mins;
+    const nowMins = typeof ukNowMinutes === 'function' ? ukNowMinutes() : new Date().getHours() * 60 + new Date().getMinutes();
+    return nowMins >= mins;
 }
 // In residence RIGHT NOW = arrived (past check-in time) and not yet departed.
 // Time-aware, so a guest arriving today at 15:00 isn't "here" at breakfast.
@@ -7415,7 +7426,11 @@ function chatAvailStart() {
     chatClearEmpty();
     chatAppendMe('Check availability');
     const uid = 'cav' + ++__chatAvailUid;
-    const opts = Object.keys(propertyMeta)
+    // Guest surface → live cottages only (an archived cottage always reads
+    // "free" — its calendar takes no new bookings — and would invite an
+    // enquiry for a stay the site no longer offers).
+    const cavKeys = liveCottageKeys();
+    const opts = (cavKeys.length ? cavKeys : Object.keys(propertyMeta))
         .map(
             (k) =>
                 `<option value="${k}"${k === activeFrontProperty ? ' selected' : ''}>${escapeHtml(propertyMeta[k].name)}</option>`,
@@ -7565,7 +7580,9 @@ function openWaitlistModal(prefill) {
     prefill = prefill || {};
     const sel = document.getElementById('wl-prop');
     if (sel) {
-        sel.innerHTML = Object.keys(propertyMeta)
+        // Guest surface → live cottages only (same rule as every public picker).
+        const wlKeys = liveCottageKeys();
+        sel.innerHTML = (wlKeys.length ? wlKeys : Object.keys(propertyMeta))
             .map((k) => `<option value="${k}">${escapeHtml(propertyMeta[k].name)}</option>`)
             .join('');
         if (prefill.prop && propertyMeta[prefill.prop]) sel.value = prefill.prop;
@@ -9046,12 +9063,21 @@ function ukNowParts() {
         year: 'numeric',
         month: '2-digit',
         day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
     })
         .formatToParts(new Date())
         .forEach((p) => {
             if (p.type !== 'literal') parts[p.type] = p.value;
         });
-    return { y: +parts.year, m: +parts.month, d: +parts.day };
+    return { y: +parts.year, m: +parts.month, d: +parts.day, hh: +parts.hour, mm: +parts.minute };
+}
+// Minutes past midnight on the UK wall clock — the cottage's clock, not the
+// visitor's device (stay-stage logic must not shift with the guest's timezone).
+function ukNowMinutes() {
+    const t = ukNowParts();
+    return t.hh * 60 + t.mm;
 }
 function todayDashed() {
     const t = ukNowParts();
@@ -9790,7 +9816,12 @@ function hsPortfolioCaps() {
         adults = 0,
         children = 0;
     Object.keys(occupancyLimits).forEach((k) => {
-        if (!propertyMeta[k]) return; // only LIVE cottages widen the caps
+        // Only LIVE cottages widen the caps — propertyMeta keeps archived rows
+        // (for past-booking rendering) and occupancyLimits keeps its hardcoded
+        // entries for the original three, so both flags must be checked or an
+        // archived cottage's bigger party size dead-ends every hero search.
+        const m0 = propertyMeta[k];
+        if (!m0 || m0.archived || m0.unlisted) return;
         const m = occupancyLimits[k] || {};
         total = Math.max(total, parseInt(m.maxTotal, 10) || 0);
         adults = Math.max(adults, parseInt(m.maxAdults, 10) || 0);
@@ -12731,7 +12762,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'gapoffer1';
+    const BUILD = 'sweep1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

@@ -149,6 +149,12 @@ function enquiry_approve($id, $priceOverride = null)
     if (!$e) {
         return ['error' => 'Enquiry not found', 'code' => 404];
     }
+    // Decline is a SOFT delete (declined_at stamped, row kept for Undo) — a stale
+    // one-tap Approve link in an old owner email must not book a stay the owner
+    // explicitly turned down.
+    if (!empty($e['declined_at'])) {
+        return ['error' => 'This enquiry was declined — restore it from the Inbox first.', 'code' => 409];
+    }
 
     $rate = get_rate($e['prop_key']);
     if (!$rate) {
