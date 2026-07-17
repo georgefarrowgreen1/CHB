@@ -8356,11 +8356,49 @@ function settingsBack() {
 // the on-device model status. Built live from the same functions the in-search
 // review uses — it never touches the frozen training corpus, only the owner's
 // learned/suppressed/miss lists.
-function slTeach(t, c) { try { chbNluLearn(t, c); chbMissForget(t); } catch (e) {} renderSearchLearning(); }
+function slTeach(t, c) {
+    try { chbNluLearn(t, c); chbMissForget(t); } catch (e) {}
+    try { toast(`Taught — the assistant now answers “${t}” like “${c}”.`); } catch (e) {}
+    renderSearchLearning();
+}
 function slForget(t) { try { chbMissForget(t); } catch (e) {} renderSearchLearning(); }
 function slUnlearn(t) { try { chbNluUnlearn(t); } catch (e) {} renderSearchLearning(); }
 function slRestore(t) { try { chbNluRestore(t); } catch (e) {} renderSearchLearning(); }
 function slTry(t) { try { openCmdK(); const el = document.getElementById('cmdk-input'); if (el) el.value = t; cmdkSearchCore(t, true); } catch (e) {} }
+// Teach a dead-end to whatever answer the owner picked from the full list (the
+// picker beside a dead-end row) — closes the loop when none of the auto
+// "Means: …" suggestions fit.
+function slTeachSelect(t) {
+    let c = '';
+    try { const sel = document.getElementById('sl-canon-' + chbNluHashStr(t)); c = sel ? sel.value : ''; } catch (e) {}
+    if (c) slTeach(t, c);
+}
+// The answerable question-types the model knows — every corpus canonical. Used
+// by the "teach to any answer" picker and the "Test the assistant" verdict.
+function slCanonicals() {
+    try { return (CHB_NLU.corpus || []).map((c) => c.canonical).filter(Boolean); } catch (e) { return []; }
+}
+// "Test the assistant": read a phrasing through the SAME pipeline search uses and
+// report, in plain words, whether it's understood, by which path, and what it
+// would answer — so the owner can verify a lesson stuck without leaving Manage.
+function slProbe(text) {
+    const out = document.getElementById('sl-probe-out');
+    if (!out) return;
+    const q = String(text || '').trim();
+    if (q.length < 2) { out.innerHTML = ''; return; }
+    let built = null;
+    try { built = cmdkBuildResults(q); } catch (e) {}
+    const rows = (built && built.results) || [];
+    const top = rows.find((r) => r && !cmdkIsNoteRow(r)) || rows[0];
+    let verdict, cls;
+    if (built && built.nlu) { verdict = 'Understood — matched your wording'; cls = 'ok'; }
+    else if (rows.some((r) => r && r._sem)) { verdict = 'Found by meaning'; cls = 'ok'; }
+    else if (top && ['answer', 'figure', 'booking', 'enquiry', 'guest', 'action', 'screen', 'field', 'help', 'review'].includes(top.type)) { verdict = 'Answered'; cls = 'ok'; }
+    else if (built && built.ask && built.ask.length) { verdict = 'Not certain — it would offer the closest questions'; cls = 'warn'; }
+    else { verdict = "Nothing yet — teach it below and it'll answer next time"; cls = 'muted'; }
+    const ans = top ? escapeHtml(String(top.label || '').replace(/<[^>]+>/g, '')).slice(0, 90) : '';
+    out.innerHTML = `<span class="sl-probe-badge sl-probe-${cls}">${verdict}</span>${ans ? `<span class="sl-probe-ans">→ ${ans}</span>` : ''}`;
+}
 function renderSearchLearning() {
     const wrap = document.getElementById('search-learning-body');
     if (!wrap) return;
@@ -8382,6 +8420,13 @@ function renderSearchLearning() {
         ['Made literal', suppressed.length],
         ['Dead-ends waiting', misses.length],
     ].map(([lbl, n]) => `<div class="sl-stat"><span class="sl-stat-n">${n}</span><span class="sl-stat-l">${esc(lbl)}</span></div>`).join('');
+    // A "Test the assistant" sandbox — type any phrasing, see how it reads it.
+    const probeHtml = `
+        <section class="glass-panel sl-card">
+            <label class="sl-probe-label" for="sl-probe-input">Test the assistant — type a phrasing to see how it reads it</label>
+            <input id="sl-probe-input" class="input-glass" autocomplete="off" placeholder="e.g. who still hasn't coughed up" ${chbInput('slProbe')} data-pass="value">
+            <div id="sl-probe-out" class="sl-probe-out"></div>
+        </section>`;
     const statusHtml = `
         <section class="glass-panel sl-card">
             <p class="sl-model">${esc(modelLine)}</p>
@@ -8389,13 +8434,18 @@ function renderSearchLearning() {
             <p class="sl-note">Everything here follows YOU, not this device — teaching on your phone shows up on your laptop too.</p>
         </section>`;
 
+    // The answerable question-types — options for the "teach to any answer" picker.
+    const canonOpts = '<option value="">Pick what it should answer…</option>' + slCanonicals().slice().sort().map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+
     // 2) Teach the assistant — the dead-end searches. Each row: the query, how
-    // often it came up, a "Try again", up to 3 "Means: …" suggestions, and Forget.
+    // often it came up, a "Try again", up to 3 auto "Means: …" suggestions, a
+    // picker to teach it to ANY answer, and Forget.
     const missRows = misses.length
         ? misses.slice(0, 30).map((m) => {
             let sugg = [];
             try { sugg = (chbNluSuggestSmart(m.t) || []).slice(0, 3); } catch (e) {}
             const suggBtns = sugg.map((c) => `<button type="button" class="btn-sm btn-edit sl-teach" ${chbAttrs('slTeach', m.t, c)}>Means: “${esc(c)}”</button>`).join('');
+            const hash = chbNluHashStr(m.t);
             return `<div class="sl-row">
                 <div class="sl-row-main"><span class="sl-q">“${esc(m.t)}”</span><span class="sl-meta">Searched ${m.n > 1 ? m.n + ' times' : 'once'} · found nothing</span></div>
                 <div class="sl-row-acts">
@@ -8403,13 +8453,29 @@ function renderSearchLearning() {
                     ${suggBtns}
                     <button type="button" class="btn-sm btn-edit sl-ghost" ${chbAttrs('slForget', m.t)}>Forget</button>
                 </div>
+                <details class="sl-more">
+                    <summary>Teach it to answer something else…</summary>
+                    <div class="sl-more-body">
+                        <select id="sl-canon-${hash}" class="input-glass sl-canon">${canonOpts}</select>
+                        <button type="button" class="btn-sm btn-edit sl-teach" ${chbAttrs('slTeachSelect', m.t)}>Teach this</button>
+                    </div>
+                </details>
             </div>`;
         }).join('')
         : `<p class="sl-empty">Nothing to teach — recent searches all found something. Dead-ends land here so you can teach the assistant what they meant.</p>`;
 
-    // 3) What you've taught it — the learned phrasings, each un-teachable.
+    // 3) What you've taught it — the learned phrasings, each un-teachable. A lead
+    // insight names the answers you've taught the most alternatives for (where
+    // the model most needed your help).
+    let taughtLead = '';
+    if (learned.length) {
+        const byC = {};
+        learned.forEach((x) => { byC[x.c] = (byC[x.c] || 0) + 1; });
+        const top = Object.keys(byC).sort((a, b) => byC[b] - byC[a]).filter((c) => byC[c] >= 2).slice(0, 3);
+        if (top.length) taughtLead = `<p class="sl-note" style="margin:0 0 12px;">Most-taught answers: ${top.map((c) => `“${esc(c)}” <strong>×${byC[c]}</strong>`).join(' · ')}.</p>`;
+    }
     const learnRows = learned.length
-        ? learned.slice().reverse().map((x) => `<div class="sl-row sl-row-tight">
+        ? taughtLead + learned.slice().reverse().map((x) => `<div class="sl-row sl-row-tight">
                 <div class="sl-row-main"><span class="sl-q">“${esc(x.t)}”</span><span class="sl-meta">means “${esc(x.c)}”</span></div>
                 <div class="sl-row-acts"><button type="button" class="btn-sm btn-edit sl-ghost" ${chbAttrs('slUnlearn', x.t)}>Un-teach</button></div>
             </div>`).join('')
@@ -8425,6 +8491,7 @@ function renderSearchLearning() {
 
     wrap.innerHTML = `
         ${statusHtml}
+        ${probeHtml}
         <div class="settings-section-label">Teach the assistant</div>
         <section class="glass-panel sl-card">${missRows}</section>
         <div class="settings-section-label">What you've taught it</div>
