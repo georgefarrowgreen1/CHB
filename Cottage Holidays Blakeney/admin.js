@@ -330,7 +330,7 @@ function cmdkActions(q) {
         A('syncnow', 'Sync calendars now', 'Pull the latest Airbnb / Vrbo blocks', 'sync now refresh import update pull ical airbnb vrbo booking channel calendar blocks', /(sync|refresh|update|pull|import|re.?sync).{0,12}(now|calendar|ical|airbnb|vrbo|booking|channel|block|feed)/, () => { closeCmdK(); if (typeof toast === 'function') toast('Syncing calendars…'); if (typeof autoSyncIcalBlocks === 'function') autoSyncIcalBlocks(true); }),
         A('fixsafe', 'Fix safe issues', 'Auto-repair harmless state drift', 'fix repair safe issues self repair drift problems clean tidy resolve maintenance', /(fix|repair|resolve|clean up|tidy).{0,12}(safe|issue|problem|drift|error|thing)|self.?repair/, () => { closeCmdK(); if (typeof runSelfRepair === 'function') runSelfRepair(); }),
         A('filterboard', `Filter the ${{ 'view-inbox': 'Inbox', 'view-accounts': 'Payments' }[typeof cmdkActiveWorkspace === 'function' ? cmdkActiveWorkspace() : ''] || 'Today'} board`, 'Dim everything on this screen that doesn’t match', 'filter today inbox payments board dim narrow highlight only show find on screen calendar timeline bookings enquiries emails expenses', /filter.{0,10}(today|inbox|payment|board|screen|calendar|timeline|booking|enquir|email|expense)|(dim|narrow|only ?show).{0,10}(board|today|inbox|payment|match)/, () => { const el = document.getElementById('cmdk-input'); const term = ((el ? el.value : '') || '').toLowerCase().replace(/\b(filter|the|today|inbox|payments?|board|screen|calendar|timeline|bookings?|enquir(y|ies)|emails?|expenses?|for|by|only|show|dim|narrow)\b/g, '').replace(/\s+/g, ' ').trim(); applyTodayFilter(term); }),
-        A('income', 'Income & tax', 'Totals, VAT position & the accountant CSV', 'income tax vat revenue takings earnings accounts total figures accountant year', /(income|tax|vat|revenue|takings|earnings|accounts?|figures).{0,10}(total|report|year|summary|view|show)?|view.{0,8}(income|accounts|tax)/, () => cmdkOpenAccounts('income')),
+        A('income', 'Income & tax', 'Totals, VAT position & the accountant CSV', 'income tax vat revenue takings earnings accounts total figures accountant year', /\b(income|tax|vat|revenues?|takings|earnings|accounts?|figures)\b.{0,10}(total|report|year|summary|view|show)?|\bview\b.{0,8}\b(income|accounts|tax)\b/, () => cmdkOpenAccounts('income')),
         A('recentpay', 'Recent payments', 'The latest money in', 'recent payments latest money in received takings feed transactions', /(recent|latest|last).{0,10}(payment|money|takings|transaction)|money in/, () => cmdkOpenAccounts('recent')),
         A('pricingcoach', 'Pricing coach', 'Rate suggestions & demand signals', 'pricing coach rate suggestion demand advice optimise revenue yield recommend', /(pricing|rate).{0,10}(coach|advice|suggestion|help|recommend|optimi)|coach/, () => cmdkOpenAccounts('pricingcoach')),
         A('theme',
@@ -2262,8 +2262,14 @@ function chbNluSuppressed() {
 function chbNluLearn(phrase, canonical) {
     const t = String(phrase || '').trim().toLowerCase();
     if (!t || t.length < 4 || !canonical) return;
+    // Un-suppress first: chbNluClassify hard-aborts on a suppressed phrase before
+    // any tier runs, so re-teaching a phrase the owner once made literal was a
+    // silent no-op (it stayed in BOTH lists and classified as null forever).
+    const sup = chbNluSuppressed();
+    const si = sup.indexOf(t);
+    if (si >= 0) { sup.splice(si, 1); chbNluStore('chb-nlu-suppressed', sup); }
     const list = chbNluLearned();
-    if (list.some((x) => x.t === t)) return;
+    if (list.some((x) => x.t === t)) { if (si >= 0) { try { darkstarIndex(); } catch (e) {} chbAssistSyncPush(); } return; }
     list.push({ t, c: canonical });
     if (list.length > 200) list.shift();
     chbNluStore('chb-nlu-learned', list);
@@ -2366,6 +2372,10 @@ function chbMissRecord() {
     __cmdkMiss = null;
     if (!m || m.answered || !m.q || m.q.length < 4) return;
     if (/dead.?ends?|search miss|teach/.test(m.q)) return; // the review UI itself can't be a miss
+    // A phrase the owner deliberately made literal (suppressed) isn't a miss —
+    // it classifies as null by design, so it would re-file on every visit and
+    // clog the "searches found nothing" review with un-teachable rows.
+    try { if (chbNluSuppressed().includes(m.q)) return; } catch (e) {}
     const list = chbMissList();
     const hit = list.find((x) => x.t === m.q);
     if (hit) { hit.n = (hit.n || 1) + 1; hit.at = todayDashed(); }
@@ -2458,13 +2468,17 @@ function chbNlgSocial(q) {
         const briefCap = brief ? ' ' + brief.charAt(0).toUpperCase() + brief.slice(1) + '.' : '';
         return { kind: 'greet', text: `${tod}!${briefCap} ${nlgPick(s, ['What would you like to know?', 'What can I get you?', 'Ask me anything about your bookings.'])}` };
     }
-    if (/^(thanks?|thank you|thankyou|cheers|ta|nice one|great|perfect|lovely|brilliant|thx|cool|good|nice|excellent|amazing|magic|spot on|thats great|thats brilliant)$/.test(s)) {
+    // Bare single adjectives (good/nice/cool/great/magic/right/sure/fine) are
+    // dropped: they're common PREFIXES of guest names/places ("good"→Goodwin,
+    // "magic"→a listing), so while typing them the social reply hijacked the Top
+    // Hit above the real fuzzy match. Keep the unambiguous gratitude phrases.
+    if (/^(thanks?|thank you|thankyou|cheers|ta|nice one|perfect|lovely|brilliant|thx|excellent|amazing|spot on|thats great|thats brilliant)$/.test(s)) {
         return { kind: 'thanks', text: nlgPick(s, ['Anytime.', "You're welcome!", 'No trouble at all.', 'Happy to help.', 'My pleasure.']) };
     }
     if (/^(bye|goodbye|see you|see ya|thats all|that is all|nothing else|nothing more|done|thats it|im done|no thanks|no thank you)$/.test(s)) {
         return { kind: 'bye', text: nlgPick(s, ['Right you are.', 'Cheerio!', "I'm here whenever you need me.", 'Any time you need me.']) };
     }
-    if (/^(ok|okay|kk|right|righto|got it|understood|sure|fine|alright|no worries|no problem)$/.test(s)) {
+    if (/^(ok|okay|kk|righto|got it|understood|alright|no worries|no problem)$/.test(s)) {
         return { kind: 'ack', text: nlgPick(s, ['👍', 'Right.', 'Whenever you\'re ready.', 'Just say the word.']) };
     }
     if (/^(sorry|my bad|oops|whoops|ignore that|scrap that|never mind|nevermind|forget it)$/.test(s)) {
@@ -2745,7 +2759,12 @@ function cmdkIntent(q) {
     // bare "which cottage …" (e.g. "which cottage has a hot tub") is a FEATURE
     // question, not an insight, and must not enter this section (which always emits
     // a figure). Audit finding: the bare form false-answered feature questions.
-    const INSIGHTS_RE = /\brevenue\b|\bincome\b|\bearn(ed|ings?|ing)?\b|\btakings?\b|\bturnover\b|\bgross\b|occupanc|occupied|\bnights? (booked|sold)\b|how many nights|average (rate|price|nightly)|\bavg\b|busiest|quietest|best month|worst month|which (cottage|property|house|month).{0,24}(earn|make|most|best|top|perform|money|revenue|income|busiest|profit|lucrative)|top cottage|how.?s business|how am i doing|\bperformance\b|how much (did i |have i |i )?(make|made|earn|take)|average (stay|length)|length of stay|how long do (guests|people)|typical (stay|visit)|repeat (guest|customer|visitor)|returning (guest|customer)|\brebook|guests? (who |that )?(come|came|keep coming) back|\badr\b|fill rate|how.?s trade|state of play|top.?line/;
+    // NB `best`/`top` are dropped from the bare-`which cottage` clause — "which
+    // cottage is best for families/dogs/a couple" is a FEATURE question, not an
+    // earnings one, and was wrongly answered with a revenue figure. A money noun
+    // must follow (earn/make/most/money/revenue/income/perform/profit/busiest),
+    // and "top earner/earning" is caught by the top-earner sub-branch below.
+    const INSIGHTS_RE = /\brevenue\b|\bincome\b|\bearn(ed|ings?|ing)?\b|\btakings?\b|\bturnover\b|\bgross\b|occupanc|occupied|\bnights? (booked|sold)\b|how many nights|average (rate|price|nightly)|\bavg\b|busiest|quietest|best month|worst month|which (cottage|property|house|month).{0,24}(earn|make|most|perform|money|revenue|income|busiest|profit|lucrative)|top cottage|how.?s business|how am i doing|\bperformance\b|how much (did i |have i |i )?(make|made|earn|take)|average (stay|length)|length of stay|how long do (guests|people)|typical (stay|visit)|repeat (guest|customer|visitor)|returning (guest|customer)|\brebook|guests? (who |that )?(come|came|keep coming) back|\badr\b|fill rate|how.?s trade|state of play|top.?line/;
     // Operational list queries (deposits to return, balances to chase, volume) —
     // like insights, they must beat guest-name matching (a query like "overdue
     // balances" must not be read as guest "Olive Over").
@@ -3174,7 +3193,10 @@ function cmdkIntent(q) {
         // The sleep/capacity VERBS are unambiguous alongside a named cottage, so
         // no OPS/INSIGHTS guard — "how many people can X sleep" must beat the
         // guest-volume aggregate that also owns "how many people".
-        if (ents.prop && /\bsleeps?\b|capacit|\bfit\b|\bhold\b|accommodat|take (kids|children)/.test(q)) {
+        // `hold`/`fit` are only capacity words WITH people/how-many context — bare
+        // \bhold\b stole "does Jollyboat hold my deposit"; bare \bfit\b stole "will
+        // the sofa fit in 21a". `sleeps`/`capacity`/`accommodate` are unambiguous.
+        if (ents.prop && (/\bsleeps?\b|capacit|accommodat|take (kids|children)/.test(q) || (/\b(hold|fit)\b/.test(q) && /\b(people|guests?|adults?|kids?|children|how many|sleep)\b/.test(q)))) {
             const m = propertyMeta[ents.prop] || {};
             const oc = (typeof occupancyLimits === 'object' && occupancyLimits[ents.prop]) || {};
             const cap = m.maxTotal || m.maxAdults || oc.maxTotal || oc.maxAdults;
@@ -4987,8 +5009,8 @@ function cmdkSearchCore(q, allowCorrect) {
 // question-words, so a keyword search matches poorly. When the query is
 // history-SHAPED, strip the framing to the content terms so the comprehensive
 // server search actually finds it. A no-op for a plain keyword query. ----
-const CHB_HISTORY_Q = /\b(said|say|says|saying|tell|told|wrote|writ|mention|email|emailed|messaged?|complain|ask(ed)?|request(ed)?|review(s|ed)?|history|log|when did|last time|find (the |my |a )?(email|message|note|review|chat|conversation|record))\b/;
-const CHB_HISTORY_STOP = new Set(['what', 'whats', 'when', 'where', 'which', 'who', 'why', 'how', 'did', 'do', 'does', 'is', 'are', 'was', 'were', 'the', 'a', 'an', 'about', 'for', 'to', 'in', 'on', 'of', 'my', 'our', 'me', 'us', 'i', 'we', 'you', 'they', 'them', 'he', 'she', 'it', 'his', 'her', 'their', 'guest', 'guests', 'say', 'said', 'says', 'tell', 'told', 'wrote', 'write', 'mention', 'mentioned', 'email', 'emailed', 'emails', 'message', 'messaged', 'messages', 'find', 'search', 'show', 'history', 'log', 'last', 'time', 'ever', 'any', 'that', 'this', 'anyone', 'someone', 'ask', 'asked', 'change', 'changed', 'and', 'or', 'with', 'from', 'get', 'got', 'give', 'note', 'chat', 'review', 'record', 'conversation']);
+const CHB_HISTORY_Q = /\b(said|say|says|saying|tell|told|wrote|writ|mention|email|emailed|messaged?|complain|ask(ed)?|request(ed)?|review(s|ed)?|history|log|when did|last time|call(ed)?|phoned?|rang|spoke|feedback|comment(ed)?|flagged|reported|note[sd]?|find (the |my |a )?(email|message|note|review|chat|conversation|record))\b/;
+const CHB_HISTORY_STOP = new Set(['what', 'whats', 'when', 'where', 'which', 'who', 'why', 'how', 'did', 'do', 'does', 'is', 'are', 'was', 'were', 'the', 'a', 'an', 'about', 'for', 'to', 'in', 'on', 'of', 'my', 'our', 'me', 'us', 'i', 'we', 'you', 'they', 'them', 'he', 'she', 'it', 'his', 'her', 'their', 'guest', 'guests', 'say', 'said', 'says', 'tell', 'told', 'wrote', 'write', 'mention', 'mentioned', 'email', 'emailed', 'emails', 'message', 'messaged', 'messages', 'find', 'search', 'show', 'history', 'log', 'last', 'time', 'ever', 'any', 'that', 'this', 'anyone', 'someone', 'ask', 'asked', 'change', 'changed', 'and', 'or', 'with', 'from', 'get', 'got', 'give', 'note', 'notes', 'noted', 'chat', 'review', 'record', 'conversation', 'call', 'called', 'phone', 'phoned', 'rang', 'spoke', 'feedback', 'comment', 'commented', 'flagged', 'reported']);
 function chbHistoryClean(q) {
     const raw = (q || '').trim();
     if (!CHB_HISTORY_Q.test(raw.toLowerCase())) return raw; // plain keyword — send as-is
