@@ -534,6 +534,16 @@ if (typeof get('guestFaqAnswer') === 'function') {
     check('guest FAQ ignores a bare greeting', faq('hi there') === null);
 }
 
+// ---- Guest-side learning: only QUESTION-shaped unanswered chat is captured for
+// the owner (guestQuestionShaped), so greetings/one-word messages aren't logged.
+if (typeof get('guestQuestionShaped') === 'function') {
+    const qs = get('guestQuestionShaped');
+    check('question-shaped capture: a "how" question is captured', qs('how do I get to the cottage') === true);
+    check('question-shaped capture: a trailing "?" is captured', qs('parking nearby?') === true);
+    check('question-shaped capture: a bare greeting is not captured', qs('hi there') === false);
+    check('question-shaped capture: a too-short message is not captured', qs('cot') === false);
+}
+
 console.log('\n== Summary ==');
 if (failures === 0) { console.log('  ALL CHECKS PASSED ✅\n'); process.exit(0); }
 console.log('  ' + failures + ' CHECK(S) FAILED ❌\n'); process.exit(1);

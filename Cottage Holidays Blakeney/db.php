@@ -666,6 +666,10 @@ function is_internal_content_key($key)
         'nlu-learned',
         'nlu-suppressed',
         'search-misses',
+        // Guest questions the on-device FAQ assistant couldn't answer
+        // (guest-faq.php) — owner-only, surfaced on the Search learning page so
+        // the recurring ones can become instant answers.
+        'guest-faq-misses',
     ], true);
 }
 

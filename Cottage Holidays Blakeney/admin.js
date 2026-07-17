@@ -8378,6 +8378,51 @@ function slTeachSelect(t) {
 function slCanonicals() {
     try { return (CHB_NLU.corpus || []).map((c) => c.canonical).filter(Boolean); } catch (e) { return []; }
 }
+// ---- Guest-side learning: the questions GUESTS typed in chat that the on-device
+// FAQ assistant couldn't answer (captured by guest-faq.php into the internal
+// 'guest-faq-misses' content key; admin siteContent carries it). Surfaced so the
+// owner can turn the recurring ones into an instant answer on the cottage FAQ. ----
+function slGuestQuestions() {
+    try {
+        const list = typeof siteContent === 'object' && siteContent && Array.isArray(siteContent['guest-faq-misses']) ? siteContent['guest-faq-misses'] : [];
+        // Most-asked first, then most-recent.
+        return list.filter((r) => r && r.q).slice().sort((a, b) => (b.n || 1) - (a.n || 1) || String(b.at || '').localeCompare(String(a.at || '')));
+    } catch (e) { return []; }
+}
+// Persist the guest-question store back (admin can write content.php). Used by
+// dismiss + add-answer so a handled question leaves the list on every device.
+function slGuestQuestionsSave(list) {
+    try { siteContent['guest-faq-misses'] = list; } catch (e) {}
+    try { apiPost('content.php', { action: 'set', key: 'guest-faq-misses', value: list }).catch(() => {}); } catch (e) {}
+}
+function slDismissGuestQ(q) {
+    const list = slGuestQuestions().filter((r) => r.q !== q);
+    slGuestQuestionsSave(list);
+    renderSearchLearning();
+}
+// One-tap "add an instant answer": ask the owner for the answer, append it to the
+// named cottage's FAQ (faqs-<prop>), and clear the question. Next time a guest
+// types it the on-device matcher answers on the spot — no owner ping.
+async function slAddFaq(q, prop) {
+    const pk = prop || Object.keys(propertyMeta || {})[0] || '';
+    if (!pk) { try { toast('Add a cottage first, then you can add an instant answer.'); } catch (e) {} return; }
+    const name = (propertyMeta[pk] || {}).name || pk;
+    let a = '';
+    try { a = await glassPrompt(`Instant answer for “${q}” (shown to guests asking this about ${name}):`, ''); } catch (e) { return; }
+    a = (a || '').trim();
+    if (!a) return; // cancelled or empty — leave the question in the list
+    try {
+        const faqs = Array.isArray(siteContent['faqs-' + pk]) ? siteContent['faqs-' + pk].slice() : [];
+        faqs.push({ icon: '', q: String(q).slice(0, 200), a: a.slice(0, 2000) });
+        await saveContent('faqs-' + pk, faqs);
+        siteContent['faqs-' + pk] = faqs;
+        slGuestQuestionsSave(slGuestQuestions().filter((r) => r.q !== q)); // handled → drop it
+        try { toast(`Added — guests asking that about ${name} now get an instant answer.`); } catch (e) {}
+    } catch (e) {
+        try { glassAlert("Couldn't save the answer: " + (e && e.message || e)); } catch (e2) {}
+    }
+    renderSearchLearning();
+}
 // "Test the assistant": read a phrasing through the SAME pipeline search uses and
 // report, in plain words, whether it's understood, by which path, and what it
 // would answer — so the owner can verify a lesson stuck without leaving Manage.
@@ -8481,6 +8526,28 @@ function renderSearchLearning() {
             </div>`).join('')
         : `<p class="sl-empty">You haven't taught it any wording yet. When a dead-end search is tagged “Means: …”, it appears here.</p>`;
 
+    // 3b) Guests asked these — the questions guests typed in chat that the
+    // on-device FAQ couldn't answer. Each is one tap from becoming an instant
+    // answer on the cottage's FAQ (or a dismiss). Only shown when there are any.
+    let guestQs = [];
+    try { guestQs = slGuestQuestions(); } catch (e) {}
+    const guestPanel = guestQs.length
+        ? `<div class="settings-section-label">Guests asked these</div>
+           <section class="glass-panel sl-card">
+             <p class="sl-note" style="margin:0 0 12px;">Questions guests typed that the instant-answer assistant couldn't answer. Add an answer and the next guest asking gets it on the spot — no message to you.</p>
+             ${guestQs.slice(0, 20).map((r) => {
+                const nm = (propertyMeta[r.prop] || {}).name || '';
+                return `<div class="sl-row">
+                    <div class="sl-row-main"><span class="sl-q">“${esc(r.q)}”</span><span class="sl-meta">Asked ${(r.n || 1) > 1 ? r.n + ' times' : 'once'}${nm ? ' · ' + esc(nm) : ''} · no instant answer</span></div>
+                    <div class="sl-row-acts">
+                        <button type="button" class="btn-sm btn-edit sl-teach" ${chbAttrs('slAddFaq', r.q, String(r.prop || ''))}>Add instant answer</button>
+                        <button type="button" class="btn-sm btn-edit sl-ghost" ${chbAttrs('slDismissGuestQ', r.q)}>Dismiss</button>
+                    </div>
+                </div>`;
+             }).join('')}
+           </section>`
+        : '';
+
     // 4) Made literal — suppressed phrasings, each restorable.
     const supRows = suppressed.length
         ? suppressed.slice().reverse().map((t) => `<div class="sl-row sl-row-tight">
@@ -8494,6 +8561,7 @@ function renderSearchLearning() {
         ${probeHtml}
         <div class="settings-section-label">Teach the assistant</div>
         <section class="glass-panel sl-card">${missRows}</section>
+        ${guestPanel}
         <div class="settings-section-label">What you've taught it</div>
         <section class="glass-panel sl-card">${learnRows}</section>
         <div class="settings-section-label">Made literal</div>

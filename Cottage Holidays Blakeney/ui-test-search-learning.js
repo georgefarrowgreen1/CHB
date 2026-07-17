@@ -100,6 +100,42 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(picker.hasOpts, 'the dead-end carries a full answer-type picker');
   ok(picker.taught && picker.missGone, 'picking an answer teaches the dead-end + clears it');
 
+  // 6) Guest-side learning: seed guest questions the on-device FAQ couldn't
+  // answer; they render as a panel; dismiss removes one; add-answer appends a FAQ.
+  await page.evaluate(() => {
+    if (typeof propertyMeta !== 'object' || !propertyMeta) window.propertyMeta = {};
+    propertyMeta.jollyboat = propertyMeta.jollyboat || { name: 'Jollyboat' };
+    siteContent['guest-faq-misses'] = [
+      { q: 'is there a hairdryer?', n: 4, at: '2026-07-17', prop: 'jollyboat' },
+      { q: 'can we bring a travel cot?', n: 1, at: '2026-07-16', prop: 'jollyboat' },
+    ];
+    siteContent['faqs-jollyboat'] = [];
+    renderSearchLearning();
+  });
+  const guest = await page.evaluate(() => {
+    const body = document.getElementById('search-learning-body').textContent;
+    return { hasPanel: /Guests asked these/.test(body), hasQ: /is there a hairdryer/.test(body), mostAskedFirst: body.indexOf('hairdryer') < body.indexOf('travel cot') };
+  });
+  ok(guest.hasPanel && guest.hasQ, 'guest questions render in their own panel');
+  ok(guest.mostAskedFirst, 'the most-asked guest question sorts first');
+
+  const dismissed = await page.evaluate(() => {
+    slDismissGuestQ('can we bring a travel cot?');
+    return { gone: !slGuestQuestions().some((r) => r.q === 'can we bring a travel cot?'), bodyClean: !/travel cot/.test(document.getElementById('search-learning-body').textContent) };
+  });
+  ok(dismissed.gone && dismissed.bodyClean, 'Dismiss removes a guest question');
+
+  const added = await page.evaluate(async () => {
+    window.glassPrompt = () => Promise.resolve('Yes — a hairdryer is in every bathroom.'); // auto-answer the modal
+    await slAddFaq('is there a hairdryer?', 'jollyboat');
+    return {
+      faqAdded: (siteContent['faqs-jollyboat'] || []).some((f) => /hairdryer/.test(f.q) && /every bathroom/.test(f.a)),
+      qCleared: !slGuestQuestions().some((r) => r.q === 'is there a hairdryer?'),
+    };
+  });
+  ok(added.faqAdded, 'Add instant answer appends the Q&A to the cottage FAQ');
+  ok(added.qCleared, 'adding an answer clears the guest question');
+
   await browser.close();
   server.kill();
   console.log(fails ? `\n  ${fails} SEARCH-LEARNING CHECK(S) FAILED ❌` : '\n  SEARCH-LEARNING SUITE PASSED ✅');
