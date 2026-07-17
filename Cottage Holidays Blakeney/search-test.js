@@ -1430,6 +1430,28 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.chbCompute === 'funct
     check('real arithmetic still computes ("480 / 3")', !!ctx.chbCompute('480 / 3') && /160/.test(ctx.chbCompute('480 / 3').label));
 } else fail('cmdkParseDates / chbCompute missing from the bundle');
 
+// ---- 37c. Self-maintaining almanac (audit iteration 3): Easter + England &
+// Wales bank holidays are COMPUTED, so "next bank holiday" never runs dry after
+// the old 2026-27 table expired. Verify the algorithm against known-correct
+// dates and that it reproduces the retired hardcoded table exactly. ----
+if (typeof ctx.chbEaster === 'function' && typeof ctx.chbBankHols === 'function') {
+    // Known Easter Sundays (Gregorian) — Meeus/Jones/Butcher must reproduce them.
+    const easter = { 2024: '3-31', 2025: '4-20', 2026: '4-5', 2027: '3-28', 2028: '4-16', 2029: '4-1', 2030: '4-21', 2031: '4-13', 2032: '3-28' };
+    const eOk = Object.keys(easter).every((y) => ctx.chbEaster(+y).join('-') === easter[y]);
+    check('Easter computed correctly for 2024-2032', eOk, Object.keys(easter).map((y) => y + ':' + ctx.chbEaster(+y).join('-')).join(' '));
+    // Reproduces the retired hardcoded 2026 table exactly.
+    const bh26 = ctx.chbBankHols(2026).map(([d, n]) => d + ' ' + n);
+    const want26 = ['2026-01-01 New Year\'s Day', '2026-04-03 Good Friday', '2026-04-06 Easter Monday', '2026-05-04 Early May bank holiday', '2026-05-25 Spring bank holiday', '2026-08-31 Summer bank holiday', '2026-12-25 Christmas Day', '2026-12-28 Boxing Day (substitute day)'];
+    check('2026 bank holidays match the retired hardcoded table', JSON.stringify(bh26) === JSON.stringify(want26), bh26.join(' | '));
+    // 2028+ (silent under the old table) now produces a full set incl. the NYD
+    // substitute (1 Jan 2028 is a Saturday → Monday 3 Jan).
+    const bh28 = ctx.chbBankHols(2028);
+    check('2028 bank holidays are computed (was silent before)', bh28.length === 8 && bh28.some(([d, n]) => d === '2028-01-03' && /substitute/.test(n)), JSON.stringify(bh28));
+    // The "next bank holiday" almanac answer resolves for any year.
+    const nbh = ctx.chbAlmanac('when is the next bank holiday');
+    check('"next bank holiday" answers (spans this year + next)', !!(nbh && /next bank holiday is/.test(nbh.label)), nbh && nbh.label);
+} else fail('chbEaster / chbBankHols missing from the bundle');
+
 // ---- 30. Darkstar-C (contextual encoder) plumbing. The encoder itself is
 // benched offline (it can't run in CI); what MUST hold here is the machinery:
 // the WordPiece tokenizer, the encoder-built index (tagged CHB_HIST.enc, its
