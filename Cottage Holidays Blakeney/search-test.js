@@ -1469,6 +1469,24 @@ if (typeof ctx.cmdkScore === 'function') {
     check('a real "guest" in the label still matches', ctx.cmdkScore({ type: 'booking', label: 'Guest House block', sub: '', kw: '' }, ['guest'], 'guest') > 0);
 } else fail('cmdkScore missing from the bundle');
 
+// ---- 37e. Deferred audit follow-ups: the DD/MM month bound, the email-command
+// name capture, and the unified-customer server row surviving the dedup when a
+// repeat guest has only one stay loaded locally. ----
+if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'function') {
+    const t = ctx.todayDashed();
+    // DD/MM overflow guard.
+    check('"08/13" is not parsed (month 13 no longer overflows to next January)', ctx.cmdkParseDates('book 08/13', t) === null);
+    check('a valid DD/MM still parses', (() => { const p = ctx.cmdkParseDates('book 15/06', t); return p && /-06-15$/.test(p.from); })());
+    // Email command captures only the NAME, not trailing words.
+    const yr = t.slice(0, 4);
+    vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);dbBookings.jollyboat=[{id:"be1",propKey:"jollyboat",name:"Bob Deakin",email:"bob@x.co",checkIn:"${yr}-08-10",checkOut:"${yr}-08-13",adults:2,children:0,payment:"paid",holdStatus:"none",agreedPrice:{total:400}}];__cmdkCustomers=null;`, ctx);
+    const ih = (q) => { const r = ctx.cmdkIntent(q); const t2 = r && r[0]; return t2 ? (t2.label || '') : '(none)'; };
+    check('"email bob about the deposit" resolves Bob, not the trailing words', /Email Bob Deakin/.test(ih('email bob about the deposit')), ih('email bob about the deposit'));
+    check('"email bob" still resolves Bob', /Email Bob Deakin/.test(ih('email bob')));
+    vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);__cmdkCustomers=null;', ctx);
+} else fail('cmdkParseDates / cmdkIntent missing from the bundle');
+
+
 // ---- 30. Darkstar-C (contextual encoder) plumbing. The encoder itself is
 // benched offline (it can't run in CI); what MUST hold here is the machinery:
 // the WordPiece tokenizer, the encoder-built index (tagged CHB_HIST.enc, its
@@ -1504,6 +1522,28 @@ if (typeof ctx.cmdkScore === 'function') {
         h = (ctx.cmdkIntent('undo') || [])[0];
         check('a second "undo" is honest: nothing to undo', !!(h && /Nothing to undo/.test(h.label)), h && h.label);
         vm.runInContext('apiPost = __prOldApi; propertySeasons.jollyboat = []; Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);__cmdkCustomers=null;', ctx);
+    }
+    // ---- 37f (async): deferred audit follow-up — a repeat guest with only ONE
+    // stay loaded locally still gets the server directory's lifetime row (the
+    // old all-local-keys dedup hid it); a repeat already shown locally isn't
+    // duplicated. apiPost is restored below. ----
+    if (typeof ctx.cmdkCustomerDirectory === 'function') {
+        vm.runInContext(`__cdOldApi = apiPost;
+            Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);dbBookings.jollyboat=[{id:"cd1",propKey:"jollyboat",name:"Rex Vale",email:"rex@x.co",checkIn:"2026-07-10",checkOut:"2026-07-13",agreedPrice:{total:400}}];__cmdkCustomers=null;__cmdkResults=[];
+            apiPost=async()=>({customers:[{key:"e:rex@x.co",name:"Rex Vale",stays:3,revenue:1200,last:"2026-07-10",latest_id:"cd1"}]});`, ctx);
+        await ctx.cmdkCustomerDirectory('rex vale');
+        await null; await null; await null;
+        const cust = (vm.runInContext('__cmdkResults', ctx) || []).find((r) => r && r._customer);
+        check('a 1-stay-loaded repeat still surfaces the server lifetime row', !!(cust && /3 stays/.test(cust.sub) && /from history/.test(cust.sub)), cust && cust.sub);
+        vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);dbBookings.jollyboat=[
+            {id:"cd2",propKey:"jollyboat",name:"Mae Orr",email:"mae@x.co",checkIn:"2026-01-01",checkOut:"2026-01-03",agreedPrice:{total:300}},
+            {id:"cd3",propKey:"jollyboat",name:"Mae Orr",email:"mae@x.co",checkIn:"2026-05-01",checkOut:"2026-05-03",agreedPrice:{total:300}}];__cmdkCustomers=null;__cmdkResults=[];
+            apiPost=async()=>({customers:[{key:"e:mae@x.co",name:"Mae Orr",stays:2,revenue:600,last:"2026-05-01",latest_id:"cd3"}]});`, ctx);
+        await ctx.cmdkCustomerDirectory('mae orr');
+        await null; await null; await null;
+        const rows2 = vm.runInContext('__cmdkResults', ctx) || [];
+        check('a repeat already loaded locally is NOT re-added from history', !rows2.some((r) => r && r._customer && /from history/.test(r.sub || '')));
+        vm.runInContext('apiPost = __cdOldApi; Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);__cmdkCustomers=null;__cmdkResults=[];', ctx);
     }
     if (typeof ctx.chbEncTokens === 'function') {
         // Tokenizer against a stub vocab: greedy longest-match, ## continuation,
