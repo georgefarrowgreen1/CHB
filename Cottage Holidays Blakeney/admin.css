@@ -2453,3 +2453,101 @@ body.darkstar-ready .admin-dock-btn[data-act="openCmdK"]:not(.ml-learning) svg {
   color: var(--darkstar);
   transition: color 0.5s var(--fluid-bezier); /* fades to purple as the model comes online */
 }
+
+/* ===== Manage → Search learning (renderSearchLearning) ===== */
+.sl-card {
+  max-width: 720px;
+  padding: 18px 20px;
+  border-radius: var(--r-panel);
+  margin-bottom: 6px;
+}
+.sl-model {
+  font-size: 0.95rem;
+  line-height: 1.5;
+  margin: 0 0 14px;
+  color: var(--text);
+}
+.sl-stats {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.sl-stat {
+  flex: 1 1 90px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 12px 14px;
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border: 1px solid var(--glass-border);
+}
+.sl-stat-n {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--accent-text, var(--accent));
+  line-height: 1;
+}
+.sl-stat-l {
+  font-size: 0.74rem;
+  letter-spacing: 0.3px;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.sl-note {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin: 14px 0 0;
+}
+.sl-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--glass-border);
+  flex-wrap: wrap;
+}
+.sl-row:last-child {
+  border-bottom: 0;
+}
+.sl-row-tight {
+  align-items: center;
+}
+.sl-row-main {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 180px;
+  flex: 1 1 220px;
+}
+.sl-q {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text);
+}
+.sl-meta {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+.sl-row-acts {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+.sl-teach {
+  border-color: var(--cmdk-sel-edge, color-mix(in srgb, var(--accent) 55%, transparent));
+}
+.sl-ghost {
+  opacity: 0.72;
+}
+.sl-ghost:hover {
+  opacity: 1;
+}
+.sl-empty {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin: 4px 0;
+  line-height: 1.5;
+}

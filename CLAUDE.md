@@ -100,8 +100,16 @@ their names (`asec-*`, `#money-overview`);
 **Manage** (`openArea()` → `view-settings`, ONE index — cottages, then marketing, then
 account/system, grouped by `.settings-section-label`s; the old per-area filtering is
 gone but `applyAreaFilter()` keeps its name as the open/return repaint; a row opens
-via `settingsOpen(id)` → `#sec-<id>`; the health/cron pills + Activity log live
-here). `ADMIN_VIEWS` is the
+via `settingsOpen(id)` → `#sec-<id>`; the health/cron pills + Activity log + the
+**Search learning** page live here). **Search learning** (`renderSearchLearning`,
+System group, `#sec-search-learning`) is the assistant's per-owner teach loop as a
+proper screen: the dead-end searches to teach (`chbMissList` → `slTeach`/`slForget`,
+suggestions from `chbNluSuggestSmart`), the phrasings you've taught (`chbNluLearned`
+→ `slUnlearn`/`chbNluUnlearn`), the ones made literal (`chbNluSuppressed` →
+`slRestore`/`chbNluRestore`), and a plain-language model-status line. It only
+exercises the existing learned/suppressed/miss lists — NEVER the frozen corpus. The
+in-search "dead ends" review (cmdkIntent 0n) still works; this is the same data with
+a home in Manage. `ADMIN_VIEWS` is the
 canonical admin-screen list (used by `nav()`/`forceAdminLogout()`) — keep it complete.
 The two dock pips both show `enquiries.length`, synced from `refreshInboxBadge()`.
 **Assist NLU cascade** — three tiers in `chbNluClassify` (admin.js), each consulted only
