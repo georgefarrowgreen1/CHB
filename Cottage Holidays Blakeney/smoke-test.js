@@ -435,10 +435,14 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
         check('SCA details: billing contact carries the guest name + GB', vd.billingContact && vd.billingContact.givenName === 'Richard' && vd.billingContact.familyName === 'Berry' && vd.billingContact.countryCode === 'GB');
     }
     // 3DS bank iframes come from unpredictable issuer domains — the CSP must
-    // allow any https: frame or the verification times out (seen live).
+    // allow any https: frame or the verification times out (seen live). blob: is
+    // also allowed so iOS Safari's frame-src fallback for the encoder's blob
+    // Worker doesn't block it (worker-src blob: covers spec-compliant browsers).
     try {
         const ht = fs.readFileSync(path.join(path.dirname(HTML_PATH), 'htaccess.txt'), 'utf8');
-        check('CSP frame-src allows https: (3DS issuer iframes)', /frame-src https:;/.test(ht));
+        const frameSrc = (ht.match(/frame-src ([^;]*);/) || [''])[0];
+        check('CSP frame-src allows https: (3DS issuer iframes)', /\bhttps:/.test(frameSrc));
+        check('CSP frame-src allows blob: (iOS Safari worker fallback)', /\bblob:/.test(frameSrc));
     } catch (e) { fail('htaccess.txt unreadable for CSP check'); }
 
     // Invoice deposit status: the guest invoice must state the refundable deposit
