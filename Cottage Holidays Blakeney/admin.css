@@ -2638,6 +2638,11 @@ body.darkstar-ready .admin-dock-btn[data-act="openCmdK"]:not(.ml-learning) svg {
   from { opacity: 0; }
   to { opacity: 1; }
 }
+@media (prefers-reduced-motion: reduce) {
+  .acct-preview-overlay {
+    animation: none;
+  }
+}
 .acct-preview-shell {
   display: flex;
   flex-direction: column;
