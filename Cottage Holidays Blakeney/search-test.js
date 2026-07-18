@@ -1666,6 +1666,14 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         const gJan = ctx.chbGapPlan({ pk: 'jollyboat', from: `${sYr + 1}-01-10`, to: `${sYr + 1}-01-13`, nights: 3, startDays: 60 });
         check('gap offers use the model — a busy-month gap is cut LESS than a quiet one', gAug && gJan && gAug.pct < gJan.pct, gAug && gJan && `aug ${gAug.pct}% vs jan ${gJan.pct}%`);
 
+        // RANGE + PER-MONTH confidence: a suggestion carries a plausible band that
+        // widens with uncertainty (rateLow ≤ rate ≤ rateHigh), and a well-observed
+        // month reads MORE confident than a barely-seen one — so its band is tighter.
+        check('a suggestion carries a plausible range around the rate', aug && aug.rateLow <= aug.rate && aug.rate <= aug.rateHigh && aug.rateLow >= 20, aug && `£${aug.rateLow}–£${aug.rateHigh} (rate £${aug.rate})`);
+        check('a well-observed month is MORE confident than a barely-seen one', aug && jan && aug.conf > jan.conf, aug && jan && `aug ${aug.conf.toFixed(2)} vs jan ${jan.conf.toFixed(2)}`);
+        check('lower confidence ⇒ a WIDER band', aug && jan && (jan.rateHigh - jan.rateLow) >= (aug.rateHigh - aug.rateLow), aug && jan && `aug ±${aug.rateHigh - aug.rateLow} vs jan ±${jan.rateHigh - jan.rateLow}`);
+        check('the confidence is put in plain words', aug && /confident|rough guide|learning/.test(aug.confWord), aug && aug.confWord);
+
         // Thin history ⇒ conservative: a brand-new owner never gets a wild swing.
         vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);dbBookings.jollyboat=[{id:1,name:"A",checkIn:"' + sYr + '-08-01",checkOut:"' + sYr + '-08-04",adults:2,children:0,agreedPrice:{total:450,perNight:150,nights:3}},{id:2,name:"B",checkIn:"' + sYr + '-08-10",checkOut:"' + sYr + '-08-13",adults:2,children:0,agreedPrice:{total:450,perNight:150,nights:3}}];', ctx);
         const thin = ctx.chbSmartPrice('jollyboat', `${sYr + 1}-01-15`, 3, {});
@@ -1674,7 +1682,7 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         // The search answer: "what should I charge for <dates> at <cottage>".
         vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);dbBookings.jollyboat=__seedSP;', ctx);
         const rowsA = ctx.cmdkCommand('what should i charge for 15-18 august at jollyboat', sToday);
-        check('search answers "what should I charge for <dates> at <cottage>" with a rate', Array.isArray(rowsA) && rowsA[0] && /Suggested for Jollyboat: £\d+\/night/.test(rowsA[0].label), rowsA && rowsA[0] && rowsA[0].label);
+        check('search answers "what should I charge for <dates> at <cottage>" with a rate/range', Array.isArray(rowsA) && rowsA[0] && /Suggested for Jollyboat: £\d+(–£\d+)?\/night/.test(rowsA[0].label), rowsA && rowsA[0] && rowsA[0].label);
         check('the smart-price answer offers one-tap apply (a run handler)', Array.isArray(rowsA) && rowsA[0] && typeof rowsA[0].run === 'function');
         vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);', ctx);
     } else fail('chbSmartPrice / chbPriceModel missing from the bundle');

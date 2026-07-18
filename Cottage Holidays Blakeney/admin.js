@@ -731,13 +731,13 @@ function cmdkCommand(q, today) {
         const sp = chbSmartPrice(pk, dates.from, nights, {});
         if (sp) {
             const chg = sp.pct !== 0 ? ` (${sp.pct > 0 ? '+' : ''}${sp.pct}%)` : '';
-            // wrap:true so the plain-English `why` (the point of the model) + the
-            // apply hint aren't clipped to one ellipsised line (matches the sibling
-            // gap-offer rows).
+            // A RANGE when we're not certain (£150–£175), the single figure when we
+            // are. wrap:true so the `why` + confidence + apply hint don't clip.
+            const band = sp.rateLow !== sp.rateHigh ? `£${sp.rateLow}–£${sp.rateHigh}/night` : `£${sp.rate}/night`;
             return [{
                 type: 'answer', id: 'cmdk-command', wrap: true,
-                label: `Suggested for ${cName}: £${sp.rate}/night · ${fmtDate(dates.from)}–${fmtDate(endIncl)}`,
-                sub: `${sp.why} · currently £${sp.base} → £${sp.rate}${chg} · one tap saves it as a dated override, editable in Rates`,
+                label: `Suggested for ${cName}: ${band} · ${fmtDate(dates.from)}–${fmtDate(endIncl)}`,
+                sub: `${sp.why} · ${sp.confWord} · aiming for £${sp.rate}${chg} vs your £${sp.base} · one tap saves £${sp.rate} as a dated override`,
                 run: () => { closeCmdK(); cmdkApplyPriceOverride(pk, dates.from, endIncl, sp.rate, 'Smart price').catch((e) => glassAlert("Couldn't save the price: " + e.message)); },
             }];
         }
@@ -11917,6 +11917,7 @@ function chbPriceModel() {
         nStays,
         meanOcc,
         monthOcc,
+        availByMonth,
         adrRatio: adrDen ? adrNum / adrDen : 1,
         conf: Math.max(0, Math.min(1, nStays / 24)), // ~full confidence at 24 priced stays
         leadFill,
@@ -11925,6 +11926,16 @@ function chbPriceModel() {
         seasonal(isoStr) {
             const m = new Date(isoStr + 'T00:00:00').getMonth();
             return occMax - occMin < 1e-6 ? 0.5 : (monthOcc[m] - occMin) / (occMax - occMin);
+        },
+        // PER-MONTH confidence 0..1: how much THIS calendar month's estimate is
+        // driven by real observation vs the prior (the same K weight as the
+        // Bayesian shrink). A month we've barely lived through (a lone January) is
+        // far less certain than a well-observed one (two packed Augusts), so its
+        // recommendation moves less and its range is wider.
+        monthConfidence(isoStr) {
+            const m = new Date(isoStr + 'T00:00:00').getMonth();
+            const a = availByMonth[m];
+            return a <= 0 ? 0 : a / (a + K);
         },
     };
     return __chbPriceModel;
@@ -11945,17 +11956,29 @@ function chbSmartPrice(pk, fromIso, nights, opts) {
     // imminent open window leans on booking pace (little time left ⇒ softer).
     const timeLeft = startDays >= 45 ? 1 : model.leadFill(startDays);
     const score = Math.max(0, Math.min(1, 0.65 * seasonal + 0.35 * timeLeft));
+    // Effective confidence = the LESSER of the global data volume and how well
+    // THIS month is observed — a recommendation for a specific date can't be more
+    // certain than either. Drives both how far the price moves and how wide the
+    // suggested range is.
+    const conf = Math.min(model.conf, model.monthConfidence(fromIso));
     // Yield curve: 0.55 = hold (0%); above ⇒ uplift to +18%; below ⇒ discount to −28%.
     let pct = score >= 0.55 ? ((score - 0.55) / 0.45) * 18 : -((0.55 - score) / 0.55) * 28;
     pct += (model.adrRatio - 1) * 25;                   // market paid above/below base? lean that way, gently
-    pct *= 0.35 + 0.65 * model.conf;                    // thin data ⇒ small move
+    pct *= 0.35 + 0.65 * conf;                           // thin/uncertain ⇒ small move
     if (opts.gap) pct = Math.max(-30, Math.min(-5, pct));
     else pct = Math.max(-30, Math.min(20, pct));
     const rate = Math.max(20, Math.round(base * (1 + pct / 100)));
     const realPct = Math.round(((rate - base) / base) * 100);
+    // Suggest a RANGE, not false precision: the band widens as confidence falls
+    // (±0 when sure, up to ±12% when we've barely seen this month) so an uncertain
+    // month reads "£150–£175" and invites a correction rather than a fake exact £163.
+    const spreadPct = (1 - conf) * 12;
+    const rateLow = Math.max(20, Math.round(rate * (1 - spreadPct / 100)));
+    const rateHigh = Math.round(rate * (1 + spreadPct / 100));
+    const confWord = conf >= 0.66 ? 'fairly confident' : conf >= 0.33 ? 'a rough guide' : 'still learning this month';
     const monthName = new Date(fromIso + 'T00:00:00').toLocaleDateString('en-GB', { month: 'long' });
     return {
-        rate, pct: realPct, base, score, conf: model.conf, monthName, startDays,
+        rate, rateLow, rateHigh, pct: realPct, base, score, conf, confWord, monthName, startDays,
         why: chbSmartPriceWhy(realPct, { seasonal, startDays, monthName, gap: !!opts.gap, nStays: model.nStays }),
     };
 }

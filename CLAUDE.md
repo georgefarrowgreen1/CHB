@@ -542,7 +542,12 @@ close to arrival is "harder to fill" than a far one), and **achieved rate** (`ag
 nightly rate on a transparent yield curve (busy ⇒ hold/raise to +18%, quiet/last-minute ⇒
 discount to −28%), nudged by the achieved-rate ratio and ALWAYS regularised by confidence
 (`nStays/24`) so thin data barely moves off the current rate — returns `{rate, pct, base,
-score, conf, why, …}` with a plain-English `why`. Wired in three places: (a) **gap offers** —
+score, conf, why, rateLow, rateHigh, confWord, …}` with a plain-English `why`. **Confidence
+is PER-MONTH** (`monthConfidence` = the calendar month's data-vs-prior weight, `min`'d with the
+global `nStays/24`) — a barely-seen month moves less AND gets a WIDER suggested **range**
+(`rateLow`–`rateHigh`, band ∝ `1−conf`), so search shows "£150–£175 · still learning this month"
+rather than a false-precise single figure; a well-observed month tightens to one number.
+Wired in three places: (a) **gap offers** —
 `chbGapPlan` still ANCHORS on the proven default (20% ≤7 days out, else 15%) but the model
 REFINES the depth (`dev = (0.5−score)·24·conf`, clamped 5–35%): a busy gap is cut less, a
 quiet one more, thin data stays on 15/20 (so search-test §32's flat-rule checks still hold);
