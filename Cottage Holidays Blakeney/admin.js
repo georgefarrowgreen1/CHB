@@ -1051,6 +1051,7 @@ function cmdkActIcon(name) {
         x: '<path d="M18 6L6 18M6 6l12 12"/>',
         cal: '<rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/>',
         guest: '<circle cx="12" cy="8" r="4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/>',
+        eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
     };
     return `<svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${p[name] || p.hub}</svg>`;
 }
@@ -1362,7 +1363,10 @@ function cmdkSourceCustomers() {
         label: c.name || '(no name)',
         sub: `${c.stays.length} stays · ${gbp(c.revenue)} lifetime${c.last ? ' · last ' + fmtDate(c.last) : ''}`,
         kw: `customer repeat guest ${c.email} ${c.phone} ${c.props.map(propName).join(' ')}`,
-        actions: [{ key: 'email', label: 'Email', icon: cmdkActIcon('mail'), run: () => { closeCmdK(); if (c.latestId != null && typeof openBookingEmail === 'function') openBookingEmail(c.latestId); } }],
+        actions: [
+            { key: 'email', label: 'Email', icon: cmdkActIcon('mail'), run: () => { closeCmdK(); if (c.latestId != null && typeof openBookingEmail === 'function') openBookingEmail(c.latestId); } },
+            { key: 'preview', label: 'View account', icon: cmdkActIcon('eye'), run: () => openAccountPreview(c.latestId, c.name) },
+        ],
         run: () => openCustomer(c.key),
     }));
 }
@@ -1392,6 +1396,51 @@ function openCustomerRecord(c) {
     chbCustomerAudit(c.name, c.key);
     closeCmdK();
     if (c.latest_id != null && typeof openBookingHub === 'function') openBookingHub(c.latest_id);
+}
+// ---- Read-only customer-account preview (sandboxed iframe) ------------------
+// "See what a customer sees on their account", system-wide and SAFE: the target
+// customer's account renders inside a sandboxed same-origin <iframe> pointed at
+// index.html?acctpreview=<bookingId>. The iframe carries the admin cookie, so the
+// data fetch (my-bookings.php) is admin-authorised, but the app runs there as the
+// customer with EVERY write blocked (app.js ACCT_PREVIEW gate). Isolated JS/DOM
+// context = a true container; it can't touch the back office or act on anything.
+function openAccountPreview(bookingId, name) {
+    const id = String(bookingId == null ? '' : bookingId).replace(/\D/g, '');
+    if (!id) { try { toast('No booking on file for this customer to preview.'); } catch (e) {} return; }
+    try { closeCmdK(); } catch (e) {}
+    closeAccountPreview();
+    const ov = document.createElement('div');
+    ov.id = 'acct-preview-overlay';
+    ov.className = 'acct-preview-overlay';
+    ov.innerHTML = `
+        <div class="acct-preview-shell glass-panel">
+            <div class="acct-preview-bar">
+                <div class="acct-preview-titles">
+                    <span class="acct-preview-title">Customer account${name ? ' · ' + escapeHtml(name) : ''}</span>
+                    <span class="acct-preview-note">Read-only — exactly what they see. Nothing here changes anything.</span>
+                </div>
+                <button type="button" class="btn-sm btn-edit" data-act="closeAccountPreview" aria-label="Close preview">Close</button>
+            </div>
+            <div class="acct-preview-frame-wrap">
+                <iframe class="acct-preview-frame" title="Customer account preview" sandbox="allow-scripts allow-same-origin" src="index.html?acctpreview=${encodeURIComponent(id)}"></iframe>
+            </div>
+        </div>`;
+    document.body.appendChild(ov);
+    document.body.classList.add('acct-preview-open');
+    // The in-frame "Close" button (app.js exitPreview) posts up to us.
+    if (!window.__acctPreviewWired) {
+        window.__acctPreviewWired = true;
+        window.addEventListener('message', (e) => { if (e && e.data === 'chb-acct-preview-close') closeAccountPreview(); });
+    }
+    // Escape closes it too.
+    document.addEventListener('keydown', acctPreviewKey);
+}
+function acctPreviewKey(e) { if (e.key === 'Escape') closeAccountPreview(); }
+function closeAccountPreview() {
+    const ov = document.getElementById('acct-preview-overlay');
+    if (ov) ov.remove();
+    document.body.classList.remove('acct-preview-open');
+    document.removeEventListener('keydown', acctPreviewKey);
 }
 // ---- Full-history customer directory (server) ------------------------------
 // The in-memory sources only see loaded bookings; this asks customers.php to group
@@ -1425,7 +1474,10 @@ async function cmdkCustomerDirectory(ql) {
             label: c.name || '(no name)',
             sub: `${c.stays} stays · ${gbp(c.revenue)} lifetime${c.last ? ' · last ' + fmtDate(c.last) : ''} · from history`,
             kw: 'customer repeat guest history',
-            actions: [{ key: 'email', label: 'Email', icon: cmdkActIcon('mail'), run: () => { closeCmdK(); if (c.latest_id != null && typeof openBookingEmail === 'function') openBookingEmail(c.latest_id); } }],
+            actions: [
+                { key: 'email', label: 'Email', icon: cmdkActIcon('mail'), run: () => { closeCmdK(); if (c.latest_id != null && typeof openBookingEmail === 'function') openBookingEmail(c.latest_id); } },
+                { key: 'preview', label: 'View account', icon: cmdkActIcon('eye'), run: () => openAccountPreview(c.latest_id, c.name) },
+            ],
             run: () => openCustomerRecord(c),
         }));
     if (!rows.length) return;
@@ -7940,6 +7992,7 @@ function renderBookingHub() {
                     <button class="btn-sm btn-edit bhub-menu-btn" data-act="bhubMenu" aria-haspopup="menu" aria-expanded="false">${arrived ? 'Edit' : 'Edit/Move/Cancel'}</button>
                     <div class="bhub-menu glass-panel" role="menu" style="display:none;">
                         <button role="menuitem" data-act="bhubEdit" data-arg="${b.id}">${arrived ? 'Edit details' : 'Edit / Move'}</button>
+                        <button role="menuitem" ${chbAttrs('openAccountPreview', b.id, b.name || '')}>View their account (read-only)</button>
                         ${
                             // After the guest arrives the stay is committed — no
                             // Cancel & refund (only the damages deposit can go back,

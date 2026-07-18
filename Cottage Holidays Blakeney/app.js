@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 244;
+const ADMIN_BUNDLE_V = 245;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 73;
+const ADMIN_CSS_V = 74;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -766,6 +766,13 @@ function csrfHeader() {
     }
 }
 async function apiPost(endpoint, payload) {
+    // Read-only account preview: an admin viewing a customer's account can look
+    // but never act. Every write goes through here, so this ONE guard makes the
+    // whole preview safe (no payments, chats, reviews, profile edits, etc.).
+    if (ACCT_PREVIEW) {
+        try { if (typeof toast === 'function') toast("Read-only preview — nothing here is saved."); } catch (e) {}
+        return Promise.reject(new Error('read-only account preview'));
+    }
     let res;
     try {
         res = await fetchWithTimeout(API_BASE + endpoint, {
@@ -1148,10 +1155,22 @@ const CUSTOMER_FACING_VIEWS = ['view-main', 'view-cottages', 'view-21a'];
 // The only views an admin ever sees — everything else is the customer site,
 // which a signed-in admin has no use for (nav() bounces it to the back office).
 const ADMIN_VIEWS = ['view-backoffice', 'view-booking-hub', 'view-inbox', 'view-enquiry-hub', 'view-settings', 'view-accounts', 'view-activity-log', 'view-search'];
+// Account preview (admin-only, read-only): opening the app with
+// ?acctpreview=<bookingId> — inside a sandboxed iframe the owner launches from the
+// back office — renders THAT customer's account exactly as the customer sees it.
+// The data comes from an admin-authorised fetch (my-bookings.php resolves the
+// booking's email); it rides the same read-only shell as PREVIEW_MODE below (owner
+// chrome + the admin bounce suppressed, every write blocked at apiPost).
+const ACCT_PREVIEW_ID = (function () {
+    try { const m = /[?&]acctpreview=(\d+)/.exec(location.search || ''); return m ? m[1] : ''; } catch (e) { return ''; }
+})();
+const ACCT_PREVIEW = !!ACCT_PREVIEW_ID;
+let __acctPreviewData = null; // the fetched account payload (bookings/enquiries/guest)
 // Preview-as-guest: opening the site with ?preview=1 renders the customer
 // experience even though an admin is signed in (owner-mode + the admin bounce
 // are suppressed). Read-only — used by the staging Test centre to view the site.
-const PREVIEW_MODE = /[?&]preview=1\b/.test(location.search || '');
+// ACCT_PREVIEW joins it so all the owner-chrome/nav suppression applies too.
+const PREVIEW_MODE = /[?&]preview=1\b/.test(location.search || '') || ACCT_PREVIEW;
 // The staging site runs the same code from a staging.<domain> host with its
 // OWN database + sandbox Square/email. Show a persistent banner there so it's
 // never mistaken for the live site. (Search engines are blocked via .htaccess.)
@@ -2014,7 +2033,7 @@ function setAuthUI() {
     // Fire-and-forget: the facade stubs cover any call that beats the load.
     // Also remember this is an owner device ('chb-owner') so FUTURE visits can
     // warm the bundle during idle time before they even tap sign-in.
-    if (isAuthenticated) {
+    if (isAuthenticated && !PREVIEW_MODE) {
         try {
             localStorage.setItem('chb-owner', '1');
         } catch (e) {}
@@ -2061,16 +2080,55 @@ function injectPreviewBanner() {
     if (document.getElementById('preview-banner')) return;
     const bar = document.createElement('div');
     bar.id = 'preview-banner';
-    bar.innerHTML = `<span>Preview mode — viewing the site as a guest. Nothing you do here is saved.</span>
-                <button type="button" data-act="exitPreview">Exit preview</button>`;
+    // The account preview names the customer once their payload lands (see
+    // maybeAccountPreview); a generic label until then. The staging test-centre
+    // preview keeps the original wording.
+    const msg = ACCT_PREVIEW
+        ? `<span id="preview-banner-label">Read-only account preview — this is what the customer sees. Nothing here is saved.</span>`
+        : `<span>Preview mode — viewing the site as a guest. Nothing you do here is saved.</span>`;
+    bar.innerHTML = `${msg}<button type="button" data-act="exitPreview">${ACCT_PREVIEW ? 'Close' : 'Exit preview'}</button>`;
     document.body.appendChild(bar);
     document.body.classList.add('has-preview-banner');
 }
 function exitPreview() {
+    // Inside the back office's preview iframe: ask the opener to close the overlay.
+    try {
+        if (ACCT_PREVIEW && window.parent && window.parent !== window) {
+            window.parent.postMessage('chb-acct-preview-close', '*');
+            return;
+        }
+    } catch (e) {}
     try {
         window.close();
     } catch (e) {}
     location.href = 'index.html';
+}
+// Admin-only, read-only: render the target customer's account (from the
+// admin-authorised payload) exactly as they'd see it. Called from the boot tail
+// when ?acctpreview=<bookingId> is present. Sets a synthetic currentGuest (no real
+// guest session exists — this is the admin's cookie), then paints My Stays.
+async function maybeAccountPreview() {
+    if (!ACCT_PREVIEW) return;
+    let payload = null;
+    try {
+        payload = await apiGet('my-bookings.php?acctpreview=' + encodeURIComponent(ACCT_PREVIEW_ID));
+    } catch (e) {
+        const list = document.getElementById('guest-bookings-list');
+        if (list) list.innerHTML = `<div class="glass-panel guest-empty"><p>Couldn't load this customer's account.</p></div>`;
+        try { nav('view-guest-bookings'); } catch (e2) {}
+        return;
+    }
+    __acctPreviewData = payload;
+    const g = payload && payload.guest;
+    currentGuest = g && g.email ? { name: g.name || 'Guest', email: g.email } : { name: 'Guest', email: '' };
+    try { setGuestUI(); } catch (e) {}
+    // Name the customer in the banner now that we have it.
+    try {
+        const lbl = document.getElementById('preview-banner-label');
+        if (lbl && g && g.name) lbl.textContent = `Read-only preview of ${g.name}'s account — this is what they see. Nothing here is saved.`;
+    } catch (e) {}
+    try { nav('view-guest-bookings'); } catch (e) {}
+    try { await renderGuestBookings(); } catch (e) {}
 }
 
 // Keep the dock's pending-enquiries count badge live.
@@ -3023,7 +3081,11 @@ async function renderGuestBookings() {
         enqRows = [],
         completedStays = 0;
     try {
-        const res = await apiGet('my-bookings.php');
+        // Account preview reuses the payload already fetched at boot (admin-authed,
+        // action-tokens stripped); the signed-in guest fetches their own.
+        const res = ACCT_PREVIEW && __acctPreviewData
+            ? __acctPreviewData
+            : await apiGet('my-bookings.php' + (ACCT_PREVIEW ? '?acctpreview=' + encodeURIComponent(ACCT_PREVIEW_ID) : ''));
         rows = res.bookings || [];
         enqRows = res.enquiries || [];
         completedStays = res.completed_stays || 0;
@@ -3067,10 +3129,12 @@ async function renderGuestBookings() {
     // Fetch this guest's own submitted reviews (per property) so past
     // stays show the right state: review form / pending / approved.
     myGuestReviews = {};
-    try {
-        const rv = await apiPost('reviews.php', { action: 'mine' });
-        myGuestReviews = rv.mine || {};
-    } catch (e) {}
+    if (!ACCT_PREVIEW) { // reviews.php 'mine' is guest-session-gated; skip in an admin preview
+        try {
+            const rv = await apiPost('reviews.php', { action: 'mine' });
+            myGuestReviews = rv.mine || {};
+        } catch (e) {}
+    }
     const reviewShown = new Set(); // one review block per property
     const photoShown = new Set(); // one "share a photo" button per property
     if (mine.length === 0 && pendingMine.length === 0) {
@@ -4096,6 +4160,9 @@ function closePhotoUpload() {
     if (m) m.classList.remove('open');
 }
 async function submitGuestPhoto() {
+    // Photo upload posts via a raw fetch (multipart), bypassing apiPost's preview
+    // guard — block it here so a read-only account preview can't upload.
+    if (ACCT_PREVIEW) { try { if (typeof toast === 'function') toast("Read-only preview — nothing here is saved."); } catch (e) {} return; }
     const fileEl = document.getElementById('pu-file');
     const capEl = document.getElementById('pu-caption');
     const msg = document.getElementById('pu-msg');
@@ -5109,6 +5176,11 @@ window.addEventListener('DOMContentLoaded', async () => {
         } catch (e) {
             console.error(e);
         } // ?mlogin=… → passwordless sign in
+        try {
+            maybeAccountPreview();
+        } catch (e) {
+            console.error(e);
+        } // ?acctpreview=<id> → admin-only read-only customer account preview
         try {
             maybeOpenPayLink();
         } catch (e) {
@@ -12920,7 +12992,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'yourstay1';
+    const BUILD = 'acctpreview1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
