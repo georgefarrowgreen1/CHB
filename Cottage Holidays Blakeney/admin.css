@@ -2617,3 +2617,75 @@ body.darkstar-ready .admin-dock-btn[data-act="openCmdK"]:not(.ml-learning) svg {
   max-width: 320px;
   flex: 1 1 220px;
 }
+
+/* ---- Read-only customer-account preview (sandboxed iframe overlay) ----
+   The owner's "see what this customer sees" container. A dimmed backdrop with a
+   phone-shaped frame so the (mobile-first) guest account reads naturally. */
+.acct-preview-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 6000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(10, 20, 28, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: acctPreviewIn 0.2s var(--fluid-bezier, ease);
+}
+@keyframes acctPreviewIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.acct-preview-shell {
+  display: flex;
+  flex-direction: column;
+  width: 440px;
+  max-width: 100%;
+  height: min(860px, 92vh);
+  padding: 0;
+  overflow: hidden;
+  border-radius: var(--r-panel, 22px);
+}
+.acct-preview-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--glass-border);
+  flex: 0 0 auto;
+}
+.acct-preview-titles {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1 1 auto;
+}
+.acct-preview-title {
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: var(--text-light);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.acct-preview-note {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+.acct-preview-frame-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  background: var(--bg, #0d1b24);
+}
+.acct-preview-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  display: block;
+}
+body.acct-preview-open {
+  overflow: hidden;
+}

@@ -771,7 +771,9 @@ if (typeof ctx.cmdkIntent === 'function') {
         check('false-merge: same name with NO email/phone is never merged', cs.filter((c) => c.name === 'Nomail Ned').length === 2);
         const rows = vm.runInContext('cmdkSourceCustomers()', ctx);
         check('directory: only REPEAT customers (≥2 stays) get a unified row', rows.length === 1 && /2 stays/.test(rows[0].sub) && rows[0]._customer === true);
-        check('destructive-action guard: the customer row exposes no delete/refund', (rows[0].actions || []).every((a) => a.key === 'email'));
+        // The row exposes only NON-destructive actions (Email + a read-only account
+        // View) — never a delete/refund one-tap from a fuzzy match.
+        check('destructive-action guard: the customer row exposes no delete/refund', (rows[0].actions || []).every((a) => a.key === 'email' || a.key === 'preview'));
         const ranked = vm.runInContext("(function(){const p=CHB_SEARCH.collect('sarah');return p.map(it=>({c:!!it._customer,s:cmdkScore(it,['sarah'],'sarah')})).filter(x=>x.s>0).sort((a,b)=>b.s-a.s)[0];})()", ctx);
         check('search returns the CUSTOMER first, above their scattered stays', !!ranked && ranked.c === true);
         // Full cmdkBuildResults pipeline (audit fix): a repeat guest LEADS with the

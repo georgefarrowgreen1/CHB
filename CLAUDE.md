@@ -316,6 +316,28 @@ rows tagged "· from history", deduped against the in-memory customer keys, and
 safeguards (audit + no destructive action). `customers-lib.php` deploys; `test-customers.php`
 is deploy-excluded.
 
+**Read-only customer-account preview** (app.js + admin.js) — the owner can see EXACTLY what a
+customer sees on their account, system-wide and SAFELY. `openAccountPreview(bookingId, name)`
+(admin.js) mounts a dimmed overlay (`.acct-preview-overlay`, `body.acct-preview-open`) holding a
+**sandboxed same-origin `<iframe sandbox="allow-scripts allow-same-origin" src="index.html?acctpreview=<bookingId>">`** —
+a true container: its own JS/DOM context, can't touch the back office. Reachable from the booking
+hub menu ("View their account (read-only)"), the customer-directory rows (`cmdkSourceCustomers`/
+`cmdkCustomerDirectory` "View account" action, eye icon), closable via the in-frame banner
+(posts `chb-acct-preview-close` to the opener), the overlay Close, or Escape. The frame boots the
+normal app but detects `?acctpreview=` (`ACCT_PREVIEW`/`ACCT_PREVIEW_ID`, app.js) which (a) folds
+into `PREVIEW_MODE` so owner chrome + the admin bounce are suppressed, (b) BLOCKS every write at
+the single `apiPost` choke point (plus the raw `photos.php` upload) → look-but-never-act, and (c)
+`maybeAccountPreview()` fetches the target's account (admin-authed) and paints My Stays as them.
+Server: `my-bookings.php` refactored into `my_bookings_payload($email, $preview)` (guarded routing
+like content.php); `?acctpreview=<bookingId>` runs the ADMIN path (`require_admin`, resolves the
+booking's email) and STRIPS the login-free action tokens (`pay_token`/`reg_url` → null) so a
+preview is inert. The frame carries the admin cookie (same-origin) for the data fetch but renders
+as the customer (`currentGuest` synthesised from the payload, no real guest session). Gated by
+`ui-test-acctpreview.js` (frame: lands on My Stays, banner names the customer, no owner chrome,
+booking renders, writes blocked, tokens stripped; container: sandboxed iframe mounts at the
+preview URL + tears down) + search-test §21c (the directory row exposes only non-destructive
+Email + read-only View).
+
 **Owner's picks** — the habit/trust/revenue layer. (1) **Teach-loop nudges**: the synced
 dead-end searches (`search-misses` in the content table) surface BOTH in the weekly digest
 email (owner-digest.php "Teach your assistant" section, last-7-days, top 5 by count) and as
