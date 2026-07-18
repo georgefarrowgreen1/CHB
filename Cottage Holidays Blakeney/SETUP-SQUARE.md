@@ -13,13 +13,26 @@ details; nothing changes for guests until you switch it on.
    - **Access token** — SECRET.
 4. From **Locations** note your **Location ID** (e.g. `L1AB2C3…`).
 
-## 2. Add a webhook (recommended backstop)
-1. In the app → **Webhooks → Subscriptions → Add endpoint**.
-2. URL: `https://YOURDOMAIN/square-webhook.php`
-3. Subscribe to events: `payment.created`, `payment.updated`, `refund.created`
-   and `refund.updated` (the refund events keep refund/deposit-return statuses
-   up to date in your dashboard).
-4. Copy the **Signature key** — SECRET.
+## 2. Add a webhook — automatic, one tap (no dashboard steps)
+Once card payments are on (steps 1 + 3), open **Manage → Payments** in the back
+office and tap **Connect** under "Automatic payment updates". The app creates its
+own Square webhook subscription (`payment.*`, `refund.*`, `dispute.*`) and captures
+the signing key straight from the Square API — stored **encrypted** on the server,
+never in a file. From then on Square pushes settlement + refund events live, so
+card fees, the net payout and refund statuses update on their own.
+
+You do **not** need to add a webhook in the Square dashboard or set
+`SQUARE_WEBHOOK_*` in config.php — those constants still win if present (for
+installs that pinned them), but are otherwise unnecessary.
+
+If you'd rather do it by hand: app → **Webhooks → Subscriptions → Add endpoint**,
+URL `https://YOURDOMAIN/square-webhook.php`, subscribe to `payment.created`,
+`payment.updated`, `refund.created`, `refund.updated`, then paste the **Signature
+key** into `SQUARE_WEBHOOK_SIGNATURE_KEY`.
+
+> Even with no webhook at all, fees + refund statuses still fill in whenever you
+> open **Payments** (the app reconciles them from Square on view) — the webhook
+> just makes it instant.
 
 ## 3. Fill in `config.php` on the server (never committed/deployed)
 ```php

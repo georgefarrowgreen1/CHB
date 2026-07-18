@@ -14,14 +14,16 @@ require_once __DIR__ . '/db.php';
 
 $raw = file_get_contents('php://input');
 $sig = $_SERVER['HTTP_X_SQUARE_HMACSHA256_SIGNATURE'] ?? '';
-$key = defined('SQUARE_WEBHOOK_SIGNATURE_KEY') ? SQUARE_WEBHOOK_SIGNATURE_KEY : '';
-$url = defined('SQUARE_WEBHOOK_URL') ? SQUARE_WEBHOOK_URL : '';
+// Key + URL resolve from config.php constants OR the self-provisioned values the
+// app stored when it wired the webhook up (square-setup.php) — so this works with
+// no manual config once "Connect automatic payment updates" has been run.
+$key = square_webhook_signing_key();
+$url = square_webhook_url();
 
 if ($key === '' || $url === '') {
     json_out(['error' => 'Webhook not configured'], 503);
 }
-$expected = base64_encode(hash_hmac('sha256', $url . $raw, $key, true));
-if ($sig === '' || !hash_equals($expected, $sig)) {
+if (!square_webhook_signature_ok($url, $raw, $key, $sig)) {
     json_out(['error' => 'Invalid signature'], 401);
 }
 

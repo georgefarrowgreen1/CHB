@@ -11551,6 +11551,47 @@ function renderSquareSettings() {
         const v = parseFloat(siteContent['square-deposit-pct']);
         inp.value = v > 0 && v <= 100 ? v : 25;
     }
+    try { loadSquareWebhookStatus(); } catch (e) {}
+}
+// Automatic payment updates (Square webhook): show whether it's connected. When
+// connected Square pushes settlement/refund events live, so fees + refund
+// statuses update on their own; when not, the on-view reconcile still fills them
+// in whenever the owner opens Payments (so this is an upgrade, never a blocker).
+async function loadSquareWebhookStatus() {
+    const line = document.getElementById('sq-webhook-status');
+    const btn = document.getElementById('sq-webhook-connect');
+    if (!line) return;
+    let d = null;
+    try { d = await apiPost('square-setup.php', { action: 'status' }); } catch (e) {}
+    if (!d) {
+        line.innerHTML = '<span style="color:var(--text-muted);">●</span> Couldn\'t check just now.';
+        if (btn) btn.style.display = 'none';
+        return;
+    }
+    if (!d.square) {
+        line.innerHTML = '<span style="color:var(--text-muted);">●</span> Available once card payments are switched on.';
+        if (btn) btn.style.display = 'none';
+        return;
+    }
+    if (d.connected) {
+        line.innerHTML = '<span style="color:var(--ok);">●</span> Connected — fees, payouts and refund statuses update automatically.';
+        if (btn) { btn.style.display = 'inline-flex'; btn.textContent = 'Reconnect'; }
+    } else {
+        const why = d.error ? ' <span style="color:var(--text-muted);">(' + escapeHtml(d.error) + ')</span>' : '';
+        line.innerHTML = '<span style="color:var(--warn);">●</span> Not connected — payment info refreshes only when you open Payments.' + why;
+        if (btn) { btn.style.display = 'inline-flex'; btn.textContent = 'Connect'; }
+    }
+}
+async function connectSquareWebhook(btn) {
+    if (btn) { btn.disabled = true; btn.textContent = 'Connecting…'; }
+    try {
+        const r = await apiPost('square-setup.php', { action: 'setup' });
+        toast(r && r.connected ? 'Connected — payment updates are now automatic.' : 'Set up at Square.');
+    } catch (e) {
+        toast((e && e.message) || "Couldn't connect just now.", 'error');
+    }
+    if (btn) btn.disabled = false;
+    try { renderSquareSettings(); } catch (e) {}
 }
 async function saveDepositPct() {
     const v = Math.round(parseFloat((document.getElementById('sq-deposit-pct') || {}).value) || 0);
