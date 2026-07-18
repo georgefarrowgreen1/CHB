@@ -1611,6 +1611,17 @@
                         <p style="font-size:0.8rem;color:var(--text-muted);margin-top:10px;">These reminders are sent automatically overnight — you don't need to do anything. You can also send a payment request by hand anytime from a booking's details. (Taking card payments needs a one-time Square setup by whoever looks after your website — see the setup guide.)</p>
                     </details>
                 </div>
+                <div class="accounts-stat" id="sq-webhook-card" style="max-width:640px;margin-top:14px;">
+                    <div class="label">Automatic payment updates</div>
+                    <p id="sq-webhook-status" style="font-size:0.9rem;margin:8px 0 4px;">Checking…</p>
+                    <div style="margin-top:12px;">
+                        <button class="btn-sm btn-edit" id="sq-webhook-connect" data-act="connectSquareWebhook" data-pass="self" style="display:none;">Connect</button>
+                    </div>
+                    <details class="help-disclosure">
+                        <summary>What this does</summary>
+                        <p style="font-size:0.82rem;color:var(--text-light);margin-top:8px;line-height:1.6;">When connected, Square tells your site the moment a payment settles or a refund completes — so card <strong>fees</strong>, the <strong>net payout</strong> and <strong>refund statuses</strong> fill in automatically, instead of only when you open Payments. One tap sets it up; there's nothing to paste.</p>
+                    </details>
+                </div>
             </div>
 
             <!-- Guest accounts -->
@@ -2492,7 +2503,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=469"></script>
+    <script defer src="app.js?v=470"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

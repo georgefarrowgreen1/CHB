@@ -207,6 +207,22 @@ add(
         : 'Off (optional). Deposit/balance requests and recovery emails are skipped.',
     $square ? '' : 'Fill in Square keys in config.php and set SQUARE_PAYMENTS_ENABLED to true (SETUP-SQUARE.md).',
 );
+// Automatic payment updates (webhook). Read-only: just reports whether the signing
+// key is present. When absent, the on-view reconcile still fills fees/refund
+// statuses in — so this is an "instant vs on-open" nicety, not an error.
+if ($square) {
+    $whOn = function_exists('square_webhook_signing_key') && square_webhook_signing_key() !== '';
+    add(
+        $checks,
+        'Payments',
+        'Automatic payment updates',
+        $whOn ? 'ok' : 'optional',
+        $whOn
+            ? 'Connected — Square pushes settlement + refund updates live.'
+            : 'Not connected. Fees + refund statuses still fill in when you open Payments.',
+        $whOn ? '' : 'Open Manage → Payments and tap “Connect” to turn on instant updates.',
+    );
+}
 
 $push = function_exists('wp_vapid_configured') && wp_vapid_configured();
 add(

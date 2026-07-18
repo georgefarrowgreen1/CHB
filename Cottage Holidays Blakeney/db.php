@@ -670,6 +670,10 @@ function is_internal_content_key($key)
         // (guest-faq.php) — owner-only, surfaced on the Search learning page so
         // the recurring ones can become instant answers.
         'guest-faq-misses',
+        // The Square webhook subscription id the app self-provisioned (square-
+        // setup.php) — operational, not secret, but owner-only (the signing key
+        // itself is the encrypted 'apikey-square-webhook', never exposed).
+        'square-webhook-sub-id',
     ], true);
 }
 
@@ -729,6 +733,19 @@ function content_set_scalar($key, $val)
                    ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = CURRENT_TIMESTAMP',
         )
         ->execute([$key, json_encode($val)]);
+}
+// Store a SECRET content value ENCRYPTED at rest (for a private 'apikey-'/'arrival-'
+// key), matching content_value()'s decrypt-then-decode read. Mirrors content.php's
+// 'set' path so a self-captured key (e.g. the Square webhook signing key) round-trips.
+function content_set_secret($key, $val)
+{
+    $enc = encrypt_value(json_encode($val, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+    db()
+        ->prepare(
+            'INSERT INTO content (item_key, item_value) VALUES (?, ?)
+                   ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = CURRENT_TIMESTAMP',
+        )
+        ->execute([$key, $enc]);
 }
 
 // Dead-man's-switch for the daily cron. The dashboard banner only shows when the
@@ -900,6 +917,41 @@ function square_api_base()
     return defined('SQUARE_ENVIRONMENT') && SQUARE_ENVIRONMENT === 'production'
         ? 'https://connect.squareup.com'
         : 'https://connect.squareupsandbox.com';
+}
+// The public URL Square POSTs webhook events to. A config.php constant wins (for
+// installs that pinned it), else it's derived from the live host so the app can
+// self-provision the subscription with no manual config. NB square-webhook.php
+// recomputes the HMAC over THIS exact string, so it must match what we register.
+function square_webhook_url()
+{
+    if (defined('SQUARE_WEBHOOK_URL') && SQUARE_WEBHOOK_URL !== '') {
+        return SQUARE_WEBHOOK_URL;
+    }
+    return site_base_url() . 'square-webhook.php';
+}
+// The webhook signing key. A config.php constant wins; otherwise the key the app
+// captured when it created the subscription, stored encrypted at rest under the
+// private 'apikey-' content key. Empty string when the webhook isn't wired up yet.
+function square_webhook_signing_key()
+{
+    if (defined('SQUARE_WEBHOOK_SIGNATURE_KEY') && SQUARE_WEBHOOK_SIGNATURE_KEY !== '') {
+        return SQUARE_WEBHOOK_SIGNATURE_KEY;
+    }
+    try {
+        return content_value('apikey-square-webhook');
+    } catch (\Throwable $e) {
+        return '';
+    }
+}
+// Verify a Square webhook signature: base64( HMAC-SHA256( notificationUrl + rawBody,
+// signingKey ) ), constant-time. Pure — unit-tested by test-webhook.php.
+function square_webhook_signature_ok($url, $rawBody, $signingKey, $sig)
+{
+    if ($signingKey === '' || $url === '' || $sig === '') {
+        return false;
+    }
+    $expected = base64_encode(hash_hmac('sha256', $url . $rawBody, $signingKey, true));
+    return hash_equals($expected, (string) $sig);
 }
 // Unguessable, login-free token that authorises PAYING a specific booking.
 // One-way from APP_SECRET (same idea as ical_token) — leaks nothing if seen.
