@@ -534,6 +534,20 @@ if (typeof get('guestFaqAnswer') === 'function') {
     check('guest FAQ ignores a bare greeting', faq('hi there') === null);
 }
 
+// ---- Payments ledger: a refund the owner has issued reads "Completed" (not a
+// scary "Pending" while Square settles); an explicit failure still shows "Failed";
+// card-in rows keep Square's live status.
+if (typeof get('paymentStatusLabel') === 'function') {
+    const psl = get('paymentStatusLabel');
+    check('refund PENDING → Completed', psl('refund', 'PENDING') === 'Completed');
+    check('deposit-return PENDING → Completed', psl('damages_return', 'PENDING') === 'Completed');
+    check('manually-returned deposit → Completed', psl('damages_return', 'MANUAL') === 'Completed');
+    check('refund FAILED → Failed', psl('refund', 'FAILED') === 'Failed');
+    check('refund REJECTED → Failed', psl('refund', 'REJECTED') === 'Failed');
+    check('card-in balance keeps Square status', psl('balance', 'COMPLETED') === 'COMPLETED');
+    check('card-in deposit not-yet-settled stays truthful', psl('deposit', 'PENDING') === 'PENDING');
+}
+
 // ---- Guest-side learning: only QUESTION-shaped unanswered chat is captured for
 // the owner (guestQuestionShaped), so greetings/one-word messages aren't logged.
 if (typeof get('guestQuestionShaped') === 'function') {
