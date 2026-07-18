@@ -441,6 +441,11 @@ function cmdkBookClash(pk, from, to, excludeId) {
 // A pricing-review question — surfaces the instant gap offers + routes to the
 // coach, and fires the async server-suggestion merge below.
 const CHB_PRICE_Q = /should i (raise|lower|change|adjust|review).{0,12}(price|rate)|pric(e|ing) (suggestion|idea|advice|review)s?|review (my )?pricing|any pricing (ideas|changes)/;
+// A "price THESE dates" question — the demand model recommends a nightly rate for
+// a specific stay (needs a cottage + dates; handled in cmdkCommand). Distinct from
+// CHB_PRICE_Q (the general "should I change my prices" review). No set/discount
+// verb, so it never collides with the dated price-CHANGE command.
+const CHB_SMARTPRICE_Q = /\b(what|how much) (should|shall|could|would|do|can) i (charge|price|ask|list|get)|best (price|rate) for|smart price|optimal (price|rate)|price (this|these|it|them) (right|well|best)|what.?s (the )?(best|right|optimal|ideal) (price|rate)|how should i price/;
 let __cmdkPriceStamp = 0;
 // Merge the server's demand-signal suggestions (pricing-suggest.php — guest
 // searches, unmet demand, weekend uplift) into the live palette, stamp-guarded
@@ -712,6 +717,24 @@ function cmdkCommand(q, today) {
                 `Set ${cName} to £${newRate}/night · ${fmtDate(dates.from)}–${fmtDate(endIncl)}`,
                 `Currently £${cur}/night → £${newRate} (${delta > 0 ? '+' : ''}${delta}%) · one tap saves a dated override — editable any time in Rates`,
                 () => { closeCmdK(); cmdkApplyPriceOverride(pk, dates.from, endIncl, newRate, 'Search override').catch((e) => glassAlert("Couldn't save the price: " + e.message)); },
+            );
+        }
+    }
+    // SMART PRICE — "what should I charge for 20–23 aug at jollyboat", "best price
+    // for jollyboat next weekend": the demand model (chbSmartPrice, learned from
+    // your own bookings) recommends a nightly rate with a plain-English reason and
+    // a one-tap dated apply. A pricing QUESTION (no set/discount verb), so it can't
+    // collide with the price-CHANGE command above; needs a cottage + a future date.
+    if (CHB_SMARTPRICE_Q.test(q) && pk && dates && dates.from >= t) {
+        const endIncl = dates.to && dates.to > dates.from ? chbIsoShift(dates.to, -1) : dates.from;
+        const nights = dates.to && dates.to > dates.from ? Math.round((new Date(dates.to + 'T00:00:00') - new Date(dates.from + 'T00:00:00')) / 864e5) : 3;
+        const sp = chbSmartPrice(pk, dates.from, nights, {});
+        if (sp) {
+            const chg = sp.pct !== 0 ? ` (${sp.pct > 0 ? '+' : ''}${sp.pct}%)` : '';
+            return cmd(
+                `Suggested for ${cName}: £${sp.rate}/night · ${fmtDate(dates.from)}–${fmtDate(endIncl)}`,
+                `${sp.why} · currently £${sp.base} → £${sp.rate}${chg} · one tap saves it as a dated override, editable in Rates`,
+                () => { closeCmdK(); cmdkApplyPriceOverride(pk, dates.from, endIncl, sp.rate, 'Smart price').catch((e) => glassAlert("Couldn't save the price: " + e.message)); },
             );
         }
     }
@@ -11770,6 +11793,147 @@ const NY_ICONS = {
 //  a to-do list. Every row is an OPPORTUNITY (sev ok), never an alarm.
 // BOUNDED short gaps — 2-4 free nights sandwiched between two guest stays
 // (direct or OTA) starting in the next 45 days, soonest first. Unbounded
+// ---- On-device smart pricing model ---------------------------------------
+// A demand-based pricing model that learns from the owner's OWN history — with
+// NO server call and NO external model (works offline, on an iPhone). It reads
+// three signals from the bookings already in memory:
+//   • SEASONAL DEMAND — occupancy by calendar month (direct stays + OTA blocks),
+//     Bayesian-shrunk toward the overall mean so a thin month can't swing wildly;
+//   • BOOKING PACE — how far ahead stays actually book (lead-time CDF), so an
+//     open window close to arrival is treated as harder to fill than a far one;
+//   • ACHIEVED RATE — what similar nights really sold for vs the base rate.
+// It turns those into a recommended nightly rate on a transparent yield curve
+// (busy ⇒ hold/raise, quiet/last-minute ⇒ discount), always REGULARISED by how
+// much data backs it — thin history shrinks every move toward the current rate,
+// so a new owner never gets a wild suggestion. The recommendation is applied via
+// the SAME validated dated-override path as everything else (priceBreakdown stays
+// the one source of truth), and it explains itself in plain English.
+let __chbPriceModel = null;
+let __chbPriceModelSig = '';
+function chbPriceModelSig() {
+    let n = 0, bl = 0;
+    try { Object.keys(dbBookings || {}).forEach((k) => (n += (dbBookings[k] || []).length)); } catch (e) {}
+    try { Object.keys(dbBlocks || {}).forEach((k) => (bl += (dbBlocks[k] || []).length)); } catch (e) {}
+    return n + ':' + bl;
+}
+function chbPriceModel() {
+    const sig = chbPriceModelSig();
+    if (__chbPriceModel && __chbPriceModelSig === sig) return __chbPriceModel;
+    const dayMs = 86400e3;
+    const occByMonth = new Array(12).fill(0);   // occupied cottage-nights per calendar month
+    const availByMonth = new Array(12).fill(0); // observable cottage-nights per month, over the span
+    const leads = [];                           // booking lead times (days) from direct stays
+    let adrNum = 0, adrDen = 0, minD = null, maxD = null, nStays = 0;
+    let cottages = 1;
+    try { cottages = Math.max(1, Object.keys(propertyMeta || {}).length); } catch (e) {}
+    const addOccupancy = (inIso, outIso) => {
+        if (!inIso || !outIso) return;
+        let d = new Date(inIso + 'T00:00:00');
+        const end = new Date(outIso + 'T00:00:00');
+        for (let i = 0; d < end && i < 400; d = new Date(d.getTime() + dayMs), i++) {
+            occByMonth[d.getMonth()]++;
+            if (!minD || d < minD) minD = new Date(d);
+            if (!maxD || d > maxD) maxD = new Date(d);
+        }
+    };
+    try {
+        Object.keys(dbBookings || {}).forEach((pk) => (dbBookings[pk] || []).forEach((b) => {
+            if (!b.checkIn || !b.checkOut) return;
+            nStays++;
+            addOccupancy(b.checkIn, b.checkOut);
+            if (b.createdAt) {
+                const lead = Math.round((new Date(b.checkIn + 'T00:00:00') - new Date(String(b.createdAt).slice(0, 10) + 'T00:00:00')) / dayMs);
+                if (lead >= 0 && lead <= 720) leads.push(lead);
+            }
+            const perNight = b.agreedPrice && b.agreedPrice.perNight ? parseFloat(b.agreedPrice.perNight) : 0;
+            const base = chbCoupleRateOn(pk, b.checkIn);
+            if (perNight > 0 && base > 0) { adrNum += perNight / base; adrDen++; }
+        }));
+    } catch (e) {}
+    try {
+        Object.keys(dbBlocks || {}).forEach((pk) => (dbBlocks[pk] || []).forEach((bl) => {
+            if (typeof isOtaBlock === 'function' && isOtaBlock(bl)) addOccupancy(bl.checkIn, bl.checkOut);
+        }));
+    } catch (e) {}
+    if (minD && maxD) {
+        let d = new Date(minD);
+        for (let i = 0; d <= maxD && i < 4000; d = new Date(d.getTime() + dayMs), i++) availByMonth[d.getMonth()] += cottages;
+    }
+    const totalOcc = occByMonth.reduce((a, b) => a + b, 0);
+    const totalAvail = availByMonth.reduce((a, b) => a + b, 0);
+    const meanOcc = totalAvail > 0 ? totalOcc / totalAvail : 0.4;
+    const K = 30; // shrink strength (nights of prior) — small months lean on the mean
+    const monthOcc = occByMonth.map((o, m) => {
+        const a = availByMonth[m];
+        return a <= 0 ? meanOcc : (o + K * meanOcc) / (a + K);
+    });
+    const occMin = Math.min.apply(null, monthOcc), occMax = Math.max.apply(null, monthOcc);
+    leads.sort((a, b) => a - b);
+    const leadFill = (days) => {
+        if (!leads.length) return Math.max(0.05, Math.min(1, days / 30)); // no data → gentle ramp
+        let c = 0;
+        for (let i = 0; i < leads.length; i++) if (leads[i] <= days) c++;
+        return c / leads.length;
+    };
+    __chbPriceModelSig = sig;
+    __chbPriceModel = {
+        nStays,
+        meanOcc,
+        monthOcc,
+        adrRatio: adrDen ? adrNum / adrDen : 1,
+        conf: Math.max(0, Math.min(1, nStays / 24)), // ~full confidence at 24 priced stays
+        leadFill,
+        // Seasonal demand 0..1 for a date: this month's occupancy, normalised across
+        // the year (flat history → a neutral 0.5).
+        seasonal(isoStr) {
+            const m = new Date(isoStr + 'T00:00:00').getMonth();
+            return occMax - occMin < 1e-6 ? 0.5 : (monthOcc[m] - occMin) / (occMax - occMin);
+        },
+    };
+    return __chbPriceModel;
+}
+// Recommended nightly rate for a stay. Returns {rate, pct (vs current, −=discount),
+// base, score, conf, why, monthName, startDays} or null. opts.gap ⇒ dead-inventory
+// gap: clamped to a DISCOUNT (a "fill the gap" offer always shaves something; the
+// depth still comes from demand). Otherwise the full discount…uplift range is open.
+function chbSmartPrice(pk, fromIso, nights, opts) {
+    opts = opts || {};
+    const base = chbCoupleRateOn(pk, fromIso);
+    if (!base || base <= 0) return null;
+    const model = chbPriceModel();
+    const t = todayDashed();
+    const startDays = Math.max(0, Math.round((new Date(fromIso + 'T00:00:00') - new Date(t + 'T00:00:00')) / 86400e3));
+    const seasonal = model.seasonal(fromIso);           // 0..1
+    // Far-out dates have plenty of time to sell (lean on seasonal demand); an
+    // imminent open window leans on booking pace (little time left ⇒ softer).
+    const timeLeft = startDays >= 45 ? 1 : model.leadFill(startDays);
+    const score = Math.max(0, Math.min(1, 0.65 * seasonal + 0.35 * timeLeft));
+    // Yield curve: 0.55 = hold (0%); above ⇒ uplift to +18%; below ⇒ discount to −28%.
+    let pct = score >= 0.55 ? ((score - 0.55) / 0.45) * 18 : -((0.55 - score) / 0.55) * 28;
+    pct += (model.adrRatio - 1) * 25;                   // market paid above/below base? lean that way, gently
+    pct *= 0.35 + 0.65 * model.conf;                    // thin data ⇒ small move
+    if (opts.gap) pct = Math.max(-30, Math.min(-5, pct));
+    else pct = Math.max(-30, Math.min(20, pct));
+    const rate = Math.max(20, Math.round(base * (1 + pct / 100)));
+    const realPct = Math.round(((rate - base) / base) * 100);
+    const monthName = new Date(fromIso + 'T00:00:00').toLocaleDateString('en-GB', { month: 'long' });
+    return {
+        rate, pct: realPct, base, score, conf: model.conf, monthName, startDays,
+        why: chbSmartPriceWhy(realPct, { seasonal, startDays, monthName, gap: !!opts.gap, nStays: model.nStays }),
+    };
+}
+function chbSmartPriceWhy(pct, x) {
+    const bits = [];
+    if (x.nStays < 5) bits.push('still learning from your bookings');
+    if (x.seasonal >= 0.66) bits.push(`${x.monthName} runs busy for you`);
+    else if (x.seasonal <= 0.34) bits.push(`${x.monthName} tends to be quiet`);
+    if (x.gap && x.startDays <= 7) bits.push(`only ${x.startDays} day${x.startDays === 1 ? '' : 's'} to fill it`);
+    else if (x.gap) bits.push('an empty gap between stays');
+    const lead = bits.length ? bits.join(' · ') : 'based on your booking pattern';
+    if (pct < 0) return `${Math.abs(pct)}% off — ${lead}`;
+    if (pct > 0) return `${pct}% up — ${lead}`;
+    return `hold at your current rate — ${lead}`;
+}
 // future space isn't a gap, 1-night holes are changeover slack not sellable
 // stock, and an owner block over the hole means it's deliberately held.
 // Shared by the Needs-you strip and the pricing suggester.
@@ -11814,8 +11978,20 @@ function chbGapPlan(g) {
     if (live) return { kind: 'live', rate: Math.round(parseFloat(live.couple_rate) || 0), endIncl };
     const cur = chbCoupleRateOn(g.pk, g.from);
     if (!cur) return null;
-    const pct = g.startDays <= 7 ? 20 : 15;
-    return { kind: 'offer', pct, offer: Math.max(20, Math.round(cur * (1 - pct / 100))), cur, endIncl };
+    // Anchor on the proven default (imminent ≤7 days cuts deeper at 20%, else 15%),
+    // then let the demand model REFINE the depth: a genuinely busy window is cut
+    // LESS, a quiet/soft one MORE — scaled by how much history backs the read, so a
+    // new owner with thin data still gets the sensible 15/20% (no wild swing).
+    const anchor = g.startDays <= 7 ? 20 : 15;
+    let disc = anchor;
+    const sp = chbSmartPrice(g.pk, g.from, g.nights, { gap: true });
+    if (sp) {
+        const dev = (0.5 - sp.score) * 24 * sp.conf; // soft(score→0):+12, busy(score→1):−12, ×confidence
+        disc = Math.max(5, Math.min(35, Math.round(anchor + dev)));
+    }
+    const offer = Math.max(20, Math.round(cur * (1 - disc / 100)));
+    const pct = Math.max(0, Math.round(((cur - offer) / cur) * 100));
+    return { kind: 'offer', pct, offer, cur, endIncl };
 }
 function chbAnomalies() {
     const items = [];

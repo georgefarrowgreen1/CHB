@@ -531,6 +531,30 @@ own `applyPricingSuggestion`, the rest route to the coach). Gated by search-test
 (12 checks: preview maths incl. season-aware current rate, whole-month ranges, splice
 before/override/after, apply payload keeps existing seasons, guards) + golden shape cases.
 
+**Smart pricing model** (admin.js) — an ON-DEVICE demand model (no server, no external
+model — works offline/iPhone) that learns from the owner's OWN bookings and shapes every
+price suggestion. `chbPriceModel()` (lazy, memoised on a `dbBookings`+`dbBlocks` signature)
+reads three signals: **seasonal demand** (occupancy by calendar month from direct stays +
+OTA `dbBlocks`, Bayesian-shrunk to the mean so a thin month can't swing), **booking pace**
+(a lead-time CDF from `createdAt` — added to `mapBookingFromApi` — so a still-open window
+close to arrival is "harder to fill" than a far one), and **achieved rate** (`agreedPrice.perNight`
+÷ season base). `chbSmartPrice(pk, fromIso, nights, {gap})` turns those into a recommended
+nightly rate on a transparent yield curve (busy ⇒ hold/raise to +18%, quiet/last-minute ⇒
+discount to −28%), nudged by the achieved-rate ratio and ALWAYS regularised by confidence
+(`nStays/24`) so thin data barely moves off the current rate — returns `{rate, pct, base,
+score, conf, why, …}` with a plain-English `why`. Wired in three places: (a) **gap offers** —
+`chbGapPlan` still ANCHORS on the proven default (20% ≤7 days out, else 15%) but the model
+REFINES the depth (`dev = (0.5−score)·24·conf`, clamped 5–35%): a busy gap is cut less, a
+quiet one more, thin data stays on 15/20 (so search-test §32's flat-rule checks still hold);
+(b) a new **search answer** in `cmdkCommand` — "what should I charge for 15–18 aug at
+jollyboat" / "best price for …" (`CHB_SMARTPRICE_Q`, a pricing QUESTION so it never collides
+with the dated price-CHANGE command) → a "Suggested for X: £Y/night" row with the reason +
+one-tap dated apply via `cmdkApplyPriceOverride`; (c) it feeds the same gap rows the brief +
+CHB_PRICE_Q surface. The recommendation ALWAYS lands as a `rate_seasons` override the
+deterministic `priceBreakdown` reads — never a parallel calc. Gated by search-test §37
+(12 checks: learns seasonality, busy≥base/quiet<base, busy priced above quiet, bounds,
+plain-English why, gap depth follows demand, thin-data conservatism, the search answer).
+
 **Conversational frame** (admin.js) — search is a DIALOGUE, not one-shots. The last METRIC
 answer's frame (`__cmdkFrame` = metric · period · cottage, 3-min TTL, stored by
 `chbFrameStore` whenever an intent/NLU answer carries a `CHB_FRAME_METRIC_Q` metric) lets a

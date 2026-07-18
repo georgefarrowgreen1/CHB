@@ -1344,7 +1344,7 @@ if (typeof ctx.cmdkBrief === 'function') {
     const lbl = (id) => { const r = brief.find((x) => x.id === id || String(x.id).startsWith(id)); return r ? `${r.label} | ${r.sub}` : '(none)'; };
     check('brief: today’s arrival is NAMED with her check-in time', /Rita arrives today · 15:00/.test(lbl('brief-arr')), lbl('brief-arr'));
     check('brief: arrival context carries the repeat ordinal + money to take', /2nd stay with you/.test(lbl('brief-arr')) && /£400\.00 to take/.test(lbl('brief-arr')), lbl('brief-arr'));
-    check('brief: the SOONEST gap rides as a ready-made offer (imminent → 20%)', /Worth a look: \d free nights on Jollyboat/.test(lbl('brief-gap')) && /offer £\d+\/night \(20% off\).*tap to apply/.test(lbl('brief-gap')), lbl('brief-gap'));
+    check('brief: the SOONEST gap rides as a ready-made offer (demand-priced discount)', /Worth a look: \d free nights on Jollyboat/.test(lbl('brief-gap')) && /offer £\d+\/night \(\d+% off\).*tap to apply/.test(lbl('brief-gap')), lbl('brief-gap'));
     check('brief: the teach-loop nudge counts this week’s dead ends', /2 searches found nothing this week/.test(lbl('brief-teach')), lbl('brief-teach'));
     vm.runInContext(`chbNluStore('chb-search-misses', [{ t: 'old one', n: 1, at: '2020-01-01' }]); CHB_NLU.misses = null;`, ctx);
     const brief2 = ctx.cmdkBrief();
@@ -1630,6 +1630,54 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         ctx.chbSetModelStatus(fakeEl, '');
         check('…and the idle slot returns to rest', fakeEl.dataset.mstate === '', fakeEl.dataset.mstate);
     } else fail('chbFetchProgress missing from the bundle');
+
+    // ---- §37 On-device smart pricing model (chbPriceModel / chbSmartPrice) ----
+    // Learns demand from the owner's OWN bookings (seasonal occupancy, booking
+    // pace, achieved rate) and recommends a revenue-shaped nightly rate: busy
+    // periods hold/raise, quiet + last-minute discount, always regularised by how
+    // much data backs it. No server, no external model.
+    console.log('\n== §37 Smart pricing model ==');
+    if (typeof ctx.chbSmartPrice === 'function' && typeof ctx.chbPriceModel === 'function') {
+        const sToday = ctx.todayDashed();
+        const sYr = +sToday.slice(0, 4);
+        vm.runInContext(`propertyMeta.jollyboat={name:'Jollyboat'};propertyRates.jollyboat={coupleRate:150,extraAdultRate:0,childRate:0,damagesDeposit:50,transactionPct:0};`, ctx);
+        // Rich history: August packed across the last 2 years (busy), a little July,
+        // one lone January stay (quiet); realistic per-night prices + lead times.
+        const rows = []; let rid = 1;
+        const mk = (inD, outD, per, cr) => ({ id: rid++, name: 'H' + rid, checkIn: inD, checkOut: outD, adults: 2, children: 0, payment: 'paid', holdStatus: 'none', agreedPrice: { total: per * 3, perNight: per, nights: 3, nightly: per * 3 }, createdAt: cr });
+        for (const y of [sYr - 1, sYr - 2]) for (const d of [1, 4, 7, 10, 13, 16, 19, 22, 25]) rows.push(mk(`${y}-08-${String(d).padStart(2, '0')}`, `${y}-08-${String(d + 3).padStart(2, '0')}`, 180, `${y}-05-01`));
+        for (const y of [sYr - 1, sYr - 2]) for (const d of [5, 12, 19]) rows.push(mk(`${y}-07-${String(d).padStart(2, '0')}`, `${y}-07-${String(d + 3).padStart(2, '0')}`, 160, `${y}-05-15`));
+        rows.push(mk(`${sYr - 1}-01-10`, `${sYr - 1}-01-13`, 150, `${sYr - 1}-01-05`));
+        ctx.__seedSP = rows;
+        vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);dbBookings.jollyboat=__seedSP;', ctx);
+        const M = ctx.chbPriceModel();
+        check('the model builds from the owner\'s bookings (25 priced stays, full confidence)', M.nStays === 25 && M.conf > 0.9, `n=${M.nStays} conf=${M.conf}`);
+        check('it LEARNS seasonality — August reads far busier than January', M.seasonal(`${sYr}-08-15`) - M.seasonal(`${sYr}-01-15`) > 0.4, `aug=${M.seasonal(`${sYr}-08-15`).toFixed(2)} jan=${M.seasonal(`${sYr}-01-15`).toFixed(2)}`);
+        // Far-future (>45d) so both lean purely on seasonal demand, not pace.
+        const aug = ctx.chbSmartPrice('jollyboat', `${sYr + 1}-08-15`, 3, {});
+        const jan = ctx.chbSmartPrice('jollyboat', `${sYr + 1}-01-15`, 3, {});
+        check('a busy month HOLDS or RAISES the rate (August ≥ base)', aug && aug.pct >= 0 && aug.rate >= aug.base, aug && `£${aug.rate} (${aug.pct}%)`);
+        check('a quiet month is DISCOUNTED (January < base)', jan && jan.pct < 0 && jan.rate < jan.base, jan && `£${jan.rate} (${jan.pct}%)`);
+        check('busy is priced above quiet for the same cottage', aug && jan && aug.rate > jan.rate, aug && jan && `${aug.rate} vs ${jan.rate}`);
+        check('every recommendation stays within safe bounds (−30%…+20%)', aug.pct <= 20 && aug.pct >= -30 && jan.pct <= 20 && jan.pct >= -30);
+        check('the recommendation explains itself in plain words', /busy|quiet|booking pattern|learning/.test(aug.why) && /off|up|hold/.test(jan.why), `${aug.why} :: ${jan.why}`);
+        // Gap depth follows demand: a busy-month gap is cut LESS than a quiet-month one.
+        const gAug = ctx.chbGapPlan({ pk: 'jollyboat', from: `${sYr + 1}-08-10`, to: `${sYr + 1}-08-13`, nights: 3, startDays: 60 });
+        const gJan = ctx.chbGapPlan({ pk: 'jollyboat', from: `${sYr + 1}-01-10`, to: `${sYr + 1}-01-13`, nights: 3, startDays: 60 });
+        check('gap offers use the model — a busy-month gap is cut LESS than a quiet one', gAug && gJan && gAug.pct < gJan.pct, gAug && gJan && `aug ${gAug.pct}% vs jan ${gJan.pct}%`);
+
+        // Thin history ⇒ conservative: a brand-new owner never gets a wild swing.
+        vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);dbBookings.jollyboat=[{id:1,name:"A",checkIn:"' + sYr + '-08-01",checkOut:"' + sYr + '-08-04",adults:2,children:0,agreedPrice:{total:450,perNight:150,nights:3}},{id:2,name:"B",checkIn:"' + sYr + '-08-10",checkOut:"' + sYr + '-08-13",adults:2,children:0,agreedPrice:{total:450,perNight:150,nights:3}}];', ctx);
+        const thin = ctx.chbSmartPrice('jollyboat', `${sYr + 1}-01-15`, 3, {});
+        check('thin data ⇒ a small, cautious move (|Δ| ≤ 8%)', thin && Math.abs(thin.pct) <= 8, thin && `${thin.pct}%`);
+
+        // The search answer: "what should I charge for <dates> at <cottage>".
+        vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);dbBookings.jollyboat=__seedSP;', ctx);
+        const rowsA = ctx.cmdkCommand('what should i charge for 15-18 august at jollyboat', sToday);
+        check('search answers "what should I charge for <dates> at <cottage>" with a rate', Array.isArray(rowsA) && rowsA[0] && /Suggested for Jollyboat: £\d+\/night/.test(rowsA[0].label), rowsA && rowsA[0] && rowsA[0].label);
+        check('the smart-price answer offers one-tap apply (a run handler)', Array.isArray(rowsA) && rowsA[0] && typeof rowsA[0].run === 'function');
+        vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);', ctx);
+    } else fail('chbSmartPrice / chbPriceModel missing from the bundle');
 
     // ---- Summary ----
     console.log('\n== Summary ==');
