@@ -6573,6 +6573,58 @@ body.admin-screen .site-footer {
   color: var(--text-muted);
   margin-top: 2px;
 }
+/* Pre-arrival countdown hub — the anticipation card for the soonest upcoming
+   stay. A sea-blue countdown badge sits at the head's trailing edge. */
+.hub-head-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.my-stay-hub-soon .hub-count {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 62px;
+  padding: 8px 10px;
+  border-radius: var(--r-md, 14px);
+  background: var(--info-bg, rgba(56, 132, 197, 0.16));
+  border: 1px solid var(--info, rgba(56, 132, 197, 0.5));
+  line-height: 1;
+}
+.hub-count-n {
+  font-family: var(--font-serif);
+  font-size: 1.7rem;
+  font-weight: 700;
+  color: var(--info-text, var(--text-light));
+}
+.hub-count-u {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-top: 3px;
+  text-align: center;
+}
+.hub-warn {
+  color: var(--warn-text);
+  font-weight: 600;
+}
+.hub-ok {
+  color: var(--ok-text, var(--ok));
+  font-weight: 600;
+}
+.hub-cta {
+  margin: 4px 0 2px;
+}
+.hub-cta-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: rgba(76, 175, 80, 0.22);
+  border-color: var(--booked-border);
+  text-decoration: none;
+}
 /* Desktop: drop the tides line from the My Stay hub (kept on mobile, where
            it's a handy at-a-glance during a stay). */
 @media (min-width: 641px) {
