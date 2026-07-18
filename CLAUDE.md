@@ -657,8 +657,10 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   STATUS (PENDING→COMPLETED) both land a day or two after the action, pushed by the
   `square-webhook.php` events. Because that webhook can be unconfigured, the
   `recent_payments` action ALSO reconciles on view: `reconcile_missing_fees()` +
-  `reconcile_pending_refunds()` (bookings.php) poll Square for fee-less card-ins /
-  non-terminal refunds and backfill them. The webhook can **self-provision**:
+  `reconcile_pending_refunds()` (in the shared **`payments-reconcile.php`** lib, required
+  by bookings.php AND run daily from `self-repair.php` so the ledger self-heals even if
+  nobody opens Payments) poll Square for fee-less card-ins / non-terminal refunds and
+  backfill them. The webhook can **self-provision**:
   `square-setup.php` (`status`/`setup`, admin) creates the subscription via the
   Square API and stores the signing key ENCRYPTED as `apikey-square-webhook`;
   `square_webhook_signing_key()`/`square_webhook_url()` (db.php) resolve it (config

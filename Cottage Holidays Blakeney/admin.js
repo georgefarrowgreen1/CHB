@@ -731,11 +731,15 @@ function cmdkCommand(q, today) {
         const sp = chbSmartPrice(pk, dates.from, nights, {});
         if (sp) {
             const chg = sp.pct !== 0 ? ` (${sp.pct > 0 ? '+' : ''}${sp.pct}%)` : '';
-            return cmd(
-                `Suggested for ${cName}: £${sp.rate}/night · ${fmtDate(dates.from)}–${fmtDate(endIncl)}`,
-                `${sp.why} · currently £${sp.base} → £${sp.rate}${chg} · one tap saves it as a dated override, editable in Rates`,
-                () => { closeCmdK(); cmdkApplyPriceOverride(pk, dates.from, endIncl, sp.rate, 'Smart price').catch((e) => glassAlert("Couldn't save the price: " + e.message)); },
-            );
+            // wrap:true so the plain-English `why` (the point of the model) + the
+            // apply hint aren't clipped to one ellipsised line (matches the sibling
+            // gap-offer rows).
+            return [{
+                type: 'answer', id: 'cmdk-command', wrap: true,
+                label: `Suggested for ${cName}: £${sp.rate}/night · ${fmtDate(dates.from)}–${fmtDate(endIncl)}`,
+                sub: `${sp.why} · currently £${sp.base} → £${sp.rate}${chg} · one tap saves it as a dated override, editable in Rates`,
+                run: () => { closeCmdK(); cmdkApplyPriceOverride(pk, dates.from, endIncl, sp.rate, 'Smart price').catch((e) => glassAlert("Couldn't save the price: " + e.message)); },
+            }];
         }
     }
     // UNDO — reverse the LAST change search itself saved (price override /
@@ -1432,9 +1436,15 @@ function openAccountPreview(bookingId, name) {
     if (!id) { try { toast('No booking on file for this customer to preview.'); } catch (e) {} return; }
     try { closeCmdK(); } catch (e) {}
     closeAccountPreview();
+    __acctPreviewReturnFocus = document.activeElement; // restore focus on close
     const ov = document.createElement('div');
     ov.id = 'acct-preview-overlay';
     ov.className = 'acct-preview-overlay';
+    // A modal dialog: aria-modal tells assistive tech the rest of the page is
+    // inert while it's open, and the Tab trap below keeps keyboard focus inside.
+    ov.setAttribute('role', 'dialog');
+    ov.setAttribute('aria-modal', 'true');
+    ov.setAttribute('aria-label', 'Customer account preview' + (name ? ' — ' + name : ''));
     ov.innerHTML = `
         <div class="acct-preview-shell glass-panel">
             <div class="acct-preview-bar">
@@ -1450,20 +1460,36 @@ function openAccountPreview(bookingId, name) {
         </div>`;
     document.body.appendChild(ov);
     document.body.classList.add('acct-preview-open');
-    // The in-frame "Close" button (app.js exitPreview) posts up to us.
+    // The in-frame "Close" button (app.js exitPreview) posts up to us — only accept
+    // it from our OWN origin (the same-origin preview frame), never a third party.
     if (!window.__acctPreviewWired) {
         window.__acctPreviewWired = true;
-        window.addEventListener('message', (e) => { if (e && e.data === 'chb-acct-preview-close') closeAccountPreview(); });
+        window.addEventListener('message', (e) => { if (e && e.origin === location.origin && e.data === 'chb-acct-preview-close') closeAccountPreview(); });
     }
-    // Escape closes it too.
     document.addEventListener('keydown', acctPreviewKey);
+    // Move focus into the dialog (WCAG 2.4.3) — the Close button is the safe start.
+    try { const btn = ov.querySelector('[data-act="closeAccountPreview"]'); if (btn) btn.focus(); } catch (e) {}
 }
-function acctPreviewKey(e) { if (e.key === 'Escape') closeAccountPreview(); }
+let __acctPreviewReturnFocus = null;
+function acctPreviewKey(e) {
+    if (e.key === 'Escape') { closeAccountPreview(); return; }
+    if (e.key !== 'Tab') return;
+    // Trap Tab within the dialog so focus can't slip to the (inert) back office.
+    const ov = document.getElementById('acct-preview-overlay');
+    if (!ov) return;
+    const f = [...ov.querySelectorAll('button, iframe, a[href], [tabindex]:not([tabindex="-1"])')].filter((el) => el.offsetParent !== null);
+    if (!f.length) return;
+    const first = f[0], last = f[f.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+}
 function closeAccountPreview() {
     const ov = document.getElementById('acct-preview-overlay');
     if (ov) ov.remove();
     document.body.classList.remove('acct-preview-open');
     document.removeEventListener('keydown', acctPreviewKey);
+    try { if (__acctPreviewReturnFocus && __acctPreviewReturnFocus.focus) __acctPreviewReturnFocus.focus(); } catch (e) {}
+    __acctPreviewReturnFocus = null;
 }
 // ---- Full-history customer directory (server) ------------------------------
 // The in-memory sources only see loaded bookings; this asks customers.php to group
@@ -10716,8 +10742,10 @@ function paymentStatusLabel(kind, status) {
 // reader label (also unifies "COMPLETED" vs "Completed").
 function paymentStatusMeta(kind, status) {
     const st = String(paymentStatusLabel(kind, status) || '').toUpperCase();
+    // APPROVED counts as PAID in reconcile_booking_payment (bookings.php), so it
+    // must read green here too — else a fully-paid booking shows an amber dot.
     const level =
-        st === 'COMPLETED' || st === 'CAPTURED'
+        st === 'COMPLETED' || st === 'CAPTURED' || st === 'APPROVED'
             ? 'ok'
             : st === 'FAILED' || st === 'REJECTED' || st === 'CANCELED' || st === 'CANCELLED' || st === 'VOIDED'
               ? 'bad'
@@ -11609,7 +11637,7 @@ async function connectSquareWebhook(btn) {
     if (btn) { btn.disabled = true; btn.textContent = 'Connecting…'; }
     try {
         const r = await apiPost('square-setup.php', { action: 'setup' });
-        toast(r && r.connected ? 'Connected — payment updates are now automatic.' : 'Set up at Square.');
+        toast(r && r.connected ? 'Connected — payment updates are now automatic.' : 'Almost there — finish connecting in your Square dashboard.');
     } catch (e) {
         toast((e && e.message) || "Couldn't connect just now.", 'error');
     }
@@ -11811,10 +11839,19 @@ const NY_ICONS = {
 let __chbPriceModel = null;
 let __chbPriceModelSig = '';
 function chbPriceModelSig() {
-    let n = 0, bl = 0;
-    try { Object.keys(dbBookings || {}).forEach((k) => (n += (dbBookings[k] || []).length)); } catch (e) {}
-    try { Object.keys(dbBlocks || {}).forEach((k) => (bl += (dbBlocks[k] || []).length)); } catch (e) {}
-    return n + ':' + bl;
+    // Fold a cheap CONTENT fingerprint in, not just counts — editing a booking's
+    // dates or agreed price IN PLACE (a common correction) doesn't change any
+    // count, so a count-only key would serve stale suggestions all session.
+    let sig = '';
+    try {
+        Object.keys(dbBookings || {}).forEach((k) => (dbBookings[k] || []).forEach((b) => {
+            sig += (b.checkIn || '') + (b.checkOut || '') + ((b.agreedPrice && b.agreedPrice.perNight) || '') + (b.createdAt || '') + '|';
+        }));
+    } catch (e) {}
+    try {
+        Object.keys(dbBlocks || {}).forEach((k) => (dbBlocks[k] || []).forEach((bl) => { sig += (bl.checkIn || '') + (bl.checkOut || '') + (bl.source || '') + '|'; }));
+    } catch (e) {}
+    return sig;
 }
 function chbPriceModel() {
     const sig = chbPriceModelSig();

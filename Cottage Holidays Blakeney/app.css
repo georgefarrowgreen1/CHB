@@ -186,6 +186,7 @@ textarea:focus-visible,
      glass; light mode retunes it below like the other -text tokens. */
   --info: #4682a0;
   --info-text: #6fa8c4;
+  --info-bg: rgba(56, 132, 197, 0.16); /* sea-blue fill behind info chips (pre-arrival countdown badge) */
   /* Shadow scale: panel = resting glass surface, float = raised/floating
                elements (modals, popovers, FABs), soft = small controls on hover. */
   --shadow-panel: 0 8px 32px rgba(0, 0, 0, 0.2);
@@ -245,6 +246,7 @@ body.light-mode {
   --warn-text: #a85a00;
   --danger-text: #c62828;
   --info-text: #35708f; /* darker sea-blue for readable text on light glass */
+  --info-bg: rgba(56, 132, 197, 0.12); /* lighter sea-blue fill for light glass */
   /* Secondary coastal accents (used sparingly for freshness) */
   --sea: #2e8b8b;
   --sky: #5aa9de;
@@ -5938,6 +5940,17 @@ body.admin-screen .site-footer {
 .feed-dot-bad {
   background: var(--danger);
 }
+/* Light mode: the base status hues are too pale on light glass to clear WCAG
+   1.4.11 (3:1) as a small dot — use the darker light-tuned -text variants. */
+body.light-mode .feed-dot-ok {
+  background: var(--ok-text);
+}
+body.light-mode .feed-dot-wait {
+  background: var(--warn-text);
+}
+body.light-mode .feed-dot-bad {
+  background: var(--danger-text);
+}
 .feed-del {
   background: none;
   border: none;
@@ -5956,12 +5969,14 @@ body.admin-screen .site-footer {
 }
 @media (max-width: 640px) {
   .feed-row {
-    grid-template-columns: 1fr auto auto;
+    /* date · who (flex) · amount · status DOT — keep the traffic-light dot on
+       phones (it's the only payment-status signal; hiding it lost Completed vs
+       Pending/Failed on the device the owner uses most). */
+    grid-template-columns: auto 1fr auto auto;
     row-gap: 3px;
   }
   .feed-row .prop-tag,
-  .feed-row .feed-kind,
-  .feed-row .feed-status {
+  .feed-row .feed-kind {
     display: none;
   }
 }

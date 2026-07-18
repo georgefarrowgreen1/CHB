@@ -4,8 +4,10 @@
 //  Square POSTs payment.created / payment.updated here. We verify the HMAC
 //  signature, then reconcile the booking from its payments ledger so the state
 //  is correct even if the guest's browser dropped after a successful charge.
-//  Register the URL in Square (Developer Dashboard > Webhooks) and paste the
-//  signature key + the exact URL into config.php.
+//  Setup is one-tap: Manage → Payments → "Connect" (square-setup.php) creates the
+//  subscription via the Square API and stores the signing key ENCRYPTED — so
+//  square_webhook_signing_key()/square_webhook_url() (db.php) resolve it with no
+//  config.php edit. The SQUARE_WEBHOOK_* config constants still win if present.
 //
 //  Signature: base64( HMAC-SHA256( notificationUrl + rawBody, signatureKey ) )
 //  in header x-square-hmacsha256-signature. (Square's standard scheme.)

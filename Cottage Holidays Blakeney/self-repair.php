@@ -40,6 +40,19 @@ $fixed = [];
 $flagged = [];
 $actor = $isCron ? 'cron' : 'owner';
 
+// ---- 0. Square settlement back-fill ---------------------------------------
+// A payment's processing fee and a refund's final status settle a day or two
+// after the action. The square-webhook.php events push them live, and the
+// recent_payments view reconciles on demand — but if the webhook is unconfigured
+// and the owner doesn't open Payments, the ledger would drift. Run the same
+// best-effort back-fill daily so fees + refund statuses stay honest regardless.
+try {
+    require_once __DIR__ . '/payments-reconcile.php';
+    reconcile_missing_fees();
+    reconcile_pending_refunds();
+} catch (\Throwable $e) {
+}
+
 // ---- 1. Dead gallery references -------------------------------------------
 // 'images-<prop>' content keys hold JSON arrays of image URLs; locally-uploaded
 // ones are relative 'uploads/<file>'. If the file is gone (manual FTP cleanup,

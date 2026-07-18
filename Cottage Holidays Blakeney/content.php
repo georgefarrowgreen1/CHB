@@ -70,6 +70,12 @@ if ($action === 'get_all') {
     $rows = db()->query('SELECT item_key, item_value FROM content')->fetchAll();
     $out = [];
     foreach ($rows as $r) {
+        // Server-only secrets that have NO editor field (the Square webhook signing
+        // key is captured + used entirely server-side) are never decrypted into the
+        // browser payload — the Settings UI never needs them, so don't ship them.
+        if ($r['item_key'] === 'apikey-square-webhook') {
+            continue;
+        }
         $val = is_private_content_key($r['item_key']) ? decrypt_value($r['item_value']) : $r['item_value'];
         $decoded = json_decode($val, true);
         $out[$r['item_key']] = $decoded === null && $val !== 'null' ? $val : $decoded;
