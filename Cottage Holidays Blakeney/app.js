@@ -3329,7 +3329,6 @@ async function renderGuestBookings() {
                </div>`
             : '';
     list.innerHTML =
-        loyaltyBannerHtml(completedStays) +
         (hubCards.length ? gHdr('Your stay') + hubCards.join('') : '') +
         pendingHtml +
         (upcomingCards.length ? gHdr('Upcoming stays') + gGrid(upcomingCards) : '') +
@@ -4042,16 +4041,6 @@ function startGuestVersionWatch() {
 // Returning-guest welcome offer — shown once a guest has at least one
 // completed stay. Informational: the owner applies the rate on enquiry
 // (mirrors how pricing/overrides already work), so nothing is auto-discounted.
-function loyaltyBannerHtml(n) {
-    if (!n || n < 1) return '';
-    return `<div class="glass-panel" style="padding:16px 18px;margin-bottom:16px;border:1px solid var(--accent-soft);display:flex;align-items:center;gap:12px;">
-                <span style="font-size:1.5rem;" aria-hidden="true">🌿</span>
-                <div>
-                    <div style="font-weight:600;margin-bottom:2px;">Welcome back!</div>
-                    <div style="font-size:0.85rem;color:var(--text-muted);">Thank you for ${n === 1 ? 'staying' : 'returning to stay'} with us. As a returning guest you're entitled to our <strong style="color:var(--text-light);">returning-guest rate</strong> — just mention it when you enquire and we'll apply it to your next booking.</div>
-                </div>
-            </div>`;
-}
 function renderNotifyEmails(primary, extras) {
     const box = document.getElementById('notify-emails-list');
     if (!box) return;
@@ -12992,7 +12981,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'acctpreview1';
+    const BUILD = 'noretrate1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
