@@ -5915,6 +5915,28 @@ body.admin-screen .site-footer {
   color: var(--text-muted);
   font-size: 0.74rem;
   text-transform: capitalize;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 14px;
+}
+/* Traffic-light status dot: green = done, amber = in-progress, red = problem.
+   The word is carried on the cell's title/aria-label so it's never colour-only. */
+.feed-dot {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.04);
+}
+.feed-dot-ok {
+  background: var(--ok);
+}
+.feed-dot-wait {
+  background: var(--warn);
+}
+.feed-dot-bad {
+  background: var(--danger);
 }
 .feed-del {
   background: none;

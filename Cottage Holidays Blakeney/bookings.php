@@ -288,6 +288,48 @@ function reconcile_pending_refunds($limit = 12)
         }
     }
 }
+// Back-fill the Square PROCESSING FEE on settled card payments that don't have one
+// yet. Square computes the fee a day or two AFTER the charge and normally pushes it
+// via the payment.updated webhook — but if the webhook isn't configured/delivered,
+// the fee column stays NULL and the reconciliation reads "Square fees − £0.00"
+// forever. This poll asks Square for each fee-less card-IN payment and records it
+// once Square has it (a not-yet-settled payment simply has no fee, so we leave it
+// and try again next time). Best-effort, capped; refunds carry no processing fee.
+function reconcile_missing_fees($limit = 15)
+{
+    if (!square_enabled()) {
+        return;
+    }
+    try {
+        $q = db()->prepare(
+            "SELECT id, square_payment_id FROM payments
+             WHERE kind NOT IN ('refund','damages_return')
+               AND fee IS NULL
+               AND square_payment_id IS NOT NULL AND square_payment_id <> ''
+             ORDER BY id DESC LIMIT " . (int) $limit,
+        );
+        $q->execute();
+        $rows = $q->fetchAll();
+    } catch (\Throwable $e) {
+        return; // fee column not migrated / table missing
+    }
+    foreach ($rows as $r) {
+        try {
+            $res = square_api('GET', '/v2/payments/' . rawurlencode((string) $r['square_payment_id']));
+            $payment = $res['body']['payment'] ?? null;
+            if (!$payment || empty($payment['processing_fee']) || !is_array($payment['processing_fee'])) {
+                continue; // not settled yet (or a non-Square/manual row) — leave null
+            }
+            $cents = 0;
+            foreach ($payment['processing_fee'] as $pf) {
+                $cents += (int) ($pf['amount_money']['amount'] ?? 0);
+            }
+            db()->prepare('UPDATE payments SET fee = ? WHERE id = ?')->execute([round($cents / 100, 2), (int) $r['id']]);
+        } catch (\Throwable $e) {
+            // best-effort per row
+        }
+    }
+}
 // Re-derive the booking's rental payment status from the ledger (charges − rental
 // refunds). NOTE: 'damages_return' is deliberately excluded — returning a held
 // deposit must never make a booking look unpaid.
@@ -1848,6 +1890,12 @@ if ($action === 'recent_payments') {
     // that has actually processed shows COMPLETED here rather than a stale PENDING.
     try {
         reconcile_pending_refunds();
+    } catch (\Throwable $e) {
+    }
+    // …and back-fill Square processing fees Square has since settled, so the
+    // reconciliation shows the real fee instead of a permanent "− £0.00".
+    try {
+        reconcile_missing_fees();
     } catch (\Throwable $e) {
     }
     try {

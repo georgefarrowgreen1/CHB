@@ -10688,6 +10688,20 @@ function paymentStatusLabel(kind, status) {
     const st = String(status || '').toUpperCase();
     return isReturn ? (st === 'FAILED' || st === 'REJECTED' ? 'Failed' : 'Completed') : (status || '');
 }
+// Traffic-light meta for a payment row: a dot LEVEL (ok=green done, wait=amber
+// in-progress, bad=red problem) plus a Title-cased word for the hover / screen-
+// reader label (also unifies "COMPLETED" vs "Completed").
+function paymentStatusMeta(kind, status) {
+    const st = String(paymentStatusLabel(kind, status) || '').toUpperCase();
+    const level =
+        st === 'COMPLETED' || st === 'CAPTURED'
+            ? 'ok'
+            : st === 'FAILED' || st === 'REJECTED' || st === 'CANCELED' || st === 'CANCELLED' || st === 'VOIDED'
+              ? 'bad'
+              : 'wait';
+    const label = st ? st.charAt(0) + st.slice(1).toLowerCase() : 'Pending';
+    return { level, label };
+}
 // Recent Square transactions across all bookings (deposits, balances, refunds).
 async function renderMoneyFeed() {
     const el = document.getElementById('money-feed');
@@ -10741,17 +10755,17 @@ async function renderMoneyFeed() {
                 (p.name || 'Guest') +
                 (deleted ? ' · deleted booking' : '') +
                 (note ? ' · ' + note : '');
-            // A refund the owner has issued is DONE from the ledger's point of view
-            // (see paymentStatusLabel): show "Completed", not an alarming "Pending".
-            const statusText = paymentStatusLabel(p.kind, p.status);
-            const statusBad = isReturn && statusText === 'Failed';
+            // Status shows as a traffic-light DOT (green done / amber in-progress /
+            // red problem) — the word rides along as its hover + screen-reader label
+            // so the meaning is never colour-only.
+            const sMeta = paymentStatusMeta(p.kind, p.status);
             return `<div class="feed-row"${note ? ` title="${escapeHtml(note)}"` : ''}>
                     <span class="feed-date">${escapeHtml(fmtDate(date))}</span>
                     <span class="prop-tag tag-${p.prop_key}">${escapeHtml(propName)}</span>
                     <span class="feed-who"${deleted ? ' style="color:var(--text-muted);"' : ''}>${escapeHtml(who)}</span>
                     <span class="feed-kind">${label}${feeNote}</span>
                     <span class="feed-amt" style="${isReturn ? 'color:var(--danger);' : 'color:var(--ok);'}"${!isReturn && fee != null ? ` title="Gross ${gbp(gross)} · fee ${gbp(fee)} · net ${gbp(Math.max(0, gross - fee))}"` : ''}>${amt}</span>
-                    <span class="feed-status"${statusBad ? ' style="color:var(--danger);"' : ''}>${escapeHtml(statusText)}</span>
+                    <span class="feed-status" role="img" aria-label="${escapeHtml(sMeta.label)}" title="${escapeHtml(sMeta.label)}"><span class="feed-dot feed-dot-${sMeta.level}"></span></span>
                 </div>`;
         })
         .join('');
