@@ -11851,24 +11851,40 @@ function chbPriceModelSig() {
     try {
         Object.keys(dbBlocks || {}).forEach((k) => (dbBlocks[k] || []).forEach((bl) => { sig += (bl.checkIn || '') + (bl.checkOut || '') + (bl.source || '') + '|'; }));
     } catch (e) {}
+    // Pending enquiries feed the forward-demand signal (A), so a change in them must
+    // rebuild the model too.
+    try {
+        sig += 'E';
+        (typeof enquiries !== 'undefined' && Array.isArray(enquiries) ? enquiries : []).forEach((e) => { sig += (e && e.checkIn) || ''; });
+    } catch (e) {}
     return sig;
 }
 function chbPriceModel() {
     const sig = chbPriceModelSig();
     if (__chbPriceModel && __chbPriceModelSig === sig) return __chbPriceModel;
     const dayMs = 86400e3;
-    const occByMonth = new Array(12).fill(0);   // occupied cottage-nights per calendar month
-    const availByMonth = new Array(12).fill(0); // observable cottage-nights per month, over the span
-    const leads = [];                           // booking lead times (days) from direct stays
-    let adrNum = 0, adrDen = 0, minD = null, maxD = null, nStays = 0;
+    const K = 30;         // Bayesian shrink strength (nights of prior)
+    const RECENCY_HL = 550; // recency HALF-LIFE (~1.5y): last year's demand outweighs 3 years ago (C)
+    let todayMs;
+    try { todayMs = new Date(todayDashed() + 'T00:00:00').getTime(); } catch (e) { todayMs = Date.now(); }
+    const recW = (ms) => Math.pow(0.5, Math.max(0, (todayMs - ms) / dayMs) / RECENCY_HL); // recent/future ≈ 1, old → 0
+    const occByMonth = new Array(12).fill(0);   // occupied cottage-nights per month (recency-weighted)
+    const availByMonth = new Array(12).fill(0); // observable cottage-nights per month (recency-weighted)
+    const occByPk = {};                         // per-cottage occupied nights per month (D)
+    const staysByPk = {};
+    const leadPairs = [];                       // {lead, w} recency-weighted booking lead times
+    const adrPairs = [];                        // {ratio, w} recency-weighted achieved/base ratios (trimmed, F)
+    let minD = null, maxD = null, nStays = 0;
     let cottages = 1;
     try { cottages = Math.max(1, Object.keys(propertyMeta || {}).length); } catch (e) {}
-    const addOccupancy = (inIso, outIso) => {
+    const addOccupancy = (pk, inIso, outIso) => {
         if (!inIso || !outIso) return;
         let d = new Date(inIso + 'T00:00:00');
         const end = new Date(outIso + 'T00:00:00');
         for (let i = 0; d < end && i < 400; d = new Date(d.getTime() + dayMs), i++) {
-            occByMonth[d.getMonth()]++;
+            const w = recW(d.getTime()), m = d.getMonth();
+            occByMonth[m] += w;
+            if (pk) { (occByPk[pk] = occByPk[pk] || new Array(12).fill(0))[m] += w; }
             if (!minD || d < minD) minD = new Date(d);
             if (!maxD || d > maxD) maxD = new Date(d);
         }
@@ -11876,62 +11892,90 @@ function chbPriceModel() {
     try {
         Object.keys(dbBookings || {}).forEach((pk) => (dbBookings[pk] || []).forEach((b) => {
             if (!b.checkIn || !b.checkOut) return;
-            nStays++;
-            addOccupancy(b.checkIn, b.checkOut);
+            nStays++; staysByPk[pk] = (staysByPk[pk] || 0) + 1;
+            addOccupancy(pk, b.checkIn, b.checkOut);
+            const ciMs = new Date(b.checkIn + 'T00:00:00').getTime();
+            const w = recW(ciMs);
             if (b.createdAt) {
-                const lead = Math.round((new Date(b.checkIn + 'T00:00:00') - new Date(String(b.createdAt).slice(0, 10) + 'T00:00:00')) / dayMs);
-                if (lead >= 0 && lead <= 720) leads.push(lead);
+                const lead = Math.round((ciMs - new Date(String(b.createdAt).slice(0, 10) + 'T00:00:00').getTime()) / dayMs);
+                if (lead >= 0 && lead <= 720) leadPairs.push({ lead, w });
             }
             const perNight = b.agreedPrice && b.agreedPrice.perNight ? parseFloat(b.agreedPrice.perNight) : 0;
             const base = chbCoupleRateOn(pk, b.checkIn);
-            if (perNight > 0 && base > 0) { adrNum += perNight / base; adrDen++; }
+            // F: trim clear outliers (friends-rate freebies, comps, data errors) BEFORE
+            // they skew the achieved-rate signal — only ratios in [0.5, 2] count.
+            if (perNight > 0 && base > 0) { const r = perNight / base; if (r >= 0.5 && r <= 2) adrPairs.push({ ratio: r, w }); }
         }));
     } catch (e) {}
     try {
         Object.keys(dbBlocks || {}).forEach((pk) => (dbBlocks[pk] || []).forEach((bl) => {
-            if (typeof isOtaBlock === 'function' && isOtaBlock(bl)) addOccupancy(bl.checkIn, bl.checkOut);
+            if (typeof isOtaBlock === 'function' && isOtaBlock(bl)) addOccupancy(pk, bl.checkIn, bl.checkOut);
         }));
     } catch (e) {}
     if (minD && maxD) {
         let d = new Date(minD);
-        for (let i = 0; d <= maxD && i < 4000; d = new Date(d.getTime() + dayMs), i++) availByMonth[d.getMonth()] += cottages;
+        for (let i = 0; d <= maxD && i < 4000; d = new Date(d.getTime() + dayMs), i++) availByMonth[d.getMonth()] += cottages * recW(d.getTime());
     }
     const totalOcc = occByMonth.reduce((a, b) => a + b, 0);
     const totalAvail = availByMonth.reduce((a, b) => a + b, 0);
     const meanOcc = totalAvail > 0 ? totalOcc / totalAvail : 0.4;
-    const K = 30; // shrink strength (nights of prior) — small months lean on the mean
-    const monthOcc = occByMonth.map((o, m) => {
-        const a = availByMonth[m];
-        return a <= 0 ? meanOcc : (o + K * meanOcc) / (a + K);
-    });
+    const shrink = (o, a) => (a <= 0 ? meanOcc : (o + K * meanOcc) / (a + K));
+    const monthOcc = occByMonth.map((o, m) => shrink(o, availByMonth[m]));
     const occMin = Math.min.apply(null, monthOcc), occMax = Math.max.apply(null, monthOcc);
-    leads.sort((a, b) => a - b);
+    const norm = (v) => (occMax - occMin < 1e-6 ? 0.5 : (v - occMin) / (occMax - occMin));
+    const pkMonthOcc = {}; // per-cottage month occupancy (shares pooled avail + prior)
+    Object.keys(occByPk).forEach((pk) => { pkMonthOcc[pk] = occByPk[pk].map((o, m) => shrink(o, availByMonth[m])); });
+    // A: current pending enquiries as a FORWARD demand signal, per calendar month.
+    const enqByMonth = new Array(12).fill(0);
+    try {
+        (typeof enquiries !== 'undefined' && Array.isArray(enquiries) ? enquiries : []).forEach((e) => {
+            if (!e || !e.checkIn) return;
+            const m = new Date(e.checkIn + 'T00:00:00').getMonth();
+            if (m >= 0 && m <= 11) enqByMonth[m]++;
+        });
+    } catch (e) {}
+    const enqMax = Math.max.apply(null, enqByMonth);
+    leadPairs.sort((a, b) => a.lead - b.lead);
+    const leadWTotal = leadPairs.reduce((s, p) => s + p.w, 0);
     const leadFill = (days) => {
-        if (!leads.length) return Math.max(0.05, Math.min(1, days / 30)); // no data → gentle ramp
-        let c = 0;
-        for (let i = 0; i < leads.length; i++) if (leads[i] <= days) c++;
-        return c / leads.length;
+        if (!leadWTotal) return Math.max(0.05, Math.min(1, days / 30));
+        let c = 0; for (let i = 0; i < leadPairs.length; i++) if (leadPairs[i].lead <= days) c += leadPairs[i].w;
+        return c / leadWTotal;
     };
+    // B: pickup fraction — the share of eventual demand typically ALREADY booked by
+    // `days` before arrival (bookings whose lead was ≥ days). Powers the pace check.
+    const pickupFraction = (days) => {
+        if (!leadWTotal) return Math.max(0.02, Math.min(1, days >= 30 ? 0.5 : days / 60));
+        let c = 0; for (let i = 0; i < leadPairs.length; i++) if (leadPairs[i].lead >= days) c += leadPairs[i].w;
+        return c / leadWTotal;
+    };
+    // F: robust achieved-rate centre — recency-weighted mean of the TRIMMED ratios.
+    let adrRatio = 1;
+    if (adrPairs.length) { let num = 0, den = 0; adrPairs.forEach((p) => { num += p.ratio * p.w; den += p.w; }); adrRatio = den ? num / den : 1; }
     __chbPriceModelSig = sig;
     __chbPriceModel = {
-        nStays,
-        meanOcc,
-        monthOcc,
-        availByMonth,
-        adrRatio: adrDen ? adrNum / adrDen : 1,
+        nStays, meanOcc, monthOcc, availByMonth, adrRatio,
         conf: Math.max(0, Math.min(1, nStays / 24)), // ~full confidence at 24 priced stays
-        leadFill,
-        // Seasonal demand 0..1 for a date: this month's occupancy, normalised across
-        // the year (flat history → a neutral 0.5).
-        seasonal(isoStr) {
+        leadFill, pickupFraction,
+        // Seasonal demand 0..1 for a date — PER-COTTAGE where the cottage has enough
+        // of its own history, else the pooled fleet curve (D). Recency-weighted (C).
+        seasonal(isoStr, pk) {
             const m = new Date(isoStr + 'T00:00:00').getMonth();
-            return occMax - occMin < 1e-6 ? 0.5 : (monthOcc[m] - occMin) / (occMax - occMin);
+            const pooled = norm(monthOcc[m]);
+            if (pk && pkMonthOcc[pk]) {
+                const cw = Math.min(1, (staysByPk[pk] || 0) / 10); // lean pooled until the cottage has ~10 of its own stays
+                return norm(pkMonthOcc[pk][m]) * cw + pooled * (1 - cw);
+            }
+            return pooled;
         },
-        // PER-MONTH confidence 0..1: how much THIS calendar month's estimate is
-        // driven by real observation vs the prior (the same K weight as the
-        // Bayesian shrink). A month we've barely lived through (a lone January) is
-        // far less certain than a well-observed one (two packed Augusts), so its
-        // recommendation moves less and its range is wider.
+        // A: enquiry-driven forward demand 0..1 for a date's month (0 when none).
+        enquiryDemand(isoStr) {
+            if (enqMax <= 0) return 0;
+            const m = new Date(isoStr + 'T00:00:00').getMonth();
+            return enqByMonth[m] / enqMax;
+        },
+        // PER-MONTH confidence 0..1: how much THIS month's estimate is driven by real
+        // observation vs the prior. A barely-seen month moves less + gets a wider range.
         monthConfidence(isoStr) {
             const m = new Date(isoStr + 'T00:00:00').getMonth();
             const a = availByMonth[m];
@@ -11939,6 +11983,20 @@ function chbPriceModel() {
         },
     };
     return __chbPriceModel;
+}
+// Current booked share (0..1) of a specific window for a cottage — bookings + OTA
+// blocks. Used by the pace-vs-pickup check (B) to see if a period is filling behind
+// or ahead of its usual pace.
+function chbWindowOccupancy(pk, fromIso, nights) {
+    try {
+        let booked = 0;
+        const n = Math.max(1, nights || 1);
+        for (let i = 0; i < n; i++) {
+            const dayIso = chbIsoShift(fromIso, i);
+            if (cmdkBookClash(pk, dayIso, chbIsoShift(dayIso, 1), null)) booked++;
+        }
+        return n > 0 ? booked / n : 0;
+    } catch (e) { return 0; }
 }
 // Recommended nightly rate for a stay. Returns {rate, pct (vs current, −=discount),
 // base, score, conf, why, monthName, startDays} or null. opts.gap ⇒ dead-inventory
@@ -11951,11 +12009,28 @@ function chbSmartPrice(pk, fromIso, nights, opts) {
     const model = chbPriceModel();
     const t = todayDashed();
     const startDays = Math.max(0, Math.round((new Date(fromIso + 'T00:00:00') - new Date(t + 'T00:00:00')) / 86400e3));
-    const seasonal = model.seasonal(fromIso);           // 0..1
+    const seasonal = model.seasonal(fromIso, pk);       // per-cottage where possible (D), recency-weighted (C)
     // Far-out dates have plenty of time to sell (lean on seasonal demand); an
     // imminent open window leans on booking pace (little time left ⇒ softer).
     const timeLeft = startDays >= 45 ? 1 : model.leadFill(startDays);
-    const score = Math.max(0, Math.min(1, 0.65 * seasonal + 0.35 * timeLeft));
+    // The base demand score — UNCHANGED when the newer signals are absent.
+    let score = 0.65 * seasonal + 0.35 * timeLeft;
+    // A: recent enquiries for that month are CURRENT demand evidence — applied as a
+    // small post-shrink premium below (not folded into the confidence-gated score,
+    // so they can still lift a month we've little history for).
+    const enq = model.enquiryDemand(fromIso);
+    // B: pace vs pickup — INSIDE the active booking window, compare the period's
+    // CURRENT occupancy to what's usually on the books by now. Behind ⇒ softer,
+    // ahead ⇒ firmer. Neutral outside the window / when the expectation is tiny.
+    let pace = 1;
+    if (startDays > 0 && startDays <= 45) {
+        const expectedByNow = seasonal * model.pickupFraction(startDays);
+        if (expectedByNow >= 0.15) {
+            pace = Math.max(0.6, Math.min(1.4, chbWindowOccupancy(pk, fromIso, Math.max(1, nights || 1)) / expectedByNow));
+        }
+    }
+    score += (pace - 1) * 0.2;
+    score = Math.max(0, Math.min(1, score));
     // Effective confidence = the LESSER of the global data volume and how well
     // THIS month is observed — a recommendation for a specific date can't be more
     // certain than either. Drives both how far the price moves and how wide the
@@ -11965,6 +12040,7 @@ function chbSmartPrice(pk, fromIso, nights, opts) {
     let pct = score >= 0.55 ? ((score - 0.55) / 0.45) * 18 : -((0.55 - score) / 0.55) * 28;
     pct += (model.adrRatio - 1) * 25;                   // market paid above/below base? lean that way, gently
     pct *= 0.35 + 0.65 * conf;                           // thin/uncertain ⇒ small move
+    if (enq > 0 && !opts.gap) pct += enq * 5;           // A: a month people are enquiring about earns a small premium
     if (opts.gap) pct = Math.max(-30, Math.min(-5, pct));
     else pct = Math.max(-30, Math.min(20, pct));
     const rate = Math.max(20, Math.round(base * (1 + pct / 100)));
