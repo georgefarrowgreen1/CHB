@@ -343,6 +343,18 @@ Logged-out, owner, first-time and upcoming-only guests see nothing. Gated by
 ui-test-welcomeback.js (nudge + favourite, CTA → cottage page + note, upcoming-only and
 logged-out stay empty).
 
+**Your stay hub** (app.js — guest-side, `renderGuestBookings` under the "Your stay" header):
+there are TWO hub cards, both `.my-stay-hub`. The in-residence one (unchanged) shows for a stay
+including today. The **pre-arrival** one (`guestPreArrivalHubHtml`, `.my-stay-hub-soon`) shows
+ONCE for the SOONEST strictly-future booking (`mine` is sorted soonest-first): a sea-blue
+countdown badge (`.hub-count`, "N days to go" / "Tomorrow"), the one outstanding thing before
+arrival (balance due → a Pay-balance CTA via `openPayView`; else missing guest details → an
+Add-details link to `b.regUrl`; else "you're all set"), and planning tiles reusing existing fns
+(Directions `openCottageDirections`, Good to know `openFaqModal`, Welcome book `openWelcomeBook`
+[locked until balance paid, unchanged], Things to do → `view-experiences`, Contact host). No new
+endpoints. Gated by ui-test-yourstay.js (countdown wording, balance/all-set states, Tomorrow at
++1 day, only-soonest, past-only + logged-out show nothing).
+
 **Guest FAQ assistant** (app.js — guest-side, so admin.js's NLU never loads for visitors):
 a TYPED question in the guest chat is answered instantly ON-DEVICE from the cottage's own FAQ
 content before it ever pings the owner — `guestFaqAnswer(text)` runs a small precision-biased

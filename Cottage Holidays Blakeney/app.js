@@ -3141,6 +3141,7 @@ async function renderGuestBookings() {
     const upcomingCards = [],
         pastCards = [],
         hubCards = [];
+    let preArrivalShown = false; // only the soonest future stay gets the countdown hub
     mine.forEach(({ propKey, booking: b, address, payToken }) => {
         const meta = propertyMeta[propKey];
         const r = propertyRates[propKey] || defaultRates[propKey];
@@ -3242,6 +3243,12 @@ async function renderGuestBookings() {
                             <button class="hub-tile" data-act="openTermsProp" data-prop="${propKey}"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 4h9a3 3 0 0 1 3 3v13H9a3 3 0 0 1-3-3z"/><path d="M6 17h12"/></svg><span>Terms</span></button>
                         </div>
                     </div>`);
+        } else if (upcoming && !preArrivalShown && b.checkIn > todayStr) {
+            // Soonest FUTURE stay (not in residence): the anticipation + planning
+            // countdown hub. `mine` is sorted soonest-upcoming-first, so the first
+            // future booking we reach is the next one.
+            preArrivalShown = true;
+            hubCards.push(guestPreArrivalHubHtml(propKey, b, meta, payToken, gt));
         }
     });
     const gHdr = (t) =>
@@ -3267,6 +3274,48 @@ async function renderGuestBookings() {
 
     // Fill any in-stay tide cards (mid-stay guests).
     if (currentStays.length) renderInStayTides();
+}
+
+// ---- Pre-arrival "Your stay" hub: an anticipation + planning card for the
+// SOONEST upcoming booking (before check-in). Mirrors the in-stay hub, but leads
+// with a countdown, flags the one thing left to sort (balance / guest details),
+// and offers the same planning tiles. All tiles reuse existing functions — no
+// new endpoints. Shown once, above the booking cards, under "Your stay". ----
+function guestPreArrivalHubHtml(propKey, b, meta, payToken, gt) {
+    const days = nightsBetween(todayDashed(), b.checkIn);
+    const big = days <= 0 ? '!' : String(days);
+    const unit = days === 1 ? 'day to go' : 'days to go';
+    const head = days === 1 ? 'Tomorrow' : `${days} days`;
+    // The one outstanding thing before arrival (balance beats details), else all set.
+    let ready, cta = '';
+    if (gt && !gt.fullyPaid && gt.balance > 0) {
+        ready = `<span class="hub-warn">balance ${gbp(gt.balance)} due</span>`;
+        if (payToken) cta = `<button class="btn-glass btn-sm hub-cta-btn" ${chbAttrs('openPayView', String(payToken), b.dbId, 'balance')}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg> Pay balance ${gbp(gt.balance)}</button>`;
+    } else if (b.regUrl && !b.regSubmitted) {
+        ready = `<span class="hub-warn">add your guest details</span>`;
+        cta = `<a class="btn-glass btn-sm hub-cta-btn" href="${escapeHtml(b.regUrl)}"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg> Add your details</a>`;
+    } else {
+        ready = `<span class="hub-ok">you're all set</span>`;
+    }
+    return `
+        <div class="glass-panel my-stay-hub my-stay-hub-soon">
+            <div class="hub-head">
+                <span class="legend-swatch swatch-${propKey}"></span>
+                <div class="hub-head-text">
+                    <div class="hub-title"><strong>${escapeHtml(meta.name)}</strong> — ${head}</div>
+                    <div class="hub-sub">Check in ${fmtDate(b.checkIn)} · from ${b.checkInTime || '15:00'} · ${ready}</div>
+                </div>
+                <div class="hub-count" aria-hidden="true"><span class="hub-count-n">${big}</span><span class="hub-count-u">${unit}</span></div>
+            </div>
+            ${cta ? `<div class="hub-cta">${cta}</div>` : ''}
+            <div class="hub-grid">
+                <button class="hub-tile" ${chbAttrs('openCottageDirections', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 21s-6.5-5.5-6.5-10a6.5 6.5 0 0 1 13 0c0 4.5-6.5 10-6.5 10z"/><circle cx="12" cy="11" r="2.2"/></svg><span>Directions</span></button>
+                <button class="hub-tile" ${chbAttrs('openFaqModal', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 0 1 4.5 1.5c0 1.7-2 2-2 3.2"/><path d="M12 17h.01"/></svg><span>Good to know</span></button>
+                <button class="hub-tile" ${chbAttrs('openWelcomeBook', String(propKey))}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5a2 2 0 0 1 2-2h6v18H6a2 2 0 0 1-2-2z"/><path d="M20 5a2 2 0 0 0-2-2h-6v18h6a2 2 0 0 0 2-2z"/></svg><span>Welcome book</span></button>
+                <button class="hub-tile" data-act="nav" data-view="view-experiences"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l2.5 5.5L20 9l-4 4 1 6-5-3-5 3 1-6-4-4 5.5-.5z"/></svg><span>Things to do</span></button>
+                <button class="hub-tile" data-act="toggleChat"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16v11H8l-4 4z"/></svg><span>Contact host</span></button>
+            </div>
+        </div>`;
 }
 
 // ---- In-stay "tide of the day" card (My Bookings + My Stay hub) ----
@@ -12871,7 +12920,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'srchlearn3';
+    const BUILD = 'yourstay1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
