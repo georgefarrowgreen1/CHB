@@ -547,6 +547,15 @@ if (typeof get('paymentStatusLabel') === 'function') {
     check('card-in balance keeps Square status', psl('balance', 'COMPLETED') === 'COMPLETED');
     check('card-in deposit not-yet-settled stays truthful', psl('deposit', 'PENDING') === 'PENDING');
 }
+// Traffic-light status dots: green (done) / amber (in-progress) / red (problem),
+// with a Title-cased word carried as the label (never colour-only).
+if (typeof get('paymentStatusMeta') === 'function') {
+    const psm = get('paymentStatusMeta');
+    check('issued refund → green dot (ok) labelled Completed', psm('refund', 'PENDING').level === 'ok' && psm('refund', 'PENDING').label === 'Completed');
+    check('failed refund → red dot (bad) labelled Failed', psm('refund', 'FAILED').level === 'bad' && psm('refund', 'FAILED').label === 'Failed');
+    check('card-in completed → green dot', psm('balance', 'COMPLETED').level === 'ok');
+    check('card-in pending → amber dot', psm('deposit', 'PENDING').level === 'wait' && psm('deposit', 'PENDING').label === 'Pending');
+}
 
 // ---- Guest-side learning: only QUESTION-shaped unanswered chat is captured for
 // the owner (guestQuestionShaped), so greetings/one-word messages aren't logged.
