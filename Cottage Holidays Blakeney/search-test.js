@@ -1684,7 +1684,51 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         const rowsA = ctx.cmdkCommand('what should i charge for 15-18 august at jollyboat', sToday);
         check('search answers "what should I charge for <dates> at <cottage>" with a rate/range', Array.isArray(rowsA) && rowsA[0] && /Suggested for Jollyboat: £\d+(–£\d+)?\/night/.test(rowsA[0].label), rowsA && rowsA[0] && rowsA[0].label);
         check('the smart-price answer offers one-tap apply (a run handler)', Array.isArray(rowsA) && rowsA[0] && typeof rowsA[0].run === 'function');
-        vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);', ctx);
+
+        // F — OUTLIER TRIM: a £1 friends-rate freebie among £180 August stays must
+        // NOT drag the achieved-rate signal down.
+        vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);enquiries=[];
+            dbBookings.jollyboat=[1,4,7,10,13,16,19,22].map((d,i)=>({id:100+i,checkIn:'${sYr-1}-08-'+String(d).padStart(2,'0'),checkOut:'${sYr-1}-08-'+String(d+3).padStart(2,'0'),adults:2,children:0,agreedPrice:{total:540,perNight:180,nights:3}}))
+                .concat([{id:199,checkIn:'${sYr-1}-08-26',checkOut:'${sYr-1}-08-29',adults:2,children:0,agreedPrice:{total:3,perNight:1,nights:3}}]);`, ctx);
+        check('F: a £1 outlier is trimmed — achieved-rate stays ~1.2, not dragged down', Math.abs(ctx.chbPriceModel().adrRatio - 1.2) < 0.05, ctx.chbPriceModel().adrRatio.toFixed(3));
+
+        // D — PER-COTTAGE seasonality: Jollyboat busy in August, 21A busy in January
+        // ⇒ each cottage is priced up in ITS OWN peak, down in its trough.
+        vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);enquiries=[];
+            var _rows=[];[${sYr - 1},${sYr - 2}].forEach(function(y){[1,5,9,13,17,21,25].forEach(function(d){
+              _rows.push({pk:'jollyboat',checkIn:y+'-08-'+String(d).padStart(2,'0'),checkOut:y+'-08-'+String(d+2).padStart(2,'0')});
+              _rows.push({pk:'21a',checkIn:y+'-01-'+String(d).padStart(2,'0'),checkOut:y+'-01-'+String(d+2).padStart(2,'0')});});});
+            dbBookings.jollyboat=_rows.filter(function(r){return r.pk==='jollyboat'}).map(function(r,i){return {id:300+i,checkIn:r.checkIn,checkOut:r.checkOut,adults:2,children:0,agreedPrice:{total:510,perNight:170,nights:3}}});
+            dbBookings['21a']=_rows.filter(function(r){return r.pk==='21a'}).map(function(r,i){return {id:400+i,checkIn:r.checkIn,checkOut:r.checkOut,adults:2,children:0,agreedPrice:{total:510,perNight:170,nights:3}}});`, ctx);
+        vm.runInContext(`propertyMeta['21a']={name:'21A'};propertyRates['21a']={coupleRate:150,extraAdultRate:0,childRate:0,damagesDeposit:50,transactionPct:0};`, ctx);
+        const jbAug = ctx.chbSmartPrice('jollyboat', `${sYr + 1}-08-15`, 3, {});
+        const jbJan = ctx.chbSmartPrice('jollyboat', `${sYr + 1}-01-15`, 3, {});
+        const taJan = ctx.chbSmartPrice('21a', `${sYr + 1}-01-15`, 3, {});
+        const taAug = ctx.chbSmartPrice('21a', `${sYr + 1}-08-15`, 3, {});
+        check('D: each cottage learns its OWN peak — Jollyboat priced up in Aug, 21A up in Jan', jbAug && jbJan && taJan && taAug && jbAug.pct > jbJan.pct && taJan.pct > taAug.pct, `jb aug ${jbAug && jbAug.pct} vs jan ${jbJan && jbJan.pct} · 21a jan ${taJan && taJan.pct} vs aug ${taAug && taAug.pct}`);
+
+        // A — ENQUIRIES lift a month: three pending enquiries for next March raise its
+        // suggested price vs the same month with none.
+        vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);enquiries=[];
+            dbBookings.jollyboat=[1,4,7,10].map((d,i)=>({id:500+i,checkIn:'${sYr-1}-03-'+String(d).padStart(2,'0'),checkOut:'${sYr-1}-03-'+String(d+2).padStart(2,'0'),adults:2,children:0,agreedPrice:{total:450,perNight:150,nights:3}}));`, ctx);
+        const enqBefore = ctx.chbSmartPrice('jollyboat', `${sYr + 1}-03-15`, 3, {});
+        vm.runInContext(`enquiries=[{checkIn:'${sYr + 1}-03-10',checkOut:'${sYr + 1}-03-13',propKey:'jollyboat'},{checkIn:'${sYr + 1}-03-18',checkOut:'${sYr + 1}-03-21',propKey:'jollyboat'},{checkIn:'${sYr + 1}-03-24',checkOut:'${sYr + 1}-03-27',propKey:'jollyboat'}];`, ctx);
+        const enqAfter = ctx.chbSmartPrice('jollyboat', `${sYr + 1}-03-15`, 3, {});
+        check('A: pending enquiries for a month raise its suggested price', enqBefore && enqAfter && enqAfter.pct > enqBefore.pct, `${enqBefore && enqBefore.pct}% → ${enqAfter && enqAfter.pct}%`);
+
+        // C — RECENCY: the same packed August observed RECENTLY is more confident than
+        // one observed years ago (recent demand carries more weight).
+        vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);enquiries=[];dbBookings.jollyboat=[1,5,9,13,17,21,25].map((d,i)=>({id:600+i,checkIn:'${sYr-1}-08-'+String(d).padStart(2,'0'),checkOut:'${sYr-1}-08-'+String(d+2).padStart(2,'0'),adults:2,children:0,agreedPrice:{total:450,perNight:150,nights:3}}));`, ctx);
+        const confRecent = ctx.chbPriceModel().monthConfidence(`${sYr + 1}-08-15`);
+        vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);dbBookings.jollyboat=[1,5,9,13,17,21,25].map((d,i)=>({id:700+i,checkIn:'${sYr-4}-08-'+String(d).padStart(2,'0'),checkOut:'${sYr-4}-08-'+String(d+2).padStart(2,'0'),adults:2,children:0,agreedPrice:{total:450,perNight:150,nights:3}}));`, ctx);
+        const confOld = ctx.chbPriceModel().monthConfidence(`${sYr + 1}-08-15`);
+        check('C: recent history is weighted more (recent-August confidence > old-August)', confRecent > confOld, `recent ${confRecent.toFixed(2)} vs old ${confOld.toFixed(2)}`);
+
+        // B — PACE input: the window-occupancy the pace check reads is 0 for an empty
+        // window and rises when nights are booked.
+        vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);dbBookings.jollyboat=[{id:800,checkIn:'${sYr + 1}-09-02',checkOut:'${sYr + 1}-09-05',adults:2,children:0,agreedPrice:{total:450,perNight:150,nights:3}}];`, ctx);
+        check('B: pace reads the window occupancy — 0 when empty, full when booked', ctx.chbWindowOccupancy('jollyboat', `${sYr + 1}-10-01`, 3) === 0 && ctx.chbWindowOccupancy('jollyboat', `${sYr + 1}-09-02`, 3) === 1, `empty ${ctx.chbWindowOccupancy('jollyboat', `${sYr + 1}-10-01`, 3)} booked ${ctx.chbWindowOccupancy('jollyboat', `${sYr + 1}-09-02`, 3)}`);
+        vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);enquiries=[];', ctx);
     } else fail('chbSmartPrice / chbPriceModel missing from the bundle');
 
     // ---- Summary ----

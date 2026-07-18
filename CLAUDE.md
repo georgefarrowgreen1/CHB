@@ -533,12 +533,18 @@ before/override/after, apply payload keeps existing seasons, guards) + golden sh
 
 **Smart pricing model** (admin.js) — an ON-DEVICE demand model (no server, no external
 model — works offline/iPhone) that learns from the owner's OWN bookings and shapes every
-price suggestion. `chbPriceModel()` (lazy, memoised on a `dbBookings`+`dbBlocks` signature)
-reads three signals: **seasonal demand** (occupancy by calendar month from direct stays +
-OTA `dbBlocks`, Bayesian-shrunk to the mean so a thin month can't swing), **booking pace**
-(a lead-time CDF from `createdAt` — added to `mapBookingFromApi` — so a still-open window
-close to arrival is "harder to fill" than a far one), and **achieved rate** (`agreedPrice.perNight`
-÷ season base). `chbSmartPrice(pk, fromIso, nights, {gap})` turns those into a recommended
+price suggestion. `chbPriceModel()` (lazy, memoised on a `dbBookings`+`dbBlocks`+`enquiries`
+signature) reads signals, ALL **recency-weighted** (a ~1.5-year half-life, so last year
+outweighs three years ago): **seasonal demand** (occupancy by calendar month from direct
+stays + OTA `dbBlocks`, Bayesian-shrunk to the mean; **per-cottage** where a cottage has ≥~10
+of its own stays, else the pooled fleet curve — so Jollyboat and 21A each learn their own
+peak), **booking pace** (a lead-time CDF from `createdAt` — added to `mapBookingFromApi` — so
+a still-open window close to arrival is "harder to fill" than a far one, PLUS a `pickupFraction`
+pace-vs-pickup check: within 45 days, a window emptier than usual-by-now softens, fuller firms
+up — `chbWindowOccupancy`), **achieved rate** (`agreedPrice.perNight` ÷ season base, **outlier-
+trimmed** to ratios in [0.5,2] so a friends-rate freebie can't skew it), and **enquiry demand**
+(pending `enquiries` per month → a small post-shrink premium so a month people are actively
+enquiring about earns more, even one with thin history). `chbSmartPrice(pk, fromIso, nights, {gap})` turns those into a recommended
 nightly rate on a transparent yield curve (busy ⇒ hold/raise to +18%, quiet/last-minute ⇒
 discount to −28%), nudged by the achieved-rate ratio and ALWAYS regularised by confidence
 (`nStays/24`) so thin data barely moves off the current rate — returns `{rate, pct, base,
