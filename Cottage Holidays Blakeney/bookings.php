@@ -247,6 +247,47 @@ function record_square_refund($bookingId, $sqId, $amount, $kind, $note, $gName, 
     insert_payment_row($bookingId, (string) $refund['id'], $kind, $amount, $refund['status'], $gName, $gProp, $note);
     return ['ok' => true, 'status' => $refund['status'], 'refund_id' => (string) $refund['id']];
 }
+// Bring any still-pending refund / deposit-return rows up to date with Square's
+// ACTUAL status. A Square refund is often created PENDING and only becomes
+// COMPLETED a moment (occasionally a day) later — the square-webhook.php handler
+// flips it live IF the webhook is configured and the event lands, but that can't
+// be relied on. This is the belt-and-braces poll: for each non-terminal refund
+// row we ask Square for its current status and update the ledger, so a refund
+// the owner has actually issued shows COMPLETED once it truly has processed
+// (and honestly stays PENDING only while Square itself still says so). Best-
+// effort, capped, only touches Square-issued rows still in a non-terminal state.
+function reconcile_pending_refunds($limit = 12)
+{
+    if (!square_enabled()) {
+        return;
+    }
+    try {
+        $q = db()->prepare(
+            "SELECT id, square_payment_id FROM payments
+             WHERE kind IN ('refund','damages_return')
+               AND (status IS NULL OR status NOT IN ('COMPLETED','FAILED','REJECTED'))
+               AND square_payment_id IS NOT NULL AND square_payment_id <> ''
+             ORDER BY id DESC LIMIT " . (int) $limit,
+        );
+        $q->execute();
+        $rows = $q->fetchAll();
+    } catch (\Throwable $e) {
+        return;
+    }
+    foreach ($rows as $r) {
+        try {
+            $res = square_api('GET', '/v2/refunds/' . rawurlencode((string) $r['square_payment_id']));
+            $status = $res['body']['refund']['status'] ?? '';
+            // Only a recognised Square status overwrites the row — a 404/error
+            // (e.g. a manually recorded refund with no Square id) leaves it as-is.
+            if (in_array($status, ['PENDING', 'COMPLETED', 'FAILED', 'REJECTED', 'APPROVED'], true)) {
+                db()->prepare('UPDATE payments SET status = ? WHERE id = ?')->execute([$status, (int) $r['id']]);
+            }
+        } catch (\Throwable $e) {
+            // best-effort per row — never let one bad lookup break the rest
+        }
+    }
+}
 // Re-derive the booking's rental payment status from the ledger (charges − rental
 // refunds). NOTE: 'damages_return' is deliberately excluded — returning a held
 // deposit must never make a booking look unpaid.
@@ -1803,6 +1844,12 @@ if ($action === 'payments') {
 // LEFT JOIN + snapshot fallback so payments/refunds from DELETED bookings stay
 // visible (the ledger rows are deliberately kept when a booking is removed).
 if ($action === 'recent_payments') {
+    // First bring any still-pending refunds up to date with Square, so a refund
+    // that has actually processed shows COMPLETED here rather than a stale PENDING.
+    try {
+        reconcile_pending_refunds();
+    } catch (\Throwable $e) {
+    }
     try {
         $rows = db()
             ->query(
