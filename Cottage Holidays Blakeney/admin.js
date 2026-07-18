@@ -10677,6 +10677,17 @@ function renderMoneyPanel() {
                 <p style="font-size:0.82rem;color:var(--text-muted);margin:8px 0 16px;max-width:640px;">${intro}</p>
                 <div class="bk-list">${cards}</div>`;
 }
+// The ledger status to show for a payment row. A refund the owner has issued is
+// DONE from the ledger's point of view: Square accepts it irrevocably and then
+// settles it (its own transient PENDING → COMPLETED), so a processed refund reads
+// "Completed" rather than an alarming "Pending" — only an explicit Square
+// FAILED/REJECTED is a real problem worth flagging. Card-IN rows (deposit/balance)
+// keep Square's live status so a not-yet-settled charge still reads truthfully.
+function paymentStatusLabel(kind, status) {
+    const isReturn = kind === 'refund' || kind === 'damages_return';
+    const st = String(status || '').toUpperCase();
+    return isReturn ? (st === 'FAILED' || st === 'REJECTED' ? 'Failed' : 'Completed') : (status || '');
+}
 // Recent Square transactions across all bookings (deposits, balances, refunds).
 async function renderMoneyFeed() {
     const el = document.getElementById('money-feed');
@@ -10730,13 +10741,17 @@ async function renderMoneyFeed() {
                 (p.name || 'Guest') +
                 (deleted ? ' · deleted booking' : '') +
                 (note ? ' · ' + note : '');
+            // A refund the owner has issued is DONE from the ledger's point of view
+            // (see paymentStatusLabel): show "Completed", not an alarming "Pending".
+            const statusText = paymentStatusLabel(p.kind, p.status);
+            const statusBad = isReturn && statusText === 'Failed';
             return `<div class="feed-row"${note ? ` title="${escapeHtml(note)}"` : ''}>
                     <span class="feed-date">${escapeHtml(fmtDate(date))}</span>
                     <span class="prop-tag tag-${p.prop_key}">${escapeHtml(propName)}</span>
                     <span class="feed-who"${deleted ? ' style="color:var(--text-muted);"' : ''}>${escapeHtml(who)}</span>
                     <span class="feed-kind">${label}${feeNote}</span>
                     <span class="feed-amt" style="${isReturn ? 'color:var(--danger);' : 'color:var(--ok);'}"${!isReturn && fee != null ? ` title="Gross ${gbp(gross)} · fee ${gbp(fee)} · net ${gbp(Math.max(0, gross - fee))}"` : ''}>${amt}</span>
-                    <span class="feed-status">${escapeHtml(p.status || '')}</span>
+                    <span class="feed-status"${statusBad ? ' style="color:var(--danger);"' : ''}>${escapeHtml(statusText)}</span>
                 </div>`;
         })
         .join('');
