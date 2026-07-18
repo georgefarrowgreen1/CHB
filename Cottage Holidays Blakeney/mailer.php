@@ -976,8 +976,7 @@ function send_anniversary_email($b)
         "Around this time last year you were getting ready for your stay at {$prop} — " .
         "we hope Blakeney has stayed with you the way it tends to.\n\n" .
         "The same {$month} weeks are starting to book up again, so if you fancy a return " .
-        'we wanted you to have first pick of the dates. As a returning guest, just mention ' .
-        "the returning-guest rate when you enquire and we'll apply it.\n\n" .
+        "we wanted you to have first pick of the dates.\n\n" .
         ($url ? "Check availability: {$url}\n\n" : '') .
         "Hope to welcome you back,\nCottage Holidays Blakeney\n\n" .
         ($unsub
@@ -996,7 +995,7 @@ function send_anniversary_email($b)
         email_p(
             'The same <strong style="color:#2A2622;">' .
                 $esc($month) .
-                '</strong> weeks are starting to book up again, so we wanted you to have first pick of the dates. As a returning guest, just mention the <strong style="color:#2A2622;">returning-guest rate</strong> when you enquire and we\'ll apply it.',
+                '</strong> weeks are starting to book up again, so we wanted you to have first pick of the dates.',
         );
     if ($url) {
         $inner .= email_btn($url, 'Check availability');
