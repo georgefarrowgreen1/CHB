@@ -145,7 +145,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(q.hidden, 'strip hides when nothing needs the owner');
   ok(/all quiet/.test(q.ops), `ops line says all quiet (${q.ops})`);
 
-  console.log('5. heading adapts: pure opportunities read "Worth a look"');
+  console.log('5. pricing ideas moved OFF the strip and onto Manage → Pricing');
   await page.evaluate(() => {
     __nyCronQuiet = false; __nyChats = 0; __nyMod = {}; enquiries = [];
     Object.keys(dbBookings).forEach((k) => { dbBookings[k] = []; });
@@ -157,14 +157,17 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   });
   await page.waitForTimeout(300);
   const w = await page.evaluate(() => ({
-    word: (document.getElementById('needs-you-word') || {}).textContent,
-    count: (document.getElementById('needs-you-count') || {}).textContent,
-    opp: (document.getElementById('needs-you-count') || { classList: { contains: () => false } }).classList.contains('is-opp'),
-    labels: [...document.querySelectorAll('#needs-you-list .ny-label')].map((e) => e.textContent),
+    hidden: document.getElementById('needs-you').style.display === 'none',
+    rows: document.querySelectorAll('#needs-you-list .ny-row').length,
   }));
-  ok(w.word === 'Worth a look', `opportunities-only heading reads "Worth a look" (${w.word})`);
-  ok(w.count === '1' && w.opp, `calm green badge counts the ideas (${w.count}, is-opp=${w.opp})`);
-  ok(w.labels.some((l) => /Fill the 3-night gap on .*: offer £\d+\/night/.test(l)), 'the gap idea is the only row (offer-led)');
+  ok(w.hidden && w.rows === 0, `a gap with no duties leaves the Today strip empty — pricing ideas are off it (hidden=${w.hidden})`);
+  // The gap idea now lives on its own Manage → Pricing page.
+  const priced = await page.evaluate(() => {
+    nav('view-settings'); settingsOpen('pricing'); renderPricing();
+    return [...document.querySelectorAll('#pricing-body .ny-label')].map((e) => e.textContent);
+  });
+  await page.waitForTimeout(200);
+  ok(priced.some((l) => /Fill the 3-night gap on .*: offer £\d+\/night/.test(l)), 'the gap idea appears on Manage → Pricing (offer-led)');
   await page.evaluate(() => {
     enquiries = [{ id: 7, name: 'Duty Guest', propKey: 'jollyboat', checkIn: '2027-01-05', checkOut: '2027-01-08', receivedAt: new Date().toISOString().slice(0, 19).replace('T', ' ') }];
     renderNeedsYou();
@@ -175,7 +178,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     count: (document.getElementById('needs-you-count') || {}).textContent,
     opp: document.getElementById('needs-you-count').classList.contains('is-opp'),
   }));
-  ok(w2.word === 'Needs you' && w2.count === '1' && !w2.opp, `a duty flips it back — badge counts DUTIES only (${w2.word} ${w2.count})`);
+  ok(w2.word === 'Needs you' && w2.count === '1' && !w2.opp, `a real duty shows on the strip — badge counts DUTIES only (${w2.word} ${w2.count})`);
 
   await browser.close(); server.kill();
   console.log(fails ? `NEEDS-YOU TEST FAILED ❌ (${fails})` : 'NEEDS-YOU TEST PASSED ✅');

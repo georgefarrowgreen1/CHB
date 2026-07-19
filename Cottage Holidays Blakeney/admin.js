@@ -238,6 +238,7 @@ function cmdkRegistry() {
         // Manage sections — each `sec` opens #sec-<sec> via settingsOpen().
         { id: 'accom', label: 'Cottages', sub: 'Rates, fees, rules & photos', icon: 'house', kw: 'property add remove cottage price occupancy', sec: 'accom' },
         { id: 'seasongrid', label: 'Seasonal rates', sub: 'Summer & holiday pricing', icon: 'tag', kw: 'rates price season', sec: 'seasongrid' },
+        { id: 'pricing', label: 'Pricing', sub: 'Gap offers & demand-based price ideas', icon: 'tag', kw: 'pricing price rate gap offer discount demand suggestion coach yield anomaly opportunity', sec: 'pricing' },
         { id: 'calendar', label: 'Calendar sync', sub: 'Airbnb, Vrbo & Booking.com', icon: 'sync', kw: 'ical import export channel airbnb vrbo booking.com feed', sec: 'calendar' },
         { id: 'payments', label: 'Payments settings', sub: 'Square & deposit policy', icon: 'payment', kw: 'square card deposit refund', sec: 'payments' },
         { id: 'cancel', label: 'Cancellation policy', sub: 'Refund terms', kw: 'refund cancel', sec: 'cancel' },
@@ -8296,6 +8297,7 @@ const SETTINGS_TITLES = {
     'chat-away': 'Away auto-reply',
     'follow-ups': 'Follow-up emails',
     'search-learning': 'Search learning',
+    pricing: 'Pricing',
 };
 // Open the separate staging sandbox (where all testing now happens) in a new tab.
 const STAGING_URL = 'https://staging.cottageholidaysblakeney.co.uk/';
@@ -8446,6 +8448,7 @@ function settingsRenderSection(section) {
     else if (section === 'cancel') renderCancelList();
     else if (section === 'seasongrid') renderSeasonGrid();
     else if (section === 'search-learning') renderSearchLearning();
+    else if (section === 'pricing') renderPricing();
 }
 function settingsBack() {
     if (settingsBackTarget) settingsBackTarget();
@@ -12196,13 +12199,43 @@ function chbAnomalies() {
 function nyGapOffer(pk, iso) {
     const g = chbGapScan().find((x) => x.pk === pk && x.from === iso);
     const plan = g && chbGapPlan(g);
-    if (!plan || plan.kind !== 'offer') { try { renderNeedsYou(); } catch (e) {} return; }
+    if (!plan || plan.kind !== 'offer') { try { renderPricing(); } catch (e) {} return; }
     cmdkApplyPriceOverride(pk, g.from, plan.endIncl, plan.offer, 'Gap offer')
-        .then(() => { try { renderNeedsYou(); } catch (e) {} })
+        .then(() => { try { renderPricing(); } catch (e) {} })
         .catch((e) => glassAlert("Couldn't save: " + e.message));
 }
 function nyOfferRates() { Promise.resolve(openArea('cottages')).then(() => settingsOpen('seasongrid')); }
 function nyPacingReview() { openAccounts(); try { accountsOpen('pricingcoach'); } catch (e) {} }
+// ---- Manage → Pricing: demand-based price ideas on their own page ----------
+// The gap offers + pacing flag that used to sit in the Today "Worth a look" strip
+// now live here, alongside a link to the full pricing coach. Same one-tap apply,
+// same validated write path — just off the operations screen and into Manage.
+function openPricingCoach() { openAccounts(); try { accountsOpen('pricingcoach'); } catch (e) {} }
+function renderPricing() {
+    const wrap = document.getElementById('pricing-body');
+    if (!wrap) return;
+    let items = [];
+    try { items = chbAnomalies(); } catch (e) {}
+    const rowsHtml = items.length
+        ? items.map((it) => `
+            <button type="button" class="ny-row glass-panel ny-${it.sev}" ${it.go}>
+                <span class="ny-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${NY_ICONS[it.ic] || NY_ICONS.alert}</svg></span>
+                <span class="ny-main"><span class="ny-label">${it.label}</span><span class="ny-sub">${it.sub}</span></span>
+                <span class="ny-act">${it.act} ›</span>
+            </button>`).join('')
+        : `<p class="sl-empty">No pricing suggestions right now — no short gaps between stays to fill, and next month is pacing fine. Ideas appear here as your calendar fills.</p>`;
+    wrap.innerHTML = `
+        <section class="glass-panel sl-card">
+            <p class="sl-model">Demand-based ideas from your OWN bookings — nothing changes until you tap. A short gap between stays gets a ready-made offer priced to sell; a month pacing behind last year gets flagged.</p>
+        </section>
+        <div class="settings-section-label">Ready to apply</div>
+        <div id="pricing-recs" style="display:flex;flex-direction:column;gap:10px;">${rowsHtml}</div>
+        <div class="settings-section-label">Go deeper</div>
+        <section class="glass-panel sl-card">
+            <p class="sl-note" style="margin:0 0 12px;">The pricing coach reads guest-search demand and unmet interest, and drafts weekend-uplift and season ideas.</p>
+            <button type="button" class="btn-sm btn-edit" data-act="openPricingCoach">Open the pricing coach →</button>
+        </section>`;
+}
 function needsYouItems() {
     const items = [];
     const today = todayDashed();
@@ -12305,9 +12338,9 @@ function needsYouItems() {
             });
         }
     });
-    // 7) Opportunities the data can see — bounded gaps worth a last-minute
-    // offer, a light month vs last year. Lowest priority: obligations first.
-    try { items.push(...chbAnomalies()); } catch (e) {}
+    // Pricing OPPORTUNITIES (gap offers, pacing) used to ride here at the bottom;
+    // they now live on their own Manage → Pricing page (renderPricing), so the Today
+    // strip stays about things that genuinely NEED the owner (duties), not ideas.
     return items;
 }
 function needsYouExpand() {

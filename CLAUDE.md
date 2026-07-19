@@ -475,8 +475,15 @@ booking gets NO card, so two John Smiths never cross-pollinate), plus up to 2 hi
 enquiries by recorded name, free text only by 2+-word full name; activity log excluded as
 log-spam; strong key required; rows open their source via `chbHistoryRow`). Renders NOTHING
 for a first-timer with no history; if `CHB_HIST` isn't built, `openBookingHub` builds it in
-the background and slots mentions in when it lands. (2) **`chbAnomalies()`** appends
-OPPORTUNITY rows (sev `ok`, `spark` icon, `opp: true`, lowest priority) to the Needs-you strip — whose HEADING adapts: any duty keeps "Needs you" (amber badge counts DUTIES only); a pure-opportunity strip reads "Worth a look" with a calm green badge (`#needs-you-count.is-opp`, `#needs-you-word` set in `renderNeedsYou`): bounded
+the background and slots mentions in when it lands. (2) **`chbAnomalies()`** builds
+OPPORTUNITY rows (sev `ok`, `spark` icon, `opp: true`) — these now live on their OWN
+**Manage → Pricing** page (`renderPricing` into `#sec-pricing`/`#pricing-body`, section id
+`pricing` in `SETTINGS_TITLES`/`settingsRenderSection`/`cmdkRegistry`; opened from the Manage
+index row under "Bookings & payments", or `settingsOpen('pricing')`), NOT the Today Needs-you
+strip — the strip stays about things that genuinely NEED the owner (duties). `needsYouItems()`
+no longer pushes `chbAnomalies()`; the adaptive "Worth a look"/`is-opp` heading in
+`renderNeedsYou` is retained as harmless defensive code (nothing carries `opp` there now).
+The Pricing page also links out to the full pricing coach (`openPricingCoach`). Rows: bounded
 2–4-night gaps between guest stays starting ≤45 days out (owner-blocked holes = deliberately
 held, skipped; 1-night = changeover slack; unbounded space ≠ gap; cap 2) and a next-month
 shortfall vs the same month last year (fires only under 50% of last year with last year
@@ -485,14 +492,14 @@ generic action**: `chbGapPlan(g)` picks the best commercial outcome — a hole b
 PRICED to sell, never hand-booked. No offer yet → a one-tap dated offer off the season-aware
 current rate (`chbCoupleRateOn`), 20% when the gap is imminent (≤7 days — last-minute price is
 the only lever left) else 15%, floor £20; act **Offer** → `nyGapOffer` saves the 'Gap offer'
-override via `cmdkApplyPriceOverride` (undo-able) and re-renders so the row flips. A 'Gap
-offer' season already covering the hole → the row reports it LIVE (act **Rates** →
-`nyOfferRates` = Manage → seasongrid) instead of re-suggesting. The SAME plan drives the strip,
-the brief's gap row, and the CHB_PRICE_Q suggestion rows, so every surface agrees.
+override via `cmdkApplyPriceOverride` (undo-able) and re-renders the Pricing page so the row
+flips. A 'Gap offer' season already covering the hole → the row reports it LIVE (act **Rates** →
+`nyOfferRates` = Manage → seasongrid) instead of re-suggesting. The SAME plan drives the Pricing
+page, the brief's gap row, and the CHB_PRICE_Q suggestion rows, so every surface agrees.
 Gated by search-test §32 (18 checks: gap bounds/blocks/window, offer/imminent/live decisions,
 pacing thresholds, intel composition, false-merge + no-card guards, mention matching) +
-ui-test-intel.js (real browser: card renders/withholds, Offer tap → seasons_save payload +
-row flips to live).
+ui-test-intel.js (real browser: card renders/withholds, Offer tap on Manage → Pricing →
+seasons_save payload + row flips to live).
 
 **Booking logic in search** (admin.js) — search REASONS about the calendar, not just finds
 it. (1) **QUOTES**: "how much for 15–18 aug at jollyboat (2 adults 1 child)" prices the asked
