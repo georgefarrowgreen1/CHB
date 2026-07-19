@@ -1202,6 +1202,10 @@
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Payments</span><span class="settings-row-sub">Card payments (Square) &amp; your deposit policy</span></span><span class="settings-row-chev">›</span>
                 </button>
+                <button class="settings-row" data-kw="pricing price rate gap offer discount demand suggestion coach yield anomaly opportunity" data-act="settingsOpen" data-arg="pricing">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12V7a1 1 0 0 0-1-1h-7L3 15l6 6 9-9z"/><circle cx="15.5" cy="9.5" r="1.2"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Pricing</span><span class="settings-row-sub">Gap offers &amp; demand-based price ideas</span></span><span class="settings-row-chev">›</span>
+                </button>
                 <button class="settings-row" data-kw="refund policy terms flexible strict cancellation" data-act="settingsOpen" data-arg="cancel">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 7.5l15 9M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Cancellation policy</span><span class="settings-row-sub">The refund terms guests see, per cottage</span></span><span class="settings-row-chev">›</span>
@@ -1415,6 +1419,12 @@
                  renderSearchLearning() from the per-owner teach-loop data. -->
             <div class="settings-sec" id="sec-search-learning" style="display:none;">
                 <div id="search-learning-body"></div>
+            </div>
+
+            <!-- Pricing: demand-based price ideas (gap offers, pacing flags) on their
+                 own page, off the Today ops strip. Built live by renderPricing(). -->
+            <div class="settings-sec" id="sec-pricing" style="display:none;">
+                <div id="pricing-body"></div>
             </div>
 
             <!-- Test centre (staging only): preview, sample emails, test booking, test data -->
@@ -2503,7 +2513,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=474"></script>
+    <script defer src="app.js?v=475"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

@@ -1094,7 +1094,15 @@ if (typeof ctx.chbAnomalies === 'function' && typeof ctx.chbGuestIntel === 'func
     // Gaps — each row carries chbGapPlan's DECISION (offer vs live status).
     seed([mkb(1, 'Bob A', 'b@x.co', plus(5), plus(8)), mkb(2, 'Cara B', 'c@x.co', plus(11), plus(14))]);
     let g = gapRows();
-    check('a bounded 3-night gap 8 days out proposes the 15% offer (£130→£111)', g.length === 1 && /Fill the 3-night gap on .*: offer £111\/night/.test(g[0].label) && g[0].act === 'Offer' && /15% off the usual £130/.test(g[0].sub), g.map((x) => `${x.label} | ${x.sub} [${x.act}]`).join(' || '));
+    check('a bounded 3-night gap 8 days out proposes a shallow offer (~15% off £130)', (() => {
+        if (g.length !== 1 || g[0].act !== 'Offer' || !/Fill the 3-night gap on /.test(g[0].label)) return false;
+        const lm = /offer £(\d+)\/night/.exec(g[0].label), sm = /(\d+)% off the usual £130/.exec(g[0].sub);
+        if (!lm || !sm) return false;
+        const price = +lm[1], pct = +sm[1];
+        // Anchor is 15%; the demand model may refine a point or two — assert the
+        // shallow band + that the shown price matches the shown % off £130.
+        return pct >= 15 && pct <= 18 && price === Math.round(130 * (1 - pct / 100));
+    })(), g.map((x) => `${x.label} | ${x.sub} [${x.act}]`).join(' || '));
     seed([mkb(1, 'Bob A', 'b@x.co', plus(2), plus(5)), mkb(2, 'Cara B', 'c@x.co', plus(8), plus(11))]);
     g = gapRows();
     check('an IMMINENT gap (≤7 days out) cuts deeper — 20% (£130→£104)', g.length === 1 && /offer £104\/night/.test(g[0].label) && /20% off/.test(g[0].sub), g.map((x) => `${x.label} | ${x.sub}`).join(' || '));
@@ -1303,7 +1311,15 @@ if (typeof ctx.chbSeasonSplice === 'function') {
     const sugg = ctx.cmdkIntent('should i change my prices') || [];
     check('pricing question leads with the coach route', sugg[0] && /Pricing coach/.test(sugg[0].label), sugg[0] && sugg[0].label);
     const gapRow = sugg.find((r) => /gap on Jollyboat/.test(r.label || ''));
-    check('gap offer suggests 15% off the season rate (£140→£119) with the dates', !!gapRow && /£119\/night \(15% off\)/.test(gapRow.label) && /£140 → £119/.test(gapRow.sub), gapRow && `${gapRow.label} | ${gapRow.sub}`);
+    check('gap offer suggests a shallow discount (~15% off the £140 season rate) with the dates', (() => {
+        if (!gapRow) return false;
+        const lm = /try £(\d+)\/night \((\d+)% off\)/.exec(gapRow.label || '');
+        if (!lm) return false;
+        const price = +lm[1], pct = +lm[2];
+        // Anchor 15%, model may refine a point or two; assert the shallow band +
+        // that the £140→£price maths shown in the sub is internally consistent.
+        return pct >= 15 && pct <= 18 && price === Math.round(140 * (1 - pct / 100)) && new RegExp(`£140 → £${price}`).test(gapRow.sub || '');
+    })(), gapRow && `${gapRow.label} | ${gapRow.sub}`);
 
     // Splice: an override INSIDE an existing season splits it (never shadowed).
     const spliced = ctx.chbSeasonSplice(

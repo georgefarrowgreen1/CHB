@@ -2,7 +2,7 @@
 //  1. a repeat guest's booking hub leads with the "Knows your guest" card
 //     (ordinal + lifetime from the unified directory, strong identity)
 //  2. a first-time guest's hub has NO intel card (empty dossier = noise)
-//  3. the Needs-you strip carries the gap row with chbGapPlan's DECISION —
+//  3. the Manage → Pricing page carries the gap row with chbGapPlan's DECISION —
 //     a one-tap dated offer (15% off the current rate), not a Book action
 //  4. tapping Offer SAVES the 'Gap offer' override through seasons_save and
 //     the row flips to its live status (routing to Rates)
@@ -72,29 +72,30 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const none = await page.evaluate(() => !document.getElementById('hub-intel-card'));
   ok(none, 'first-time guest: no intel card (nothing worth knowing)');
 
-  // 3) The Needs-you strip decides the gap's best outcome: a one-tap DISCOUNT
-  // offer off the £130 rate (the depth is set by the demand model, so assert a
-  // valid discount rather than a hardcoded %), never a manual Book.
-  await page.evaluate(() => nav('view-backoffice')); await page.waitForTimeout(300);
-  await page.evaluate(() => renderNeedsYou());
+  // 3) The Manage → Pricing page decides the gap's best outcome: a one-tap
+  // DISCOUNT offer off the £130 rate (the depth is set by the demand model, so
+  // assert a valid discount rather than a hardcoded %), never a manual Book.
+  // (These recommendations moved OFF the Today ops strip and onto their own page.)
+  await page.evaluate(() => { nav('view-settings'); settingsOpen('pricing'); }); await page.waitForTimeout(300);
+  await page.evaluate(() => renderPricing());
   const gap = await page.evaluate(() => {
-    const row = [...document.querySelectorAll('#needs-you-list .ny-row')].find((r) => /night gap on/.test(r.textContent));
+    const row = [...document.querySelectorAll('#pricing-body .ny-row')].find((r) => /night gap on/.test(r.textContent));
     return row ? row.textContent : null;
   });
   const gapM = gap && gap.match(/offer £(\d+)\/night/);
   const offerVal = gapM ? +gapM[1] : 0;
-  ok(!!gap && /Fill the 3-night gap on Jollyboat: offer £\d+\/night/.test(gap) && offerVal >= 20 && offerVal < 130, `Needs-you leads with the priced offer (${(gap || 'none').slice(0, 90).trim()})`);
+  ok(!!gap && /Fill the 3-night gap on Jollyboat: offer £\d+\/night/.test(gap) && offerVal >= 20 && offerVal < 130, `Manage → Pricing leads with the priced offer (${(gap || 'none').slice(0, 90).trim()})`);
   ok(!!gap && /\d+% off the usual £130/.test(gap) && /Offer ›/.test(gap), `…with the discount maths + an Offer action, not Book (${(gap || 'none').slice(-60).trim()})`);
 
   // 4) Tapping Offer SAVES the dated 'Gap offer' override (at the rate the row
   // showed) and the row flips to its live status.
-  await page.evaluate(() => { [...document.querySelectorAll('#needs-you-list .ny-row')].find((r) => /night gap on/.test(r.textContent)).click(); });
+  await page.evaluate(() => { [...document.querySelectorAll('#pricing-body .ny-row')].find((r) => /night gap on/.test(r.textContent)).click(); });
   await page.waitForTimeout(600);
   const pay = saved.find((b) => b.prop_key === 'jollyboat');
   const season = pay && (pay.seasons || []).find((s) => s.label === 'Gap offer');
   ok(!!season && season.rate === offerVal && season.start === d(8) && season.end === d(10), `Offer saved the dated override via seasons_save (${JSON.stringify(season)})`);
   const live = await page.evaluate(() => {
-    const row = [...document.querySelectorAll('#needs-you-list .ny-row')].find((r) => /Offer live on/.test(r.textContent));
+    const row = [...document.querySelectorAll('#pricing-body .ny-row')].find((r) => /Offer live on/.test(r.textContent));
     return row ? row.textContent : null;
   });
   ok(!!live && new RegExp(`Offer live on Jollyboat — £${offerVal}\\/night`).test(live) && /Rates ›/.test(live), `the row flips to its live status routing to Rates (${(live || 'none').slice(0, 90).trim()})`);
