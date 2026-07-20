@@ -256,6 +256,13 @@ emails, guest, change history via `bookings.php` `history`; on desktop (≥900px
 the status pipeline shows ALL stages (upcoming = red dot), compact Done·Now·Next
 below that; the settled Payments card folds to one line carrying the deposit
 state (incl./excl.) with the standalone deposit row only when it has an action.
+Booking EDIT protection is layered in `openEditBooking` (app.js): a FINISHED stay
+(`hasCheckedOut`) is soft-locked — glassConfirm ("it's a record now") before the
+form opens (never a hard block: name/email corrections stay possible; the sync
+inner opener is `openEditBookingNow`, which `cmdkPrefillEditDates` relies on);
+an arrived guest has dates+cottage locked (`lockBookingMove`); a fully-paid
+booking hides the payment-entry fields (`trimPaidBookingFields`). Gated by
+ui-test-hub §A3.
 The **enquiry hub**
 (`view-enquiry-hub`, `openEnquiryHub()`) is the same for enquiries — approve/edit/
 email/decline + agreed price live there; approving jumps to the new booking's hub
