@@ -5923,8 +5923,12 @@ body.admin-screen .site-footer {
   min-width: 14px;
 }
 /* Traffic-light status dot: green = done, amber = in-progress, red = problem.
-   The word is carried on the cell's title/aria-label so it's never colour-only. */
+   The word is carried on the cell's title/aria-label so it's never colour-only.
+   inline-block + vertical-align so it also sizes correctly inline in running
+   text (the booking-hub payment ledger), not just inside a flex cell. */
 .feed-dot {
+  display: inline-block;
+  vertical-align: -1px;
   width: 11px;
   height: 11px;
   border-radius: 50%;

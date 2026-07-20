@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 253;
+const ADMIN_BUNDLE_V = 254;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -6815,6 +6815,34 @@ async function loadSquareAdminConfig(pre) {
         if (window.__ADMIN_LOADED) renderSquareSettings();
     } catch (e) {}
 }
+// The ledger status to show for a payment row. A refund the owner has issued is
+// DONE from the ledger's point of view: Square accepts it irrevocably and then
+// settles it (its own transient PENDING → COMPLETED), so a processed refund reads
+// "Completed" rather than an alarming "Pending" — only an explicit Square
+// FAILED/REJECTED is a real problem worth flagging. Card-IN rows (deposit/balance)
+// keep Square's live status so a not-yet-settled charge still reads truthfully.
+// (Lives in app.js, not admin.js, because the booking-hub ledger below shares it.)
+function paymentStatusLabel(kind, status) {
+    const isReturn = kind === 'refund' || kind === 'damages_return';
+    const st = String(status || '').toUpperCase();
+    return isReturn ? (st === 'FAILED' || st === 'REJECTED' ? 'Failed' : 'Completed') : (status || '');
+}
+// Traffic-light meta for a payment row: a dot LEVEL (ok=green done, wait=amber
+// in-progress, bad=red problem) plus a Title-cased word for the hover / screen-
+// reader label (also unifies "COMPLETED" vs "Completed").
+function paymentStatusMeta(kind, status) {
+    const st = String(paymentStatusLabel(kind, status) || '').toUpperCase();
+    // APPROVED counts as PAID in reconcile_booking_payment (bookings.php), so it
+    // must read green here too — else a fully-paid booking shows an amber dot.
+    const level =
+        st === 'COMPLETED' || st === 'CAPTURED' || st === 'APPROVED'
+            ? 'ok'
+            : st === 'FAILED' || st === 'REJECTED' || st === 'CANCELED' || st === 'CANCELLED' || st === 'VOIDED'
+              ? 'bad'
+              : 'wait';
+    const label = st ? st.charAt(0) + st.slice(1).toLowerCase() : 'Pending';
+    return { level, label };
+}
 // Show the Square payment ledger for a booking inside the details modal.
 async function loadBookingPayments(bookingId) {
     const el = document.getElementById('sq-pay-' + bookingId);
@@ -6853,8 +6881,12 @@ async function loadBookingPayments(bookingId) {
                           : p.kind.charAt(0).toUpperCase() + p.kind.slice(1);
                 const sign = isReturn ? '−' : '';
                 const note = (p.note || '').trim();
+                // Status shows as a traffic-light DOT (green done / amber in-progress /
+                // red problem) — same system as the Payments screen; the word rides
+                // along as the hover + screen-reader label so it's never colour-only.
+                const sMeta = paymentStatusMeta(p.kind, p.status);
                 return `<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-top:1px solid var(--glass-border);">
-                        <span>${label} · ${sign}${gbp(p.amount)} <span style="opacity:.7;">(${escapeHtml(p.status)})</span>${note ? ` <span style="opacity:.7;">— ${escapeHtml(note)}</span>` : ''}</span>${refundBtn}</div>`;
+                        <span>${label} · ${sign}${gbp(p.amount)} <span role="img" aria-label="${escapeHtml(sMeta.label)}" title="${escapeHtml(sMeta.label)}"><span class="feed-dot feed-dot-${sMeta.level}"></span></span>${note ? ` <span style="opacity:.7;">— ${escapeHtml(note)}</span>` : ''}</span>${refundBtn}</div>`;
             })
             .join('');
     } catch (e) {
@@ -12990,7 +13022,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'departpast1';
+    const BUILD = 'hubdots1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
