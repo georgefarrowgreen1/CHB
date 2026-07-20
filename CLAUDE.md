@@ -251,11 +251,17 @@ teach flash, conv follow-up, miss capture); the layout gate covers the page at p
 
 **Hubs are where you act; index rows are where you find.** The **booking hub**
 (`view-booking-hub`) is the ONE home per booking — `showDetails()` (app.js) only
-delegates to `openBookingHub()` (admin.js): status pipeline + next action, money,
-emails, guest, change history via `bookings.php` `history`; on desktop (≥900px)
-the status pipeline shows ALL stages (upcoming = red dot), compact Done·Now·Next
-below that; the settled Payments card folds to one line carrying the deposit
-state (incl./excl.) with the standalone deposit row only when it has an action.
+delegates to `openBookingHub()` (admin.js): status pipeline + next action + the
+payments block are ONE unified header section (`.bhub-head` → `payBlock` /
+`.bhub-headpay` — there is NO separate Payments card and NO second money
+mini-pipeline: `hubPayFlowHtml` is REMOVED, guarded by search-test §16 + ui-test-hub
+§A; the journey strip carries the money stages, the banner owns the "Request … by
+card" CTA so the button row keeps only record/copy-link/invoice); then emails,
+guest, change history via `bookings.php` `history` as grid cards; on desktop
+(≥900px) the status pipeline shows ALL stages (upcoming = red dot), compact
+Done·Now·Next below that; the settled payments block folds to one line carrying
+the deposit state (incl./excl.) with the standalone deposit row only when it has
+an action.
 Booking EDIT protection is layered in `openEditBooking` (app.js): a FINISHED stay
 (`hasCheckedOut`) is soft-locked — glassConfirm ("it's a record now") before the
 form opens (never a hard block: name/email corrections stay possible; the sync

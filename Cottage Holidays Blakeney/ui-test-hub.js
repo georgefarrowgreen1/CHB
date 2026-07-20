@@ -132,9 +132,24 @@ const ok = (cond, label) => {
   ok(a.fullVisible && a.compactHidden, 'desktop shows the FULL strip and hides the compact window');
   ok(a.caps.join('|') === 'Done|Now · 2 of 6|Next', `window captions with step counter (${a.caps.join('|')})`);
   ok(a.donePill.includes('Booked') && a.nowPill.includes('Deposit'), `unpaid → Done:Booked, Now:Deposit (${a.nowPill})`);
-  // Six cards: the fixture guest is a REPEAT (two stays on guest@gmail.com),
-  // so the ambient "Knows your guest" intel card leads the grid.
-  ok(a.cards === 6, `six cards rendered — incl. Guest register + guest intel (${a.cards})`);
+  // Five cards: the fixture guest is a REPEAT (two stays on guest@gmail.com),
+  // so the ambient "Knows your guest" intel card leads the grid. (Payments is
+  // no longer a card — it's unified into the header section.)
+  ok(a.cards === 5, `five cards rendered — incl. Guest register + guest intel (${a.cards})`);
+  // The unified header section: journey pipeline + next action + the money
+  // block all in ONE .bhub-head — and the old duplicate money mini-pipeline
+  // (.bhub-paypipe) is gone for good.
+  const uni = await page.evaluate(() => ({
+    payInHead: !!document.querySelector('.bhub-head .bhub-headpay .price-box'),
+    payTitle: /Payments/.test((document.querySelector('.bhub-head .bhub-headpay .bhub-card-title') || {}).textContent || ''),
+    noPayCard: ![...document.querySelectorAll('.bhub-card .bhub-card-title')].some((t) => /^Payments$/.test((t.textContent || '').trim())),
+    noPaypipe: !document.querySelector('.bhub-paypipe'),
+    reqBtns: document.querySelectorAll('#booking-hub-content [data-act="requestPayment"]').length,
+  }));
+  ok(uni.payInHead && uni.payTitle, 'payments block (breakdown + actions) lives INSIDE the header section');
+  ok(uni.noPayCard, 'no separate Payments card remains in the grid');
+  ok(uni.noPaypipe, 'the duplicate money mini-pipeline is gone (journey strip carries the stages)');
+  ok(uni.reqBtns <= 1, `"Request … by card" appears at most once — the banner owns it (${uni.reqBtns})`);
   ok(a.hasGuestReg, 'Guest register card present (UK hotel-records duty)');
   const intel = await page.evaluate(() => { const c = document.getElementById('hub-intel-card'); return c ? c.textContent : ''; });
   ok(/1st stay/.test(intel), `guest intel leads with the visit ordinal (${intel.slice(0, 50).trim()})`);

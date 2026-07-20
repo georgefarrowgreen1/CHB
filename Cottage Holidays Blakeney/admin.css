@@ -763,29 +763,17 @@
   flex-wrap: wrap;
   gap: 8px;
   margin: 18px 0 0;
-}.bhub-paypipe {
-  display: flex;
-  align-items: center;
-  flex-wrap: nowrap;
-  /* Spread the steps edge-to-edge so the strip fills the card width like the
-     unified booking-flow pill above it, rather than clustering on the left. */
-  justify-content: space-between;
-  gap: 5px;
-  margin: 2px 0 14px;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  scrollbar-width: none;
-}.bhub-paypipe::-webkit-scrollbar {
-  display: none;
-}.bhub-paypipe .pipe-step {
-  flex-shrink: 0;
-  white-space: nowrap;
-  /* Match the unified booking-flow pills above (.bhub-pipe3 .pipe-step): same
-     4px 10px padding and inherited 0.74rem text, not a smaller variant. */
-  padding: 4px 10px;
-}.bhub-paypipe .pipe3-arrow {
-  padding-bottom: 0;
-  flex-shrink: 0;
+}/* The payments block unified INTO the header card (the old standalone Payments
+   card + its duplicate mini-pipeline are gone): a quiet divider separates it
+   from the next-action banner, and the breakdown rows are width-capped so they
+   don't sprawl edge-to-edge across a desktop-width header. */
+.bhub-headpay {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--glass-border);
+}.bhub-headpay .price-box,
+.bhub-headpay .money-deposit {
+  max-width: 620px;
 }.bhub-pipe-full {
   display: none;
   align-items: center;
