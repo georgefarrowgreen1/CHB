@@ -7849,41 +7849,10 @@ function hubPipelineHtml(propKey, b, gt, dh) {
     return `<div class="bhub-pipe3">${strip}</div><div class="bhub-pipe-full">${fullStrip}</div>${nextHtml}`;
 }
 
-// A compact payment-progress strip for the Payments card — the MONEY journey on
-// its own (Deposit paid → Paid in full → Deposit back), separate from the whole-
-// booking flow shown at the top of the hub. Reuses the shared .pipe-step styling
-// (done=green, current=amber, upcoming=red dot). The deposit-back step only
-// appears when a refundable damage deposit is actually in play, and reads
-// "Deposit kept" when it was retained for damage rather than refunded.
-function hubPayFlowHtml(b, gt, dh) {
-    const hold = b.holdStatus || 'none';
-    const hasDamage =
-        (gt.dep || 0) > 0 ||
-        (dh && dh.collected > 0) ||
-        ['authorized', 'captured', 'charged', 'returned', 'kept'].includes(hold);
-    const steps = [
-        { label: 'Deposit', done: gt.paid > 0.001 },
-        { label: 'Paid', done: !!gt.fullyPaid },
-    ];
-    if (hasDamage) {
-        // Settled either via the hold_status flag or once the collected deposit has
-        // been fully returned in the ledger (admin's richer damage view).
-        const back = ['returned', 'kept'].includes(hold) || (dh && dh.collected > 0 && dh.held <= 0.001);
-        // Call it "Damages" only when there's genuinely a refundable damages deposit;
-        // any other refund (no damages amount) just reads "Refunded" / "Kept".
-        const isDamages = (gt.dep || 0) > 0 || (dh && ((dh.deposit || 0) > 0 || (dh.collected || 0) > 0));
-        const label = hold === 'kept' ? (isDamages ? 'Damages kept' : 'Kept') : isDamages ? 'Damages refunded' : 'Refunded';
-        steps.push({ label, done: back });
-    }
-    const cur = steps.findIndex((s) => !s.done); // first unfinished = current
-    const pills = steps
-        .map((s, i) => {
-            const cls = s.done ? 'is-done' : i === cur ? 'is-now' : '';
-            return `<span class="pipe-step ${cls}"><span class="pipe-dot"></span>${escapeHtml(s.label)}</span>`;
-        })
-        .join('<span class="pipe3-arrow" aria-hidden="true">›</span>');
-    return `<div class="bhub-paypipe">${pills}</div>`;
-}
+// (hubPayFlowHtml — the Payments card's own Deposit → Paid → Damages-refunded
+// mini-pipeline — is REMOVED: the money stages already live in the whole-journey
+// strip above, and the payments block is now unified into the header card, so
+// the second near-identical strip was pure duplication. Do not resurrect.)
 
 // ============================================================
 //  Ambient guest intelligence — the search engine's indexes VOLUNTEER what
@@ -8024,48 +7993,7 @@ function renderBookingHub() {
             changeover += `<button class="bk-chip warn bhub-changeover" ${chbAttrs('openBookingHub', String(o.id))} title="Open the other side of this changeover"><span class="bk-dot"></span>Same-day changeover — ${escapeHtml(o.name || 'the previous guest')} leaves as this guest arrives →</button>`;
     });
 
-    // ---- Header ----
-    const header = `
-        <div class="bhub-head glass-panel">
-            <div class="bhub-head-top">
-                <div>
-                    <span class="prop-tag tag-${propKey}">${escapeHtml(meta.name)}</span>
-                    ${ref ? `<span class="bhub-ref">${escapeHtml(ref)}</span>` : ''}
-                    <h1 class="bhub-name">${escapeHtml(b.name || 'Guest')}</h1>
-                    <div class="bhub-sub">${fmtDate(b.checkIn)}${b.checkInTime ? ' · ' + b.checkInTime : ''} → ${fmtDate(b.checkOut)}${b.checkOutTime ? ' · ' + b.checkOutTime : ''} · ${nights} night${nights === 1 ? '' : 's'} · ${escapeHtml(b.guests || '')}${past ? ' · past stay' : ''}</div>
-                    ${changeover}
-                </div>
-                <div class="bhub-actions">
-                    <!-- ONE quiet overflow menu instead of a row of buttons: the
-                         header stays calm and the destructive action becomes a
-                         deliberate two-tap instead of a permanent red button. -->
-                    <button class="btn-sm btn-edit bhub-menu-btn" data-act="bhubMenu" aria-haspopup="menu" aria-expanded="false">${arrived ? 'Edit' : 'Edit/Move/Cancel'}</button>
-                    <div class="bhub-menu glass-panel" role="menu" style="display:none;">
-                        <button role="menuitem" data-act="bhubEdit" data-arg="${b.id}">${arrived ? 'Edit details' : 'Edit / Move'}</button>
-                        <button role="menuitem" ${chbAttrs('openAccountPreview', b.id, b.name || '')}>View their account (read-only)</button>
-                        ${
-                            // After the guest arrives the stay is committed — no
-                            // Cancel & refund (only the damages deposit can go back,
-                            // handled on the Payments card).
-                            arrived
-                                ? ''
-                                : `<button role="menuitem" class="bhub-menu-danger" data-act="bhubCancel" data-arg="${b.id}">Cancel &amp; refund</button>`
-                        }
-                        ${
-                            // Delete exists ONLY while no money is on the booking (same
-                            // rule the server enforces): once anything has been paid or
-                            // a card hold is live, Cancel & refund is the only way out.
-                            bookingHasMoney(b)
-                                ? ''
-                                : `<button role="menuitem" class="bhub-menu-danger" data-act="bhubDelete" data-arg="${b.id}" title="Only for junk/test rows — cancelling is the right way to end a real booking">Delete</button>`
-                        }
-                    </div>
-                </div>
-            </div>
-            ${hubPipelineHtml(propKey, b, gt, dh)}
-        </div>`;
-
-    // ---- Money card ----
+    // ---- Payments block (built first — the header template embeds it) ----
     const agreedNote = b.agreedPrice
         ? `<div class="bhub-mut">Agreed price${b.agreedPrice.isOverride ? ' (custom)' : ''}${b.agreedPrice.agreedOn ? ' · ' + b.agreedPrice.agreedOn : ''} — locked at the rates in effect when booked.</div>`
         : '';
@@ -8132,21 +8060,68 @@ function renderBookingHub() {
         squareAdminEnabled && b.email
             ? `<div id="sq-pay-${b.id}" class="sq-pay-history" style="margin-top:10px;font-size:0.82rem;color:var(--text-muted);">Loading payments…</div>`
             : '';
-    const moneyCard = `
-        <section class="bhub-card glass-panel">
+    // The payments block lives INSIDE the header card — one unified section:
+    // journey pipeline → next action → the money itself. The old standalone
+    // Payments card (and its duplicate mini-pipeline) is gone. The banner's CTA
+    // already carries "Request … by card" when a balance is due, so the button
+    // row keeps only the complementary actions (record a manual payment, copy a
+    // link to paste into a chat, the invoice) — never the same action twice.
+    const payBlock = `
+        <div class="bhub-headpay">
             <h3 class="bhub-card-title">Payments</h3>
-            ${hubPayFlowHtml(b, gt, dh)}
             ${priceBox}
             ${depositLine}
             ${discloseBtn}
             <div class="bhub-btn-row">
                 ${!gt.fullyPaid ? `<button class="btn-sm btn-edit" ${chbAttrs('recordPayment', String(b.id))}>Record payment</button>` : ''}
-                ${!gt.fullyPaid && squareAdminEnabled && b.email ? `<button class="btn-sm btn-edit" ${chbAttrs('requestPayment', String(b.id), gt.paid > 0 ? 'balance' : 'deposit')}>Request ${gt.paid > 0 ? 'balance' : 'deposit'} by card</button>` : ''}
                 ${!gt.fullyPaid && squareAdminEnabled && b.email ? `<button class="btn-sm btn-edit" ${chbAttrs('copyPayLink', String(b.id), 'balance')}>Copy pay link</button>` : ''}
                 <button class="btn-sm btn-edit" ${chbAttrs('downloadInvoice', String(b.id))}>Invoice (PDF)</button>
             </div>
             ${payHistory}
-        </section>`;
+        </div>`;
+
+    // ---- Header — the ONE unified status + payments section: identity + Edit
+    // menu, then the journey pipeline + next action, then the money block. ----
+    const header = `
+        <div class="bhub-head glass-panel">
+            <div class="bhub-head-top">
+                <div>
+                    <span class="prop-tag tag-${propKey}">${escapeHtml(meta.name)}</span>
+                    ${ref ? `<span class="bhub-ref">${escapeHtml(ref)}</span>` : ''}
+                    <h1 class="bhub-name">${escapeHtml(b.name || 'Guest')}</h1>
+                    <div class="bhub-sub">${fmtDate(b.checkIn)}${b.checkInTime ? ' · ' + b.checkInTime : ''} → ${fmtDate(b.checkOut)}${b.checkOutTime ? ' · ' + b.checkOutTime : ''} · ${nights} night${nights === 1 ? '' : 's'} · ${escapeHtml(b.guests || '')}${past ? ' · past stay' : ''}</div>
+                    ${changeover}
+                </div>
+                <div class="bhub-actions">
+                    <!-- ONE quiet overflow menu instead of a row of buttons: the
+                         header stays calm and the destructive action becomes a
+                         deliberate two-tap instead of a permanent red button. -->
+                    <button class="btn-sm btn-edit bhub-menu-btn" data-act="bhubMenu" aria-haspopup="menu" aria-expanded="false">${arrived ? 'Edit' : 'Edit/Move/Cancel'}</button>
+                    <div class="bhub-menu glass-panel" role="menu" style="display:none;">
+                        <button role="menuitem" data-act="bhubEdit" data-arg="${b.id}">${arrived ? 'Edit details' : 'Edit / Move'}</button>
+                        <button role="menuitem" ${chbAttrs('openAccountPreview', b.id, b.name || '')}>View their account (read-only)</button>
+                        ${
+                            // After the guest arrives the stay is committed — no
+                            // Cancel & refund (only the damages deposit can go back,
+                            // handled in the payments block below).
+                            arrived
+                                ? ''
+                                : `<button role="menuitem" class="bhub-menu-danger" data-act="bhubCancel" data-arg="${b.id}">Cancel &amp; refund</button>`
+                        }
+                        ${
+                            // Delete exists ONLY while no money is on the booking (same
+                            // rule the server enforces): once anything has been paid or
+                            // a card hold is live, Cancel & refund is the only way out.
+                            bookingHasMoney(b)
+                                ? ''
+                                : `<button role="menuitem" class="bhub-menu-danger" data-act="bhubDelete" data-arg="${b.id}" title="Only for junk/test rows — cancelling is the right way to end a real booking">Delete</button>`
+                        }
+                    </div>
+                </div>
+            </div>
+            ${hubPipelineHtml(propKey, b, gt, dh)}
+            ${payBlock}
+        </div>`;
 
     // ---- Emails card ----
     const emailsCard = `
@@ -8253,7 +8228,7 @@ function renderBookingHub() {
         __hubIntelMentions = (intel && intel.mentions) || [];
         intelCard = hubIntelCardHtml(intel);
     } catch (e) { __hubIntelMentions = []; }
-    el.innerHTML = `${header}<div class="bhub-grid">${intelCard}${moneyCard}${emailsCard}${guestCard}${regCard}${historyCard}</div>`;
+    el.innerHTML = `${header}<div class="bhub-grid">${intelCard}${emailsCard}${guestCard}${regCard}${historyCard}</div>`;
 }
 // Guest-register (UK 1972 Order) helpers — open the token form to view/edit the
 // party, or copy the request link to send the guest. The token comes from the
