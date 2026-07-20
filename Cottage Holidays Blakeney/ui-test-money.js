@@ -156,11 +156,13 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
       name: (root.querySelector('.bhub-name') || {}).textContent || '',
       hasRecord: /Record payment/.test(root.textContent),
       hasInvoice: /Invoice \(PDF\)/.test(root.textContent),
-      balance: /Balance due/.test(root.textContent),
-      moneyText: (Array.from(root.querySelectorAll('.bhub-card')).find((c) => /Payments/.test((c.querySelector('.bhub-card-title') || {}).textContent || '')) || { textContent: '' }).textContent.replace(/\s+/g, ' ').slice(0, 300),
+      // The money folds to one line now — the balance leads from the next-action
+      // banner ("… £490.00 due."), not an in-page "Balance due" breakdown row.
+      balance: /£490\.00 (due|balance)/.test((root.querySelector('.bhub-next') || {}).textContent || ''),
+      moneyText: ((root.querySelector('.bhub-headpay') || { textContent: '' }).textContent || '').replace(/\s+/g, ' ').slice(0, 300),
     };
   });
-  ok(hub.name === 'Owes Money' && hub.balance, `row opened the right hub with a balance due (${hub.name})`);
+  ok(hub.name === 'Owes Money' && hub.balance, `row opened the right hub with the balance on the banner (${hub.name})`);
   console.log('    money card: ' + hub.moneyText);
   ok(hub.hasRecord && hub.hasInvoice, 'hub Money card has Record payment + Invoice');
   const rec = page.evaluate(() => recordPayment('b1'));
