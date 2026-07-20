@@ -259,9 +259,11 @@ mini-pipeline: `hubPayFlowHtml` is REMOVED, guarded by search-test §16 + ui-tes
 card" CTA so the button row keeps only record/copy-link/invoice); then emails,
 guest, change history via `bookings.php` `history` as grid cards; on desktop
 (≥900px) the status pipeline shows ALL stages (upcoming = red dot), compact
-Done·Now·Next below that; the settled payments block folds to one line carrying
-the deposit state (incl./excl.) with the standalone deposit row only when it has
-an action.
+Done·Now·Next below that; the payments block folds to ONE line in EVERY state
+(settled "Paid in full · £X ✓", part-paid "Received so far · £X of £Y", untouched
+"Total · £Y" — each carrying the deposit state as its suffix) with the full maths
+behind "Show the full breakdown" (`bhubMoneyExpand` pop-up, `__bhubBreakdownHtml`);
+no separate deposit info row remains (only the legacy card-hold controls).
 Booking EDIT protection is layered in `openEditBooking` (app.js): a FINISHED stay
 (`hasCheckedOut`) is soft-locked — glassConfirm ("it's a record now") before the
 form opens (never a hard block: name/email corrections stay possible; the sync

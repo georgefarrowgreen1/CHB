@@ -145,11 +145,17 @@ const ok = (cond, label) => {
     noPayCard: ![...document.querySelectorAll('.bhub-card .bhub-card-title')].some((t) => /^Payments$/.test((t.textContent || '').trim())),
     noPaypipe: !document.querySelector('.bhub-paypipe'),
     reqBtns: document.querySelectorAll('#booking-hub-content [data-act="requestPayment"]').length,
+    foldRows: document.querySelectorAll('.bhub-headpay .price-box .price-row').length,
+    foldLine: (document.querySelector('.bhub-headpay .price-row.total') || {}).textContent || '',
+    disclose: !!document.querySelector('.bhub-disclose-btn[data-act="bhubMoneyExpand"]'),
   }));
   ok(uni.payInHead && uni.payTitle, 'payments block (breakdown + actions) lives INSIDE the header section');
   ok(uni.noPayCard, 'no separate Payments card remains in the grid');
   ok(uni.noPaypipe, 'the duplicate money mini-pipeline is gone (journey strip carries the stages)');
   ok(uni.reqBtns <= 1, `"Request … by card" appears at most once — the banner owns it (${uni.reqBtns})`);
+  // The money folds to ONE line in EVERY state — untouched booking reads the
+  // total (banner already leads with the balance), full maths behind disclose.
+  ok(uni.foldRows === 1 && /^Total/.test(uni.foldLine.trim()) && /£490\.00/.test(uni.foldLine) && uni.disclose, `unpaid money folds to one Total line + disclose (${uni.foldLine.trim()})`);
   ok(a.hasGuestReg, 'Guest register card present (UK hotel-records duty)');
   const intel = await page.evaluate(() => { const c = document.getElementById('hub-intel-card'); return c ? c.textContent : ''; });
   ok(/1st stay/.test(intel), `guest intel leads with the visit ordinal (${intel.slice(0, 50).trim()})`);
@@ -255,6 +261,12 @@ const ok = (cond, label) => {
     done: (document.querySelector('.pipe-step.is-done') || {}).textContent || '',
   }));
   ok(pipe2.done.includes('Deposit') && pipe2.now.includes('Paid in full'), `journey window advanced with the payment (now: ${pipe2.now.trim()})`);
+  // Part-paid folds too: one "Received so far" line with the running figures.
+  const foldPart = await page.evaluate(() => {
+    const box = document.querySelector('#booking-hub-content .price-box');
+    return { rows: box ? box.querySelectorAll('.price-row').length : -1, line: box ? ((box.querySelector('.price-row.total') || {}).textContent || '') : '' };
+  });
+  ok(foldPart.rows === 1 && /Received so far/.test(foldPart.line) && /£100\.00 of £490\.00/.test(foldPart.line), `part-paid money folds to one line (${foldPart.line.trim()})`);
   // Settled money folds to one line; the breakdown stays one tap away.
   // (Settle b1 for this check, restore its part-paid state afterwards.)
   await page.evaluate(() => { findBookingById('b1').payment = 'paid'; openBookingHub('b1', true); });
