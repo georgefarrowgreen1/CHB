@@ -8002,9 +8002,10 @@ function renderBookingHub() {
             ? `<div class="price-row"><span>${gbp(p.perNight)} × ${p.nights} night${p.nights === 1 ? '' : 's'}</span><span>${gbp(p.nightly)}</span></div>
                <div class="price-row"><span>Transaction fee (${fin(p.transactionPct) ? p.transactionPct : 0}%)</span><span>${gbp(fin(p.txFee) ? p.txFee : 0)}</span></div>`
             : '';
-    // The full breakdown, always built — shown in-page while money is owed
-    // (that's the working surface), or stashed for the pop-up window when the
-    // booking is settled and the Money card folds to ONE reassuring line.
+    // The full breakdown, always built — but never shown in-page any more: the
+    // unified header folds the money to ONE line in EVERY state, and this full
+    // maths (nightly × nights, fees, deposit, received, balance) lives in the
+    // pop-up window behind "Show the full breakdown".
     const fullBox = `
         <div class="price-box" style="margin-bottom:0;">
             ${breakdownRows}
@@ -8030,32 +8031,28 @@ function renderBookingHub() {
                 ? ` · excl. deposit — ${gbp(dh.returned)} refunded`
                 : ` · excl. deposit — ${gbp(dh.collected - dh.returned)} retained`;
     else if (gt.dep > 0) depSuffix = ` · incl. ${gbp(gt.dep)} damages deposit`;
-    const priceBox = gt.fullyPaid
-        ? `
+    // ONE line in every state (the banner above already leads with the balance
+    // and its CTA, so the in-page maths never needs to repeat it):
+    //   settled    → "Paid in full · excl. deposit — refunded        £440 ✓"
+    //   part-paid  → "Received so far · incl. £50 damages deposit   £100 of £440"
+    //   untouched  → "Total · incl. £50 damages deposit             £440"
+    const foldLine = gt.fullyPaid
+        ? `<div class="price-row total" style="color:var(--ok);border-top:0;padding-top:0;margin-top:0;"><span>Paid in full${depSuffix ? `<span style="color:var(--text-muted);font-weight:400;">${depSuffix}</span>` : ''}</span><span class="price-amount" style="color:var(--ok);">${gbp(gt.total)} ✓</span></div>`
+        : gt.paid > 0.001
+          ? `<div class="price-row total" style="border-top:0;padding-top:0;margin-top:0;"><span>Received so far${depSuffix ? `<span style="color:var(--text-muted);font-weight:400;">${depSuffix}</span>` : ''}</span><span class="price-amount">${gbp(gt.paid)} of ${gbp(gt.total)}</span></div>`
+          : `<div class="price-row total" style="border-top:0;padding-top:0;margin-top:0;"><span>Total${depSuffix ? `<span style="color:var(--text-muted);font-weight:400;">${depSuffix}</span>` : ''}</span><span class="price-amount">${gbp(gt.total)}</span></div>`;
+    const priceBox = `
         <div class="price-box" style="margin-bottom:0;">
-            <div class="price-row total" style="color:var(--ok);border-top:0;padding-top:0;margin-top:0;"><span>Paid in full${depSuffix ? `<span style="color:var(--text-muted);font-weight:400;">${depSuffix}</span>` : ''}</span><span class="price-amount" style="color:var(--ok);">${gbp(gt.total)} ✓</span></div>
-        </div>`
-        : `${fullBox}${agreedNote}`;
-    // The breakdown opener sits AFTER the deposit status line in the card.
-    const discloseBtn = gt.fullyPaid
-        ? `<button type="button" class="btn-sm btn-edit bhub-disclose-btn" data-act="bhubMoneyExpand">Show the full breakdown</button>`
-        : '';
-    // The deposit's return ACTION lives in the pipeline's next-action card at the
-    // top of the hub ("Return the deposit", shown once the stay is over and it's
-    // still held) — so the Payments card never repeats it. This row is now
-    // info-only, and only when it adds something the folded settled line doesn't:
-    // a deposit collected on a stay that's still to come/underway. Settled, and
-    // held-past (where the pipeline owns the action), both drop it.
-    const depositLine =
-        dh.collected > 0
-            ? gt.fullyPaid || (dh.held > 0 && past)
-                ? ''
-                : `<div class="money-deposit"><span>Refundable damage deposit: ${
-                      dh.held > 0
-                          ? `<strong>${gbp(dh.held)} collected</strong>${dh.returned > 0 ? ` · ${gbp(dh.returned)} returned` : ''}`
-                          : `<span style="color:var(--ok);">returned${dh.returned < dh.collected - 0.001 ? ` (${gbp(dh.collected - dh.returned)} retained)` : ''}</span>`
-                  }</span></div>`
-            : holdControls(b);
+            ${foldLine}
+        </div>`;
+    // The breakdown opener sits AFTER the deposit status line, in every state.
+    const discloseBtn = `<button type="button" class="btn-sm btn-edit bhub-disclose-btn" data-act="bhubMoneyExpand">Show the full breakdown</button>`;
+    // The deposit's return ACTION lives in the pipeline's next-action banner
+    // ("Return the deposit", once the stay is over and it's still held), and its
+    // STATE now rides the fold line's suffix in every state — so no separate
+    // deposit info row remains. Only the legacy card-HOLD controls still render
+    // here (old bookings on the authorise/capture flow).
+    const depositLine = dh.collected > 0 ? '' : holdControls(b);
     const payHistory =
         squareAdminEnabled && b.email
             ? `<div id="sq-pay-${b.id}" class="sq-pay-history" style="margin-top:10px;font-size:0.82rem;color:var(--text-muted);">Loading payments…</div>`
