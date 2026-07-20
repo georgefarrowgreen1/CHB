@@ -765,15 +765,61 @@
   margin: 18px 0 0;
 }/* The payments block unified INTO the header card (the old standalone Payments
    card + its duplicate mini-pipeline are gone): a quiet divider separates it
-   from the next-action banner, and the breakdown rows are width-capped so they
-   don't sprawl edge-to-edge across a desktop-width header. */
+   from the next-action banner. No inner glass box — the payline is a plain
+   label/figure row, so the section reads as ONE surface, not boxes-in-boxes. */
 .bhub-headpay {
   margin-top: 16px;
-  padding-top: 14px;
+  padding-top: 12px;
   border-top: 1px solid var(--glass-border);
-}.bhub-headpay .price-box,
-.bhub-headpay .money-deposit {
+}.bhub-headpay .money-deposit,
+.bhub-payline {
   max-width: 620px;
+}.bhub-headpay-cap {
+  display: block;
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  margin-bottom: 6px;
+}.bhub-payline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+}.bhub-payline-main {
+  min-width: 0;
+}.bhub-payline-label {
+  display: block;
+  font-weight: 600;
+  font-size: 0.95rem;
+}.bhub-payline-sub {
+  display: block;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}.bhub-payline-fig {
+  font-family: var(--font-serif);
+  font-size: 1.35rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+}.bhub-payline-of {
+  font-family: var(--font-sans);
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}/* Quiet text-link button — information (the breakdown opener), never competing
+   with the real action buttons below it. */
+.bhub-linklike {
+  display: inline-block;
+  background: none;
+  border: none;
+  padding: 6px 0 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: inherit;
+}.bhub-linklike:hover {
+  color: var(--text-light);
+  text-decoration: underline;
 }.bhub-pipe-full {
   display: none;
   align-items: center;
