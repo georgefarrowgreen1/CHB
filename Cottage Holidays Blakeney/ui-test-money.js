@@ -63,7 +63,18 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
       return json({ ok: true, events: [], logs: {}, reviews: [], photos: [] });
     }
     if (url.includes('bookings.php')) return json({ bookings: rows });
-    if (url.includes('accounts.php')) return json({ years: [2026, 2025] });
+    if (url.includes('accounts.php')) {
+      // Year report: £656.20 received, £9.80 of Square fees (kept by the
+      // processor, so deducted from profit), one Q2 card payment.
+      if (/[?&]year=\d/.test(url)) return json({
+        year: 2026, years: [2026, 2025], total: 656.20, held_deposits: 0,
+        card_fees: 9.80, fee_days: [{ date: '2026-07-15', fee: 9.80 }],
+        count: 1, by_property: { '21a': 656.20 },
+        payments: [{ id: 1, name: 'Fee Guest', prop_key: '21a', property_name: '21A Westgate', payment_method: 'card', payment_date: '2026-07-15', received: 656.20, income_part: 656.20, held_part: 0 }],
+        undated: { count: 0, total: 0, held: 0 },
+      });
+      return json({ years: [2026, 2025] });
+    }
     if (url.includes('expenses.php')) return json({ ok: true, expenses: [{ id: 1, date: d(-40), category: 'Maintenance', note: 'Boiler service', amount: 120 }] });
     if (url.includes('rates.php')) return json({ properties: [{ prop_key: '21a', name: '21A Westgate', slug: '21a', couple_rate: 130, extra_adult_rate: 0, child_rate: 0, booking_fee: 50, transaction_pct: 0, lastmin_pct: 0, lastmin_days: 0, max_adults: 2, max_children: 0, max_total: 2, sort_order: 1 }], seasons: {}, occupancy: {} });
     return json({ ok: true, bookings: [], enquiries: [], properties: [], seasons: {}, occupancy: {}, content: {}, blocks: [], ranges: [], payments: [], years: [] });
@@ -121,6 +132,29 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   await secCheck('payments', /owed|paid in full/i, 'Payments & balances');
   await secCheck('recent', /payment|no .*payments|square/i, 'Recent payments');
   await secCheck('income', /net profit|income|tax year/i, 'Income & tax');
+  // Card processing fees come OFF the profit: fee line rendered, net = income
+  // − fees − expenses, and the MTD quarterly costs carry the Q2 fee.
+  await page.evaluate(() => accountsOpen('income'));
+  await page.waitForTimeout(700);
+  const feeChk = await page.evaluate(() => {
+    const txt = ((document.getElementById('accounts-content') || {}).textContent || '').replace(/,/g, '');
+    const num = (re) => { const m = txt.match(re); return m ? parseFloat(m[1]) : null; };
+    const q2 = txt.match(/Q2 · Jul–Sep£([\d.]+)£([\d.]+)£([\d.]+)/);
+    return {
+      fee: num(/Card processing fees− £([\d.]+)/),
+      income: num(/Rental income£([\d.]+)/),
+      expenses: num(/Expenses(?:\s*\(\d+\))?− £([\d.]+)/),
+      netHead: num(/Net profit[^£]*£([\d.]+)/),
+      note: /deducted automatically from the payments ledger/.test(txt),
+      q2: q2 ? { inc: parseFloat(q2[1]), costs: parseFloat(q2[2]), net: parseFloat(q2[3]) } : null,
+    };
+  });
+  ok(feeChk.fee === 9.8 && feeChk.income === 656.2, `fee line renders as a deduction (income £${feeChk.income}, fees £${feeChk.fee})`);
+  ok(feeChk.netHead != null && Math.abs(feeChk.netHead - (feeChk.income - feeChk.fee - (feeChk.expenses || 0))) < 0.005, `net profit = income − fees − expenses (£${feeChk.netHead})`);
+  ok(feeChk.note, 'the note explains fees are deducted automatically');
+  ok(feeChk.q2 && feeChk.q2.inc === 656.2 && feeChk.q2.costs >= 9.8 && Math.abs(feeChk.q2.net - (feeChk.q2.inc - feeChk.q2.costs)) < 0.005, `Q2 quarterly costs include the card fee (${JSON.stringify(feeChk.q2)})`);
+  await page.evaluate(() => accountsShowIndex());
+  await page.waitForTimeout(250);
   await secCheck('expenses', /boiler service|expense/i, 'Expenses (seeded row listed)');
   await secCheck('pricingcoach', /pricing|suggestion|coach|demand|not enough/i, 'Pricing coach');
 

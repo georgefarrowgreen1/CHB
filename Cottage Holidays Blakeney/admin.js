@@ -9737,11 +9737,16 @@ async function renderAccounts() {
     const total = rep.total || 0;
     const heldDeposits = rep.held_deposits || 0;
     const undated = rep.undated || { count: 0, total: 0, held: 0 };
+    // Card processing fees — Square keeps these, the owner never receives them,
+    // so they come OFF the profit automatically (a cost, alongside expenses).
+    const cardFees = rep.card_fees || 0;
+    const feeDays = Array.isArray(rep.fee_days) ? rep.fee_days : [];
     const expYear = expensesForYear(startYear);
     const expTotal = expYear.reduce((s, x) => s + (x.amount || 0), 0);
-    const net = total - expTotal;
+    const net = total - cardFees - expTotal;
 
     // Quarterly split for Making Tax Digital (UK tax quarters from 6 Apr).
+    // Costs = recorded expenses + that quarter's card fees.
     const payments = Array.isArray(rep.payments) ? rep.payments : [];
     const qBounds = [
         ['Q1 · Apr–Jun', `${startYear}-04-06`, `${startYear}-07-05`],
@@ -9753,9 +9758,13 @@ async function renderAccounts() {
         const inc = payments
             .filter((p) => (p.payment_date || '') >= s && (p.payment_date || '') <= e)
             .reduce((a, p) => a + (p.income_part || 0), 0);
-        const exp = expYear
-            .filter((x) => (x.date || '') >= s && (x.date || '') <= e)
-            .reduce((a, x) => a + (x.amount || 0), 0);
+        const exp =
+            expYear
+                .filter((x) => (x.date || '') >= s && (x.date || '') <= e)
+                .reduce((a, x) => a + (x.amount || 0), 0) +
+            feeDays
+                .filter((f) => (f.date || '') >= s && (f.date || '') <= e)
+                .reduce((a, f) => a + (f.fee || 0), 0);
         return { lbl, inc, exp, net: inc - exp };
     });
     const quarterly = `<div class="mo-card" style="max-width:460px;margin-top:14px;"><div class="mo-card-title">Quarterly breakdown (Making Tax Digital)</div>
@@ -9771,6 +9780,7 @@ async function renderAccounts() {
                 </div>
                 <div class="feed-list" style="max-width:460px;margin-top:12px;padding:4px 16px;">
                     <div class="feed-row" style="grid-template-columns:1fr auto;"><span class="feed-who">Rental income</span><span class="feed-amt">${gbp(total)}</span></div>
+                    ${cardFees > 0 ? `<div class="feed-row" style="grid-template-columns:1fr auto;"><span class="feed-who">Card processing fees</span><span class="feed-amt">− ${gbp(cardFees)}</span></div>` : ''}
                     <div class="feed-row" style="grid-template-columns:1fr auto;"><span class="feed-who">Expenses${expYear.length ? ` (${expYear.length})` : ''}</span><span class="feed-amt">− ${gbp(expTotal)}</span></div>
                     <div class="feed-row" style="grid-template-columns:1fr auto;border-top:1px solid var(--glass-border);"><span class="feed-who" style="color:var(--text-light);">Net</span><span class="feed-amt" style="color:var(--text-light);">${gbp(net)}</span></div>
                 </div>
@@ -9782,7 +9792,7 @@ async function renderAccounts() {
                 </div>
                 <div class="accounts-note" style="margin-top:12px;">
                     ${heldDeposits > 0 ? gbp(heldDeposits) + ' collected as refundable damages deposits — returned after checkout, <strong>not</strong> income. ' : ''}
-                    Income is money received, allocated to the UK tax year by each payment's recorded date; expenses by their date. A record-keeping aid, not formal accounting advice.
+                    Income is money received, allocated to the UK tax year by each payment's recorded date; expenses by their date.${cardFees > 0 ? ' Card processing fees (kept by Square) are deducted automatically from the payments ledger.' : ''} A record-keeping aid, not formal accounting advice.
                     ${undated.count > 0 ? `<br>${undated.count} payment(s) totalling ${gbp((undated.total || 0) + (undated.held || 0))} have no payment date recorded, so they aren't counted in any tax year — add a payment date on the booking to include them.` : ''}
                 </div>`;
 }
@@ -10938,7 +10948,8 @@ function exportAccountsCSV() {
             ].join(',') + '\n';
     });
     csv += `,,,Total expenses,${expTotal.toFixed(2)}\n`;
-    csv += `\nSummary\nRental income,${inc.toFixed(2)}\nExpenses,${expTotal.toFixed(2)}\nNet profit,${(inc - expTotal).toFixed(2)}\n`;
+    const csvFees = accountsReport.card_fees || 0;
+    csv += `\nSummary\nRental income,${inc.toFixed(2)}\nCard processing fees,-${csvFees.toFixed(2)}\nExpenses,${expTotal.toFixed(2)}\nNet profit,${(inc - csvFees - expTotal).toFixed(2)}\n`;
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -10961,12 +10972,13 @@ async function downloadYearStatement(startYear) {
     const rep = accountsReport && accountsReport.year === startYear ? accountsReport : null;
     const income = rep ? rep.total || 0 : 0;
     const held = rep ? rep.held_deposits || 0 : 0;
+    const cardFees = rep ? rep.card_fees || 0 : 0;
     const byProp = rep ? rep.by_property || {} : {};
     const exp = expensesForYear(startYear)
         .slice()
         .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
     const expTotal = exp.reduce((s, x) => s + (x.amount || 0), 0);
-    const net = income - expTotal;
+    const net = income - cardFees - expTotal;
 
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'pt', format: 'a4' });
@@ -11015,6 +11027,10 @@ async function downloadYearStatement(startYear) {
     doc.setFontSize(10);
     rowLR('Rental income received', gbp(income), y);
     y += 18;
+    if (cardFees > 0) {
+        rowLR('Card processing fees', '− ' + gbp(cardFees), y);
+        y += 18;
+    }
     rowLR('Expenses', '− ' + gbp(expTotal), y);
     y += 18;
     y += 4;

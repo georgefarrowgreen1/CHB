@@ -76,6 +76,27 @@ foreach ($rows as &$r) {
 }
 unset($r);
 
+// Card processing fees (Square keeps these — the owner never receives them, so
+// they are deducted from the profit automatically as a cost). Summed per charge
+// DATE (payments.created_at) so the client can also split them into MTD
+// quarters; card-IN rows only (a refund's row carries no fee of its own), live
+// statuses only. Guarded: the payments table / fee column may predate the
+// migration on a not-yet-migrated database.
+$feeDays = [];
+try {
+    $feeDays = db()
+        ->query(
+            "SELECT DATE(created_at) d, ROUND(SUM(fee),2) f FROM payments
+              WHERE fee IS NOT NULL AND fee > 0
+                AND kind NOT IN ('refund','damages_return')
+                AND UPPER(status) IN ('COMPLETED','APPROVED','CAPTURED')
+              GROUP BY DATE(created_at)",
+        )
+        ->fetchAll();
+} catch (\Throwable $e) {
+    /* payments table / fee column not migrated yet */
+}
+
 // Always include the current tax year as an option
 $years[tax_year_start(date('Y-m-d'))] = true;
 $yearList = array_keys($years);
@@ -96,11 +117,17 @@ foreach ($inYear as $r) {
     $byProp[$r['prop_key']] = ($byProp[$r['prop_key']] ?? 0) + $r['income_part'];
 }
 
+// This tax year's card fees (per-day rows so the client can quarter them).
+$feesInYear = array_values(array_filter($feeDays, fn($r) => tax_year_start($r['d']) === $requested));
+$feesTotal = array_sum(array_map(fn($r) => (float) $r['f'], $feesInYear));
+
 json_out([
     'year' => $requested,
     'years' => $yearList,
-    'total' => round($incomeTotal, 2), // rental income only
+    'total' => round($incomeTotal, 2), // rental income only (gross of card fees)
     'held_deposits' => round($heldTotal, 2), // refundable, held — NOT income
+    'card_fees' => round($feesTotal, 2), // kept by Square — auto-deducted cost
+    'fee_days' => array_map(fn($r) => ['date' => $r['d'], 'fee' => (float) $r['f']], $feesInYear),
     'count' => count($inYear),
     'by_property' => $byProp,
     'payments' => $inYear,
