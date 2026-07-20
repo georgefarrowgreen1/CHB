@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=196">
+    <link rel="stylesheet" href="app.css?v=197">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -903,16 +903,18 @@
                             <div class="pay-amount-label" id="pay-kind-label">Deposit due</div>
                             <div class="pay-amount" id="pay-amount">£0.00</div>
                             <div class="pay-amount-sub" id="pay-amount-sub"></div>
+                            <div class="pay-amount-note" id="pay-amount-note" style="display:none;"></div>
                         </div>
-                        <div class="enq-cancel-note" style="margin-top:16px;"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="10" width="18" height="11" rx="2"/><path d="M7 10V7a5 5 0 0 1 10 0v3"/></svg> <span>Secured by Square. We never see or store your card number.</span></div>
                     </div>
                     <div class="pay-form">
                         <div id="sq-wallets" class="sq-wallets"></div>
-                        <div id="sq-or" class="sq-or" style="display:none;">or pay by card</div>
+                        <div id="sq-or" class="sq-or" style="display:none;"><span>or pay by card</span></div>
                         <div class="enq-field-label">Card details</div>
                         <div id="sq-card" class="sq-card"></div>
                         <p class="pay-msg" id="pay-msg" role="alert"></p>
                         <button type="button" class="btn-glass" id="pay-btn" style="width:100%;padding:16px;margin-top:14px;" data-act="submitPayment">Pay now</button>
+                        <div class="pay-secure"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="10" width="18" height="11" rx="2"/><path d="M7 10V7a5 5 0 0 1 10 0v3"/></svg><span>Secured by Square — we never see or store your card number.</span></div>
+                        <div class="pay-receipt-note">You&rsquo;ll get an email receipt straight away.</div>
                     </div>
                 </div>
                 <div id="pay-done" class="pay-done" style="display:none;">
@@ -2513,7 +2515,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=482"></script>
+    <script defer src="app.js?v=483"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
