@@ -46,7 +46,9 @@ const ok = (cond, label) => {
     agreed_nightly: 390, agreed_booking_fee: 50, agreed_txn_pct: 0, agreed_txn_fee: 0, agreed_on: d(0),
     hold_status: 'none', notes: 'VIP',
   }, over);
-  let rows = [mk(1), mk(2, { name: 'Return Visit', check_in: d(90), check_out: d(93) })];
+  // b3 is a FINISHED stay (checked out days ago) for the edit soft-lock checks —
+  // its own email so it never pollutes the b1 guest-intel/repeat fixtures.
+  let rows = [mk(1), mk(2, { name: 'Return Visit', check_in: d(90), check_out: d(93) }), mk(3, { name: 'Past Guest', email: 'past@gmail.com', check_in: d(-10), check_out: d(-7), payment: 'paid', deposit_paid: 440 })];
   let enqs = [
     { id: 6, prop_key: '21a', name: 'Enq Alpha', email: 'enq@gmail.com', phone: '', address: '2 Lane', postcode: 'NR25 7AB', check_in: d(40), check_out: d(43), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0, message: 'Dog friendly?', created_at: d(-1) + ' 09:00:00' },
     { id: 7, prop_key: '21a', name: 'Enq Beta', email: 'beta@gmail.com', phone: '', address: '3 Lane', postcode: 'NR25 7AB', check_in: d(80), check_out: d(83), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0, message: '', created_at: d(0) + ' 08:00:00' },
@@ -166,6 +168,48 @@ const ok = (cond, label) => {
   ok(!!led && /feed-dot-ok/.test(led.dots[0] || '') && /feed-dot-ok/.test(led.dots[1] || ''), `settled charge AND issued return both read green (${led && led.dots.join(' | ')})`);
   ok(!!led && led.labels.join('|') === 'Completed|Completed', `the word rides as the aria/hover label (${led && led.labels.join('|')})`);
   ok(!!led && !/\(COMPLETED\)|\(PENDING\)/.test(led.text), 'no raw status text left in the ledger rows');
+
+  // ---------- A3. finished stay: Edit is soft-locked ----------
+  // A checked-out booking is a record (invoices, guest register, directory) —
+  // tapping Edit asks first; Cancel leaves it untouched, OK opens the normal
+  // form (dates/cottage still locked by the arrived rule). An upcoming stay
+  // keeps its instant, confirm-free edit.
+  console.log('A3. past-stay edit soft lock');
+  await page.evaluate(() => showDetails('21a', findBookingById('b3')));
+  await page.waitForTimeout(500);
+  await page.evaluate(() => openEditBooking('b3'));
+  await page.waitForTimeout(300);
+  const sl1 = await page.evaluate(() => ({
+    dlg: document.getElementById('glass-dialog').classList.contains('open'),
+    msg: (document.getElementById('glass-dialog-msg') || {}).textContent || '',
+    modal: document.getElementById('edit-modal').classList.contains('open'),
+  }));
+  ok(sl1.dlg && /finished/.test(sl1.msg) && /record/.test(sl1.msg), `finished stay: Edit asks first (${sl1.msg.slice(0, 60).trim()}…)`);
+  ok(!sl1.modal, 'the edit form does NOT open until confirmed');
+  await page.click('#glass-dialog-cancel');
+  await page.waitForTimeout(250);
+  ok(!(await page.evaluate(() => document.getElementById('edit-modal').classList.contains('open'))), 'Cancel keeps the record untouched (no edit form)');
+  await page.evaluate(() => openEditBooking('b3'));
+  await page.waitForTimeout(250);
+  await page.click('#glass-dialog-ok');
+  await page.waitForTimeout(300);
+  const sl3 = await page.evaluate(() => ({
+    modal: document.getElementById('edit-modal').classList.contains('open'),
+    locked: !!document.getElementById('modal-move-locked'),
+  }));
+  ok(sl3.modal && sl3.locked, 'OK opens the form — dates/cottage still locked (arrived rule)');
+  await page.evaluate(() => closeModal());
+  await page.evaluate(() => openEditBooking('b1'));
+  await page.waitForTimeout(250);
+  const sl4 = await page.evaluate(() => ({
+    modal: document.getElementById('edit-modal').classList.contains('open'),
+    dlg: document.getElementById('glass-dialog').classList.contains('open'),
+  }));
+  ok(sl4.modal && !sl4.dlg, 'upcoming stay: edit opens instantly, no confirm');
+  await page.evaluate(() => closeModal());
+  // Back to the b1 hub for the sections that follow.
+  await page.evaluate(() => showDetails('21a', findBookingById('b1')));
+  await page.waitForTimeout(600);
 
   // ---------- B. next action follows state ----------
   console.log('B. next action');

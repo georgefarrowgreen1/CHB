@@ -12358,6 +12358,24 @@ function openEditBooking(bookingId) {
     const b = findBookingById(bookingId);
     const loc = findBookingLocation(bookingId);
     if (!b || !loc) return;
+    // SOFT LOCK on finished stays: once the guest has checked out the booking is
+    // a record (invoices, guest register, the customer directory), so a tap on
+    // Edit asks first — protecting against accidental phone edits WITHOUT ever
+    // blocking a legitimate correction (a name typo, a missing email). Everything
+    // stays auditable via the hub's change history either way. Non-past bookings
+    // open synchronously (cmdkPrefillEditDates relies on that).
+    if (typeof hasCheckedOut === 'function' && hasCheckedOut(b)) {
+        glassConfirm('This stay is finished — it’s a record now (invoices and history point at it). Edit anyway?').then((okGo) => {
+            if (okGo) openEditBookingNow(bookingId);
+        });
+        return;
+    }
+    openEditBookingNow(bookingId);
+}
+function openEditBookingNow(bookingId) {
+    const b = findBookingById(bookingId);
+    const loc = findBookingLocation(bookingId);
+    if (!b || !loc) return;
     // Once the guest has arrived, the booking can be edited but not MOVED — the
     // dates and cottage are locked (openModal calls lockBookingMove below).
     const arrived = !!(b.checkIn && typeof todayDashed === 'function' && b.checkIn <= todayDashed());
@@ -13022,7 +13040,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'hubdots1';
+    const BUILD = 'softlock1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
