@@ -3119,11 +3119,13 @@ async function renderGuestBookings() {
         .sort((a, b) => (a.checkIn < b.checkIn ? -1 : 1));
 
     // Order so upcoming stays appear first (soonest check-in first),
-    // then past stays (most recently finished first).
+    // then past stays (most recently finished first). "Past" is DEPARTURE-aware
+    // (hasCheckedOut) not just date-past, so a guest who left this morning sorts
+    // into the past group the same day, not at the next midnight.
     const todaySort = todayDashed();
     mine.sort((a, b) => {
-        const au = a.booking.checkOut >= todaySort;
-        const bu = b.booking.checkOut >= todaySort;
+        const au = !hasCheckedOut(a.booking);
+        const bu = !hasCheckedOut(b.booking);
         if (au !== bu) return au ? -1 : 1; // upcoming group first
         if (au) return a.booking.checkIn < b.booking.checkIn ? -1 : 1; // soonest upcoming first
         return a.booking.checkOut > b.booking.checkOut ? -1 : 1; // most recent past first
@@ -3204,7 +3206,6 @@ async function renderGuestBookings() {
         )
         .join('');
 
-    const hasUpcoming = mine.some((m) => m.booking.checkOut >= todaySort);
     const upcomingCards = [],
         pastCards = [],
         hubCards = [];
@@ -3224,8 +3225,13 @@ async function renderGuestBookings() {
         // contradict the balance shown below or on the PDF.
         const payState = ps.fullyPaid ? 'paid' : ps.deposit > 0 ? 'deposit' : 'unpaid';
         const pay = paymentMeta[payState];
-        const upcoming = b.checkOut >= todayStr;
-        const currentStay = b.checkIn <= todayStr && b.checkOut >= todayStr;
+        // "Departed" is time-aware: once the checkout date AND time have passed
+        // (hasCheckedOut), the stay is over and drops to Past stays the same day —
+        // not at the next midnight. The arrival edge stays date-based so the stay
+        // shows all of arrival day (the guest may not have keyed in the exact
+        // check-in time). currentStay = arrived-by-date AND not yet departed.
+        const upcoming = !hasCheckedOut(b);
+        const currentStay = b.checkIn <= todayStr && !hasCheckedOut(b);
         if (currentStay) currentStays.push({ propKey, bookingId: b.id });
         const statusTag = upcoming
             ? `<span class="guest-status-badge" style="background:rgba(76,175,80,0.25);color:#fff;border:1px solid var(--booked-border);">Upcoming</span>`
@@ -12984,7 +12990,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'pricingpage1';
+    const BUILD = 'departpast1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
