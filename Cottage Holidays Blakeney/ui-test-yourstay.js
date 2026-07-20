@@ -6,6 +6,9 @@
 //  4. "Tomorrow" wording at +1 day
 //  5. only the SOONEST upcoming stay gets the hub (one, not per-booking)
 //  6. a past-only guest, and a logged-out visitor, get no hub
+//  7. DEPARTURE edge (time-aware): a stay whose checkout time has passed on the
+//     checkout day drops to "Past stays" the same day — not at the next midnight;
+//     one whose checkout time is still to come stays in-residence
 process.env.TZ = 'Europe/London';
 const { chromium } = require('playwright');
 const { spawn } = require('child_process');
@@ -105,6 +108,33 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   page = await openPage(null, []);
   h = await hub(page);
   ok(h === null, 'logged out → no pre-arrival hub');
+  await page.close();
+
+  // Reads the guest My Stays classification: is the in-residence hub shown, and
+  // which section (Upcoming vs Past stays) does the booking card land in.
+  const stayState = (page) => page.evaluate(() => {
+    const list = document.getElementById('guest-bookings-list');
+    return {
+      inStay: !!document.querySelector('.my-stay-hub:not(.my-stay-hub-soon)'),
+      badges: [...list.querySelectorAll('.guest-status-badge')].map((b) => b.textContent.trim()),
+      headers: [...list.querySelectorAll('h3')].map((h) => h.textContent.trim()),
+    };
+  });
+
+  // 8) Checkout day, checkout time ALREADY passed (00:00) → the guest has
+  // departed, so the booking is a Past stay THAT SAME DAY, no in-residence hub.
+  page = await openPage({ name: 'Just Left', email: 'jl@x.co' }, [mk('jollyboat', d(-3), d(0), { payment: 'paid', check_out_time: '00:00' })]);
+  let s = await stayState(page);
+  ok(!s.inStay && s.badges.includes('Past stay') && s.headers.some((h) => /Past stays/.test(h)),
+    `departed today (checkout passed) → Past stays, no in-stay hub (hub=${s.inStay}, badges=${s.badges.join(',')})`);
+  await page.close();
+
+  // 9) Checkout day, checkout time STILL TO COME (23:59) → not departed yet, so
+  // the guest is still in residence and the booking is NOT a Past stay.
+  page = await openPage({ name: 'Still Here', email: 'sh@x.co' }, [mk('jollyboat', d(-3), d(0), { payment: 'paid', check_out_time: '23:59' })]);
+  s = await stayState(page);
+  ok(s.inStay && !s.badges.includes('Past stay') && !s.headers.some((h) => /Past stays/.test(h)),
+    `checkout still to come → in-residence, not yet Past (hub=${s.inStay}, badges=${s.badges.join(',')})`);
   await page.close();
 
   await browser.close();
