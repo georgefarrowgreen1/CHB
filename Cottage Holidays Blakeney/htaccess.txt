@@ -330,7 +330,11 @@ AddDefaultCharset UTF-8
     # Square Web Payments SDK needs its CDN (script/style/font/img + the card
     # iframe via frame-src) and its API hosts (connect-src for tokenisation +
     # any 3-D Secure challenge). All scoped to *.squarecdn.com and the Square
-    # connect/pci hosts — nothing wider.
+    # connect/pci hosts — nothing wider. font-src also pins Square's font
+    # distribution d1g145x70srn7h.cloudfront.net (the SDK loads its card-field
+    # typeface from there, NOT from squarecdn — guests on the pay page were
+    # firing "CSP blocked font-src" reports on every visit). The exact host is
+    # pinned — never a *.cloudfront.net wildcard (anyone can host on cloudfront).
     # frame-src is https: + blob: — 3-D Secure runs bank-hosted iframes (method +
     # challenge) from UNPREDICTABLE issuer domains, so https: (any secure origin)
     # stays (pinning them broke SCA live -> CARD_DECLINED_VERIFICATION_REQUIRED).
@@ -340,5 +344,5 @@ AddDefaultCharset UTF-8
     # reported as "frame-src -> blob" on iPhone (worker-src blob: already covers
     # spec-compliant browsers). blob: frames are same-origin, script-created only,
     # so this adds no real surface. Everything else stays pinned; object-src none.
-    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-XO9NLu1ehyc6nzHO1YBt2XqOhnCY/70e7MeZtijphUM=' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://*.squarecdn.com https://pay.google.com; worker-src 'self' blob: https://cdn.jsdelivr.net; child-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://*.squarecdn.com; font-src 'self' data: https://fonts.gstatic.com https://*.squarecdn.com; img-src 'self' data: blob: https://cdnjs.cloudflare.com https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com https://*.squarecdn.com https://*.gstatic.com; connect-src 'self' blob: https://cdn.jsdelivr.net https://tessdata.projectnaptha.com https://*.squarecdn.com https://connect.squareup.com https://connect.squareupsandbox.com https://pci-connect.squareup.com https://pci-connect.squareupsandbox.com https://pay.google.com https://google.com; frame-src https: blob:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests; report-uri /csp-report.php"
+    Header always set Content-Security-Policy "default-src 'self'; script-src 'self' 'unsafe-eval' 'sha256-XO9NLu1ehyc6nzHO1YBt2XqOhnCY/70e7MeZtijphUM=' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://*.squarecdn.com https://pay.google.com; worker-src 'self' blob: https://cdn.jsdelivr.net; child-src 'self' blob: https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://*.squarecdn.com; font-src 'self' data: https://fonts.gstatic.com https://*.squarecdn.com https://d1g145x70srn7h.cloudfront.net; img-src 'self' data: blob: https://cdnjs.cloudflare.com https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com https://*.squarecdn.com https://*.gstatic.com; connect-src 'self' blob: https://cdn.jsdelivr.net https://tessdata.projectnaptha.com https://*.squarecdn.com https://connect.squareup.com https://connect.squareupsandbox.com https://pci-connect.squareup.com https://pci-connect.squareupsandbox.com https://pay.google.com https://google.com; frame-src https: blob:; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'; upgrade-insecure-requests; report-uri /csp-report.php"
 </IfModule>

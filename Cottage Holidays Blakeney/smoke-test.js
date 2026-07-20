@@ -268,6 +268,12 @@ try {
         const h = "'sha256-" + require('crypto').createHash('sha256').update(boot, 'utf8').digest('base64') + "'";
         check('inline theme-boot script hash is whitelisted in the CSP' + (scriptSrc.includes(h) ? '' : ' (expected ' + h + ')'), scriptSrc.includes(h));
     }
+    // The Square SDK loads its card-field typeface from its own CloudFront
+    // distribution (NOT squarecdn) — without this exact host in font-src every
+    // guest on the pay page fires a "CSP blocked font-src" report.
+    const fontSrc = (csp.match(/font-src[^;]*/) || [''])[0];
+    check("CSP font-src allows Square's font CDN (d1g145x70srn7h.cloudfront.net)", fontSrc.includes('https://d1g145x70srn7h.cloudfront.net'));
+    check('CSP never wildcards cloudfront (only the pinned Square host)', !csp.includes('*.cloudfront.net'));
 } catch (e) { check('CSP script-src check ran (' + e.message + ')', false); }
 
 // 6a-iii. Every data-act* value resolves to a registered chbAct() action OR a global
