@@ -8031,22 +8031,24 @@ function renderBookingHub() {
                 ? ` · excl. deposit — ${gbp(dh.returned)} refunded`
                 : ` · excl. deposit — ${gbp(dh.collected - dh.returned)} retained`;
     else if (gt.dep > 0) depSuffix = ` · incl. ${gbp(gt.dep)} damages deposit`;
-    // ONE line in every state (the banner above already leads with the balance
-    // and its CTA, so the in-page maths never needs to repeat it):
-    //   settled    → "Paid in full · excl. deposit — refunded        £440 ✓"
-    //   part-paid  → "Received so far · incl. £50 damages deposit   £100 of £440"
-    //   untouched  → "Total · incl. £50 damages deposit             £440"
-    const foldLine = gt.fullyPaid
-        ? `<div class="price-row total" style="color:var(--ok);border-top:0;padding-top:0;margin-top:0;"><span>Paid in full${depSuffix ? `<span style="color:var(--text-muted);font-weight:400;">${depSuffix}</span>` : ''}</span><span class="price-amount" style="color:var(--ok);">${gbp(gt.total)} ✓</span></div>`
+    // ONE quiet payline in every state (the banner above already leads with the
+    // balance and its CTA, so the in-page money never repeats it). No inner glass
+    // box — label (+ deposit state as a small sub-line) on the left, the figure
+    // on the right, which NEVER wraps:
+    //   settled    → Paid in full / excl. deposit — refunded      £440 ✓
+    //   part-paid  → Received so far / incl. £50 damages deposit  £100 of £440
+    //   untouched  → Total / incl. £50 damages deposit            £440
+    const depSub = depSuffix ? escapeHtml(depSuffix.replace(/^ · /, '')) : '';
+    const paylineMain = (label, ok2) =>
+        `<div class="bhub-payline-main"><span class="bhub-payline-label"${ok2 ? ' style="color:var(--ok);"' : ''}>${label}</span>${depSub ? `<span class="bhub-payline-sub">${depSub}</span>` : ''}</div>`;
+    const payline = gt.fullyPaid
+        ? `<div class="bhub-payline">${paylineMain('Paid in full', true)}<span class="bhub-payline-fig" style="color:var(--ok);">${gbp(gt.total)} ✓</span></div>`
         : gt.paid > 0.001
-          ? `<div class="price-row total" style="border-top:0;padding-top:0;margin-top:0;"><span>Received so far${depSuffix ? `<span style="color:var(--text-muted);font-weight:400;">${depSuffix}</span>` : ''}</span><span class="price-amount">${gbp(gt.paid)} of ${gbp(gt.total)}</span></div>`
-          : `<div class="price-row total" style="border-top:0;padding-top:0;margin-top:0;"><span>Total${depSuffix ? `<span style="color:var(--text-muted);font-weight:400;">${depSuffix}</span>` : ''}</span><span class="price-amount">${gbp(gt.total)}</span></div>`;
-    const priceBox = `
-        <div class="price-box" style="margin-bottom:0;">
-            ${foldLine}
-        </div>`;
-    // The breakdown opener sits AFTER the deposit status line, in every state.
-    const discloseBtn = `<button type="button" class="btn-sm btn-edit bhub-disclose-btn" data-act="bhubMoneyExpand">Show the full breakdown</button>`;
+          ? `<div class="bhub-payline">${paylineMain('Received so far')}<span class="bhub-payline-fig">${gbp(gt.paid)} <span class="bhub-payline-of">of ${gbp(gt.total)}</span></span></div>`
+          : `<div class="bhub-payline">${paylineMain('Total')}<span class="bhub-payline-fig">${gbp(gt.total)}</span></div>`;
+    // The breakdown opener is a quiet text link under the payline — it's
+    // information, not an action, so it must not compete with the real buttons.
+    const discloseBtn = `<button type="button" class="bhub-linklike bhub-disclose-btn" data-act="bhubMoneyExpand">Show the full breakdown ›</button>`;
     // The deposit's return ACTION lives in the pipeline's next-action banner
     // ("Return the deposit", once the stay is over and it's still held), and its
     // STATE now rides the fold line's suffix in every state — so no separate
@@ -8065,10 +8067,10 @@ function renderBookingHub() {
     // link to paste into a chat, the invoice) — never the same action twice.
     const payBlock = `
         <div class="bhub-headpay">
-            <h3 class="bhub-card-title">Payments</h3>
-            ${priceBox}
-            ${depositLine}
+            <span class="bhub-headpay-cap">Payments</span>
+            ${payline}
             ${discloseBtn}
+            ${depositLine}
             <div class="bhub-btn-row">
                 ${!gt.fullyPaid ? `<button class="btn-sm btn-edit" ${chbAttrs('recordPayment', String(b.id))}>Record payment</button>` : ''}
                 ${!gt.fullyPaid && squareAdminEnabled && b.email ? `<button class="btn-sm btn-edit" ${chbAttrs('copyPayLink', String(b.id), 'balance')}>Copy pay link</button>` : ''}
@@ -11685,8 +11687,9 @@ function holdControls(b) {
         return `<div class="money-deposit"><span>Damage hold: <span style="color:var(--ok);">released</span></span></div>`;
     if (st === 'expired')
         return `<div class="money-deposit"><span>Damage hold: expired (auto-released)</span></div>`;
-    // Fresh booking: the deposit is charged automatically with the guest's payment.
-    return `<div class="money-deposit"><span>Refundable deposit ${gbp(amt)} — charged with the guest's payment</span></div>`;
+    // Fresh booking: nothing to render — the unified payline's "incl. £X damages
+    // deposit" suffix already tells this story, and a second note read as clutter.
+    return '';
 }
 async function keepDeposit(bookingId) {
     const booking = findBookingById(bookingId);

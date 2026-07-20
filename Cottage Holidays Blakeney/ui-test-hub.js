@@ -140,22 +140,25 @@ const ok = (cond, label) => {
   // block all in ONE .bhub-head — and the old duplicate money mini-pipeline
   // (.bhub-paypipe) is gone for good.
   const uni = await page.evaluate(() => ({
-    payInHead: !!document.querySelector('.bhub-head .bhub-headpay .price-box'),
-    payTitle: /Payments/.test((document.querySelector('.bhub-head .bhub-headpay .bhub-card-title') || {}).textContent || ''),
+    payInHead: !!document.querySelector('.bhub-head .bhub-headpay .bhub-payline'),
+    payTitle: /Payments/i.test((document.querySelector('.bhub-head .bhub-headpay .bhub-headpay-cap') || {}).textContent || ''),
     noPayCard: ![...document.querySelectorAll('.bhub-card .bhub-card-title')].some((t) => /^Payments$/.test((t.textContent || '').trim())),
     noPaypipe: !document.querySelector('.bhub-paypipe'),
     reqBtns: document.querySelectorAll('#booking-hub-content [data-act="requestPayment"]').length,
-    foldRows: document.querySelectorAll('.bhub-headpay .price-box .price-row').length,
-    foldLine: (document.querySelector('.bhub-headpay .price-row.total') || {}).textContent || '',
+    foldRows: document.querySelectorAll('.bhub-headpay .bhub-payline').length,
+    foldLine: (document.querySelector('.bhub-headpay .bhub-payline') || {}).textContent || '',
+    figWraps: (() => { const f = document.querySelector('.bhub-payline-fig'); return f ? getComputedStyle(f).whiteSpace : ''; })(),
     disclose: !!document.querySelector('.bhub-disclose-btn[data-act="bhubMoneyExpand"]'),
   }));
   ok(uni.payInHead && uni.payTitle, 'payments block (breakdown + actions) lives INSIDE the header section');
   ok(uni.noPayCard, 'no separate Payments card remains in the grid');
   ok(uni.noPaypipe, 'the duplicate money mini-pipeline is gone (journey strip carries the stages)');
   ok(uni.reqBtns <= 1, `"Request … by card" appears at most once — the banner owns it (${uni.reqBtns})`);
-  // The money folds to ONE line in EVERY state — untouched booking reads the
-  // total (banner already leads with the balance), full maths behind disclose.
-  ok(uni.foldRows === 1 && /^Total/.test(uni.foldLine.trim()) && /£490\.00/.test(uni.foldLine) && uni.disclose, `unpaid money folds to one Total line + disclose (${uni.foldLine.trim()})`);
+  // The money folds to ONE payline in EVERY state — untouched booking reads the
+  // total (banner already leads with the balance), full maths behind disclose,
+  // and the figure can never wrap into a broken multi-line mess.
+  ok(uni.foldRows === 1 && /^Total/.test(uni.foldLine.trim()) && /£490\.00/.test(uni.foldLine) && uni.disclose, `unpaid money folds to one Total payline + disclose (${uni.foldLine.trim()})`);
+  ok(uni.figWraps === 'nowrap', 'the payline figure never wraps');
   ok(a.hasGuestReg, 'Guest register card present (UK hotel-records duty)');
   const intel = await page.evaluate(() => { const c = document.getElementById('hub-intel-card'); return c ? c.textContent : ''; });
   ok(/1st stay/.test(intel), `guest intel leads with the visit ordinal (${intel.slice(0, 50).trim()})`);
@@ -261,35 +264,35 @@ const ok = (cond, label) => {
     done: (document.querySelector('.pipe-step.is-done') || {}).textContent || '',
   }));
   ok(pipe2.done.includes('Deposit') && pipe2.now.includes('Paid in full'), `journey window advanced with the payment (now: ${pipe2.now.trim()})`);
-  // Part-paid folds too: one "Received so far" line with the running figures.
+  // Part-paid folds too: one "Received so far" payline with the running figures.
   const foldPart = await page.evaluate(() => {
-    const box = document.querySelector('#booking-hub-content .price-box');
-    return { rows: box ? box.querySelectorAll('.price-row').length : -1, line: box ? ((box.querySelector('.price-row.total') || {}).textContent || '') : '' };
+    const rows = document.querySelectorAll('#booking-hub-content .bhub-payline');
+    return { rows: rows.length, line: rows[0] ? rows[0].textContent : '' };
   });
-  ok(foldPart.rows === 1 && /Received so far/.test(foldPart.line) && /£100\.00 of £490\.00/.test(foldPart.line), `part-paid money folds to one line (${foldPart.line.trim()})`);
+  ok(foldPart.rows === 1 && /Received so far/.test(foldPart.line) && /£100\.00 of £490\.00/.test(foldPart.line), `part-paid money folds to one payline (${foldPart.line.trim()})`);
   // Settled money folds to one line; the breakdown stays one tap away.
   // (Settle b1 for this check, restore its part-paid state afterwards.)
   await page.evaluate(() => { findBookingById('b1').payment = 'paid'; openBookingHub('b1', true); });
   await page.waitForTimeout(400);
   const fold = await page.evaluate(() => {
-    const box = document.querySelector('#booking-hub-content .price-box');
+    const rows = document.querySelectorAll('#booking-hub-content .bhub-payline');
     return {
       folded: !!document.querySelector('.bhub-disclose-btn[data-act="bhubMoneyExpand"]'),
-      rows: box ? box.querySelectorAll('.price-row').length : -1,
-      line: box ? ((box.querySelector('.price-row.total') || {}).textContent || '') : '',
+      rows: rows.length,
+      line: rows[0] ? rows[0].textContent : '',
     };
   });
-  ok(fold.folded && fold.rows === 1 && /Paid in full/.test(fold.line), `settled money folds to one line (${fold.rows} row)`);
+  ok(fold.folded && fold.rows === 1 && /Paid in full/.test(fold.line), `settled money folds to one payline (${fold.rows} row)`);
   // The full breakdown opens as a WINDOW over the page, not a reflow of it.
   await page.evaluate(() => document.querySelector('.bhub-disclose-btn[data-act="bhubMoneyExpand"]').click());
   await page.waitForTimeout(400);
   const modal = await page.evaluate(() => ({
     open: document.getElementById('breakdown-modal').classList.contains('open'),
     rows: document.querySelectorAll('#breakdown-modal-body .price-row').length,
-    pageRows: document.querySelector('#booking-hub-content .price-box').querySelectorAll('.price-row').length,
+    pageRows: document.querySelectorAll('#booking-hub-content .bhub-payline').length,
   }));
   ok(modal.open && modal.rows >= 4, `breakdown opens in a pop-up window (${modal.rows} rows)`);
-  ok(modal.pageRows === 1, 'the page itself does not reflow (still one line)');
+  ok(modal.pageRows === 1, 'the page itself does not reflow (still one payline)');
   await page.evaluate(() => closeBreakdownModal());
   await page.waitForTimeout(200);
   ok(await page.evaluate(() => !document.getElementById('breakdown-modal').classList.contains('open')), 'breakdown window closes');
