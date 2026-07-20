@@ -66,6 +66,10 @@ const ok = (cond, label) => {
         ] });
         if (b.action === 'email_logs') return json({ logs: { 1: [{ action: 'email.confirmation', summary: 'Booking confirmation emailed', at: d(-2) + ' 18:31:00' }] } });
         if (b.action === 'email_render') return json({ ok: true, subject: 'Your booking is confirmed', html: '<p>Preview</p>' });
+        if (b.action === 'payments') return json({ ok: true, payments: [
+          { kind: 'balance', amount: '556.20', status: 'COMPLETED', square_payment_id: 'sq1', note: '' },
+          { kind: 'damages_return', amount: '75.00', status: 'PENDING', square_payment_id: 'sq2', note: '' },
+        ] });
         if (b.action === 'set_payment') { const r = rows.find((x) => x.id === b.id); if (r) { r.payment = b.payment; r.deposit_paid = b.deposit || (b.payment === 'paid' ? r.agreed_total : 0); } return json({ ok: true }); }
         if (b.action === 'delete') { rows = rows.filter((x) => x.id !== b.id); return json({ ok: true }); }
         return json({ ok: true });
@@ -141,6 +145,27 @@ const ok = (cond, label) => {
   }));
   ok(!em1.headerEmail && em1.writeBtns === 1, 'ONE email entry point (Emails card), none in the header');
   ok(em1.updConf === 0, 'no updated-confirmation button while nothing is paid');
+
+  // ---------- A2. payment ledger: traffic-light dots ----------
+  // With Square on, the hub's per-payment ledger rows show the SAME green/amber/
+  // red dot system as the Payments screen — no raw "(COMPLETED)" text. An issued
+  // deposit return reads green (Completed) even while Square still says PENDING.
+  console.log('A2. payment ledger dots');
+  await page.evaluate(() => { squareAdminEnabled = true; showDetails('21a', findBookingById('b1')); });
+  await page.waitForTimeout(700);
+  const led = await page.evaluate(() => {
+    const el = document.querySelector('.sq-pay-history');
+    if (!el) return null;
+    return {
+      text: el.textContent,
+      dots: [...el.querySelectorAll('.feed-dot')].map((d2) => d2.className),
+      labels: [...el.querySelectorAll('[role="img"]')].map((s) => s.getAttribute('aria-label')),
+    };
+  });
+  ok(!!led && led.dots.length === 2, `ledger renders a status dot per payment row (${led && led.dots.length})`);
+  ok(!!led && /feed-dot-ok/.test(led.dots[0] || '') && /feed-dot-ok/.test(led.dots[1] || ''), `settled charge AND issued return both read green (${led && led.dots.join(' | ')})`);
+  ok(!!led && led.labels.join('|') === 'Completed|Completed', `the word rides as the aria/hover label (${led && led.labels.join('|')})`);
+  ok(!!led && !/\(COMPLETED\)|\(PENDING\)/.test(led.text), 'no raw status text left in the ledger rows');
 
   // ---------- B. next action follows state ----------
   console.log('B. next action');

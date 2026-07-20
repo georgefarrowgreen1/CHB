@@ -684,10 +684,12 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   `square_webhook_signing_key()`/`square_webhook_url()` (db.php) resolve it (config
   const wins, else the stored key / derived URL), so `square-webhook.php` verifies
   with no config.php edit. Owner UI: Manage → Payments → "Connect" (`connectSquareWebhook`);
-  read-only pill in diagnostics. The payments STATUS column shows a traffic-light
-  dot (`paymentStatusMeta`, green/amber/red) — an issued refund reads Completed
-  (see `paymentStatusLabel`). Gated by `test-webhook.php` (signature) + smoke
-  (dot/label mapping).
+  read-only pill in diagnostics. Payment STATUS everywhere shows a traffic-light
+  dot (`paymentStatusMeta`, green/amber/red) — the Payments feed AND the booking
+  hub's per-payment ledger (`loadBookingPayments`); an issued refund reads
+  Completed (see `paymentStatusLabel`). Both helpers live in **app.js** (the hub
+  ledger renders from app.js, which must not reach admin globals). Gated by
+  `test-webhook.php` (signature) + smoke (dot/label mapping).
 - Offscreen `.page-view`s are `display:none`, so their CSS background-images aren't
   fetched until shown (built-in lazy-loading). The hero is the LCP image
   (`fetchpriority="high"` preload) — keep it prioritised, not deferred.

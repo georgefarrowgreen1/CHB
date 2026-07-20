@@ -10729,33 +10729,9 @@ function renderMoneyPanel() {
                 <p style="font-size:0.82rem;color:var(--text-muted);margin:8px 0 16px;max-width:640px;">${intro}</p>
                 <div class="bk-list">${cards}</div>`;
 }
-// The ledger status to show for a payment row. A refund the owner has issued is
-// DONE from the ledger's point of view: Square accepts it irrevocably and then
-// settles it (its own transient PENDING → COMPLETED), so a processed refund reads
-// "Completed" rather than an alarming "Pending" — only an explicit Square
-// FAILED/REJECTED is a real problem worth flagging. Card-IN rows (deposit/balance)
-// keep Square's live status so a not-yet-settled charge still reads truthfully.
-function paymentStatusLabel(kind, status) {
-    const isReturn = kind === 'refund' || kind === 'damages_return';
-    const st = String(status || '').toUpperCase();
-    return isReturn ? (st === 'FAILED' || st === 'REJECTED' ? 'Failed' : 'Completed') : (status || '');
-}
-// Traffic-light meta for a payment row: a dot LEVEL (ok=green done, wait=amber
-// in-progress, bad=red problem) plus a Title-cased word for the hover / screen-
-// reader label (also unifies "COMPLETED" vs "Completed").
-function paymentStatusMeta(kind, status) {
-    const st = String(paymentStatusLabel(kind, status) || '').toUpperCase();
-    // APPROVED counts as PAID in reconcile_booking_payment (bookings.php), so it
-    // must read green here too — else a fully-paid booking shows an amber dot.
-    const level =
-        st === 'COMPLETED' || st === 'CAPTURED' || st === 'APPROVED'
-            ? 'ok'
-            : st === 'FAILED' || st === 'REJECTED' || st === 'CANCELED' || st === 'CANCELLED' || st === 'VOIDED'
-              ? 'bad'
-              : 'wait';
-    const label = st ? st.charAt(0) + st.slice(1).toLowerCase() : 'Pending';
-    return { level, label };
-}
+// paymentStatusLabel / paymentStatusMeta (the ledger wording + traffic-light dot
+// rules) moved to app.js — the booking-hub ledger (loadBookingPayments, app.js)
+// shares them, and app.js must not reach into admin globals.
 // Recent Square transactions across all bookings (deposits, balances, refunds).
 async function renderMoneyFeed() {
     const el = document.getElementById('money-feed');
