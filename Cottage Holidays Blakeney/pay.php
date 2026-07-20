@@ -95,6 +95,7 @@ if ($action === 'summary') {
     json_out([
         'ok' => true,
         'propName' => $propName,
+        'propKey' => $b['prop_key'], // for the cottage accent chip on the pay screen
         'guestName' => $b['name'],
         'checkIn' => $b['check_in'],
         'checkOut' => $b['check_out'],

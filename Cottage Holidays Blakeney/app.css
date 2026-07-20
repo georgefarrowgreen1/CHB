@@ -2599,29 +2599,38 @@ a.card {
   gap: 12px;
   padding: 10px 0;
 }
+/* The amount hero: soft tinted panel, no hard border — the figure is the page's
+   one big statement, with the money shape and the deposit note as quiet lines. */
 .pay-amount-box {
   text-align: center;
-  padding: 18px;
+  padding: 22px 18px;
   margin-bottom: 20px;
   border-radius: var(--r-md);
   background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
 }
 .pay-amount-label {
-  font-size: 0.72rem;
+  font-size: 0.62rem;
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 0.08em;
   color: var(--text-muted);
 }
 .pay-amount {
   font-family: var(--font-serif);
-  font-size: 2.2rem;
+  font-size: 2.6rem;
+  line-height: 1.15;
   color: var(--text-light);
   padding: 4px 0 2px;
 }
 .pay-amount-sub {
-  font-size: 0.8rem;
+  font-size: 0.85rem;
   color: var(--text-muted);
+}
+.pay-amount-note {
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--glass-border);
 }
 .sq-card {
   min-height: 56px;
@@ -2633,26 +2642,59 @@ a.card {
   gap: 10px;
 }
 .sq-wallets > div {
-  min-height: 44px;
+  min-height: 48px;
 }
+/* Hairline divider between the wallet buttons and the card form. */
 .sq-or {
-  text-align: center;
+  display: flex;
+  align-items: center;
+  gap: 12px;
   color: var(--text-muted);
-  font-size: 0.8rem;
+  font-size: 0.72rem;
   text-transform: uppercase;
-  letter-spacing: 1px;
-  margin: 16px 0 4px;
+  letter-spacing: 0.08em;
+  margin: 18px 0 12px;
+}
+.sq-or::before,
+.sq-or::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--glass-border);
 }
 .sq-apple-btn {
   -webkit-appearance: -apple-pay-button;
   appearance: -apple-pay-button;
   -apple-pay-button-type: plain;
   -apple-pay-button-style: white-outline;
-  height: 44px;
+  height: 48px;
   width: 100%;
   border-radius: 10px;
   cursor: pointer;
   border: none;
+}
+/* Quiet trust lines under the Pay button — a small lock, not a loud banner. */
+.pay-secure {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  margin-top: 14px;
+  font-size: 0.76rem;
+  color: var(--text-muted);
+  text-align: center;
+}
+.pay-secure .ic {
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  color: var(--ok-text);
+}
+.pay-receipt-note {
+  margin-top: 6px;
+  font-size: 0.73rem;
+  color: var(--text-muted);
+  text-align: center;
 }
 .pay-msg {
   display: none;

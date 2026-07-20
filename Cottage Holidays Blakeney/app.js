@@ -3569,8 +3569,16 @@ async function openPayView(token, bookingId, kind) {
         const payTotal = Math.round((Number(s.amountDue) + dep) * 100) / 100;
         payState.amountDue = payTotal;
         payState.guestName = s.guestName || '';
+        // Stay context: the cottage as its accent chip + dates + nights, so the
+        // page reads like a receipt for THEIR stay, not a bare payment form.
         const propEl = document.getElementById('pay-prop');
-        if (propEl) propEl.textContent = `${s.propName} · ${fmtDate(s.checkIn)} → ${fmtDate(s.checkOut)}`;
+        if (propEl) {
+            const nights = Math.max(1, Math.round((new Date(s.checkOut) - new Date(s.checkIn)) / 864e5));
+            const chip = s.propKey
+                ? `<span class="prop-tag tag-${escapeHtml(String(s.propKey))}">${escapeHtml(s.propName || '')}</span> `
+                : escapeHtml(s.propName || '') + ' · ';
+            propEl.innerHTML = `${chip}${fmtDate(s.checkIn)} → ${fmtDate(s.checkOut)} · ${nights}&nbsp;night${nights === 1 ? '' : 's'}`;
+        }
         document.getElementById('pay-kind-label').textContent =
             s.kind === 'hold'
                 ? 'Refundable security hold'
@@ -3579,16 +3587,23 @@ async function openPayView(token, bookingId, kind) {
                   : 'Deposit due';
         document.getElementById('pay-amount').textContent = gbp(payTotal);
         const grandTotalRef = Math.round((Number(s.total) + dep) * 100) / 100;
+        // The headline sub carries only the money shape; the deposit explanation
+        // gets its own quiet line instead of a dense parenthetical run-on.
+        const paidSoFar = Math.round(Number(s.alreadyPaid || 0) * 100) / 100;
         document.getElementById('pay-amount-sub').textContent =
             s.kind === 'hold'
                 ? 'held, not charged — released after checkout'
-                : (s.kind === 'balance'
-                      ? `of ${gbp(grandTotalRef)} total`
-                      : `${s.depositPct}% deposit · ${gbp(grandTotalRef)} total`) +
-                  (dep > 0 ? ` · incl. ${gbp(dep)} refundable deposit (refunded after your stay)` : '');
+                : s.kind === 'balance'
+                  ? `of ${gbp(grandTotalRef)} total${paidSoFar > 0 ? ` · ${gbp(paidSoFar)} already paid` : ''}`
+                  : `${s.depositPct}% deposit · ${gbp(grandTotalRef)} total`;
+        const noteEl = document.getElementById('pay-amount-note');
+        if (noteEl) {
+            noteEl.textContent = dep > 0 ? `Includes a ${gbp(dep)} refundable damages deposit — returned after your stay.` : '';
+            noteEl.style.display = dep > 0 ? '' : 'none';
+        }
         try {
             const pb = document.getElementById('pay-btn');
-            if (pb) pb.textContent = s.kind === 'hold' ? 'Place hold' : 'Pay now';
+            if (pb) pb.textContent = s.kind === 'hold' ? `Place ${gbp(payTotal)} hold` : `Pay ${gbp(payTotal)}`;
         } catch (e) {}
         if (!(payTotal > 0)) {
             showPayError("This booking is already settled — there's nothing left to pay.");
@@ -13040,7 +13055,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'feesnet1';
+    const BUILD = 'paypage1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
