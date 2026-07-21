@@ -9,20 +9,12 @@
 //  6. Darkstar load → body flag + quiet purple ready logo
 //  7. cmdkBack / ⌘K toggle return to the workspace you came from
 //  8. leaving on an unanswered query files a search miss (teach loop)
-process.env.TZ = 'Europe/London';
-const { chromium } = require('playwright');
-const { spawn } = require('child_process');
-const PORT = 8291;
+const { d, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
 
 (async () => {
-  const server = spawn('php', ['-S', `127.0.0.1:${PORT}`, '-t', __dirname], { stdio: 'ignore' });
-  for (let i = 0; i < 60; i++) { try { if ((await fetch(`http://127.0.0.1:${PORT}/index.html`)).ok) break; } catch (e) {} await new Promise((r) => setTimeout(r, 250)); }
-  const browser = await chromium.launch(process.env.CHB_CHROMIUM ? { executablePath: process.env.CHB_CHROMIUM } : {});
-  const page = await browser.newPage({ viewport: { width: 900, height: 900 } });
-  page.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
-  await page.addInitScript(() => { if (navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {}); });
+  const { page, browser, base, done } = await boot({ viewport: { width: 900, height: 900 } });
   const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.getMonth(), t.getDate() + n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
   const bookings = [{ id: 1, prop_key: 'jollyboat', name: 'Bob Carter', email: 'b@x.co', phone: '', check_in: d(10), check_out: d(13), adults: 2, children: 0, payment: 'deposit', deposit_paid: 100, agreed_total: 500, hold_status: 'none' }];
   await page.route(/\.php/, (route) => {
@@ -34,7 +26,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     ], seasons: {}, occupancy: {} });
     return json({ ok: true, events: [], logs: {}, results: [], threads: [], enquiries: [], reviews: [], photos: [], value: null, corpus: [], content: {} });
   });
-  await page.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'networkidle' });
+  await page.goto(`${base}/index.html`, { waitUntil: 'networkidle' });
   await page.evaluate(async () => { isAuthenticated = true; document.body.classList.add('owner-mode'); await window.loadAdminBundle(); });
   await page.evaluate(() => loadData()); await page.waitForTimeout(400);
   await page.evaluate(() => nav('view-backoffice')); await page.waitForTimeout(300);
@@ -193,8 +185,6 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(navLeave.filed, 'leaving search by a dock nav still files the dead-end miss');
   ok(!navLeave.conv, 'the conversation context is cleared on dock-leave (no cross-session pronoun leak)');
 
-  await browser.close();
-  server.kill();
   console.log(fails ? `\n  ${fails} SEARCH-PAGE CHECK(S) FAILED ❌` : '\n  SEARCH-PAGE SUITE PASSED ✅');
-  process.exit(fails ? 1 : 0);
+  await done(fails);
 })();

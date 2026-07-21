@@ -4,10 +4,7 @@
 //     never applies owner chrome, and blocks every write (apiPost).
 //  B) THE CONTAINER: openAccountPreview() mounts a sandboxed same-origin iframe
 //     overlay pointed at that URL; closeAccountPreview() tears it down.
-process.env.TZ = 'Europe/London';
-const { chromium } = require('playwright');
-const { spawn } = require('child_process');
-const PORT = 8303;
+const { bootBrowser } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
 const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.getMonth(), t.getDate() + n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
@@ -20,9 +17,7 @@ const acctPayload = {
 };
 
 (async () => {
-  const server = spawn('php', ['-S', `127.0.0.1:${PORT}`, '-t', __dirname], { stdio: 'ignore' });
-  for (let i = 0; i < 60; i++) { try { if ((await fetch(`http://127.0.0.1:${PORT}/index.html`)).ok) break; } catch (e) {} await new Promise((r) => setTimeout(r, 250)); }
-  const browser = await chromium.launch(process.env.CHB_CHROMIUM ? { executablePath: process.env.CHB_CHROMIUM } : {});
+  const { browser, base, done } = await bootBrowser();
 
   const route = (page, opts) => page.route(/\.php/, (r) => {
     const url = r.request().url();
@@ -38,7 +33,7 @@ const acctPayload = {
   page.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
   await page.addInitScript(() => { if (navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {}); });
   await route(page, { admin: true }); // the frame carries the admin cookie
-  await page.goto(`http://127.0.0.1:${PORT}/index.html?acctpreview=77`, { waitUntil: 'networkidle' });
+  await page.goto(`${base}/index.html?acctpreview=77`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(900);
   const a = await page.evaluate(() => ({
     view: (document.querySelector('.page-view.active') || {}).id,
@@ -64,7 +59,7 @@ const acctPayload = {
   page.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
   await page.addInitScript(() => { if (navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {}); });
   await route(page, { admin: true });
-  await page.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'networkidle' });
+  await page.goto(`${base}/index.html`, { waitUntil: 'networkidle' });
   await page.evaluate(async () => { isAuthenticated = true; document.body.classList.add('owner-mode'); await window.loadAdminBundle(); });
   await page.waitForTimeout(300);
   const b = await page.evaluate(() => {
@@ -87,8 +82,6 @@ const acctPayload = {
   ok(closed.gone && closed.unlocked, 'closeAccountPreview tears the container down');
   await page.close();
 
-  await browser.close();
-  server.kill();
   console.log(fails ? `\n  ${fails} ACCT-PREVIEW CHECK(S) FAILED ❌` : '\n  ACCT-PREVIEW SUITE PASSED ✅');
-  process.exit(fails ? 1 : 0);
+  await done(fails);
 })();

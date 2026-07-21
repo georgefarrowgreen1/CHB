@@ -7,24 +7,18 @@
 // tests must too — pin the whole process (and the browser it launches) to
 // Europe/London so fixtures built from new Date() agree with the app on
 // any runner, in any timezone. Must run before the first Date call.
-process.env.TZ = 'Europe/London';
-const { chromium } = require('playwright');
-const { spawn } = require('child_process');
-const PORT = 8233;
+const { bootBrowser } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
 
 (async () => {
-  const server = spawn('php', ['-S', `127.0.0.1:${PORT}`, '-t', __dirname], { stdio: 'ignore' });
-  // Wait for php -S to actually accept connections (a fixed sleep flakes on slow CI runners).
-  for (let i = 0; i < 60; i++) { try { if ((await fetch(`http://127.0.0.1:${PORT}/index.html`)).ok) break; } catch (e) {} await new Promise((r) => setTimeout(r, 250)); }
-  const browser = await chromium.launch(process.env.CHB_CHROMIUM ? { executablePath: process.env.CHB_CHROMIUM } : {});
+  const { browser, base, done } = await bootBrowser();
   const page = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
   page.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
   await page.addInitScript(() => { if (navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {}); });
   await page.route(/\.php/, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, bookings: [], enquiries: [], threads: [], reviews: [], photos: [], experiences: [], events: [], logs: {}, content: {}, blocks: [], ranges: [], payments: [], seasons: {}, occupancy: {}, properties: [] }) }));
 
-  await page.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1200);
   await page.evaluate(() => {
     currentGuest = { email: 'guest@example.com', name: 'Test Guest', phone: '', address: '', postcode: '' };
@@ -76,7 +70,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   console.log('== Desktop (no guest-app shell) regression ==');
   const desk = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   await desk.route(/\.php/, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, bookings: [], enquiries: [], threads: [], reviews: [], photos: [], experiences: [], events: [], logs: {}, content: {}, blocks: [], ranges: [], payments: [], seasons: {}, occupancy: {}, properties: [] }) }));
-  await desk.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'domcontentloaded' });
+  await desk.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
   await desk.waitForTimeout(1000);
   const dpad = await desk.evaluate(() => {
     currentGuest = { email: 'g@e.com', name: 'G', phone: '', address: '', postcode: '' };
@@ -85,7 +79,6 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   });
   ok(dpad < 60, `desktop modal-box keeps its normal padding (${dpad}px)`);
 
-  await browser.close(); server.kill();
   console.log(fails ? `GUEST-MODAL TEST FAILED ❌ (${fails})` : 'GUEST-MODAL TEST PASSED ✅');
-  process.exit(fails ? 1 : 0);
+  await done(fails);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });

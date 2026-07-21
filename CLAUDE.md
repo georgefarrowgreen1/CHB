@@ -757,6 +757,15 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   `deploy.yml` SFTP-deploys `main` to IONOS (never deletes remote files; preserves
   `config.php` + `uploads/`).
 
+- **ui-test harness**: every `ui-test-*.js` suite boots through **`ui-test-lib.js`**
+  (`const { d, ok, boot } = require('./ui-test-lib')` — or `bootBrowser` for suites
+  creating their own pages): it pins TZ=Europe/London at require time, leases a FREE
+  port from the kernel (no hand-picked port registry), spawns php -S + readiness
+  poll, launches Chromium (CHB_CHROMIUM override), stubs the service worker and
+  wires pageerror logging; `await done(fails)` tears everything down. New suites use
+  it; never re-inline the boot block or hardcode a port. The lib matches the runner's
+  suite glob, so ui-tests.js explicitly skips it.
+
 ## Self-repair & error reporting
 - Errors: client capture (app.js, third-party webview noise filtered, sends
   stack/build/view) + server capture (db.php exception/shutdown handlers) both

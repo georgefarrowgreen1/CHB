@@ -3,22 +3,14 @@
 //  2. a dead-end search shows with Try again / Means / Forget; teaching it moves
 //     the phrase into "What you've taught it" and clears the dead-end
 //  3. Un-teach removes a taught phrase; Restore removes a suppressed one
-process.env.TZ = 'Europe/London';
-const { chromium } = require('playwright');
-const { spawn } = require('child_process');
-const PORT = 8296;
+const { boot } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
 
 (async () => {
-  const server = spawn('php', ['-S', `127.0.0.1:${PORT}`, '-t', __dirname], { stdio: 'ignore' });
-  for (let i = 0; i < 60; i++) { try { if ((await fetch(`http://127.0.0.1:${PORT}/index.html`)).ok) break; } catch (e) {} await new Promise((r) => setTimeout(r, 250)); }
-  const browser = await chromium.launch(process.env.CHB_CHROMIUM ? { executablePath: process.env.CHB_CHROMIUM } : {});
-  const page = await browser.newPage({ viewport: { width: 1000, height: 900 } });
-  page.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
-  await page.addInitScript(() => { if (navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {}); });
+  const { page, browser, base, done } = await boot({ viewport: { width: 1000, height: 900 } });
   await page.route(/\.php/, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, bookings: [], enquiries: [], threads: [], reviews: [], photos: [], events: [], logs: {}, content: {}, properties: [], seasons: {}, occupancy: {} }) }));
-  await page.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'networkidle' });
+  await page.goto(`${base}/index.html`, { waitUntil: 'networkidle' });
   await page.evaluate(async () => { isAuthenticated = true; document.body.classList.add('owner-mode'); await window.loadAdminBundle(); });
   await page.waitForTimeout(300);
 
@@ -136,8 +128,6 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(added.faqAdded, 'Add instant answer appends the Q&A to the cottage FAQ');
   ok(added.qCleared, 'adding an answer clears the guest question');
 
-  await browser.close();
-  server.kill();
   console.log(fails ? `\n  ${fails} SEARCH-LEARNING CHECK(S) FAILED ❌` : '\n  SEARCH-LEARNING SUITE PASSED ✅');
-  process.exit(fails ? 1 : 0);
+  await done(fails);
 })();

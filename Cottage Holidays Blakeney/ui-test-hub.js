@@ -12,31 +12,12 @@
 // tests must too — pin the whole process (and the browser it launches) to
 // Europe/London so fixtures built from new Date() agree with the app on
 // any runner, in any timezone. Must run before the first Date call.
-process.env.TZ = 'Europe/London';
-const { chromium } = require('playwright');
-const { spawn } = require('child_process');
-const PORT = 8276;
-const dir = __dirname;
-// Fixture dates are TODAY-relative (a fixed anchor rots as real time passes)
-// and formatted locally — toISOString() is UTC and slips a day near midnight.
-const d = (o) => { const t = new Date(); const x = new Date(t.getFullYear(), t.getMonth(), t.getDate() + o); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
-const ok = (cond, label) => {
-  console.log((cond ? '  ✓ ' : '  ✗ ') + label);
-  if (!cond) throw new Error('FAILED: ' + label);
-};
+const { d, ok, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 
 (async () => {
-  const server = spawn('php', ['-S', `127.0.0.1:${PORT}`, '-t', dir], { stdio: 'ignore' });
-  // Wait for php -S to actually accept connections (a fixed sleep flakes on slow CI runners).
-  for (let i = 0; i < 60; i++) { try { if ((await fetch(`http://127.0.0.1:${PORT}/index.html`)).ok) break; } catch (e) {} await new Promise((r) => setTimeout(r, 250)); }
-  const browser = await chromium.launch(process.env.CHB_CHROMIUM ? { executablePath: process.env.CHB_CHROMIUM } : {});
   // <1200px so sections A–H exercise the STANDALONE hub flow (the ≥1200
   // master–detail split gets its own section I at the end).
-  const page = await browser.newPage({ viewport: { width: 1000, height: 900 } });
-  page.on('pageerror', (e) => console.log('PAGEERR:', e.message));
-  // Top frame only — the email-preview iframes are sandboxed (no serviceWorker),
-  // so running this inside them just throws a noise pageerror.
-  await page.addInitScript(() => { if (window.top === window && navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {}); });
+  const { page, browser, base, done } = await boot({ viewport: { width: 1000, height: 900 } });
 
   const mk = (id, over = {}) => Object.assign({
     id, prop_key: '21a', name: 'Walk-in Guest', email: 'guest@gmail.com', phone: '07700 900000',
@@ -102,7 +83,7 @@ const ok = (cond, label) => {
     return json({ ok: true, bookings: [], enquiries: [], properties: [], seasons: {}, occupancy: {}, content: {}, blocks: [], ranges: [], payments: [] });
   });
 
-  await page.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1300);
   await page.evaluate(() => { isAuthenticated = true; document.body.classList.add('owner-mode'); });
   await page.evaluate(() => window.loadAdminBundle());
@@ -653,7 +634,5 @@ const ok = (cond, label) => {
   ok(l3 === 'view-accounts', `hub back returns to Money (${l3})`);
 
   console.log('HUB TEST PASSED ✅');
-  await browser.close();
-  server.kill();
-  process.exit(0);
+  await done();
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });

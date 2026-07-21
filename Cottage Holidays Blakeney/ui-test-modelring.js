@@ -6,22 +6,14 @@
 //  3. an ACTIVE answer state keeps the pill (the ring only owns the idle slot),
 //     and clearing the active state hands the pill back to the ring
 //  4. completion clears the ring everywhere and returns the pills to rest
-process.env.TZ = 'Europe/London';
-const { chromium } = require('playwright');
-const { spawn } = require('child_process');
-const PORT = 8281;
+const { boot } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
 
 (async () => {
-  const server = spawn('php', ['-S', `127.0.0.1:${PORT}`, '-t', __dirname], { stdio: 'ignore' });
-  for (let i = 0; i < 60; i++) { try { if ((await fetch(`http://127.0.0.1:${PORT}/index.html`)).ok) break; } catch (e) {} await new Promise((r) => setTimeout(r, 250)); }
-  const browser = await chromium.launch(process.env.CHB_CHROMIUM ? { executablePath: process.env.CHB_CHROMIUM } : {});
-  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
-  page.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
-  await page.addInitScript(() => { if (navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {}); });
+  const { page, browser, base, done } = await boot({ viewport: { width: 1280, height: 900 } });
   await page.route(/\.php/, (route) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ ok: true, bookings: [], events: [], logs: {}, results: [], threads: [], enquiries: [], reviews: [], photos: [], value: null, properties: [], seasons: {}, occupancy: {} }) }));
-  await page.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'networkidle' });
+  await page.goto(`${base}/index.html`, { waitUntil: 'networkidle' });
   await page.evaluate(async () => { isAuthenticated = true; document.body.classList.add('owner-mode'); await window.loadAdminBundle(); });
   // Pin the real model loads off so the assertions own the ring deterministically.
   await page.evaluate(() => { DARKSTAR.st = DARKSTAR.st || { pinned: true }; CHB_ENC.failed = true; });
@@ -79,8 +71,6 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(!st.cls && !st.mload, 'completion removes the dock ring + --mload');
   ok(st.barState !== 'loading', `completion returns the pill to rest (${st.barState || 'hidden'})`);
 
-  await browser.close();
-  server.kill();
   console.log(fails ? `\n  ${fails} MODEL-RING CHECK(S) FAILED ❌` : '\n  MODEL-RING SUITE PASSED ✅');
-  process.exit(fails ? 1 : 0);
+  await done(fails);
 })();
