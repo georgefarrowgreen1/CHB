@@ -8716,7 +8716,7 @@ async function renderPricingCoach() {
     const badge = (op) =>
         op
             ? `<span style="background:rgba(76,175,80,0.18);color:#7FD68A;font-size:0.66rem;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;border-radius:999px;padding:3px 9px;white-space:nowrap;">Opportunity</span>`
-            : `<span style="background:rgba(255,255,255,0.1);color:var(--text-muted);font-size:0.66rem;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;border-radius:999px;padding:3px 9px;white-space:nowrap;">Insight</span>`;
+            : `<span style="background:var(--glass-border);color:var(--text-muted);font-size:0.66rem;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;border-radius:999px;padding:3px 9px;white-space:nowrap;">Insight</span>`;
     const card = (s) => {
         const op = s.severity === 'opportunity';
         const applyBtn = s.apply
@@ -8759,6 +8759,7 @@ async function applyPricingSuggestion(propKey, field, value, id) {
 // Preferences → [cottage]; this excludes the cottage-template fields. ----
 const CONTENT_LABELS = {
     'site-logo': 'Site name',
+    'hero-kicker': 'Hero kicker (small line above the heading)',
     'hero-title': 'Hero heading',
     'hero-sub': 'Hero subheading',
     'hero-btn': 'Hero button',
@@ -8774,9 +8775,11 @@ const CONTENT_LABELS = {
     'card3-img': 'Cottage 3 — card photo',
     'nav-home': 'Menu: Home',
     'nav-cottages': 'Menu: Cottages',
+    'nav-experiences': 'Menu: Things to do',
     'nav-book': 'Menu: Book',
     'mnav-home': 'Mobile menu: Home',
     'mnav-cottages': 'Mobile menu: Cottages',
+    'mnav-experiences': 'Mobile menu: Things to do',
     'mnav-book': 'Mobile menu: Book',
     'amenities-title': 'Amenities heading',
     'terms-title': 'Terms heading',
@@ -9183,7 +9186,7 @@ function settingsOpenAccom(k) {
             : `<div class="settings-group" style="margin-top:14px;">
                         <button class="settings-row" ${chbAttrs('archiveAccommodation', String(k))}>
                             <span class="settings-row-ic" style="color:var(--danger);"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg></span>
-                            <span class="settings-row-main"><span class="settings-row-label" style="color:var(--danger);">Remove this accommodation</span><span class="settings-row-sub">Hides it from the site — bookings &amp; history are kept, and you can restore it</span></span><span class="settings-row-chev">›</span>
+                            <span class="settings-row-main"><span class="settings-row-label" style="color:var(--danger-text);">Remove this accommodation</span><span class="settings-row-sub">Hides it from the site — bookings &amp; history are kept, and you can restore it</span></span><span class="settings-row-chev">›</span>
                         </button>
                     </div>`;
         detail.innerHTML = `<div class="settings-group">${ACCOM_SECTIONS.map(
@@ -9524,7 +9527,7 @@ async function loadGuestList() {
                         ${guests
                             .map(
                                 (g) => `<tr data-gemail="${escapeHtml((g.email || '').toLowerCase())}">
-                            <td>${escapeHtml(g.name || '—')}${g.repeat ? ' <span class="chip-mini" style="background:var(--accent-soft);color:#1a191b;border-radius:var(--r-pill);padding:1px 7px;font-size:0.68rem;font-weight:600;">Returning</span>' : ''}<br><span style="color:var(--text-muted);font-size:0.76rem;">${escapeHtml(g.email || '')}</span></td>
+                            <td>${escapeHtml(g.name || '—')}${g.repeat ? ' <span class="chip-mini" style="background:var(--accent);color:var(--accent-ink);border-radius:var(--r-pill);padding:1px 7px;font-size:0.72rem;font-weight:600;">Returning</span>' : ''}<br><span style="color:var(--text-muted);font-size:0.76rem;">${escapeHtml(g.email || '')}</span></td>
                             <td class="num">${g.stays}</td>
                             <td class="num">${gbp(g.ltv || 0)}</td>
                             <td>${g.last_stay ? (typeof fmtDate === 'function' ? fmtDate(g.last_stay) : g.last_stay) : '—'}</td>
@@ -11600,7 +11603,7 @@ function renderSquareSettings() {
     if (st)
         st.innerHTML = squareAdminEnabled
             ? '<span style="color:var(--ok);">●</span> Connected — guests can pay by card. Send a request from any booking\'s details.'
-            : '<span style="color:var(--warn);">●</span> Not set up — add your Square keys in <code>config.php</code> and set <code>SQUARE_PAYMENTS_ENABLED</code> to true.';
+            : '<span style="color:var(--warn-text);">●</span> Not set up — add your Square keys in <code>config.php</code> and set <code>SQUARE_PAYMENTS_ENABLED</code> to true.';
     const inp = document.getElementById('sq-deposit-pct');
     if (inp) {
         const v = parseFloat(siteContent['square-deposit-pct']);
@@ -11633,7 +11636,7 @@ async function loadSquareWebhookStatus() {
         if (btn) { btn.style.display = 'inline-flex'; btn.textContent = 'Reconnect'; }
     } else {
         const why = d.error ? ' <span style="color:var(--text-muted);">(' + escapeHtml(d.error) + ')</span>' : '';
-        line.innerHTML = '<span style="color:var(--warn);">●</span> Not connected — payment info refreshes only when you open Payments.' + why;
+        line.innerHTML = '<span style="color:var(--warn-text);">●</span> Not connected — payment info refreshes only when you open Payments.' + why;
         if (btn) { btn.style.display = 'inline-flex'; btn.textContent = 'Connect'; }
     }
 }
@@ -12815,7 +12818,7 @@ function renderChatAnswersEditor() {
                 siteContent[f.key] != null && siteContent[f.key] !== '' ? siteContent[f.key] : '';
             return (
                 `<div style="margin-bottom:14px;"><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">${escapeHtml(f.q)}</label>` +
-                `<textarea rows="3" style="width:100%;background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);resize:vertical;" placeholder="${escapeHtml(f.def)}" ${chbChange('saveContent', f.key, CHB_VALUE)}>${escapeHtml(val)}</textarea></div>`
+                `<textarea rows="3" class="input-glass" style="resize:vertical;" placeholder="${escapeHtml(f.def)}" ${chbChange('saveContent', f.key, CHB_VALUE)}>${escapeHtml(val)}</textarea></div>`
             );
         }).join('');
 }
@@ -12828,8 +12831,6 @@ function renderChatAwayEditor() {
     const msgVal = sc('chat-away-msg');
     const from = sc('chat-away-from');
     const to = sc('chat-away-to');
-    const inputStyle =
-        'background:rgba(0,0,0,0.25);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);';
     const hourOpts = (sel) => {
         let o = `<option value=""${sel === '' ? ' selected' : ''}>—</option>`;
         for (let h = 0; h < 24; h++) {
@@ -12843,9 +12844,9 @@ function renderChatAwayEditor() {
         '<p style="font-size:0.8rem;color:var(--text-muted);margin:0 0 14px;">Automatically acknowledge a guest who messages when you can’t reply straight away. Sent at most once every few hours per conversation, and never right after you’ve replied.</p>' +
         `<label style="display:flex;align-items:center;gap:10px;font-size:0.85rem;margin-bottom:14px;cursor:pointer;"><input type="checkbox" ${enabled ? 'checked' : ''} data-act-change="saveContentToggle" data-key="chat-away-enabled"> Turn on away auto-reply</label>` +
         `<div style="margin-bottom:14px;"><label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Auto-reply message</label>` +
-        `<textarea rows="3" style="width:100%;${inputStyle}resize:vertical;" placeholder="Thanks for your message! We’re not at the desk right now but will reply as soon as we can — usually within a few hours." ${chbChange('saveContent', 'chat-away-msg', CHB_VALUE)}>${escapeHtml(msgVal)}</textarea></div>` +
+        `<textarea rows="3" class="input-glass" style="resize:vertical;" placeholder="Thanks for your message! We’re not at the desk right now but will reply as soon as we can — usually within a few hours." ${chbChange('saveContent', 'chat-away-msg', CHB_VALUE)}>${escapeHtml(msgVal)}</textarea></div>` +
         `<label style="font-size:0.78rem;color:var(--text-muted);display:block;margin-bottom:6px;">Only auto-reply outside these hours (optional)</label>` +
-        `<div style="display:flex;align-items:center;gap:10px;"><select style="${inputStyle}flex:1;" aria-label="Available from" ${chbChange('saveContent', 'chat-away-from', CHB_VALUE)}>${hourOpts(from)}</select><span style="color:var(--text-muted);font-size:0.8rem;">to</span><select style="${inputStyle}flex:1;" aria-label="Available until" ${chbChange('saveContent', 'chat-away-to', CHB_VALUE)}>${hourOpts(to)}</select></div>` +
+        `<div style="display:flex;align-items:center;gap:10px;"><select class="input-glass" style="flex:1;width:auto;" aria-label="Available from" ${chbChange('saveContent', 'chat-away-from', CHB_VALUE)}>${hourOpts(from)}</select><span style="color:var(--text-muted);font-size:0.8rem;">to</span><select class="input-glass" style="flex:1;width:auto;" aria-label="Available until" ${chbChange('saveContent', 'chat-away-to', CHB_VALUE)}>${hourOpts(to)}</select></div>` +
         `<p style="font-size:0.72rem;color:var(--text-muted);margin:8px 0 0;">e.g. 09:00 to 18:00 — the auto-reply only fires outside that window. Leave both as “—” to auto-reply any time you haven’t just replied.</p>`;
 }
 function toggleArchivedMessages() {
@@ -13787,7 +13788,7 @@ async function loadWaitlist() {
             const dates =
                 w.check_in && w.check_out ? `${fmtDate(w.check_in)} → ${fmtDate(w.check_out)}` : 'Any dates';
             const notified = w.notified_at
-                ? `<span style="color:var(--ok);">Notified ${escapeHtml(String(w.notified_at).slice(0, 10))}</span>`
+                ? `<span style="color:var(--ok-text);">Notified ${fmtDate(String(w.notified_at).slice(0, 10))}</span>`
                 : '<span style="color:var(--text-muted);">Waiting</span>';
             return `<div class="accounts-stat" style="max-width:640px;margin-bottom:12px;">
                     <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:baseline;">
@@ -15000,7 +15001,7 @@ function leadCardHtml(l) {
     const priv = [1, 2, 3, 4, 5]
         .map(
             (n) =>
-                `<button type="button" data-n="${n}" ${chbAttrs('pickLeadStar', l.id, n)} aria-label="${n} star" style="font-size:19px;line-height:1;background:none;border:0;cursor:pointer;padding:1px;color:${ar >= n ? '#e0a12f' : '#dccfb9'};">★</button>`,
+                `<button type="button" data-n="${n}" class="lead-star${ar >= n ? ' on' : ''}" ${chbAttrs('pickLeadStar', l.id, n)} aria-label="${n} star">★</button>`,
         )
         .join('');
     const actions =
@@ -15016,7 +15017,7 @@ function leadCardHtml(l) {
                     <strong>${escapeHtml(l.name)}</strong>
                     <span style="color:var(--text-muted);">${escapeHtml(cott)}</span>
                     <span style="font-size:0.68rem;letter-spacing:.4px;text-transform:uppercase;color:var(--text-muted);border:1px solid var(--glass-border);border-radius:20px;padding:1px 8px;">${escapeHtml(src)}</span>
-                    <span style="color:#d6a785;">${stars}</span>
+                    <span class="star-static">${stars}</span>
                     <span style="margin-left:auto;">${leadStatusPill(l.status)}</span>
                 </div>
                 <div style="font-size:0.88rem;color:var(--text-muted);margin:8px 0;font-style:italic;">“${escapeHtml(l.review_text)}”</div>
@@ -15042,7 +15043,7 @@ function pickLeadStar(id, n) {
     if (!box) return;
     box.dataset.val = n;
     box.querySelectorAll('button').forEach((b) => {
-        b.style.color = parseInt(b.dataset.n) <= n ? '#e0a12f' : '#dccfb9';
+        b.classList.toggle('on', parseInt(b.dataset.n) <= n);
     });
 }
 async function saveLeadRating(id) {
@@ -15097,7 +15098,7 @@ async function loadLeadModeration() {
     wrap.innerHTML =
         `<div style="display:flex;align-items:center;gap:8px;margin:4px 0 10px;">
             <h3 style="font-family:var(--font-serif);font-size:1.1rem;margin:0;">External guest reviews</h3>
-            ${pend ? `<span style="font-size:0.72rem;font-weight:600;color:#fff;background:var(--warn);border-radius:20px;padding:2px 9px;">${pend} new</span>` : ''}
+            ${pend ? `<span style="font-size:0.72rem;font-weight:600;color:var(--accent-ink);background:var(--warn);border-radius:20px;padding:2px 9px;">${pend} new</span>` : ''}
         </div>
         <p style="font-size:0.8rem;color:var(--text-muted);margin:0 0 12px;">Left via your review links. Approve to publish on the site; rate the guest privately to control who gets the book-direct follow-up.</p>` +
         rows.map(leadCardHtml).join('');
@@ -15144,7 +15145,7 @@ async function loadGuestReviewModeration() {
                     <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;font-size:0.82rem;">
                         <strong>${escapeHtml(r.name)}</strong>
                         <span style="color:var(--text-muted);">${escapeHtml((propertyMeta[r.prop_key] || {}).name || r.prop_key)}</span>
-                        <span style="color:#d6a785;">${stars(r.stars)}</span>
+                        <span class="star-static">${stars(r.stars)}</span>
                         <span style="color:var(--warn);">pending</span>
                     </div>
                     <div style="font-size:0.88rem;color:var(--text-muted);margin:8px 0;font-style:italic;">“${escapeHtml(r.review_text)}”</div>
@@ -15838,7 +15839,7 @@ function osDonut(pct, color) {
         C = 2 * Math.PI * R,
         dash = ((C * pct) / 100).toFixed(1);
     return `<svg class="os-donut" viewBox="0 0 64 64" role="img" aria-label="${pct}%">
-                <circle cx="32" cy="32" r="${R}" fill="none" stroke="rgba(255,255,255,0.10)" stroke-width="7"/>
+                <circle cx="32" cy="32" r="${R}" fill="none" stroke="var(--glass-border)" stroke-width="7"/>
                 <circle cx="32" cy="32" r="${R}" fill="none" stroke="${color}" stroke-width="7" stroke-linecap="round" stroke-dasharray="${dash} ${C.toFixed(1)}" transform="rotate(-90 32 32)"/>
                 <text x="32" y="38" text-anchor="middle" font-family="var(--font-serif)" font-size="16" fill="var(--text-light)">${pct}%</text>
             </svg>`;
@@ -15874,7 +15875,7 @@ function osHBars(items) {
             const pct = Math.max(2, Math.round(((i.value || 0) / (i.max || 1)) * 100));
             return `<div style="margin-bottom:9px;">
                     <div style="display:flex;justify-content:space-between;gap:10px;font-size:0.8rem;margin-bottom:4px;"><span style="color:var(--text-light);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHtml(i.label)}</span><span style="color:var(--text-muted);">${escapeHtml(i.valLabel != null ? i.valLabel : String(i.value))}</span></div>
-                    <div style="height:8px;border-radius:5px;background:rgba(255,255,255,0.08);overflow:hidden;"><div style="height:100%;width:${pct}%;background:${i.color || 'var(--accent)'};border-radius:5px;transition:width 0.5s var(--fluid-bezier);"></div></div>
+                    <div style="height:8px;border-radius:5px;background:var(--glass-border);overflow:hidden;"><div style="height:100%;width:${pct}%;background:${i.color || 'var(--accent)'};border-radius:5px;transition:width 0.5s var(--fluid-bezier);"></div></div>
                 </div>`;
         })
         .join('');
@@ -17116,7 +17117,7 @@ function expPendingHtml(r) {
                 <div style="font-size:0.84rem;color:var(--text-muted);margin:6px 0;white-space:pre-line;">${escapeHtml(r.body)}</div>
                 <div style="font-size:0.74rem;color:var(--text-muted);">Suggested by ${escapeHtml(r.suggested_by_name || 'a guest')}${r.link_url ? ` · <a href="${escapeHtml(r.link_url)}" target="_blank" rel="noopener" style="color:var(--text-muted);text-decoration:underline;">link</a>` : ''}${r.phone ? ' · ' + escapeHtml(r.phone) : ''}</div>
                 <div style="display:flex;gap:8px;margin-top:10px;">
-                    <button class="btn-sm btn-edit" style="background:rgba(76,175,80,0.22);border-color:var(--booked-border);" ${chbAttrs('expApprove', r.id)}>Approve &amp; publish</button>
+                    <button class="btn-sm btn-edit" ${chbAttrs('expApprove', r.id)}>Approve &amp; publish</button>
                     <button class="btn-sm btn-delete" ${chbAttrs('expReject', r.id)}>Reject</button>
                 </div>
             </div>`;
