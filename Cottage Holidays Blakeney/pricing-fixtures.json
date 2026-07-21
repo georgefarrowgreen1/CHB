@@ -1,0 +1,25 @@
+{
+  "comment": "SINGLE SOURCE for the JS/PHP price-model parity cases. smoke-test.js (JS priceBreakdown) and test-pricing.php (PHP price_breakdown) BOTH loop these cases, so the two engines are asserted against identical inputs and expectations. rate uses the PHP snake_case row shape; the JS loop maps it and ALSO asserts the shim's built-in rates match (so the two sides can never silently test different inputs). Dev/CI only — excluded from deploy.",
+  "cases": [
+    {
+      "name": "21A 3 nights, 2 adults, 3% txn, £75 deposit",
+      "prop": "21a",
+      "rate": { "couple_rate": 130, "extra_adult_rate": 45, "child_rate": 30, "booking_fee": 75, "transaction_pct": 3 },
+      "adults": 2,
+      "children": 0,
+      "checkIn": "2026-07-01",
+      "checkOut": "2026-07-04",
+      "expect": { "nights": 3, "nightly": 390, "perNight": 130, "txFee": 11.7, "damagesDeposit": 75, "total": 401.7 }
+    },
+    {
+      "name": "Pimpernel 2 nights, 3 adults (1 extra @42)",
+      "prop": "pimpernel",
+      "rate": { "couple_rate": 120, "extra_adult_rate": 42, "child_rate": 28, "booking_fee": 75, "transaction_pct": 3 },
+      "adults": 3,
+      "children": 0,
+      "checkIn": "2026-07-01",
+      "checkOut": "2026-07-03",
+      "expect": { "nights": 2, "nightly": 324, "perNight": 162 }
+    }
+  ]
+}

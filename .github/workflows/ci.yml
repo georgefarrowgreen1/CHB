@@ -20,6 +20,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          # check-versions.js diffs against the PR base commit.
+          fetch-depth: 0
 
       - name: Set up Node
         uses: actions/setup-node@v4
@@ -35,6 +38,17 @@ jobs:
       - name: Front-end smoke test
         working-directory: "Cottage Holidays Blakeney"
         run: node smoke-test.js
+
+      # The GIT half of the deploy checklist: if a PR changes a cached asset,
+      # its cache-buster (?v= / BUILD / ADMIN_*_V / CACHE) must change too.
+      # `node bump.js <stamp>` applies the whole chain in one go. (smoke-test
+      # guards the static half — sw.js CORE ?v= == index.html ?v=.)
+      - name: Version-chain consistency (changed asset → bumped version)
+        working-directory: "Cottage Holidays Blakeney"
+        env:
+          CHB_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          CHB_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: node check-versions.js
 
       - name: Search registry completeness
         working-directory: "Cottage Holidays Blakeney"
@@ -112,8 +126,16 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: |
           npm init -y > /dev/null 2>&1
-          npm install --no-audit --no-fund --prefer-offline eslint globals
+          npm install --no-audit --no-fund --prefer-offline eslint globals typescript@5.6.3
           node lint-js.js
+
+      # Type-error RATCHET: tsc --checkJs as a linter (no build step, no runtime
+      # change). Error counts per group must stay ≤ the committed budgets in
+      # tsc-budget.json — the long tail of legacy "window.*" errors only ever
+      # shrinks. Pinned typescript (counts differ across compiler versions).
+      - name: JS type-check ratchet (tsc --checkJs vs tsc-budget.json)
+        working-directory: "Cottage Holidays Blakeney"
+        run: node typecheck.js
 
       # PHP static analysis — catches undefined functions/constants/variables and
       # wrong argument counts across every endpoint, far beyond php -l's syntax

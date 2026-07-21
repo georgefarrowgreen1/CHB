@@ -123,22 +123,30 @@ if (adminScript) {
 
 const get = (n) => ctx[n] || sandbox[n];
 
-console.log('\n== 2. Pricing engine (priceBreakdown) ==');
+console.log('\n== 2. Pricing engine (priceBreakdown) — shared parity fixtures ==');
 const pb = get('priceBreakdown');
 if (typeof pb !== 'function') {
     fail('priceBreakdown is not defined');
 } else {
-    // 21A: couple 130, txn 3%, deposit 75. 3 nights, 2 adults, 0 children, no season.
-    const p = pb('21a', 2, 0, '2026-07-01', '2026-07-04');
-    check('3-night stay => nights = 3', p.nights === 3);
-    check('nightly = 390 (3 x 130)', approx(p.nightly, 390));
-    check('per-night = 130', approx(p.perNight, 130));
-    check('transaction fee = 11.70 (3% of 390)', approx(p.txFee, 11.7));
-    check('damages deposit = 75 (charged with first payment, not in rental total)', approx(p.damagesDeposit, 75));
-    check('total = 401.70 (390 + 11.70; deposit charged separately, refunded after stay)', approx(p.total, 401.7));
-    // Extra adult should add the extra-adult rate per night (pimpernel allows 3).
-    const p2 = pb('pimpernel', 3, 0, '2026-07-01', '2026-07-03'); // 2 nights, 1 extra adult @ 42
-    check('extra adult adds 42/night (pimpernel 2 nights)', approx(p2.nightly, (120 + 42) * 2));
+    // ONE source of truth for the JS/PHP parity cases: pricing-fixtures.json
+    // (test-pricing.php loops the same file). The rate guard asserts the shim's
+    // built-in rates for the prop match the fixture's, so the two sides can
+    // never silently drift onto different inputs.
+    const fx = JSON.parse(fs.readFileSync(path.join(path.dirname(HTML_PATH), 'pricing-fixtures.json'), 'utf8'));
+    // defaultRates is a top-level const (a lexical binding, not a ctx property) —
+    // read it by evaluating inside the context.
+    const rates = vm.runInContext('typeof defaultRates !== "undefined" ? defaultRates : null', ctx) || {};
+    const MAP = { couple_rate: 'coupleRate', extra_adult_rate: 'extraAdultRate', child_rate: 'childRate', booking_fee: 'damagesDeposit', transaction_pct: 'transactionPct' };
+    fx.cases.forEach((c) => {
+        const shim = rates[c.prop] || {};
+        Object.keys(c.rate).forEach((k) => {
+            check(`${c.name}: shim rate ${k} matches the fixture (${c.rate[k]})`, approx(parseFloat(shim[MAP[k]]) || 0, c.rate[k]));
+        });
+        const p = pb(c.prop, c.adults, c.children, c.checkIn, c.checkOut);
+        Object.keys(c.expect).forEach((k) => {
+            check(`${c.name}: ${k} = ${c.expect[k]}`, k === 'nights' ? p[k] === c.expect[k] : approx(p[k], c.expect[k]));
+        });
+    });
 }
 // Weekend uplift — tested via the pure helper (propertyRates isn't reachable in
 // the shim). MUST match weekend_pct_for_night()/nightly_rate_for() in pricing.php.
@@ -319,6 +327,20 @@ try {
     check('admin.css is NOT in the sw.js CORE precache list', !/CORE = \[[^\]]*admin\.css/.test(sw));
     check('app.js injects admin.css via ensureAdminCss', /ensureAdminCss/.test(appScript) && /admin\.css\?v=/.test(appScript));
 } catch (e) { check('sw.js precache version check ran (' + e.message + ')', false); }
+
+// 6c-iii. Migration naming convention: NEW migrations must be
+// migration-NNN-<slug>.sql (NNN ≥ 100, applied after all legacy files by
+// migrate.php's migration_sort — see test-migrate.php). The legacy names below
+// are FROZEN: never add to this list, never rename them (the ledger + live
+// databases key off the filenames).
+try {
+    const LEGACY_MIGRATIONS = new Set(['accommodations', 'activity-log', 'activity-severity', 'admin-2fa', 'admin-passkeys', 'analytics-v2', 'analytics-v3', 'analytics-v4', 'damage-hold', 'damages-deposit', 'deposit-recovery', 'direct-leads', 'enquiry-nudge', 'enquiry-soft-decline', 'expenses', 'expenses2', 'expenses3', 'experiences-blakeney', 'experiences', 'guest-address', 'guest-photos', 'guest-postcode', 'guest-registrations', 'guest-reviews', 'ical', 'lastmin', 'login-throttle', 'mail-sent', 'messages', 'messaging-threads', 'messaging-threads2', 'newsletter', 'pageviews', 'passkeys', 'payment-reminders', 'payment-schedule', 'pre-arrival', 'price-override', 'push', 'push2-admin', 'review-request', 'seasons', 'smart-pricing', 'sms-optin', 'square-payments', 'square-payments2', 'terms', 'tide-cache', 'tide-push', 'waitlist', 'zz-experience-photos', 'zz3-content-no-dogs', 'zz4-drop-push-columns', 'zz5-chat-attachment', 'zz6-chat-typing', 'zz7-messages-thread-index', 'zz8-payment-damages-kind', 'zz9-clean-webview-noise', 'zz9a-payment-lifecycle', 'zz9b-payment-snapshot', 'zza-clean-ios-webview-noise', 'zzb-unlisted', 'zzc-enquiry-drafts', 'zzd-magic-single-use']);
+    const badMigrations = fs.readdirSync(path.dirname(HTML_PATH))
+        .filter(f => /^migration-.*\.sql$/.test(f))
+        .filter(f => !LEGACY_MIGRATIONS.has(f.replace(/^migration-/, '').replace(/\.sql$/, '')))
+        .filter(f => !/^migration-[1-9]\d{2,}-[a-z0-9][a-z0-9-]*\.sql$/.test(f));
+    check('new migrations follow migration-NNN-<slug>.sql (NNN ≥ 100)' + (badMigrations.length ? ' — rename: ' + badMigrations.join(', ') : ''), badMigrations.length === 0);
+} catch (e) { check('migration naming check ran (' + e.message + ')', false); }
 
 // 6d. JSON-LD structured data parses.
 const ld = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);

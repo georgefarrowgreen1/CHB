@@ -1,0 +1,6 @@
+{
+  "comment": "Type-error RATCHET budgets for typecheck.js (tsc --checkJs as a linter). Calibrated against the pinned typescript version below — counts differ across compiler versions, so typecheck.js refuses to run any other. These numbers only ever go DOWN: when your PR fixes type errors, lower the group's budget to the new count in the same PR. Never raise one to get green.",
+  "typescript": "5.6.3",
+  "app": 770,
+  "sw": 26
+}
