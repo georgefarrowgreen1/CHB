@@ -385,6 +385,12 @@ if ($isAdmin && empty($in['token'])) {
             }
             json_out(['ok' => true]);
         }
+        if ($action === 'mark_all_read') {
+            // One tap from the Inbox: every guest message read (admin side only —
+            // guests' own read state is untouched).
+            db()->prepare("UPDATE messages SET read_by_admin = 1 WHERE sender_role = 'guest'")->execute();
+            json_out(['ok' => true]);
+        }
         if ($action === 'thread') {
             $tid = (int) ($in['thread_id'] ?? 0);
             if ($tid <= 0) {

@@ -7568,7 +7568,8 @@ function bookingEmailLogHtml(b) {
     const rows = logs
         .map((l) => {
             const what = `<span class="bk-email-log-what">${icon}${escapeHtml(emailLogLabel(l.action))}</span>`;
-            const when = `<span class="bk-email-log-when">${escapeHtml(fmtLogWhen(l.at))}</span>`;
+            const ago = relTime(l.at);
+            const when = `<span class="bk-email-log-when">${escapeHtml(fmtLogWhen(l.at))}${ago ? `<i class="bk-when-ago"> · ${escapeHtml(ago)}</i>` : ''}</span>`;
             // A free-text message carries a body → make it expandable to read it.
             if (l.body) {
                 const subj = l.subject
@@ -7628,6 +7629,10 @@ function bhubMenuClose() {
         .querySelectorAll('.bhub-menu-btn[aria-expanded="true"]')
         .forEach((b) => b.setAttribute('aria-expanded', 'false'));
     document.removeEventListener('keydown', __bhubMenuEsc);
+}
+function bhubScrollPay() {
+    const p = document.querySelector('.bhub-headpay');
+    if (p) p.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 function bhubMoneyExpand() {
     const body = document.getElementById('breakdown-modal-body');
@@ -7782,7 +7787,13 @@ function hubPipelineHtml(propKey, b, gt, dh) {
     // A dynamic three-pill window — where this booking has been, where it IS,
     // and what comes next — instead of the whole journey squeezed into one
     // strip (which needed swiping on phones and buried the current stage).
-    const pill = (s, cls) => `<span class="pipe-step ${cls}"><span class="pipe-dot"></span>${escapeHtml(s.label)}</span>`;
+    const pillAct = (s) =>
+        ['deposit', 'paid', 'depositback'].includes(s.key)
+            ? ' role="button" tabindex="0" data-act="bhubScrollPay" data-act-keydown="activate" title="Jump to the payments section"'
+            : s.key === 'details' && !b.regSubmitted
+              ? ` role="button" tabindex="0" ${chbAttrs('copyGuestRegLink', String(b.id))} data-act-keydown="activate" title="Copy the guest-details link"`
+              : '';
+    const pill = (s, cls) => `<span class="pipe-step ${cls}"${pillAct(s)}><span class="pipe-dot"></span>${escapeHtml(s.label)}</span>`;
     const col = (cap, inner) => `<div class="pipe3-col"><span class="pipe3-cap">${cap}</span>${inner}</div>`;
     const arrow = '<span class="pipe3-arrow" aria-hidden="true">›</span>';
     // The current stage is amber "now" — except an in-progress stay, which reads
@@ -9250,7 +9261,7 @@ async function settingsOpenCalendar(k) {
     if (list) list.style.display = 'none';
     if (detail) {
         detail.style.display = '';
-        detail.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">Loading…</p>';
+        detail.innerHTML = skelRows(3);
     }
     const title = document.getElementById('settings-panel-title');
     if (title) title.textContent = propertyMeta[k] ? propertyMeta[k].name : k;
@@ -9427,7 +9438,7 @@ async function loadCalendarSync() {
     }
     const box = document.getElementById('calendar-sync-box');
     if (!box) return;
-    box.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">Loading…</p>';
+    box.innerHTML = skelRows(3);
     let html = '';
     for (const [key, label] of syncProps()) {
         let data;
@@ -9497,7 +9508,7 @@ async function loadGuestList() {
         return;
     }
     const box = document.getElementById('guest-admin-list');
-    box.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">Loading…</p>';
+    box.innerHTML = skelRows(3);
     let res;
     try {
         res = await apiPost('auth.php', { action: 'guest_crm' });
@@ -9745,7 +9756,7 @@ async function renderAccounts() {
     const content = document.getElementById('accounts-content');
     if (!sel || !content) return;
     const startYear = parseInt(sel.value, 10);
-    content.innerHTML = '<div class="accounts-empty">Loading…</div>';
+    content.innerHTML = skelRows(3);
 
     let rep;
     try {
@@ -9817,8 +9828,8 @@ async function renderAccounts() {
                 </div>
                 ${quarterly}
                 <div class="accounts-actions" style="margin-top:14px;">
-                    <button class="btn-sm btn-edit" ${chbAttrs('downloadYearStatement', startYear)}>⤓ Statement (PDF)</button>
-                    <button class="btn-sm btn-edit" data-act="exportAccountsCSV">⤓ Export (CSV)</button>
+                    <button class="btn-sm btn-edit" ${chbAttrs('downloadYearStatement', startYear)}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:13px;height:13px;vertical-align:-2px;margin-right:4px;"><path d="M12 4v11M7 10l5 5 5-5M4 20h16"/></svg>Statement (PDF)</button>
+                    <button class="btn-sm btn-edit" data-act="exportAccountsCSV"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:13px;height:13px;vertical-align:-2px;margin-right:4px;"><path d="M12 4v11M7 10l5 5 5-5M4 20h16"/></svg>Export (CSV)</button>
                     <button class="btn-sm btn-edit" data-act="accountsOpen" data-arg="expenses">Manage expenses</button>
                 </div>
                 <div class="accounts-note" style="margin-top:12px;">
@@ -10639,10 +10650,10 @@ function renderMoneyOverview() {
     el.innerHTML = `
                 <h2 style="font-family:var(--font-serif);font-size:1.3rem;font-weight:400;margin:0 0 12px;">Your payments at a glance</h2>
                 <div class="mo-kpis">
-                    <div class="mo-kpi mo-kpi-lead"><div class="mo-label">Outstanding</div><div class="mo-value ${owedUpcoming > 0 ? 'mo-warn' : 'mo-good'}">${gbp(owedUpcoming)}</div><div class="mo-sub">${owedCount} unpaid · upcoming</div>${chaseCta}</div>
-                    <div class="mo-kpi"><div class="mo-label">Received · ${taxYearShort(curTY)}</div><div class="mo-value mo-good">${gbp(receivedTY)}</div><div class="mo-sub">this tax year</div></div>
-                    <div class="mo-kpi"><div class="mo-label">Net profit · ${taxYearShort(curTY)}</div><div class="mo-value ${netTY < 0 ? 'mo-warn' : ''}">${gbp(netTY)}</div><div class="mo-sub">after ${gbp(expTY)} expenses</div></div>
-                    <div class="mo-kpi"><div class="mo-label">Booked · next 90 days</div><div class="mo-value">${gbp(next90)}</div><div class="mo-sub">confirmed arrivals</div></div>
+                    <div class="mo-kpi mo-kpi-lead" role="button" tabindex="0" data-act="accountsOpen" data-arg="payments" data-act-keydown="activate" title="Open Payments & balances"><div class="mo-label">Outstanding</div><div class="mo-value ${owedUpcoming > 0 ? 'mo-warn' : 'mo-good'}">${gbp(owedUpcoming)}</div><div class="mo-sub">${owedCount} unpaid · upcoming</div>${chaseCta}</div>
+                    <div class="mo-kpi" role="button" tabindex="0" data-act="accountsOpen" data-arg="income" data-act-keydown="activate" title="Open Income & tax"><div class="mo-label">Received · ${taxYearShort(curTY)}</div><div class="mo-value mo-good">${gbp(receivedTY)}</div><div class="mo-sub">this tax year</div></div>
+                    <div class="mo-kpi" role="button" tabindex="0" data-act="accountsOpen" data-arg="income" data-act-keydown="activate" title="Open Income & tax"><div class="mo-label">Net profit · ${taxYearShort(curTY)}</div><div class="mo-value ${netTY < 0 ? 'mo-warn' : ''}">${gbp(netTY)}</div><div class="mo-sub">after ${gbp(expTY)} expenses</div></div>
+                    <div class="mo-kpi" role="button" tabindex="0" data-act="accountsOpen" data-arg="payments" data-act-keydown="activate" title="Open Payments & balances"><div class="mo-label">Booked · next 90 days</div><div class="mo-value">${gbp(next90)}</div><div class="mo-sub">confirmed arrivals</div></div>
                 </div>
                 <details class="mo-trends">
                     <summary>Trends &amp; history</summary>
@@ -11273,7 +11284,7 @@ function renderNotifySettings() {
             <div class="accounts-stat" style="max-width:560px;margin-top:16px;">
                 <div class="label">Email recipients</div>
                 <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 12px;">Who gets emailed about new bookings, enquiries, guest messages, payments and reviews. Add a partner or co-host and they're copied on every alert.</p>
-                <div id="notify-emails-list"><p style="font-size:0.82rem;color:var(--text-muted);">Loading…</p></div>
+                <div id="notify-emails-list">${skelRows(2)}</div>
                 <form data-act-submit="addNotifyEmail" data-pass="event" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px;">
                     <input type="email" id="notify-email-input" class="input-glass field-sm" placeholder="name@example.com" autocomplete="off" style="flex:1;min-width:200px;margin:0;">
                     <button type="submit" class="btn-sm btn-edit">Add address</button>
@@ -12448,8 +12459,9 @@ function todayOpsLine() {
     if (staying) parts.push(staying === 1 ? '1 staying' : staying + ' staying');
     if (departures) parts.push(departures === 1 ? '1 departure' : departures + ' departures');
     if (changeovers) parts.push(changeovers === 1 ? '1 changeover' : changeovers + ' changeovers');
-    if (owed > 0.005) parts.push('£' + Math.round(owed).toLocaleString('en-GB') + ' to collect');
-    el.textContent = date + (parts.length ? ' · ' + parts.join(' · ') : ' · all quiet today');
+    if (owed > 0.005) parts.push('<button type="button" class="ops-owed" data-act="openBookingsNeedsPay">£' + Math.round(owed).toLocaleString('en-GB') + ' to collect</button>');
+    // innerHTML: every part is generated (counts + the owed button) — no user text.
+    el.innerHTML = escapeHtml(date) + (parts.length ? ' · ' + parts.join(' · ') : ' · all quiet today');
 }
 // Unified back office: load data once, render calendar and inbox.
 async function initBackOffice() {
@@ -12702,6 +12714,20 @@ let __msgUnansweredOnly = false;
 // message is the guest's, or there are still-unread guest messages. The unread
 // clause means an automatic away-reply (which posts as an admin message but never
 // marks the guest's message read) doesn't hide a thread that still needs you.
+// One tap clears the unread state on every guest conversation (server-side),
+// then refreshes the list + the dock/inbox pips.
+async function markAllMessagesRead() {
+    try {
+        await apiPost('messages.php', { action: 'mark_all_read' });
+        __msgThreads = __msgThreads.map((t) => ({ ...t, unread: 0 }));
+        renderMessagesList();
+        try { loadAdminMessages(); } catch (e) {}
+        try { refreshInboxBadge(); } catch (e) {}
+        toast('All guest messages marked read.');
+    } catch (e) {
+        toast(e.message || "Couldn't mark messages read.", 'error');
+    }
+}
 function msgNeedsReply(t) {
     return !t.archived && (t.last_role === 'guest' || (t.unread || 0) > 0);
 }
@@ -12732,7 +12758,7 @@ function renderMessagesList() {
     const controls = threads.length
         ? `<div class="msg-inbox-controls">
                 <input id="msg-search" class="input-glass field-sm" type="search" placeholder="Search name, email or text…" value="${escapeHtml(__msgSearch)}" data-act-input="onMsgSearch" data-pass="value" autocomplete="off">
-                ${needCount && !__msgShowArchived ? `<button id="msg-unanswered" class="msg-filter-chip${__msgUnansweredOnly ? ' on' : ''}" data-act="toggleUnansweredOnly">Needs reply · ${needCount}</button>` : ''}
+                ${needCount && !__msgShowArchived ? `<button id="msg-unanswered" class="msg-filter-chip${__msgUnansweredOnly ? ' on' : ''}" data-act="toggleUnansweredOnly">Needs reply · ${needCount}</button><button class="btn-sm msg-archived-toggle" data-act="markAllMessagesRead" title="Mark every guest message as read">Mark all read</button>` : ''}
            </div>`
         : '';
     const rows = threads.length
@@ -13429,7 +13455,7 @@ async function loadAnalytics(days = 30) {
     const wrap = document.getElementById('analytics-body');
     if (!wrap) return;
     days = [7, 30, 90, 365].includes(+days) ? +days : 30;
-    wrap.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p>`;
+    wrap.innerHTML = skelRows(3);
     let d;
     try {
         d = await apiGet('track.php?action=summary&days=' + days);
@@ -13765,7 +13791,7 @@ async function loadAnalytics(days = 30) {
 async function loadWaitlist() {
     const wrap = document.getElementById('waitlist-body');
     if (!wrap) return;
-    wrap.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p>`;
+    wrap.innerHTML = skelRows(3);
     let rows = [];
     try {
         const r = await apiGet('waitlist.php');
@@ -13810,7 +13836,7 @@ async function loadNewsletter() {
     const sendMsg = document.getElementById('nl-send-msg');
     if (sendMsg) sendMsg.textContent = '';
     if (!stats) return;
-    stats.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p>`;
+    stats.innerHTML = skelRows(2);
     let r;
     try {
         r = await apiGet('newsletter.php');
@@ -14358,7 +14384,7 @@ function tcOpen(page) {
     if (list) list.style.display = 'none';
     if (detail) {
         detail.style.display = '';
-        detail.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">Loading…</p>';
+        detail.innerHTML = skelRows(3);
     }
     const meta = TC_PAGES.find((p) => p.id === page);
     const title = document.getElementById('settings-panel-title');
@@ -14544,7 +14570,7 @@ async function tcSendEmail(which, btn) {
 async function tcRenderBooking() {
     const detail = document.getElementById('testcentre-detail');
     if (!detail) return;
-    detail.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">Loading…</p>';
+    detail.innerHTML = skelRows(3);
     let data;
     try {
         data = await apiPost('testcentre.php', { action: 'list_data' });
@@ -14784,7 +14810,7 @@ async function tcDeleteBooking(id) {
 async function tcRenderData() {
     const detail = document.getElementById('testcentre-detail');
     if (!detail) return;
-    detail.innerHTML = '<p style="color:var(--text-muted);font-size:0.85rem;">Loading…</p>';
+    detail.innerHTML = skelRows(3);
     let data;
     try {
         data = await apiPost('testcentre.php', { action: 'list_data' });
@@ -15639,7 +15665,7 @@ async function renderActivityLog() {
             ([k, label]) =>
                 `<button type="button" class="act-log-chip${activityLogState.category === k ? ' active' : ''}" ${chbAttrs('activityLogFilter', String(k))}>${label}</button>`,
         ).join('');
-    list.innerHTML = `<div class="act-log-empty">Loading…</div>`;
+    list.innerHTML = skelRows(4);
     let events = [];
     try {
         const r = await apiPost('activity-log.php', {
@@ -15807,6 +15833,11 @@ function timelineToday() {
     host.scrollTo({ left: Math.max(0, (-tlStartOffset() - 2) * tlDayW()), behavior: 'smooth' });
 }
 // Free timeline day tapped → start an Add Booking on that cottage + date.
+// The header's "£X to collect" is a LINK: straight to Bookings, pre-filtered
+// to the ones that still owe money.
+function openBookingsNeedsPay() {
+    Promise.resolve(openBookings()).then(() => { try { bookingsSetFilter('needspay'); } catch (e) {} });
+}
 function tlAddAt(propKey, iso) {
     openAddBooking();
     const sel = document.getElementById('modal-property');
@@ -17105,7 +17136,7 @@ async function refreshModerationCounts() {
 async function loadExperiencesAdmin() {
     const wrap = document.getElementById('exp-admin');
     if (!wrap) return;
-    wrap.innerHTML = '<p style="color:var(--text-muted);font-size:0.9rem;">Loading…</p>';
+    wrap.innerHTML = skelRows(3);
     let rows = [];
     try {
         const r = await apiPost('experiences.php', { action: 'list_admin' });

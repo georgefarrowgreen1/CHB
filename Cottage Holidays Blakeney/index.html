@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=199">
+    <link rel="stylesheet" href="app.css?v=200">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -1233,15 +1233,15 @@
                 </button>
                 <button class="settings-row" data-kw="things to do local guide attractions suggestions moderate" data-act="settingsOpen" data-arg="experiences">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15.6 8.4l-2.1 5.1-5.1 2.1 2.1-5.1z"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Experiences <span id="exp-pending-badge" style="display:none;background:#E5533C;color:#fff;font-size:0.62rem;font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:middle;"></span></span><span class="settings-row-sub">Local things to do &amp; approve guest suggestions</span></span><span class="settings-row-chev">›</span>
+                    <span class="settings-row-main"><span class="settings-row-label">Experiences <span id="exp-pending-badge" style="display:none;background:var(--danger);color:#fff;font-size:0.62rem;font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:middle;"></span></span><span class="settings-row-sub">Local things to do &amp; approve guest suggestions</span></span><span class="settings-row-chev">›</span>
                 </button>
                 <button class="settings-row" data-kw="stars ratings testimonials airbnb import approve moderate" data-act="settingsOpen" data-arg="reviews">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 17.77 6.8 19.5l.99-5.78-4.21-4.1 5.82-.85z"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Reviews <span id="reviews-pending-badge" style="display:none;background:#E5533C;color:#fff;font-size:0.62rem;font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:middle;"></span></span><span class="settings-row-sub">Approve guest reviews &amp; import reviews from Airbnb</span></span><span class="settings-row-chev">›</span>
+                    <span class="settings-row-main"><span class="settings-row-label">Reviews <span id="reviews-pending-badge" style="display:none;background:var(--danger);color:#fff;font-size:0.62rem;font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:middle;"></span></span><span class="settings-row-sub">Approve guest reviews &amp; import reviews from Airbnb</span></span><span class="settings-row-chev">›</span>
                 </button>
                 <button class="settings-row" data-kw="ugc pictures gallery approve moderate guest photos" data-act="settingsOpen" data-arg="photos">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.2"/><path d="M8 6l1.5-2h5L16 6"/></svg></span>
-                    <span class="settings-row-main"><span class="settings-row-label">Guest photos <span id="photos-pending-badge" style="display:none;background:#E5533C;color:#fff;font-size:0.62rem;font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:middle;"></span></span><span class="settings-row-sub">Approve photos guests share</span></span><span class="settings-row-chev">›</span>
+                    <span class="settings-row-main"><span class="settings-row-label">Guest photos <span id="photos-pending-badge" style="display:none;background:var(--danger);color:#fff;font-size:0.62rem;font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:middle;"></span></span><span class="settings-row-sub">Approve photos guests share</span></span><span class="settings-row-chev">›</span>
                 </button>
             </div>
 
@@ -2517,7 +2517,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=491"></script>
+    <script defer src="app.js?v=492"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->

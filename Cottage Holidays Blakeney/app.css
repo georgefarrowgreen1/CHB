@@ -874,6 +874,12 @@ chips and nav-pill
 #guest-book-cta:focus-visible,
 nav a:focus-visible,
 .back-link:focus-visible,
+.admin-dock-btn:focus-visible,
+.tl-bar:focus-visible,
+.tl-cell:focus-visible,
+.mo-kpi[data-act]:focus-visible,
+.pipe-step[data-act]:focus-visible,
+.ops-owed:focus-visible,
 .menu-toggle:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -6100,6 +6106,20 @@ body.light-mode .feed-dot-bad {
 .btn-edit:hover {
   background: var(--text-light);
   color: var(--dark-grey);
+}
+/* Pressed feedback: every primary control acknowledges the tap with a slight
+   compress (spring easing; skipped entirely under reduced motion). */
+@media (prefers-reduced-motion: no-preference) {
+  .btn-glass:active,
+  .btn-sm:active,
+  .settings-row:active,
+  .bk-row:active,
+  .admin-dock-btn:active,
+  .ny-row:active,
+  .mo-kpi[data-act]:active {
+    transform: scale(0.98);
+    transition: transform 0.12s var(--spring);
+  }
 }
 .btn-decline,
 .btn-delete {
