@@ -15990,10 +15990,33 @@ function tlPlaceNowLine() {
     const ir = inner.getBoundingClientRect();
     line.style.left = ((cr.left - ir.left) + frac * cr.width) + 'px';
 }
+// Compact ↔ comfortable day width. Compact fits roughly half as many more days
+// on screen (whole-month planning); comfortable is the readable default. The
+// choice persists, and the leftmost DATE stays put across the switch so the
+// view doesn't jump.
+function tlToggleZoom() {
+    const host = document.getElementById('cal-body');
+    const compact = localStorage.getItem('chb-tl-compact') === '1' ? '' : '1';
+    try { localStorage.setItem('chb-tl-compact', compact); } catch (e) {}
+    const leftDay = host ? host.scrollLeft / tlDayW() : 0;
+    renderCalendar();
+    if (host) host.scrollLeft = leftDay * tlDayW();
+}
 function renderCalendar() {
     renderCalUpdated();
     const host = document.getElementById('cal-body');
     if (!host) return;
+    let compactPref = false;
+    try { compactPref = localStorage.getItem('chb-tl-compact') === '1'; } catch (e) {}
+    host.classList.toggle('tl-compact', compactPref);
+    try {
+        const zb = document.querySelector('[data-act="tlToggleZoom"]');
+        if (zb) {
+            zb.setAttribute('aria-pressed', compactPref ? 'true' : 'false');
+            zb.title = compactPref ? 'Comfortable view — wider days' : 'Compact view — fit more days';
+            zb.setAttribute('aria-label', zb.title);
+        }
+    } catch (e) {}
     const keepScroll = __tlScrolled ? host.scrollLeft : null;
     const todayIso = todayDashed();
     const t0 = dpParse(todayIso);
@@ -16013,7 +16036,10 @@ function renderCalendar() {
         const wknd = d.getDay() === 0 || d.getDay() === 6;
         const monthTag =
             d.getDate() === 1 || i === 0 ? `<b>${M[d.getMonth()]}${d.getMonth() === 0 || i === 0 ? ' ' + d.getFullYear() : ''}</b>` : '';
-        head += `<span class="tl-day${wknd ? ' is-wknd' : ''}${dates[i] === todayIso ? ' is-today' : ''}" style="grid-column:${i + 1}">${monthTag}<i>${dows[d.getDay()]}</i>${d.getDate()}</span>`;
+        // is-mstart draws the month-boundary rule down the whole column, so
+        // mid-scroll you can SEE where a month turns, not just read the label.
+        const mstart = d.getDate() === 1 && i > 0;
+        head += `<span class="tl-day${wknd ? ' is-wknd' : ''}${mstart ? ' is-mstart' : ''}${dates[i] === todayIso ? ' is-today' : ''}" style="grid-column:${i + 1}">${monthTag}<i>${dows[d.getDay()]}</i>${d.getDate()}</span>`;
     }
 
     // Private (unlisted) cottages are managed off to the side — they don't earn a
@@ -16032,8 +16058,9 @@ function renderCalendar() {
             for (let i = 0; i < N; i++) {
                 const d = new Date(t0.getFullYear(), t0.getMonth(), t0.getDate() + off + i);
                 const wknd = d.getDay() === 0 || d.getDay() === 6;
+                const mstart = d.getDate() === 1 && i > 0;
                 const past = dates[i] < todayIso;
-                cells += `<span class="tl-cell${wknd ? ' is-wknd' : ''}${dates[i] === todayIso ? ' is-today' : ''}" style="grid-column:${i + 1}"${past ? '' : ` ${chbAttrs('tlAddAt', String(k), String(dates[i]))} data-act-keydown="activate" role="button" tabindex="0" aria-label="Add a booking at ${escapeHtml(meta.name)} from ${fmtDate(dates[i])}" title="Add a booking at ${escapeHtml(meta.name)} from ${fmtDate(dates[i])}"`}></span>`;
+                cells += `<span class="tl-cell${wknd ? ' is-wknd' : ''}${mstart ? ' is-mstart' : ''}${dates[i] === todayIso ? ' is-today' : ''}" style="grid-column:${i + 1}"${past ? '' : ` ${chbAttrs('tlAddAt', String(k), String(dates[i]))} data-act-keydown="activate" role="button" tabindex="0" aria-label="Add a booking at ${escapeHtml(meta.name)} from ${fmtDate(dates[i])}" title="Add a booking at ${escapeHtml(meta.name)} from ${fmtDate(dates[i])}"`}></span>`;
             }
             let bars = '';
             // Bars run noon-to-noon (check-in afternoon → checkout morning): the
@@ -16054,7 +16081,12 @@ function renderCalendar() {
                 const sp = tlSpan(b.checkIn, b.checkOut);
                 const ps = paymentSummary(k, b);
                 const pay = ps.fullyPaid ? 'ok' : ps.deposit > 0 ? 'warn' : 'danger';
-                bars += `<button type="button" class="tl-bar bar-${k} tl-pay-${pay}${sp.clip}" data-bkid="${b.id}" data-search="${escapeHtml(((b.name || 'guest') + ' ' + meta.name + ' ' + (pay === 'ok' ? 'paid' : pay === 'warn' ? 'part-paid' : 'unpaid')).toLowerCase())}" style="grid-column:${sp.col}" ${chbAttrs('openBookingHub', String(b.id))} title="${escapeHtml(meta.name)} — ${escapeHtml(b.name || 'Guest')} · ${fmtDate(b.checkIn)} → ${fmtDate(b.checkOut)}">${escapeHtml((b.name || 'Guest').split(' ')[0])}</button>`;
+                // On a bar wide enough to fit it, ride the stay length along —
+                // "Bob · 3n" answers the next question without opening the hub.
+                const nights = Math.max(1, Math.round((dpParse(b.checkOut) - dpParse(b.checkIn)) / 864e5));
+                const visDays = Math.min(N, idxOf(b.checkOut)) - Math.max(0, idxOf(b.checkIn));
+                const nTag = visDays >= 4 ? `<i class="tl-n">· ${nights}n</i>` : '';
+                bars += `<button type="button" class="tl-bar bar-${k} tl-pay-${pay}${sp.clip}" data-bkid="${b.id}" data-search="${escapeHtml(((b.name || 'guest') + ' ' + meta.name + ' ' + (pay === 'ok' ? 'paid' : pay === 'warn' ? 'part-paid' : 'unpaid')).toLowerCase())}" style="grid-column:${sp.col}" ${chbAttrs('openBookingHub', String(b.id))} title="${escapeHtml(meta.name)} — ${escapeHtml(b.name || 'Guest')} · ${fmtDate(b.checkIn)} → ${fmtDate(b.checkOut)} · ${nights} night${nights === 1 ? '' : 's'}">${escapeHtml((b.name || 'Guest').split(' ')[0])}${nTag}</button>`;
             });
             (dbBlocks[k] || []).forEach((bl) => {
                 if (!bl.checkIn || !bl.checkOut || bl.checkOut <= dates[0] || bl.checkIn >= dates[N - 1]) return;
