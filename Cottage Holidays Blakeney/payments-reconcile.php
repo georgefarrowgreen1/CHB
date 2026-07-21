@@ -59,11 +59,17 @@ function reconcile_missing_fees($limit = 15)
         return;
     }
     try {
+        // Exclude synthetic ledger ids — kept-deposit rows ('kept-…', kind
+        // 'damages') and manually-recorded payments ('manual-…') are NOT Square
+        // charges, so GET /v2/payments/<id> 404s forever, wasting a call every run
+        // and (under ORDER BY id DESC LIMIT) starving real card rows behind them.
         $q = db()->prepare(
             "SELECT id, square_payment_id FROM payments
-             WHERE kind NOT IN ('refund','damages_return')
+             WHERE kind NOT IN ('refund','damages_return','damages')
                AND fee IS NULL
                AND square_payment_id IS NOT NULL AND square_payment_id <> ''
+               AND square_payment_id NOT LIKE 'kept-%'
+               AND square_payment_id NOT LIKE 'manual-%'
              ORDER BY id DESC LIMIT " . (int) $limit,
         );
         $q->execute();

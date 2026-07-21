@@ -255,7 +255,7 @@ function record_square_refund($bookingId, $sqId, $amount, $kind, $note, $gName, 
 // Re-derive the booking's rental payment status from the ledger (charges − rental
 // refunds). NOTE: 'damages_return' is deliberately excluded — returning a held
 // deposit must never make a booking look unpaid.
-function reconcile_booking_payment($bookingId, $b = null)
+function reconcile_booking_payment($bookingId, $b = null, $refundJustIssued = 0)
 {
     if ($b === null) {
         $b = booking_by_id($bookingId);
@@ -271,14 +271,27 @@ function reconcile_booking_payment($bookingId, $b = null)
           - COALESCE(SUM(CASE WHEN kind = 'refund' THEN amount ELSE 0 END),0) AS net
         FROM payments WHERE booking_id = ?");
     $sum->execute([$bookingId]);
-    $paid = round(max(0, (float) $sum->fetchColumn()), 2);
+    $ledgerNet = round(max(0, (float) $sum->fetchColumn()), 2);
+    // The booking's recorded deposit_paid can include MANUALLY entered cash/bank
+    // payments that have NO ledger rows (set_payment). Recomputing paid purely from
+    // the ledger would wipe that money the moment a card refund is issued. A refund
+    // reduces paid by exactly the refunded amount, so floor the figure at
+    // priorPaid − thisRefund; the ledger net is only used when it's HIGHER (a card
+    // payment that settled). With no refund passed, paid never drops.
+    $prior = round((float) ($b['deposit_paid'] ?? 0), 2);
+    $paid = round(max(0, max($ledgerNet, $prior - (float) $refundJustIssued)), 2);
     if ($total > 0) {
         $paid = min($total, $paid);
     }
     $status = $total > 0 && $paid >= $total - 0.001 ? 'paid' : ($paid > 0 ? 'deposit' : 'unpaid');
+    // Do NOT restamp payment_date on a refund — accounts.php allocates the WHOLE
+    // booking's income to the year of payment_date, so moving it to the refund date
+    // would shift all its income into the wrong UK tax year. Keep the recorded date
+    // unless the paid figure actually INCREASED (never on a refund) or hit zero.
+    $newDate = $paid <= 0 ? null : ($paid > $prior + 0.001 ? date('Y-m-d') : ($b['payment_date'] ?? date('Y-m-d')));
     db()
         ->prepare('UPDATE bookings SET payment=?, deposit_paid=?, payment_date=? WHERE id=?')
-        ->execute([$status, $paid, $paid > 0 ? date('Y-m-d') : null, $bookingId]);
+        ->execute([$status, $paid, $newDate, $bookingId]);
     return ['paid' => $paid, 'status' => $status];
 }
 // Refundable damage deposit actually RECEIVED for a booking (rental paid first).
@@ -1357,7 +1370,10 @@ if ($action === 'refund') {
         book_unlock($gProp ?? '');
         json_out(['error' => $rr['error']], 402);
     }
-    $rec = reconcile_booking_payment($bookingId, $b);
+    // Pass the amount just refunded so paid drops by exactly that (never wiping
+    // manual cash/bank money the ledger can't see). A damages_return is NOT a
+    // rental refund — it must not reduce the rental paid figure at all.
+    $rec = reconcile_booking_payment($bookingId, $b, $refundKind === 'refund' ? (float) $amount : 0);
     book_unlock($gProp ?? '');
 
     // Tell the guest a refund is on its way (best-effort — never fails the refund).

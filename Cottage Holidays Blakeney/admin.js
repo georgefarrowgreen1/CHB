@@ -6471,7 +6471,7 @@ function cmdkRowHtml(it, i, top) {
     const subFocus = (kind, k) => (focused && focused.kind === kind && focused.k === k) ? ' is-kbd' : '';
     const acts = hasActions
         ? `<div class="cmdk-qa">${it.actions
-              .map((a, k) => `<button type="button" class="cmdk-qa-row${subFocus('act', k)}" data-idx="${i}" data-act="${k}" ${chbAttrs('cmdkAct', i, k)}><span class="cmdk-qa-ic">${a.icon || cmdkActIcon('hub')}</span><span class="cmdk-qa-lbl">${escapeHtml(a.label)}</span></button>`)
+              .map((a, k) => `<button type="button" class="cmdk-qa-row${subFocus('act', k)}" data-idx="${i}" ${chbAttrs('cmdkAct', i, k)}><span class="cmdk-qa-ic">${a.icon || cmdkActIcon('hub')}</span><span class="cmdk-qa-lbl">${escapeHtml(a.label)}</span></button>`)
               .join('')}</div>`
         : '';
     // Help topics expand their numbered steps when selected (the Top Hit is
@@ -6780,6 +6780,12 @@ function cmdkSelSubItems() {
     const actLabels = Array.isArray(it.actions) && it.actions.length ? new Set(it.actions.map((a) => (a.label || '').toLowerCase())) : null;
     return cmdkRowSubItems(it, actLabels);
 }
+// The delegation layer can't put two different data-pass values on one element,
+// and the cmdk input needs value→cmdkSearch (input) AND event→cmdkKey (keydown).
+// So keydown routes through a REGISTERED action (which receives (el, event) and
+// ignores data-pass) instead of the data-pass="event" window path — restoring
+// arrow/Home/End/Enter keyboard navigation on the search page.
+try { chbAct('cmdkKey', function (el, ev) { cmdkKey(ev); }); } catch (e) {}
 function cmdkKey(e) {
     if (e.key === 'ArrowDown') {
         e.preventDefault();
@@ -9741,9 +9747,13 @@ async function renderAccounts() {
     // so they come OFF the profit automatically (a cost, alongside expenses).
     const cardFees = rep.card_fees || 0;
     const feeDays = Array.isArray(rep.fee_days) ? rep.fee_days : [];
+    // Kept damage deposits are taxable income (retained for damage) — they live in
+    // the ledger, not in rental income, so add them in here and in the quarters.
+    const keptIncome = rep.kept_deposits || 0;
+    const keptDays = Array.isArray(rep.kept_days) ? rep.kept_days : [];
     const expYear = expensesForYear(startYear);
     const expTotal = expYear.reduce((s, x) => s + (x.amount || 0), 0);
-    const net = total - cardFees - expTotal;
+    const net = total + keptIncome - cardFees - expTotal;
 
     // Quarterly split for Making Tax Digital (UK tax quarters from 6 Apr).
     // Costs = recorded expenses + that quarter's card fees.
@@ -9755,9 +9765,13 @@ async function renderAccounts() {
         ['Q4 · Jan–Mar', `${startYear + 1}-01-06`, `${startYear + 1}-04-05`],
     ];
     const qRows = qBounds.map(([lbl, s, e]) => {
-        const inc = payments
-            .filter((p) => (p.payment_date || '') >= s && (p.payment_date || '') <= e)
-            .reduce((a, p) => a + (p.income_part || 0), 0);
+        const inc =
+            payments
+                .filter((p) => (p.payment_date || '') >= s && (p.payment_date || '') <= e)
+                .reduce((a, p) => a + (p.income_part || 0), 0) +
+            keptDays
+                .filter((k) => (k.date || '') >= s && (k.date || '') <= e)
+                .reduce((a, k) => a + (k.amount || 0), 0);
         const exp =
             expYear
                 .filter((x) => (x.date || '') >= s && (x.date || '') <= e)
@@ -9775,11 +9789,12 @@ async function renderAccounts() {
 
     content.innerHTML = `
                 <div class="accounts-stat headline" style="max-width:460px;">
-                    <div class="label">Net profit — ${taxYearShort(startYear)}</div>
+                    <div class="label">${net < 0 ? 'Net loss' : 'Net profit'} — ${taxYearShort(startYear)}</div>
                     <div class="value ${net < 0 ? 'os-warn' : 'os-good'}">${gbp(net)}</div>
                 </div>
                 <div class="feed-list" style="max-width:460px;margin-top:12px;padding:4px 16px;">
                     <div class="feed-row" style="grid-template-columns:1fr auto;"><span class="feed-who">Rental income</span><span class="feed-amt">${gbp(total)}</span></div>
+                    ${keptIncome > 0 ? `<div class="feed-row" style="grid-template-columns:1fr auto;"><span class="feed-who">Damage deposits kept</span><span class="feed-amt">${gbp(keptIncome)}</span></div>` : ''}
                     ${cardFees > 0 ? `<div class="feed-row" style="grid-template-columns:1fr auto;"><span class="feed-who">Card processing fees</span><span class="feed-amt">− ${gbp(cardFees)}</span></div>` : ''}
                     <div class="feed-row" style="grid-template-columns:1fr auto;"><span class="feed-who">Expenses${expYear.length ? ` (${expYear.length})` : ''}</span><span class="feed-amt">− ${gbp(expTotal)}</span></div>
                     <div class="feed-row" style="grid-template-columns:1fr auto;border-top:1px solid var(--glass-border);"><span class="feed-who" style="color:var(--text-light);">Net</span><span class="feed-amt" style="color:var(--text-light);">${gbp(net)}</span></div>
@@ -10949,7 +10964,9 @@ function exportAccountsCSV() {
     });
     csv += `,,,Total expenses,${expTotal.toFixed(2)}\n`;
     const csvFees = accountsReport.card_fees || 0;
-    csv += `\nSummary\nRental income,${inc.toFixed(2)}\nCard processing fees,-${csvFees.toFixed(2)}\nExpenses,${expTotal.toFixed(2)}\nNet profit,${(inc - csvFees - expTotal).toFixed(2)}\n`;
+    const csvKept = accountsReport.kept_deposits || 0;
+    const csvNet = inc + csvKept - csvFees - expTotal;
+    csv += `\nSummary\nRental income,${inc.toFixed(2)}\n${csvKept > 0 ? `Damage deposits kept,${csvKept.toFixed(2)}\n` : ''}Card processing fees,-${csvFees.toFixed(2)}\nExpenses,${expTotal.toFixed(2)}\n${csvNet < 0 ? 'Net loss' : 'Net profit'},${csvNet.toFixed(2)}\n`;
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -10973,12 +10990,13 @@ async function downloadYearStatement(startYear) {
     const income = rep ? rep.total || 0 : 0;
     const held = rep ? rep.held_deposits || 0 : 0;
     const cardFees = rep ? rep.card_fees || 0 : 0;
+    const keptIncome = rep ? rep.kept_deposits || 0 : 0;
     const byProp = rep ? rep.by_property || {} : {};
     const exp = expensesForYear(startYear)
         .slice()
         .sort((a, b) => (a.date || '').localeCompare(b.date || ''));
     const expTotal = exp.reduce((s, x) => s + (x.amount || 0), 0);
-    const net = income - cardFees - expTotal;
+    const net = income + keptIncome - cardFees - expTotal;
 
     const { jsPDF } = window.jspdf;
     const doc = new jsPDF({ unit: 'pt', format: 'a4' });
@@ -11027,6 +11045,10 @@ async function downloadYearStatement(startYear) {
     doc.setFontSize(10);
     rowLR('Rental income received', gbp(income), y);
     y += 18;
+    if (keptIncome > 0) {
+        rowLR('Damage deposits kept', gbp(keptIncome), y);
+        y += 18;
+    }
     if (cardFees > 0) {
         rowLR('Card processing fees', '− ' + gbp(cardFees), y);
         y += 18;
@@ -11036,7 +11058,7 @@ async function downloadYearStatement(startYear) {
     y += 4;
     line(y);
     y += 18;
-    rowLR('Net profit', gbp(net), y, true);
+    rowLR(net < 0 ? 'Net loss' : 'Net profit', gbp(net), y, true);
     y += 22;
     if (held > 0) {
         doc.setFontSize(9);

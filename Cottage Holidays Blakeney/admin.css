@@ -991,7 +991,14 @@
   font-size: 2rem;
   color: var(--text-light);
 }.accounts-stat.headline .value {
-  color: #6fcf73;
+  color: var(--ok-text);
+}/* Net-profit headline states — a profit reads success-green, a LOSS reads the
+   danger tint (both token-driven so they clear WCAG in light AND dark). Before,
+   os-good/os-warn were undefined so a loss fell through to the same green. */
+.accounts-stat.headline .value.os-good {
+  color: var(--ok-text);
+}.accounts-stat.headline .value.os-warn {
+  color: var(--danger-text);
 }.accounts-table {
   width: 100%;
   border-collapse: collapse;

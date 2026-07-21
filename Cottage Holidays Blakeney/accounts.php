@@ -97,6 +97,26 @@ try {
     /* payments table / fee column not migrated yet */
 }
 
+// Kept damage deposits are TAXABLE income the moment the owner retains them for
+// damage — but they live in the payments ledger as kind='damages' rows (booked by
+// keep_deposit / hold_capture), NOT in bookings.deposit_paid (which is rental
+// only), so the rental-derived income above never sees them. Sum them per settle
+// DATE (created_at) so they allocate to the right UK tax year like the fees.
+// Guarded for a not-yet-migrated DB (the 'damages' enum value arrives in zz8).
+$keptDays = [];
+try {
+    $keptDays = db()
+        ->query(
+            "SELECT DATE(created_at) d, ROUND(SUM(amount),2) a FROM payments
+              WHERE kind = 'damages'
+                AND UPPER(status) IN ('COMPLETED','APPROVED','CAPTURED')
+              GROUP BY DATE(created_at)",
+        )
+        ->fetchAll();
+} catch (\Throwable $e) {
+    /* payments table / 'damages' kind not migrated yet */
+}
+
 // Always include the current tax year as an option
 $years[tax_year_start(date('Y-m-d'))] = true;
 $yearList = array_keys($years);
@@ -121,6 +141,10 @@ foreach ($inYear as $r) {
 $feesInYear = array_values(array_filter($feeDays, fn($r) => tax_year_start($r['d']) === $requested));
 $feesTotal = array_sum(array_map(fn($r) => (float) $r['f'], $feesInYear));
 
+// This tax year's kept damage deposits (income, per settle date).
+$keptInYear = array_values(array_filter($keptDays, fn($r) => tax_year_start($r['d']) === $requested));
+$keptTotal = array_sum(array_map(fn($r) => (float) $r['a'], $keptInYear));
+
 json_out([
     'year' => $requested,
     'years' => $yearList,
@@ -128,6 +152,8 @@ json_out([
     'held_deposits' => round($heldTotal, 2), // refundable, held — NOT income
     'card_fees' => round($feesTotal, 2), // kept by Square — auto-deducted cost
     'fee_days' => array_map(fn($r) => ['date' => $r['d'], 'fee' => (float) $r['f']], $feesInYear),
+    'kept_deposits' => round($keptTotal, 2), // damage deposits retained — taxable income
+    'kept_days' => array_map(fn($r) => ['date' => $r['d'], 'amount' => (float) $r['a']], $keptInYear),
     'count' => count($inYear),
     'by_property' => $byProp,
     'payments' => $inYear,
