@@ -11930,8 +11930,18 @@ function chbPriceModel() {
     const monthOcc = occByMonth.map((o, m) => shrink(o, availByMonth[m]));
     const occMin = Math.min.apply(null, monthOcc), occMax = Math.max.apply(null, monthOcc);
     const norm = (v) => (occMax - occMin < 1e-6 ? 0.5 : (v - occMin) / (occMax - occMin));
-    const pkMonthOcc = {}; // per-cottage month occupancy (shares pooled avail + prior)
-    Object.keys(occByPk).forEach((pk) => { pkMonthOcc[pk] = occByPk[pk].map((o, m) => shrink(o, availByMonth[m])); });
+    // Per-cottage seasonality on the cottage's OWN scale. Each cottage's occupied
+    // nights are shrunk against ITS availability (fleet availability ÷ cottages)
+    // and normalised on its OWN min/max — so its busiest month reads as a PEAK.
+    // (Before: a single cottage's nights were shrunk against FLEET availability
+    // and normalised on the POOLED range, which deflated the whole curve ~N× and
+    // read even a cottage's peak months as quiet demand.)
+    const pkMonthOcc = {}; // per-cottage NORMALISED (0..1) month occupancy
+    Object.keys(occByPk).forEach((pk) => {
+        const series = occByPk[pk].map((o, m) => shrink(o, availByMonth[m] / cottages));
+        const mn = Math.min.apply(null, series), mx = Math.max.apply(null, series);
+        pkMonthOcc[pk] = series.map((v) => (mx - mn < 1e-6 ? 0.5 : (v - mn) / (mx - mn)));
+    });
     // A: current pending enquiries as a FORWARD demand signal, per calendar month.
     const enqByMonth = new Array(12).fill(0);
     try {
@@ -11971,7 +11981,7 @@ function chbPriceModel() {
             const pooled = norm(monthOcc[m]);
             if (pk && pkMonthOcc[pk]) {
                 const cw = Math.min(1, (staysByPk[pk] || 0) / 10); // lean pooled until the cottage has ~10 of its own stays
-                return norm(pkMonthOcc[pk][m]) * cw + pooled * (1 - cw);
+                return pkMonthOcc[pk][m] * cw + pooled * (1 - cw); // pkMonthOcc is already normalised 0..1
             }
             return pooled;
         },
