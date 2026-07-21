@@ -98,6 +98,14 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-guestreg.php
 
+      # Content-key classification: every content-table key written by server
+      # code must be classified internal/private (db.php) or explicitly public,
+      # or the public content GET serves it to anonymous visitors (the
+      # owner-ping leak class).
+      - name: Content-key classification gate
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-content-keys.php
+
       # SQL statement splitter: a semicolon inside an inline comment must not
       # chop a migration in half (regression for the broken guest-registrations
       # migration — MySQL 1064 "near '' at line 8").

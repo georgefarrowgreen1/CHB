@@ -247,6 +247,23 @@ function require_guest()
     }
 }
 
+// Declarative action router for the JSON endpoints — the PATTERN for new ones
+// (customers.php is the exemplar; the legacy if-chains migrate opportunistically
+// when touched). Each handler receives the decoded body and must json_out() its
+// reply; an unknown/missing action is always a 400, so a typo'd client action
+// can never fall through into later code.
+//      route_actions(['directory' => fn($in) => ..., 'audit' => fn($in) => ...]);
+function route_actions(array $map, $in = null)
+{
+    $in = $in ?? body();
+    $action = (string) ($in['action'] ?? '');
+    if (!isset($map[$action])) {
+        json_out(['error' => 'Unknown action'], 400);
+    }
+    $map[$action]($in);
+    json_out(['error' => 'Handler for "' . $action . '" returned without replying'], 500);
+}
+
 // ---- Generic per-IP rate limiter for public POSTs (anti-spam / anti-flood) ----
 // Reuses the login_attempts ledger (ip, identifier, success, attempted_at). Records
 // one row per call under $key; once $max rows exist for this IP+key within the
@@ -674,6 +691,14 @@ function is_internal_content_key($key)
         // setup.php) — operational, not secret, but owner-only (the signing key
         // itself is the encrypted 'apikey-square-webhook', never exposed).
         'square-webhook-sub-id',
+        // Found by test-content-keys.php's classification gate — all three were
+        // written by server code but missing here, so the public content GET
+        // served them to any visitor. owner-ping is the worst: it holds the
+        // owner's LATEST push notification (title/body can carry guest names
+        // and amounts) between webpush.php's set and the service worker's take.
+        'owner-ping',
+        'mailbox-seen', // IMAP UID watermark (mailbox.php)
+        'testcentre-seeded', // demo-data manifest (testcentre.php)
     ], true);
 }
 

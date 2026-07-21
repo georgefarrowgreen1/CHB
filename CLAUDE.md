@@ -305,7 +305,13 @@ actions belong on the hubs, not new surfaces. Dates display DD/MM/YYYY everywher
 `messages.php` (chat), `webpush.php` (`alert_owner`, `notify_guest`), `mailer.php`
 (`smtp_send`, `send_*`), `customers.php` (`audit` — the customer-directory lookup
 trail; see below). Crons run daily via `cron.php` (pre-arrival, payments-due,
-tide-push, push checkin, enquiry-nudge).
+tide-push, push checkin, enquiry-nudge). NEW endpoints route actions via
+`route_actions([...])` (db.php — declarative map, guaranteed 400 on unknown;
+customers.php is the exemplar; legacy if-chains migrate when touched). A content
+key WRITTEN by server code must be classified in db.php (`is_internal_content_key`
+/ `is_private_content_key`) or the public content GET serves it to anonymous
+visitors — `test-content-keys.php` (CI) scans every literal write and fails on an
+unclassified key (it caught `owner-ping` carrying the owner's push text).
 
 **Unified customer directory** (admin.js — owner-side) — `dbBookings` is per-STAY, so
 a repeat guest is scattered across booking rows. `chbCustomers()` groups them into ONE
