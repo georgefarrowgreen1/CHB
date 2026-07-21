@@ -23,11 +23,16 @@ function reconcile_pending_refunds($limit = 12)
         return;
     }
     try {
+        // Bounded to the last 60 days: a Square refund settles PENDING→COMPLETED
+        // within a day or two, so an older-than-60-day non-terminal row will never
+        // resolve (it's a manual refund with no real Square id) — polling it every
+        // view forever just wastes a serial API round-trip and can starve fresh rows.
         $q = db()->prepare(
             "SELECT id, square_payment_id FROM payments
              WHERE kind IN ('refund','damages_return')
                AND (status IS NULL OR status NOT IN ('COMPLETED','FAILED','REJECTED'))
                AND square_payment_id IS NOT NULL AND square_payment_id <> ''
+               AND created_at >= (NOW() - INTERVAL 60 DAY)
              ORDER BY id DESC LIMIT " . (int) $limit,
         );
         $q->execute();
@@ -63,6 +68,9 @@ function reconcile_missing_fees($limit = 15)
         // 'damages') and manually-recorded payments ('manual-…') are NOT Square
         // charges, so GET /v2/payments/<id> 404s forever, wasting a call every run
         // and (under ORDER BY id DESC LIMIT) starving real card rows behind them.
+        // Bounded to the last 60 days too: a Square fee settles within a day or two
+        // of the charge, so a card row still fee-less after 60 days never will be
+        // (the webhook/lookup already missed it) — stop re-polling it on every view.
         $q = db()->prepare(
             "SELECT id, square_payment_id FROM payments
              WHERE kind NOT IN ('refund','damages_return','damages')
@@ -70,6 +78,7 @@ function reconcile_missing_fees($limit = 15)
                AND square_payment_id IS NOT NULL AND square_payment_id <> ''
                AND square_payment_id NOT LIKE 'kept-%'
                AND square_payment_id NOT LIKE 'manual-%'
+               AND created_at >= (NOW() - INTERVAL 60 DAY)
              ORDER BY id DESC LIMIT " . (int) $limit,
         );
         $q->execute();

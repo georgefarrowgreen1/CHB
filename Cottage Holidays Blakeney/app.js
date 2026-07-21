@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 262;
+const ADMIN_BUNDLE_V = 263;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -9766,6 +9766,25 @@ async function loadAvailability(propKey) {
         /* keep whatever we had; server still enforces */
     }
 }
+// Hydrate propertyAvailability for MANY cottages in ONE request (availability.php
+// ?all=1) — the hero search needs every live cottage's ranges, so a per-cottage
+// fan-out was N round-trips (and N date-picker repaints) for the same data.
+async function loadAvailabilityAll(keys) {
+    try {
+        const r = await apiGet('availability.php?all=1');
+        const props = (r && r.props) || {};
+        (keys || Object.keys(props)).forEach((k) => {
+            if (Array.isArray(props[k])) propertyAvailability[k] = props[k];
+        });
+        const dp = document.getElementById('date-picker');
+        if (dp && dp.classList.contains('open')) renderDatePicker();
+        if (activeFrontProperty && propertyAvailability[activeFrontProperty]) {
+            try { renderAvailCal(); } catch (e) {}
+        }
+    } catch (e) {
+        /* keep whatever we had; server still enforces */
+    }
+}
 // ---- Read-only availability calendar (cottage page) ----
 let availCalMonth = null; // Date set to the 1st of the displayed month
 function availCalMove(delta) {
@@ -10327,7 +10346,7 @@ async function runFlexSearch() {
         showHeroResults();
     } catch (e) {}
     try {
-        await Promise.all(keys.map((k) => loadAvailability(k)));
+        await loadAvailabilityAll(keys);
     } catch (e) {
         /* loadAvailability keeps prior data; server still enforces */
     }
@@ -10444,7 +10463,7 @@ async function runHeroSearch() {
         showHeroResults();
     } catch (e) {}
     try {
-        await Promise.all(keys.map((k) => loadAvailability(k)));
+        await loadAvailabilityAll(keys);
     } catch (e) {
         /* loadAvailability keeps prior data; server still enforces */
     }
@@ -13054,7 +13073,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'priceseason1';
+    const BUILD = 'perf1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
