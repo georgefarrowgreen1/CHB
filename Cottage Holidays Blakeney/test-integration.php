@@ -46,7 +46,7 @@ $BASE = "http://127.0.0.1:$HTTP_PORT";
 
 $fail = 0;
 $pass = 0;
-function check($name, $cond, $detail = '')
+function it_check($name, $cond, $detail = '')
 {
     global $fail, $pass;
     if ($cond) {
@@ -57,7 +57,12 @@ function check($name, $cond, $detail = '')
         echo "  \xE2\x9C\x97 $name" . ($detail !== '' ? " — " . mb_substr($detail, 0, 200) : '') . "\n";
     }
 }
-function fatal($msg)
+/**
+ * Abort the run. Declared never-returning so analysis knows variables assigned
+ * before a fatal_it() branch are defined after it.
+ * @return never
+ */
+function fatal_it($msg)
 {
     fwrite(STDERR, "FATAL: $msg\n");
     exit(1);
@@ -75,7 +80,7 @@ try {
         PDO::ATTR_TIMEOUT => 5,
     ]);
 } catch (Throwable $e) {
-    fatal("cannot reach MySQL at $DB_HOST:$DB_PORT as $DB_USER — " . $e->getMessage() . "\n(start one, or set CHB_IT_DB_* — see the header)");
+    fatal_it("cannot reach MySQL at $DB_HOST:$DB_PORT as $DB_USER — " . $e->getMessage() . "\n(start one, or set CHB_IT_DB_* — see the header)");
 }
 $rootDb->exec("DROP DATABASE IF EXISTS `$DB_NAME`");
 $rootDb->exec("CREATE DATABASE `$DB_NAME` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
@@ -83,7 +88,7 @@ $rootDb->exec("USE `$DB_NAME`");
 foreach (split_sql(__DIR__ . '/schema.sql') as $stmt) {
     $rootDb->exec($stmt);
 }
-check('schema.sql applies to an empty database', true);
+it_check('schema.sql applies to an empty database', true);
 
 // ---- 2. App copy with test config, served by php -S ---------------------
 $work = sys_get_temp_dir() . '/chb-it-' . getmypid();
@@ -109,7 +114,7 @@ foreach (
     $n = 0;
     $cfg = preg_replace("/define\('$const',\s*'[^']*'\)/", "define('$const', '" . $val . "')", $cfg, 1, $n);
     if (!$n) {
-        fatal("config.php placeholder is missing define('$const', ...)");
+        fatal_it("config.php placeholder is missing define('$const', ...)");
     }
 }
 // Never send mail or hit Square from CI, whatever the placeholder says.
@@ -141,9 +146,9 @@ for ($i = 0; $i < 50; $i++) {
     }
 }
 if (!$up) {
-    fatal("php -S did not come up on port $HTTP_PORT (see $work/server.log)");
+    fatal_it("php -S did not come up on port $HTTP_PORT (see $work/server.log)");
 }
-check('php -S serves the app copy', true);
+it_check('php -S serves the app copy', true);
 
 // ---- HTTP client: cookie jar per persona + CSRF header on admin POSTs ----
 function http(&$jar, $method, $path, $body = null)
@@ -181,34 +186,34 @@ echo "\n== 2. migrate.php on a fresh database (cron auth) ==\n";
 $r = http($guest, 'GET', '/migrate.php?cron=' . $SECRET);
 $migs = $r['json']['migrations'] ?? [];
 $errors = array_values(array_filter($migs, fn($m) => ($m['status'] ?? '') === 'ERROR'));
-check('every migration applies cleanly (' . count($migs) . ' files)', $r['code'] === 200 && count($migs) >= 60 && !$errors, $errors ? $errors[0]['file'] . ': ' . substr((string) $errors[0]['error'], 0, 140) : 'code=' . $r['code'] . ' files=' . count($migs) . ' body=' . substr($r['raw'], 0, 200));
+it_check('every migration applies cleanly (' . count($migs) . ' files)', $r['code'] === 200 && count($migs) >= 60 && !$errors, $errors ? $errors[0]['file'] . ': ' . substr((string) $errors[0]['error'], 0, 140) : 'code=' . $r['code'] . ' files=' . count($migs) . ' body=' . substr($r['raw'], 0, 200));
 $r2 = http($guest, 'GET', '/migrate.php?cron=' . $SECRET);
 $reruns = array_filter($r2['json']['migrations'] ?? [], fn($m) => ($m['status'] ?? '') !== 'already-recorded');
-check('second run: ledger records every file (all already-recorded)', $r2['code'] === 200 && !$reruns);
-check('wrong cron secret is rejected', http($guest, 'GET', '/migrate.php?cron=nope')['code'] !== 200);
+it_check('second run: ledger records every file (all already-recorded)', $r2['code'] === 200 && !$reruns);
+it_check('wrong cron secret is rejected', http($guest, 'GET', '/migrate.php?cron=nope')['code'] !== 200);
 
 // ---- 4. Admin auth + CSRF ------------------------------------------------
 echo "\n== 3. Admin session + CSRF ==\n";
 $rootDb->prepare('INSERT INTO admins (username, password_hash) VALUES (?, ?)')->execute(['owner', password_hash('it-pass-123', PASSWORD_DEFAULT)]);
-check('wrong password → 401', http($admin, 'POST', '/auth.php', ['action' => 'admin_login', 'username' => 'owner', 'password' => 'wrong'])['code'] === 401);
+it_check('wrong password → 401', http($admin, 'POST', '/auth.php', ['action' => 'admin_login', 'username' => 'owner', 'password' => 'wrong'])['code'] === 401);
 $r = http($admin, 'POST', '/auth.php', ['action' => 'admin_login', 'username' => 'owner', 'password' => 'it-pass-123']);
-check('admin_login succeeds', $r['code'] === 200 && !empty($r['json']['ok']), $r['raw']);
+it_check('admin_login succeeds', $r['code'] === 200 && !empty($r['json']['ok']), $r['raw']);
 $r = http($admin, 'POST', '/auth.php', ['action' => 'admin_status']);
-check('admin_status confirms the session', !empty($r['json']['admin']), $r['raw']);
-check('admin GET without a session → 401', http($guest, 'GET', '/bookings.php')['code'] === 401);
+it_check('admin_status confirms the session', !empty($r['json']['admin']), $r['raw']);
+it_check('admin GET without a session → 401', http($guest, 'GET', '/bookings.php')['code'] === 401);
 $noCsrf = $admin;
 unset($noCsrf['csrf']);
-check('admin POST without the CSRF header → 403', http($noCsrf, 'POST', '/bookings.php', ['action' => 'set_notes', 'id' => 1])['code'] === 403);
+it_check('admin POST without the CSRF header → 403', http($noCsrf, 'POST', '/bookings.php', ['action' => 'set_notes', 'id' => 1])['code'] === 403);
 
 // ---- 5. Dynamic accommodations over the real endpoint --------------------
 echo "\n== 4. Cottage creation (rates.php) ==\n";
 $r = http($admin, 'POST', '/rates.php', ['action' => 'create', 'name' => 'Test Cottage', 'couple_rate' => 100]);
 $propKey = $r['json']['property']['prop_key'] ?? ($r['json']['prop_key'] ?? '');
-check('create returns the new prop_key', $r['code'] === 200 && $propKey !== '', $r['raw']);
+it_check('create returns the new prop_key', $r['code'] === 200 && $propKey !== '', $r['raw']);
 $r = http($guest, 'GET', '/rates.php');
 $rateRows = $r['json']['properties'] ?? [];
 $mine = array_values(array_filter($rateRows, fn($p) => is_array($p) && ($p['prop_key'] ?? '') === $propKey));
-check('public rates list includes it at £100', $mine && abs((float) $mine[0]['couple_rate'] - 100.0) < 0.005, substr($r['raw'], 0, 160));
+it_check('public rates list includes it at £100', $mine && abs((float) $mine[0]['couple_rate'] - 100.0) < 0.005, substr($r['raw'], 0, 160));
 
 // ---- 6. Enquiry → approval → booking with a locked snapshot --------------
 echo "\n== 5. Enquiry → booking (price snapshot through the real stack) ==\n";
@@ -221,34 +226,34 @@ $r = http($guest, 'POST', '/enquiries.php', [
     'message' => 'Two of us, integration test.', 'address' => '1 Test Lane, Blakeney', 'postcode' => 'NR25 7NQ',
     'terms_accepted' => 1,
 ]);
-check('public enquiry submit succeeds', $r['code'] === 200 && !empty($r['json']['ok']), $r['raw']);
+it_check('public enquiry submit succeeds', $r['code'] === 200 && !empty($r['json']['ok']), $r['raw']);
 $r = http($admin, 'GET', '/enquiries.php');
 $enqs = $r['json']['enquiries'] ?? [];
 $enq = array_values(array_filter($enqs, fn($e) => ($e['name'] ?? '') === 'Ivy Tester'));
-check('admin enquiry list shows it', (bool) $enq, substr($r['raw'], 0, 160));
+it_check('admin enquiry list shows it', (bool) $enq, substr($r['raw'], 0, 160));
 $enqId = (int) ($enq[0]['id'] ?? 0);
 $r = http($admin, 'POST', '/enquiries.php', ['action' => 'approve', 'id' => $enqId]);
 $bookingId = (int) ($r['json']['booking_id'] ?? 0);
-check('approve converts it and returns booking_id', $r['code'] === 200 && $bookingId > 0, $r['raw']);
+it_check('approve converts it and returns booking_id', $r['code'] === 200 && $bookingId > 0, $r['raw']);
 
 $r = http($admin, 'GET', '/bookings.php');
 $bks = array_values(array_filter($r['json']['bookings'] ?? [], fn($b) => (int) ($b['id'] ?? 0) === $bookingId));
-check('bookings list contains the new booking', (bool) $bks);
+it_check('bookings list contains the new booking', (bool) $bks);
 // Price parity through the REAL stack: what approval snapshotted must equal the
 // pure model for the same inputs (3 nights × £100 + 3% txn fee = £309).
 $snap = $rootDb->query("SELECT agreed_total, agreed_per_night, agreed_nights FROM bookings WHERE id = $bookingId")->fetch(PDO::FETCH_ASSOC);
-check('approval snapshotted the agreed price (3 × £100 + 3% = £309)', $snap && abs((float) $snap['agreed_total'] - 309.0) < 0.005, 'stored: ' . json_encode($snap));
-check('snapshot nights/per-night are right (3 @ £100 ex-fee)', $snap && (int) $snap['agreed_nights'] === 3 && abs((float) $snap['agreed_per_night'] - 100.0) < 0.005, 'stored: ' . json_encode($snap));
+it_check('approval snapshotted the agreed price (3 × £100 + 3% = £309)', $snap && abs((float) $snap['agreed_total'] - 309.0) < 0.005, 'stored: ' . json_encode($snap));
+it_check('snapshot nights/per-night are right (3 @ £100 ex-fee)', $snap && (int) $snap['agreed_nights'] === 3 && abs((float) $snap['agreed_per_night'] - 100.0) < 0.005, 'stored: ' . json_encode($snap));
 
 // ---- 7. Money: record a part payment, then read it back -------------------
 echo "\n== 6. Payment recording ==\n";
 $r = http($admin, 'POST', '/bookings.php', ['action' => 'set_payment', 'id' => $bookingId, 'payment' => 'deposit', 'deposit' => 100, 'payment_date' => date('Y-m-d'), 'payment_method' => 'bank']);
-check('set_payment records a £100 deposit', $r['code'] === 200 && !empty($r['json']['ok']), $r['raw']);
+it_check('set_payment records a £100 deposit', $r['code'] === 200 && !empty($r['json']['ok']), $r['raw']);
 $row = $rootDb->query("SELECT payment, deposit_paid FROM bookings WHERE id = $bookingId")->fetch(PDO::FETCH_ASSOC);
-check('booking row shows deposit £100', $row && ($row['payment'] ?? '') === 'deposit' && abs((float) $row['deposit_paid'] - 100.0) < 0.005, json_encode($row));
+it_check('booking row shows deposit £100', $row && ($row['payment'] ?? '') === 'deposit' && abs((float) $row['deposit_paid'] - 100.0) < 0.005, json_encode($row));
 $r = http($admin, 'POST', '/bookings.php', ['action' => 'history', 'id' => $bookingId]);
 $hist = $r['json']['events'] ?? [];
-check('booking history includes the payment event', (bool) array_filter($hist, fn($h) => strpos((string) ($h['action'] ?? ''), 'payment') !== false), 'entries=' . count($hist) . ' body=' . substr($r['raw'], 0, 160));
+it_check('booking history includes the payment event', (bool) array_filter($hist, fn($h) => strpos((string) ($h['action'] ?? ''), 'payment') !== false), 'entries=' . count($hist) . ' body=' . substr($r['raw'], 0, 160));
 
 echo "\n== Summary ==\n";
 if ($fail) {
