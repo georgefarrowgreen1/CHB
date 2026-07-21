@@ -16080,11 +16080,20 @@ function renderCalendar() {
     </div>`;
     if (!host.__tlScroll) {
         host.__tlScroll = true;
+        // rAF-latch the scroll work: a fling fires dozens of scroll events/sec and
+        // each did a getComputedStyle read (tlDayW) + a label write, forcing layout
+        // thrash. Coalesce to at most one update per frame.
+        let tlTick = false;
         host.addEventListener(
             'scroll',
             () => {
-                tlSyncMonthLabel();
-                tlMaybeExtend();
+                if (tlTick) return;
+                tlTick = true;
+                requestAnimationFrame(() => {
+                    tlTick = false;
+                    tlSyncMonthLabel();
+                    tlMaybeExtend();
+                });
             },
             { passive: true },
         );
