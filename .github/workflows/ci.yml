@@ -50,6 +50,14 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: node smoke-test.js
 
+      # Performance budget: the gzipped transfer size of every shipped asset
+      # must stay within size-budget.json — byte growth becomes a conscious,
+      # reviewed decision (bump the budget in the same PR and say what the
+      # bytes buy) instead of silent rot.
+      - name: Performance budget (gzipped asset sizes vs size-budget.json)
+        working-directory: "Cottage Holidays Blakeney"
+        run: node perf-budget.js
+
       # The GIT half of the deploy checklist: if a PR changes a cached asset,
       # its cache-buster (?v= / BUILD / ADMIN_*_V / CACHE) must change too.
       # `node bump.js <stamp>` applies the whole chain in one go. (smoke-test
