@@ -224,6 +224,91 @@ try {
 } catch (\Throwable $e) {
 }
 
+// ---- 4c. Storage hygiene: dead resizer cache + orphaned uploads -------------
+// Two different rules for two different kinds of file. uploads/cache/ holds
+// DERIVED data (img.php's resized .webp variants): an entry whose source image
+// is gone can never be served again, so it's deleted — safe, regenerable.
+// Original uploads are the owner's photos: a file no longer referenced by any
+// content value or UGC row is only FLAGGED (count, state-deduped like the
+// orphan payments) — never deleted automatically. Files younger than 30 days
+// are never counted (an upload can legitimately sit unreferenced mid-edit),
+// and .webp companions follow their parent (image-save.php writes
+// <original>.webp beside every upload).
+try {
+    $upDir = __DIR__ . '/uploads';
+    $cacheDir = $upDir . '/cache';
+    $pruned = 0;
+    if (is_dir($cacheDir)) {
+        foreach (scandir($cacheDir) ?: [] as $cf) {
+            if (!preg_match('/^(.+)\.w\d+\.webp$/', $cf, $m)) {
+                continue; // not ours (or . / ..) — leave alone
+            }
+            if (!is_file($upDir . '/' . $m[1])) {
+                if (@unlink($cacheDir . '/' . $cf)) {
+                    $pruned++;
+                }
+            }
+        }
+    }
+    if ($pruned > 0) {
+        $fixed[] = "pruned $pruned resized image(s) whose original is gone";
+        log_activity('system', 'selfrepair.cache_pruned', 'Self-repair: pruned ' . $pruned . ' resized image(s) whose original upload is gone', [
+            'actor' => $actor,
+            'entity' => 'uploads',
+        ]);
+    }
+
+    if (is_dir($upDir)) {
+        // Everything that can legitimately reference an upload, in one haystack.
+        $hay = '';
+        try {
+            $hay .= implode("\n", db()->query('SELECT item_value FROM content')->fetchAll(PDO::FETCH_COLUMN));
+        } catch (\Throwable $e) {
+        }
+        foreach ([['guest_photos', 'url'], ['experiences', 'image_url'], ['messages', 'attachment']] as [$tbl, $col]) {
+            try {
+                $hay .= "\n" . implode("\n", db()->query("SELECT $col FROM $tbl WHERE $col IS NOT NULL AND $col != ''")->fetchAll(PDO::FETCH_COLUMN));
+            } catch (\Throwable $e) {
+                // table not migrated yet — fine
+            }
+        }
+        $orphanFiles = 0;
+        foreach (scandir($upDir) ?: [] as $uf) {
+            if ($uf === '.' || $uf === '..' || $uf === 'cache' || $uf[0] === '.' || is_dir($upDir . '/' . $uf)) {
+                continue;
+            }
+            if (filemtime($upDir . '/' . $uf) > time() - 30 * 86400) {
+                continue; // too fresh to judge
+            }
+            // A companion (<parent>.webp with the parent still present) follows
+            // its parent — the parent is what content references.
+            $isCompanion = substr($uf, -5) === '.webp' && is_file($upDir . '/' . substr($uf, 0, -5));
+            $probe = $isCompanion ? substr($uf, 0, -5) : $uf;
+            if (strpos($hay, $probe) === false) {
+                $orphanFiles++;
+            }
+        }
+        $stateH = content_json('self-repair-state', []);
+        $prevOrphanFiles = (int) ($stateH['orphan_uploads'] ?? 0);
+        if ($orphanFiles > $prevOrphanFiles) {
+            $flagged[] = "$orphanFiles uploaded image(s) look unreferenced (kept — review before deleting)";
+            log_activity('system', 'selfrepair.orphan_uploads', 'Self-repair: ' . $orphanFiles . ' uploaded image(s) look unreferenced by any gallery, photo or chat (kept untouched — worth a look if disk space matters)', [
+                'actor' => $actor,
+                'severity' => 'info',
+                'entity' => 'uploads',
+            ]);
+        }
+        $stateH['orphan_uploads'] = $orphanFiles;
+        db()
+            ->prepare(
+                "INSERT INTO content (item_key, item_value) VALUES ('self-repair-state', ?)
+                 ON DUPLICATE KEY UPDATE item_value = VALUES(item_value), updated_at = CURRENT_TIMESTAMP",
+            )
+            ->execute([json_encode($stateH)]);
+    }
+} catch (\Throwable $e) {
+}
+
 // ---- 5. Orphaned payment rows (flag only — never delete money records) -----
 // ---- 6. Monthly digest into the activity log --------------------------------
 try {

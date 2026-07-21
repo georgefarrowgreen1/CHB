@@ -262,6 +262,18 @@ $r = http($admin, 'POST', '/customers.php', ['action' => 'directory', 'q' => 'iv
 it_check('directory action answers (single-stay guest → no unified row yet)', $r['code'] === 200 && is_array($r['json']['customers'] ?? null), $r['raw']);
 it_check('unknown action → 400 (route_actions catch-all)', http($admin, 'POST', '/customers.php', ['action' => 'nope'])['code'] === 400);
 
+// ---- 9. Self-repair storage hygiene (real files, real endpoint) -----------
+echo "\n== 8. Self-repair storage hygiene ==\n";
+@mkdir($work . '/uploads/cache', 0777, true);
+file_put_contents($work . '/uploads/live.jpg', 'x');
+file_put_contents($work . '/uploads/cache/live.jpg.w640.webp', 'x');   // source present → keep
+file_put_contents($work . '/uploads/cache/gone.jpg.w640.webp', 'x');   // source missing → prune
+$r = http($guest, 'GET', '/self-repair.php?cron=' . $SECRET);
+it_check('self-repair runs via the cron secret', $r['code'] === 200 && !empty($r['json']['ok']), $r['raw']);
+it_check('dead resizer-cache entry pruned', !is_file($work . '/uploads/cache/gone.jpg.w640.webp'));
+it_check('live resizer-cache entry kept', is_file($work . '/uploads/cache/live.jpg.w640.webp'));
+it_check('the prune is reported as a fix', (bool) array_filter($r['json']['fixed'] ?? [], fn($f) => strpos((string) $f, 'resized image') !== false), json_encode($r['json']['fixed'] ?? []));
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";
