@@ -68,6 +68,25 @@ check('migration-guest-registrations.sql → one complete CREATE TABLE', count($
 
 @unlink($tmp);
 
+echo "\n== Migration apply order (migration_sort) ==\n";
+
+check('migration_sort is exposed (hoisted past the bootstrap guard)', function_exists('migration_sort'));
+
+// Legacy names keep plain byte order among themselves; numeric-prefixed NEW
+// migrations run after ALL legacy files, in numeric order — so a fresh database
+// always runs a new ALTER after the legacy CREATE it depends on.
+$sorted = migration_sort([
+    '/x/migration-101-add-col.sql',
+    '/x/migration-zzd-magic-single-use.sql',
+    '/x/migration-100-new-table.sql',
+    '/x/migration-accommodations.sql',
+    '/x/migration-zz3-content-no-dogs.sql',
+]);
+$names = array_map('basename', $sorted);
+check('legacy files first, in byte order', array_slice($names, 0, 3) === ['migration-accommodations.sql', 'migration-zz3-content-no-dogs.sql', 'migration-zzd-magic-single-use.sql']);
+check('numeric migrations after all legacy, in numeric order', array_slice($names, 3) === ['migration-100-new-table.sql', 'migration-101-add-col.sql']);
+check('numeric order is numeric, not lexical (110 > 20)', array_map('basename', migration_sort(['/x/migration-110-b.sql', '/x/migration-20-a.sql'])) === ['migration-20-a.sql', 'migration-110-b.sql']);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

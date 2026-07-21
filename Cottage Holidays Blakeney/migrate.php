@@ -58,8 +58,7 @@ if (!$force) {
     }
 }
 
-$files = glob(__DIR__ . '/migration-*.sql');
-sort($files);
+$files = migration_sort(glob(__DIR__ . '/migration-*.sql'));
 
 // Split a .sql file into individual statements. Strips full-line comments up
 // front, then walks the SQL splitting on ';' — but only OUTSIDE string literals /
@@ -67,6 +66,30 @@ sort($files);
 // appears inside seed text ("...sail daily; check tide times...") or an inline
 // column comment ("-- checkout + 12 months; purged after") doesn't chop a
 // statement in half. Handles '' / "" doubling and backslash escapes.
+// Apply order for migration files. The legacy names (migration-<word>… /
+// migration-zz*…) predate a numbering convention and rely on plain byte order —
+// they keep EXACTLY that order, first. NEW migrations use a numeric prefix
+// (migration-NNN-<slug>.sql, NNN ≥ 100 — see smoke-test.js's naming gate) and
+// run AFTER all legacy files in numeric order, so on a fresh database a new
+// ALTER always follows the legacy CREATE it depends on. Pure (unit-tested by
+// test-migrate.php).
+function migration_sort($files)
+{
+    usort($files, function ($a, $b) {
+        $ka = migration_sort_key(basename($a));
+        $kb = migration_sort_key(basename($b));
+        return $ka <=> $kb;
+    });
+    return $files;
+}
+function migration_sort_key($name)
+{
+    if (preg_match('/^migration-(\d+)-/', $name, $m)) {
+        return [1, (int) $m[1], $name];
+    }
+    return [0, 0, $name];
+}
+
 function split_sql($path)
 {
     $raw = (string) file_get_contents($path);

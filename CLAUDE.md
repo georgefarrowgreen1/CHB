@@ -11,13 +11,14 @@ build step**); PHP backend files sit alongside it. App-style guest shell lives i
   failing or the work is explicitly a draft/WIP.
 
 ## Deploy checklist (do this whenever shipping frontend changes)
-- Bump `const BUILD` — it now lives in **`app.js`** (last statement), not index.html.
-- Bump `CACHE` in `sw.js`, and the `?v=` query on whichever of `app.css` / `app.js` /
-  `guest-app.css` / `guest-app.js` you changed — in BOTH `index.html` and the `sw.js`
-  CORE list.
-- If **`admin.js`** changed, bump `ADMIN_BUNDLE_V` (top of app.js, in the facade) —
-  that's its cache-buster; admin.js has no `<script>` tag and is NOT in sw.js CORE.
-- Run `node smoke-test.js` and `php test-pricing.php` — must pass (CI runs both).
+- **`node bump.js <new-build-stamp>`** does the WHOLE chain in one go (stamp =
+  lowercase/digits, ≥6 chars): BUILD (app.js last statement), CACHE (sw.js), the
+  `?v=` pins in index.html + sw.js CORE for whichever assets git says changed, and
+  ADMIN_BUNDLE_V / ADMIN_CSS_V when admin.js / admin.css changed. `--dry` previews.
+- CI enforces it: `check-versions.js` diffs the PR against its base and fails if a
+  changed cached asset kept its version; smoke-test §6c checks the static half
+  (sw.js CORE ?v= == index.html ?v=, BUILD well-formed ≥6 chars).
+- Then run `node smoke-test.js` and `php test-pricing.php` — must pass (CI runs both).
 
 ## Conventions
 - Owner content editing lives in **Settings**: "Website content" (global homepage/nav
@@ -673,14 +674,22 @@ which would corrupt these HTML routes); on ANY error they serve index.html untou
 **Data / migrations** — MySQL. Schema in `schema.sql`; changes ship as
 `migration-*.sql` applied by `migrate.php` (admin visit or `?cron=APP_SECRET`, or
 Settings → System check → Run migrations). Migrations are idempotent
-(`CREATE TABLE IF NOT EXISTS`, guarded `ADD COLUMN`). Most owner-editable content
+(`CREATE TABLE IF NOT EXISTS`, guarded `ADD COLUMN`). **NEW migrations are named
+`migration-NNN-<slug>.sql`** (NNN ≥ 100, next free number) — smoke-test §6c-iii
+gates the name against a FROZEN legacy list (never rename an old file; the ledger
+keys off filenames), and `migration_sort()` (migrate.php, tested in
+test-migrate.php) applies legacy names first in byte order, then numeric ones in
+numeric order, so a new ALTER always follows the legacy CREATE it touches on a
+fresh DB. Most owner-editable content
 lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
 
 **Gotchas**
-- The price model is duplicated: JS `priceBreakdown()` (index.html) must stay in
-  lockstep with PHP `price_breakdown()` (pricing.php). `smoke-test.js` §2 tests the
-  JS side and `test-pricing.php` the PHP side against the SAME fixtures — keep both
-  green when touching pricing.
+- The price model is duplicated: JS `priceBreakdown()` (app.js) must stay in
+  lockstep with PHP `price_breakdown()` (pricing.php). The parity cases live ONCE in
+  **`pricing-fixtures.json`** — smoke-test §2 loops them against the JS engine
+  (asserting the shim's built-in rates match the fixture) and test-pricing.php loops
+  the same file against PHP, so the two sides can never silently test different
+  inputs. Add new parity cases to the JSON, not to either test.
 - **`total` is RENTAL ONLY** (nightly + txn). The refundable damages deposit is returned
   by the price model as `damagesDeposit` but is NOT in `total`. Current model: it is
   **CHARGED together with the guest's first payment** (`pay.php` bundles `damagesDue`
@@ -733,6 +742,12 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   overflow, no content cut off, key content rendered — on the public views at
   390/768/1280 AND the six back-office screens at phone width; screenshots
   uploaded as the `layout-shots` CI artifact) on each PR — merge only on green.
+  Plus three convention gates: `check-versions.js` (changed cached asset → bumped
+  version, vs the PR base — `node bump.js <stamp>` satisfies it), the migration
+  naming rule (smoke-test §6c-iii), and **`typecheck.js`** — a tsc `--checkJs`
+  RATCHET against `tsc-budget.json` (pinned typescript; the per-group error count
+  may only fall — lower the budget in the same PR when you fix errors, never raise
+  one to get green; no build step is being introduced, it's a linter).
   `deploy.yml` SFTP-deploys `main` to IONOS (never deletes remote files; preserves
   `config.php` + `uploads/`).
 
