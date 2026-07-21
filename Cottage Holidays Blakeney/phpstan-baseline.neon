@@ -1,8 +1,3 @@
-# PHPStan baseline — pre-existing findings at the current level, accepted so the
-# gate enforces only NEW problems. Regenerate with:
-#   phpstan analyse -c phpstan.neon.dist --generate-baseline=phpstan-baseline.neon
-# Whittle these down over time (most are "variable assigned inside a try/if then
-# used after" — a real hardening opportunity, just not a blocker today).
 parameters:
 	ignoreErrors:
 		-

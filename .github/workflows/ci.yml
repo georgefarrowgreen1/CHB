@@ -29,6 +29,17 @@ jobs:
         with:
           node-version: '20'
 
+      # PIN PHP: ubuntu-latest's default PHP jumps whenever GitHub rolls the
+      # runner image — tests would silently start running on a version the
+      # IONOS host doesn't. Keep this pinned to the host's PHP major.minor
+      # (check Manage → System diagnostics) and bump both together.
+      - name: Set up PHP 8.3 (pinned to the production host)
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_mysql, mysqli, gd, curl
+          coverage: none
+
       - name: PHP syntax check (php -l on every .php)
         run: |
           set -e
@@ -97,6 +108,14 @@ jobs:
       - name: Guest-registration form logic
         working-directory: "Cottage Holidays Blakeney"
         run: php test-guestreg.php
+
+      # Auth posture: every web-reachable .php declares its guard (admin /
+      # guest / cron / token / webhook / rate-limited / public-with-reason /
+      # lib / dev) and the gate verifies the guard call is actually present —
+      # a new endpoint with no auth line, or an edit that strips one, fails.
+      - name: Endpoint auth-posture gate
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-auth-posture.php
 
       # Content-key classification: every content-table key written by server
       # code must be classified internal/private (db.php) or explicitly public,
@@ -179,6 +198,14 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+
+      # Same PHP pin as the checks job (see the comment there).
+      - name: Set up PHP 8.3 (pinned to the production host)
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_mysql, mysqli, gd, curl
+          coverage: none
 
       - name: Start MySQL (preinstalled on the runner)
         run: |
