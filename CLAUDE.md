@@ -563,7 +563,10 @@ signature) reads signals, ALL **recency-weighted** (a ~1.5-year half-life, so la
 outweighs three years ago): **seasonal demand** (occupancy by calendar month from direct
 stays + OTA `dbBlocks`, Bayesian-shrunk to the mean; **per-cottage** where a cottage has ≥~10
 of its own stays, else the pooled fleet curve — so Jollyboat and 21A each learn their own
-peak), **booking pace** (a lead-time CDF from `createdAt` — added to `mapBookingFromApi` — so
+peak. The per-cottage curve is shrunk against ITS OWN availability (fleet avail ÷ cottages)
+and normalised on its OWN min/max, so a cottage's busiest month reads as a peak — NOT the
+pooled fleet scale, which used to deflate a single cottage's whole curve ~N× and read even its
+peak as quiet (search-test §37 per-cottage check)), **booking pace** (a lead-time CDF from `createdAt` — added to `mapBookingFromApi` — so
 a still-open window close to arrival is "harder to fill" than a far one, PLUS a `pickupFraction`
 pace-vs-pickup check: within 45 days, a window emptier than usual-by-now softens, fuller firms
 up — `chbWindowOccupancy`), **achieved rate** (`agreedPrice.perNight` ÷ season base, **outlier-

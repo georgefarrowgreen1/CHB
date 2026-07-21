@@ -1655,6 +1655,11 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         const M = ctx.chbPriceModel();
         check('the model builds from the owner\'s bookings (25 priced stays, full confidence)', M.nStays === 25 && M.conf > 0.9, `n=${M.nStays} conf=${M.conf}`);
         check('it LEARNS seasonality — August reads far busier than January', M.seasonal(`${sYr}-08-15`) - M.seasonal(`${sYr}-01-15`) > 0.4, `aug=${M.seasonal(`${sYr}-08-15`).toFixed(2)} jan=${M.seasonal(`${sYr}-01-15`).toFixed(2)}`);
+        // PER-COTTAGE seasonality on the cottage's OWN scale (all 25 stays are on
+        // jollyboat, cw=1): its own busy August must read HIGH and its quiet
+        // January LOW — the old pooled-scale/fleet-avail bug squashed a single
+        // cottage's whole curve down near zero and read even its peak as quiet.
+        check('per-cottage curve reads the cottage\'s OWN peak as busy (not squashed)', M.seasonal(`${sYr}-08-15`, 'jollyboat') > 0.6 && M.seasonal(`${sYr}-01-15`, 'jollyboat') < 0.4, `aug=${M.seasonal(`${sYr}-08-15`, 'jollyboat').toFixed(2)} jan=${M.seasonal(`${sYr}-01-15`, 'jollyboat').toFixed(2)}`);
         // Far-future (>45d) so both lean purely on seasonal demand, not pace.
         const aug = ctx.chbSmartPrice('jollyboat', `${sYr + 1}-08-15`, 3, {});
         const jan = ctx.chbSmartPrice('jollyboat', `${sYr + 1}-01-15`, 3, {});
