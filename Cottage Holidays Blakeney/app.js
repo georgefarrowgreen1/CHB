@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 260;
+const ADMIN_BUNDLE_V = 261;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -3122,7 +3122,6 @@ async function renderGuestBookings() {
     // then past stays (most recently finished first). "Past" is DEPARTURE-aware
     // (hasCheckedOut) not just date-past, so a guest who left this morning sorts
     // into the past group the same day, not at the next midnight.
-    const todaySort = todayDashed();
     mine.sort((a, b) => {
         const au = !hasCheckedOut(a.booking);
         const bu = !hasCheckedOut(b.booking);
@@ -4459,7 +4458,7 @@ async function downloadInvoice(bookingId) {
         depAmt,
         b.holdStatus || 'none',
         Number(b.damagesReturned) || 0,
-        b.holdSettledAt ? String(b.holdSettledAt).split(' ')[0] : '',
+        b.holdSettledAt ? fmtDate(String(b.holdSettledAt).split(' ')[0]) : '',
     );
 
     const { jsPDF } = window.jspdf;
@@ -5354,7 +5353,7 @@ const termsSections = [
             'Price: the total cost of your stay, shown on the website and in our confirmation.',
             'Deposit: 25% of the Price, payable when you book.',
             'Balance due date: 4 weeks before your arrival date.',
-            'Security deposit: £50–100 held before arrival in case of damage, and returned afterwards.',
+            'Security deposit: a refundable amount (typically £75) charged together with your first payment and refunded after your stay, provided there is no damage.',
             'House Rules: a short separate document we send with your confirmation; it forms part of these terms.',
             'Permitted pets: any animal the owner has agreed in writing you may bring.',
             'Group: you and everyone staying or visiting under your booking.',
@@ -7896,7 +7895,7 @@ function bookingCtxHtml(bookings) {
     if (!bookings.length) {
         return `<div class="mc-row"><span class="mc-k">Bookings</span><span class="mc-v">None on file</span></div>`;
     }
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayDashed(); // UK clock, not UTC (BST midnight off-by-a-day)
     return bookings
         .map((b) => {
             const upcoming = (b.check_out || '') >= today; // stay hasn't ended yet
@@ -13055,7 +13054,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'moneyfix1';
+    const BUILD = 'uxfix1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

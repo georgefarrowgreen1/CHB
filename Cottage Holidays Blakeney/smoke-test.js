@@ -457,7 +457,9 @@ console.log('\n== 10. Design-system & recent-fix contracts ==');
     if (typeof dis !== 'function') { fail('depositInvoiceStatus is not defined'); }
     else {
         check('deposit charged → "Paid … refunded after your stay"', /Paid.*refunded in full after your stay/i.test(dis(75, 'charged', 0, '')));
-        check('deposit returned → "Refunded in full on <date>"', dis(75, 'returned', 75, '2026-07-18') === 'Refunded in full on 2026-07-18.');
+        // The caller passes a DD/MM/YYYY date (fmtDate at the invoice call site) —
+        // the on-screen/PDF invoice must never show an ISO date.
+        check('deposit returned → "Refunded in full on <DD/MM/YYYY>"', dis(75, 'returned', 75, '18/07/2026') === 'Refunded in full on 18/07/2026.');
         check('deposit fully returned while still charged → refunded', /Refunded in full/i.test(dis(75, 'charged', 75, '')));
         check('deposit partially returned → "£X of £Y refunded"', /£40\.00 of £75\.00 refunded/.test(dis(75, 'charged', 40, '')));
         check('deposit kept → "Retained … for damage"', /Retained.*damage/i.test(dis(75, 'kept', 0, '')));

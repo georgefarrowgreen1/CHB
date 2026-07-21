@@ -48,7 +48,10 @@ const ok = (cond, label) => {
   }, over);
   // b3 is a FINISHED stay (checked out days ago) for the edit soft-lock checks —
   // its own email so it never pollutes the b1 guest-intel/repeat fixtures.
-  let rows = [mk(1), mk(2, { name: 'Return Visit', check_in: d(90), check_out: d(93) }), mk(3, { name: 'Past Guest', email: 'past@gmail.com', check_in: d(-10), check_out: d(-7), payment: 'paid', deposit_paid: 440 })];
+  let rows = [mk(1), mk(2, { name: 'Return Visit', check_in: d(90), check_out: d(93) }), mk(3, { name: 'Past Guest', email: 'past@gmail.com', check_in: d(-10), check_out: d(-7), payment: 'paid', deposit_paid: 440 }),
+    // b4: a FINISHED stay that still owes money — its next-action banner must
+    // chase the balance, not say "all set" (hub-unification regression).
+    mk(4, { name: 'Owes After Leaving', email: 'owes@gmail.com', check_in: d(-25), check_out: d(-22), payment: 'deposit', deposit_paid: 100 })];
   let enqs = [
     { id: 6, prop_key: '21a', name: 'Enq Alpha', email: 'enq@gmail.com', phone: '', address: '2 Lane', postcode: 'NR25 7AB', check_in: d(40), check_out: d(43), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0, message: 'Dog friendly?', created_at: d(-1) + ' 09:00:00' },
     { id: 7, prop_key: '21a', name: 'Enq Beta', email: 'beta@gmail.com', phone: '', address: '3 Lane', postcode: 'NR25 7AB', check_in: d(80), check_out: d(83), check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0, message: '', created_at: d(0) + ' 08:00:00' },
@@ -192,6 +195,13 @@ const ok = (cond, label) => {
   ok(!!led && /feed-dot-ok/.test(led.dots[0] || '') && /feed-dot-ok/.test(led.dots[1] || ''), `settled charge AND issued return both read green (${led && led.dots.join(' | ')})`);
   ok(!!led && led.labels.join('|') === 'Completed|Completed', `the word rides as the aria/hover label (${led && led.labels.join('|')})`);
   ok(!!led && !/\(COMPLETED\)|\(PENDING\)/.test(led.text), 'no raw status text left in the ledger rows');
+
+  // ---------- A2b. a finished stay that still owes money chases the balance ----------
+  console.log('A2b. past-but-unpaid banner');
+  await page.evaluate(() => showDetails('21a', findBookingById('b4')));
+  await page.waitForTimeout(500);
+  const pastPay = await page.evaluate(() => (document.querySelector('.bhub-next') || {}).textContent || '');
+  ok(/still owed from this finished stay/.test(pastPay) && !/All set/.test(pastPay), `finished + unpaid → chases the balance, not "all set" (${pastPay.trim().slice(0, 60)})`);
 
   // ---------- A3. finished stay: Edit is soft-locked ----------
   // A checked-out booking is a record (invoices, guest register, directory) —

@@ -547,8 +547,11 @@ function chbCoupleRateOn(propKey, iso) {
 }
 // Open the EDIT form for a booking with proposed new dates dropped in — the
 // move/extend commands' landing. Never saves; the owner reviews and taps Save.
+// Uses the SYNC inner opener so the modal is open before we set the dates below
+// (the outer openEditBooking may await a soft-lock confirm on a finished stay);
+// callers already refuse arrived guests, so a finished stay never reaches here.
 function cmdkPrefillEditDates(bookingId, checkIn, checkOut) {
-    openEditBooking(bookingId);
+    openEditBookingNow(bookingId);
     try {
         const ci = document.getElementById('modal-checkin');
         const co = document.getElementById('modal-checkout');
@@ -4211,7 +4214,7 @@ function helpTopics() {
             related: ['take-payment', 'block-dates'] },
         { id: 'take-payment', title: 'Take a payment or request one', cat: 'Money',
             kw: 'take payment charge card request deposit balance money collect pay invoice link',
-            steps: ['Open the booking from Today or Bookings.', 'In the Money card tap “Request payment” to email a secure link — or record one you took another way.', 'The status updates to Part-paid / Paid automatically.'],
+            steps: ['Open the booking from Today or Bookings.', 'On the banner at the top of the booking, tap “Request the balance by card” to email a secure link — or “Record payment” for one you took another way.', 'The status updates to Part-paid / Paid automatically.'],
             doIt: { label: 'Bookings to chase', run: view(() => { openBookings(); try { bookingsSetFilter('needspay'); } catch (e) {} }) },
             showMe: { label: 'Open Payments', run: view(() => openAccounts()) },
             related: ['chase-balance', 'deposit-explained'] },
@@ -4345,7 +4348,7 @@ function helpTopics() {
             doIt: { label: 'Open Notifications', run: sec('notify') } },
         { id: 'record-payment', title: 'Record a payment I took another way', cat: 'Money',
             kw: 'record manual payment cash bank transfer cheque took offline mark paid add money received',
-            steps: ['Open the booking.', 'In the Money card record the amount you received (cash / bank transfer / cheque).', 'The balance and status update just like a card payment.'],
+            steps: ['Open the booking.', 'In the Payments section tap “Record payment” and enter the amount you received (cash / bank transfer / cheque).', 'The balance and status update just like a card payment.'],
             doIt: { label: 'Open Bookings', run: view(() => openBookings()) },
             related: ['take-payment'] },
         { id: 'pricing-coach', title: 'Get pricing suggestions', cat: 'Money',
@@ -4728,7 +4731,7 @@ const CHB_WALK = {
     ] },
     'take-payment': { start: () => { Promise.resolve(openBookings()).then(() => { try { bookingsSetFilter('needspay'); } catch (e) {} }); }, steps: [
         { sel: '#bookings-list .bk-row', say: 'Open a booking that still owes money.', until: () => coachHas('[data-act="requestPayment"]') },
-        { sel: '[data-act="requestPayment"]', say: 'In the Money card, tap Request payment to email a secure pay link.' },
+        { sel: '[data-act="requestPayment"]', say: 'On the banner at the top, tap Request the balance by card to email a secure pay link.' },
     ] },
     'refund-deposit': { start: () => { openBookings(); }, steps: [
         { sel: '#bookings-list .bk-row', say: 'Open the booking whose deposit you’re returning (after checkout).', until: () => coachHas('[data-act="returnDeposit"]') },
@@ -7819,6 +7822,16 @@ function hubPipelineHtml(propKey, b, gt, dh) {
                 btn: canCard ? 'Request the balance by card' : 'Record a payment',
             };
         }
+    } else if (!gt.fullyPaid && past) {
+        // A finished stay that STILL owes money — the hub unification removed the
+        // old Payments-card button, and every non-past money branch is gated on
+        // !past, so this used to fall through to "All set". Chase the balance.
+        const canCard = squareAdminEnabled && b.email;
+        next = {
+            text: `${gbp(gt.balance)} still owed from this finished stay.`,
+            onclick: canCard ? chbAttrs('requestPayment', String(b.id), 'balance') : chbAttrs('recordPayment', String(b.id)),
+            btn: canCard ? 'Request the balance by card' : 'Record a payment',
+        };
     } else if (flow.hasReg && !b.regSubmitted && !past) {
         next = {
             text: 'Guest details haven’t been provided yet — required before arrival (UK guest records).',
@@ -11700,8 +11713,10 @@ function holdControls(b) {
     const amt = b.holdAmount || (b.agreedPrice ? b.agreedPrice.damagesDeposit : 0) || 0;
     if (amt <= 0) return '';
     const st = b.holdStatus || 'none';
-    const today = new Date().toISOString().slice(0, 10);
-    const left = b.checkOut && b.checkOut <= today;
+    // UK clock, not UTC — during BST the UTC date lags the UK date 00:00–01:00,
+    // which would show the deposit refund controls an hour late and disagree with
+    // the time-aware needs-you strip (hasCheckedOut).
+    const left = b.checkOut && (typeof hasCheckedOut === 'function' ? hasCheckedOut(b) : b.checkOut <= todayDashed());
     // New charge-upfront model.
     if (st === 'charged') {
         const actions = left
@@ -12294,7 +12309,7 @@ function needsYouItems() {
             const when = days === 0 ? 'arrives today' : days === 1 ? 'arrives tomorrow' : days > 1 ? `arrives in ${days} days` : gone ? `left ${fmtDate(b.checkOut)} — overdue` : 'is here now — overdue';
             items.push({
                 sev: days <= 7 ? 'danger' : 'warn', ic: 'money',
-                label: `${escapeHtml(b.name || 'A guest')} ${when} — £${ps.balance.toFixed(2)} to collect`,
+                label: `${escapeHtml(b.name || 'A guest')} ${when} — ${gbp(ps.balance)} to collect`,
                 sub: `${fmtStayRange(b.checkIn, b.checkOut)} · ${propName(k)}`,
                 act: 'Chase', go: chbAttrs('openBookingHub', String(b.id)),
                 run: () => { closeCmdK(); openBookingHub(b.id); },
