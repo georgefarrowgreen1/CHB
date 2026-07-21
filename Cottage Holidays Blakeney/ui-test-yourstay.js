@@ -9,17 +9,12 @@
 //  7. DEPARTURE edge (time-aware): a stay whose checkout time has passed on the
 //     checkout day drops to "Past stays" the same day — not at the next midnight;
 //     one whose checkout time is still to come stays in-residence
-process.env.TZ = 'Europe/London';
-const { chromium } = require('playwright');
-const { spawn } = require('child_process');
-const PORT = 8298;
+const { d, bootBrowser } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
 
 (async () => {
-  const server = spawn('php', ['-S', `127.0.0.1:${PORT}`, '-t', __dirname], { stdio: 'ignore' });
-  for (let i = 0; i < 60; i++) { try { if ((await fetch(`http://127.0.0.1:${PORT}/index.html`)).ok) break; } catch (e) {} await new Promise((r) => setTimeout(r, 250)); }
-  const browser = await chromium.launch(process.env.CHB_CHROMIUM ? { executablePath: process.env.CHB_CHROMIUM } : {});
+  const { browser, base, done } = await bootBrowser();
   const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.getMonth(), t.getDate() + n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
   const mk = (pk, inD, outD, extra) => Object.assign({ prop_key: pk, check_in: inD, check_out: outD, adults: 2, children: 0, id: Math.floor(Math.random() * 1e6) }, extra || {});
 
@@ -43,7 +38,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       ], seasons: {}, occupancy: {} });
       return json({ ok: true, bookings: [], events: [], results: [], threads: [], enquiries: [], reviews: [], photos: [], props: {}, mine: {}, value: null });
     });
-    await page.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'networkidle' });
+    await page.goto(`${base}/index.html`, { waitUntil: 'networkidle' });
     if (guest) { await page.evaluate(() => openGuestArea()); }
     await page.waitForTimeout(700);
     return page;
@@ -137,8 +132,6 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     `checkout still to come → in-residence, not yet Past (hub=${s.inStay}, badges=${s.badges.join(',')})`);
   await page.close();
 
-  await browser.close();
-  server.kill();
   console.log(fails ? `\n  ${fails} YOUR-STAY CHECK(S) FAILED ❌` : '\n  YOUR-STAY SUITE PASSED ✅');
-  process.exit(fails ? 1 : 0);
+  await done(fails);
 })();

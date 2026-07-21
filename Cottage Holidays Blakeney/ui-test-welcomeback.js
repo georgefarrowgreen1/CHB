@@ -6,17 +6,12 @@
 //  3. a cottage they have NOT stayed in shows no note
 //  4. an upcoming-only guest (no completed stays) gets no nudge
 //  5. logged out → nothing renders
-process.env.TZ = 'Europe/London';
-const { chromium } = require('playwright');
-const { spawn } = require('child_process');
-const PORT = 8286;
+const { d, bootBrowser } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
 
 (async () => {
-  const server = spawn('php', ['-S', `127.0.0.1:${PORT}`, '-t', __dirname], { stdio: 'ignore' });
-  for (let i = 0; i < 60; i++) { try { if ((await fetch(`http://127.0.0.1:${PORT}/index.html`)).ok) break; } catch (e) {} await new Promise((r) => setTimeout(r, 250)); }
-  const browser = await chromium.launch(process.env.CHB_CHROMIUM ? { executablePath: process.env.CHB_CHROMIUM } : {});
+  const { browser, base, done } = await bootBrowser();
   const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.getMonth(), t.getDate() + n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
 
   const openPage = async (guest, bookings) => {
@@ -39,7 +34,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       ], seasons: {}, occupancy: {} });
       return json({ ok: true, bookings: [], events: [], results: [], threads: [], enquiries: [], reviews: [], photos: [], props: {}, value: null });
     });
-    await page.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'networkidle' });
+    await page.goto(`${base}/index.html`, { waitUntil: 'networkidle' });
     await page.waitForTimeout(600);
     return page;
   };
@@ -80,8 +75,6 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(wb.trim() === '', 'logged out → welcome-back stays empty');
   await page.close();
 
-  await browser.close();
-  server.kill();
   console.log(fails ? `\n  ${fails} WELCOME-BACK CHECK(S) FAILED ❌` : '\n  WELCOME-BACK SUITE PASSED ✅');
-  process.exit(fails ? 1 : 0);
+  await done(fails);
 })();

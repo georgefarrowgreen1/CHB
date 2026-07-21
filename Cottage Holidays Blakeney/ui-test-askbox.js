@@ -3,20 +3,12 @@
 //  2. an unmatched question offers "message a person"
 //  3. that fallback opens the chat and SENDS the exact question (bypassing
 //     the matcher, so it reaches the owner untouched)
-process.env.TZ = 'Europe/London';
-const { chromium } = require('playwright');
-const { spawn } = require('child_process');
-const PORT = 8289;
+const { boot } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
 
 (async () => {
-  const server = spawn('php', ['-S', `127.0.0.1:${PORT}`, '-t', __dirname], { stdio: 'ignore' });
-  for (let i = 0; i < 60; i++) { try { if ((await fetch(`http://127.0.0.1:${PORT}/index.html`)).ok) break; } catch (e) {} await new Promise((r) => setTimeout(r, 250)); }
-  const browser = await chromium.launch(process.env.CHB_CHROMIUM ? { executablePath: process.env.CHB_CHROMIUM } : {});
-  const page = await browser.newPage({ viewport: { width: 900, height: 900 } });
-  page.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
-  await page.addInitScript(() => { if (navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {}); });
+  const { page, browser, base, done } = await boot({ viewport: { width: 900, height: 900 } });
   const sent = [];
   await page.route(/\.php/, (route) => {
     const url = route.request().url();
@@ -28,7 +20,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     if (url.includes('content.php') && route.request().method() !== 'POST') return json({ ok: true, content: { 'faqs-21a': [{ q: 'Can we bring our dog?', a: 'Yes — one well-behaved dog is welcome at 21A Westgate.' }] } });
     return json({ ok: true, bookings: [], events: [], results: [], threads: [], enquiries: [], reviews: [], photos: [], props: {}, value: null, properties: [], seasons: {}, occupancy: {} });
   });
-  await page.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'networkidle' });
+  await page.goto(`${base}/index.html`, { waitUntil: 'networkidle' });
   await page.waitForTimeout(500);
   await page.evaluate(() => { siteContent['faqs-21a'] = [{ q: 'Can we bring our dog?', a: 'Yes — one well-behaved dog is welcome at 21A Westgate.' }]; openProperty('21a'); });
   await page.waitForTimeout(400);
@@ -53,8 +45,6 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(chat.open, 'fallback opens the chat widget');
   ok(sent.some((m) => /resident unicorn/.test(JSON.stringify(m))), `the exact question was sent to a person (${sent.length} sends)`);
 
-  await browser.close();
-  server.kill();
   console.log(fails ? `\n  ${fails} ASK-BOX CHECK(S) FAILED ❌` : '\n  ASK-BOX SUITE PASSED ✅');
-  process.exit(fails ? 1 : 0);
+  await done(fails);
 })();

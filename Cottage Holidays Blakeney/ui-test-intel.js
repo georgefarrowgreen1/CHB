@@ -6,20 +6,12 @@
 //     a one-tap dated offer (15% off the current rate), not a Book action
 //  4. tapping Offer SAVES the 'Gap offer' override through seasons_save and
 //     the row flips to its live status (routing to Rates)
-process.env.TZ = 'Europe/London';
-const { chromium } = require('playwright');
-const { spawn } = require('child_process');
-const PORT = 8282;
+const { d, boot } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
 
 (async () => {
-  const server = spawn('php', ['-S', `127.0.0.1:${PORT}`, '-t', __dirname], { stdio: 'ignore' });
-  for (let i = 0; i < 60; i++) { try { if ((await fetch(`http://127.0.0.1:${PORT}/index.html`)).ok) break; } catch (e) {} await new Promise((r) => setTimeout(r, 250)); }
-  const browser = await chromium.launch(process.env.CHB_CHROMIUM ? { executablePath: process.env.CHB_CHROMIUM } : {});
-  const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
-  page.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
-  await page.addInitScript(() => { if (navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {}); });
+  const { page, browser, base, done } = await boot({ viewport: { width: 390, height: 844 } });
 
   const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.getMonth(), t.getDate() + n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
   const mk = (id, name, email, ci, co) => ({ id, prop_key: 'jollyboat', name, email, phone: '', check_in: ci, check_out: co, adults: 2, children: 0, payment: 'paid', agreed_total: 440, hold_status: 'none' });
@@ -47,7 +39,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     }
     return json({ ok: true, events: [], logs: {}, results: [], threads: [], enquiries: [], reviews: [], photos: [], value: null, corpus: [] });
   });
-  await page.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'networkidle' });
+  await page.goto(`${base}/index.html`, { waitUntil: 'networkidle' });
   await page.evaluate(async () => { isAuthenticated = true; document.body.classList.add('owner-mode'); await window.loadAdminBundle(); });
   await page.evaluate(() => loadData()); await page.waitForTimeout(400);
   await page.evaluate(() => nav('view-backoffice')); await page.waitForTimeout(500);
@@ -100,8 +92,6 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   });
   ok(!!live && new RegExp(`Offer live on Jollyboat — £${offerVal}\\/night`).test(live) && /Rates ›/.test(live), `the row flips to its live status routing to Rates (${(live || 'none').slice(0, 90).trim()})`);
 
-  await browser.close();
-  server.kill();
   console.log(fails ? `\n  ${fails} INTEL CHECK(S) FAILED ❌` : '\n  INTEL SUITE PASSED ✅');
-  process.exit(fails ? 1 : 0);
+  await done(fails);
 })();

@@ -7,17 +7,12 @@
 //  4. the Pay button names the amount ("Pay £340.00")
 //  5. the wallet divider stays hidden when no wallet mounts
 //  6. happy path: tokenize → charge posts source_id → receipt state
-process.env.TZ = 'Europe/London';
-const { chromium } = require('playwright');
-const { spawn } = require('child_process');
-const PORT = 8311;
+const { bootBrowser } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
 
 (async () => {
-  const server = spawn('php', ['-S', `127.0.0.1:${PORT}`, '-t', __dirname], { stdio: 'ignore' });
-  for (let i = 0; i < 60; i++) { try { if ((await fetch(`http://127.0.0.1:${PORT}/index.html`)).ok) break; } catch (e) {} await new Promise((r) => setTimeout(r, 250)); }
-  const browser = await chromium.launch(process.env.CHB_CHROMIUM ? { executablePath: process.env.CHB_CHROMIUM } : {});
+  const { browser, base, done: harnessDone } = await bootBrowser();
   const page = await browser.newPage({ viewport: { width: 390, height: 900 } });
   page.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
   await page.addInitScript(() => {
@@ -55,7 +50,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     return json({ ok: true, bookings: [], enquiries: [], properties: [], seasons: {}, occupancy: {}, content: {}, blocks: [], ranges: [], value: null, reviews: [], photos: [], threads: [] });
   });
 
-  await page.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'networkidle' });
+  await page.goto(`${base}/index.html`, { waitUntil: 'networkidle' });
   await page.evaluate(() => openPayView('paytok', '7', 'balance'));
   await page.waitForTimeout(900);
 
@@ -96,8 +91,6 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(!!charge && charge.source_id === 'tok_test_1' && charge.kind === 'balance', `charge posted with the tokenized card (${charge && charge.source_id})`);
   ok(done.done && /paid in full/i.test(done.sub), `receipt state shows (${done.sub.slice(0, 50)}…)`);
 
-  await browser.close();
-  server.kill();
   console.log(fails ? `\n  ${fails} PAY-PAGE CHECK(S) FAILED ❌` : '\n  PAY-PAGE SUITE PASSED ✅');
-  process.exit(fails ? 1 : 0);
+  await harnessDone(fails);
 })();

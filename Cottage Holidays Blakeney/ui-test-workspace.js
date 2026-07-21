@@ -9,24 +9,14 @@
 // tests must too — pin the whole process (and the browser it launches) to
 // Europe/London so fixtures built from new Date() agree with the app on
 // any runner, in any timezone. Must run before the first Date call.
-process.env.TZ = 'Europe/London';
-const { chromium } = require('playwright');
-const { spawn } = require('child_process');
-const PORT = 8153;
-const dir = __dirname;
+const { boot } = require('./ui-test-lib'); // pins TZ=Europe/London at require time
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
 // Local-formatted, never toISOString() — that's UTC and slips a day near midnight.
 const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.getMonth(), t.getDate() + n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
 
 (async () => {
-  const server = spawn('php', ['-S', `127.0.0.1:${PORT}`, '-t', dir], { stdio: 'ignore' });
-  // Wait for php -S to actually accept connections (a fixed sleep flakes on slow CI runners).
-  for (let i = 0; i < 60; i++) { try { if ((await fetch(`http://127.0.0.1:${PORT}/index.html`)).ok) break; } catch (e) {} await new Promise((r) => setTimeout(r, 250)); }
-  const browser = await chromium.launch(process.env.CHB_CHROMIUM ? { executablePath: process.env.CHB_CHROMIUM } : {});
-  const page = await browser.newPage({ viewport: { width: 1280, height: 800 } });
-  page.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
-  await page.addInitScript(() => { if (navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {}); });
+  const { page, browser, base, done } = await boot({ viewport: { width: 1280, height: 800 } });
 
   const mk = (id, ci, co, name) => ({
     id, prop_key: '21a', name, email: 'g@gmail.com', phone: '', address: '1 Lane', postcode: 'NR25 7AB',
@@ -45,7 +35,7 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     return json({ ok: true, bookings: [], enquiries: [], properties: [], seasons: {}, occupancy: {}, content: {}, blocks: [], ranges: [], payments: [], years: [] });
   });
 
-  await page.goto(`http://127.0.0.1:${PORT}/index.html`, { waitUntil: 'domcontentloaded' });
+  await page.goto(`${base}/index.html`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(1300);
   await page.evaluate(() => { isAuthenticated = true; document.body.classList.add('owner-mode'); });
   await page.evaluate(() => window.loadAdminBundle());
@@ -117,7 +107,6 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(a1.active === 'view-backoffice' && a1.rows === 2, `openBookings lands on the dashboard with the list rendered (${a1.active}, ${a1.rows} rows)`);
   ok(a1.wsVisible, 'and scrolls to the bookings workspace');
 
-  await browser.close(); server.kill();
   console.log(fails ? `MERGED WORKSPACE TEST FAILED ❌ (${fails})` : 'MERGED WORKSPACE TEST PASSED ✅');
-  process.exit(fails ? 1 : 0);
+  await done(fails);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });

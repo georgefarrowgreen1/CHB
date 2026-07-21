@@ -26,7 +26,7 @@ const path = require('path');
 const filters = process.argv.slice(2).map((s) => s.toLowerCase());
 const suites = fs
     .readdirSync(__dirname)
-    .filter((f) => /^ui-test-.*\.js$/.test(f))
+    .filter((f) => /^ui-test-.*\.js$/.test(f) && f !== 'ui-test-lib.js') // the shared harness, not a suite
     .filter((f) => !filters.length || filters.some((t) => f.includes(t)))
     .sort();
 
