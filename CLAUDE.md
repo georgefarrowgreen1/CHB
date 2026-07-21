@@ -764,7 +764,13 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   let it float with the runner image. **`perf-budget.js`** gates the gzipped size
   of every shipped asset against `size-budget.json` — raising a budget is allowed
   but must be deliberate, in the same PR, with the trade named; lower budgets when
-  you shrink an asset to lock the win in.
+  you shrink an asset to lock the win in. NB an app.js "account bundle" split was
+  MEASURED (Jul 2026, Chromium coverage + a function-level audit) and REJECTED:
+  the cleanly signed-in-only slice is only ~9% raw (~14KB gz), so the
+  admin.js-style facade machinery wouldn't pay for itself — re-measure before
+  ever attempting it. (The 68% "never executed on an anonymous browse" figure is
+  mostly PUBLIC situational code — booking modal, flex-date search, chat — that
+  must stay in app.js.)
   `deploy.yml` SFTP-deploys `main` to IONOS (never deletes remote files; preserves
   `config.php` + `uploads/`).
 
