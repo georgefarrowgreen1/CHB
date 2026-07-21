@@ -89,6 +89,36 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     return { idx, acts: (__cmdkResults[idx] || {}).actions ? __cmdkResults[idx].actions.length : 0 };
   });
   ok(kb0.idx >= 0 && kb0.acts > 0, `a booking row exposes quick-actions (${kb0.acts})`);
+  // 4b-i) The keyboard must work through the REAL delegation path (a dispatched
+  // keydown on the input), not just a direct cmdkKey() call — a CSP-migration
+  // regression left two data-pass attributes on the input, so keydown delivered
+  // the string value instead of the event and ALL nav silently died. Dispatch a
+  // genuine ArrowDown and assert the selection actually moved.
+  const realKb = await page.evaluate(() => {
+    const el = document.getElementById('cmdk-input');
+    __cmdkSel = __cmdkResults.findIndex((r) => Array.isArray(r.actions) && r.actions.length);
+    __cmdkActSel = -1; cmdkRender();
+    const before = __cmdkActSel;
+    // A genuine dispatched keydown (not a direct cmdkKey call) — proves the event
+    // reaches the handler through delegation. ArrowRight steps into quick-actions.
+    el.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    return { before, after: __cmdkActSel };
+  });
+  ok(realKb.before === -1 && realKb.after === 0, `a dispatched keydown reaches cmdkKey via delegation (actSel ${realKb.before}→${realKb.after})`);
+  // 4b-ii) A real click on a quick-action row must fire cmdkAct, not silently
+  // no-op (the row previously carried a stray data-act="<index>" that shadowed
+  // the chbAttrs handler). Stub cmdkAct and assert a click reaches it.
+  const realClick = await page.evaluate(() => {
+    __cmdkSel = __cmdkResults.findIndex((r) => Array.isArray(r.actions) && r.actions.length);
+    __cmdkActSel = -1; cmdkRender();
+    const orig = window.cmdkAct; let got = null;
+    window.cmdkAct = (i, k) => { got = { i, k }; };
+    const row = document.querySelector('#cmdk-results .cmdk-qa-row');
+    if (row) row.click();
+    window.cmdkAct = orig;
+    return { hadRow: !!row, got };
+  });
+  ok(realClick.hadRow && realClick.got && typeof realClick.got.i === 'number', `a click on a quick-action row reaches cmdkAct (${JSON.stringify(realClick.got)})`);
   const kb1 = await page.evaluate(() => { cmdkKey({ key: 'ArrowRight', preventDefault() {} }); return { sub: __cmdkActSel, marked: !!document.querySelector('#cmdk-results .cmdk-qa-row.is-kbd') }; });
   ok(kb1.sub === 0 && kb1.marked, `ArrowRight steps into the first quick-action + marks it (sub=${kb1.sub})`);
   const kb2 = await page.evaluate(() => { cmdkKey({ key: 'ArrowLeft', preventDefault() {} }); return { sub: __cmdkActSel, marked: !!document.querySelector('#cmdk-results .cmdk-qa-row.is-kbd') }; });

@@ -6471,7 +6471,7 @@ function cmdkRowHtml(it, i, top) {
     const subFocus = (kind, k) => (focused && focused.kind === kind && focused.k === k) ? ' is-kbd' : '';
     const acts = hasActions
         ? `<div class="cmdk-qa">${it.actions
-              .map((a, k) => `<button type="button" class="cmdk-qa-row${subFocus('act', k)}" data-idx="${i}" data-act="${k}" ${chbAttrs('cmdkAct', i, k)}><span class="cmdk-qa-ic">${a.icon || cmdkActIcon('hub')}</span><span class="cmdk-qa-lbl">${escapeHtml(a.label)}</span></button>`)
+              .map((a, k) => `<button type="button" class="cmdk-qa-row${subFocus('act', k)}" data-idx="${i}" ${chbAttrs('cmdkAct', i, k)}><span class="cmdk-qa-ic">${a.icon || cmdkActIcon('hub')}</span><span class="cmdk-qa-lbl">${escapeHtml(a.label)}</span></button>`)
               .join('')}</div>`
         : '';
     // Help topics expand their numbered steps when selected (the Top Hit is
@@ -6780,6 +6780,12 @@ function cmdkSelSubItems() {
     const actLabels = Array.isArray(it.actions) && it.actions.length ? new Set(it.actions.map((a) => (a.label || '').toLowerCase())) : null;
     return cmdkRowSubItems(it, actLabels);
 }
+// The delegation layer can't put two different data-pass values on one element,
+// and the cmdk input needs value→cmdkSearch (input) AND event→cmdkKey (keydown).
+// So keydown routes through a REGISTERED action (which receives (el, event) and
+// ignores data-pass) instead of the data-pass="event" window path — restoring
+// arrow/Home/End/Enter keyboard navigation on the search page.
+try { chbAct('cmdkKey', function (el, ev) { cmdkKey(ev); }); } catch (e) {}
 function cmdkKey(e) {
     if (e.key === 'ArrowDown') {
         e.preventDefault();
