@@ -166,9 +166,10 @@ function http(&$jar, $method, $path, $body = null)
         $opts['http']['header'] .= "\r\nContent-Type: application/json";
         $opts['http']['content'] = json_encode($body);
     }
+    $http_response_header = []; // overwritten by the fetch; predeclared for the no-request failure path
     $raw = @file_get_contents($BASE . $path, false, stream_context_create($opts));
     $code = 0;
-    foreach ($http_response_header ?? [] as $h) {
+    foreach ($http_response_header as $h) {
         if (preg_match('#^HTTP/\S+ (\d+)#', $h, $m)) {
             $code = (int) $m[1];
         }
@@ -254,6 +255,12 @@ it_check('booking row shows deposit £100', $row && ($row['payment'] ?? '') === 
 $r = http($admin, 'POST', '/bookings.php', ['action' => 'history', 'id' => $bookingId]);
 $hist = $r['json']['events'] ?? [];
 it_check('booking history includes the payment event', (bool) array_filter($hist, fn($h) => strpos((string) ($h['action'] ?? ''), 'payment') !== false), 'entries=' . count($hist) . ' body=' . substr($r['raw'], 0, 160));
+
+// ---- 8. Declarative routing (route_actions via customers.php) -------------
+echo "\n== 7. customers.php (route_actions exemplar) ==\n";
+$r = http($admin, 'POST', '/customers.php', ['action' => 'directory', 'q' => 'ivy']);
+it_check('directory action answers (single-stay guest → no unified row yet)', $r['code'] === 200 && is_array($r['json']['customers'] ?? null), $r['raw']);
+it_check('unknown action → 400 (route_actions catch-all)', http($admin, 'POST', '/customers.php', ['action' => 'nope'])['code'] === 400);
 
 echo "\n== Summary ==\n";
 if ($fail) {
