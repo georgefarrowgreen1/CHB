@@ -761,7 +761,10 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   PHPStan runs at **level 2** (a ratchet: regenerate `phpstan-baseline.neon` only
   for a level raise, never to bury an error you introduced). CI PHP is **pinned**
   (8.3, checks + integration jobs) — bump it together with the IONOS host, never
-  let it float with the runner image.
+  let it float with the runner image. **`perf-budget.js`** gates the gzipped size
+  of every shipped asset against `size-budget.json` — raising a budget is allowed
+  but must be deliberate, in the same PR, with the trade named; lower budgets when
+  you shrink an asset to lock the win in.
   `deploy.yml` SFTP-deploys `main` to IONOS (never deletes remote files; preserves
   `config.php` + `uploads/`).
 
