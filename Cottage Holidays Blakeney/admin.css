@@ -442,11 +442,24 @@
   letter-spacing: 0.04em;
   color: var(--text-light);
   white-space: nowrap;
-}.tl-day.is-wknd {
-  background: rgba(255, 255, 255, 0.025);
+}/* Weekend columns carry a REAL tint (the old 0.025 white-alpha was invisible,
+   and did nothing on the light theme) — Fri→Mon is what a holiday-let owner
+   scans for. Ink-tinted on light, lifted white on dark. */
+.tl-day.is-wknd {
+  background: rgba(255, 255, 255, 0.055);
+}body.light-mode .tl-day.is-wknd {
+  background: rgba(27, 42, 52, 0.055);
 }.tl-day.is-today {
   color: var(--accent);
   font-weight: 700;
+}/* Month boundary: a firmer rule down the whole column where a month turns, so
+   mid-scroll the turn is visible, not just labelled. */
+.tl-day.is-mstart,
+.tl-cell.is-mstart {
+  border-left: 2px solid rgba(255, 255, 255, 0.16);
+}body.light-mode .tl-day.is-mstart,
+body.light-mode .tl-cell.is-mstart {
+  border-left-color: rgba(27, 42, 52, 0.2);
 }.tl-cell {
   grid-row: 1;
   height: 100%;
@@ -454,9 +467,27 @@
   border-top: 1px solid rgba(255, 255, 255, 0.04);
   cursor: pointer;
 }.tl-cell.is-wknd {
-  background: rgba(255, 255, 255, 0.025);
+  background: rgba(255, 255, 255, 0.055);
+}body.light-mode .tl-cell.is-wknd {
+  background: rgba(27, 42, 52, 0.055);
 }.tl-cell.is-today {
   background: rgba(199, 154, 100, 0.09); /* a whisper of accent anchors today down every lane */
+}/* Stay length riding a wide-enough bar ("Bob · 3n"). */
+.tl-bar .tl-n {
+  font-style: normal;
+  font-weight: 400;
+  font-size: 0.64rem;
+  opacity: 0.75;
+  margin-left: 4px;
+  white-space: nowrap;
+}/* Compact zoom: narrower day columns to plan whole months at a glance. The
+   day-of-week letters go (no room), dates + bars stay readable. */
+.tl-wrap.tl-compact {
+  --tl-day-w: 26px;
+}.tl-wrap.tl-compact .tl-day i {
+  display: none;
+}.tl-wrap.tl-compact .tl-day {
+  font-size: 0.6rem;
 }
 /* Live "now" playhead: a thin accent line through today that advances with the
    clock (positioned in JS by tlPlaceNowLine), so by evening it reaches today's
