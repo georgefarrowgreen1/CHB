@@ -6593,7 +6593,7 @@ body.light-mode .feed-dot-bad {
   letter-spacing: 0.02em;
 }
 .avail-chip.now {
-  color: #7fd68a;
+  color: var(--ok-text);
 }
 .avail-chip .dot {
   width: 6px;
