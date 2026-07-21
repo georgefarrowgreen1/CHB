@@ -1875,7 +1875,11 @@ a.card {
   letter-spacing: 1px;
   cursor: pointer;
   display: inline-block;
-  margin-bottom: 20px;
+  /* Padded hit area: this is the ONLY back control on every drilled Manage
+     screen — bare text was a 23px tap target on phones. Visual position is
+     unchanged (padding replaces most of the old 20px margin). */
+  padding: 10px 14px 10px 0;
+  margin-bottom: 10px;
 }
 .back-link:hover {
   color: var(--text-light);
@@ -6097,10 +6101,12 @@ body.light-mode .feed-dot-bad {
   background: var(--text-light);
   color: var(--dark-grey);
 }
-.btn-decline {
+.btn-decline,
+.btn-delete {
   border-color: rgba(229, 57, 53, 0.5);
 }
-.btn-decline:hover {
+.btn-decline:hover,
+.btn-delete:hover {
   background: var(--danger);
   border-color: var(--danger);
   filter: brightness(0.92); /* the deeper press the old hand-picked red gave */
@@ -8967,8 +8973,11 @@ body.light-mode .datepicker-pop {
 
 
 /* Settings → Website content: image rows */
-/* Settings index: small section headers that group related folders. */
-.settings-index .settings-section-label {
+/* Settings index: small section headers that group related folders. Also used
+   INSIDE drill-down panels (.settings-sec — e.g. Manage → Pricing / Search
+   learning inject the same class), so the caps style must apply there too. */
+.settings-index .settings-section-label,
+.settings-sec .settings-section-label {
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 1.3px;
@@ -9026,6 +9035,17 @@ body.light-mode .datepicker-pop {
   gap: 6px;
   padding: 4px 0;
   -webkit-tap-highlight-color: transparent;
+}
+/* The mid-light accent fails contrast on the light theme (~2.9:1) — these
+   summaries are interactive text, so use the dark ink there. */
+body.light-mode .help-disclosure > summary {
+  color: var(--accent-ink);
+}
+/* The Terms modal reuses .toast-close for its header ✕ — as a bare icon that
+   was a ~19px tap target. Pad it into a real one (icon stays the same size). */
+.terms-modal-head .toast-close {
+  padding: 10px;
+  margin: -6px -6px 0 0;
 }
 .help-disclosure > summary::-webkit-details-marker {
   display: none;

@@ -558,6 +558,35 @@
   text-transform: uppercase;
   color: var(--accent);
   white-space: nowrap;
+}/* Manage → Pricing reuses .ny-row: there the sub carries the DECISION copy
+   (dates, % off, one-tap instructions) — it must wrap, not ellipsise to one
+   line like the Today strip's glanceable rows. */
+#pricing-body .ny-sub {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  line-height: 1.45;
+}/* Accent-coloured action text (OFFER ›, RATES ›…) is fine on dark glass but
+   the mid-light accent is ~2.9:1 on the light theme — use the dark ink there. */
+body.light-mode .ny-act {
+  color: var(--accent-ink);
+}/* Private lead-rating stars (Reviews → guest ratings): token-driven and with a
+   real tap target — they were bespoke 21px buttons with hardcoded hex colours
+   that vanished on the light theme. */
+.lead-star {
+  font-size: 19px;
+  line-height: 1;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  padding: 9px 6px;
+  color: var(--text-muted);
+}
+.lead-star.on {
+  color: var(--warn-text);
+}
+.star-static {
+  color: var(--warn-text);
 }.ny-more {
   align-self: flex-start;
   margin-top: 2px;
