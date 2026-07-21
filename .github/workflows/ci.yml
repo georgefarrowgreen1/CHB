@@ -29,6 +29,17 @@ jobs:
         with:
           node-version: '20'
 
+      # PIN PHP: ubuntu-latest's default PHP jumps whenever GitHub rolls the
+      # runner image — tests would silently start running on a version the
+      # IONOS host doesn't. Keep this pinned to the host's PHP major.minor
+      # (check Manage → System diagnostics) and bump both together.
+      - name: Set up PHP 8.3 (pinned to the production host)
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_mysql, mysqli, gd, curl
+          coverage: none
+
       - name: PHP syntax check (php -l on every .php)
         run: |
           set -e
@@ -98,6 +109,14 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-guestreg.php
 
+      # Auth posture: every web-reachable .php declares its guard (admin /
+      # guest / cron / token / webhook / rate-limited / public-with-reason /
+      # lib / dev) and the gate verifies the guard call is actually present —
+      # a new endpoint with no auth line, or an edit that strips one, fails.
+      - name: Endpoint auth-posture gate
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-auth-posture.php
+
       # Content-key classification: every content-table key written by server
       # code must be classified internal/private (db.php) or explicitly public,
       # or the public content GET serves it to anonymous visitors (the
@@ -161,6 +180,19 @@ jobs:
           restore-keys: |
             phpstan-2.2.5-
 
+      # TEMPORARY (remove after one run): regenerate the baseline for the
+      # level-1 → 2 raise and print it to the log (gzip+base64) so it can be
+      # committed — this sandbox can't download the phar to generate it locally.
+      - name: TEMP — dump level-2 baseline
+        working-directory: "Cottage Holidays Blakeney"
+        run: |
+          [ -s /tmp/phpstan.phar ] || curl -sSL https://github.com/phpstan/phpstan/releases/download/2.2.5/phpstan.phar -o /tmp/phpstan.phar
+          php /tmp/phpstan.phar analyse -c phpstan.neon.dist --no-progress --generate-baseline=phpstan-baseline.neon || true
+          echo "== BASELINE-B64-BEGIN =="
+          gzip -c phpstan-baseline.neon | base64 -w0
+          echo ""
+          echo "== BASELINE-B64-END =="
+
       - name: PHP static analysis (PHPStan)
         working-directory: "Cottage Holidays Blakeney"
         run: |
@@ -179,6 +211,14 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+
+      # Same PHP pin as the checks job (see the comment there).
+      - name: Set up PHP 8.3 (pinned to the production host)
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          extensions: mbstring, pdo_mysql, mysqli, gd, curl
+          coverage: none
 
       - name: Start MySQL (preinstalled on the runner)
         run: |

@@ -7,7 +7,13 @@
 includes:
     - phpstan-baseline.neon
 parameters:
-    level: 1
+    # Level RATCHET: raised 1 → 2 (dead code, invalid method calls on known
+    # types, always-true/false conditions). The baseline accepts the findings
+    # that predate the raise; NEW code must be clean at level 2. Raise further
+    # the same way: bump the level, regenerate the baseline in the same PR
+    # (php phpstan.phar analyse --generate-baseline=phpstan-baseline.neon),
+    # and never baseline an error you introduced.
+    level: 2
     # Result cache lives in the workspace so CI can persist it between runs.
     tmpDir: .phpstan-cache
     paths:
