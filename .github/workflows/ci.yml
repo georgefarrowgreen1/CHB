@@ -159,6 +159,28 @@ jobs:
           [ -s /tmp/phpstan.phar ] || curl -sSL https://github.com/phpstan/phpstan/releases/download/2.2.5/phpstan.phar -o /tmp/phpstan.phar
           php /tmp/phpstan.phar analyse -c phpstan.neon.dist --no-progress --error-format=table
 
+  # The one suite that exercises the REAL stack: a fresh MySQL database,
+  # schema.sql + every migration applied by migrate.php over HTTP, then the
+  # actual JSON endpoints (admin session + CSRF, cottage creation, a public
+  # enquiry approved into a booking with a locked price snapshot, a recorded
+  # payment) served by php -S. Catches migration-ordering/SQL bugs that only
+  # appear on a fresh database and endpoint auth/money regressions that
+  # pure-function tests can't see. Uses the runner's preinstalled MySQL.
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start MySQL (preinstalled on the runner)
+        run: |
+          sudo systemctl start mysql
+          mysql -h 127.0.0.1 -u root -proot -e "SELECT VERSION();"
+
+      - name: Real-stack integration test (fresh DB → migrate → live endpoints)
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-integration.php
+
   # Real-browser tests, split into PARALLEL jobs so the wall-clock is the
   # slowest single job rather than the sum. Plain ubuntu-latest runners (the
   # Playwright container image hung on this repo's runners) with the browser
