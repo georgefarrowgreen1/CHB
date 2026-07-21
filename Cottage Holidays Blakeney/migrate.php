@@ -175,6 +175,7 @@ function is_idempotent_error($msg)
 }
 
 $report = [];
+$pending = [];
 foreach ($files as $path) {
     $name = basename($path);
     if (isset($applied[$name])) {
@@ -188,40 +189,62 @@ foreach ($files as $path) {
         $report[] = ['file' => $name, 'status' => 'baselined (not run)'];
         continue;
     }
+    $pending[] = $path;
+}
 
-    $hardError = null;
-    $ran = 0;
-    $skipped = 0;
-    foreach (split_sql($path) as $stmt) {
-        try {
-            db()->exec($stmt);
-            $ran++;
-        } catch (\Throwable $e) {
-            if (is_idempotent_error($e->getMessage())) {
-                $skipped++;
-            } else {
-                $hardError = $e->getMessage();
-                break;
+// Apply in rounds: a file that hard-errors is retried after the others, and the
+// rounds repeat while they make progress. Some LEGACY files depend on a file
+// that sorts after them — measured on a fresh database, migration-analytics-v2
+// ALTERs the pageviews table that migration-pageviews.sql (later in byte order)
+// creates — so a single alphabetical pass can never bring an empty database up.
+// Production databases never hit this (they applied each file as it shipped);
+// fresh installs, staging and the CI integration DB do. Numeric migrations
+// (migration-NNN-*) can't need this — they always run after all legacy files.
+$errored = [];
+do {
+    $progress = false;
+    $errored = [];
+    foreach ($pending as $path) {
+        $name = basename($path);
+        $hardError = null;
+        $ran = 0;
+        $skipped = 0;
+        foreach (split_sql($path) as $stmt) {
+            try {
+                db()->exec($stmt);
+                $ran++;
+            } catch (\Throwable $e) {
+                if (is_idempotent_error($e->getMessage())) {
+                    $skipped++;
+                } else {
+                    $hardError = $e->getMessage();
+                    break;
+                }
             }
         }
+        if ($hardError) {
+            // Not recorded — retried next round; already-run statements are idempotent.
+            $errored[$path] = ['file' => $name, 'status' => 'ERROR', 'ran' => $ran, 'error' => $hardError];
+            continue;
+        }
+        db()
+            ->prepare(
+                'INSERT INTO schema_migrations (filename, applied_at) VALUES (?, NOW())
+                       ON DUPLICATE KEY UPDATE applied_at = NOW()',
+            )
+            ->execute([$name]);
+        $report[] = [
+            'file' => $name,
+            'status' => $force ? 're-applied' : 'applied',
+            'statements_run' => $ran,
+            'already_present' => $skipped,
+        ];
+        $progress = true;
     }
-    if ($hardError) {
-        // Not recorded — fix and re-run; already-run statements are idempotent.
-        $report[] = ['file' => $name, 'status' => 'ERROR', 'ran' => $ran, 'error' => $hardError];
-        continue;
-    }
-    db()
-        ->prepare(
-            'INSERT INTO schema_migrations (filename, applied_at) VALUES (?, NOW())
-                   ON DUPLICATE KEY UPDATE applied_at = NOW()',
-        )
-        ->execute([$name]);
-    $report[] = [
-        'file' => $name,
-        'status' => $force ? 're-applied' : 'applied',
-        'statements_run' => $ran,
-        'already_present' => $skipped,
-    ];
+    $pending = array_keys($errored);
+} while ($pending && $progress);
+foreach ($errored as $row) {
+    $report[] = $row;
 }
 
 $appliedNow = array_filter($report, fn($r) => in_array($r['status'] ?? '', ['applied', 're-applied'], true));
