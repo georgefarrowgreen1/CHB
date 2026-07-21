@@ -69,6 +69,7 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
       if (/[?&]year=\d/.test(url)) return json({
         year: 2026, years: [2026, 2025], total: 656.20, held_deposits: 0,
         card_fees: 9.80, fee_days: [{ date: '2026-07-15', fee: 9.80 }],
+        kept_deposits: 50.00, kept_days: [{ date: '2026-08-15', amount: 50.00 }],
         count: 1, by_property: { '21a': 656.20 },
         payments: [{ id: 1, name: 'Fee Guest', prop_key: '21a', property_name: '21A Westgate', payment_method: 'card', payment_date: '2026-07-15', received: 656.20, income_part: 656.20, held_part: 0 }],
         undated: { count: 0, total: 0, held: 0 },
@@ -143,16 +144,26 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     return {
       fee: num(/Card processing fees− £([\d.]+)/),
       income: num(/Rental income£([\d.]+)/),
+      kept: num(/Damage deposits kept£([\d.]+)/),
       expenses: num(/Expenses(?:\s*\(\d+\))?− £([\d.]+)/),
-      netHead: num(/Net profit[^£]*£([\d.]+)/),
+      netHead: num(/Net (?:profit|loss)[^£]*£([\d.]+)/),
       note: /deducted automatically from the payments ledger/.test(txt),
       q2: q2 ? { inc: parseFloat(q2[1]), costs: parseFloat(q2[2]), net: parseFloat(q2[3]) } : null,
+      headClass: (document.querySelector('#accounts-content .accounts-stat.headline .value') || {}).className || '',
+      headLabel: (document.querySelector('#accounts-content .accounts-stat.headline .label') || {}).textContent || '',
+      warnColor: (() => { const el = document.querySelector('#accounts-content .accounts-stat.headline .value'); return el ? getComputedStyle(el).color : ''; })(),
     };
   });
+  // #13: a PROFIT reads os-good (a loss would flip to os-warn/danger); the class
+  // must actually resolve to a colour, not fall through to the old raw-green rule.
+  ok(/os-good/.test(feeChk.headClass) && /Net profit/.test(feeChk.headLabel), `profit headline is os-good + labelled 'Net profit' (${feeChk.headClass.trim()})`);
   ok(feeChk.fee === 9.8 && feeChk.income === 656.2, `fee line renders as a deduction (income £${feeChk.income}, fees £${feeChk.fee})`);
-  ok(feeChk.netHead != null && Math.abs(feeChk.netHead - (feeChk.income - feeChk.fee - (feeChk.expenses || 0))) < 0.005, `net profit = income − fees − expenses (£${feeChk.netHead})`);
+  ok(feeChk.kept === 50, `kept damage deposit shows as income (£${feeChk.kept})`);
+  // Net = rental + kept − fees − expenses (656.20 + 50 − 9.80 − 0 = 696.40).
+  ok(feeChk.netHead != null && Math.abs(feeChk.netHead - (feeChk.income + (feeChk.kept || 0) - feeChk.fee - (feeChk.expenses || 0))) < 0.005, `net = income + kept − fees − expenses (£${feeChk.netHead})`);
   ok(feeChk.note, 'the note explains fees are deducted automatically');
-  ok(feeChk.q2 && feeChk.q2.inc === 656.2 && feeChk.q2.costs >= 9.8 && Math.abs(feeChk.q2.net - (feeChk.q2.inc - feeChk.q2.costs)) < 0.005, `Q2 quarterly costs include the card fee (${JSON.stringify(feeChk.q2)})`);
+  // Q2 income now carries both the £656.20 rental and the £50 kept deposit.
+  ok(feeChk.q2 && Math.abs(feeChk.q2.inc - 706.2) < 0.005 && feeChk.q2.costs >= 9.8 && Math.abs(feeChk.q2.net - (feeChk.q2.inc - feeChk.q2.costs)) < 0.005, `Q2 quarterly income includes kept deposit + costs the fee (${JSON.stringify(feeChk.q2)})`);
   await page.evaluate(() => accountsShowIndex());
   await page.waitForTimeout(250);
   await secCheck('expenses', /boiler service|expense/i, 'Expenses (seeded row listed)');
