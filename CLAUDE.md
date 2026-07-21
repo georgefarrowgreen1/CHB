@@ -748,12 +748,20 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   overflow, no content cut off, key content rendered — on the public views at
   390/768/1280 AND the six back-office screens at phone width; screenshots
   uploaded as the `layout-shots` CI artifact) on each PR — merge only on green.
-  Plus three convention gates: `check-versions.js` (changed cached asset → bumped
+  Plus the convention gates: `check-versions.js` (changed cached asset → bumped
   version, vs the PR base — `node bump.js <stamp>` satisfies it), the migration
-  naming rule (smoke-test §6c-iii), and **`typecheck.js`** — a tsc `--checkJs`
+  naming rule (smoke-test §6c-iii), **`typecheck.js`** — a tsc `--checkJs`
   RATCHET against `tsc-budget.json` (pinned typescript; the per-group error count
   may only fall — lower the budget in the same PR when you fix errors, never raise
-  one to get green; no build step is being introduced, it's a linter).
+  one to get green; no build step is being introduced, it's a linter),
+  **`test-auth-posture.php`** (every web-reachable .php is registered with its
+  auth posture — admin/guest/cron/token/webhook/rate-limited/public-with-reason/
+  lib/dev — and the guard call is verified present; register new endpoints there),
+  and **`test-content-keys.php`** (server-written content keys must be classified).
+  PHPStan runs at **level 2** (a ratchet: regenerate `phpstan-baseline.neon` only
+  for a level raise, never to bury an error you introduced). CI PHP is **pinned**
+  (8.3, checks + integration jobs) — bump it together with the IONOS host, never
+  let it float with the runner image.
   `deploy.yml` SFTP-deploys `main` to IONOS (never deletes remote files; preserves
   `config.php` + `uploads/`).
 

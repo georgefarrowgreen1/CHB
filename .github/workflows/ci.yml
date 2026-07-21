@@ -180,19 +180,6 @@ jobs:
           restore-keys: |
             phpstan-2.2.5-
 
-      # TEMPORARY (remove after one run): regenerate the baseline for the
-      # level-1 → 2 raise and print it to the log (gzip+base64) so it can be
-      # committed — this sandbox can't download the phar to generate it locally.
-      - name: TEMP — dump level-2 baseline
-        working-directory: "Cottage Holidays Blakeney"
-        run: |
-          [ -s /tmp/phpstan.phar ] || curl -sSL https://github.com/phpstan/phpstan/releases/download/2.2.5/phpstan.phar -o /tmp/phpstan.phar
-          php /tmp/phpstan.phar analyse -c phpstan.neon.dist --no-progress --generate-baseline=phpstan-baseline.neon || true
-          echo "== BASELINE-B64-BEGIN =="
-          gzip -c phpstan-baseline.neon | base64 -w0
-          echo ""
-          echo "== BASELINE-B64-END =="
-
       - name: PHP static analysis (PHPStan)
         working-directory: "Cottage Holidays Blakeney"
         run: |
