@@ -142,12 +142,7 @@ if ($total <= 0) {
 }
 $total = round($total, 2);
 
-$sum = db()->prepare("SELECT
-        COALESCE(SUM(CASE WHEN kind IN ('deposit','balance') AND status IN ('COMPLETED','APPROVED') THEN amount ELSE 0 END),0)
-      - COALESCE(SUM(CASE WHEN kind = 'refund' AND (status IS NULL OR status NOT IN ('FAILED','REJECTED')) THEN amount ELSE 0 END),0) AS net
-    FROM payments WHERE booking_id = ?");
-$sum->execute([$bookingId]);
-$paid = round(max(0, (float) $sum->fetchColumn()), 2);
+$paid = booking_ledger_net($bookingId);
 $paid = min($total > 0 ? $total : $paid, $paid);
 
 // GUARD: the webhook only ever RAISES deposit_paid (a new / newly-settled card

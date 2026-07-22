@@ -222,12 +222,7 @@ if ($action === 'charge') {
     $bookingPaid = round((float) ($fresh->fetchColumn() ?: 0), 2);
     $ledgerPaid = 0.0;
     try {
-        $lp = db()->prepare("SELECT
-                COALESCE(SUM(CASE WHEN kind IN ('deposit','balance') AND status IN ('COMPLETED','APPROVED') THEN amount ELSE 0 END),0)
-              - COALESCE(SUM(CASE WHEN kind = 'refund' AND (status IS NULL OR status NOT IN ('FAILED','REJECTED')) THEN amount ELSE 0 END),0)
-            FROM payments WHERE booking_id = ?");
-        $lp->execute([$bookingId]);
-        $ledgerPaid = round(max(0, (float) $lp->fetchColumn()), 2);
+        $ledgerPaid = booking_ledger_net($bookingId);
     } catch (\Throwable $e) {
         // payments table not migrated — fall back to the bookings figure
     }

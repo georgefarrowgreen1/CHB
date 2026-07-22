@@ -95,10 +95,7 @@ foreach ($bookings as $b) {
     // already rental-only in the current model, so that old formula double-removed
     // the deposit: it under-reported taxable rental income by the deposit amount and
     // invented a phantom "held" deposit for every fully-paid modern booking.
-    $rentalPrice = (float) ($b['agreed_nightly'] ?? 0) + (float) ($b['agreed_txn_fee'] ?? 0);
-    if ($b['price_override'] !== null && $b['price_override'] !== '') {
-        $rentalPrice = max($rentalPrice, (float) $b['price_override']);
-    }
+    $rentalPrice = booking_rental_price($b); // shared derivation (db.php)
     // Legacy rows with no price snapshot: we can't split out a deposit we have no
     // figure for, so treat everything received as income (never a phantom deposit).
     if ($rentalPrice <= 0) {
