@@ -191,6 +191,20 @@ else {
     const gaps3 = fg([{ start: td, end: plus(3) }, { start: plus(5), end: plus(9) }], 14, 3);
     check('freeGaps: 2-night hole skipped at minNights 3', gaps3.length > 0 && gaps3[0].start === plus(9));
 }
+// dpCheckinFits: a free check-in night must have minNights of consecutive free
+// nights, else the picker blocks it out (a 1-night hole can't start a 2-night stay).
+const fits = get('dpCheckinFits');
+if (typeof fits !== 'function') { fail('dpCheckinFits not defined'); }
+else {
+    // Bookings 15-17 (nights 15,16) and 18-20 (nights 18,19) leave night 17 as a lone gap.
+    // activeFrontProperty / propertyAvailability are lexical lets — set inside the context.
+    vm.runInContext(`activeFrontProperty = '21a'; propertyAvailability = { '21a': [{ start: '2026-07-15', end: '2026-07-17' }, { start: '2026-07-18', end: '2026-07-20' }] };`, ctx);
+    const at = (d, n) => fits(new Date(d), n);
+    check('dpCheckinFits: lone 1-night gap fails minNights 2 (blocked)', at('2026-07-17T00:00:00', 2) === false);
+    check('dpCheckinFits: same gap is fine at minNights 1', at('2026-07-17T00:00:00', 1) === true);
+    check('dpCheckinFits: an open run passes minNights 2', at('2026-07-20T00:00:00', 2) === true);
+    check('dpCheckinFits: a booked night fails', at('2026-07-16T00:00:00', 2) === false);
+}
 
 console.log('\n== 3. UK postcode validation ==');
 const hp = get('hasUkPostcode');
