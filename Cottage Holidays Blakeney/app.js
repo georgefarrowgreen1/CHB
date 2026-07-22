@@ -180,13 +180,6 @@ chbAct('lightboxNav', function (el, event) {
     event.stopPropagation();
     if (typeof lightboxNav === 'function') lightboxNav(chbArgVal(el.dataset.arg));
 });
-// Resume-enquiry dismiss: stop propagation, then dismiss (click + Enter/Space).
-chbAct('resumeDismiss', function (el, event) {
-    if (event.type === 'keydown' && !(event.key === 'Enter' || event.key === ' ')) return;
-    event.preventDefault();
-    event.stopPropagation();
-    if (typeof enquiryResumeDismiss === 'function') enquiryResumeDismiss();
-});
 // Enter-to-submit (no Space): the old `if(event.key==='Enter') fn()` inputs.
 chbAct('enterCall', function (el, event) {
     if (event.key === 'Enter') {
@@ -6287,9 +6280,6 @@ async function loadRates(pre) {
         try {
             renderGuestWords();
         } catch (e) {}
-        try {
-            enquiryResumeShow();
-        } catch (e) {}
     } catch (e) {
         /* keep defaults if the API is unavailable */
     }
@@ -8619,60 +8609,6 @@ function enquireDraftClear() {
     clearTimeout(__enqDraftTimer);
     clearTimeout(__enqSyncTimer);
     __enqSyncedSig = '';
-    enquiryResumeHide();
-}
-function enquiryResumeHide() {
-    const c = document.getElementById('enquiry-resume');
-    if (c) c.style.display = 'none';
-}
-function enquiryResumeDismiss() {
-    enquireDraftClear();
-}
-// Show the "pick up where you left off" chip on return visits (public only).
-function enquiryResumeShow() {
-    if (document.body.classList.contains('owner-mode')) return;
-    const chip = document.getElementById('enquiry-resume');
-    if (!chip) return;
-    const d = enquireDraftGet();
-    if (!d || (!d.email && !d.checkIn && !d.name)) {
-        chip.style.display = 'none';
-        return;
-    }
-    const nm = (propertyMeta[d.prop] && propertyMeta[d.prop].name) || '';
-    const t = document.getElementById('enquiry-resume-text');
-    if (t) t.textContent = 'Resume your enquiry' + (nm ? ' — ' + nm : '');
-    chip.style.display = '';
-}
-function enquiryResumeOpen() {
-    const d = enquireDraftGet();
-    enquiryResumeHide();
-    if (!d) return;
-    const key =
-        d.prop && propertyMeta[d.prop] && !propertyMeta[d.prop].archived
-            ? d.prop
-            : liveCottageKeys()[0] || '';
-    if (!key) return;
-    try {
-        openProperty(key);
-    } catch (e) {}
-    openEnquireModal();
-    // Restore AFTER the modal's own reset.
-    const set = (id, v) => {
-        const el = document.getElementById(id);
-        if (el && v) el.value = v;
-    };
-    ['name', 'email', 'phone', 'postcode', 'address', 'message'].forEach((f) =>
-        set('enq-' + f, d[f]),
-    );
-    set('enq-checkin', d.checkIn);
-    set('enq-checkout', d.checkOut);
-    if (d.adults) set('enq-adults', d.adults);
-    if (d.children) set('enq-children', d.children);
-    try {
-        applyOccupancyToForm(key);
-        refreshDateTrigger();
-        updateEnquiryPrice();
-    } catch (e) {}
 }
 // Autosave while the visitor types anywhere in the enquiry form. Debounced so the
 // synchronous localStorage write doesn't run on every keystroke (that can add
@@ -8723,7 +8659,6 @@ function openEnquireModal() {
     const m = document.getElementById('enquire-modal');
     overlayHistPush(); // Back closes this overlay
     if (m) m.classList.add('open');
-    enquiryResumeHide();
 }
 function closeEnquireModal() {
     const m = document.getElementById('enquire-modal');
@@ -13085,7 +13020,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'resumefix1';
+    const BUILD = 'noresume1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
