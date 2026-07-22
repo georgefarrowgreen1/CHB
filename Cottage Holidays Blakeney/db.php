@@ -978,6 +978,41 @@ function square_webhook_signature_ok($url, $rawBody, $signingKey, $sig)
     $expected = base64_encode(hash_hmac('sha256', $url . $rawBody, $signingKey, true));
     return hash_equals($expected, (string) $sig);
 }
+// ---- Shared money primitives (ONE definition; every caller agrees) ----------
+// The net card money a booking has received: settled charges MINUS refunds that
+// haven't failed. This exact SQL used to live copy-pasted in reconcile_booking_
+// payment(), the refund cap, pay.php and square-webhook.php — the audit's
+// FAILED-refund fix had to be applied to all four by hand, and a fifth copy would
+// have silently diverged. Now there is one. Callers apply their own cap/floor
+// (min at $total, floor at prior−refund) on top; this returns the raw net ≥ 0,
+// rounded to 2dp. Throws on a DB error so a caller with a fallback can catch it —
+// matching the original inline behaviour (reconcile ran it bare; pay.php wrapped
+// it and fell back to the bookings figure).
+function booking_ledger_net($bookingId)
+{
+    $s = db()->prepare(
+        "SELECT COALESCE(SUM(CASE WHEN kind IN ('deposit','balance') AND status IN ('COMPLETED','APPROVED') THEN amount ELSE 0 END),0)
+              - COALESCE(SUM(CASE WHEN kind = 'refund' AND (status IS NULL OR status NOT IN ('FAILED','REJECTED')) THEN amount ELSE 0 END),0) AS net
+           FROM payments WHERE booking_id = ?",
+    );
+    $s->execute([(int) $bookingId]);
+    return round(max(0, (float) $s->fetchColumn()), 2);
+}
+
+// The RENTAL price of a booking from its agreed snapshot (nightly + txn fee, a
+// manual override raising the floor) — the figure the damages deposit sits above
+// and accounts.php attributes income up to. Duplicated in accounts.php and
+// damages_collected(); one definition keeps them from drifting. accounts.php adds
+// its own legacy "no snapshot → treat everything as income" fallback on top.
+function booking_rental_price($b)
+{
+    $rental = (float) ($b['agreed_nightly'] ?? 0) + (float) ($b['agreed_txn_fee'] ?? 0);
+    if (($b['price_override'] ?? null) !== null && $b['price_override'] !== '') {
+        $rental = max($rental, (float) $b['price_override']);
+    }
+    return $rental;
+}
+
 // Unguessable, login-free token that authorises PAYING a specific booking.
 // One-way from APP_SECRET (same idea as ical_token) — leaks nothing if seen.
 function pay_token($bookingId)

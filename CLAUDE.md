@@ -298,7 +298,12 @@ actions belong on the hubs, not new surfaces. Dates display DD/MM/YYYY everywher
 
 **Backend** — flat PHP in the same folder, each a small JSON endpoint. Helpers in
 `db.php`: `db()` (lazy PDO), `body()`, `json_out()`, `clean()`, `require_admin()`,
-`require_guest()`, `site_base_url()`, `content_value()`. Key endpoints: `auth.php`
+`require_guest()`, `site_base_url()`, `content_value()`. **Money primitives (db.php,
+ONE definition each — never re-inline them):** `booking_ledger_net($id)` = settled
+card charges − non-failed refunds (the raw net every paid/refund calc builds on;
+callers add their own cap/floor), and `booking_rental_price($b)` = agreed nightly +
+txn fee with an override floor. The FAILED-refund audit fix had to touch four copies
+of the first — consolidating removed that whole "half-fixed across copies" class. Key endpoints: `auth.php`
 (guest/admin sessions, magic link), `enquiries.php`, `pay.php` (Square),
 `pricing.php` (authoritative price model), `reviews.php`/`photos.php`/`experiences.php`
 (moderated guest UGC: GET public, `suggest`/`submit` guest, admin list/approve/reject),

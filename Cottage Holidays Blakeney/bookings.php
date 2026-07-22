@@ -266,12 +266,7 @@ function reconcile_booking_payment($bookingId, $b = null, $refundJustIssued = 0)
                 ? (float) $b['price_override']
                 : (float) $b['agreed_total'])
             : 0.0;
-    $sum = db()->prepare("SELECT
-            COALESCE(SUM(CASE WHEN kind IN ('deposit','balance') AND status IN ('COMPLETED','APPROVED') THEN amount ELSE 0 END),0)
-          - COALESCE(SUM(CASE WHEN kind = 'refund' AND (status IS NULL OR status NOT IN ('FAILED','REJECTED')) THEN amount ELSE 0 END),0) AS net
-        FROM payments WHERE booking_id = ?");
-    $sum->execute([$bookingId]);
-    $ledgerNet = round(max(0, (float) $sum->fetchColumn()), 2);
+    $ledgerNet = booking_ledger_net($bookingId);
     // The booking's recorded deposit_paid can include MANUALLY entered cash/bank
     // payments that have NO ledger rows (set_payment). Recomputing paid purely from
     // the ledger would wipe that money the moment a card refund is issued. A refund
@@ -331,10 +326,7 @@ function damages_collected($b)
     // this is deposit money genuinely sitting in the ledger. Erring low here can
     // only under-return (safe); the old `total - held` over-returned rental income
     // as a phantom deposit for every fully-paid modern booking.
-    $rental = (float) ($b['agreed_nightly'] ?? 0) + (float) ($b['agreed_txn_fee'] ?? 0);
-    if ($b['price_override'] !== null) {
-        $rental = max($rental, (float) $b['price_override']);
-    }
+    $rental = booking_rental_price($b);
     $paid = (float) ($b['deposit_paid'] ?? 0);
     return round(max(0.0, min($held, $paid - $rental)), 2);
 }
@@ -1379,13 +1371,7 @@ if ($action === 'refund') {
         $cap = round(max(0, damages_collected($b) - damages_returned($bookingId)), 2);
     } elseif ($refundKind === 'refund') {
         try {
-            $ns = db()->prepare(
-                "SELECT COALESCE(SUM(CASE WHEN kind IN('deposit','balance') AND status IN('COMPLETED','APPROVED') THEN amount ELSE 0 END),0)
-                       - COALESCE(SUM(CASE WHEN kind='refund' AND (status IS NULL OR status NOT IN ('FAILED','REJECTED')) THEN amount ELSE 0 END),0)
-                 FROM payments WHERE booking_id = ?",
-            );
-            $ns->execute([$bookingId]);
-            $cap = round(max(0, (float) $ns->fetchColumn()), 2);
+            $cap = booking_ledger_net($bookingId);
         } catch (\Throwable $e) {
             $cap = null;
         }
