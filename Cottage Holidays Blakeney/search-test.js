@@ -1436,6 +1436,14 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.chbCompute === 'funct
         const pd = ctx.cmdkParseDates('book smith 1 ' + mon, t);
         check('a same-month past day parses to NEXT year, not a past date', pd && pd.from > t, JSON.stringify(pd));
     }
+    // A both-months-named same-month range must NEVER reverse across the year
+    // boundary (from <= to) — when the start day has just passed but the end
+    // hasn't, the old code rolled only the start to next year (audit finding 12).
+    const dd = d0.getDate();
+    if (dd > 1 && dd < 27) {
+        const pr = ctx.cmdkParseDates(`${dd - 1} ${mon} to ${dd + 2} ${mon}`, t);
+        check('a both-months same-month range never reverses across the year', pr && pr.from <= pr.to, JSON.stringify(pr));
+    }
     // Breadth date maths seed from the UK day (not the device clock).
     const xmas = ctx.chbCompute('days until christmas');
     check('breadth "days until christmas" answers from the UK day', !!(xmas && /\d+ days until Friday 25 December/.test(xmas.label)), xmas && xmas.label);

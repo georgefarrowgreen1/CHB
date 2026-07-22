@@ -393,9 +393,15 @@ function cmdkParseDates(q, today) {
     }
     // "15 aug to 18 aug" (month named on both sides — spans month ends too)
     if ((m = q.match(new RegExp('\\b(\\d{1,2})\\s+(' + MO + ')[a-z]*\\s*(?:-|–|to|until|till|thru)\\s*(\\d{1,2})\\s+(' + MO + ')[a-z]*\\b')))) {
-        const mi1 = monIdx(m[2]), mi2 = monIdx(m[4]);
-        const y1 = yearFor(mi1, +m[1]), y2 = mi2 < mi1 ? y1 + 1 : yearFor(mi2, +m[3]);
-        return { from: iso(new Date(y1, mi1, +m[1])), to: iso(new Date(y2, mi2, +m[3])) };
+        const mi1 = monIdx(m[2]), mi2 = monIdx(m[4]), day1 = +m[1], day3 = +m[3];
+        // Anchor the END to the START's year (+1 only when it genuinely wraps past
+        // year-end), never an independent yearFor for each side: computing y2 on its
+        // own rolled the END back to this year while yearFor pushed the START to next
+        // year (start day just gone, end day not) → a reversed cross-year range, which
+        // made the dated price command save the wrong single night.
+        const y1 = yearFor(mi1, day1);
+        const y2 = mi2 < mi1 || (mi2 === mi1 && day3 < day1) ? y1 + 1 : y1;
+        return { from: iso(new Date(y1, mi1, day1)), to: iso(new Date(y2, mi2, day3)) };
     }
     // single "12 aug" or "aug 12" → check-in only
     if ((m = q.match(new RegExp('\\b(\\d{1,2})\\s+(' + MO + ')[a-z]*\\b'))) || (m = q.match(new RegExp('\\b(' + MO + ')[a-z]*\\s+(\\d{1,2})\\b')))) {
@@ -15468,12 +15474,21 @@ async function saveSeasonGrid() {
                 prop_key: k,
                 seasons: perProp[k],
             });
-            propertySeasons[k] = perProp[k].map((s) => ({
-                label: s.label,
-                start_date: s.start,
-                end_date: s.end,
-                couple_rate: s.rate,
-            }));
+            // Store in start_date order — the server returns seasons sorted
+            // (rates.php GET / pricing.php get_seasons: ORDER BY start_date, id)
+            // and BOTH rate resolvers are first-match (coupleRateForNight /
+            // PHP), so an unsorted optimistic list made the client price an
+            // overlapping band differently from the server until the next full
+            // loadRates: the Add-Booking quote and card prices disagreed with
+            // the snapshot that bookings.php actually stored and charged.
+            propertySeasons[k] = perProp[k]
+                .map((s) => ({
+                    label: s.label,
+                    start_date: s.start,
+                    end_date: s.end,
+                    couple_rate: s.rate,
+                }))
+                .sort((a, b) => (a.start_date < b.start_date ? -1 : a.start_date > b.start_date ? 1 : 0));
         }
         renderCardPrices();
         updatePropPriceHeading();

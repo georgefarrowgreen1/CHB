@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 266;
+const ADMIN_BUNDLE_V = 267;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -4896,7 +4896,11 @@ async function loadContent(pre) {
     });
 
     // Merge per-property booking rules (times, min nights, arrival days)
-    Object.keys(defaultRates).forEach((propKey) => {
+    // EVERY cottage's saved rules, not just the three hardcoded defaultRates keys —
+    // an owner-added cottage's rules-<prop> (min/max nights, arrival days, times)
+    // was never merged, so the client offered/priced stays its own saved rules (and
+    // the server) then rejected. Union so the original three are always covered too.
+    [...new Set([...Object.keys(defaultRates), ...Object.keys(propertyRates)])].forEach((propKey) => {
         const r = siteContent['rules-' + propKey];
         if (r && typeof r === 'object') {
             const target = propertyRates[propKey] || (propertyRates[propKey] = {});
@@ -6219,7 +6223,11 @@ async function loadRates(pre) {
                 damagesDeposit: parseFloat(p.booking_fee),
                 transactionPct: parseFloat(p.transaction_pct),
                 weekendPct: parseFloat(p.weekend_pct) || 0,
-                weekendDays: p.weekend_days || '5,6',
+                // An EMPTY string means "no weekend days" — a supported semantic the
+                // PHP engine honours (weekend_pct_for_night). `|| '5,6'` turned '' into
+                // the Fri/Sat default, so a cottage with an uplift but no weekend days
+                // over-quoted every Fri/Sat night vs what the server snapshots/charges.
+                weekendDays: p.weekend_days != null ? String(p.weekend_days) : '5,6',
                 lastminPct: parseFloat(p.lastmin_pct) || 0,
                 lastminDays: parseInt(p.lastmin_days) || 0,
                 address: p.address || '',
@@ -6227,7 +6235,11 @@ async function loadRates(pre) {
                 // defaults here so loadContent can layer any saved overrides on top.
                 checkInTime: def.checkInTime || '15:00',
                 checkOutTime: def.checkOutTime || '10:00',
-                minNights: def.minNights || 1,
+                // Default to 2 nights for an owner-added cottage (def is {} — it's not
+                // one of the three hardcoded defaultRates), matching the server default
+                // in enquiries.php; `|| 1` let the client offer/price a 1-night stay the
+                // server then rejected AFTER the guest filled the whole enquiry form.
+                minNights: def.minNights || 2,
                 maxNights: def.maxNights || 0,
                 arrivalDays: Array.isArray(def.arrivalDays) ? def.arrivalDays.slice() : [],
             };
@@ -13073,7 +13085,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'micropolish1';
+    const BUILD = 'logicfix1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
