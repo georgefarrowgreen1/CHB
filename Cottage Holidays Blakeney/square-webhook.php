@@ -144,22 +144,26 @@ $total = round($total, 2);
 
 $sum = db()->prepare("SELECT
         COALESCE(SUM(CASE WHEN kind IN ('deposit','balance') AND status IN ('COMPLETED','APPROVED') THEN amount ELSE 0 END),0)
-      - COALESCE(SUM(CASE WHEN kind = 'refund' THEN amount ELSE 0 END),0) AS net
+      - COALESCE(SUM(CASE WHEN kind = 'refund' AND (status IS NULL OR status NOT IN ('FAILED','REJECTED')) THEN amount ELSE 0 END),0) AS net
     FROM payments WHERE booking_id = ?");
 $sum->execute([$bookingId]);
 $paid = round(max(0, (float) $sum->fetchColumn()), 2);
 $paid = min($total > 0 ? $total : $paid, $paid);
 
-// GUARD: never write a LOWER figure than the booking already carries unless the
-// ledger actually contains refunds. Manually recorded payments (bank transfer)
-// have no ledger rows — without this, any webhook event matching the booking
-// (including the digits-in-reference fallback above) would wipe them to £0.
+// GUARD: the webhook only ever RAISES deposit_paid (a new / newly-settled card
+// payment). It must NEVER lower it. Reductions are owned by the synchronous
+// refund action (bookings.php `refund` → reconcile_booking_payment, which floors
+// paid at prior − thisRefund and so preserves manually-recorded bank/cash money
+// that has no ledger row) and by the dispute handler above. The old guard let a
+// LOWER figure through whenever ANY refund row existed — so a routine
+// post-refund `payment.updated` re-send (Square re-emits these on fee settlement
+// and refund attachment) recomputed the ledger-only net and wiped bank money on
+// a mixed bank+card booking to £0. The ledger genuinely can't attribute a refund
+// between card and untracked bank money, so the only safe rule is: the app owns
+// every reduction; the webhook may raise, never cut. (Equivalent to
+// reconcile_booking_payment(booking, refundJustIssued: 0).)
 if ($paid < (float) $b['deposit_paid'] - 0.001) {
-    $rq = db()->prepare("SELECT COUNT(*) FROM payments WHERE booking_id = ? AND kind = 'refund'");
-    $rq->execute([$bookingId]);
-    if ((int) $rq->fetchColumn() === 0) {
-        json_out(['ok' => true]); // ledger knows less than the booking — leave it be
-    }
+    json_out(['ok' => true]); // ledger knows less than the booking — the app owns reductions
 }
 $newStatus = $total > 0 && $paid >= $total - 0.001 ? 'paid' : ($paid > 0 ? 'deposit' : 'unpaid');
 

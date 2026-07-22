@@ -97,6 +97,20 @@ chk('lastmin breakdown: total = 164.80', approxEq($plm['total'], 164.8));
 $plmOut = price_breakdown($rateLM, 2, 0, '2026-02-01', '2026-02-03', null, [], '2026-01-01'); // 31 days out — no discount
 chk('lastmin breakdown: outside window unchanged = 200', approxEq($plmOut['nightly'], 200));
 
+// Discounted-NIGHTLY rounding parity (regression for the audit finding): a
+// last-minute × weekend nightly that sums to a .xx5 float boundary. round($x,2)
+// gives 284.34 but the JS engine's Math.round($x*100)/100 gives 284.33, so the
+// PHP nightly must scale-then-round too (it feeds perNight, txFee AND total).
+// £41/night, 15% Fri/Sat uplift, 5% last-minute within 14 days, 7 nights from a
+// Monday → raw discounted nightly 284.335 → 284.33 on both engines.
+$rateNightlyBd = [
+    'prop_key' => 'nbd', 'couple_rate' => 41, 'extra_adult_rate' => 0, 'child_rate' => 0,
+    'booking_fee' => 0, 'transaction_pct' => 3, 'weekend_pct' => 15, 'weekend_days' => '5,6',
+    'lastmin_pct' => 5, 'lastmin_days' => 14,
+];
+$pnbd = price_breakdown($rateNightlyBd, 2, 0, '2026-09-07', '2026-09-14', null, [], '2026-09-01');
+chk('discounted nightly scale-then-rounds to 284.33 (not round()\'s 284.34), matching JS', approxEq($pnbd['nightly'], 284.33));
+
 // Rounding-boundary parity: a fractional nightly whose ×3% fee lands exactly on a
 // .xx5 float boundary. round($x,2) and Math.round($x*100)/100 disagree here by 1p,
 // so this fixture pins PHP to the JS scale-then-round (guards the txFee/perNight

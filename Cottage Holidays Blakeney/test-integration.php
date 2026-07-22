@@ -120,6 +120,11 @@ foreach (
 // Never send mail or hit Square from CI, whatever the placeholder says.
 $cfg = preg_replace("/define\('MAIL_ENABLED',\s*\w+\)/", "define('MAIL_ENABLED', false)", $cfg);
 $cfg = preg_replace("/define\('SQUARE_PAYMENTS_ENABLED',\s*\w+\)/", "define('SQUARE_PAYMENTS_ENABLED', false)", $cfg);
+// A known webhook signing key + URL so §9 can sign a crafted payment.updated event.
+$WEBHOOK_KEY = 'chb-it-webhook-key-abcdef';
+$WEBHOOK_URL = $BASE . '/square-webhook.php';
+$cfg = preg_replace("/define\('SQUARE_WEBHOOK_SIGNATURE_KEY',\s*'[^']*'\)/", "define('SQUARE_WEBHOOK_SIGNATURE_KEY', '" . $WEBHOOK_KEY . "')", $cfg);
+$cfg = preg_replace("/define\('SQUARE_WEBHOOK_URL',\s*'[^']*'\)/", "define('SQUARE_WEBHOOK_URL', '" . $WEBHOOK_URL . "')", $cfg);
 file_put_contents($work . '/config.php', $cfg);
 
 // `exec` so php replaces the sh -c wrapper — proc_terminate must reach the
@@ -273,6 +278,64 @@ it_check('self-repair runs via the cron secret', $r['code'] === 200 && !empty($r
 it_check('dead resizer-cache entry pruned', !is_file($work . '/uploads/cache/gone.jpg.w640.webp'));
 it_check('live resizer-cache entry kept', is_file($work . '/uploads/cache/live.jpg.w640.webp'));
 it_check('the prune is reported as a fix', (bool) array_filter($r['json']['fixed'] ?? [], fn($f) => strpos((string) $f, 'resized image') !== false), json_encode($r['json']['fixed'] ?? []));
+
+// ---- 10. Money-integrity fixes (whole-site logic audit) -------------------
+echo "\n== 9. Money-integrity (audit fixes) ==\n";
+
+// (1) Editing a paid booking's dates must NOT fabricate money. Mark the booking
+// paid in full, then edit its dates to EXTEND it (no payment/deposit fields, as
+// the client's trim-paid-fields edit sends) — deposit_paid must stay the money
+// actually received and the status must flip to 'deposit' with the balance owed.
+$rootDb->exec("UPDATE bookings SET payment='paid', deposit_paid=309, payment_method='bank', payment_date='" . date('Y-m-d') . "' WHERE id=$bookingId");
+$newOut = date('Y-m-d', strtotime($out . ' +2 days'));
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'update', 'id' => $bookingId, 'check_in' => $in, 'check_out' => $newOut, 'adults' => 2, 'children' => 0]);
+it_check('editing a paid booking succeeds', $r['code'] === 200, $r['raw']);
+$row = $rootDb->query("SELECT payment, deposit_paid, agreed_total FROM bookings WHERE id=$bookingId")->fetch(PDO::FETCH_ASSOC);
+it_check('extending a paid booking keeps deposit_paid = money received (£309, not the new total)', $row && abs((float) $row['deposit_paid'] - 309.0) < 0.005, json_encode($row));
+it_check('extended paid booking flips to deposit (balance now owed, so it gets chased)', $row && $row['payment'] === 'deposit' && (float) $row['agreed_total'] > 309.0, json_encode($row));
+
+// (2) A FAILED refund must NOT be counted as money returned. Seed a fresh
+// booking paid £800 by card (ledger row), then a FULL £800 refund the ledger
+// later marks FAILED. The paid-net query (bookings.php) must exclude it → £800.
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Refund Tester','rt@gmail.com','$in','$out',2,0,'paid',800,800,800,0,3)");
+$rtId = (int) $rootDb->lastInsertId();
+$rootDb->exec("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id) VALUES ($rtId,'deposit',800,'COMPLETED','sq_rt_charge')");
+$rootDb->exec("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id) VALUES ($rtId,'refund',800,'FAILED','sq_rt_refund')");
+$net = (float) $rootDb->query("SELECT
+        COALESCE(SUM(CASE WHEN kind IN ('deposit','balance') AND status IN ('COMPLETED','APPROVED') THEN amount ELSE 0 END),0)
+      - COALESCE(SUM(CASE WHEN kind = 'refund' AND (status IS NULL OR status NOT IN ('FAILED','REJECTED')) THEN amount ELSE 0 END),0)
+    FROM payments WHERE booking_id = $rtId")->fetchColumn();
+it_check('a FAILED refund is not subtracted from paid (net = £800, refund retry stays possible)', abs($net - 800.0) < 0.005, 'net=' . $net);
+// A PENDING refund still counts (optimistic, unchanged behaviour).
+$rootDb->exec("UPDATE payments SET status='PENDING' WHERE square_payment_id='sq_rt_refund'");
+$net2 = (float) $rootDb->query("SELECT
+        COALESCE(SUM(CASE WHEN kind IN ('deposit','balance') AND status IN ('COMPLETED','APPROVED') THEN amount ELSE 0 END),0)
+      - COALESCE(SUM(CASE WHEN kind = 'refund' AND (status IS NULL OR status NOT IN ('FAILED','REJECTED')) THEN amount ELSE 0 END),0)
+    FROM payments WHERE booking_id = $rtId")->fetchColumn();
+it_check('a PENDING refund still reduces paid (optimistic, unchanged)', abs($net2 - 0.0) < 0.005, 'net=' . $net2);
+
+// (3) The webhook must never LOWER deposit_paid — a mixed bank+card booking with
+// a refunded card charge must survive a routine payment.updated re-send. Set up:
+// £500 bank (no ledger row) + £300 card charge, later refunded → deposit_paid
+// floored at £500. Then Square re-emits payment.updated for the card charge.
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Bank Card Mix','bcm@gmail.com','$in','$out',2,0,'deposit',500,800,800,0,3)");
+$bcmId = (int) $rootDb->lastInsertId();
+$rootDb->exec("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id) VALUES ($bcmId,'deposit',300,'COMPLETED','sq_bcm_charge')");
+$rootDb->exec("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id) VALUES ($bcmId,'refund',300,'COMPLETED','sq_bcm_refund')");
+$evt = json_encode(['type' => 'payment.updated', 'data' => ['object' => ['payment' => ['id' => 'sq_bcm_charge', 'status' => 'COMPLETED', 'reference_id' => 'CHB-' . $bcmId]]]]);
+$sig = base64_encode(hash_hmac('sha256', $WEBHOOK_URL . $evt, $WEBHOOK_KEY, true));
+$opts = ['http' => ['method' => 'POST', 'header' => "Content-Type: application/json\r\nx-square-hmacsha256-signature: $sig", 'content' => $evt, 'timeout' => 15, 'ignore_errors' => true]];
+$http_response_header = []; // predeclared; the fetch overwrites it (PHPStan: never left null)
+$whRaw = @file_get_contents($WEBHOOK_URL, false, stream_context_create($opts));
+$whCode = 0;
+foreach ($http_response_header as $h) {
+    if (preg_match('#^HTTP/\S+ (\d+)#', $h, $m)) {
+        $whCode = (int) $m[1];
+    }
+}
+it_check('signed webhook accepted (signature verifies)', $whCode === 200, 'code=' . $whCode . ' body=' . substr((string) $whRaw, 0, 120));
+$bcmRow = $rootDb->query("SELECT deposit_paid, payment FROM bookings WHERE id=$bcmId")->fetch(PDO::FETCH_ASSOC);
+it_check('webhook did NOT wipe the £500 bank money (deposit_paid still £500)', $bcmRow && abs((float) $bcmRow['deposit_paid'] - 500.0) < 0.005, json_encode($bcmRow));
 
 echo "\n== Summary ==\n";
 if ($fail) {
