@@ -268,7 +268,7 @@ function reconcile_booking_payment($bookingId, $b = null, $refundJustIssued = 0)
             : 0.0;
     $sum = db()->prepare("SELECT
             COALESCE(SUM(CASE WHEN kind IN ('deposit','balance') AND status IN ('COMPLETED','APPROVED') THEN amount ELSE 0 END),0)
-          - COALESCE(SUM(CASE WHEN kind = 'refund' THEN amount ELSE 0 END),0) AS net
+          - COALESCE(SUM(CASE WHEN kind = 'refund' AND (status IS NULL OR status NOT IN ('FAILED','REJECTED')) THEN amount ELSE 0 END),0) AS net
         FROM payments WHERE booking_id = ?");
     $sum->execute([$bookingId]);
     $ledgerNet = round(max(0, (float) $sum->fetchColumn()), 2);
@@ -342,7 +342,7 @@ function damages_returned($bookingId)
 {
     try {
         $s = db()->prepare(
-            "SELECT COALESCE(SUM(amount),0) FROM payments WHERE booking_id = ? AND kind = 'damages_return'",
+            "SELECT COALESCE(SUM(amount),0) FROM payments WHERE booking_id = ? AND kind = 'damages_return' AND (status IS NULL OR status NOT IN ('FAILED','REJECTED'))",
         );
         $s->execute([$bookingId]);
         return round((float) $s->fetchColumn(), 2);
@@ -802,12 +802,28 @@ if ($action === 'update') {
     $calcTotal = $snap ? $snap['agreed_total'] : (float) $b['agreed_total'];
     $total = $priceOverride !== null ? $priceOverride : $calcTotal;
 
-    $status = in_array($in['payment'] ?? $b['payment'], ['unpaid', 'deposit', 'paid'])
-        ? $in['payment'] ?? $b['payment']
-        : $b['payment'];
-    $dep = reconcile_deposit($status, $total, $b['deposit_paid'], $in['deposit'] ?? null);
-    if ($dep === null) {
-        json_out(['error' => 'A deposit must be more than £0 and less than the total'], 400);
+    // Money ACTUALLY received is a fact — it must never change just because the
+    // stay was re-priced. reconcile_deposit('paid', $total) returns $total, so
+    // letting it run on a stay edit rewrote deposit_paid up to the NEW total,
+    // fabricating an extension as already-paid (the hub then said "all set" and
+    // never chased the balance) — or clamped it down and erased an owed refund.
+    // So we only defer to reconcile_deposit when the owner EXPLICITLY edits the
+    // payment (a `payment` or `deposit` field in the request — the payment editor
+    // sends these; the trim-paid-fields stay edit does not). Otherwise we PRESERVE
+    // the received amount and only re-derive the status against the new total, so
+    // an extended paid booking correctly flips to 'deposit' with the balance owed.
+    $explicitPay = array_key_exists('payment', $in) || array_key_exists('deposit', $in);
+    if ($explicitPay) {
+        $status = in_array($in['payment'] ?? $b['payment'], ['unpaid', 'deposit', 'paid'])
+            ? $in['payment'] ?? $b['payment']
+            : $b['payment'];
+        $dep = reconcile_deposit($status, $total, $b['deposit_paid'], $in['deposit'] ?? null);
+        if ($dep === null) {
+            json_out(['error' => 'A deposit must be more than £0 and less than the total'], 400);
+        }
+    } else {
+        $dep = round((float) ($b['deposit_paid'] ?? 0), 2);
+        $status = $total > 0 && $dep >= $total - 0.001 ? 'paid' : ($dep > 0.001 ? 'deposit' : 'unpaid');
     }
 
     $method = $b['payment_method'];
@@ -1352,7 +1368,7 @@ if ($action === 'refund') {
         try {
             $ns = db()->prepare(
                 "SELECT COALESCE(SUM(CASE WHEN kind IN('deposit','balance') AND status IN('COMPLETED','APPROVED') THEN amount ELSE 0 END),0)
-                       - COALESCE(SUM(CASE WHEN kind='refund' THEN amount ELSE 0 END),0)
+                       - COALESCE(SUM(CASE WHEN kind='refund' AND (status IS NULL OR status NOT IN ('FAILED','REJECTED')) THEN amount ELSE 0 END),0)
                  FROM payments WHERE booking_id = ?",
             );
             $ns->execute([$bookingId]);

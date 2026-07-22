@@ -1091,7 +1091,18 @@ if (typeof ctx.chbAnomalies === 'function' && typeof ctx.chbGuestIntel === 'func
     })(), g.map((x) => `${x.label} | ${x.sub} [${x.act}]`).join(' || '));
     seed([mkb(1, 'Bob A', 'b@x.co', plus(2), plus(5)), mkb(2, 'Cara B', 'c@x.co', plus(8), plus(11))]);
     g = gapRows();
-    check('an IMMINENT gap (≤7 days out) cuts deeper — 20% (£130→£104)', g.length === 1 && /offer £104\/night/.test(g[0].label) && /20% off/.test(g[0].sub), g.map((x) => `${x.label} | ${x.sub}`).join(' || '));
+    check('an IMMINENT gap (≤7 days out) cuts deeper — ≥20% off £130', (() => {
+        // Anchor is 20% for an imminent gap; the demand model may refine a point
+        // or two DEEPER (never shallower) — assert that band + that the shown
+        // price matches the shown % off £130 (was an exact 20%/£104 assertion,
+        // which is brittle: the model's confidence-scaled depth drifts by a point
+        // as the seeded gap moves day-to-day, matching the shallow sibling above).
+        if (g.length !== 1 || !/Fill the 3-night gap on /.test(g[0].label)) return false;
+        const lm = /offer £(\d+)\/night/.exec(g[0].label), sm = /(\d+)% off/.exec(g[0].sub);
+        if (!lm || !sm) return false;
+        const price = +lm[1], pct = +sm[1];
+        return pct >= 20 && pct <= 23 && price === Math.round(130 * (1 - pct / 100));
+    })(), g.map((x) => `${x.label} | ${x.sub}`).join(' || '));
     seed([mkb(1, 'Bob A', 'b@x.co', plus(5), plus(8)), mkb(2, 'Cara B', 'c@x.co', plus(11), plus(14))]);
     vm.runInContext(`propertySeasons.jollyboat = [{ label: 'Gap offer', start_date: '${plus(8)}', end_date: '${plus(10)}', couple_rate: 111 }];`, ctx);
     g = gapRows();

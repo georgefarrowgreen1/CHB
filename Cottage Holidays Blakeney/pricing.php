@@ -108,10 +108,15 @@ function price_breakdown($rate, $adults, $children, $checkIn, $checkOut, $deposi
         $nightly += nightly_rate_for($d, $rate, $seasons) + $extrasPerNight;
     }
     // Last-minute discount on the nightly rental (never the damages deposit).
-    $nightly = round(
-        $nightly * last_minute_factor($checkIn, $today, $rate['lastmin_pct'] ?? 0, $rate['lastmin_days'] ?? 0),
-        2,
-    );
+    // Scale-then-round (×100 → round → ÷100) to stay bit-identical to the JS
+    // priceBreakdown() (app.js: Math.round(x*100)/100) — round($x, 2) diverges by
+    // 1p at exact .xx5 float boundaries, and $nightly feeds perNight, txFee AND
+    // total, so a plain round here drifts the snapshot/charge off the on-screen
+    // quote (the same fix already applied to perNight and txFee below).
+    $nightly =
+        round(
+            $nightly * last_minute_factor($checkIn, $today, $rate['lastmin_pct'] ?? 0, $rate['lastmin_days'] ?? 0) * 100,
+        ) / 100;
     // Average per-night figure (for display and the agreed snapshot).
     // Scale-then-round (×100 → round → ÷100) to stay bit-identical to the JS
     // priceBreakdown(); round($x, 2) diverges from Math.round($x*100)/100 by 1p at
