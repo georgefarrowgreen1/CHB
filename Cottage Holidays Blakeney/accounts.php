@@ -25,7 +25,7 @@ function tax_year_start($dateStr)
 // All payments actually received (a positive deposit_paid with a date).
 // agreed_total = full price the guest pays; agreed_booking_fee = the refundable
 // damages deposit portion (held, not income). agreed_rental = total − deposit.
-$rows = db()
+$bookings = db()
     ->query(
         'SELECT b.id, b.name, b.prop_key, b.deposit_paid, b.payment_method, b.payment_date,
             b.agreed_total, b.agreed_booking_fee, b.agreed_nightly, b.agreed_txn_fee, b.price_override,
@@ -35,44 +35,157 @@ $rows = db()
     )
     ->fetchAll();
 
+// Ledger card payments per booking, oldest first (kind deposit/balance, settled).
+// Cash-basis income belongs to the tax year each payment was RECEIVED, so a
+// deposit taken before 6 Apr and a balance paid after it split across two years —
+// the old model keyed the WHOLE booking to the single (and reconcile-rewritten)
+// payment_date, so paying the balance retroactively migrated the deposit's income
+// into the next tax year. We allocate each booking's income across these dates.
+$cardByBooking = [];
+try {
+    $lq = db()->query(
+        "SELECT booking_id, DATE(created_at) d, ROUND(SUM(amount),2) a
+           FROM payments
+          WHERE kind IN ('deposit','balance') AND UPPER(status) IN ('COMPLETED','APPROVED','CAPTURED')
+          GROUP BY booking_id, DATE(created_at)
+          ORDER BY booking_id, d",
+    );
+    foreach ($lq->fetchAll() as $lr) {
+        $cardByBooking[(int) $lr['booking_id']][] = [$lr['d'], (float) $lr['a']];
+    }
+} catch (\Throwable $e) {
+    // payments table not migrated — every booking falls back to payment_date below.
+}
+
+// Split $income across the card-payment dates oldest-first (each date absorbs up
+// to its own amount); any remainder (manual bank/cash money that has no ledger
+// row) is attributed to the booking's payment_date. Returns [taxYear => portion].
+function allocate_income_by_year($income, $cardDates, $paymentDate)
+{
+    $byYear = [];
+    $remaining = $income;
+    foreach ($cardDates as [$d, $amt]) {
+        if ($remaining <= 0.005) {
+            break;
+        }
+        $take = min($remaining, $amt);
+        if ($take > 0.005) {
+            $ty = tax_year_start($d);
+            $byYear[$ty === null ? 'null' : $ty] = ($byYear[$ty === null ? 'null' : $ty] ?? 0) + $take;
+            $remaining -= $take;
+        }
+    }
+    if ($remaining > 0.005) {
+        $ty = tax_year_start($paymentDate);
+        $byYear[$ty === null ? 'null' : $ty] = ($byYear[$ty === null ? 'null' : $ty] ?? 0) + $remaining;
+    }
+    return $byYear;
+}
+
+$rows = []; // one entry per (booking, tax-year contribution) — held sits on the payment_date year
 $years = [];
 $undatedIncome = 0;
 $undatedHeld = 0;
 $undatedCount = 0;
-foreach ($rows as &$r) {
-    $received = (float) $r['deposit_paid'];
+foreach ($bookings as $b) {
+    $received = (float) $b['deposit_paid'];
     // The rental price EXCLUDES the damages deposit in BOTH eras, so derive it from
     // the rental components (nightly + txn fee, override raising the floor) exactly
     // like damages_collected() — NOT as `agreed_total − deposit`. agreed_total is
     // already rental-only in the current model, so that old formula double-removed
     // the deposit: it under-reported taxable rental income by the deposit amount and
     // invented a phantom "held" deposit for every fully-paid modern booking.
-    $rentalPrice = (float) ($r['agreed_nightly'] ?? 0) + (float) ($r['agreed_txn_fee'] ?? 0);
-    if ($r['price_override'] !== null && $r['price_override'] !== '') {
-        $rentalPrice = max($rentalPrice, (float) $r['price_override']);
+    $rentalPrice = (float) ($b['agreed_nightly'] ?? 0) + (float) ($b['agreed_txn_fee'] ?? 0);
+    if ($b['price_override'] !== null && $b['price_override'] !== '') {
+        $rentalPrice = max($rentalPrice, (float) $b['price_override']);
     }
     // Legacy rows with no price snapshot: we can't split out a deposit we have no
     // figure for, so treat everything received as income (never a phantom deposit).
     if ($rentalPrice <= 0) {
         $rentalPrice = $received;
     }
-
     // Attribute money received to rental income FIRST; only the excess above the
     // rental price counts as the held damages deposit.
     $incomePart = min($received, $rentalPrice);
     $heldPart = max(0.0, $received - $rentalPrice);
+    $paymentYear = tax_year_start($b['payment_date']); // where the held deposit + display date sit
 
-    $r['received'] = round($received, 2);
-    $r['income_part'] = round($incomePart, 2);
-    $r['held_part'] = round($heldPart, 2);
-    $r['tax_year'] = tax_year_start($r['payment_date']);
-    if ($r['tax_year'] === null) {
-        $undatedIncome += $incomePart;
-        $undatedHeld += $heldPart;
-        $undatedCount++;
-    } else {
-        $years[$r['tax_year']] = true;
+    $byYear = allocate_income_by_year($incomePart, $cardByBooking[(int) $b['id']] ?? [], $b['payment_date']);
+    if (!$byYear) {
+        $byYear = [$paymentYear === null ? 'null' : $paymentYear => 0.0]; // no income (edge) — still surface held
     }
+    foreach ($byYear as $tyKey => $portion) {
+        $ty = $tyKey === 'null' ? null : (int) $tyKey;
+        // Held deposit is not income and belongs once, on the payment_date year.
+        $rowHeld = $ty === $paymentYear ? $heldPart : 0.0;
+        $r = [
+            'id' => $b['id'],
+            'name' => $b['name'],
+            'prop_key' => $b['prop_key'],
+            'property_name' => $b['property_name'],
+            'payment_method' => $b['payment_method'],
+            'payment_date' => $b['payment_date'],
+            'received' => round($received, 2),
+            'income_part' => round($portion, 2),
+            'held_part' => round($rowHeld, 2),
+            'tax_year' => $ty,
+        ];
+        $rows[] = $r;
+        if ($ty === null) {
+            $undatedIncome += $portion;
+            $undatedHeld += $rowHeld;
+            $undatedCount++;
+        } else {
+            $years[$ty] = true;
+        }
+    }
+}
+
+// Retained income on CANCELLED bookings. `cancel` HARD-DELETES the booking row
+// (to free the calendar), but a limited-refund cancellation keeps rental money;
+// the card ledger rows survive the delete, so that genuinely-taxable income was
+// vanishing from the report entirely. Count the net settled card-in for any
+// booking_id no longer present, per received date. (Bank/cash-only cancellations
+// leave no ledger row and are unrecoverable — inherent to a hard delete.)
+try {
+    $liveIds = [];
+    foreach ($bookings as $b) {
+        $liveIds[(int) $b['id']] = true;
+    }
+    $orphans = db()->query(
+        "SELECT booking_id, DATE(created_at) d,
+              ROUND(COALESCE(SUM(CASE WHEN kind IN ('deposit','balance') AND UPPER(status) IN ('COMPLETED','APPROVED','CAPTURED') THEN amount ELSE 0 END),0)
+                  - COALESCE(SUM(CASE WHEN kind='refund' AND (status IS NULL OR UPPER(status) NOT IN ('FAILED','REJECTED')) THEN amount ELSE 0 END),0),2) net
+           FROM payments
+          GROUP BY booking_id, DATE(created_at)
+         HAVING net > 0.005",
+    )->fetchAll();
+    foreach ($orphans as $o) {
+        if (isset($liveIds[(int) $o['booking_id']])) {
+            continue; // live booking — already counted above
+        }
+        $ty = tax_year_start($o['d']);
+        $rows[] = [
+            'id' => (int) $o['booking_id'],
+            'name' => '(cancelled booking)',
+            'prop_key' => '',
+            'property_name' => '',
+            'payment_method' => 'Square card',
+            'payment_date' => $o['d'],
+            'received' => (float) $o['net'],
+            'income_part' => (float) $o['net'],
+            'held_part' => 0.0,
+            'tax_year' => $ty,
+        ];
+        if ($ty === null) {
+            $undatedIncome += (float) $o['net'];
+            $undatedCount++;
+        } else {
+            $years[$ty] = true;
+        }
+    }
+} catch (\Throwable $e) {
+    // payments table not migrated — no orphan income to recover.
 }
 unset($r);
 
@@ -105,12 +218,21 @@ try {
 // Guarded for a not-yet-migrated DB (the 'damages' enum value arrives in zz8).
 $keptDays = [];
 try {
+    // Captured damages MINUS any damages_return refunded against them (net kept),
+    // per settle date. hold_capture's own flow directs the owner to refund the
+    // excess via the normal refund flow (kind='damages_return'), so a £250 capture
+    // later £150-returned is only £100 of taxable kept income — the old query
+    // summed the gross £250 forever. FAILED/REJECTED returns don't count as
+    // money handed back (parity with the rental-refund status filter).
     $keptDays = db()
         ->query(
-            "SELECT DATE(created_at) d, ROUND(SUM(amount),2) a FROM payments
-              WHERE kind = 'damages'
-                AND UPPER(status) IN ('COMPLETED','APPROVED','CAPTURED')
-              GROUP BY DATE(created_at)",
+            "SELECT d, ROUND(SUM(a),2) a FROM (
+                SELECT DATE(created_at) d, amount a FROM payments
+                  WHERE kind = 'damages' AND UPPER(status) IN ('COMPLETED','APPROVED','CAPTURED')
+                UNION ALL
+                SELECT DATE(created_at) d, -amount a FROM payments
+                  WHERE kind = 'damages_return' AND (status IS NULL OR UPPER(status) NOT IN ('FAILED','REJECTED'))
+             ) k GROUP BY d HAVING ROUND(SUM(a),2) <> 0",
         )
         ->fetchAll();
 } catch (\Throwable $e) {
