@@ -278,7 +278,7 @@ function reconcile_booking_payment($bookingId, $b = null, $refundJustIssued = 0)
     if ($total > 0) {
         $paid = min($total, $paid);
     }
-    $status = $total > 0 && $paid >= $total - 0.001 ? 'paid' : ($paid > 0 ? 'deposit' : 'unpaid');
+    $status = derive_payment_status($total, $paid);
     // Do NOT restamp payment_date on a refund — accounts.php allocates the WHOLE
     // booking's income to the year of payment_date, so moving it to the refund date
     // would shift all its income into the wrong UK tax year. Keep the recorded date
@@ -815,7 +815,7 @@ if ($action === 'update') {
         }
     } else {
         $dep = round((float) ($b['deposit_paid'] ?? 0), 2);
-        $status = $total > 0 && $dep >= $total - 0.001 ? 'paid' : ($dep > 0.001 ? 'deposit' : 'unpaid');
+        $status = derive_payment_status($total, $dep);
     }
 
     $method = $b['payment_method'];

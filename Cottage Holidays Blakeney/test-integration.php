@@ -396,6 +396,19 @@ $lgRow = $rootDb->query("SELECT payment, deposit_paid FROM bookings WHERE id=$lg
 // the recorded money is preserved/raised, never wiped to zero.
 it_check('legacy Paid did NOT wipe deposit_paid to £0 (priced from live rate)', $lgRow && (float) $lgRow['deposit_paid'] > 0.5 && $lgRow['payment'] === 'paid', json_encode($lgRow));
 
+// ---- 13. Waitlist dedupe (concurrency audit) ------------------------------
+echo "\n== 12. Waitlist join dedupe ==\n";
+$wj = ['action' => 'join', 'prop' => $propKey, 'name' => 'Wait Twice', 'email' => 'wait@x.co', 'check_in' => $in, 'check_out' => $out];
+http($guest, 'POST', '/waitlist.php', $wj);
+$r = http($guest, 'POST', '/waitlist.php', $wj); // exact double-submit
+it_check('a repeat waitlist join is idempotent (ok, flagged already)', $r['code'] === 200 && !empty($r['json']['already']), $r['raw']);
+$wcount = (int) $rootDb->query("SELECT COUNT(*) FROM waitlist WHERE email='wait@x.co' AND prop_key='$propKey'")->fetchColumn();
+it_check('only ONE waitlist row exists for the same cottage+dates', $wcount === 1, 'rows=' . $wcount);
+// A different date range for the same person is a distinct, allowed entry.
+http($guest, 'POST', '/waitlist.php', array_merge($wj, ['check_in' => date('Y-m-d', strtotime($in . ' +60 days')), 'check_out' => date('Y-m-d', strtotime($out . ' +60 days'))]));
+$wcount2 = (int) $rootDb->query("SELECT COUNT(*) FROM waitlist WHERE email='wait@x.co'")->fetchColumn();
+it_check('a different date range is still a separate waitlist entry', $wcount2 === 2, 'rows=' . $wcount2);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";
