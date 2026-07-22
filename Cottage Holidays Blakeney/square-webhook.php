@@ -160,7 +160,7 @@ $paid = min($total > 0 ? $total : $paid, $paid);
 if ($paid < (float) $b['deposit_paid'] - 0.001) {
     json_out(['ok' => true]); // ledger knows less than the booking — the app owns reductions
 }
-$newStatus = $total > 0 && $paid >= $total - 0.001 ? 'paid' : ($paid > 0 ? 'deposit' : 'unpaid');
+$newStatus = derive_payment_status($total, $paid);
 
 // Only stamp payment_date/payment_method when the reconciled figures actually
 // CHANGED. Square routinely re-sends payment.updated days later (the settlement

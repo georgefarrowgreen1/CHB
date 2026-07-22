@@ -135,10 +135,32 @@ if (basename($_SERVER['SCRIPT_NAME'] ?? '') === 'waitlist.php') {
         if ($ci && $co && $co <= $ci) {
             json_out(['error' => 'Check-out must be after check-in.'], 400);
         }
+        // Already waiting for this exact cottage + dates? Idempotent — don't pile
+        // up a duplicate the owner would email twice. (The uniq_join index from
+        // migration-100 race-proofs the dated case; this pre-check also covers
+        // open-date joins and returns a friendly result rather than a 500 on the
+        // duplicate-key error. NULL dates compare via COALESCE.)
         try {
+            $dup = db()->prepare(
+                "SELECT id FROM waitlist
+                  WHERE prop_key = ? AND email = ?
+                    AND COALESCE(check_in, '') = ? AND COALESCE(check_out, '') = ?
+                    AND notified_at IS NULL LIMIT 1",
+            );
+            $dup->execute([$prop, $email, (string) ($ci ?? ''), (string) ($co ?? '')]);
+            if ($dup->fetchColumn()) {
+                json_out(['ok' => true, 'already' => true]);
+            }
+        } catch (\Throwable $e) {
+            // table not migrated / column missing — fall through to the insert.
+        }
+        try {
+            // ON DUPLICATE KEY collapses a genuinely-simultaneous dated race (the
+            // pre-check can't) into one row instead of erroring.
             db()
                 ->prepare(
-                    'INSERT INTO waitlist (prop_key, name, email, check_in, check_out, note) VALUES (?,?,?,?,?,?)',
+                    'INSERT INTO waitlist (prop_key, name, email, check_in, check_out, note) VALUES (?,?,?,?,?,?)
+                     ON DUPLICATE KEY UPDATE name = VALUES(name), note = VALUES(note)',
                 )
                 ->execute([$prop, $name, $email, $ci, $co, $note]);
             log_activity('calendar', 'waitlist.join', 'Waitlist join — ' . ($name ?: 'a guest'), ['actor' => 'guest', 'prop_key' => (string) $prop, 'entity' => 'waitlist']);

@@ -999,6 +999,23 @@ function booking_ledger_net($bookingId)
     return round(max(0, (float) $s->fetchColumn()), 2);
 }
 
+// The payment STATUS a (total, paid) pair implies — the single invariant every
+// writer of bookings.payment must agree on: fully covered ⇒ 'paid', some money
+// but not all ⇒ 'deposit', nothing ⇒ 'unpaid'. Repeated verbatim in
+// reconcile_booking_payment(), set_payment/update and the webhook; one definition
+// means "paid but £0 received" (the class the audit fixed) can't be re-derived
+// inconsistently. $paid is always a 2dp figure, so the £0.001 floors are just
+// float guards.
+function derive_payment_status($total, $paid)
+{
+    $total = (float) $total;
+    $paid = (float) $paid;
+    if ($total > 0 && $paid >= $total - 0.001) {
+        return 'paid';
+    }
+    return $paid > 0.001 ? 'deposit' : 'unpaid';
+}
+
 // The RENTAL price of a booking from its agreed snapshot (nightly + txn fee, a
 // manual override raising the floor) — the figure the damages deposit sits above
 // and accounts.php attributes income up to. Duplicated in accounts.php and
