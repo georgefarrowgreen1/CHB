@@ -221,6 +221,11 @@
         var av = document.querySelector('.page-view.active');
         var onCottage = !__overlayKey && !!(av && av.id === 'view-21a');
         wrap.classList.toggle('gt-show-cta', onCottage);
+        // Body flag so CSS can lift the (DOM-earlier) "Resume your enquiry" pill
+        // clear of this in-dock CTA — otherwise the two floated bottom elements
+        // overlap on a cottage page (a sibling selector can't reach a node that
+        // precedes the JS-appended dock).
+        document.body.classList.toggle('gt-cta-shown', onCottage);
     }
     function setActiveTab(viewId) {
         __overlayKey = null; // navigating to a page clears any overlay highlight
