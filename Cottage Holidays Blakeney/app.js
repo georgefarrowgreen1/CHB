@@ -11703,7 +11703,7 @@ async function submitEnquiry(propKey) {
         closeEnquireModal();
     } catch (e) {}
     enquireDraftClear();
-    toast('Enquiry sent — we will be in touch to confirm availability.');
+    toast('Enquiry sent — we usually reply within a few hours to confirm availability.');
     // Signed-in guests land on My Stays where the new enquiry card is waiting —
     // a real confirmation surface instead of a toast over the cottage page.
     if (currentGuest) {
@@ -13085,7 +13085,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'logicfix1';
+    const BUILD = 'uxpolish1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
