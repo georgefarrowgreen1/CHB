@@ -43,7 +43,16 @@ try {
     const branch = execSync('git diff --name-only origin/main...HEAD', { cwd: DIR, encoding: 'utf8' });
     const tree = execSync('git status --porcelain', { cwd: DIR, encoding: 'utf8' })
         .split('\n').map(l => l.slice(3)).join('\n');
-    (branch + '\n' + tree).split('\n').forEach(l => { const b = path.basename(l.trim()); if (b) changed.add(b); });
+    // git QUOTES paths containing spaces ("Cottage Holidays Blakeney/admin.js") and
+    // may rename "a -> b" — strip the wrapping quotes and take the post-arrow half so
+    // basename doesn't return admin.js" (trailing quote), which silently skipped the
+    // ADMIN_BUNDLE_V / ADMIN_CSS_V bump for this space-containing repo path.
+    (branch + '\n' + tree).split('\n').forEach(l => {
+        let p = l.trim().replace(/^"|"$/g, '');
+        if (p.includes(' -> ')) p = p.split(' -> ').pop().replace(/^"|"$/g, '');
+        const b = path.basename(p);
+        if (b) changed.add(b);
+    });
 } catch (e) {
     console.error('Could not git-diff against origin/main (' + e.message.split('\n')[0] + ') — assuming EVERYTHING changed.');
     changed = new Set(['app.css', 'guest-app.css', 'guest-app.js', 'admin.js', 'admin.css']);

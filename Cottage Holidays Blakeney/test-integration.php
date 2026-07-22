@@ -379,6 +379,23 @@ $rootDb->exec("INSERT INTO payments (booking_id, kind, amount, status, square_pa
 $kept = (float) ($acctGet(2025)['json']['kept_deposits'] ?? -1);
 it_check('kept damages nets off the return (£250 − £150 = £100)', abs($kept - 100.0) < 0.005, 'kept=' . $kept);
 
+// ---- 12. set_payment on a LEGACY pre-snapshot booking (finding 10) --------
+echo "\n== 11. set_payment legacy fallback ==\n";
+// A booking with agreed_total NULL (predates the snapshot migration) but real
+// dates + a live rate. Marking it 'Paid' must price from the LIVE model, not a
+// £0 total that would wipe deposit_paid to £0.
+$lin = date('Y-m-d', strtotime('+40 days'));
+$lout = date('Y-m-d', strtotime('+43 days'));
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total) VALUES ('$propKey','Legacy Guest','lg@x.co','$lin','$lout',2,0,'deposit',150,NULL)");
+$lgId = (int) $rootDb->lastInsertId();
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'set_payment', 'id' => $lgId, 'payment' => 'paid', 'payment_date' => date('Y-m-d'), 'payment_method' => 'bank']);
+it_check('marking a legacy (NULL agreed_total) booking Paid succeeds', $r['code'] === 200 && !empty($r['json']['ok']), $r['raw']);
+$lgRow = $rootDb->query("SELECT payment, deposit_paid FROM bookings WHERE id=$lgId")->fetch(PDO::FETCH_ASSOC);
+// Before the fix, the NULL agreed_total made total £0, so 'Paid' reconciled
+// deposit_paid to £0 (wiping the £150). Now it prices from the live rate — so
+// the recorded money is preserved/raised, never wiped to zero.
+it_check('legacy Paid did NOT wipe deposit_paid to £0 (priced from live rate)', $lgRow && (float) $lgRow['deposit_paid'] > 0.5 && $lgRow['payment'] === 'paid', json_encode($lgRow));
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

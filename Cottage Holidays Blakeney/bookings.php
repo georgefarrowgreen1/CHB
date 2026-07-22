@@ -941,6 +941,19 @@ if ($action === 'set_payment') {
         $b['price_override'] !== null && $b['price_override'] !== ''
             ? (float) $b['price_override']
             : (float) ($b['agreed_total'] ?? 0);
+    // Legacy pre-snapshot rows have agreed_total NULL → total 0, against which
+    // choosing 'Paid' reconciled deposit_paid to £0 (wiping recorded income) and
+    // 'deposit' was impossible. Fall back to the LIVE price via booking_price()
+    // (agreed-first, then live — same helper pay.php / the composer use) so a
+    // legacy booking prices like any other. Using booking_price (not a raw direct
+    // price call) keeps the snapshot-guard call count intact.
+    if ($total <= 0 && ($b['agreed_total'] === null || $b['agreed_total'] === '')) {
+        $rate = get_rate($b['prop_key'] ?? '');
+        $bp = $rate ? booking_price($rate, $b) : null;
+        if ($bp && (float) ($bp['total'] ?? 0) > 0) {
+            $total = (float) $bp['total'];
+        }
+    }
     $status = in_array($in['payment'] ?? '', ['unpaid', 'deposit', 'paid']) ? $in['payment'] : $b['payment'];
     $dep = reconcile_deposit($status, $total, $b['deposit_paid'], $in['deposit'] ?? null);
     if ($dep === null) {
