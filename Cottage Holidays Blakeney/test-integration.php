@@ -337,6 +337,48 @@ it_check('signed webhook accepted (signature verifies)', $whCode === 200, 'code=
 $bcmRow = $rootDb->query("SELECT deposit_paid, payment FROM bookings WHERE id=$bcmId")->fetch(PDO::FETCH_ASSOC);
 it_check('webhook did NOT wipe the £500 bank money (deposit_paid still £500)', $bcmRow && abs((float) $bcmRow['deposit_paid'] - 500.0) < 0.005, json_encode($bcmRow));
 
+// ---- 11. Accounts income allocation (audit findings 6, 7, 11) -------------
+echo "\n== 10. Accounts income allocation ==\n";
+// Seed three cottages-worth of scenarios directly, then read accounts.php per year.
+$acctGet = function ($year) use ($admin) {
+    return http($admin, 'GET', '/accounts.php?year=' . $year);
+};
+// (a) SINGLE-payment booking must be UNCHANGED: £300 rental, one card payment
+// on 2025-06-10 (tax year 2025) → all £300 income in 2025, nothing in 2026.
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, payment_date) VALUES ('$propKey','Single Pay','sp@x.co','2025-06-10','2025-06-13',2,0,'paid',300,300,300,0,3,'2025-06-10')");
+$spId = (int) $rootDb->lastInsertId();
+$rootDb->exec("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id, created_at) VALUES ($spId,'balance',300,'COMPLETED','sq_sp','2025-06-10 12:00:00')");
+$y2025 = $acctGet(2025)['json'];
+$spIn2025 = array_sum(array_map(fn($p) => (float) $p['income_part'], array_filter($y2025['payments'] ?? [], fn($p) => (int) $p['id'] === $spId)));
+it_check('single-payment booking: full £300 income in its year (unchanged)', abs($spIn2025 - 300.0) < 0.005, 'got ' . $spIn2025);
+
+// (b) STRADDLE (#6): £1000 rental, £250 deposit 2026-03-10 (TY 2025) + £750
+// balance 2026-05-01 (TY 2026). Income must SPLIT — £250 in 2025, £750 in 2026 —
+// not migrate wholesale into 2026 on the single payment_date.
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, payment_date) VALUES ('$propKey','Straddle Guest','stg@x.co','2026-08-01','2026-08-08',2,0,'paid',1000,1000,1000,0,7,'2026-05-01')");
+$stId = (int) $rootDb->lastInsertId();
+$rootDb->exec("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id, created_at) VALUES ($stId,'deposit',250,'COMPLETED','sq_st_dep','2026-03-10 09:00:00')");
+$rootDb->exec("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id, created_at) VALUES ($stId,'balance',750,'COMPLETED','sq_st_bal','2026-05-01 09:00:00')");
+$stIn2025 = array_sum(array_map(fn($p) => (float) $p['income_part'], array_filter($acctGet(2025)['json']['payments'] ?? [], fn($p) => (int) $p['id'] === $stId)));
+$stIn2026 = array_sum(array_map(fn($p) => (float) $p['income_part'], array_filter($acctGet(2026)['json']['payments'] ?? [], fn($p) => (int) $p['id'] === $stId)));
+it_check('straddle deposit stays in the year received (£250 in 2025/26)', abs($stIn2025 - 250.0) < 0.005, '2025=' . $stIn2025);
+it_check('straddle balance in the later year (£750 in 2026/27), not migrated', abs($stIn2026 - 750.0) < 0.005, '2026=' . $stIn2026);
+
+// (c) CANCELLED-but-retained income (#7): a card payment whose booking row was
+// deleted must still count. Insert a ledger row for a non-existent booking id.
+$ghostId = 999001;
+$rootDb->exec("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id, created_at) VALUES ($ghostId,'balance',500,'COMPLETED','sq_ghost','2025-09-01 10:00:00')");
+$y2025b = $acctGet(2025)['json'];
+$ghostIn = array_sum(array_map(fn($p) => (float) $p['income_part'], array_filter($y2025b['payments'] ?? [], fn($p) => (int) $p['id'] === $ghostId)));
+it_check('retained income on a deleted (cancelled) booking still counts (£500)', abs($ghostIn - 500.0) < 0.005, 'got ' . $ghostIn);
+
+// (d) KEPT damages deposit netting (#11): a £250 captured damages minus a £150
+// return leaves £100 kept income — not the gross £250.
+$rootDb->exec("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id, created_at) VALUES ($ghostId,'damages',250,'COMPLETED','sq_dmg','2025-10-01 10:00:00')");
+$rootDb->exec("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id, created_at) VALUES ($ghostId,'damages_return',150,'COMPLETED','sq_dmgr','2025-10-05 10:00:00')");
+$kept = (float) ($acctGet(2025)['json']['kept_deposits'] ?? -1);
+it_check('kept damages nets off the return (£250 − £150 = £100)', abs($kept - 100.0) < 0.005, 'kept=' . $kept);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";
