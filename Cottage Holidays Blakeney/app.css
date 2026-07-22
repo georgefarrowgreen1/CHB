@@ -2463,8 +2463,9 @@ a.card {
   display: flex;
   align-items: center;
   gap: 10px;
-  /* Top gap so the step row isn't crowded against the close (X) button above it. */
-  margin: 18px 40px 16px 0;
+  /* Roomy gaps above (below the close X) and below (before the summary card) so the
+     step row has clear breathing room and doesn't feel crowded. */
+  margin: 26px 40px 24px 0;
 }
 .enq-prog-step {
   font-size: 0.7rem;
