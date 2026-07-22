@@ -83,6 +83,17 @@ function last_minute_factor($checkIn, $today, $pct, $days)
     return 1 - min(90.0, $pct) / 100; // never discount more than 90%
 }
 
+// Round to 2dp EXACTLY like the JS engine's Math.round(x*100)/100, on EVERY PHP
+// version. PHP's native round() pre-rounds on < 8.4 (8.3 is the production pin),
+// so round(28433.4999…) → 28434 while JS Math.round → 28433 — a 1p divergence
+// between the stored/charged price (PHP) and the on-screen quote (JS). floor(x+0.5)
+// has no pre-rounding step and is bit-identical to Math.round for the non-negative
+// money values here. Keep in lockstep with app.js priceBreakdown().
+function price_round2($x)
+{
+    return floor((float) $x * 100 + 0.5) / 100;
+}
+
 // $rate is a properties row. Returns the full breakdown.
 // $depositOverride: optional per-booking damages deposit (null = use property standard).
 // $seasons: optional pre-fetched seasonal rates (null = fetch from DB).
@@ -108,31 +119,28 @@ function price_breakdown($rate, $adults, $children, $checkIn, $checkOut, $deposi
         $nightly += nightly_rate_for($d, $rate, $seasons) + $extrasPerNight;
     }
     // Last-minute discount on the nightly rental (never the damages deposit).
-    // Scale-then-round (×100 → round → ÷100) to stay bit-identical to the JS
-    // priceBreakdown() (app.js: Math.round(x*100)/100) — round($x, 2) diverges by
-    // 1p at exact .xx5 float boundaries, and $nightly feeds perNight, txFee AND
-    // total, so a plain round here drifts the snapshot/charge off the on-screen
-    // quote (the same fix already applied to perNight and txFee below).
-    $nightly =
-        round(
-            $nightly * last_minute_factor($checkIn, $today, $rate['lastmin_pct'] ?? 0, $rate['lastmin_days'] ?? 0) * 100,
-        ) / 100;
-    // Average per-night figure (for display and the agreed snapshot).
-    // Scale-then-round (×100 → round → ÷100) to stay bit-identical to the JS
-    // priceBreakdown(); round($x, 2) diverges from Math.round($x*100)/100 by 1p at
-    // exact .xx5 float boundaries, which would drift the stored snapshot off the
-    // guest's on-screen quote.
-    $perNight = $nights > 0 ? round($nightly / $nights * 100) / 100 : (float) $rate['couple_rate'] + $extrasPerNight;
+    // price_round2 (below) mirrors JS Math.round(x*100)/100 EXACTLY on every PHP
+    // version. round($x, 2) — and even round($x*100)/100 — diverges by 1p from JS
+    // at a "just below .xx5" float boundary on PHP < 8.4 (8.3, the production pin),
+    // whose round() pre-rounds 28433.4999… up to 28434; $nightly feeds perNight,
+    // txFee AND total, so any drift lands the snapshot/charge off the guest's
+    // on-screen quote.
+    $nightly = price_round2(
+        $nightly * last_minute_factor($checkIn, $today, $rate['lastmin_pct'] ?? 0, $rate['lastmin_days'] ?? 0),
+    );
+    // Average per-night figure (for display and the agreed snapshot) — same
+    // JS-identical rounding so the snapshot never drifts off the quote.
+    $perNight = $nights > 0 ? price_round2($nightly / $nights) : (float) $rate['couple_rate'] + $extrasPerNight;
     // Damages deposit: per-booking override if given, else the property standard
     // (stored in the booking_fee column, which is repurposed for this).
     $depBase =
         $depositOverride !== null && $depositOverride !== '' ? (float) $depositOverride : (float) $rate['booking_fee'];
     $damagesDeposit = $nights > 0 ? max(0.0, $depBase) : 0.0;
     $txPct = (float) $rate['transaction_pct'];
-    // Scale-then-round to match the JS engine EXACTLY (see $perNight note above) —
-    // this fee is part of `total`, which is snapshotted/emailed/charged, so a 1p
-    // drift from the guest's quote must never happen.
-    $txFee = round($nightly * ($txPct / 100) * 100) / 100; // income only
+    // JS-identical rounding (see $perNight note above) — this fee is part of
+    // `total`, which is snapshotted/emailed/charged, so a 1p drift from the
+    // guest's quote must never happen.
+    $txFee = price_round2($nightly * ($txPct / 100)); // income only
     $rentalTotal = $nightly + $txFee; // what the owner earns
     // `total` is RENTAL ONLY. The refundable damages deposit is returned
     // separately as damagesDeposit — pay.php charges it alongside the guest's
