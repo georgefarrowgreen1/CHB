@@ -9788,6 +9788,20 @@ function rangeCrossesBooked(start, end) {
     const ranges = propertyAvailability[activeFrontProperty] || [];
     return ranges.some((r) => r.start < end && r.end > start);
 }
+// A free check-in night only truly opens a bookable stay when the cottage's
+// MINIMUM number of nights is free from it. A 1-night hole between two bookings
+// looks open but can start no valid stay (the min-stay would cross a booked
+// night), so the picker blocks it out — matching what enquiries.php's
+// min-nights guard would reject anyway. `date` is a Date; checks nights
+// date … date+minN-1 (the checkout day date+minN may be a turnover arrival).
+function dpCheckinFits(date, minN) {
+    for (let n = 0; n < minN; n++) {
+        if (isBookedNight(formatDashed(new Date(date.getFullYear(), date.getMonth(), date.getDate() + n)))) {
+            return false;
+        }
+    }
+    return true;
+}
 
 function dpParse(str) {
     if (!str) return null;
@@ -9888,6 +9902,12 @@ function renderDatePicker() {
     for (let i = 0; i < offset; i++) cells += `<div class="dp-day dp-empty"></div>`;
     const pickingEnd = !!(dpState.start && !dpState.end);
     const adminConflicts = dpMode === 'admin' ? modalStayConflicts() : null;
+    // Guest check-in picker only: block a free night that can't fit the cottage's
+    // minimum stay (a 1-night hole between bookings) — see dpCheckinFits.
+    const guestPick = dpMode !== 'admin' && dpMode !== 'search';
+    const minNights = guestPick
+        ? Math.max(1, parseInt((propertyRates[activeFrontProperty] || defaultRates[activeFrontProperty] || {}).minNights, 10) || 1)
+        : 1;
     for (let d = 1; d <= daysInMonth; d++) {
         const date = new Date(year, month, d);
         const ds = formatDashed(date);
@@ -9896,6 +9916,10 @@ function renderDatePicker() {
             dpMode === 'admin'
                 ? !!(adminConflicts && modalDayState(adminConflicts, ds))
                 : dpMode !== 'search' && !isPast && isBookedNight(ds);
+        // A free future night whose free run is shorter than the minimum stay —
+        // unbookable, so shown crossed-out like a booked night (check-in only).
+        const tooShort =
+            guestPick && !pickingEnd && !isPast && !booked && minNights > 1 && !dpCheckinFits(date, minNights);
         // Clickability rules (server enforces too — this is the friendly layer):
         //  - picking check-in: any free future night (a checkout/turnover day IS free)
         //  - picking check-out: any later date, as long as no booked night falls
@@ -9909,16 +9933,16 @@ function renderDatePicker() {
         else if (isPast) clickable = false;
         else if (dpMode === 'search')
             clickable = true; // hero search: any future date
-        else if (!pickingEnd) clickable = !booked;
+        else if (!pickingEnd) clickable = !booked && !tooShort;
         else if (ds <= dpState.start)
             clickable = !booked; // restart selection
         else clickable = !rangeCrossesBooked(dpState.start, ds); // valid checkout
         const classes = ['dp-day'];
         if (isPast && dpMode !== 'admin') classes.push('dp-disabled');
-        // Cross out booked nights — except when this cell is selectable as a
-        // checkout (turnover day), where crossing it out would be confusing.
-        // (Admin mode always keeps the shading — it's the conflict cue.)
-        if (booked && (dpMode === 'admin' || !(pickingEnd && ds > dpState.start && clickable))) classes.push('dp-booked');
+        // Cross out booked nights (and too-short gaps) — except when this cell is
+        // selectable as a checkout (turnover day), where crossing it out would be
+        // confusing. (Admin mode always keeps the shading — it's the conflict cue.)
+        if ((booked || tooShort) && (dpMode === 'admin' || !(pickingEnd && ds > dpState.start && clickable))) classes.push('dp-booked');
         if (ds === formatDashed(today)) classes.push('dp-today');
         if (dpState.start && ds === dpState.start) classes.push('dp-start');
         if (dpState.end && ds === dpState.end) classes.push('dp-end');
@@ -9929,9 +9953,10 @@ function renderDatePicker() {
         // pattern) and a full-date accessible name incl. its state — the cell's
         // bare number alone gave screen-reader users no way to enter dates, the
         // only path through the entire booking/enquiry funnel.
+        const unavailNote = booked ? ' — booked, unavailable' : tooShort ? ` — minimum stay ${minNights} nights, unavailable` : '';
         const aria = ` role="button" tabindex="0" aria-label="${fmtDate(ds)}${booked ? ' — booked' : ''}"`;
-        const click = clickable ? ` ${chbAttrs('dpPick', String(ds))} data-act-keydown="activate"${aria}` : (booked ? ` aria-label="${fmtDate(ds)} — booked, unavailable"` : '');
-        const title = booked && !clickable ? ' title="Booked"' : '';
+        const click = clickable ? ` ${chbAttrs('dpPick', String(ds))} data-act-keydown="activate"${aria}` : (booked || tooShort ? ` aria-label="${fmtDate(ds)}${unavailNote}"` : '');
+        const title = (booked || tooShort) && !clickable ? (booked ? ' title="Booked"' : ` title="Minimum ${minNights} nights"`) : '';
         cells += `<div class="${classes.join(' ')}"${click}${title}>${d}</div>`;
     }
     grid.innerHTML = cells;
@@ -13020,7 +13045,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'noresume1';
+    const BUILD = 'minstay1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
