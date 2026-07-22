@@ -2463,7 +2463,8 @@ a.card {
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 0 40px 16px 0;
+  /* Top gap so the step row isn't crowded against the close (X) button above it. */
+  margin: 18px 40px 16px 0;
 }
 .enq-prog-step {
   font-size: 0.7rem;
