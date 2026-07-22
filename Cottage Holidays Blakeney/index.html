@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=201">
+    <link rel="stylesheet" href="app.css?v=202">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -1934,14 +1934,6 @@
     </div>
 
     <!-- ================= FLOATING CHAT (everyone) ================= -->
-    <!-- Resume an abandoned enquiry (shown by enquiryResumeShow when a fresh
-         local draft exists; the draft never leaves this browser). -->
-    <button type="button" id="enquiry-resume" class="enquiry-resume" style="display:none;" data-act="enquiryResumeOpen">
-        <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
-        <span id="enquiry-resume-text">Resume your enquiry</span>
-        <span class="er-x" data-act="resumeDismiss" data-act-keydown="resumeDismiss" role="button" tabindex="0" aria-label="Dismiss" title="Dismiss">&times;</span>
-    </button>
-
     <button id="chat-fab" class="chat-fab" data-act="toggleChat" aria-label="Chat with us" title="Chat with us">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.6-.8L3 21l1.9-5.7A8.38 8.38 0 0 1 4 11.5 8.5 8.5 0 0 1 12.5 3 8.38 8.38 0 0 1 21 11.5z"/></svg>
     </button>
@@ -2518,11 +2510,11 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=495"></script>
+    <script defer src="app.js?v=496"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
-    <script defer src="guest-app.js?v=16"></script>
+    <script defer src="guest-app.js?v=17"></script>
 
 </body>
 </html>
