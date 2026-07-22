@@ -325,9 +325,10 @@ $rootDb->exec("INSERT INTO payments (booking_id, kind, amount, status, square_pa
 $evt = json_encode(['type' => 'payment.updated', 'data' => ['object' => ['payment' => ['id' => 'sq_bcm_charge', 'status' => 'COMPLETED', 'reference_id' => 'CHB-' . $bcmId]]]]);
 $sig = base64_encode(hash_hmac('sha256', $WEBHOOK_URL . $evt, $WEBHOOK_KEY, true));
 $opts = ['http' => ['method' => 'POST', 'header' => "Content-Type: application/json\r\nx-square-hmacsha256-signature: $sig", 'content' => $evt, 'timeout' => 15, 'ignore_errors' => true]];
+$http_response_header = []; // predeclared; the fetch overwrites it (PHPStan: never left null)
 $whRaw = @file_get_contents($WEBHOOK_URL, false, stream_context_create($opts));
 $whCode = 0;
-foreach ($http_response_header ?? [] as $h) {
+foreach ($http_response_header as $h) {
     if (preg_match('#^HTTP/\S+ (\d+)#', $h, $m)) {
         $whCode = (int) $m[1];
     }
