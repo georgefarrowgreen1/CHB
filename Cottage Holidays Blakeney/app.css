@@ -4204,6 +4204,11 @@ body.guest-app:not(.owner-mode) .enquiry-resume {
   left: 12px;
   bottom: calc(124px + env(safe-area-inset-bottom, 0px));
 }
+/* On a cottage page the dock also shows the "Check availability" CTA above it,
+   which sat on top of the resume pill — lift the resume clear of both. */
+body.guest-app.gt-cta-shown:not(.owner-mode) .enquiry-resume {
+  bottom: calc(188px + env(safe-area-inset-bottom, 0px));
+}
 @media (max-width: 899px) {
   body.book-bar-open:not(.guest-app) .enquiry-resume {
     bottom: calc(96px + env(safe-area-inset-bottom, 0px));
