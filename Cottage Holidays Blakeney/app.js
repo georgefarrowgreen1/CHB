@@ -758,12 +758,25 @@ function csrfHeader() {
         return {};
     }
 }
+// One read-only-preview toast at a time: several background writes are blocked
+// as the preview boots, and a toast per block used to stack into a column of
+// identical messages. Throttle so at most one shows in a short window (a later
+// user tap still gets fresh feedback).
+let __previewToastAt = 0;
+function previewBlockedToast() {
+    try {
+        const now = Date.now();
+        if (now - __previewToastAt < 4000) return;
+        __previewToastAt = now;
+        if (typeof toast === 'function') toast("Read-only preview — nothing here is saved.");
+    } catch (e) {}
+}
 async function apiPost(endpoint, payload) {
     // Read-only account preview: an admin viewing a customer's account can look
     // but never act. Every write goes through here, so this ONE guard makes the
     // whole preview safe (no payments, chats, reviews, profile edits, etc.).
     if (ACCT_PREVIEW) {
-        try { if (typeof toast === 'function') toast("Read-only preview — nothing here is saved."); } catch (e) {}
+        previewBlockedToast();
         return Promise.reject(new Error('read-only account preview'));
     }
     let res;
@@ -2074,6 +2087,14 @@ function setAuthUI() {
 // the guest view (and a one-tap way out).
 function injectPreviewBanner() {
     if (document.getElementById('preview-banner')) return;
+    // Inside the back office's account-preview overlay, the opener already wraps
+    // this iframe in a read-only header bar (naming the customer + a Close). A
+    // second banner in here is redundant — skip it when embedded. A standalone
+    // ?acctpreview= tab (parent === self) and the staging test-centre preview
+    // keep their banner as the only read-only indicator.
+    try {
+        if (ACCT_PREVIEW && window.parent && window.parent !== window) return;
+    } catch (e) {}
     const bar = document.createElement('div');
     bar.id = 'preview-banner';
     // The account preview names the customer once their payload lands (see
@@ -4167,7 +4188,7 @@ function closePhotoUpload() {
 async function submitGuestPhoto() {
     // Photo upload posts via a raw fetch (multipart), bypassing apiPost's preview
     // guard — block it here so a read-only account preview can't upload.
-    if (ACCT_PREVIEW) { try { if (typeof toast === 'function') toast("Read-only preview — nothing here is saved."); } catch (e) {} return; }
+    if (ACCT_PREVIEW) { previewBlockedToast(); return; }
     const fileEl = document.getElementById('pu-file');
     const capEl = document.getElementById('pu-caption');
     const msg = document.getElementById('pu-msg');
@@ -13045,7 +13066,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'dotgap1';
+    const BUILD = 'acctprev1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
