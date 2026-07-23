@@ -78,6 +78,20 @@ const acctPayload = {
   ok(b.sandbox === 'allow-scripts allow-same-origin', `the iframe is sandboxed (${b.sandbox})`);
   ok(/index\.html\?acctpreview=77/.test(b.src), `the iframe points at the preview URL (${b.src})`);
   ok(b.names && b.bodyLocked, 'the overlay names the customer + locks the back-office scroll');
+  // The overlay bar above the iframe already says read-only + names the customer,
+  // so the EMBEDDED frame must NOT render its own inner banner (that was the
+  // duplicate "read-only preview box"). And repeated blocked writes must not
+  // stack a column of identical toasts.
+  await page.waitForTimeout(800);
+  const frame = page.frames().find((f) => /acctpreview=77/.test(f.url()));
+  ok(!!frame, 'the sandboxed preview frame loaded');
+  if (frame) {
+    const inner = await frame.evaluate(() => ({ embedded: window.parent !== window, banner: !!document.getElementById('preview-banner') }));
+    ok(inner.embedded, 'the preview frame is embedded (parent !== self)');
+    ok(!inner.banner, 'the embedded frame suppresses its own inner banner (one read-only box, not two)');
+    const throttled = await frame.evaluate(() => { let n = 0; const orig = window.toast; window.toast = () => { n++; }; __previewToastAt = 0; previewBlockedToast(); previewBlockedToast(); previewBlockedToast(); window.toast = orig; return n; });
+    ok(throttled === 1, `repeated blocked writes show at most one read-only toast (${throttled})`);
+  }
   const closed = await page.evaluate(() => { closeAccountPreview(); return { gone: !document.getElementById('acct-preview-overlay'), unlocked: !document.body.classList.contains('acct-preview-open') }; });
   ok(closed.gone && closed.unlocked, 'closeAccountPreview tears the container down');
   await page.close();
