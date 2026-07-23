@@ -2474,20 +2474,23 @@ a.card {
   color: var(--text-muted);
   white-space: nowrap;
   position: relative;
-  padding-left: 20px;
+  /* Room for the 12px dot plus a clear gap between it and the label text. */
+  padding-left: 26px;
   transition: color 0.3s var(--fluid-bezier);
 }
 /* Narrow phones: the three labels + connectors must FIT, never clip — shrink
    the type and tuck the gaps instead of cutting off "Account". */
 @media (max-width: 480px) {
   .enq-progress {
-    gap: 6px;
-    margin-right: 34px;
+    gap: 4px;
+    /* Trim the right inset so the wider dot→label gap below still leaves the
+       three labels + connectors room to fit without clipping "Account". */
+    margin-right: 10px;
   }
   .enq-prog-step {
     font-size: 0.6rem;
     letter-spacing: 0.5px;
-    padding-left: 16px;
+    padding-left: 19px;
   }
 }
 .enq-prog-step::before {
