@@ -1459,8 +1459,13 @@ function openAccountPreview(bookingId, name) {
         <div class="acct-preview-shell glass-panel">
             <div class="acct-preview-bar">
                 <div class="acct-preview-titles">
-                    <span class="acct-preview-title">Customer account${name ? ' · ' + escapeHtml(name) : ''}</span>
-                    <span class="acct-preview-note">Read-only — exactly what they see. Nothing here changes anything.</span>
+                    <!-- The NAME is the identity of this preview, so it leads and gets the
+                         width; the "customer account / read-only" framing rides the muted
+                         line below where truncation costs nothing. (Prefixing the title
+                         with "Customer account · " pushed the name into an ellipsis on a
+                         phone — exactly the wrong half to lose.) -->
+                    <span class="acct-preview-title">${name ? escapeHtml(name) : 'Customer account'}</span>
+                    <span class="acct-preview-note">Customer account · read-only, exactly what they see</span>
                 </div>
                 <button type="button" class="btn-sm btn-edit" data-act="closeAccountPreview" aria-label="Close preview">Close</button>
             </div>

@@ -78,6 +78,20 @@ const acctPayload = {
   ok(b.sandbox === 'allow-scripts allow-same-origin', `the iframe is sandboxed (${b.sandbox})`);
   ok(/index\.html\?acctpreview=77/.test(b.src), `the iframe points at the preview URL (${b.src})`);
   ok(b.names && b.bodyLocked, 'the overlay names the customer + locks the back-office scroll');
+  // The bar is the ONLY label now, so the customer's NAME must lead and survive
+  // in full — it used to sit behind a "Customer account · " prefix and ellipsise
+  // away on a phone.
+  const hdr = await page.evaluate(() => {
+    const t = document.querySelector('.acct-preview-title');
+    return {
+      title: t.textContent.trim(),
+      truncated: t.scrollWidth > t.clientWidth + 1 || t.scrollHeight > t.clientHeight + 1,
+      note: (document.querySelector('.acct-preview-note') || {}).textContent || '',
+    };
+  });
+  ok(hdr.title === 'Cara Nunn', `the header title is the customer's name (${hdr.title})`);
+  ok(!hdr.truncated, 'the customer name is not truncated');
+  ok(/read-only/i.test(hdr.note), 'the muted line still states read-only');
   // The overlay bar above the iframe already says read-only + names the customer,
   // so the EMBEDDED frame must NOT render its own inner banner (that was the
   // duplicate "read-only preview box"). And repeated blocked writes must not
