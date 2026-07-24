@@ -2464,8 +2464,12 @@ a.card {
   align-items: center;
   gap: 10px;
   /* Roomy gaps above (below the close X) and below (before the summary card) so the
-     step row has clear breathing room and doesn't feel crowded. */
-  margin: 26px 40px 24px 0;
+     step row has clear breathing room and doesn't feel crowded.
+     No right inset: the close (X) is a normal in-flow button that sits on its own
+     line ABOVE this row (never absolutely positioned), so nothing overlaps here —
+     the row gets the full width, which is what keeps the three labels from
+     clipping on narrow phones. */
+  margin: 26px 0 24px;
 }
 .enq-prog-step {
   font-size: 0.7rem;
@@ -2479,16 +2483,17 @@ a.card {
   transition: color 0.3s var(--fluid-bezier);
 }
 /* Narrow phones: the three labels + connectors must FIT, never clip — shrink
-   the type and tuck the gaps instead of cutting off "Account". */
+   the type and tuck the gaps instead of cutting off "Account". The label size
+   is FLUID rather than a tuned constant: the connectors are flex:1 so they
+   shrink to nothing first, after which the nowrap labels are the floor and any
+   fixed size eventually clips. Scaling with the viewport keeps the row intact
+   all the way down to the narrowest phones instead of fitting one test width. */
 @media (max-width: 480px) {
   .enq-progress {
-    gap: 4px;
-    /* Trim the right inset so the wider dot→label gap below still leaves the
-       three labels + connectors room to fit without clipping "Account". */
-    margin-right: 10px;
+    gap: 6px;
   }
   .enq-prog-step {
-    font-size: 0.6rem;
+    font-size: clamp(0.46rem, 2.35vw, 0.6rem);
     letter-spacing: 0.5px;
     padding-left: 19px;
   }

@@ -2793,14 +2793,23 @@ body.darkstar-ready .admin-dock-btn[data-act="openCmdK"]:not(.ml-learning) svg {
   font-weight: 700;
   font-size: 0.95rem;
   color: var(--text-light);
-  white-space: nowrap;
+  /* Let a long customer name wrap to a second line rather than ellipsising it
+     away on a phone — the name is the one thing this bar has to get across.
+     Still clamped, so a pathological name can't push the frame off-screen. */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 .acct-preview-note {
   font-size: 0.72rem;
   color: var(--text-muted);
   margin-top: 2px;
+}
+/* The Close button keeps its size — never squashed by a long customer name. */
+.acct-preview-bar > [data-act='closeAccountPreview'] {
+  flex: 0 0 auto;
 }
 .acct-preview-frame-wrap {
   flex: 1 1 auto;
