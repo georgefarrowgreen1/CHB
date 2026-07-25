@@ -107,7 +107,21 @@ Single-operator holiday-let PWA. No framework, no build step.
   is `z-index: 1410` so it out-ranks the full-page guest screens (chat + auth at
   1390) — otherwise a guest who opens Messages can't tap another tab to get out
   (`ui-test-guest-modals.js` hit-tests this). The dock's own crown Home button is
-  hidden in the header because the logo beside it already goes Home.
+  hidden in the header because the logo beside it already goes Home — so Home's
+  "you are here" mark lives on the LOGO instead (`.logo-current`, set by
+  `applyCurrent`), keeping exactly one selection cue in the bar.
+  **Motion** (gated by `ui-test-motion.js`, iOS-flavoured): the selection pill
+  travels on `translate` and squashes via a separate `scale` keyframe —
+  deliberately two properties, because one combined `transform` lets the keyframe
+  override the travel and the pill teleports. `style.translate` is set DIRECTLY,
+  never through a `var()`: a transition can't interpolate a custom property
+  (they animate discretely), which teleports just as silently. Scrolling
+  CONDENSES the header (`.header-condensed`, ≤24px threshold, set in app.js's
+  `setupHeaderScroll`) instead of hiding it — `.header-hidden` is suppressed in
+  the shell because it would carry the menu away; desktop keeps the original
+  hide-on-scroll untouched. `prefers-reduced-motion` drops the springs and the
+  squash but KEEPS the pill's movement and the condensed layout (both carry
+  meaning, they're not decoration).
 - Routing is `nav()` toggling `.page-view.active`; per-view init lives in `nav()`
   (e.g. `view-experiences` → `renderExperiencesView()`). No router lib.
 

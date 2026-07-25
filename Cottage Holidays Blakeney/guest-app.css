@@ -68,6 +68,79 @@ body.guest-app:not(.owner-mode) #guest-dock-slot .guest-dock-btn::after {
   display: none;
 }
 
+/* ---- Condensing bar (iOS's collapsing title bar) --------------------------
+   Scrolling never takes the menu away (app.js keeps .header-hidden off in the
+   shell); the bar just tightens up: less padding, a slightly smaller logo and
+   icons, a deeper blur and a tighter shadow, so it reads as a compact floating
+   control while you're reading the page. Everything animated here is a
+   transform/filter/shadow — no layout thrash on the scroll thread. */
+body.guest-app:not(.owner-mode) header {
+  transition:
+    padding 0.42s var(--fluid-bezier),
+    background-color 0.42s var(--fluid-bezier),
+    box-shadow 0.42s var(--fluid-bezier),
+    -webkit-backdrop-filter 0.42s var(--fluid-bezier),
+    backdrop-filter 0.42s var(--fluid-bezier),
+    transform 0.5s var(--spring);
+}
+body.guest-app:not(.owner-mode) header.header-condensed {
+  padding: 5px 12px;
+  -webkit-backdrop-filter: blur(22px) saturate(1.5);
+  backdrop-filter: blur(22px) saturate(1.5);
+  box-shadow: var(--shadow-sm, 0 6px 20px rgba(0, 0, 0, 0.18));
+}
+body.guest-app:not(.owner-mode) header .logo-mark,
+body.guest-app:not(.owner-mode) #guest-dock-slot .guest-dock-btn,
+body.guest-app:not(.owner-mode) #guest-dock-slot .guest-dock-btn svg {
+  transition:
+    width 0.42s var(--fluid-bezier),
+    height 0.42s var(--fluid-bezier),
+    transform 0.5s var(--spring);
+}
+body.guest-app:not(.owner-mode) header.header-condensed .logo-mark {
+  height: 30px;
+}
+body.guest-app:not(.owner-mode) header.header-condensed #guest-dock-slot .guest-dock-btn {
+  width: 34px;
+  height: 34px;
+}
+body.guest-app:not(.owner-mode) header.header-condensed #guest-dock-slot .guest-dock-btn svg {
+  width: 17px;
+  height: 17px;
+}
+
+/* "You are on Home" lives on the crown, since the dock's Home button is hidden
+   here — a soft accent halo behind the mark rather than a second pill, so the
+   bar keeps exactly one selection cue. */
+body.guest-app:not(.owner-mode) header .logo {
+  border-radius: var(--r-pill);
+  padding: 2px 6px;
+  transition:
+    background 0.42s var(--fluid-bezier),
+    transform 0.5s var(--spring);
+}
+body.guest-app:not(.owner-mode) header .logo.logo-current {
+  background: radial-gradient(60% 70% at 50% 55%, rgba(214, 167, 133, 0.28), transparent 70%);
+}
+body.guest-app:not(.owner-mode) header .logo:active {
+  transform: scale(0.94);
+  transition: transform 0.07s var(--fluid-bezier);
+}
+
+/* ---- Press feel ----------------------------------------------------------
+   iOS answers a touch INSTANTLY (fast scale down) and releases with a spring.
+   The icon dips a touch further than its button, so the glyph feels pressed
+   into the surface rather than the whole control shrinking as one flat block. */
+body.guest-app:not(.owner-mode) .guest-dock-btn:active {
+  transform: scale(0.88);
+  transition: transform 0.07s var(--fluid-bezier);
+}
+body.guest-app:not(.owner-mode) .guest-dock-btn:active svg,
+body.guest-app:not(.owner-mode) .guest-dock-btn:active img {
+  transform: scale(0.9);
+  transition: transform 0.07s var(--fluid-bezier);
+}
+
 /* Clear the header, which now carries the menu (≈58px tall at this padding, plus
    its own 20px top offset and the notch). */
 body.guest-app:not(.owner-mode) .hero {
@@ -251,7 +324,21 @@ body.guest-app:not(.owner-mode).guest-signed-in .gt-stays {
   position: absolute;
   top: 50%;
   left: 0;
-  transform: translateY(-50%);
+  /* Travel is a TRANSFORM (--gd-x, set by moveGuestDockIndicator), never left/width:
+     transforms stay on the compositor, so the pill glides at full frame rate instead
+     of laying out every frame. --spring overshoots slightly, which is what gives it
+     the iOS "settles into place" feel rather than a mechanical slide. */
+  /* Movement and squash are DELIBERATELY on separate properties: `translate`
+     transitions the travel while `scale` is animated by the keyframes below. Put
+     both in one `transform` and the animation wins outright — the pill teleports
+     to its destination and only wobbles there, which is what the first cut did.
+     translateZ promotes it to its own layer so neither is done on the CPU.
+     NB moveGuestDockIndicator sets `style.translate` DIRECTLY rather than feeding
+     it through a custom property: a transition cannot interpolate a value that
+     arrives via var(), because custom properties animate discretely — so the
+     var() version also teleported, just less obviously. */
+  transform: translateZ(0);
+  translate: 0 -50%;
   width: 60px;
   height: 60px;
   border-radius: var(--r-pill);
@@ -260,10 +347,27 @@ body.guest-app:not(.owner-mode).guest-signed-in .gt-stays {
   pointer-events: none;
   z-index: 0;
   transition:
-    left 0.5s var(--spring),
-    width 0.5s var(--spring),
-    height 0.3s var(--fluid-bezier),
+    translate 0.52s var(--spring),
     opacity 0.28s var(--fluid-bezier);
+}
+/* Squash into the direction of travel, then spring back to round — the small
+   playful cue that the selection is a physical thing being thrown across the dock. */
+.guest-dock-indicator.gd-travel {
+  animation: gdTravel 0.46s var(--fluid-bezier);
+}
+@keyframes gdTravel {
+  0% {
+    scale: 1 1;
+  }
+  38% {
+    scale: 1.16 0.88;
+  }
+  70% {
+    scale: 0.96 1.04;
+  }
+  100% {
+    scale: 1 1;
+  }
 }
 .guest-dock-indicator.show {
   opacity: 1;
@@ -318,12 +422,29 @@ body.guest-app:not(.owner-mode) #guest-msg-fab {
 @media (prefers-reduced-motion: reduce) {
   .guest-dock-indicator {
     transition: opacity 0.2s ease;
+    scale: none;
+  }
+  /* The pill still MOVES (it has to — it marks where you are), it just jumps
+     rather than springing, and never squashes. */
+  .guest-dock-indicator.gd-travel {
+    animation: none;
   }
   .guest-dock-btn svg,
   .guest-dock-btn.current svg,
   .guest-dock-btn.gt-home img {
     transition: none;
     transform: none;
+  }
+  /* The condensing bar keeps its compact END STATE (it's a layout, not an
+     effect) — only the easing between the two states is dropped. */
+  body.guest-app:not(.owner-mode) header,
+  body.guest-app:not(.owner-mode) header .logo-mark,
+  body.guest-app:not(.owner-mode) #guest-dock-slot .guest-dock-btn,
+  body.guest-app:not(.owner-mode) #guest-dock-slot .guest-dock-btn svg {
+    transition: none;
+  }
+  body.guest-app:not(.owner-mode) .page-view.active {
+    animation: none;
   }
 }
 
@@ -463,12 +584,15 @@ body.guest-app:not(.owner-mode) .chat-fab {
    .page-view.active's base state is opacity:1 (app.css), so `forwards` here is
    just belt-and-braces — visibility never depends on the animation running. */
 body.guest-app:not(.owner-mode) .page-view.active {
-  animation: gtFade 0.32s var(--fluid-bezier) forwards;
+  animation: gtFade 0.38s var(--fluid-bezier) forwards;
 }
+/* iOS pushes a screen in with a touch of SCALE as well as travel, so it reads as
+   a card coming forward rather than text sliding up. Kept subtle (0.985) — enough
+   to feel alive, not enough to notice as an effect. */
 @keyframes gtFade {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(10px) scale(0.985);
   }
   to {
     opacity: 1;
