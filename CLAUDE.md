@@ -89,8 +89,25 @@ Single-operator holiday-let PWA. No framework, no build step.
   the app's markup out of coverage. app.js may only touch ids inside these views
   NULL-GUARDED (they don't exist until an owner signs in); the nine existing
   references already are.
-- `guest-app.js` / `guest-app.css` — the mobile app shell only (the floating dock,
+- `guest-app.js` / `guest-app.css` — the mobile app shell only (the menu dock,
   full-page overlays, install chip). Loaded with `?v=` and gated as above.
+  **The customer menu is in the HEADER on mobile, the same place as on desktop.**
+  There is only ONE nav: `placeDock()` MOVES the existing `.guest-dock` node into
+  `#guest-dock-slot` inside `<header>` when the shell applies, and back into
+  `#guest-tabbar` when it doesn't (both ways, live, on crossing 768px) — so the
+  sliding indicator, `setActiveTab` and every button handler are untouched (same
+  re-parenting trick as `#booking-hub-content`). Three things this must keep
+  right, all gated by `ui-test-topmenu.js`: (1) select the nav dock via
+  `#guest-tabbar .guest-dock`, NEVER document-wide — `#guest-msg-fab` holds a
+  SECOND `.guest-dock` (the standalone Messages pill) and moving that one puts
+  the chat bubble in the header and leaves the nav behind; (2) only the DOCK
+  moves — `#guest-tabbar` keeps the cottage pages' "Check availability" pill
+  bottom-anchored in thumb reach, and it must, because that wrapper carries a
+  `transform`, making it the containing block for any fixed child; (3) the header
+  is `z-index: 1410` so it out-ranks the full-page guest screens (chat + auth at
+  1390) — otherwise a guest who opens Messages can't tap another tab to get out
+  (`ui-test-guest-modals.js` hit-tests this). The dock's own crown Home button is
+  hidden in the header because the logo beside it already goes Home.
 - Routing is `nav()` toggling `.page-view.active`; per-view init lives in `nav()`
   (e.g. `view-experiences` → `renderExperiencesView()`). No router lib.
 

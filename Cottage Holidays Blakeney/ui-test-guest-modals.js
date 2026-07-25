@@ -59,8 +59,22 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     ok(r.hasRow, 'close row uses .auth-close-row (class, not inline style)');
     ok(r.rowMargin === '0px 0px 6px', `mobile margin override applies (${r.rowMargin})`);
     ok(r.closeVisible, '✕ button fully inside the panel, not clipped');
-    ok(r.boxPad >= 124, `dock clearance is inside the box (padding-bottom ${r.boxPad}px)`);
-    ok(r.lastBottom <= r.dockTop - 8, `last action "${r.lastLabel}" scrolls clear of the dock (${r.lastBottom} vs dock ${r.dockTop})`);
+    // The menu moved into the header, so the box no longer reserves ~124px for a
+    // dock at the BOTTOM — it just needs an end-of-scroll margin so the last
+    // action isn't flush against the screen edge.
+    ok(r.boxPad >= 32, `end-of-scroll margin inside the box (padding-bottom ${r.boxPad}px)`);
+    ok(r.lastBottom <= r.dockTop - 8, `last action "${r.lastLabel}" scrolls fully into view (${r.lastBottom} vs ${r.dockTop})`);
+    // What replaces the old dock-clearance check, and matters more: this screen is
+    // full-bleed and opaque, so if it covered the menu the guest would be stuck
+    // here. Hit-test the menu's real position — the header must win.
+    const escapable = await page.evaluate(() => {
+        const btn = document.querySelector('#guest-dock-slot .guest-dock-btn');
+        if (!btn) return { ok: false, why: 'no menu button in the header' };
+        const b = btn.getBoundingClientRect();
+        const hit = document.elementFromPoint(Math.round(b.left + b.width / 2), Math.round(b.top + b.height / 2));
+        return { ok: !!(hit && (hit === btn || btn.contains(hit) || hit.closest('#guest-dock-slot'))), why: hit ? hit.className || hit.tagName : 'nothing' };
+    });
+    ok(escapable.ok, `the header menu is still tappable over this full-page screen (hit: ${escapable.why})`);
     if (process.env.SHOT_DIR) await page.screenshot({ path: `${process.env.SHOT_DIR}/guest-${modalId}.png` });
     await page.evaluate((id) => document.getElementById(id).classList.remove('active'), modalId);
   }
