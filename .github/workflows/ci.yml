@@ -58,6 +58,14 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: node perf-budget.js
 
+      # The two CSS conventions in CLAUDE.md — the four canonical breakpoints and
+      # "no raw hex where a token covers it" — were documented but ungated, so both
+      # had drifted. Same ratchet contract as the budgets above: the counts in
+      # css-budget.json may only fall.
+      - name: CSS convention ratchet (breakpoints + raw hex vs css-budget.json)
+        working-directory: "Cottage Holidays Blakeney"
+        run: node check-css-conventions.js
+
       # The GIT half of the deploy checklist: if a PR changes a cached asset,
       # its cache-buster (?v= / BUILD / ADMIN_*_V / CACHE) must change too.
       # `node bump.js <stamp>` applies the whole chain in one go. (smoke-test

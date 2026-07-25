@@ -28,7 +28,10 @@ build step**); PHP backend files sit alongside it. App-style guest shell lives i
   (reads `siteContent`), and galleries via `images-<prop>` — do NOT remove those;
   they're the rendering path, not an editing UI.
 - Responsive: prefer the four canonical breakpoints (480 / 640 / 900 / 1200) for new
-  media queries; migrate stray one-off widths opportunistically when touched.
+  media queries; migrate stray one-off widths opportunistically when touched. Gated by
+  **`check-css-conventions.js`** (see below) — the complement of a canonical width
+  (max-width:479/639/899/1199, min-width:481/641/901/1201) counts as canonical, since
+  the pair is one boundary.
 - **Design system**: `Cottage Holidays Blakeney/DESIGN.md` is the design language —
   build from the `:root` tokens in app.css (radius `--r-*` incl. `--r-panel`, status
   `--ok/--warn/--danger` + `--info` (the sea-blue "Arriving" state), text-on-accent
@@ -788,7 +791,14 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   let it float with the runner image. **`perf-budget.js`** gates the gzipped size
   of every shipped asset against `size-budget.json` — raising a budget is allowed
   but must be deliberate, in the same PR, with the trade named; lower budgets when
-  you shrink an asset to lock the win in. NB an app.js "account bundle" split was
+  you shrink an asset to lock the win in. **`check-css-conventions.js`** is the same
+  ratchet shape for the two CSS rules above (canonical breakpoints, no raw hex where
+  a token covers it) against `css-budget.json`: counts may only FALL — fix the value
+  instead of raising the number, and re-baseline a cleanup with `--update`. It
+  deliberately does NOT count breakpoint complements, hex in a `--token:`
+  declaration, hex in a `var(--x, #fallback)`, or mask/mask-image alpha channels
+  (#000/#fff there are not theme colours) — a noisy gate gets worked around.
+  NB an app.js "account bundle" split was
   MEASURED (Jul 2026, Chromium coverage + a function-level audit) and REJECTED:
   the cleanly signed-in-only slice is only ~9% raw (~14KB gz), so the
   admin.js-style facade machinery wouldn't pay for itself — re-measure before
