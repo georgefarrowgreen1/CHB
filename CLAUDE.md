@@ -400,11 +400,12 @@ a ready-made 15%-off offer row, pulse unchanged; cap 7 rows. (3) **UNDO** (`chbU
 `__cmdkUndo`, one level, session-only): every change search itself saves (dated price
 override, weekend-uplift apply) records its exact restore; the `undo` command in cmdkCommand
 reverses it through the same validated endpoints, with an honest "Nothing to undo" otherwise.
-(4) **Guest ask box** (`#ask-box` on the cottage page, app.js `askBoxSubmit`/`askBoxToChat`):
-guestFaqAnswer surfaced on-page; unmatched questions open the chat with the question
-pre-typed + `__faqBypass` so a person gets it untouched. Gated by search-test §36 (brief
-composition, stale-miss silence, undo round-trip incl. prior-state payload) +
-ui-test-askbox.js (real browser: instant answer, honest fallback, chat handoff).
+(The cottage page's "Ask us anything" box — `#ask-box`, `askBoxSubmit`/`askBoxToChat`,
+the `.ask-*` CSS and ui-test-askbox.js — is fully REMOVED; do not resurrect it. Guests
+ask in the chat instead. `guestFaqAnswer` and `__faqBypass` STAY: the chat still answers
+a typed question on-device before it reaches a person, and admin.js reuses the matcher to
+draft enquiry replies.) Gated by search-test §36 (brief composition, stale-miss silence,
+undo round-trip incl. prior-state payload).
 
 **Welcome back** (app.js — guest-side): a RETURNING signed-in guest gets a personal homepage
 rebook nudge (`#welcome-back`, `renderWelcomeBack` — "Fancy Jollyboat again?" with their
