@@ -138,8 +138,12 @@ Single-operator holiday-let PWA. No framework, no build step.
 owner-mode used to hide the header outright and float `.admin-dock-wrap` at the bottom
 of the screen; both sides now put navigation in one bar at the top. The dock is STATIC
 markup with a single home, so unlike the guest dock it needs no re-parenting: it simply
-lives inside `<header>`, and admin.css unpicks its floating chrome (`position: static`,
-no glass/shadow of its own, `margin-left: auto`) — but note the customer-nav hide must
+lives inside `<header>`, where admin.css drops the dock's own glass/shadow and pushes the
+wrapper right (`margin-left: auto`). The wrapper's base rule in app.css is deliberately
+just `display/align-items/gap` — it used to carry the whole bottom-floating geometry
+(`position: fixed`, `bottom`, `left: 50%`, `transform`, `z-index`, `max-width`), every
+line of which admin.css immediately overrode in the only state where the dock is ever
+visible, so it was computed-then-discarded; don't reintroduce it. Note the customer-nav hide must
 be **`header > nav:not(.admin-dock)`**, because the admin dock IS a `<nav>` in this
 header and a bare `header nav` hides the very menu this provides. Four more things it
 has to keep right, all gated by `ui-test-adminmenu.js`: (1) the guest dock must VACATE
@@ -244,7 +248,7 @@ next, deposits) are now warm SPOKEN sentences, not database read-outs — "You'r
 across 2 guests, Cara leading at £600", "Eve's your only departure today", "Just one deposit to
 hand back — Dan's". Each family passes its numbers to `nlgPick`-seeded frames (deterministic per
 query → stable + golden-testable; different questions vary) via helpers `chbSayFirst` (first name
-in prose), `chbSayNames` (aggregation with a named lead), `chbSayN` (small counts as words). It
+in prose) and `chbSayN` (small counts as words). It
 LEADS with the key figure/name so search stays scannable, then the human frame. **Figure cards**
 (revenue / occupancy / nights / top cottage / busiest month) keep their number-forward stat
 format by design (a big number reads better than prose) but get warmer labels/subs with stance
@@ -836,6 +840,32 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   `STAGING_SFTP_*` secrets are set (see `SETUP-STAGING.md`). On the staging host only,
   `.htaccess` sends `X-Robots-Tag: noindex` and `app.js` (`IS_STAGING`) shows a STAGING
   banner. Staging post-deploy is migrate-only (never fires owner notify/digest/nudge).
+
+**Dead code — what a sweep will re-flag, and why it ISN'T dead.** A naive
+"defined but never referenced" scan over this codebase returns a lot of noise, because
+so much of the UI composes its hooks at runtime. Before deleting anything a scanner
+flags, check it against this list (all VERIFIED live, Jul 2026):
+- **CSS classes** are built from data: `cmdk-${it.type}` / `cmdk-row-${it.type}`
+  (so `.cmdk-answer`, `.cmdk-booking`, `.cmdk-figure`, `.cmdk-screen`… are all live),
+  `act-row--${sev}`, `feed-dot-${level}`, `is-${tone}` / `is-${status}`,
+  `sl-probe-${cls}`, and the per-cottage `tag-<prop>` / `bar-<prop>` / `swatch-<prop>`
+  (the ORIGINAL THREE are also written literally in app.css as the pre-migration
+  fallback; `injectPropColors()` generates the rest at runtime). `.leaflet-*` styles
+  the map library loaded from CDN at runtime.
+- **Markup ids** are resolved by pattern: `#sec-<id>` (`settingsOpen`), `#asec-<id>`
+  (`accountsOpen`), `#card-price-<prop>` / `#card-rating-<prop>` / `#cott-fav-<prop>`.
+- **`CHB_FILES` / `CHB_EVENT`** look unused but are the `chbAttrs()` authoring
+  sentinels for two `data-pass` kinds the dispatcher serves and static markup uses
+  (`data-pass="files"`, `data-pass="event"`). The five sentinels are one API; don't
+  split it.
+Two genuine finds that are NOT dead code either, and want fixing rather than deleting:
+`mailboxTab()` is the only writer that can set `__mbxTab='sent'` and NOTHING calls it —
+the mailbox's Sent list is fully built and ui-tested but has **no button**, so the fix
+is the affordance, not a delete (deleting cascades into the whole sent branch). And a
+dozen ids exist with no consumer, of which `#breakdown-modal-title` / `#pay-done-title`
+are clearly meant to be `aria-labelledby` targets — `#breakdown-modal` currently carries
+an `aria-label` ("Price breakdown") that disagrees with its own visible heading
+("Payment breakdown").
 
 ## Testing / CI
 - Before shipping: `node smoke-test.js` (loads index.html + admin.js in a shim;

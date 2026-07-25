@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 270;
+const ADMIN_BUNDLE_V = 271;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 83;
+const ADMIN_CSS_V = 84;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -4846,10 +4846,6 @@ async function downloadInvoice(bookingId) {
 }
 
 // Autofill the enquiry form with the logged-in guest's details
-// True if the text contains something shaped like a UK postcode.
-function hasUkPostcode(text) {
-    return /\b[A-Za-z]{1,2}\d[A-Za-z\d]?\s*\d[A-Za-z]{2}\b/.test(text || '');
-}
 // True if the WHOLE value is a UK postcode (for the dedicated postcode field).
 function isUkPostcode(text) {
     return /^[A-Za-z]{1,2}\d[A-Za-z\d]?\s*\d[A-Za-z]{2}$/.test((text || '').trim());
@@ -5923,14 +5919,6 @@ function closePhotoLightbox() {
 // ---- Trip planner (curated + tide-aware). AI seam: TRIP_PLAN_SOURCE can later
 // switch to a 'tripplan.php' LLM endpoint without changing the UI/markup. ----
 const TRIP_PLAN_SOURCE = 'curated';
-const TRIP_INTERESTS = [
-    ['seals', 'Seals'],
-    ['beach', 'Beaches & coast'],
-    ['walk', 'Walks'],
-    ['kids', 'With kids'],
-    ['foodie', 'Food & pubs'],
-    ['rainy', 'Rainy day'],
-];
 const DEFAULT_TRIP_ACTIVITIES = [
     {
         name: 'Blakeney Point seal trip',
@@ -6295,7 +6283,6 @@ const paymentMeta = {
 // childRate is per child, per night.
 // damagesDeposit is a refundable amount collected per booking (NOT income).
 // transactionPct is a % applied to the nightly rental total only.
-const RATES_STORE_KEY = 'nn-property-rates';
 const defaultRates = {
     '21a': {
         coupleRate: 130,
@@ -6822,7 +6809,6 @@ const DATA_RESET_FLAG = 'nn-data-reset-v4';
 })();
 
 // No seed data — the inbox starts empty and fills from real enquiries.
-const seedEnquiries = [];
 let enquiries = [];
 
 // ----- Guest accounts (backend-backed) -----
@@ -8789,15 +8775,6 @@ function enquireDraftSync(draft) {
         __enqSyncedSig = sig;
         apiPost('enquiries.php', payload).catch(() => {});
     }, 2500);
-}
-function enquireDraftGet() {
-    try {
-        const d = JSON.parse(localStorage.getItem(ENQ_DRAFT_KEY) || 'null');
-        if (!d || Date.now() - (d.at || 0) > 7 * 24 * 3600 * 1000) return null; // stale after a week
-        return d;
-    } catch (e) {
-        return null;
-    }
 }
 function enquireDraftClear() {
     try {
@@ -13246,7 +13223,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'adminhdr1';
+    const BUILD = 'deadcode1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
