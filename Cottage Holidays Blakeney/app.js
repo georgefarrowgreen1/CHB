@@ -7692,49 +7692,10 @@ function chatFaqReply(hit, original) {
     t.appendChild(d);
     chatScroll();
 }
-// ---- "Ask us anything" box on the cottage page — the same on-device FAQ
-// matcher the chat uses (guestFaqAnswer over this cottage's content), surfaced
-// where guests actually wonder. A confident match answers instantly; anything
-// else (or a "not what I asked") opens the chat with the question pre-typed
-// and __faqBypass set, so it reaches a person untouched. ----
-function askBoxKey(event) {
-    if (event && event.key === 'Enter') {
-        event.preventDefault();
-        askBoxSubmit();
-    }
-}
-function askBoxSubmit() {
-    const input = document.getElementById('ask-input');
-    const out = document.getElementById('ask-answer');
-    if (!input || !out) return;
-    const q = input.value.trim();
-    if (q.length < 4) {
-        out.innerHTML = '';
-        return;
-    }
-    let hit = null;
-    try {
-        hit = guestFaqAnswer(q);
-    } catch (e) {}
-    if (hit) {
-        out.innerHTML = `<div class="ask-hit"><strong>${escapeHtml(hit.q)}</strong><p>${escapeHtml(hit.a)}</p><button type="button" class="ask-fallback" data-act="askBoxToChat">Not what you asked? Message a person</button></div>`;
-    } else {
-        out.innerHTML = `<div class="ask-hit"><p>We don't have a saved answer for that one — but a person does.</p><button type="button" class="btn-glass btn-accent btn-sm" data-act="askBoxToChat">Message us — we reply quickly</button></div>`;
-    }
-}
-function askBoxToChat() {
-    const q = ((document.getElementById('ask-input') || {}).value || '').trim();
-    try {
-        const w = document.getElementById('chat-widget');
-        if (w && !w.classList.contains('open')) toggleChat();
-    } catch (e) {}
-    const input = document.getElementById('chat-input');
-    if (input && q) {
-        input.value = q;
-        __faqBypass = true; // this exact question should reach the owner, not the matcher
-        sendChat();
-    }
-}
+// NB the cottage page's "Ask us anything" box was REMOVED (owner's call — guests
+// ask in the chat instead). guestFaqAnswer below stays: it still answers a typed
+// question in the guest chat before it reaches a person, and admin.js reuses it to
+// draft enquiry replies. __faqBypass likewise stays for chatReachPerson.
 function chatReachPerson(encoded) {
     const input = document.getElementById('chat-input');
     if (input) input.value = decodeURIComponent(encoded || '');
@@ -13170,7 +13131,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'softerr1';
+    const BUILD = 'noaskbox1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
