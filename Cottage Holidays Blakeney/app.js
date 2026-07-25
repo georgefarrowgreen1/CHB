@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 269;
+const ADMIN_BUNDLE_V = 270;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -471,8 +471,9 @@ Object.keys(CHB_EVT_ATTR).forEach((t) => document.addEventListener(t, chbDelegat
 // "Script error." (no detail, usually a browser extension) is ignored as noise.
 (function () {
     let sent = 0;
+    let softSent = 0;
     const seen = Object.create(null);
-    function reportClientError(msg, where, stack) {
+    function reportClientError(msg, where, stack, soft) {
         try {
             msg = String(msg || '').trim();
             if (!msg || msg === 'Script error.' || msg === 'Script error') return;
@@ -490,7 +491,17 @@ Object.keys(CHB_EVT_ATTR).forEach((t) => document.addEventListener(t, chbDelegat
             // so any such error is theirs. (iOS injections report the PAGE url as
             // the source, so the scheme check above can't catch them.)
             if (/webkit\.messageHandlers/i.test(msg)) return;
-            if (sent >= 5) return; // don't flood on a broken page
+            // Soft (deliberately-swallowed) reports get their OWN small budget so
+            // they can never use up the allowance a real uncaught error needs, and
+            // they skip the self-heal branch below outright — the code CAUGHT this
+            // one and carried on, so purging caches and reloading the page under
+            // the guest would be wildly out of proportion.
+            if (soft) {
+                if (softSent >= 3) return;
+                softSent++;
+            } else {
+                if (sent >= 5) return; // don't flood on a broken page
+            }
             // Self-repair: a half-updated cache after a deploy (stale app.js
             // beside fresh HTML, or vice versa) surfaces as OUR OWN code being
             // "not defined". Purge every cache and reload ONCE per tab — the
@@ -501,6 +512,7 @@ Object.keys(CHB_EVT_ATTR).forEach((t) => document.addEventListener(t, chbDelegat
             let healing = false;
             try {
                 if (
+                    !soft &&
                     /(is not defined|is not a function|undefined is not an object)/.test(msg) &&
                     /(^$|app\.js|admin\.js|guest-app\.js|index\.html)/.test(src.split('?')[0]) &&
                     !sessionStorage.getItem('chb-healed')
@@ -510,10 +522,10 @@ Object.keys(CHB_EVT_ATTR).forEach((t) => document.addEventListener(t, chbDelegat
                     msg = '[self-heal: cache purged + reloaded] ' + msg;
                 }
             } catch (e) {}
-            const key = msg.slice(0, 120);
+            const key = (soft ? 's:' : 'e:') + msg.slice(0, 120);
             if (seen[key]) return;
             seen[key] = 1;
-            sent++;
+            if (!soft) sent++;
             fetch(API_BASE + 'client-error.php', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -528,6 +540,9 @@ Object.keys(CHB_EVT_ATTR).forEach((t) => document.addEventListener(t, chbDelegat
                     stack: String(stack || '').slice(0, 500),
                     build: String(window.__BUILD || ''),
                     view: ((document.querySelector('.page-view.active') || {}).id || '').slice(0, 40),
+                    // Logged at severity 'info' under its own action server-side —
+                    // diagnosable, but never "Needs attention"/digest/push.
+                    soft: !!soft,
                 }),
             }).catch(() => {});
             if (healing) {
@@ -557,7 +572,30 @@ Object.keys(CHB_EVT_ATTR).forEach((t) => document.addEventListener(t, chbDelegat
     // Narrow hook for the layout sentinel below — same pipeline (activity log,
     // dedupe, rate limits), so layout bugs surface exactly like JS errors.
     window.__reportLayoutIssue = (msg) => reportClientError(msg, 'layout-sentinel', '');
+    // Narrow hook for chbSwallow() — same pipeline, soft severity. Cast because
+    // this is an ad-hoc window property (checkJs would otherwise count three new
+    // TS2339s against the typecheck ratchet).
+    /** @type {any} */ (window).__reportSwallowed = (msg, where, stack) => reportClientError(msg, where, stack, true);
 })();
+// A CAUGHT error that we deliberately carry on from — but on a path where quietly
+// carrying on can hide a real bug (money, booking writes, payment state). The
+// codebase is defensively written and `catch (e) {}` is the right shape for the
+// hundreds of optional DOM touches; this is for the handful where the error is
+// genuinely worth a record. Same pipeline as an uncaught error, but soft: logged
+// at severity 'info' under 'client.swallow', so it is there when someone asks why
+// something didn't happen and absent from "Needs attention" / the digest / pushes.
+//
+// Contract: NEVER throws and NEVER changes control flow — it is a drop-in for the
+// empty block, nothing more. `tag` is a short stable label for the call site.
+function chbSwallow(e, tag) {
+    try {
+        const m = (e && (e.message || e.name)) || String(e || 'error');
+        const w = /** @type {any} */ (window); // ad-hoc hook property — see above
+        if (typeof w.__reportSwallowed === 'function') {
+            w.__reportSwallowed('[' + tag + '] ' + m, 'swallow:' + tag, e && e.stack);
+        }
+    } catch (_) {}
+}
 
 // --- Layout sentinel: the page checks ITSELF for overlap/overhang bugs ---
 // CI measures every screen in Chromium, but some engines lay out differently
@@ -3880,7 +3918,9 @@ function maybeOpenPayLink() {
             openPayView(t, b, k);
             return true;
         }
-    } catch (e) {}
+        // A throw here means a guest who followed a secure pay link just landed on
+        // the ordinary homepage with no idea why — silent, and it costs a payment.
+    } catch (e) { chbSwallow(e, 'pay-link-open'); }
     return false;
 }
 
@@ -13130,7 +13170,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'adminviews1';
+    const BUILD = 'softerr1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

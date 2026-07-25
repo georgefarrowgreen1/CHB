@@ -409,6 +409,33 @@ http($guest, 'POST', '/waitlist.php', array_merge($wj, ['check_in' => date('Y-m-
 $wcount2 = (int) $rootDb->query("SELECT COUNT(*) FROM waitlist WHERE email='wait@x.co'")->fetchColumn();
 it_check('a different date range is still a separate waitlist entry', $wcount2 === 2, 'rows=' . $wcount2);
 
+// A SOFT report (chbSwallow) is a diagnostic, not breakage: the front end caught the
+// error and carried on by design. It must be recorded so someone can find out why
+// something quietly didn't happen, but at severity 'info' under its own action, so it
+// stays out of "Needs attention", the weekly digest and the owner push — all of which
+// key off warn/action. A real uncaught error must still land as warn.
+echo "\n== 13. Soft (swallowed) error reports stay out of Needs attention ==\n";
+$rootDb->exec("DELETE FROM activity_log WHERE action IN ('client.error','client.swallow')");
+$r = http($guest, 'POST', '/client-error.php', ['message' => '[brief-owed] paymentSummary blew up', 'where' => 'swallow:brief-owed', 'soft' => true]);
+it_check('a soft report is accepted', $r['code'] === 200 && !empty($r['json']['ok']), $r['raw']);
+$row = $rootDb->query("SELECT action, severity, summary FROM activity_log WHERE action='client.swallow' ORDER BY id DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+it_check('it is logged under the client.swallow action', !empty($row), 'no client.swallow row');
+it_check('at severity info (so NOT Needs attention / digest / push)', ($row['severity'] ?? '') === 'info', 'severity=' . ($row['severity'] ?? '-'));
+it_check('the summary marks it as swallowed', strpos($row['summary'] ?? '', 'Swallowed error:') === 0, $row['summary'] ?? '-');
+// Same payload without the flag is real breakage and must keep warn severity.
+$rootDb->exec("DELETE FROM activity_log WHERE action IN ('client.error','client.swallow')");
+http($guest, 'POST', '/client-error.php', ['message' => 'genuinely uncaught boom', 'where' => '/index.html']);
+$hard = $rootDb->query("SELECT action, severity FROM activity_log WHERE action='client.error' ORDER BY id DESC LIMIT 1")->fetch(PDO::FETCH_ASSOC);
+it_check('a normal error still logs as client.error at warn', ($hard['action'] ?? '') === 'client.error' && ($hard['severity'] ?? '') === 'warn', json_encode($hard));
+// The hourly cross-visitor dedupe must apply to soft reports too, or a loop on a
+// popular page could still stack rows.
+$rootDb->exec("DELETE FROM activity_log WHERE action IN ('client.error','client.swallow')");
+$soft2 = ['message' => '[money-held] damageHeld blew up', 'where' => 'swallow:money-held', 'soft' => true];
+http($guest, 'POST', '/client-error.php', $soft2);
+$r2 = http($guest, 'POST', '/client-error.php', $soft2);
+$scount = (int) $rootDb->query("SELECT COUNT(*) FROM activity_log WHERE action='client.swallow'")->fetchColumn();
+it_check('a repeated soft report is deduped within the hour', $scount === 1 && !empty($r2['json']['deduped']), 'rows=' . $scount . ' ' . $r2['raw']);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";

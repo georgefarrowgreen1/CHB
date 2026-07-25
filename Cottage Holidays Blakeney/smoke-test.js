@@ -624,6 +624,37 @@ if (typeof get('guestQuestionShaped') === 'function') {
     check('question-shaped capture: a too-short message is not captured', qs('cot') === false);
 }
 
+// chbSwallow: the reporter for a CAUGHT error on a path where quietly carrying on
+// can hide a real bug (money totals, a missing quote, a dead pay link). Its whole
+// value rests on being a safe drop-in for `catch (e) {}`, so pin that contract:
+// it must never throw and never return anything that could alter control flow —
+// including when the reporting hook is missing or itself throws.
+console.log('\n== 11. chbSwallow (soft error reporting) ==');
+if (typeof get('chbSwallow') !== 'function') {
+    fail('chbSwallow is not defined');
+} else {
+    const sw = get('chbSwallow');
+    const calls = [];
+    sandbox.window.__reportSwallowed = (msg, where) => { calls.push({ msg, where }); };
+    check('returns undefined (cannot change control flow)', sw(new Error('boom'), 'tag-a') === undefined);
+    check('reports through the shared error hook', calls.length === 1);
+    check('the message carries the tag + the error', /\[tag-a\] boom/.test(calls[0] ? calls[0].msg : ''));
+    check('the "where" identifies the call site', (calls[0] || {}).where === 'swallow:tag-a');
+    // Degenerate inputs must be as safe as a real Error.
+    let threw = false;
+    try { sw(undefined, 'tag-b'); sw(null, 'tag-c'); sw('a string', 'tag-d'); sw({}, 'tag-e'); } catch (e) { threw = true; }
+    check('never throws on undefined / null / string / object', !threw);
+    // A broken (or absent) hook must not turn a swallowed error into a real one.
+    sandbox.window.__reportSwallowed = () => { throw new Error('hook exploded'); };
+    let threw2 = false;
+    try { sw(new Error('x'), 'tag-f'); } catch (e) { threw2 = true; }
+    check('survives a throwing report hook', !threw2);
+    delete sandbox.window.__reportSwallowed;
+    let threw3 = false;
+    try { sw(new Error('x'), 'tag-g'); } catch (e) { threw3 = true; }
+    check('survives a missing report hook', !threw3);
+}
+
 console.log('\n== Summary ==');
 if (failures === 0) { console.log('  ALL CHECKS PASSED ✅\n'); process.exit(0); }
 console.log('  ' + failures + ' CHECK(S) FAILED ❌\n'); process.exit(1);

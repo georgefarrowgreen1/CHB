@@ -536,7 +536,9 @@ async function cmdkApplyPriceOverride(propKey, start, endIncl, rate, label) {
     const put = async (list) => {
         await apiPost('rates.php', { action: 'seasons_save', prop_key: propKey, seasons: list });
         propertySeasons[propKey] = list.map((s) => ({ label: s.label, start_date: s.start, end_date: s.end, couple_rate: s.rate }));
-        try { renderCardPrices(); updatePropPriceHeading(); } catch (e) {}
+        // The rate IS saved by now; if the repaint throws, the prices on screen
+        // silently disagree with what the owner just applied.
+        try { renderCardPrices(); updatePropPriceHeading(); } catch (e) { chbSwallow(e, 'price-override-repaint'); }
     };
     await put(next);
     const nm = (propertyMeta[propKey] || {}).name || propKey;
@@ -1375,7 +1377,10 @@ function chbCustomers() {
             if (c.props.indexOf(pk) < 0) c.props.push(pk);
             c.nights += nightsOf(b);
             let tot = 0;
-            try { const ps = paymentSummary(pk, b); tot = (ps && ps.total) || 0; } catch (e) {}
+            // Falls back to the agreed total below, but a throw here means this
+            // stay is priced from the snapshot rather than the live ledger —
+            // worth a record when a customer's lifetime revenue looks wrong.
+            try { const ps = paymentSummary(pk, b); tot = (ps && ps.total) || 0; } catch (e) { chbSwallow(e, 'customer-revenue'); }
             if (!tot) tot = (b.agreedPrice && b.agreedPrice.total) || 0;
             c.revenue += tot;
             if (b.checkIn && (!c.first || b.checkIn < c.first)) c.first = b.checkIn;
@@ -2633,7 +2638,10 @@ function chbNlgBrief() {
         Object.keys(dbBookings || {}).forEach((pk) => (dbBookings[pk] || []).forEach((b) => {
             if (b.checkIn === today) arr++;
             if (b.checkOut === today) dep++;
-            try { const ps = paymentSummary(pk, b); if (!ps.fullyPaid && ps.balance > 0.5 && (b.checkOut || '') >= today) owed += ps.balance; } catch (e) {}
+            // A throw here would drop this booking's balance from the day's "to
+            // collect" total — the owner would read a figure that's quietly too
+            // low — so record it instead of losing it.
+            try { const ps = paymentSummary(pk, b); if (!ps.fullyPaid && ps.balance > 0.5 && (b.checkOut || '') >= today) owed += ps.balance; } catch (e) { chbSwallow(e, 'brief-owed'); }
         }));
         Object.keys((typeof dbBlocks === 'object' && dbBlocks) || {}).forEach((pk) => (dbBlocks[pk] || []).forEach((bl) => {
             if (isOtaBlock(bl)) { if (bl.checkIn === today) arr++; if (bl.checkOut === today) dep++; }
@@ -3915,7 +3923,9 @@ function cmdkIntent(q) {
         flat.forEach((x) => {
             const ps = paymentSummary(x.pk, x.b);
             if (!ps.fullyPaid && ps.balance > 0.5) { outstanding += ps.balance; owers++; }
-            try { const dh = damageHeld(x.pk, x.b); if (dh && dh.held > 0.5) { held += dh.held; depN++; } } catch (e) {}
+            // Same as the brief: swallowing here silently under-reports how much
+            // deposit money is being held.
+            try { const dh = damageHeld(x.pk, x.b); if (dh && dh.held > 0.5) { held += dh.held; depN++; } } catch (e) { chbSwallow(e, 'money-held'); }
         });
         const facts = [outstanding > 0.5 ? `${gbp(outstanding)} to collect` : 'All balances in', held > 0.5 ? `${gbp(held)} deposits held` : null].filter(Boolean).join(' · ');
         const head = ans('Payments', facts, () => { closeCmdK(); openAccounts(); });
@@ -16547,7 +16557,10 @@ function chbDraftEnquiryReply(enq) {
             if (p.damagesDeposit) pl += ', plus a ' + gbp(p.damagesDeposit) + ' refundable damage deposit';
             L.push(pl + '.');
         }
-    } catch (e) {}
+        // The draft is still sendable without a price, which is the point of
+        // catching — but a quote silently missing from a reply to an enquiry is
+        // a lost booking, not a cosmetic gap.
+    } catch (e) { chbSwallow(e, 'enquiry-draft-quote'); }
     const topic = chbEnqTopicAnswer(enq.message || '', enq.propKey);
     if (topic) L.push('', 'To your question — ' + topic.charAt(0).toLowerCase() + topic.slice(1));
     L.push('');
@@ -16591,7 +16604,7 @@ function openEnquiryEmail(enqId) {
             if (p && p.total) {
                 priceRow = `<div class="enq-ctx-row"><span class="enq-ctx-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg></span><span class="enq-ctx-txt"><strong>${gbp(p.total)}</strong><span class="enq-ctx-mut"> · ${p.nights} night${p.nights === 1 ? '' : 's'} × ${gbp(p.perNight)}${p.damagesDeposit ? ` · +${gbp(p.damagesDeposit)} refundable deposit` : ''}</span></span></div>`;
             }
-        } catch (e) {}
+        } catch (e) { chbSwallow(e, 'enquiry-ctx-quote'); }
         const initial = (enq.name || enq.email || '?').trim().charAt(0).toUpperCase();
         ctx.innerHTML = `
             <div class="enq-ctx-who">
