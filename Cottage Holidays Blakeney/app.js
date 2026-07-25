@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 268;
+const ADMIN_BUNDLE_V = 269;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -26,12 +26,71 @@ function ensureAdminCss() {
         document.head.appendChild(l);
     });
 }
+// The back-office MARKUP is split out too (admin-views.html) — it was ~40% of
+// index.html / ~15KB gzipped that every guest downloaded and never saw. Each
+// admin screen's body ships as a <template data-view="view-..."> there, and
+// index.html keeps only the empty <main id="view-..."> shells, so nav() and
+// ADMIN_VIEWS are untouched. Versioned by ADMIN_BUNDLE_V — the SAME stamp as
+// admin.js, deliberately: admin.js's renderers target these ids, so the two
+// must move in lockstep and one shared version cannot drift the way two would.
+// Kept OUT of the sw.js CORE precache, exactly like admin.js.
+let __adminViewsPromise = null;
+function ensureAdminViews() {
+    if (__adminViewsPromise) return __adminViewsPromise;
+    __adminViewsPromise = fetch('admin-views.html?v=' + ADMIN_BUNDLE_V)
+        .then((r) => {
+            if (!r.ok) throw new Error('admin-views.html ' + r.status);
+            return r.text();
+        })
+        .then((html) => {
+            const holder = document.createElement('div');
+            holder.innerHTML = html;
+            let injected = 0;
+            holder.querySelectorAll('template[data-view]').forEach((t) => {
+                const host = document.getElementById(t.getAttribute('data-view'));
+                // Only fill an EMPTY shell — never clobber a rendered screen if
+                // this somehow runs twice.
+                if (host && !host.firstElementChild) {
+                    host.appendChild(t.content.cloneNode(true));
+                    injected++;
+                }
+            });
+            if (!injected && !document.getElementById('settings-index')) {
+                throw new Error('admin-views.html injected nothing');
+            }
+        })
+        .catch((e) => {
+            // Let the caller retry on the next tap rather than caching a dud —
+            // an owner must not be stuck with empty screens after one dropped
+            // request. Rethrow so loadAdminBundle surfaces it like a script fail.
+            __adminViewsPromise = null;
+            throw new Error('Could not load the admin screens — check your connection and try again.');
+        });
+    return __adminViewsPromise;
+}
 let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
     if (__adminBundlePromise) return __adminBundlePromise;
     // Pull the admin stylesheet in parallel with the script.
     ensureAdminCss();
+    // The MARKUP has to be in the DOM before any admin function runs (they render
+    // into these ids), so the script is appended only after the views land. To
+    // keep that ordering from costing a round trip, warm admin.js in the HTTP
+    // cache NOW with a preload — the network fetches overlap, only EXECUTION is
+    // serialised. Ordering the two this way (rather than relying on admin.js's
+    // top level happening to be DOM-inert) keeps a future top-level DOM touch in
+    // admin.js from breaking subtly.
+    try {
+        if (!document.getElementById('admin-js-preload')) {
+            const pre = document.createElement('link');
+            pre.id = 'admin-js-preload';
+            pre.rel = 'preload';
+            pre.as = 'script';
+            pre.href = 'admin.js?v=' + ADMIN_BUNDLE_V;
+            document.head.appendChild(pre);
+        }
+    } catch (e) {}
     // Retry the fetch a couple of times before giving up: one dropped request
     // (patchy mobile signal, or the brief window while a deploy is uploading)
     // must not leave the owner with dead buttons.
@@ -51,7 +110,12 @@ function loadAdminBundle() {
             };
             document.head.appendChild(s);
         });
-    __adminBundlePromise = attempt(2);
+    __adminBundlePromise = ensureAdminViews().then(() => attempt(2));
+    // A views failure must also clear the bundle promise, or the owner's next tap
+    // resolves against the rejected one instead of retrying.
+    __adminBundlePromise.catch(() => {
+        __adminBundlePromise = null;
+    });
     return __adminBundlePromise;
 }
 ["accountsBack","accountsOpen","accountsShowIndex","activityLogSearch","addAdminPasskey","addReviewRow","afterPaymentChange","autoSyncIcalBlocks","backfillWebp","bookingHubBack","bookingsSetFilter","bookingsSetSearch","bulkImportReviews","changeAdminPassword","changeMonth","timelineToday","inboxFolder","initBackOffice","closeBreakdownModal","diagnoseReplyEmail","closeEnquiryEmailModal","addComposeAttachments","previewComposedEmail","sendEnquiryEmail","backToComposeEdit","loadAdminMessages","loadDiagnostics","logoutStaff","offerUpdatedConfirmationEmail","openAccounts","openAddBooking","openArea","openBlockDates","openBookings","openBookingEmail","openBookingHub","openCmdK","openEnquiryHub","enquiryHubBack","openInbox","openSettings","openStagingSite","refreshModerationCounts","renderAccounts","renderActivityLog","renderBookings","renderCalendar","renderExpenses","renderInbox","renderMoneyOverview","requestPayment","renderSquareSettings","runMigrations","saveApiKey","saveContactPhone","saveContent","saveDepositPct","saveGoogleReviewUrl","saveHostText","saveReviews","sendBroadcast","sendSampleEmails","sendTestEmail","settingsBack","settingsFilter","settingsOpen","settingsOpenAccom","settingsOpenAccomSec","settingsOpenCalendar","settingsOpenCancel","settingsSearchKey","settingsShowIndex","tryAccessBackOffice","uploadHostPhoto"].forEach((n) => {
@@ -13066,7 +13130,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'hdrfit1';
+    const BUILD = 'adminviews1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

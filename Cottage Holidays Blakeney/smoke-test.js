@@ -95,6 +95,15 @@ try {
 // CI and (b) the behavioural checks below see the full app.
 let adminScript = '';
 try { adminScript = fs.readFileSync(path.join(path.dirname(HTML_PATH), 'admin.js'), 'utf8'); } catch (e) {}
+// The back-office MARKUP lives in admin-views.html (split out of index.html so
+// guests never download it). It is injected into index.html's empty view shells
+// at runtime, so for every markup gate below it counts as part of the page —
+// scan the two TOGETHER or the data-act / inline-handler / duplicate-id checks
+// would silently stop covering ~40% of the app's markup.
+let adminViews = '';
+try { adminViews = fs.readFileSync(path.join(path.dirname(HTML_PATH), 'admin-views.html'), 'utf8'); } catch (e) {}
+check('admin-views.html present (the back-office markup bundle)', adminViews.length > 1000);
+const markup = html + '\n' + adminViews;
 if (adminScript) {
     try {
         vm.runInContext(adminScript, ctx, { filename: 'admin.js', timeout: 5000 });
@@ -253,7 +262,7 @@ const JS_BUILTINS = new Set(['if', 'for', 'while', 'return', 'event', 'this', 'w
     'alert', 'confirm', 'prompt', 'Math', 'Date', 'JSON', 'Number', 'String', 'Boolean', 'Array', 'Object',
     'parseInt', 'parseFloat', 'location', 'setTimeout', 'true', 'false', 'null', 'undefined', 'typeof', 'new']);
 const calledInOnclick = new Set();
-for (const m of html.matchAll(/\bon(?:click|change|input|keydown)\s*=\s*"([^"]*)"/g)) {
+for (const m of markup.matchAll(/\bon(?:click|change|input|keydown)\s*=\s*"([^"]*)"/g)) {
     // Match bare function calls only — skip member calls like el.remove() / location.reload().
     for (const c of m[1].matchAll(/(?<![.\w$])([A-Za-z_$][\w$]*)\s*\(/g)) calledInOnclick.add(c[1]);
 }
@@ -267,7 +276,7 @@ check('every inline handler maps to a defined function' + (missing.length ? ' (m
 // guest-app.js innerHTML template) would be silently DEAD in the browser. Ceiling
 // is 0 across all four; add handlers via data-act / chbAttrs only.
 const INLINE_ATTR_RE = /\son[a-z]+\s*=\s*["'`]/g;
-const inlineSources = { 'index.html': html, 'app.js': appScript, 'admin.js': adminScript };
+const inlineSources = { 'index.html': html, 'admin-views.html': adminViews, 'app.js': appScript, 'admin.js': adminScript };
 try { inlineSources['guest-app.js'] = fs.readFileSync(path.join(path.dirname(HTML_PATH), 'guest-app.js'), 'utf8'); } catch (e) {}
 const inlineOffenders = Object.entries(inlineSources)
     .map(([f, src]) => [f, (src.match(INLINE_ATTR_RE) || []).length])
@@ -305,7 +314,7 @@ const registeredActs = new Set([...appScript.matchAll(/chbAct\('([^']+)'/g)].map
 const actValues = new Set();
 // index.html static attrs + the static data-act literals emitted by app.js/admin.js
 // innerHTML templates (skip ${...}-interpolated names — resolved at runtime).
-for (const src of [html, appScript, adminScript]) {
+for (const src of [html, adminViews, appScript, adminScript]) {
     for (const m of src.matchAll(/\bdata-act(?:-[a-z]+)?\s*=\s*["']([^"'${]+)["']/g)) {
         if (m[1]) actValues.add(m[1]);
     }
@@ -314,7 +323,7 @@ const unresolvedActs = [...actValues].filter(n => !registeredActs.has(n) && !def
 check('every data-act* value resolves to an action or global fn' + (unresolvedActs.length ? ' (unresolved: ' + unresolvedActs.join(', ') + ')' : ''), unresolvedActs.length === 0);
 
 // 6b. No duplicate element ids (ignore JS template-literal ids like id="x-${k}")
-const ids = [...html.matchAll(/\sid="([^"]+)"/g)].map(m => m[1]).filter(id => !id.includes('${'));
+const ids = [...markup.matchAll(/\sid="([^"]+)"/g)].map(m => m[1]).filter(id => !id.includes('${'));
 const dupes = ids.filter((id, i) => ids.indexOf(id) !== i);
 check('no duplicate element ids' + (dupes.length ? ' (dupes: ' + [...new Set(dupes)].join(', ') + ')' : ''), dupes.length === 0);
 

@@ -47,10 +47,11 @@ build step**); PHP backend files sit alongside it. App-style guest shell lives i
 Single-operator holiday-let PWA. No framework, no build step.
 
 **Frontend** (no inline blobs anymore — CSS and JS are extracted into cached files)
-- `index.html` (~144KB) — markup + `<head>` only: `<main class="page-view">` sections
-  toggled by `nav(viewId)`; `currentGuest`/`isAuthenticated` + `body.owner-mode`/
-  `body.guest-app` classes drive what shows. Links `app.css`, then `app.js`, then
-  `guest-app.js`.
+- `index.html` (~139KB / 28KB gz) — markup + `<head>` only: `<main class="page-view">`
+  sections toggled by `nav(viewId)`; `currentGuest`/`isAuthenticated` +
+  `body.owner-mode`/`body.guest-app` classes drive what shows. Links `app.css`, then
+  `app.js`, then `guest-app.js`. The seven ADMIN views are EMPTY `<main>` shells here —
+  their bodies live in `admin-views.html` (below).
 - `app.css` — the main stylesheet (was the inline `<style>`).
 - `app.js` — the PUBLIC app (guest site + shared helpers + auth) as globals that
   inline `onclick`s call. `const BUILD` (last statement) is the version stamp.
@@ -67,6 +68,24 @@ Single-operator holiday-let PWA. No framework, no build step.
   `loadSquareAdminConfig`). smoke-test.js §1 enforces the facade contract
   (evaluates both files, all stubs replaced) and 6a/6c check handlers + that
   admin.js stays OUT of the sw.js CORE precache.
+- `admin-views.html` — the back-office MARKUP, split out of index.html for the same
+  reason as admin.js: it was ~40% of the file / ~17KB gz that every guest downloaded
+  and never saw (index.html is now 43.8→28.4KB gz). One
+  `<template data-view="view-…">` per admin screen; `ensureAdminViews()` (app.js)
+  injects each body into index.html's matching empty shell as the FIRST step of
+  `loadAdminBundle()`, before admin.js is evaluated — admin.js's renderers target
+  these ids, so the markup must be in the DOM before any admin fn runs (admin.js is
+  `<link rel=preload>`ed at the same moment so the two fetches still overlap; only
+  EXECUTION is serialised). Versioned by **ADMIN_BUNDLE_V — the same stamp as
+  admin.js, deliberately**: the two must ship in lockstep, and one shared version
+  can't drift the way two would (bump.js + check-versions.js both treat a change to
+  either file as requiring that bump). Kept OUT of the sw.js CORE precache like
+  admin.js. Every smoke-test markup gate (6a-i inline handlers, 6a-ii the inline-`on*`
+  ratchet, 6a-iii `data-act` resolution, 6b duplicate ids) scans index.html AND
+  admin-views.html together — scanning only index.html would silently drop ~40% of
+  the app's markup out of coverage. app.js may only touch ids inside these views
+  NULL-GUARDED (they don't exist until an owner signs in); the nine existing
+  references already are.
 - `guest-app.js` / `guest-app.css` — the mobile app shell only (the floating dock,
   full-page overlays, install chip). Loaded with `?v=` and gated as above.
 - Routing is `nav()` toggling `.page-view.active`; per-view init lives in `nav()`
