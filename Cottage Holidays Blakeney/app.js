@@ -7429,6 +7429,38 @@ function chatSetTyping(containerId, on) {
 }
 // Tell the server we're composing (throttled) so the other side sees "typing…".
 let __typingLastPing = 0;
+// The composer is a 1-row textarea with a 120px cap, so anything past the first
+// line used to be CLIPPED (the box never grew, and a guest can't see what they
+// typed). Grow it to fit its content up to that cap, then let it scroll — the
+// iMessage behaviour. Called on every input event via chatInputChanged.
+function chatGrowInput(el) {
+    const ta = el || document.getElementById('chat-input');
+    if (!ta) return;
+    try {
+        const cs = getComputedStyle(ta);
+        const max = parseFloat(cs.maxHeight) || 120;
+        // scrollHeight covers content + padding but NOT the border, so on a
+        // border-box field (this one) height = scrollHeight comes out a couple of
+        // pixels short and clips the last line by a hair. Add the border back.
+        const border =
+            cs.boxSizing === 'border-box'
+                ? (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.borderBottomWidth) || 0)
+                : 0;
+        ta.style.height = 'auto'; // collapse first so scrollHeight is the true content
+        ta.style.height = Math.min(ta.scrollHeight + border, max) + 'px';
+    } catch (e) {}
+}
+// Reset to one line — after sending, or when the thread closes.
+function chatResetInputHeight() {
+    const ta = document.getElementById('chat-input');
+    if (ta) ta.style.height = '';
+}
+// Single input handler for the guest composer: keep the box the size of its
+// content, and stamp the typing indicator (throttled inside).
+function chatInputChanged() {
+    chatGrowInput();
+    chatTypingPing();
+}
 function chatTypingPing() {
     const now = Date.now();
     if (now - __typingLastPing < 2500) return;
@@ -7818,6 +7850,7 @@ async function sendChat() {
             chatClearEmpty();
             chatAppendMe(body);
             if (input) input.value = '';
+            chatResetInputHeight();
             const intro0 = document.getElementById('chat-intro');
             if (intro0) intro0.style.display = 'none';
             chatFaqReply(hit, body);
@@ -7865,6 +7898,7 @@ async function sendChat() {
             } catch (e) {}
         }
         if (input) input.value = '';
+        chatResetInputHeight();
         chatClearAttach();
         const intro = document.getElementById('chat-intro');
         if (intro) intro.style.display = 'none';
@@ -13145,7 +13179,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'iosmotion1';
+    const BUILD = 'chatfix1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
