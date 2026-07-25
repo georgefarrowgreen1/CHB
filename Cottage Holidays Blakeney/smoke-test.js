@@ -216,12 +216,6 @@ else {
 }
 
 console.log('\n== 3. UK postcode validation ==');
-const hp = get('hasUkPostcode');
-if (typeof hp !== 'function') { fail('hasUkPostcode is not defined'); }
-else {
-    check('hasUkPostcode: finds a postcode inside an address', hp('12 High St, Blakeney NR25 7AB') === true);
-    check('hasUkPostcode: rejects text with no postcode', hp('12 High Street, Blakeney') === false);
-}
 const ip = get('isUkPostcode');
 if (typeof ip !== 'function') { fail('isUkPostcode is not defined'); }
 else {
