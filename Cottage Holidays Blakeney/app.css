@@ -8100,17 +8100,16 @@ body.owner-mode .footer-nap,
 body.owner-mode .footer-meta {
   display: none !important;
 }
-/* The public header is hidden for admins, so the big top padding that cleared
-           it is wasted space — pull the back-office content up to fill the screen
-           (small margin + notch clearance). Dock clearance stays at the bottom. */
+/* The admin nav lives in the HEADER now, so the back office clears it at the TOP
+           and needs nothing reserved at the bottom (the 110px that cleared the old
+           floating dock was just a void once it moved). */
 body.owner-mode .container {
-  padding-top: calc(28px + env(safe-area-inset-top, 0px));
-  padding-bottom: 110px;
+  padding-top: calc(100px + env(safe-area-inset-top, 0px));
+  padding-bottom: 40px;
 }
-/* The footer sits outside .container, so give it its own clearance in
-           owner-mode — otherwise the floating admin dock overlaps the footer text. */
+/* Nothing floats over the footer any more. */
 body.owner-mode .site-footer {
-  padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
 }
 
 /* ----- ADMIN ICON DOCK (floating bottom pill nav, icons only) ----- */
@@ -8225,7 +8224,14 @@ body.owner-mode.search-first .admin-dock-btn[data-view="view-settings"] { displa
   position: absolute;
   top: 50%;
   left: 0;
-  transform: translateY(-50%);
+  /* Travels on `translate`, exactly like the guest dock's pill: animating
+     left/width lays out and paints every frame, which is the stutter. Movement and
+     the squash below are on SEPARATE properties on purpose — put both in one
+     `transform` and the keyframe overrides the travel, and the pill teleports.
+     moveDockIndicator sets style.translate DIRECTLY, never via a var(): a
+     transition cannot interpolate a custom property. */
+  transform: translateZ(0);
+  translate: 0 -50%;
   width: 60px;
   height: 60px;
   border-radius: var(--r-pill);
@@ -8234,10 +8240,34 @@ body.owner-mode.search-first .admin-dock-btn[data-view="view-settings"] { displa
   pointer-events: none;
   z-index: 0;
   transition:
-    left 0.5s var(--spring),
-    width 0.5s var(--spring),
-    height 0.3s var(--fluid-bezier),
+    translate 0.52s var(--spring),
     opacity 0.28s var(--fluid-bezier);
+}
+.admin-dock-indicator.ad-travel {
+  animation: adTravel 0.46s var(--fluid-bezier);
+}
+@keyframes adTravel {
+  0% {
+    scale: 1 1;
+  }
+  38% {
+    scale: 1.16 0.88;
+  }
+  70% {
+    scale: 0.96 1.04;
+  }
+  100% {
+    scale: 1 1;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .admin-dock-indicator {
+    transition: opacity 0.2s ease;
+    scale: none;
+  }
+  .admin-dock-indicator.ad-travel {
+    animation: none;
+  }
 }
 .admin-dock-indicator.show {
   opacity: 1;

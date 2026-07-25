@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=209">
+    <link rel="stylesheet" href="app.css?v=210">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -225,37 +225,42 @@
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="3.6"/><path d="M5.5 19.5a6.5 6.5 0 0 1 13 0"/></svg>
         </button>
         <button class="menu-toggle" data-act="toggleMobileMenu" aria-label="Menu" aria-expanded="false" aria-controls="mobileMenu"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+        <!-- ADMIN NAV — lives IN THE HEADER, the same place the customer menu
+             does. It used to float at the bottom of the screen while owner-mode
+             hid the header entirely; both sides now put navigation in one bar at
+             the top. Static markup (one home) so no re-parenting is needed —
+             unlike the guest dock, which is JS-built and moves between the header
+             and its floating wrapper. -->
+        <span id="admin-head-title" aria-hidden="true"></span>
+        <div class="admin-dock-wrap" role="navigation" aria-label="Admin navigation">
+            <nav class="admin-dock">
+                <span class="admin-dock-indicator" aria-hidden="true"></span>
+                <!-- The inline "Edit text & photos" live editor is retired and removed: all
+                     content is now edited via Manage → Website content and
+                     Preferences → [cottage] → Photos / Text. -->
+                <button class="admin-dock-btn" data-view="view-backoffice" data-label="Today" aria-label="Today" title="Today" data-act="tryAccessBackOffice">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18"/><path d="M8 2.5v4M16 2.5v4"/></svg>
+                    <span class="admin-dock-badge" id="dock-badge-enquiries" style="display:none;">0</span>
+                </button>
+                <button class="admin-dock-btn" data-view="view-inbox" data-label="Inbox" aria-label="Inbox" title="Inbox" data-act="openInbox">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/></svg>
+                    <span class="admin-dock-badge" id="dock-badge-inbox" style="display:none;">0</span>
+                </button>
+                <button class="admin-dock-btn" data-view="view-accounts" data-label="Payments" aria-label="Payments" title="Payments" data-act="openAccounts">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><text x="12" y="16.2" font-size="11" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="Georgia, serif">&#163;</text></svg>
+                </button>
+                <button class="admin-dock-btn" data-view="view-settings" data-label="Manage" aria-label="Manage" title="Manage" data-act="openArea" data-arg="manage">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                </button>
+                <!-- Whole-site search lives in the dock now (rightmost), not a separate
+                     floating button. No data-view: it opens the ⌘K palette, it isn't a
+                     nav target, so the sliding indicator ignores it. -->
+                <button class="admin-dock-btn" data-label="Search" aria-label="Search" title="Search (⌘K)" data-act="openCmdK">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12L20.8 13L20.1 13.9L19.2 14.5L18.1 14.9L17 15.2L16.1 15.2L15.3 15.3L14.8 15.6L14.5 16L14.3 16.7L14 17.6L13.5 18.6L12.9 19.6L12 20.3L11 20.8L10 20.8L9.1 20.3L8.4 19.5L7.9 18.5L7.8 17.3L7.8 16.2L7.9 15.2L8 14.5L7.9 14L7.5 13.6L6.9 13.2L6.1 12.7L5.2 12L4.4 11.1L3.9 10.1L3.7 9.1L3.9 8.1L4.5 7.3L5.5 6.8L6.6 6.6L7.8 6.7L8.8 7L9.7 7.3L10.4 7.5L11 7.6L11.5 7.3L12 6.8L12.7 6.1L13.5 5.4L14.5 4.8L15.6 4.5L16.7 4.5L17.6 5L18.2 5.8L18.5 6.8L18.5 7.9L18.1 9.1L17.6 10L17.1 10.8L16.7 11.5L16.5 12L16.7 12.5L17.1 13.2L17.6 14L18.1 14.9L18.5 16.1L18.5 17.2L18.2 18.2L17.6 19L16.7 19.5L15.6 19.5L14.5 19.2L13.5 18.6L12.7 17.9L12 17.2L11.5 16.7L11 16.4L10.4 16.5L9.7 16.7L8.8 17L7.8 17.3L6.6 17.4L5.5 17.2L4.5 16.7L3.9 15.9L3.7 14.9L3.9 13.9L4.4 12.9L5.2 12L6.1 11.3L6.9 10.8L7.5 10.4L7.9 10L8 9.5L7.9 8.8L7.8 7.8L7.8 6.7L7.9 5.5L8.4 4.5L9.1 3.7L10 3.2L11 3.2L12 3.7L12.9 4.4L13.5 5.4L14 6.4L14.3 7.3L14.5 8L14.8 8.4L15.3 8.7L16.1 8.8L17 8.8L18.1 9.1L19.2 9.5L20.1 10.1L20.8 11Z"/></svg>
+                </button>
+            </nav>
+        </div>
     </header>
-
-    <!-- ADMIN FLOATING DOCK (icons only; shown only while an admin is signed in) -->
-    <div class="admin-dock-wrap" role="navigation" aria-label="Admin navigation">
-        <nav class="admin-dock">
-            <span class="admin-dock-indicator" aria-hidden="true"></span>
-            <!-- The inline "Edit text & photos" live editor is retired and removed: all
-                 content is now edited via Manage → Website content and
-                 Preferences → [cottage] → Photos / Text. -->
-            <button class="admin-dock-btn" data-view="view-backoffice" data-label="Today" aria-label="Today" title="Today" data-act="tryAccessBackOffice">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18"/><path d="M8 2.5v4M16 2.5v4"/></svg>
-                <span class="admin-dock-badge" id="dock-badge-enquiries" style="display:none;">0</span>
-            </button>
-            <button class="admin-dock-btn" data-view="view-inbox" data-label="Inbox" aria-label="Inbox" title="Inbox" data-act="openInbox">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/></svg>
-                <span class="admin-dock-badge" id="dock-badge-inbox" style="display:none;">0</span>
-            </button>
-            <button class="admin-dock-btn" data-view="view-accounts" data-label="Payments" aria-label="Payments" title="Payments" data-act="openAccounts">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><text x="12" y="16.2" font-size="11" font-weight="700" text-anchor="middle" fill="currentColor" stroke="none" font-family="Georgia, serif">&#163;</text></svg>
-            </button>
-            <button class="admin-dock-btn" data-view="view-settings" data-label="Manage" aria-label="Manage" title="Manage" data-act="openArea" data-arg="manage">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-            </button>
-            <!-- Whole-site search lives in the dock now (rightmost), not a separate
-                 floating button. No data-view: it opens the ⌘K palette, it isn't a
-                 nav target, so the sliding indicator ignores it. -->
-            <button class="admin-dock-btn" data-label="Search" aria-label="Search" title="Search (⌘K)" data-act="openCmdK">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12L20.8 13L20.1 13.9L19.2 14.5L18.1 14.9L17 15.2L16.1 15.2L15.3 15.3L14.8 15.6L14.5 16L14.3 16.7L14 17.6L13.5 18.6L12.9 19.6L12 20.3L11 20.8L10 20.8L9.1 20.3L8.4 19.5L7.9 18.5L7.8 17.3L7.8 16.2L7.9 15.2L8 14.5L7.9 14L7.5 13.6L6.9 13.2L6.1 12.7L5.2 12L4.4 11.1L3.9 10.1L3.7 9.1L3.9 8.1L4.5 7.3L5.5 6.8L6.6 6.6L7.8 6.7L8.8 7L9.7 7.3L10.4 7.5L11 7.6L11.5 7.3L12 6.8L12.7 6.1L13.5 5.4L14.5 4.8L15.6 4.5L16.7 4.5L17.6 5L18.2 5.8L18.5 6.8L18.5 7.9L18.1 9.1L17.6 10L17.1 10.8L16.7 11.5L16.5 12L16.7 12.5L17.1 13.2L17.6 14L18.1 14.9L18.5 16.1L18.5 17.2L18.2 18.2L17.6 19L16.7 19.5L15.6 19.5L14.5 19.2L13.5 18.6L12.7 17.9L12 17.2L11.5 16.7L11 16.4L10.4 16.5L9.7 16.7L8.8 17L7.8 17.3L6.6 17.4L5.5 17.2L4.5 16.7L3.9 15.9L3.7 14.9L3.9 13.9L4.4 12.9L5.2 12L6.1 11.3L6.9 10.8L7.5 10.4L7.9 10L8 9.5L7.9 8.8L7.8 7.8L7.8 6.7L7.9 5.5L8.4 4.5L9.1 3.7L10 3.2L11 3.2L12 3.7L12.9 4.4L13.5 5.4L14 6.4L14.3 7.3L14.5 8L14.8 8.4L15.3 8.7L16.1 8.8L17 8.8L18.1 9.1L19.2 9.5L20.1 10.1L20.8 11Z"/></svg>
-            </button>
-        </nav>
-    </div>
 
     <!-- Command palette: jump to any booking, enquiry or screen. Owner-only —
          opened by the dock's Search button or ⌘K / Ctrl-K (wired in admin.js);
@@ -1722,11 +1727,11 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=512"></script>
+    <script defer src="app.js?v=513"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
-    <script defer src="guest-app.js?v=21"></script>
+    <script defer src="guest-app.js?v=22"></script>
 
 </body>
 </html>
