@@ -72,14 +72,18 @@ done.push(`BUILD ${curBuild} → ${stamp} (app.js)`);
 
 // ---- ADMIN_BUNDLE_V / ADMIN_CSS_V (when their files changed)
 const bumpConst = (name, when) => {
-    if (!changed.has(when)) return;
+    const files = [].concat(when);
+    const hit = files.filter((f) => changed.has(f));
+    if (!hit.length) return;
     const re = new RegExp(`const ${name} = (\\d+);`);
     const cur = (appJs.match(re) || [])[1];
     if (!cur) { console.error(`const ${name} not found in app.js`); process.exit(1); }
     appJs = appJs.replace(re, `const ${name} = ${+cur + 1};`);
-    done.push(`${name} ${cur} → ${+cur + 1} (${when} changed)`);
+    done.push(`${name} ${cur} → ${+cur + 1} (${hit.join(' + ')} changed)`);
 };
-bumpConst('ADMIN_BUNDLE_V', 'admin.js');
+// admin-views.html shares admin.js's stamp on purpose: admin.js renders INTO that
+// markup, so the two must always ship together — one version can't drift.
+bumpConst('ADMIN_BUNDLE_V', ['admin.js', 'admin-views.html']);
 bumpConst('ADMIN_CSS_V', 'admin.css');
 
 // ---- ?v= pins in index.html + sw.js CORE (app.js always — BUILD changes it)
@@ -104,5 +108,5 @@ write('index.html', html);
 write('sw.js', sw);
 
 console.log((dry ? 'DRY RUN — would bump:\n' : 'Bumped:\n') + done.map(d => '  • ' + d).join('\n'));
-if (changed.has('admin.js') || changed.has('admin.css')) console.log('  (admin bundle repinned — guests never fetch it, no CORE entry to touch)');
+if (changed.has('admin.js') || changed.has('admin.css') || changed.has('admin-views.html')) console.log('  (admin bundle repinned — guests never fetch it, no CORE entry to touch)');
 console.log('\nNow re-run: node smoke-test.js  &&  php test-pricing.php');

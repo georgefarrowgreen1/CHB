@@ -1,0 +1,817 @@
+<!-- ============================================================
+     admin-views.html — the BACK-OFFICE MARKUP, split out of index.html.
+
+     Every admin screen's body lives here instead of in index.html, because a
+     guest downloads index.html and never sees any of it (it was ~40% of the
+     file / ~17KB gzipped). index.html keeps the empty <main id="view-..."">
+     shells so nav()/ADMIN_VIEWS keep working untouched; app.js's
+     ensureAdminViews() injects these bodies into those shells as part of
+     loadAdminBundle() — the same on-demand path that already fetches admin.js
+     and admin.css when an owner signs in.
+
+     RULES
+       - Versioned by ADMIN_BUNDLE_V (app.js), the SAME stamp as admin.js: the
+         two must move in lockstep because admin.js's renderers target these
+         ids, so one shared version can't drift the way two would.
+         bump.js/check-versions.js enforce it.
+       - Deliberately NOT in the sw.js CORE precache (same as admin.js) — guests
+         must never fetch it.
+       - One <template data-view="<view id>"> per admin screen. Keep the ids:
+         everything (admin.js, the ui-tests, the layout gate) addresses them.
+     ============================================================ -->
+<template data-view="view-backoffice">
+
+        <div class="dashboard-header">
+            <div>
+                <h1 class="section-title" style="margin: 0;">Today</h1>
+                <p class="lead bo-today-date" id="today-date" style="text-align:left;margin:4px 0 0;"></p>
+            </div>
+        </div>
+
+        <!-- ASSIST BAR — the search brain embedded in the workspace: type a
+             guest name to live-filter the board below, or ask a question and
+             the answer appears inline. Injected by chbAssistBar() (admin.js)
+             so guests never download any of it. -->
+
+        <!-- NEEDS YOU — the one prioritised to-do list: everything across the
+             back office that's waiting on the owner (automation warnings,
+             enquiries, balances to chase, deposits to return, chats,
+             approvals), each a one-tap jump to the exact place to act.
+             Hidden when all clear — the ops line above already says
+             "all quiet". Rendered by renderNeedsYou() (admin.js). -->
+        <div id="needs-you" style="display:none;">
+            <!-- The heading tells the truth about the CONTENTS: duties "need you";
+                 a strip of pure opportunities reads "Worth a look" (set in
+                 renderNeedsYou, calmer green badge). -->
+            <h2 class="bo-sec-title" style="margin-top:14px;"><span id="needs-you-word">Needs you</span> <span class="inbox-badge" id="needs-you-count">0</span></h2>
+            <div id="needs-you-list"></div>
+        </div>
+
+        <!-- (The dashboard search moved to the Bookings page; the health /
+             needs-a-look pills moved to Settings.) -->
+
+        <!-- (The "Today & this week" panel was removed at the owner's request —
+             the calendar + dock pips carry the day's state.) -->
+
+        <!-- CALENDAR (left) + PENDING ENQUIRIES (right) -->
+        <div class="bo-layout">
+            <!-- CALENDAR -->
+            <div>
+                <div class="cal-header-bar">
+                    <div class="cal-month-nav">
+                        <div class="cal-month-title" id="cal-month-display">June 2026</div>
+                        <div class="tl-seg" role="group" aria-label="Move along the timeline">
+                            <button aria-label="Earlier" data-act="changeMonth" data-arg="-1">&#10094;</button>
+                            <button class="tl-today-btn" data-act="timelineToday">Today</button>
+                            <button aria-label="Later" data-act="changeMonth" data-arg="1">&#10095;</button>
+                            <button aria-label="Compact view — fit more days" title="Compact view — fit more days" aria-pressed="false" data-act="tlToggleZoom"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:14px;height:14px;"><path d="M8 4v16M16 4v16M3 4h18M3 20h18"/></svg></button>
+                        </div>
+                    </div>
+                    <div class="cal-actions">
+                        <button class="btn-glass btn-accent cal-add-btn" data-act="openAddBooking" data-edit-text="cal-add-btn">+ Add Booking</button>
+                        <button class="btn-glass cal-add-btn" data-act="openBlockDates">Block dates</button>
+                        <div class="cal-updated">
+                            <span id="cal-updated-text"></span>
+                            <button class="cal-refresh-btn" id="cal-refresh-btn" data-act="autoSyncIcalBlocks" data-arg="true" title="Refresh external bookings now" aria-label="Refresh external bookings now"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-1.9 5.3"/><path d="M20 5v6h-6"/></svg></button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TIMELINE: one row per cottage, days flowing across — bookings
+                     as bars (tap → hub), imported blocks greyed (display-only),
+                     free days tappable to start an Add Booking on that date. -->
+                <div class="glass-panel cal-panel">
+                    <div id="cal-body" class="tl-wrap"><!-- renderCalendar() injects the timeline --></div>
+                </div>
+
+                <!-- Guest details now open in a pop-up when a booking is clicked -->
+            </div>
+        </div>
+
+        <!-- BOOKINGS WORKSPACE — the timeline shows WHEN, these rows show WHO
+             and what's owed, and the hub is where you act. ≥1200px this is a
+             master–detail: index rows left, the SELECTED booking's hub docked
+             right (the shared #booking-hub-content node re-parents into the
+             pane). Narrower screens keep the two-step list → hub flow. -->
+        <div class="bk-split" id="bookings-workspace">
+        <div id="bookings-main">
+            <h2 class="bo-sec-title">Bookings</h2>
+            <div id="bookings-summary" style="font-size:0.85rem;color:var(--text-muted);margin:2px 0 12px;"></div>
+            <!-- Per-page search removed — the back-office ⌘K search covers finding a
+                 booking by guest, email or reference. The filters below stay. -->
+            <div class="inbox-sort seg" id="bookings-filters" role="tablist" aria-label="Filter bookings">
+                <button class="inbox-sort-btn is-on" role="tab" data-act="bookingsSetFilter" data-arg="upcoming" data-bfilter="upcoming">Upcoming</button>
+                <button class="inbox-sort-btn" role="tab" data-act="bookingsSetFilter" data-arg="needspay" data-bfilter="needspay">Needs payment</button>
+                <button class="inbox-sort-btn" role="tab" data-act="bookingsSetFilter" data-arg="past" data-bfilter="past">Past</button>
+                <button class="inbox-sort-btn" role="tab" data-act="bookingsSetFilter" data-arg="all" data-bfilter="all">All</button>
+            </div>
+            <div id="bookings-list"><!-- JS injects booking rows here --></div>
+        </div>
+        <aside id="bookings-detail-pane" aria-label="Selected booking">
+            <div id="bookings-detail-empty">Select a booking on the left — everything about it (money, emails, guest, history) appears here.</div>
+        </aside>
+        </div>
+
+        <!-- (The money/arrivals summary cards + occupancy heatmap were removed —
+             Money owns the figures, the calendar shows occupancy.) -->
+
+        <!-- The Recent-activity feed moved to Manage → Activity log, so the
+             phone dashboard stays a short, do-things page. -->
+
+    </template>
+
+<template data-view="view-inbox">
+        <!-- ≥1200px: master–detail like the Bookings dashboard — enquiry index
+             on the left, the SELECTED enquiry's hub docked on the right (the
+             shared #enquiry-hub-content node re-parents into the pane). -->
+        <!-- The header band spans the FULL width (its divider runs edge to
+             edge); the three-pane split — rail | list | reading pane — sits
+             entirely below it. -->
+        <div id="inbox-head">
+            <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" data-act="navBackoffice">← Back to Today</span>
+            <!-- Header mirrors the Today dashboard: big title + a LIVING subline
+                 (inboxSubline() keeps it current — what's waiting for a reply). -->
+            <div class="dashboard-header">
+                <div>
+                    <h1 class="section-title" style="margin: 0;">Inbox</h1>
+                    <p class="lead bo-today-date" id="inbox-subline" style="text-align:left;margin:4px 0 0;">Enquiries, guest chat &amp; email — every conversation in one place.</p>
+                </div>
+            </div>
+            <!-- ASSIST BAR — above the header divider (full width across the
+                 three-pane split): filter every folder at once or ask inline. -->
+        </div>
+        <div class="enq-split">
+        <div id="inbox-main">
+            <!-- (Approvals live in Marketing → "To approve"; the Today card points there.) -->
+            <!-- ONE comms dashboard: every conversation channel behind a folder
+                 switch — website enquiries, guest chat, and the cottage EMAIL
+                 mailbox (moved here from Manage; one home per task). -->
+            <div class="inbox-sort seg" id="inbox-folders" role="tablist" aria-label="Inbox folders">
+                <button class="inbox-sort-btn is-on" role="tab" data-ifolder="enquiries" data-act="inboxFolder" data-arg="enquiries"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>Enquiries <span class="ifold-count" id="ifold-count-enq"></span></button>
+                <button class="inbox-sort-btn" role="tab" data-ifolder="messages" data-act="inboxFolder" data-arg="messages"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.6-.8L3 21l1.9-5.7A8.38 8.38 0 0 1 4 11.5 8.5 8.5 0 0 1 12.5 3 8.38 8.38 0 0 1 21 11.5z"/></svg>Messages <span class="ifold-count" id="ifold-count-msg"></span></button>
+                <button class="inbox-sort-btn" role="tab" data-ifolder="email" data-act="inboxFolder" data-arg="email"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/></svg>Email <span class="ifold-count" id="ifold-count-mbx"></span></button>
+            </div>
+            <!-- Enquiries folder -->
+            <div id="inbox-folder-enquiries">
+            <h2 class="bo-sec-title">Enquiries <span class="inbox-badge" id="inbox-badge">0</span></h2>
+            <div id="inbox-list"><!-- JS injects enquiry cards here --></div>
+            </div>
+            <!-- Messages folder (guest chat + the comms automations) -->
+            <div id="inbox-folder-messages" style="display:none;">
+            <div class="msg-head-row" style="display:flex;align-items:center;justify-content:space-between;gap:10px 14px;flex-wrap:wrap;">
+                <h2 class="bo-sec-title" style="margin:0;">Guest messages <span class="inbox-badge zero" id="messages-badge">0</span></h2>
+                <!-- Show-archived toggle docks here, to the RIGHT of the heading
+                     (renderMessages fills it); frees the controls row below. -->
+                <span id="messages-head-actions"></span>
+            </div>
+            <div id="messages-list"><!-- JS injects message threads here --></div>
+            <!-- Comms automation (instant answers, away reply, follow-up emails)
+                 lives in Manage → Messages now, not here. -->
+            </div>
+            <!-- Email folder — the mailbox client (rendered by admin.js) -->
+            <div id="inbox-folder-email" style="display:none;">
+                <div id="mailbox-body"><div class="skel-row" aria-hidden="true"><span class="skel-bar w20"></span><span class="skel-bar w65"></span><span class="skel-bar w45"></span></div><div class="skel-row" aria-hidden="true"><span class="skel-bar w20"></span><span class="skel-bar w45"></span><span class="skel-bar w65"></span></div><div class="skel-row" aria-hidden="true"><span class="skel-bar w20"></span><span class="skel-bar w65"></span><span class="skel-bar w45"></span></div></div>
+            </div>
+        </div>
+        <aside id="inbox-detail-pane" aria-label="Selected enquiry">
+            <div id="inbox-detail-empty">Select an enquiry on the left — its details and actions appear here.</div>
+        </aside>
+        </div>
+        <!-- Comms automation (instant answers / away reply / follow-up emails)
+             moved to Manage → Messages (#sec-chat-answers / #sec-chat-away /
+             #sec-follow-ups). -->
+    </template>
+
+<template data-view="view-accounts">
+        <!-- Area-level chrome — hidden while a drill-down section is open (see
+             #settings-chrome for the rationale). -->
+        <div id="accounts-chrome">
+        <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" data-act="navBackoffice">← Back to Today</span>
+        <div class="dashboard-header">
+            <div>
+                <h1 class="section-title" style="margin: 0;">Payments</h1>
+            </div>
+        </div>
+        <!-- Assist Bar: search payments/balances + ask money questions inline. -->
+        </div>
+
+        <!-- INDEX -->
+        <div id="accounts-index" class="settings-index">
+            <div id="money-overview" class="money-overview"><!-- JS injects the graphical financial dashboard --></div>
+            <div class="settings-group">
+                <button class="settings-row" data-act="accountsOpen" data-arg="payments">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 9v6M18 9v6"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Payments &amp; balances</span><span class="settings-row-sub">Take guest payments &amp; refund deposits</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" data-act="accountsOpen" data-arg="recent">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 1.8"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Recent payments</span><span class="settings-row-sub">A list of payments you've received</span></span><span class="settings-row-chev">›</span>
+                </button>
+            </div>
+            <div class="settings-group">
+                <button class="settings-row" data-act="accountsOpen" data-arg="income">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16"/><rect x="6" y="11" width="3" height="6" rx="0.5"/><rect x="10.5" y="7" width="3" height="10" rx="0.5"/><rect x="15" y="13" width="3" height="4" rx="0.5"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Income &amp; tax</span><span class="settings-row-sub">Profit, quarterly totals &amp; downloads for your accountant</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" data-act="accountsOpen" data-arg="expenses">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16v13H4z"/><path d="M4 7l2-3h12l2 3"/><path d="M9 12h6"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Expenses</span><span class="settings-row-sub">Receipts, categories &amp; recurring costs</span></span><span class="settings-row-chev">›</span>
+                </button>
+            </div>
+            <div class="settings-group">
+                <button class="settings-row" data-act="accountsOpen" data-arg="pricingcoach">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 17l6-6 4 4 8-8"/><path d="M21 7v5h-5"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Pricing coach</span><span class="settings-row-sub">Smart pricing ideas from your bookings &amp; demand</span></span><span class="settings-row-chev">›</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- DRILL-DOWN PANEL -->
+        <div id="accounts-panel" style="display:none;">
+            <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" id="accounts-back" data-act="accountsBack">‹ Back</span>
+            <h2 class="section-title" id="accounts-panel-title" style="text-align:left;font-size:1.6rem;margin:6px 0 18px;"></h2>
+
+            <!-- Payments & balances -->
+            <div class="accounts-sec" id="asec-payments" style="display:none;">
+                <div id="deposits-due"><!-- damage deposits awaiting return (past stays) --></div>
+                <div id="money-panel"><!-- JS injects the per-booking payments & balances manager here --></div>
+            </div>
+
+            <!-- Recent payments -->
+            <div class="accounts-sec" id="asec-recent" style="display:none;">
+                <div id="money-feed"><!-- recent payments feed --></div>
+            </div>
+
+            <!-- Income & tax -->
+            <div class="accounts-sec" id="asec-income" style="display:none;">
+                <div style="margin-bottom:8px;">
+                    <label style="font-size:0.7rem;text-transform:uppercase;letter-spacing:1px;color:var(--text-muted);display:block;margin-bottom:6px;">Tax Year (6 April – 5 April)</label>
+                    <select class="input-glass" id="accounts-year" style="margin:0;min-width:200px;" data-act-change="renderAccounts"></select>
+                </div>
+                <div id="accounts-content"><!-- JS injects the net profit headline + income/expenses/net lines + CSV export here --></div>
+                <div id="money-forecast" style="margin-top:34px;"><!-- income forecast by month (renders its own heading) --></div>
+            </div>
+
+            <!-- Expenses manager -->
+            <div class="accounts-sec" id="asec-expenses" style="display:none;">
+                <div id="expenses-body"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
+            </div>
+
+            <!-- Pricing coach (revenue tool) -->
+            <div class="accounts-sec" id="asec-pricingcoach" style="display:none;">
+                <div id="pricingcoach-body"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
+            </div>
+        </div>
+    </template>
+
+<template data-view="view-settings">
+        <!-- Area-level chrome (back link, title, search, recent) — hidden while a
+             drill-down section is open so the section leads with ONE back link
+             and its own title, not two stacked headers. -->
+        <div id="settings-chrome">
+        <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" data-act="navBackoffice">← Back to Today</span>
+        <div class="dashboard-header settings-head">
+            <div class="settings-head-titles">
+                <h1 class="section-title" style="margin: 0;">Manage</h1>
+            </div>
+            <!-- Both health pills sit to the RIGHT of the Manage title (stacked if
+                 both show). #cron-pill = automation quiet (checkCronHealth);
+                 #health-pill = systems rollup incl. "N things need a look"
+                 (checkSystemHealth). The full-width cron-alert banner stays below. -->
+            <div class="settings-head-pills">
+                <button id="cron-pill" class="cron-pill" style="display:none;" data-act="settingsOpen" data-arg="diagnostics" title="Open Status"></button>
+                <button id="health-pill" class="cron-pill" style="display:none;" data-act="settingsOpen" data-arg="diagnostics" title="Open Status"></button>
+            </div>
+        </div>
+
+        <!-- Cron dead-man's-switch: shown by checkCronHealth() only when the daily
+             automation has gone quiet. -->
+        <div id="cron-alert" class="cron-alert" style="display:none;" role="alert"></div>
+
+        <!-- INDEX — ordered by importance: your cottages first, then money & guests,
+             then your listing & account, with the legal reference last.
+             Per-page search removed — the back-office ⌘K search finds any setting;
+             the grouped index below is the browse path. -->
+        <p id="settings-noresults" class="settings-noresults" style="display:none;">Nothing matches — try another word, or browse below.</p>
+        <!-- Assist Bar: search any setting + ask, embedded (replaces the old
+             per-page search, unifying it with the ⌘K brain). -->
+        </div>
+
+        <div id="settings-index" class="settings-index">
+            <!-- One Manage index: cottages first (with each cottage's key numbers),
+                 then marketing, then account/system — the section labels are the
+                 grouping now that the three dock areas are one page. -->
+            <!-- One Manage index, simplified to FIVE purpose-led groups, top-down
+                 by how central each is to running the business:
+                   1. Cottages & pricing   (cottages, seasonal rates, pricing, calendar)
+                   2. Bookings & policies   (payments, cancellation, terms)
+                   3. Your website          (home page, experiences, reviews, photos)
+                   4. Guests & marketing    (accounts, newsletter, waitlist, analytics,
+                                             follow-ups + chat automation — all guest comms)
+                   5. Account & system      (profile, notifications, security, appearance,
+                                             layout, integrations, activity log, search
+                                             learning, status, test copy)
+                 The section labels ARE the grouping; each row is settingsOpen('<id>').
+                 settingsFilter() hides empty groups/labels on search, so regrouping
+                 needs no JS change. (Pricing now sits with the other rate controls;
+                 the old standalone Messages + System groups folded into 4 and 5.) -->
+            <div class="settings-section-label">Cottages &amp; pricing</div>
+            <div id="cottages-overview" class="area-overview"></div>
+            <div class="settings-group">
+                <button class="settings-row" data-kw="rates prices fees nightly rules occupancy photos text add remove accommodation property min nights" data-act="settingsOpen" data-arg="accom">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v10h14V10"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Cottages</span><span class="settings-row-sub">Each cottage's rates, fees, rules, photos &amp; text — add or remove a cottage</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" data-kw="seasons summer winter holiday peak pricing grid rates all cottages" data-act="settingsOpen" data-arg="seasongrid">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Seasonal rates — all cottages</span><span class="settings-row-sub">Summer &amp; holiday pricing for every cottage in one grid</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" data-kw="ical airbnb vrbo booking.com sync import export block dates feed" data-act="settingsOpen" data-arg="calendar">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16" rx="2.5"/><path d="M3 9.5h18M8 2.5v4M16 2.5v4"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Calendar sync</span><span class="settings-row-sub">Keep dates in step with Airbnb, Vrbo &amp; Booking.com</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" data-kw="pricing price rate gap offer discount demand suggestion coach yield anomaly opportunity" data-act="settingsOpen" data-arg="pricing">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 12V7a1 1 0 0 0-1-1h-7L3 15l6 6 9-9z"/><circle cx="15.5" cy="9.5" r="1.2"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Pricing</span><span class="settings-row-sub">Gap offers &amp; demand-based price ideas</span></span><span class="settings-row-chev">›</span>
+                </button>
+            </div>
+
+            <div class="settings-section-label">Bookings &amp; policies</div>
+            <div class="settings-group">
+                <button class="settings-row" data-kw="square card deposit damage hold balance money invoice" data-act="settingsOpen" data-arg="payments">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="5" width="20" height="14" rx="2.5"/><path d="M2 10h20"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Payments</span><span class="settings-row-sub">Card payments (Square) &amp; your deposit policy</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" data-kw="refund policy terms flexible strict cancellation" data-act="settingsOpen" data-arg="cancel">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4.5 7.5l15 9M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18z"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Cancellation policy</span><span class="settings-row-sub">The refund terms guests see, per cottage</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" data-kw="legal t&c conditions contract booking terms" data-act="openTerms">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/><path d="M10 13h6M10 17h6"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Booking Terms &amp; Conditions</span><span class="settings-row-sub">View the terms guests accept</span></span><span class="settings-row-chev">›</span>
+                </button>
+            </div>
+
+            <div class="settings-section-label">Your website</div>
+            <div class="settings-group">
+                <button class="settings-row" data-kw="hero banner images text logo site name navigation menu labels seo homepage" data-act="settingsOpen" data-arg="content">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h10"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Home page &amp; menu</span><span class="settings-row-sub">Hero banner, menu labels &amp; site name</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" data-kw="things to do local guide attractions suggestions moderate" data-act="settingsOpen" data-arg="experiences">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M15.6 8.4l-2.1 5.1-5.1 2.1 2.1-5.1z"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Experiences <span id="exp-pending-badge" style="display:none;background:var(--danger);color:#fff;font-size:0.62rem;font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:middle;"></span></span><span class="settings-row-sub">Local things to do &amp; approve guest suggestions</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" data-kw="stars ratings testimonials airbnb import approve moderate" data-act="settingsOpen" data-arg="reviews">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.27 5.82.85-4.21 4.1.99 5.78L12 17.77 6.8 19.5l.99-5.78-4.21-4.1 5.82-.85z"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Reviews <span id="reviews-pending-badge" style="display:none;background:var(--danger);color:#fff;font-size:0.62rem;font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:middle;"></span></span><span class="settings-row-sub">Approve guest reviews &amp; import reviews from Airbnb</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" data-kw="ugc pictures gallery approve moderate guest photos" data-act="settingsOpen" data-arg="photos">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="18" height="14" rx="2"/><circle cx="12" cy="13" r="3.2"/><path d="M8 6l1.5-2h5L16 6"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Guest photos <span id="photos-pending-badge" style="display:none;background:var(--danger);color:#fff;font-size:0.62rem;font-weight:700;border-radius:999px;padding:1px 7px;margin-left:6px;vertical-align:middle;"></span></span><span class="settings-row-sub">Approve photos guests share</span></span><span class="settings-row-chev">›</span>
+                </button>
+            </div>
+
+            <div class="settings-section-label">Guests &amp; marketing</div>
+            <div class="settings-group">
+                <button class="settings-row" data-kw="users accounts password reset lookup email login" data-act="settingsOpen" data-arg="guests">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M16 5.5a3 3 0 0 1 0 5.8M21 19a5.5 5.5 0 0 0-4-5.3"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Guest accounts</span><span class="settings-row-sub">Look up a guest &amp; reset their password</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" data-kw="mailing list email broadcast subscribers signup marketing" data-act="settingsOpen" data-arg="newsletter">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Newsletter</span><span class="settings-row-sub">Mailing list &amp; seasonal broadcasts</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" data-kw="notify me sold out alerts demand" data-act="settingsOpen" data-arg="waitlist">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3.2"/><path d="M3.5 19a5.5 5.5 0 0 1 11 0"/><path d="M18 8v6M21 11h-6"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Waitlist</span><span class="settings-row-sub">Guests waiting on sold-out dates</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" data-kw="stats visits traffic referrers pages searches" data-act="settingsOpen" data-arg="analytics">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16"/><rect x="6" y="11" width="3" height="6" rx="0.5"/><rect x="10.5" y="6" width="3" height="11" rx="0.5"/><rect x="15" y="13" width="3" height="4" rx="0.5"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Analytics</span><span class="settings-row-sub">Visits, referrers &amp; popular pages</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" data-kw="chat instant answers quick questions auto reply faq bot automation" data-act="settingsOpen" data-arg="chat-answers">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.6-.8L3 21l1.9-5.7A8.38 8.38 0 0 1 4 11.5 8.5 8.5 0 0 1 12.5 3 8.38 8.38 0 0 1 21 11.5z"/><path d="M9 10h6M9 13h4"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Instant chat answers</span><span class="settings-row-sub">Auto-answers to the chat's quick-question chips</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" data-kw="away auto reply out of office acknowledge message automation" data-act="settingsOpen" data-arg="chat-away">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7.5V12l3 1.8"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Away auto-reply</span><span class="settings-row-sub">Auto-acknowledge a guest when you're not around</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" data-kw="follow up emails nudge enquiry reminder anniversary past guests automation" data-act="settingsOpen" data-arg="follow-ups">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M4 6.5l8 6 8-6"/><path d="M15.5 14.5l2 2 3.5-3.5"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Follow-up emails</span><span class="settings-row-sub">Automatic nudges to enquirers &amp; past guests</span></span><span class="settings-row-chev">›</span>
+                </button>
+            </div>
+
+            <div class="settings-section-label">Account &amp; system</div>
+            <div class="settings-group">
+                <button class="settings-row" data-kw="bio about phone contact host profile picture" data-act="settingsOpen" data-arg="host">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Profile</span><span class="settings-row-sub">Your host bio &amp; contact number</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" data-kw="push alerts phone device notifications" data-act="settingsOpen" data-arg="notify">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Notifications</span><span class="settings-row-sub">Get phone alerts for new bookings &amp; messages</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" data-kw="password face id fingerprint passkey sign-in touch id change" data-act="settingsOpen" data-arg="security">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Security</span><span class="settings-row-sub">Your password &amp; quick sign-in (Face ID / fingerprint)</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" data-kw="appearance theme light dark mode colours display" data-act="toggleTheme">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.8 4.8l1.8 1.8M17.4 17.4l1.8 1.8M19.2 4.8l-1.8 1.8M6.6 17.4l-1.8 1.8"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Appearance</span><span class="settings-row-sub">Tap to switch — currently <strong id="theme-row-value">light</strong> mode</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" data-kw="layout dock search first classic minimal home screen back office interface mode buttons pages" data-act="toggleBackofficeMode">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M3 9h18M9 9v11"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Back-office layout</span><span class="settings-row-sub">Tap to switch — currently <strong id="bomode-row-value">classic</strong>. Search-first collapses the dock to Today · Inbox · Search.</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" data-kw="api keys tide times connected services integrations" data-act="settingsOpen" data-arg="apis">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.5 13.5l-5.3 5.3a2 2 0 0 1-2.8-2.8l5.3-5.3"/><circle cx="15.5" cy="8.5" r="5"/><path d="M13.5 10.5l1.5 1.5"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Integrations</span><span class="settings-row-sub">Tide times &amp; other connected services</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" data-kw="activity log audit history events changes actions recent" data-act="nav" data-view="view-activity-log">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3.5 2"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Activity log</span><span class="settings-row-sub">Every change &amp; action — bookings, payments, edits</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" data-kw="search learning assistant teach train dead ends misses model ai darkstar taught suppressed phrases understand" data-act="settingsOpen" data-arg="search-learning">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Search learning</span><span class="settings-row-sub">Teach the assistant &amp; see what it's learned</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button class="settings-row" data-kw="status health system check diagnostics updates migrations backup database export version email test" data-act="settingsOpen" data-arg="diagnostics">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l2 5 4-12 2 7h6"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Status</span><span class="settings-row-sub">See everything's running &amp; the maintenance tools</span></span><span class="settings-row-chev">›</span>
+                </button>
+                <button id="staging-link-row" class="settings-row" data-kw="staging sandbox practice preview test copy" data-act="openStagingSite">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6M10 3v5.2L5.4 17a2 2 0 0 0 1.8 3h9.6a2 2 0 0 0 1.8-3L14 8.2V3"/><path d="M8 14h8"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Test copy ↗</span><span class="settings-row-sub">Open a safe practice copy of your site</span></span><span class="settings-row-chev">›</span>
+                </button>
+            </div>
+            <!-- Test centre — shown on the staging sandbox only (revealed by JS when IS_STAGING) -->
+            <div class="settings-group" id="testcentre-row" style="display:none;">
+                <button class="settings-row" data-kw="staging sandbox preview sample data" data-act="settingsOpen" data-arg="testcentre">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 3h6M10 3v5.2L5.4 17a2 2 0 0 0 1.8 3h9.6a2 2 0 0 0 1.8-3L14 8.2V3"/><path d="M8 14h8"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Test centre</span><span class="settings-row-sub">Preview, sample emails, test bookings &amp; data</span></span><span class="settings-row-chev">›</span>
+                </button>
+            </div>
+            <!-- Always last: sign out -->
+            <div class="settings-group">
+                <button class="settings-row settings-row-logout" data-kw="sign out exit" data-act="logoutStaff">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h3.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H15"/><path d="M10 12h9"/><path d="M16 8.5l3.5 3.5L16 15.5"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Log out</span></span>
+                </button>
+            </div>
+        </div>
+
+        <!-- DRILL-DOWN PANEL -->
+        <div id="settings-panel" style="display:none;">
+            <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" id="settings-back" data-act="settingsBack">‹ Back</span>
+            <h2 class="section-title" id="settings-panel-title" style="text-align:left;font-size:1.6rem;margin:6px 0 18px;"></h2>
+
+            <!-- Enquiries -->
+            <!-- Notifications (owner push) -->
+<div class="settings-sec" id="sec-notify" style="display:none;">
+                <div id="notify-body"></div>
+            </div>
+
+            <!-- Experiences (local things to do + guest suggestions) -->
+            <div class="settings-sec" id="sec-experiences" style="display:none;">
+                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 16px;">Local things to do, shown to signed-in guests on the Experiences tab. Add your own, reorder them, and review guest suggestions.</p>
+                <div id="exp-admin"><!-- JS injects pending suggestions + the editable list here --></div>
+            </div>
+
+            <!-- Website content (form-based replacement for the inline live editor) -->
+            <div class="settings-sec" id="sec-content" style="display:none;">
+                <div id="content-editor"><!-- JS injects the homepage text & image fields here --></div>
+            </div>
+
+            <!-- Messages → Instant chat answers (renderChatAnswersEditor) -->
+            <div class="settings-sec" id="sec-chat-answers" style="display:none;">
+                <div id="chat-answers-editor" style="max-width:640px;"></div>
+            </div>
+            <!-- Messages → Away auto-reply (renderChatAwayEditor) -->
+            <div class="settings-sec" id="sec-chat-away" style="display:none;">
+                <div id="chat-away-editor" style="max-width:640px;"></div>
+            </div>
+            <!-- Messages → Follow-up emails (enquiry + anniversary nudges) -->
+            <div class="settings-sec" id="sec-follow-ups" style="display:none;">
+                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 16px;">Gentle automatic emails that chase interest without you lifting a finger.</p>
+                <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;color:var(--text-light);max-width:640px;margin:0 0 14px;"><input type="checkbox" id="enq-nudge-toggle" style="width:auto;margin:0;" data-act-change="saveContentToggle" data-key="enquiry-nudge-off" data-invert="1"> Email a friendly follow-up to enquirers who haven't booked after 2 days, plus a one-off "finish your enquiry" note to visitors who started one but never sent it</label>
+                <label style="display:flex;align-items:center;gap:8px;font-size:0.85rem;color:var(--text-light);max-width:640px;margin:0 0 14px;"><input type="checkbox" id="anniv-nudge-toggle" style="width:auto;margin:0;" data-act-change="saveContentToggle" data-key="anniversary-nudge-off" data-invert="1"> Invite last year's guests back with a one-off email, timed to how far ahead they book</label>
+            </div>
+
+            <!-- API keys / integrations -->
+            <div class="settings-sec" id="sec-apis" style="display:none;">
+                <div class="glass-panel" style="max-width:640px;padding:24px 26px;border-radius:18px;">
+                    <h3 style="font-family:var(--font-serif);font-size:1.2rem;margin:0 0 6px;">Tide data</h3>
+                    <p style="font-size:0.85rem;color:var(--text-muted);margin:0 0 14px;line-height:1.5;">Powers the tide-times widget on each cottage page. Get a free key from <strong>worldtides.info</strong> (Account → API key) and paste it below. Stored encrypted; never shown on the public site. Leave blank to hide the tide widget.</p>
+                    <label class="modal-label" for="apikey-tides-input">WorldTides API key</label>
+                    <input type="text" id="apikey-tides-input" class="input-glass" placeholder="paste your key…" autocomplete="off" spellcheck="false" style="font-family:monospace;">
+                    <div style="margin-top:12px;display:flex;gap:10px;align-items:center;">
+                        <button class="btn-sm btn-edit" data-act="saveApiKey" data-arg="tides">Save key</button>
+                        <span id="apikey-tides-msg" style="font-size:0.82rem;color:var(--ok);"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Seasonal rates — all cottages in one grid -->
+            <div class="settings-sec" id="sec-seasongrid" style="display:none;">
+                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 14px;">Set seasonal nightly rates for every cottage side by side. The same date bands apply across the row; each cottage gets its own price.</p>
+                <div id="season-grid-wrap"></div>
+            </div>
+
+            <div class="settings-sec" id="sec-diagnostics" style="display:none;">
+                <span id="diag-msg" style="font-size:0.82rem;"></span>
+                <div id="migrate-result" style="display:none;font-size:0.82rem;margin-bottom:16px;"></div>
+                <!-- Verdict-first status read-out (loadDiagnostics builds the hero,
+                     the attention/optional groups, the collapsed pass list, then
+                     the Maintenance cards). "Re-run" lives in the hero. -->
+                <div id="diagnostics-body"></div>
+                <details class="help-disclosure" style="margin-top:18px;max-width:640px;">
+                    <summary>More tools</summary>
+                    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:12px;">
+                        <button class="btn-sm btn-edit" data-act="runMigrations">Install updates</button>
+                        <button class="btn-sm btn-edit" data-act="backfillWebp">Optimise photos for faster loading</button>
+                        <button class="btn-sm btn-edit" data-act="sendTestEmail">Send test email</button>
+                        <button class="btn-sm btn-edit" data-act="sendSampleEmails" data-pass="self">Email me samples</button>
+                        <button class="btn-sm btn-edit" data-act="diagnoseReplyEmail" data-pass="self">Check reply-by-email</button>
+                    </div>
+                    <p style="font-size:0.8rem;color:var(--text-muted);margin:10px 0 0;">Reply-by-email: reply to a "new website message" alert and the guest gets it on the website &amp; by email.</p>
+                    <div id="diag-samples" style="font-size:0.82rem;margin-top:8px;"></div>
+                    <div id="reply-diag" style="font-size:0.8rem;margin-top:10px;"></div>
+                </details>
+            </div>
+
+            <!-- Search learning: teach the assistant (dead-ends), see taught &
+                 suppressed phrases, and the on-device model status. Built live by
+                 renderSearchLearning() from the per-owner teach-loop data. -->
+            <div class="settings-sec" id="sec-search-learning" style="display:none;">
+                <div id="search-learning-body"></div>
+            </div>
+
+            <!-- Pricing: demand-based price ideas (gap offers, pacing flags) on their
+                 own page, off the Today ops strip. Built live by renderPricing(). -->
+            <div class="settings-sec" id="sec-pricing" style="display:none;">
+                <div id="pricing-body"></div>
+            </div>
+
+            <!-- Test centre (staging only): preview, sample emails, test booking, test data -->
+            <div class="settings-sec" id="sec-testcentre" style="display:none;">
+                <div id="testcentre-list" class="settings-index"></div>
+                <div id="testcentre-detail" style="display:none;"></div>
+            </div>
+
+
+            <!-- Host profile -->
+            <div class="settings-sec" id="sec-host" style="display:none;">
+                <div class="glass-panel" style="max-width: 640px; padding: 24px 26px; border-radius: 18px;">
+                    <div style="display:flex;align-items:center;gap:18px;margin-bottom:8px;">
+                        <div id="host-edit-photo" style="width:84px;height:84px;border-radius:50%;background-size:cover;background-position:center;background-color:var(--dark-grey);flex-shrink:0;border:1px solid var(--glass-border);"></div>
+                        <button type="button" class="btn-sm btn-edit" data-act="uploadHostPhoto">Change photo</button>
+                    </div>
+                    <label class="host-edit-label" for="host-f-name">Name</label>
+                    <input class="input-glass" id="host-f-name" data-act-change="saveHostText" data-arg="host-name" data-pass="value">
+                    <label class="host-edit-label" for="host-f-badge">Your title (shown to guests, e.g. Owner)</label>
+                    <input class="input-glass" id="host-f-badge" data-act-change="saveHostText" data-arg="host-badge" data-pass="value">
+                    <label class="host-edit-label" for="host-f-years">Years of experience</label>
+                    <input class="input-glass" id="host-f-years" data-act-change="saveHostText" data-arg="host-years" data-pass="value">
+                    <p style="font-size:0.78rem;color:var(--text-muted);margin:6px 0 0;">Reviews total &amp; rating are calculated automatically from your published guest reviews.</p>
+                    <label class="host-edit-label" for="host-f-school">"Where I studied" line</label>
+                    <input class="input-glass" id="host-f-school" data-act-change="saveHostText" data-arg="host-school" data-pass="value">
+                    <label class="host-edit-label" for="host-f-work">"My work" line</label>
+                    <input class="input-glass" id="host-f-work" data-act-change="saveHostText" data-arg="host-work" data-pass="value">
+                    <label class="host-edit-label" for="host-f-bio">Bio</label>
+                    <textarea class="input-glass" id="host-f-bio" rows="4" style="resize:vertical;" data-act-change="saveHostText" data-arg="host-bio" data-pass="value"></textarea>
+                    <p id="host-save-msg" style="font-size:0.82rem;color:var(--ok);min-height:1em;margin:4px 0 0;"></p>
+                    <div style="margin-top:22px;padding-top:20px;border-top:1px solid var(--glass-border);">
+                        <label class="host-edit-label" for="contact-phone-dial" style="margin-top:0;">Contact number — "Call to Discuss" buttons</label>
+                        <p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 10px;">Guests see a "Call to discuss" button on the booking form. <strong>Dial number</strong> — the full number we'll call (e.g. +44 1263 740512). <strong>Display</strong> — how it reads to guests (e.g. 01263 740512).</p>
+                        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+                            <input type="tel" class="input-glass field-sm" id="contact-phone-dial" placeholder="Dial number (e.g. +441263740512)" style="flex:1 1 220px;">
+                            <input type="text" class="input-glass field-sm" id="contact-phone-display" placeholder="Display (e.g. 01263 740512)" style="flex:1 1 180px;">
+                            <button class="btn-sm btn-edit" data-act="saveContactPhone">Save number</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pricing coach (data-driven suggestions; apply is opt-in) -->
+            <!-- Reviews (moderation) -->
+            <div class="settings-sec" id="sec-reviews" style="display:none;">
+                <div class="accounts-stat" style="max-width:640px;">
+                    <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 12px;">Guests can write a review from their account once a stay is complete. Nothing appears on the site until you approve it here.</p>
+
+                    <!-- Per-cottage review links to share with EXTERNAL (Airbnb/Vrbo) guests.
+                         Rendered from the live cottage list by renderReviewLinks(). -->
+                    <div id="review-links"></div>
+
+                    <!-- External-guest reviews left via those links: approve to publish,
+                         and privately rate the guest (hidden from them) to steer the
+                         book-direct follow-up. Rendered by loadLeadModeration(). -->
+                    <div id="lead-moderation"></div>
+
+                    <div id="guest-review-moderation"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
+
+                    <!-- Import + Google-link are occasional setup tasks, tucked under a
+                         disclosure so the "approve" queue above leads. -->
+                    <details class="help-disclosure" style="margin-top:22px;">
+                      <summary>Import reviews &amp; Google review link</summary>
+                    <!-- Imported reviews: paste reviews from Airbnb / Vrbo / Booking.com /
+                         Google (your own genuine reviews from other platforms). Each is
+                         shown on the cottage page tagged with its source and counts toward
+                         that cottage's rating. Stored in siteContent.reviews. -->
+                    <div style="margin-top:14px;">
+                        <h3 style="font-family:var(--font-serif);font-size:1.15rem;margin:0 0 6px;">Add reviews from Airbnb &amp; other sites</h3>
+                        <p style="font-size:0.78rem;color:var(--text-muted);margin:2px 0 12px;line-height:1.5;">Copy your reviews from your Airbnb (or Vrbo / Booking.com / Google) host dashboard and paste them below. Pick the cottage and where they came from, then paste — each one is added as an editable row that you check and save. They appear on that cottage's page tagged with the source and count toward its rating.</p>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+                            <select class="input-glass field-sm" id="bulk-rev-prop" style="flex:1 1 160px;min-width:140px;" title="Which cottage these reviews are for" aria-label="Which cottage these reviews are for"></select>
+                            <select class="input-glass field-sm" id="bulk-rev-source" style="flex:0 1 150px;" title="Where these reviews came from" aria-label="Where these reviews came from"></select>
+                            <select class="input-glass field-sm" id="bulk-rev-stars" style="flex:0 1 120px;" title="Default star rating" aria-label="Default star rating"></select>
+                        </div>
+                        <textarea id="bulk-rev-text" class="input-glass" rows="6" style="resize:vertical;" placeholder="Paste reviews here — one per block, e.g.&#10;&#10;Jane (London)&#10;We loved every minute — spotless cottage, perfect spot for the coast path.&#10;&#10;Mark&#10;Brilliant week. Catherine was a wonderful, attentive host. We'll be back!"></textarea>
+                        <p style="font-size:0.74rem;color:var(--text-muted);margin:6px 0 0;line-height:1.5;">Put the guest's name on the first line and their review underneath; leave a blank line between each review. A line that's just ★★★★★ or “5 stars” sets that review's rating. Dates are ignored. You can edit every row below before saving.</p>
+                        <button class="btn-sm btn-edit" style="margin-top:10px;" data-act="bulkImportReviews">Add pasted reviews below ↓</button>
+
+                        <div id="reviews-editor" style="margin-top:18px;"></div>
+                        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:8px;">
+                            <button class="btn-sm btn-edit" data-act="addReviewRow">+ Add one by hand</button>
+                            <button class="btn-glass" style="width:auto;padding:12px 22px;" data-act="saveReviews">Save imported reviews</button>
+                        </div>
+                    </div>
+
+                    <!-- Google review funnel: a few days after checkout we email guests a
+                         review link. Paste your Google "write a review" link to make it the
+                         primary button (great for search ranking). Leave blank to skip. -->
+                    <div style="margin-top:24px;border-top:1px solid var(--glass-border);padding-top:18px;">
+                        <label class="modal-label" for="google-review-url-input">Google review link (optional)</label>
+                        <p style="font-size:0.78rem;color:var(--text-muted);margin:2px 0 8px;line-height:1.5;">In Google Business Profile, choose “Get more reviews” and copy the short link (e.g. <code>https://g.page/r/…/review</code>). Added to the post-stay review email.</p>
+                        <input type="url" id="google-review-url-input" class="input-glass" placeholder="https://g.page/r/…/review" autocomplete="off" spellcheck="false">
+                        <div style="margin-top:10px;display:flex;gap:10px;align-items:center;">
+                            <button class="btn-sm btn-edit" data-act="saveGoogleReviewUrl">Save link</button>
+                            <span id="google-review-url-msg" style="font-size:0.8rem;"></span>
+                        </div>
+                    </div>
+                    </details>
+                </div>
+            </div>
+
+            <!-- Analytics (first-party, cookie-free) -->
+            <div class="settings-sec" id="sec-analytics" style="display:none;">
+                <div id="analytics-body"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
+            </div>
+
+            <!-- Waitlist / notify-me -->
+            <div class="settings-sec" id="sec-waitlist" style="display:none;">
+                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 16px;">Guests who asked to be told if dates become available. They're emailed automatically when a booking for matching dates is cancelled — or notify them manually below.</p>
+                <div id="waitlist-body"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
+            </div>
+
+            <!-- Guest photos (UGC moderation) -->
+            <div class="settings-sec" id="sec-photos" style="display:none;">
+                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 16px;">Photos guests shared from their stays. Approve the ones you'd like to show in the gallery on each cottage page — nothing appears publicly until you approve it.</p>
+                <div id="photos-admin"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
+            </div>
+
+            <!-- Newsletter / seasonal broadcast -->
+            <div class="settings-sec" id="sec-newsletter" style="display:none;">
+                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 16px;">Guests who opted in from the website footer. Write a short update or seasonal offer and send it to everyone — each email includes a one-click unsubscribe link.</p>
+                <div id="newsletter-stats" style="margin-bottom:18px;"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
+                <div class="glass-panel" style="max-width:640px;padding:24px 26px;border-radius:18px;">
+                    <h3 style="font-family:var(--font-serif);font-size:1.15rem;margin:0 0 12px;">Compose broadcast</h3>
+                    <label class="modal-label" for="nl-subject">Subject</label>
+                    <input type="text" id="nl-subject" class="input-glass" placeholder="e.g. Autumn by the Norfolk coast — midweek offer" style="margin-bottom:12px;">
+                    <label class="modal-label" for="nl-body">Message</label>
+                    <textarea id="nl-body" class="input-glass" rows="8" placeholder="Write your update…" style="resize:vertical;"></textarea>
+                    <div style="margin-top:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+                        <button class="btn-glass" style="width:auto;padding:11px 22px;" data-act="sendBroadcast">Send to subscribers</button>
+                        <span id="nl-send-msg" style="font-size:0.82rem;"></span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Security -->
+            <div class="settings-sec" id="sec-security" style="display:none;">
+                <div class="accounts-stat" style="max-width:640px;">
+                    <div class="label">Admin Password</div>
+                    <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 16px;">This password protects the whole back office — bookings, money and settings.</p>
+                    <button class="btn-sm btn-edit" data-act="changeAdminPassword">Change Password</button>
+                </div>
+                <div class="accounts-stat" style="max-width:640px;margin-top:16px;">
+                    <div class="label">Passkeys (Face ID / Touch ID)</div>
+                    <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 16px;">Sign in to the Back Office faster with a passkey. Your password still works as a backup. <strong>Tip:</strong> add a passkey on two devices (e.g. phone and laptop) so you're never locked out.</p>
+                    <button class="btn-sm btn-edit" data-act="addAdminPasskey">＋ Add a passkey</button>
+                    <div id="admin-passkey-list" style="margin-top:14px;"></div>
+                </div>
+                <div class="accounts-stat" style="max-width:640px;margin-top:16px;">
+                    <div class="label">Two-step sign-in</div>
+                    <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 14px;">When on, signing in from a new device also needs a one-time code emailed to your owner address; trusted devices are remembered for 60 days. Needs your owner email set up (Manage → Notifications) — it stays off until then, so you can't be locked out.</p>
+                    <label style="display:flex;align-items:center;gap:10px;font-size:0.9rem;cursor:pointer;"><input type="checkbox" id="admin-2fa-toggle" data-act-change="saveContentToggle" data-key="admin-2fa-enabled"> Require an email code on new devices</label>
+                </div>
+            </div>
+
+            <!-- Accommodation preferences (cottage list → per-cottage detail) -->
+            <div class="settings-sec" id="sec-accom" style="display:none;">
+                <div id="accom-list" class="settings-index"></div>
+                <div id="accom-detail" style="display:none;"></div>
+            </div>
+
+            <!-- Calendar sync (cottage list → per-cottage detail) -->
+            <div class="settings-sec" id="sec-calendar" style="display:none;">
+                <p style="font-size:0.85rem;color:var(--text-muted);max-width:640px;margin:0 0 10px;">Share booked dates with Airbnb, Vrbo &amp; Booking.com, per cottage — copy your link out, paste theirs in.</p>
+                <details class="help-disclosure" style="max-width:640px;margin:0 0 16px;">
+                    <summary>How it works</summary>
+                    <p style="font-size:0.82rem;color:var(--text-muted);margin-top:8px;line-height:1.55;"><strong>Send your dates out:</strong> copy the link below into each platform. <strong>Bring their dates in:</strong> paste their calendar links here. Calendars refresh every few hours, so on very busy days a date could briefly show free on both sites before it catches up.</p>
+                </details>
+                <div id="calendar-list" class="settings-index"></div>
+                <div id="calendar-detail" style="display:none;"></div>
+            </div>
+
+            <!-- Cancellation policy (cottage list → per-cottage policy picker) -->
+            <div class="settings-sec" id="sec-cancel" style="display:none;">
+                <div id="cancel-list" class="settings-index"></div>
+                <div id="cancel-detail" style="display:none;"></div>
+            </div>
+
+            <!-- Payments -->
+            <div class="settings-sec" id="sec-payments" style="display:none;">
+                <div class="accounts-stat" style="max-width:640px;">
+                    <div class="label">Card payments status</div>
+                    <p id="sq-settings-status" style="font-size:0.9rem;margin:8px 0 4px;">Checking…</p>
+                    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:14px;">
+                        <label style="font-size:0.85rem;color:var(--text-muted);">Deposit to request</label>
+                        <input type="number" id="sq-deposit-pct" class="input-glass field-sm" min="1" max="100" step="1" style="width:90px;margin:0;">
+                        <span style="color:var(--text-muted);">% of the total</span>
+                        <button class="btn-sm btn-edit" data-act="saveDepositPct">Save</button>
+                    </div>
+                    <details class="help-disclosure">
+                        <summary>How payment reminders work</summary>
+                        <p style="font-size:0.82rem;color:var(--text-light);margin-top:8px;line-height:1.6;"><strong>Automatic schedule:</strong> when you approve an enquiry the guest is emailed a request for the deposit above. The balance is then auto-requested <strong>30 days before check-in</strong>. If a booking is approved when check-in is already inside 30 days, the guest is asked for the <strong>full amount upfront</strong>.</p>
+                        <p style="font-size:0.8rem;color:var(--text-muted);margin-top:10px;">These reminders are sent automatically overnight — you don't need to do anything. You can also send a payment request by hand anytime from a booking's details. (Taking card payments needs a one-time Square setup by whoever looks after your website — see the setup guide.)</p>
+                    </details>
+                </div>
+                <div class="accounts-stat" id="sq-webhook-card" style="max-width:640px;margin-top:14px;">
+                    <div class="label">Automatic payment updates</div>
+                    <p id="sq-webhook-status" aria-live="polite" style="font-size:0.9rem;margin:8px 0 4px;">Checking…</p>
+                    <div style="margin-top:12px;">
+                        <button class="btn-sm btn-edit" id="sq-webhook-connect" data-act="connectSquareWebhook" data-pass="self" style="display:none;">Connect</button>
+                    </div>
+                    <details class="help-disclosure">
+                        <summary>What this does</summary>
+                        <p style="font-size:0.82rem;color:var(--text-light);margin-top:8px;line-height:1.6;">When connected, Square tells your site the moment a payment settles or a refund completes — so card <strong>fees</strong>, the <strong>net payout</strong> and <strong>refund statuses</strong> fill in automatically, instead of only when you open Payments. One tap sets it up; there's nothing to paste.</p>
+                    </details>
+                </div>
+            </div>
+
+            <!-- Guest accounts -->
+            <div class="settings-sec" id="sec-guests" style="display:none;">
+                <!-- The guest table is wide (5 columns + actions): give the card room on
+                     desktop and let the table SCROLL inside it (overflow-x) — it used to
+                     spill past the card's 640px edge. -->
+                <div class="accounts-stat" style="max-width:960px;">
+                    <div class="label">Reset a guest's password</div>
+                    <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 16px;">If a guest is locked out, set a new password for them here, then tell them the new password so they can log in and change it.</p>
+                    <div id="guest-admin-list" style="margin-top:4px;overflow-x:auto;"><p style="font-size:0.82rem;color:var(--text-muted);">Loading…</p></div>
+                </div>
+            </div>
+
+        </div>
+    </template>
+
+<template data-view="view-booking-hub">
+        <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" data-act="bookingHubBack">← Back</span>
+        <!-- Record-scoped Assist Bar: act on THIS booking by typing ("take payment",
+             "email them", "return deposit"). Pre-scoped via __cmdkEntity. -->
+        <div id="booking-hub-content"><!-- admin.js injects the hub here --></div>
+    </template>
+
+<template data-view="view-enquiry-hub">
+        <span class="back-link" role="button" tabindex="0" data-act-keydown="activate" data-act="enquiryHubBack">← Back</span>
+        <!-- Record-scoped Assist Bar: act on THIS enquiry by typing ("approve",
+             "email them", "change the price"). Pre-scoped via __cmdkEntity. -->
+        <div id="enquiry-hub-content"><!-- admin.js injects the enquiry hub here --></div>
+    </template>
+
+<template data-view="view-search">
+    <div id="cmdk" class="cmdk-page" role="search" aria-label="Search the back office">
+        <div class="cmdk-box">
+            <div class="cmdk-search">
+                <!-- The AI status lives IN the logo: this knot is #cmdk-ml — its COLOUR
+                     names the model state (purple ready · green understood · Siri-teal
+                     meaning · rose guess · orange learning · progress ring while a
+                     model downloads); the hover title explains it in words. Always
+                     visible — the ✕ clear sits on the right, after the input. -->
+                <span id="cmdk-ml" class="cmdk-logo" data-mstate="" aria-live="polite" title="What the assistant is doing"><svg class="ic cmdk-search-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12L20.8 13L20.1 13.9L19.2 14.5L18.1 14.9L17 15.2L16.1 15.2L15.3 15.3L14.8 15.6L14.5 16L14.3 16.7L14 17.6L13.5 18.6L12.9 19.6L12 20.3L11 20.8L10 20.8L9.1 20.3L8.4 19.5L7.9 18.5L7.8 17.3L7.8 16.2L7.9 15.2L8 14.5L7.9 14L7.5 13.6L6.9 13.2L6.1 12.7L5.2 12L4.4 11.1L3.9 10.1L3.7 9.1L3.9 8.1L4.5 7.3L5.5 6.8L6.6 6.6L7.8 6.7L8.8 7L9.7 7.3L10.4 7.5L11 7.6L11.5 7.3L12 6.8L12.7 6.1L13.5 5.4L14.5 4.8L15.6 4.5L16.7 4.5L17.6 5L18.2 5.8L18.5 6.8L18.5 7.9L18.1 9.1L17.6 10L17.1 10.8L16.7 11.5L16.5 12L16.7 12.5L17.1 13.2L17.6 14L18.1 14.9L18.5 16.1L18.5 17.2L18.2 18.2L17.6 19L16.7 19.5L15.6 19.5L14.5 19.2L13.5 18.6L12.7 17.9L12 17.2L11.5 16.7L11 16.4L10.4 16.5L9.7 16.7L8.8 17L7.8 17.3L6.6 17.4L5.5 17.2L4.5 16.7L3.9 15.9L3.7 14.9L3.9 13.9L4.4 12.9L5.2 12L6.1 11.3L6.9 10.8L7.5 10.4L7.9 10L8 9.5L7.9 8.8L7.8 7.8L7.8 6.7L7.9 5.5L8.4 4.5L9.1 3.7L10 3.2L11 3.2L12 3.7L12.9 4.4L13.5 5.4L14 6.4L14.3 7.3L14.5 8L14.8 8.4L15.3 8.7L16.1 8.8L17 8.8L18.1 9.1L19.2 9.5L20.1 10.1L20.8 11Z"/></svg></span>
+                <input id="cmdk-input" type="text" role="combobox" aria-autocomplete="list" aria-expanded="true" aria-haspopup="listbox" autocomplete="off" autocapitalize="off" spellcheck="false" placeholder="Search or ask…" data-act-input="cmdkSearch" data-pass="value" data-act-keydown="cmdkKey" aria-label="Search bookings and screens, or ask who owes money, who's leaving today, or what's upcoming" aria-controls="cmdk-results">
+                <button type="button" id="cmdk-clear" class="cmdk-clear" data-act="cmdkClear" aria-label="Clear search" title="Clear"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+                <button type="button" id="cmdk-help" class="cmdk-help-btn" data-act="cmdkHelpOpen" aria-label="Help for this screen" title="Help &amp; how-to"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.2 9.3a2.8 2.8 0 0 1 5.4 1c0 1.9-2.8 2.5-2.8 2.5"/><path d="M12 17h.01"/></svg></button>
+            </div>
+            <div id="cmdk-progress" class="cmdk-progress" aria-hidden="true"><span></span></div>
+            <div id="cmdk-results" class="cmdk-results" role="listbox" aria-label="Search results"></div>
+            <div class="cmdk-foot" aria-hidden="true">
+                <span class="cmdk-foot-keys"><kbd class="cmdk-kbd">↑</kbd><kbd class="cmdk-kbd">↓</kbd> Navigate</span>
+                <span class="cmdk-foot-keys"><kbd class="cmdk-kbd">↵</kbd> Open</span>
+                <span class="cmdk-foot-keys"><kbd class="cmdk-kbd">esc</kbd> Back</span>
+            </div>
+        </div>
+    </div>
+    </template>

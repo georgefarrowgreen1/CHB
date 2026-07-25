@@ -17,7 +17,7 @@ process.env.TZ = 'Europe/London';
  *  pages and the routing code agree — so a new/renamed section can't silently
  *  become unreachable from search:
  *
- *    - every registered Manage section has a real #sec-<id> page in index.html
+ *    - every registered Manage section has a real #sec-<id> page in the markup
  *    - cmdkScreens() is generated 1:1 from the registry, all routes are functions
  *    - cmdkActions() rows are all runnable + carry a natural-language regex
  *    - every section a search action/dossier routes to (toManage/toMng/toAccom,
@@ -37,7 +37,14 @@ const pass = (m) => console.log('  ✓ ' + m);
 const fail = (m) => { failures++; console.log('  ✗ ' + m); };
 const check = (name, cond, extra) => { cond ? pass(name) : fail(name + (extra ? ' — ' + extra : '')); };
 
-const html = fs.readFileSync(path.join(DIR, 'index.html'), 'utf8');
+// The back-office markup (every #sec-<id> Manage page, the hubs, the search page)
+// lives in admin-views.html — split out of index.html so guests never download it,
+// and injected into index.html's empty view shells when the admin bundle loads. The
+// two together ARE the owner's page, so the markup checks below must scan both.
+const html =
+    fs.readFileSync(path.join(DIR, 'index.html'), 'utf8') +
+    '\n' +
+    fs.readFileSync(path.join(DIR, 'admin-views.html'), 'utf8');
 const appScript = fs.readFileSync(path.join(DIR, 'app.js'), 'utf8');
 const adminScript = fs.readFileSync(path.join(DIR, 'admin.js'), 'utf8');
 
@@ -104,7 +111,7 @@ check('every registry entry has a section OR a go()', registry.every((e) => type
 const pageSecs = new Set([...html.matchAll(/id="sec-([a-z0-9-]+)"/g)].map((m) => m[1]));
 const regSecs = new Set(registry.filter((e) => e.sec).map((e) => e.sec));
 const missingPages = [...regSecs].filter((s) => !pageSecs.has(s));
-check('every registered Manage section has a #sec-<id> page in index.html', missingPages.length === 0, 'missing page for: ' + missingPages.join(', '));
+check('every registered Manage section has a #sec-<id> page (index.html + admin-views.html)', missingPages.length === 0, 'missing page for: ' + missingPages.join(', '));
 
 // ---- 3. cmdkScreens() is generated 1:1 from the registry, all runnable ----
 const screens = typeof ctx.cmdkScreens === 'function' ? ctx.cmdkScreens() : [];

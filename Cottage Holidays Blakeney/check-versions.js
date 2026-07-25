@@ -68,8 +68,11 @@ const vOf = (src, asset) => grab(src, new RegExp('(?<![-\\w])' + asset.replace('
 if (changed.has('app.js')) {
     rule('app.js changed → BUILD stamp changed', grab(baseApp, /const BUILD = '([a-z0-9]+)';/) !== grab(headApp, /const BUILD = '([a-z0-9]+)';/), 'const BUILD (last statement of app.js) is unchanged');
 }
-if (changed.has('admin.js')) {
-    rule('admin.js changed → ADMIN_BUNDLE_V bumped', grab(baseApp, /const ADMIN_BUNDLE_V = (\d+);/) !== grab(headApp, /const ADMIN_BUNDLE_V = (\d+);/), 'ADMIN_BUNDLE_V (top of app.js) is unchanged');
+// admin-views.html (the back-office markup) rides admin.js's stamp — admin.js
+// renders into that markup, so they must always ship as one version.
+if (changed.has('admin.js') || changed.has('admin-views.html')) {
+    const which = [changed.has('admin.js') && 'admin.js', changed.has('admin-views.html') && 'admin-views.html'].filter(Boolean).join(' + ');
+    rule(`${which} changed → ADMIN_BUNDLE_V bumped`, grab(baseApp, /const ADMIN_BUNDLE_V = (\d+);/) !== grab(headApp, /const ADMIN_BUNDLE_V = (\d+);/), 'ADMIN_BUNDLE_V (top of app.js) is unchanged');
 }
 if (changed.has('admin.css')) {
     rule('admin.css changed → ADMIN_CSS_V bumped', grab(baseApp, /const ADMIN_CSS_V = (\d+);/) !== grab(headApp, /const ADMIN_CSS_V = (\d+);/), 'ADMIN_CSS_V (top of app.js) is unchanged');
