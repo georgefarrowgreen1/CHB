@@ -384,10 +384,16 @@
                 header.insertBefore(ttl, slot);
             }
             if (dock.parentElement !== slot) slot.appendChild(dock);
-        } else if (dock.parentElement !== wrap) {
-            // Back to desktop/owner: return it to the floating wrapper, ahead of
-            // the CTA so the pill still reads above the dock there.
-            wrap.appendChild(dock);
+        } else {
+            // Back to desktop, or the owner signed in: return it to the floating
+            // wrapper and take the now-empty slot out of the header — otherwise it
+            // lingers as a stray child of the ADMIN bar (measured: a 60px tall
+            // ghost of the guest pill sitting in the back office's header).
+            if (dock.parentElement !== wrap) wrap.appendChild(dock);
+            var stale = document.getElementById('guest-dock-slot');
+            if (stale) stale.remove();
+            var staleTitle = document.getElementById('guest-head-title');
+            if (staleTitle) staleTitle.remove();
         }
         // Geometry moved, so the indicator has to be re-seated — and the observer
         // has to follow the dock to its new parent.
@@ -407,9 +413,26 @@
         } catch (e) {}
     }
 
+    // owner-mode is added by setAuthUI when the owner signs in — a body-class
+    // change, not a resize — so nothing re-evaluated where the guest dock belongs
+    // and it stayed in the header the admin nav now uses. Watch the class instead
+    // of relying on every caller remembering to poke us.
+    function watchOwnerMode() {
+        if (typeof MutationObserver !== 'function') return;
+        var wasOwner = document.body.classList.contains('owner-mode');
+        new MutationObserver(function () {
+            var isOwner = document.body.classList.contains('owner-mode');
+            if (isOwner === wasOwner) return; // body classes change often; only this matters
+            wasOwner = isOwner;
+            try {
+                updateShell();
+            } catch (e) {}
+        }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    }
     function init() {
         buildBar();
         updateShell();
+        watchOwnerMode();
         var mqW = window.matchMedia ? window.matchMedia('(max-width: 768px)') : null;
         if (mqW && mqW.addEventListener) mqW.addEventListener('change', updateShell);
         else window.addEventListener('resize', updateShell);

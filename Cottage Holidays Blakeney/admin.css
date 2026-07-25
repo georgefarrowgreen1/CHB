@@ -1189,9 +1189,152 @@ body.light-mode .ny-act {
   margin-top: 24px;
   line-height: 1.6;
   max-width: 720px;
-}body.owner-mode header,
+}
+/* The header is NO LONGER hidden for owners — it carries the admin nav now, the
+   same way it carries the customer menu (see index.html). Only the customer-facing
+   bits of it are hidden. */
 body.owner-mode #mobileMenu {
   display: none !important;
+}
+/* Hide the CUSTOMER nav — :not(.admin-dock) matters, because the admin dock is
+   itself a <nav> inside this header, so a bare `header nav` hides the very menu
+   this change is adding. */
+body.owner-mode header > nav:not(.admin-dock),
+body.owner-mode header .menu-toggle,
+body.owner-mode header .logo-text {
+  display: none !important;
+}
+body.owner-mode header {
+  display: flex;
+  padding: 10px 14px;
+  gap: 10px;
+  width: calc(100% - 20px);
+  /* The floating dock sat at 1500 so it stayed above the back office; the header
+     inherits that job now. Still below the real modals (2000+), which SHOULD
+     cover the nav. */
+  z-index: 1500;
+  /* Same reasoning as the guest bar: backdrop-filter is not transitioned —
+     re-blurring the bar per frame is the most expensive thing here. */
+  transition:
+    padding 0.42s var(--fluid-bezier),
+    box-shadow 0.42s var(--fluid-bezier);
+}
+/* Nested in the header's glass, the dock drops its own floating chrome and
+   becomes a normal flex child instead of a fixed overlay. */
+body.owner-mode header .admin-dock-wrap {
+  position: static;
+  left: auto;
+  bottom: auto;
+  transform: none;
+  z-index: auto;
+  padding: 0;
+  margin-left: auto;
+  max-width: none;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+body.owner-mode header .admin-dock {
+  background: none;
+  box-shadow: none;
+  border: 0;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  padding: 0;
+  gap: 6px;
+}
+body.owner-mode header .admin-dock-btn {
+  width: 38px;
+  height: 38px;
+}
+body.owner-mode header .admin-dock-btn svg {
+  width: 19px;
+  height: 19px;
+}
+/* The hover label would collide with the bar's edge. */
+body.owner-mode header .admin-dock-btn::after {
+  display: none;
+}
+/* The icons were WHITE — correct on the dark floating pill they used to live in,
+   invisible now the bar is light glass (measured: 4 of 5 icons rgb(255,255,255)
+   on an rgba(255,255,255,.78) background; only the selected one read, because it
+   sits on the white indicator). Take the header's own ink, which is theme-flipped,
+   so this is right in dark mode too. :not(.current) because the SELECTED icon must
+   stay dark against the white pill whatever the theme. */
+body.owner-mode header .admin-dock-btn:not(.current) {
+  color: var(--text-light);
+}
+@media (hover: hover) {
+  body.owner-mode header .admin-dock-btn:not(.current):hover {
+    background: color-mix(in srgb, var(--text-light) 10%, transparent);
+  }
+}
+body.owner-mode header .admin-dock-btn:focus-visible {
+  background: color-mix(in srgb, var(--text-light) 12%, transparent);
+}
+/* The screen's name, in the space between crown and icons — revealed only once
+   the bar condenses, so it never repeats the heading already on the page. */
+body.owner-mode #admin-head-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: center;
+  font-family: var(--font-serif);
+  font-size: 1rem;
+  color: var(--text-light);
+  padding: 0 8px;
+  opacity: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+  transition:
+    opacity 0.32s var(--fluid-bezier),
+    transform 0.42s var(--spring);
+}
+body.owner-mode header.header-condensed #admin-head-title.has-title {
+  opacity: 1;
+  transform: none;
+}
+/* ---- Condensing bar. The icons SCALE (one composited transform) rather than
+   animating their width/height: animating layout on every button relaid out the
+   bar per frame and stuttered on the guest side before it was fixed the same way. */
+body.owner-mode header .admin-dock,
+body.owner-mode header .logo-mark {
+  transition: transform 0.46s var(--fluid-bezier);
+  will-change: transform;
+}
+body.owner-mode header.header-condensed {
+  padding: 3px 12px;
+  box-shadow: var(--shadow-sm, 0 6px 20px rgba(0, 0, 0, 0.18));
+}
+body.owner-mode header.header-condensed .admin-dock {
+  transform: scale(0.895);
+  transform-origin: right center;
+}
+body.owner-mode header .logo-mark {
+  height: 30px;
+}
+body.owner-mode header.header-condensed .logo-mark {
+  transform: scale(0.833);
+  transform-origin: left center;
+}
+@media (prefers-reduced-motion: reduce) {
+  /* transition ONLY — never `transform: none` here. The bar centres itself with
+     `left: 50%; transform: translateX(-50%)`, so blanking the transform shoves it
+     185px right and its icons off the screen (measured: header right 380 → 550,
+     which is what the layout gate caught). The condensed scale is likewise a
+     compact LAYOUT, not an effect; reduced motion drops the easing, not the
+     end state. */
+  body.owner-mode header,
+  body.owner-mode header .admin-dock,
+  body.owner-mode header .logo-mark,
+  body.owner-mode #admin-head-title {
+    transition: none;
+  }
+  /* The title's transform IS pure decoration (a slide-up), so it goes. */
+  body.owner-mode #admin-head-title {
+    transform: none;
+  }
 }
 
 /* Shared empty state for admin lists (emptyState() in admin.js) — a soft

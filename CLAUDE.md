@@ -134,6 +134,37 @@ Single-operator holiday-let PWA. No framework, no build step.
 - Routing is `nav()` toggling `.page-view.active`; per-view init lives in `nav()`
   (e.g. `view-experiences` → `renderExperiencesView()`). No router lib.
 
+**The ADMIN nav is in the HEADER too** (`admin.css`, `body.owner-mode header …`) —
+owner-mode used to hide the header outright and float `.admin-dock-wrap` at the bottom
+of the screen; both sides now put navigation in one bar at the top. The dock is STATIC
+markup with a single home, so unlike the guest dock it needs no re-parenting: it simply
+lives inside `<header>`, and admin.css unpicks its floating chrome (`position: static`,
+no glass/shadow of its own, `margin-left: auto`) — but note the customer-nav hide must
+be **`header > nav:not(.admin-dock)`**, because the admin dock IS a `<nav>` in this
+header and a bare `header nav` hides the very menu this provides. Four more things it
+has to keep right, all gated by `ui-test-adminmenu.js`: (1) the guest dock must VACATE
+the header when the owner signs in — that's a body-class change, not a resize, so
+`watchOwnerMode()` (guest-app.js) observes `owner-mode` and re-runs `updateShell()`,
+whose else-branch now also removes the stale `#guest-dock-slot`/`#guest-head-title`
+(they lingered as a 60px ghost of the guest pill inside the admin bar); (2) the icons
+take `var(--text-light)` — they were WHITE, right for the dark floating pill, invisible
+on the light glass bar (measured: 4 of 5 at luminance delta 0), and `:not(.current)`
+because the selected one must stay dark against the white pill; (3) the selection pill
+travels on `translate` with a separate `scale` squash and is re-seated by a
+`ResizeObserver` (`watchAdminDock()`), for the same two reasons the guest side needed
+both — a combined transform teleports, and condensing changes the button widths under a
+stale placement; (4) reduced motion drops the **easing only** — never `transform: none`
+on the bar, which centres itself with `left: 50%` + `translateX(-50%)`, so blanking it
+shoves the whole thing 185px right (measured: header right 380 → 550, icons off screen;
+the condensed scale is likewise a compact layout, not an effect). Scrolling condenses
+and never hides (`setupHeaderScroll`'s guard is now `owner-mode || guest-app`), the
+condensed bar names the screen in `#admin-head-title` (label read off the dock BUTTON so
+it can't drift; the two hubs + search are named in `nav()`), and `body.owner-mode
+.container` clears the bar at the TOP instead of the bottom. `loadAdminBundle()` now
+AWAITS `ensureAdminCss()` alongside the views — fire-and-forget let the back office
+paint before its own stylesheet arrived, so the nav rendered at its old floating size
+inside the header and overflowed the bar.
+
 **Back-office IA** — the admin dock (`body.owner-mode`) has 4 buttons, each a task
 area, not a settings dump: **Today** (`view-backoffice` — the OPERATIONS workspace:
 the **Needs-you strip** first (`renderNeedsYou()` — ONE prioritised to-do list:

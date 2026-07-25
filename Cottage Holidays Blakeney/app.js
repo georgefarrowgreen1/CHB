@@ -11,7 +11,7 @@ const ADMIN_BUNDLE_V = 270;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 82;
+const ADMIN_CSS_V = 83;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -72,8 +72,12 @@ let __adminBundlePromise = null;
 function loadAdminBundle() {
     if (window.__ADMIN_LOADED) return Promise.resolve();
     if (__adminBundlePromise) return __adminBundlePromise;
-    // Pull the admin stylesheet in parallel with the script.
-    ensureAdminCss();
+    // Pull the admin stylesheet in parallel with the script — and AWAIT it below.
+    // It used to be fire-and-forget, so the back office could paint before its own
+    // stylesheet arrived: the admin nav (whose header geometry lives in admin.css)
+    // rendered at its old floating size inside the header and overflowed the bar
+    // until the CSS landed. Resolves on error too, so this can never hang.
+    const cssReady = ensureAdminCss();
     // The MARKUP has to be in the DOM before any admin function runs (they render
     // into these ids), so the script is appended only after the views land. To
     // keep that ordering from costing a round trip, warm admin.js in the HTTP
@@ -110,7 +114,7 @@ function loadAdminBundle() {
             };
             document.head.appendChild(s);
         });
-    __adminBundlePromise = ensureAdminViews().then(() => attempt(2));
+    __adminBundlePromise = Promise.all([ensureAdminViews(), cssReady]).then(() => attempt(2));
     // A views failure must also clear the bundle promise, or the owner's next tap
     // resolves against the rejected one instead of retrying.
     __adminBundlePromise.catch(() => {
@@ -1553,6 +1557,20 @@ function nav(viewId, anchorId = null) {
         b.classList.toggle('current', b.getAttribute('data-view') === dockView);
     });
     requestAnimationFrame(moveDockIndicator);
+    // The condensed bar names the screen, mirroring the guest side. The label is
+    // read off the dock BUTTON for this view rather than kept in a second list, so
+    // it can't drift from what the nav itself says; the two hubs aren't dock
+    // destinations, so they're named here.
+    try {
+        const t = document.getElementById('admin-head-title');
+        if (t) {
+            const HUBS = { 'view-booking-hub': 'Booking', 'view-enquiry-hub': 'Enquiry', 'view-search': 'Search' };
+            const btn = document.querySelector('.admin-dock-btn[data-view="' + dockView + '"]');
+            const label = HUBS[viewId] || (btn ? btn.getAttribute('data-label') || '' : '');
+            t.textContent = label;
+            t.classList.toggle('has-title', !!label);
+        }
+    } catch (e) {}
 
     // The cottage page's sticky booking bar lives on <body> (so its position:fixed
     // isn't trapped by the page-view transform); show it only on the cottage page.
@@ -1824,8 +1842,13 @@ window.addEventListener('resize', () => {
         // away — hiding it would take the customer's navigation with it. Instead it
         // CONDENSES as you scroll (iOS's collapsing title bar): still there, just
         // more compact and more blurred. See guest-app.css .header-condensed.
-        const shell = document.body.classList.contains('guest-app') && !document.body.classList.contains('owner-mode');
-        if (shell) {
+        // Both shells now carry their navigation IN the header, so neither may let
+        // it slide away on scroll — it condenses instead. Owner-mode included since
+        // the admin dock moved into the bar.
+        const inHeaderNav =
+            document.body.classList.contains('owner-mode') ||
+            document.body.classList.contains('guest-app');
+        if (inHeaderNav) {
             header.classList.remove('header-hidden');
             header.classList.toggle('header-condensed', y > 24);
             lastY = y;
@@ -1978,18 +2001,62 @@ function toggleBackofficeMode() {
 function moveDockIndicator() {
     const dock = document.querySelector('.admin-dock');
     if (!dock) return;
-    const ind = dock.querySelector('.admin-dock-indicator');
+    const ind = /** @type {any} */ (dock.querySelector('.admin-dock-indicator'));
     if (!ind) return;
-    const cur = dock.querySelector('.admin-dock-btn.current');
+    const cur = /** @type {any} */ (dock.querySelector('.admin-dock-btn.current'));
     if (!cur || cur.offsetParent === null) {
         ind.classList.remove('show');
         return;
     }
+    // Size is set instantly; the TRAVEL is a transform (see .admin-dock-indicator)
+    // so it stays on the compositor instead of laying out every frame.
     ind.style.width = cur.offsetWidth + 'px';
     ind.style.height = cur.offsetHeight + 'px';
-    ind.style.left = cur.offsetLeft + 'px';
+    const next = cur.offsetLeft + 'px -50%';
+    const moved = ind.style.translate !== next;
+    ind.style.translate = next;
     ind.classList.add('show');
+    // Squash into the direction of travel, then spring back — the same cue the
+    // guest dock gives. Restart by removing the class and forcing a reflow so
+    // rapid taps still bounce.
+    if (moved && ind.__adShown) {
+        ind.classList.remove('ad-travel');
+        void ind.offsetWidth;
+        ind.classList.add('ad-travel');
+        clearTimeout(ind.__adT);
+        ind.__adT = setTimeout(() => ind.classList.remove('ad-travel'), 460);
+    }
+    ind.__adShown = true;
 }
+// The dock's geometry moves for reasons beyond a tab change (the bar condensing,
+// search-first hiding two buttons, fonts landing), and a stale placement leaves
+// the pill off its icon — the guest side hit exactly that. Watch it instead of
+// remembering to call the placer from each spot.
+let __adRO = null;
+let __adRaf = 0;
+function watchAdminDock() {
+    const dock = document.querySelector('.admin-dock');
+    if (!dock || typeof ResizeObserver !== 'function') return;
+    if (!__adRO) {
+        __adRO = new ResizeObserver(() => {
+            if (__adRaf) return;
+            __adRaf = requestAnimationFrame(() => {
+                __adRaf = 0;
+                try {
+                    moveDockIndicator();
+                } catch (e) {}
+            });
+        });
+    }
+    try {
+        __adRO.disconnect();
+        __adRO.observe(dock);
+        dock.querySelectorAll('.admin-dock-btn').forEach((b) => __adRO.observe(b));
+    } catch (e) {}
+}
+try {
+    watchAdminDock();
+} catch (e) {}
 // Re-align after a resize (button sizes change at the dock's breakpoints).
 window.addEventListener('resize', () => {
     clearTimeout(window.__dockT);
@@ -13179,7 +13246,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'smoothcond1';
+    const BUILD = 'adminhdr1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
