@@ -18,21 +18,63 @@
   display: none;
 }
 
-/* In the guest shell the top header is removed entirely — navigation lives in
-   the floating dock menu below. */
+/* The customer menu sits in the SAME place on a phone as on desktop: inside the
+   header. guest-app.js re-parents the existing .guest-dock node into
+   #guest-dock-slot here (see placeDock), so the sliding indicator and every
+   button handler are unchanged — only the location differs. */
 body.guest-app:not(.owner-mode) header {
+  display: flex;
+  padding: 10px 14px;
+  gap: 10px;
+  width: calc(100% - 20px);
+  /* MUST out-rank the full-page guest screens (chat + auth are z-index 1390):
+     the menu has to stay tappable so another tab always gets you out. The old
+     bottom dock used 1400 for exactly this reason. */
+  z-index: 1410;
+}
+/* The hamburger is redundant — every destination is a button in the header now. */
+body.guest-app:not(.owner-mode) .menu-toggle {
+  display: none;
+}
+body.guest-app:not(.owner-mode) #guest-dock-slot {
+  display: flex;
+  margin-left: auto;
+}
+/* Nested in the header's own glass, the pill drops its floating chrome. */
+body.guest-app:not(.owner-mode) #guest-dock-slot .guest-dock {
+  background: none;
+  box-shadow: none;
+  border: 0;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  padding: 0;
+  gap: 2px;
+}
+body.guest-app:not(.owner-mode) #guest-dock-slot .guest-dock-btn {
+  width: 38px;
+  height: 38px;
+}
+body.guest-app:not(.owner-mode) #guest-dock-slot .guest-dock-btn svg {
+  width: 19px;
+  height: 19px;
+}
+/* The crown logo to its left already goes Home, so the dock's own Home button
+   would be a second identical affordance in the same bar. */
+body.guest-app:not(.owner-mode) #guest-dock-slot .guest-dock-btn.gt-home {
+  display: none;
+}
+/* The hover/press label would collide with the header edge. */
+body.guest-app:not(.owner-mode) #guest-dock-slot .guest-dock-btn::after {
   display: none;
 }
 
-/* The page hero and .container reserve ~90–120px of top padding to clear the
-   (now hidden) floating header. With no header, that leaves a large empty gap
-   at the top of every page. Pull the content back up so it starts just below
-   the floating account button (≈54px) plus a little breathing room + notch. */
+/* Clear the header, which now carries the menu (≈58px tall at this padding, plus
+   its own 20px top offset and the notch). */
 body.guest-app:not(.owner-mode) .hero {
-  padding-top: calc(66px + env(safe-area-inset-top, 0px));
+  padding-top: calc(100px + env(safe-area-inset-top, 0px));
 }
 body.guest-app:not(.owner-mode) .container {
-  padding-top: calc(66px + env(safe-area-inset-top, 0px));
+  padding-top: calc(100px + env(safe-area-inset-top, 0px));
 }
 
 /* The guest menu is a centred, floating "pill" — the same look and layout as the
@@ -319,18 +361,17 @@ body.guest-app:not(.owner-mode) #guest-msg-fab {
   }
 }
 
-/* Clear the floating dock so document/footer content is never hidden behind it.
-   The dock is ~104px tall (button + padding + 20px gap) on its largest size, so
-   keep a comfortable margin below all page content and the footer. This BODY
-   padding sits below the footer, so it's the only clearance needed — per-view
-   padding on top of it just creates a void between content and footer. */
+/* Clear whatever still floats at the bottom, so document/footer content is never
+   hidden behind it. This BODY padding sits below the footer, so it's the only
+   clearance needed — per-view padding on top of it just creates a void between
+   content and footer. With the menu now in the header, the only remaining
+   floating element is the cottage pages' "Check availability" pill (deliberately
+   left in thumb reach), so off those pages barely any clearance is needed. */
 body.guest-app:not(.owner-mode) {
-  padding-bottom: calc(124px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: 40px;
 }
-/* Cottage pages add the "Check availability" pill above the dock, so the
-   cluster is taller — give the footer a little more room only then. */
 body.guest-app:not(.owner-mode).book-bar-open {
-  padding-bottom: calc(180px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(104px + env(safe-area-inset-bottom, 0px));
 }
 
 /* On mobile the footer is pared back to just the dark/light toggle, the
@@ -360,7 +401,9 @@ body.guest-app:not(.owner-mode) #guest-security-modal {
      instead of floating low in the middle with empty space above and below. */
   justify-content: flex-start;
   overflow-y: auto;
-  padding: calc(26px + env(safe-area-inset-top, 0px)) clamp(16px, 5vw, 32px) 0;
+  /* Starts below the header (which now carries the menu) so the menu stays
+     visible and tappable over the top of these full-page screens. */
+  padding: calc(100px + env(safe-area-inset-top, 0px)) clamp(16px, 5vw, 32px) 0;
 }
 body.guest-app:not(.owner-mode) #guest-auth-modal .modal-box,
 body.guest-app:not(.owner-mode) #guest-details-modal .modal-box,
@@ -374,10 +417,11 @@ body.guest-app:not(.owner-mode) #guest-security-modal .modal-box {
   border-radius: 0;
   background: transparent;
   box-shadow: none;
-  /* Dock clearance lives INSIDE the box: iOS ignores the scroll container's
-     own bottom padding for scroll extent, which left the last buttons
-     (password / log out) trapped behind the floating dock. */
-  padding: 0 0 calc(124px + env(safe-area-inset-bottom, 0px));
+  /* Nothing floats at the bottom of these screens any more (the menu moved to
+     the header), so only a comfortable end-of-scroll margin is needed. Kept
+     INSIDE the box because iOS ignores a scroll container's own bottom padding
+     for scroll extent. */
+  padding: 0 0 calc(40px + env(safe-area-inset-bottom, 0px));
 }
 /* The box has no padding here, so the close (×) row's desktop negative margins
    would push it past the edge and clip its top-right — keep it fully inside. */
@@ -386,8 +430,8 @@ body.guest-app:not(.owner-mode) .auth-close-row {
 }
 
 /* Messages is also a full PAGE on mobile (like the other menu items), not a
-   floating window: full-bleed, opaque, scrollable, below the dock so the menu
-   stays usable (nav() closes it when you tap another tab). */
+   floating window: full-bleed, opaque, scrollable, starting below the header so
+   the menu stays usable (nav() closes it when you tap another tab). */
 body.guest-app:not(.owner-mode) #chat-widget {
   left: 0;
   right: 0;
@@ -403,7 +447,7 @@ body.guest-app:not(.owner-mode) #chat-widget {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
   z-index: 1390;
-  padding: calc(8px + env(safe-area-inset-top, 0px)) 0 calc(98px + env(safe-area-inset-bottom, 0px));
+  padding: calc(96px + env(safe-area-inset-top, 0px)) 0 calc(16px + env(safe-area-inset-bottom, 0px));
 }
 
 /* The header account pill is gone; the messages bubble now lives in the dock as

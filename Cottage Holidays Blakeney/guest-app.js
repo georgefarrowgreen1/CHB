@@ -251,8 +251,51 @@
         var narrow = window.matchMedia && window.matchMedia('(max-width: 768px)').matches;
         return !!(standalone || narrow);
     }
+    // The customer menu lives in the same place on a phone as on desktop: inside
+    // the header. Rather than build a second nav, MOVE the existing .guest-dock
+    // node between its floating wrapper and a slot in the header — so the sliding
+    // indicator, setActiveTab and every button handler keep working untouched
+    // (the same re-parenting trick the back office uses for #booking-hub-content).
+    //
+    // Only the DOCK moves. #guest-tabbar keeps the "Check availability" pill
+    // bottom-anchored, in thumb reach — and it must, because that wrapper carries
+    // a transform, which makes it the containing block for any fixed child, so the
+    // CTA cannot simply be re-pinned with CSS.
+    var __navDock = null; // the nav dock node, tracked across re-parenting
+    function placeDock() {
+        var wrap = document.getElementById('guest-tabbar');
+        if (!wrap) return;
+        // Look INSIDE the wrapper, never document-wide: #guest-msg-fab holds a
+        // second .guest-dock (the standalone Messages pill) and moving that one
+        // would put the chat bubble in the header and leave the nav behind.
+        var dock = wrap.querySelector('.guest-dock') || __navDock;
+        if (!dock) return;
+        __navDock = dock; // remember it — once moved it is no longer under wrap
+        var header = document.querySelector('header');
+        var inHeader = document.body.classList.contains('guest-app') && !document.body.classList.contains('owner-mode');
+        if (inHeader && header) {
+            var slot = document.getElementById('guest-dock-slot');
+            if (!slot) {
+                slot = document.createElement('div');
+                slot.id = 'guest-dock-slot';
+                header.appendChild(slot);
+            }
+            if (dock.parentElement !== slot) slot.appendChild(dock);
+        } else if (dock.parentElement !== wrap) {
+            // Back to desktop/owner: return it to the floating wrapper, ahead of
+            // the CTA so the pill still reads above the dock there.
+            wrap.appendChild(dock);
+        }
+        // Geometry moved, so the indicator has to be re-seated.
+        try {
+            moveGuestDockIndicator();
+        } catch (e) {}
+    }
     function updateShell() {
         document.body.classList.toggle('guest-app', shellApplies());
+        try {
+            placeDock();
+        } catch (e) {}
         try {
             var av = document.querySelector('.page-view.active');
             if (av) setActiveTab(av.id);
