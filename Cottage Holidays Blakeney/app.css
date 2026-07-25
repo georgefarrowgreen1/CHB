@@ -218,6 +218,18 @@ textarea:focus-visible,
   --font-sans: "Montserrat", sans-serif;
   --fluid-bezier: cubic-bezier(0.25, 1, 0.25, 1);
   --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* iOS SAFE AREAS. Full-screen overlays used a flat 20px inset, so on a phone
+     with a Dynamic Island / notch the top of the panel sat UNDERNEATH it. Read
+     the insets once here, as tokens, for two reasons: every overlay then insets
+     the same way instead of each remembering to, and a test can override these
+     to simulate a notched device — env() always reports 0px in a desktop
+     browser, so the bug is otherwise invisible to CI.
+     Use as max(<the design inset>, var(--safe-t)) so devices without insets
+     keep the original spacing exactly. */
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
 }
 
 /* ---- COASTAL FRESH (light): the guest default. Warm linen ground, white
@@ -960,7 +972,9 @@ body.light-mode ::-webkit-scrollbar-thumb {
   display: none;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  /* Inset by the iOS safe area where it is bigger than the design pad,
+     so the panel never sits under the Dynamic Island / notch. */
+  padding: max(20px, var(--safe-t)) max(20px, var(--safe-r)) max(20px, var(--safe-b)) max(20px, var(--safe-l));
 }
 #glass-dialog.open {
   display: flex;
@@ -1049,7 +1063,9 @@ body.light-mode ::-webkit-scrollbar-thumb {
   display: none;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  /* Inset by the iOS safe area where it is bigger than the design pad,
+     so the panel never sits under the Dynamic Island / notch. */
+  padding: max(20px, var(--safe-t)) max(20px, var(--safe-r)) max(20px, var(--safe-b)) max(20px, var(--safe-l));
   background: rgba(10, 11, 13, 0.7);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
@@ -1821,7 +1837,9 @@ a.card {
   display: none;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  /* Inset by the iOS safe area where it is bigger than the design pad,
+     so the panel never sits under the Dynamic Island / notch. */
+  padding: max(20px, var(--safe-t)) max(20px, var(--safe-r)) max(20px, var(--safe-b)) max(20px, var(--safe-l));
 }
 .reviews-modal.open {
   display: flex;
@@ -2113,7 +2131,9 @@ a.card {
   display: none;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  /* Inset by the iOS safe area where it is bigger than the design pad,
+     so the panel never sits under the Dynamic Island / notch. */
+  padding: max(24px, var(--safe-t)) max(24px, var(--safe-r)) max(24px, var(--safe-b)) max(24px, var(--safe-l));
   -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);
 }
@@ -3046,8 +3066,8 @@ textarea.input-glass.field-sm {
 }
 .lightbox-close {
   position: absolute;
-  top: 18px;
-  right: 18px;
+  top: max(18px, var(--safe-t));
+  right: max(18px, var(--safe-r));
   width: 46px;
   height: 46px;
   border-radius: 50%;
@@ -4167,8 +4187,8 @@ body.light-mode .tag-pimpernel {
 /* Floating chat bubble + widget (public site) */
 .chat-fab {
   position: fixed;
-  right: 22px;
-  bottom: 22px;
+  right: max(22px, var(--safe-r));
+  bottom: max(22px, var(--safe-b));
   z-index: 1400;
   width: 58px;
   height: 58px;
@@ -7187,7 +7207,9 @@ body.light-mode .feed-dot-bad {
   display: none;
   align-items: center;
   justify-content: center;
-  padding: 20px;
+  /* Inset by the iOS safe area where it is bigger than the design pad,
+     so the panel never sits under the Dynamic Island / notch. */
+  padding: max(20px, var(--safe-t)) max(20px, var(--safe-r)) max(20px, var(--safe-b)) max(20px, var(--safe-l));
 }
 .modal-overlay.open {
   display: flex;
@@ -7200,7 +7222,13 @@ body.light-mode .feed-dot-bad {
   max-width: 480px;
   padding: 35px;
   border-radius: var(--r-panel);
-  max-height: 90vh;
+  /* The overlay's safe-area padding is not enough on its own: a flex-CENTRED
+     child that is taller than the content box overflows BOTH edges equally, so a
+     90vh panel still crept back under the Dynamic Island by a few pixels. Cap the
+     panel to what's actually safe — the viewport minus the insets and the
+     overlay's own 20px — and it can never reach the unsafe strip.
+     dvh (not vh) so the iOS toolbar isn't counted as usable height. */
+  max-height: min(90dvh, calc(100dvh - var(--safe-t) - var(--safe-b) - 40px));
   overflow-y: auto;
 }
 /* Floating glass windows: smooth pop-in (overlay fades, box rises). */
@@ -7319,8 +7347,9 @@ body.light-mode .feed-dot-bad {
 /* Same-day changeover toasts (lower-right) */
 .toast-stack {
   position: fixed;
-  bottom: 24px;
-  right: 24px;
+  /* Clear the home indicator / rounded corner on iOS. */
+  bottom: max(24px, var(--safe-b));
+  right: max(24px, var(--safe-r));
   z-index: 2000;
   display: flex;
   flex-direction: column;
