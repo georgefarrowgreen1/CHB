@@ -33,25 +33,33 @@ if ($noise) {
     json_out(['ok' => true, 'ignored' => true]);
 }
 
-$summary = 'Front-end error: ' . mb_substr($msg, 0, 160);
+// SOFT reports come from chbSwallow() — a caught-and-deliberately-ignored error on
+// a path that matters (money, booking writes), where the code carries on by design.
+// They are diagnostics, not breakage: logged at severity 'info' under their own
+// action so they stay OUT of "Needs attention", the weekly digest and the owner
+// push (all of which key off warn/action), yet are there in the activity log when
+// someone goes looking for why something quietly didn't happen.
+$soft = !empty($in['soft']);
+$summary = ($soft ? 'Swallowed error: ' : 'Front-end error: ') . mb_substr($msg, 0, 160);
+$action = $soft ? 'client.swallow' : 'client.error';
 
 // Cross-visitor dedup: the same error within the last hour is logged once,
 // however many visitors hit the broken page (each page load already self-caps,
 // but a popular broken page would still stack identical rows without this).
 try {
     $s = db()->prepare(
-        "SELECT 1 FROM activity_log WHERE action = 'client.error' AND summary = ?
+        "SELECT 1 FROM activity_log WHERE action = ? AND summary = ?
            AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR) LIMIT 1",
     );
-    $s->execute([mb_substr($summary, 0, 255)]);
+    $s->execute([$action, mb_substr($summary, 0, 255)]);
     if ($s->fetchColumn()) {
         json_out(['ok' => true, 'deduped' => true]);
     }
 } catch (\Throwable $e) {
 }
 
-log_activity('system', 'client.error', $summary, [
-    'severity' => 'warn',
+log_activity('system', $action, $summary, [
+    'severity' => $soft ? 'info' : 'warn',
     'meta' => [
         'detail' => $where !== '' ? mb_substr($where, 0, 200) : '',
         'ua' => mb_substr((string) ($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 200),
@@ -62,6 +70,10 @@ log_activity('system', 'client.error', $summary, [
     ],
 ]);
 // Nudge the owner's devices about site breakage (throttled to one push per 6h
-// in chb_maybe_alert_owner_error — a reporting aid, not a pager).
-chb_maybe_alert_owner_error($summary);
-json_out(['ok' => true]);
+// in chb_maybe_alert_owner_error — a reporting aid, not a pager). Soft reports
+// never push: the code handled the failure by design, so waking the owner over
+// one would be exactly the alert-fatigue this stays clear of.
+if (!$soft) {
+    chb_maybe_alert_owner_error($summary);
+}
+json_out(['ok' => true, 'soft' => $soft]);
