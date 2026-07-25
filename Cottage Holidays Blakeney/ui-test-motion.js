@@ -122,6 +122,35 @@ const { boot, ok } = require('./ui-test-lib');
     });
     check(!expanded, 'scrolling back to the top expands it again');
 
+    // ---- B2) the condensed bar names the screen ----
+    // The space between crown and icons was ~40% of the bar and empty. It now
+    // carries the screen's title, but ONLY once condensed — otherwise it would
+    // repeat the page's own big heading, which is still on screen at rest.
+    const title = await page.evaluate(async () => {
+        const el = () => document.getElementById('guest-head-title');
+        const op = () => (el() ? getComputedStyle(el()).opacity : null);
+        window.scrollTo(0, 0);
+        try { openProperty('21a'); } catch (e) {}
+        await new Promise((r) => setTimeout(r, 700));
+        const h1 = (document.getElementById('prop-title') || {}).textContent || '';
+        const rest = { text: el() ? el().textContent : null, opacity: op() };
+        window.scrollTo(0, 500);
+        await new Promise((r) => setTimeout(r, 700));
+        const cond = { opacity: op(), overflowX: document.documentElement.scrollWidth - window.innerWidth };
+        // Home needs no title — the crown already says Home.
+        window.scrollTo(0, 0);
+        try { nav('view-main'); } catch (e) {}
+        await new Promise((r) => setTimeout(r, 600));
+        const home = { text: el() ? el().textContent : null, hasClass: el() ? el().classList.contains('has-title') : null };
+        return { h1: h1.trim(), rest, cond, home };
+    });
+    check(title.rest.text === title.h1 && !!title.h1,
+        `the title is read from the cottage's own heading, not a second copy ("${title.rest.text}")`);
+    check(title.rest.opacity === '0', `it stays hidden at rest, so the page heading isn't echoed (opacity ${title.rest.opacity})`);
+    check(title.cond.opacity === '1', `it appears once the bar condenses (opacity ${title.cond.opacity})`);
+    check(title.cond.overflowX <= 0, `it never causes overflow (${title.cond.overflowX}px)`);
+    check(!title.home.text && !title.home.hasClass, `Home carries no title — the crown already says it ("${title.home.text}")`);
+
     // ---- C) desktop keeps the original hide-on-scroll ----
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.waitForTimeout(400);

@@ -39,6 +39,40 @@ body.guest-app:not(.owner-mode) .menu-toggle {
 body.guest-app:not(.owner-mode) #guest-dock-slot {
   display: flex;
   margin-left: auto;
+  flex: 0 0 auto;
+}
+/* Optical balance. The crown measured 63x38 against 38px icon buttons, so it
+   carried nearly all the visual weight and the icons read as an afterthought
+   crammed into the corner. Bring the mark down to peer size and let the icons
+   breathe (they had a 2px gap, which made the selected pill touch its
+   neighbours). */
+body.guest-app:not(.owner-mode) header .logo-mark {
+  height: 30px;
+}
+/* The screen's name, in the space between crown and icons — shown ONLY once the
+   bar has condensed, i.e. after the page's own big heading has scrolled away, so
+   the title is never said twice at once. */
+body.guest-app:not(.owner-mode) #guest-head-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: center;
+  font-family: var(--font-serif);
+  font-size: 1rem;
+  color: var(--text-light);
+  padding: 0 8px;
+  opacity: 0;
+  transform: translateY(6px);
+  pointer-events: none;
+  transition:
+    opacity 0.32s var(--fluid-bezier),
+    transform 0.42s var(--spring);
+}
+body.guest-app:not(.owner-mode) header.header-condensed #guest-head-title.has-title {
+  opacity: 1;
+  transform: none;
 }
 /* Nested in the header's own glass, the pill drops its floating chrome. */
 body.guest-app:not(.owner-mode) #guest-dock-slot .guest-dock {
@@ -48,7 +82,9 @@ body.guest-app:not(.owner-mode) #guest-dock-slot .guest-dock {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
   padding: 0;
-  gap: 2px;
+  /* 2px made the selected pill touch its neighbours; the smaller crown frees the
+     width for a real gap. */
+  gap: 6px;
 }
 body.guest-app:not(.owner-mode) #guest-dock-slot .guest-dock-btn {
   width: 38px;
@@ -98,7 +134,7 @@ body.guest-app:not(.owner-mode) #guest-dock-slot .guest-dock-btn svg {
     transform 0.5s var(--spring);
 }
 body.guest-app:not(.owner-mode) header.header-condensed .logo-mark {
-  height: 30px;
+  height: 25px;
 }
 body.guest-app:not(.owner-mode) header.header-condensed #guest-dock-slot .guest-dock-btn {
   width: 34px;
@@ -445,6 +481,12 @@ body.guest-app:not(.owner-mode) #guest-msg-fab {
   }
   body.guest-app:not(.owner-mode) .page-view.active {
     animation: none;
+  }
+  /* The condensed bar's title still appears (it's information); it just doesn't
+     slide up into place. */
+  body.guest-app:not(.owner-mode) #guest-head-title {
+    transition: none;
+    transform: none;
   }
 }
 

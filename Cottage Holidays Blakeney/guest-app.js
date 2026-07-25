@@ -251,9 +251,36 @@
         var onCottage = !__overlayKey && !!(av && av.id === 'view-21a');
         wrap.classList.toggle('gt-show-cta', onCottage);
     }
+    // What the condensed bar calls the current screen. The cottage page reads its
+    // OWN <h1> rather than keeping a second copy of the cottage names — the list is
+    // owner-editable and dynamic, so any duplicate would drift.
+    var HEAD_TITLES = {
+        'view-cottages': 'Cottages',
+        'view-experiences': 'Things to do',
+        'view-guest-bookings': 'Your stays',
+        'view-privacy': 'Privacy',
+    };
+    function headTitleFor(viewId) {
+        if (!viewId || viewId === 'view-main') return ''; // the crown already says Home
+        if (viewId === 'view-21a') {
+            var h = document.getElementById('prop-title');
+            return (h && h.textContent.trim()) || 'Cottage';
+        }
+        return HEAD_TITLES[viewId] || '';
+    }
+    function setHeadTitle(viewId) {
+        var el = document.getElementById('guest-head-title');
+        if (!el) return;
+        var txt = headTitleFor(viewId);
+        el.textContent = txt;
+        el.classList.toggle('has-title', !!txt);
+    }
     function setActiveTab(viewId) {
         __overlayKey = null; // navigating to a page clears any overlay highlight
         applyCurrent(keyForView(viewId));
+        try {
+            setHeadTitle(viewId);
+        } catch (e) {}
         refreshBookCta();
     }
     function setGuestDockOverlay(key) {
@@ -308,6 +335,17 @@
                 slot = document.createElement('div');
                 slot.id = 'guest-dock-slot';
                 header.appendChild(slot);
+            }
+            // Between the crown and the icons sat ~147px of nothing — 40% of the
+            // bar. iOS fills exactly that space with the screen's title, but only
+            // once you've scrolled past the big heading on the page, so the two
+            // never say the same thing at the same time. Same here: the element
+            // lives in the bar and only shows in the condensed state (CSS).
+            if (!document.getElementById('guest-head-title')) {
+                var ttl = document.createElement('span');
+                ttl.id = 'guest-head-title';
+                ttl.setAttribute('aria-hidden', 'true'); // the page's own <h1> is the real one
+                header.insertBefore(ttl, slot);
             }
             if (dock.parentElement !== slot) slot.appendChild(dock);
         } else if (dock.parentElement !== wrap) {
