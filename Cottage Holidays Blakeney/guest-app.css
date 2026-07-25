@@ -107,42 +107,50 @@ body.guest-app:not(.owner-mode) #guest-dock-slot .guest-dock-btn::after {
 /* ---- Condensing bar (iOS's collapsing title bar) --------------------------
    Scrolling never takes the menu away (app.js keeps .header-hidden off in the
    shell); the bar just tightens up: less padding, a slightly smaller logo and
-   icons, a deeper blur and a tighter shadow, so it reads as a compact floating
-   control while you're reading the page. Everything animated here is a
-   transform/filter/shadow — no layout thrash on the scroll thread. */
+   icons, and a tighter shadow, so it reads as a compact floating
+   control while you're reading the page. The icons SCALE rather than resize (see
+   below) so the only layout property animated is the header's own padding — one
+   property on one element, instead of relaying out nine of them per frame. */
 body.guest-app:not(.owner-mode) header {
+  /* NB backdrop-filter is deliberately NOT transitioned: re-blurring the whole
+     bar on every frame is one of the most expensive things you can animate, and
+     the blur step is imperceptible while the bar is changing shape anyway. */
   transition:
     padding 0.42s var(--fluid-bezier),
     background-color 0.42s var(--fluid-bezier),
     box-shadow 0.42s var(--fluid-bezier),
-    -webkit-backdrop-filter 0.42s var(--fluid-bezier),
-    backdrop-filter 0.42s var(--fluid-bezier),
     transform 0.5s var(--spring);
 }
 body.guest-app:not(.owner-mode) header.header-condensed {
-  padding: 5px 12px;
-  -webkit-backdrop-filter: blur(22px) saturate(1.5);
-  backdrop-filter: blur(22px) saturate(1.5);
+  /* The icons now scale rather than shrink their boxes, so the padding is what
+     brings the bar's height down. */
+  padding: 3px 12px;
+  /* The blur is deliberately left ALONE. Transitioning backdrop-filter re-blurs
+     the bar every frame; setting it instantly instead just moves the cost into
+     one big hitch as the condense starts (measured: a 66ms stall). The bar
+     already reads as condensed from its size and shadow, so changing the blur
+     radius buys nothing for a cost that is visible either way. */
   box-shadow: var(--shadow-sm, 0 6px 20px rgba(0, 0, 0, 0.18));
 }
-body.guest-app:not(.owner-mode) header .logo-mark,
-body.guest-app:not(.owner-mode) #guest-dock-slot .guest-dock-btn,
-body.guest-app:not(.owner-mode) #guest-dock-slot .guest-dock-btn svg {
-  transition:
-    width 0.42s var(--fluid-bezier),
-    height 0.42s var(--fluid-bezier),
-    transform 0.5s var(--spring);
+body.guest-app:not(.owner-mode) #guest-dock-slot .guest-dock,
+body.guest-app:not(.owner-mode) header .logo-mark {
+  transition: transform 0.46s var(--fluid-bezier);
+  /* Promote both up front. Without this the compositor builds the layer at the
+     moment the first condense starts, which showed up as an ~80ms hitch on the
+     first scroll only. Two small elements, which is what will-change is for. */
+  will-change: transform;
 }
+/* 34/38 — the same visual size the old width animation ended on, reached by
+   scaling the cluster as one composited layer. Anchored right so it stays put
+   against the bar's edge. */
+body.guest-app:not(.owner-mode) header.header-condensed #guest-dock-slot .guest-dock {
+  transform: scale(0.895);
+  transform-origin: right center;
+}
+/* 25/30, anchored left for the same reason. */
 body.guest-app:not(.owner-mode) header.header-condensed .logo-mark {
-  height: 25px;
-}
-body.guest-app:not(.owner-mode) header.header-condensed #guest-dock-slot .guest-dock-btn {
-  width: 34px;
-  height: 34px;
-}
-body.guest-app:not(.owner-mode) header.header-condensed #guest-dock-slot .guest-dock-btn svg {
-  width: 17px;
-  height: 17px;
+  transform: scale(0.833);
+  transform-origin: left center;
 }
 
 /* "You are on Home" lives on the crown, since the dock's Home button is hidden
@@ -475,6 +483,7 @@ body.guest-app:not(.owner-mode) #guest-msg-fab {
      effect) — only the easing between the two states is dropped. */
   body.guest-app:not(.owner-mode) header,
   body.guest-app:not(.owner-mode) header .logo-mark,
+  body.guest-app:not(.owner-mode) #guest-dock-slot .guest-dock,
   body.guest-app:not(.owner-mode) #guest-dock-slot .guest-dock-btn,
   body.guest-app:not(.owner-mode) #guest-dock-slot .guest-dock-btn svg {
     transition: none;

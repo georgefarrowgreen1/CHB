@@ -190,6 +190,34 @@ const { boot, ok } = require('./ui-test-lib');
         check(m && Math.abs(m.indW - m.btnW) <= 1, `and matches the button's size ${label} (pill ${m ? m.indW : '?'} vs button ${m ? m.btnW : '?'})`);
     }
 
+    // ---- B4) the condense must not animate LAYOUT ----
+    // It originally transitioned width/height on the buttons, their svgs and the
+    // logo — nine elements relaid out per frame, which stuttered (measured: 33ms
+    // frames, dropped frames both ways). The size change is a transform now. This
+    // is the structural guard: timing assertions would flake under CI load, but
+    // "does it animate a layout property" is deterministic.
+    const props = await page.evaluate(() => {
+        const list = (sel) => {
+            const el = document.querySelector(sel);
+            return el ? getComputedStyle(el).transitionProperty : '';
+        };
+        return {
+            btn: list('#guest-dock-slot .guest-dock-btn'),
+            svg: list('#guest-dock-slot .guest-dock-btn svg'),
+            mark: list('header .logo-mark'),
+            dock: list('#guest-dock-slot .guest-dock'),
+            header: list('header'),
+        };
+    });
+    const LAYOUT = /\b(width|height|top|left|right|bottom|margin)\b/;
+    for (const [what, v] of [['icon buttons', props.btn], ['icon glyphs', props.svg], ['the crown', props.mark], ['the dock', props.dock]]) {
+        check(!LAYOUT.test(v), `${what} animate no layout property (${v || 'none'})`);
+    }
+    check(/transform/.test(props.dock) || /transform/.test(props.mark),
+        `the size change rides a transform instead (dock: ${props.dock})`);
+    check(!/backdrop-filter/.test(props.header),
+        `the header does not transition backdrop-filter — re-blurring per frame is the costliest thing here (${props.header})`);
+
     // ---- C) desktop keeps the original hide-on-scroll ----
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.waitForTimeout(400);
