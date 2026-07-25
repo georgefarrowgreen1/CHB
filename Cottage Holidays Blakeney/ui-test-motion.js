@@ -151,6 +151,45 @@ const { boot, ok } = require('./ui-test-lib');
     check(title.cond.overflowX <= 0, `it never causes overflow (${title.cond.overflowX}px)`);
     check(!title.home.text && !title.home.hasClass, `Home carries no title — the crown already says it ("${title.home.text}")`);
 
+    // ---- B3) the pill stays ON the icon through a geometry change ----
+    // Condensing shrinks the buttons 38 -> 34px, which moves every offset. The pill
+    // is placed from measured coordinates, so unless it is re-measured it keeps the
+    // old ones and drifts off-centre — 10px on the third button, which is what got
+    // reported. Signing in (adding My Stays) moves things the same way.
+    const centred = await page.evaluate(async () => {
+        const pause = (ms) => new Promise((r) => setTimeout(r, ms));
+        const dx = () => {
+            const dock = document.querySelector('#guest-dock-slot .guest-dock');
+            const ind = dock.querySelector('.guest-dock-indicator');
+            const cur = dock.querySelector('.guest-dock-btn.current');
+            if (!cur) return null;
+            const ib = ind.getBoundingClientRect(), cb = cur.getBoundingClientRect();
+            return {
+                off: +((ib.left + ib.width / 2) - (cb.left + cb.width / 2)).toFixed(1),
+                indW: Math.round(ib.width), btnW: Math.round(cb.width), tab: cur.dataset.tab,
+            };
+        };
+        // Sign in so the 4th button (My Stays) exists — the reported state.
+        currentGuest = { id: 1, name: 'G', email: 'g@x.co' };
+        document.body.classList.add('guest-signed-in');
+        try { setGuestUI && setGuestUI(); } catch (e) {}
+        await pause(400);
+        try { nav('view-guest-bookings'); } catch (e) {}
+        await pause(800);
+        const rest = dx();
+        const h = document.querySelector('header');
+        h.classList.add('header-condensed');   // as a real scroll would
+        await pause(900);
+        const cond = dx();
+        h.classList.remove('header-condensed');
+        await pause(900);
+        return { rest, cond, back: dx() };
+    });
+    for (const [label, m] of [['at rest', centred.rest], ['condensed', centred.cond], ['expanded again', centred.back]]) {
+        check(m && Math.abs(m.off) <= 1, `the pill stays centred on its icon ${label} (off by ${m ? m.off : '?'}px, tab ${m ? m.tab : '?'})`);
+        check(m && Math.abs(m.indW - m.btnW) <= 1, `and matches the button's size ${label} (pill ${m ? m.indW : '?'} vs button ${m ? m.btnW : '?'})`);
+    }
+
     // ---- C) desktop keeps the original hide-on-scroll ----
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.waitForTimeout(400);

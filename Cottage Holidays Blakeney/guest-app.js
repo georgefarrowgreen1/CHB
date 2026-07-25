@@ -317,6 +317,42 @@
     // bottom-anchored, in thumb reach — and it must, because that wrapper carries
     // a transform, which makes it the containing block for any fixed child, so the
     // CTA cannot simply be re-pinned with CSS.
+    // The pill is placed from the CURRENT button's measured offsetLeft/offsetWidth,
+    // and the dock's geometry changes for reasons well beyond a tab switch: the
+    // header condensing (buttons 38 -> 34px, so every offset shifts), signing in
+    // adding My Stays, the web font landing, the dock re-parenting between the
+    // header and its floating wrapper. It was only re-placed on tab change and on
+    // window resize, so after a condense the pill kept stale coordinates and sat up
+    // to 10px off-centre — visibly not on the icon.
+    //
+    // Rather than remembering to call the placer from each of those places (the bug
+    // was exactly that kind of omission), WATCH the dock: any geometry change
+    // re-places the pill, coalesced to one call per frame. The indicator is
+    // absolutely positioned, so re-placing it can't itself resize the dock and
+    // feed back into the observer.
+    var __gdRO = null;
+    var __gdRaf = 0;
+    function watchDockGeometry(dock) {
+        if (!dock || typeof ResizeObserver !== 'function') return;
+        if (!__gdRO) {
+            __gdRO = new ResizeObserver(function () {
+                if (__gdRaf) return;
+                __gdRaf = requestAnimationFrame(function () {
+                    __gdRaf = 0;
+                    try {
+                        moveGuestDockIndicator();
+                    } catch (e) {}
+                });
+            });
+        }
+        try {
+            __gdRO.disconnect(); // re-observe after a re-parent
+            __gdRO.observe(dock);
+            dock.querySelectorAll('.guest-dock-btn').forEach(function (b) {
+                __gdRO.observe(b);
+            });
+        } catch (e) {}
+    }
     var __navDock = null; // the nav dock node, tracked across re-parenting
     function placeDock() {
         var wrap = document.getElementById('guest-tabbar');
@@ -353,7 +389,9 @@
             // the CTA so the pill still reads above the dock there.
             wrap.appendChild(dock);
         }
-        // Geometry moved, so the indicator has to be re-seated.
+        // Geometry moved, so the indicator has to be re-seated — and the observer
+        // has to follow the dock to its new parent.
+        watchDockGeometry(dock);
         try {
             moveGuestDockIndicator();
         } catch (e) {}
