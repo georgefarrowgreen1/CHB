@@ -184,10 +184,32 @@
                 o.ind.classList.remove('show');
                 return;
             }
+            // Size is set instantly (it only changes when the dock changes context
+            // or a button appears), but the TRAVEL is a transform — animating
+            // left/width would lay out and paint every frame, which is exactly the
+            // jank iOS motion doesn't have. translate3d stays on the compositor.
             o.ind.style.width = o.w + 'px';
             o.ind.style.height = o.h + 'px';
-            o.ind.style.left = o.l + 'px';
+            // Set `translate` directly, NOT via a custom property: a transition
+            // can't interpolate a var()-supplied value (custom properties animate
+            // discretely), so routing it through --gd-x made the pill teleport.
+            var next = o.l + 'px -50%';
+            var moved = o.ind.style.translate !== next;
+            o.ind.style.translate = next;
             o.ind.classList.add('show');
+            // Squash into the direction of travel, then spring back — the small
+            // playful "liquid" cue when you switch tabs. Restart the animation by
+            // removing the class and forcing a reflow, so rapid taps still bounce.
+            if (moved && o.ind.__gdShown) {
+                o.ind.classList.remove('gd-travel');
+                void o.ind.offsetWidth;
+                o.ind.classList.add('gd-travel');
+                clearTimeout(o.ind.__gdT);
+                o.ind.__gdT = setTimeout(function () {
+                    o.ind.classList.remove('gd-travel');
+                }, 460);
+            }
+            o.ind.__gdShown = true;
         });
     }
 
@@ -206,6 +228,13 @@
         document.querySelectorAll('.guest-dock-btn').forEach(function (b) {
             b.classList.toggle('current', !!key && b.dataset.tab === key);
         });
+        // In the header the dock's own Home button is hidden (the crown logo beside
+        // it already goes Home), which would otherwise leave the Home page with NO
+        // "you are here" mark at all. Give it to the logo instead.
+        try {
+            var logo = document.querySelector('header .logo');
+            if (logo) logo.classList.toggle('logo-current', key === 'home');
+        } catch (e) {}
         requestAnimationFrame(moveGuestDockIndicator);
     }
 

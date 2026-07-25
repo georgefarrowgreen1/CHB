@@ -1820,6 +1820,20 @@ window.addEventListener('resize', () => {
         const y = window.scrollY;
         const menuOpen = document.getElementById('mobileMenu').classList.contains('open');
 
+        // In the guest shell the header CARRIES THE MENU, so it must never slide
+        // away — hiding it would take the customer's navigation with it. Instead it
+        // CONDENSES as you scroll (iOS's collapsing title bar): still there, just
+        // more compact and more blurred. See guest-app.css .header-condensed.
+        const shell = document.body.classList.contains('guest-app') && !document.body.classList.contains('owner-mode');
+        if (shell) {
+            header.classList.remove('header-hidden');
+            header.classList.toggle('header-condensed', y > 24);
+            lastY = y;
+            ticking = false;
+            return;
+        }
+        header.classList.remove('header-condensed');
+
         // Always visible near the top, or whenever the mobile menu is open
         if (y <= TOP_ZONE || menuOpen) {
             header.classList.remove('header-hidden');
@@ -13131,7 +13145,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'topmenu1';
+    const BUILD = 'iosmotion1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
