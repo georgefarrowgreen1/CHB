@@ -55,28 +55,36 @@ const { boot, ok } = require('./ui-test-lib');
     check(ind && !/\bleft\b|\bwidth\b/.test(ind.transitionProps), 'left/width are NOT transitioned (no per-frame layout)');
 
     // It must actually MOVE when you switch tab, and squash while travelling.
+    // SAMPLED OVER A WINDOW, not at one instant: on a loaded machine the click →
+    // rAF → style write → transition start can take well over 100ms, so a single
+    // early read lands on the start value and reads as a teleport. Polling still
+    // fails hard on a real teleport — that never produces an intermediate value.
     const travel = await page.evaluate(async () => {
         const el = document.querySelector('#guest-dock-slot .guest-dock-indicator');
         const before = el.style.translate;
-        const btn = document.querySelector('#guest-dock-slot .guest-dock-btn[data-tab="experiences"]');
-        btn.click();
-        await new Promise((r) => setTimeout(r, 60));
-        const squashing = el.classList.contains('gd-travel');
-        // Sample the rendered position mid-transition: it must be strictly between
-        // the two ends. A keyframe that overrides the travel would already be there.
-        // The travel lives in `translate` now — `transform` is only the
-        // translateZ(0) layer promotion, so reading it would always say 0.
-        const midX = parseFloat(getComputedStyle(el).translate);
+        document.querySelector('#guest-dock-slot .guest-dock-btn[data-tab="experiences"]').click();
+        const xs = [];
+        let sawSquash = false;
+        for (let i = 0; i < 40; i++) {
+            await new Promise((r) => requestAnimationFrame(r));
+            xs.push(parseFloat(getComputedStyle(el).translate));
+            if (el.classList.contains('gd-travel')) sawSquash = true;
+        }
         await new Promise((r) => setTimeout(r, 700));
         const fromX = parseFloat(before) || 0;
         const toX = parseFloat(el.style.translate) || 0;
         const lo = Math.min(fromX, toX), hi = Math.max(fromX, toX);
-        return { before, after: el.style.translate, squashing, settled: el.classList.contains('gd-travel'),
-                 midX: Math.round(midX), fromX, toX, glides: midX > lo + 1 && midX < hi - 1 };
+        const between = xs.filter((v) => v > lo + 1 && v < hi - 1);
+        return {
+            before, after: el.style.translate, sawSquash,
+            settled: el.classList.contains('gd-travel'),
+            fromX, toX, samples: xs.length, mids: between.length,
+            example: between.length ? Math.round(between[Math.floor(between.length / 2)]) : null,
+        };
     });
     check(travel.before !== travel.after, `the pill travels on a tab switch (${travel.before} → ${travel.after})`);
-    check(travel.glides, `it GLIDES rather than teleporting — sampled mid-flight at ${travel.midX}px, between ${travel.fromX} and ${travel.toX}`);
-    check(travel.squashing, 'it squashes while travelling (gd-travel applied)');
+    check(travel.mids >= 2, `it GLIDES rather than teleporting — ${travel.mids}/${travel.samples} frames landed between ${travel.fromX} and ${travel.toX} (e.g. ${travel.example}px)`);
+    check(travel.sawSquash, 'it squashes while travelling (gd-travel seen)');
     check(!travel.settled, 'the squash is cleaned up once it settles');
 
     // ---- B) scroll condenses, never hides ----
