@@ -580,6 +580,16 @@ body.guest-app:not(.owner-mode) .account-btn {
 body.guest-app:not(.owner-mode) .chat-fab {
   display: none;
 }
+/* ...and while the chat is OPEN, the Messages pill itself must go too. It is the
+   button that opens the very screen you're looking at, and it sits bottom-left at
+   z-index 1400 — above the chat's 1390 — so it landed on top of the composer's
+   attach button and the left edge of the message box. toggleChat() already hides
+   the desktop .chat-fab; this is the guest-shell twin it never covered. Done in
+   CSS with :has() rather than in toggleChat, so it holds however the thread was
+   opened (tap, deep link, or openMessageThread). */
+body.guest-app:not(.owner-mode):has(#chat-widget.open) #guest-msg-fab {
+  display: none;
+}
 /* Subtle app-like page transition (guest shell only; desktop/admin stay instant).
    .page-view.active's base state is opacity:1 (app.css), so `forwards` here is
    just belt-and-braces — visibility never depends on the animation running. */

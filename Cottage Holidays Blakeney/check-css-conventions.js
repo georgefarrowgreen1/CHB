@@ -56,7 +56,16 @@ function strayBreakpoints(css) {
     return out;
 }
 
-function rawHexColours(css) {
+// Comments aren't code — a hex mentioned while EXPLAINING a rule ("#000 here is a
+// mask alpha channel, not a colour") can't affect rendering, and counting it makes
+// the gate punish documentation. Blank the comment bodies but keep the newlines so
+// reported line numbers still line up with the file.
+function stripComments(css) {
+    return css.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '));
+}
+
+function rawHexColours(cssRaw) {
+    const css = stripComments(cssRaw);
     const out = [];
     css.split('\n').forEach((line, i) => {
         if (/^\s*--[\w-]+\s*:/.test(line)) return; // a token definition

@@ -3801,6 +3801,16 @@ body.light-mode .tag-pimpernel {
   padding: 10px 14px 0;
   scrollbar-width: none;
   -ms-overflow-style: none;
+  /* The row scrolls, but with the scrollbar hidden the last chip just stopped
+     mid-word at the screen edge and read as broken text rather than "there's
+     more". Fade it out instead, so the cut is obviously a scroll edge. The
+     #000/transparent here are mask alpha channels, not theme colours. */
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 28px), transparent);
+  scroll-snap-type: x proximity;
+}
+.chat-chip {
+  scroll-snap-align: start;
 }
 .chat-quick::-webkit-scrollbar {
   display: none;
