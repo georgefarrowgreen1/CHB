@@ -122,6 +122,15 @@ Single-operator holiday-let PWA. No framework, no build step.
   hide-on-scroll untouched. `prefers-reduced-motion` drops the springs and the
   squash but KEEPS the pill's movement and the condensed layout (both carry
   meaning, they're not decoration).
+  **Bar proportions**: the crown was 63×38 against 38px icon buttons, so it held
+  nearly all the visual weight with ~147px (40% of the bar) empty between it and
+  the icons — the mark is now 30px (25px condensed) and the icon gap 6px, so they
+  read as peers. That middle space carries `#guest-head-title` (created by
+  `placeDock`, set by `setHeadTitle` from the active view; the cottage page reads
+  its OWN `#prop-title` rather than keeping a second copy of the owner-editable
+  cottage names). It is revealed ONLY in the condensed state — at rest the page's
+  own big heading is still on screen and showing both would say it twice. Home
+  gets no title (the crown already says it).
 - Routing is `nav()` toggling `.page-view.active`; per-view init lives in `nav()`
   (e.g. `view-experiences` → `renderExperiencesView()`). No router lib.
 
