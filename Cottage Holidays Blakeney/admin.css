@@ -1491,48 +1491,6 @@ body.owner-mode header.header-condensed .logo-mark {
   opacity: 1;
   animation: chb-ms-pulse 0.6s ease-in-out infinite;
 }
-/* DOWNLOADING — a model file is streaming down (darkstar.bin / encoder.onnx):
-   a circular PROGRESS ring around the knot, filled by `--mload` (0..1, set in
-   JS per chunk) via a conic-gradient with a radial mask cutting the centre
-   out. Not an animation — the arc IS the downloaded fraction — so it needs no
-   reduced-motion exemption. */
-#cmdk-ml[data-mstate="loading"] {
-  color: var(--darkstar);
-  opacity: 1;
-}
-#cmdk-ml[data-mstate="loading"]::before {
-  content: "";
-  position: absolute;
-  inset: -4px;
-  border-radius: 50%;
-  pointer-events: none;
-  background: conic-gradient(
-      currentColor calc(var(--mload, 0) * 360deg),
-      color-mix(in srgb, currentColor 20%, transparent) 0);
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
-  mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px));
-}
-/* The CROWN — always on screen, so this is where the download shows even with
-   the palette closed: a ring around the mark. This lived on the dock's Search
-   knot until that button retired; the JS target moved to `.logo` and this rule
-   has to move with it or the ring silently never paints (ui-test-modelring
-   caught exactly that). Sized for the 30px crown, not the old 60px button. */
-body.owner-mode .logo.ml-loading::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 38px;
-  height: 38px;
-  transform: translate(-50%, -50%);
-  border-radius: 50%;
-  pointer-events: none;
-  background: conic-gradient(
-      color-mix(in srgb, var(--darkstar) 55%, #fff) calc(var(--mload, 0) * 360deg),
-      rgba(255, 255, 255, 0.18) 0);
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3.5px), #000 calc(100% - 3px));
-  mask: radial-gradient(farthest-side, transparent calc(100% - 3.5px), #000 calc(100% - 3px));
-}
 body.owner-mode .logo.ml-learning .logo-mark {
   animation: chb-ml-learn 0.55s ease-in-out infinite;
 }

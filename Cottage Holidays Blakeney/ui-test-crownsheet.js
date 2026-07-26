@@ -182,15 +182,11 @@ const snap = (page) =>
         const crown = document.querySelector('.logo');
         chbSetModelStatus(crown, 'understood');
         const a = crown.dataset.mstate;
-        chbModelLoadProgress('test', 0.4);
-        const ring = crown.classList.contains('ml-loading');
-        const frac = crown.style.getPropertyValue('--mload');
-        chbModelLoadProgress('test', null);
-        return { a, ring, frac, cleared: crown.classList.contains('ml-loading') };
+        chbSetModelStatus(crown, '');
+        return { a, idle: crown.dataset.mstate, ringGone: typeof window.chbModelLoadProgress };
     });
     check(st.a === 'understood', `the crown shows the model state (${st.a})`);
-    check(st.ring && st.frac.trim() === '0.4', `and the download ring with its progress (--mload ${st.frac.trim()})`);
-    check(!st.cleared, 'which clears when the download finishes');
+    check(st.ringGone === 'undefined', 'the download progress ring is gone, plumbing and all');
 
     // ---- reduced motion: it still appears, it just doesn't spring ----
     await page.emulateMedia({ reducedMotion: 'reduce' });

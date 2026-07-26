@@ -316,11 +316,9 @@ both ways; (2) **`.logo` must be pinned `flex: 0 0 auto`** — it is `0 1 auto` 
 long screen name in the condensed bar squeezed it to **20px**, and the crown is now the only
 route to search; (3) `crownSheetToggle` SELF-HEALS — admin.js cannot be un-run, and `.logo` is
 the public site's Home link, so the handler checks `owner-mode` and navigates home when it has
-gone; (4) Escape hands focus back to the crown; (5) the crown carries the model state AND the
-download ring — when that JS target moved off the retired knot the CSS had to move with it or
-the ring silently never painted (ui-test-modelring caught exactly that, so its selectors and
-searchpage's now point at `.logo`). Reduced motion keeps the sheet (it is information) and drops
-only the spring.
+gone; (4) Escape hands focus back to the crown; (5) the crown carries the model STATE (colour only —
+the download progress ring is REMOVED; see below). Reduced motion keeps the sheet (it is
+information) and drops only the spring.
 
 **ONE assistant look** (admin.css, the "ONE ASSISTANT LOOK" block at the end) — the
 crown sheet and the search page are the same feature on two surfaces, so their MATERIAL
@@ -378,22 +376,21 @@ the search page's knot glyph (the leading icon, wrapped as `#cmdk-ml`; `data-mst
 (Darkstar loaded, idle · quiet purple), `understood` (paraphrase→intent · confident green,
 breathing), `meaning` (semantic recall · its OWN Siri identity — the knot cycles teal→purple
 with a soft glow, `chb-knot-siri`, distinct from understood's steady green), `guess` (near-miss
-only · dimmed accent), `learning` (teaching · orange pulse), and **`loading`** while a model
-file streams down (darkstar.bin at boot, encoder.onnx on the first history query) — a circular
-PROGRESS ring around the knot, conic-gradient driven by `--mload` (0..1) with a radial-mask
-ring cut, also on the dock Search knot (`.ml-loading::before`; ::after is the hover label).
-Each knot's hover title (`CHB_MSTATE_TITLE`) explains the state in plain language, so the
+only · dimmed accent) and `learning` (teaching · orange pulse). There is **NO download
+progress ring** and no `loading` state: a model file streaming down (darkstar.bin at boot,
+encoder.onnx on the first history query) is reported nowhere, deliberately — the cascade is
+lexical-only until the model lands, so search answers throughout and a progress arc was
+reporting on something the owner never waits for. The ring, its `--mload` conic-gradient, the
+`ml-loading` classes and the whole per-source fraction map went with it. Each knot's hover title (`CHB_MSTATE_TITLE`) explains the state in plain language, so the
 colour never has to be decoded blind; there is NO worded pill any more (`CHB_MSTATE_LABEL` is
 REMOVED). The knot never hides — the ✕ clear sits on the RIGHT of the input (after it, before
 help); `has-text` only shows the ✕. All state animation honours `prefers-reduced-motion`
-(meaning falls back to a static teal). Plumbing: `chbFetchProgress` (streamed fetch →
-ArrayBuffer + per-chunk fractions; plain-arrayBuffer fallback when reader/length hidden) feeds
-`chbModelLoadProgress(key, frac)` (per-source map; overlapping downloads show the
-LEAST-finished; null clears). Active answer states always beat the ring; `chbSetModelStatus('')`
-falls back to `loading` while a download runs, then `ready`. The ring is progress, not
-animation — no reduced-motion exemption needed. Gated by ui-test-modelring.js (real browser:
-ring on/track/hand-back/clear, on the search page) + search-test §31 (stream math,
-min-of-loads, idle fallback). Leaving the page on an unanswered query files it into the shared
+(meaning falls back to a static teal). `chbSetModelStatus('')` falls back to `ready` once the
+model is loaded. Model files load through **`chbFetchBuf(url)`** — a plain fetch → arrayBuffer;
+it used to stream the body and count chunks purely to feed the ring, so the reader loop, the
+chunk reassembly and the wire-vs-decompressed clamp all went when the ring did. `ui-test-modelring.js`
+(11 checks) and search-test §31 (8 checks) were deleted for the same reason: every one of them
+tested the ring. Leaving the page on an unanswered query files it into the shared
 miss store (`chbMissRecord`) — via `cmdkBack`/`closeCmdK` AND via `nav()`, which calls
 `closeCmdK` when leaving `view-search` by ANY route (a dock tap, a result run) so the teach
 loop, in-flight-search supersede and conv-context clear can't be skipped; `openCmdK` also

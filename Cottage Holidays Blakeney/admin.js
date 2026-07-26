@@ -1923,7 +1923,6 @@ const CHB_MSTATE_TITLE = {
     meaning: 'Found by meaning with the on-device model — not just keywords',
     guess: "Not certain — showing the closest questions I can answer",
     ready: 'The on-device assistant is loaded and ready',
-    loading: 'Downloading the on-device model — the ring shows progress; search works as usual meanwhile',
 };
 const CHB_MSTATE_TITLE_DEFAULT = 'What the assistant is doing';
 // Which state a finished search represents. `rows` is the on-screen result list
@@ -1944,10 +1943,8 @@ function chbModelState(built, rows) {
 function chbSetModelStatus(el, state) {
     if (!el) return;
     let s = state || '';
-    // The idle slot: a download in flight shows its progress ring; otherwise the
-    // quiet "AI ready" tint once the model is loaded. Active answer states
-    // (understood / meaning / guess / learning) always take the slot over both.
-    if (!s && chbModelLoadFrac() != null) s = 'loading';
+    // The idle slot is the quiet "AI ready" tint once the model is loaded. Active
+    // answer states (understood / meaning / guess / learning) take it over.
     if (!s) { try { if (document.body && document.body.classList.contains('darkstar-ready')) s = 'ready'; } catch (e) {} }
     el.dataset.mstate = s;
     try { el.title = CHB_MSTATE_TITLE[s] || CHB_MSTATE_TITLE_DEFAULT; } catch (e) {}
@@ -1958,7 +1955,7 @@ function chbSetModelStatus(el, state) {
     try {
         let sr = el.querySelector('.cmdk-ml-sr');
         if (!sr) { sr = document.createElement('span'); sr.className = 'cmdk-ml-sr sr-only'; el.appendChild(sr); }
-        const say = s && s !== 'loading' ? (CHB_MSTATE_TITLE[s] || '') : '';
+        const say = s ? (CHB_MSTATE_TITLE[s] || '') : '';
         if (sr.textContent !== say) sr.textContent = say;
     } catch (e) {}
 }
@@ -1978,69 +1975,15 @@ function chbModelStatusEls() {
     } catch (e) {}
     return els;
 }
-// ---- Model-download progress ring. While a model file streams down
-// (darkstar.bin ~7.6MB at boot, encoder.onnx ~23MB on the first history query)
-// every assistant surface shows HOW MUCH has arrived: the dock Search knot
-// (always on screen) gets a circular ring around the glyph, and the palette +
-// bar pills switch to a `loading` state whose pip/knot carries the same ring —
-// all driven by the `--mload` custom property (0..1) into a conic-gradient.
-// Active answer states still win the pill; the ring only occupies the
-// idle/ready slot and hands back to "AI ready" when the download completes.
-const __chbModelLoads = new Map(); // source key → fraction downloaded (0..1)
-function chbModelLoadFrac() {
-    if (!__chbModelLoads.size) return null;
-    let min = 1;
-    __chbModelLoads.forEach((f) => { if (f < min) min = f; });
-    return min; // two overlapping downloads → show the least-finished
-}
-function chbModelLoadProgress(key, frac) {
-    try {
-        if (frac == null) __chbModelLoads.delete(key);
-        else __chbModelLoads.set(key, Math.max(0, Math.min(1, frac)));
-        const cur = chbModelLoadFrac();
-        // Was the dock's Search knot; that button is retired, so the always-on
-        // surface is the crown.
-        const dock = /** @type {any} */ (document.querySelector('body.owner-mode .logo'));
-        if (dock) {
-            dock.classList.toggle('ml-loading', cur != null);
-            if (cur != null) dock.style.setProperty('--mload', cur);
-            else dock.style.removeProperty('--mload');
-        }
-        chbModelStatusEls().forEach((el) => {
-            if (cur != null) {
-                el.style.setProperty('--mload', cur);
-                const st = el.dataset.mstate || '';
-                if (!st || st === 'ready' || st === 'loading') chbSetModelStatus(el, 'loading');
-            } else {
-                el.style.removeProperty('--mload');
-                if (el.dataset.mstate === 'loading') chbSetModelStatus(el, '');
-            }
-        });
-    } catch (e) {}
-}
-// Streamed fetch → ArrayBuffer, reporting fractions as chunks land. Falls back
-// to a plain arrayBuffer() (no ring) when the reader or length is unavailable.
-async function chbFetchProgress(url, onFrac) {
+// Fetch a model file as an ArrayBuffer. This used to stream the body and report
+// per-chunk fractions to drive a progress ring around the assistant mark; the ring
+// is gone, so the streaming, the chunk reassembly and the wire-vs-decompressed
+// clamp all went with it — none of it was doing anything else. Search works
+// lexically the whole time a model is in flight, so there is nothing to report.
+async function chbFetchBuf(url) {
     const r = await fetch(url);
     if (!r.ok) throw new Error('http ' + r.status);
-    const total = +(r.headers && r.headers.get && r.headers.get('Content-Length')) || 0;
-    if (!r.body || !r.body.getReader || !total) return r.arrayBuffer();
-    const reader = r.body.getReader();
-    const chunks = [];
-    let got = 0;
-    for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-        got += value.length;
-        // NB with transfer-encoding compression the total is the WIRE size while
-        // chunks are decompressed bytes — clamp so the ring never overshoots.
-        try { onFrac(Math.min(1, got / total)); } catch (e) {}
-    }
-    const out = new Uint8Array(got);
-    let off = 0;
-    for (const c of chunks) { out.set(c, off); off += c.length; }
-    return out.buffer;
+    return r.arrayBuffer();
 }
 // Learning indicator: the assistant mark flashes ORANGE while the model absorbs
 // new inputs (a taught phrasing, a suppression, a cross-device merge) and
@@ -2150,13 +2093,12 @@ async function darkstarLoad() {
     if (DARKSTAR.st || DARKSTAR.loading) return;
     DARKSTAR.loading = true;
     try {
-        chbModelLoadProgress('darkstar', 0); // ring up from the first moment
-        DARKSTAR.st = darkstarParse(await chbFetchProgress(DARKSTAR.url, (f) => chbModelLoadProgress('darkstar', f)));
+        DARKSTAR.st = darkstarParse(await chbFetchBuf(DARKSTAR.url));
         darkstarIndex();
         darkstarSetReady(); // the knot lights up: the full semantic model is online
     } catch (e) {
         // No semantic tier this session — the lexical cascade covers as before.
-    } finally { DARKSTAR.loading = false; chbModelLoadProgress('darkstar', null); }
+    } finally { DARKSTAR.loading = false; }
 }
 // Once Darkstar is loaded + indexed, mark the body so the assistant knot glows
 // everywhere it appears (dock button, palette input, every Assist Bar) — a
@@ -5369,7 +5311,6 @@ async function chbEncLoad() {
     if (CHB_ENC.st || CHB_ENC.loading || CHB_ENC.failed) return;
     CHB_ENC.loading = true;
     try {
-        chbModelLoadProgress('encoder', 0); // ring up from the first moment
         if (!window.ort) {
             await new Promise((resolve, reject) => {
                 const s = document.createElement('script');
@@ -5388,7 +5329,7 @@ async function chbEncLoad() {
         // bytes to ort — the file is ~23MB, so the ring is the whole story.
         const [tokens, onnxBuf] = await Promise.all([
             fetch(CHB_ENC.vocabUrl).then((r) => { if (!r.ok) throw new Error('vocab http ' + r.status); return r.json(); }),
-            chbFetchProgress(CHB_ENC.url, (f) => chbModelLoadProgress('encoder', f)),
+            chbFetchBuf(CHB_ENC.url),
         ]);
         const session = await ort.InferenceSession.create(new Uint8Array(onnxBuf), { executionProviders: ['wasm'] });
         const vocab = new Map();
@@ -5413,7 +5354,7 @@ async function chbEncLoad() {
         CHB_ENC.st = { embed, vocab };
     } catch (e) {
         CHB_ENC.failed = true; // stand down — the static path keeps serving
-    } finally { CHB_ENC.loading = false; chbModelLoadProgress('encoder', null); }
+    } finally { CHB_ENC.loading = false; }
 }
 // ---- TRUE semantic recall over history. The on-device Darkstar model already
 // embeds text (darkstarVec = L2-normalised mean of token vectors); we fetch a
