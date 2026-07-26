@@ -270,7 +270,15 @@ async function waitForServer(url, tries = 40) {
     await page.waitForTimeout(700);
     (await page.evaluate(() => (document.querySelector('.page-view.active') || {}).id)) === 'view-backoffice' ? pass('bookings workspace lives on the dashboard') : fail('openBookings did not land on the dashboard');
     (await page.evaluate(() => !!document.querySelector('#view-backoffice #bookings-workspace') && !document.getElementById('view-bookings'))) ? pass('workspace merged; old Bookings page gone') : fail('view-bookings shell still present');
-    (await page.evaluate(() => document.querySelectorAll('.admin-dock-btn').length)) === 5 ? pass('dock has 5 admin buttons (Today, Inbox, Payments, Manage, Search)') : fail('dock button count wrong');
+    // FOUR, not five: the Search knot retired when the crown became the assistant
+    // (crownSheetToggle). The crown had no unique job — nav() rewrites view-main to
+    // view-backoffice for a signed-in owner, so it went to Today, where the calendar
+    // icon already goes. Search must NOT come back as a dock button.
+    const dockN = await page.evaluate(() => document.querySelectorAll('.admin-dock-btn').length);
+    const dockSearch = await page.evaluate(() => !!document.querySelector('.admin-dock-btn[data-act="openCmdK"]'));
+    dockN === 4 && !dockSearch
+        ? pass('dock has 4 admin buttons (Today, Inbox, Payments, Manage) — search lives in the crown')
+        : fail(`dock button count wrong: ${dockN} button(s), searchKnot=${dockSearch}`);
     (await page.locator('#bookings-list .bk-row').count()) === 2 ? pass('upcoming bookings listed (2)') : fail('bookings list count wrong: ' + (await page.locator('#bookings-list .bk-row').count()));
     // At 1280px this is a master–detail dashboard: the first booking's hub
     // auto-docks in the right-hand pane and its row highlights.

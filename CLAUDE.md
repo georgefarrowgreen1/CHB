@@ -302,9 +302,29 @@ on the shared `#modal-*` ids), `block-dates` (the `#glass-dialog-fields` step), 
 prepends a **"Walk me through it"** chip for any topic with a `CHB_WALK[id]`. Gated by
 `ui-test-coach.js` (start, click-through + z-order, Next/Back, auto-advance, Done, Escape).
 
+**The CROWN is the assistant** (admin.js `crownSheetToggle`/`crownSheetOpen`/`crownSheetClose`,
+`#crown-sheet` + `#crown-scrim`, styled in admin.css) — the dock's separate Search knot is GONE.
+Rationale, measured: `nav()` rewrites `view-main` → `view-backoffice` for anyone signed in
+(app.js), so the crown's old tap went to Today, exactly where the calendar icon already goes —
+it had no unique job to lose, and the dock drops 5 icons to 4. Tapping it drops a SHEET rather
+than jumping to the page, because the bar CANNOT host a field: at 390px the middle slot yields
+80px once the crown and four icons have theirs (the sheet's input measures 313px). The sheet
+shows `cmdkBrief()` before you type; Enter hands the query to the search page, so there is still
+ONE intelligence stack. Five things it must keep right, all gated by `ui-test-crownsheet.js`:
+(1) z-index 1440 — BELOW the header's 1500 — so the crown stays hittable and one target toggles
+both ways; (2) **`.logo` must be pinned `flex: 0 0 auto`** — it is `0 1 auto` by default and a
+long screen name in the condensed bar squeezed it to **20px**, and the crown is now the only
+route to search; (3) `crownSheetToggle` SELF-HEALS — admin.js cannot be un-run, and `.logo` is
+the public site's Home link, so the handler checks `owner-mode` and navigates home when it has
+gone; (4) Escape hands focus back to the crown; (5) the crown carries the model state AND the
+download ring — when that JS target moved off the retired knot the CSS had to move with it or
+the ring silently never painted (ui-test-modelring caught exactly that, so its selectors and
+searchpage's now point at `.logo`). Reduced motion keeps the sheet (it is information) and drops
+only the spring.
+
 **The SEARCH PAGE** — search lives on ONE dedicated page (`view-search`, in `ADMIN_VIEWS`),
-opened by the dock's knot logo (`openCmdK`) or ⌘K; the per-workspace Assist Bars were RETIRED
-in its favour (the whole `abar*` module, host divs and CSS are gone — do not resurrect). The
+reached from the crown's sheet on Enter (`openCmdK`) or ⌘K; the per-workspace Assist Bars were
+RETIRED in its favour (the whole `abar*` module, host divs and CSS are gone — do not resurrect). The
 `#cmdk` node lives statically inside the view (class `cmdk-page`, no overlay/backdrop; page
 scroll, `.cmdk-box` max-width 680px/940px sheet) and keeps every inner id, so the entire
 intelligence stack is unchanged. `openCmdK` snapshots the workspace you came FROM before
@@ -882,6 +902,19 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   Completed (see `paymentStatusLabel`). Both helpers live in **app.js** (the hub
   ledger renders from app.js, which must not reach admin globals). Gated by
   `test-webhook.php` (signature) + smoke (dot/label mapping).
+- **iOS date/time inputs won't shrink.** A native `input[type=date]` on iOS has an
+  INTRINSIC minimum width (its rendered date text + the control's internal padding)
+  and ignores both `width: 100%` and `min-width: 0`, so in a narrow panel it overhangs
+  the edge — the Block-out-dates dialog had both date fields hanging past its right
+  rounded corner on an iPhone. **`appearance: none` is what removes that floor**,
+  which is exactly why the glass `select` (which has carried it for ages) was always
+  fine and the date fields weren't; the fix sits on
+  `input[type=date|time|datetime-local].input-glass`. **Chromium does not reproduce
+  this** (measured: field 51→339 inside a 50→340 content box, identical with and
+  without the fix — only `appearance` flips), so a green local layout run proves the
+  fix is HARMLESS, not that it works: the **WebKit leg of layout-test is the actual
+  verifier**. The `admin-block-dates` view was added there because no gate had ever
+  opened a glassForm dialog, which is how this reached a phone at all.
 - Offscreen `.page-view`s are `display:none`, so their CSS background-images aren't
   fetched until shown (built-in lazy-loading). The hero is the LCP image
   (`fetchpriority="high"` preload) — keep it prioritised, not deferred.

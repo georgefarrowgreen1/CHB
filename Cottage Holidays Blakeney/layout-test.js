@@ -235,6 +235,17 @@ async function waitForServer(url, tries = 40) {
       { key: 'admin-booking-hub', open: "(async () => { await openBookingHub('b2'); })()", mustSee: ['#booking-hub-content', '#hub-history'] },
       { key: 'admin-add-booking', open: "(async () => { window.openBookings && await openBookings(); openAddBooking(); document.getElementById('modal-checkin').value = new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10); document.getElementById('modal-checkout').value = new Date(Date.now() + 33 * 864e5).toISOString().slice(0, 10); updateModalPrice(); })()", mustSee: ['#edit-modal .modal-box', '#modal-availability .mav-grid'] },
       { key: 'admin-close-modal', open: 'closeModal()', mustSee: ['#bookings-list'] },
+      // The glassForm dialogs were never opened by this gate, which is how two
+      // native date fields came to overhang the panel's right edge on an iPhone
+      // without anything noticing: iOS won't shrink a date control below its
+      // intrinsic width, and Chromium never reproduces it. The WebKit leg is the
+      // one that matters here.
+      { key: 'admin-block-dates', open: "(async () => { openBlockDates(); await new Promise(r => setTimeout(r, 350)); })()", mustSee: ['#glass-dialog-fields', '#gdf-from', '#gdf-to'] },
+      { key: 'admin-close-dialog', open: "(() => { const c = document.getElementById('glass-dialog-cancel'); if (c) c.click(); })()", mustSee: ['#bookings-list'] },
+      // The crown's assistant sheet — the only route to search now the dock knot
+      // is retired, so its open state has to be measured like any other screen.
+      { key: 'admin-crown-sheet', open: "(async () => { crownSheetToggle(); await new Promise(r => setTimeout(r, 400)); })()", mustSee: ['#crown-sheet', '#crown-ask'] },
+      { key: 'admin-crown-closed', open: "(async () => { crownSheetClose(); await new Promise(r => setTimeout(r, 300)); })()", mustSee: ['#bookings-list'] },
       { key: 'admin-inbox-messages', open: "(async () => { await openInbox(); inboxFolder('messages'); })()", mustSee: ['#inbox-folders', '#messages-list'] },
       { key: 'admin-inbox', open: "(async () => { await openInbox(); inboxFolder('enquiries'); })()", mustSee: ['#inbox-folders', '#inbox-list'] },
       { key: 'admin-money', open: '(async () => { await openAccounts(); })()', mustSee: ['#accounts-index'] },

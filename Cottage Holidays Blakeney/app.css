@@ -952,6 +952,23 @@ select.input-glass {
   background-position: right 14px center;
   padding-right: 36px;
 }
+/* iOS gives a native date/time control an INTRINSIC minimum width (the rendered
+   date text plus the control's own internal padding) and will not shrink below it
+   for `width: 100%` — `min-width: 0` is ignored too. In a narrow container that
+   makes the field run out past its panel's edge: the Block-out-dates dialog had
+   both date fields overhanging the right-hand rounded corner on an iPhone.
+   `appearance: none` is what actually removes that floor, which is exactly why the
+   glass SELECT (which has carried it for ages, a few rules up) always behaved and
+   these did not. Chromium never reproduces it, so the WebKit leg of layout-test is
+   what guards this — see the admin-block-dates view there. */
+input[type="date"].input-glass,
+input[type="time"].input-glass,
+input[type="datetime-local"].input-glass {
+  appearance: none;
+  -webkit-appearance: none;
+  min-width: 0;
+  max-width: 100%;
+}
 /* Native date/time pop-ups follow the theme instead of flashing white */
 input[type="date"],
 input[type="time"] {
