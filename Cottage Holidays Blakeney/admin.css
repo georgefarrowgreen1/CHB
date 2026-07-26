@@ -1769,9 +1769,13 @@ body.owner-mode .logo.ml-learning .logo-mark {
   font-weight: 600;
   line-height: 1.3;
   letter-spacing: -0.005em;
-  white-space: nowrap;
+  /* Two lines, not one: a single line cut "Alexandrina Featherstonehaugh-Smythe"
+     down by 189px of 306px — over half the name, which is the whole identity of
+     the row. Full bleed gave us the vertical room. */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 .cmdk-row-sub {
   font-size: 0.8rem;
@@ -1857,7 +1861,8 @@ body.owner-mode .logo.ml-learning .logo-mark {
 }
 /* Spotlight-style section headers, Top Hit + empty-state example chips. */
 .cmdk-group-label {
-  font-size: 0.64rem;
+  /* was 0.64rem = 10.2px */
+  font-size: 0.72rem;
   font-weight: 700;
   letter-spacing: 0.11em;
   text-transform: uppercase;
@@ -1894,9 +1899,8 @@ body.owner-mode .logo.ml-learning .logo-mark {
 .cmdk-deep-cta-lbl {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* was clipped by ~45px on a phone; it is one short sentence, let it wrap */
+  line-height: 1.35;
 }
 .cmdk-deep-cta .cmdk-qa-go {
   margin-left: auto;
@@ -3197,6 +3201,7 @@ body.light-mode #crown-ask {
 /* --- rows: one rhythm. 44px min-height is the touch floor, and the sheet's
    label/sub sizes win because they were tuned against this exact panel. --- */
 .cmdk-row,
+.cmdk-qa-row,
 .cs-row {
   min-height: 44px;
   padding: 8px 10px;

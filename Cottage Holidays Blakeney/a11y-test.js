@@ -193,6 +193,13 @@ const stub = (page) => page.route(/\.php/, (r) => {
     if (url.includes('rates.php')) return json({ properties: [
         { prop_key: '21a', name: '21A Westgate', slug: '21a-westgate', couple_rate: 130, booking_fee: 75, transaction_pct: 3, max_adults: 2, max_children: 0, max_total: 2, sort_order: 1 },
     ], seasons: {}, occupancy: {} });
+    // A booking is needed, not decoration: quick-action rows only render beneath a
+    // selected RECORD, so with an empty list §5 could never see them — which is
+    // exactly how a 23px .cmdk-qa-row survived in the search window.
+    if (url.includes('bookings.php'))
+        return json({ bookings: [
+            { id: 502, prop_key: '21a', name: 'Debbie McGoldrick', email: 'd@x.co', check_in: '2026-09-09', check_out: '2026-09-12', check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0, payment: 'deposit', deposit_paid: 200, agreed_total: 540, agreed_nightly: 520, agreed_txn_fee: 20, agreed_nights: 3 },
+        ] });
     return json({ ok: true, bookings: [], enquiries: [], threads: [], reviews: [], photos: [], experiences: [], content: {}, blocks: [], ranges: [], mine: {}, value: null, properties: [] });
 });
 
@@ -216,6 +223,15 @@ const stub = (page) => page.route(/\.php/, (r) => {
         ['admin-today', "(async()=>{closeEnquireModal();isAuthenticated=true;document.body.classList.add('owner-mode');await loadAdminBundle();await initBackOffice();})()"],
         ['admin-rates', "(async()=>{await openArea('cottages');settingsOpen('seasongrid');})()"],
         ['admin-health', "(async()=>{await openArea('settings');settingsOpen('diagnostics');})()"],
+        // The SEARCH WINDOW, open and answering. It is the owner's primary
+        // interface now — the crown is the only route in — and it was absent from
+        // this gate entirely, which is how a 23px quick-action row and 10.2px group
+        // labels lived there unnoticed. Two states, because an empty landing and a
+        // list of results render different components.
+        ['search-empty', "(async()=>{openCmdK();await new Promise(r=>setTimeout(r,500));})()"],
+        ['search-results', "(async()=>{const i=document.getElementById('cmdk-input');i.value='who owes me';cmdkSearch('who owes me');await new Promise(r=>setTimeout(r,700));})()"],
+        ['search-record', "(async()=>{const i=document.getElementById('cmdk-input');i.value='debbie';cmdkSearch('debbie');await new Promise(r=>setTimeout(r,700));})()"],
+        ['search-closed', "(async()=>{cmdkBack();await new Promise(r=>setTimeout(r,400));})()"],
     ];
     const totals = { unnamed: new Set(), tiny: new Set(), small: new Set() };
     for (const [key, open] of VIEWS) {

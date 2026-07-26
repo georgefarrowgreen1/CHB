@@ -362,7 +362,17 @@ phone); it is a back chevron distinct from the ✕ clear, which only empties the
 motion keeps the window and drops the growth. Gated by ui-test-searchpage §8 — animates, never
 overshoots, settles at exactly the viewport, header genuinely covered, close ≥24px and named. The `<main id="view-search">` shell and
 its `ADMIN_VIEWS` entry are now vestigial — see the task list; `ui-test-adminviews` asserts the
-shell is empty BY DESIGN so a half-done removal is caught. `.cmdk-box` keeps max-width 680px
+shell is empty BY DESIGN so a half-done removal is caught.
+Row anatomy, measured and refined: `.cmdk-row-label` CLAMPS TO TWO LINES (one line
+cut "Alexandrina Featherstonehaugh-Smythe" by 189px of 306px — over half the row's
+identity; full bleed gave the vertical room), label and sub both carry the raw text
+as a `title` because `cmdkHi` returns highlight markup that cannot go in an
+attribute, `.cmdk-qa-row` joins `.cmdk-row`/`.cs-row` in the 44px touch floor (it
+had been left OUT of that group and sat at 23px, 1px under WCAG), and
+`.cmdk-group-label` is 0.72rem (was 0.64rem = 10.2px). The row SUB stays
+single-line on purpose — letting every sub wrap makes the list untenable to scan,
+and the money subs already lead with the figure, so what clips is trailing context.
+`.cmdk-box` keeps max-width 680px
 (940px sheet) and every inner id, so the entire intelligence stack is unchanged. `openCmdK` snapshots the workspace you came FROM before
 navigating — `__cmdkReturnView`, `__cmdkScope = cmdkDefaultScope()`, `__cmdkEntity =
 cmdkCurrentEntity()` — so scoping and record pronouns still resolve; `closeCmdK` is STATE
@@ -1031,7 +1041,14 @@ an `aria-label` ("Price breakdown") that disagrees with its own visible heading
   that stopped at a translucent parent; a probe stylesheet leaking into the next
   measurement; `getComputedStyle` being LIVE, so a colour read after blanking the
   text came back transparent), which is why the gate only measures things that are
-  cheap AND deterministic. §4/§5 have a real coverage limit, documented in the file:
+  cheap AND deterministic. It walks the SEARCH WINDOW too (empty, answering, and
+  with a record selected) — it was absent entirely, which is how a 23px
+  `.cmdk-qa-row` and 10.2px group labels lived in the owner's primary interface
+  unnoticed. NB the quick-action rows only render beneath a SELECTED RECORD, so the
+  gate's stub has to serve a booking and the `search-record` state has to query its
+  name; with an empty booking list §5 cannot see those rows at all (break-tested —
+  the 23px row is invisible to the gate without the fixture).
+  §4/§5 have a real coverage limit, documented in the file:
   they see only what RENDERS in the harness, and a collapsed container (the cottage
   availability calendar) or the footer wrapper hides elements from them — check those
   by computed style instead. The static CSS lesson from the same audit: a

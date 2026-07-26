@@ -6422,7 +6422,7 @@ function cmdkRowHtml(it, i, top) {
     const hi = it.type === 'answer' || it.type === 'figure' ? (s) => escapeHtml(s || '') : cmdkHi;
     const row = `<button type="button" id="cmdk-opt-${i}" class="cmdk-row cmdk-row-${it.type}${sel ? ' is-sel' : ''}${top ? ' cmdk-tophit' : ''}${it.wrap ? ' cmdk-row-wrap' : ''}" role="option" aria-selected="${sel}" data-idx="${i}" ${chbAttrs('cmdkExec', i)}>
                     <span class="cmdk-row-ic cmdk-${it.type}">${cmdkIcon(it.iconType || it.type)}</span>
-                    <span class="cmdk-row-main"><span class="cmdk-row-label">${hi(it.label)}</span><span class="cmdk-row-sub">${hi(it.sub || '')}</span></span>
+                    <span class="cmdk-row-main"><span class="cmdk-row-label" title="${escapeHtml(String(it.label || ''))}">${hi(it.label)}</span><span class="cmdk-row-sub"${it.sub ? ` title="${escapeHtml(String(it.sub))}"` : ''}>${hi(it.sub || '')}</span></span>
                 </button>`;
     // A selected record's actions are a proper QUICK-ACTIONS LIST — full-width
     // rows (icon · label · chevron), the way a context menu / Spotlight lays them
