@@ -1044,7 +1044,9 @@ if (typeof ctx.chbCompute === 'function' && typeof ctx.chbAlmanac === 'function'
     r = comp('what day is 25 december');
     check('date: "what day is 25 december" names the weekday', r && /is a (Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day/.test(r.label), lbl(r));
     r = comp('days until christmas');
-    check('date arithmetic: "days until christmas" counts days', r && /\d+ days until/.test(r.label), lbl(r));
+    // "N days until …" for most of the year, but the 24th and the 25th word it as
+    // Tomorrow / That's today — so a bare "\d+ days until" fails on exactly two days.
+    check('date arithmetic: "days until christmas" counts days', r && /(\d+ days until|Tomorrow —|That.s today —)/.test(r.label), lbl(r));
     r = comp('how long until 20 august');
     check('"how long until 20 august" answers (regression: alt phrasing once threw)', r && !r.threw && /days until/.test(r.label), lbl(r));
     r = comp('time in tokyo');
@@ -1135,6 +1137,13 @@ if (typeof ctx.cmdkIntent === 'function') {
     check('"how many nights booked this month" is the aggregate, not one booking', /nights? booked this month/.test(h) && !/Future Fran/.test(h), h);
     // The singular composer must still own the SINGULAR phrasings — the vetoes are
     // meant to be narrow, and these are what prove they did not swallow everything.
+    // Fran is the ONLY booking for these two, deliberately: the composer resolves to
+    // the SOONEST upcoming stay, and the seed above carries fixed calendar dates, so
+    // on some days one of those is sooner than Fran and the composer rightly names it
+    // instead. Naming Fran against the mixed seed made this check date-dependent —
+    // caught by the clock sweep at 29/02/2028, and the exact sin this section is about.
+    ctx.__seedOnly = [ctx.__seedFut[ctx.__seedFut.length - 1]];
+    vm.runInContext('dbBookings.jollyboat = __seedOnly; __cmdkCustomers = null;', ctx);
     h = head('how long is the guest staying');
     check('but the singular "how long is the guest staying" still names the guest', /Future Fran is staying 3 nights/.test(h), h);
     h = head('how many nights is the guest staying');
@@ -1537,9 +1546,19 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.chbCompute === 'funct
         const pr = ctx.cmdkParseDates(`${dd - 1} ${mon} to ${dd + 2} ${mon}`, t);
         check('a both-months same-month range never reverses across the year', pr && pr.from <= pr.to, JSON.stringify(pr));
     }
-    // Breadth date maths seed from the UK day (not the device clock).
+    // Breadth date maths seed from the UK day (not the device clock). The weekday is
+    // DERIVED — it used to say "Friday", true only of 25 December 2026, so this would
+    // have hard-failed from 26 December 2026 onward and permanently after (the clock
+    // sweep caught it in 2027/2028). Christmas rolls to next year the day AFTER the
+    // 25th, and that wording carries a comma + the year; the 24th and the 25th are not
+    // "N days until" at all, so all four shapes are covered rather than the common one.
+    const xToday = ctx.todayDashed();
+    const xYear = xToday.slice(5) > '12-25' ? +xToday.slice(0, 4) + 1 : +xToday.slice(0, 4);
+    const xDow = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][new Date(Date.UTC(xYear, 11, 25)).getUTCDay()];
     const xmas = ctx.chbCompute('days until christmas');
-    check('breadth "days until christmas" answers from the UK day', !!(xmas && /\d+ days until Friday 25 December/.test(xmas.label)), xmas && xmas.label);
+    check('breadth "days until christmas" answers from the UK day',
+        !!(xmas && new RegExp(`(\\d+ days until|Tomorrow —|That.s today —) ${xDow},? 25 December`).test(xmas.label)),
+        `${xDow} expected · got: ${xmas && xmas.label}`);
     // A bare numeric range isn't treated as subtraction.
     check('"12-15" is NOT computed as -3', !ctx.chbCompute('12-15'), (ctx.chbCompute('12-15') || {}).label);
     check('"20-24" is NOT computed', !ctx.chbCompute('20-24'));
