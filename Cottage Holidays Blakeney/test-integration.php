@@ -436,6 +436,73 @@ $r2 = http($guest, 'POST', '/client-error.php', $soft2);
 $scount = (int) $rootDb->query("SELECT COUNT(*) FROM activity_log WHERE action='client.swallow'")->fetchColumn();
 it_check('a repeated soft report is deduped within the hour', $scount === 1 && !empty($r2['json']['deduped']), 'rows=' . $scount . ' ' . $r2['raw']);
 
+echo "\n== 14. Damage-deposit returns must not move net profit ==\n";
+// The owner's PDF showed net profit £75 LIGHT with no line to explain it. Cause:
+// accounts.php netted damages − damages_return per DATE across ALL bookings. In
+// the charge-upfront model pay.php bundles the deposit into the rental charge and
+// records it on bookings.hold_* with NO kind='damages' ledger row, so returning it
+// left a lone damages_return with nothing to net against → kept_deposits went
+// NEGATIVE and silently reduced profit. A returned deposit was never income.
+$rootDb->exec("DELETE FROM payments");
+$rootDb->exec("DELETE FROM bookings");
+$kdIns = function ($bid, $kind, $amt, $status, $when) use ($rootDb) {
+    $sq = 'sq_kd_' . $bid . '_' . $kind . '_' . str_replace(['-', ' ', ':'], '', $when);
+    $rootDb->exec("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id, created_at) VALUES ($bid,'$kind',$amt,'$status','$sq','$when')");
+};
+$keptOf = function ($year) use ($admin) {
+    return (float) (http($admin, 'GET', '/accounts.php?year=' . $year)['json']['kept_deposits'] ?? -999);
+};
+
+// (a) THE REGRESSION: charge-upfront deposit returned in full. No 'damages' row
+// exists, so kept must be £0 — never −£75.
+$kdIns(9001, 'balance', 656.20, 'COMPLETED', '2026-05-10 12:00:00');
+$kdIns(9001, 'damages_return', 75.00, 'COMPLETED', '2026-05-20 12:00:00');
+$k = $keptOf(2026);
+it_check('a returned charge-upfront deposit yields £0 kept, not a negative', abs($k) < 0.005, 'kept=' . $k);
+
+// (b) LEGACY captured hold, nothing handed back — still taxable kept income.
+$rootDb->exec("DELETE FROM payments");
+$kdIns(9002, 'damages', 250.00, 'COMPLETED', '2026-06-01 10:00:00');
+$k = $keptOf(2026);
+it_check('a captured hold with no return is still £250 of kept income', abs($k - 250.0) < 0.005, 'kept=' . $k);
+
+// (c) LEGACY partial return: £250 captured, £150 handed back → £100 kept.
+$kdIns(9002, 'damages_return', 150.00, 'COMPLETED', '2026-09-02 10:00:00');
+$k = $keptOf(2026);
+it_check('a £250 capture with £150 returned nets to £100 kept', abs($k - 100.0) < 0.005, 'kept=' . $k);
+
+// (d) Fully returned capture → £0, not a negative.
+$rootDb->exec("DELETE FROM payments");
+$kdIns(9003, 'damages', 250.00, 'COMPLETED', '2026-06-01 10:00:00');
+$kdIns(9003, 'damages_return', 250.00, 'COMPLETED', '2026-06-20 10:00:00');
+$k = $keptOf(2026);
+it_check('a fully returned capture nets to £0', abs($k) < 0.005, 'kept=' . $k);
+
+// (e) CROSS-BOOKING contamination: one booking keeps £100, a DIFFERENT booking
+// returns £75 the same day. Per-date netting reported £25; each booking's deposit
+// is its own, so the answer is £100.
+$rootDb->exec("DELETE FROM payments");
+$kdIns(9004, 'damages', 100.00, 'COMPLETED', '2026-06-01 10:00:00');
+$kdIns(9005, 'damages_return', 75.00, 'COMPLETED', '2026-06-01 11:00:00');
+$k = $keptOf(2026);
+it_check("one booking's return cannot eat another's kept income", abs($k - 100.0) < 0.005, 'kept=' . $k);
+
+// (f) A FAILED return is not money handed back.
+$rootDb->exec("DELETE FROM payments");
+$kdIns(9006, 'damages', 250.00, 'COMPLETED', '2026-06-01 10:00:00');
+$kdIns(9006, 'damages_return', 250.00, 'FAILED', '2026-06-20 10:00:00');
+$k = $keptOf(2026);
+it_check('a FAILED return does not reduce kept income', abs($k - 250.0) < 0.005, 'kept=' . $k);
+
+// (g) Kept income lands on the CAPTURE date's tax year — retaining the money is
+// the taxable event, so a return in the NEXT tax year cannot move it.
+$rootDb->exec("DELETE FROM payments");
+$kdIns(9007, 'damages', 200.00, 'COMPLETED', '2026-03-01 10:00:00'); // TY 2025
+$kdIns(9007, 'damages_return', 50.00, 'COMPLETED', '2026-06-01 10:00:00'); // TY 2026
+$k25 = $keptOf(2025);
+$k26 = $keptOf(2026);
+it_check('net kept sits in the capture year, not the return year', abs($k25 - 150.0) < 0.005 && abs($k26) < 0.005, "2025=$k25 2026=$k26");
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";
