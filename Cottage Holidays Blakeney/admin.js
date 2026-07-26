@@ -5077,9 +5077,17 @@ function cmdkSearchCore(q, allowCorrect) {
         const mlOff = document.getElementById('cmdk');
         if (mlOff) mlOff.classList.remove('ml-active'); // no query → the model isn't answering
         chbSetModelStatus(document.getElementById('cmdk-ml'), ''); // → quiet "AI ready" when loaded
-        // The scope switch narrows the empty landing too: the brief + "Jump to"
-        // show only the active scope's items ("All" shows the day brief + the
-        // top dock destinations).
+        // The scope switch narrows the empty landing's "Jump to" list — but NOT the
+        // day brief. That distinction is load-bearing and was wrong: openCmdK
+        // snapshots cmdkDefaultScope() from whatever workspace you came from, so
+        // opening search from Today put you in "Bookings" scope before you had asked
+        // for anything, and the brief was filtered down to whatever happened to match
+        // — measured as 1 row surviving out of 4, which is why the landing looked
+        // empty. The brief is a summary OF THE DAY: arrivals, money to collect, an
+        // enquiry waiting, the month's pace. Dropping "£440 to collect" because you
+        // are standing on the bookings screen is not narrowing, it is losing the
+        // point of the panel. Scope still narrows what you TYPE, and still narrows
+        // Jump to.
         const keep = (it) => __cmdkScope === 'all' || it.scope === __cmdkScope;
         // Entity-aware: viewing a booking/enquiry hub → lead with its next-best
         // actions. Otherwise fall back to PAGE-context suggestions (the cottage
@@ -5111,7 +5119,7 @@ function cmdkSearchCore(q, allowCorrect) {
             .filter(keep)
             .filter((it) => { const k = kof(it); if (!k || seenKeys.has(k)) return false; seenKeys.add(k); return true; })
             .slice(0, 4);
-        const brief = cmdkBrief().filter(keep);
+        const brief = cmdkBrief();
         const allScreens = cmdkScreens();
         let screens = __cmdkScope === 'all' ? allScreens : allScreens.filter(keep);
         // Don't list a screen under "Jump to" if it's already up in "Most used".
@@ -5953,7 +5961,12 @@ function todayGaps(fromIso, toIso, onlyProp) {
 let __cmdkWords = [];
 function cmdkHi(text) {
     const esc = escapeHtml(text || '');
-    const ws = (__cmdkWords || []).filter((w) => /^[a-z0-9£]{2,}$/i.test(w));
+    // THREE characters, not two, and this is a display fix rather than a matching
+    // one (cmdkHi never scores anything). A 2-letter token has no word boundary to
+    // protect it and lights up inside unrelated words: "who owes me money" marked
+    // "pay·me·nt record" and a bare "me", which reads as speckle rather than as
+    // "here is your match". Nothing shorter is ever the thing being looked for.
+    const ws = (__cmdkWords || []).filter((w) => /^[a-z0-9£]{3,}$/i.test(w));
     if (!ws.length) return esc;
     const pat = ws
         .slice()

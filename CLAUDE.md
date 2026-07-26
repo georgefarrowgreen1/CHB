@@ -353,7 +353,20 @@ state, and every existing caller wanted that (a result run closes then navigates
 the overlay's own class via a DOM check (app.js may not reach admin globals) so ANY navigation
 while it is open still files the dead-end miss and supersedes in-flight searches. `body.cmdk-open`
 locks the page scroll and `.cmdk-results` scrolls inside the box with `overscroll-behavior:
-contain`, so the workspace behind never scrolls with it. It **GROWS** to FULL BLEED rather than
+contain`, so the workspace behind never scrolls with it. **The full-bleed panel is OPAQUE (`--cmdk-surface`) and its content sits in one centred
+column (`--cmdk-measure`, 720px)** — both because full bleed changes what the card's
+styling means. Glass (78% white over a 24px blur) reads as depth at 680px because only
+the workspace's EDGE blurs through; at screen size the whole back office smears through
+it, measured in light mode as grey blobs over the lower two thirds, looking like a dirty
+screen. (It is NOT the Siri aura — that animation is off in the overlay; the aura is
+still what the small card breathes.) The scrim underneath supplies the sense of depth
+instead. Likewise, at 1280px every row stretched the full width, so a guest's name sat
+at the far left with ~1000px of nothing beside it and the field was a 1140px pill; the
+panel stays full bleed (it is a window) while the field, the scroller and the hint line
+share one measure. `--cmdk-surface` is registered in **a11y-test's `SURFACES`** — a new
+surface must declare itself there exactly as a new text token must, and it is
+break-tested (a mid-grey surface fails all seven text tokens).
+It **GROWS** to FULL BLEED rather than
 appearing: the box is kept in the layout (`visibility`, not `display:none` — `display` cannot be
 transitioned) and scales 0.34 → 1 from the crown's corner over 0.6s. On `transform`, never
 width/height, for the reason the dock icons stuttered. Easing is **`--fluid-bezier`, NOT
@@ -423,6 +436,18 @@ miss store (`chbMissRecord`) — via `cmdkBack`/`closeCmdK` AND via `nav()`, whi
 `closeCmdK` when leaving `view-search` by ANY route (a dock tap, a result run) so the teach
 loop, in-flight-search supersede and conv-context clear can't be skipped; `openCmdK` also
 resets `__cmdkConvCtx` so a session never inherits the last one's pronoun referent.
+**The empty landing's day brief is NOT scope-filtered** (the "Jump to" list still is).
+`openCmdK` snapshots `cmdkDefaultScope()` from the workspace you came from, so opening
+search from Today put you in "Bookings" scope before you had asked for anything, and the
+brief was filtered to whatever matched — measured as **1 row surviving out of 4**, which
+is why the landing looked empty. The brief summarises the DAY (arrivals, money to
+collect, an enquiry waiting, the month's pace); dropping "£440 to collect" because you
+happen to be standing on the bookings screen loses the point of the panel. Consequence to
+keep in mind: the active scope chip and the brief therefore disagree by design — the
+brief's own group heading names the day ("Late tonight" / "This morning"), which is what
+stops it reading as filtered output. `cmdkHi` also needs **3 characters**, not 2: a
+2-letter token has no word boundary to protect it and lit up inside unrelated words
+("who owes **me** money" marked "pay·me·nt record"). It is display-only — it never scores.
 **Cross-page context memory**
 (`__cmdkLastEntity`, `chbStampRecent`/
 `cmdkRecentEntity`, `CMDK_RECENT_MS` 6min): the record you last engaged with — a hub you opened

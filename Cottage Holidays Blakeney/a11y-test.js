@@ -58,9 +58,14 @@ const ratio = (a, b) => { const l1 = lum(a), l2 = lum(b); return (Math.max(l1, l
 // The real page grounds, sampled from screenshots of the running app (NOT
 // guessed): light mode is warm linen + near-white cards + a grey band in the
 // timeline header; dark mode is the near-black ground and its raised panels.
+// --cmdk-surface is in here because the search window is FULL BLEED and OPAQUE:
+// every word the owner reads while searching sits on it, and it is the one surface
+// no amount of glass-compositing guesswork applies to (it is a flat colour). It was
+// added the moment that surface existed — a new surface has to declare itself here
+// for the same reason a new text token does.
 const SURFACES = {
-    light: { '#fdfcfa': 'card cream', '#f5f1e9': 'linen panel', '#ffffff': 'white', '#f0f0f0': 'timeline band' },
-    dark: { '#121316': 'page ground', '#1c2e3a': 'raised panel', '#22333f': 'glass over panel' },
+    light: { '#fdfcfa': 'card cream', '#f5f1e9': 'linen panel', '#ffffff': 'white', '#f0f0f0': 'timeline band', '#f7f4ee': 'search window' },
+    dark: { '#121316': 'page ground', '#1c2e3a': 'raised panel', '#22333f': 'glass over panel', '#14181d': 'search window' },
 };
 
 // Read a token block out of app.css. `:root` is the DARK theme (the default);
