@@ -3277,3 +3277,66 @@ body.light-mode #crown-ask {
     content: "Tap an answer to open it";
   }
 }
+
+/* ============================================================
+   SEARCH AS A WINDOW — an overlay over the workspace, not a page you travel to.
+   The node is re-parented to <body> by cmdkEnsureOverlay(): a `.page-view` has a
+   transform, which would make it the containing block for this fixed element and
+   pin the "overlay" inside the page. Same trap the cottage page's sticky bar hit.
+
+   ABOVE the header (1700 vs 1500), unlike the crown sheet: the sheet is a
+   dropdown you toggle from the crown, this is a focused window you dismiss. Still
+   below the real modals (2000+), so a glassConfirm raised FROM search covers it.
+   ============================================================ */
+#cmdk-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 1690;
+  background: rgba(8, 10, 14, 0.55);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.24s var(--fluid-bezier);
+}
+#cmdk-scrim.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+#cmdk.cmdk-overlay {
+  position: fixed;
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 1700;
+  display: none;
+  justify-content: center;
+  align-items: flex-start;
+  /* clears the notch and leaves the header visible above the window */
+  padding: calc(84px + env(safe-area-inset-top, 0px)) 12px calc(20px + env(safe-area-inset-bottom, 0px));
+  pointer-events: none; /* only the box is interactive, so the scrim gets the taps */
+}
+#cmdk.cmdk-overlay.open {
+  display: flex;
+}
+#cmdk.cmdk-overlay .cmdk-box {
+  pointer-events: auto;
+  /* The page version scrolled the document; a window scrolls INSIDE itself. */
+  max-height: 100%;
+  overflow: hidden;
+}
+#cmdk.cmdk-overlay .cmdk-results {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain; /* don't chain the scroll to the workspace behind */
+}
+/* The workspace behind must not scroll while the window is up. */
+body.cmdk-open {
+  overflow: hidden;
+}
+@media (prefers-reduced-motion: reduce) {
+  #cmdk-scrim {
+    transition: none;
+  }
+}

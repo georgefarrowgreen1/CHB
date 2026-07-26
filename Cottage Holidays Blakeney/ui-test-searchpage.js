@@ -1,7 +1,8 @@
 // The dedicated SEARCH PAGE (all search now lives behind the dock's knot
 // logo), end to end in a real browser — consolidating the essential coverage
 // the retired per-workspace Assist Bar suites carried:
-//  1. openCmdK → view-search page active, input focused, morning brief renders
+//  1. openCmdK → the search WINDOW opens OVER the workspace (which must not
+//     change), input focused, morning brief renders
 //  2. answers render on the page; a literal query doesn't light the model
 //  3. an NLU paraphrase lights the logo (understood/meaning) — colour, no words
 //  4. conversational follow-up: a surfaced booking resolves "email them"
@@ -35,10 +36,14 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.evaluate(() => openCmdK()); await page.waitForTimeout(400);
   let st = await page.evaluate(() => ({
     view: (document.querySelector('.page-view.active') || {}).id,
+    cmdkOpen: !!document.getElementById('cmdk').classList.contains('open'),
     focused: document.activeElement === document.getElementById('cmdk-input'),
     rows: document.querySelectorAll('#cmdk-results .cmdk-row').length,
   }));
-  ok(st.view === 'view-search', `openCmdK lands on the search PAGE (${st.view})`);
+  // Search is a WINDOW now: it covers the workspace instead of replacing it, so
+  // the active view must be UNCHANGED and the overlay must be up.
+  ok(st.cmdkOpen === true, `openCmdK opens the search WINDOW (open=${st.cmdkOpen})`);
+  ok(st.view !== 'view-search', `and the workspace underneath is untouched (${st.view})`);
   ok(st.focused, 'the input takes focus');
   ok(st.rows > 0, `the empty landing renders the brief (${st.rows} rows)`);
 
@@ -117,11 +122,11 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(kb2.sub === -1 && !kb2.marked, 'ArrowLeft steps back out to the row itself');
   // Two-stage Escape: first clears the query, second leaves.
   await page.evaluate(() => { document.getElementById('cmdk-input').value = 'bob carter'; });
-  const esc1 = await page.evaluate(() => { cmdkKey({ key: 'Escape', preventDefault() {} }); return { val: document.getElementById('cmdk-input').value, view: (document.querySelector('.page-view.active') || {}).id }; });
-  ok(esc1.val === '' && esc1.view === 'view-search', `first Escape clears the query, stays on the page (${esc1.view})`);
+  const esc1 = await page.evaluate(() => { cmdkKey({ key: 'Escape', preventDefault() {} }); return { val: document.getElementById('cmdk-input').value, cmdkOpen: document.getElementById('cmdk').classList.contains('open') }; });
+  ok(esc1.val === '' && esc1.cmdkOpen === true, `first Escape clears the query, window stays up (open=${esc1.cmdkOpen})`);
   await page.evaluate(() => { cmdkKey({ key: 'Escape', preventDefault() {} }); }); await page.waitForTimeout(200);
-  const esc2 = await page.evaluate(() => (document.querySelector('.page-view.active') || {}).id);
-  ok(esc2 !== 'view-search', `second Escape leaves the search page (${esc2})`);
+  const esc2 = await page.evaluate(() => document.getElementById('cmdk').classList.contains('open'));
+  ok(esc2 === false, `second Escape closes the window (open=${esc2})`);
   await page.evaluate(() => openCmdK()); await page.waitForTimeout(200);
 
   // 5) Teaching flashes the logo + dock orange, then clears.
@@ -148,13 +153,16 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(st.ready, 'body.darkstar-ready set once the model is loaded + indexed');
   ok(st.mstate === 'ready' && st.color === 'rgb(168, 85, 247)', `logo rests on the Darkstar purple (${st.mstate}, ${st.color})`);
 
-  // 7) cmdkBack returns to the workspace you came from; ⌘K toggles.
+  // 7) cmdkBack closes the window and leaves you where you already were; ⌘K toggles.
   await page.evaluate(() => cmdkBack()); await page.waitForTimeout(300);
-  let view = await page.evaluate(() => (document.querySelector('.page-view.active') || {}).id);
-  ok(view === 'view-backoffice', `cmdkBack returns to the origin workspace (${view})`);
+  let closedOn = await page.evaluate(() => ({
+    open: document.getElementById('cmdk').classList.contains('open'),
+    view: (document.querySelector('.page-view.active') || {}).id,
+  }));
+  ok(!closedOn.open && closedOn.view === 'view-backoffice', `cmdkBack closes the window, workspace still there (${closedOn.view})`);
   await page.keyboard.press('Control+k'); await page.waitForTimeout(300);
-  view = await page.evaluate(() => (document.querySelector('.page-view.active') || {}).id);
-  ok(view === 'view-search', `⌘K opens the search page (${view})`);
+  let view = await page.evaluate(() => document.getElementById('cmdk').classList.contains('open'));
+  ok(view === true, `⌘K opens the search window (open=${view})`);
   await page.keyboard.press('Control+k'); await page.waitForTimeout(300);
   view = await page.evaluate(() => (document.querySelector('.page-view.active') || {}).id);
   ok(view === 'view-backoffice', `⌘K again toggles back (${view})`);

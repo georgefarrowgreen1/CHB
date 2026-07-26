@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 276;
+const ADMIN_BUNDLE_V = 277;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 88;
+const ADMIN_CSS_V = 89;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -1500,13 +1500,14 @@ function nav(viewId, anchorId = null) {
         console.warn(`nav(): unknown view "${viewId}"`);
         return;
     }
-    // Leaving the dedicated search page by ANY route other than its own back
-    // button (a dock tap, a result run, a deep link) must still tear the palette
-    // down: file the dead-end miss, supersede any in-flight federated search, and
-    // clear the conversation context. closeCmdK is cleanup-only (no nav), so this
-    // is safe to call mid-navigation. Owner-only view, so admin.js is loaded.
-    const __prevView = (document.querySelector('.page-view.active') || {}).id;
-    if (__prevView === 'view-search' && viewId !== 'view-search') {
+    // Search is a WINDOW over the workspace now, not a page — so navigating
+    // anywhere while it is open must tear it down: file the dead-end miss,
+    // supersede any in-flight federated search, and clear the conversation
+    // context. Keyed on the overlay's own state via a DOM check (never an admin
+    // global — app.js may not reach those) and closeCmdK stays cleanup-only, so
+    // this is safe to call mid-navigation.
+    const __cmdkNode = document.getElementById('cmdk');
+    if (__cmdkNode && __cmdkNode.classList.contains('open')) {
         try { if (window.closeCmdK) window.closeCmdK(); } catch (e) {}
     }
     document.querySelectorAll('.page-view').forEach((v) => v.classList.remove('active'));
@@ -13232,7 +13233,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'onelook1';
+    const BUILD = 'window1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

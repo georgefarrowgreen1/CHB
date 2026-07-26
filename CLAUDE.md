@@ -335,12 +335,27 @@ per-type destination glyphs. Also fixed here: `.cmdk-foot` was hidden behind
 `hover: hover and pointer: fine`, so a PHONE got no hint at all while the sheet always
 states its keys — touch now gets a touch-appropriate line instead of the ⌘K keycaps.
 
-**The SEARCH PAGE** — search lives on ONE dedicated page (`view-search`, in `ADMIN_VIEWS`),
-reached from the crown's sheet on Enter (`openCmdK`) or ⌘K; the per-workspace Assist Bars were
-RETIRED in its favour (the whole `abar*` module, host divs and CSS are gone — do not resurrect). The
-`#cmdk` node lives statically inside the view (class `cmdk-page`, no overlay/backdrop; page
-scroll, `.cmdk-box` max-width 680px/940px sheet) and keeps every inner id, so the entire
-intelligence stack is unchanged. `openCmdK` snapshots the workspace you came FROM before
+**SEARCH IS A WINDOW** — an overlay OVER the workspace, not a page you travel to
+(`#cmdk.cmdk-overlay` + `#cmdk-scrim`, z 1700/1690 — above the header's 1500, below the real
+modals at 2000+). Reached from the crown's sheet on Enter (`openCmdK`) or ⌘K; the per-workspace
+Assist Bars were RETIRED in its favour (the whole `abar*` module, host divs and CSS are gone —
+do not resurrect). The markup still ships inside the `view-search` template because that is how
+`ensureAdminViews()` delivers it, but **`cmdkEnsureOverlay()` re-parents `#cmdk` to `<body>`** on
+bundle load and that is not optional: a `.page-view` carries a transform, making it the
+containing block for any fixed child, so left in place the "overlay" would be pinned inside the
+page (the same trap the cottage page's sticky bar hits). Consequences to keep straight:
+`openCmdK` does NOT navigate — the active view is UNCHANGED while search is up, which is what
+lets scope/entity snapshots keep working; `closeCmdK` now hides the window as well as cleaning
+state, and every existing caller wanted that (a result run closes then navigates underneath);
+`cmdkBack()` only closes and returns focus to the crown, since there is nowhere to go back TO;
+⌘K toggles on `cmdkIsOpen()` rather than the active view; and `nav()`'s teardown hook is keyed on
+the overlay's own class via a DOM check (app.js may not reach admin globals) so ANY navigation
+while it is open still files the dead-end miss and supersedes in-flight searches. `body.cmdk-open`
+locks the page scroll and `.cmdk-results` scrolls inside the box with `overscroll-behavior:
+contain`, so the workspace behind never scrolls with it. The `<main id="view-search">` shell and
+its `ADMIN_VIEWS` entry are now vestigial — see the task list; `ui-test-adminviews` asserts the
+shell is empty BY DESIGN so a half-done removal is caught. `.cmdk-box` keeps max-width 680px
+(940px sheet) and every inner id, so the entire intelligence stack is unchanged. `openCmdK` snapshots the workspace you came FROM before
 navigating — `__cmdkReturnView`, `__cmdkScope = cmdkDefaultScope()`, `__cmdkEntity =
 cmdkCurrentEntity()` — so scoping and record pronouns still resolve; `closeCmdK` is STATE
 CLEANUP ONLY (no nav — result runs navigate themselves and call it first); `cmdkBack()` =
