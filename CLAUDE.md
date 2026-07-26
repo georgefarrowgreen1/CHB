@@ -474,6 +474,22 @@ as the customer (`currentGuest` synthesised from the payload, no real guest sess
 booking renders, writes blocked, tokens stripped; container: sandboxed iframe mounts at the
 preview URL + tears down) + search-test §21c (the directory row exposes only non-destructive
 Email + read-only View).
+**How it's SHOWN on a phone** (ui-test-acctpreview §C, which sets `--safe-t/--safe-b` to fake a
+notch): the overlay pads by `max(24px, var(--safe-*))` and BELOW 640px the shell becomes a
+full-screen sheet. Both matter — a flat 24px put the bar (the customer's name + Close) at 34px
+against a 59px inset, i.e. UNDER the Dynamic Island, and the decorative phone-shaped frame was
+342×776 inside a 390×844 phone, spending 48px of width on chrome so the account got 66% of the
+screen. The shell is also explicitly OPAQUE despite carrying `.glass-panel` (the admin dock used
+to ghost through behind the customer's name), and `.acct-preview-note` is clamped to one line on
+a phone (wrapping doubled the bar to 88px). Inside the frame, `injectPreviewBanner` adds
+**`body.acct-preview-embedded`** when embedded, which zeroes the `--safe-*` tokens: the frame's
+edges are the overlay's, not the device's, and the overlay already inset itself — iOS hands
+`env(safe-area-inset-*)` down into a same-origin iframe, so token-based rules would otherwise
+inset twice. NB `header` and `.container` still call `env()` DIRECTLY (~573 / ~1583 in app.css),
+so they're NOT covered; restating them without the inset term was tried and REVERTED because the
+override out-specified the guest shell's own `top` and moved the header 10→20px, making the
+preview stop matching what the customer sees — the one thing the feature guarantees. The real fix
+is migrating those 36 raw `env()` sites onto the tokens, as its own job.
 
 **Owner's picks** — the habit/trust/revenue layer. (1) **Teach-loop nudges**: the synced
 dead-end searches (`search-misses` in the content table) surface BOTH in the weekly digest

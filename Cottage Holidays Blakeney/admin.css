@@ -2859,7 +2859,10 @@ body.darkstar-ready .admin-dock-btn[data-act="openCmdK"]:not(.ml-learning) svg {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  /* Clear the notch / Dynamic Island. A flat 24px put the shell's top edge at
+     34px on a 390x844 iPhone against a 59px inset, so the bar — the customer's
+     name and the Close button — sat UNDER the status bar. */
+  padding: max(24px, var(--safe-t, 0px)) max(24px, var(--safe-r, 0px)) max(24px, var(--safe-b, 0px)) max(24px, var(--safe-l, 0px));
   background: rgba(10, 20, 28, 0.55);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
@@ -2883,6 +2886,35 @@ body.darkstar-ready .admin-dock-btn[data-act="openCmdK"]:not(.ml-learning) svg {
   padding: 0;
   overflow: hidden;
   border-radius: var(--r-panel, 22px);
+  /* OPAQUE, unlike the .glass-panel it also carries. The shell frames a whole
+     other app; letting the back office show through it put ghosts of the admin
+     dock behind the customer's name and made the muted note hard to read. */
+  background: var(--dark-grey);
+}
+/* On a phone the decorative "phone frame" costs more than it says: measured at
+   390x844 the shell was 342x776 — a phone drawn inside a phone, spending 48px of
+   width and 68px of height on chrome so the customer's account got 66% of the
+   screen. Below the tablet breakpoint it becomes a full-screen sheet instead,
+   inset only by the safe area. */
+@media (max-width: 640px) {
+  .acct-preview-overlay {
+    padding: 0;
+  }
+  .acct-preview-shell {
+    width: 100%;
+    height: 100%;
+    border-radius: 0;
+    padding-top: var(--safe-t, 0px);
+    padding-bottom: var(--safe-b, 0px);
+  }
+  /* The note is supporting text — the NAME is the identity of this preview. One
+     line here rather than wrapping to two and doubling the bar's height (88px
+     of a 844px screen, measured). */
+  .acct-preview-note {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
 }
 .acct-preview-bar {
   display: flex;
