@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 282;
+const ADMIN_BUNDLE_V = 283;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -3733,8 +3733,10 @@ function showPayError(text) {
     });
     const err = document.getElementById('pay-error'),
         msg = document.getElementById('pay-error-msg');
-    if (msg) msg.textContent = text || 'Something went wrong.';
+    // #pay-error is role=alert — reveal it before the message lands so the alert
+    // fires on visible content rather than into a hidden node.
     if (err) err.style.display = '';
+    if (msg) msg.textContent = text || 'Something went wrong.';
 }
 // Opened from a secure pay link (?pay=<token>&b=<id>&k=<kind>) parsed at boot.
 async function openPayView(token, bookingId, kind) {
@@ -3841,9 +3843,11 @@ async function payWithToken(sourceId) {
             source_id: sourceId,
         });
         document.getElementById('pay-body').style.display = 'none';
+        // Reveal BEFORE writing the text: #pay-done is a polite live region now, and
+        // a change made while it is display:none is not reliably announced.
+        document.getElementById('pay-done').style.display = '';
         document.getElementById('pay-done-sub').textContent =
             "Your refundable security hold is in place — held, not charged. It's released after checkout, provided there's no damage.";
-        document.getElementById('pay-done').style.display = '';
         try {
             toast('Card hold placed — thank you!');
         } catch (e) {}
@@ -3860,10 +3864,11 @@ async function payWithToken(sourceId) {
     // Show what the card was CHARGED (incl. the bundled refundable deposit) —
     // quoting only the rental portion after a "Pay £450" button read like a
     // mis-charge to the guest.
+    // Reveal BEFORE writing the text — see the hold branch above.
+    document.getElementById('pay-done').style.display = '';
     document.getElementById('pay-done-sub').textContent = res.fullyPaid
         ? 'Your booking is now paid in full. We look forward to welcoming you.'
         : `Thank you — ${gbp(res.charged != null ? res.charged : res.paid)} received. We'll be in touch about the remaining balance before your stay.`;
-    document.getElementById('pay-done').style.display = '';
     try {
         toast('Payment received — thank you!');
     } catch (e) {}
@@ -13233,7 +13238,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'qarow01';
+    const BUILD = 'sentbtn1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

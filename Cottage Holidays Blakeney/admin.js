@@ -17735,8 +17735,17 @@ function renderMailboxList(keepSearchFocus) {
     }
     // Toolbar mirrors the Today calendar header: segmented switch on the left,
     // the accent action + circular refresh on the right, search underneath.
+    // The switch is the reason Sent is reachable at all: mailboxTab() is the only
+    // writer of __mbxTab, the whole Sent branch above was built and ui-tested, and
+    // NOTHING called it — the list existed with no way in. Unread count rides the
+    // Inbox tab like the folder chips do; Sent has no unread concept.
+    const mbxUnread = __mbxMessages.filter((m) => !m.seen).length;
     el.innerHTML = `
         <div class="cal-header-bar" style="margin-bottom:14px;">
+            <div class="inbox-sort seg" role="tablist" aria-label="Mailbox folders">
+                <button type="button" class="inbox-sort-btn${__mbxTab === 'inbox' ? ' is-on' : ''}" role="tab" aria-selected="${__mbxTab === 'inbox'}" ${chbAttrs('mailboxTab', 'inbox')}>Inbox${mbxUnread ? ` <span class="ifold-count">${mbxUnread}</span>` : ''}</button>
+                <button type="button" class="inbox-sort-btn${__mbxTab === 'sent' ? ' is-on' : ''}" role="tab" aria-selected="${__mbxTab === 'sent'}" ${chbAttrs('mailboxTab', 'sent')}>Sent</button>
+            </div>
             <div class="cal-actions">
                 <button class="btn-glass btn-accent cal-add-btn" data-act="mailboxCompose">+ New email</button>
                 <button class="cal-refresh-btn" data-act="loadMailbox" title="Check for new email" aria-label="Check for new email"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 11a8 8 0 1 0-1.9 5.3"/><path d="M20 5v6h-6"/></svg></button>
