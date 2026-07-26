@@ -836,6 +836,20 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   `hold_request`/`hold_link`/`hold_capture`/`hold_release`, ?hold= pay screen + emails)
   still exists for old bookings — only there is "held, not charged" wording correct.
   self-repair marks `authorized` rows older than Square's ~6-day auth window `expired`.
+  **The two eras leave DIFFERENT ledger traces, and accounts.php has to respect that.**
+  A charge-upfront deposit gets NO `kind='damages'` payments row — pay.php writes one
+  rental row for `$amountDue` only and puts the deposit on `hold_*`. A legacy captured
+  hold DOES get a `damages` row. `return_deposit` writes `damages_return` in both. So
+  kept-deposit income must be netted **per BOOKING and floored at zero**
+  (`max(0, captured − returned)`), allocated to the CAPTURE date because retaining the
+  money is the taxable event. Netting per DATE across all bookings — which is what it
+  used to do — breaks three ways: a returned charge-upfront deposit becomes NEGATIVE
+  kept income (a £75 refund silently took £75 off net profit, reproduced to the penny
+  against an owner's real statement), one booking's return eats another booking's kept
+  income when the dates collide (£100 kept + £75 returned elsewhere reported £25), and
+  a return in the following tax year leaves a phantom negative in that year. A returned
+  deposit was never income and must not move profit at all. Gated by
+  test-integration §14 (7 checks; three of them fail against the old query).
 - **Square settlement sync** — a payment's processing FEE and a refund's final
   STATUS (PENDING→COMPLETED) both land a day or two after the action, pushed by the
   `square-webhook.php` events. Because that webhook can be unconfigured, the

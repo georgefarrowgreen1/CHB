@@ -9832,7 +9832,7 @@ async function renderAccounts() {
                 </div>
                 <div class="feed-list" style="max-width:460px;margin-top:12px;padding:4px 16px;">
                     <div class="feed-row" style="grid-template-columns:1fr auto;"><span class="feed-who">Rental income</span><span class="feed-amt">${gbp(total)}</span></div>
-                    ${keptIncome > 0 ? `<div class="feed-row" style="grid-template-columns:1fr auto;"><span class="feed-who">Damage deposits kept</span><span class="feed-amt">${gbp(keptIncome)}</span></div>` : ''}
+                    ${Math.abs(keptIncome) > 0.005 ? `<div class="feed-row" style="grid-template-columns:1fr auto;"><span class="feed-who">Damage deposits kept</span><span class="feed-amt">${gbp(keptIncome)}</span></div>` : ''}
                     ${cardFees > 0 ? `<div class="feed-row" style="grid-template-columns:1fr auto;"><span class="feed-who">Card processing fees</span><span class="feed-amt">− ${gbp(cardFees)}</span></div>` : ''}
                     <div class="feed-row" style="grid-template-columns:1fr auto;"><span class="feed-who">Expenses${expYear.length ? ` (${expYear.length})` : ''}</span><span class="feed-amt">− ${gbp(expTotal)}</span></div>
                     <div class="feed-row" style="grid-template-columns:1fr auto;border-top:1px solid var(--glass-border);"><span class="feed-who" style="color:var(--text-light);">Net</span><span class="feed-amt" style="color:var(--text-light);">${gbp(net)}</span></div>
@@ -11004,7 +11004,7 @@ function exportAccountsCSV() {
     const csvFees = accountsReport.card_fees || 0;
     const csvKept = accountsReport.kept_deposits || 0;
     const csvNet = inc + csvKept - csvFees - expTotal;
-    csv += `\nSummary\nRental income,${inc.toFixed(2)}\n${csvKept > 0 ? `Damage deposits kept,${csvKept.toFixed(2)}\n` : ''}Card processing fees,-${csvFees.toFixed(2)}\nExpenses,${expTotal.toFixed(2)}\n${csvNet < 0 ? 'Net loss' : 'Net profit'},${csvNet.toFixed(2)}\n`;
+    csv += `\nSummary\nRental income,${inc.toFixed(2)}\n${Math.abs(csvKept) > 0.005 ? `Damage deposits kept,${csvKept.toFixed(2)}\n` : ''}Card processing fees,-${csvFees.toFixed(2)}\nExpenses,${expTotal.toFixed(2)}\n${csvNet < 0 ? 'Net loss' : 'Net profit'},${csvNet.toFixed(2)}\n`;
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -11083,15 +11083,20 @@ async function downloadYearStatement(startYear) {
     doc.setFontSize(10);
     rowLR('Rental income received', gbp(income), y);
     y += 18;
-    if (keptIncome > 0) {
+    // Any figure that moves net profit gets a visible line — printing this only
+    // when positive is how a phantom negative once took 75 off the total with
+    // nothing on the page to explain it.
+    if (Math.abs(keptIncome) > 0.005) {
         rowLR('Damage deposits kept', gbp(keptIncome), y);
         y += 18;
     }
     if (cardFees > 0) {
-        rowLR('Card processing fees', '− ' + gbp(cardFees), y);
+        // ASCII hyphen, not U+2212: jsPDF's built-in Helvetica is Latin-1, so a
+        // true minus sign renders as a stray quote and throws off digit spacing.
+        rowLR('Card processing fees', '- ' + gbp(cardFees), y);
         y += 18;
     }
-    rowLR('Expenses', '− ' + gbp(expTotal), y);
+    rowLR('Expenses', '- ' + gbp(expTotal), y);
     y += 18;
     y += 4;
     line(y);

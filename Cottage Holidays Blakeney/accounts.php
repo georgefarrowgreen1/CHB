@@ -215,23 +215,65 @@ try {
 // Guarded for a not-yet-migrated DB (the 'damages' enum value arrives in zz8).
 $keptDays = [];
 try {
-    // Captured damages MINUS any damages_return refunded against them (net kept),
-    // per settle date. hold_capture's own flow directs the owner to refund the
-    // excess via the normal refund flow (kind='damages_return'), so a £250 capture
-    // later £150-returned is only £100 of taxable kept income — the old query
-    // summed the gross £250 forever. FAILED/REJECTED returns don't count as
+    // Captured damages MINUS any damages_return refunded against them (net kept).
+    // hold_capture's flow directs the owner to refund the excess via the normal
+    // refund flow (kind='damages_return'), so a £250 capture later £150-returned is
+    // only £100 of taxable kept income. FAILED/REJECTED returns don't count as
     // money handed back (parity with the rental-refund status filter).
-    $keptDays = db()
+    //
+    // NETTED PER BOOKING AND FLOORED AT ZERO, and this is the whole point: the
+    // netting used to happen per DATE across every booking, which went NEGATIVE in
+    // the current charge-upfront model. There, pay.php bundles the deposit into the
+    // rental charge and records it on bookings.hold_* with NO kind='damages' ledger
+    // row, so returning it wrote a lone damages_return with nothing to net against —
+    // a £75 deposit handed back became −£75 of "kept income" and quietly took £75
+    // off net profit. A returned deposit was never income; it must not move profit
+    // at all. You also cannot retain less than nothing, so per-booking max(0, …) is
+    // the correct floor, and a return can only ever offset ITS OWN booking's capture.
+    // Allocation is to the CAPTURE date, because retaining the money is the taxable
+    // event (netting on the return's date could also push it into another tax year).
+    $keptRows = db()
         ->query(
-            "SELECT d, ROUND(SUM(a),2) a FROM (
-                SELECT DATE(created_at) d, amount a FROM payments
-                  WHERE kind = 'damages' AND UPPER(status) IN ('COMPLETED','APPROVED','CAPTURED')
-                UNION ALL
-                SELECT DATE(created_at) d, -amount a FROM payments
-                  WHERE kind = 'damages_return' AND (status IS NULL OR UPPER(status) NOT IN ('FAILED','REJECTED'))
-             ) k GROUP BY d HAVING ROUND(SUM(a),2) <> 0",
+            "SELECT booking_id, DATE(created_at) d, kind, amount FROM payments
+              WHERE (kind = 'damages' AND UPPER(status) IN ('COMPLETED','APPROVED','CAPTURED'))
+                 OR (kind = 'damages_return' AND (status IS NULL OR UPPER(status) NOT IN ('FAILED','REJECTED')))
+              ORDER BY created_at",
         )
         ->fetchAll();
+    $perBooking = [];
+    foreach ($keptRows as $kr) {
+        $bid = (int) $kr['booking_id'];
+        if (!isset($perBooking[$bid])) {
+            $perBooking[$bid] = ['captures' => [], 'returned' => 0.0];
+        }
+        if ($kr['kind'] === 'damages') {
+            $perBooking[$bid]['captures'][] = [$kr['d'], (float) $kr['amount']];
+        } else {
+            $perBooking[$bid]['returned'] += (float) $kr['amount'];
+        }
+    }
+    $keptByDay = [];
+    foreach ($perBooking as $p) {
+        $captured = array_sum(array_map(fn($c) => $c[1], $p['captures']));
+        $kept = round(max(0.0, $captured - $p['returned']), 2);
+        if ($kept <= 0.005) {
+            continue; // fully returned, or (charge-upfront) never captured as income
+        }
+        // Spread what's left across this booking's capture dates oldest-first, each
+        // absorbing up to its own amount — same shape as allocate_income_by_year().
+        $left = $kept;
+        foreach ($p['captures'] as [$cd, $camt]) {
+            if ($left <= 0.005) {
+                break;
+            }
+            $take = min($left, $camt);
+            $keptByDay[$cd] = ($keptByDay[$cd] ?? 0) + $take;
+            $left -= $take;
+        }
+    }
+    foreach ($keptByDay as $kd => $ka) {
+        $keptDays[] = ['d' => $kd, 'a' => round($ka, 2)];
+    }
 } catch (\Throwable $e) {
     /* payments table / 'damages' kind not migrated yet */
 }
