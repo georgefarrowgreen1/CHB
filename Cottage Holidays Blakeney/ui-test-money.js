@@ -267,6 +267,57 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   }));
   ok(nav2.idxShown && nav2.panelHidden, 'drill-down Back restores the Money index');
 
+  // ---- 6. the income screen says what the "Net profit" figure actually COVERS ----
+  // A confident green number implies a completeness it doesn't have: with no
+  // expenses logged it's really income less card fees, and platform (Airbnb)
+  // payouts never reach this ledger at all, so neither that income nor the
+  // commission on it is in the figure. Both have to be stated on the page.
+  console.log('6. scope caveats on the income screen');
+  await page.evaluate(() => accountsOpen('income'));
+  await page.waitForTimeout(600);
+  const scope0 = await page.evaluate(() => {
+    const t = (document.getElementById('accounts-content') || {}).textContent || '';
+    return { txt: t, hasExpNote: /No expenses are logged/i.test(t), hasOta: /booking platform/i.test(t) };
+  });
+  // This suite's stub logs a £120 expense, so the expenses caveat must NOT show —
+  // that's the check that the note is conditional and not just always printed.
+  ok(!scope0.hasExpNote, 'with expenses logged, the "no expenses" caveat is absent');
+
+  // Now drop the expenses and re-render: the caveat must appear.
+  const scope1 = await page.evaluate(async () => {
+    try { allExpenses = []; } catch (e) {}
+    await renderAccounts();
+    await new Promise((r) => setTimeout(r, 300));
+    const t = (document.getElementById('accounts-content') || {}).textContent || '';
+    return { hasExpNote: /No expenses are logged/i.test(t), explains: /income less card fees/i.test(t) };
+  });
+  ok(scope1.hasExpNote, 'with NO expenses logged, the page says so instead of implying full profit');
+  ok(scope1.explains, 'and says what the figure really is (income less card fees)');
+
+  // An imported platform stay in the tax year must be disclosed too.
+  const scope2 = await page.evaluate(async () => {
+    // dbBlocks is `const` in app.js, so mutate it rather than reassign.
+    Object.keys(dbBlocks).forEach((k) => delete dbBlocks[k]);
+    dbBlocks['21a'] = [{ checkIn: '2026-08-01', checkOut: '2026-08-05', source: 'airbnb' }];
+    await renderAccounts();
+    await new Promise((r) => setTimeout(r, 300));
+    const t = (document.getElementById('accounts-content') || {}).textContent || '';
+    return { hasOta: /booking platform/i.test(t), commission: /commission/i.test(t) };
+  });
+  ok(scope2.hasOta, 'an imported platform stay in the year is disclosed as not counted');
+  ok(scope2.commission, 'and the uncounted commission is named too');
+
+  // An OWNER block is not a booking and must not trigger the platform caveat.
+  const scope3 = await page.evaluate(async () => {
+    Object.keys(dbBlocks).forEach((k) => delete dbBlocks[k]);
+    dbBlocks['21a'] = [{ checkIn: '2026-08-01', checkOut: '2026-08-05', source: 'owner' }];
+    await renderAccounts();
+    await new Promise((r) => setTimeout(r, 300));
+    const t = (document.getElementById('accounts-content') || {}).textContent || '';
+    return { hasOta: /booking platform/i.test(t) };
+  });
+  ok(!scope3.hasOta, 'an owner block is not a platform booking, so no such caveat');
+
   console.log(fails ? `MONEY CHECK FAILED ❌ (${fails})` : 'MONEY CHECK PASSED ✅');
   await done(fails);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });
