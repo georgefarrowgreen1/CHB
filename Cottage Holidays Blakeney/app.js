@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 271;
+const ADMIN_BUNDLE_V = 272;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 84;
+const ADMIN_CSS_V = 85;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -6022,7 +6022,7 @@ function runTripPlan() {
                 (items, di) => `
                 <div class="mo-card" style="margin-top:12px;">
                     <div class="mo-card-title">Day ${di + 1}</div>
-                    ${items.map((it) => `<div style="margin-top:8px;"><strong>${escapeHtml(it.name)}</strong><span style="color:var(--accent);font-size:0.8rem;">${escapeHtml(it.tide)}</span><br><span style="font-size:0.85rem;color:var(--text-muted);">${escapeHtml(it.blurb)}</span></div>`).join('')}
+                    ${items.map((it) => `<div style="margin-top:8px;"><strong>${escapeHtml(it.name)}</strong><span style="color:var(--accent-text);font-size:0.8rem;">${escapeHtml(it.tide)}</span><br><span style="font-size:0.85rem;color:var(--text-muted);">${escapeHtml(it.blurb)}</span></div>`).join('')}
                 </div>`,
             )
             .join('') +
@@ -8325,7 +8325,7 @@ function accomImages(k) {
 function accomPhotoRow(k, url, i, n) {
     return `<div class="content-edit-row accom-photo-row">
                 <div class="exp-edit-thumb" style="background-image:url('${escapeHtml(url)}');"></div>
-                <div class="accom-photo-label">Photo ${i + 1}${i === 0 ? ' <span style="color:var(--accent);">· main</span>' : ''}</div>
+                <div class="accom-photo-label">Photo ${i + 1}${i === 0 ? ' <span style="color:var(--accent-text);">· main</span>' : ''}</div>
                 <div class="accom-photo-actions">
                     <button class="btn-sm btn-edit" ${chbAttrs('accomMovePhoto', String(k), i, -1)} ${i === 0 ? 'disabled' : ''} aria-label="Move up">↑</button>
                     <button class="btn-sm btn-edit" ${chbAttrs('accomMovePhoto', String(k), i, 1)} ${i === n - 1 ? 'disabled' : ''} aria-label="Move down">↓</button>
@@ -13223,7 +13223,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'deadcode1';
+    const BUILD = 'a11yfix1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

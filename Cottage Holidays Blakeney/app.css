@@ -151,6 +151,12 @@ textarea:focus-visible,
   --text-muted: #b4b8c6;
   /* Brand accent (rose-gold) — used for focus rings & subtle highlights. */
   --accent: #d6a785;
+  /* Accent as TEXT. Same relationship to --accent as --ok-text has to --ok: on
+     this dark ground the brand rose-gold is already readable (6.5:1), so the two
+     match here and light mode retunes it below. Use this for accent-coloured
+     WORDS; keep --accent itself for icons, stars, borders and fills, which only
+     have to clear the 3:1 non-text bar. */
+  --accent-text: #d6a785;
   /* Ink for text/icons on an accent fill — the rose-gold is mid-light, so white
      fails WCAG contrast; every accent-filled control uses this dark ink. */
   --accent-ink: #1b1208;
@@ -249,13 +255,22 @@ body.light-mode {
   --text-light: #1b2a34; /* deep ink-slate (coastal, softer than black) */
   --text-muted: #52646e; /* slate — AA on the linen ground */
   --accent: #c6885e; /* a touch deeper rose-gold for contrast on light */
+  /* …but "a touch deeper" still isn't enough for WORDS: measured against the four
+     real surfaces of this theme (#fdfcfa cream, #f5f1e9 panel, white, #f0f0f0
+     band) #c6885e lands at 2.60–2.96:1, short of AA's 4.5. Same story the status
+     tints had, so it gets the same treatment — a text-only darker token, leaving
+     every accent fill/border/icon untouched. Deliberately a shade past the pass
+     mark (4.75:1 worst surface, 5.28:1 on the cream the site mostly is): the
+     value that lands exactly on 4.51 has no headroom, so any later tweak to a
+     surface would silently drop it back under AA. */
+  --accent-text: #965c35;
   --accent-soft: rgba(198, 136, 94, 0.42);
   /* Status TEXT retuned for the linen ground: the dark-theme tints (pale
      green/amber/red) fail WCAG AA as text on white glass. The -text tokens are
      text-only (fills use the base --ok/--warn/--danger), so darkening them here
      is regression-free. */
-  --ok-text: #2e7d32;
-  --warn-text: #a85a00;
+  --ok-text: #2c7830; /* 4.80:1 worst surface — was #2e7d32, exactly on 4.50 */
+  --warn-text: #a15600; /* 4.79:1 worst surface — was #a85a00, under AA at 4.46 */
   --danger-text: #c62828;
   --info-text: #35708f; /* darker sea-blue for readable text on light glass */
   --info-bg: rgba(56, 132, 197, 0.12); /* lighter sea-blue fill for light glass */
@@ -1369,7 +1384,7 @@ body.light-mode ::-webkit-scrollbar-thumb {
   font-size: 0.74rem;
   letter-spacing: 2.6px;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 600;
   margin: 0 0 14px;
 }
@@ -2513,7 +2528,9 @@ a.card {
     gap: 6px;
   }
   .enq-prog-step {
-    font-size: clamp(0.46rem, 2.35vw, 0.6rem);
+    /* floor was 0.46rem = 7.4px on a narrow phone; 2.35vw put a 390px iPhone at
+       9.2px. Lifted so the smallest phone still clears ~10px. */
+    font-size: clamp(0.62rem, 2.6vw, 0.72rem);
     letter-spacing: 0.5px;
     padding-left: 19px;
   }
@@ -4050,7 +4067,7 @@ body.light-mode .tag-pimpernel {
   flex-shrink: 0;
   font-size: 0.68rem;
   font-weight: 600;
-  color: var(--accent);
+  color: var(--accent-text);
   background: rgba(214, 167, 133, 0.14);
   padding: 2px 9px;
   border-radius: var(--r-pill);
@@ -4577,7 +4594,7 @@ body.owner-mode .chat-widget {
 }
 .inbox-sort-btn.is-on {
   background: rgba(199, 154, 100, 0.16);
-  color: var(--accent);
+  color: var(--accent-text);
   border-color: rgba(199, 154, 100, 0.3);
 }
 /* "Returning guest" pill on an enquiry whose email matches past stays. */
@@ -4705,10 +4722,12 @@ body.owner-mode .chat-widget {
   line-height: 1.04;
 }
 .avail-cell .ac-price {
-  font-size: 0.54rem;
+  /* Was 0.54rem = 8.64px. This is the nightly price — the number a guest opens
+     the calendar to read — so it gets a legible size; the negative tracking that
+     was squeezing it into the cell goes with it. */
+  font-size: 0.7rem;
   color: var(--text-muted);
   margin-top: 1px;
-  letter-spacing: -0.2px;
 }
 .avail-cell.empty {
   background: transparent;
@@ -5703,7 +5722,7 @@ body.admin-screen .site-footer {
   min-width: 0;
 }
 .pipe3-cap {
-  font-size: 0.6rem;
+  font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-muted);
@@ -6186,7 +6205,7 @@ body.light-mode .feed-dot-bad {
   cursor: pointer;
   list-style: none;
   font-size: 0.82rem;
-  color: var(--accent);
+  color: var(--accent-text);
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -6307,7 +6326,7 @@ body.light-mode .feed-dot-bad {
   padding: 1px 7px;
   border-radius: 10px;
   background: rgba(214, 167, 133, 0.18);
-  color: var(--accent);
+  color: var(--accent-text);
   margin-left: 6px;
   vertical-align: middle;
 }
@@ -6370,7 +6389,7 @@ body.light-mode .feed-dot-bad {
   font-size: 0.72rem;
   letter-spacing: 2.6px;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 600;
   text-align: center;
   margin: 0 0 10px;
@@ -6539,7 +6558,7 @@ body.light-mode .feed-dot-bad {
   padding: 7px 13px;
   border-radius: 999px;
   font-size: 0.85rem;
-  color: var(--accent);
+  color: var(--accent-text);
   background: rgba(214, 167, 133, 0.1);
   border: 1px solid rgba(214, 167, 133, 0.25);
 }
@@ -6645,7 +6664,7 @@ body.light-mode .feed-dot-bad {
   color: var(--info-text, var(--text-light));
 }
 .hub-count-u {
-  font-size: 0.6rem;
+  font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-muted);
@@ -7335,6 +7354,15 @@ body.light-mode .feed-dot-bad {
   cursor: pointer;
   text-decoration: none;
   transition: color 0.2s var(--fluid-bezier);
+  /* These are standalone nav links (display:block, one per line), not links
+     inside a sentence, so WCAG 2.2's 24x24 target minimum applies and the
+     inline-link exception doesn't. They measured 20px tall with no padding;
+     the padding both clears the minimum and makes a footer list comfortable
+     to hit with a thumb. */
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 2px 0;
 }
 .footer-links a:hover,
 .footer-links a:focus-visible {
@@ -7463,7 +7491,7 @@ body.light-mode .feed-dot-bad {
   margin-left: auto;
   background: none;
   border: none;
-  color: var(--accent);
+  color: var(--accent-text);
   font: inherit;
   font-weight: 700;
   font-size: 0.86rem;
@@ -9020,7 +9048,7 @@ body.light-mode .datepicker-pop {
   cursor: pointer;
   list-style: none;
   font-size: 0.82rem;
-  color: var(--accent);
+  color: var(--accent-text);
   display: inline-flex;
   align-items: center;
   gap: 6px;
