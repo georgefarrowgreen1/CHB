@@ -372,6 +372,21 @@ had been left OUT of that group and sat at 23px, 1px under WCAG), and
 `.cmdk-group-label` is 0.72rem (was 0.64rem = 10.2px). The row SUB stays
 single-line on purpose — letting every sub wrap makes the list untenable to scan,
 and the money subs already lead with the figure, so what clips is trailing context.
+**`.cmdk-qa-row` is a `<button>` and needs the full `.cmdk-row` reset**, not just
+sizing: its UA chrome had never been removed, so it painted the browser's DEFAULT
+control — `#efefef` face, 2px black border, centred 13px system font (measured
+identical to a bare `<button>` in the same document). That face is nearly invisible
+against light mode's cream, so it survived unseen until a phone in DARK mode showed
+a light-mode button sitting in a dark UI. Its label takes **`--accent-text`**, the
+words-vs-things rule again. ui-test-searchpage §9 gates it in both themes by
+comparing every `#cmdk button` against a bare one — cheap, needs no colour model,
+and it cannot drift with the tokens. Two traps that gate walked into first: the
+quick-action rows only render beneath a SELECTED record (drive it the way §4b does —
+`__cmdkSel` to the row carrying `actions` — because typing a name late in the suite
+returns only chat answers, and the check then passes seeing NOTHING), and
+`getComputedStyle` may hand back `color(srgb 0.99 …)` in **0–1 floats** where
+`rgb()` is 0–255, which makes a near-white surface measure as near-black (that is
+the fourth false contrast failure this codebase has produced — see a11y-test).
 `.cmdk-box` keeps max-width 680px
 (940px sheet) and every inner id, so the entire intelligence stack is unchanged. `openCmdK` snapshots the workspace you came FROM before
 navigating — `__cmdkReturnView`, `__cmdkScope = cmdkDefaultScope()`, `__cmdkEntity =
