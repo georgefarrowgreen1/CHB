@@ -7456,7 +7456,7 @@ function bookingListRow(propKey, b, today) {
                     <span class="prop-tag tag-${propKey}">${escapeHtml(meta.name)}</span>
                     <span class="bk-chip ${payClass}"><span class="bk-dot"></span>${payLabel}${balanceBit}</span>
                 </span>
-                <strong class="bk-row-name">${escapeHtml(b.name || 'Guest')}</strong>
+                <strong class="bk-row-name" title="${escapeHtml(b.name || 'Guest')}">${escapeHtml(b.name || 'Guest')}</strong>
                 <span class="bk-row-dates">${fmtStayRange(b.checkIn, b.checkOut)} · ${escapeHtml(b.guests || (b.adults || 0) + ' adults')}${past ? ' · past' : ''}</span>
             </span>
             <span class="bk-row-arrow" aria-hidden="true">›</span>
@@ -8234,7 +8234,7 @@ function renderBookingHub() {
                 ${contact('Terms', b.termsAcceptedAt ? 'Accepted ' + escapeHtml(b.termsAcceptedAt) + (b.termsVersion ? ' (v' + escapeHtml(b.termsVersion) + ')' : '') : '<span class="bhub-mut">Not recorded</span>')}
             </div>
             <span class="booking-detail-label" style="margin-top:14px;">Staff notes <span class="bhub-mut" style="text-transform:none;letter-spacing:0;">· private, only you see these</span></span>
-            <textarea id="bk-notes-${b.id}" class="input-glass" rows="2" maxlength="2000" placeholder="Add a private note — arriving late, allergies, paid cash for extras…" style="margin:6px 0 0;resize:vertical;font-size:0.9rem;">${b.notes ? escapeHtml(b.notes) : ''}</textarea>
+            <textarea id="bk-notes-${b.id}" class="input-glass" rows="2" maxlength="2000" aria-label="Staff notes — private to you" placeholder="Add a private note — arriving late, allergies, paid cash for extras…" style="margin:6px 0 0;resize:vertical;font-size:0.9rem;">${b.notes ? escapeHtml(b.notes) : ''}</textarea>
             <div style="display:flex;justify-content:flex-end;margin-top:6px;"><button class="btn-sm btn-edit" id="bk-notes-save-${b.id}" ${chbAttrs('saveBookingNote', String(b.id))}>Save note</button></div>
             ${staysHtml}
         </section>`;
@@ -10137,7 +10137,7 @@ function renderExpenses() {
                         <span class="feed-who">${escapeHtml(x.category)}${x.description ? ' · ' + escapeHtml(x.description) : ''}${x.prop_key && propertyMeta[x.prop_key] ? ' · ' + escapeHtml(propertyMeta[x.prop_key].short || propertyMeta[x.prop_key].name) : ''}${x.recurring ? ' <span class="exp-tag">recurring</span>' : ''}</span>
                         ${__expenseReceipts[x.id] ? `<button class="feed-del" title="View scanned receipt" ${chbAttrs('toggleReceiptDetail', x.id)}>🧾</button>` : '<span></span>'}
                         <span class="feed-amt">${gbp(x.amount)}</span>
-                        <span style="display:flex;gap:2px;"><button class="feed-del" title="Edit" ${chbAttrs('editExpense', x.id)}>✎</button>${x.recurring ? `<button class="feed-del" title="Add next month's copy" ${chbAttrs('repeatExpense', x.id)} style="color:var(--accent);">↻</button>` : ''}<button class="feed-del" title="Remove" ${chbAttrs('deleteExpense', x.id)}>×</button></span>
+                        <span style="display:flex;gap:2px;"><button class="feed-del" title="Edit" ${chbAttrs('editExpense', x.id)}>✎</button>${x.recurring ? `<button class="feed-del" title="Add next month's copy" ${chbAttrs('repeatExpense', x.id)} style="color:var(--accent-text);">↻</button>` : ''}<button class="feed-del" title="Remove" ${chbAttrs('deleteExpense', x.id)}>×</button></span>
                       </div>
                       <div id="exp-rd-${x.id}" style="display:none;"></div>
                     </div>`,
@@ -10755,7 +10755,7 @@ function renderMoneyPanel() {
                             <span class="bk-chip ${payClass}"><span class="bk-dot"></span>${payLabel}${gt.fullyPaid ? '' : ' · ' + gbp(gt.balance) + ' due'}</span>
                             ${dueChip}
                         </span>
-                        <strong class="bk-row-name">${escapeHtml(b.name || 'Guest')}</strong>
+                        <strong class="bk-row-name" title="${escapeHtml(b.name || 'Guest')}">${escapeHtml(b.name || 'Guest')}</strong>
                         <span class="bk-row-dates">${fmtStayRange(b.checkIn, b.checkOut)} · ${gbp(gt.paid)} of ${gbp(gt.total)} received${depBit}</span>
                     </span>
                     <span class="bk-row-arrow" aria-hidden="true">›</span>
@@ -15398,9 +15398,9 @@ function seasonGridRowHtml(b) {
     const keys = liveCottageKeys();
     return `
                 <tr class="sg-band">
-                    <td data-label="Season"><input type="text" class="input-glass field-sm" value="${escapeHtml(b.label)}" data-sg="label" placeholder="e.g. Summer"></td>
-                    <td data-label="From"><input type="date" class="input-glass field-sm" value="${b.start || ''}" data-sg="start"></td>
-                    <td data-label="Until"><input type="date" class="input-glass field-sm" value="${b.end || ''}" data-sg="end"></td>
+                    <td data-label="Season"><input type="text" class="input-glass field-sm" value="${escapeHtml(b.label)}" data-sg="label" placeholder="e.g. Summer" aria-label="Season name"></td>
+                    <td data-label="From"><input type="date" class="input-glass field-sm" value="${b.start || ''}" data-sg="start" aria-label="Season start date"></td>
+                    <td data-label="Until"><input type="date" class="input-glass field-sm" value="${b.end || ''}" data-sg="end" aria-label="Season end date"></td>
                     ${keys.map((k) => `<td data-label="${escapeHtml(propertyMeta[k].short || propertyMeta[k].name || k)}"><input type="number" class="input-glass field-sm sg-rate" min="0" step="1" placeholder="—" value="${b.rates[k] || ''}" data-sg-prop="${k}" title="${escapeHtml(propertyMeta[k].name)} £/night (couple)"></td>`).join('')}
                     <td class="sg-del"><button class="btn-sm btn-delete" data-act="closestRemove" data-sel="tr" title="Remove this season everywhere"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg></button></td>
                 </tr>`;
@@ -16337,7 +16337,7 @@ function renderInbox() {
                             <span class="prop-tag tag-${e.propKey}">${escapeHtml(propName)}</span>
                             ${chip}
                         </span>
-                        <strong class="bk-row-name">${escapeHtml(e.name)}${(e.priorStays || 0) > 0 ? ' ★' : ''}</strong>
+                        <strong class="bk-row-name" title="${escapeHtml(e.name)}">${escapeHtml(e.name)}${(e.priorStays || 0) > 0 ? ' ★' : ''}</strong>
                         <span class="bk-row-dates">${fmtStayRange(e.checkIn, e.checkOut)} · ${escapeHtml(e.guests)}${priceLabel}</span>
                     </span>
                     <span class="bk-row-arrow" aria-hidden="true">›</span>
@@ -17497,7 +17497,7 @@ function renderMailboxList(keepSearchFocus) {
                     ${unread ? '<span class="bk-chip warn"><span class="bk-dot"></span>New</span>' : ''}
                     <span class="mbx-when">${mbxEsc(mbxWhen(m.date))}</span>
                 </span>
-                <strong class="bk-row-name">${mbxEsc(m.fromRaw || m.from || 'Unknown sender')}</strong>
+                <strong class="bk-row-name" title="${mbxEsc(m.fromRaw || m.from || 'Unknown sender')}">${mbxEsc(m.fromRaw || m.from || 'Unknown sender')}</strong>
                 <span class="bk-row-dates">${mbxEsc(m.subject)}</span>
             </span>
             <span class="bk-row-arrow" aria-hidden="true">›</span>
@@ -17518,7 +17518,7 @@ function renderMailboxList(keepSearchFocus) {
         <button type="button" class="bk-row glass-panel${__mbxSelSent != null && String(__mbxSelSent) === String(m.id) ? ' is-open' : ''}" ${chbAttrs('mailboxOpenSent', m.id)} aria-expanded="false">
             <span class="bk-row-body">
                 <span class="bk-row-top"><span class="mbx-when">${mbxEsc(mbxWhen(m.sent_at))}</span></span>
-                <strong class="bk-row-name">To: ${mbxEsc(m.to_email)}</strong>
+                <strong class="bk-row-name" title="To: ${mbxEsc(m.to_email)}">To: ${mbxEsc(m.to_email)}</strong>
                 <span class="bk-row-dates">${mbxEsc(m.subject)}</span>
             </span>
             <span class="bk-row-arrow" aria-hidden="true">›</span>
@@ -17644,7 +17644,7 @@ async function mailboxOpen(uid) {
             <pre class="mbx-text">${mbxEsc(m.body || '(no text content)')}</pre>
             ${atts ? `<div class="mbx-atts">${atts}</div>` : ''}
             <div class="bhub-btn-row">
-                <button class="btn-sm btn-edit" style="color:var(--accent);border-color:rgba(199,154,100,0.45);" ${chbAttrs('mailboxReply', uid)}>Reply</button>
+                <button class="btn-sm btn-edit" style="color:var(--accent-text);border-color:rgba(199,154,100,0.45);" ${chbAttrs('mailboxReply', uid)}>Reply</button>
                 <button class="btn-sm btn-edit" ${chbAttrs('mailboxMarkUnread', uid)}>Mark unread</button>
                 <button class="btn-sm btn-edit" style="color:var(--danger);border-color:rgba(229,115,115,0.4);" ${chbAttrs('mailboxDelete', uid)}>Delete</button>
                 <button class="btn-sm btn-edit" data-act="mailboxCollapse">Collapse ▴</button>

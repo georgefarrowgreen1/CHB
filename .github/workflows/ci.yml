@@ -304,6 +304,16 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: node ui-tests.js
 
+      # Accessibility gate: text-token contrast by arithmetic (both themes, every
+      # surface), the accent-as-text ratchet, plus accessible names / minimum
+      # font size / minimum control size read from a real render. Ratchets against
+      # a11y-budget.json — counts may only fall. See the header of a11y-test.js
+      # for what it deliberately does NOT try to measure, and why.
+      - name: Accessibility gate (contrast tokens, names, target sizes)
+        if: steps.fe.outputs.run == 'true'
+        working-directory: "Cottage Holidays Blakeney"
+        run: node a11y-test.js
+
   # Design-regression gate: layout invariants (no horizontal overflow, no
   # content cut off, key content rendered) at phone / tablet / desktop widths.
   # Chromium and WebKit run as parallel matrix legs; WebKit is Safari's engine

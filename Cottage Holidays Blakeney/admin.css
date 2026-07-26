@@ -433,12 +433,15 @@
   font-style: normal;
   opacity: 0.55;
   margin-right: 2px;
-  font-size: 0.58rem;
+  /* was 0.58rem = 9.3px */
+  font-size: 0.66rem;
 }.tl-day b {
   position: absolute;
   top: 0;
   left: 2px;
-  font-size: 0.62rem;
+  /* was 0.62rem = 9.9px; this is the month label, the only thing telling you
+     where you are in a timeline that scrolls for months. */
+  font-size: 0.7rem;
   letter-spacing: 0.04em;
   color: var(--text-light);
   white-space: nowrap;
@@ -450,7 +453,7 @@
 }body.light-mode .tl-day.is-wknd {
   background: rgba(27, 42, 52, 0.055);
 }.tl-day.is-today {
-  color: var(--accent);
+  color: var(--accent-text);
   font-weight: 700;
 }/* Month boundary: a firmer rule down the whole column where a month turns, so
    mid-scroll the turn is visible, not just labelled. */
@@ -587,7 +590,7 @@ body.light-mode .tl-cell.is-mstart {
   font-weight: 600;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--accent);
+  color: var(--accent-text);
   white-space: nowrap;
 }/* Manage → Pricing reuses .ny-row: there the sub carries the DECISION copy
    (dates, % off, one-tap instructions) — it must wrap, not ellipsise to one
@@ -836,7 +839,7 @@ body.light-mode .ny-act {
   max-width: 620px;
 }.bhub-headpay-cap {
   display: block;
-  font-size: 0.6rem;
+  font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
   color: var(--text-muted);
@@ -869,10 +872,14 @@ body.light-mode .ny-act {
 }/* Quiet text-link button — information (the breakdown opener), never competing
    with the real action buttons below it. */
 .bhub-linklike {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  /* A standalone control, so it has to clear WCAG 2.2's 24x24 target minimum —
+     it measured 167x21. The height comes from padding here, not a box. */
+  min-height: 24px;
   background: none;
   border: none;
-  padding: 6px 0 0;
+  padding: 6px 0 2px;
   font-size: 0.8rem;
   color: var(--text-muted);
   cursor: pointer;
@@ -1887,7 +1894,7 @@ body.owner-mode header.header-condensed .logo-mark {
   border-radius: var(--r-panel, 14px);
 }
 .today-filter-bar strong {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 /* Spotlight-style section headers, Top Hit + empty-state example chips. */
 .cmdk-group-label {
@@ -2015,7 +2022,7 @@ body.owner-mode header.header-condensed .logo-mark {
   padding: 9px 12px;
   background: transparent;
   border: none;
-  color: var(--accent);
+  color: var(--accent-text);
   font-size: 0.82rem;
   font-weight: 600;
   cursor: pointer;
@@ -2417,6 +2424,10 @@ body.light-mode .cmdk-editor-input {
   margin-top: 12px;
 }
 .status-rerun {
+  /* measured 42x19 — under the 24x24 minimum for a standalone control. */
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
   background: none;
   border: none;
   color: var(--text-light);
@@ -2424,7 +2435,7 @@ body.light-mode .cmdk-editor-input {
   text-underline-offset: 2px;
   cursor: pointer;
   font: inherit;
-  padding: 0;
+  padding: 0 2px;
 }
 .status-group { max-width: 640px; margin: 0 0 20px; }
 .status-group-title {

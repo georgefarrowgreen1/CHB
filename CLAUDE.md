@@ -41,6 +41,16 @@ build step**); PHP backend files sit alongside it. App-style guest shell lives i
   `body.light-mode`. Never introduce new raw hex/px/easing values for things a token
   covers. `.sr-only` is the visually-hidden-but-announced utility (status live
   regions etc.).
+  **Colour for WORDS vs colour for THINGS.** `--accent` is for icons, stars, borders
+  and fills, which only have to clear the 3:1 non-text bar; WORDS in the brand accent
+  take **`--accent-text`**, because the rose-gold measures 2.60–2.96:1 against all
+  four light surfaces and fails AA outright (it reads 6.5:1 on the dark ground, so
+  the two tokens are the same value in `:root` and only light mode retunes). Same
+  relationship the status tints already had. Every text token is deliberately a shade
+  PAST the pass mark rather than on it — `--warn-text` sat at 4.46:1 and `--ok-text`
+  at exactly 4.50:1 on the timeline's grey band (`#f0f0f0`, darker than the cream
+  those two were tuned against) until they were nudged, so treat 4.5 as the floor to
+  clear, not to land on. **`a11y-test.js`** gates all of it (see Testing / CI).
 - Guest mobile shell CSS/JS is gated to `body.guest-app:not(.owner-mode)` so admin
   (`owner-mode`) and desktop are never affected. Keep new shell rules gated the same way.
 - The site deploys from `main`; the repo is cloned fresh each session (ephemeral
@@ -900,6 +910,23 @@ an `aria-label` ("Price breakdown") that disagrees with its own visible heading
   deliberately does NOT count breakpoint complements, hex in a `--token:`
   declaration, hex in a `var(--x, #fallback)`, or mask/mask-image alpha channels
   (#000/#fff there are not theme colours) — a noisy gate gets worked around.
+  **`a11y-test.js`** (browser-core job, ratchets against `a11y-budget.json`) is the
+  accessibility gate: §1 every text token's contrast BY ARITHMETIC against the real
+  surfaces of both themes (no rendering, so no flake), §2 an accent-as-text ratchet,
+  §3 accessible names on interactive elements, §4 minimum font size, §5 WCAG 2.2's
+  24×24 for standalone controls. Read its header before extending it — a full
+  pixel-sampling contrast crawler was built for the audit behind this gate and
+  produced THREE rounds of confident false failures (a background-compositing model
+  that stopped at a translucent parent; a probe stylesheet leaking into the next
+  measurement; `getComputedStyle` being LIVE, so a colour read after blanking the
+  text came back transparent), which is why the gate only measures things that are
+  cheap AND deterministic. §4/§5 have a real coverage limit, documented in the file:
+  they see only what RENDERS in the harness, and a collapsed container (the cottage
+  availability calendar) or the footer wrapper hides elements from them — check those
+  by computed style instead. The static CSS lesson from the same audit: a
+  `color: var(--accent)` declaration in the stylesheet is NOT evidence it paints —
+  several are overridden by later rules, so of 13 "accent as text" sites only 2 were
+  really rendering. Verify at runtime before "fixing" a colour.
   NB an app.js "account bundle" split was
   MEASURED (Jul 2026, Chromium coverage + a function-level audit) and REJECTED:
   the cleanly signed-in-only slice is only ~9% raw (~14KB gz), so the

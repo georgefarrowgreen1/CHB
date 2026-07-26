@@ -166,7 +166,7 @@
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="CHB Stays">
-    <link rel="stylesheet" href="app.css?v=211">
+    <link rel="stylesheet" href="app.css?v=212">
     <!-- Fonts are SELF-HOSTED (fonts/ — latin-subset variable woff2, @font-face
          in app.css): no Google origins to connect to at all. Preload both so
          text renders in the real faces on first paint (display:swap covers the
@@ -637,7 +637,7 @@
                     <!-- Waitlist as a first-class action — not only buried in sold-out
                          search results. Prefilled with this cottage. -->
                     <div style="text-align:center;margin-top:10px;">
-                        <a style="font-size:0.8rem;color:var(--accent);cursor:pointer;text-decoration:underline;text-underline-offset:3px;" data-act="openWaitlistHere">Dates booked? Get notified if they become available</a>
+                        <a style="font-size:0.8rem;color:var(--accent-text);cursor:pointer;text-decoration:underline;text-underline-offset:3px;" data-act="openWaitlistHere">Dates booked? Get notified if they become available</a>
                     </div>
                 </div>
                 <div class="prop-divider"></div>
@@ -1712,7 +1712,7 @@
         <div class="footer-newsletter" id="footer-newsletter">
             <p style="font-size:0.78rem;color:var(--text-muted);margin:0 0 8px;">Our occasional Blakeney news &amp; offers — no spam, unsubscribe any time.</p>
             <form data-act-submit="submitNewsletter" data-pass="event" style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;max-width:420px;margin:0 auto;">
-                <input type="email" id="nl-email" name="email" autocomplete="email" placeholder="you@example.com" required
+                <input type="email" id="nl-email" name="email" autocomplete="email" placeholder="you@example.com" required aria-label="Your email address for Blakeney news and offers"
                     style="flex:1;min-width:180px;background:var(--glass-bg);border:1px solid var(--glass-border);color:var(--text-light);padding:9px 12px;border-radius:10px;font-family:var(--font-sans);font-size:0.82rem;">
                 <button type="submit" class="btn-glass" style="padding:9px 18px;font-size:0.82rem;width:auto;">Sign up</button>
             </form>
@@ -1727,7 +1727,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=514"></script>
+    <script defer src="app.js?v=515"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
