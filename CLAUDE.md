@@ -200,8 +200,11 @@ node into the pane as a static panel (undocked on folder switch; app.js
 `openMessageThread` self-heals the dock via DOM checks only — never admin
 globals). Email is the full mailbox client (`loadMailbox()`/`mailbox.php`, lazy
 on first open — moved from Manage, and `settingsOpen('mailbox')` redirects
-here); `inboxSub()` sub-folders via
-`INBOX_SUBS`; `dock-badge-inbox` pip), **Payments** (`openAccounts()` →
+here) with its own Inbox|Sent switch in the toolbar; the folder switch itself is the
+only level of nesting — the old `inboxSub()`/`inboxSubClose()` drill-down and its
+`INBOX_SUBS` map are GONE (admin.js says so in a comment; this line documented them
+long after they were removed, so don't go looking for them);
+`dock-badge-inbox` pip), **Payments** (`openAccounts()` →
 `view-accounts` — dock label/titles say "Payments" but the internal ids keep
 their names (`asec-*`, `#money-overview`);
 `accountsOpen(id)` → `#asec-<id>`, incl. the pricing coach), and
@@ -1016,14 +1019,26 @@ flags, check it against this list (all VERIFIED live, Jul 2026):
   sentinels for two `data-pass` kinds the dispatcher serves and static markup uses
   (`data-pass="files"`, `data-pass="event"`). The five sentinels are one API; don't
   split it.
-Two genuine finds that are NOT dead code either, and want fixing rather than deleting:
-`mailboxTab()` is the only writer that can set `__mbxTab='sent'` and NOTHING calls it —
-the mailbox's Sent list is fully built and ui-tested but has **no button**, so the fix
-is the affordance, not a delete (deleting cascades into the whole sent branch). And a
-dozen ids exist with no consumer, of which `#breakdown-modal-title` / `#pay-done-title`
-are clearly meant to be `aria-labelledby` targets — `#breakdown-modal` currently carries
-an `aria-label` ("Price breakdown") that disagrees with its own visible heading
-("Payment breakdown").
+Two genuine finds that were NOT dead code either, and wanted fixing rather than
+deleting — both now FIXED, and they are worth keeping here as the pattern to expect:
+- `mailboxTab()` was the only writer of `__mbxTab='sent'` and had NO caller. The Sent
+  list was fully built, its data already fetched by `loadMailbox()` (inbox + sent in
+  one `Promise.all`) and it was ui-tested — with **no button**, so no owner could ever
+  reach it. The fix was the affordance: an Inbox|Sent `.inbox-sort.seg` switch in the
+  mailbox toolbar, which the toolbar's own comment had promised ("segmented switch on
+  the left") and which was simply never built. The test hid it by calling
+  `mailboxTab('sent')` DIRECTLY — it now CLICKS the tab, which is the only version of
+  that assertion that can fail when the affordance goes missing.
+- `#breakdown-modal` carried an `aria-label` ("Price breakdown") that disagreed with
+  its own visible heading ("Payment breakdown"); it is now
+  `aria-labelledby="breakdown-modal-title"`, so the announced name IS the visible one
+  and cannot drift again. `#pay-done-title` was NOT an `aria-labelledby` target in the
+  end — that reading was wrong, since nothing there needs a name. The real gap was
+  that both payment OUTCOME panels were revealed by flipping `display` with nothing
+  announced and no focus move, so a screen-reader user paid and heard silence:
+  `#pay-done` is `role="status" aria-live="polite"`, `#pay-error` is `role="alert"`,
+  and the reveal now happens BEFORE the text is written (a live region whose content
+  changes while `display:none` is not reliably announced).
 
 ## Testing / CI
 - Before shipping: `node smoke-test.js` (loads index.html + admin.js in a shim;

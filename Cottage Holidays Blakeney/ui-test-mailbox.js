@@ -176,14 +176,32 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(/valid "To"/.test(v), `bad address blocked (${v})`);
 
   console.log('4b. tabs, search, mark unread');
-  await page.evaluate(() => mailboxTab('sent'));
-  await page.waitForTimeout(200);
+  // Reached by CLICKING, not by calling mailboxTab() — this step used to invoke the
+  // function directly, which is precisely how the missing affordance hid: the Sent
+  // branch was fully built and asserted here while mailboxTab had NO caller in the
+  // UI, so the list was unreachable for a real owner. Drive it the way they do.
+  const tabs = await page.evaluate(() => {
+    const btns = [...document.querySelectorAll('#mailbox-body .inbox-sort.seg .inbox-sort-btn')];
+    return { n: btns.length, labels: btns.map((b) => b.textContent.trim().replace(/\s+/g, ' ')), on: btns.filter((b) => b.classList.contains('is-on')).map((b) => b.textContent.trim()) };
+  });
+  ok(tabs.n === 2 && /Inbox/.test(tabs.labels[0]) && /Sent/.test(tabs.labels[1]), `the mailbox has an Inbox|Sent switch (${tabs.labels.join(' | ')})`);
+  ok(tabs.on.length === 1 && /Inbox/.test(tabs.on[0]), `Inbox starts selected (${tabs.on.join(',')})`);
+  const sentBtn = await page.$('#mailbox-body .inbox-sort.seg .inbox-sort-btn:nth-child(2)');
+  ok(!!sentBtn, 'the Sent tab is a real, clickable control');
+  // Guarded so a missing switch reports as failed checks rather than throwing on
+  // null — the checks below then fail on the wrong state, which reads far better
+  // in CI than a stack trace.
+  if (sentBtn) await sentBtn.click();
+  await page.waitForTimeout(250);
   const st = await page.evaluate(() => ({
     rows: document.querySelectorAll('#mailbox-body .bk-row').length,
     text: (document.getElementById('mailbox-body') || {}).textContent || '',
+    on: [...document.querySelectorAll('#mailbox-body .inbox-sort-btn.is-on')].map((b) => b.textContent.trim()).join(','),
+    sel: [...document.querySelectorAll('#mailbox-body .inbox-sort-btn')].map((b) => b.getAttribute('aria-selected')).join(','),
   }));
   // the reply sent in step 3 tops the list; the ledger row sits beneath
   ok(st.rows === 2 && /old@example\.com/.test(st.text) && /guest@example\.com/.test(st.text), `Sent tab lists the just-sent reply + the ledger (${st.rows} rows)`);
+  ok(/Sent/.test(st.on) && st.sel === 'false,true', `the switch moves its selected state with the tap (on=${st.on}, aria=${st.sel})`);
   await page.evaluate(() => mailboxTab('inbox'));
   await page.waitForTimeout(200);
   await page.evaluate(() => mailboxSearch('parking'));

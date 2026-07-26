@@ -883,13 +883,13 @@
                         <div class="pay-receipt-note">You&rsquo;ll get an email receipt straight away.</div>
                     </div>
                 </div>
-                <div id="pay-done" class="pay-done" style="display:none;">
+                <div id="pay-done" class="pay-done" role="status" aria-live="polite" style="display:none;">
                     <div class="pay-done-tick"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9"/></svg></div>
                     <h2 style="font-family:var(--font-serif);margin:14px 0 4px;" id="pay-done-title">Payment received</h2>
                     <p style="color:var(--text-muted);margin:0;" id="pay-done-sub"></p>
                     <button type="button" class="btn-glass" style="margin-top:22px;padding:13px 30px;" data-act="nav" data-view="view-main">Back to the site</button>
                 </div>
-                <div id="pay-error" class="pay-error" style="display:none;">
+                <div id="pay-error" class="pay-error" role="alert" style="display:none;">
                     <p id="pay-error-msg" style="color:var(--text-muted);"></p>
                     <button type="button" class="btn-glass" style="margin-top:14px;padding:12px 26px;" data-act="nav" data-view="view-main">Back to the site</button>
                 </div>
@@ -1123,7 +1123,7 @@
     <!-- The settled "Paid in full" line opens the full price breakdown HERE —
          a window over the page, not a reflow of it. Filled + opened by
          bhubMoneyExpand() (admin.js). -->
-    <div id="breakdown-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-label="Price breakdown" data-act="backdropClose" data-close="closeBreakdownModal">
+    <div id="breakdown-modal" class="modal-overlay pop-modal" role="dialog" aria-modal="true" aria-labelledby="breakdown-modal-title" data-act="backdropClose" data-close="closeBreakdownModal">
         <div class="modal-box glass-panel" style="max-width:420px;">
             <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:6px;">
                 <h3 id="breakdown-modal-title" style="font-family:var(--font-serif);font-size:1.4rem;">Payment breakdown</h3>
@@ -1721,7 +1721,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=527"></script>
+    <script defer src="app.js?v=528"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
