@@ -9762,6 +9762,41 @@ function accountsBack() {
     accountsShowIndex();
 }
 
+// WHAT THE "NET PROFIT" FIGURE IS, honestly — ONE definition, used by the screen,
+// the PDF and the CSV so they can never disagree. Two things routinely make that
+// number read higher than the owner's real profit, and neither is visible in the
+// figures themselves:
+//   • no expenses logged — then it is income less card fees, i.e. a gross margin;
+//   • platform stays (Airbnb / Booking.com) pay out directly and never touch this
+//     site's ledger, so accounts.php (WHERE deposit_paid > 0) can see neither that
+//     income NOR the commission taken off it.
+// Returns plain sentences (no markup) so every surface can render them.
+function accountsScopeCaveats(startYear, expTotal) {
+    const from = `${startYear}-04-06`,
+        to = `${startYear + 1}-04-05`;
+    let ota = 0;
+    try {
+        if (typeof dbBlocks === 'object' && dbBlocks && typeof isOtaBlock === 'function') {
+            Object.keys(dbBlocks).forEach((pk) =>
+                (dbBlocks[pk] || []).forEach((bl) => {
+                    if (isOtaBlock(bl) && bl.checkIn <= to && bl.checkOut >= from) ota++;
+                }),
+            );
+        }
+    } catch (e) {}
+    const out = [];
+    if (!(expTotal > 0.005)) {
+        out.push(
+            'No expenses are logged for this year, so this is income less card fees — not a full profit figure. Add cleaning, laundry, utilities and the rest under Manage expenses.',
+        );
+    }
+    if (ota > 0) {
+        out.push(
+            `${ota} imported ${ota === 1 ? 'stay' : 'stays'} from a booking platform ${ota === 1 ? 'falls' : 'fall'} in this year. Those payouts do not come through this site, so neither that income nor the platform's commission is counted here.`,
+        );
+    }
+    return out;
+}
 async function renderAccounts() {
     const sel = document.getElementById('accounts-year');
     const content = document.getElementById('accounts-content');
@@ -9819,6 +9854,11 @@ async function renderAccounts() {
                 .reduce((a, f) => a + (f.fee || 0), 0);
         return { lbl, inc, exp, net: inc - exp };
     });
+    const scopeBits = accountsScopeCaveats(startYear, expTotal);
+    const scopeNote = scopeBits.length
+        ? `<div class="accounts-note" style="margin-top:10px;">${scopeBits.map(escapeHtml).join(' ')}</div>`
+        : '';
+
     const quarterly = `<div class="mo-card" style="max-width:460px;margin-top:14px;"><div class="mo-card-title">Quarterly breakdown (Making Tax Digital)</div>
                 <div class="feed-list" style="padding:0;">
                     <div class="feed-row" style="grid-template-columns:1fr auto auto auto;gap:10px;font-size:0.68rem;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);"><span>Quarter</span><span>Income</span><span>Costs</span><span>Net</span></div>
@@ -9837,6 +9877,7 @@ async function renderAccounts() {
                     <div class="feed-row" style="grid-template-columns:1fr auto;"><span class="feed-who">Expenses${expYear.length ? ` (${expYear.length})` : ''}</span><span class="feed-amt">− ${gbp(expTotal)}</span></div>
                     <div class="feed-row" style="grid-template-columns:1fr auto;border-top:1px solid var(--glass-border);"><span class="feed-who" style="color:var(--text-light);">Net</span><span class="feed-amt" style="color:var(--text-light);">${gbp(net)}</span></div>
                 </div>
+                ${scopeNote}
                 ${quarterly}
                 <div class="accounts-actions" style="margin-top:14px;">
                     <button class="btn-sm btn-edit" ${chbAttrs('downloadYearStatement', startYear)}><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:13px;height:13px;vertical-align:-2px;margin-right:4px;"><path d="M12 4v11M7 10l5 5 5-5M4 20h16"/></svg>Statement (PDF)</button>
@@ -11005,6 +11046,10 @@ function exportAccountsCSV() {
     const csvKept = accountsReport.kept_deposits || 0;
     const csvNet = inc + csvKept - csvFees - expTotal;
     csv += `\nSummary\nRental income,${inc.toFixed(2)}\n${Math.abs(csvKept) > 0.005 ? `Damage deposits kept,${csvKept.toFixed(2)}\n` : ''}Card processing fees,-${csvFees.toFixed(2)}\nExpenses,${expTotal.toFixed(2)}\n${csvNet < 0 ? 'Net loss' : 'Net profit'},${csvNet.toFixed(2)}\n`;
+    const scopeCsv = accountsScopeCaveats(startYear, expTotal);
+    if (scopeCsv.length) {
+        csv += '\nScope\n' + scopeCsv.map((t) => esc(t)).join('\n') + '\n';
+    }
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -11155,11 +11200,20 @@ async function downloadYearStatement(startYear) {
 
     doc.setFontSize(8);
     doc.setTextColor(120);
-    doc.text(
-        'A record-keeping aid, not formal accounting advice. Income is allocated to the tax year by each payment date.',
-        left,
-        y,
+    // The scope caveats ride on the PDF too — this is the copy that leaves the
+    // building, so it must not imply a completeness the figures don't have.
+    const lines = doc.splitTextToSize(
+        ['A record-keeping aid, not formal accounting advice. Income is allocated to the tax year by each payment date.']
+            .concat(accountsScopeCaveats(startYear, expTotal))
+            .join(' '),
+        right - left,
     );
+    lines.forEach((ln) => {
+        brk();
+        doc.text(ln, left, y);
+        y += 11;
+    });
+    doc.setTextColor(0);
     doc.save(`CHB-Statement-${taxYearShort(startYear).replace('/', '-')}.pdf`);
 }
 

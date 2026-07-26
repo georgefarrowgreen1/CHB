@@ -850,6 +850,19 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   a return in the following tax year leaves a phantom negative in that year. A returned
   deposit was never income and must not move profit at all. Gated by
   test-integration §14 (7 checks; three of them fail against the old query).
+- **What "Net profit" on Payments → Income & tax actually COVERS**, and why the
+  screen says so out loud. `accounts.php` selects `WHERE b.deposit_paid > 0`, i.e.
+  money recorded through THIS site, so two things sit outside the figure and neither
+  is visible in the numbers: **logged expenses only** (with none logged the headline
+  is income less card fees — a gross margin, not profit), and **platform stays** —
+  Airbnb/Booking.com arrive as imported `dbBlocks`, are paid out by the platform and
+  never touch the ledger, so neither that income NOR the commission deducted from it
+  is counted. `accountsScopeCaveats(startYear, expTotal)` (admin.js) is the ONE
+  definition of those caveats — plain sentences, no markup — and the screen, the PDF
+  and the CSV all render it, so the three can't disagree. It counts OTA stays via
+  `isOtaBlock` (excludes `source:'owner'` blocks, which aren't bookings). Gated by
+  ui-test-money §6. NB `dbBlocks` is `const` in app.js — a test must MUTATE it, not
+  reassign it, or the assignment throws and the case silently proves nothing.
 - **Square settlement sync** — a payment's processing FEE and a refund's final
   STATUS (PENDING→COMPLETED) both land a day or two after the action, pushed by the
   `square-webhook.php` events. Because that webhook can be unconfigured, the
