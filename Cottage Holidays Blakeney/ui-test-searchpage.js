@@ -255,6 +255,58 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(rm.transform === 'none', `it just does not grow (${rm.transform})`);
   await page.emulateMedia({ reducedMotion: null });
 
+  // ---- 9. Every control in the window is actually STYLED, in BOTH themes.
+  // `.cmdk-qa-row` was a <button> whose UA chrome had never been removed, so it
+  // painted the browser's default control — an #efefef face, a 2px black border,
+  // centred 13px system-font text. Nobody saw it because that face is nearly
+  // invisible against light mode's cream; on a phone in dark mode it read as a
+  // light-mode button dropped into a dark UI. The test is cheap and deterministic:
+  // compare each control against a bare <button> made in the same document, so it
+  // needs no colour model and cannot drift with the theme tokens.
+  for (const theme of ['dark', 'light']) {
+    await page.evaluate((th) => {
+      document.body.classList.toggle('light-mode', th === 'light');
+      try { closeCmdK(); } catch (e) {}
+    }, theme);
+    await page.waitForTimeout(250);
+    // Quick-action rows only exist beneath a SELECTED RECORD, so the window has to
+    // be answering a real booking AND that row has to be the selected one. Driven
+    // the same way §4b does it — back to the workspace the default scope expects,
+    // then select the row that actually carries actions. Typing the name alone was
+    // not enough this late in the suite: the scope had moved on and the query came
+    // back with only chat answers, which the row-count guard below caught.
+    await page.evaluate(async () => {
+      nav('view-backoffice');
+      openCmdK();
+      await new Promise((r) => setTimeout(r, 350));
+      const i = document.getElementById('cmdk-input');
+      if (i) { i.value = 'bob carter'; cmdkSearchCore('bob carter', false); }
+      await new Promise((r) => setTimeout(r, 400));
+      const idx = __cmdkResults.findIndex((r) => Array.isArray(r.actions) && r.actions.length);
+      if (idx >= 0) { __cmdkSel = idx; __cmdkActSel = -1; cmdkRender(); }
+      await new Promise((r) => setTimeout(r, 250));
+    });
+    const ua = await page.evaluate(() => {
+      const bare = document.createElement('button');
+      document.body.appendChild(bare);
+      const b = getComputedStyle(bare);
+      const uaBg = b.backgroundColor, uaFont = b.fontFamily;
+      bare.remove();
+      const bodyFont = getComputedStyle(document.body).fontFamily;
+      const bad = [...document.querySelectorAll('#cmdk button')].filter((el) => {
+        const cs = getComputedStyle(el);
+        if (el.offsetParent === null) return false; // not rendered → nothing to judge
+        return cs.backgroundColor === uaBg || (cs.fontFamily === uaFont && uaFont !== bodyFont);
+      }).map((el) => `${el.className || el.id} (${getComputedStyle(el).backgroundColor})`);
+      return { bad, qaRows: document.querySelectorAll('#cmdk .cmdk-qa-row').length,
+        _diag: { rows: document.querySelectorAll('#cmdk .cmdk-row').length, sel: document.querySelectorAll('#cmdk .cmdk-row.is-sel').length, open: document.getElementById('cmdk').classList.contains('open'), val: (document.getElementById('cmdk-input')||{}).value, labels: [...document.querySelectorAll('#cmdk .cmdk-row-label')].slice(0,3).map(e=>e.textContent.trim()) } };
+    });
+    if (!ua.qaRows) console.log('     DIAG', JSON.stringify(ua._diag));
+    ok(ua.qaRows > 0, `[${theme}] the quick-action rows are on screen to be judged (${ua.qaRows})`);
+    ok(ua.bad.length === 0, `[${theme}] no control still carries default browser chrome${ua.bad.length ? ' — ' + ua.bad.join(', ') : ''}`);
+  }
+  await page.evaluate(() => document.body.classList.remove('light-mode'));
+
   console.log(fails ? `\n  ${fails} SEARCH-PAGE CHECK(S) FAILED ❌` : '\n  SEARCH-PAGE SUITE PASSED ✅');
   await done(fails);
 })();

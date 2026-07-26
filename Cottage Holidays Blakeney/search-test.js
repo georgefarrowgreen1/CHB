@@ -511,20 +511,29 @@ if (typeof ctx.cmdkRowHtml === 'function') {
 // ---- 15. Unified booking flow (shared admin + guest progress model) ----
 check('bookingFlow helpers are defined', typeof ctx.bookingFlow === 'function' && typeof ctx.bookingFlowCursor === 'function');
 if (typeof ctx.bookingFlow === 'function') {
-    const unpaid = ctx.bookingFlow('x', { agreedPrice: { total: 400, damagesDeposit: 0 }, depositPaid: 0, checkIn: '2026-08-01', checkOut: '2026-08-05' });
+    // The stay dates are RELATIVE, and have to be. Hardcoded as 2026-08-01→05 the
+    // cursor check below failed on 2, 3 and 4 August 2026 — a week after it was
+    // written — because bookingFlowCursor rightly overrides the cursor to the stage
+    // happening NOW, and on those days the seeded stay was in residence. A stay a
+    // month out keeps Deposit as the first unfinished stage at every instant.
+    // (The in-house case further down stays absolute on purpose: 2000→2999 is in
+    // residence whenever you run it, which is exactly what that one is testing.)
+    const fwd = (n) => { const dd = new Date(ctx.todayDashed() + 'T00:00:00Z'); dd.setUTCDate(dd.getUTCDate() + n); return dd.toISOString().slice(0, 10); };
+    const fIn = fwd(30), fOut = fwd(34);
+    const unpaid = ctx.bookingFlow('x', { agreedPrice: { total: 400, damagesDeposit: 0 }, depositPaid: 0, checkIn: fIn, checkOut: fOut });
     const keys = unpaid.stages.map((s) => s.key);
     check('flow has the core stages in order', JSON.stringify(keys) === JSON.stringify(['booked', 'deposit', 'paid', 'arrival', 'stay']));
     check('Booked is always done, Deposit pending when unpaid', unpaid.stages[0].done === true && unpaid.stages[1].done === false);
     check('cursor points at the first unfinished stage (Deposit)', ctx.bookingFlowCursor(unpaid.stages) === 1);
     // Guest-details stage appears only when a reg form exists, sitting after Deposit.
-    const withReg = ctx.bookingFlow('x', { agreedPrice: { total: 400, damagesDeposit: 100 }, depositPaid: 400, regUrl: 'http://x', regSubmitted: true, holdStatus: 'charged', checkIn: '2026-08-01', checkOut: '2026-08-05' });
+    const withReg = ctx.bookingFlow('x', { agreedPrice: { total: 400, damagesDeposit: 100 }, depositPaid: 400, regUrl: 'http://x', regSubmitted: true, holdStatus: 'charged', checkIn: fIn, checkOut: fOut });
     const rkeys = withReg.stages.map((s) => s.key);
     check('reg booking inserts Guest details after Deposit + adds Deposit-back', JSON.stringify(rkeys) === JSON.stringify(['booked', 'deposit', 'details', 'paid', 'arrival', 'stay', 'depositback']));
     check('paid booking marks Deposit + Guest details + Paid done', withReg.stages[1].done && withReg.stages[2].done && withReg.stages[3].done);
     check('stages carry guest wording (glabel)', withReg.stages.find((s) => s.key === 'details').glabel === 'Your details');
     // Guest My Stays renderer: progress pills + an actionable next step.
     if (typeof ctx.guestFlowHtml === 'function') {
-        const html = ctx.guestFlowHtml('x', { agreedPrice: { total: 400, damagesDeposit: 0 }, depositPaid: 0, regUrl: 'https://x/guest-details.php?b=1&token=t', regSubmitted: false, checkIn: '2026-08-01', checkOut: '2026-08-05' }, 'paytok');
+        const html = ctx.guestFlowHtml('x', { agreedPrice: { total: 400, damagesDeposit: 0 }, depositPaid: 0, regUrl: 'https://x/guest-details.php?b=1&token=t', regSubmitted: false, checkIn: fIn, checkOut: fOut }, 'paytok');
         check('guestFlowHtml renders progress pills + the details CTA', /bkflow-step/.test(html) && /Add your details/.test(html) && /guest-details\.php/.test(html));
         // A guest who's currently in-house → the Stay step reads GREEN (is-staying).
         const staying = ctx.guestFlowHtml('x', { agreedPrice: { total: 400, damagesDeposit: 0 }, depositPaid: 400, checkIn: '2000-01-01', checkOut: '2999-01-01' }, 't');
@@ -581,27 +590,64 @@ if (typeof ctx.cmdkRowHtml === 'function') {
 }
 
 // ---- 19. Time-aware check-in (arrival → staying flips at the check-in TIME) ----
+//
+// This section PINS the clock, and has to. Written against the real wall clock it
+// asserted that a 23:59 check-in "is not yet checked in" — true for 1439 minutes
+// of the day and false for the last one, so CI failed for exactly the 23:59 minute
+// in London (reproduced by shifting the clock: the same code passes at 23:00:05 and
+// fails at 23:59:20). It could also break across the midnight roll, since `today`
+// is captured here but re-read inside the helper.
+//
+// ukNowParts() is the ONE clock reader behind BOTH todayDashed() and
+// ukNowMinutes(), so stubbing it pins the date and the time of day in lockstep —
+// they cannot drift apart, which is the whole reason the helpers share it. Pinning
+// also makes the boundary assertable in BOTH directions instead of only whichever
+// minute CI happens to start in: 23:59 has not arrived at 09:00, and HAS at 23:59.
 if (typeof ctx.hasCheckedIn === 'function') {
-    const today = ctx.todayDashed();
+    const realParts = ctx.ukNowParts;
+    const atClock = (hh, mm, fn) => {
+        vm.runInContext(`globalThis.__realParts = ukNowParts; ukNowParts = () => ({ y: 2026, m: 7, d: 15, hh: ${hh}, mm: ${mm} });`, ctx);
+        try { fn(); } finally { vm.runInContext('ukNowParts = globalThis.__realParts; delete globalThis.__realParts;', ctx); }
+    };
+    const today = '2026-07-15';
     const plus = (n) => {
         const d = new Date(today + 'T00:00:00Z');
         d.setUTCDate(d.getUTCDate() + n);
         return d.toISOString().slice(0, 10);
     };
-    check('a past-arrival booking counts as checked in', ctx.hasCheckedIn({ checkIn: plus(-1), checkInTime: '15:00' }) === true);
-    check('a future-arrival booking is not checked in', ctx.hasCheckedIn({ checkIn: plus(2), checkInTime: '15:00' }) === false);
-    // Arrival TODAY is time-driven: a 00:00 check-in has always passed; a 23:59
-    // one effectively never has during the working day.
-    check('today arrival at 00:00 reads as checked in', ctx.hasCheckedIn({ checkIn: today, checkInTime: '00:00' }) === true);
-    check('today arrival at 23:59 is not yet checked in', ctx.hasCheckedIn({ checkIn: today, checkInTime: '23:59' }) === false);
-    // Departure + in-residence counterparts (the "who's here" fix: a guest
-    // arriving today at 15:00 isn't in the cottage at breakfast).
-    check('a past-checkout booking counts as checked out', ctx.hasCheckedOut({ checkOut: plus(-1), checkOutTime: '10:00' }) === true);
-    check('a future-checkout booking is not checked out', ctx.hasCheckedOut({ checkOut: plus(2), checkOutTime: '10:00' }) === false);
-    check('today checkout at 00:00 reads as checked out', ctx.hasCheckedOut({ checkOut: today, checkOutTime: '00:00' }) === true);
-    check('today checkout at 23:59 is not yet checked out', ctx.hasCheckedOut({ checkOut: today, checkOutTime: '23:59' }) === false);
-    check('arriving-today-at-23:59 is NOT in residence yet', ctx.isInResidence({ checkIn: today, checkInTime: '23:59', checkOut: plus(3), checkOutTime: '10:00' }) === false);
-    check('a mid-stay guest IS in residence', ctx.isInResidence({ checkIn: plus(-1), checkInTime: '15:00', checkOut: plus(2), checkOutTime: '10:00' }) === true);
+    atClock(9, 0, () => {
+        check('the pinned clock reaches the helpers (todayDashed follows ukNowParts)', ctx.todayDashed() === today, 'got ' + ctx.todayDashed());
+        check('a past-arrival booking counts as checked in', ctx.hasCheckedIn({ checkIn: plus(-1), checkInTime: '15:00' }) === true);
+        check('a future-arrival booking is not checked in', ctx.hasCheckedIn({ checkIn: plus(2), checkInTime: '15:00' }) === false);
+        // Arrival TODAY is time-driven: at 09:00 a 00:00 check-in has passed and a
+        // 23:59 one has not.
+        check('today arrival at 00:00 reads as checked in', ctx.hasCheckedIn({ checkIn: today, checkInTime: '00:00' }) === true);
+        check('today arrival at 23:59 is not yet checked in (clock 09:00)', ctx.hasCheckedIn({ checkIn: today, checkInTime: '23:59' }) === false);
+        // Departure + in-residence counterparts (the "who's here" fix: a guest
+        // arriving today at 15:00 isn't in the cottage at breakfast).
+        check('a past-checkout booking counts as checked out', ctx.hasCheckedOut({ checkOut: plus(-1), checkOutTime: '10:00' }) === true);
+        check('a future-checkout booking is not checked out', ctx.hasCheckedOut({ checkOut: plus(2), checkOutTime: '10:00' }) === false);
+        check('today checkout at 00:00 reads as checked out', ctx.hasCheckedOut({ checkOut: today, checkOutTime: '00:00' }) === true);
+        check('today checkout at 23:59 is not yet checked out (clock 09:00)', ctx.hasCheckedOut({ checkOut: today, checkOutTime: '23:59' }) === false);
+        check('arriving-today-at-23:59 is NOT in residence yet (clock 09:00)', ctx.isInResidence({ checkIn: today, checkInTime: '23:59', checkOut: plus(3), checkOutTime: '10:00' }) === false);
+        check('a mid-stay guest IS in residence', ctx.isInResidence({ checkIn: plus(-1), checkInTime: '15:00', checkOut: plus(2), checkOutTime: '10:00' }) === true);
+    });
+    // The two ends of the day, which the wall-clock version could only ever see by
+    // luck. The comparison is `nowMins >= mins`, so a time is reached the minute it
+    // shows on the clock — 23:59 at 23:59, 00:00 at 00:00.
+    atClock(23, 59, () => {
+        check('at 23:59 a 23:59 arrival HAS checked in', ctx.hasCheckedIn({ checkIn: today, checkInTime: '23:59' }) === true);
+        check('at 23:59 a 23:59 checkout HAS checked out', ctx.hasCheckedOut({ checkOut: today, checkOutTime: '23:59' }) === true);
+        check('at 23:59 a 15:00 arrival is in residence (checkout still days off)', ctx.isInResidence({ checkIn: today, checkInTime: '15:00', checkOut: plus(3), checkOutTime: '10:00' }) === true);
+    });
+    atClock(0, 0, () => {
+        check('at 00:00 a 00:00 arrival HAS checked in', ctx.hasCheckedIn({ checkIn: today, checkInTime: '00:00' }) === true);
+        check('at 00:00 a 15:00 arrival has NOT checked in', ctx.hasCheckedIn({ checkIn: today, checkInTime: '15:00' }) === false);
+        check('at 00:00 a 10:00 checkout has NOT checked out', ctx.hasCheckedOut({ checkOut: today, checkOutTime: '10:00' }) === false);
+    });
+    // Identity, not a date comparison — a date comparison would itself flake across
+    // the midnight roll, which is the class of bug this section is fixing.
+    check('the real clock is handed back afterwards', ctx.ukNowParts === realParts && vm.runInContext("typeof globalThis.__realParts", ctx) === 'undefined');
 }
 // isOtaBlock — an imported OTA booking is a real guest / booked night; the
 // owner's own maintenance block is not (blocked-out dates aren't booking days).
@@ -1007,7 +1053,9 @@ if (typeof ctx.chbCompute === 'function' && typeof ctx.chbAlmanac === 'function'
     r = comp('what day is 25 december');
     check('date: "what day is 25 december" names the weekday', r && /is a (Mon|Tues|Wednes|Thurs|Fri|Satur|Sun)day/.test(r.label), lbl(r));
     r = comp('days until christmas');
-    check('date arithmetic: "days until christmas" counts days', r && /\d+ days until/.test(r.label), lbl(r));
+    // "N days until …" for most of the year, but the 24th and the 25th word it as
+    // Tomorrow / That's today — so a bare "\d+ days until" fails on exactly two days.
+    check('date arithmetic: "days until christmas" counts days', r && /(\d+ days until|Tomorrow —|That.s today —)/.test(r.label), lbl(r));
     r = comp('how long until 20 august');
     check('"how long until 20 august" answers (regression: alt phrasing once threw)', r && !r.threw && /days until/.test(r.label), lbl(r));
     r = comp('time in tokyo');
@@ -1063,10 +1111,52 @@ if (typeof ctx.cmdkIntent === 'function') {
     check(`average stay: (4+2+7+2+2)/5 = 3.4 nights, widened to ${yr}`, new RegExp(`3\\.4-night average stay in ${yr}`).test(h) && /shortest 2, longest 7/.test(h), h);
     h = head('how long do guests stay');
     check('habitual "how long do guests stay" answers the average, not one guest', /average stay/.test(h), h);
-    h = head('average stay in march');
-    check('explicit period keeps it: "average stay in march" → 7 nights', /7-night average stay in March/.test(h), h);
+    // The year is NAMED, and has to be. A bare month means the most RECENT instance
+    // ("how much did I earn in December" asked in February means last December), so
+    // with the seed written into the current year this asked about March of the year
+    // BEFORE and answered "no stays yet" every January and February. Naming the
+    // year still exercises what the check is for — an explicit period is kept
+    // instead of widening to the whole year.
+    h = head(`average stay in march ${yr}`);
+    check(`explicit period keeps it: "average stay in march ${yr}" → 7 nights`, /7-night average stay in March/.test(h), h);
     h = head('average nightly rate');
     check('average RATE family still intact (not hijacked by average stay)', /avg\/night/.test(h), h);
+    // The habitual question with a FUTURE booking on the books — which is the real
+    // state of an owner's calendar nearly all the time, and the state the checks
+    // above never covered. The singular "the guest" composer resolves to ONE stay
+    // (the soonest, when nobody is in residence) and used to claim these phrasings,
+    // so "how long do guests stay" answered "Tom Reed is staying 7 nights" instead
+    // of the average. The seed above only escaped it by having nothing upcoming,
+    // which is also why this failed for five months of the year and not the rest.
+    const soon = (nn) => { const dd = new Date(); dd.setUTCDate(dd.getUTCDate() + nn); return dd.toISOString().slice(0, 10); };
+    ctx.__seedFut = ctx.__seedR.concat([{ id: 16, name: 'Future Fran', email: 'fran@example.com', checkIn: soon(10), checkOut: soon(13), adults: 2, children: 0, payment: 'paid', holdStatus: 'none', agreedPrice: { total: 400 } }]);
+    vm.runInContext('dbBookings.jollyboat = __seedFut; __cmdkCustomers = null;', ctx);
+    h = head('how long do guests stay');
+    check('habitual question is NOT hijacked by an upcoming booking', /average stay/.test(h) && !/Future Fran/.test(h), h);
+    h = head('how long do guests usually stay');
+    check('"usually" between the words does not shake the veto off', /average stay/.test(h) && !/Future Fran/.test(h), h);
+    h = head('how many nights do guests stay');
+    check('"how many NIGHTS do guests stay" is length-of-stay, not nights-booked', /average stay/.test(h) && !/Future Fran/.test(h) && !/booked/.test(h), h);
+    h = head('typical stay');
+    check('"typical stay" belongs to the average family (never matched askLong)', /average stay/.test(h) && !/Future Fran/.test(h), h);
+    // The AGGREGATE counterpart, and the worst of the three: the composer matched on
+    // the bare words "how many nights" + "book", so a core business metric was
+    // answered with one guest's booking.
+    h = head('how many nights booked this month');
+    check('"how many nights booked this month" is the aggregate, not one booking', /nights? booked this month/.test(h) && !/Future Fran/.test(h), h);
+    // The singular composer must still own the SINGULAR phrasings — the vetoes are
+    // meant to be narrow, and these are what prove they did not swallow everything.
+    // Fran is the ONLY booking for these two, deliberately: the composer resolves to
+    // the SOONEST upcoming stay, and the seed above carries fixed calendar dates, so
+    // on some days one of those is sooner than Fran and the composer rightly names it
+    // instead. Naming Fran against the mixed seed made this check date-dependent —
+    // caught by the clock sweep at 29/02/2028, and the exact sin this section is about.
+    ctx.__seedOnly = [ctx.__seedFut[ctx.__seedFut.length - 1]];
+    vm.runInContext('dbBookings.jollyboat = __seedOnly; __cmdkCustomers = null;', ctx);
+    h = head('how long is the guest staying');
+    check('but the singular "how long is the guest staying" still names the guest', /Future Fran is staying 3 nights/.test(h), h);
+    h = head('how many nights is the guest staying');
+    check('and so does "how many nights is the guest staying"', /Future Fran is staying 3 nights/.test(h), h);
     vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);__cmdkCustomers=null;', ctx);
 }
 
@@ -1305,8 +1395,22 @@ if (typeof ctx.chbSeasonSplice === 'function') {
     check('SET absolute: dated preview with current→new maths', new RegExp(`Set Jollyboat to £150/night · 20/12/\\d{4}–22/12/\\d{4} \\| Currently £${decCur}/night → £150`).test(h), h);
     h = head('discount jollyboat by 10% for next weekend');
     check('DISCOUNT %: computed from the SEASON-aware current rate (£140→£126)', /£126\/night/.test(h) && /£140\/night → £126 \(-10%\)/.test(h), h);
-    h = head('raise jollyboat prices 15% for september');
-    check('RAISE % for a bare month: whole-month override (1st–30th)', /£161\/night · 01\/09\/\d{4}–30\/09\/\d{4}/.test(h), h);
+    // A bare month name, derived rather than written down. "september" was
+    // hardcoded and the check failed in 10 of 12 months: the command requires a
+    // FUTURE start, so mid-September it fell through to the generic rates action
+    // entirely; and the seeded season only spans today→+60, so outside high summer
+    // the current rate resolved to the £130 base instead of £140 and the expected
+    // £161 never appeared. Month-after-next is always fully in the future, and the
+    // current rate is read from the model the same way decCur is above — leaving
+    // the check about what its name says: a bare month covers the whole month.
+    const bareD = new Date(+today.slice(0, 4), +today.slice(5, 7) + 1, 1); // 1st of month-after-next
+    const bareName = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'][bareD.getMonth()];
+    const bareMM = String(bareD.getMonth() + 1).padStart(2, '0');
+    const bareLast = new Date(bareD.getFullYear(), bareD.getMonth() + 1, 0).getDate();
+    const bareCur = ctx.chbCoupleRateOn('jollyboat', `${bareD.getFullYear()}-${bareMM}-01`);
+    h = head(`raise jollyboat prices 15% for ${bareName}`);
+    check(`RAISE % for a bare month: whole-month override (01–${bareLast} ${bareName})`,
+        new RegExp(`£${Math.round(bareCur * 1.15)}/night · 01/${bareMM}/\\d{4}–${bareLast}/${bareMM}/\\d{4}`).test(h), h);
     // Guards.
     check('"change prices" (no cottage/dates) keeps the generic rates action', /Change prices & rates/.test(head('change prices')), head('change prices'));
     check('nonsense with a set-verb falls through', head('set the table for dinner') === '(none)');
@@ -1451,9 +1555,19 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.chbCompute === 'funct
         const pr = ctx.cmdkParseDates(`${dd - 1} ${mon} to ${dd + 2} ${mon}`, t);
         check('a both-months same-month range never reverses across the year', pr && pr.from <= pr.to, JSON.stringify(pr));
     }
-    // Breadth date maths seed from the UK day (not the device clock).
+    // Breadth date maths seed from the UK day (not the device clock). The weekday is
+    // DERIVED — it used to say "Friday", true only of 25 December 2026, so this would
+    // have hard-failed from 26 December 2026 onward and permanently after (the clock
+    // sweep caught it in 2027/2028). Christmas rolls to next year the day AFTER the
+    // 25th, and that wording carries a comma + the year; the 24th and the 25th are not
+    // "N days until" at all, so all four shapes are covered rather than the common one.
+    const xToday = ctx.todayDashed();
+    const xYear = xToday.slice(5) > '12-25' ? +xToday.slice(0, 4) + 1 : +xToday.slice(0, 4);
+    const xDow = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][new Date(Date.UTC(xYear, 11, 25)).getUTCDay()];
     const xmas = ctx.chbCompute('days until christmas');
-    check('breadth "days until christmas" answers from the UK day', !!(xmas && /\d+ days until Friday 25 December/.test(xmas.label)), xmas && xmas.label);
+    check('breadth "days until christmas" answers from the UK day',
+        !!(xmas && new RegExp(`(\\d+ days until|Tomorrow —|That.s today —) ${xDow},? 25 December`).test(xmas.label)),
+        `${xDow} expected · got: ${xmas && xmas.label}`);
     // A bare numeric range isn't treated as subtraction.
     check('"12-15" is NOT computed as -3', !ctx.chbCompute('12-15'), (ctx.chbCompute('12-15') || {}).label);
     check('"20-24" is NOT computed', !ctx.chbCompute('20-24'));

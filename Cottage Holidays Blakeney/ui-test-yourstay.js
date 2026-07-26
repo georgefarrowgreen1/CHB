@@ -18,9 +18,20 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.getMonth(), t.getDate() + n); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
   const mk = (pk, inD, outD, extra) => Object.assign({ prop_key: pk, check_in: inD, check_out: outD, adults: 2, children: 0, id: Math.floor(Math.random() * 1e6) }, extra || {});
 
-  const openPage = async (guest, bookings) => {
+  // London wall-clock time TODAY, as a Date — for pinning the page's clock. The
+  // checkout-time cases below are about the time of DAY, and asserting those against
+  // whatever time CI happens to run at only works for part of the day: `nowMins >=
+  // mins`, so a 23:59 checkout HAS passed during the 23:59 minute and "still to
+  // come" is false exactly then. Pinning keeps the same calendar day (so the d(n)
+  // helper, which runs in node, still agrees) and fixes only the hour.
+  const todayAt = (hh, mm, ss) => { const t = new Date(); return new Date(t.getFullYear(), t.getMonth(), t.getDate(), hh, mm, ss || 0); };
+
+  const openPage = async (guest, bookings, opts) => {
     const page = await browser.newPage({ viewport: { width: 900, height: 900 } });
     page.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
+    // setFixedTime, not install(): it fixes Date.now()/new Date() and leaves the
+    // timers running, so the app's own setTimeouts still fire normally.
+    if (opts && opts.at) await page.clock.setFixedTime(opts.at);
     await page.addInitScript(() => { if (navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {}); });
     await page.route(/\.php/, (route) => {
       const url = route.request().url();
@@ -118,18 +129,30 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
 
   // 8) Checkout day, checkout time ALREADY passed (00:00) → the guest has
   // departed, so the booking is a Past stay THAT SAME DAY, no in-residence hub.
-  page = await openPage({ name: 'Just Left', email: 'jl@x.co' }, [mk('jollyboat', d(-3), d(0), { payment: 'paid', check_out_time: '00:00' })]);
+  // Clock pinned to mid-morning: at exactly 00:00 the checkout would be only just
+  // reached, which is the boundary case 10 covers deliberately.
+  page = await openPage({ name: 'Just Left', email: 'jl@x.co' }, [mk('jollyboat', d(-3), d(0), { payment: 'paid', check_out_time: '00:00' })], { at: todayAt(9, 0) });
   let s = await stayState(page);
   ok(!s.inStay && s.badges.includes('Past stay') && s.headers.some((h) => /Past stays/.test(h)),
     `departed today (checkout passed) → Past stays, no in-stay hub (hub=${s.inStay}, badges=${s.badges.join(',')})`);
   await page.close();
 
   // 9) Checkout day, checkout time STILL TO COME (23:59) → not departed yet, so
-  // the guest is still in residence and the booking is NOT a Past stay.
-  page = await openPage({ name: 'Still Here', email: 'sh@x.co' }, [mk('jollyboat', d(-3), d(0), { payment: 'paid', check_out_time: '23:59' })]);
+  // the guest is still in residence and the booking is NOT a Past stay. Pinned for
+  // the reason above: run this in the 23:59 minute and 23:59 is not "to come".
+  page = await openPage({ name: 'Still Here', email: 'sh@x.co' }, [mk('jollyboat', d(-3), d(0), { payment: 'paid', check_out_time: '23:59' })], { at: todayAt(9, 0) });
   s = await stayState(page);
   ok(s.inStay && !s.badges.includes('Past stay') && !s.headers.some((h) => /Past stays/.test(h)),
     `checkout still to come → in-residence, not yet Past (hub=${s.inStay}, badges=${s.badges.join(',')})`);
+  await page.close();
+
+  // 10) The far end of the same day — the case a wall-clock run could only ever hit
+  // by luck, and the one that used to break case 9. The comparison is `nowMins >=
+  // mins`, so at 23:59 a 23:59 checkout IS reached and the stay drops to Past.
+  page = await openPage({ name: 'Late Left', email: 'll@x.co' }, [mk('jollyboat', d(-3), d(0), { payment: 'paid', check_out_time: '23:59' })], { at: todayAt(23, 59, 30) });
+  s = await stayState(page);
+  ok(!s.inStay && s.badges.includes('Past stay'),
+    `at 23:59 a 23:59 checkout IS reached → Past stay (hub=${s.inStay}, badges=${s.badges.join(',')})`);
   await page.close();
 
   console.log(fails ? `\n  ${fails} YOUR-STAY CHECK(S) FAILED ❌` : '\n  YOUR-STAY SUITE PASSED ✅');

@@ -2167,11 +2167,31 @@ body.light-mode .cmdk-editor-input {
   backdrop-filter: saturate(1.1) blur(6px);
   box-shadow: 0 6px 16px -14px rgba(20, 26, 30, 0.3);
 }
-.cmdk-qa-row,
 .cmdk-qa-ic {
   display: inline-flex;
   flex-shrink: 0;
   color: var(--accent);
+}
+/* Reset like .cmdk-row (same house pattern, not a second one): this is a <button>
+   whose UA chrome was never removed, so it painted the browser's default control —
+   #efefef face, 2px black border, centred 13px system font. Invisible against light
+   mode's cream, glaring on the dark ground. --accent-text not --accent: WORDS, and
+   the rose-gold fails AA on light surfaces (same value on the dark one). */
+.cmdk-qa-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  background: none;
+  border: none;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  color: var(--accent-text);
+}
+.cmdk-qa-row:hover {
+  background: var(--glass-hover);
 }
 .cmdk-qa-ic .ic {
   width: 17px;
