@@ -237,6 +237,27 @@ textarea:focus-visible,
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-l: env(safe-area-inset-left, 0px);
 }
+/* Inside the owner's read-only account-preview iframe there is no notch to clear:
+   the frame's edges are the overlay's, and the overlay already inset itself.
+   iOS hands env(safe-area-inset-*) down into a same-origin iframe though, so
+   every max(design, var(--safe-t)) in here would inset a SECOND time and push
+   the guest header down the frame. Set by app.js injectPreviewBanner when it
+   detects it is embedded. */
+body.acct-preview-embedded {
+  --safe-t: 0px;
+  --safe-r: 0px;
+  --safe-b: 0px;
+  --safe-l: 0px;
+}
+/* NB this reaches the token-based rules only. `header` and `.container` still call
+   env() DIRECTLY (app.css ~573 / ~1583), so if iOS really does hand the device
+   insets into a same-origin iframe, those two would still inset twice. Restating
+   them without the inset term was tried and REVERTED: the override out-specifies
+   the guest shell's own `top`, which moved the header 10px→20px inside the frame
+   and made the preview stop matching what the customer actually sees — the one
+   thing this feature exists to guarantee. Fixing it properly means migrating those
+   rules to the tokens (36 raw env() sites, a separate job), not special-casing the
+   preview. */
 
 /* ---- COASTAL FRESH (light): the guest default. Warm linen ground, white
            glass, ink-slate text, rose-gold + sea/sky secondary accents, soft

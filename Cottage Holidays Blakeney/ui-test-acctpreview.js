@@ -110,6 +110,78 @@ const acctPayload = {
   ok(closed.gone && closed.unlocked, 'closeAccountPreview tears the container down');
   await page.close();
 
+  // ---- C) HOW IT'S SHOWN on a notched phone ----
+  // On an iPhone the overlay's flat 24px padding put the shell's top edge at 34px
+  // against a 59px inset, so the bar — the customer's name and the Close button —
+  // sat UNDER the status bar / Dynamic Island. And the decorative phone-shaped
+  // frame cost more than it said: 342x776 inside a 390x844 phone, spending 48px of
+  // width on chrome so the customer's account got 66% of the screen.
+  page = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  page.on('pageerror', (e) => { console.log('  PAGEERR:', e.message); fails++; });
+  await page.addInitScript(() => { if (navigator.serviceWorker) navigator.serviceWorker.register = () => new Promise(() => {}); });
+  await route(page, { admin: true });
+  await page.goto(`${base}/index.html`, { waitUntil: 'networkidle' });
+  // env() always reports 0 in a desktop browser, so a notch is invisible to CI
+  // unless we set the tokens the app reads it into (see app.css :root --safe-*).
+  const SAFE_T = 59, SAFE_B = 34;
+  await page.addStyleTag({ content: `:root{--safe-t:${SAFE_T}px;--safe-b:${SAFE_B}px;}` });
+  await page.evaluate(async () => { isAuthenticated = true; document.body.classList.add('owner-mode'); await window.loadAdminBundle(); });
+  await page.waitForTimeout(300);
+  await page.evaluate(() => openAccountPreview(77, 'Cara Nunn'));
+  await page.waitForTimeout(1400);
+  const ph = await page.evaluate(() => {
+    const ov = document.getElementById('acct-preview-overlay');
+    const shell = ov.querySelector('.acct-preview-shell');
+    const bar = ov.querySelector('.acct-preview-bar');
+    const wrap = ov.querySelector('.acct-preview-frame-wrap');
+    const r = (el) => { const b = el.getBoundingClientRect(); return { t: Math.round(b.top), l: Math.round(b.left), w: Math.round(b.width), h: Math.round(b.height), b: Math.round(b.bottom) }; };
+    const bg = getComputedStyle(shell).backgroundColor;
+    const alpha = (bg.match(/[\d.]+/g) || [])[3];
+    return { vw: innerWidth, vh: innerHeight, shell: r(shell), bar: r(bar), wrap: r(wrap), shellBg: bg, shellAlpha: alpha == null ? 1 : +alpha };
+  });
+  ok(ph.bar.t >= SAFE_T, `the bar clears the notch — top ${ph.bar.t}px vs a ${SAFE_T}px inset`);
+  ok(ph.wrap.b <= ph.vh - SAFE_B + 1, `and the frame clears the home indicator — bottom ${ph.wrap.b} of ${ph.vh - SAFE_B}`);
+  ok(ph.shell.w >= ph.vw - 2, `on a phone it is a full-screen sheet, not a phone-inside-a-phone (${ph.shell.w} of ${ph.vw}px wide)`);
+  // Opaque: the shell frames a whole other app, so the back office must not ghost
+  // through it (the admin dock used to show behind the customer's name).
+  ok(ph.shellAlpha >= 0.99, `the shell is opaque so the back office can't show through (${ph.shellBg})`);
+  // The note is supporting text; the name is the identity. One line on a phone,
+  // or the bar doubles in height.
+  const oneLine = await page.evaluate(() => {
+    const n = document.querySelector('.acct-preview-note');
+    return { h: Math.round(n.getBoundingClientRect().height), lh: Math.round(parseFloat(getComputedStyle(n).lineHeight) || 0) };
+  });
+  ok(oneLine.lh === 0 || oneLine.h <= oneLine.lh + 2, `the muted note stays on one line (${oneLine.h}px vs line-height ${oneLine.lh})`);
+  // The frame's edges are the overlay's, not the device's, and the overlay already
+  // inset itself — so inside the frame the safe-area tokens must read ZERO. (iOS
+  // hands env() down into a same-origin iframe; without this every token-based rule
+  // in there insets a second time.)
+  const inFrame = page.frames().find((f) => /acctpreview=77/.test(f.url()));
+  if (inFrame) {
+    // Reading the tokens as-is proves nothing: Chromium keeps env() at 0 inside an
+    // iframe, so they read 0 whether or not we neutralise them. FORCE non-zero
+    // insets onto the frame's :root — that is what iOS effectively does — and then
+    // the body-level override is the only thing that can bring them back to 0.
+    const z = await inFrame.evaluate(() => {
+      const st = document.createElement('style');
+      st.textContent = ':root{--safe-t:59px;--safe-b:34px;}';
+      document.head.appendChild(st);
+      const cs = getComputedStyle(document.body);
+      const root = getComputedStyle(document.documentElement);
+      return {
+        embedded: document.body.classList.contains('acct-preview-embedded'),
+        t: cs.getPropertyValue('--safe-t').trim(), b: cs.getPropertyValue('--safe-b').trim(),
+        rootT: root.getPropertyValue('--safe-t').trim(),
+      };
+    });
+    ok(z.embedded, 'the embedded frame knows it is embedded');
+    ok(z.rootT === '59px', `(the iOS simulation took — :root reads ${z.rootT})`);
+    ok(/^0(px)?$/.test(z.t) && /^0(px)?$/.test(z.b), `and it neutralises them anyway (body t=${z.t} b=${z.b})`);
+  } else {
+    ok(false, 'the preview frame was not found for the safe-area check');
+  }
+  await page.close();
+
   console.log(fails ? `\n  ${fails} ACCT-PREVIEW CHECK(S) FAILED ❌` : '\n  ACCT-PREVIEW SUITE PASSED ✅');
   await done(fails);
 })();

@@ -11,7 +11,7 @@ const ADMIN_BUNDLE_V = 272;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 85;
+const ADMIN_CSS_V = 86;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -2276,7 +2276,16 @@ function injectPreviewBanner() {
     // ?acctpreview= tab (parent === self) and the staging test-centre preview
     // keep their banner as the only read-only indicator.
     try {
-        if (ACCT_PREVIEW && window.parent && window.parent !== window) return;
+        if (ACCT_PREVIEW && window.parent && window.parent !== window) {
+            // EMBEDDED: our edges are the overlay's, not the device's, and the
+            // overlay already inset itself past the notch. iOS propagates
+            // env(safe-area-inset-*) into a same-origin iframe, so without this
+            // the guest header inside gets inset a SECOND time and floats down
+            // the frame leaving a band of dead space under the bar. Zeroing the
+            // tokens here is true by construction, not a workaround.
+            document.body.classList.add('acct-preview-embedded');
+            return;
+        }
     } catch (e) {}
     const bar = document.createElement('div');
     bar.id = 'preview-banner';
@@ -13223,7 +13232,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'a11yfix1';
+    const BUILD = 'acctprev1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
