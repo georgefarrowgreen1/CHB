@@ -352,7 +352,17 @@ state, and every existing caller wanted that (a result run closes then navigates
 the overlay's own class via a DOM check (app.js may not reach admin globals) so ANY navigation
 while it is open still files the dead-end miss and supersedes in-flight searches. `body.cmdk-open`
 locks the page scroll and `.cmdk-results` scrolls inside the box with `overscroll-behavior:
-contain`, so the workspace behind never scrolls with it. The `<main id="view-search">` shell and
+contain`, so the workspace behind never scrolls with it. It **GROWS** to FULL BLEED rather than
+appearing: the box is kept in the layout (`visibility`, not `display:none` — `display` cannot be
+transitioned) and scales 0.34 → 1 from the crown's corner over 0.6s. On `transform`, never
+width/height, for the reason the dock icons stuttered. Easing is **`--fluid-bezier`, NOT
+`--spring`**: the spring's 1.56 overshoots to scale 1.06 (measured, and break-tested), which on a
+panel that IS the screen pulls its edges past the viewport and crops its own content — life on a
+small card, a glitch full-bleed. Covering everything means the crown, the scrim and the header are
+all underneath, so **`#cmdk-close` is REQUIRED, not decorative** (Escape is no way out on a
+phone); it is a back chevron distinct from the ✕ clear, which only empties the query. Reduced
+motion keeps the window and drops the growth. Gated by ui-test-searchpage §8 — animates, never
+overshoots, settles at exactly the viewport, header genuinely covered, close ≥24px and named. The `<main id="view-search">` shell and
 its `ADMIN_VIEWS` entry are now vestigial — see the task list; `ui-test-adminviews` asserts the
 shell is empty BY DESIGN so a half-done removal is caught. `.cmdk-box` keeps max-width 680px
 (940px sheet) and every inner id, so the entire intelligence stack is unchanged. `openCmdK` snapshots the workspace you came FROM before

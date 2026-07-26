@@ -193,6 +193,68 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(navLeave.filed, 'leaving search by a dock nav still files the dead-end miss');
   ok(!navLeave.conv, 'the conversation context is cleared on dock-leave (no cross-session pronoun leak)');
 
+  // ---- 8) the window GROWS out to cover the whole screen ----
+  // "Instead of bursting out, grow the window slowly out to cover the whole
+  // screen." Three separate claims, so three separate checks: it animates rather
+  // than snapping, it does NOT overshoot (the spring's 1.56 pulled a full-bleed
+  // panel 4% past the viewport and cropped its own edges), and it settles at
+  // exactly the viewport. Growth is on `transform`, never width/height — animating
+  // layout every frame is what stuttered the dock icons.
+  await page.evaluate(() => cmdkBack()); await page.waitForTimeout(700);
+  const grow = await page.evaluate(async () => {
+    const box = document.querySelector('#cmdk .cmdk-box');
+    const samples = [];
+    openCmdK();
+    const t0 = performance.now();
+    await new Promise((res) => {
+      const tick = () => {
+        const m = new DOMMatrixReadOnly(getComputedStyle(box).transform);
+        samples.push(+m.a.toFixed(3));
+        if (performance.now() - t0 < 700) requestAnimationFrame(tick); else res();
+      };
+      requestAnimationFrame(tick);
+    });
+    return samples;
+  });
+  const distinct = new Set(grow).size;
+  ok(distinct >= 5, `the window GROWS rather than bursting (${distinct} distinct scales sampled)`);
+  ok(grow[0] < 0.6, `it starts small (first sample scale ${grow[0]})`);
+  ok(Math.max(...grow) <= 1.001, `and never overshoots past full size (max ${Math.max(...grow)})`);
+  ok(grow[grow.length - 1] === 1, `settling at full size (last ${grow[grow.length - 1]})`);
+
+  const full = await page.evaluate(() => {
+    const b = document.querySelector('#cmdk .cmdk-box').getBoundingClientRect();
+    const h = document.querySelector('header').getBoundingClientRect();
+    const hit = document.elementFromPoint(Math.round(h.left + h.width / 2), Math.round(h.top + h.height / 2));
+    const c = document.getElementById('cmdk-close');
+    const cr = c ? c.getBoundingClientRect() : null;
+    return {
+      w: Math.round(b.width), h: Math.round(b.height), vw: window.innerWidth, vh: window.innerHeight,
+      headerCovered: !!(hit && hit.closest('#cmdk')),
+      closeW: cr ? Math.round(cr.width) : 0, closeH: cr ? Math.round(cr.height) : 0,
+      closeNamed: !!(c && (c.getAttribute('aria-label') || '').trim()),
+    };
+  });
+  ok(full.w >= full.vw && full.h >= full.vh, `it covers the WHOLE screen (${full.w}x${full.h} vs ${full.vw}x${full.vh})`);
+  // Covering everything means the crown, scrim and header are all underneath — so
+  // an explicit way out is REQUIRED, not a nicety. Escape is no way out on a phone.
+  ok(full.headerCovered, 'the header is genuinely covered (so the crown cannot close it)');
+  ok(full.closeW >= 24 && full.closeH >= 24, `there is a close control at 24px+ (${full.closeW}x${full.closeH})`);
+  ok(full.closeNamed, 'and it carries an accessible name');
+  await page.click('#cmdk-close'); await page.waitForTimeout(700);
+  ok(await page.evaluate(() => !document.getElementById('cmdk').classList.contains('open')), 'tapping it closes the window');
+
+  // Reduced motion keeps the window (it is the whole feature) and drops the growth.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.evaluate(() => openCmdK()); await page.waitForTimeout(500);
+  const rm = await page.evaluate(() => {
+    const box = document.querySelector('#cmdk .cmdk-box');
+    return { open: document.getElementById('cmdk').classList.contains('open'), transform: getComputedStyle(box).transform };
+  });
+  ok(rm.open, 'with reduced motion the window still opens');
+  ok(rm.transform === 'none', `it just does not grow (${rm.transform})`);
+  await page.emulateMedia({ reducedMotion: null });
+
   console.log(fails ? `\n  ${fails} SEARCH-PAGE CHECK(S) FAILED ❌` : '\n  SEARCH-PAGE SUITE PASSED ✅');
   await done(fails);
 })();
