@@ -129,7 +129,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.waitForTimeout(150);
   st = await page.evaluate(() => ({
     ml: (document.getElementById('cmdk-ml') || {}).dataset.mstate,
-    dock: document.querySelector('.admin-dock-btn[data-act="openCmdK"]').classList.contains('ml-learning'),
+    dock: document.querySelector('body.owner-mode .logo').classList.contains('ml-learning'),
   }));
   ok(st.ml === 'learning' && st.dock, `teach → learning flash on logo + dock (${st.ml})`);
   await page.waitForTimeout(2400);

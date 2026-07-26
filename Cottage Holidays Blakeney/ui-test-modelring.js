@@ -1,5 +1,5 @@
 // Model-download progress ring, end to end in a real browser:
-//  1. reporting progress puts the dock Search knot into ml-loading with a
+//  1. reporting progress puts the crown into ml-loading with a
 //     conic-gradient ring sized by --mload, and flips the palette + bar pills
 //     to the "Downloading…" state carrying the same ring
 //  2. the ring tracks progress updates
@@ -23,7 +23,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   //    loading state (ring around the knot; the hover title carries the words).
   await page.evaluate(() => chbModelLoadProgress('enc', 0.4));
   let st = await page.evaluate(() => {
-    const dock = document.querySelector('.admin-dock-btn[data-act="openCmdK"]');
+    const dock = document.querySelector('body.owner-mode .logo');
     const ring = dock ? getComputedStyle(dock, '::before') : null;
     const bar = document.querySelector('#cmdk-ml');
     const barRing = bar ? getComputedStyle(bar, '::before') : null;
@@ -36,16 +36,16 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       barConic: !!(barRing && /conic-gradient/.test(barRing.backgroundImage)),
     };
   });
-  ok(st.cls, 'dock Search knot enters ml-loading');
-  ok(st.mload === '0.4', `dock carries --mload 0.4 (${st.mload})`);
-  ok(st.conic, 'dock ring renders as a conic-gradient ::before');
+  ok(st.cls, 'crown enters ml-loading');
+  ok(st.mload === '0.4', `crown carries --mload 0.4 (${st.mload})`);
+  ok(st.conic, 'crown ring renders as a conic-gradient ::before');
   ok(st.barState === 'loading', `bar logo switches to loading (${st.barState})`);
   ok(/Downloading/.test(st.barTitle || ''), `bar logo's title explains "Downloading…" (${st.barTitle.slice(0, 30)}…)`);
   ok(st.barConic, 'bar logo carries the conic progress ring');
 
   // 2) The ring tracks progress.
   await page.evaluate(() => chbModelLoadProgress('enc', 0.85));
-  const m2 = await page.evaluate(() => document.querySelector('.admin-dock-btn[data-act="openCmdK"]').style.getPropertyValue('--mload'));
+  const m2 = await page.evaluate(() => document.querySelector('body.owner-mode .logo').style.getPropertyValue('--mload'));
   ok(m2 === '0.85', `ring tracks progress updates (--mload ${m2})`);
 
   // 3) An active answer state keeps the pill; clearing it hands back to the ring.
@@ -64,11 +64,11 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // 4) Completion clears everything back to rest.
   st = await page.evaluate(() => {
     chbModelLoadProgress('enc', null);
-    const dock = document.querySelector('.admin-dock-btn[data-act="openCmdK"]');
+    const dock = document.querySelector('body.owner-mode .logo');
     const bar = document.querySelector('#cmdk-ml');
     return { cls: dock.classList.contains('ml-loading'), mload: dock.style.getPropertyValue('--mload'), barState: bar.dataset.mstate };
   });
-  ok(!st.cls && !st.mload, 'completion removes the dock ring + --mload');
+  ok(!st.cls && !st.mload, 'completion removes the crown ring + --mload');
   ok(st.barState !== 'loading', `completion returns the pill to rest (${st.barState || 'hidden'})`);
 
   console.log(fails ? `\n  ${fails} MODEL-RING CHECK(S) FAILED ❌` : '\n  MODEL-RING SUITE PASSED ✅');

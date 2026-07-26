@@ -1967,6 +1967,15 @@ function chbModelStatusEls() {
     const els = [];
     const p = document.getElementById('cmdk-ml');
     if (p) els.push(p);
+    // The crown is the assistant's face in the bar now that the Search knot is
+    // gone, so it carries the state colour too — owner-mode only, since the same
+    // element is the public site's Home link.
+    try {
+        if (document.body.classList.contains('owner-mode')) {
+            const crown = /** @type {any} */ (document.querySelector('.logo'));
+            if (crown) els.push(crown);
+        }
+    } catch (e) {}
     return els;
 }
 // ---- Model-download progress ring. While a model file streams down
@@ -1989,7 +1998,9 @@ function chbModelLoadProgress(key, frac) {
         if (frac == null) __chbModelLoads.delete(key);
         else __chbModelLoads.set(key, Math.max(0, Math.min(1, frac)));
         const cur = chbModelLoadFrac();
-        const dock = document.querySelector('.admin-dock-btn[data-act="openCmdK"]');
+        // Was the dock's Search knot; that button is retired, so the always-on
+        // surface is the crown.
+        const dock = /** @type {any} */ (document.querySelector('body.owner-mode .logo'));
         if (dock) {
             dock.classList.toggle('ml-loading', cur != null);
             if (cur != null) dock.style.setProperty('--mload', cur);
@@ -2031,15 +2042,16 @@ async function chbFetchProgress(url, onFrac) {
     for (const c of chunks) { out.set(c, off); off += c.length; }
     return out.buffer;
 }
-// Learning indicator: the assistant knot flashes ORANGE while the model absorbs
+// Learning indicator: the assistant mark flashes ORANGE while the model absorbs
 // new inputs (a taught phrasing, a suppression, a cross-device merge) and
-// retrains. Shown on the dock's Search knot — always on screen, since teaching
-// usually closes the palette — and on the palette + bar status pills (which read
-// "Learning…") when open. Held for a couple of flash cycles so it's visible.
+// retrains. Shown on the CROWN — always on screen, since teaching usually closes
+// the palette (this was the dock's Search knot before that button retired) — and
+// on the palette status knot (which reads "Learning…") when open. Held for a
+// couple of flash cycles so it's visible.
 let __nluLearnFlashT = null;
 function chbNluLearnFlash() {
     try {
-        const dock = document.querySelector('.admin-dock-btn[data-act="openCmdK"]');
+        const dock = /** @type {any} */ (document.querySelector('body.owner-mode .logo'));
         if (dock) dock.classList.add('ml-learning');
         chbModelStatusEls().forEach((el) => chbSetModelStatus(el, 'learning'));
         clearTimeout(__nluLearnFlashT);
@@ -7018,6 +7030,138 @@ function cmdkSheetClose() {
 // BACK to that workspace (cmdkBack); a result's own run() navigates wherever
 // it opens, calling closeCmdK() only for state cleanup.
 let __cmdkReturnView = null;
+// ============================================================
+//  CROWN SHEET — the assistant lives in the brand mark.
+//
+//  The dock used to carry a separate Search knot, and the crown did nothing an
+//  owner needed: nav() rewrites view-main → view-backoffice for anyone signed in,
+//  so tapping the crown went to Today, exactly where the calendar icon two slots
+//  along already goes. The crown now opens the assistant instead — one fewer icon,
+//  no function lost, and the brand mark becomes the thing you ask.
+//
+//  It drops a SHEET rather than jumping to the search page because the bar cannot
+//  host a field: measured at 390px, the middle slot yields 80px once the crown and
+//  four icons have their space — a compact affordance, nowhere near typable. The
+//  sheet borrows the screen below instead, so the input gets full width, and the
+//  morning brief (cmdkBrief, already computed) is on show before you type a word.
+//  Enter hands off to the full search page, which keeps ONE intelligence stack.
+//
+//  Deliberately BELOW the header in z-order (1440 vs 1500): the crown stays visible
+//  and tappable while the sheet is open, so the same target opens and closes it.
+// ============================================================
+let __crownSheetOpen = false;
+function crownSheetEl() {
+    let el = document.getElementById('crown-sheet');
+    if (el) return el;
+    el = document.createElement('div');
+    el.id = 'crown-sheet';
+    el.setAttribute('role', 'dialog');
+    el.setAttribute('aria-label', 'Ask the assistant');
+    el.innerHTML =
+        '<div class="cs-field">' +
+        '<span class="cs-knot" aria-hidden="true"></span>' +
+        '<input id="crown-ask" type="search" autocomplete="off" placeholder="Ask anything…" aria-label="Ask the assistant anything">' +
+        '</div><div id="crown-sheet-rows" class="cs-rows"></div>' +
+        '<div class="cs-foot">Enter for the full answer · Esc to close</div>';
+    const scrim = document.createElement('div');
+    scrim.id = 'crown-scrim';
+    document.body.appendChild(scrim);
+    document.body.appendChild(el);
+    // A tap anywhere off the sheet closes it. pointerdown (not click) so it can't
+    // race the crown's own toggle into a close-then-reopen.
+    scrim.addEventListener('pointerdown', () => crownSheetClose());
+    const inp = /** @type {any} */ (el.querySelector('#crown-ask'));
+    inp.addEventListener('keydown', (/** @type {any} */ e) => {
+        if (e.key === 'Escape') { e.stopPropagation(); crownSheetClose(true); return; }
+        if (e.key === 'Enter') {
+            const q = inp.value.trim();
+            crownSheetClose();
+            try {
+                openCmdK();
+                if (q) {
+                    const ci = /** @type {any} */ (document.getElementById('cmdk-input'));
+                    if (ci) { ci.value = q; cmdkSearch(q); }
+                }
+            } catch (err) {}
+        }
+    });
+    return el;
+}
+function crownSheetRows() {
+    const wrap = document.getElementById('crown-sheet-rows');
+    if (!wrap) return;
+    let items = [];
+    try { items = (cmdkBrief() || []).slice(0, 4); } catch (e) {}
+    if (!items.length) {
+        wrap.innerHTML = '<div class="cs-empty">Nothing needs you right now — ask me anything.</div>';
+        return;
+    }
+    wrap.innerHTML = items
+        .map((it, i) => `<button type="button" class="cs-row" data-i="${i}"><span class="cs-dot" aria-hidden="true"></span><span class="cs-body"><span class="cs-label">${escapeHtml(String(it.label || ''))}</span>${it.sub ? `<span class="cs-sub">${escapeHtml(String(it.sub))}</span>` : ''}</span></button>`)
+        .join('');
+    wrap.querySelectorAll('.cs-row').forEach((/** @type {any} */ b) => {
+        b.addEventListener('click', () => {
+            const it = items[+b.dataset.i];
+            crownSheetClose();
+            try { if (it && typeof it.run === 'function') it.run(); } catch (e) {}
+        });
+    });
+}
+function crownSheetOpen() {
+    const el = crownSheetEl();
+    crownSheetRows();
+    document.body.classList.add('crown-sheet-open');
+    el.classList.add('open');
+    const scrim = document.getElementById('crown-scrim');
+    if (scrim) scrim.classList.add('open');
+    __crownSheetOpen = true;
+    const crown = /** @type {any} */ (document.querySelector('.logo'));
+    if (crown) crown.setAttribute('aria-expanded', 'true');
+    // focus after paint so the mobile keyboard opens reliably (same reason
+    // openCmdK defers its own focus)
+    requestAnimationFrame(() => {
+        const inp = /** @type {any} */ (document.getElementById('crown-ask'));
+        if (inp) { try { inp.focus(); } catch (e) {} }
+    });
+}
+function crownSheetClose(refocusCrown) {
+    const el = document.getElementById('crown-sheet');
+    if (el) el.classList.remove('open');
+    const scrim = document.getElementById('crown-scrim');
+    if (scrim) scrim.classList.remove('open');
+    document.body.classList.remove('crown-sheet-open');
+    __crownSheetOpen = false;
+    const crown = /** @type {any} */ (document.querySelector('.logo'));
+    if (crown) {
+        crown.setAttribute('aria-expanded', 'false');
+        // Escape should hand the focus ring back to what opened the sheet, or a
+        // keyboard user is dropped at the top of the document.
+        if (refocusCrown) { try { crown.focus(); } catch (e) {} }
+    }
+}
+// The crown's handler. SELF-HEALING for sign-out: admin.js rebinds the crown when
+// it loads, and this element is shared with the public header, so if owner-mode is
+// gone the crown must still just go home.
+function crownSheetToggle() {
+    if (!document.body.classList.contains('owner-mode')) {
+        try { nav('view-main'); } catch (e) {}
+        return;
+    }
+    if (__crownSheetOpen) crownSheetClose(true);
+    else crownSheetOpen();
+}
+// Point the crown at the assistant, once the owner bundle is in. Guests never run
+// this, so the public crown keeps its Home behaviour untouched.
+function crownSheetBind() {
+    const crown = /** @type {any} */ (document.querySelector('.logo'));
+    if (!crown) return;
+    crown.setAttribute('data-act', 'crownSheetToggle');
+    crown.removeAttribute('data-view');
+    crown.setAttribute('aria-label', 'Ask the assistant');
+    crown.setAttribute('aria-haspopup', 'dialog');
+    crown.setAttribute('aria-expanded', 'false');
+    crown.classList.add('logo-assist');
+}
 function openCmdK() {
     const inp = document.getElementById('cmdk-input');
     if (!inp) return;
@@ -17856,8 +18000,17 @@ async function mailboxDelete(uid) {
     }
 }
 
-[accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, bulkImportReviews, changeAdminPassword, changeMonth, timelineToday, inboxFolder, initBackOffice, loadAdminMessages, loadDiagnostics, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveDepositPct, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
+[crownSheetToggle, accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, bulkImportReviews, changeAdminPassword, changeMonth, timelineToday, inboxFolder, initBackOffice, loadAdminMessages, loadDiagnostics, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveDepositPct, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
     window[f.name] = f;
 });
 try { cmdkPrefetchExperiences(); } catch (e) {} // published things-to-do → searchable
+// Point the crown at the assistant now the owner bundle is here, and let Escape
+// close the sheet from anywhere (the input handles its own Escape; this covers a
+// click that moved focus out into a brief row).
+try { crownSheetBind(); } catch (e) {}
+try {
+    document.addEventListener('keydown', (e) => {
+        if (/** @type {any} */ (e).key === 'Escape' && __crownSheetOpen) { e.stopPropagation(); crownSheetClose(true); }
+    });
+} catch (e) {}
 window.__ADMIN_LOADED = true;
