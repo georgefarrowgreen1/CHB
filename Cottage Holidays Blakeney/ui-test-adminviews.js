@@ -19,8 +19,13 @@ const { bootBrowser } = require('./ui-test-lib');
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
 
-// The seven admin screens whose bodies moved out of index.html.
-const VIEWS = ['view-backoffice', 'view-inbox', 'view-accounts', 'view-settings', 'view-booking-hub', 'view-enquiry-hub', 'view-search'];
+// The admin screens whose bodies moved out of index.html. `view-search` is
+// deliberately NOT here: its body is the #cmdk node, and search is a WINDOW now —
+// cmdkEnsureOverlay() re-parents that node to <body> the moment the bundle loads
+// (a .page-view has a transform, which would trap a fixed child), so the shell is
+// empty by design. The check below verifies the markup still ARRIVES, just as an
+// overlay rather than a page body.
+const VIEWS = ['view-backoffice', 'view-inbox', 'view-accounts', 'view-settings', 'view-booking-hub', 'view-enquiry-hub'];
 
 const stubApi = (page, { admin }) => page.route(/\.php/, (r) => {
     const url = r.request().url();
@@ -81,13 +86,22 @@ const newPage = async (browser, opts = {}) => {
     await page.goto(`${base}/index.html`, { waitUntil: 'networkidle' });
     await page.evaluate(async () => { isAuthenticated = true; document.body.classList.add('owner-mode'); await window.loadAdminBundle(); });
     await page.waitForTimeout(300);
-    const o = await page.evaluate((ids) => ({
-      populated: ids.filter((id) => { const el = document.getElementById(id); return el && el.firstElementChild; }).length,
-      keyNodes: ['settings-index', 'accounts-index', 'cmdk-input'].filter((id) => !!document.getElementById(id)).length,
-      adminLoaded: !!window.__ADMIN_LOADED,
-    }), VIEWS);
+    const o = await page.evaluate((ids) => {
+      const cmdk = document.getElementById('cmdk');
+      return {
+        populated: ids.filter((id) => { const el = document.getElementById(id); return el && el.firstElementChild; }).length,
+        keyNodes: ['settings-index', 'accounts-index', 'cmdk-input'].filter((id) => !!document.getElementById(id)).length,
+        adminLoaded: !!window.__ADMIN_LOADED,
+        // the search body arrived AND became a body-level overlay
+        cmdkOnBody: !!(cmdk && cmdk.parentElement === document.body),
+        cmdkIsOverlay: !!(cmdk && cmdk.classList.contains('cmdk-overlay')),
+        searchShellEmpty: (() => { const v = document.getElementById('view-search'); return !v || !v.firstElementChild; })(),
+      };
+    }, VIEWS);
     ok(o.adminLoaded, 'the admin bundle finished loading');
     ok(o.populated === VIEWS.length, `every admin shell is populated after sign-in (${o.populated}/${VIEWS.length})`);
+    ok(o.cmdkOnBody && o.cmdkIsOverlay, `the search body arrived and became a body-level overlay (body=${o.cmdkOnBody}, overlay=${o.cmdkIsOverlay})`);
+    ok(o.searchShellEmpty, 'and its old page shell is left empty, as the window design intends');
     ok(o.keyNodes === 3, `the moved markup is live (${o.keyNodes}/3 key nodes)`);
     ok(views.length === 1, `admin-views.html fetched exactly once (${views.length})`);
     ok(/[?&]v=\d+/.test(views[0] || ''), `it is version-pinned (${(views[0] || '').split('/').pop()})`);

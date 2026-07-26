@@ -7162,17 +7162,44 @@ function crownSheetBind() {
     crown.setAttribute('aria-expanded', 'false');
     crown.classList.add('logo-assist');
 }
+// Search is a WINDOW OVER the workspace, not a page you travel to. The node ships
+// inside the view-search template (that is how ensureAdminViews delivers it), but a
+// `.page-view` carries a transform, which makes it the containing block for any
+// fixed child — the same trap the cottage page's sticky bar hits. So the node is
+// re-parented to <body> once, and from then on it is an overlay.
+function cmdkEnsureOverlay() {
+    const o = document.getElementById('cmdk');
+    if (!o) return null;
+    if (o.parentElement !== document.body) document.body.appendChild(o);
+    o.classList.add('cmdk-overlay');
+    if (!document.getElementById('cmdk-scrim')) {
+        const scrim = document.createElement('div');
+        scrim.id = 'cmdk-scrim';
+        // pointerdown, not click, so it cannot race the crown's own toggle.
+        scrim.addEventListener('pointerdown', () => cmdkBack());
+        document.body.insertBefore(scrim, o);
+    }
+    return o;
+}
+function cmdkIsOpen() {
+    const o = document.getElementById('cmdk');
+    return !!(o && o.classList.contains('open'));
+}
 function openCmdK() {
     const inp = document.getElementById('cmdk-input');
     if (!inp) return;
+    const o = cmdkEnsureOverlay();
     const av = document.querySelector('.page-view.active');
-    // Scope + record context come from the page you were ON, so read them
-    // BEFORE navigating to the search page.
-    if (av && av.id !== 'view-search') __cmdkReturnView = av.id;
+    // Scope + record context come from the workspace UNDER the overlay, and it
+    // stays there — so these read the same as they always did.
+    if (av) __cmdkReturnView = av.id;
     __cmdkScope = cmdkDefaultScope(); // open pre-scoped to the workspace you came from
     __cmdkEntity = cmdkCurrentEntity(); // and aware of the record you were viewing
     __cmdkConvCtx = null; // a fresh session — never inherit the LAST session's pronoun referent
-    nav('view-search');
+    if (o) o.classList.add('open');
+    const scrim = document.getElementById('cmdk-scrim');
+    if (scrim) scrim.classList.add('open');
+    document.body.classList.add('cmdk-open');
     inp.value = '';
     try { chbAssistSyncPull(); } catch (e) {} // merge learning taught on other devices (once per session)
     cmdkSearch('');
@@ -7183,6 +7210,12 @@ function openCmdK() {
 // Deliberately does NOT navigate — the caller decides where to go next.
 function closeCmdK() {
     const o = document.getElementById('cmdk');
+    // Hide the window. Every existing caller wants this: a result run closes then
+    // navigates underneath, Back closes and stays put, nav() closes on any exit.
+    if (o) o.classList.remove('open');
+    const scrim = document.getElementById('cmdk-scrim');
+    if (scrim) scrim.classList.remove('open');
+    document.body.classList.remove('cmdk-open');
     // If a Tier-2 sheet borrowed a Manage section, hand it back before closing so
     // the section can never be left orphaned inside the palette.
     if (__cmdkSheet) { try { cmdkSheetRestore(); } catch (e) {} }
@@ -7195,19 +7228,22 @@ function closeCmdK() {
     cmdkSetLoading(false);
     if (o) o.classList.remove('ml-active');
 }
-// Explicit "leave search": clean up and return to the workspace you came from.
+// Explicit "close search". There is nothing to navigate back to any more — the
+// workspace was never left, it was only covered — so this is just the teardown.
+// Focus returns to the crown, which is what opened it.
 function cmdkBack() {
     closeCmdK();
-    const back = __cmdkReturnView && document.getElementById(__cmdkReturnView) ? __cmdkReturnView : 'view-backoffice';
-    nav(back);
+    try {
+        const crown = /** @type {any} */ (document.querySelector('body.owner-mode .logo'));
+        if (crown) crown.focus();
+    } catch (e) {}
 }
 // ⌘K / Ctrl-K toggles the search page (owner only). Registered once on bundle load.
 document.addEventListener('keydown', (e) => {
     if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
         if (typeof isAuthenticated === 'undefined' || !isAuthenticated) return;
         e.preventDefault();
-        const av = document.querySelector('.page-view.active');
-        if (av && av.id === 'view-search') cmdkBack();
+        if (cmdkIsOpen()) cmdkBack();
         else openCmdK();
     }
 });
@@ -18008,6 +18044,7 @@ try { cmdkPrefetchExperiences(); } catch (e) {} // published things-to-do → se
 // close the sheet from anywhere (the input handles its own Escape; this covers a
 // click that moved focus out into a brief row).
 try { crownSheetBind(); } catch (e) {}
+try { cmdkEnsureOverlay(); } catch (e) {}
 try {
     document.addEventListener('keydown', (e) => {
         if (/** @type {any} */ (e).key === 'Escape' && __crownSheetOpen) { e.stopPropagation(); crownSheetClose(true); }

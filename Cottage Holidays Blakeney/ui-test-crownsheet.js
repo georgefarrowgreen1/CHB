@@ -12,7 +12,7 @@
 //       the whole reason for a sheet over an in-bar field;
 //    B) the sheet sits BELOW the header in z-order, so the crown stays hittable
 //       and one target toggles both ways;
-//    C) Enter hands the query to the ONE intelligence stack (the search page);
+//    C) Enter hands the query to the ONE intelligence stack (the search window);
 //    D) Escape / scrim close it, and Escape hands focus back to the crown;
 //    E) the crown must not SHRINK — `.logo` is flex:0 1 auto and collapsed
 //       48→27px the moment a sibling competed for the bar's free space;
@@ -76,6 +76,7 @@ const snap = (page) =>
             knotGone: !document.querySelector('.admin-dock-btn[data-act="openCmdK"]'),
             overflowX: document.documentElement.scrollWidth - window.innerWidth,
             activeView: (document.querySelector('.page-view.active') || {}).id || null,
+            cmdkOpen: !!(document.getElementById('cmdk') || {}).classList?.contains('open'),
             searchInput: (document.getElementById('cmdk-input') || {}).value || null,
             scrimVis: vis(document.getElementById('crown-scrim')),
         };
@@ -172,7 +173,8 @@ const snap = (page) =>
     await page.waitForTimeout(900);
     s = await snap(page);
     check(!s.open, 'Enter closes the sheet');
-    check(s.activeView === 'view-search', `and lands on the one search page (${s.activeView})`);
+    check(s.cmdkOpen === true, `and opens the one search window over the workspace (open=${s.cmdkOpen})`);
+    check(s.activeView !== 'view-search', `without leaving the workspace (${s.activeView})`);
     check(s.searchInput === 'who owes me', `carrying the query across (“${s.searchInput}”)`);
 
     // ---- the crown carries the assistant's state, as the retired knot did ----
