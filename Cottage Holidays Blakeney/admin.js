@@ -453,6 +453,19 @@ const CHB_PRICE_Q = /should i (raise|lower|change|adjust|review).{0,12}(price|ra
 // CHB_PRICE_Q (the general "should I change my prices" review). No set/discount
 // verb, so it never collides with the dated price-CHANGE command.
 const CHB_SMARTPRICE_Q = /\b(what|how much) (should|shall|could|would|do|can) i (charge|price|ask|list|get)|best (price|rate) for|smart price|optimal (price|rate)|price (this|these|it|them) (right|well|best)|what.?s (the )?(best|right|optimal|ideal) (price|rate)|how should i price/;
+// A HABITUAL question about length of stay — about the business over time, not
+// about one booking. ONE definition, used by both families that care: the
+// average-length-of-stay insight (which owns these) and the singular "the guest"
+// composer (which must NOT claim them). They were separate before, and the
+// composer won whenever a future stay existed — it takes the soonest one — so
+// "how long do guests stay" answered with one guest's stay length instead of the
+// average. That is nearly always, since there is nearly always a next booking.
+const CHB_STAYLEN_Q = /average (stay|length)|length of stay|how long do (guests|people)|how many nights do (guests|people)|typical (stay|visit)|\bavg\b.{0,8}\bstay/;
+// An AGGREGATE nights question ("how many nights booked this month") — the
+// nights-booked insight owns it. Separate from CHB_STAYLEN_Q because the two want
+// different families; both are vetoes on the singular composer, which matches on
+// the bare words "how many nights" + "book" and so claimed this outright.
+const CHB_NIGHTSAGG_Q = /nights? (booked|sold)/;
 let __cmdkPriceStamp = 0;
 // Merge the server's demand-signal suggestions (pricing-suggest.php — guest
 // searches, unmet demand, weekend uplift) into the live palette, stamp-guarded
@@ -3423,7 +3436,14 @@ function cmdkIntent(q) {
         // through to the generic list branches below.
         if (!named.length) {
             const askWhen = /\bwhen\b|what time/.test(q) && /\barriv|check.?in|coming|leav|check.?out|depart/.test(q);
-            const askLong = /how long|how many nights/.test(q) && /\bguest|book|stay|they|them\b/.test(q);
+            // A HABITUAL phrasing belongs to the average-length-of-stay family and an
+            // AGGREGATE one to the nights-booked family — not here. This branch
+            // resolves to ONE stay (the soonest, when nobody is in residence), and
+            // its words are broad enough to swallow both: "how many nights" + "book"
+            // matched "how many nights booked this month", so a core metric question
+            // was answered with one guest's booking. Any future stay was enough to
+            // trigger it, which is nearly always.
+            const askLong = !CHB_STAYLEN_Q.test(q) && !CHB_NIGHTSAGG_Q.test(q) && /how long|how many nights/.test(q) && /\bguest|book|stay|they|them\b/.test(q);
             if (askWhen || askLong) {
                 const leaving = /\bleav|check.?out|depart|going home/.test(q);
                 const norm = (kind, pk, r) => ({
@@ -3650,14 +3670,19 @@ function cmdkIntent(q) {
         if (/occupanc|occupied|how (full|busy)|fill rate/.test(q)) {
             return [{ type: 'figure', id: 'ins', label: `${occPct}% occupancy ${plabel}`, sub: `${occNights} of ${cottages * periodDays} cottage-nights${otaNote}`, run: openMoney }];
         }
-        if (/nights? (booked|sold)|how many nights/.test(q)) {
+        // Its bare "how many nights" also reads "how many nights do guests stay",
+        // which is a length-of-stay question — decline those so the average family
+        // below takes them (it is checked after this one).
+        if (!CHB_STAYLEN_Q.test(q) && /nights? (booked|sold)|how many nights/.test(q)) {
             return [{ type: 'figure', id: 'ins', label: `${soldNights} night${soldNights === 1 ? '' : 's'} booked ${plabel}`, sub: `${occPct}% occupancy · ${gbp(revenue)} revenue${otaNote}`, run: openMoney }];
         }
         // Average LENGTH of stay — a habitual question ("how long do guests stay")
         // reads as all-year, so an unqualified ask widens to the current year; an
         // explicit period ("average stay in august") keeps it. Checked before the
         // average-RATE family so "avg stay" can't be misread as a price question.
-        if (/average (stay|length)|length of stay|how long do (guests|people)|typical (stay|visit)|\bavg\b.{0,8}\bstay/.test(q)) {
+        // CHB_STAYLEN_Q is shared with the singular "the guest" composer's veto —
+        // one definition, so the two can never disagree about what is habitual.
+        if (CHB_STAYLEN_Q.test(q)) {
             const hasP = !!nm || /this year|last year|last month|next month|this month/.test(q);
             const yr2 = /last year/.test(q) ? dd0.getFullYear() - 1 : dd0.getFullYear();
             const pool2 = hasP ? stays : allStays.filter((x) => x.b.checkIn && +x.b.checkIn.slice(0, 4) === yr2);

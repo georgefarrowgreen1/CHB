@@ -833,7 +833,19 @@ answers, abstains on 13 business shapes, pipeline lead). New insight families in
 **repeat-guest rate** (from `chbCustomers`, all-time by nature, strong-identity so name-only
 guests never fake a repeat) and **average length of stay** (a habitual "how long do guests
 stay" widens to the year; an explicit period keeps it; checked before the average-RATE family)
-— §29b. The NLU corpus stays frozen (ceiling — see above); breadth grows by new deterministic
+— §29b. **HABITUAL and AGGREGATE phrasings are vetoed out of the singular "the guest"
+composer**, and this matters more than it sounds: that branch resolves to ONE stay (the
+soonest, when nobody is in residence) and matches on words as broad as "how many nights" +
+"book", so it used to answer "how long do guests stay" with a single guest's stay length —
+and "how many nights booked this month", a core metric, with one guest's booking. ANY future
+booking was enough to trigger it, i.e. nearly always. Two shared regexes own the boundary
+(`CHB_STAYLEN_Q` habitual, `CHB_NIGHTSAGG_Q` aggregate), each ONE definition used by both
+sides so the composer's veto and the family that should answer can never disagree —
+`CHB_STAYLEN_Q` also makes the nights-booked family DECLINE "how many nights do guests stay"
+so the average family (checked just after it) takes it. The vetoes are deliberately narrow:
+"how long is the guest staying" / "how many nights is the guest staying" still name the
+guest. §29b gates all seven phrasings and each veto break-tests independently.
+The NLU corpus stays frozen (ceiling — see above); breadth grows by new deterministic
 families, not classifier examples. Business-SLANG synonyms ride the family regexes the same
 way (measured on the stress set, gated in golden): `adr` → average rate, `fill rate` →
 occupancy, `top line` → revenue, `how's trade` / `state of play` → the pulse narrative,
@@ -1002,6 +1014,23 @@ an `aria-label` ("Price breakdown") that disagrees with its own visible heading
 - Before shipping: `node smoke-test.js` (loads index.html + admin.js in a shim;
   pricing, postcode, occupancy, structural + facade-stub checks) and
   `php test-pricing.php`.
+- **A test that reads the clock is only verified on the day it runs.** search-test
+  was written and tuned in July and passed in **2 of 12 months** — measured, by
+  shifting the clock and re-running. Three assertions were silently date-dependent:
+  a hardcoded 23:59 as "a time that has not arrived" (false for the 23:59 minute,
+  so CI failed for one minute a day), a bare month name in a query (the product
+  resolves that to the most RECENT instance, while the seed wrote into the current
+  year), and a seeded season spanning only `today+60` (so a September query landed
+  inside it in July and outside it in January). **Two of those were hiding real
+  product bugs** — the July-only greenness was doing the concealing, not the flake.
+  So: never write a wall-clock instant or a bare month into an assertion. Pin the
+  clock instead — stubbing `ukNowParts()` pins BOTH `todayDashed()` and
+  `ukNowMinutes()` in lockstep (it is the one reader behind both), which also lets a
+  boundary be asserted in both directions rather than only the side CI happens to
+  land on. Derive month names from the current date (month-after-next is always
+  fully future), and read expected rates from the model the way §35's `decCur` does
+  rather than writing the number down. To check a change here, shift the clock and
+  sweep: a 12-month pass plus month/day/year boundaries, DST and a leap day.
 - `.github/workflows/ci.yml` runs `php -l` on every PHP, `node smoke-test.js`,
   `php test-pricing.php`, `php test-reply.php`, the real-browser `node e2e-test.js`,
   and the design gate `node layout-test.js` (layout invariants — no horizontal
@@ -1073,6 +1102,16 @@ an `aria-label` ("Price breakdown") that disagrees with its own visible heading
   wires pageerror logging; `await done(fails)` tears everything down. New suites use
   it; never re-inline the boot block or hardcode a port. The lib matches the runner's
   suite glob, so ui-tests.js explicitly skips it.
+  For a time-of-DAY assertion in a browser suite, pin the page's clock —
+  **`page.clock.setFixedTime(date)`**, NOT `clock.install()`: setFixedTime fixes
+  `Date.now()`/`new Date()` and leaves the timers running, so the app's own
+  `setTimeout`s still fire (install fakes them too and the suite would hang waiting
+  for ticks). Keep the pinned instant on the SAME calendar day so the node-side
+  `d(n)` helper still agrees, and fix only the hour. ui-test-yourstay is the
+  exemplar: its checkout-time cases were asserted against the real clock, so
+  "checkout still to come (23:59)" was false during the 23:59 minute — pinned, it
+  now checks both ends of the day on purpose (case 10 is the far end, and removing
+  its pin fails the check, which is how you know the pin is load-bearing).
 
 ## Self-repair & error reporting
 - Errors: client capture (app.js, third-party webview noise filtered, sends
