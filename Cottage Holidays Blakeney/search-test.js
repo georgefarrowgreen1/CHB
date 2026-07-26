@@ -511,20 +511,29 @@ if (typeof ctx.cmdkRowHtml === 'function') {
 // ---- 15. Unified booking flow (shared admin + guest progress model) ----
 check('bookingFlow helpers are defined', typeof ctx.bookingFlow === 'function' && typeof ctx.bookingFlowCursor === 'function');
 if (typeof ctx.bookingFlow === 'function') {
-    const unpaid = ctx.bookingFlow('x', { agreedPrice: { total: 400, damagesDeposit: 0 }, depositPaid: 0, checkIn: '2026-08-01', checkOut: '2026-08-05' });
+    // The stay dates are RELATIVE, and have to be. Hardcoded as 2026-08-01→05 the
+    // cursor check below failed on 2, 3 and 4 August 2026 — a week after it was
+    // written — because bookingFlowCursor rightly overrides the cursor to the stage
+    // happening NOW, and on those days the seeded stay was in residence. A stay a
+    // month out keeps Deposit as the first unfinished stage at every instant.
+    // (The in-house case further down stays absolute on purpose: 2000→2999 is in
+    // residence whenever you run it, which is exactly what that one is testing.)
+    const fwd = (n) => { const dd = new Date(ctx.todayDashed() + 'T00:00:00Z'); dd.setUTCDate(dd.getUTCDate() + n); return dd.toISOString().slice(0, 10); };
+    const fIn = fwd(30), fOut = fwd(34);
+    const unpaid = ctx.bookingFlow('x', { agreedPrice: { total: 400, damagesDeposit: 0 }, depositPaid: 0, checkIn: fIn, checkOut: fOut });
     const keys = unpaid.stages.map((s) => s.key);
     check('flow has the core stages in order', JSON.stringify(keys) === JSON.stringify(['booked', 'deposit', 'paid', 'arrival', 'stay']));
     check('Booked is always done, Deposit pending when unpaid', unpaid.stages[0].done === true && unpaid.stages[1].done === false);
     check('cursor points at the first unfinished stage (Deposit)', ctx.bookingFlowCursor(unpaid.stages) === 1);
     // Guest-details stage appears only when a reg form exists, sitting after Deposit.
-    const withReg = ctx.bookingFlow('x', { agreedPrice: { total: 400, damagesDeposit: 100 }, depositPaid: 400, regUrl: 'http://x', regSubmitted: true, holdStatus: 'charged', checkIn: '2026-08-01', checkOut: '2026-08-05' });
+    const withReg = ctx.bookingFlow('x', { agreedPrice: { total: 400, damagesDeposit: 100 }, depositPaid: 400, regUrl: 'http://x', regSubmitted: true, holdStatus: 'charged', checkIn: fIn, checkOut: fOut });
     const rkeys = withReg.stages.map((s) => s.key);
     check('reg booking inserts Guest details after Deposit + adds Deposit-back', JSON.stringify(rkeys) === JSON.stringify(['booked', 'deposit', 'details', 'paid', 'arrival', 'stay', 'depositback']));
     check('paid booking marks Deposit + Guest details + Paid done', withReg.stages[1].done && withReg.stages[2].done && withReg.stages[3].done);
     check('stages carry guest wording (glabel)', withReg.stages.find((s) => s.key === 'details').glabel === 'Your details');
     // Guest My Stays renderer: progress pills + an actionable next step.
     if (typeof ctx.guestFlowHtml === 'function') {
-        const html = ctx.guestFlowHtml('x', { agreedPrice: { total: 400, damagesDeposit: 0 }, depositPaid: 0, regUrl: 'https://x/guest-details.php?b=1&token=t', regSubmitted: false, checkIn: '2026-08-01', checkOut: '2026-08-05' }, 'paytok');
+        const html = ctx.guestFlowHtml('x', { agreedPrice: { total: 400, damagesDeposit: 0 }, depositPaid: 0, regUrl: 'https://x/guest-details.php?b=1&token=t', regSubmitted: false, checkIn: fIn, checkOut: fOut }, 'paytok');
         check('guestFlowHtml renders progress pills + the details CTA', /bkflow-step/.test(html) && /Add your details/.test(html) && /guest-details\.php/.test(html));
         // A guest who's currently in-house → the Stay step reads GREEN (is-staying).
         const staying = ctx.guestFlowHtml('x', { agreedPrice: { total: 400, damagesDeposit: 0 }, depositPaid: 400, checkIn: '2000-01-01', checkOut: '2999-01-01' }, 't');
