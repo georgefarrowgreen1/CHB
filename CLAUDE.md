@@ -322,6 +322,19 @@ the ring silently never painted (ui-test-modelring caught exactly that, so its s
 searchpage's now point at `.logo`). Reduced motion keeps the sheet (it is information) and drops
 only the spring.
 
+**ONE assistant look** (admin.css, the "ONE ASSISTANT LOOK" block at the end) — the
+crown sheet and the search page are the same feature on two surfaces, so their MATERIAL
+is defined once as grouped selectors rather than twice: panel radius + the darkstar
+hairline, the pill field with its accent focus ring, the row rhythm (44px touch floor,
+shared label/sub sizes), and the hint footer. They had already drifted — the page's
+field was a bare transparent input at 6px radius against the sheet's bordered pill, and
+the page used `--r-lg` against the sheet's `--r-panel`. Two things are deliberately NOT
+shared because they carry information a uniform treatment would throw away: the page's
+knot (`#cmdk-ml`, model state as colour) where the sheet has a plain dot, and the page's
+per-type destination glyphs. Also fixed here: `.cmdk-foot` was hidden behind
+`hover: hover and pointer: fine`, so a PHONE got no hint at all while the sheet always
+states its keys — touch now gets a touch-appropriate line instead of the ⌘K keycaps.
+
 **The SEARCH PAGE** — search lives on ONE dedicated page (`view-search`, in `ADMIN_VIEWS`),
 reached from the crown's sheet on Enter (`openCmdK`) or ⌘K; the per-workspace Assist Bars were
 RETIRED in its favour (the whole `abar*` module, host divs and CSS are gone — do not resurrect). The

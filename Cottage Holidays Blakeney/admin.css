@@ -3162,3 +3162,118 @@ body.owner-mode .logo.logo-assist {
     transition: none;
   }
 }
+
+/* ============================================================
+   ONE ASSISTANT LOOK — the crown sheet and the search page are the same
+   feature on two surfaces, so their material is defined ONCE, here, as grouped
+   selectors. Same reasoning as accountsScopeCaveats(): two copies of a look
+   drift, and this one had already drifted (the page's field was a bare
+   transparent input at 6px radius while the sheet's was a bordered pill, and
+   the page's box used --r-lg against the sheet's --r-panel).
+
+   What is deliberately NOT shared: the page keeps its knot (#cmdk-ml carries the
+   model state as colour) where the sheet has a plain dot, and the page keeps its
+   per-type destination glyphs — both carry information a uniform dot would throw
+   away. The MATERIAL is unified; the meaning-bearing parts stay.
+   ============================================================ */
+
+/* --- the panel: same radius, same darkstar hairline along the top edge --- */
+.cmdk-box {
+  border-radius: var(--r-panel);
+}
+.cmdk-box::before {
+  content: "";
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  top: 0;
+  height: 1px;
+  border-radius: 1px;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--darkstar) 60%, transparent),
+    transparent
+  );
+}
+.cmdk-page .cmdk-box {
+  position: relative; /* so the hairline has something to sit on */
+}
+
+/* --- the field: a pill that shows the accent ring when focused --- */
+.cmdk-search {
+  /* the field carries its own edge now, so the divider under it goes */
+  border-bottom: 0;
+  padding: 14px 14px 10px;
+}
+.cmdk-search input,
+#crown-ask {
+  appearance: none;
+  -webkit-appearance: none;
+  background: rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-pill);
+  color: var(--text-light);
+  padding: 11px 15px;
+}
+body.light-mode .cmdk-search input,
+body.light-mode #crown-ask {
+  background: rgba(0, 0, 0, 0.045);
+}
+.cmdk-search input:focus,
+#crown-ask:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.cmdk-search input:focus-visible,
+#crown-ask:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+/* The ✕ sat inside the old bare row; inside a pill it has to clear the edge. */
+.cmdk-search .cmdk-clear {
+  margin-left: 2px;
+}
+
+/* --- rows: one rhythm. 44px min-height is the touch floor, and the sheet's
+   label/sub sizes win because they were tuned against this exact panel. --- */
+.cmdk-row,
+.cs-row {
+  min-height: 44px;
+  padding: 8px 10px;
+}
+.cmdk-row-label,
+.cs-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  line-height: 1.35;
+}
+.cmdk-row-sub,
+.cs-sub {
+  font-size: 0.76rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
+/* --- the hint line: hairline above, muted, and shown ON A PHONE TOO. The page
+   used to hide it behind `hover: hover and pointer: fine`, so a phone got no
+   hint at all while the sheet always states its keys. Touch gets the wording
+   that applies to touch. --- */
+.cmdk-foot {
+  border-top: 1px solid var(--glass-border);
+  font-size: 0.74rem;
+  color: var(--text-muted);
+}
+@media (hover: none), (pointer: coarse) {
+  .cmdk-foot {
+    display: flex;
+  }
+  /* keyboard-only affordances mean nothing on a touch device */
+  .cmdk-foot .cmdk-foot-keys {
+    display: none;
+  }
+  .cmdk-foot::after {
+    content: "Tap an answer to open it";
+  }
+}
