@@ -1033,6 +1033,16 @@ order because each piece makes the next one safe.
   recomputes from live `paymentSummary`, so a half-failed batch re-chases only whoever
   still owes — no bookkeeping. Under two owers there is no bulk action at all ("Request
   all 1 balances" is the row's own action wearing a worse label).
+  **A SECOND bulk action** — `chbBulkArrivalAction`, on the arrivals answer — is why
+  `email` sat in the safe list from the start. It reuses the confirm, the serial send
+  and the report unchanged; what it added is a second SKIP REASON, because a guest who
+  already has their arrival info must be named and passed over rather than sent it
+  twice. `chbBulkSplit(rows, skipIf)` takes that predicate so the confirm and the
+  report can never disagree about who is in the batch, and the "nothing to send" alert
+  stays SPECIFIC when the reason is a missing address (actionable: add one) rather than
+  going generic. OTA rows can't reach it — the arrivals composer's `rows` are direct
+  bookings only. NB the report counts in DIGITS: `chbSayN(2)` is "a couple", which
+  reads as "a couple guests" before a noun. Gated by search-test §39.
   **Two fixes it forced, both measured.** `cmdkRowExtrasHtml` now owns a row's
   quick-actions + refine chips as ONE definition shared with `cmdkHeroHtml`, because the
   hero rendered NEITHER: the owed answer's three refine chips ("Overdue only" /

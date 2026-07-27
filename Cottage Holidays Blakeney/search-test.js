@@ -2011,6 +2011,65 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);', ctx);
     } else fail('chbBulkRun / chbBulkBalanceAction missing from the bundle');
 
+    // ---- §39 The second and third watcher kinds, and the second bulk action ----
+    // Both are the SAME machinery reaching further, so what is worth pinning is the
+    // part that had to change to allow it: watcher IDENTITY (two balance watchers on
+    // different bookings must not collide) and the bulk SKIP reason (a guest who
+    // already has their arrival info is skipped and named, not sent it twice).
+    console.log('\n== §39 More watchers, a second bulk action ==');
+    if (typeof ctx.chbWatchBalanceAction === 'function' && typeof ctx.chbBulkArrivalAction === 'function') {
+        const fut = (n) => { const d0 = ctx.dpParse(ctx.todayDashed()); d0.setDate(d0.getDate() + n); return `${d0.getFullYear()}-${String(d0.getMonth() + 1).padStart(2, '0')}-${String(d0.getDate()).padStart(2, '0')}`; };
+
+        // A) BALANCE WATCHER — only where there is a balance, and it speaks before arrival.
+        const owing = { id: 7, dbId: 7, name: 'Cara Bell', email: 'c@x.co', checkIn: fut(20), checkOut: fut(24) };
+        const psOwe = { balance: 420, deposit: 100, fullyPaid: false };
+        const wb = ctx.chbWatchBalanceAction(owing, 'jollyboat', psOwe);
+        check('a booking with a balance can be WATCHED, not just chased', !!wb && wb.key === 'watch-balance', wb && wb.key);
+        check('nothing to watch on a settled booking', ctx.chbWatchBalanceAction(owing, 'jollyboat', { balance: 0, deposit: 500, fullyPaid: true }) === null);
+        let posted = null;
+        const realPost = ctx.apiPost;
+        ctx.apiPost = async (url, body) => { if (String(url).includes('watchers.php')) { posted = body; return { ok: true, watchers: [Object.assign({ id: 'wB' }, body.watcher)] }; } return realPost(url, body); };
+        const outB = await wb.inline();
+        check('it is stored as its own KIND', posted && posted.watcher && posted.watcher.kind === 'balance-unpaid', posted && posted.watcher && posted.watcher.kind);
+        check('carrying the booking as its ref — the field that stops two of them colliding', posted.watcher.ref === '7', posted.watcher.ref);
+        check('and it speaks BEFORE arrival, not on the day', posted.watcher.tell < owing.checkIn, `${posted.watcher.tell} < ${owing.checkIn}`);
+        check('setting one is undoable', typeof outB.undo === 'function');
+
+        // B) MONTH WATCHER — bounds the month it watches and speaks on a future day.
+        const wm = ctx.chbWatchMonthAction(fut(40));
+        posted = null;
+        const outM = await wm.inline();
+        check('a MONTH can be watched too', posted.watcher.kind === 'month-behind', posted.watcher.kind);
+        check('bounded to that month, start inclusive and end exclusive', /^\d{4}-\d{2}-01$/.test(posted.watcher.from) && /^\d{4}-\d{2}-01$/.test(posted.watcher.to) && posted.watcher.to > posted.watcher.from, `${posted.watcher.from} → ${posted.watcher.to}`);
+        check('and it only PROMISES to speak if it is actually behind', /only if it's actually behind/.test(outM.say), outM.say);
+        ctx.apiPost = realPost;
+
+        // C) BULK ARRIVAL — the second action the safe-list always allowed.
+        const arr = (id, name, email, sent) => ({ pk: 'jollyboat', b: { id, dbId: id, name, email, checkIn: fut(4), preArrivalSent: sent || null }, ps: {} });
+        const three = [arr(1, 'Richard Berry', 'r@x.co'), arr(2, 'Alexandrina F-S', 'a@x.co'), arr(3, 'Cara Bell', 'c@x.co', '2026-07-12')];
+        const act = ctx.chbBulkArrivalAction(three);
+        check('the arrivals answer carries a set-level send', !!act && act.key === 'arrival-all', act && act.key);
+        check('counting only those who still NEED it', /all 2/.test(act.label), act.label);
+        check('one guest needing it is not a batch', ctx.chbBulkArrivalAction([three[0], three[2]]) === null);
+        let dlg = null;
+        ctx.glassConfirm = (msg, okLabel) => { dlg = { msg, okLabel }; return Promise.resolve(true); };
+        ctx.glassAlert = (msg) => { dlg = { alert: msg }; return Promise.resolve(true); };
+        const posts = [];
+        ctx.apiPost = async (url, body) => { posts.push(body); return { ok: true }; };
+        const outA = await act.inline();
+        check('the confirm names the already-sent guest as a SKIP, not a recipient', /Cara Bell[^\n]*already sent, will be skipped/.test(dlg.msg), (dlg.msg || '').split('\n').filter((l) => /Cara/.test(l))[0]);
+        check('and its button counts only the real sends', dlg.okLabel === 'Send 2 requests', dlg.okLabel);
+        check('it calls send_arrival, not request_payment', posts.length === 2 && posts.every((b) => b.action === 'send_arrival'), posts.map((b) => b.action).join(','));
+        check('never re-sending to the guest who already had theirs', !posts.some((b) => b.id === 3), posts.map((b) => b.id).join(','));
+        check('and the report is a partial, naming why', outA.state === 'warn' && /Sent 2 of 3/.test(outA.say) && /already sent/.test(outA.say), outA.say);
+        // Everyone still needing it → a plain success in the arrival wording.
+        posts.length = 0;
+        const bothNeed = [arr(1, 'Richard Berry', 'r@x.co'), arr(2, 'Alexandrina F-S', 'a@x.co')];
+        const outOk = await ctx.chbBulkArrivalAction(bothNeed).inline();
+        check('everyone reachable → a plain success in the ARRIVAL wording, not the money one', !outOk.state && /Arrival info sent to 2 guests/.test(outOk.say), outOk.say);
+        ctx.apiPost = realPost;
+    } else fail('chbWatchBalanceAction / chbBulkArrivalAction missing from the bundle');
+
     // ---- Summary ----
     console.log('\n== Summary ==');
     if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }

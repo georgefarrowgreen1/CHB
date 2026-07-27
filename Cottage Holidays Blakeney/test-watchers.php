@@ -85,5 +85,21 @@ twchk('due() survives a junk list', watchers_due('nope', '2026-08-12') === []);
 twchk('expired() survives a junk list', watchers_expired(null, '2026-08-12') === []);
 twchk('merge() survives a junk list', count(watchers_merge('nope', $gap)) === 1);
 
+// ---- IDENTITY BEYOND DATES. A gap watcher is identified by its cottage and its
+// dates, but the kinds added later are about a RECORD (a booking) or a MONTH, and
+// those carry no pk/from/to of their own. Without `ref` in the key every
+// balance watcher hashed to the same 'balance-unpaid|||' string, so asking to be
+// told about a SECOND guest's balance silently replaced the first one's watcher —
+// the owner would have been waiting on an alert that no longer existed.
+$balA = ['id' => 'wA', 'kind' => 'balance-unpaid', 'ref' => '7', 'tell' => '2030-01-01'];
+$balB = ['id' => 'wB', 'kind' => 'balance-unpaid', 'ref' => '9', 'tell' => '2030-01-01'];
+$two = watchers_merge(watchers_merge([], $balA), $balB);
+twchk('two balance watchers on DIFFERENT bookings both survive', count($two) === 2);
+twchk('…and the same booking still replaces rather than duplicating',
+    count(watchers_merge(watchers_merge([], $balA), $balA)) === 1);
+twchk('a month watcher is identified by its month', watchers_key(['kind' => 'month-behind', 'ref' => '2026-09'])
+    !== watchers_key(['kind' => 'month-behind', 'ref' => '2026-10']));
+twchk('and a kind alone is still not an identity', watchers_key(['ref' => '7']) === '');
+
 echo "\n" . ($fails ? "  $fails WATCHER CHECK(S) FAILED ❌\n\n" : "  ALL WATCHER CHECKS PASSED ✅\n\n");
 exit($fails ? 1 : 0);

@@ -39,6 +39,9 @@ route_actions([
             'pk' => preg_match('/^[a-z0-9_-]{1,40}$/i', (string) ($w['pk'] ?? '')) ? $w['pk'] : '',
             'from' => $iso($w['from'] ?? ''),
             'to' => $iso($w['to'] ?? ''),
+            // What a non-date watcher is ABOUT (a booking id, a month key). Part of
+            // its identity, so two balance watchers can't collide — see watchers_key.
+            'ref' => preg_match('/^[a-z0-9_-]{1,40}$/i', (string) ($w['ref'] ?? '')) ? $w['ref'] : '',
             'tell' => $iso($w['tell'] ?? ''),
             'say' => mb_substr(clean((string) ($w['say'] ?? '')), 0, 140),
             'at' => date('Y-m-d'),
