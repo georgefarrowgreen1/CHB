@@ -129,6 +129,17 @@ const acctPayload = {
   await page.waitForTimeout(300);
   await page.evaluate(() => openAccountPreview(77, 'Cara Nunn'));
   await page.waitForTimeout(1400);
+  // HOVER THE SHELL before measuring, deliberately. These two assertions used to
+  // depend on wherever the pointer happened to be: .glass-panel:hover gives every
+  // panel carrying the material a translateY(-5px) lift and a --glass-hover
+  // background, and the shell carries it. Hovered, the bar dropped to 55px against
+  // this 59px inset and the "opaque" shell measured rgba(255,255,255,0.92) — the
+  // back office ghosting through behind the customer's name, the exact bug the
+  // shell's own comment says was fixed. Unhovered it passed. So the suite was green
+  // or red by pointer position, and CI happened to sit on green while a real bug
+  // shipped. Measuring the WORSE state makes the check mean something.
+  await page.mouse.move(Math.round(390 / 2), 400);
+  await page.waitForTimeout(250);
   const ph = await page.evaluate(() => {
     const ov = document.getElementById('acct-preview-overlay');
     const shell = ov.querySelector('.acct-preview-shell');
@@ -137,8 +148,11 @@ const acctPayload = {
     const r = (el) => { const b = el.getBoundingClientRect(); return { t: Math.round(b.top), l: Math.round(b.left), w: Math.round(b.width), h: Math.round(b.height), b: Math.round(b.bottom) }; };
     const bg = getComputedStyle(shell).backgroundColor;
     const alpha = (bg.match(/[\d.]+/g) || [])[3];
-    return { vw: innerWidth, vh: innerHeight, shell: r(shell), bar: r(bar), wrap: r(wrap), shellBg: bg, shellAlpha: alpha == null ? 1 : +alpha };
+    return { vw: innerWidth, vh: innerHeight, shell: r(shell), bar: r(bar), wrap: r(wrap), shellBg: bg, shellAlpha: alpha == null ? 1 : +alpha,
+             hovered: shell.matches(':hover'), transform: getComputedStyle(shell).transform };
   });
+  ok(ph.hovered, 'the shell is genuinely hovered for this measurement (else the two checks below prove nothing)');
+  ok(ph.transform === 'none', `a container does not lift under the pointer the way a card does (${ph.transform})`);
   ok(ph.bar.t >= SAFE_T, `the bar clears the notch — top ${ph.bar.t}px vs a ${SAFE_T}px inset`);
   ok(ph.wrap.b <= ph.vh - SAFE_B + 1, `and the frame clears the home indicator — bottom ${ph.wrap.b} of ${ph.vh - SAFE_B}`);
   ok(ph.shell.w >= ph.vw - 2, `on a phone it is a full-screen sheet, not a phone-inside-a-phone (${ph.shell.w} of ${ph.vw}px wide)`);

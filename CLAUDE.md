@@ -41,6 +41,24 @@ build step**); PHP backend files sit alongside it. App-style guest shell lives i
   `body.light-mode`. Never introduce new raw hex/px/easing values for things a token
   covers. `.sr-only` is the visually-hidden-but-announced utility (status live
   regions etc.).
+  **`.glass-panel` is a MATERIAL, not an affordance.** Its `:hover` rule (app.css,
+  inside `@media (hover: hover)`) adds `transform: translateY(-5px)` + a
+  `--glass-hover` background — that is a CARD saying "I respond to you". But the same
+  material is worn by every modal, the shared glass dialog, and the account-preview
+  shell, none of which you click, and on those the hover state was actively wrong: it
+  MOVED them (the glass dialog measured top 377.3 → 372.3 as the pointer crossed its
+  edge, shifting its own buttons under your reach — including the bulk-send confirm),
+  and it made them TRANSLUCENT, which on `.acct-preview-shell` silently undid the
+  opaque ground that element sets for itself, so the back office ghosted through
+  behind the customer's name — the exact bug its own comment claims to have fixed,
+  because only the RESTING state had been. The 5px lift also broke the notch
+  guarantee (bar at 55px against a 59px inset). Containers now opt out by name in
+  that same media block (`.modal-box`, `.glass-dialog-box`, `.reviews-modal-box`,
+  `.terms-modal-box`, `.acct-preview-shell`, `.datepicker-card`, `.cal-panel`);
+  decorative page panels (hero, trust strip, host card) deliberately keep the lift.
+  NB this also made `ui-test-acctpreview` deterministic — it had been passing or
+  failing on wherever the pointer happened to sit, so it now HOVERS the shell on
+  purpose before measuring, and asserts that it is hovered.
   **Colour for WORDS vs colour for THINGS.** `--accent` is for icons, stars, borders
   and fills, which only have to clear the 3:1 non-text bar; WORDS in the brand accent
   take **`--accent-text`**, because the rose-gold measures 2.60–2.96:1 against all
@@ -1287,9 +1305,21 @@ deleting — both now FIXED, and they are worth keeping here as the pattern to e
   (#000/#fff there are not theme colours) — a noisy gate gets worked around.
   **`a11y-test.js`** (browser-core job, ratchets against `a11y-budget.json`) is the
   accessibility gate: §1 every text token's contrast BY ARITHMETIC against the real
-  surfaces of both themes (no rendering, so no flake), §2 an accent-as-text ratchet,
-  §3 accessible names on interactive elements, §4 minimum font size, §5 WCAG 2.2's
-  24×24 for standalone controls. Read its header before extending it — a full
+  surfaces of both themes (no rendering, so no flake), **§1b the same tokens on their
+  own STATUS TINT**, §2 an accent-as-text ratchet, §3 accessible names on interactive
+  elements, §4 minimum font size, §5 WCAG 2.2's 24×24 for standalone controls.
+  **§1b exists because §1 measured the wrong background.** Status ink almost never
+  paints on a bare surface — it sits inside a `color-mix(in srgb, var(--ok) 12–20%,
+  transparent)` pill or strip of its OWN colour, which is darker than the surface
+  beneath it. Every one of `--ok-text` / `--warn-text` / `--danger-text` / `--info-text`
+  passed §1 while failing AA where it is actually read (measured 4.23 / 4.40 / 4.30 /
+  4.08:1); all four were retuned. §1b DISCOVERS its pairs by scanning for rules that
+  set both `color: var(--X-text)` and a `--X` tint background, rather than listing
+  them — so a new status pill is covered the day it is written, and the gate stays
+  honest (`--ok`/`--warn` also appear at 32–34% as plain fills with no matching text,
+  and testing every percentage against every token would invent failures for pairings
+  that never appear on screen). It carries a guard that fails if the scanner ever
+  stops finding pairs, so it cannot silently cover nothing. Read its header before extending it — a full
   pixel-sampling contrast crawler was built for the audit behind this gate and
   produced THREE rounds of confident false failures (a background-compositing model
   that stopped at a translucent parent; a probe stylesheet leaking into the next

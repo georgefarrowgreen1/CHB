@@ -109,6 +109,56 @@ for (const [theme, themeTokens] of [['light', light], ['dark', dark]]) {
     }
 }
 
+// §1b — the same tokens on their OWN STATUS TINT, which is where they nearly always
+// actually paint. §1 above measures text against a bare SURFACE; but an --ok-text
+// word almost never sits on bare cream — it sits inside a
+// `background: color-mix(in srgb, var(--ok) 12–18%, transparent)` pill or strip
+// (13 such pairs across app.css + admin.css: the act-in-place strips, status pills,
+// health banners). That tint is DARKER than the surface under it, so passing §1 does
+// not mean passing where the text is really read — measured, all three of ok/warn/
+// danger cleared §1 while sitting at 4.23 / 4.40 / 4.30:1 in their own components.
+// The tint percentage swept 12→18 because the sites differ and the darkest wins.
+// The pairs are DISCOVERED from the CSS, not listed here: a rule that sets both
+// `color: var(--X-text)` and `background: color-mix(… var(--X) N% …)` is, by
+// construction, status text on its own tint. Deriving them means a new status pill
+// is covered the day it is written, and — just as important — it keeps the gate
+// HONEST: --ok and --warn also appear at 32–34% elsewhere, but those are fills with
+// no matching text colour, so testing every percentage against every token would
+// invent failures for pairings that do not exist on screen.
+const stripC = (s) => s.replace(/\/\*[\s\S]*?\*\//g, (m) => m.replace(/[^\n]/g, ' '));
+const tintPairs = new Map(); // "ok|18" -> {ink:'--ok-text', fill:'--ok', pct, where}
+for (const f of ['app.css', 'admin.css', 'guest-app.css']) {
+    const css = stripC(fs.readFileSync(path.join(DIR, f), 'utf8'));
+    for (const m of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+        const bg = m[2].match(/background(?:-color)?\s*:\s*color-mix\(in srgb,\s*var\(--(ok|warn|danger|info)\)\s*([0-9.]+)%/);
+        const col = m[2].match(/(?:^|;)\s*color\s*:\s*var\(--(ok|warn|danger|info)-text\)/);
+        if (!bg || !col || bg[1] !== col[1]) continue;
+        const pct = parseFloat(bg[2]) / 100;
+        const key = `${bg[1]}|${bg[2]}`;
+        if (!tintPairs.has(key)) tintPairs.set(key, { ink: `--${col[1]}-text`, fill: `--${bg[1]}`, pct, where: `${f} ${m[1].trim().split('\n').pop().trim().slice(0, 34)}` });
+    }
+}
+console.log('\n== 1b. status text clears AA on its OWN tint, not just on the bare surface ==');
+if (!tintPairs.size) ok(false, 'no status text-on-tint pairs found — the scanner has stopped seeing them');
+for (const [theme, themeTokens] of [['light', light], ['dark', dark]]) {
+    for (const { ink: inkTok, fill: fillTok, pct, where } of tintPairs.values()) {
+        const inkV = themeTokens[inkTok], fillV = themeTokens[fillTok];
+        if (!inkV || !fillV || !/^#[0-9a-fA-F]{6}$/.test(inkV) || !/^#[0-9a-fA-F]{6}$/.test(fillV)) {
+            console.log(`  · ${theme}: ${inkTok}/${fillTok} not a plain hex pair, skipped`);
+            continue;
+        }
+        const inkC = hex2rgb(inkV), fill = hex2rgb(fillV);
+        let worst = Infinity, worstOn = '';
+        for (const [bg, label] of Object.entries(SURFACES[theme])) {
+            const ground = hex2rgb(bg);
+            const tinted = fill.map((c, i) => c * pct + ground[i] * (1 - pct));
+            const r = ratio(inkC, tinted);
+            if (r < worst) { worst = r; worstOn = label; }
+        }
+        ok(worst >= 4.5, `${theme}: ${inkTok} on ${Math.round(pct * 100)}% ${fillTok} — worst ${worst.toFixed(2)}:1 on ${worstOn} (${where})`);
+    }
+}
+
 console.log('\n== 2. the brand accent is not used as TEXT (it fails AA on light: 2.6–3.0:1) ==');
 // --accent is for icons, stars, borders and fills (3:1 non-text bar). Words take
 // --accent-text. A count ratchet rather than a selector rule, because whether a
