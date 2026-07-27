@@ -579,6 +579,60 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   }
   await page.setViewportSize({ width: 900, height: 900 });
 
+  // ---- 14. CHIPS: two species, one tidy block ----
+  // A how-to answer carries chips that DO something with this topic (Walk me through
+  // it / Add a booking / Show me where) and chips that go to ANOTHER topic. They used
+  // to be one undifferentiated wrap of pills at four unrelated widths — measured at
+  // 390px: 116, 126, 262 and a 44-char label that WRAPPED to two centred lines, 58px
+  // tall among 29px neighbours, with 84 / 226 / 90 / 182px of dead space beside them.
+  // That is what "disjointed" was. Destinations now take a line each and fill it.
+  for (const vp of [{ width: 390, height: 844 }, { width: 1280, height: 900 }]) {
+    await page.setViewportSize(vp);
+    const chips = await page.evaluate(async () => {
+      const until = async (fn, ms = 8000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v !== undefined && v !== null && v !== false && v !== -1) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 40)); } };
+      try { closeCmdK(); } catch (e) {}
+      openCmdK();
+      await until(() => document.getElementById('cmdk').classList.contains('open'));
+      document.getElementById('cmdk-input').value = 'how do i add a booking';
+      cmdkSearchCore('how do i add a booking', false);
+      await until(() => __cmdkResults.length);
+      __cmdkSel = 0; cmdkRender();
+      if (!await until(() => !!document.querySelector('#cmdk .cmdk-chip'))) return null;
+      await new Promise((r) => setTimeout(r, 350));
+      // A label long enough to NEED the clamp. Without one the check is vacuous:
+      // the real titles fit on their stretched line, so nothing wraps either way.
+      __cmdkResults[0].chips.push({ label: 'Reconcile the Square settlement report against every captured damages deposit taken this tax year', q: 'reconcile', kind: 'topic' });
+      cmdkRender();
+      await new Promise((r) => setTimeout(r, 250));
+      const wrap = document.querySelector('#cmdk .cmdk-chips');
+      const all = [...wrap.querySelectorAll('.cmdk-chip')];
+      const avail = wrap.clientWidth - 24; // its own left/right padding
+      const one = Math.round(all[0].getBoundingClientRect().height);
+      return {
+        n: all.length,
+        // every chip index in the DOM must still address its own entry in it.chips
+        idxOk: all.every((c) => {
+          const k = +c.getAttribute('data-chip');
+          const src = __cmdkResults[0].chips[k];
+          return src && c.textContent.trim() === String(src.label);
+        }),
+        maxH: Math.max(...all.map((c) => Math.round(c.getBoundingClientRect().height))),
+        oneH: one,
+        finds: all.filter((c) => c.classList.contains('cmdk-chip-find')).map((c) => Math.round(c.getBoundingClientRect().width)),
+        acts: all.filter((c) => !c.classList.contains('cmdk-chip-find')).length,
+        noPrefix: all.every((c) => !/^More:/.test(c.textContent.trim())),
+        avail,
+      };
+    });
+    if (!chips) { ok(false, `CHIPS @${vp.width}px: no chips rendered`); continue; }
+    ok(chips.idxOk, `CHIPS @${vp.width}px: every chip still addresses its own index (the line break must not re-index)`);
+    ok(chips.maxH === chips.oneH, `CHIPS @${vp.width}px: none wraps into a tall lozenge (tallest ${chips.maxH} vs ${chips.oneH})`);
+    ok(chips.noPrefix, `CHIPS @${vp.width}px: the dead "More:" prefix is gone`);
+    ok(chips.finds.length >= 1 && chips.acts >= 1, `CHIPS @${vp.width}px: both species are present (${chips.acts} actions, ${chips.finds.length} destinations)`);
+    ok(chips.finds.every((w) => w >= chips.avail * 0.9), `CHIPS @${vp.width}px: destinations fill their line rather than leaving a ragged edge (${chips.finds.join(', ')} of ${chips.avail}px)`);
+  }
+  await page.setViewportSize({ width: 900, height: 900 });
+
   console.log(fails ? `\n  ${fails} SEARCH-PAGE CHECK(S) FAILED ❌` : '\n  SEARCH-PAGE SUITE PASSED ✅');
   await done(fails);
 })();
