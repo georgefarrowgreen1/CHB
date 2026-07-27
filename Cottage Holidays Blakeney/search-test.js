@@ -1183,6 +1183,54 @@ if (typeof ctx.cmdkIntent === 'function') {
     vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);__cmdkCustomers=null;', ctx);
 }
 
+// ---- 31c. THE COAST TIER — tides + weather. Driven through chbCoastRow with
+// FIXTURE data, never the network: tides.php and weather.php are HTTP, and a test
+// that needs a third party's uptime fails for reasons that have nothing to do with
+// this repo. What's worth pinning is the composition — that it leads with the
+// figure, crosses it with who is actually arriving, and stays silent rather than
+// inventing when the fetch came back empty.
+if (typeof ctx.chbCoastRow === 'function') {
+    const tToday = ctx.todayDashed();
+    const tide = { ok: true, extremes: [
+        { time: tToday + 'T06:41:00', type: 'High', height: 3.9 },
+        { time: tToday + 'T12:55:00', type: 'Low', height: 0.7 },
+        { time: tToday + 'T19:08:00', type: 'High', height: 4.1 },
+    ] };
+    const weather = { ok: true, days: [{ date: tToday, code: 3, summary: 'cloudy', tmax: 19, tmin: 12, wind: 20, gust: 52, rain: 1 }] };
+    vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);dbBookings.jollyboat=[
+      {id:960,name:"Wren Halliday",email:"w@x.co",checkIn:"${tToday}",checkOut:"${ctx.chbIsoShift(tToday, 4)}",adults:2,children:0,payment:"deposit",depositPaid:100,agreedPrice:{total:600},holdStatus:"none"}];`, ctx);
+
+    const r = ctx.chbCoastRow('tides today', tToday, { tide, weather });
+    check('coast: a tide question leads with high water', !!r && /High water 06:41 and 19:08/.test(r.label), r && r.label);
+    check('coast: and carries low water in the sub', !!r && /low 12:55/.test(r.sub), r && r.sub);
+    check('coast: it crosses the tide with WHO is arriving — the thing only this app can say', !!r && /Wren arrives today/.test(r.sub), r && r.sub);
+
+    const w = ctx.chbCoastRow('weather today', tToday, { tide: null, weather });
+    check('coast: a weather question answers without tides', !!w && /cloudy/.test(w.label) && /19°C/.test(w.label), w && w.label);
+    check('coast: a gale is named with its gust', !!w && /gusting 52 mph/.test(w.label + ' ' + w.sub), w && (w.label + ' | ' + w.sub));
+
+    // Silence, not invention: the endpoints degrade to {ok:false} with no key or
+    // no network, and the row must simply not appear.
+    check('coast: nothing fetched → NO row rather than a made-up one', ctx.chbCoastRow('tides today', tToday, {}) === null);
+    check('coast: a failed fetch → no row', ctx.chbCoastRow('tides today', tToday, { tide: null, weather: null }) === null);
+
+    // The day parser only ever resolves today or a named day this week.
+    check('coast: "tomorrow" resolves to tomorrow', ctx.chbCoastDay('tides tomorrow') === ctx.chbIsoShift(tToday, 1), ctx.chbCoastDay('tides tomorrow'));
+    check('coast: a bare question resolves to today', ctx.chbCoastDay('whats the weather') === tToday, ctx.chbCoastDay('whats the weather'));
+    const named = ctx.chbCoastDay('tides on saturday');
+    check('coast: a named day lands on that weekday within the week', new Date(named + 'T00:00:00').getDay() === 6 && named >= tToday, named);
+
+    // The triggers must not swallow ordinary business queries. Evaluated INSIDE the
+    // context: a top-level `const` in a vm script is a lexical binding, not a
+    // property of the global object, so ctx.CHB_WEATHER_Q is undefined.
+    const trig = (q) => vm.runInContext(`[CHB_WEATHER_Q.test(${JSON.stringify(q)}), CHB_TIDE_Q.test(${JSON.stringify(q)})]`, ctx);
+    check('coast: "who owes me money" is neither a weather nor a tide question', trig('who owes me money').every((x) => x === false));
+    check('coast: "revenue this year" is not a weather question', trig('revenue this year')[0] === false);
+    check('coast: but "whats the weather" is', trig('whats the weather')[0] === true);
+    check('coast: and "high water saturday" is a tide question', trig('high water saturday')[1] === true);
+    vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);', ctx);
+}
+
 // ---- 32. Ambient intelligence: chbAnomalies (deterministic opportunity rows —
 // bounded 2-4-night gaps carrying chbGapPlan's best-outcome decision (one-tap
 // dated offer, 20% when imminent, live-status when already set), next-month

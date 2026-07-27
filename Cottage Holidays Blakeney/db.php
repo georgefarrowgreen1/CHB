@@ -656,6 +656,10 @@ function is_internal_content_key($key)
     if (strpos($key, 'chat-away-') === 0) {
         return true;
     }
+    if ($key === 'weather-cache') {
+        return true; // the cached Blakeney forecast (weather-data.php) — machinery,
+                     // not content; weather.php serves the data itself publicly
+    }
     if (strpos($key, 'ical-status-') === 0) {
         return true; // per-cottage feed sync health (ical-import.php) — owner-only
     }
