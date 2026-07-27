@@ -244,8 +244,10 @@ async function waitForServer(url, tries = 40) {
       { key: 'admin-close-dialog', open: "(() => { const c = document.getElementById('glass-dialog-cancel'); if (c) c.click(); })()", mustSee: ['#bookings-list'] },
       // The crown's assistant sheet — the only route to search now the dock knot
       // is retired, so its open state has to be measured like any other screen.
-      { key: 'admin-crown-sheet', open: "(async () => { crownSheetToggle(); await new Promise(r => setTimeout(r, 400)); })()", mustSee: ['#crown-sheet', '#crown-ask'] },
-      { key: 'admin-crown-closed', open: "(async () => { crownSheetClose(); await new Promise(r => setTimeout(r, 300)); })()", mustSee: ['#bookings-list'] },
+      // The crown drops the assistant POP-OUT — which is the search itself now, so
+      // what must be on screen is its field and its result list, not a separate sheet.
+      { key: 'admin-crown-sheet', open: "(async () => { crownSheetToggle(); await new Promise(r => setTimeout(r, 500)); })()", mustSee: ['#cmdk', '#cmdk-input', '#cmdk-results'] },
+      { key: 'admin-crown-closed', open: "(async () => { closeCmdK(); await new Promise(r => setTimeout(r, 300)); })()", mustSee: ['#bookings-list'] },
       { key: 'admin-inbox-messages', open: "(async () => { await openInbox(); inboxFolder('messages'); })()", mustSee: ['#inbox-folders', '#messages-list'] },
       { key: 'admin-inbox', open: "(async () => { await openInbox(); inboxFolder('enquiries'); })()", mustSee: ['#inbox-folders', '#inbox-list'] },
       { key: 'admin-money', open: '(async () => { await openAccounts(); })()', mustSee: ['#accounts-index'] },

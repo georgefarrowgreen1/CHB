@@ -2970,199 +2970,15 @@ body.acct-preview-open {
   overflow: hidden;
 }
 
-/* ============================================================
-   CROWN SHEET — the assistant, dropped from the brand mark.
-   Sits BELOW the header (1440 vs 1500) on purpose: the crown stays visible and
-   tappable while the sheet is open, so one target both opens and closes it.
-   ============================================================ */
-#crown-scrim {
-  position: fixed;
-  inset: 0;
-  z-index: 1430;
-  background: rgba(8, 10, 14, 0.5);
-  -webkit-backdrop-filter: blur(2px);
-  backdrop-filter: blur(2px);
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 0.26s var(--fluid-bezier);
-}
-#crown-scrim.open {
-  opacity: 1;
-  pointer-events: auto;
-}
-#crown-sheet {
-  position: fixed;
-  left: 10px;
-  right: 10px;
-  /* clears the header (60px tall at 20px from the top, plus the notch) */
-  top: calc(88px + env(safe-area-inset-top, 0px));
-  z-index: 1440;
-  max-width: 520px;
-  margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 14px;
-  border-radius: var(--r-panel);
-  background: var(--glass-bg);
-  border: 1px solid var(--glass-border);
-  -webkit-backdrop-filter: blur(22px) saturate(1.3);
-  backdrop-filter: blur(22px) saturate(1.3);
-  box-shadow: var(--shadow-float, 0 24px 60px rgba(0, 0, 0, 0.45));
-  /* iOS-flavoured drop: falls a little and settles. One transform is safe here —
-     unlike the dock pill, nothing else animates this element, so there is no
-     keyframe to fight over the property. */
-  opacity: 0;
-  transform: translateY(-10px) scale(0.985);
-  transform-origin: top center;
-  pointer-events: none;
-  transition:
-    opacity 0.2s var(--fluid-bezier),
-    transform 0.42s var(--spring);
-}
-#crown-sheet.open {
-  opacity: 1;
-  transform: none;
-  pointer-events: auto;
-}
-/* A darkstar hairline along the top edge — the assistant's colour, stated once
-   rather than tinting the whole panel. */
-#crown-sheet::before {
-  content: "";
-  position: absolute;
-  left: 16px;
-  right: 16px;
-  top: 0;
-  height: 1px;
-  border-radius: 1px;
-  background: linear-gradient(
-    90deg,
-    transparent,
-    color-mix(in srgb, var(--darkstar) 60%, transparent),
-    transparent
-  );
-}
-.cs-field {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 0 4px;
-}
-.cs-knot {
-  flex: 0 0 auto;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  background: var(--darkstar);
-  box-shadow: 0 0 10px color-mix(in srgb, var(--darkstar) 55%, transparent);
-}
-#crown-ask {
-  flex: 1 1 auto;
-  min-width: 0;
-  appearance: none;
-  -webkit-appearance: none;
-  background: rgba(0, 0, 0, 0.18);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-pill);
-  color: var(--text-light);
-  font-family: var(--font-sans);
-  font-size: 1rem;
-  padding: 11px 15px;
-}
-body.light-mode #crown-ask {
-  background: rgba(0, 0, 0, 0.045);
-}
-#crown-ask::placeholder {
-  color: var(--text-muted);
-}
-#crown-ask:focus {
-  outline: none;
-  border-color: var(--accent);
-}
-#crown-ask:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-.cs-rows {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.cs-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  width: 100%;
-  min-height: 44px;
-  padding: 8px 10px;
-  background: none;
-  border: 0;
-  border-radius: var(--r-sm);
-  cursor: pointer;
-  text-align: left;
-  font-family: var(--font-sans);
-  transition: background 0.16s var(--fluid-bezier);
-}
-@media (hover: hover) {
-  .cs-row:hover {
-    background: var(--cmdk-sel, rgba(127, 127, 127, 0.1));
-  }
-}
-.cs-row:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-}
-.cs-dot {
-  flex: 0 0 auto;
-  width: 6px;
-  height: 6px;
-  margin-top: 7px;
-  border-radius: 50%;
-  background: var(--accent);
-}
-.cs-body {
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
-  min-width: 0;
-}
-.cs-label {
-  font-size: 0.88rem;
-  color: var(--text-light);
-  line-height: 1.35;
-}
-.cs-sub {
-  font-size: 0.74rem;
-  color: var(--text-muted);
-  line-height: 1.35;
-}
-.cs-empty,
-.cs-foot {
-  font-size: 0.74rem;
-  color: var(--text-muted);
-  padding: 2px 6px;
-}
-.cs-foot {
-  border-top: 1px solid var(--glass-border);
-  padding-top: 8px;
-}
-/* The crown IS the assistant now: it gets the pointer, and it must not shrink —
-   `.logo` is flex:0 1 auto, and it collapsed 48→27px as soon as a sibling
-   competed for the bar's free space. */
+/* The crown IS the assistant: it gets the pointer, and it must NOT shrink —
+   `.logo` is flex:0 1 auto by default and collapsed 48→27px the moment a sibling
+   competed for the bar's free space (the condensed bar reveals #admin-head-title
+   with the screen's name in it). The crown is the only route to the assistant, so
+   this pin is load-bearing — it is gated, and deleting it measured 19px. */
 body.owner-mode .logo.logo-assist {
   cursor: pointer;
   flex: 0 0 auto;
   position: relative;
-}
-@media (prefers-reduced-motion: reduce) {
-  /* The sheet still appears (it's information); it just doesn't spring in. */
-  #crown-sheet {
-    transition: opacity 0.18s ease;
-    transform: none;
-  }
-  #crown-scrim {
-    transition: none;
-  }
 }
 
 /* ============================================================
@@ -3209,8 +3025,7 @@ body.owner-mode .logo.logo-assist {
   border-bottom: 0;
   padding: 14px 14px 10px;
 }
-.cmdk-search input,
-#crown-ask {
+.cmdk-search input {
   appearance: none;
   -webkit-appearance: none;
   background: rgba(0, 0, 0, 0.18);
@@ -3219,17 +3034,14 @@ body.owner-mode .logo.logo-assist {
   color: var(--text-light);
   padding: 11px 15px;
 }
-body.light-mode .cmdk-search input,
-body.light-mode #crown-ask {
+body.light-mode .cmdk-search input {
   background: rgba(0, 0, 0, 0.045);
 }
-.cmdk-search input:focus,
-#crown-ask:focus {
+.cmdk-search input:focus {
   outline: none;
   border-color: var(--accent);
 }
-.cmdk-search input:focus-visible,
-#crown-ask:focus-visible {
+.cmdk-search input:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -3241,19 +3053,16 @@ body.light-mode #crown-ask {
 /* --- rows: one rhythm. 44px min-height is the touch floor, and the sheet's
    label/sub sizes win because they were tuned against this exact panel. --- */
 .cmdk-row,
-.cmdk-qa-row,
-.cs-row {
+.cmdk-qa-row {
   min-height: 44px;
   padding: 8px 10px;
 }
-.cmdk-row-label,
-.cs-label {
+.cmdk-row-label {
   font-size: 0.9rem;
   font-weight: 600;
   line-height: 1.35;
 }
-.cmdk-row-sub,
-.cs-sub {
+.cmdk-row-sub {
   font-size: 0.76rem;
   line-height: 1.35;
   color: var(--text-muted);
@@ -3282,25 +3091,38 @@ body.light-mode #crown-ask {
 }
 
 /* ============================================================
-   SEARCH AS A WINDOW — an overlay over the workspace, not a page you travel to.
-   The node is re-parented to <body> by cmdkEnsureOverlay(): a `.page-view` has a
-   transform, which would make it the containing block for this fixed element and
-   pin the "overlay" inside the page. Same trap the cottage page's sticky bar hit.
+   SEARCH IS THE POP-OUT the crown drops — one surface, not two.
 
-   ABOVE the header (1700 vs 1500), unlike the crown sheet: the sheet is a
-   dropdown you toggle from the crown, this is a focused window you dismiss. Still
-   below the real modals (2000+), so a glassConfirm raised FROM search covers it.
+   There used to be a small `#crown-sheet` popover (brief + a field) that handed
+   off on Enter to a separate FULL-BLEED `#cmdk` window. So the thing the crown
+   opened was a menu for the feature rather than the feature: four brief rows and
+   a promise, with the answers, boards, quick-actions, chips, thread and scope one
+   journey further on. `#crown-sheet` is gone; `#cmdk` is now presented as that
+   pop-out, so everything happens where the crown drops it.
+
+   The node is still re-parented to <body> by cmdkEnsureOverlay(), and that is
+   still not optional: a `.page-view` carries a transform, which would make it the
+   containing block for this fixed element and pin the "pop-out" inside the page —
+   the same trap the cottage page's sticky bar hit.
+
+   BELOW the header (1440 vs 1500). This is the crown sheet's rule and it comes
+   with the surface: the crown must stay visible and tappable while the pop-out is
+   open, so ONE target opens and closes it. (When this was a full-bleed window it
+   sat at 1700 and covered the crown, which is why it needed a close chevron of
+   its own; that button stays, but it is now one of four ways out rather than the
+   only one.) Still far below the real modals (2000+), so a glassConfirm raised
+   FROM search — the bulk-send confirm, say — covers it.
    ============================================================ */
 #cmdk-scrim {
   position: fixed;
   inset: 0;
-  z-index: 1690;
-  background: rgba(8, 10, 14, 0.55);
+  z-index: 1430;
+  background: rgba(8, 10, 14, 0.5);
   -webkit-backdrop-filter: blur(3px);
   backdrop-filter: blur(3px);
   opacity: 0;
   pointer-events: none;
-  transition: opacity 0.24s var(--fluid-bezier);
+  transition: opacity 0.26s var(--fluid-bezier);
 }
 #cmdk-scrim.open {
   opacity: 1;
@@ -3308,17 +3130,18 @@ body.light-mode #crown-ask {
 }
 #cmdk.cmdk-overlay {
   position: fixed;
-  left: 0;
-  right: 0;
-  top: 0;
-  bottom: 0;
-  z-index: 1700;
+  left: 10px;
+  right: 10px;
+  /* clears the header (60px tall at 20px from the top, plus the notch) */
+  top: calc(88px + env(safe-area-inset-top, 0px));
+  bottom: auto;
+  z-index: 1440;
   display: flex;
   justify-content: center;
-  align-items: stretch;
+  align-items: flex-start;
   padding: 0;
   /* Kept in the layout rather than display:none, because `display` cannot be
-     transitioned and the window has to GROW rather than appear. Hidden from
+     transitioned and the pop-out has to DROP rather than appear. Hidden from
      pointers AND from assistive tech while closed. */
   visibility: hidden;
   pointer-events: none;
@@ -3328,73 +3151,62 @@ body.light-mode #crown-ask {
 }
 #cmdk.cmdk-overlay .cmdk-box {
   pointer-events: auto;
-  /* FULL BLEED: the window grows out to cover the whole screen. */
   width: 100%;
-  max-width: none;
-  height: 100%;
-  max-height: none;
-  border-radius: 0;
-  border: 0;
+  max-width: 520px;
+  /* Bounded by the room BELOW the header, so the pop-out never runs off the
+     bottom of the screen — the results scroll inside it instead (.cmdk-results
+     below). 88px is the top offset, and the tail leaves the sheet clear of the
+     home indicator. */
+  max-height: calc(100vh - 88px - env(safe-area-inset-top, 0px) - max(16px, env(safe-area-inset-bottom, 0px)));
+  height: auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-radius: var(--r-panel);
+  border: 1px solid var(--glass-border);
   overflow: hidden;
-  /* Grow from the crown's corner of the screen out to full bleed. This is a
-     TRANSFORM, never width/height: animating layout relaid the bar out every
-     frame and stuttered when the dock icons did it (see the condense fix), and a
-     full-screen panel would be far worse. transform + opacity stay on the
-     compositor. */
-  transform-origin: 20px calc(46px + env(safe-area-inset-top, 0px));
-  transform: scale(0.34);
+  /* GLASS is right again at this size. It was switched off for full bleed because
+     78% white over a 24px blur smeared the whole back office through the panel —
+     measured in light mode as grey blobs over the lower two thirds. A 520px sheet
+     only blurs the workspace's EDGE, which is the depth cue the material is for. */
+  background: var(--glass-bg);
+  -webkit-backdrop-filter: blur(22px) saturate(1.3);
+  backdrop-filter: blur(22px) saturate(1.3);
+  box-shadow: var(--shadow-float, 0 24px 60px rgba(0, 0, 0, 0.45));
+  /* iOS-flavoured drop: falls a little and settles. One transform is safe here —
+     nothing else animates this element, so there is no keyframe to fight over the
+     property (the dock pill's rule). --spring, not --fluid-bezier: a small panel
+     can overshoot pleasantly, which is exactly what a full-bleed one could not. */
   opacity: 0;
-  /* --fluid-bezier, NOT --spring: the spring's 1.56 overshoots to scale 1.042
-     (measured), and on a panel that IS the screen those 4% pull the edges past
-     the viewport and crop the content — life on a small card, a glitch on a
-     full-bleed one. This decelerates smoothly to rest instead, over a beat long
-     enough to read as growing rather than appearing. */
+  transform: translateY(-10px) scale(0.985);
+  transform-origin: top center;
   transition:
-    transform 0.6s var(--fluid-bezier),
-    opacity 0.34s var(--fluid-bezier);
-  /* The rise animation was for a small card appearing; the growth replaces it. */
+    opacity 0.2s var(--fluid-bezier),
+    transform 0.42s var(--spring);
   animation: none;
-  /* OPAQUE, and it has to be. Glass (78% white over a 24px blur) reads as depth
-     at 680px because only the workspace's edge blurs through. At full bleed the
-     whole back office smears through it — measured in light mode as grey blobs
-     over the lower two thirds, like a dirty screen. NOT the Siri aura: that is
-     switched off here (`animation: none`). The scrim still says "something
-     behind". Same call the account-preview shell made, for the same reason. */
-  background: var(--cmdk-surface);
-  -webkit-backdrop-filter: none;
-  backdrop-filter: none;
 }
 #cmdk.cmdk-overlay.open .cmdk-box {
   transform: none;
   opacity: 1;
 }
-/* A READABLE COLUMN. The panel is the screen; the content must not be. At 1280px
-   every row stretched full width — a name at the far left with ~1000px of nothing
-   beside it, and a 1140px field. Full bleed stays (it is a window); the content
-   gets one centred column, applied to the box's direct children so the field, the
-   scroller and the hint line all share an edge. */
-#cmdk.cmdk-overlay .cmdk-box > * {
-  width: 100%;
-  max-width: var(--cmdk-measure);
-  margin-inline: auto;
-}
-/* Line the column edges up rather than doubling the scroller's own padding. */
-@media (min-width: 900px) {
-  #cmdk.cmdk-overlay .cmdk-search {
-    padding-left: 8px;
-    padding-right: 8px;
-  }
-  #cmdk.cmdk-overlay .cmdk-foot {
-    padding-left: 8px;
-    padding-right: 8px;
-  }
-}
-/* Full bleed needs the notch handled inside the box, since the box IS the screen. */
-#cmdk.cmdk-overlay .cmdk-search {
-  padding-top: calc(14px + env(safe-area-inset-top, 0px));
-}
-#cmdk.cmdk-overlay .cmdk-foot {
-  padding-bottom: calc(9px + env(safe-area-inset-bottom, 0px));
+/* A darkstar hairline along the top edge — the assistant's colour, stated once
+   rather than tinting the whole panel. Carried over from the sheet it replaces. */
+#cmdk.cmdk-overlay .cmdk-box::before {
+  content: "";
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  top: 0;
+  height: 1px;
+  border-radius: 1px;
+  pointer-events: none;
+  z-index: 1;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--darkstar) 60%, transparent),
+    transparent
+  );
 }
 /* Close: a back chevron at the end of the field row. */
 .cmdk-close-btn {
@@ -3422,12 +3234,20 @@ body.light-mode #crown-ask {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+/* The results are the only part that scrolls; the field and the hint line stay
+   put, so the query you typed and the way out are always on screen. */
 #cmdk.cmdk-overlay .cmdk-results {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain; /* don't chain the scroll to the workspace behind */
 }
-/* The workspace behind must not scroll while the window is up. */
+#cmdk.cmdk-overlay .cmdk-search,
+#cmdk.cmdk-overlay .cmdk-foot {
+  flex: 0 0 auto;
+}
+/* The workspace behind must not scroll while the pop-out is up. */
 body.cmdk-open {
   overflow: hidden;
 }
@@ -3435,7 +3255,7 @@ body.cmdk-open {
   #cmdk-scrim {
     transition: none;
   }
-  /* The window still opens (it is the whole feature); it just doesn't grow. */
+  /* It still opens (it is the whole feature); it just doesn't spring. */
   #cmdk.cmdk-overlay .cmdk-box {
     transition: opacity 0.16s ease;
     transform: none;

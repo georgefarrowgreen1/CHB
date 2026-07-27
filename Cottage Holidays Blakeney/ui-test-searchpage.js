@@ -197,13 +197,14 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(navLeave.filed, 'leaving search by a dock nav still files the dead-end miss');
   ok(!navLeave.conv, 'the conversation context is cleared on dock-leave (no cross-session pronoun leak)');
 
-  // ---- 8) the window GROWS out to cover the whole screen ----
-  // "Instead of bursting out, grow the window slowly out to cover the whole
-  // screen." Three separate claims, so three separate checks: it animates rather
-  // than snapping, it does NOT overshoot (the spring's 1.56 pulled a full-bleed
-  // panel 4% past the viewport and cropped its own edges), and it settles at
-  // exactly the viewport. Growth is on `transform`, never width/height — animating
-  // layout every frame is what stuttered the dock icons.
+  // ---- 8) the pop-out DROPS below the header ----
+  // It used to grow to FULL BLEED and cover everything, including the crown — which
+  // is why it needed a close chevron as the only way out. It is now the pop-out the
+  // crown drops, so the contract inverted: it must NOT cover the header, the crown
+  // must stay hittable so one target toggles both ways, and it must fit on screen
+  // with the results scrolling inside rather than the panel running off the bottom.
+  // The motion is still `transform` only — animating layout every frame is what
+  // stuttered the dock icons.
   await page.evaluate(() => cmdkBack()); await page.waitForTimeout(700);
   const grow = await page.evaluate(async () => {
     const box = document.querySelector('#cmdk .cmdk-box');
@@ -213,7 +214,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     await new Promise((res) => {
       const tick = () => {
         const m = new DOMMatrixReadOnly(getComputedStyle(box).transform);
-        samples.push(+m.a.toFixed(3));
+        samples.push(+m.f.toFixed(2)); // translateY — the drop
         if (performance.now() - t0 < 700) requestAnimationFrame(tick); else res();
       };
       requestAnimationFrame(tick);
@@ -221,32 +222,43 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     return samples;
   });
   const distinct = new Set(grow).size;
-  ok(distinct >= 5, `the window GROWS rather than bursting (${distinct} distinct scales sampled)`);
-  ok(grow[0] < 0.6, `it starts small (first sample scale ${grow[0]})`);
-  ok(Math.max(...grow) <= 1.001, `and never overshoots past full size (max ${Math.max(...grow)})`);
-  ok(grow[grow.length - 1] === 1, `settling at full size (last ${grow[grow.length - 1]})`);
+  ok(distinct >= 5, `the pop-out DROPS rather than appearing (${distinct} distinct offsets sampled)`);
+  ok(grow[0] < -1, `it starts above its resting place (first sample translateY ${grow[0]})`);
+  ok(grow[grow.length - 1] === 0, `and settles home (last ${grow[grow.length - 1]})`);
 
   const full = await page.evaluate(() => {
     const b = document.querySelector('#cmdk .cmdk-box').getBoundingClientRect();
     const h = document.querySelector('header').getBoundingClientRect();
     const hit = document.elementFromPoint(Math.round(h.left + h.width / 2), Math.round(h.top + h.height / 2));
+    const crown = document.querySelector('.logo');
+    const cb = crown.getBoundingClientRect();
+    const chit = document.elementFromPoint(Math.round(cb.left + cb.width / 2), Math.round(cb.top + cb.height / 2));
     const c = document.getElementById('cmdk-close');
     const cr = c ? c.getBoundingClientRect() : null;
+    const res = document.getElementById('cmdk-results');
     return {
-      w: Math.round(b.width), h: Math.round(b.height), vw: window.innerWidth, vh: window.innerHeight,
+      top: Math.round(b.top), bottom: Math.round(b.bottom), w: Math.round(b.width),
+      vw: window.innerWidth, vh: window.innerHeight,
+      headerBottom: Math.round(h.bottom),
       headerCovered: !!(hit && hit.closest('#cmdk')),
+      crownHittable: !!(chit && (chit === crown || crown.contains(chit) || chit.closest('.logo'))),
+      scrolls: res ? getComputedStyle(res).overflowY : null,
       closeW: cr ? Math.round(cr.width) : 0, closeH: cr ? Math.round(cr.height) : 0,
       closeNamed: !!(c && (c.getAttribute('aria-label') || '').trim()),
     };
   });
-  ok(full.w >= full.vw && full.h >= full.vh, `it covers the WHOLE screen (${full.w}x${full.h} vs ${full.vw}x${full.vh})`);
-  // Covering everything means the crown, scrim and header are all underneath — so
-  // an explicit way out is REQUIRED, not a nicety. Escape is no way out on a phone.
-  ok(full.headerCovered, 'the header is genuinely covered (so the crown cannot close it)');
+  ok(full.top >= full.headerBottom, `it hangs BELOW the header (${full.top} >= ${full.headerBottom})`);
+  ok(!full.headerCovered, 'the header is NOT covered — the crown has to stay reachable');
+  ok(full.crownHittable, 'so the crown is still the top hit, and one target toggles both ways');
+  ok(full.bottom <= full.vh, `the panel fits on screen (bottom ${full.bottom} of ${full.vh})`);
+  ok(full.scrolls === 'auto' || full.scrolls === 'scroll', `with the results scrolling inside it (overflow-y ${full.scrolls})`);
+  ok(full.w <= 560, `and it reads as a pop-out, not a page (${full.w}px wide)`);
+  // The chevron is no longer the ONLY way out (crown, scrim and Escape all work),
+  // but it is still the obvious one on a phone, so it stays and stays tappable.
   ok(full.closeW >= 24 && full.closeH >= 24, `there is a close control at 24px+ (${full.closeW}x${full.closeH})`);
   ok(full.closeNamed, 'and it carries an accessible name');
   await page.click('#cmdk-close'); await page.waitForTimeout(700);
-  ok(await page.evaluate(() => !document.getElementById('cmdk').classList.contains('open')), 'tapping it closes the window');
+  ok(await page.evaluate(() => !document.getElementById('cmdk').classList.contains('open')), 'tapping it closes the pop-out');
 
   // Reduced motion keeps the window (it is the whole feature) and drops the growth.
   await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -346,12 +358,17 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       vw: window.innerWidth,
     };
   });
-  ok(bleed.boxW === bleed.vw, `the panel is still full bleed (${bleed.boxW} = ${bleed.vw})`);
-  ok(bleed.alpha === 1, `but OPAQUE, so the workspace cannot smear through it (alpha ${bleed.alpha})`);
-  ok(bleed.blur === 'none', `and carries no backdrop blur (${bleed.blur})`);
-  ok(bleed.rowW <= 760, `rows sit in a readable column, not the full 1280 (${bleed.rowW}px)`);
+  // Glass is RIGHT again at this size, and that is the inverse of the full-bleed
+  // rule it replaces: 78% white over a 24px blur smeared the whole back office
+  // through a screen-sized panel (measured in light mode as grey blobs over the
+  // lower two thirds), but a 520px pop-out only blurs the workspace's EDGE — which
+  // is the depth cue the material exists for.
+  ok(bleed.boxW < bleed.vw, `the panel is a pop-out, not full bleed (${bleed.boxW} of ${bleed.vw})`);
+  ok(bleed.alpha < 1, `so glass is back on (alpha ${bleed.alpha})`);
+  ok(/blur/.test(bleed.blur), `with its backdrop blur (${bleed.blur})`);
+  ok(bleed.rowW <= 560, `rows sit in a readable column, not the full 1280 (${bleed.rowW}px)`);
   ok(bleed.rowLeft > 200, `which is CENTRED, not hugging the left edge (left ${bleed.rowLeft}px)`);
-  ok(bleed.fieldW <= 760, `and the field is a field, not a 1140px pill (${bleed.fieldW}px)`);
+  ok(bleed.fieldW <= 560, `and the field is a field, not a 1140px pill (${bleed.fieldW}px)`);
   await page.setViewportSize({ width: 900, height: 900 });
 
   // ---- 11. The four-part redesign: BOARDS, ANSWER hero, THREAD, SPLIT.

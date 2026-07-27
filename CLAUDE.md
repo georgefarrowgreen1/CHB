@@ -333,39 +333,47 @@ prepends a **"Walk me through it"** chip for any topic with a `CHB_WALK[id]`. Ga
 `ui-test-coach.js` (start, click-through + z-order, Next/Back, auto-advance, Done, Escape).
 
 **The CROWN is the assistant** (admin.js `crownSheetToggle`/`crownSheetOpen`/`crownSheetClose`,
-`#crown-sheet` + `#crown-scrim`, styled in admin.css) — the dock's separate Search knot is GONE.
+styled in admin.css) — the dock's separate Search knot is GONE.
 Rationale, measured: `nav()` rewrites `view-main` → `view-backoffice` for anyone signed in
 (app.js), so the crown's old tap went to Today, exactly where the calendar icon already goes —
-it had no unique job to lose, and the dock drops 5 icons to 4. Tapping it drops a SHEET rather
-than jumping to the page, because the bar CANNOT host a field: at 390px the middle slot yields
-80px once the crown and four icons have theirs (the sheet's input measures 313px). The sheet
-shows `cmdkBrief()` before you type; Enter hands the query to the search page, so there is still
-ONE intelligence stack. Five things it must keep right, all gated by `ui-test-crownsheet.js`:
+it had no unique job to lose, and the dock drops 5 icons to 4. Tapping it drops a POP-OUT rather
+than jumping to a page, because the bar CANNOT host a field: at 390px the middle slot yields
+80px once the crown and four icons have theirs (the pop-out's input measures 215px+).
+**The pop-out IS the search** — see SEARCH IS THE POP-OUT below. There used to be a separate
+`#crown-sheet` node here that showed four brief rows and handed off on Enter to a full-bleed
+`#cmdk`; it is REMOVED (node, CSS, `crownSheetEl`/`Rows`/`Open`/`Close`, `#crown-scrim`,
+`#crown-ask`, the `.cs-*` classes). Do not reintroduce a second surface: the sheet was a menu
+for the feature, so the actual answers lived one journey away. `crownSheetToggle` KEEPS its
+name (it is in the `chbAct` registry and on the crown's `data-act`) and now just toggles
+`#cmdk`. Six things it must keep right, all gated by `ui-test-crownsheet.js`:
 (1) z-index 1440 — BELOW the header's 1500 — so the crown stays hittable and one target toggles
 both ways; (2) **`.logo` must be pinned `flex: 0 0 auto`** — it is `0 1 auto` by default and a
-long screen name in the condensed bar squeezed it to **20px**, and the crown is now the only
-route to search; (3) `crownSheetToggle` SELF-HEALS — admin.js cannot be un-run, and `.logo` is
+long screen name in the condensed bar squeezed it to **20px** (deleting the pin during this very
+change measured **19px**, and the gate caught it), and the crown is the only route to the
+assistant; (3) `crownSheetToggle` SELF-HEALS — admin.js cannot be un-run, and `.logo` is
 the public site's Home link, so the handler checks `owner-mode` and navigates home when it has
-gone; (4) Escape hands focus back to the crown; (5) the crown carries the model STATE (colour only —
-the download progress ring is REMOVED; see below). Reduced motion keeps the sheet (it is
-information) and drops only the spring.
+gone; (4) Escape hands focus back to the crown (`crownSetExpanded` keeps `aria-expanded` in step
+from `openCmdK`/`closeCmdK`, so every route in and out reports the same thing); (5) the crown
+carries the model STATE (colour only — the download progress ring is REMOVED; see below);
+(6) a query is ANSWERED IN PLACE — nothing hands off, because there is nowhere to hand off to.
+Reduced motion keeps the pop-out (it is information) and drops only the spring.
 
-**ONE assistant look** (admin.css, the "ONE ASSISTANT LOOK" block at the end) — the
-crown sheet and the search page are the same feature on two surfaces, so their MATERIAL
-is defined once as grouped selectors rather than twice: panel radius + the darkstar
-hairline, the pill field with its accent focus ring, the row rhythm (44px touch floor,
-shared label/sub sizes), and the hint footer. They had already drifted — the page's
-field was a bare transparent input at 6px radius against the sheet's bordered pill, and
-the page used `--r-lg` against the sheet's `--r-panel`. Two things are deliberately NOT
-shared because they carry information a uniform treatment would throw away: the page's
-knot (`#cmdk-ml`, model state as colour) where the sheet has a plain dot, and the page's
-per-type destination glyphs. Also fixed here: `.cmdk-foot` was hidden behind
-`hover: hover and pointer: fine`, so a PHONE got no hint at all while the sheet always
-states its keys — touch now gets a touch-appropriate line instead of the ⌘K keycaps.
+**ONE assistant look** (admin.css, the "ONE ASSISTANT LOOK" block) — this block exists
+because the crown sheet and the search page were once the same feature on TWO surfaces and
+had already drifted (the page's field was a bare transparent input at 6px radius against the
+sheet's bordered pill; the page used `--r-lg` against the sheet's `--r-panel`). There is only
+ONE surface now, so the block's grouped selectors have been collapsed to it and the dead
+`#crown-ask` / `.cs-*` halves are gone — but the block stays as the one place the assistant's
+material is stated: panel radius + the darkstar hairline, the pill field with its accent focus
+ring, the row rhythm (44px touch floor, shared label/sub sizes), and the hint footer. Worth
+keeping from the two-surface era: `.cmdk-foot` was hidden behind `hover: hover and pointer:
+fine`, so a PHONE got no hint at all while the sheet always stated its keys — touch gets a
+touch-appropriate line instead of the ⌘K keycaps.
 
-**SEARCH IS A WINDOW** — an overlay OVER the workspace, not a page you travel to
-(`#cmdk.cmdk-overlay` + `#cmdk-scrim`, z 1700/1690 — above the header's 1500, below the real
-modals at 2000+). Reached from the crown's sheet on Enter (`openCmdK`) or ⌘K; the per-workspace
+**SEARCH IS THE POP-OUT the crown drops** — one surface, not two
+(`#cmdk.cmdk-overlay` + `#cmdk-scrim`, z **1440/1430 — BELOW the header's 1500**, and far below
+the real modals at 2000+, so a glassConfirm raised FROM search — the bulk-send confirm — covers
+it). Reached by tapping the crown (`crownSheetToggle` → `openCmdK`) or ⌘K; the per-workspace
 Assist Bars were RETIRED in its favour (the whole `abar*` module, host divs and CSS are gone —
 do not resurrect). The markup still ships inside the `view-search` template because that is how
 `ensureAdminViews()` delivers it, but **`cmdkEnsureOverlay()` re-parents `#cmdk` to `<body>`** on
@@ -380,35 +388,34 @@ state, and every existing caller wanted that (a result run closes then navigates
 the overlay's own class via a DOM check (app.js may not reach admin globals) so ANY navigation
 while it is open still files the dead-end miss and supersedes in-flight searches. `body.cmdk-open`
 locks the page scroll and `.cmdk-results` scrolls inside the box with `overscroll-behavior:
-contain`, so the workspace behind never scrolls with it. **The full-bleed panel is OPAQUE (`--cmdk-surface`) and its content sits in one centred
-column (`--cmdk-measure`, 720px)** — both because full bleed changes what the card's
-styling means. Glass (78% white over a 24px blur) reads as depth at 680px because only
-the workspace's EDGE blurs through; at screen size the whole back office smears through
-it, measured in light mode as grey blobs over the lower two thirds, looking like a dirty
-screen. (It is NOT the Siri aura — that animation is off in the overlay; the aura is
-still what the small card breathes.) The scrim underneath supplies the sense of depth
-instead. Likewise, at 1280px every row stretched the full width, so a guest's name sat
-at the far left with ~1000px of nothing beside it and the field was a 1140px pill; the
-panel stays full bleed (it is a window) while the field, the scroller and the hint line
-share one measure. `--cmdk-surface` is registered in **a11y-test's `SURFACES`** — a new
-surface must declare itself there exactly as a new text token must, and it is
-break-tested (a mid-grey surface fails all seven text tokens).
-It **GROWS** to FULL BLEED rather than
-appearing: the box is kept in the layout (`visibility`, not `display:none` — `display` cannot be
-transitioned) and scales 0.34 → 1 from the crown's corner over 0.6s. On `transform`, never
-width/height, for the reason the dock icons stuttered. Easing is **`--fluid-bezier`, NOT
-`--spring`**: the spring's 1.56 overshoots to scale 1.06 (measured, and break-tested), which on a
-panel that IS the screen pulls its edges past the viewport and crops its own content — life on a
-small card, a glitch full-bleed. Covering everything means the crown, the scrim and the header are
-all underneath, so **`#cmdk-close` is REQUIRED, not decorative** (Escape is no way out on a
-phone); it is a back chevron distinct from the ✕ clear, which only empties the query. Reduced
-motion keeps the window and drops the growth. Gated by ui-test-searchpage §8 — animates, never
-overshoots, settles at exactly the viewport, header genuinely covered, close ≥24px and named. The `<main id="view-search">` shell and
-its `ADMIN_VIEWS` entry are now vestigial — see the task list; `ui-test-adminviews` asserts the
-shell is empty BY DESIGN so a half-done removal is caught.
+contain`, so the workspace behind never scrolls with it. **Glass is RIGHT again at this size, and that is the inverse of the rule it replaces.**
+As a full-bleed panel it had to be OPAQUE (`--cmdk-surface`) with its content in one
+centred column (`--cmdk-measure`), because 78% white over a 24px blur reads as depth at
+680px — only the workspace's EDGE blurs through — while at screen size the whole back
+office smears through it, measured in light mode as grey blobs over the lower two thirds,
+looking like a dirty screen; and at 1280px every row stretched full width, so a guest's
+name sat at the far left with ~1000px of nothing beside it. A 520px pop-out has neither
+problem: it blurs only the edge, and its own max-width IS the measure. So the box carries
+`var(--glass-bg)` + `blur(22px) saturate(1.3)` again, and the centred-column override is
+gone. `--cmdk-surface` stays registered in **a11y-test's `SURFACES`** — a new surface must
+declare itself there exactly as a new text token must, and it is break-tested (a mid-grey
+surface fails all seven text tokens). It **DROPS** rather than appearing: the box is kept
+in the layout (`visibility`, not `display:none` — `display` cannot be transitioned) and
+falls `translateY(-10px) scale(0.985)` → home. On `transform`, never width/height, for the
+reason the dock icons stuttered. Easing is **`--spring`**, which a full-bleed panel could
+NOT use (its 1.56 overshot to scale 1.06, pulling the edges past the viewport and cropping
+its own content) but a small panel can — overshoot is life on a card. `#cmdk-close` is no
+longer the ONLY way out now that the crown, the scrim and Escape are all reachable, but it
+stays as the obvious one on a phone (a back chevron, distinct from the ✕ clear, which only
+empties the query). Reduced motion keeps the pop-out and drops the spring. Gated by
+ui-test-searchpage §8 — it drops and settles, hangs BELOW the header, does NOT cover it,
+the crown stays hittable, the panel fits on screen with the results scrolling inside, and
+close is ≥24px and named. The `<main id="view-search">` shell and its `ADMIN_VIEWS` entry
+are vestigial — see the task list; `ui-test-adminviews` asserts the shell is empty BY
+DESIGN so a half-done removal is caught.
 Row anatomy, measured and refined: `.cmdk-row-label` CLAMPS TO TWO LINES (one line
 cut "Alexandrina Featherstonehaugh-Smythe" by 189px of 306px — over half the row's
-identity; full bleed gave the vertical room), label and sub both carry the raw text
+identity; the pop-out has the vertical room for two), label and sub both carry the raw text
 as a `title` because `cmdkHi` returns highlight markup that cannot go in an
 attribute, `.cmdk-qa-row` joins `.cmdk-row`/`.cs-row` in the 44px touch floor (it
 had been left OUT of that group and sat at 23px, 1px under WCAG), and
