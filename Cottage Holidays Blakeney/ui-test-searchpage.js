@@ -460,6 +460,66 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(narrow.hidden, 'SPLIT: and collapses below 1200px, leaving the phone layout untouched');
   await page.setViewportSize({ width: 900, height: 900 });
 
+  // ---- 12. PHONE DENSITY. Measured on a 390x844 phone: the landing spent 269px on
+  // five plain navigation rows against 248px of boards (getting somewhere cost more
+  // room than knowing the day), and one record's actions took a 234px slab — 28% of
+  // the screen — in one column while each row wasted half its 298px width.
+  // Both are container-only changes over unchanged rows.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.evaluate(async () => {
+    try { closeCmdK(); } catch (e) {}
+    nav('view-backoffice'); openCmdK();
+    // The window GROWS over 0.6s on a transform. Measuring heights before it settles
+    // reads them through a scale of ~0.9994 — a 44px row measures 43.975 and a strict
+    // >=44 check fails on an element that is not actually short. Wait it out.
+    await new Promise((r) => setTimeout(r, 1400));
+  });
+  const dens = await page.evaluate(() => {
+    const jump = document.querySelector('#cmdk .cmdk-jump');
+    const rows = [...document.querySelectorAll('#cmdk .cmdk-jump .cmdk-row')];
+    return {
+      jump: !!jump,
+      jumpPx: jump ? Math.round(jump.getBoundingClientRect().height) : 0,
+      n: rows.length,
+      // Still real options — a chip that lost its index would break arrow-keys.
+      optIds: rows.every((r) => /^cmdk-opt-\d+$/.test(r.id) && r.getAttribute('role') === 'option'),
+      touch: rows.every((r) => r.getBoundingClientRect().height >= 44),
+      wrapped: rows.length > 1 && rows[0].getBoundingClientRect().width < 300,
+    };
+  });
+  ok(dens.jump && dens.n >= 2, `DENSITY: the landing's destinations are chips (${dens.n})`);
+  ok(dens.jumpPx > 0 && dens.jumpPx <= 160, `DENSITY: in ~two rows, not five (${dens.jumpPx}px, was 269)`);
+  ok(dens.optIds, 'DENSITY: each chip is still a role=option at its own index');
+  ok(dens.touch, 'DENSITY: and still clears the 44px touch floor');
+  ok(dens.wrapped, 'DENSITY: chips size to their label rather than the full width');
+
+  const qa = await page.evaluate(async () => {
+    const i = document.getElementById('cmdk-input');
+    i.value = 'bob carter'; cmdkSearchCore('bob carter', false);
+    await new Promise((r) => setTimeout(r, 400));
+    const idx = __cmdkResults.findIndex((r) => Array.isArray(r.actions) && r.actions.length);
+    if (idx >= 0) { __cmdkSel = idx; cmdkRender(); }
+    await new Promise((r) => setTimeout(r, 250));
+    const slab = document.querySelector('#cmdk .cmdk-qa');
+    const rows = [...document.querySelectorAll('#cmdk .cmdk-qa-row')];
+    const labs = [...document.querySelectorAll('#cmdk .cmdk-qa-lbl')];
+    const tops = new Set(rows.map((r) => Math.round(r.getBoundingClientRect().top)));
+    return {
+      n: rows.length,
+      slabPx: slab ? Math.round(slab.getBoundingClientRect().height) : 0,
+      lines: tops.size,
+      touch: rows.every((r) => r.getBoundingClientRect().height >= 44),
+      // The whole point of dropping the icon was to keep the WORDS. Money actions
+      // are the last place to make someone guess at "Request bal…".
+      clipped: labs.filter((l) => l.scrollWidth > l.clientWidth + 1).map((l) => l.textContent.trim()),
+    };
+  });
+  ok(qa.n >= 4 && qa.lines < qa.n, `DENSITY: actions run two per line (${qa.n} actions on ${qa.lines} lines)`);
+  ok(qa.slabPx > 0 && qa.slabPx <= 180, `DENSITY: the slab is ~146px, not 234 (${qa.slabPx}px)`);
+  ok(qa.touch, 'DENSITY: two-up actions still clear the 44px touch floor');
+  ok(qa.clipped.length === 0, `DENSITY: and every action label stays readable${qa.clipped.length ? ' — clipped: ' + qa.clipped.join(', ') : ''}`);
+  await page.setViewportSize({ width: 900, height: 900 });
+
   console.log(fails ? `\n  ${fails} SEARCH-PAGE CHECK(S) FAILED ❌` : '\n  SEARCH-PAGE SUITE PASSED ✅');
   await done(fails);
 })();
