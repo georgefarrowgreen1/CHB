@@ -28,6 +28,14 @@
   --siri-3: 210 92% 62%;
   --siri-4: 168 78% 55%;
   --siri-5: 34 96% 60%;
+  /* The full-bleed search window's SOLID surface (it cannot be glass — see the
+     overlay block at the end of this file) and the one measure its content column
+     shares. A shade off the page ground, so the window still reads as a layer. */
+  --cmdk-surface: #14181d;
+  --cmdk-measure: 720px;
+}
+body.light-mode {
+  --cmdk-surface: #f7f4ee;
 }
 /* The aura the palette card breathes while open — Siri's colours cycling around
    the edges, layered ON TOP of the card's own depth shadow. */
@@ -3334,10 +3342,40 @@ body.light-mode #crown-ask {
     opacity 0.34s var(--fluid-bezier);
   /* The rise animation was for a small card appearing; the growth replaces it. */
   animation: none;
+  /* OPAQUE, and it has to be. Glass (78% white over a 24px blur) reads as depth
+     at 680px because only the workspace's edge blurs through. At full bleed the
+     whole back office smears through it — measured in light mode as grey blobs
+     over the lower two thirds, like a dirty screen. NOT the Siri aura: that is
+     switched off here (`animation: none`). The scrim still says "something
+     behind". Same call the account-preview shell made, for the same reason. */
+  background: var(--cmdk-surface);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 #cmdk.cmdk-overlay.open .cmdk-box {
   transform: none;
   opacity: 1;
+}
+/* A READABLE COLUMN. The panel is the screen; the content must not be. At 1280px
+   every row stretched full width — a name at the far left with ~1000px of nothing
+   beside it, and a 1140px field. Full bleed stays (it is a window); the content
+   gets one centred column, applied to the box's direct children so the field, the
+   scroller and the hint line all share an edge. */
+#cmdk.cmdk-overlay .cmdk-box > * {
+  width: 100%;
+  max-width: var(--cmdk-measure);
+  margin-inline: auto;
+}
+/* Line the column edges up rather than doubling the scroller's own padding. */
+@media (min-width: 900px) {
+  #cmdk.cmdk-overlay .cmdk-search {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
+  #cmdk.cmdk-overlay .cmdk-foot {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
 }
 /* Full bleed needs the notch handled inside the box, since the box IS the screen. */
 #cmdk.cmdk-overlay .cmdk-search {

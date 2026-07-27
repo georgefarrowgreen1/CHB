@@ -307,6 +307,49 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   }
   await page.evaluate(() => document.body.classList.remove('light-mode'));
 
+  // ---- 10. Full bleed changes what the card's styling MEANS, and these two are
+  // what stop it looking unfinished. Both were measured wrong before:
+  //  - the panel was glass (78% white over a 24px blur), which at screen size
+  //    smears the entire back office through itself — grey blobs over the lower
+  //    two thirds in light mode. It must be OPAQUE.
+  //  - the content stretched the full 1280px, so a guest's name sat at the far
+  //    left with ~1000px of nothing beside it. It must sit in a centred column.
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.evaluate(async () => {
+    try { closeCmdK(); } catch (e) {}
+    nav('view-backoffice');
+    openCmdK();
+    await new Promise((r) => setTimeout(r, 700));
+    const i = document.getElementById('cmdk-input');
+    if (i) { i.value = 'bob carter'; cmdkSearchCore('bob carter', false); }
+    await new Promise((r) => setTimeout(r, 400));
+  });
+  const bleed = await page.evaluate(() => {
+    const box = document.querySelector('#cmdk .cmdk-box');
+    const cs = getComputedStyle(box);
+    const alpha = (s) => { const n = (s.match(/[\d.]+/g) || []); return n.length > 3 ? Number(n[3]) : 1; };
+    const row = document.querySelector('#cmdk-results .cmdk-row');
+    const field = document.getElementById('cmdk-input');
+    const r = row && row.getBoundingClientRect();
+    const f = field && field.getBoundingClientRect();
+    return {
+      boxW: Math.round(box.getBoundingClientRect().width),
+      alpha: alpha(cs.backgroundColor),
+      blur: (cs.backdropFilter || cs.webkitBackdropFilter || 'none'),
+      rowW: r ? Math.round(r.width) : null,
+      rowLeft: r ? Math.round(r.left) : null,
+      fieldW: f ? Math.round(f.width) : null,
+      vw: window.innerWidth,
+    };
+  });
+  ok(bleed.boxW === bleed.vw, `the panel is still full bleed (${bleed.boxW} = ${bleed.vw})`);
+  ok(bleed.alpha === 1, `but OPAQUE, so the workspace cannot smear through it (alpha ${bleed.alpha})`);
+  ok(bleed.blur === 'none', `and carries no backdrop blur (${bleed.blur})`);
+  ok(bleed.rowW <= 760, `rows sit in a readable column, not the full 1280 (${bleed.rowW}px)`);
+  ok(bleed.rowLeft > 200, `which is CENTRED, not hugging the left edge (left ${bleed.rowLeft}px)`);
+  ok(bleed.fieldW <= 760, `and the field is a field, not a 1140px pill (${bleed.fieldW}px)`);
+  await page.setViewportSize({ width: 900, height: 900 });
+
   console.log(fails ? `\n  ${fails} SEARCH-PAGE CHECK(S) FAILED ❌` : '\n  SEARCH-PAGE SUITE PASSED ✅');
   await done(fails);
 })();
