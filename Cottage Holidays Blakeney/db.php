@@ -660,6 +660,10 @@ function is_internal_content_key($key)
         return true; // the owner's standing queries (watchers-lib.php) — their own
                      // reminders, naming cottages and dates; never public
     }
+    if ($key === 'search-undo') {
+        return true; // the owner's reversible changes (chbUndoPush) — their own
+                     // history, naming cottages and rates; never public
+    }
     if ($key === 'weather-cache') {
         return true; // the cached Blakeney forecast (weather-data.php) — machinery,
                      // not content; weather.php serves the data itself publicly

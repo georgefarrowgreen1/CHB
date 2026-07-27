@@ -1456,7 +1456,14 @@ if (typeof ctx.chbSeasonSplice === 'function') {
     ctx.__seedPr = [mkb(1, 'Bob', plus(5), plus(8)), mkb(2, 'Cara', plus(11), plus(14))]; // 3-night gap +8..+11
     vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);dbBookings.jollyboat=__seedPr;__cmdkCustomers=null;__cmdkFrame=null;
         propertySeasons.jollyboat = [{ label: 'Summer', start_date: '${plus(0)}', end_date: '${plus(60)}', couple_rate: 140 }];
-        __prSaved = null; __prOldApi = apiPost; apiPost = async (u, b) => { __prSaved = { u, b }; return { ok: true }; };`, ctx);
+        __prSaved = null; __prOldApi = apiPost; apiPost = async (u, b) => {
+            // Capture the RATES write specifically. A durable undo also writes its
+            // descriptor to content.php, so "the last post" is no longer the one
+            // under test — asserting on the call you mean is the fix, and it stays
+            // true however many other writes the feature makes.
+            if (b && b.action === 'seasons_save') __prSaved = { u, b };
+            return { ok: true };
+        };`, ctx);
     const head = (q) => { const r = ctx.cmdkIntent(q); return r && r[0] ? `${r[0].label} | ${r[0].sub || ''}` : '(none)'; };
 
     // Command parsing + preview maths (current rate derived, not hardcoded —
@@ -2069,6 +2076,102 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         check('everyone reachable → a plain success in the ARRIVAL wording, not the money one', !outOk.state && /Arrival info sent to 2 guests/.test(outOk.say), outOk.say);
         ctx.apiPost = realPost;
     } else fail('chbWatchBalanceAction / chbBulkArrivalAction missing from the bundle');
+
+    // ---- §40 ONE duties composer, and undo that outlives the session ----
+    console.log('\n== §40 One duties list, durable undo ==');
+    if (typeof ctx.chbDuties === 'function' && typeof ctx.chbUndoList === 'function') {
+        const dFut = (n) => { const d0 = ctx.dpParse(ctx.todayDashed()); d0.setDate(d0.getDate() + n); return `${d0.getFullYear()}-${String(d0.getMonth() + 1).padStart(2, '0')}-${String(d0.getDate()).padStart(2, '0')}`; };
+        // A) THE SAME DECISION, TWO SURFACES. One booking inside the 21-day window
+        // and one far outside it — the exact shape that made Today say £440 and the
+        // pop-out £955.
+        vm.runInContext(`propertyMeta.jollyboat={name:'Jollyboat'};
+            Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);
+            enquiries=[{id:9,name:"O'Brien",propKey:'jollyboat',checkIn:'${dFut(40)}',checkOut:'${dFut(44)}',receivedAt:'${(() => { const d0 = new Date(Date.now() - 3 * 864e5); return d0.toISOString().slice(0, 19).replace('T', ' '); })()}'}];
+            dbBookings.jollyboat=[
+              {id:71,dbId:71,name:'Soon Guest',email:'s@x.co',checkIn:'${dFut(5)}',checkOut:'${dFut(9)}',adults:2,children:0,payment:'deposit',depositPaid:100,agreedPrice:{total:540,perNight:520,nights:4,txnFee:20}},
+              {id:72,dbId:72,name:'Later Guest',email:'l@x.co',checkIn:'${dFut(60)}',checkOut:'${dFut(64)}',adults:2,children:0,payment:'deposit',depositPaid:100,agreedPrice:{total:615,perNight:600,nights:4,txnFee:15}}];`, ctx);
+        const duties = ctx.chbDuties();
+        const bal = duties.filter((d) => d.kind === 'balance');
+        check('duties chase the SOON balance', bal.length === 1 && /Soon Guest/.test(bal[0].label), bal.map((d) => d.label).join(' | '));
+        check('…and leave the one 60 days out alone (the 21-day window)', !bal.some((d) => /Later Guest/.test(d.label)));
+        const enqD = duties.filter((d) => d.kind === 'enquiry');
+        check('an enquiry is AGED, not counted', enqD.length === 1 && /waiting 3 days/.test(enqD[0].label), enqD[0] && enqD[0].label);
+        check('…and escalated past two days', enqD[0] && enqD[0].sev === 'danger', enqD[0] && enqD[0].sev);
+        check('every duty declares its board and scope, so the boards machinery is untouched', duties.every((d) => d.board && d.scope));
+        // PLAIN TEXT is the contract that let the brief reuse this at all.
+        // PLAIN means NO ENTITIES: the brief renders through escapeHtml, so anything
+        // pre-escaped here would be double-escaped and the owner would read
+        // "O&#39;Brien" on screen. The guest's name is deliberately awkward.
+        check('duty labels carry NO html entities — escaping is not this layer\'s job',
+            /O'Brien/.test(enqD[0].label) && !/&[a-z]+;|&#\d+;/.test(enqD[0].label), enqD[0].label);
+        const nyLabels = ctx.needsYouItems().map((x) => x.label).join(' ');
+        check('and the Today strip escapes at ITS render boundary, once',
+            /&#0?39;|&apos;/.test(nyLabels) && !/&amp;#/.test(nyLabels), nyLabels.slice(0, 60));
+        // B) THE BRIEF SHOWS THE SAME THING, and the money outside the window is a
+        // quiet line rather than folded into a headline that then disagreed.
+        const brief = ctx.cmdkBrief() || [];
+        const bl = brief.map((r) => String(r.label));
+        check('the brief carries the same aged enquiry Today does', bl.some((l) => /waiting 3 days/.test(l)), bl.join(' | ').slice(0, 120));
+        check('and the same named balance, not a total across everyone', bl.some((l) => /Soon Guest/.test(l)) && !bl.some((l) => /^£1,1/.test(l)));
+        const later = ctx.chbOwedLater();
+        check('money beyond the window is counted separately', later.n === 1 && later.total > 400, `${later.n} · ${later.total}`);
+        check('…and surfaces as a quiet "not due yet" line', bl.some((l) => /more owed, none due yet/.test(l)), bl.filter((l) => /none due yet/.test(l))[0]);
+
+        // C) DURABLE UNDO. A descriptor survives what a closure cannot.
+        vm.runInContext(`siteContent['search-undo'] = null; __chbUndo.length = 0;
+            propertySeasons.jollyboat = [{label:'Gap offer',start_date:'${dFut(30)}',end_date:'${dFut(33)}',couple_rate:148}];
+            __undoSaved = null; __undoOldApi = apiPost;
+            apiPost = async (u, b) => { if (b && b.action === 'set') __undoSaved = b; return { ok: true }; };`, ctx);
+        ctx.chbUndoPush('£148/night on Jollyboat', async () => {}, {
+            kind: 'seasons',
+            payload: { pk: 'jollyboat', prev: [], mine: { start: ctx.dpParse ? dFut(30) : '', end: dFut(33), rate: 148 } },
+        });
+        await null; await null;
+        const stored = vm.runInContext('__undoSaved', ctx);
+        check('a change with a descriptor is PERSISTED, not just remembered', !!(stored && stored.key === 'search-undo' && Array.isArray(stored.value) && stored.value.length === 1), stored && stored.key);
+        check('storing the descriptor, never a function', stored && stored.value[0].kind === 'seasons' && typeof stored.value[0].payload === 'object' && !/function/.test(JSON.stringify(stored.value[0])));
+        // The same change must be offered ONCE, not twice. A durable push writes the
+        // descriptor AND keeps the closure, so without linking them by id the list
+        // showed both — and reversing the session one left the stored twin on offer,
+        // which reads as "not undone yet".
+        check('a durable change is offered ONCE, not once per copy', ctx.chbUndoList().length === 1, ctx.chbUndoList().length);
+        const twinId = (vm.runInContext('__undoSaved', ctx) || {}).value[0].id;
+        check('…and the in-memory entry carries the stored id, which is the link', ctx.chbUndoList()[0].id === twinId, `${ctx.chbUndoList()[0].id} vs ${twinId}`);
+        vm.runInContext('__undoSaved = null;', ctx);
+        ctx.chbUndoForget(twinId);
+        await null; await null;
+        const emptied = vm.runInContext('__undoSaved', ctx);
+        check('retiring the session entry retires its durable twin too', !!(emptied && Array.isArray(emptied.value) && emptied.value.length === 0), emptied && JSON.stringify(emptied.value));
+
+        // A caller WITHOUT a descriptor is untouched — the same opt-in discipline.
+        vm.runInContext('__undoSaved = null;', ctx);
+        ctx.chbUndoPush('Session only', async () => {});
+        await null;
+        check('a caller with NO descriptor stays session-only', vm.runInContext('__undoSaved', ctx) === null);
+        // Rehydrated from storage with nothing in memory — the whole point.
+        vm.runInContext(`__chbUndo.length = 0; siteContent['search-undo'] = [{ id:'u1', kind:'seasons', label:'£148/night on Jollyboat', at: Date.now() - 2*864e5,
+            payload:{ pk:'jollyboat', prev:[], mine:{ start:'${dFut(30)}', end:'${dFut(33)}', rate:148 } } }];`, ctx);
+        const listed = ctx.chbUndoList();
+        check('yesterday\'s change is still offered with nothing in memory', listed.length === 1 && listed[0].durable === true, listed.length);
+        check('and the undo command finds it rather than saying "nothing to undo"', /Undo — £148/.test(((ctx.cmdkIntent('undo') || [])[0] || {}).label || ''), ((ctx.cmdkIntent('undo') || [])[0] || {}).label);
+        // STALENESS: it refuses when its own change is no longer there.
+        vm.runInContext(`propertySeasons.jollyboat = [{label:'Something else',start_date:'${dFut(30)}',end_date:'${dFut(33)}',couple_rate:200}];`, ctx);
+        let refused = '';
+        try { await ctx.chbUndoList()[0].run(); } catch (e) { refused = e.message; }
+        check('a stored undo REFUSES when the thing it would reverse has changed', /changed since/.test(refused), refused || '(it went ahead)');
+        // …and goes ahead when it is still true.
+        vm.runInContext(`propertySeasons.jollyboat = [{label:'Gap offer',start_date:'${dFut(30)}',end_date:'${dFut(33)}',couple_rate:148}]; __undoSaved = null;`, ctx);
+        let threw2 = '';
+        try { await ctx.chbUndoList()[0].run(); } catch (e) { threw2 = e.message; }
+        check('and goes ahead when its change is still there', threw2 === '', threw2);
+        // Expiry: nothing older than the window is offered.
+        vm.runInContext(`__chbUndo.length = 0; siteContent['search-undo'] = [{ id:'u9', kind:'seasons', label:'Ancient', at: Date.now() - 90*864e5, payload:{ pk:'jollyboat', prev:[], mine:{} } }];`, ctx);
+        check('a change from three months ago is not offered', ctx.chbUndoList().length === 0);
+        // An unknown kind (an old entry from a future version) is ignored, not crashed on.
+        vm.runInContext(`siteContent['search-undo'] = [{ id:'uX', kind:'not-a-thing', label:'Mystery', at: Date.now() }];`, ctx);
+        check('an unrecognised kind is ignored rather than thrown on', ctx.chbUndoList().length === 0);
+        vm.runInContext("apiPost = __undoOldApi; siteContent['search-undo'] = null; __chbUndo.length = 0; enquiries = []; Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);", ctx);
+    } else fail('chbDuties / chbUndoList missing from the bundle');
 
     // ---- Summary ----
     console.log('\n== Summary ==');

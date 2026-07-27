@@ -720,6 +720,48 @@ override out-specified the guest shell's own `top` and moved the header 10→20p
 preview stop matching what the customer sees — the one thing the feature guarantees. The real fix
 is migrating those 36 raw `env()` sites onto the tokens, as its own job.
 
+**chbDuties — ONE decision about what needs the owner** (admin.js). There used to be
+two: `needsYouItems()` built the Today strip and `cmdkBriefBuild()` built the search
+pop-out's landing, from the same bookings and enquiries but with DIFFERENT rules. Today
+aged enquiries and escalated them to red at two days; the brief showed a plain count.
+Today chased balances only within 21 days of arrival (or already overdue); the brief
+totalled EVERYONE who owed, whenever they arrived — measured on one fixture as **£440 on
+Today against £955 in the pop-out**, both correct under their own rule and neither
+explaining itself. Every new signal also had to be taught to both. Today's rules win
+(they are the considered ones); `chbDuties()` owns them and the two surfaces are now
+FORMATTERS. It returns **PLAIN TEXT**, and that is the contract that made reuse possible
+at all: `needsYouItems` renders through innerHTML and used to escape as it composed
+(`${escapeHtml(q.name)}&rsquo;s enquiry`), so a guest called O'Brien would have reached
+the brief pre-escaped and been escaped again — break-tested, it prints
+`O&amp;#39;Brien`. Escaping now happens at each render boundary, once. Each duty
+DECLARES its `board` and `scope` (same principle as the brief rows), so the boards
+machinery is untouched — which means the two surfaces order differently BY DESIGN: which
+duties surface is severity-driven (the brief takes the first 4 of the severity-ordered
+list), where they sit is subject-driven (the boards group by Today/Money/Waiting).
+Money outside the 21-day window is `chbOwedLater()` — a quiet "£515 more owed, none due
+yet" line rather than being folded into a headline figure that then disagreed with Today.
+Gated by search-test §40.
+
+**Durable undo** (admin.js `CHB_UNDO_KEY` `search-undo`, `CHB_UNDO_REPLAY`,
+`chbUndoStored`/`chbUndoRehydrate`/`chbUndoForget`) — the stack was session-only, so
+closing the pop-out forgot everything and Tuesday's price override could only be undone
+by remembering it and going to Rates by hand. The constraint that shapes it: an entry
+holds a **CLOSURE**, and a closure cannot be serialised — so a durable entry stores a
+DESCRIPTOR (`{ kind, payload }`) and the reversal is rebuilt from `CHB_UNDO_REPLAY` at
+read time. **OPT-IN**, the same discipline as the inline actions: `chbUndoPush(label,
+run, spec)` without a spec behaves exactly as before. Stored under the INTERNAL content
+key `search-undo` (classified in db.php, so test-content-keys enforces it) via
+`saveContent` + `siteContent` — the admin content GET already serves internal keys, so
+this needed NO new endpoint. Two rules carried over from watchers: a stored undo
+**RE-CHECKS** before reversing (`CHB_UNDO_REPLAY[kind].stale` — the seasons replay asks
+"is my override still in the list?" and refuses with "that has changed since" rather than
+clobbering a later edit), and anything older than `CHB_UNDO_DAYS` (30) or of an
+unrecognised `kind` is silently ignored rather than thrown on. NB the in-memory entry
+carries the STORED id: without that link the same change appeared twice, and reversing
+the session copy left the stored twin on offer — safe, because the staleness check
+refuses it, but it reads as "not undone yet". Gated by search-test §40; the `undo`
+command reads `chbUndoList()` (session first, then stored), never `__chbUndo` directly.
+
 **Owner's picks** — the habit/trust/revenue layer. (1) **Teach-loop nudges**: the synced
 dead-end searches (`search-misses` in the content table) surface BOTH in the weekly digest
 email (owner-digest.php "Teach your assistant" section, last-7-days, top 5 by count) and as
