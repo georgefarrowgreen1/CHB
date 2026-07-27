@@ -339,6 +339,13 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     const i = document.getElementById('cmdk-input');
     if (i) { i.value = 'bob carter'; cmdkSearchCore('bob carter', false); }
     await new Promise((r) => setTimeout(r, 400));
+    // Measure the pop-out's RESTING shape. With a record selected it widens to make
+    // room for the split pane (see SPLIT below), and this section is about the
+    // ordinary case — an earlier section leaving a booking selected was enough to
+    // make these three read the wide box instead.
+    __cmdkSel = -1;
+    cmdkRender();
+    await new Promise((r) => setTimeout(r, 250));
   });
   const bleed = await page.evaluate(() => {
     const box = document.querySelector('#cmdk .cmdk-box');
@@ -471,6 +478,12 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       sideBySide: !!(pane && list && pane.getBoundingClientRect().left > list.getBoundingClientRect().left + 200),
       hubNodeMoved: !!(pane && pane.querySelector('#booking-hub-content')),
       scopeOutside: !!document.querySelector('#cmdk-results > .cmdk-scopes'),
+      // The pop-out must make ROOM for the pane. The split was designed for a
+      // full-bleed window; inside a 520px pop-out the grid still fired and starved
+      // the list — measured at 1440px, 226px of list against a 260px pane.
+      listW: list ? Math.round(list.getBoundingClientRect().width) : 0,
+      paneW: pane ? Math.round(pane.getBoundingClientRect().width) : 0,
+      boxW: Math.round(document.querySelector('#cmdk .cmdk-box').getBoundingClientRect().width),
     };
   });
   ok(split.pane && split.visible, 'SPLIT: the selected booking gets a pane at 1280px');
@@ -479,6 +492,17 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(split.sideBySide, 'SPLIT: the pane sits BESIDE the list, not under it');
   ok(!split.hubNodeMoved, 'SPLIT: it is a summary — #booking-hub-content was NOT re-parented into it');
   ok(split.scopeOutside, 'SPLIT: the scope switch spans the window rather than being trapped in the list');
+  ok(split.listW > split.paneW * 1.5, `SPLIT: the pop-out widens for it, so the LIST still leads (${split.listW}px list vs ${split.paneW}px pane)`);
+  // …and only while a pane is up: an ordinary search stays the compact pop-out.
+  const narrowAgain = await page.evaluate(async () => {
+    __cmdkSel = -1;
+    const i = document.getElementById('cmdk-input');
+    i.value = 'how do i add a booking'; cmdkSearchCore('how do i add a booking', false);
+    await new Promise((r) => setTimeout(r, 450));
+    return { boxW: Math.round(document.querySelector('#cmdk .cmdk-box').getBoundingClientRect().width),
+             wide: document.getElementById('cmdk').classList.contains('cmdk-wide') };
+  });
+  ok(!narrowAgain.wide && narrowAgain.boxW < split.boxW, `SPLIT: and it narrows back with no record selected (${narrowAgain.boxW}px vs ${split.boxW}px)`);
   // Below the breakpoint the pane collapses and nothing about the phone changes.
   await page.setViewportSize({ width: 390, height: 844 });
   await page.waitForTimeout(250);
