@@ -94,7 +94,11 @@ if (!function_exists('weather_daily')) {
         }
 
         try {
-            save_content(WEATHER_CACHE_KEY, json_encode(['at' => time(), 'days' => $out]));
+            // content_set_scalar, NOT save_content — the latter does not exist. I
+            // assumed an API instead of checking, and because test-weather.php only
+            // exercises the pure helpers this write was never executed by a test;
+            // PHPStan is what caught it, one step before it fatalled in production.
+            content_set_scalar(WEATHER_CACHE_KEY, json_encode(['at' => time(), 'days' => $out]));
         } catch (Throwable $e) {
             // Serving an uncached forecast beats failing because we couldn't write.
         }
