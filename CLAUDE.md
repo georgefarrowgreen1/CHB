@@ -883,6 +883,57 @@ deterministic `priceBreakdown` reads — never a parallel calc. Gated by search-
 (12 checks: learns seasonality, busy≥base/quiet<base, busy priced above quiet, bounds,
 plain-English why, gap depth follows demand, thin-data conservatism, the search answer).
 
+**SEARCH ACTS, REMEMBERS, WATCHES** — the command-centre layer, built in dependency
+order because each piece makes the next one safe.
+- **ACT IN PLACE** (`cmdkAct`'s optional `inline` runner) — every quick-action used to
+  begin `closeCmdK()`, so chasing three balances was three journeys. An action may now
+  supply `inline: async () => ({ say, undo?, reload? })`, doing its work with the window
+  open and reporting as a strip under its own row. **OPT-IN is the whole safety story**:
+  no `inline` → the old `run()` branch, byte for byte. Only `balance` uses it so far.
+  The send PREVIEW is kept (one-tap-send-blind on money would be a downgrade); what
+  changed is that search no longer closes around it, since modals sit at 2000+ and the
+  window at 1700. `previewAndSendEmail` now **returns** whether it sent — it always
+  computed that and discarded it — which is what lets the strip tell "sent" from "you
+  backed out". Three refusals, each gated: cancelling claims nothing and pushes no undo;
+  a sent email offers no undo (it cannot be unsent); a failed action is not undoable.
+  `cmdkRefreshRow` recomputes the acted-on row, because a strip reading "sent" above a
+  row still reading "still due" is worse than the modal. The strip is STATE + re-render,
+  and **`cmdkRowWithStrip` emits it with EVERY row in EVERY layout** — it was in the
+  results loop only, so the moment a brief row gained an action (the gap watcher) acting
+  from the landing produced silence.
+- **UNDO IS A STACK** (`__chbUndo`, `chbUndoPush`, `CHB_UNDO_MAX` 8) — was one variable,
+  overwritten by the next action. `chbUndoRecord` KEEPS its name and signature, so
+  `cmdkApplyPriceOverride` and the weekend uplift join with no edit. A failed undo goes
+  BACK on the stack so it can be retried. `undo` lists the rest of the session's changes.
+- **SYSTEM STATE** (`chbSystemState`/`chbSysLine`, `#cmdk-sys`) — one line in the search
+  foot, refreshed on open. Reads `window.__cronStatusPre`, already stashed by loadData's
+  bootstrap, so it costs NO request — a status line that fetched on every open would be a
+  bad trade for a line you normally ignore. Drives off the same `stale` field
+  `checkCronHealth` uses, so the two surfaces cannot disagree. ONE line, not a panel:
+  healthy is `disabled` (nothing to open), a warning is tappable and routed via
+  `cmdkOpenSection('diagnostics')` — NB `openArea()` takes no arguments, and
+  `openArea('settings')` was routing nowhere until the typecheck ratchet caught it.
+  The foot can no longer be `aria-hidden`: the keycaps stay hidden as decoration but a
+  stopped automation must be announced, so the line carries its own `role="status"`.
+  Only CRON is wired — per-cottage `ical-status-*` is a good second signal but
+  `ical-import.php` returns it only to the settings page that asks, and fetching it would
+  break the no-request rule. A candidate, not a silent omission.
+- **WATCHERS** (`watchers-lib.php` rules, `watchers.php` admin API, `watchers-run.php`
+  from cron.php, client `chbWatchSet`/`chbWatchStop`/`chbWatchGapAction`, `watching`
+  command) — the only thing here that acts while nobody is looking. Stored under the
+  INTERNAL content key `search-watchers`. It composes rather than adds machinery: setting
+  one is an inline action AND lands on the undo stack. Two rules that matter:
+  **`watchers_due` uses `>=`, not `===`** — a cron that fails on Friday must still speak
+  on Saturday, because swallowing the one alert the owner asked for is the worst failure
+  available; and a watcher only fires **if it is still true** (`watchers-run.php`
+  re-checks with an end-exclusive overlap query, and says nothing on a DB error rather
+  than claim a gap is free). Expired ones are cleared SILENTLY — "that gap is now in the
+  past" is not news. `watchers_key` requires a `kind`: it used to return `'|||'` for an
+  empty watcher, which made a contentless one storable. Capped at 12, newest kept.
+  Gated by `test-watchers.php` (26 checks, no DB and no clock — the silence cases carry
+  as many checks as the firing ones) + `ui-test-command.js` (24 checks across all four,
+  each break-tested independently).
+
 **THE COAST TIER** (admin.js `chbCoastRow`/`chbCoastDay`/`chbCoastFetch`, `CHB_TIDE_Q`,
 `CHB_WEATHER_Q`) — tides and weather, the two things a Blakeney owner is asked about
 most. **Tides were already built and unreached**: `tides.php`/`tide-data.php` (cached,

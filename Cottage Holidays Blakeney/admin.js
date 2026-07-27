@@ -785,6 +785,23 @@ function cmdkCommand(q, today) {
     // UNDO — reverse the LAST change search itself saved (price override /
     // weekend uplift), through the same validated endpoints. One level, this
     // session; an honest "nothing to undo" otherwise.
+    // WATCHING — the standing queries currently set, each stoppable in one tap. A
+    // watcher you cannot find is a notification you cannot switch off.
+    if (/^(watching|watchers|what am i watching|reminders?)$/.test(q.trim())) {
+        const list = __chbWatchers;
+        if (list === null) {
+            // Not fetched yet this session: kick it and re-run once it lands.
+            chbWatchersLoad().then(() => { const el = /** @type {HTMLInputElement|null} */ (document.getElementById('cmdk-input')); if (el && /^(watching|watchers|reminders?)/.test(el.value)) cmdkSearchCore(el.value, false); });
+            return cmd('Checking what you\'re watching…', 'One moment', () => {});
+        }
+        if (!list.length) return cmd('Not watching anything', 'Ask me to tell you if a gap hasn\'t sold, and it will appear here', () => { closeCmdK(); });
+        return list.map((w, i) => ({
+            type: 'answer', id: 'watch-' + i, wrap: true,
+            label: w.say || `${(propertyMeta[w.pk] || {}).name || w.pk} ${fmtDate(w.from)}–${fmtDate(w.to)}`,
+            sub: `Tells you ${fmtDate(w.tell)}${w.done ? ' · already told you' : ''} · tap to stop watching`,
+            run: () => { chbWatchStop(w.id).then(() => { const el = /** @type {HTMLInputElement|null} */ (document.getElementById('cmdk-input')); if (el) cmdkSearchCore(el.value || 'watching', false); }); },
+        }));
+    }
     if (/^undo( that| last| the last)?( change)?[.!]?$/.test(q.trim())) {
         if (__chbUndo.length) {
             const u = __chbUndo[0];
@@ -2796,6 +2813,125 @@ function chbComputeDate(str) {
     return isNaN(out.getTime()) ? null : out;
 }
 const CHB_CITY_TZ = { london: 'Europe/London', paris: 'Europe/Paris', madrid: 'Europe/Madrid', rome: 'Europe/Rome', berlin: 'Europe/Berlin', amsterdam: 'Europe/Amsterdam', dublin: 'Europe/Dublin', lisbon: 'Europe/Lisbon', athens: 'Europe/Athens', istanbul: 'Europe/Istanbul', moscow: 'Europe/Moscow', dubai: 'Asia/Dubai', mumbai: 'Asia/Kolkata', delhi: 'Asia/Kolkata', bangkok: 'Asia/Bangkok', singapore: 'Asia/Singapore', 'hong kong': 'Asia/Hong_Kong', shanghai: 'Asia/Shanghai', beijing: 'Asia/Shanghai', tokyo: 'Asia/Tokyo', seoul: 'Asia/Seoul', sydney: 'Australia/Sydney', melbourne: 'Australia/Melbourne', perth: 'Australia/Perth', auckland: 'Pacific/Auckland', 'new york': 'America/New_York', boston: 'America/New_York', toronto: 'America/Toronto', chicago: 'America/Chicago', denver: 'America/Denver', 'los angeles': 'America/Los_Angeles', 'san francisco': 'America/Los_Angeles', seattle: 'America/Los_Angeles', vancouver: 'America/Vancouver', honolulu: 'Pacific/Honolulu', 'mexico city': 'America/Mexico_City', 'rio de janeiro': 'America/Sao_Paulo', 'sao paulo': 'America/Sao_Paulo', 'buenos aires': 'America/Argentina/Buenos_Aires', 'cape town': 'Africa/Johannesburg', johannesburg: 'Africa/Johannesburg', cairo: 'Africa/Cairo', nairobi: 'Africa/Nairobi', lagos: 'Africa/Lagos' };
+// ============================================================
+//  WATCHERS — standing queries. The owner tells search what to keep an eye on.
+//
+//  Everything else in here is reactive: it answers when asked, summarises when
+//  opened. A watcher is the one thing that acts while nobody is looking, which is
+//  what separates a control centre from a very good search box.
+//
+//  This is the client half only — the rules are in watchers-lib.php (pure,
+//  unit-tested) and watchers-run.php fires them from the daily cron. Notice it
+//  composes with the two pieces built before it rather than inventing anything:
+//  setting one is an INLINE action (so search stays open and reports in place) and
+//  it lands on the UNDO STACK, so a watcher set by mistake is one tap from gone.
+// ============================================================
+let __chbWatchers = null; // cached list; null = not fetched this session
+async function chbWatchersLoad(force) {
+    if (__chbWatchers && !force) return __chbWatchers;
+    try {
+        const r = await apiPost('watchers.php', { action: 'list' });
+        __chbWatchers = Array.isArray(r && r.watchers) ? r.watchers : [];
+    } catch (e) { __chbWatchers = []; }
+    return __chbWatchers;
+}
+async function chbWatchSet(w) {
+    const r = await apiPost('watchers.php', { action: 'set', watcher: w });
+    if (r && r.error) throw new Error(r.error);
+    __chbWatchers = Array.isArray(r && r.watchers) ? r.watchers : null;
+    // The id the server minted, so undo can remove exactly this one.
+    const mine = (__chbWatchers || []).filter((x) => x && x.kind === w.kind && x.pk === w.pk && x.from === w.from);
+    return mine.length ? mine[mine.length - 1] : null;
+}
+async function chbWatchStop(id) {
+    const r = await apiPost('watchers.php', { action: 'stop', id });
+    __chbWatchers = Array.isArray(r && r.watchers) ? r.watchers : null;
+    return true;
+}
+// "Tell me if it hasn't sold" on a gap. The day it speaks is deliberately a couple
+// of days BEFORE the stay, not on it: an alert on the morning the gap starts is a
+// fact, not an opportunity — there is nothing left to do about it by then.
+function chbWatchGapAction(g, plan) {
+    if (!g || !g.pk || !g.from) return null;
+    const nm = (propertyMeta[g.pk] || {}).name || g.pk;
+    const endIncl = (plan && plan.endIncl) || g.to || g.from;
+    const tell = chbIsoShift(g.from, -2) > todayDashed() ? chbIsoShift(g.from, -2) : todayDashed();
+    return {
+        key: 'watch',
+        label: "Tell me if it hasn't sold",
+        icon: cmdkActIcon('alert'),
+        pending: 'Setting a reminder…',
+        run: () => { closeCmdK(); glassAlert('Reopen search to set a reminder for this gap.'); },
+        inline: async () => {
+            const saved = await chbWatchSet({
+                kind: 'gap-unsold', pk: g.pk, from: g.from, to: endIncl, tell,
+                say: `${nm} ${fmtDate(g.from)}–${fmtDate(endIncl)} is still free — worth a last-minute push.`,
+            });
+            return {
+                say: `Watching ${nm} — I'll tell you on ${fmtDate(tell)} if it's still free`,
+                undo: saved && saved.id ? () => chbWatchStop(saved.id) : null,
+                reload: false,
+            };
+        },
+    };
+}
+// ============================================================
+//  SYSTEM STATE — search says the machine is alive without being asked.
+//
+//  Everything the back office does on a schedule (pre-arrival emails, payment
+//  reminders, the tide push, enquiry nudges, self-repair) hangs off one daily cron.
+//  When it stops, nothing announces it: the signal lives on Manage → Status, which
+//  you visit AFTER noticing something is wrong. One quiet line in the search foot
+//  moves that to before.
+//
+//  Built ONLY from what is already in the page. loadData's admin bootstrap stashes
+//  the cron status in window.__cronStatusPre, so this costs no request — and a
+//  status line that fired its own fetch every time search opened would be a poor
+//  trade for a line you normally ignore.
+//
+//  Deliberately ONE line, and deliberately only the checks that are ambiently
+//  available. Per-cottage iCal feed health (ical-status-<prop>) is a genuinely
+//  useful second signal but ical-import.php only returns it to the settings page
+//  that asks, and making the brief fetch it would break the no-request rule above.
+//  It is a candidate for later, not a silent omission.
+// ============================================================
+function chbSystemState() {
+    const checks = [];
+    try {
+        // JSDoc casts here and below are the standard checkJs escape for the DOM's
+        // loose typing and for runtime-only globals. This file had no precedent for
+        // them (it simply tolerates its inherited errors) — but the typecheck ratchet
+        // forbids ADDING errors, so new code carries its own types.
+        const d = /** @type {any} */ (window).__cronStatusPre;
+        // `stale` is the same field checkCronHealth() drives the Status pill from —
+        // one definition of "quiet", so the two surfaces cannot disagree.
+        if (d && d.stale) {
+            const ago = d.everRan
+                ? (d.ageHours >= 48 ? Math.round(d.ageHours / 24) + ' days' : Math.round(d.ageHours) + ' hours') + ' ago'
+                : 'never run';
+            // cmdkOpenSection, not openArea('settings') — openArea() takes NO
+            // arguments, so that call was silently routing nowhere. Found by the
+            // type checker, which is the only thing that was going to notice.
+            checks.push({ level: 'warn', say: `Daily automation looks stopped — last ran ${ago}`, go: () => cmdkOpenSection('diagnostics') });
+        }
+    } catch (e) {}
+    if (checks.length) return checks[0]; // the most important thing, not a panel
+    return { level: 'ok', say: 'All systems normal' };
+}
+function chbSysLine() {
+    const el = /** @type {HTMLButtonElement|null} */ (document.getElementById('cmdk-sys'));
+    if (!el) return;
+    let st;
+    try { st = chbSystemState(); } catch (e) { el.hidden = true; return; }
+    // When all is well the line says so QUIETLY — and on a phone it says nothing at
+    // all, because 390px of foot is already carrying the hint text.
+    el.hidden = false;
+    el.className = 'cmdk-sys' + (st.level === 'ok' ? ' is-ok' : ' is-warn');
+    el.innerHTML = `<span class="cmdk-sys-dot" aria-hidden="true"></span><span class="cmdk-sys-say">${escapeHtml(st.say)}</span>`;
+    el.disabled = !st.go;
+    el.onclick = st.go || null;
+    el.setAttribute('aria-label', st.say + (st.go ? ' — open Status' : ''));
+}
 // ============================================================
 //  THE COAST TIER — tides and weather, the two facts a Blakeney owner is asked
 //  about most and the two search could not answer.
@@ -6466,7 +6602,7 @@ function cmdkBriefBuild() {
         const plan = g && chbGapPlan(g);
         if (plan) {
             const nm = (propertyMeta[g.pk] || {}).name || g.pk;
-            if (plan.kind === 'offer') items.push({ type: 'answer', scope: 'bookings', id: 'brief-gap', board: 'month', wrap: true, label: `Worth a look: ${g.nights} free nights on ${nm}`, sub: `${fmtDate(g.from)}–${fmtDate(plan.endIncl)} · offer £${plan.offer}/night (${plan.pct}% off) — tap to apply`, run: () => { closeCmdK(); cmdkApplyPriceOverride(g.pk, g.from, plan.endIncl, plan.offer, 'Gap offer').catch((e) => glassAlert("Couldn't save: " + e.message)); } });
+            if (plan.kind === 'offer') items.push({ type: 'answer', scope: 'bookings', id: 'brief-gap', board: 'month', wrap: true, label: `Worth a look: ${g.nights} free nights on ${nm}`, sub: `${fmtDate(g.from)}–${fmtDate(plan.endIncl)} · offer £${plan.offer}/night (${plan.pct}% off) — tap to apply`, actions: [chbWatchGapAction(g, plan)].filter(Boolean), run: () => { closeCmdK(); cmdkApplyPriceOverride(g.pk, g.from, plan.endIncl, plan.offer, 'Gap offer').catch((e) => glassAlert("Couldn't save: " + e.message)); } });
             else items.push({ type: 'answer', scope: 'bookings', id: 'brief-gap', board: 'month', wrap: true, label: `Offer live: £${plan.rate}/night on ${nm}`, sub: `${fmtDate(g.from)}–${fmtDate(plan.endIncl)} · the ${g.nights}-night gap is priced to sell — edit in Rates`, run: () => { closeCmdK(); nyOfferRates(); } });
         }
     } catch (e) {}
@@ -6874,7 +7010,7 @@ function cmdkBoardsHtml(items, offset) {
         rows.forEach(({ i }) => used.add(i));
         return `<section class="cmdk-board" aria-labelledby="cmdk-board-${b.key}">
             <h3 class="cmdk-board-cap" id="cmdk-board-${b.key}">${escapeHtml(b.label)}</h3>
-            ${rows.map(({ it, i }) => cmdkRowHtml(it, offset + i, false)).join('')}
+            ${rows.map(({ it, i }) => cmdkRowWithStrip(it, offset + i, false)).join('')}
         </section>`;
     }).join('');
     // Anything whose board we don't recognise still has to render — losing a row
@@ -6882,7 +7018,7 @@ function cmdkBoardsHtml(items, offset) {
     const orphans = items
         .map((it, i) => ({ it, i }))
         .filter(({ i }) => !used.has(i))
-        .map(({ it, i }) => cmdkRowHtml(it, offset + i, false))
+        .map(({ it, i }) => cmdkRowWithStrip(it, offset + i, false))
         .join('');
     if (!cards && !orphans) return '';
     return `<div class="cmdk-boards">${cards}</div>${orphans}`;
@@ -6952,8 +7088,7 @@ function cmdkRenderInner() {
                 lastKey = sec.key;
             }
         }
-        parts.push(i === heroAt ? cmdkHeroHtml(it, i) : cmdkRowHtml(it, i, grouped && i === firstReal));
-        parts.push(cmdkActStripHtml(i)); // "✓ Balance request sent · undo" under its own row
+        parts.push(i === heroAt ? cmdkHeroHtml(it, i) + cmdkActStripHtml(i) : cmdkRowWithStrip(it, i, grouped && i === firstReal));
     });
     parts.push(cmdkDeepCta()); // "Search everything for '…'" → the full deep view
     // SPLIT: the selected record's summary, placed in a second column by CSS at
@@ -7208,6 +7343,12 @@ function cmdkRefreshRow(i) {
         }
     } catch (e) {}
     cmdkRender(true);
+}
+// A row and the outcome of acting on it are ONE unit, so they are emitted together.
+// The strip used to be pushed only in the results loop; the moment a brief row
+// gained an action (the gap watcher), acting from the landing produced silence.
+function cmdkRowWithStrip(it, i, top) {
+    return cmdkRowHtml(it, i, top) + cmdkActStripHtml(i);
 }
 function cmdkActStripHtml(i) {
     const m = __cmdkActMsg;
@@ -7609,6 +7750,7 @@ function openCmdK() {
     const inp = document.getElementById('cmdk-input');
     if (!inp) return;
     const o = cmdkEnsureOverlay();
+    chbSysLine(); // the machine's state, refreshed the moment the window is opened
     const av = document.querySelector('.page-view.active');
     // Scope + record context come from the workspace UNDER the overlay, and it
     // stays there — so these read the same as they always did.

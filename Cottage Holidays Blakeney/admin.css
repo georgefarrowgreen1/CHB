@@ -3752,3 +3752,58 @@ body.cmdk-open {
     margin-left: 12px;
   }
 }
+
+/* ============================================================
+   SYSTEM STATE — one line in the search foot (chbSysLine). Quiet when all is
+   well; the warning state is the only thing here allowed to draw the eye.
+   ============================================================ */
+.cmdk-sys {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-left: auto;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: none;
+  font: inherit;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  cursor: default;
+  min-width: 0;
+}
+.cmdk-sys:not(:disabled) {
+  cursor: pointer;
+}
+.cmdk-sys:not(:disabled):hover {
+  background: var(--glass-hover);
+}
+.cmdk-sys-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  background: var(--ok);
+}
+.cmdk-sys.is-warn {
+  color: var(--warn-text);
+}
+.cmdk-sys.is-warn .cmdk-sys-dot {
+  background: var(--warn);
+}
+.cmdk-sys-say {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* A phone's foot is already carrying the hint line, so "All systems normal" earns
+   no room there — but a WARNING always does. */
+@media (max-width: 639px) {
+  .cmdk-sys.is-ok {
+    display: none;
+  }
+  .cmdk-sys.is-warn {
+    margin-left: 0;
+  }
+}

@@ -813,10 +813,18 @@
             </div>
             <div id="cmdk-progress" class="cmdk-progress" aria-hidden="true"><span></span></div>
             <div id="cmdk-results" class="cmdk-results" role="listbox" aria-label="Search results"></div>
-            <div class="cmdk-foot" aria-hidden="true">
-                <span class="cmdk-foot-keys"><kbd class="cmdk-kbd">↑</kbd><kbd class="cmdk-kbd">↓</kbd> Navigate</span>
-                <span class="cmdk-foot-keys"><kbd class="cmdk-kbd">↵</kbd> Open</span>
-                <span class="cmdk-foot-keys"><kbd class="cmdk-kbd">esc</kbd> Back</span>
+            <div class="cmdk-foot">
+                <span class="cmdk-foot-keys" aria-hidden="true"><kbd class="cmdk-kbd">↑</kbd><kbd class="cmdk-kbd">↓</kbd> Navigate</span>
+                <span class="cmdk-foot-keys" aria-hidden="true"><kbd class="cmdk-kbd">↵</kbd> Open</span>
+                <span class="cmdk-foot-keys" aria-hidden="true"><kbd class="cmdk-kbd">esc</kbd> Back</span>
+                <!-- SYSTEM STATE. A command centre says the machine is alive without
+                     being asked; these signals otherwise live in Manage → Status,
+                     where you only look AFTER something has gone wrong. Filled by
+                     chbSysLine() on every open. NB the foot itself can no longer be
+                     aria-hidden — the keycaps stay hidden (they are decoration for a
+                     touch user) but a warning about a stopped automation must be
+                     announced, so it carries its own role=status. -->
+                <button type="button" id="cmdk-sys" class="cmdk-sys" role="status" hidden></button>
             </div>
         </div>
     </div>

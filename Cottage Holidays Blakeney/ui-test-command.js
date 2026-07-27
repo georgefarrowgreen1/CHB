@@ -126,6 +126,77 @@ const stub = (page) => page.route(/\.php/, (r) => {
   ok(/Second change/.test(stack.head||''), `undo offers the newest first (${stack.head})`);
   ok(/First change/.test(stack.second||''), `and lists the one behind it (${stack.second})`);
 
+  // ---- STEP 4: the system-state line ----
+  const sys = await page.evaluate(async () => {
+    const until = async (fn, ms = 6000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 50)); } };
+    // All well.
+    window.__cronStatusPre = { stale: false, everRan: true, ageHours: 3 };
+    try { closeCmdK(); } catch (e) {}
+    openCmdK();
+    await until(() => document.getElementById('cmdk').classList.contains('open'));
+    const el = document.getElementById('cmdk-sys');
+    const okState = { hidden: el.hidden, cls: el.className, txt: el.textContent.trim(), role: el.getAttribute('role'), disabled: el.disabled };
+    // Automation stopped — the failure everything else depends on.
+    window.__cronStatusPre = { stale: true, everRan: true, ageHours: 50 };
+    chbSysLine();
+    const warn = { cls: el.className, txt: el.textContent.trim(), disabled: el.disabled, label: el.getAttribute('aria-label') };
+    return { okState, warn };
+  });
+  ok(!sys.okState.hidden && /is-ok/.test(sys.okState.cls), `STATUS: healthy reads quietly (${sys.okState.txt})`);
+  ok(/All systems normal/.test(sys.okState.txt), 'STATUS: and says so in plain words');
+  ok(sys.okState.role === 'status', 'STATUS: announced — a stopped automation must not be silent');
+  ok(sys.okState.disabled === true, 'STATUS: nothing to open when all is well, so it is not a button');
+  ok(/is-warn/.test(sys.warn.cls), 'STATUS: a stale cron flips it to warn');
+  ok(/automation looks stopped/i.test(sys.warn.txt), `STATUS: naming the actual problem (${sys.warn.txt})`);
+  ok(/2 days ago/.test(sys.warn.txt), 'STATUS: with how long it has been quiet');
+  ok(sys.warn.disabled === false && /Status/.test(sys.warn.label || ''), 'STATUS: and it becomes tappable, routed at the fix');
+
+  // ---- STEP 5: watchers ----
+  const watch = await page.evaluate(async () => {
+    const posts = [];
+    const realPost = window.apiPost;
+    // Stub the endpoint: watchers.php is admin-guarded and its rules are already
+    // unit-tested in test-watchers.php. What matters here is the CLIENT contract.
+    window.apiPost = async (url, body) => {
+      if (String(url).includes('watchers.php')) {
+        posts.push(body);
+        if (body.action === 'list') return { watchers: [] };
+        if (body.action === 'set') return { ok: true, watchers: [Object.assign({ id: 'wZZ' }, body.watcher)] };
+        if (body.action === 'stop') return { ok: true, watchers: [] };
+      }
+      return realPost(url, body);
+    };
+    __chbUndo.length = 0;
+    const g = { pk: 'jollyboat', from: '2027-03-10', to: '2027-03-13', nights: 3 };
+    const act = chbWatchGapAction(g, { endIncl: '2027-03-12' });
+    // Driven through cmdkAct, not by calling inline() directly: the undo push is
+    // cmdkAct's job in the contract, so invoking the runner on its own would prove
+    // nothing about whether a watcher is actually undoable in the product.
+    const row = { type: 'answer', id: 'probe-gap', label: 'gap', sub: '', run: () => {}, actions: [act] };
+    __cmdkResults = [row];
+    __cmdkSel = 0;
+    await cmdkAct(0, 0);
+    const strip = document.querySelector('#cmdk .cmdk-actmsg');
+    const out = {
+      hasAction: !!act, key: act && act.key, label: act && act.label,
+      say: strip ? strip.textContent.trim() : '',
+      undoDepth: __chbUndo.length,
+      undoLabel: __chbUndo[0] && __chbUndo[0].label,
+      sent: posts.filter((p) => p.action === 'set').map((p) => p.watcher),
+    };
+    // Undo must actually stop it, through the stack the way the owner would.
+    if (__chbUndo[0]) await __chbUndo[0].run();
+    out.stopped = posts.some((p) => p.action === 'stop' && p.id === 'wZZ');
+    window.apiPost = realPost;
+    return out;
+  });
+  ok(watch.hasAction && watch.key === 'watch', `WATCH: a gap carries a watch action (${watch.label})`);
+  ok(/I'll tell you on/.test(watch.say || ''), `WATCH: it says when it will speak (${watch.say})`);
+  ok(watch.sent.length === 1 && watch.sent[0].kind === 'gap-unsold', 'WATCH: posted as a gap-unsold watcher');
+  ok(watch.sent[0].tell < watch.sent[0].from, `WATCH: it speaks BEFORE the gap starts, not on the day (${watch.sent[0].tell} < ${watch.sent[0].from})`);
+  ok(watch.undoDepth === 1 && /Watching/.test(watch.undoLabel || ''), `WATCH: setting one lands on the undo stack (${watch.undoLabel})`);
+  ok(watch.stopped, 'WATCH: and undo actually stops it server-side');
+
   console.log(fails ? `\n  ${fails} FAILED` : '\n  INLINE + UNDO OK');
   await done(fails);
 })().catch(e=>{console.error('FAILED:',e.message);process.exit(1);});

@@ -104,6 +104,10 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-guestfaq.php
 
+      - name: Watcher rules (identity, cap, due/expiry, and when they must stay silent)
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-watchers.php
+
       - name: Weather judgement (plain-English codes + only-interrupt-when-it-matters)
         working-directory: "Cottage Holidays Blakeney"
         run: php test-weather.php
