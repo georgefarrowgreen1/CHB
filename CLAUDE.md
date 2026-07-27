@@ -539,8 +539,17 @@ would break arrow-key nav in total silence).
   breakpoint — no `matchMedia`, no resize listener, nothing to leave stale. The
   scope switch is hoisted OUT of the split, since it filters the search and not the
   left column. NB `propName` is a local elsewhere, so the pane reads `propertyMeta`
-  directly. Gated by ui-test-searchpage §11 (20 checks), each of the four
-  break-tested independently.
+  directly. **The pop-out WIDENS (520 → 860px) while a pane is up**, and has to: the
+  split was designed when this was a full-bleed window with ~1000px going spare, and
+  inside the 520px pop-out the grid still fired and starved the thing it sits beside
+  — measured at 1440px, 226px of results list against a 260px pane, i.e. the list
+  narrower than its own sidebar. `cmdkRenderInner` toggles `.cmdk-wide` at the one
+  point that decides to render a pane, so the width and the pane can never disagree;
+  it narrows back the moment nothing is selected. NB this also means SELECTION
+  changes the box width, which broke §10 — it measures the pop-out's RESTING shape
+  and an earlier section had left a booking selected, so it silently began reading
+  the wide box. It clears the selection before measuring now. Gated by
+  ui-test-searchpage §11, each of the four layouts break-tested independently.
 
 **The empty landing's day brief is NOT scope-filtered** (the "Jump to" list still is).
 `openCmdK` snapshots `cmdkDefaultScope()` from the workspace you came from, so opening

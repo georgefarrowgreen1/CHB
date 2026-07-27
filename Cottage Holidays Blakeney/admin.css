@@ -3479,6 +3479,14 @@ body.cmdk-open {
 .cmdk-detail {
   display: none;
 }
+/* Room for the pane. Only when one is actually rendered, so an ordinary search stays
+   the compact pop-out it is meant to be — and only above the same 1200px breakpoint
+   the split itself uses, so the two can never disagree about when it applies. */
+@media (min-width: 1200px) {
+  #cmdk.cmdk-overlay.cmdk-wide .cmdk-box {
+    max-width: 860px;
+  }
+}
 @media (min-width: 1200px) {
   .cmdk-split {
     display: grid;

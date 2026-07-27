@@ -7271,6 +7271,14 @@ function cmdkRenderInner() {
     // SPLIT: the selected record's summary, placed in a second column by CSS at
     // >=1000px and collapsed below it. Rendered last so the list is complete first.
     const detail = cmdkDetailHtml();
+    // The pop-out WIDENS to hold the split, and has to. The pane was designed when
+    // this was a full-bleed window with ~1000px going spare; inside a 520px pop-out
+    // the grid still fired and starved the thing it sits beside — measured at 1440px,
+    // the results list got 226px against the pane's 260px, i.e. the list was narrower
+    // than its own sidebar. The class is set here rather than with :has() so the one
+    // place that decides to render a pane is the one place that sizes the box for it.
+    const ov = document.getElementById('cmdk');
+    if (ov) ov.classList.toggle('cmdk-wide', !!detail);
     if (detail) {
         // The scope switch spans the whole window — it filters the SEARCH, not the
         // left column, so narrowing it into the list would misrepresent what it does.
