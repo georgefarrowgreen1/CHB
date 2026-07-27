@@ -538,8 +538,23 @@ function chbSeasonSplice(existing, ov) {
 // price override, a weekend-uplift apply) records how to restore the exact
 // prior state, and typing "undo" reverses it — through the same validated
 // endpoints, one level deep, this session only. ----
-let __cmdkUndo = null; // { label, run: async () => restore }
-function chbUndoRecord(label, run) { __cmdkUndo = { label, run }; }
+// UNDO — a STACK, not a slot. It was one variable, overwritten by the next
+// action and gone on close, which was survivable while search only ever handed
+// off to a modal. Now that actions can run in place (see cmdkAct's `inline`
+// contract) the confidence to act quickly comes from being able to walk several
+// steps back, so the last CHB_UNDO_MAX are kept, newest first.
+//
+// chbUndoRecord KEEPS ITS NAME and its signature on purpose: cmdkApplyPriceOverride
+// and the weekend uplift already call it, and they join the stack with no edit.
+const CHB_UNDO_MAX = 8;
+let __chbUndo = [];
+function chbUndoPush(label, run) {
+    if (typeof run !== 'function') return;
+    __chbUndo.unshift({ label, run, at: Date.now() });
+    __chbUndo = __chbUndo.slice(0, CHB_UNDO_MAX);
+}
+function chbUndoRecord(label, run) { chbUndoPush(label, run); }
+function chbUndoList() { return __chbUndo.slice(); }
 // Save a dated couple-rate override (a rate_seasons row) — the landing for the
 // price command and the gap offers. Splices, saves through the existing
 // validated endpoint, updates local state and repaints the public prices.
@@ -771,13 +786,27 @@ function cmdkCommand(q, today) {
     // weekend uplift), through the same validated endpoints. One level, this
     // session; an honest "nothing to undo" otherwise.
     if (/^undo( that| last| the last)?( change)?[.!]?$/.test(q.trim())) {
-        if (__cmdkUndo) {
-            const u = __cmdkUndo;
-            return cmd(`Undo — ${u.label}`, 'Puts things back exactly as they were', () => {
+        if (__chbUndo.length) {
+            const u = __chbUndo[0];
+            const more = __chbUndo.length - 1;
+            // NB cmd() already returns a one-row ARRAY — wrapping it in another
+            // array nests it and the caller sees no rows at all.
+            const rows = cmd(`Undo — ${u.label}`, more ? `Puts it back · ${more} more step${more === 1 ? '' : 's'} behind it` : 'Puts things back exactly as they were', () => {
                 closeCmdK();
-                __cmdkUndo = null;
-                u.run().catch((e) => { __cmdkUndo = u; glassAlert("Couldn't undo: " + e.message); });
+                __chbUndo.shift();
+                // Failure puts it BACK on the stack — an undo that silently
+                // vanished after failing would leave you unable to retry it.
+                u.run().catch((e) => { __chbUndo.unshift(u); glassAlert("Couldn't undo: " + e.message); });
             });
+            // The rest of the session's changes, so "what have I just done" is a
+            // question search can answer rather than one you have to remember.
+            __chbUndo.slice(1).forEach((x, i) => rows.push({ type: 'answer', id: 'undo-' + i, label: x.label, sub: `${timeAgoLabel(new Date(x.at).toISOString())} · tap to undo this one`, run: () => {
+                closeCmdK();
+                const at = __chbUndo.indexOf(x);
+                if (at > -1) __chbUndo.splice(at, 1);
+                x.run().catch((e) => { __chbUndo.splice(at, 0, x); glassAlert("Couldn't undo: " + e.message); });
+            } }));
+            return rows;
         }
         return cmd('Nothing to undo', "Search hasn't saved any changes this session", () => { closeCmdK(); });
     }
@@ -1120,7 +1149,27 @@ function cmdkBookingActions(b, pk) {
     let ps = null;
     try { ps = typeof paymentSummary === 'function' ? paymentSummary(pk, b) : null; } catch (e) {}
     if (ps && !ps.fullyPaid && ps.balance > 0.5) {
-        acts.push({ key: 'balance', label: ps.deposit > 0.5 ? 'Request balance' : 'Request payment', icon: cmdkActIcon('coin'), run: () => { closeCmdK(); requestPayment(b.id, ps.deposit > 0.5 ? 'balance' : 'deposit'); } });
+        // FIRST INLINE ACTION. The preview is KEPT — it is a deliberate feature and
+        // one-tap-send-blind would be a downgrade. What changes is that search no
+        // longer closes around it: the preview opens over the window (modals sit at
+        // 2000+, the window at 1700), and when it closes you are still in your list
+        // with the outcome under the row. Chasing three balances stops being three
+        // journeys. Cancelling returns null, so nothing is claimed and nothing is
+        // pushed onto the undo stack.
+        const bKind = ps.deposit > 0.5 ? 'balance' : 'deposit';
+        acts.push({
+            key: 'balance',
+            label: ps.deposit > 0.5 ? 'Request balance' : 'Request payment',
+            icon: cmdkActIcon('coin'),
+            pending: 'Opening the email…',
+            run: () => { closeCmdK(); requestPayment(b.id, bKind); },
+            inline: async () => {
+                const sent = await requestPayment(b.id, bKind);
+                // An email cannot be unsent, so no undo entry is offered — a button
+                // that promises a reversal it cannot perform is worse than none.
+                return sent ? { say: `${bKind === 'balance' ? 'Balance' : 'Deposit'} request sent to ${chbSayFirst(b.name || 'the guest')}` } : null;
+            },
+        });
         acts.push({ key: 'record', label: 'Record payment', icon: cmdkActIcon('plus'), run: () => { closeCmdK(); recordPayment(b.id); } });
     }
     if ((b.holdStatus || 'none') === 'charged') {
@@ -5069,6 +5118,7 @@ let __cmdkQueryGen = 0;
 // force the literal spelling.
 function cmdkSearchCore(q, allowCorrect) {
     __cmdkQueryGen++;
+    __cmdkActMsg = null; // a result strip belongs to the query that produced it
     __cmdkActSel = -1; // a fresh query starts on the row, not a stale sub-action
     const raw = (q || '').trim().toLowerCase();
     __cmdkDeep = null; // a fresh query returns to the quick top-hits palette
@@ -6796,6 +6846,7 @@ function cmdkRenderInner() {
             }
         }
         parts.push(i === heroAt ? cmdkHeroHtml(it, i) : cmdkRowHtml(it, i, grouped && i === firstReal));
+        parts.push(cmdkActStripHtml(i)); // "✓ Balance request sent · undo" under its own row
     });
     parts.push(cmdkDeepCta()); // "Search everything for '…'" → the full deep view
     // SPLIT: the selected record's summary, placed in a second column by CSS at
@@ -6990,10 +7041,75 @@ function cmdkGreeting() {
     return h < 12 ? 'Good morning' : h < 17 ? 'Good afternoon' : h < 22 ? 'Good evening' : 'Late tonight';
 }
 // Run a quick-action (chip) on a result row without dismissing via the row.
-function cmdkAct(i, k) {
+// ACT IN PLACE. Every quick-action used to begin `closeCmdK()` — search handed
+// off and vanished, so chasing three balances was three journeys. An action may
+// now supply an `inline` runner instead: it does its work with the window still
+// open and returns { say, undo? }, which lands as a strip under its own row.
+//
+// OPT-IN, and that is the whole safety story: an action without `inline` takes
+// the branch below and behaves exactly as it did before, byte for byte. Rolling
+// this out is therefore one action at a time, and the blast radius is one action.
+//
+// The strip is STATE plus a re-render, not a DOM poke — same as everything else
+// in this file, so it survives the next cmdkRender() instead of being wiped by it.
+let __cmdkActMsg = null; // { idx, state: 'busy'|'ok'|'err', say }
+async function cmdkAct(i, k) {
     const it = __cmdkResults[i];
     const a = it && Array.isArray(it.actions) ? it.actions[k] : null;
-    if (a && typeof a.run === 'function') a.run();
+    if (!a) return;
+    if (typeof a.inline !== 'function') {
+        if (typeof a.run === 'function') a.run();
+        return;
+    }
+    __cmdkActMsg = { idx: i, state: 'busy', say: a.pending || 'Working…' };
+    cmdkRender(true);
+    try {
+        const res = await a.inline();
+        // A null result means the owner backed out (cancelled the send preview,
+        // dismissed the confirm). Nothing happened, so claim nothing.
+        if (!res) { __cmdkActMsg = null; cmdkRender(true); return; }
+        __cmdkActMsg = { idx: i, state: 'ok', say: res.say || 'Done' };
+        if (res.undo) chbUndoPush(res.say || a.label, res.undo);
+        // The row's own money line is stale the moment the action lands — a strip
+        // reading "sent" above a row still reading "still due" is worse than the
+        // modal this replaced.
+        if (res.reload !== false) { try { await loadData(); } catch (e) {} }
+        cmdkRefreshRow(i);
+    } catch (e) {
+        __cmdkActMsg = { idx: i, state: 'err', say: (e && e.message) || "That didn't work" };
+        cmdkRender(true);
+    }
+}
+// Recompute the acted-on row in place so its sub reflects what just happened,
+// without rebuilding the whole result set (which would lose the selection and
+// the strip). Falls back to a plain re-render when the row can't be rebuilt.
+function cmdkRefreshRow(i) {
+    const it = __cmdkResults[i];
+    try {
+        if (it && it.type === 'booking' && it.id != null && typeof cmdkBookingActions === 'function') {
+            const b = findBookingById(it.id);
+            const loc = findBookingLocation(it.id);
+            if (b && loc) {
+                const m = { money: '', dep: '' };
+                const ps = paymentSummary(loc.propKey, b);
+                m.money = ps.fullyPaid ? 'paid in full' : ps.balance > 0.5 ? `${gbp(ps.balance)} still due` : 'nothing paid yet';
+                const bits = [m.money, (propertyMeta[loc.propKey] || {}).name || loc.propKey];
+                if (b.checkIn) bits.push(`${fmtDate(b.checkIn)}–${fmtDate(b.checkOut)}`);
+                it.sub = bits.join(' · ');
+                it.actions = cmdkBookingActions(b, loc.propKey);
+            }
+        }
+    } catch (e) {}
+    cmdkRender(true);
+}
+function cmdkActStripHtml(i) {
+    const m = __cmdkActMsg;
+    if (!m || m.idx !== i) return '';
+    const cls = m.state === 'ok' ? ' is-ok' : m.state === 'err' ? ' is-err' : ' is-busy';
+    const mark = m.state === 'ok' ? '✓' : m.state === 'err' ? '!' : '·';
+    // role=status so the outcome is ANNOUNCED — the whole point of acting in
+    // place is that nothing navigates, so there is no page change to notice.
+    return `<div class="cmdk-actmsg${cls}" role="status"><span class="cmdk-actmsg-ic" aria-hidden="true">${mark}</span><span>${escapeHtml(m.say)}</span></div>`;
 }
 // The selected row's navigable sub-items (quick-actions then chips), in render
 // order — what Left/Right cycles through and Enter runs.
@@ -12128,8 +12244,8 @@ async function saveDepositPct() {
 // Email the guest a secure pay link (deposit or balance).
 async function requestPayment(bookingId, kind) {
     const booking = findBookingById(bookingId);
-    if (!booking) return;
-    await previewAndSendEmail({
+    if (!booking) return false;
+    return await previewAndSendEmail({
         id: booking.dbId,
         kind: 'payment.request',
         to: booking.email,

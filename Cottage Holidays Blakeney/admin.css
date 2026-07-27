@@ -3712,3 +3712,43 @@ body.cmdk-open {
     display: none;
   }
 }
+
+/* ============================================================
+   ACT IN PLACE — the result strip under a row (cmdkActStripHtml). Search no
+   longer closes to do the work, so the outcome has to be visible where the work
+   was started. Indented to the row's label like the quick-actions panel, so it
+   reads as belonging to that row and not to the list.
+   ============================================================ */
+.cmdk-actmsg {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 2px 12px 9px 54px;
+  padding: 9px 12px;
+  border-radius: var(--r-sm);
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+.cmdk-actmsg-ic {
+  flex: 0 0 auto;
+  font-weight: 700;
+}
+.cmdk-actmsg.is-ok {
+  background: color-mix(in srgb, var(--ok) 15%, transparent);
+  color: var(--ok-text);
+}
+.cmdk-actmsg.is-err {
+  background: color-mix(in srgb, var(--danger) 15%, transparent);
+  color: var(--danger-text);
+}
+.cmdk-actmsg.is-busy {
+  background: var(--glass-hover);
+  color: var(--text-muted);
+}
+/* The phone drops the 54px indent for the same reason the actions grid did —
+   at 390px it costs a seventh of the line and the message is the point. */
+@media (max-width: 639px) {
+  .cmdk-actmsg {
+    margin-left: 12px;
+  }
+}
