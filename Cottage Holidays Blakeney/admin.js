@@ -5070,6 +5070,9 @@ function cmdkSearchCore(q, allowCorrect) {
     const searchWrap = document.querySelector('#cmdk .cmdk-search');
     if (searchWrap) searchWrap.classList.toggle('has-text', (q || '').length > 0);
     if (!raw) {
+        // Clearing the field starts over: the thread belongs to a line of questions,
+        // and an empty box is not part of one.
+        cmdkThreadClear();
         // Empty query → an answer-first "Your day" brief, example chips, then the
         // dock destinations. The brief + screens are the executable rows.
         __cmdkEmpty = true;
@@ -5235,6 +5238,10 @@ function cmdkSearchCore(q, allowCorrect) {
     chbSetModelStatus(document.getElementById('cmdk-ml'), mstate);
     const firstReal = __cmdkResults.findIndex((it) => it && !cmdkIsNoteRow(it));
     __cmdkSel = firstReal >= 0 ? firstReal : 0; // the Top Hit, not the correction/widen note
+    // THREAD: remember answered turns. Recorded HERE, where a query commits its
+    // results — never in the renderer, which re-runs on every selection change and
+    // would stack the same answer a dozen times as you arrow down the list.
+    cmdkThreadPush(ql, __cmdkResults[firstReal]);
     cmdkRender();
     // Deep index search runs server-side (emails, messages, invoices, guests,
     // reviews, activity — everything not held in the browser) and merges in when
@@ -6276,17 +6283,17 @@ function cmdkBriefBuild() {
             }
         } catch (e) {}
         try { const ps = paymentSummary(pk, b); bits.push(ps.fullyPaid ? 'paid in full' : `${gbp(ps.balance)} to take`); } catch (e) {}
-        items.push({ type: 'answer', scope: 'bookings', id: 'brief-arr-' + b.id, label: `${chbSayFirst(b.name)} arrives today${b.checkInTime ? ' · ' + b.checkInTime : ''}`, sub: bits.join(' · '), run: () => { closeCmdK(); openBookingHub(b.id); } });
+        items.push({ type: 'answer', scope: 'bookings', id: 'brief-arr-' + b.id, board: 'today', label: `${chbSayFirst(b.name)} arrives today${b.checkInTime ? ' · ' + b.checkInTime : ''}`, sub: bits.join(' · '), run: () => { closeCmdK(); openBookingHub(b.id); } });
     });
-    if (arrToday.length > 2 || outs) items.push({ type: 'figure', scope: 'bookings', id: 'brief-today', label: `Today · ${ins} in · ${outs} out`, sub: 'Arrivals & departures', run: () => { closeCmdK(); tryAccessBackOffice(); } });
-    if (owers) items.push({ type: 'answer', scope: 'money', id: 'brief-money', label: `${gbp(owed)} to collect`, sub: `${owers} balance${owers === 1 ? '' : 's'} outstanding — tap to chase`, run: () => { closeCmdK(); Promise.resolve(openBookings()).then(() => bookingsSetFilter('needspay')); } });
+    if (arrToday.length > 2 || outs) items.push({ type: 'figure', scope: 'bookings', id: 'brief-today', board: 'today', label: `Today · ${ins} in · ${outs} out`, sub: 'Arrivals & departures', run: () => { closeCmdK(); tryAccessBackOffice(); } });
+    if (owers) items.push({ type: 'answer', scope: 'money', id: 'brief-money', board: 'money', label: `${gbp(owed)} to collect`, sub: `${owers} balance${owers === 1 ? '' : 's'} outstanding — tap to chase`, run: () => { closeCmdK(); Promise.resolve(openBookings()).then(() => bookingsSetFilter('needspay')); } });
     const enq = Array.isArray(enquiries) ? enquiries.length : 0;
-    if (enq) items.push({ type: 'answer', scope: 'inbox', id: 'brief-enq', label: `${enq} enquir${enq === 1 ? 'y' : 'ies'} waiting`, sub: 'Reply to win the booking', run: () => { closeCmdK(); openInbox(); } });
-    if (depN) items.push({ type: 'answer', scope: 'money', id: 'brief-dep', label: `${depN} deposit${depN === 1 ? '' : 's'} to return`, sub: 'Guests have checked out', run: () => { closeCmdK(); openBookings(); } });
+    if (enq) items.push({ type: 'answer', scope: 'inbox', id: 'brief-enq', board: 'waiting', label: `${enq} enquir${enq === 1 ? 'y' : 'ies'} waiting`, sub: 'Reply to win the booking', run: () => { closeCmdK(); openInbox(); } });
+    if (depN) items.push({ type: 'answer', scope: 'money', id: 'brief-dep', board: 'money', label: `${depN} deposit${depN === 1 ? '' : 's'} to return`, sub: 'Guests have checked out', run: () => { closeCmdK(); openBookings(); } });
     // Proactive monthly pulse — how the month's shaping up vs last, unasked.
     try {
         const pulse = chbBusinessPulse();
-        if (pulse) items.push({ type: 'answer', scope: 'money', id: 'brief-pulse', wrap: true, label: `${pulse.arrow} ${pulse.label}`, sub: pulse.sub, run: () => { closeCmdK(); openAccounts(); } });
+        if (pulse) items.push({ type: 'answer', scope: 'money', id: 'brief-pulse', board: 'month', wrap: true, label: `${pulse.arrow} ${pulse.label}`, sub: pulse.sub, run: () => { closeCmdK(); openAccounts(); } });
     } catch (e) {}
     // One opportunity, unasked: the soonest bookable gap, carrying chbGapPlan's
     // decision — the ready-made offer, or the live status of one already set.
@@ -6295,8 +6302,8 @@ function cmdkBriefBuild() {
         const plan = g && chbGapPlan(g);
         if (plan) {
             const nm = (propertyMeta[g.pk] || {}).name || g.pk;
-            if (plan.kind === 'offer') items.push({ type: 'answer', scope: 'bookings', id: 'brief-gap', wrap: true, label: `Worth a look: ${g.nights} free nights on ${nm}`, sub: `${fmtDate(g.from)}–${fmtDate(plan.endIncl)} · offer £${plan.offer}/night (${plan.pct}% off) — tap to apply`, run: () => { closeCmdK(); cmdkApplyPriceOverride(g.pk, g.from, plan.endIncl, plan.offer, 'Gap offer').catch((e) => glassAlert("Couldn't save: " + e.message)); } });
-            else items.push({ type: 'answer', scope: 'bookings', id: 'brief-gap', wrap: true, label: `Offer live: £${plan.rate}/night on ${nm}`, sub: `${fmtDate(g.from)}–${fmtDate(plan.endIncl)} · the ${g.nights}-night gap is priced to sell — edit in Rates`, run: () => { closeCmdK(); nyOfferRates(); } });
+            if (plan.kind === 'offer') items.push({ type: 'answer', scope: 'bookings', id: 'brief-gap', board: 'month', wrap: true, label: `Worth a look: ${g.nights} free nights on ${nm}`, sub: `${fmtDate(g.from)}–${fmtDate(plan.endIncl)} · offer £${plan.offer}/night (${plan.pct}% off) — tap to apply`, run: () => { closeCmdK(); cmdkApplyPriceOverride(g.pk, g.from, plan.endIncl, plan.offer, 'Gap offer').catch((e) => glassAlert("Couldn't save: " + e.message)); } });
+            else items.push({ type: 'answer', scope: 'bookings', id: 'brief-gap', board: 'month', wrap: true, label: `Offer live: £${plan.rate}/night on ${nm}`, sub: `${fmtDate(g.from)}–${fmtDate(plan.endIncl)} · the ${g.nights}-night gap is priced to sell — edit in Rates`, run: () => { closeCmdK(); nyOfferRates(); } });
         }
     } catch (e) {}
     // The teach-loop nudge: dead-end searches from the last 7 days, one tap to fix.
@@ -6304,7 +6311,7 @@ function cmdkBriefBuild() {
         const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
         const misses = chbMissList().filter((m) => m && (m.at || '') >= weekAgo);
         if (misses.length >= 2) {
-            items.push({ type: 'answer', id: 'brief-teach', label: `${misses.length} searches found nothing this week`, sub: 'Teach the assistant — each fix takes one tap', run: () => { const el = document.getElementById('cmdk-input'); if (el) el.value = 'search misses'; cmdkSearchCore('search misses', false); } });
+            items.push({ type: 'answer', id: 'brief-teach', board: 'waiting', label: `${misses.length} searches found nothing this week`, sub: 'Teach the assistant — each fix takes one tap', run: () => { const el = document.getElementById('cmdk-input'); if (el) el.value = 'search misses'; cmdkSearchCore('search misses', false); } });
         }
     } catch (e) {}
     return items.slice(0, 7);
@@ -6533,6 +6540,189 @@ function cmdkRender(preserveScroll) {
     cmdkSyncActive();
     if (keep != null && box) box.scrollTop = keep;
 }
+// ============================================================
+//  BOARDS — the empty landing is a dashboard, not a list of links.
+//
+//  Opening search before you have typed used to be the emptiest screen in the
+//  back office: five "Jump to" rows and half a phone of nothing. The day's facts
+//  were already computed (cmdkBrief) and rendered as identical grey rows, so the
+//  £860 you need to chase looked exactly like a link to the Cottages screen.
+//
+//  Boards group those same rows by what they are ABOUT and let each carry its
+//  figure at a size you can read across a room. Two rules make this safe:
+//   1. it renders the SAME row nodes via cmdkRowHtml at their SAME indices, so
+//      keyboard nav, cmdkSyncActive, aria-activedescendant and every row's run()
+//      are untouched — a board is a container, not a new kind of result;
+//   2. a row DECLARES its board (`board:` in cmdkBriefBuild) rather than having
+//      this function guess from its id, the same principle as `scope`.
+//  A board with no rows does not render, so a quiet day collapses rather than
+//  showing four empty cards.
+// ============================================================
+// ============================================================
+//  ANSWER CANVAS — when search has an ANSWER, the answer is the page.
+//
+//  "You're owed £860.00 across 2 guests" used to be one 44px row among five
+//  groups, indistinguishable from a link to the Cottages screen. As the hero it
+//  gets the top of the window at reading size.
+//
+//  The figure is emphasised INSIDE the sentence rather than lifted out of it. Both
+//  alternatives are worse: printing £860.00 above the sentence repeats it, which
+//  reads as a bug, and deleting it from the sentence leaves "owed across 2 guests,
+//  Richard leading at £440.00" — grammatical debris. One span, no text surgery, and
+//  chbSay's careful wording survives intact.
+//
+//  It is still a .cmdk-row <button> at its own index, so selection, keyboard nav,
+//  aria-activedescendant and run() are untouched — only the internals differ.
+// ============================================================
+// ============================================================
+//  THREAD — the answers you have already had stay on screen.
+//
+//  The conversational frame is real and gated (search-test §33): "revenue this
+//  year" → "and last year" → "just jollyboat" each patch ONE slot of the last
+//  answer. Until now you could not see it working — the single answer row was
+//  replaced in place, so a refinement looked identical to a brand-new question and
+//  the chain it belongs to was invisible.
+//
+//  Deliberately small: the last CMDK_THREAD_MAX answered turns, as flat text, not
+//  interactive. It is a memory aid above the live answer, not a chat log — search
+//  is still a window you open, act in, and close, and the thread dies with it.
+// ============================================================
+// ============================================================
+//  SPLIT — on a wide screen the selected record shows BESIDE the results.
+//
+//  Search used to be purely a springboard: find the row, jump out, lose the list,
+//  search again for the next one. Chasing three balances meant three searches. The
+//  pane keeps the list on screen and answers "is this the right Richard, and what
+//  do I owe him?" without leaving.
+//
+//  Three deliberate limits, each avoiding a trap this codebase has already hit:
+//   * it renders a SUMMARY built from findBookingById/paymentSummary/chbGuestIntel —
+//     it does NOT re-parent #booking-hub-content. That node can only live in one
+//     place at a time and the Inbox and Today workspace already move it between
+//     them; a third claimant is how you get an empty hub somewhere else.
+//   * the row's quick-actions stay exactly where they are, inline under the row.
+//     Rendering them twice would duplicate their ids and their handlers.
+//   * the pane is a pure CSS column that collapses below 1000px — no matchMedia,
+//     no resize listener, nothing to leave stale. Narrow screens are untouched.
+// ============================================================
+function cmdkDetailHtml() {
+    const it = __cmdkResults[__cmdkSel];
+    if (!it || it.type !== 'booking' || it.id == null) return '';
+    let b = null, pk = '';
+    try {
+        b = findBookingById(it.id);
+        const loc = findBookingLocation(it.id);
+        pk = (loc && loc.propKey) || '';
+    } catch (e) { return ''; }
+    if (!b) return '';
+    const bits = [];
+    // NB propName is a LOCAL in other functions, not a global — same trap the
+    // business-pulse composer documents. Read the meta map directly.
+    if (pk) bits.push(escapeHtml((propertyMeta[pk] || {}).name || pk));
+    if (b.checkIn) bits.push(escapeHtml(fmtDate(b.checkIn) + (b.checkOut ? ' → ' + fmtDate(b.checkOut) : '')));
+    let money = '';
+    try {
+        const ps = paymentSummary(pk, b);
+        money = ps.fullyPaid
+            ? `<span class="cmdk-dt-pill is-ok">Paid in full</span>`
+            : `<span class="cmdk-dt-pill is-due">${escapeHtml(gbp(ps.balance))} still due</span>`;
+    } catch (e) {}
+    // chbGuestIntel returns {stays, ordinal, nights, revenue, favName, lastStay,
+    // mentions} — composed here rather than assumed, and null for a first-timer
+    // with no history, which is exactly when the line should be absent.
+    let intel = '';
+    try {
+        const gi = chbGuestIntel(pk, b);
+        if (gi) {
+            const gbits = [];
+            if (gi.ordinal) gbits.push(gi.ordinal);
+            if (gi.nights) gbits.push(gi.nights + (gi.nights === 1 ? ' night' : ' nights') + ' with you');
+            if (gi.revenue) gbits.push(gbp(gi.revenue) + ' lifetime');
+            if (gi.favName) gbits.push('favourite ' + gi.favName);
+            if (gbits.length) intel = escapeHtml(gbits.join(' · '));
+        }
+    } catch (e) {}
+    return `<aside class="cmdk-detail" aria-label="Selected booking">
+        <h3 class="cmdk-dt-name">${escapeHtml(b.name || '(no name)')}</h3>
+        ${bits.length ? `<p class="cmdk-dt-meta">${bits.join(' · ')}</p>` : ''}
+        ${money ? `<p class="cmdk-dt-pills">${money}</p>` : ''}
+        ${intel ? `<p class="cmdk-dt-intel">${intel}</p>` : ''}
+        <p class="cmdk-dt-hint">Actions for this booking are under the row.</p>
+    </aside>`;
+}
+const CMDK_THREAD_MAX = 3;
+let __cmdkThread = [];
+function cmdkThreadPush(q, lead) {
+    if (!q || !cmdkIsHeroRow(lead)) return; // only ANSWERED turns join the thread
+    const last = __cmdkThread[__cmdkThread.length - 1];
+    // Typing is per-keystroke, so "revenue", "revenue t", "revenue th"… all commit.
+    // Collapse a turn that merely EXTENDS the previous query, and re-running the
+    // same query must not stack a duplicate.
+    if (last && (q === last.q || q.startsWith(last.q) || last.q.startsWith(q))) {
+        __cmdkThread[__cmdkThread.length - 1] = { q, label: lead.label, sub: lead.sub || '' };
+        return;
+    }
+    __cmdkThread.push({ q, label: lead.label, sub: lead.sub || '' });
+    if (__cmdkThread.length > CMDK_THREAD_MAX) __cmdkThread.shift();
+}
+function cmdkThreadClear() { __cmdkThread = []; }
+function cmdkThreadHtml() {
+    // The CURRENT turn is the live hero below; only earlier ones belong up here.
+    const past = __cmdkThread.slice(0, -1);
+    if (!past.length) return '';
+    return `<div class="cmdk-thread">${past.map((t) => `
+        <div class="cmdk-turn">
+            <span class="cmdk-turn-q">${escapeHtml(t.q)}</span>
+            <span class="cmdk-turn-a">${cmdkHeroFigure(t.label)}</span>
+        </div>`).join('')}</div>`;
+}
+function cmdkHeroFigure(label) {
+    const esc = escapeHtml(String(label || ''));
+    // First money amount, else a leading count ("3 guests arrive today"). Not global:
+    // exactly one figure carries the answer, and marking every number is confetti.
+    return esc.replace(/£[\d,]+(?:\.\d{2})?|^[↑↓]?\s?\d+(?=\s)/, (m) => `<span class="cmdk-hero-fig">${m}</span>`);
+}
+function cmdkIsHeroRow(it) {
+    return !!it && (it.type === 'answer' || it.type === 'figure') && !cmdkIsNoteRow(it);
+}
+function cmdkHeroHtml(it, i) {
+    const sel = __cmdkSel === i;
+    return `<button type="button" id="cmdk-opt-${i}" class="cmdk-row cmdk-hero cmdk-row-${it.type}${sel ? ' is-sel' : ''}" role="option" aria-selected="${sel}" data-idx="${i}" ${chbAttrs('cmdkExec', i)}>
+                <span class="cmdk-hero-main">
+                    <span class="cmdk-hero-label">${cmdkHeroFigure(it.label)}</span>
+                    ${it.sub ? `<span class="cmdk-hero-sub" title="${escapeHtml(String(it.sub))}">${escapeHtml(String(it.sub))}</span>` : ''}
+                </span>
+            </button>`;
+}
+const CMDK_BOARDS = [
+    { key: 'today', label: 'Today' },
+    { key: 'money', label: 'Money' },
+    { key: 'waiting', label: 'Waiting on you' },
+    { key: 'month', label: 'This month' },
+];
+function cmdkBoardsHtml(items, offset) {
+    const used = new Set();
+    const cards = CMDK_BOARDS.map((b) => {
+        const rows = items
+            .map((it, i) => ({ it, i }))
+            .filter(({ it }) => (it.board || 'today') === b.key);
+        if (!rows.length) return '';
+        rows.forEach(({ i }) => used.add(i));
+        return `<section class="cmdk-board" aria-labelledby="cmdk-board-${b.key}">
+            <h3 class="cmdk-board-cap" id="cmdk-board-${b.key}">${escapeHtml(b.label)}</h3>
+            ${rows.map(({ it, i }) => cmdkRowHtml(it, offset + i, false)).join('')}
+        </section>`;
+    }).join('');
+    // Anything whose board we don't recognise still has to render — losing a row
+    // silently is exactly the bug the scope filter caused on this same screen.
+    const orphans = items
+        .map((it, i) => ({ it, i }))
+        .filter(({ i }) => !used.has(i))
+        .map(({ it, i }) => cmdkRowHtml(it, offset + i, false))
+        .join('');
+    if (!cards && !orphans) return '';
+    return `<div class="cmdk-boards">${cards}</div>${orphans}`;
+}
 function cmdkRenderInner() {
     const box = document.getElementById('cmdk-results');
     if (!box) return;
@@ -6545,7 +6735,10 @@ function cmdkRenderInner() {
         const B = __cmdkBriefN || 0;
         const sugHtml = __cmdkResults.slice(0, S).map((it, i) => cmdkRowHtml(it, i, i === 0)).join('');
         const freqHtml = __cmdkResults.slice(S, S + F).map((it, i) => cmdkRowHtml(it, S + i, !S && i === 0)).join('');
-        const briefHtml = __cmdkResults.slice(S + F, S + F + B).map((it, i) => cmdkRowHtml(it, S + F + i, false)).join('');
+        // The day's facts render as BOARDS (see cmdkBoardsHtml) rather than as more
+        // grey rows — the greeting above them names the day, so the boards read as
+        // "here is your day" and not as filtered search output.
+        const briefHtml = cmdkBoardsHtml(__cmdkResults.slice(S + F, S + F + B), S + F);
         const screenItems = __cmdkResults.slice(S + F + B);
         const screensHtml = screenItems.map((it, i) => cmdkRowHtml(it, S + F + B + i, false)).join('');
         const sugLabel = (typeof __cmdkSugLabel !== 'undefined' && __cmdkSugLabel) ? 'Suggested · ' + __cmdkSugLabel : 'Suggested';
@@ -6577,20 +6770,38 @@ function cmdkRenderInner() {
     // The scope switch sits above every state (see comment above); a refine-thread
     // "‹ Back" affordance follows it whenever there's a previous query to step back to.
     const parts = [sb];
+    parts.push(cmdkThreadHtml()); // earlier answered turns, above the live answer
     if (__cmdkHist.length) parts.push('<div class="cmdk-refine cmdk-refine-top"><button type="button" class="cmdk-ex cmdk-refine-chip cmdk-back" data-act="cmdkChipBack">‹ Back</button></div>');
+    // Is the leading result an ANSWER? Then it becomes the hero and the caption says
+    // so — "Top hit" over a £860 answer describes the ranking rather than the answer.
+    const heroAt = cmdkIsHeroRow(__cmdkResults[firstReal]) ? firstReal : -1;
     __cmdkResults.forEach((it, i) => {
-        if (grouped && !cmdkIsNoteRow(it)) {
-            if (i === firstReal) parts.push('<div class="cmdk-group-label">Top hit</div>');
+        // A HERO is captioned even on a short list. Group labels are normally
+        // suppressed under three results (headers over one row are noise), but an
+        // uncaptioned hero reads as a sentence floating in the window with no reason
+        // to be there — the caption is what says "search answered you".
+        if ((grouped || i === heroAt) && !cmdkIsNoteRow(it)) {
+            if (i === firstReal) parts.push(`<div class="cmdk-group-label">${heroAt === i ? 'Answer' : 'Top hit'}</div>`);
             else if (i > firstReal) {
                 const sec = cmdkSection(it.type);
                 if (sec.key !== lastKey) parts.push(`<div class="cmdk-group-label">${sec.label}</div>`);
                 lastKey = sec.key;
             }
         }
-        parts.push(cmdkRowHtml(it, i, grouped && i === firstReal));
+        parts.push(i === heroAt ? cmdkHeroHtml(it, i) : cmdkRowHtml(it, i, grouped && i === firstReal));
     });
     parts.push(cmdkDeepCta()); // "Search everything for '…'" → the full deep view
-    box.innerHTML = parts.join('');
+    // SPLIT: the selected record's summary, placed in a second column by CSS at
+    // >=1000px and collapsed below it. Rendered last so the list is complete first.
+    const detail = cmdkDetailHtml();
+    if (detail) {
+        // The scope switch spans the whole window — it filters the SEARCH, not the
+        // left column, so narrowing it into the list would misrepresent what it does.
+        const [scopeBar, ...rest] = parts;
+        box.innerHTML = scopeBar + `<div class="cmdk-split"><div class="cmdk-split-list">${rest.join('')}</div>${detail}</div>`;
+    } else {
+        box.innerHTML = parts.join('');
+    }
 }
 // The affordance that opens Deep Search from the quick palette — shown whenever
 // there's a real text query (not on the empty/brief state).
@@ -7175,6 +7386,7 @@ function openCmdK() {
     __cmdkScope = cmdkDefaultScope(); // open pre-scoped to the workspace you came from
     __cmdkEntity = cmdkCurrentEntity(); // and aware of the record you were viewing
     __cmdkConvCtx = null; // a fresh session — never inherit the LAST session's pronoun referent
+    cmdkThreadClear(); // …and never the last session's thread
     if (o) o.classList.add('open');
     const scrim = document.getElementById('cmdk-scrim');
     if (scrim) scrim.classList.add('open');
@@ -7204,6 +7416,7 @@ function closeCmdK() {
     __cmdkDeep = null;
     __cmdkDeepStamp++;
     __cmdkConvCtx = null; // the conversation ends with the search session
+    cmdkThreadClear();
     cmdkSetLoading(false);
     if (o) o.classList.remove('ml-active');
 }

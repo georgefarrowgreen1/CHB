@@ -436,6 +436,51 @@ miss store (`chbMissRecord`) — via `cmdkBack`/`closeCmdK` AND via `nav()`, whi
 `closeCmdK` when leaving `view-search` by ANY route (a dock tap, a result run) so the teach
 loop, in-flight-search supersede and conv-context clear can't be skipped; `openCmdK` also
 resets `__cmdkConvCtx` so a session never inherits the last one's pronoun referent.
+**FOUR LAYOUTS OVER ONE RESULT SET** — the window changes shape with what you have
+done, and all four are containers around the SAME rows from `cmdkRowHtml` at their
+SAME `__cmdkResults` indices. That is the invariant: keyboard nav, `cmdkSyncActive`,
+`aria-activedescendant` and every row's `run()` must survive a new layout, so a
+layout may never re-order, re-index or swallow a row (the ui-test asserts every
+board row still carries a `cmdk-opt-<i>` id, because a container that ate an index
+would break arrow-key nav in total silence).
+- **BOARDS** (`cmdkBoardsHtml`, `CMDK_BOARDS`) — the empty landing is a dashboard,
+  not a list of links. The day's facts group into Today / Money / Waiting on you /
+  This month, each board's first row at figure size, and a board with no rows does
+  not render (a quiet day collapses instead of showing four empty cards). A brief
+  row **DECLARES its board** (`board:` in `cmdkBriefBuild`) rather than having the
+  renderer guess from its id — same principle as `scope`. Rows whose board is
+  unrecognised still render as orphans: silently dropping one is the exact bug the
+  scope filter caused on this screen.
+- **ANSWER hero** (`cmdkHeroHtml`, `cmdkHeroFigure`) — when the leading row is an
+  `answer`/`figure`, it takes the top of the window at reading size and the caption
+  says "Answer", not "Top hit" (which describes the ranking, not the reply). The
+  figure is emphasised **INSIDE** the sentence by one span: printing it above would
+  repeat it, and deleting it from the sentence leaves "owed across 2 guests" —
+  grammatical debris — so `chbSay`'s wording survives untouched. A hero is captioned
+  even on a short list, where group labels are otherwise suppressed, because an
+  uncaptioned hero reads as a stray sentence. It is still a `role="option"`
+  `.cmdk-row` at its own index.
+- **THREAD** (`cmdkThreadPush/Html/Clear`, `CMDK_THREAD_MAX` 3) — earlier ANSWERED
+  turns stay above the live answer, which is the only way the conversational frame
+  (search-test §33) is visible: a refinement used to replace the single answer row
+  in place, so it looked identical to a brand-new question. Pushed where a query
+  COMMITS its results, never in the renderer (which re-runs on every selection change
+  and would stack the same answer as you arrow down). A turn that merely EXTENDS the
+  previous query replaces it, so per-keystroke typing is one turn and not eight.
+  Dies with the session at the same two boundaries as `__cmdkConvCtx`.
+- **SPLIT** (`cmdkDetailHtml`) — at ≥1200px the selected booking shows BESIDE the
+  results, so chasing three balances is one search instead of three. Three limits,
+  each dodging a trap already in this codebase: it renders a SUMMARY from
+  `findBookingById`/`paymentSummary`/`chbGuestIntel` and does **NOT** re-parent
+  `#booking-hub-content` (that node already moves between the Inbox and Today; a
+  third claimant empties one of them); the row's quick-actions stay inline rather
+  than being rendered twice; and it is pure CSS at the **existing** 1200px pane
+  breakpoint — no `matchMedia`, no resize listener, nothing to leave stale. The
+  scope switch is hoisted OUT of the split, since it filters the search and not the
+  left column. NB `propName` is a local elsewhere, so the pane reads `propertyMeta`
+  directly. Gated by ui-test-searchpage §11 (20 checks), each of the four
+  break-tested independently.
+
 **The empty landing's day brief is NOT scope-filtered** (the "Jump to" list still is).
 `openCmdK` snapshots `cmdkDefaultScope()` from the workspace you came from, so opening
 search from Today put you in "Bookings" scope before you had asked for anything, and the
