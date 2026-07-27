@@ -1160,6 +1160,29 @@ if (typeof ctx.cmdkIntent === 'function') {
     vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);__cmdkCustomers=null;', ctx);
 }
 
+// ---- 31b. The named-guest row's SUB puts IDENTITY before replaceable detail.
+// The sub is deliberately one line, so the tail is what gets cut — measured at 165px
+// lost on a phone. Ordering it money · deposit-state · cottage · dates spent that
+// budget on "deposit not yet refunded" and clipped away the cottage and the dates,
+// which are the two facts that tell two stays apart. staySub() is ONE definition
+// used by both the single-guest row and the multi-stay list; they previously had a
+// copy each, so the first fix changed only one and the phone row did not move.
+if (typeof ctx.cmdkIntent === 'function') {
+    const t31 = ctx.todayDashed();
+    const fwd31 = (n) => { const d = new Date(t31 + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+    vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);dbBookings.jollyboat=[
+      {id:911,name:"Rowan Ashdown",email:"rowan@x.co",checkIn:"${fwd31(4)}",checkOut:"${fwd31(8)}",adults:2,children:0,payment:"deposit",depositPaid:200,agreedPrice:{total:640},holdStatus:"charged"}];__cmdkCustomers=null;`, ctx);
+    const rows31 = ctx.cmdkIntent('rowan') || [];
+    const sub31 = (rows31[0] || {}).sub || '';
+    const iProp = sub31.indexOf('Jollyboat');
+    const iDep = sub31.indexOf('deposit');
+    check('named-guest sub names the cottage', iProp > -1, sub31);
+    check('named-guest sub carries the dates', /\d{2}\/\d{2}\/\d{4}/.test(sub31), sub31);
+    check('named-guest sub leads with the money', /^£/.test(sub31), sub31);
+    check('…and the cottage comes BEFORE the deposit state, so clipping loses the detail not the identity', iProp > -1 && iDep > -1 && iProp < iDep, sub31);
+    vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);__cmdkCustomers=null;', ctx);
+}
+
 // ---- 32. Ambient intelligence: chbAnomalies (deterministic opportunity rows —
 // bounded 2-4-night gaps carrying chbGapPlan's best-outcome decision (one-tap
 // dated offer, 20% when imminent, live-status when already set), next-month

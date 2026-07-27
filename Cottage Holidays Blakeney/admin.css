@@ -3650,3 +3650,65 @@ body.cmdk-open {
   background: color-mix(in srgb, var(--ok) 18%, transparent);
   color: var(--ok-text);
 }
+
+/* ============================================================
+   LANDING DENSITY — measured on a 390x844 phone, the landing spent 269px on five
+   plain navigation rows and 248px on the boards. Getting to a screen was taking
+   more room than knowing what the day holds, which is the wrong way round.
+   The rows are UNCHANGED .cmdk-row buttons at their own indices (keyboard nav and
+   run() intact) — only the container's layout differs, the same trick as boards.
+   ============================================================ */
+.cmdk-jump {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 2px 12px 6px;
+}
+.cmdk-jump .cmdk-row {
+  width: auto;
+  flex: 0 0 auto;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-pill);
+}
+/* A destination's SUB ("Operations dashboard") explains a screen you already know
+   by name — worth the line in a result list, not on your own landing. The label
+   carries it, and the row keeps its 44px touch height. */
+.cmdk-jump .cmdk-row-sub {
+  display: none;
+}
+.cmdk-jump .cmdk-row-ic {
+  width: 18px;
+  height: 18px;
+}
+.cmdk-jump .cmdk-row-label {
+  font-size: 0.84rem;
+  white-space: nowrap;
+}
+
+/* One record's quick-actions were a 234px slab — 28% of a phone — in a single
+   column while each row wasted half its 298px width. Two columns on a phone, so
+   five actions cost three rows instead of five and still clear the touch floor. */
+@media (max-width: 639px) {
+  .cmdk-qa {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2px;
+    /* The 54px indent hangs the panel under its row's LABEL, which is worth it at
+       full width and not worth it here: it left each of two columns 148px, which
+       truncated the labels to "Request bal…" and "Return dep…". Money actions are
+       the last place to make someone guess, so the indent goes and the words stay.
+       The panel still reads as attached — it sits directly beneath its row. */
+    margin-left: 12px;
+    margin-right: 12px;
+  }
+  .cmdk-qa-row {
+    gap: 8px;
+    padding: 8px;
+  }
+  .cmdk-qa-go,
+  .cmdk-qa-ic {
+    display: none;
+  }
+}

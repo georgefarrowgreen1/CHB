@@ -3051,6 +3051,21 @@ function cmdkIntent(q) {
         return qWords.some((w) => toks.some((t) => t === w || (w.length >= 4 && (t.startsWith(w) || w.startsWith(t)))));
     };
     const named = qWords.length ? flat.filter((x) => nameMatch(x.b)) : [];
+    // The one-line sub under a named guest's row. ORDER MATTERS, because the sub is
+    // deliberately single-line and the TAIL is what gets cut: measured on a phone,
+    // this row loses 165px, and money · deposit-state · cottage · dates spent that
+    // budget on "deposit not yet refunded" while clipping away the cottage and the
+    // dates — the two facts that tell two stays apart, which is the sub's whole job
+    // when a name returns several. Identity first, replaceable detail last: the
+    // deposit's position is one tap away on the hub; "which stay is this" is not.
+    // ONE definition, used by both the single-guest row and the multi-stay list —
+    // they had a copy each, so fixing one silently left the other wrong.
+    const staySub = (pk, b, m) => {
+        const bits = [m.money, propName(pk)];
+        if (b.checkIn) bits.push(`${fmtDate(b.checkIn)}–${fmtDate(b.checkOut)}`);
+        if (m.dep) bits.push(m.dep);
+        return bits.join(' · ');
+    };
     // A one-line money + deposit summary for a booking, used by the named-guest hit.
     const moneyState = (pk, b) => {
         const ps = paymentSummary(pk, b);
@@ -3529,22 +3544,14 @@ function cmdkIntent(q) {
                 return [head];
             }
             // Plain name → the booking row IS the result (calendar icon, name matched).
-            const bits = [m.money];
-            if (m.dep) bits.push(m.dep);
-            bits.push(propName(g.pk));
-            if (g.b.checkIn) bits.push(`${fmtDate(g.b.checkIn)}–${fmtDate(g.b.checkOut)}`);
-            const row = bk(g.pk, g.b, bits.join(' · '));
+            const row = bk(g.pk, g.b, staySub(g.pk, g.b, m));
             row.chips = chips;
             row.dedupName = nm.toLowerCase().trim();
             return [row];
         }
         const stayRows = () => rows.map((x) => {
             const m = moneyState(x.pk, x.b);
-            const bits = [m.money];
-            if (m.dep) bits.push(m.dep);
-            bits.push(propName(x.pk));
-            if (x.b.checkIn) bits.push(`${fmtDate(x.b.checkIn)}–${fmtDate(x.b.checkOut)}`);
-            return bk(x.pk, x.b, bits.join(' · '));
+            return bk(x.pk, x.b, staySub(x.pk, x.b, m));
         });
         // If every same-name match is the SAME person (one strong identity —
         // email/phone), LEAD with the unified customer (lifetime stats) instead of
@@ -6747,7 +6754,7 @@ function cmdkRenderInner() {
             (S ? `<div class="cmdk-group-label">${escapeHtml(sugLabel)}</div>${sugHtml}` : '') +
             (F ? `<div class="cmdk-group-label">Most used</div>${freqHtml}` : '') +
             (B ? `<div class="cmdk-group-label">${cmdkGreeting()}</div>${briefHtml}` : '') +
-            (screenItems.length ? `<div class="cmdk-group-label">Jump to</div>${screensHtml}` : '') +
+            (screenItems.length ? `<div class="cmdk-group-label">Jump to</div><div class="cmdk-jump">${screensHtml}</div>` : '') +
             (!S && !F && !B && !screenItems.length ? `<div class="cmdk-none">Nothing here in ${escapeHtml(__cmdkScope)} — tap “All” to widen.</div>` : '');
         return;
     }
