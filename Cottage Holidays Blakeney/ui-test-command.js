@@ -22,7 +22,7 @@
 //  The sender is stubbed on purpose. The email preview flow it wraps is covered
 //  by ui-test-hub; this suite is about what cmdkAct does with an outcome.
 // ============================================================
-const { d, bootBrowser } = require('/home/user/CHB/Cottage Holidays Blakeney/ui-test-lib');
+const { d, bootBrowser } = require('./ui-test-lib');
 let fails = 0; const ok = (c,m) => { console.log(`  ${c?'✓':'✗'} ${m}`); if (!c) fails++; };
 const stub = (page) => page.route(/\.php/, (r) => {
   const url = r.request().url();
@@ -45,13 +45,29 @@ const stub = (page) => page.route(/\.php/, (r) => {
   await page.waitForTimeout(1500);
 
   const run = (outcome) => page.evaluate(async (mode) => {
+    // POLL, never sleep. This suite failed in CI while passing locally because it
+    // waited a fixed 1200ms for the window and 500ms for results; a slower runner
+    // hadn't produced a row with actions yet, findIndex returned -1, and reading
+    // __cmdkResults[-1].actions threw. Waiting for the CONDITION is the fix — a
+    // bigger sleep would only move the flake further away.
+    const until = async (fn, ms = 8000) => {
+        const t0 = Date.now();
+        for (;;) {
+            const v = fn();
+            if (v !== undefined && v !== null && v !== false && v !== -1) return v;
+            if (Date.now() - t0 > ms) return null;
+            await new Promise((r) => setTimeout(r, 50));
+        }
+    };
     __chbUndo.length = 0;
     try { closeCmdK(); } catch(e){}
-    openCmdK(); await new Promise(r=>setTimeout(r,1200));
+    openCmdK();
+    if (!await until(() => document.getElementById('cmdk').classList.contains('open'))) return { fatal: 'the window never opened' };
     const i = document.getElementById('cmdk-input'); i.value='richard'; cmdkSearchCore('richard', false);
-    await new Promise(r=>setTimeout(r,500));
-    const idx = __cmdkResults.findIndex(x => Array.isArray(x.actions) && x.actions.length);
-    __cmdkSel = idx; cmdkRender(); await new Promise(r=>setTimeout(r,200));
+    const idx = await until(() => __cmdkResults.findIndex(x => Array.isArray(x.actions) && x.actions.length));
+    if (idx === null) return { fatal: 'no row with quick-actions appeared' };
+    __cmdkSel = idx; cmdkRender();
+    await until(() => !!document.getElementById('cmdk-opt-' + idx));
     // Swap in a sender with a known outcome. The real one is requestPayment,
     // exercised by the preview flow; here we only care what cmdkAct does with it.
     const k = __cmdkResults[idx].actions.length;
@@ -65,7 +81,8 @@ const stub = (page) => page.route(/\.php/, (r) => {
       },
     });
     await cmdkAct(idx, k);
-    await new Promise(r=>setTimeout(r,250));
+    // The strip is rendered synchronously by cmdkAct, but give the paint a tick.
+    await until(() => mode === 'cancel' ? true : !!document.querySelector('#cmdk .cmdk-actmsg'), 3000);
     const s = document.querySelector('#cmdk .cmdk-actmsg');
     return { open: document.getElementById('cmdk').classList.contains('open'),
              txt: s ? s.textContent.trim() : '(none)',
@@ -74,6 +91,7 @@ const stub = (page) => page.route(/\.php/, (r) => {
   }, outcome);
 
   const okRes = await run('ok');
+  if (okRes.fatal) { ok(false, `setup failed: ${okRes.fatal}`); console.log('\n  1 FAILED'); return await done(1); }
   ok(okRes.open, 'SEARCH STAYS OPEN through the action — the whole point');
   ok(/sent to Richard/.test(okRes.txt), `the outcome reports under the row (${okRes.txt})`);
   ok(/is-ok/.test(okRes.cls), 'as a success strip');
