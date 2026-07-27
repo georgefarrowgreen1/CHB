@@ -883,6 +883,36 @@ deterministic `priceBreakdown` reads — never a parallel calc. Gated by search-
 (12 checks: learns seasonality, busy≥base/quiet<base, busy priced above quiet, bounds,
 plain-English why, gap depth follows demand, thin-data conservatism, the search answer).
 
+**THE COAST TIER** (admin.js `chbCoastRow`/`chbCoastDay`/`chbCoastFetch`, `CHB_TIDE_Q`,
+`CHB_WEATHER_Q`) — tides and weather, the two things a Blakeney owner is asked about
+most. **Tides were already built and unreached**: `tides.php`/`tide-data.php` (cached,
+public, `apikey-tides`, degrades to `{ok:false,reason}`) existed only for the
+cottage-page widget and the trip planner — the owner, the brief and search never saw
+it, the same "built with no way in" shape as the mailbox's Sent list. Weather is NEW:
+**`weather-data.php`** + **`weather.php`** on Open-Meteo, chosen because it needs **no
+key** (tides already cost one, and a second is a second thing to go stale), cached in
+the content table under **`weather-cache`** (classified internal in db.php, so
+`test-content-keys.php` enforces it) rather than a new table — one row rewritten a few
+times a day isn't worth a migration. `weather_daily()` deliberately mirrors
+`tide_extremes()`'s return contract so the two behave identically at every call site.
+Both sit in the DETERMINISTIC tier beside `chbCompute`/`chbAlmanac` (retrieval — never
+wrong, silent when the data isn't there) but are **async**, so they merge in
+stamp-guarded exactly like `cmdkServerSearch`: a tide time that lands after you've
+typed something else is dropped. The value is the CROSS-REFERENCE, which only this app
+can make — "High water 06:41 and 19:08 today · low 12:55 · **Wren arrives today**".
+`weather_notable()` is the discipline: the brief may only interrupt when the answer
+changes what you'd do (gale ≥45mph gust, ice ≤0°C, heat ≥28°C, rain ≥20mm) — a daily
+"18°C and cloudy" row trains the owner to ignore the panel, so an ordinary day returns
+null. Two bugs its own tests caught, both worth remembering: `weather_code_text` had
+`>= 95` with **no upper bound**, so a garbage code invented "thunderstorms" (WMO tops
+out at 99); and `chbCoastDay` anchored at LOCAL midnight then formatted with
+`toISOString()` — under BST, Saturday 00:00 local is Friday 23:00 UTC, so "tides on
+saturday" resolved to the Friday. It is all-UTC now (`T00:00:00Z` + `getUTCDay`), swept
+across both DST transitions. Gated by `test-weather.php` (CI-wired, deploy-excluded —
+no network, it tests the judgement) + search-test §31c (14 checks: composition, the
+arrival cross-reference, silence on a failed fetch, the day parser, and that ordinary
+business queries never trigger it).
+
 **Conversational frame** (admin.js) — search is a DIALOGUE, not one-shots. The last METRIC
 answer's frame (`__cmdkFrame` = metric · period · cottage, 3-min TTL, stored by
 `chbFrameStore` whenever an intent/NLU answer carries a `CHB_FRAME_METRIC_Q` metric) lets a

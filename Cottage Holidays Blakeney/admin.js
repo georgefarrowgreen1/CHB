@@ -2796,6 +2796,98 @@ function chbComputeDate(str) {
     return isNaN(out.getTime()) ? null : out;
 }
 const CHB_CITY_TZ = { london: 'Europe/London', paris: 'Europe/Paris', madrid: 'Europe/Madrid', rome: 'Europe/Rome', berlin: 'Europe/Berlin', amsterdam: 'Europe/Amsterdam', dublin: 'Europe/Dublin', lisbon: 'Europe/Lisbon', athens: 'Europe/Athens', istanbul: 'Europe/Istanbul', moscow: 'Europe/Moscow', dubai: 'Asia/Dubai', mumbai: 'Asia/Kolkata', delhi: 'Asia/Kolkata', bangkok: 'Asia/Bangkok', singapore: 'Asia/Singapore', 'hong kong': 'Asia/Hong_Kong', shanghai: 'Asia/Shanghai', beijing: 'Asia/Shanghai', tokyo: 'Asia/Tokyo', seoul: 'Asia/Seoul', sydney: 'Australia/Sydney', melbourne: 'Australia/Melbourne', perth: 'Australia/Perth', auckland: 'Pacific/Auckland', 'new york': 'America/New_York', boston: 'America/New_York', toronto: 'America/Toronto', chicago: 'America/Chicago', denver: 'America/Denver', 'los angeles': 'America/Los_Angeles', 'san francisco': 'America/Los_Angeles', seattle: 'America/Los_Angeles', vancouver: 'America/Vancouver', honolulu: 'Pacific/Honolulu', 'mexico city': 'America/Mexico_City', 'rio de janeiro': 'America/Sao_Paulo', 'sao paulo': 'America/Sao_Paulo', 'buenos aires': 'America/Argentina/Buenos_Aires', 'cape town': 'Africa/Johannesburg', johannesburg: 'Africa/Johannesburg', cairo: 'Africa/Cairo', nairobi: 'Africa/Nairobi', lagos: 'Africa/Lagos' };
+// ============================================================
+//  THE COAST TIER — tides and weather, the two facts a Blakeney owner is asked
+//  about most and the two search could not answer.
+//
+//  tides.php has existed all along, cached and public, and ONLY the cottage-page
+//  widget and the trip planner ever called it. The owner, the day brief and search
+//  never saw it. weather.php is new (Open-Meteo, keyless). Both are wired here in
+//  the DETERMINISTIC tier beside chbCompute/chbAlmanac, because they are retrieval
+//  — never wrong, just silent when the data isn't there.
+//
+//  ASYNC, unlike the rest of this tier: both are network. The pattern is the one
+//  cmdkServerSearch and cmdkSemanticHistory already use — fire the fetch, merge
+//  the row in when it lands, stamp-guarded so a slow reply for an old query is
+//  dropped. A tide row that arrives after you've typed something else is a bug.
+// ============================================================
+const CHB_TIDE_Q = /\b(tide|tides|high water|low water|spring tide|neap)\b/i;
+const CHB_WEATHER_Q = /\b(weather|forecast|rain|raining|wind|windy|gale|storm|sunny|temperature|how (warm|cold|hot))\b/i;
+let __chbCoast = { tide: null, weather: null, at: 0 };
+// Which day is being asked about? Only ever today or a named day this week —
+// anything more elaborate is a job for cmdkParseDates, and guessing wider here
+// would answer a question nobody asked.
+function chbCoastDay(q) {
+    const t = todayDashed();
+    if (/\btomorrow\b/i.test(q)) return chbIsoShift(t, 1);
+    const names = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+    const m = q.match(/\b(sunday|monday|tuesday|wednesday|thursday|friday|saturday)\b/i);
+    if (m) {
+        const want = names.indexOf(m[1].toLowerCase());
+        // ALL-UTC arithmetic. Anchoring at local midnight and then formatting with
+        // toISOString() mixes the two clocks: under BST, Saturday 00:00 local is
+        // Friday 23:00 UTC, so "tides on saturday" resolved to the Friday. Build
+        // with Z, step in UTC, read back in UTC — the same discipline the rest of
+        // this file's date maths uses.
+        const base = new Date(t + 'T00:00:00Z');
+        for (let i = 0; i < 8; i++) {
+            const d = new Date(base.getTime() + i * 864e5);
+            if (d.getUTCDay() === want) return d.toISOString().slice(0, 10);
+        }
+    }
+    return t;
+}
+async function chbCoastFetch(iso) {
+    const get = async (url) => {
+        try {
+            const r = await fetch(url);
+            if (!r.ok) return null;
+            const j = await r.json();
+            return j && j.ok ? j : null;
+        } catch (e) { return null; }
+    };
+    const [tide, weather] = await Promise.all([
+        get(`tides.php?start=${encodeURIComponent(iso)}&days=1`),
+        get('weather.php?days=7'),
+    ]);
+    __chbCoast = { tide, weather, at: Date.now() };
+    return __chbCoast;
+}
+// One row, in the owner's terms. The value isn't the number — it is the number
+// CROSSED with what the day already holds: a guest arriving near low water on a
+// tidal harbour wants telling, and that is a thing only this app can say.
+function chbCoastRow(q, iso, data) {
+    const dayName = iso === todayDashed() ? 'today'
+        : new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { weekday: 'long' });
+    const wantTide = CHB_TIDE_Q.test(q);
+    const bits = [];
+    let lead = '';
+    if (wantTide && data.tide && Array.isArray(data.tide.extremes)) {
+        const hi = data.tide.extremes.filter((x) => /high/i.test(x.type || '')).map((x) => String(x.time || '').slice(11, 16)).filter(Boolean);
+        const lo = data.tide.extremes.filter((x) => /low/i.test(x.type || '')).map((x) => String(x.time || '').slice(11, 16)).filter(Boolean);
+        if (hi.length) lead = `High water ${hi.join(' and ')} ${dayName}`;
+        if (lo.length) bits.push(`low ${lo.join(' and ')}`);
+    }
+    const wx = data.weather && Array.isArray(data.weather.days) ? data.weather.days.find((d) => d.date === iso) : null;
+    if (wx) {
+        const w = [];
+        if (wx.summary) w.push(wx.summary);
+        if (wx.tmax != null) w.push(`${wx.tmax}°C`);
+        if (wx.gust != null && wx.gust >= 30) w.push(`gusting ${wx.gust} mph`);
+        if (!lead) lead = `${dayName.charAt(0).toUpperCase()}${dayName.slice(1)}: ${w.join(' · ')}`;
+        else if (w.length) bits.push(w.join(' · '));
+    }
+    if (!lead) return null;
+    // The cross-reference: who does this actually affect?
+    try {
+        const arrivals = [];
+        Object.keys(dbBookings || {}).forEach((k) => (dbBookings[k] || []).forEach((b) => {
+            if (b.checkIn === iso && b.name) arrivals.push(chbSayFirst(b.name));
+        }));
+        if (arrivals.length) bits.push(`${arrivals.join(' and ')} arriv${arrivals.length === 1 ? 'es' : 'e'} ${dayName}`);
+    } catch (e) {}
+    return { type: 'answer', id: 'coast', scope: 'bookings', wrap: true, label: lead, sub: bits.join(' · '), run: () => { closeCmdK(); tryAccessBackOffice(); } };
+}
 function chbCompute(q0) {
     const q = String(q0 || '').toLowerCase().replace(/[?]+\s*$/, '').trim();
     if (!/[0-9]/.test(q) && !/christmas|easter|new year|boxing day|halloween|bonfire|valentine|time (is it )?in /.test(q)) return null;
@@ -4985,6 +5077,21 @@ function cmdkBuildResults(ql) {
     // (Income & tax) still rides below. Runs before the NLU model, so a sum can
     // never be misread as a business question.
     try { const c = chbCompute(ql) || chbAlmanac(ql); if (c) results = [c].concat(results).slice(0, 11); } catch (e) {}
+    // COAST — tides/weather. Network, so it merges in when it lands. Stamped with
+    // the query generation exactly like cmdkServerSearch: a tide time that arrives
+    // after you have typed something else must be dropped, not shown.
+    if (CHB_TIDE_Q.test(ql) || CHB_WEATHER_Q.test(ql)) {
+        const gen = __cmdkQueryGen;
+        const iso = chbCoastDay(ql);
+        const fresh = __chbCoast.at && Date.now() - __chbCoast.at < 6e5 ? Promise.resolve(__chbCoast) : chbCoastFetch(iso);
+        fresh.then((data) => {
+            if (gen !== __cmdkQueryGen) return; // superseded
+            const row = chbCoastRow(ql, iso, data || {});
+            if (!row) return;
+            __cmdkResults = [row].concat(__cmdkResults.filter((r) => r && r.id !== 'coast')).slice(0, 18);
+            cmdkRender(true);
+        }).catch(() => {});
+    }
     // Our own trained model (CHB_NLU): when the literal parser found no intent,
     // see if the phrasing MEANS one of the questions the engine can answer, and
     // re-ask with the canonical wording. Confidence-gated, so ordinary searches

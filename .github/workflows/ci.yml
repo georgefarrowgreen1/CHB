@@ -104,6 +104,10 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-guestfaq.php
 
+      - name: Weather judgement (plain-English codes + only-interrupt-when-it-matters)
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-weather.php
+
       - name: Square webhook signature verification
         working-directory: "Cottage Holidays Blakeney"
         run: php test-webhook.php
