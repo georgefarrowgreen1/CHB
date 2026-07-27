@@ -1,18 +1,21 @@
 // ============================================================
-//  ui-test-crownsheet.js — the assistant lives in the CROWN.
+//  ui-test-crownsheet.js — the assistant lives in the CROWN, and the pop-out the
+//  crown drops IS the assistant.
 //
-//  The dock's separate Search knot is retired: nav() rewrites view-main →
-//  view-backoffice for anyone signed in, so the crown's old tap went to Today —
-//  exactly where the calendar icon already goes. The crown opens the assistant
-//  instead, as a SHEET rather than a page jump, because the bar cannot host a
-//  field (measured: 80px of middle slot once the crown and four icons have theirs).
+//  There used to be two surfaces: a small `#crown-sheet` (brief + a field) that
+//  handed off on Enter to a separate full-bleed `#cmdk` window. So the thing the
+//  crown opened was a menu for the feature — four rows and a promise — with the
+//  answers, boards, actions, chips and thread one journey further on. The sheet is
+//  gone; the crown opens `#cmdk` directly and `#cmdk` is presented as the pop-out.
 //
 //  What this pins, all of it something that broke or nearly did while building it:
-//    A) the crown opens/closes the sheet, and the input is genuinely typable —
-//       the whole reason for a sheet over an in-bar field;
-//    B) the sheet sits BELOW the header in z-order, so the crown stays hittable
-//       and one target toggles both ways;
-//    C) Enter hands the query to the ONE intelligence stack (the search window);
+//    A) the crown opens/closes the pop-out, and its field is genuinely typable —
+//       the whole reason for a pop-out over an in-bar field (measured: 80px of
+//       middle slot once the crown and four icons have theirs);
+//    B) it sits BELOW the header in z-order, so the crown stays hittable and ONE
+//       target toggles both ways — the rule that came with the surface;
+//    C) a query is ANSWERED IN PLACE. Nothing hands off, because there is nowhere
+//       to hand off to;
 //    D) Escape / scrim close it, and Escape hands focus back to the crown;
 //    E) the crown must not SHRINK — `.logo` is flex:0 1 auto and collapsed
 //       48→27px the moment a sibling competed for the bar's free space;
@@ -47,21 +50,23 @@ const stub = (page) =>
 
 const snap = (page) =>
     page.evaluate(() => {
-        const sheet = document.getElementById('crown-sheet');
+        const sheet = document.getElementById('cmdk');
         const crown = document.querySelector('.logo');
-        const inp = document.getElementById('crown-ask');
-        const cs = sheet ? getComputedStyle(sheet) : null;
+        const inp = document.getElementById('cmdk-input');
+        const box = document.querySelector('#cmdk .cmdk-box');
+        const cs = box ? getComputedStyle(box) : null;
+        const zs = sheet ? getComputedStyle(sheet) : null;
         const cb = crown.getBoundingClientRect();
         const vis = (el) => !!el && getComputedStyle(el).display !== 'none' && el.getBoundingClientRect().height > 0;
         return {
             open: !!(sheet && sheet.classList.contains('open')),
             sheetOpacity: cs ? cs.opacity : null,
             sheetTransform: cs ? cs.transform : null,
-            sheetZ: cs ? +cs.zIndex : null,
+            sheetZ: zs ? +zs.zIndex : null,
             headerZ: +getComputedStyle(document.querySelector('header')).zIndex,
             inputW: inp ? Math.round(inp.getBoundingClientRect().width) : null,
             inputFocused: !!(inp && document.activeElement === inp),
-            rows: document.querySelectorAll('#crown-sheet .cs-row').length,
+            rows: document.querySelectorAll('#cmdk .cmdk-row').length,
             crownW: Math.round(cb.width),
             crownExpanded: crown.getAttribute('aria-expanded'),
             crownAct: crown.getAttribute('data-act'),
@@ -76,9 +81,15 @@ const snap = (page) =>
             knotGone: !document.querySelector('.admin-dock-btn[data-act="openCmdK"]'),
             overflowX: document.documentElement.scrollWidth - window.innerWidth,
             activeView: (document.querySelector('.page-view.active') || {}).id || null,
-            cmdkOpen: !!(document.getElementById('cmdk') || {}).classList?.contains('open'),
             searchInput: (document.getElementById('cmdk-input') || {}).value || null,
-            scrimVis: vis(document.getElementById('crown-scrim')),
+            scrimVis: vis(document.getElementById('cmdk-scrim')),
+            // C) is there a real ANSWER on screen, in this same surface?
+            heroText: (document.querySelector('#cmdk .cmdk-hero-label') || {}).textContent || '',
+            // the pop-out must fit under the header, on screen
+            boxTop: box ? Math.round(box.getBoundingClientRect().top) : null,
+            boxBottom: box ? Math.round(box.getBoundingClientRect().bottom) : null,
+            headerBottom: Math.round(document.querySelector('header').getBoundingClientRect().bottom),
+            vh: window.innerHeight,
         };
     });
 
@@ -116,15 +127,17 @@ const snap = (page) =>
     await page.click('.logo');
     await page.waitForTimeout(600);
     s = await snap(page);
-    check(s.open, 'tapping the crown drops the sheet');
+    check(s.open, 'tapping the crown drops the pop-out');
     check(s.inputFocused, 'the input takes focus, so you can just type');
     check(s.inputW >= 200, `and it is a REAL field, not an 80px bar squeeze (${s.inputW}px wide)`);
     check(s.crownExpanded === 'true', 'the crown reports aria-expanded=true');
     check(s.rows >= 1, `the morning brief is already on show (${s.rows} row(s))`);
+    check(s.boxTop >= s.headerBottom, `it hangs BELOW the header rather than over it (${s.boxTop} >= ${s.headerBottom})`);
+    check(s.boxBottom <= s.vh, `and fits on screen, so the results scroll inside it (${s.boxBottom} of ${s.vh})`);
     check(s.overflowX <= 0, `no horizontal overflow with it open (${s.overflowX}px)`);
 
     // ---- B) below the header, crown still hittable, one target toggles ----
-    check(s.sheetZ < s.headerZ, `the sheet sits below the header (${s.sheetZ} < ${s.headerZ})`);
+    check(s.sheetZ < s.headerZ, `the pop-out sits below the header (${s.sheetZ} < ${s.headerZ})`);
     check(s.crownHittable, 'so the crown is still the top hit at its own centre');
     check(s.crownW >= 40, `and the crown has not been squeezed (${s.crownW}px — it collapsed to 27 once)`);
     // E) Real pressure: the condensed bar reveals #admin-head-title (flex:1 1 auto)
@@ -154,7 +167,7 @@ const snap = (page) =>
     await page.mouse.click(195, 700);
     await page.waitForTimeout(400);
     s = await snap(page);
-    check(!s.open, 'a tap outside the sheet closes it');
+    check(!s.open, 'a tap outside the pop-out closes it');
 
     // ---- D) Escape closes AND hands focus back ----
     await page.click('.logo');
@@ -165,17 +178,22 @@ const snap = (page) =>
     check(!s.open, 'Escape closes it');
     check(s.crownFocused, 'and hands the focus ring back to the crown');
 
-    // ---- C) Enter hands the query to the search page ----
+    // ---- C) the query is ANSWERED IN PLACE — nothing hands off ----
+    // This is the whole point of the change. Typing used to produce a promise
+    // ("Enter for the full answer") and a second window; now the answer arrives in
+    // the surface the crown dropped, and the workspace underneath is untouched.
     await page.click('.logo');
     await page.waitForTimeout(500);
-    await page.fill('#crown-ask', 'who owes me');
-    await page.keyboard.press('Enter');
-    await page.waitForTimeout(900);
+    await page.fill('#cmdk-input', 'who owes me money');
+    await page.waitForTimeout(700);
     s = await snap(page);
-    check(!s.open, 'Enter closes the sheet');
-    check(s.cmdkOpen === true, `and opens the one search window over the workspace (open=${s.cmdkOpen})`);
+    check(s.open, 'typing a question keeps you in the same pop-out');
+    check(/£/.test(s.heroText), `and the ANSWER lands in it (“${s.heroText.slice(0, 52)}”)`);
     check(s.activeView !== 'view-search', `without leaving the workspace (${s.activeView})`);
-    check(s.searchInput === 'who owes me', `carrying the query across (“${s.searchInput}”)`);
+    check(s.searchInput === 'who owes me money', `carrying the query you typed (“${s.searchInput}”)`);
+    await page.keyboard.press('Escape'); // clears the query (stage one)
+    await page.keyboard.press('Escape'); // then leaves
+    await page.waitForTimeout(400);
 
     // ---- the crown carries the assistant's state, as the retired knot did ----
     const st = await page.evaluate(() => {
@@ -195,21 +213,21 @@ const snap = (page) =>
     await page.click('.logo');
     await page.waitForTimeout(500);
     s = await snap(page);
-    check(s.open && s.sheetOpacity === '1', 'with reduced motion the sheet still appears (it is information)');
+    check(s.open && s.sheetOpacity === '1', 'with reduced motion the pop-out still appears (it is information)');
     check(s.sheetTransform === 'none', `it just does not spring in (${s.sheetTransform})`);
     await page.emulateMedia({ reducedMotion: null });
 
     // ---- F) SELF-HEALING after sign-out. The crown stays bound to the admin
     // handler (admin.js is already evaluated and cannot be un-run), and the same
     // element is the public site's Home link — so the handler itself must notice
-    // owner-mode has gone and just navigate home instead of opening an owner sheet.
+    // owner-mode has gone and just navigate home instead of opening the owner pop-out.
     const healed = await page.evaluate(async () => {
-        crownSheetClose();
+        closeCmdK();
         document.body.classList.remove('owner-mode');
         isAuthenticated = false;
         document.querySelector('.logo').click();
         await new Promise((r) => setTimeout(r, 500));
-        const sheet = document.getElementById('crown-sheet');
+        const sheet = document.getElementById('cmdk');
         return {
             stillBound: document.querySelector('.logo').getAttribute('data-act'),
             sheetOpened: !!(sheet && sheet.classList.contains('open')),
@@ -217,7 +235,7 @@ const snap = (page) =>
         };
     });
     check(healed.stillBound === 'crownSheetToggle', 'after sign-out the crown is still bound to the admin handler (it must self-heal)');
-    check(!healed.sheetOpened, 'so tapping it does NOT open an owner-only sheet for a signed-out visitor');
+    check(!healed.sheetOpened, 'so tapping it does NOT open the owner-only pop-out for a signed-out visitor');
     check(healed.view === 'view-main', `it navigates Home instead (${healed.view})`);
 
     console.log(fails ? `\n  ${fails} CROWN-SHEET CHECK(S) FAILED ❌` : '\n  CROWN-SHEET SUITE PASSED ✅');
