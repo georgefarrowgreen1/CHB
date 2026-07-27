@@ -3391,15 +3391,13 @@ body.cmdk-open {
   white-space: normal;
   text-wrap: pretty;
 }
+/* At the SENTENCE'S size. It was 1.7em (1.5em on a phone), which made "£290.00"
+   tower over the words either side and stopped the answer reading as a sentence.
+   Emphasis is weight + tabular figures instead. The old line-height/vertical-align/
+   letter-spacing here existed only to manage the oversized text, so they went too. */
 .cmdk-hero-fig {
-  font-size: 1.7em;
-  font-weight: 650;
-  letter-spacing: -0.03em;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
-  /* Sits on the sentence's own baseline rather than shifting it, so a wrapped
-     answer keeps an even line rhythm. */
-  line-height: 1;
-  vertical-align: baseline;
 }
 .cmdk-hero-sub {
   font-size: 0.82rem;
@@ -3409,7 +3407,6 @@ body.cmdk-open {
 }
 @media (max-width: 479px) {
   .cmdk-hero-label { font-size: 1.06rem; }
-  .cmdk-hero-fig { font-size: 1.5em; }
 }
 /* The hero's tail — its bulk action and its refine chips (cmdkRowExtrasHtml, shared
    with every other row). The 54px indent that hangs a normal row's panel under its
@@ -3459,10 +3456,12 @@ body.cmdk-open {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* A past turn's figure keeps its emphasis but at the thread's own scale — the
-   1.7em of the live hero would make history shout louder than the answer. */
+/* A past turn's figure keeps its emphasis at the thread's own scale. The size
+   override here is gone because it is no longer needed: it existed to undo the live
+   hero's 1.7em, which would have made history shout louder than the answer, and the
+   hero now sets its figure at the sentence's own size. Weight and ink still lift it
+   out of the muted turn line. */
 .cmdk-turn-a .cmdk-hero-fig {
-  font-size: 1em;
   font-weight: 650;
   color: var(--text-light);
 }
