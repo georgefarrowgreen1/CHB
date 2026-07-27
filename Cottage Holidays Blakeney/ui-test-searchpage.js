@@ -520,6 +520,48 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(qa.clipped.length === 0, `DENSITY: and every action label stays readable${qa.clipped.length ? ' — clipped: ' + qa.clipped.join(', ') : ''}`);
   await page.setViewportSize({ width: 900, height: 900 });
 
+  // ---- 13. NO TEXT OVERRUNS OTHER TEXT ----
+  // A row that wraps must GROW. .cmdk-row-label is a 2-line -webkit-line-clamp box,
+  // and .cmdk-row-wrap (the conversational answers: greetings, capability replies,
+  // fallbacks, generated how-tos) used to relax only `overflow` — the worst of both,
+  // because the box stays two lines tall while its content is no longer clipped, so
+  // every line past the second paints ON TOP of the row's own sub, the next group
+  // heading and the row beneath. Measured on "Help" at 390px: box 39px, content
+  // 117px — 78px of an answer sitting over other text (19px even at 1280px).
+  //
+  // The check is the GENERAL form rather than that one selector: any leaf whose
+  // content is taller than its box while nothing clips it is painting over its
+  // neighbours. Clipped overflow (the deliberate ellipsis on subs and labels) is
+  // explicitly fine and excluded, so this can't flag the truncation the design wants.
+  const OVERFLOW_QUERIES = ['Help', 'what can you do', 'hello', 'how do i add a booking', 'sdkjfhskdjfh'];
+  for (const vp of [{ width: 390, height: 844 }, { width: 1280, height: 900 }]) {
+    await page.setViewportSize(vp);
+    const spills = await page.evaluate(async (queries) => {
+      const until = async (fn, ms = 6000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v !== undefined && v !== null && v !== false && v !== -1) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 40)); } };
+      const found = [];
+      for (const q of queries) {
+        try { closeCmdK(); } catch (e) {}
+        openCmdK();
+        await until(() => document.getElementById('cmdk').classList.contains('open'));
+        document.getElementById('cmdk-input').value = q;
+        cmdkSearchCore(q, false);
+        await until(() => __cmdkResults.length);
+        await new Promise((r) => setTimeout(r, 400));
+        document.querySelectorAll('#cmdk *').forEach((el) => {
+          if (!el.textContent || !el.textContent.trim() || el.children.length) return;
+          const cs = getComputedStyle(el);
+          if (cs.display === 'none' || cs.visibility === 'hidden') return;
+          if (/hidden|clip|auto|scroll/.test(cs.overflowY) || /hidden|clip|auto|scroll/.test(cs.overflow)) return;
+          const over = el.scrollHeight - el.clientHeight;
+          if (over > 2) found.push(`[${q}] ${el.className || el.tagName} box ${el.clientHeight} content ${el.scrollHeight} (+${over})`);
+        });
+      }
+      return found;
+    }, OVERFLOW_QUERIES);
+    ok(spills.length === 0, `OVERFLOW @${vp.width}px: no text paints outside its own box${spills.length ? ' — ' + spills.slice(0, 3).join('; ') : ''}`);
+  }
+  await page.setViewportSize({ width: 900, height: 900 });
+
   console.log(fails ? `\n  ${fails} SEARCH-PAGE CHECK(S) FAILED ❌` : '\n  SEARCH-PAGE SUITE PASSED ✅');
   await done(fails);
 })();

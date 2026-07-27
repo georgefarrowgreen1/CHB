@@ -1804,6 +1804,18 @@ body.owner-mode .logo.ml-learning .logo-mark {
   overflow: visible;
   text-overflow: clip;
 }
+/* …and LIFT THE CLAMP, which is the part that actually matters. .cmdk-row-label is
+   a 2-line `-webkit-line-clamp` box; this rule used to relax only `overflow`, which
+   is the worst of both — the box stays two lines TALL while its content is no longer
+   clipped, so every line after the second paints OUTSIDE it, straight over the row's
+   own sub, the next group heading and the row below. Measured on "Help" at 390px:
+   box 39px, content 117px, i.e. 78px of an answer rendering on top of other text.
+   Resetting the clamp lets the box grow to the sentence instead. */
+.cmdk-row-wrap .cmdk-row-label {
+  display: block;
+  -webkit-line-clamp: none;
+  -webkit-box-orient: horizontal;
+}
 .cmdk-row-ic.cmdk-action .ic {
   color: var(--accent);
 }

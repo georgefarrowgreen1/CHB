@@ -303,7 +303,16 @@ returns it (in place of `cmdkHelpItem` rows) when `wantHelp` and the top topic s
 plain keyword still returns the browsable `type:'help'` rows. Conversational answer rows
 (social greetings, fallbacks, generated how-tos) carry `wrap:true` → the row renders
 `.cmdk-row-wrap` so full sentences wrap over multiple lines instead of clamping to one
-ellipsised line on the search page. Additive — the tested answer rows are
+ellipsised line on the search page. **A wrapping row must LIFT THE CLAMP, not just the
+overflow**: `.cmdk-row-label` is a 2-line `-webkit-line-clamp` box, and `.cmdk-row-wrap`
+originally relaxed only `overflow: visible` — the worst of both, because the box stays
+two lines TALL while its content is no longer clipped, so every line past the second
+paints ON TOP of the row's own sub, the next group heading and the row below (measured
+on "Help" at 390px: box 39px, content 117px — 78px of an answer over other text; 19px
+even at 1280px). It now also resets `display: block` + `-webkit-line-clamp: none` so the
+box grows to the sentence. Gated by ui-test-searchpage §13, which checks the GENERAL
+form rather than that selector — any leaf whose content is taller than its box while
+nothing clips it — so clipped/ellipsised truncation stays allowed by design. Additive — the tested answer rows are
 unchanged. Gated by search-test §22 + §8 (how-to) + golden social cases.
 
 **Guided walkthroughs** (admin.js — help that HELPS ALL THE WAY THROUGH a task, not just
