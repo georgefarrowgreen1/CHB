@@ -3429,3 +3429,224 @@ body.cmdk-open {
     transform: none;
   }
 }
+
+/* ============================================================
+   BOARDS — the empty landing as a dashboard (see cmdkBoardsHtml).
+   The rows inside are the SAME .cmdk-row nodes at the same indices; a board is a
+   container, so nothing here may change how a row behaves. What it changes is
+   weight: a board's first row is the headline fact, so its label gets figure-sized
+   type, while the rows keep their 44px touch floor.
+   ============================================================ */
+.cmdk-boards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+  padding: 10px 12px 4px;
+}
+.cmdk-board {
+  background: var(--glass-hover);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--r-md);
+  padding: 12px 10px 8px;
+  min-width: 0;
+}
+.cmdk-board-cap {
+  margin: 0 0 4px;
+  padding: 0 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+/* Inside a board every row is an answer, so the per-row answer glyph says nothing
+   the board caption hasn't already said — and it costs 38px of width that the
+   figures want. The headline fact then reads at a glance; the rest stay row-sized. */
+.cmdk-board .cmdk-row-ic {
+  display: none;
+}
+.cmdk-board > .cmdk-row:first-of-type .cmdk-row-label {
+  font-size: 1.16rem;
+  line-height: 1.25;
+  letter-spacing: -0.015em;
+  font-variant-numeric: tabular-nums;
+}
+/* A board's rows have the board's own surface behind them, so the row's resting
+   fill would double up. Hover still has to register. */
+.cmdk-board .cmdk-row {
+  background: none;
+}
+.cmdk-board .cmdk-row:hover {
+  background: var(--glass-bg);
+}
+@media (max-width: 479px) {
+  .cmdk-boards {
+    grid-template-columns: 1fr;
+    padding: 8px 10px 4px;
+  }
+}
+
+/* ============================================================
+   ANSWER CANVAS — the hero answer (see cmdkHeroHtml). Same <button> as any row,
+   so it keeps the touch floor and the selection treatment; what changes is that
+   the sentence gets reading size and the figure inside it gets figure size.
+   ============================================================ */
+.cmdk-row.cmdk-hero {
+  align-items: flex-start;
+  padding: 14px 12px 16px;
+  gap: 0;
+}
+.cmdk-hero-main {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+.cmdk-hero-label {
+  font-size: 1.15rem;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.012em;
+  /* The answer is a SENTENCE — it must wrap. Clamping it to one line is what made
+     the old row hide the second half of "…, Richard leading at £440.00". */
+  white-space: normal;
+  text-wrap: pretty;
+}
+.cmdk-hero-fig {
+  font-size: 1.7em;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  /* Sits on the sentence's own baseline rather than shifting it, so a wrapped
+     answer keeps an even line rhythm. */
+  line-height: 1;
+  vertical-align: baseline;
+}
+.cmdk-hero-sub {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  line-height: 1.4;
+  white-space: normal;
+}
+@media (max-width: 479px) {
+  .cmdk-hero-label { font-size: 1.06rem; }
+  .cmdk-hero-fig { font-size: 1.5em; }
+}
+
+/* ============================================================
+   THREAD — earlier answered turns, above the live answer (cmdkThreadHtml).
+   Quiet by design: this is context you glance at, not content you work in, so it
+   sits back from the hero and never competes with it.
+   ============================================================ */
+.cmdk-thread {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px 12px 2px;
+  margin-bottom: 2px;
+}
+.cmdk-turn {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding-left: 10px;
+  border-left: 2px solid var(--glass-border);
+  min-width: 0;
+}
+.cmdk-turn-q {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--accent-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cmdk-turn-a {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* A past turn's figure keeps its emphasis but at the thread's own scale — the
+   1.7em of the live hero would make history shout louder than the answer. */
+.cmdk-turn-a .cmdk-hero-fig {
+  font-size: 1em;
+  font-weight: 650;
+  color: var(--text-light);
+}
+
+/* ============================================================
+   SPLIT — the selected record beside the results (cmdkDetailHtml).
+   Pure CSS: one column below 1200px, two above it. No matchMedia, no resize
+   listener, nothing to go stale. 1200 is not a new number — it is the SAME
+   breakpoint at which the Inbox and the Today workspace already dock a hub in a
+   side pane, so the back office gains one master–detail rule rather than two.
+   ============================================================ */
+.cmdk-split {
+  display: block;
+}
+.cmdk-detail {
+  display: none;
+}
+@media (min-width: 1200px) {
+  .cmdk-split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 260px;
+    gap: 16px;
+    align-items: start;
+  }
+  .cmdk-split-list {
+    min-width: 0;
+  }
+  .cmdk-detail {
+    display: block;
+    position: sticky;
+    top: 4px;
+    background: var(--glass-hover);
+    border: 1px solid var(--glass-border);
+    border-radius: var(--r-md);
+    padding: 14px 15px;
+    min-width: 0;
+  }
+}
+.cmdk-dt-name {
+  margin: 0 0 4px;
+  font-size: 1.02rem;
+  font-weight: 650;
+  letter-spacing: -0.012em;
+  line-height: 1.25;
+}
+.cmdk-dt-meta,
+.cmdk-dt-intel,
+.cmdk-dt-hint {
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+.cmdk-dt-hint {
+  margin-bottom: 0;
+  opacity: 0.75;
+}
+.cmdk-dt-pills {
+  margin: 0 0 8px;
+}
+.cmdk-dt-pill {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+  font-variant-numeric: tabular-nums;
+}
+.cmdk-dt-pill.is-due {
+  background: color-mix(in srgb, var(--warn) 20%, transparent);
+  color: var(--warn-text);
+}
+.cmdk-dt-pill.is-ok {
+  background: color-mix(in srgb, var(--ok) 18%, transparent);
+  color: var(--ok-text);
+}

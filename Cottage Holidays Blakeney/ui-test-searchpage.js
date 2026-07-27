@@ -51,7 +51,11 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.evaluate(() => { document.getElementById('cmdk-input').value = 'who owes money'; cmdkSearchCore('who owes money', false); });
   await page.waitForTimeout(300);
   st = await page.evaluate(() => ({
-    top: (document.querySelector('#cmdk-results .cmdk-row .cmdk-row-label') || {}).textContent || '',
+    // The leading ANSWER now renders as the hero (.cmdk-hero-label), not as an
+    // ordinary row — so read whichever carries it rather than pinning one shape.
+    // Reading .cmdk-row-label alone silently picked up the SECOND row and reported
+    // a ranking regression that had not happened.
+    top: (document.querySelector('#cmdk-results .cmdk-hero-label, #cmdk-results .cmdk-row .cmdk-row-label') || {}).textContent || '',
     mstate: (document.getElementById('cmdk-ml') || {}).dataset.mstate,
   }));
   ok(/£400/.test(st.top), `literal ops question answers on the page (${st.top.slice(0, 50)})`);
@@ -348,6 +352,112 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(bleed.rowW <= 760, `rows sit in a readable column, not the full 1280 (${bleed.rowW}px)`);
   ok(bleed.rowLeft > 200, `which is CENTRED, not hugging the left edge (left ${bleed.rowLeft}px)`);
   ok(bleed.fieldW <= 760, `and the field is a field, not a 1140px pill (${bleed.fieldW}px)`);
+  await page.setViewportSize({ width: 900, height: 900 });
+
+  // ---- 11. The four-part redesign: BOARDS, ANSWER hero, THREAD, SPLIT.
+  // Each is a layout over the SAME result rows, so the thing worth pinning is that
+  // the rows survive the new containers — a board or a pane that swallowed a row's
+  // index would break keyboard nav silently.
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.evaluate(async () => {
+    try { closeCmdK(); } catch (e) {}
+    nav('view-backoffice');
+    openCmdK();
+    await new Promise((r) => setTimeout(r, 600));
+  });
+  const boards = await page.evaluate(() => {
+    const cards = [...document.querySelectorAll('#cmdk .cmdk-board')];
+    return {
+      n: cards.length,
+      caps: cards.map((c) => (c.querySelector('.cmdk-board-cap') || {}).textContent || ''),
+      rowsInBoards: document.querySelectorAll('#cmdk .cmdk-board .cmdk-row').length,
+      // Every row still has to be an addressable option at its own index.
+      optIds: [...document.querySelectorAll('#cmdk .cmdk-board .cmdk-row')].every((r) => /^cmdk-opt-\d+$/.test(r.id)),
+      jump: !!document.querySelector('#cmdk .cmdk-group-label'),
+    };
+  });
+  ok(boards.n >= 1, `BOARDS: the landing renders boards, not a flat list (${boards.n}: ${boards.caps.join(' / ')})`);
+  ok(boards.rowsInBoards >= 1, `BOARDS: the day's rows live inside them (${boards.rowsInBoards})`);
+  ok(boards.optIds, 'BOARDS: every board row keeps its cmdk-opt-<i> id, so keyboard nav survives');
+
+  // ANSWER hero + THREAD: a chain of answered questions.
+  const chain = await page.evaluate(async () => {
+    const i = document.getElementById('cmdk-input');
+    for (const q of ['who owes money', 'what did i earn this year']) {
+      i.value = q; cmdkSearchCore(q, false);
+      await new Promise((r) => setTimeout(r, 350));
+    }
+    const hero = document.querySelector('#cmdk .cmdk-hero');
+    return {
+      hero: !!hero,
+      heroIsOption: !!(hero && /^cmdk-opt-\d+$/.test(hero.id) && hero.getAttribute('role') === 'option'),
+      heroFig: (document.querySelector('#cmdk .cmdk-hero-fig') || {}).textContent || '',
+      cap: (document.querySelector('#cmdk .cmdk-group-label') || {}).textContent || '',
+      turns: document.querySelectorAll('#cmdk .cmdk-turn').length,
+      turnQ: (document.querySelector('#cmdk .cmdk-turn-q') || {}).textContent || '',
+    };
+  });
+  ok(chain.hero, 'ANSWER: an answered query renders the hero, not an ordinary row');
+  ok(chain.heroIsOption, 'ANSWER: the hero is still a role=option at its own index (keyboard + run intact)');
+  ok(/£/.test(chain.heroFig), `ANSWER: the figure inside the sentence is emphasised (${chain.heroFig})`);
+  ok(/answer/i.test(chain.cap), `ANSWER: the caption names it an answer, not a ranking (${chain.cap})`);
+  ok(chain.turns >= 1, `THREAD: the earlier answered turn is kept on screen (${chain.turns})`);
+  ok(/owes/.test(chain.turnQ), `THREAD: and it names the question that produced it (${chain.turnQ})`);
+
+  // THREAD must not stack duplicates as you type, and must die with the session.
+  const life = await page.evaluate(async () => {
+    const i = document.getElementById('cmdk-input');
+    const before = __cmdkThread.length;
+    for (const q of ['who owes', 'who owes m', 'who owes money']) {
+      i.value = q; cmdkSearchCore(q, false);
+      await new Promise((r) => setTimeout(r, 220));
+    }
+    const afterTyping = __cmdkThread.length;
+    i.value = ''; cmdkSearchCore('', false);
+    await new Promise((r) => setTimeout(r, 220));
+    return { before, afterTyping, afterClear: __cmdkThread.length };
+  });
+  // GROWTH, not the absolute: earlier turns from this session are legitimately still
+  // there, and asserting a total silently measured them too.
+  ok(life.afterTyping - life.before <= 1, `THREAD: three keystroke queries add ONE turn, not three (+${life.afterTyping - life.before})`);
+  ok(life.afterClear === 0, `THREAD: clearing the field starts over (${life.afterClear})`);
+
+  // SPLIT: a selected booking shows beside the list at >=1200px, and the pane is
+  // a SUMMARY — it must never be the hub node, which lives elsewhere.
+  const split = await page.evaluate(async () => {
+    const i = document.getElementById('cmdk-input');
+    i.value = 'bob carter'; cmdkSearchCore('bob carter', false);
+    await new Promise((r) => setTimeout(r, 400));
+    const idx = __cmdkResults.findIndex((r) => r && r.type === 'booking');
+    if (idx >= 0) { __cmdkSel = idx; cmdkRender(); }
+    await new Promise((r) => setTimeout(r, 250));
+    const pane = document.querySelector('#cmdk .cmdk-detail');
+    const list = document.querySelector('#cmdk .cmdk-split-list');
+    const cs = pane && getComputedStyle(pane);
+    return {
+      pane: !!pane,
+      visible: !!(cs && cs.display !== 'none'),
+      name: (document.querySelector('#cmdk .cmdk-dt-name') || {}).textContent || '',
+      pill: (document.querySelector('#cmdk .cmdk-dt-pill') || {}).textContent || '',
+      sideBySide: !!(pane && list && pane.getBoundingClientRect().left > list.getBoundingClientRect().left + 200),
+      hubNodeMoved: !!(pane && pane.querySelector('#booking-hub-content')),
+      scopeOutside: !!document.querySelector('#cmdk-results > .cmdk-scopes'),
+    };
+  });
+  ok(split.pane && split.visible, 'SPLIT: the selected booking gets a pane at 1280px');
+  ok(/Bob Carter/.test(split.name), `SPLIT: it names the record (${split.name})`);
+  ok(/£|Paid/.test(split.pill), `SPLIT: and states its money position (${split.pill})`);
+  ok(split.sideBySide, 'SPLIT: the pane sits BESIDE the list, not under it');
+  ok(!split.hubNodeMoved, 'SPLIT: it is a summary — #booking-hub-content was NOT re-parented into it');
+  ok(split.scopeOutside, 'SPLIT: the scope switch spans the window rather than being trapped in the list');
+  // Below the breakpoint the pane collapses and nothing about the phone changes.
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.waitForTimeout(250);
+  const narrow = await page.evaluate(() => {
+    const pane = document.querySelector('#cmdk .cmdk-detail');
+    return { hidden: !pane || getComputedStyle(pane).display === 'none' };
+  });
+  ok(narrow.hidden, 'SPLIT: and collapses below 1200px, leaving the phone layout untouched');
   await page.setViewportSize({ width: 900, height: 900 });
 
   console.log(fails ? `\n  ${fails} SEARCH-PAGE CHECK(S) FAILED ❌` : '\n  SEARCH-PAGE SUITE PASSED ✅');
