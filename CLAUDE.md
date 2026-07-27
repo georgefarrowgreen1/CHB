@@ -551,7 +551,13 @@ would break arrow-key nav in total silence).
   the wide box. It clears the selection before measuring now. Gated by
   ui-test-searchpage §11, each of the four layouts break-tested independently.
 
-**The empty landing's day brief is NOT scope-filtered** (the "Jump to" list still is).
+**The empty landing's day brief is NOT scope-filtered** (the "Jump to" list still is),
+and **the scope switch is HIDDEN on that state** so nothing on screen claims a filter
+it isn't applying — it appears the moment you type, which is when it starts meaning
+something. Removing the Jump-to filter as well was tried and BACKED OUT: it is what
+keeps that list short, and without it the landing's destinations went 124px → 271px
+even capped at three (952px uncapped). Showing the shortcuts that suit the workspace
+you came from is helpfulness, not a filter anyone needs a control for.
 `openCmdK` snapshots `cmdkDefaultScope()` from the workspace you came from, so opening
 search from Today put you in "Bookings" scope before you had asked for anything, and the
 brief was filtered to whatever matched — measured as **1 row surviving out of 4**, which
@@ -987,9 +993,15 @@ order because each piece makes the next one safe.
   `openArea('settings')` was routing nowhere until the typecheck ratchet caught it.
   The foot can no longer be `aria-hidden`: the keycaps stay hidden as decoration but a
   stopped automation must be announced, so the line carries its own `role="status"`.
-  Only CRON is wired — per-cottage `ical-status-*` is a good second signal but
-  `ical-import.php` returns it only to the settings page that asks, and fetching it would
-  break the no-request rule. A candidate, not a silent omission.
+  TWO signals now. Cron first — everything depends on it — then per-cottage **iCal
+  feed health**, which was left out originally because `ical-import.php` returns it
+  only to the settings page that asks and fetching it would break the no-request
+  rule. `admin-bootstrap.php` now carries a reduced `feeds` array (worst staleness +
+  failing-source count per cottage) in the SAME payload `loadData` already makes, so
+  the second signal is free and the rule is intact. A feed that has NEVER imported is
+  omitted server-side — that is not the same thing as stalled. An outright failing
+  source outranks mere staleness; the cron outranks both. Warns at ≥36h.
+  Without it a stuck Airbnb sync was discovered by a double booking.
 - **WATCHERS** (`watchers-lib.php` rules, `watchers.php` admin API, `watchers-run.php`
   from cron.php, client `chbWatchSet`/`chbWatchStop`/`chbWatchGapAction`, `watching`
   command) — the only thing here that acts while nobody is looking. Stored under the

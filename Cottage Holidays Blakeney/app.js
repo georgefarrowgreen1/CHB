@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 296;
+const ADMIN_BUNDLE_V = 297;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -6865,6 +6865,11 @@ async function loadData() {
         if (!ab || !ab.ok) ab = null;
     } catch (e) {}
     window.__cronStatusPre = (ab && ab.cron) || null;
+    // Per-cottage iCal feed health, from the SAME payload. The search foot's status
+    // line is not allowed to fetch, which is why only the cron was wired into it;
+    // carrying this here is what makes a stalled Airbnb sync visible before it is
+    // discovered by a double booking.
+    /** @type {any} */ (window).__feedStatusPre = (ab && Array.isArray(ab.feeds) ? ab.feeds : null);
 
     // Shape-check each part (not just truthiness) so a malformed combined
     // payload cleanly falls back to the individual endpoint.
@@ -13248,7 +13253,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'tier1a45';
+    const BUILD = 'tier2b46';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

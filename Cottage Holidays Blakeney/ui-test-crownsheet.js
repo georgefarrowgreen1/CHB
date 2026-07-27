@@ -164,10 +164,18 @@ const snap = (page) =>
     // ---- D) scrim closes it ----
     await page.click('.logo');
     await page.waitForTimeout(500);
-    await page.mouse.click(195, 700);
+    // Click BELOW the pop-out, measured — not at a hardcoded y. The panel's height
+    // is content-driven, so a fixed 700px was inside it or outside it depending on
+    // how much the day's brief had to say; it started landing on .cmdk-jump the
+    // moment the landing lost its scope bar and grew.
+    const outside = await page.evaluate(() => {
+        const b = document.querySelector('#cmdk .cmdk-box').getBoundingClientRect();
+        return { x: Math.round(b.left + b.width / 2), y: Math.min(Math.round(b.bottom) + 20, window.innerHeight - 6) };
+    });
+    await page.mouse.click(outside.x, outside.y);
     await page.waitForTimeout(400);
     s = await snap(page);
-    check(!s.open, 'a tap outside the pop-out closes it');
+    check(!s.open, `a tap outside the pop-out closes it (at y=${outside.y})`);
 
     // ---- D) Escape closes AND hands focus back ----
     await page.click('.logo');
