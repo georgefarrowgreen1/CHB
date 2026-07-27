@@ -1188,6 +1188,10 @@ function cmdkBookingActions(b, pk) {
             },
         });
         acts.push({ key: 'record', label: 'Record payment', icon: cmdkActIcon('plus'), run: () => { closeCmdK(); recordPayment(b.id); } });
+        // …and the standing version of the same question, for when you would rather
+        // be told than remember to look.
+        const watchBal = chbWatchBalanceAction(b, pk, ps);
+        if (watchBal) acts.push(watchBal);
     }
     if ((b.holdStatus || 'none') === 'charged') {
         acts.push({ key: 'deposit', label: 'Return deposit', icon: cmdkActIcon('undo'), run: () => { closeCmdK(); returnDeposit(b.id); } });
@@ -1229,12 +1233,16 @@ function chbBulkAction(baseKey, spec) {
 // A guest we can't email is skipped and NAMED rather than blocking the batch —
 // one missing address shouldn't stop the other two being chased. Split here, once,
 // so the confirm can be honest about it up front instead of reporting a surprise.
-function chbBulkSplit(rows) {
+function chbBulkSplit(rows, skipIf) {
     const list = (rows || []).filter((x) => x && x.b);
-    return {
-        send: list.filter((x) => !!String(x.b.email || '').trim()),
-        skip: list.filter((x) => !String(x.b.email || '').trim()),
-    };
+    // A row is skipped when it has no address, or when the caller says this
+    // particular send would be pointless for it (arrival info already sent). One
+    // predicate rather than a second split, so the confirm and the report can never
+    // disagree about who is in the batch.
+    const why = (x) => (!String(x.b.email || '').trim() ? 'no email address' : (typeof skipIf === 'function' ? skipIf(x) : ''));
+    const send = [], skip = [];
+    list.forEach((x) => { const r = why(x); if (r) skip.push(Object.assign({}, x, { skipWhy: r })); else send.push(x); });
+    return { send, skip };
 }
 // "Cara Bell", "Cara Bell and Dan Rowe", "Cara Bell and 2 others" — full names,
 // because this line is the owner's only cue about which record to go and fix.
@@ -1243,14 +1251,19 @@ function chbBulkNames(list) {
     if (names.length <= 2) return names.join(' and ');
     return `${names[0]} and ${names.length - 1} others`;
 }
-async function chbBulkConfirm(rows) {
-    const { send, skip } = chbBulkSplit(rows);
+async function chbBulkConfirm(rows, opts) {
+    const o = opts || {};
+    const { send, skip } = chbBulkSplit(rows, o.skipIf);
     if (!send.length) {
         // Nothing to do, and saying so beats a confirm whose button would send zero.
         await glassAlert(
+            // A missing ADDRESS is actionable, so say what to do about it; any other
+            // skip reason (already sent) just explains why there is nothing to do.
             skip.length
-                ? `No email addresses on ${skip.length === 1 ? 'this booking' : 'these bookings'} — add one to ${chbBulkNames(skip)} first.`
-                : 'Nothing to chase — those balances are settled.',
+                ? (skip.every((x) => x.skipWhy === 'no email address')
+                    ? `No email addresses on ${skip.length === 1 ? 'this booking' : 'these bookings'} — add one to ${chbBulkNames(skip)} first.`
+                    : `Nothing to send — ${chbBulkNames(skip)} already had ${skip.length === 1 ? 'theirs' : 'theirs'}.`)
+                : (o.emptySay || 'Nothing to chase — those balances are settled.'),
         );
         return false;
     }
@@ -1259,21 +1272,22 @@ async function chbBulkConfirm(rows) {
         `${x.b.name || '(no name)'} — ${gbp(Math.max(0, (x.ps && x.ps.balance) || 0))}` +
         `${x.pk ? ' · ' + ((propertyMeta[x.pk] || {}).name || x.pk) : ''}${note ? ' · ' + note : ''}`;
     const body = [
-        `Send balance requests to ${send.length} guest${send.length === 1 ? '' : 's'}?`,
+        `${o.title || 'Send balance requests'} to ${send.length} guest${send.length === 1 ? '' : 's'}?`,
         '',
         ...send.map((x) => line(x)),
-        ...skip.map((x) => line(x, 'no email address, will be skipped')),
+        ...skip.map((x) => line(x, x.skipWhy + ', will be skipped')),
         '',
         `Total to chase: ${gbp(total)}`,
         '',
-        'Each guest gets the standard balance-request email with their own secure pay link.',
+        o.blurb || 'Each guest gets the standard balance-request email with their own secure pay link.',
     ].join('\n');
     // The button states the count that will actually send, not the number of rows
     // listed — a "Send 3" over a list containing a skipped guest is a lie in the label.
     return await glassConfirm(body, `Send ${send.length} request${send.length === 1 ? '' : 's'}`);
 }
-async function chbBulkRun(rows) {
-    const { send, skip } = chbBulkSplit(rows);
+async function chbBulkRun(rows, opts) {
+    const o = opts || {};
+    const { send, skip } = chbBulkSplit(rows, o.skipIf);
     let sent = 0;
     let chased = 0;
     const failed = [];
@@ -1282,7 +1296,8 @@ async function chbBulkRun(rows) {
         // requestPayment — what bulk drops is the preview, never the server rules.
         const kind = x.ps && x.ps.deposit > 0.5 ? 'balance' : 'deposit';
         try {
-            await apiPost('bookings.php', { action: 'request_payment', id: x.b.dbId, kind });
+            if (o.send) await o.send(x);
+            else await apiPost('bookings.php', { action: 'request_payment', id: x.b.dbId, kind });
             sent++;
             chased += Math.max(0, (x.ps && x.ps.balance) || 0);
         } catch (e) {
@@ -1290,7 +1305,7 @@ async function chbBulkRun(rows) {
         }
     }
     const misses = [];
-    if (skip.length) misses.push(`${chbBulkNames(skip)} ${skip.length === 1 ? 'has' : 'have'} no email address`);
+    if (skip.length) misses.push(`${chbBulkNames(skip)} ${skip.length === 1 ? '' : 'each '}${skip[0].skipWhy === 'no email address' ? (skip.length === 1 ? 'has no email address' : 'have no email address') : skip[0].skipWhy}`);
     if (failed.length) misses.push(`couldn't reach ${chbBulkNames(failed)}`);
     if (!sent) {
         // Total failure is an ERROR, not a quiet partial — throwing puts it on the
@@ -1303,7 +1318,42 @@ async function chbBulkRun(rows) {
     if (sent < attempted) {
         return { state: 'warn', say: `Sent ${sent} of ${attempted} — ${misses.join('; ')}` };
     }
+    if (o.okSay) return { say: o.okSay(sent, chased) };
     return { say: `${sent} balance request${sent === 1 ? '' : 's'} sent · ${gbp(chased)} chased` };
+}
+// The SECOND bulk action, and the reason CMDK_BULK_SAFE listed `email` from the
+// start. Arrival info is the other job that is naturally a set: everyone coming
+// this week needs the same thing, and doing it one booking at a time is the exact
+// shape of journey bulk exists to remove. Same confirm, same serial send, same
+// honest report — the only new idea is a second skip reason, because a guest who
+// already HAS their arrival info should be named and passed over rather than sent
+// it twice.
+function chbBulkArrivalAction(rows) {
+    const list = (rows || []).filter((x) => x && x.b && x.b.checkIn);
+    const need = list.filter((x) => !x.b.preArrivalSent);
+    if (need.length < 2) return null;
+    return chbBulkAction('email', {
+        key: 'arrival-all',
+        label: `Send arrival info to all ${need.length}`,
+        icon: cmdkActIcon('mail'),
+        pending: 'Sending…',
+        run: () => { closeCmdK(); Promise.resolve(openBookings()).then(() => bookingsSetFilter('upcoming')); },
+        inline: async () => {
+            const opts = {
+                title: 'Send arrival info',
+                blurb: 'Each guest gets the arrival email for their cottage — directions, key code and check-in time.',
+                emptySay: 'Everyone arriving has already had their arrival info.',
+                skipIf: (x) => (x.b.preArrivalSent ? 'already sent' : ''),
+                send: (x) => apiPost('bookings.php', { action: 'send_arrival', id: x.b.dbId }),
+                // The DIGIT, not chbSayN — "a couple guests" is what the word form
+                // gives you here, and the balance report already counts in figures.
+                okSay: (n) => `Arrival info sent to ${n} guest${n === 1 ? '' : 's'}`,
+            };
+            const go = await chbBulkConfirm(list, opts);
+            if (!go) return null;
+            return await chbBulkRun(list, opts);
+        },
+    });
 }
 // The set-level action for the owed-money answer. Null below two owers — "Request
 // all 1 balances" is just the row's own action wearing a worse label.
@@ -2970,7 +3020,7 @@ async function chbWatchSet(w) {
     if (r && r.error) throw new Error(r.error);
     __chbWatchers = Array.isArray(r && r.watchers) ? r.watchers : null;
     // The id the server minted, so undo can remove exactly this one.
-    const mine = (__chbWatchers || []).filter((x) => x && x.kind === w.kind && x.pk === w.pk && x.from === w.from);
+    const mine = (__chbWatchers || []).filter((x) => x && x.kind === w.kind && x.pk === w.pk && x.from === w.from && String(x.ref || '') === String(w.ref || ''));
     return mine.length ? mine[mine.length - 1] : null;
 }
 async function chbWatchStop(id) {
@@ -2999,6 +3049,78 @@ function chbWatchGapAction(g, plan) {
             });
             return {
                 say: `Watching ${nm} — I'll tell you on ${fmtDate(tell)} if it's still free`,
+                undo: saved && saved.id ? () => chbWatchStop(saved.id) : null,
+                reload: false,
+            };
+        },
+    };
+}
+// "Tell me if they still haven't paid." The second watcher KIND, and it needed no
+// new machinery beyond an identity: watchers_key gained `ref` so two balance
+// watchers on different bookings stop colliding on the same empty key.
+//
+// The day it speaks is the day BEFORE arrival by default, or a week out when
+// arrival is further off — late enough that chasing has had time to work, early
+// enough that you can still do something other than take cash at the door.
+function chbWatchBalanceAction(b, pk, ps) {
+    if (!b || b.id == null || !ps || ps.fullyPaid || !(ps.balance > 0.5)) return null;
+    const who = chbSayFirst(b.name || 'the guest');
+    const today = todayDashed();
+    const arrive = b.checkIn || '';
+    let tell = arrive ? chbIsoShift(arrive, -1) : chbIsoShift(today, 7);
+    if (arrive && chbIsoShift(arrive, -7) > today) tell = chbIsoShift(arrive, -7);
+    if (tell <= today) tell = chbIsoShift(today, 1);
+    return {
+        key: 'watch-balance',
+        // Short on purpose: this sits in the two-column quick-action grid on a
+        // phone beside "Request balance" (15 chars) and "Show on calendar" (16), and
+        // the density gate clips anything longer. The gap watcher's fuller wording
+        // ("Tell me if it hasn't sold") lives on a full-width brief row instead.
+        label: 'Tell me if unpaid',
+        icon: cmdkActIcon('alert'),
+        pending: 'Setting a reminder…',
+        run: () => { closeCmdK(); openBookingHub(b.id); },
+        inline: async () => {
+            const saved = await chbWatchSet({
+                kind: 'balance-unpaid', pk: pk || '', ref: String(b.dbId || b.id), tell,
+                say: `${b.name || 'A guest'} still owes ${gbp(ps.balance)}${arrive ? ' — arriving ' + fmtDate(arrive) : ''}.`,
+            });
+            return {
+                say: `Watching ${who}'s balance — I'll tell you on ${fmtDate(tell)} if it's still due`,
+                undo: saved && saved.id ? () => chbWatchStop(saved.id) : null,
+                reload: false,
+            };
+        },
+    };
+}
+// "Tell me if next month falls behind last year." The third kind. It watches a
+// MONTH rather than a record, so `ref` is the month key and from/to are its bounds
+// — and watchers-run re-counts the nights on the telling day rather than trusting
+// what was true when it was set.
+function chbWatchMonthAction(iso) {
+    const today = todayDashed();
+    const base = iso && /^\d{4}-\d{2}/.test(iso) ? iso : today;
+    const y = +base.slice(0, 4), m = +base.slice(5, 7);
+    const from = `${y}-${String(m).padStart(2, '0')}-01`;
+    const nx = m === 12 ? { y: y + 1, m: 1 } : { y, m: m + 1 };
+    const to = `${nx.y}-${String(nx.m).padStart(2, '0')}-01`;
+    // Speak on the 1st — the point where there is still a month to do something in.
+    let tell = from > today ? from : chbIsoShift(today, 1);
+    if (tell <= today) tell = chbIsoShift(today, 1);
+    const label = new Date(Date.UTC(y, m - 1, 1)).toLocaleDateString('en-GB', { month: 'long', timeZone: 'UTC' });
+    return {
+        key: 'watch-month',
+        label: `Tell me if ${label} falls behind`,
+        icon: cmdkActIcon('alert'),
+        pending: 'Setting a reminder…',
+        run: () => { closeCmdK(); openAccounts(); },
+        inline: async () => {
+            const saved = await chbWatchSet({
+                kind: 'month-behind', pk: '', ref: `${y}-${String(m).padStart(2, '0')}`, from, to, tell,
+                say: `${label} is behind where it was this time last year — worth a look at rates.`,
+            });
+            return {
+                say: `Watching ${label} — I'll tell you on ${fmtDate(tell)} only if it's actually behind`,
                 undo: saved && saved.id ? () => chbWatchStop(saved.id) : null,
                 reload: false,
             };
@@ -4527,6 +4649,12 @@ function cmdkIntent(q) {
                   n === 1 ? nlgPick('arr1' + q, [`Just ${aLead} in ${when}.`, `One arrival ${when} — ${aLead}.`, `${aLead}’s your only check-in ${when}.`])
                       : nlgPick('arrN' + q, [`${n} arriving ${when} — ${aLead} and ${chbSayN(n - 1)} more.`, `${n} guests checking in ${when}.`]),
                   'Check-ins · direct & OTA', () => { closeCmdK(); tryAccessBackOffice(); }, [{ label: 'This week', q: 'arriving this week' }, { label: 'Next month', q: 'arriving next month' }, { label: 'Leaving today', q: 'who’s leaving today' }, calChip(rStart)]);
+        // BULK: the arrivals answer holds the set the same way the owed one does, so
+        // sending everyone their arrival info is one tap on the answer itself. OTA
+        // rows are excluded by construction — `rows` is direct bookings only, and
+        // there is no address to send to on a platform stay.
+        const bulkArr = chbBulkArrivalAction(rows);
+        if (bulkArr) head.actions = [bulkArr];
         return [head]
             .concat(rows.map((x) => bk(x.pk, x.b, `Checks in ${fmtDate(x.b.checkIn)}${x.b.checkInTime ? ' · ' + x.b.checkInTime : ''} · ${propName(x.pk)}`)))
             .concat(eRows.map((x) => ext(x.pk, x.bl, `Checks in ${fmtDate(x.bl.checkIn)} · ${propName(x.pk)}`)));

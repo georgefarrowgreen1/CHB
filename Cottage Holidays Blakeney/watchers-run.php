@@ -62,13 +62,72 @@ $stillEmpty = function ($pk, $from, $to) {
     }
 };
 
+// ---- 2b. Is a balance-unpaid watcher STILL true? The rental price EXCLUDES the
+// damages deposit in both eras (booking_rental_price is the one definition), so
+// "still owes" is that price against what has actually been received. A booking
+// that has since been deleted is NOT still owed — it returns false and the watcher
+// is cleared, which is the same "unknown beats wrong" rule as the gap check.
+$stillOwed = function ($bookingId) {
+    $bookingId = (int) $bookingId;
+    if ($bookingId <= 0) {
+        return false;
+    }
+    try {
+        $q = db()->prepare('SELECT * FROM bookings WHERE id = ? LIMIT 1');
+        $q->execute([$bookingId]);
+        $b = $q->fetch(PDO::FETCH_ASSOC);
+        if (!$b) {
+            return false;
+        }
+        $price = booking_rental_price($b);
+        $paid = (float) ($b['deposit_paid'] ?? 0);
+        return ($price - $paid) > 0.5;
+    } catch (Throwable $e) {
+        return false;
+    }
+};
+
+// ---- 2c. Is a month-behind watcher STILL true? Nights sold in the watched month
+// against the SAME month a year earlier. Only speaks while it is genuinely behind,
+// so a month that recovered between setting the watcher and the telling day says
+// nothing — which is the whole point of re-checking rather than just remembering.
+$stillBehind = function ($from, $to) {
+    if ($from === '' || $to === '') {
+        return false;
+    }
+    try {
+        $nights = function ($a, $b) {
+            $q = db()->prepare(
+                'SELECT COALESCE(SUM(DATEDIFF(LEAST(check_out, ?), GREATEST(check_in, ?))), 0)
+                   FROM bookings WHERE check_in < ? AND check_out > ?'
+            );
+            $q->execute([$b, $a, $b, $a]);
+            return (int) $q->fetchColumn();
+        };
+        $now = $nights($from, $to);
+        $prevFrom = date('Y-m-d', strtotime($from . ' -1 year'));
+        $prevTo = date('Y-m-d', strtotime($to . ' -1 year'));
+        $then = $nights($prevFrom, $prevTo);
+        // Needs a real comparison to be worth an alert: last year must have had
+        // something to be behind OF.
+        return $then >= 4 && $now < $then;
+    } catch (Throwable $e) {
+        return false;
+    }
+};
+
 $sent = 0;
 $skipped = 0;
 foreach (watchers_due($list, $today) as $w) {
     $id = (string) ($w['id'] ?? '');
     $fire = false;
-    if (($w['kind'] ?? '') === 'gap-unsold') {
+    $kind = (string) ($w['kind'] ?? '');
+    if ($kind === 'gap-unsold') {
         $fire = $stillEmpty((string) ($w['pk'] ?? ''), (string) ($w['from'] ?? ''), (string) ($w['to'] ?? ''));
+    } elseif ($kind === 'balance-unpaid') {
+        $fire = $stillOwed((string) ($w['ref'] ?? ''));
+    } elseif ($kind === 'month-behind') {
+        $fire = $stillBehind((string) ($w['from'] ?? ''), (string) ($w['to'] ?? ''));
     }
     if (!$fire) {
         // Resolved itself, or we could not confirm. Either way the watcher is done
@@ -82,7 +141,8 @@ foreach (watchers_due($list, $today) as $w) {
     if ($say === '') {
         $say = $name . ' ' . uk_date((string) ($w['from'] ?? '')) . '–' . uk_date((string) ($w['to'] ?? '')) . ' is still free.';
     }
-    alert_owner('Still unsold', $say);
+    $title = $kind === 'balance-unpaid' ? 'Still unpaid' : ($kind === 'month-behind' ? 'Behind last year' : 'Still unsold');
+    alert_owner($title, $say);
     $sent++;
     // Mark spoken rather than deleting, so the record of what was asked survives
     // until its window passes and step 1 clears it.

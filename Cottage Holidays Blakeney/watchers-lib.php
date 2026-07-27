@@ -38,11 +38,16 @@ if (!function_exists('watchers_key')) {
             // identity, so merge() happily stored it.
             return '';
         }
+        // `ref` is what a non-date watcher is ABOUT — a booking id, a month key.
+        // Without it every 'balance-unpaid' watcher keyed to the same empty
+        // 'balance-unpaid|||' string, so asking about a second guest's balance
+        // would silently REPLACE the first one's watcher.
         return implode('|', [
             (string) ($w['kind'] ?? ''),
             (string) ($w['pk'] ?? ''),
             (string) ($w['from'] ?? ''),
             (string) ($w['to'] ?? ''),
+            (string) ($w['ref'] ?? ''),
         ]);
     }
 
