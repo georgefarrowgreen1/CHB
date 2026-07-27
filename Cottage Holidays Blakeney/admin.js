@@ -548,13 +548,105 @@ function chbSeasonSplice(existing, ov) {
 // and the weekend uplift already call it, and they join the stack with no edit.
 const CHB_UNDO_MAX = 8;
 let __chbUndo = [];
-function chbUndoPush(label, run) {
+// ============================================================
+//  DURABLE UNDO — a change search made yesterday is still reversible today.
+//
+//  The stack above is session-only, so closing the pop-out forgot everything: a
+//  price override applied on Tuesday could only be undone by remembering it and
+//  going to Rates by hand.
+//
+//  The constraint that shapes this: an entry holds a CLOSURE, and a closure cannot
+//  be serialised. So a durable entry stores a DESCRIPTOR — { kind, payload } — and
+//  the reversal is rebuilt from a registry at read time. A caller opting in supplies
+//  the descriptor alongside the closure it already passes; one without a descriptor
+//  behaves exactly as before, which is the same opt-in discipline the inline actions
+//  use.
+//
+//  Stored under the INTERNAL content key `search-undo` (classified in db.php, so
+//  test-content-keys enforces it), through saveContent + siteContent — the admin
+//  content GET already serves internal keys, so this needs no new endpoint.
+//
+//  And the rule watchers taught: REVERSING IS RE-CHECKED. A stored undo verifies
+//  that what it is about to put back is still what is there, so it can never quietly
+//  overwrite a change made since. Unknown beats wrong.
+// ============================================================
+const CHB_UNDO_KEY = 'search-undo';
+const CHB_UNDO_DAYS = 30;
+const CHB_UNDO_REPLAY = {
+    // A dated couple-rate override. The payload carries the seasons list as it was,
+    // and the one we added — so the re-check can ask "is my override still there?"
+    // before putting the old list back.
+    seasons: {
+        stale: (p) => {
+            const now = (propertySeasons[p.pk] || []).map((x) => ({ start: x.start_date, end: x.end_date, rate: parseFloat(x.couple_rate) || 0 }));
+            return !now.some((x) => x.start === p.mine.start && x.end === p.mine.end && Math.abs(x.rate - p.mine.rate) < 0.005);
+        },
+        run: async (p) => {
+            await apiPost('rates.php', { action: 'seasons_save', prop_key: p.pk, seasons: p.prev });
+            propertySeasons[p.pk] = p.prev.map((x) => ({ label: x.label, start_date: x.start, end_date: x.end, couple_rate: x.rate }));
+            try { renderCardPrices(); updatePropPriceHeading(); } catch (e) { chbSwallow(e, 'undo-repaint'); }
+        },
+    },
+};
+function chbUndoStored() {
+    const raw = (typeof siteContent === 'object' && siteContent && siteContent[CHB_UNDO_KEY]) || [];
+    if (!Array.isArray(raw)) return [];
+    const floor = Date.now() - CHB_UNDO_DAYS * 864e5;
+    return raw.filter((e) => e && e.kind && CHB_UNDO_REPLAY[e.kind] && +e.at > floor);
+}
+async function chbUndoStore(list) {
+    try {
+        await saveContent(CHB_UNDO_KEY, list);
+        if (typeof siteContent === 'object' && siteContent) siteContent[CHB_UNDO_KEY] = list;
+    } catch (e) { chbSwallow(e, 'undo-store'); }
+}
+// A stored entry, rebuilt into something the undo command can run. Its `run` does
+// the re-check first and REFUSES rather than clobbering.
+function chbUndoRehydrate(e) {
+    const reg = CHB_UNDO_REPLAY[e.kind];
+    return {
+        label: e.label,
+        at: +e.at,
+        durable: true,
+        run: async () => {
+            if (reg.stale && reg.stale(e.payload)) {
+                throw new Error('that has changed since — nothing was reversed');
+            }
+            await reg.run(e.payload);
+            await chbUndoStore(chbUndoStored().filter((x) => x.id !== e.id));
+        },
+    };
+}
+function chbUndoPush(label, run, spec) {
     if (typeof run !== 'function') return;
-    __chbUndo.unshift({ label, run, at: Date.now() });
+    // OPT-IN: only a caller that supplies a serialisable descriptor becomes durable.
+    let id = null;
+    if (spec && spec.kind && CHB_UNDO_REPLAY[spec.kind]) {
+        id = 'u' + Date.now().toString(36) + Math.floor(Math.random() * 1e4).toString(36);
+        chbUndoStore([{ id, kind: spec.kind, payload: spec.payload, label, at: Date.now() }].concat(chbUndoStored()).slice(0, CHB_UNDO_MAX));
+    }
+    // The in-memory entry carries the STORED id, so undoing it in this session also
+    // retires its durable twin. Without that link the same change stayed on offer
+    // after being reversed — safe (the staleness re-check refuses it) but a dead row
+    // the owner would reasonably read as "not undone yet".
+    __chbUndo.unshift({ label, run, at: Date.now(), id });
     __chbUndo = __chbUndo.slice(0, CHB_UNDO_MAX);
 }
-function chbUndoRecord(label, run) { chbUndoPush(label, run); }
-function chbUndoList() { return __chbUndo.slice(); }
+// Retire a stored entry by id — used when its session twin is the one undone.
+function chbUndoForget(id) {
+    if (!id) return;
+    const left = chbUndoStored().filter((x) => x.id !== id);
+    chbUndoStore(left);
+}
+function chbUndoRecord(label, run, spec) { chbUndoPush(label, run, spec); }
+// Session entries first (they are the most recent by definition), then anything
+// stored from an earlier session that this session has not already got in memory.
+function chbUndoList() {
+    const mem = __chbUndo.slice();
+    const seenId = new Set(mem.map((x) => x.id).filter(Boolean));
+    const seenLabel = new Set(mem.map((x) => x.label));
+    return mem.concat(chbUndoStored().filter((e) => !seenId.has(e.id) && !seenLabel.has(e.label)).map(chbUndoRehydrate));
+}
 // Save a dated couple-rate override (a rate_seasons row) — the landing for the
 // price command and the gap offers. Splices, saves through the existing
 // validated endpoint, updates local state and repaints the public prices.
@@ -570,10 +662,14 @@ async function cmdkApplyPriceOverride(propKey, start, endIncl, rate, label) {
     };
     await put(next);
     const nm = (propertyMeta[propKey] || {}).name || propKey;
+    // DURABLE: the descriptor carries the list as it was AND the override we added,
+    // so a reversal tomorrow can check its own change is still there before putting
+    // the old prices back. The closure stays for this session — identical behaviour —
+    // and the descriptor is what survives it.
     chbUndoRecord(`£${rate}/night ${fmtDate(start)}–${fmtDate(endIncl)} on ${nm}`, async () => {
         await put(prev);
         try { toast(`Undone — ${nm}'s prices are back as they were.`); } catch (e) {}
-    });
+    }, { kind: 'seasons', payload: { pk: propKey, prev, mine: { start, end: endIncl, rate } } });
     try { toast(`Price set — £${rate}/night ${fmtDate(start)}–${fmtDate(endIncl)} on ${nm}. Type "undo" to reverse.`); } catch (e) {}
 }
 // The current season-aware couple rate for a night (what an override replaces).
@@ -803,29 +899,35 @@ function cmdkCommand(q, today) {
         }));
     }
     if (/^undo( that| last| the last)?( change)?[.!]?$/.test(q.trim())) {
-        if (__chbUndo.length) {
-            const u = __chbUndo[0];
-            const more = __chbUndo.length - 1;
+        // The COMBINED list: this session's changes plus anything still reversible
+        // from an earlier one. Reading __chbUndo directly is what made "Nothing to
+        // undo" a lie the moment the pop-out had been closed.
+        const all = chbUndoList();
+        if (all.length) {
+            const u = all[0];
+            const more = all.length - 1;
             // NB cmd() already returns a one-row ARRAY — wrapping it in another
             // array nests it and the caller sees no rows at all.
             const rows = cmd(`Undo — ${u.label}`, more ? `Puts it back · ${more} more step${more === 1 ? '' : 's'} behind it` : 'Puts things back exactly as they were', () => {
                 closeCmdK();
-                __chbUndo.shift();
+                // A session entry leaves the in-memory stack; a durable one removes
+                // itself in its own run() once the reversal has actually landed.
+                if (!u.durable) { __chbUndo.shift(); chbUndoForget(u.id); }
                 // Failure puts it BACK on the stack — an undo that silently
                 // vanished after failing would leave you unable to retry it.
-                u.run().catch((e) => { __chbUndo.unshift(u); glassAlert("Couldn't undo: " + e.message); });
+                u.run().catch((e) => { if (!u.durable) __chbUndo.unshift(u); glassAlert("Couldn't undo: " + e.message); });
             });
             // The rest of the session's changes, so "what have I just done" is a
             // question search can answer rather than one you have to remember.
-            __chbUndo.slice(1).forEach((x, i) => rows.push({ type: 'answer', id: 'undo-' + i, label: x.label, sub: `${timeAgoLabel(new Date(x.at).toISOString())} · tap to undo this one`, run: () => {
+            all.slice(1).forEach((x, i) => rows.push({ type: 'answer', id: 'undo-' + i, label: x.label, sub: `${timeAgoLabel(new Date(x.at).toISOString())} · tap to undo this one`, run: () => {
                 closeCmdK();
                 const at = __chbUndo.indexOf(x);
-                if (at > -1) __chbUndo.splice(at, 1);
-                x.run().catch((e) => { __chbUndo.splice(at, 0, x); glassAlert("Couldn't undo: " + e.message); });
+                if (!x.durable && at > -1) { __chbUndo.splice(at, 1); chbUndoForget(x.id); }
+                x.run().catch((e) => { if (!x.durable && at > -1) __chbUndo.splice(at, 0, x); glassAlert("Couldn't undo: " + e.message); });
             } }));
             return rows;
         }
-        return cmd('Nothing to undo', "Search hasn't saved any changes this session", () => { closeCmdK(); });
+        return cmd('Nothing to undo', "Search hasn't made any reversible changes", () => { closeCmdK(); });
     }
     // PRICING SUGGESTIONS — "should i change my prices", "pricing suggestions":
     // instant dated ideas from the gap scan (each a one-tap Apply that saves a
@@ -6865,12 +6967,10 @@ function cmdkBrief() {
 function cmdkBriefBuild() {
     const items = [];
     const today = todayDashed();
-    let ins = 0, outs = 0, owed = 0, owers = 0, depN = 0;
+    let ins = 0, outs = 0;
     Object.keys(dbBookings || {}).forEach((k) => (dbBookings[k] || []).forEach((b) => {
         if (b.checkIn === today) ins++;
         if (b.checkOut === today) outs++;
-        try { const ps = paymentSummary(k, b); if (!ps.fullyPaid && ps.balance > 0.5) { owed += ps.balance; owers++; } } catch (e) {}
-        if ((b.holdStatus || 'none') === 'charged' && hasCheckedOut(b)) depN++;
     }));
     // Only genuine OTA guest stays count as arrivals/departures — an owner
     // maintenance block is not a guest (same isOtaBlock rule as the pulse,
@@ -6900,10 +7000,26 @@ function cmdkBriefBuild() {
         items.push({ type: 'answer', scope: 'bookings', id: 'brief-arr-' + b.id, board: 'today', label: `${chbSayFirst(b.name)} arrives today${b.checkInTime ? ' · ' + b.checkInTime : ''}`, sub: bits.join(' · '), run: () => { closeCmdK(); openBookingHub(b.id); } });
     });
     if (arrToday.length > 2 || outs) items.push({ type: 'figure', scope: 'bookings', id: 'brief-today', board: 'today', label: `Today · ${ins} in · ${outs} out`, sub: 'Arrivals & departures', run: () => { closeCmdK(); tryAccessBackOffice(); } });
-    if (owers) items.push({ type: 'answer', scope: 'money', id: 'brief-money', board: 'money', label: `${gbp(owed)} to collect`, sub: `${owers} balance${owers === 1 ? '' : 's'} outstanding — tap to chase`, run: () => { closeCmdK(); Promise.resolve(openBookings()).then(() => bookingsSetFilter('needspay')); } });
-    const enq = Array.isArray(enquiries) ? enquiries.length : 0;
-    if (enq) items.push({ type: 'answer', scope: 'inbox', id: 'brief-enq', board: 'waiting', label: `${enq} enquir${enq === 1 ? 'y' : 'ies'} waiting`, sub: 'Reply to win the booking', run: () => { closeCmdK(); openInbox(); } });
-    if (depN) items.push({ type: 'answer', scope: 'money', id: 'brief-dep', board: 'money', label: `${depN} deposit${depN === 1 ? '' : 's'} to return`, sub: 'Guests have checked out', run: () => { closeCmdK(); openBookings(); } });
+    // DUTIES come from chbDuties() — the SAME decision the Today strip renders, so
+    // the two surfaces cannot rank the same evening differently any more. What this
+    // replaced was three rows computed here with their own rules: a plain COUNT of
+    // enquiries (no age, no escalation) and a TOTAL across everyone who owed
+    // whenever they arrived, which is where the pop-out's £955 came from against
+    // Today's £440. Each duty declares its own board and scope, so the boards
+    // machinery is untouched. `opp: false` marks them as things that need you, which
+    // is what renderNeedsYou's heading already keys off.
+    let duties = [];
+    try { duties = chbDuties(); } catch (e) { chbSwallow(e, 'brief-duties'); }
+    duties.slice(0, 4).forEach((d, i) => items.push({
+        type: 'answer', scope: d.scope, id: 'brief-duty-' + i, board: d.board,
+        label: d.label, sub: d.sub, run: d.run,
+    }));
+    // Money owed but NOT yet due keeps its place without shouting: one quiet line
+    // rather than being folded into a headline figure that then disagreed with Today.
+    try {
+        const later = chbOwedLater();
+        if (later.n) items.push({ type: 'answer', scope: 'money', id: 'brief-later', board: 'money', label: `${gbp(later.total)} more owed, none due yet`, sub: `${later.n} booking${later.n === 1 ? '' : 's'} arriving in over three weeks`, run: () => { closeCmdK(); Promise.resolve(openBookings()).then(() => bookingsSetFilter('needspay')); } });
+    } catch (e) { chbSwallow(e, 'brief-later'); }
     // Proactive monthly pulse — how the month's shaping up vs last, unasked.
     try {
         const pulse = chbBusinessPulse();
@@ -13363,19 +13479,41 @@ function renderPricing() {
             <button type="button" class="btn-sm btn-edit" data-act="openPricingCoach">Open the pricing coach →</button>
         </section>`;
 }
-function needsYouItems() {
-    const items = [];
+// ============================================================
+//  chbDuties — ONE decision about what needs the owner, in PLAIN TEXT.
+//
+//  There used to be two. needsYouItems() built the Today strip and cmdkBriefBuild()
+//  built the search pop-out's landing, from the same bookings and enquiries but with
+//  DIFFERENT rules — so the same evening read two ways. Today aged enquiries and
+//  escalated them to red at two days; the brief showed a plain count. Today chased
+//  balances only within 21 days of arrival (or already overdue); the brief totalled
+//  everyone who owed, whenever they arrived. Measured on one fixture: £440 on Today
+//  against £955 in the pop-out, both correct under their own rule and neither
+//  explaining itself. Worse, every new signal had to be taught to both.
+//
+//  Today's rules win — they are the considered ones. This function owns them, and
+//  the two surfaces became FORMATTERS.
+//
+//  It returns PLAIN text on purpose. needsYouItems renders through innerHTML and so
+//  escaped as it composed (`${escapeHtml(q.name)}&rsquo;s enquiry`), which is
+//  exactly why the brief could not just consume its output: a guest called
+//  "O'Brien" would have arrived pre-escaped in a context that escapes again. Escaping
+//  belongs at the render boundary, and now happens there.
+// ============================================================
+function chbDuties() {
+    const out = [];
     const today = todayDashed();
     const dayMs = 86400e3;
     const t0 = dpParse(today).getTime();
-    const propName = (k) => escapeHtml((propertyMeta[k] || {}).name || k);
+    const pname = (k) => (propertyMeta[k] || {}).name || k;
     // 1) The daily automation has gone quiet — everything else depends on it.
     if (__nyCronQuiet) {
-        items.push({
-            sev: 'danger', ic: 'alert',
+        out.push({
+            kind: 'cron', sev: 'danger', ic: 'alert',
             label: 'Your daily automation looks stopped',
             sub: 'Reminders, backups and calendar syncs are not running',
             act: 'Check', go: 'data-act="navDiagnostics"',
+            board: 'today', scope: 'bookings',
             run: () => { closeCmdK(); nav('view-settings'); settingsOpen('diagnostics'); },
         });
     }
@@ -13388,11 +13526,12 @@ function needsYouItems() {
                 ? Math.max(0, Math.floor((Date.now() - new Date(q.receivedAt.replace(' ', 'T')).getTime()) / dayMs))
                 : 0;
             const age = ageDays <= 0 ? 'new today' : ageDays === 1 ? 'waiting a day' : `waiting ${ageDays} days`;
-            items.push({
-                sev: ageDays >= 2 ? 'danger' : 'warn', ic: 'enquiry',
-                label: `${escapeHtml(q.name || 'A guest')}&rsquo;s enquiry — ${age}`,
-                sub: `${fmtStayRange(q.checkIn, q.checkOut)} · ${propName(q.propKey)}`,
+            out.push({
+                kind: 'enquiry', sev: ageDays >= 2 ? 'danger' : 'warn', ic: 'enquiry',
+                label: `${q.name || 'A guest'}’s enquiry — ${age}`,
+                sub: `${fmtStayRange(q.checkIn, q.checkOut)} · ${pname(q.propKey)}`,
                 act: 'Answer', go: chbAttrs('openEnquiryHub', String(q.id)),
+                board: 'waiting', scope: 'inbox',
                 run: () => { closeCmdK(); openEnquiryHub(q.id); },
             });
         });
@@ -13405,11 +13544,12 @@ function needsYouItems() {
             // is still IN the cottage until the checkout time — don't nudge a
             // refund before they've left (and before any damage inspection).
             if ((b.holdStatus || 'none') === 'charged' && hasCheckedOut(b)) {
-                items.push({
-                    sev: 'warn', ic: 'deposit',
-                    label: `Return ${escapeHtml(b.name || 'the guest')}&rsquo;s damages deposit`,
-                    sub: `Checked out ${fmtDate(b.checkOut)} · ${propName(k)}`,
+                out.push({
+                    kind: 'deposit', sev: 'warn', ic: 'deposit',
+                    label: `Return ${b.name || 'the guest'}’s damages deposit`,
+                    sub: `Checked out ${fmtDate(b.checkOut)} · ${pname(k)}`,
                     act: 'Review', go: chbAttrs('openBookingHub', String(b.id)),
+                    board: 'money', scope: 'money',
                     run: () => { closeCmdK(); openBookingHub(b.id); },
                 });
             }
@@ -13430,21 +13570,23 @@ function needsYouItems() {
         .forEach(({ days, b, k, ps }) => {
             const gone = (b.checkOut || '') < today;
             const when = days === 0 ? 'arrives today' : days === 1 ? 'arrives tomorrow' : days > 1 ? `arrives in ${days} days` : gone ? `left ${fmtDate(b.checkOut)} — overdue` : 'is here now — overdue';
-            items.push({
-                sev: days <= 7 ? 'danger' : 'warn', ic: 'money',
-                label: `${escapeHtml(b.name || 'A guest')} ${when} — ${gbp(ps.balance)} to collect`,
-                sub: `${fmtStayRange(b.checkIn, b.checkOut)} · ${propName(k)}`,
+            out.push({
+                kind: 'balance', sev: days <= 7 ? 'danger' : 'warn', ic: 'money',
+                label: `${b.name || 'A guest'} ${when} — ${gbp(ps.balance)} to collect`,
+                sub: `${fmtStayRange(b.checkIn, b.checkOut)} · ${pname(k)}`,
                 act: 'Chase', go: chbAttrs('openBookingHub', String(b.id)),
+                board: 'money', scope: 'money',
                 run: () => { closeCmdK(); openBookingHub(b.id); },
             });
         });
     // 5) Guest chats waiting on a reply.
     if (__nyChats > 0) {
-        items.push({
-            sev: 'warn', ic: 'chat',
+        out.push({
+            kind: 'chat', sev: 'warn', ic: 'chat',
             label: __nyChats === 1 ? 'A guest chat needs a reply' : `${__nyChats} guest chats need a reply`,
             sub: 'Website chat · Inbox → Messages',
             act: 'Reply', go: 'data-act="openInboxMessages"',
+            board: 'waiting', scope: 'inbox',
             run: () => { closeCmdK(); Promise.resolve(openInbox()).then(() => inboxFolder('messages')); },
         });
     }
@@ -13456,19 +13598,48 @@ function needsYouItems() {
     ].forEach(([key, noun, section]) => {
         const n = __nyMod[key] || 0;
         if (n > 0) {
-            items.push({
-                sev: 'ok', ic: 'approve',
+            out.push({
+                kind: 'approve', sev: 'ok', ic: 'approve',
                 label: n === 1 ? `A ${noun} to approve` : `${n} ${noun}s to approve`,
                 sub: 'Guests see it once you approve',
                 act: 'Approve', go: `data-act="navSettingsSection" data-arg="${section}"`,
+                board: 'waiting', scope: 'inbox',
                 run: () => { closeCmdK(); nav('view-settings'); settingsOpen(section); },
             });
         }
     });
-    // Pricing OPPORTUNITIES (gap offers, pacing) used to ride here at the bottom;
-    // they now live on their own Manage → Pricing page (renderPricing), so the Today
-    // strip stays about things that genuinely NEED the owner (duties), not ideas.
-    return items;
+    return out;
+}
+// Money owed that is NOT yet a duty — outside the 21-day window Today chases in.
+// The pop-out used to total this in with everything else, which is where its £955
+// came from against Today's £440. It does not vanish now, it stops shouting: one
+// quiet line saying what is owed but not yet due.
+function chbOwedLater() {
+    const today = todayDashed();
+    const t0 = dpParse(today).getTime();
+    let total = 0, n = 0;
+    try {
+        Object.keys(dbBookings || {}).forEach((k) =>
+            (dbBookings[k] || []).forEach((b) => {
+                const ps = paymentSummary(k, b);
+                if (ps.fullyPaid || !(ps.balance > 0.5) || !b.checkIn) return;
+                const days = Math.round((dpParse(b.checkIn).getTime() - t0) / 86400e3);
+                if (days > 21) { total += ps.balance; n++; }
+            }),
+        );
+    } catch (e) { chbSwallow(e, 'owed-later'); }
+    return { total, n };
+}
+// The Today strip's FORMATTER. Escaping happens here, at the render boundary,
+// because this list is written with innerHTML.
+function needsYouItems() {
+    let duties = [];
+    try { duties = chbDuties(); } catch (e) { chbSwallow(e, 'duties'); }
+    return duties.map((d) => ({
+        sev: d.sev, ic: d.ic, act: d.act, go: d.go, run: d.run,
+        label: escapeHtml(d.label),
+        sub: escapeHtml(d.sub),
+    }));
 }
 function needsYouExpand() {
     __nyExpanded = true;
