@@ -409,6 +409,16 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       hero: !!hero,
       heroIsOption: !!(hero && /^cmdk-opt-\d+$/.test(hero.id) && hero.getAttribute('role') === 'option'),
       heroFig: (document.querySelector('#cmdk .cmdk-hero-fig') || {}).textContent || '',
+      // The figure is emphasised by WEIGHT, at the sentence's own size. It used to be
+      // 1.7em, which made "£290.00" tower over the words either side of it so the
+      // answer stopped reading as a sentence.
+      // Scoped to the LIVE hero: the thread renders its own .cmdk-hero-fig ABOVE it
+      // (cmdkThreadHtml reuses cmdkHeroFigure), so a document-wide query measures
+      // history instead of the answer — which is exactly what this check first did.
+      figSize: (() => { const f = document.querySelector('#cmdk .cmdk-hero .cmdk-hero-fig'); return f ? getComputedStyle(f).fontSize : ''; })(),
+      labSize: (() => { const l = document.querySelector('#cmdk .cmdk-hero-label'); return l ? getComputedStyle(l).fontSize : ''; })(),
+      figWeight: (() => { const f = document.querySelector('#cmdk .cmdk-hero .cmdk-hero-fig'); return f ? +getComputedStyle(f).fontWeight : 0; })(),
+      labWeight: (() => { const l = document.querySelector('#cmdk .cmdk-hero-label'); return l ? +getComputedStyle(l).fontWeight : 0; })(),
       cap: (document.querySelector('#cmdk .cmdk-group-label') || {}).textContent || '',
       turns: document.querySelectorAll('#cmdk .cmdk-turn').length,
       turnQ: (document.querySelector('#cmdk .cmdk-turn-q') || {}).textContent || '',
@@ -417,6 +427,8 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(chain.hero, 'ANSWER: an answered query renders the hero, not an ordinary row');
   ok(chain.heroIsOption, 'ANSWER: the hero is still a role=option at its own index (keyboard + run intact)');
   ok(/£/.test(chain.heroFig), `ANSWER: the figure inside the sentence is emphasised (${chain.heroFig})`);
+  ok(chain.figSize === chain.labSize, `ANSWER: at the SENTENCE'S size, not towering over it (figure ${chain.figSize} vs sentence ${chain.labSize})`);
+  ok(chain.figWeight > chain.labWeight, `ANSWER: emphasised by weight instead (${chain.figWeight} vs ${chain.labWeight})`);
   ok(/answer/i.test(chain.cap), `ANSWER: the caption names it an answer, not a ranking (${chain.cap})`);
   ok(chain.turns >= 1, `THREAD: the earlier answered turn is kept on screen (${chain.turns})`);
   ok(/owes/.test(chain.turnQ), `THREAD: and it names the question that produced it (${chain.turnQ})`);

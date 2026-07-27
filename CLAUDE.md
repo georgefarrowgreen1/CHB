@@ -506,7 +506,18 @@ would break arrow-key nav in total silence).
   says "Answer", not "Top hit" (which describes the ranking, not the reply). The
   figure is emphasised **INSIDE** the sentence by one span: printing it above would
   repeat it, and deleting it from the sentence leaves "owed across 2 guests" —
-  grammatical debris — so `chbSay`'s wording survives untouched. A hero is captioned
+  grammatical debris — so `chbSay`'s wording survives untouched. That emphasis is
+  **WEIGHT, at the sentence's own size** (`.cmdk-hero-fig`, 700 against the label's
+  600, plus tabular figures). It was `1.7em`/`1.5em`, which made "£290.00" tower
+  over the words either side and stopped the answer reading as a sentence at all;
+  the `line-height: 1`, `vertical-align: baseline` and tightened letter-spacing that
+  sat with it existed ONLY to manage the oversized text and went with it, as did the
+  `font-size: 1em` in `.cmdk-turn-a .cmdk-hero-fig`, whose whole job was undoing the
+  hero's size so history didn't shout louder than the answer. Gated in
+  ui-test-searchpage §11 — and NB that gate must query `.cmdk-hero .cmdk-hero-fig`,
+  not `.cmdk-hero-fig`: the THREAD renders its own copy (it reuses `cmdkHeroFigure`)
+  ABOVE the live answer, so a document-wide query measures history instead, which is
+  exactly what the first version of the check did. A hero is captioned
   even on a short list, where group labels are otherwise suppressed, because an
   uncaptioned hero reads as a stray sentence. It is still a `role="option"`
   `.cmdk-row` at its own index.
