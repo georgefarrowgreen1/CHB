@@ -3533,6 +3533,17 @@ body.cmdk-open {
   .cmdk-hero-label { font-size: 1.06rem; }
   .cmdk-hero-fig { font-size: 1.5em; }
 }
+/* The hero's tail — its bulk action and its refine chips (cmdkRowExtrasHtml, shared
+   with every other row). The 54px indent that hangs a normal row's panel under its
+   LABEL is wrong here: the hero has no icon column, so the same inset reads as a
+   stray gap instead of an alignment. */
+.cmdk-row.cmdk-hero + .cmdk-qa {
+  margin-left: 12px; /* the panel is inset by margin */
+}
+.cmdk-row.cmdk-hero + .cmdk-qa + .cmdk-chips,
+.cmdk-row.cmdk-hero + .cmdk-chips {
+  padding-left: 12px; /* the chip row is inset by padding */
+}
 
 /* ============================================================
    THREAD — earlier answered turns, above the live answer (cmdkThreadHtml).
@@ -3707,6 +3718,12 @@ body.cmdk-open {
     gap: 8px;
     padding: 8px;
   }
+  /* A row with ONE action (the owed-money answer's "Request all 3 balances") would
+     otherwise sit in a half-width cell with the other half empty, reading as a
+     minor option beside nothing. It is the primary thing on that screen. */
+  .cmdk-qa-row:only-child {
+    grid-column: 1 / -1;
+  }
   .cmdk-qa-go,
   .cmdk-qa-ic {
     display: none;
@@ -3736,6 +3753,12 @@ body.cmdk-open {
 .cmdk-actmsg.is-ok {
   background: color-mix(in srgb, var(--ok) 15%, transparent);
   color: var(--ok-text);
+}
+/* PARTIAL — "Sent 2 of 3 — Cara Bell has no email address". Its own state, because
+   a partial success under the green tick is the colour contradicting the words. */
+.cmdk-actmsg.is-warn {
+  background: color-mix(in srgb, var(--warn) 15%, transparent);
+  color: var(--warn-text);
 }
 .cmdk-actmsg.is-err {
   background: color-mix(in srgb, var(--danger) 15%, transparent);

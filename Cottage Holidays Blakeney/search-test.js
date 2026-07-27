@@ -1914,6 +1914,103 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);enquiries=[];', ctx);
     } else fail('chbSmartPrice / chbPriceModel missing from the bundle');
 
+    // ---- §38 BULK — chase them all, in one tap ----
+    // The money answer already holds the set, so the set-level action rides on the
+    // answer instead of a selection model. What this pins is the JUDGEMENT, since
+    // the sending itself is one apiPost per guest: what may go over a set at all,
+    // what the confirm tells you before money moves, and whether a half-failed
+    // batch reports honestly. Every "it refuses" case here break-tests on its own.
+    console.log('\n== §38 Bulk actions ==');
+    if (typeof ctx.chbBulkRun === 'function' && typeof ctx.chbBulkBalanceAction === 'function') {
+        // A) THE GUARDRAIL is the builder, not a check at each call site.
+        check('only reversible/communicative keys may go over a SET', ctx.chbBulkAction('balance', { k: 1 }) !== null && ctx.chbBulkAction('email', { k: 1 }) !== null, 'balance + email allowed');
+        check('a deposit RETURN can never be built as a bulk action', ctx.chbBulkAction('deposit', { k: 1 }) === null);
+        check('nor a refund, a delete or an unknown key', ctx.chbBulkAction('refund', {}) === null && ctx.chbBulkAction('record', {}) === null && ctx.chbBulkAction('', {}) === null);
+
+        // B) THE SET. Rows are the composer's own {pk, b, ps} — nothing new computed.
+        const bRow = (id, name, email, bal, dep) => ({ pk: 'jollyboat', b: { id, dbId: id, name, email }, ps: { balance: bal, deposit: dep == null ? 100 : dep, fullyPaid: false } });
+        const three = [bRow(1, 'Richard Berry', 'rb@x.co', 440), bRow(2, 'Alexandrina Featherstonehaugh-Smythe', 'af@x.co', 420), bRow(3, 'Cara Bell', '', 95)];
+        const act = ctx.chbBulkBalanceAction(three);
+        check('the answer carries one set-level action', !!act && act.key === 'balance-all', act && act.key);
+        check('labelled with the count it will chase', /Request all 3 balances/.test((act && act.label) || ''), act && act.label);
+        check('and it keeps a non-inline fallback like every other action', typeof act.run === 'function' && typeof act.inline === 'function');
+        check('a single ower gets NO bulk action — that is just the row\'s own action', ctx.chbBulkBalanceAction([three[0]]) === null);
+        check('nor does a set whose balances are settled', ctx.chbBulkBalanceAction([{ pk: 'jollyboat', b: { id: 9, dbId: 9, name: 'Paid Up', email: 'p@x.co' }, ps: { balance: 0, deposit: 500, fullyPaid: true } }]) === null);
+
+        // C) THE SKIP is decided BEFORE the confirm, so the dialog can be honest
+        // about it rather than reporting a surprise afterwards.
+        const split = ctx.chbBulkSplit(three);
+        check('a guest with no email is SKIPPED and kept, not dropped silently', split.send.length === 2 && split.skip.length === 1 && split.skip[0].b.name === 'Cara Bell', `send ${split.send.length} skip ${split.skip.length}`);
+
+        // D) THE CONFIRM names every recipient, every amount and every skip, and its
+        // BUTTON counts what will actually send. A "Send 3" over a list containing a
+        // skipped guest would be a lie in the label.
+        let dlg = null;
+        ctx.glassConfirm = (msg, okLabel) => { dlg = { msg, okLabel }; return Promise.resolve(true); };
+        ctx.glassAlert = (msg) => { dlg = { alert: msg }; return Promise.resolve(true); };
+        await ctx.chbBulkConfirm(three);
+        check('the confirm names EVERY recipient', /Richard Berry/.test(dlg.msg) && /Alexandrina/.test(dlg.msg) && /Cara Bell/.test(dlg.msg));
+        check('with each amount beside them', /£440/.test(dlg.msg) && /£420/.test(dlg.msg) && /£95/.test(dlg.msg));
+        check('says the skip out loud, before anything is sent', /Cara Bell[^\n]*no email address, will be skipped/.test(dlg.msg), dlg.msg.split('\n').filter((l) => /Cara/.test(l))[0]);
+        check('totals only what will be chased (£860, not £955)', /Total to chase: £860/.test(dlg.msg), dlg.msg.split('\n').filter((l) => /Total/.test(l))[0]);
+        check('and the BUTTON states the real count — 2, not 3', dlg.okLabel === 'Send 2 requests', dlg.okLabel);
+        // With nobody emailable there is nothing to confirm — an alert that names who
+        // to fix beats a confirm whose button would send zero.
+        dlg = null;
+        const noneOut = await ctx.chbBulkConfirm([bRow(4, 'No Address', '', 100), bRow(5, 'Also None', '', 50)]);
+        check('no emailable guest at all → it refuses and names who to fix', noneOut === false && /No email addresses/.test(dlg.alert || '') && /No Address and Also None/.test(dlg.alert || ''), dlg.alert);
+
+        // E) SENDING. Serial through the SAME validated endpoint the single-record
+        // action reaches — what bulk drops is the preview, never the server rules.
+        const posts = [];
+        const realPost = ctx.apiPost;
+        ctx.apiPost = async (url, body) => { posts.push({ url, body }); if (body && body.id === 2 && ctx.__bulkFailTwo) throw new Error('SMTP refused'); return { ok: true, amount: 100 }; };
+        let out = await ctx.chbBulkRun(three);
+        check('one request per emailable guest, none for the skipped one', posts.length === 2 && posts.every((p) => /bookings\.php/.test(p.url) && p.body.action === 'request_payment'), `${posts.length} posts`);
+        check('through the request_payment endpoint with the right ids', posts.map((p) => p.body.id).join(',') === '1,2', posts.map((p) => p.body.id).join(','));
+        check('a PARTIAL send gets the warn state, not a green tick', out.state === 'warn', out.state || '(ok)');
+        check('and NAMES who was missed', /Sent 2 of 3/.test(out.say) && /Cara Bell has no email address/.test(out.say), out.say);
+        check('a partial is never undoable — an email cannot be unsent', !out.undo);
+
+        // All three emailable → the plain success, with the figure it chased.
+        posts.length = 0;
+        const allThree = [bRow(1, 'Richard Berry', 'rb@x.co', 440), bRow(2, 'Cara Bell', 'cb@x.co', 420)];
+        out = await ctx.chbBulkRun(allThree);
+        check('everyone reachable → a plain success naming the total chased', !out.state && /2 balance requests sent/.test(out.say) && /£860/.test(out.say), out.say);
+        check('and even a full success offers no undo', !out.undo);
+
+        // A SERVER failure is a miss too, and reads differently from a missing address.
+        posts.length = 0;
+        ctx.__bulkFailTwo = true;
+        out = await ctx.chbBulkRun(allThree);
+        check('a send that FAILS is reported as a miss, by name', out.state === 'warn' && /Sent 1 of 2/.test(out.say) && /couldn't reach Cara Bell/.test(out.say), out.say);
+
+        // NOTHING sent is an ERROR, not a quiet partial — it throws so the strip is red.
+        posts.length = 0;
+        let threw = '';
+        try { await ctx.chbBulkRun([bRow(2, 'Cara Bell', 'cb@x.co', 420)]); } catch (e) { threw = e.message; }
+        check('a total failure THROWS so it lands on the error strip', /Couldn't send any/.test(threw) && /couldn't reach Cara Bell/.test(threw), threw);
+        ctx.__bulkFailTwo = false;
+
+        // F) BACKING OUT claims nothing: the inline runner returns null, which is
+        // cmdkAct's "nothing happened" signal — no strip, no undo entry.
+        ctx.glassConfirm = () => Promise.resolve(false);
+        posts.length = 0;
+        const cancelled = await act.inline();
+        check('cancelling the confirm sends NOTHING and claims nothing', cancelled === null && posts.length === 0, `${posts.length} posts`);
+        ctx.apiPost = realPost;
+
+        // G) It is wired to the real answer, not just available in the bundle.
+        vm.runInContext(`Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);Object.keys(dbBlocks).forEach(k=>dbBlocks[k]=[]);
+            dbBookings.jollyboat=[
+              {id:901,name:'Richard Berry',email:'rb@x.co',checkIn:'${ctx.todayDashed().slice(0, 4) + 1}-08-01',checkOut:'${ctx.todayDashed().slice(0, 4) + 1}-08-05',adults:2,children:0,payment:'deposit',depositPaid:200,agreedPrice:{total:640,perNight:620,nights:4,txnFee:20}},
+              {id:902,name:'Cara Bell',email:'cb@x.co',checkIn:'${ctx.todayDashed().slice(0, 4) + 1}-08-10',checkOut:'${ctx.todayDashed().slice(0, 4) + 1}-08-13',adults:2,children:0,payment:'deposit',depositPaid:100,agreedPrice:{total:495,perNight:480,nights:3,txnFee:15}}];`, ctx);
+        const owedRows = ctx.cmdkIntent('who owes me money') || [];
+        const owedHead = owedRows[0];
+        check('the live "who owes me money" answer carries the bulk action', !!(owedHead && Array.isArray(owedHead.actions) && owedHead.actions.some((a) => a.key === 'balance-all')), owedHead && JSON.stringify((owedHead.actions || []).map((a) => a.key)));
+        vm.runInContext('Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);', ctx);
+    } else fail('chbBulkRun / chbBulkBalanceAction missing from the bundle');
+
     // ---- Summary ----
     console.log('\n== Summary ==');
     if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }

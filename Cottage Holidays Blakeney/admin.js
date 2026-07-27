@@ -1195,6 +1195,136 @@ function cmdkBookingActions(b, pk) {
     acts.push({ key: 'cal', label: 'Show on calendar', icon: cmdkActIcon('cal'), run: () => cmdkShowOnCalendar(b.id) });
     return acts;
 }
+// ============================================================
+//  BULK — chase them all, in one tap.
+//
+//  The recurring job isn't "find a booking", it's chase the balances, and that was
+//  three journeys even after acting in place became possible. But the money answer
+//  was BUILT from the list: the composer already holds every guest who owes and
+//  what they owe, so the set-level action rides on the answer itself. There is no
+//  selection model, no checkboxes, no long-press — and therefore none of the
+//  index-vs-identity bugs a selection model brings, where a late async merge
+//  silently changes which records were ticked.
+//
+//  Four rules, each gated:
+//   1. Only the REVERSIBLE and the COMMUNICATIVE may go over a set. A refund, a
+//      deletion or a deposit return is never one tap over several records — the
+//      same rule the customer directory already follows for fuzzy-matched rows.
+//      The gate is chbBulkAction(), which BUILDS the action, so a new bulk action
+//      can only exist for an allowed key; it can't be added by forgetting a check.
+//   2. ONE INFORMED CONFIRM replaces the per-record previews. Three previews isn't
+//      bulk, it's three journeys again — but one tap is only honest if you can see
+//      exactly what it will do, so the dialog names every recipient, every amount
+//      and anything it will skip, and the button counts what will really send.
+//   3. SERIAL, not Promise.all. Simultaneous sends invite a rate limit, and a
+//      stampede makes a partial failure impossible to attribute to a guest.
+//   4. The report is HONEST — never a bare "Done". A partial gets the WARN strip
+//      and names who was missed, because green over "sent 2 of 3" is the colour
+//      telling a lie the words don't.
+// ============================================================
+const CMDK_BULK_SAFE = new Set(['email', 'balance']);
+function chbBulkAction(baseKey, spec) {
+    return CMDK_BULK_SAFE.has(String(baseKey || '')) ? spec : null;
+}
+// A guest we can't email is skipped and NAMED rather than blocking the batch —
+// one missing address shouldn't stop the other two being chased. Split here, once,
+// so the confirm can be honest about it up front instead of reporting a surprise.
+function chbBulkSplit(rows) {
+    const list = (rows || []).filter((x) => x && x.b);
+    return {
+        send: list.filter((x) => !!String(x.b.email || '').trim()),
+        skip: list.filter((x) => !String(x.b.email || '').trim()),
+    };
+}
+// "Cara Bell", "Cara Bell and Dan Rowe", "Cara Bell and 2 others" — full names,
+// because this line is the owner's only cue about which record to go and fix.
+function chbBulkNames(list) {
+    const names = list.map((x) => (x.b.name || 'a guest').trim());
+    if (names.length <= 2) return names.join(' and ');
+    return `${names[0]} and ${names.length - 1} others`;
+}
+async function chbBulkConfirm(rows) {
+    const { send, skip } = chbBulkSplit(rows);
+    if (!send.length) {
+        // Nothing to do, and saying so beats a confirm whose button would send zero.
+        await glassAlert(
+            skip.length
+                ? `No email addresses on ${skip.length === 1 ? 'this booking' : 'these bookings'} — add one to ${chbBulkNames(skip)} first.`
+                : 'Nothing to chase — those balances are settled.',
+        );
+        return false;
+    }
+    const total = send.reduce((s, x) => s + Math.max(0, (x.ps && x.ps.balance) || 0), 0);
+    const line = (x, note) =>
+        `${x.b.name || '(no name)'} — ${gbp(Math.max(0, (x.ps && x.ps.balance) || 0))}` +
+        `${x.pk ? ' · ' + ((propertyMeta[x.pk] || {}).name || x.pk) : ''}${note ? ' · ' + note : ''}`;
+    const body = [
+        `Send balance requests to ${send.length} guest${send.length === 1 ? '' : 's'}?`,
+        '',
+        ...send.map((x) => line(x)),
+        ...skip.map((x) => line(x, 'no email address, will be skipped')),
+        '',
+        `Total to chase: ${gbp(total)}`,
+        '',
+        'Each guest gets the standard balance-request email with their own secure pay link.',
+    ].join('\n');
+    // The button states the count that will actually send, not the number of rows
+    // listed — a "Send 3" over a list containing a skipped guest is a lie in the label.
+    return await glassConfirm(body, `Send ${send.length} request${send.length === 1 ? '' : 's'}`);
+}
+async function chbBulkRun(rows) {
+    const { send, skip } = chbBulkSplit(rows);
+    let sent = 0;
+    let chased = 0;
+    const failed = [];
+    for (const x of send) {
+        // Same validated endpoint the single-record action reaches through
+        // requestPayment — what bulk drops is the preview, never the server rules.
+        const kind = x.ps && x.ps.deposit > 0.5 ? 'balance' : 'deposit';
+        try {
+            await apiPost('bookings.php', { action: 'request_payment', id: x.b.dbId, kind });
+            sent++;
+            chased += Math.max(0, (x.ps && x.ps.balance) || 0);
+        } catch (e) {
+            failed.push(x);
+        }
+    }
+    const misses = [];
+    if (skip.length) misses.push(`${chbBulkNames(skip)} ${skip.length === 1 ? 'has' : 'have'} no email address`);
+    if (failed.length) misses.push(`couldn't reach ${chbBulkNames(failed)}`);
+    if (!sent) {
+        // Total failure is an ERROR, not a quiet partial — throwing puts it on the
+        // error strip with its reason. An email cannot be unsent, so no branch here
+        // ever offers an undo: a button promising a reversal it can't perform is
+        // worse than none.
+        throw new Error(misses.length ? `Couldn't send any — ${misses.join('; ')}` : "Couldn't send any of them");
+    }
+    const attempted = send.length + skip.length;
+    if (sent < attempted) {
+        return { state: 'warn', say: `Sent ${sent} of ${attempted} — ${misses.join('; ')}` };
+    }
+    return { say: `${sent} balance request${sent === 1 ? '' : 's'} sent · ${gbp(chased)} chased` };
+}
+// The set-level action for the owed-money answer. Null below two owers — "Request
+// all 1 balances" is just the row's own action wearing a worse label.
+function chbBulkBalanceAction(rows) {
+    const list = (rows || []).filter((x) => x && x.b && x.ps && !x.ps.fullyPaid && x.ps.balance > 0.5);
+    if (list.length < 2) return null;
+    return chbBulkAction('balance', {
+        key: 'balance-all',
+        label: `Request all ${list.length} balances`,
+        icon: cmdkActIcon('coin'),
+        pending: 'Sending…',
+        // The non-inline fallback every action keeps: if this ever runs without the
+        // inline path it lands on the screen that does the job by hand.
+        run: () => { closeCmdK(); Promise.resolve(openBookings()).then(() => bookingsSetFilter('needspay')); },
+        inline: async () => {
+            const go = await chbBulkConfirm(list);
+            if (!go) return null; // backing out claims NOTHING — no strip, no undo
+            return await chbBulkRun(list);
+        },
+    });
+}
 // ===================================================================
 //  CHB_SEARCH — the unified, modular search core.
 //
@@ -4336,6 +4466,10 @@ function cmdkIntent(q) {
             () => { closeCmdK(); Promise.resolve(openBookings()).then(() => bookingsSetFilter('needspay')); },
             n ? [{ label: 'Overdue only', q: 'overdue balances' }, { label: 'Deposits to return', q: 'deposits to return' }, { label: 'Who’s paid in full', q: 'who has paid in full' }] : null,
         );
+        // BULK: the answer already holds the set, so chasing every balance is one tap
+        // on the answer itself rather than one journey per guest. Null under two owers.
+        const bulk = chbBulkBalanceAction(rows);
+        if (bulk) head.actions = [bulk];
         return [head].concat(rows.map((x) => bk(x.pk, x.b, `${gbp(x.ps.balance)} still due · ${propName(x.pk)}${x.b.checkOut ? ' · out ' + fmtDate(x.b.checkOut) : ''}`)));
     }
     // 2) Leaving / checking out (today, or this week) — direct bookings AND OTA blocks.
@@ -6769,10 +6903,31 @@ function cmdkRowHtml(it, i, top) {
                     <span class="cmdk-row-ic cmdk-${it.type}">${cmdkIcon(it.iconType || it.type)}</span>
                     <span class="cmdk-row-main"><span class="cmdk-row-label" title="${escapeHtml(String(it.label || ''))}">${hi(it.label)}</span><span class="cmdk-row-sub"${it.sub ? ` title="${escapeHtml(String(it.sub))}"` : ''}>${hi(it.sub || '')}</span></span>
                 </button>`;
+    // Help topics expand their numbered steps when selected (the Top Hit is
+    // pre-selected, so the best answer opens straight away; the rest stay tidy).
+    const isHelp = it.type === 'help';
+    // A generated how-to answer renders its flowing paragraph as a wrapping block
+    // (the one-line sub can't hold it). Shown whenever present — it IS the answer.
+    const nlg = it.nlgBody ? `<p class="cmdk-nlg-body">${escapeHtml(it.nlgBody)}</p>` : '';
+    const steps =
+        isHelp && sel && Array.isArray(it.steps) && it.steps.length
+            ? `<ol class="cmdk-help-steps">${it.steps.map((s) => `<li>${escapeHtml(s)}</li>`).join('')}</ol>`
+            : '';
+    return row + nlg + steps + cmdkRowExtrasHtml(it, i);
+}
+// A row's quick-ACTIONS and refine CHIPS — the tail that hangs under it. ONE
+// definition, because the HERO needs the identical tail and used to render neither:
+// the owed-money answer has carried three refine chips ("Overdue only", "Deposits
+// to return", "Who's paid in full") since long before the hero existed, and the
+// moment it became the hero all three stopped appearing on screen (measured: 3
+// chips in the row's data, 0 in the DOM). A bulk action lives in exactly the same
+// place, so this had to be shared rather than copied into the hero.
+function cmdkRowExtrasHtml(it, i) {
+    const sel = i === __cmdkSel;
     // A selected record's actions are a proper QUICK-ACTIONS LIST — full-width
     // rows (icon · label · chevron), the way a context menu / Spotlight lays them
     // out — instead of a bag of wrapping pills. One thing per line, big tap
-    // targets, no reflow. Only entity results carry `actions`.
+    // targets, no reflow. Entity results and set-level answers carry `actions`.
     const hasActions = sel && Array.isArray(it.actions) && it.actions.length;
     const actLabels = hasActions ? new Set(it.actions.map((a) => (a.label || '').toLowerCase())) : null;
     // On the selected row, mark the keyboard sub-focus (Left/Right cycles through
@@ -6786,16 +6941,6 @@ function cmdkRowHtml(it, i, top) {
               .map((a, k) => `<button type="button" class="cmdk-qa-row${subFocus('act', k)}" data-idx="${i}" ${chbAttrs('cmdkAct', i, k)}><span class="cmdk-qa-ic">${a.icon || cmdkActIcon('hub')}</span><span class="cmdk-qa-lbl">${escapeHtml(a.label)}</span></button>`)
               .join('')}</div>`
         : '';
-    // Help topics expand their numbered steps when selected (the Top Hit is
-    // pre-selected, so the best answer opens straight away; the rest stay tidy).
-    const isHelp = it.type === 'help';
-    // A generated how-to answer renders its flowing paragraph as a wrapping block
-    // (the one-line sub can't hold it). Shown whenever present — it IS the answer.
-    const nlg = it.nlgBody ? `<p class="cmdk-nlg-body">${escapeHtml(it.nlgBody)}</p>` : '';
-    const steps =
-        isHelp && sel && Array.isArray(it.steps) && it.steps.length
-            ? `<ol class="cmdk-help-steps">${it.steps.map((s) => `<li>${escapeHtml(s)}</li>`).join('')}</ol>`
-            : '';
     // Chips branch by context. For an entity WITH actions they are "related
     // searches" — a quiet footer under the quick actions (search glyph, muted),
     // never a duplicate of an action. For an answer/help head they stay as the
@@ -6806,13 +6951,13 @@ function cmdkRowHtml(it, i, top) {
     // consistent: primary ACTIONS (verbs) are the rows above; these are the
     // secondary pivots below. A chip that just duplicates an action is dropped.
     let refine = '';
-    if (Array.isArray(it.chips) && it.chips.length && (!isHelp || sel)) {
+    if (Array.isArray(it.chips) && it.chips.length && (it.type !== 'help' || sel)) {
         const pills = it.chips
             .map((c, k) => (hasActions && actLabels && actLabels.has((c.label || '').toLowerCase())) ? '' : `<button type="button" class="cmdk-chip${subFocus('chip', k)}" data-idx="${i}" data-chip="${k}" ${chbAttrs('cmdkChipRun', i, k)}>${escapeHtml(c.label)}</button>`)
             .join('');
         refine = pills ? `<div class="cmdk-chips">${pills}</div>` : '';
     }
-    return row + nlg + steps + acts + refine;
+    return acts + refine;
 }
 // Point the combobox's aria-activedescendant at the highlighted option so screen
 // readers announce the selection as you arrow through (the rows carry matching
@@ -6992,7 +7137,7 @@ function cmdkHeroHtml(it, i) {
                     <span class="cmdk-hero-label">${cmdkHeroFigure(it.label)}</span>
                     ${it.sub ? `<span class="cmdk-hero-sub" title="${escapeHtml(String(it.sub))}">${escapeHtml(String(it.sub))}</span>` : ''}
                 </span>
-            </button>`;
+            </button>` + cmdkRowExtrasHtml(it, i);
 }
 const CMDK_BOARDS = [
     { key: 'today', label: 'Today' },
@@ -7294,7 +7439,7 @@ function cmdkGreeting() {
 //
 // The strip is STATE plus a re-render, not a DOM poke — same as everything else
 // in this file, so it survives the next cmdkRender() instead of being wiped by it.
-let __cmdkActMsg = null; // { idx, state: 'busy'|'ok'|'err', say }
+let __cmdkActMsg = null; // { idx, state: 'busy'|'ok'|'warn'|'err', say }
 async function cmdkAct(i, k) {
     const it = __cmdkResults[i];
     const a = it && Array.isArray(it.actions) ? it.actions[k] : null;
@@ -7310,7 +7455,10 @@ async function cmdkAct(i, k) {
         // A null result means the owner backed out (cancelled the send preview,
         // dismissed the confirm). Nothing happened, so claim nothing.
         if (!res) { __cmdkActMsg = null; cmdkRender(true); return; }
-        __cmdkActMsg = { idx: i, state: 'ok', say: res.say || 'Done' };
+        // A PARTIAL success is its own state. "Sent 2 of 3 — Cara Bell has no email
+        // address" under a green tick is the colour telling a lie the words don't,
+        // and money is the last place to let the two disagree.
+        __cmdkActMsg = { idx: i, state: res.state === 'warn' ? 'warn' : 'ok', say: res.say || 'Done' };
         if (res.undo) chbUndoPush(res.say || a.label, res.undo);
         // The row's own money line is stale the moment the action lands — a strip
         // reading "sent" above a row still reading "still due" is worse than the
@@ -7353,8 +7501,8 @@ function cmdkRowWithStrip(it, i, top) {
 function cmdkActStripHtml(i) {
     const m = __cmdkActMsg;
     if (!m || m.idx !== i) return '';
-    const cls = m.state === 'ok' ? ' is-ok' : m.state === 'err' ? ' is-err' : ' is-busy';
-    const mark = m.state === 'ok' ? '✓' : m.state === 'err' ? '!' : '·';
+    const cls = m.state === 'ok' ? ' is-ok' : m.state === 'warn' ? ' is-warn' : m.state === 'err' ? ' is-err' : ' is-busy';
+    const mark = m.state === 'ok' ? '✓' : m.state === 'busy' ? '·' : '!';
     // role=status so the outcome is ANNOUNCED — the whole point of acting in
     // place is that nothing navigates, so there is no page change to notice.
     return `<div class="cmdk-actmsg${cls}" role="status"><span class="cmdk-actmsg-ic" aria-hidden="true">${mark}</span><span>${escapeHtml(m.say)}</span></div>`;

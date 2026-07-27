@@ -7,11 +7,11 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 290;
+const ADMIN_BUNDLE_V = 291;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
-const ADMIN_CSS_V = 98;
+const ADMIN_CSS_V = 99;
 function ensureAdminCss() {
     if (document.getElementById('admin-css')) return Promise.resolve();
     return new Promise((resolve) => {
@@ -9480,6 +9480,12 @@ function glassDialog(opts) {
                 if (!isForm) fields.innerHTML = '';
             }
             cancel.style.display = opts.type === 'alert' ? 'none' : 'inline-block';
+            // The OK button may NAME what it is about to do ("Send 2 requests"), so a
+            // confirm over several records can state its count in the button rather
+            // than only in the prose. Always reassigned — the node is shared by every
+            // dialog, so a custom label must not leak into the next plain confirm.
+            const okBtn = document.getElementById('glass-dialog-ok');
+            if (okBtn) okBtn.textContent = opts.okLabel || 'OK';
             __glassDlgResolve = (ok) => {
                 let formVals = null;
                 if (isForm && ok) {
@@ -9515,8 +9521,8 @@ function glassDialogResolve(ok) {
 function glassAlert(message) {
     return glassDialog({ type: 'alert', message });
 }
-function glassConfirm(message) {
-    return glassDialog({ type: 'confirm', message });
+function glassConfirm(message, okLabel) {
+    return glassDialog({ type: 'confirm', message, okLabel });
 }
 function glassPrompt(message, def, opts) {
     return glassDialog({ type: 'prompt', message, def, password: !!(opts && opts.password) });
@@ -13242,7 +13248,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'watch01';
+    const BUILD = 'bulk38a';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
