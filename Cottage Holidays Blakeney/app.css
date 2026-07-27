@@ -191,7 +191,7 @@ textarea:focus-visible,
   /* Info (sea-blue) — the "Arriving" status. -text is the tint readable on dark
      glass; light mode retunes it below like the other -text tokens. */
   --info: #4682a0;
-  --info-text: #6fa8c4;
+  --info-text: #79aec8; /* 4.63:1 on its own 14% --info tint (was #6fa8c4 -> 4.29) */
   --info-bg: rgba(56, 132, 197, 0.16); /* sea-blue fill behind info chips (pre-arrival countdown badge) */
   /* Shadow scale: panel = resting glass surface, float = raised/floating
                elements (modals, popovers, FABs), soft = small controls on hover. */
@@ -290,10 +290,21 @@ body.light-mode {
      green/amber/red) fail WCAG AA as text on white glass. The -text tokens are
      text-only (fills use the base --ok/--warn/--danger), so darkening them here
      is regression-free. */
-  --ok-text: #2c7830; /* 4.80:1 worst surface — was #2e7d32, exactly on 4.50 */
-  --warn-text: #a15600; /* 4.79:1 worst surface — was #a85a00, under AA at 4.46 */
-  --danger-text: #c62828;
-  --info-text: #35708f; /* darker sea-blue for readable text on light glass */
+  /* Retuned AGAIN, against the status TINT rather than the bare surface. These
+     tokens almost always paint on a `color-mix(var(--<status>) 12–18%, transparent)`
+     background of their own — 13 such pairs across app.css + admin.css (act strips,
+     status pills, the health banners) — and that tint is DARKER than the surface it
+     sits on, so clearing AA on the surface does not mean clearing it in the place the
+     text actually appears. Measured on the worst light ground of the three these ride
+     (cmdk panel, glass-over-cream, the timeline's #f0f0f0 band): ok 4.23:1, warn
+     4.40:1, danger 4.30:1 — all three UNDER AA where they are really used, while each
+     passed the surface-only check. a11y-test §1b now measures the tinted pairing so
+     this can't come back. Darkening is monotonically safe here: every light-mode
+     ground is lighter than the text, so the surface-only ratios only improve. */
+  --ok-text: #29712d; /* 4.66:1 on its own 15% tint (was #2c7830 → 4.23) */
+  --warn-text: #9c5300; /* 4.62:1 on its own 15% tint (was #a15600 → 4.40) */
+  --danger-text: #bc2626; /* 4.66:1 on its own 15% tint (was #c62828 → 4.30) */
+  --info-text: #316784; /* 4.64:1 on its own 14% --info tint (was #35708f -> 4.08) */
   --info-bg: rgba(56, 132, 197, 0.12); /* lighter sea-blue fill for light glass */
   /* Secondary coastal accents (used sparingly for freshness) */
   --sea: #2e8b8b;
@@ -496,6 +507,38 @@ select,
     border-color: var(--glass-highlight);
     transform: translateY(-5px);
     box-shadow: 0 15px 45px rgba(0, 0, 0, 0.4), var(--glass-rim);
+  }
+  /* …but .glass-panel is a MATERIAL, not an affordance, and the lift above is an
+     affordance: "this card responds to you". Modals, dialogs and the account-preview
+     shell carry the same material without being things you click, so the hover state
+     was wrong on them in two measurable ways.
+
+     It MOVES them. A dialog drifting 5px up as the pointer crosses its edge shifts
+     its own buttons under the cursor mid-reach — measured on the shared glass dialog:
+     top 377.3 → 372.3, the same dialog the bulk send uses to confirm who gets emailed.
+
+     And it makes them TRANSLUCENT: background jumps to --glass-hover (0.78 → 0.92
+     light, 0.018 → 0.06 dark). On .acct-preview-shell that undid the opaqueness the
+     shell specifically sets — the back office ghosted through behind the customer's
+     name, the exact bug its own comment says was fixed, because only the RESTING
+     state had been. It also broke the notch guarantee: the 5px lift put the bar at
+     55px against a 59px inset, i.e. back under the Dynamic Island.
+
+     Scoped deliberately to modals / dialogs / overlay shells — surfaces you read and
+     act in. Decorative page panels (hero, trust strip, host card) keep the lift. */
+  .modal-box:hover,
+  .glass-dialog-box:hover,
+  .reviews-modal-box:hover,
+  .terms-modal-box:hover,
+  .acct-preview-shell:hover,
+  .datepicker-card:hover,
+  .cal-panel:hover {
+    background: var(--glass-bg);
+    transform: none;
+  }
+  /* The preview shell states its own opaque ground; --glass-bg is not it. */
+  .acct-preview-shell:hover {
+    background: var(--dark-grey);
   }
 }
 /* Touch feedback: a gentle press instead of a sticky hover */

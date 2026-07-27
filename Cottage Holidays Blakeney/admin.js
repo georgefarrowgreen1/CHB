@@ -233,7 +233,7 @@ function cmdkRegistry() {
         { id: 'messages', label: 'Messages', sub: 'Guest chat folder', icon: 'message', kw: 'chat conversations inbox', go: () => Promise.resolve(openInbox()).then(() => inboxFolder('messages')) },
         { id: 'email', label: 'Email', sub: 'Mailbox folder', icon: 'email', kw: 'mailbox sent compose inbox', go: () => Promise.resolve(openInbox()).then(() => inboxFolder('email')) },
         { id: 'payments-area', label: 'Payments', sub: 'Money & reconciliation', icon: 'payment', kw: 'money accounts income deposits balances expenses owed', go: () => openAccounts() },
-        { id: 'manage', label: 'Manage', sub: 'All settings', icon: 'gear', kw: 'settings admin', go: () => openArea('manage') },
+        { id: 'manage', label: 'Manage', sub: 'All settings', icon: 'gear', kw: 'settings admin', go: () => openArea() },
         { id: 'activity', label: 'Activity log', sub: 'Every change & action', icon: 'activity', kw: 'history audit errors', go: () => nav('view-activity-log') },
         // Manage sections — each `sec` opens #sec-<sec> via settingsOpen().
         { id: 'accom', label: 'Cottages', sub: 'Rates, fees, rules & photos', icon: 'house', kw: 'property add remove cottage price occupancy', sec: 'accom' },
@@ -3039,7 +3039,7 @@ function chbSystemState() {
             const ago = d.everRan
                 ? (d.ageHours >= 48 ? Math.round(d.ageHours / 24) + ' days' : Math.round(d.ageHours) + ' hours') + ' ago'
                 : 'never run';
-            // cmdkOpenSection, not openArea('settings') — openArea() takes NO
+            // cmdkOpenSection, not openArea() — openArea() takes NO
             // arguments, so that call was silently routing nowhere. Found by the
             // type checker, which is the only thing that was going to notice.
             checks.push({ level: 'warn', say: `Daily automation looks stopped — last ran ${ago}`, go: () => cmdkOpenSection('diagnostics') });
@@ -4299,7 +4299,7 @@ function cmdkIntent(q) {
     // 0j) Topic dossiers — a bare topic word returns that topic's whole page
     // inside search: live facts + every path. Money / Status / Messages.
     const runQ = (query) => () => { const el = document.getElementById('cmdk-input'); if (el) el.value = query; cmdkSearch(query); };
-    const toMng = (sec) => () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => settingsOpen(sec)); };
+    const toMng = (sec) => () => { closeCmdK(); Promise.resolve(openArea()).then(() => settingsOpen(sec)); };
     const A = (id, label, sub, run) => ({ type: 'action', id, label, sub, run });
     if (/^\s*(the\s+)?(money|payments?|takings|finances?|accounts?|cash)\s*(overview|summary|dashboard)?\s*$/.test(q)) {
         let outstanding = 0, owers = 0, held = 0, depN = 0;
@@ -4587,11 +4587,11 @@ function cmdkIntent(q) {
         if (m.rev) bits.push(`${m.rev} review${m.rev === 1 ? '' : 's'}`);
         if (m.ph) bits.push(`${m.ph} photo${m.ph === 1 ? '' : 's'}`);
         if (m.exp) bits.push(`${m.exp} suggestion${m.exp === 1 ? '' : 's'}`);
-        const head = ans(bits.length ? `${bits.join(' · ')} awaiting approval` : 'Nothing to approve', bits.length ? 'Moderate in Manage' : 'All caught up', () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => settingsOpen('reviews')); });
+        const head = ans(bits.length ? `${bits.join(' · ')} awaiting approval` : 'Nothing to approve', bits.length ? 'Moderate in Manage' : 'All caught up', () => { closeCmdK(); Promise.resolve(openArea()).then(() => settingsOpen('reviews')); });
         const out = [head];
-        if (m.rev) out.push({ type: 'review', id: 'mod-rev', label: `${m.rev} review${m.rev === 1 ? '' : 's'} to approve`, sub: 'Manage · Reviews', run: () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => settingsOpen('reviews')); } });
-        if (m.ph) out.push({ type: 'review', id: 'mod-ph', label: `${m.ph} photo${m.ph === 1 ? '' : 's'} to approve`, sub: 'Manage · Guest photos', run: () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => settingsOpen('photos')); } });
-        if (m.exp) out.push({ type: 'review', id: 'mod-exp', label: `${m.exp} suggestion${m.exp === 1 ? '' : 's'} to review`, sub: 'Manage · Experiences', run: () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => settingsOpen('experiences')); } });
+        if (m.rev) out.push({ type: 'review', id: 'mod-rev', label: `${m.rev} review${m.rev === 1 ? '' : 's'} to approve`, sub: 'Manage · Reviews', run: () => { closeCmdK(); Promise.resolve(openArea()).then(() => settingsOpen('reviews')); } });
+        if (m.ph) out.push({ type: 'review', id: 'mod-ph', label: `${m.ph} photo${m.ph === 1 ? '' : 's'} to approve`, sub: 'Manage · Guest photos', run: () => { closeCmdK(); Promise.resolve(openArea()).then(() => settingsOpen('photos')); } });
+        if (m.exp) out.push({ type: 'review', id: 'mod-exp', label: `${m.exp} suggestion${m.exp === 1 ? '' : 's'} to review`, sub: 'Manage · Experiences', run: () => { closeCmdK(); Promise.resolve(openArea()).then(() => settingsOpen('experiences')); } });
         return out;
     }
     return null;
@@ -6020,9 +6020,9 @@ function cmdkServerItem(x) {
         payment: () => { closeCmdK(); openBookingHub(x.booking_id); },
         activity: () => { closeCmdK(); cmdkRevealActivity(x.title || ''); },
         expense: () => cmdkOpenAccounts('expenses'),
-        waitlist: () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => settingsOpen('waitlist')); },
-        subscriber: () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => settingsOpen('newsletter')); },
-        experience: () => { closeCmdK(); Promise.resolve(openArea('manage')).then(() => settingsOpen('experiences')); },
+        waitlist: () => { closeCmdK(); Promise.resolve(openArea()).then(() => settingsOpen('waitlist')); },
+        subscriber: () => { closeCmdK(); Promise.resolve(openArea()).then(() => settingsOpen('newsletter')); },
+        experience: () => { closeCmdK(); Promise.resolve(openArea()).then(() => settingsOpen('experiences')); },
     };
     const run = routes[x.type];
     if (!run) return null;
@@ -6063,7 +6063,7 @@ function cmdkPoll(find, done, tries) {
     })();
 }
 function cmdkRevealGuest(email) {
-    Promise.resolve(openArea('manage')).then(() => settingsOpen('guests'));
+    Promise.resolve(openArea()).then(() => settingsOpen('guests'));
     const key = (email || '').trim().toLowerCase();
     if (!key) return;
     cmdkPoll(() => {
@@ -6075,7 +6075,7 @@ function cmdkRevealGuest(email) {
     }, cmdkFlash);
 }
 function cmdkRevealReview(id) {
-    Promise.resolve(openArea('manage')).then(() => settingsOpen('reviews'));
+    Promise.resolve(openArea()).then(() => settingsOpen('reviews'));
     cmdkPoll(() => document.getElementById('modrev-' + id), cmdkFlash);
 }
 function cmdkModerateReview(id, status) {
@@ -7620,7 +7620,7 @@ function cmdkOpenSection(sec, label) {
         return;
     }
     closeCmdK();
-    Promise.resolve(openArea('manage')).then(() => settingsOpen(sec));
+    Promise.resolve(openArea()).then(() => settingsOpen(sec));
 }
 // Open a per-cottage editor sub-section (photos / text / rates / welcome / …) from
 // search: in search-first it loads the Cottages sheet and drills straight to that
@@ -7697,7 +7697,7 @@ function cmdkOpenAccomSec(pk, sec, picked) {
         return;
     }
     closeCmdK();
-    Promise.resolve(openArea('manage')).then(() => { if (pk && typeof settingsGotoAccomSec === 'function') settingsGotoAccomSec(pk, sec); else settingsOpen('accom'); });
+    Promise.resolve(openArea()).then(() => { if (pk && typeof settingsGotoAccomSec === 'function') settingsGotoAccomSec(pk, sec); else settingsOpen('accom'); });
 }
 function cmdkSheetOpen(section, title) {
     const sec = document.getElementById('sec-' + section);
@@ -8685,7 +8685,12 @@ function hubPipelineHtml(propKey, b, gt, dh) {
     const flow = bookingFlow(propKey, b);
     const stages = flow.stages;
     let dback = stages.find((s) => s.key === 'depositback');
-    if (!dback && dh.collected > 0) { dback = { key: 'depositback', label: 'Deposit back', done: false }; stages.push(dback); }
+    // glabel too: every other stage carries the guest wording, and app.js's guest
+    // flow strip renders `s.glabel`. Nothing reaches it with THIS stage today
+    // (bookingFlow builds a fresh array per call, so the admin's push can't leak into
+    // the guest render), but a stage that is missing the field the sibling renderer
+    // reads is one shared array away from printing "undefined" at a guest.
+    if (!dback && dh.collected > 0) { dback = { key: 'depositback', label: 'Deposit back', glabel: 'Deposit returned', done: false }; stages.push(dback); }
     if (dback && !dback.done && dh.collected > 0 && dh.held <= 0.001) dback.done = true;
     // A dynamic three-pill window — where this booking has been, where it IS,
     // and what comes next — instead of the whole journey squeezed into one
@@ -13194,7 +13199,7 @@ function nyGapOffer(pk, iso) {
         .then(() => { try { renderPricing(); } catch (e) {} })
         .catch((e) => glassAlert("Couldn't save: " + e.message));
 }
-function nyOfferRates() { Promise.resolve(openArea('cottages')).then(() => settingsOpen('seasongrid')); }
+function nyOfferRates() { Promise.resolve(openArea()).then(() => settingsOpen('seasongrid')); }
 function nyPacingReview() { openAccounts(); try { accountsOpen('pricingcoach'); } catch (e) {} }
 // ---- Manage → Pricing: demand-based price ideas on their own page ----------
 // The gap offers + pacing flag that used to sit in the Today "Worth a look" strip
