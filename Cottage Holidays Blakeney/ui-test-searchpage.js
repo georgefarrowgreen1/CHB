@@ -761,8 +761,15 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // 15c) Left/Right sub-focus must RENDER. The marker class was emitted with no rule
   // anywhere — pixel-diff of a quick-action resting vs marked measured 0 changed px of
   // 29040, while the cursor sitting on action 0 arms a bulk money send.
+  // NB read `outline-style`, NOT the width alone: `outline-width` on an unstyled element
+  // is the INITIAL `medium`, and browsers disagree about whether to report that or 0px
+  // when the style is `none` — this Chromium says 0px, CI's said 3px, and the first
+  // version of this check read the width and failed there while nothing was painted
+  // either way. `none` is the deterministic "nothing is drawn" signal, so the marker is
+  // proved by a STYLE appearing on the marked row while its unmarked sibling has none.
   const kbd = await page.evaluate(async () => {
     const until = async (fn, ms = 8000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v !== undefined && v !== null && v !== false && v !== -1) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 40)); } };
+    const ring = (el) => { if (!el) return null; const c = getComputedStyle(el); return { style: c.outlineStyle, width: c.outlineWidth }; };
     try { closeCmdK(); } catch (e) {}
     openCmdK();
     await until(() => document.getElementById('cmdk').classList.contains('open'));
@@ -772,15 +779,17 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     if (at === null) return null;
     __cmdkSel = at; __cmdkActSel = -1; cmdkRender();
     await until(() => !!document.querySelector('#cmdk .cmdk-qa-row'));
-    const before = getComputedStyle(document.querySelector('#cmdk .cmdk-qa-row')).outlineWidth;
+    const before = ring(document.querySelector('#cmdk .cmdk-qa-row'));
     __cmdkActSel = 0; cmdkRender();
     await new Promise((r) => setTimeout(r, 150));
     const marked = document.querySelector('#cmdk .cmdk-qa-row.is-kbd');
-    return { before, marked: !!marked, outline: marked ? getComputedStyle(marked).outlineWidth : '0px' };
+    return { before, marked: !!marked, on: ring(marked), off: ring(document.querySelector('#cmdk .cmdk-qa-row:not(.is-kbd)')) };
   });
   ok(!!kbd && kbd.marked, 'KBD: Left/Right marks a quick-action');
-  ok(!!kbd && parseFloat(kbd.outline) >= 2 && parseFloat(kbd.before) < 2,
-    `KBD: …and the marker is VISIBLE — an outline appears (${kbd && kbd.before} → ${kbd && kbd.outline})`);
+  const kbdOn = !!kbd && !!kbd.on && kbd.on.style !== 'none' && parseFloat(kbd.on.width) >= 2;
+  const kbdOff = !!kbd && kbd.before.style === 'none' && (!kbd.off || kbd.off.style === 'none');
+  ok(kbdOn && kbdOff,
+    `KBD: …and the marker is VISIBLE — an outline appears (${kbd && kbd.before.style} → ${kbd && kbd.on && kbd.on.style} ${kbd && kbd.on && kbd.on.width})`);
 
   // 15d) FOCUS CONTAINMENT. The workspace is still behind the scrim: one Shift+Tab from
   // the field used to land on a "Save note" button inside the booking hub — off screen,
