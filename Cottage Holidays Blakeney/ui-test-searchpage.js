@@ -540,6 +540,31 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       wrapped: rows.length > 1 && rows[0].getBoundingClientRect().width < 300,
     };
   });
+  // The SCOPE CHIP does not claim a filter it is not applying. Opening from Today
+  // pre-scopes to "Bookings", and the day brief is deliberately NOT filtered by it —
+  // so a lit chip sat above a panel ignoring it. The chip now appears when you type,
+  // which is when it starts meaning something. (Jump to stays scoped: showing the
+  // shortcuts that suit the workspace you came from is helpfulness, not a filter
+  // anyone needs a control for — and removing it cost 124px → 271px of landing.)
+  const chip = await page.evaluate(async () => {
+    const until = async (fn, ms = 6000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 40)); } };
+    try { closeCmdK(); } catch (e) {}
+    nav('view-backoffice');
+    openCmdK();
+    await until(() => document.getElementById('cmdk').classList.contains('open'));
+    await new Promise((r) => setTimeout(r, 400));
+    const empty = { scopes: document.querySelectorAll('#cmdk .cmdk-scopes').length, rows: document.querySelectorAll('#cmdk .cmdk-row').length };
+    document.getElementById('cmdk-input').value = 'bob';
+    cmdkSearchCore('bob', false);
+    await until(() => __cmdkResults.length);
+    await new Promise((r) => setTimeout(r, 300));
+    const typed = { scopes: document.querySelectorAll('#cmdk .cmdk-scopes').length };
+    return { empty, typed };
+  });
+  ok(chip.empty.scopes === 0, `SCOPE: nothing claims a filter on the empty landing (${chip.empty.scopes} scope bars)`);
+  ok(chip.empty.rows > 0, `SCOPE: …and the landing still has its day on it (${chip.empty.rows} rows)`);
+  ok(chip.typed.scopes === 1, `SCOPE: the switch appears the moment you type, which is when it applies (${chip.typed.scopes})`);
+
   ok(dens.jump && dens.n >= 2, `DENSITY: the landing's destinations are chips (${dens.n})`);
   ok(dens.jumpPx > 0 && dens.jumpPx <= 160, `DENSITY: in ~two rows, not five (${dens.jumpPx}px, was 269)`);
   ok(dens.optIds, 'DENSITY: each chip is still a role=option at its own index');

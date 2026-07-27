@@ -3167,6 +3167,28 @@ function chbSystemState() {
             checks.push({ level: 'warn', say: `Daily automation looks stopped — last ran ${ago}`, go: () => cmdkOpenSection('diagnostics') });
         }
     } catch (e) {}
+    try {
+        // SECOND signal, and the one this line was missing: a per-cottage iCal feed
+        // that has stopped importing. It is free now because admin-bootstrap carries
+        // the health in the payload loadData already fetches — the no-request rule
+        // is intact, which is why this was left out the first time rather than
+        // forgotten. A feed that has NEVER imported is not stalled, so the server
+        // omits it; only staleness and outright failures reach here.
+        const feeds = /** @type {any} */ (window).__feedStatusPre;
+        if (Array.isArray(feeds) && feeds.length) {
+            const failing = feeds.filter((f) => f && f.failing > 0);
+            const stale = feeds.filter((f) => f && f.ageHours >= 36);
+            const worst = failing[0] || stale.sort((a, b) => b.ageHours - a.ageHours)[0];
+            if (worst) {
+                const ago = worst.ageHours >= 48 ? Math.round(worst.ageHours / 24) + ' days' : Math.round(worst.ageHours) + ' hours';
+                checks.push({
+                    level: 'warn',
+                    say: `${worst.name} calendar sync looks stuck — last imported ${ago} ago`,
+                    go: () => cmdkOpenSection('calendar'),
+                });
+            }
+        }
+    } catch (e) {}
     if (checks.length) return checks[0]; // the most important thing, not a panel
     return { level: 'ok', say: 'All systems normal' };
 }
@@ -5668,6 +5690,21 @@ function cmdkSearchCore(q, allowCorrect) {
         // are standing on the bookings screen is not narrowing, it is losing the
         // point of the panel. Scope still narrows what you TYPE, and still narrows
         // Jump to.
+        // …and it no longer narrows Jump to either. With nothing typed there is no
+        // search to scope, so a chip sitting lit on "Bookings" was describing a
+        // filter that the panel below it was already ignoring for the brief — and
+        // quietly applying to five dock destinations, which is not worth the
+        // contradiction. The scope switch is hidden on this state (cmdkRenderInner)
+        // and appears the moment you type, which is when it starts meaning anything.
+        // The SNAPSHOT is untouched: openCmdK still records the workspace's scope, so
+        // the first thing you type is still pre-scoped to where you came from.
+        // Jump to STAYS scoped, and the chip above it does not. Removing the filter
+        // as well was tried and backed out: it is what keeps this list short, and
+        // without it the landing's destinations went 124px → 271px even capped at
+        // three (952px uncapped). Showing the shortcuts that suit the workspace you
+        // came from is good behaviour, not a filter anyone needs a control for —
+        // what was wrong is that a lit "Bookings" chip sat above a day brief it was
+        // deliberately NOT filtering. So the chip goes and the helpfulness stays.
         const keep = (it) => __cmdkScope === 'all' || it.scope === __cmdkScope;
         // Entity-aware: viewing a booking/enquiry hub → lead with its next-best
         // actions. Otherwise fall back to PAGE-context suggestions (the cottage
@@ -5704,7 +5741,7 @@ function cmdkSearchCore(q, allowCorrect) {
         let screens = __cmdkScope === 'all' ? allScreens : allScreens.filter(keep);
         // Don't list a screen under "Jump to" if it's already up in "Most used".
         screens = screens.filter((it) => { const k = kof(it); return !(k && seenKeys.has(k)); });
-        if (__cmdkScope === 'all') screens = screens.slice(0, 6);
+        if (__cmdkScope === 'all') screens = screens.slice(0, 3);
         // Discoverability: the model answers questions — show three (rotating
         // daily) as tappable chips so the capability is impossible to miss.
         if (__cmdkScope === 'all') {
@@ -7332,7 +7369,9 @@ function cmdkRenderInner() {
     const box = document.getElementById('cmdk-results');
     if (!box) return;
     if (__cmdkDeep) { cmdkRenderDeep(box); return; } // full "search everything" view
-    const sb = cmdkScopeBar(); // scope switch sits above every state
+    // The scope switch sits above every state EXCEPT the empty landing, where it
+    // filters nothing (see the `keep` note in cmdkSearchCore) and only claimed to.
+    const sb = __cmdkEmpty ? '' : cmdkScopeBar();
     // Empty palette → the "Your day" brief, then the dock destinations to jump to.
     if (__cmdkEmpty) {
         const S = __cmdkSuggestN || 0;

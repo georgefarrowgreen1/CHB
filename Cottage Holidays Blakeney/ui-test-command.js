@@ -158,6 +158,44 @@ const stub = (page) => page.route(/\.php/, (r) => {
   ok(/2 days ago/.test(sys.warn.txt), 'STATUS: with how long it has been quiet');
   ok(sys.warn.disabled === false && /Status/.test(sys.warn.label || ''), 'STATUS: and it becomes tappable, routed at the fix');
 
+  // ---- STATUS, second signal: a stalled iCal feed ----
+  // This line may not fetch, which is why only the cron was wired into it at first.
+  // admin-bootstrap now carries per-cottage feed health in the payload loadData
+  // already makes, so the second signal is free — and a stuck Airbnb sync stops
+  // being something you discover via a double booking.
+  const feed = await page.evaluate(async () => {
+    const until = async (fn, ms = 6000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 50)); } };
+    window.__cronStatusPre = { stale: false, everRan: true, ageHours: 2 }; // cron fine
+    const el = document.getElementById('cmdk-sys');
+    // A feed that has never imported is not "stalled" — the server omits those, and
+    // a fresh one must not raise a warning either.
+    window.__feedStatusPre = [{ pk: 'jollyboat', name: 'Jollyboat', ageHours: 3, failing: 0 }];
+    chbSysLine();
+    const fresh = { cls: el.className, txt: el.textContent.trim() };
+    window.__feedStatusPre = [{ pk: 'jollyboat', name: 'Jollyboat', ageHours: 3, failing: 0 },
+                              { pk: '21a', name: '21A Westgate', ageHours: 50, failing: 0 }];
+    chbSysLine();
+    const stale = { cls: el.className, txt: el.textContent.trim(), disabled: el.disabled };
+    // An outright failing source beats mere staleness, whichever is older.
+    window.__feedStatusPre = [{ pk: 'jollyboat', name: 'Jollyboat', ageHours: 4, failing: 2 },
+                              { pk: '21a', name: '21A Westgate', ageHours: 80, failing: 0 }];
+    chbSysLine();
+    const failing = { txt: el.textContent.trim() };
+    // The CRON still outranks a feed — everything else depends on it.
+    window.__cronStatusPre = { stale: true, everRan: true, ageHours: 50 };
+    chbSysLine();
+    const both = { txt: el.textContent.trim() };
+    window.__cronStatusPre = { stale: false, everRan: true, ageHours: 2 };
+    window.__feedStatusPre = null;
+    return { fresh, stale, failing, both };
+  });
+  ok(/All systems normal/.test(feed.fresh.txt), `FEED: a recently-synced feed says nothing (${feed.fresh.txt})`);
+  ok(/is-warn/.test(feed.stale.cls) && /21A Westgate/.test(feed.stale.txt), `FEED: a stalled one names the cottage (${feed.stale.txt})`);
+  ok(/2 days/.test(feed.stale.txt), 'FEED: and how long it has been stuck');
+  ok(feed.stale.disabled === false, 'FEED: tappable, routed at the calendar settings');
+  ok(/Jollyboat/.test(feed.failing.txt), `FEED: an outright FAILING source outranks a merely old one (${feed.failing.txt})`);
+  ok(/automation looks stopped/i.test(feed.both.txt), `FEED: but the cron still outranks both — everything depends on it (${feed.both.txt})`);
+
   // ---- STEP 5: watchers ----
   const watch = await page.evaluate(async () => {
     const posts = [];

@@ -30,8 +30,41 @@ try {
 } catch (\Throwable $e) {
 }
 
+// Per-cottage iCal feed health, folded into the SAME round-trip as everything
+// else. The search foot's status line may not fire a request of its own (a line
+// you normally ignore is a bad trade for a fetch on every open), which is why
+// only the cron was wired there — this is what makes the second signal free.
+// Reduced to what a status line needs: the worst staleness across the feeds, and
+// which cottage it belongs to. ical-import.php still serves the full per-source
+// detail to the settings page that asks for it.
+$feeds = [];
+try {
+    foreach (db()->query('SELECT prop_key FROM properties WHERE archived_at IS NULL')->fetchAll() as $row) {
+        $pk = (string) ($row['prop_key'] ?? '');
+        if ($pk === '') {
+            continue;
+        }
+        $st = content_json('ical-status-' . $pk, []);
+        $at = (string) ($st['at'] ?? '');
+        if ($at === '') {
+            continue; // never imported — not the same thing as stalled
+        }
+        $ageH = (time() - strtotime($at)) / 3600;
+        $bad = 0;
+        foreach ((array) ($st['sources'] ?? []) as $src) {
+            if (!($src['ok'] ?? true)) {
+                $bad++;
+            }
+        }
+        $feeds[] = ['pk' => $pk, 'name' => prop_display($pk) ?: $pk, 'ageHours' => round($ageH, 1), 'failing' => $bad];
+    }
+} catch (\Throwable $e) {
+    $feeds = [];
+}
+
 json_out([
     'ok' => true,
+    'feeds' => $feeds,
     'rates' => rates_public_payload(),
     'bookings' => bookings_admin_payload(),
     'enquiries' => enquiries_admin_payload(),
