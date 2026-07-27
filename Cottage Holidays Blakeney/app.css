@@ -1044,6 +1044,11 @@ body.light-mode ::-webkit-scrollbar-thumb {
   line-height: 1.6;
   white-space: pre-wrap;
   color: var(--text-light);
+  /* A confirm that LISTS what it is about to do (every guest a bulk send will
+     email) is as long as the set. It scrolls inside the box rather than growing the
+     panel past the viewport and pushing its own buttons off screen. */
+  max-height: 46vh;
+  overflow-y: auto;
 }
 .glass-dialog-input {
   margin-top: 16px;

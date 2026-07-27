@@ -888,8 +888,10 @@ order because each piece makes the next one safe.
 - **ACT IN PLACE** (`cmdkAct`'s optional `inline` runner) — every quick-action used to
   begin `closeCmdK()`, so chasing three balances was three journeys. An action may now
   supply `inline: async () => ({ say, undo?, reload? })`, doing its work with the window
-  open and reporting as a strip under its own row. **OPT-IN is the whole safety story**:
-  no `inline` → the old `run()` branch, byte for byte. Only `balance` uses it so far.
+  open and reporting as a strip under its own row (`{ say, undo?, reload?, state? }` —
+  `state: 'warn'` is the PARTIAL outcome, added for bulk; see BULK below). **OPT-IN is
+  the whole safety story**: no `inline` → the old `run()` branch, byte for byte. Used by
+  `balance`, the gap watcher, and the set-level `balance-all`.
   The send PREVIEW is kept (one-tap-send-blind on money would be a downgrade); what
   changed is that search no longer closes around it, since modals sit at 2000+ and the
   window at 1700. `previewAndSendEmail` now **returns** whether it sent — it always
@@ -933,6 +935,48 @@ order because each piece makes the next one safe.
   Gated by `test-watchers.php` (26 checks, no DB and no clock — the silence cases carry
   as many checks as the firing ones) + `ui-test-command.js` (24 checks across all four,
   each break-tested independently).
+- **BULK — chase them all, in one tap** (`CMDK_BULK_SAFE`, `chbBulkAction`,
+  `chbBulkSplit`/`chbBulkNames`, `chbBulkConfirm`, `chbBulkRun`,
+  `chbBulkBalanceAction`). The recurring job isn't "find a booking", it's chase the
+  balances, and that stayed three journeys even after acting in place. **There is no
+  selection model**: the money answer was BUILT from the list, so the composer already
+  holds every ower and their balance and the set-level action rides on the answer row
+  itself (`head.actions = [bulk]` in the owed branch of `cmdkIntent`). That deletes
+  checkboxes, long-press, an action bar — and the index-vs-identity bug where a late
+  async merge silently changes which rows were ticked. Five rules:
+  (1) only the REVERSIBLE and COMMUNICATIVE may go over a set (`CMDK_BULK_SAFE` =
+  `email`, `balance`), and the gate is `chbBulkAction(baseKey, spec)` which BUILDS the
+  action — a refund/deposit-return/delete can't be bulk-enabled by forgetting a check;
+  (2) ONE INFORMED CONFIRM replaces the per-record previews (three previews isn't bulk,
+  it's three journeys) — it names every recipient, every amount and every skip, and its
+  **button counts what will really send** ("Send 2 requests" over 3 listed rows), which
+  is why `glassConfirm(message, okLabel)` gained a second argument; the OK button is one
+  SHARED node, so the label is reassigned on every dialog or it leaks into the next plain
+  confirm (gated); (3) a guest with no email is SKIPPED AND NAMED, not a blocked batch,
+  decided by `chbBulkSplit` BEFORE the confirm so the dialog is honest up front rather
+  than reporting a surprise; (4) SERIAL, never `Promise.all` — simultaneous sends invite
+  a rate limit and a stampede makes a partial failure impossible to attribute; (5) the
+  report is honest and never a bare "Done" — a partial returns the NEW `state: 'warn'`
+  strip (`__cmdkActMsg` gained it, `.cmdk-actmsg.is-warn`) because green over "Sent 2 of
+  3" is the colour contradicting the words, a total failure THROWS onto the error strip,
+  and no branch ever offers an undo (an email cannot be unsent). Re-running is safe: it
+  recomputes from live `paymentSummary`, so a half-failed batch re-chases only whoever
+  still owes — no bookkeeping. Under two owers there is no bulk action at all ("Request
+  all 1 balances" is the row's own action wearing a worse label).
+  **Two fixes it forced, both measured.** `cmdkRowExtrasHtml` now owns a row's
+  quick-actions + refine chips as ONE definition shared with `cmdkHeroHtml`, because the
+  hero rendered NEITHER: the owed answer's three refine chips ("Overdue only" /
+  "Deposits to return" / "Who's paid in full") had been in its data since before the hero
+  existed and appeared **0 times** on screen the moment it became one — so a bulk action
+  placed there would have been invisible too. And `.glass-dialog-msg` scrolls
+  (`max-height: 46vh`) because a confirm that LISTS its set is as long as the set —
+  without it, 30 owers pushed Send/Cancel to y=995 in a 780px viewport, a dialog you
+  cannot answer. Gated by search-test §38 (26 checks, all nine refusals break-tested)
+  + `ui-test-command.js` (the affordance on screen, the real dialog driven by clicking
+  its own buttons, the partial report, the phone's full-width lone action, the label
+  leak, the long-list scroller — NB that scroller check sets the viewport explicitly:
+  at the suite's default 900×900 the buttons fit anyway and it passed with the CSS
+  deleted).
 
 **THE COAST TIER** (admin.js `chbCoastRow`/`chbCoastDay`/`chbCoastFetch`, `CHB_TIDE_Q`,
 `CHB_WEATHER_Q`) — tides and weather, the two things a Blakeney owner is asked about

@@ -31,7 +31,14 @@ const stub = (page) => page.route(/\.php/, (r) => {
   if (url.includes('auth.php')) { if (b.action==='admin_status') return json({ok:true,admin:true});
     if (b.action==='guest_status') return json({ok:true,guest:null}); return json({ok:true}); }
   if (url.includes('rates.php')) return json({ properties:[{prop_key:'jollyboat',name:'Jollyboat',slug:'jollyboat',couple_rate:130,booking_fee:75,transaction_pct:3,max_adults:2,max_children:0,max_total:2,sort_order:1}], seasons:{}, occupancy:{} });
-  if (url.includes('bookings.php')) return json({ bookings:[{id:1,prop_key:'jollyboat',name:'Richard Berry',email:'rb@x.co',check_in:d(6),check_out:d(10),adults:2,children:0,payment:'deposit',deposit_paid:200,agreed_total:640,agreed_nightly:620,agreed_txn_fee:20,agreed_nights:4}] });
+  // Three owers, one of them with NO email address — the exact partial-send shape
+  // the bulk report has to be honest about. Balances: 440 + 420 + 95 = £955 owed,
+  // £860 of it actually reachable.
+  if (url.includes('bookings.php')) return json({ bookings:[
+    {id:1,prop_key:'jollyboat',name:'Richard Berry',email:'rb@x.co',check_in:d(6),check_out:d(10),adults:2,children:0,payment:'deposit',deposit_paid:200,agreed_total:640,agreed_nightly:620,agreed_txn_fee:20,agreed_nights:4},
+    {id:2,prop_key:'jollyboat',name:'Cara Bell',email:'cb@x.co',check_in:d(14),check_out:d(17),adults:2,children:0,payment:'deposit',deposit_paid:100,agreed_total:520,agreed_nightly:505,agreed_txn_fee:15,agreed_nights:3},
+    {id:3,prop_key:'jollyboat',name:'Dan Rowe',email:'',check_in:d(22),check_out:d(24),adults:2,children:0,payment:'deposit',deposit_paid:50,agreed_total:145,agreed_nightly:140,agreed_txn_fee:5,agreed_nights:2},
+  ] });
   return json({ok:true,bookings:[],enquiries:[],threads:[],reviews:[],photos:[],experiences:[],content:{},blocks:[],ranges:[],results:[],corpus:[],logs:{},events:[],value:null});
 });
 (async () => {
@@ -197,6 +204,157 @@ const stub = (page) => page.route(/\.php/, (r) => {
   ok(watch.undoDepth === 1 && /Watching/.test(watch.undoLabel || ''), `WATCH: setting one lands on the undo stack (${watch.undoLabel})`);
   ok(watch.stopped, 'WATCH: and undo actually stops it server-side');
 
-  console.log(fails ? `\n  ${fails} FAILED` : '\n  INLINE + UNDO OK');
+  // ---- STEP 3: BULK — chase them all, in one tap ----
+  // Driven the way the owner does it: search, look at the answer, TAP the action,
+  // read the real confirm, press the real button. Nothing is called directly —
+  // search-test §38 already pins the logic, so what is worth proving here is that
+  // the affordance EXISTS on screen and that the dialog and the strip say the truth.
+  // (Which mattered: the answer's three refine chips had been in its data since
+  // long before the hero existed and rendered ZERO times once it became the hero,
+  // so "the action is in the array" would have proved nothing about the screen.)
+  const openOwed = () => page.evaluate(async () => {
+    const until = async (fn, ms = 8000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v !== undefined && v !== null && v !== false && v !== -1) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 50)); } };
+    // The earlier probes in this file left entries on the stack, so the bulk
+    // assertions measure from zero rather than assuming it.
+    __chbUndo.length = 0;
+    try { closeCmdK(); } catch (e) {}
+    openCmdK();
+    await until(() => document.getElementById('cmdk').classList.contains('open'));
+    document.getElementById('cmdk-input').value = 'who owes me money';
+    cmdkSearchCore('who owes me money', false);
+    await until(() => __cmdkResults.length && __cmdkResults[0].type === 'answer');
+    __cmdkSel = 0; cmdkRender();
+    return await until(() => !!document.querySelector('#cmdk .cmdk-hero'));
+  });
+
+  await openOwed();
+  const surf = await page.evaluate(() => {
+    const qa = document.querySelectorAll('#cmdk .cmdk-qa-row');
+    return {
+      heroTxt: (document.querySelector('#cmdk .cmdk-hero-label') || {}).textContent || '',
+      acts: [...qa].map((b) => b.textContent.trim()),
+      // The chips that had been invisible: an answer's refine pivots.
+      chips: [...document.querySelectorAll('#cmdk .cmdk-chip')].map((c) => c.textContent.trim()),
+      dataChips: (__cmdkResults[0].chips || []).length,
+    };
+  });
+  ok(/£955/.test(surf.heroTxt), `BULK: the answer knows the whole set (${surf.heroTxt.slice(0, 46)}…)`);
+  ok(surf.acts.some((t) => /Request all 3 balances/.test(t)), `BULK: and offers to chase all of it in one tap (${surf.acts.join(' | ') || 'none'})`);
+  ok(surf.chips.length === surf.dataChips && surf.chips.length > 0, `HERO: the answer's refine chips actually render (${surf.chips.length} of ${surf.dataChips} in the data)`);
+
+  // CANCELLING claims nothing — the strongest version of that assertion is pressing
+  // the dialog's own Cancel button, not stubbing the promise.
+  const cancel = await page.evaluate(async () => {
+    const until = async (fn, ms = 6000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 50)); } };
+    const posts = [];
+    const realPost = window.apiPost;
+    window.apiPost = async (u, b) => { posts.push(b); return realPost(u, b); };
+    const btn = [...document.querySelectorAll('#cmdk .cmdk-qa-row')].find((b) => /Request all/.test(b.textContent));
+    btn.click();
+    await until(() => document.getElementById('glass-dialog').classList.contains('open'));
+    const msg = document.getElementById('glass-dialog-msg').textContent;
+    const okLabel = document.getElementById('glass-dialog-ok').textContent.trim();
+    document.getElementById('glass-dialog-cancel').click();
+    await until(() => !document.getElementById('glass-dialog').classList.contains('open'));
+    await new Promise((r) => setTimeout(r, 300));
+    window.apiPost = realPost;
+    return { msg, okLabel, sends: posts.filter((b) => b && b.action === 'request_payment').length,
+             strip: (document.querySelector('#cmdk .cmdk-actmsg') || {}).textContent || '(none)',
+             undo: __chbUndo.length };
+  });
+  ok(/Richard Berry/.test(cancel.msg) && /Cara Bell/.test(cancel.msg) && /Dan Rowe/.test(cancel.msg), 'BULK: the confirm names every recipient — one tap is only honest if you can see it');
+  ok(/Dan Rowe[^\n]*will be skipped/.test(cancel.msg), 'BULK: including the one it will skip, said up front');
+  ok(/Total to chase: £860/.test(cancel.msg), `BULK: totalling only what will really be chased (${(cancel.msg.match(/Total to chase: [^\n]*/) || [])[0]})`);
+  ok(cancel.okLabel === 'Send 2 requests', `BULK: and the BUTTON states the real count (${cancel.okLabel})`);
+  ok(cancel.sends === 0, `BULK: pressing Cancel sends nothing (${cancel.sends} requests)`);
+  ok(cancel.strip === '(none)' && cancel.undo === 0, 'BULK: and claims nothing — no strip, no undo entry');
+
+  // The OK button is ONE shared node, so a custom label has to be reassigned every
+  // time or "Send 2 requests" turns up on the next ordinary confirm the owner sees.
+  const leak = await page.evaluate(async () => {
+    const until = async (fn, ms = 5000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 50)); } };
+    const p = glassConfirm('Just an ordinary question?');
+    await until(() => document.getElementById('glass-dialog').classList.contains('open'));
+    const label = document.getElementById('glass-dialog-ok').textContent.trim();
+    document.getElementById('glass-dialog-cancel').click();
+    await p;
+    return label;
+  });
+  ok(leak === 'OK', `BULK: a custom button label never leaks into the next plain confirm (${leak})`);
+
+  // A confirm that LISTS its set is as long as the set. Measured without the
+  // scroller, 30 owers pushed Send/Cancel to y=995 in a 780px viewport — a dialog
+  // you cannot answer. It has to scroll inside the box, and the part that scrolls
+  // out has to stay reachable rather than be clipped away.
+  //
+  // The VIEWPORT is set explicitly, and that is load-bearing: at this suite's
+  // default 900×900 the buttons fit anyway, so the first assertion below passed
+  // with the scroller deleted — a check that cannot fail is worse than no check.
+  await page.setViewportSize({ width: 390, height: 780 });
+  const long = await page.evaluate(async () => {
+    const until = async (fn, ms = 5000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 50)); } };
+    const lines = ['Send balance requests to 30 guests?', ''];
+    for (let i = 0; i < 30; i++) lines.push(`Guest Number ${i + 1} — £${100 + i}.00 · Jollyboat`);
+    const p = glassConfirm(lines.join('\n'), 'Send 30 requests');
+    await until(() => document.getElementById('glass-dialog').classList.contains('open'));
+    await new Promise((r) => setTimeout(r, 400));
+    const m = document.getElementById('glass-dialog-msg');
+    const btns = document.querySelector('.glass-dialog-btns').getBoundingClientRect();
+    m.scrollTop = 99999;
+    const out = { btnBottom: Math.round(btns.bottom), vh: window.innerHeight,
+                  clipped: m.scrollHeight > m.clientHeight + 1, reached: m.scrollTop > 0 };
+    document.getElementById('glass-dialog-cancel').click();
+    await p;
+    return out;
+  });
+  await page.setViewportSize({ width: 900, height: 900 });
+  ok(long.btnBottom <= long.vh, `BULK: a 30-guest confirm keeps its buttons on screen (end ${long.btnBottom} of ${long.vh}px)`);
+  ok(long.clipped && long.reached, 'BULK: and the rest of the list scrolls inside the box rather than being cut off');
+
+  // CONFIRMING: two go, one can't, and the report says exactly that — in the WARN
+  // state, because a green tick over "sent 2 of 3" is the colour contradicting the words.
+  const sent = await page.evaluate(async () => {
+    const until = async (fn, ms = 9000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 50)); } };
+    const posts = [];
+    const realPost = window.apiPost;
+    window.apiPost = async (u, b) => { posts.push(b); return realPost(u, b); };
+    const btn = [...document.querySelectorAll('#cmdk .cmdk-qa-row')].find((b) => /Request all/.test(b.textContent));
+    btn.click();
+    await until(() => document.getElementById('glass-dialog').classList.contains('open'));
+    document.getElementById('glass-dialog-ok').click();
+    await until(() => { const s = document.querySelector('#cmdk .cmdk-actmsg'); return s && !/is-busy/.test(s.className); });
+    const s = document.querySelector('#cmdk .cmdk-actmsg');
+    const out = { open: document.getElementById('cmdk').classList.contains('open'),
+                  txt: s ? s.textContent.trim() : '(none)', cls: s ? s.className : '',
+                  role: s ? s.getAttribute('role') : null,
+                  ids: posts.filter((b) => b && b.action === 'request_payment').map((b) => b.id),
+                  undo: __chbUndo.length };
+    window.apiPost = realPost;
+    return out;
+  });
+  ok(sent.open, 'BULK: search stays open through the whole batch');
+  ok(sent.ids.length === 2 && !sent.ids.includes(3), `BULK: one request per reachable guest, none for the skipped one (ids ${sent.ids.join(',')})`);
+  ok(/Sent 2 of 3/.test(sent.txt), `BULK: the report counts honestly (${sent.txt})`);
+  ok(/Dan Rowe has no email address/.test(sent.txt), 'BULK: and names who was missed, so there is something to go and fix');
+  ok(/is-warn/.test(sent.cls), `BULK: as a PARTIAL, not a green tick (${sent.cls})`);
+  ok(sent.role === 'status', 'BULK: announced — nothing navigated, so there is no page change to notice');
+  ok(sent.undo === 0, 'BULK: no undo offered — an email cannot be unsent');
+
+  // A phone: the bulk action is the primary thing on that screen, so a lone action
+  // must not sit in a half-width cell of the two-column grid with nothing beside it.
+  await page.setViewportSize({ width: 390, height: 780 });
+  await openOwed();
+  const phone = await page.evaluate(() => {
+    const row = [...document.querySelectorAll('#cmdk .cmdk-qa-row')].find((b) => /Request all/.test(b.textContent));
+    if (!row) return null;
+    const panel = row.closest('.cmdk-qa');
+    return { row: Math.round(row.getBoundingClientRect().width), panel: Math.round(panel.getBoundingClientRect().width),
+             label: Math.round(row.querySelector('.cmdk-qa-lbl').scrollWidth), shown: Math.round(row.querySelector('.cmdk-qa-lbl').clientWidth) };
+  });
+  ok(!!phone && phone.row > phone.panel * 0.9, `PHONE: the lone bulk action takes the full width (${phone && phone.row}px of ${phone && phone.panel}px)`);
+  ok(!!phone && phone.label <= phone.shown + 1, `PHONE: and its words fit without truncating (${phone && phone.label} <= ${phone && phone.shown})`);
+  await page.setViewportSize({ width: 900, height: 900 });
+
+  console.log(fails ? `\n  ${fails} FAILED` : '\n  INLINE + UNDO + BULK OK');
   await done(fails);
 })().catch(e=>{console.error('FAILED:',e.message);process.exit(1);});
