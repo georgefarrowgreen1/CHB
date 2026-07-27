@@ -300,7 +300,23 @@ more)` REALIZES a help topic into a spoken how-to answer: it stitches the topic'
 and rides its `doIt`/`showMe` + "More:" runners-up as chips — so an explicit "how do I…"
 question GENERATES a single natural-language answer instead of a stack of topic rows. `cmdkHelp`
 returns it (in place of `cmdkHelpItem` rows) when `wantHelp` and the top topic scores ≥ 3; a
-plain keyword still returns the browsable `type:'help'` rows. Conversational answer rows
+plain keyword still returns the browsable `type:'help'` rows. **A how-to's chips are TWO species and are grouped as such.** `doIt` / `showMe` /
+"Walk me through it" act on THIS topic; the runners-up go to ANOTHER one. They were one
+undifferentiated wrap of pills — measured at 390px: 116, 126, 262px and a 44-char label
+that WRAPPED to two centred lines (58px among 29px neighbours), with 84/226/90/182px of
+dead space beside them. Now the runners-up carry `kind:'topic'`, lose the dead "More: "
+prefix and any trailing parenthetical (`chbChipLabel` — `q` keeps the FULL title so the
+topic still resolves), take the muted "goes elsewhere" treatment with the knot glyph that
+this file's comments had promised for related searches but never actually rendered, and
+`flex: 1 1 240px` gives them a line each which they FILL, so the block ends flush instead
+of ragged. `.cmdk-chip-lbl` clamps every chip to one line, so a long label can never
+become a lozenge again. The separator is a zero-height flex break (`.cmdk-chip-brk`), NOT
+a split array: `cmdkChipRun(i, k)` and `cmdkRowSubItems` both index straight into
+`it.chips`, so this obeys the same invariant as the layouts — regroup freely, never
+re-order or re-index. Gated by ui-test-searchpage §14 at 390 and 1280px (index integrity,
+one-line clamp driven by an INJECTED long label — without one the check is vacuous
+because the real titles fit their stretched line, no "More:", both species present,
+destinations flush). Conversational answer rows
 (social greetings, fallbacks, generated how-tos) carry `wrap:true` → the row renders
 `.cmdk-row-wrap` so full sentences wrap over multiple lines instead of clamping to one
 ellipsised line on the search page. **A wrapping row must LIFT THE CLAMP, not just the

@@ -4845,6 +4845,13 @@ function cmdkHelpItem(t, byId) {
 // paragraph of the steps plus the one action that actually does it — instead of
 // a stack of topic rows. Used for explicit "how do I…" questions. Runners-up
 // ride along as "More: …" chips.
+// A topic title as a CHIP label: drop a trailing parenthetical, which is a
+// disambiguator for a heading and pure width on a pill ("Block out dates
+// (maintenance / own use)" → "Block out dates"). The chip's `q` keeps the full
+// title, so what it searches for is unchanged.
+function chbChipLabel(title) {
+    return String(title || '').replace(/\s*\([^)]*\)\s*$/, '').trim() || String(title || '');
+}
 function chbNlgHowTo(t, more) {
     const steps = (t.steps || []).map((s) => String(s).trim()).filter(Boolean);
     const title = t.title.replace(/\?$/, '');
@@ -4868,7 +4875,15 @@ function chbNlgHowTo(t, more) {
     if (typeof CHB_WALK !== 'undefined' && CHB_WALK[t.id]) chips.push({ label: 'Walk me through it', run: () => coachWalk(t.id) });
     if (t.doIt) chips.push(t.doIt);
     if (t.showMe) chips.push(t.showMe);
-    (more || []).forEach((mt) => chips.push({ label: 'More: ' + mt.title, q: mt.title }));
+    // The runners-up are OTHER TOPICS, not more things to do with this one, and they
+    // used to be indistinguishable: same pill, same weight, prefixed "More: " and
+    // carrying the topic's full title including its parenthetical. Measured at 390px
+    // that produced a 262px lozenge and a 44-char label that WRAPPED to two centred
+    // lines — four pills at four unrelated widths reading as a pile rather than a set.
+    // `kind: 'topic'` lets the renderer group and quiet them; the label drops the dead
+    // prefix and the trailing "(…)", while `q` keeps the FULL title so the topic still
+    // resolves exactly as before.
+    (more || []).forEach((mt) => chips.push({ label: chbChipLabel(mt.title), q: mt.title, kind: 'topic' }));
     return { type: 'answer', id: 'nlg-howto-' + t.id, label: lead, sub, nlgBody: body, steps, chips, run: (t.showMe && t.showMe.run) || (t.doIt && t.doIt.run) || (() => {}) };
 }
 // Turn a list of topic ids into help items (order preserved, unknowns dropped).
@@ -6952,8 +6967,25 @@ function cmdkRowExtrasHtml(it, i) {
     // secondary pivots below. A chip that just duplicates an action is dropped.
     let refine = '';
     if (Array.isArray(it.chips) && it.chips.length && (it.type !== 'help' || sel)) {
+        // Chips of kind 'topic' go somewhere ELSE (another help topic); the rest act on
+        // THIS answer. They used to be one undifferentiated wrap, so a how-to showed
+        // four pills of four unrelated widths and you could not tell a verb from a
+        // destination. They are separated by a zero-height flex break rather than by
+        // splitting the array, because `cmdkChipRun(i, k)` and `cmdkRowSubItems` both
+        // index straight into `it.chips` — the same invariant the layouts have, that a
+        // container may regroup rows but must never re-order or re-index them.
+        let broke = false;
         const pills = it.chips
-            .map((c, k) => (hasActions && actLabels && actLabels.has((c.label || '').toLowerCase())) ? '' : `<button type="button" class="cmdk-chip${subFocus('chip', k)}" data-idx="${i}" data-chip="${k}" ${chbAttrs('cmdkChipRun', i, k)}>${escapeHtml(c.label)}</button>`)
+            .map((c, k) => {
+                if (hasActions && actLabels && actLabels.has((c.label || '').toLowerCase())) return '';
+                const topic = c.kind === 'topic';
+                const brk = topic && !broke ? ((broke = true), '<span class="cmdk-chip-brk" aria-hidden="true"></span>') : '';
+                // The muted "goes elsewhere" treatment this file's own comment has
+                // promised for related searches since they were introduced, and which
+                // was never actually rendered — every chip came out identical.
+                const ic = topic ? `<span class="cmdk-chip-ic" aria-hidden="true">${CMDK_SEARCH_IC}</span>` : '';
+                return `${brk}<button type="button" class="cmdk-chip${topic ? ' cmdk-chip-find' : ''}${subFocus('chip', k)}" data-idx="${i}" data-chip="${k}" ${chbAttrs('cmdkChipRun', i, k)}>${ic}<span class="cmdk-chip-lbl">${escapeHtml(c.label)}</span></button>`;
+            })
             .join('');
         refine = pills ? `<div class="cmdk-chips">${pills}</div>` : '';
     }

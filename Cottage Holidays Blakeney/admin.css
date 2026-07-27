@@ -2661,6 +2661,10 @@ body.light-mode .cmdk-editor-input {
   padding: 2px 12px 10px 54px; /* aligns the pills under the row label */
 }
 .cmdk-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
   border: 1px solid var(--glass-border);
   background: var(--glass-hover);
   color: var(--text-light);
@@ -2671,6 +2675,48 @@ body.light-mode .cmdk-editor-input {
   border-radius: var(--r-pill);
   cursor: pointer;
   transition: border-color 0.2s var(--fluid-bezier), background 0.2s var(--fluid-bezier);
+}
+/* ONE LINE, always. A chip whose label wrapped became a tall centred lozenge sitting
+   among single-line pills — measured at 390px, "More: Block out dates (maintenance /
+   own use)" took two lines and 58px against its neighbours' 29px, which is most of
+   why the group read as a pile. The label truncates instead; the shortened titles
+   (chbChipLabel) mean it rarely has to. */
+.cmdk-chip-lbl {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Zero-height flex break: starts the "goes elsewhere" chips on their own line
+   WITHOUT splitting the array, so every chip keeps its original index. */
+.cmdk-chip-brk {
+  flex-basis: 100%;
+  height: 0;
+  margin: 0;
+}
+/* RELATED SEARCHES read as destinations, not verbs: quieter fill, muted ink, and the
+   assistant's own search glyph so the difference is legible without a caption. */
+.cmdk-chip-find {
+  background: none;
+  color: var(--text-muted);
+  font-weight: 500;
+  /* STRETCH to the line. A destination's title is whatever length it is, so left to
+     themselves these wrapped into pills of unrelated widths with 109px and 201px of
+     dead space beside them — the ragged edge that made the group read as a pile.
+     Given a wide basis they take a line each and fill it, so the block ends flush on
+     both sides and reads as a list of places to go. Full width also means the long
+     titles never need truncating. */
+  flex: 1 1 240px;
+  justify-content: flex-start;
+}
+.cmdk-chip-ic {
+  display: inline-flex;
+  flex: 0 0 auto;
+  opacity: 0.7;
+}
+.cmdk-chip-ic .ic {
+  width: 13px;
+  height: 13px;
 }
 .cmdk-chip:hover,
 .cmdk-chip:focus-visible {
