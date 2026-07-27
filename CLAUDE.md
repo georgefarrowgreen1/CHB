@@ -429,6 +429,43 @@ the crown stays hittable, the panel fits on screen with the results scrolling in
 close is ≥24px and named. The `<main id="view-search">` shell and its `ADMIN_VIEWS` entry
 are vestigial — see the task list; `ui-test-adminviews` asserts the shell is empty BY
 DESIGN so a half-done removal is caught.
+**`cmdk-wide` is decided at the TOP of `cmdkRenderInner`, above every early return.** It
+used to be toggled where the pane renders — which the `__cmdkDeep`, `__cmdkEmpty` and
+no-results branches all `return` before, so those screens kept whatever width the last
+selection left behind: measured at 1440, the empty landing rendered 860px with NO pane and
+its boards silently reflowed to two columns, deep search 860×373 with `.cmdk-detail` null,
+and closing deep search stayed stuck at 860. Deciding once at the top keeps the invariant
+("one place decides the pane, the same place sizes the box") actually true.
+**THE POP-OUT CONTAINS FOCUS** (`cmdkTrapTab`, `CMDK_FOCUSABLE`, installed by `openCmdK`
+and removed by `closeCmdK`, plus `aria-modal` on the node). The workspace is still behind
+the scrim and used to be reachable: ONE Shift+Tab from the field landed on a "Save note"
+button inside the booking hub — off screen, unreachable because `body.cmdk-open` is
+`overflow:hidden`, fully activatable, wearing a focus ring nobody can see — and two
+Shift+Tabs plus typing put the text into that booking's notes textarea while the field
+stayed empty. Forward Tab escaped onto the crown and the dock. Deliberately a keydown trap
+rather than `inert` on the rest of the page: the workspace must keep rendering (the point
+of a pop-out over a page you can still see) and `inert` would have to be unwound on all
+four exit paths. **Result rows carry `tabindex="-1"`** for the same reason: they are
+`role="option"` buttons and were tabbable, so Tab could put the ring on one row while
+`.is-sel` sat on another, and once focus left the field EVERY arrow key was dead (all key
+handling is bound to the input) — measured, a real ArrowDown on a focused row moved
+nothing. Arrows own the list, Tab owns the chrome. **`.is-kbd` renders a real ring**:
+Left/Right emitted that class with no stylesheet rule anywhere, so sub-focus was invisible
+(pixel-diff 0 changed px of 29040) while the cursor resting on action 0 arms a bulk money
+send. **A selected BOARD row keeps its background**: the board's `background: none` reset
+and `.cmdk-row.is-sel` are both (0,2,0), so the later rule won and the selection computed
+transparent in both themes — on the pop-out's DEFAULT state — leaving a 3px bar at 1.73:1;
+the reset is now `:not(.is-sel):not(:hover)`. **Focus is not hover**: `.cmdk-clear`,
+`.cmdk-help-btn` and `.cmdk-chip` ended their hover rule with `outline: none`, killing the
+global ring (0px against `#cmdk-close`'s 2px in the same row). **An action's failure never
+prints server internals** — `chbActErrSay` gates it, because apiPost slices a failed body
+to 200 chars and a 500 rendered a PHP fatal, SQLSTATE and the host filesystem path into
+the window verbatim. Some throws here are deliberate PROSE (`chbBulkRun` raises "Couldn't
+send any — Dan Rowe has no email address"), so the test is whether the message looks
+written for a person: no markup, stack frame, SQLSTATE, `.php` path or bare snake_case
+identifier, and short enough to be a sentence. Gated by ui-test-searchpage §15, each item
+break-tested; the error one gates the WIRING as well as the helper, because testing
+`chbActErrSay` alone passed with the call site reverted to `e.message`.
 Row anatomy, measured and refined: `.cmdk-row-label` CLAMPS TO TWO LINES (one line
 cut "Alexandrina Featherstonehaugh-Smythe" by 189px of 306px — over half the row's
 identity; the pop-out has the vertical room for two), label and sub both carry the raw text

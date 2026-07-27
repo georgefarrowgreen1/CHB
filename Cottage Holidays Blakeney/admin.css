@@ -1562,7 +1562,6 @@ body.owner-mode .logo.ml-learning .logo-mark {
 .cmdk-clear:focus-visible {
   background: var(--glass-hover);
   color: var(--text-light);
-  outline: none;
 }
 /* The knot never hides — it IS the AI status. The ✕ clear sits on the RIGHT
    (after the input, before help) and simply appears once there's text. */
@@ -1594,7 +1593,6 @@ body.owner-mode .logo.ml-learning .logo-mark {
 .cmdk-help-btn:focus-visible {
   background: var(--glass-hover);
   color: var(--text-light);
-  outline: none;
 }
 .cmdk-search input {
   flex: 1;
@@ -2235,6 +2233,18 @@ body.light-mode .cmdk-editor-input {
   width: 15px;
   height: 15px;
 }
+/* SUB-FOCUS made visible. Left/Right move a cursor through a selected row's actions
+   and chips by adding `.is-kbd` — and no stylesheet had that selector, so the marker
+   rendered NOTHING: pixel-diff of a quick-action resting vs after ArrowRight measured
+   0 changed px of 29040, and with the cursor on action 0 Enter would fire "Request all
+   3 balances" — a bulk money send — with nothing on screen saying so. It takes the
+   panel's own focus ring, because that is exactly what it is. */
+.cmdk-qa-row.is-kbd,
+.cmdk-chip.is-kbd {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 /* Refine chips under an answer head — narrow/pivot the result without retyping. */
 .cmdk-refine {
   display: flex;
@@ -2718,11 +2728,16 @@ body.light-mode .cmdk-editor-input {
   width: 13px;
   height: 13px;
 }
+/* FOCUS IS NOT HOVER. These pairs used to end in `outline: none`, which killed the
+   global `button:focus-visible` ring — measured with real Tab presses, #cmdk-clear,
+   #cmdk-help and every chip computed `outline: 0px none` while #cmdk-close 16px away
+   in the same row got its 2px accent ring, and a 4px strip sampled just outside each
+   control changed by 0 of 128px. All that was left was the hover tint, the weakest
+   signal in the panel. The tint stays on hover; focus keeps the ring it inherits. */
 .cmdk-chip:hover,
 .cmdk-chip:focus-visible {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 8%, var(--glass-hover));
-  outline: none;
 }
 
 /* DARKSTAR ONLINE — the semantic model has finished loading. The logo knots
@@ -3351,7 +3366,12 @@ body.cmdk-open {
 }
 /* A board's rows have the board's own surface behind them, so the row's resting
    fill would double up. Hover still has to register. */
-.cmdk-board .cmdk-row {
+/* :not(.is-sel):not(:hover) is load-bearing. This reset and `.cmdk-row.is-sel` are
+   both (0,2,0), so the later board rule won and a keyboard-SELECTED board row computed
+   `rgba(0,0,0,0)` — measured identical to its neighbour in both themes, leaving only a
+   3px inset bar at 1.73:1 in light. The boards ARE the default state, so arrowing down
+   the day brief moved an invisible selection. */
+.cmdk-board .cmdk-row:not(.is-sel):not(:hover) {
   background: none;
 }
 .cmdk-board .cmdk-row:hover {

@@ -694,6 +694,187 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   }
   await page.setViewportSize({ width: 900, height: 900 });
 
+  // ---- 15. PRODUCTION PASS: the things an audit measured as broken ----
+  // Each of these was found by measurement, not inspection, and each failed silently —
+  // no error, no visual hint, nothing a screenshot review would catch.
+  await page.setViewportSize({ width: 1440, height: 900 });
+
+  // 15a) `cmdk-wide` is decided ABOVE the early returns. It used to be toggled at the
+  // point the pane renders, which the landing / no-results / deep-search branches all
+  // return before — so those screens kept whatever width the last selection left:
+  // measured, the empty landing rendered 860px with NO pane and its boards reflowed to
+  // two columns, and closing deep search stayed stuck at 860.
+  const wide = await page.evaluate(async () => {
+    const until = async (fn, ms = 6000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 40)); } };
+    const box = () => Math.round(document.querySelector('#cmdk .cmdk-box').getBoundingClientRect().width);
+    const isWide = () => document.getElementById('cmdk').classList.contains('cmdk-wide');
+    const out = {};
+    try { closeCmdK(); } catch (e) {}
+    openCmdK();
+    await until(() => document.getElementById('cmdk').classList.contains('open'));
+    const i = document.getElementById('cmdk-input');
+    // Select a booking so the pane (and the wide box) are genuinely up first.
+    i.value = 'bob'; cmdkSearchCore('bob', false);
+    await until(() => __cmdkResults.some((r) => r && r.type === 'booking'));
+    __cmdkSel = __cmdkResults.findIndex((r) => r && r.type === 'booking'); cmdkRender();
+    await new Promise((r) => setTimeout(r, 250));
+    out.withPane = { w: box(), wide: isWide(), pane: !!document.querySelector('#cmdk .cmdk-detail') };
+    // …then each branch that returns early.
+    i.value = ''; cmdkSearchCore('', false);
+    await new Promise((r) => setTimeout(r, 300));
+    out.landing = { w: box(), wide: isWide(), cols: new Set([...document.querySelectorAll('#cmdk .cmdk-board')].map((b) => Math.round(b.getBoundingClientRect().top))).size };
+    i.value = 'zzzqqqxxx'; cmdkSearchCore('zzzqqqxxx', false);
+    await new Promise((r) => setTimeout(r, 300));
+    out.none = { w: box(), wide: isWide() };
+    return out;
+  });
+  ok(wide.withPane.wide && wide.withPane.pane, `WIDE: a selected record still widens the box for its pane (${wide.withPane.w}px)`);
+  ok(!wide.landing.wide, `WIDE: the empty landing is never left wide (${wide.landing.w}px, wide=${wide.landing.wide})`);
+  ok(wide.landing.w < wide.withPane.w, `WIDE: …so the landing narrows back (${wide.landing.w} < ${wide.withPane.w})`);
+  ok(!wide.none.wide, `WIDE: nor is the no-results state (${wide.none.w}px)`);
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  // 15b) A keyboard-SELECTED board row must actually look selected. The board's own
+  // `background: none` reset and `.cmdk-row.is-sel` are both (0,2,0), so the later
+  // board rule won and the selection computed transparent — measured identical to the
+  // row below it in both themes, on the pop-out's DEFAULT state.
+  for (const theme of ['dark', 'light']) {
+    const board = await page.evaluate(async (th) => {
+      const until = async (fn, ms = 6000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 40)); } };
+      document.body.classList.toggle('light-mode', th === 'light');
+      try { closeCmdK(); } catch (e) {}
+      openCmdK();
+      await until(() => document.getElementById('cmdk').classList.contains('open'));
+      await until(() => !!document.querySelector('#cmdk .cmdk-board .cmdk-row'));
+      const rows = [...document.querySelectorAll('#cmdk .cmdk-board .cmdk-row')];
+      const idx = +rows[0].getAttribute('data-idx');
+      __cmdkSel = idx; cmdkRender();
+      await new Promise((r) => setTimeout(r, 200));
+      const sel = document.querySelector('#cmdk .cmdk-board .cmdk-row.is-sel');
+      return { found: !!sel, bg: sel ? getComputedStyle(sel).backgroundColor : '(none)' };
+    }, theme);
+    const transparent = /rgba\(0,\s*0,\s*0,\s*0\)|transparent/.test(board.bg);
+    ok(board.found && !transparent, `BOARD @${theme}: a selected board row has a real background (${board.bg})`);
+  }
+  await page.evaluate(() => document.body.classList.remove('light-mode'));
+
+  // 15c) Left/Right sub-focus must RENDER. The marker class was emitted with no rule
+  // anywhere — pixel-diff of a quick-action resting vs marked measured 0 changed px of
+  // 29040, while the cursor sitting on action 0 arms a bulk money send.
+  const kbd = await page.evaluate(async () => {
+    const until = async (fn, ms = 8000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v !== undefined && v !== null && v !== false && v !== -1) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 40)); } };
+    try { closeCmdK(); } catch (e) {}
+    openCmdK();
+    await until(() => document.getElementById('cmdk').classList.contains('open'));
+    const i = document.getElementById('cmdk-input');
+    i.value = 'bob carter'; cmdkSearchCore('bob carter', false);
+    const at = await until(() => __cmdkResults.findIndex((r) => Array.isArray(r.actions) && r.actions.length));
+    if (at === null) return null;
+    __cmdkSel = at; __cmdkActSel = -1; cmdkRender();
+    await until(() => !!document.querySelector('#cmdk .cmdk-qa-row'));
+    const before = getComputedStyle(document.querySelector('#cmdk .cmdk-qa-row')).outlineWidth;
+    __cmdkActSel = 0; cmdkRender();
+    await new Promise((r) => setTimeout(r, 150));
+    const marked = document.querySelector('#cmdk .cmdk-qa-row.is-kbd');
+    return { before, marked: !!marked, outline: marked ? getComputedStyle(marked).outlineWidth : '0px' };
+  });
+  ok(!!kbd && kbd.marked, 'KBD: Left/Right marks a quick-action');
+  ok(!!kbd && parseFloat(kbd.outline) >= 2 && parseFloat(kbd.before) < 2,
+    `KBD: …and the marker is VISIBLE — an outline appears (${kbd && kbd.before} → ${kbd && kbd.outline})`);
+
+  // 15d) FOCUS CONTAINMENT. The workspace is still behind the scrim: one Shift+Tab from
+  // the field used to land on a "Save note" button inside the booking hub — off screen,
+  // unreachable, activatable — and typing went into that booking's notes.
+  const trap = await page.evaluate(async () => {
+    const until = async (fn, ms = 6000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 40)); } };
+    try { closeCmdK(); } catch (e) {}
+    openCmdK();
+    await until(() => document.getElementById('cmdk').classList.contains('open'));
+    await new Promise((r) => setTimeout(r, 300));
+    return { modal: document.getElementById('cmdk').getAttribute('aria-modal'),
+             rowTabbable: [...document.querySelectorAll('#cmdk .cmdk-row')].some((r) => r.tabIndex >= 0) };
+  });
+  ok(trap.modal === 'true', 'FOCUS: the open pop-out reports itself modal');
+  ok(!trap.rowTabbable, 'FOCUS: result rows are not Tab stops — arrows own the list, Tab owns the chrome');
+  const inside = await page.evaluate(() => {
+    const box = document.querySelector('#cmdk .cmdk-box');
+    return !!(document.activeElement && box.contains(document.activeElement));
+  });
+  ok(inside, 'FOCUS: focus starts inside the box');
+  for (const combo of ['Shift+Tab', 'Shift+Tab', 'Tab', 'Tab', 'Tab', 'Tab', 'Tab', 'Tab', 'Tab', 'Tab', 'Tab', 'Tab', 'Tab', 'Tab']) {
+    await page.keyboard.press(combo);
+  }
+  const contained = await page.evaluate(() => {
+    const box = document.querySelector('#cmdk .cmdk-box');
+    const a = document.activeElement;
+    return { inside: !!(a && box.contains(a)), where: a ? (a.id || a.className || a.tagName) : '(none)' };
+  });
+  ok(contained.inside, `FOCUS: 14 Tabs later it is STILL inside the pop-out (${contained.where})`);
+
+  // 15e) Focus is not hover. Three stops ended their hover rule with `outline: none`,
+  // which killed the global ring — measured 0px on clear/help/chips while #cmdk-close
+  // 16px away in the same row got its 2px accent ring.
+  const rings = await page.evaluate(async () => {
+    // The ✕ clear only EXISTS once the field has text (`has-text`), so measure with a
+    // query typed — otherwise this reads a non-rendered element and passes at 0px for
+    // the wrong reason.
+    const i = document.getElementById('cmdk-input');
+    i.value = 'bob'; cmdkSearchCore('bob', false);
+    await new Promise((r) => setTimeout(r, 300));
+    const out = {};
+    ['cmdk-clear', 'cmdk-help'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) { out[id] = null; return; }
+      if (!el.getBoundingClientRect().width) { out[id] = null; return; } // not on screen
+      el.focus();
+      out[id] = getComputedStyle(el).outlineWidth;
+    });
+    const chip = document.querySelector('#cmdk .cmdk-chip');
+    if (chip) { chip.focus(); out.chip = getComputedStyle(chip).outlineWidth; }
+    return out;
+  });
+  ok(Object.values(rings).filter((v) => v !== null).length >= 3,
+    `RING: all three stops were on screen to measure (${JSON.stringify(rings)})`);
+  Object.entries(rings).forEach(([k, v]) => {
+    if (v === null || v === undefined) return;
+    ok(parseFloat(v) >= 2, `RING: ${k} shows a focus ring, not just a hover tint (${v})`);
+  });
+
+  // 15f) The error strip must not print server internals — apiPost slices a failed body
+  // to 200 chars, so a 500 sprayed a PHP fatal, SQLSTATE and the host path into the
+  // window. Deliberate prose (chbBulkRun's "…has no email address") must still pass.
+  const errs = await page.evaluate(() => {
+    const machine = 'Server error 500: <br /> <b>Fatal error</b>: Uncaught PDOException: SQLSTATE[HY000] [2002] Connection refused in /kunden/homepages/1/d1/htdocs/db.php:88';
+    const idish = 'watchers_key: kind required';
+    const prose = 'Couldn’t send any — Dan Rowe has no email address';
+    const a = { label: 'Request balance' };
+    return {
+      machine: chbActErrSay(new Error(machine), a),
+      idish: chbActErrSay(new Error(idish), a),
+      prose: chbActErrSay(new Error(prose), a),
+    };
+  });
+  ok(!/SQLSTATE|Fatal|\.php|<br/.test(errs.machine), `ERR: a PHP fatal never reaches the strip (${errs.machine.slice(0, 62)})`);
+  ok(!/watchers_key/.test(errs.idish), `ERR: nor does an internal identifier (${errs.idish.slice(0, 52)})`);
+  ok(errs.prose === 'Couldn’t send any — Dan Rowe has no email address', `ERR: but a sentence written for a person passes through (${errs.prose})`);
+  // …and the WIRING, not just the helper: drive a real failing action through cmdkAct
+  // and read what the strip actually says. Testing chbActErrSay alone would pass even
+  // if the catch went back to printing e.message.
+  const wired = await page.evaluate(async () => {
+    const until = async (fn, ms = 6000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 40)); } };
+    __cmdkResults = [{ type: 'answer', id: 'probe', label: 'probe', sub: '', run: () => {}, actions: [{
+      key: 'probe', label: 'Request balance', pending: 'Working…', run: () => {},
+      inline: async () => { throw new Error('Server error 500: <b>Fatal error</b>: Uncaught PDOException: SQLSTATE[HY000] in /htdocs/db.php:88'); },
+    }] }];
+    __cmdkSel = 0; cmdkRender();
+    await cmdkAct(0, 0);
+    await until(() => !!document.querySelector('#cmdk .cmdk-actmsg.is-err'));
+    const el = document.querySelector('#cmdk .cmdk-actmsg');
+    return el ? el.textContent.trim() : '(none)';
+  });
+  ok(!/SQLSTATE|Fatal|\.php/.test(wired), `ERR: and the strip itself never shows them (${wired.slice(0, 70)})`);
+  await page.setViewportSize({ width: 900, height: 900 });
+
   console.log(fails ? `\n  ${fails} SEARCH-PAGE CHECK(S) FAILED ❌` : '\n  SEARCH-PAGE SUITE PASSED ✅');
   await done(fails);
 })();
