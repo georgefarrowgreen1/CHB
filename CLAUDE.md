@@ -896,11 +896,19 @@ a phone (wrapping doubled the bar to 88px). Inside the frame, `injectPreviewBann
 **`body.acct-preview-embedded`** when embedded, which zeroes the `--safe-*` tokens: the frame's
 edges are the overlay's, not the device's, and the overlay already inset itself — iOS hands
 `env(safe-area-inset-*)` down into a same-origin iframe, so token-based rules would otherwise
-inset twice. NB `header` and `.container` still call `env()` DIRECTLY (~573 / ~1583 in app.css),
-so they're NOT covered; restating them without the inset term was tried and REVERTED because the
-override out-specified the guest shell's own `top` and moved the header 10→20px, making the
-preview stop matching what the customer sees — the one thing the feature guarantees. The real fix
-is migrating those 36 raw `env()` sites onto the tokens, as its own job.
+inset twice. **Every inset reads a token now** — all 36 raw `env(safe-area-inset-*)` call sites
+were migrated, so the four `:root` declarations are the only `env()` left and zeroing them zeroes
+the lot. `header`/`.container` used to call `env()` DIRECTLY and so inset a SECOND time in the
+frame; restating them without the inset term was tried and REVERTED, because the override
+out-specified the guest shell's own `top` and moved the header 10→20px, making the preview stop
+matching what the customer sees — the one thing the feature guarantees. Migrating the
+DECLARATIONS adds no specificity, which is exactly why that trap is gone. Gated two ways:
+check-css-conventions's **rawEnv** count must stay 0 (a new raw `env()` silently opts its rule
+out again), and ui-test-acctpreview asserts each rule **RESPONDS** to the token — measured at
+inset 59 vs 0 in the top-level page, because Chromium reports `env()` as 0, so an "is it
+doubled?" check would pass just as happily against a rule that ignores the token entirely. NB the
+rule that wins for the header is the PHONE one (`calc(10px + var(--safe-t))`), not the desktop
+`calc(20px + …)` — break-testing the wrong one looks like a passing gate.
 
 **The day panel's WORDING rules** (all gated — search-test's pulse + brief + duties
 blocks, ui-test-searchpage §20b, ui-test-needs-you). A board's caption is context for

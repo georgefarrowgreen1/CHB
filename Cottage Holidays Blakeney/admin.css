@@ -3301,7 +3301,7 @@ body.light-mode .cmdk-search input {
   left: 10px;
   right: 10px;
   /* clears the header (60px tall at 20px from the top, plus the notch) */
-  top: calc(88px + env(safe-area-inset-top, 0px));
+  top: calc(88px + var(--safe-t));
   bottom: auto;
   z-index: 1440;
   display: flex;
@@ -3331,7 +3331,7 @@ body.light-mode .cmdk-search input {
      bottom of the screen — the results scroll inside it instead (.cmdk-results
      below). 88px is the top offset, and the tail leaves the sheet clear of the
      home indicator. */
-  max-height: calc(100vh - 88px - env(safe-area-inset-top, 0px) - max(16px, env(safe-area-inset-bottom, 0px)));
+  max-height: calc(100vh - 88px - var(--safe-t) - max(16px, var(--safe-b)));
   height: auto;
   display: flex;
   flex-direction: column;

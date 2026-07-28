@@ -188,10 +188,10 @@ body.guest-app:not(.owner-mode) .guest-dock-btn:active img {
 /* Clear the header, which now carries the menu (≈58px tall at this padding, plus
    its own 20px top offset and the notch). */
 body.guest-app:not(.owner-mode) .hero {
-  padding-top: calc(100px + env(safe-area-inset-top, 0px));
+  padding-top: calc(100px + var(--safe-t));
 }
 body.guest-app:not(.owner-mode) .container {
-  padding-top: calc(100px + env(safe-area-inset-top, 0px));
+  padding-top: calc(100px + var(--safe-t));
 }
 
 /* The guest menu is a centred, floating "pill" — the same look and layout as the
@@ -206,7 +206,7 @@ body.guest-app:not(.owner-mode) #guest-tabbar {
   gap: 9px;
   position: fixed;
   left: 50%;
-  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(20px + var(--safe-b));
   transform: translateX(-50%);
   z-index: 1400;
   max-width: calc(100vw - 20px);
@@ -424,7 +424,7 @@ body.guest-app:not(.owner-mode) #guest-msg-fab {
   align-items: center;
   position: fixed;
   left: 12px;
-  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(20px + var(--safe-b));
   z-index: 1400;
 }
 
@@ -543,7 +543,7 @@ body.guest-app:not(.owner-mode) {
   padding-bottom: 40px;
 }
 body.guest-app:not(.owner-mode).book-bar-open {
-  padding-bottom: calc(104px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(104px + var(--safe-b));
 }
 
 /* On mobile the footer is pared back to just the dark/light toggle, the
@@ -575,7 +575,7 @@ body.guest-app:not(.owner-mode) #guest-security-modal {
   overflow-y: auto;
   /* Starts below the header (which now carries the menu) so the menu stays
      visible and tappable over the top of these full-page screens. */
-  padding: calc(100px + env(safe-area-inset-top, 0px)) clamp(16px, 5vw, 32px) 0;
+  padding: calc(100px + var(--safe-t)) clamp(16px, 5vw, 32px) 0;
 }
 body.guest-app:not(.owner-mode) #guest-auth-modal .modal-box,
 body.guest-app:not(.owner-mode) #guest-details-modal .modal-box,
@@ -593,7 +593,7 @@ body.guest-app:not(.owner-mode) #guest-security-modal .modal-box {
      the header), so only a comfortable end-of-scroll margin is needed. Kept
      INSIDE the box because iOS ignores a scroll container's own bottom padding
      for scroll extent. */
-  padding: 0 0 calc(40px + env(safe-area-inset-bottom, 0px));
+  padding: 0 0 calc(40px + var(--safe-b));
 }
 /* The box has no padding here, so the close (×) row's desktop negative margins
    would push it past the edge and clip its top-right — keep it fully inside. */
@@ -619,7 +619,7 @@ body.guest-app:not(.owner-mode) #chat-widget {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
   z-index: 1390;
-  padding: calc(96px + env(safe-area-inset-top, 0px)) 0 calc(16px + env(safe-area-inset-bottom, 0px));
+  padding: calc(96px + var(--safe-t)) 0 calc(16px + var(--safe-b));
 }
 
 /* The header account pill is gone; the messages bubble now lives in the dock as
