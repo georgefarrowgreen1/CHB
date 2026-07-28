@@ -540,6 +540,16 @@
                     <div id="diag-samples" style="font-size:0.82rem;margin-top:8px;"></div>
                     <div id="reply-diag" style="font-size:0.8rem;margin-top:10px;"></div>
                 </details>
+                <!-- The public status page had NO link anywhere in the app: the
+                     one page you want when something looks wrong could only be
+                     reached by typing the URL from memory. It opens in a new tab
+                     deliberately — it is the page you check when THIS one is
+                     misbehaving, and it must not depend on this app to render. -->
+                <div class="accounts-stat" style="max-width:640px;margin-top:16px;">
+                    <div class="label">Public status page</div>
+                    <p style="font-size:0.85rem;color:var(--text-muted);margin:8px 0 12px;">A login-free page anyone can check — you, a guest, or whoever looks after the site. Shows whether the website, bookings, card payments and email are working, plus the last 30 days.</p>
+                    <a class="btn-sm btn-edit" href="/status" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;">Open the status page</a>
+                </div>
             </div>
 
             <!-- Search learning: teach the assistant (dead-ends), see taught &
@@ -801,7 +811,7 @@
         <div id="enquiry-hub-content"><!-- admin.js injects the enquiry hub here --></div>
     </template>
 
-<template data-view="view-search">
+<template data-view="view-search" data-host="body">
     <div id="cmdk" class="cmdk-page" role="search" aria-label="Search the back office">
         <div class="cmdk-box">
             <div class="cmdk-search">

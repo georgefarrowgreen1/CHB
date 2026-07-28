@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 310;
+const ADMIN_BUNDLE_V = 311;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -46,7 +46,26 @@ function ensureAdminViews() {
             const holder = document.createElement('div');
             holder.innerHTML = html;
             let injected = 0;
-            holder.querySelectorAll('template[data-view]').forEach((t) => {
+            holder.querySelectorAll('template[data-view]').forEach((el) => {
+                const t = /** @type {HTMLTemplateElement} */ (el);
+                // data-host="body" — a template with no page of its own. The
+                // search overlay is the only one: it is a fixed pop-out that
+                // cmdkEnsureOverlay used to re-parent to <body> anyway, so it
+                // needed a `.page-view` shell purely as a delivery address, and
+                // that shell then had to be asserted permanently EMPTY. Delivered
+                // straight to its real parent instead. Explicit, not a fallback
+                // for a missing host — a genuinely absent shell must still fail.
+                if (t.getAttribute('data-host') === 'body') {
+                    if (!document.getElementById(t.getAttribute('data-view') + '-hosted')) {
+                        const mark = document.createElement('div');
+                        mark.id = t.getAttribute('data-view') + '-hosted';
+                        mark.hidden = true;
+                        document.body.appendChild(mark);
+                        document.body.appendChild(t.content.cloneNode(true));
+                        injected++;
+                    }
+                    return;
+                }
                 const host = document.getElementById(t.getAttribute('data-view'));
                 // Only fill an EMPTY shell — never clobber a rendered screen if
                 // this somehow runs twice.
@@ -1269,7 +1288,7 @@ function mapEnquiryFromApi(row) {
 const CUSTOMER_FACING_VIEWS = ['view-main', 'view-cottages', 'view-21a'];
 // The only views an admin ever sees — everything else is the customer site,
 // which a signed-in admin has no use for (nav() bounces it to the back office).
-const ADMIN_VIEWS = ['view-backoffice', 'view-booking-hub', 'view-inbox', 'view-enquiry-hub', 'view-settings', 'view-accounts', 'view-activity-log', 'view-search'];
+const ADMIN_VIEWS = ['view-backoffice', 'view-booking-hub', 'view-inbox', 'view-enquiry-hub', 'view-settings', 'view-accounts', 'view-activity-log'];
 // Account preview (admin-only, read-only): opening the app with
 // ?acctpreview=<bookingId> — inside a sandboxed iframe the owner launches from the
 // back office — renders THAT customer's account exactly as the customer sees it.
@@ -1565,7 +1584,7 @@ function nav(viewId, anchorId = null) {
     try {
         const t = document.getElementById('admin-head-title');
         if (t) {
-            const HUBS = { 'view-booking-hub': 'Booking', 'view-enquiry-hub': 'Enquiry', 'view-search': 'Search' };
+            const HUBS = { 'view-booking-hub': 'Booking', 'view-enquiry-hub': 'Enquiry' };
             const btn = document.querySelector('.admin-dock-btn[data-view="' + dockView + '"]');
             const label = HUBS[viewId] || (btn ? btn.getAttribute('data-label') || '' : '');
             t.textContent = label;
@@ -13259,7 +13278,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'poorsig1';
+    const BUILD = 'minor1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

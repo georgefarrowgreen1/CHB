@@ -260,14 +260,11 @@
          opened by the dock's Search button or ⌘K / Ctrl-K (wired in admin.js);
          starts display:none inline so a guest (who never loads admin.css/admin.js)
          never sees it. -->
-    <!-- ================= SEARCH (dedicated page) =================
-         The assistant lives on ONE page now — reached from the CROWN's drop sheet
-         (crownSheetToggle → openCmdK on Enter) or ⌘K; the dock's separate Search
-         knot and every workspace Assist Bar were both retired in its favour. The #cmdk node keeps its ids (input/results/logo) so the whole
-         intelligence stack carries over unchanged; Esc / the dock take you
-         back to where you were (cmdkBack). -->
-    <main id="view-search" class="page-view container">
-    </main>
+    <!-- The assistant has NO page here. It is a pop-out (#cmdk) reached from the
+         crown or ⌘K, delivered straight to <body> by the data-host="body"
+         template in admin-views.html. It used to need an empty <main
+         id="view-search"> shell purely as a delivery address, which then had to
+         be asserted permanently empty; that shell is gone. -->
 
     <div class="mobile-nav-overlay" id="mobileMenu">
         <a href="/" data-act="mobileNavLink" data-view="view-main" data-edit-text="mnav-home">Home</a>
@@ -1701,6 +1698,10 @@
             <a href="#" data-act="pdCall" data-fn="openAllReviews">Guest reviews</a>
             <a href="#" data-act="openTerms">Booking terms</a>
             <a href="#" data-act="navLink" data-view="view-privacy">Privacy</a>
+            <!-- A real href, not an in-app route: this is the page you want when
+                 the app itself is misbehaving, so it must not be reached THROUGH
+                 the app. noindex is set by the page's own headers. -->
+            <a href="/status">Service status</a>
         </nav>
         <!-- Newsletter opt-in: a direct-booking audience the owner owns. -->
         <div class="footer-newsletter" id="footer-newsletter">
@@ -1721,7 +1722,7 @@
     <div id="changeover-toasts" class="toast-stack"></div>
 
     <!-- --- JAVASCRIPT --- -->
-    <script defer src="app.js?v=558"></script>
+    <script defer src="app.js?v=559"></script>
 
     <!-- App-style guest shell (bottom tab bar + install chip). External so the
          single-page index.html stays reviewable; gated to guests via CSS. -->
