@@ -6978,7 +6978,9 @@ function chbBusinessPulse() {
         if (!cur.nights && !prv.nights) return null; // nothing to say yet
         const dNn = cur.nights - prv.nights;
         const arrow = dNn > 0 ? '↑' : dNn < 0 ? '↓' : '→';
-        const trend = prv.nights === 0 ? (cur.nights ? 'off the mark' : 'nothing yet') : dNn > 0 ? `up ${dNn} on last month` : dNn < 0 ? `down ${-dNn} on last month` : 'level with last month';
+        // 'off the mark' meant OFF THE STARTING LINE and read as wide of it — a
+        // complaint about the number beside it. Its three siblings compare; so does it.
+        const trend = prv.nights === 0 ? (cur.nights ? 'up from none last month' : 'nothing yet') : dNn > 0 ? `up ${dNn} on last month` : dNn < 0 ? `down ${-dNn} on last month` : 'level with last month';
         const topK = Object.keys(cur.byC).sort((a, b) => cur.byC[b] - cur.byC[a])[0];
         // monthName/propName are locals elsewhere — inline them here.
         const nm = (k) => (propertyMeta[k] && propertyMeta[k].name) || k || '';
@@ -7046,9 +7048,11 @@ function cmdkBriefBuild() {
             }
         } catch (e) {}
         try { const ps = paymentSummary(pk, b); bits.push(ps.fullyPaid ? 'paid in full' : `${gbp(ps.balance)} to take`); } catch (e) {}
-        items.push({ type: 'answer', scope: 'bookings', id: 'brief-arr-' + b.id, board: 'today', label: `${chbSayFirst(b.name)} arrives today${b.checkInTime ? ' · ' + b.checkInTime : ''}`, sub: bits.join(' · '), run: () => { closeCmdK(); openBookingHub(b.id); } });
+        // No 'today' in these two labels: the board is CAPTIONED Today, so the word was
+        // stated three times on one card and informed in one of them.
+        items.push({ type: 'answer', scope: 'bookings', id: 'brief-arr-' + b.id, board: 'today', label: `${chbSayFirst(b.name)} arrives${b.checkInTime ? ' · ' + b.checkInTime : ''}`, sub: bits.join(' · '), run: () => { closeCmdK(); openBookingHub(b.id); } });
     });
-    if (arrToday.length > 2 || outs) items.push({ type: 'figure', scope: 'bookings', id: 'brief-today', board: 'today', label: `Today · ${ins} in · ${outs} out`, sub: 'Arrivals & departures', run: () => { closeCmdK(); tryAccessBackOffice(); } });
+    if (arrToday.length > 2 || outs) items.push({ type: 'figure', scope: 'bookings', id: 'brief-today', board: 'today', label: `${ins} in · ${outs} out`, sub: 'Arrivals & departures', run: () => { closeCmdK(); tryAccessBackOffice(); } });
     // DUTIES come from chbDuties() — the SAME decision the Today strip renders, so
     // the two surfaces cannot rank the same evening differently any more. What this
     // replaced was three rows computed here with their own rules: a plain COUNT of
@@ -7081,8 +7085,8 @@ function cmdkBriefBuild() {
         const plan = g && chbGapPlan(g);
         if (plan) {
             const nm = (propertyMeta[g.pk] || {}).name || g.pk;
-            if (plan.kind === 'offer') items.push({ type: 'answer', scope: 'bookings', id: 'brief-gap', board: 'month', wrap: true, label: `Worth a look: ${g.nights} free nights on ${nm}`, sub: `${fmtDate(g.from)}–${fmtDate(plan.endIncl)} · offer £${plan.offer}/night (${plan.pct}% off) — tap to apply`, actions: [chbWatchGapAction(g, plan)].filter(Boolean), run: () => { closeCmdK(); cmdkApplyPriceOverride(g.pk, g.from, plan.endIncl, plan.offer, 'Gap offer').catch((e) => glassAlert("Couldn't save: " + e.message)); } });
-            else items.push({ type: 'answer', scope: 'bookings', id: 'brief-gap', board: 'month', wrap: true, label: `Offer live: £${plan.rate}/night on ${nm}`, sub: `${fmtDate(g.from)}–${fmtDate(plan.endIncl)} · the ${g.nights}-night gap is priced to sell — edit in Rates`, run: () => { closeCmdK(); nyOfferRates(); } });
+            if (plan.kind === 'offer') items.push({ type: 'answer', scope: 'bookings', id: 'brief-gap', board: 'month', wrap: true, label: `Worth a look: ${g.nights} free nights on ${nm}`, sub: `${fmtStayRange(g.from, plan.endIncl)} · offer £${plan.offer}/night (${plan.pct}% off) — tap to apply`, actions: [chbWatchGapAction(g, plan)].filter(Boolean), run: () => { closeCmdK(); cmdkApplyPriceOverride(g.pk, g.from, plan.endIncl, plan.offer, 'Gap offer').catch((e) => glassAlert("Couldn't save: " + e.message)); } });
+            else items.push({ type: 'answer', scope: 'bookings', id: 'brief-gap', board: 'month', wrap: true, label: `Offer live: £${plan.rate}/night on ${nm}`, sub: `${fmtStayRange(g.from, plan.endIncl)} · the ${g.nights}-night gap is priced to sell — edit in Rates`, run: () => { closeCmdK(); nyOfferRates(); } });
         }
     } catch (e) {}
     // The teach-loop nudge: dead-end searches from the last 7 days, one tap to fix.
@@ -13794,11 +13798,29 @@ function chbDuties() {
         .sort((a, b) => a.days - b.days)
         .forEach(({ days, b, k, ps }) => {
             const gone = (b.checkOut || '') < today;
-            const when = days === 0 ? 'arrives today' : days === 1 ? 'arrives tomorrow' : days > 1 ? `arrives in ${days} days` : gone ? `left ${fmtDate(b.checkOut)} — overdue` : 'is here now — overdue';
+            // THE MONEY LEADS. This row used to open with the arrival — "Bob Carter
+            // arrives today — £400.00 to collect" — which put the figure last on a card
+            // captioned MONEY, and restated an arrival the Today card had already given
+            // you. Every other money row opens with its figure; so does this one now.
+            // `when` became a trailing clause to say it: the two overdue cases used to
+            // carry their own em-dash and would have produced a sentence with two.
+            // The TIMING moves to the sub, where the dates already live and trailing
+            // context is meant to clip — except when OVERDUE, the one state that must
+            // not be clippable, which stays in the label with the word "to collect".
+            // The label still runs to two lines at 390px with a full name on it, which
+            // is within the design (.cmdk-row-label clamps at two) and beats saving
+            // 21px: "from Sarah" is not a row you can act on if you have two Sarahs.
+            const late = gone || days < 0;
+            const when = days === 0 ? 'Arriving today' : days === 1 ? 'Arriving tomorrow'
+                : days > 1 ? `Arriving in ${days} days` : gone ? `Left ${fmtDate(b.checkOut)}` : 'Here now';
+            // The FULL name, not chbSayFirst's first name. This is a work item, not
+            // prose: two guests called Sarah make "from Sarah" a row you cannot act on
+            // without opening it, and the surname costs nothing the label cannot afford.
+            const who = b.name || 'a guest';
             out.push({
                 kind: 'balance', sev: days <= 7 ? 'danger' : 'warn', ic: 'money',
-                label: `${b.name || 'A guest'} ${when} — ${gbp(ps.balance)} to collect`,
-                sub: `${fmtStayRange(b.checkIn, b.checkOut)} · ${pname(k)}`,
+                label: late ? `${gbp(ps.balance)} overdue from ${who}` : `${gbp(ps.balance)} to collect from ${who}`,
+                sub: `${when} · ${fmtStayRange(b.checkIn, b.checkOut)} · ${pname(k)}`,
                 act: 'Chase', go: chbAttrs('openBookingHub', String(b.id)),
                 board: 'money', scope: 'money',
                 run: () => { closeCmdK(); openBookingHub(b.id); },

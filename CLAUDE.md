@@ -902,6 +902,21 @@ override out-specified the guest shell's own `top` and moved the header 10→20p
 preview stop matching what the customer sees — the one thing the feature guarantees. The real fix
 is migrating those 36 raw `env()` sites onto the tokens, as its own job.
 
+**The day panel's WORDING rules** (all gated — search-test's pulse + brief + duties
+blocks, ui-test-searchpage §20b, ui-test-needs-you). A board's caption is context for
+everything inside it, so a row must not repeat it: the Today card said "today" three
+times (caption + both rows) and now says it once. A row on the MONEY board leads with
+its FIGURE — `£520.00 to collect from Sarah Pemberton`, timing in the sub — because
+every other money row does and the Today card has already given you the arrival; the
+one exception is OVERDUE, which stays in the label because it must never be clippable.
+That label keeps the FULL name even though it runs to two lines at 390px: the row
+clamps at two by design, and "from Sarah" is not a row you can act on if you have two
+Sarahs. The month pulse's zero-last-month branch says `up from none last month`, not
+"off the mark" — which meant off the STARTING line and read as wide of it, a complaint
+about the number beside it, while its three siblings are all plain comparisons. And a
+brief sub uses `fmtStayRange`, never two `fmtDate`s pasted together: that is not an
+exception to the DD/MM/YYYY rule, it is the house's own compact form, which the gap row
+was the last row not to use.
 **chbDuties — ONE decision about what needs the owner** (admin.js). There used to be
 two: `needsYouItems()` built the Today strip and `cmdkBriefBuild()` built the search
 pop-out's landing, from the same bookings and enquiries but with DIFFERENT rules. Today
