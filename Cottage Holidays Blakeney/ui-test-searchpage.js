@@ -940,7 +940,7 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const scale = await page.evaluate(async () => {
     const until = async (fn, ms = 6000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 40)); } };
     const root = getComputedStyle(document.documentElement);
-    const steps = ['hero', 'lead', 'body', 'row', 'sub', 'meta', 'micro']
+    const steps = ['hero', 'lead', 'body', 'row', 'sub', 'micro']
       .map((k) => root.getPropertyValue(`--cmdk-fs-${k}`).trim())
       .filter(Boolean);
     // resolve each rem step to px through a probe, so this never hand-maths 16
@@ -978,9 +978,35 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     sweep('record');
     return { steps: steps.length, allowed: [...allowed], seen: seen.size, off: [...seen].filter(([fs]) => !allowed.has(fs)) };
   });
-  ok(scale.steps === 7, `TYPE: the scale declares seven steps (${scale.steps})`);
+  ok(scale.steps === 6, `TYPE: the scale declares six steps (${scale.steps})`);
   if (scale.off.length) console.log('     off-scale: ' + scale.off.map(([fs, who]) => `${fs} ${who}`).join(' · '));
   ok(scale.off.length === 0, `TYPE: every rendered size is one of them (${scale.off.length} off-scale of ${scale.seen} seen)`);
+
+  // 16c) THE SCALE'S OWN CLAIM, checked against its own numbers. The first version of
+  // that comment said every step stood ≥1.2px from its neighbour; three of six gaps
+  // did not, and the tightest (sub/meta, 0.64px) was closer than pairs the collapse
+  // had removed for being too close. Those two are one step now. This asserts the
+  // TRUE minimum, so the prose and the tokens cannot drift apart again — and it is
+  // deliberately a floor on the SPACING rather than a count, because the useful
+  // property is "no two steps are so close that choosing between them is noise".
+  const gaps = await page.evaluate(() => {
+    const root = getComputedStyle(document.documentElement);
+    const probe = document.createElement('span');
+    document.body.appendChild(probe);
+    const px = ['hero', 'lead', 'body', 'row', 'sub', 'micro'].map((k) => {
+      probe.style.fontSize = root.getPropertyValue(`--cmdk-fs-${k}`).trim();
+      return { k, px: parseFloat(getComputedStyle(probe).fontSize) };
+    });
+    probe.remove();
+    const out = [];
+    for (let i = 0; i < px.length - 1; i++) out.push({ pair: px[i].k + '/' + px[i + 1].k, gap: +(px[i].px - px[i + 1].px).toFixed(2) });
+    return { out, min: Math.min(...out.map((g) => g.gap)), descending: out.every((g) => g.gap > 0) };
+  });
+  ok(gaps.descending, 'TYPE: the steps descend — no two share a size');
+  // 0.8px is body/row, the one close pair, tolerated because prose and a list label
+  // never appear as peers (see the token block). Anything TIGHTER than that is the
+  // noise this scale exists to remove.
+  ok(gaps.min >= 0.8, `TYPE: …and none is closer than the one pair that is allowed to be (min ${gaps.min}px, ${gaps.out.find((g) => g.gap === gaps.min).pair})`);
 
   // 16c) A quick action is subordinate to the record it hangs under. `font: inherit`
   // took the document's 16px/400, so "Email" was set larger and lighter than the
@@ -1047,6 +1073,47 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   });
   ok(!!sys && sys.warn, 'SYS: a stopped automation reports as a warning');
   ok(!!sys && sys.shown >= sys.needs, `SYS: …and all of it is on screen at 390px (${sys && sys.shown} of ${sys && sys.needs}px)`);
+
+  // 16f) A SHORT VIEWPORT SPENDS ITS HEIGHT ON RESULTS. Measured on a landscape phone
+  // (740×400): the panel is 296px tall and its chrome took 119 of them — a 74px field
+  // plus a 45px keyboard hint — leaving 175px of results, which showed ONE row of
+  // seven. Advice about a keyboard is the first thing that should go on a device with
+  // no room to spare for it; a WARNING still earns its space, which is why the foot
+  // is hidden by condition rather than outright.
+  await page.setViewportSize({ width: 740, height: 400 });
+  const short = await page.evaluate(async () => {
+    const until = async (fn, ms = 6000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 40)); } };
+    /** @type {any} */ (window).__cronStatusPre = null;
+    try { closeCmdK(); } catch (e) {}
+    openCmdK();
+    await until(() => document.getElementById('cmdk').classList.contains('open'));
+    chbSysLine();
+    await new Promise((r) => setTimeout(r, 250));
+    const res = document.getElementById('cmdk-results');
+    const foot = document.querySelector('#cmdk .cmdk-foot');
+    const rows = [...document.querySelectorAll('#cmdk .cmdk-row')];
+    const rb = res.getBoundingClientRect();
+    return {
+      results: Math.round(rb.height),
+      footShown: foot ? getComputedStyle(foot).display !== 'none' : null,
+      whole: rows.filter((el) => { const a = el.getBoundingClientRect(); return a.top >= rb.top - 1 && a.bottom <= rb.bottom + 1; }).length,
+      total: rows.length,
+    };
+  });
+  ok(!!short && short.footShown === false, `SHORT: the keyboard hint yields its 45px when there is no height for it (foot shown=${short && short.footShown})`);
+  ok(!!short && short.results >= 210, `SHORT: …so the results get the room (${short && short.results}px, was 175)`);
+  ok(!!short && short.whole >= 2, `SHORT: and more than one row is actually readable (${short && short.whole} of ${short && short.total} whole)`);
+  // …but a WARNING is not something a short screen gets to swallow.
+  const shortWarn = await page.evaluate(async () => {
+    /** @type {any} */ (window).__cronStatusPre = { stale: true, everRan: true, ageHours: 168 };
+    chbSysLine();
+    await new Promise((r) => setTimeout(r, 250));
+    const foot = document.querySelector('#cmdk .cmdk-foot');
+    const sys = document.getElementById('cmdk-sys');
+    return { foot: foot ? getComputedStyle(foot).display !== 'none' : null, warn: !!(sys && sys.classList.contains('is-warn')) };
+  });
+  ok(!!shortWarn && shortWarn.warn && shortWarn.foot === true,
+    `SHORT: a stopped automation still gets its line here (foot shown=${shortWarn && shortWarn.foot})`);
   await page.setViewportSize({ width: 900, height: 900 });
 
   // ============================================================
@@ -1231,6 +1298,18 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const shapes = [empt.noResults, empt.scoped, empt.landing];
   ok(shapes.every((s) => s && s.icon), `EMPTY: all three states carry the same mark (${shapes.filter((s) => s && s.icon).length} of 3)`);
   ok(shapes.every((s) => s && s.title && s.sub), 'EMPTY: …and the same title + sub shape');
+  // A title/sub pair inside ONE component has to be separated by more than the eye
+  // can miss. This title sat 0.8px above its own sub (--body over --row), a hierarchy
+  // carried entirely by weight and colour while the size only pretended to help.
+  const hier = await page.evaluate(() => {
+    const n = document.querySelector('#cmdk .cmdk-none');
+    const strong = n && n.querySelector('strong');
+    if (!strong) return null;
+    const wrap = strong.parentElement;
+    return { title: parseFloat(getComputedStyle(strong).fontSize), sub: parseFloat(getComputedStyle(wrap).fontSize) };
+  });
+  ok(!!hier && hier.title - hier.sub >= 1.5,
+    `EMPTY: its title is a real step above its own sub (${hier && hier.title}px over ${hier && hier.sub}px)`);
   ok(!!empt.scoped && !!empt.landing && empt.scoped.sub === empt.landing.sub,
     `EMPTY: the widen instruction is worded once ("${empt.scoped && empt.scoped.sub}")`);
 

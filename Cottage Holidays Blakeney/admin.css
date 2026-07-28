@@ -28,15 +28,11 @@
   --siri-3: 210 92% 62%;
   --siri-4: 168 78% 55%;
   --siri-5: 34 96% 60%;
-  /* THE KNOT'S STATE COLOURS, named once so they can be retuned once. Model state
-     is carried by COLOUR ALONE, so each is a 1.4.11 non-text case at 3:1, not
-     decoration. Dark clears it (3.76 worst); on the light search surface four of
-     five did NOT — understood 2.53, meaning 2.56 (1.45 mid-animation), learning
-     1.77, guess 1.76. Light gets deeper instances of the same hues, reusing
-     --ok-text / --warn-text. `guess` reads tentative by being dim and that dimming
-     is baked into the VALUE, not an `opacity: 0.6` — the dark value is the exact
-     composite the alpha produced, so it looks identical with no alpha left for a
-     gate to model. Gated by a11y-test §1c. */
+  /* THE KNOT'S STATE COLOURS, named once so they can be retuned once. State is
+     carried by COLOUR ALONE, so each is a 1.4.11 non-text case at 3:1, not
+     decoration: dark clears it, light did not (four of five, worst 1.45), so light
+     gets deeper instances of the same hues. `guess` bakes its dimming into the VALUE
+     rather than an alpha, so no alpha is left for a gate to model. a11y-test §1c. */
   --knot-ready: var(--darkstar);
   --knot-understood: var(--ok);
   --knot-meaning: hsl(var(--siri-3));
@@ -55,17 +51,18 @@
      1.6px band) — differences that small are noise, not hierarchy. Three were not
      even rendering: .cmdk-row-label, .cmdk-row-sub and .cmdk-foot each declared a
      size the later ONE-ASSISTANT-LOOK block overrode, so the file stated two
-     answers. Seven steps now, each ≥1.2px from its neighbour and named for the JOB it
-     does, so picking one is a question about the content and not about pixels. (hero
-     covers the query FIELD as well as the answer — you ask at the size you are
-     answered.) A phone re-declares the TOKEN, not the rule (479px block below), so
-     the narrow tuning never becomes a nineteenth size. Gated by §16b. */
+     answers. SIX steps, named for the JOB each does (hero covers the query FIELD too —
+     you ask at the size you are answered); a phone re-declares the TOKEN, not the
+     rule. It was seven: sub and meta stood 0.64px apart, closer than pairs this
+     replaced and sharing surfaces, so they are one step. The one close pair left is
+     body/row at 0.8px, tolerated because prose and a list label never appear as
+     PEERS — the one place they did (the empty state's title over its own sub) is
+     fixed there. §16b/c gate the steps and the true minimum gap. */
   --cmdk-fs-hero: 1.15rem;
   --cmdk-fs-lead: 1.04rem;
   --cmdk-fs-body: 0.95rem;
   --cmdk-fs-row: 0.9rem;
-  --cmdk-fs-sub: 0.8rem;
-  --cmdk-fs-meta: 0.76rem;
+  --cmdk-fs-sub: 0.78rem;
   --cmdk-fs-micro: 0.7rem;
   --cmdk-measure: 720px;
 }
@@ -1741,9 +1738,9 @@ body.owner-mode .logo.ml-learning .logo-mark {
    1.76:1 on the search surface — in the DOM, absent on screen (the accent reaches
    only 2.7:1 there even at full strength). The tokens are identical in :root, so
    dark is unchanged; light now reads 3.39:1. Gated by ui-test-searchpage §18e. */
-/* The WAITING state wears the same shape as an empty one — same frame, same mark —
-   so the panel doesn't change shape when the results land. Its mark breathes, which
-   is the difference between "nothing here" and "working on it". */
+/* The WAITING state wears an empty one's shape, so the panel doesn't change shape when
+   results land; its mark breathes, which is the difference between "nothing here" and
+   "working on it". */
 .cmdk-none-wait .cmdk-none-ic {
   animation: cmdkWaitPulse 1.4s ease-in-out infinite;
 }
@@ -1766,7 +1763,9 @@ body.owner-mode .logo.ml-learning .logo-mark {
   display: block;
   color: var(--text-light);
   font-weight: 600;
-  font-size: var(--cmdk-fs-body);
+  /* --lead, not --body: a TITLE with its own sub beneath it stood 0.8px above it, a
+     hierarchy carried by weight and colour while the size only pretended to help. */
+  font-size: var(--cmdk-fs-lead);
 }
 .cmdk-row {
   display: flex;
@@ -1950,11 +1949,9 @@ body.owner-mode .logo.ml-learning .logo-mark {
   color: var(--accent-text);
 }
 /* Spotlight-style section headers, Top Hit + empty-state example chips. */
-/* NO `opacity` here. The 0.6 it carried was not a second way of saying "muted" but
-   a contrast cut on top of one: --text-muted is already the quiet ink, and 60% of
-   it measured 2.63:1 on the light search surface — under even the 3:1 non-text
-   floor. The board captions are the same micro-label at full strength (6.06:1), so
-   the fix is to look like them. */
+/* NO `opacity`. The 0.6 it carried was a contrast cut on top of a muted ink, putting
+   this at 2.63:1 on the light search surface — under even the 3:1 non-text floor. The
+   board captions are the same micro-label at full strength (6.06:1). */
 .cmdk-group-label {
   /* was 0.64rem = 10.2px */
   font-size: var(--cmdk-fs-micro);
@@ -2047,7 +2044,7 @@ body.owner-mode .logo.ml-learning .logo-mark {
 }
 /* Auto-corrected retry note ("nothing matched X - showing Y"). */
 .cmdk-deep-note {
-  font-size: var(--cmdk-fs-meta);
+  font-size: var(--cmdk-fs-sub);
   color: var(--text-muted);
   padding: 2px 2px 8px;
 }
@@ -2056,7 +2053,7 @@ body.owner-mode .logo.ml-learning .logo-mark {
 }
 .cmdk-deep-chip {
   flex: 0 0 auto;
-  font-size: var(--cmdk-fs-meta);
+  font-size: var(--cmdk-fs-sub);
   padding: 5px 11px;
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
@@ -2121,7 +2118,7 @@ body.owner-mode .logo.ml-learning .logo-mark {
 }
 .cmdk-scope {
   flex: 0 0 auto;
-  font-size: var(--cmdk-fs-meta);
+  font-size: var(--cmdk-fs-sub);
   font-weight: 600;
   letter-spacing: 0.01em;
   color: var(--text-muted);
@@ -2195,7 +2192,7 @@ body.owner-mode .logo.ml-learning .logo-mark {
   padding: 8px 6px 6px;
 }
 .cmdk-editor-hint {
-  font-size: var(--cmdk-fs-meta);
+  font-size: var(--cmdk-fs-sub);
   color: var(--text-muted);
   margin: 2px 2px 11px;
   line-height: 1.45;
@@ -2457,7 +2454,7 @@ body.light-mode .cmdk-editor-input {
   white-space: normal;
 }
 .cmdk-refine-chip {
-  font-size: var(--cmdk-fs-meta);
+  font-size: var(--cmdk-fs-sub);
   font-weight: 600;
   letter-spacing: 0.01em;
   padding: 6px 12px;
@@ -2775,7 +2772,7 @@ body.light-mode .cmdk-editor-input {
   border: 1px solid var(--glass-border);
   background: var(--glass-hover);
   color: var(--text-light);
-  font-size: var(--cmdk-fs-meta);
+  font-size: var(--cmdk-fs-sub);
   font-weight: 600;
   letter-spacing: 0.01em;
   padding: 6px 12px;
@@ -3221,7 +3218,7 @@ body.light-mode .cmdk-search input {
   line-height: 1.35;
 }
 .cmdk-row-sub {
-  font-size: var(--cmdk-fs-meta);
+  font-size: var(--cmdk-fs-sub);
   line-height: 1.35;
   color: var(--text-muted);
 }
@@ -3232,7 +3229,7 @@ body.light-mode .cmdk-search input {
    that applies to touch. --- */
 .cmdk-foot {
   border-top: 1px solid var(--glass-border);
-  font-size: var(--cmdk-fs-meta);
+  font-size: var(--cmdk-fs-sub);
   color: var(--text-muted);
 }
 @media (hover: none), (pointer: coarse) {
@@ -3301,11 +3298,10 @@ body.light-mode .cmdk-search input {
   /* Kept in the layout rather than display:none, because `display` cannot be
      transitioned and the pop-out has to DROP rather than appear. Hidden from
      pointers AND from assistive tech while closed.
-     …but `visibility` flipped INSTANTLY, so only the OPENING was animated: closing,
-     the box's transitions ran inside an already-invisible container, so the panel
-     teleported while the scrim went on fading for 260ms. The delayed 0s step holds
-     the container visible long enough for the box to leave; `.open` restates the
-     transition without the delay so opening stays immediate. */
+     …but `visibility` flipped INSTANTLY, so only the OPENING was animated: the box's
+     exit ran inside an already-invisible container and the panel teleported while the
+     scrim faded on for 260ms. The delayed 0s step holds the container visible long
+     enough for the box to leave; `.open` restates it without the delay. */
   visibility: hidden;
   transition: visibility 0s linear 0.22s;
   pointer-events: none;
@@ -3459,13 +3455,10 @@ body.cmdk-open {
    weight: a board's first row is the headline fact, so its label gets figure-sized
    type, while the rows keep their 44px touch floor.
    ============================================================ */
-/* ONE COLUMN, said out loud. `repeat(auto-fit, minmax(240px, 1fr))` was
-   responsive-looking dead code inside a 520px pop-out: the content box is 478px and
-   two 240px tracks plus the gap need 490, so it computed to a single track at every
-   width this window has (boards render only on the EMPTY landing, and it widens to
-   860px only for a selected record). Narrowing the minimum to force two is worse —
-   a board row leads with "You're owed £955.00 across 3 guests", which does not
-   survive a 234px track. */
+/* ONE COLUMN, said out loud. auto-fit/minmax(240px) was responsive-looking dead code
+   in a 520px pop-out: the content box is 478 and two tracks need 490, so it computed
+   to one track at every width this window has. Don't narrow the minimum to force two
+   — a board row leads with a figure sentence that will not survive a 234px track. */
 .cmdk-boards {
   display: grid;
   grid-template-columns: 1fr;
@@ -3583,11 +3576,10 @@ body.cmdk-open {
 .cmdk-row.cmdk-hero + .cmdk-qa {
   margin-left: 12px; /* the panel is inset by margin */
 }
-/* Two rails at once, and they were 2px apart. The panel's EDGE belongs on the hero's
-   sentence (21, which the margin above gives it); the action's WORDS belong on the
-   list's label rail, because this row has an icon column just as those do. The chain
-   landed at 65 against 63 (panel text 26 + 10 padding + 17 glyph + 12 gap) — two off
-   the gap and both hold. */
+/* Two rails at once, 2px apart. The panel's EDGE belongs on the hero's sentence (21,
+   from the margin above); the action's WORDS belong on the list's label rail, since
+   this row has an icon column too. The chain landed at 65 against 63 — two off the
+   gap and both hold. */
 .cmdk-row.cmdk-hero + .cmdk-qa .cmdk-qa-row {
   gap: 10px;
 }
@@ -3695,7 +3687,7 @@ body.cmdk-open {
 .cmdk-dt-intel,
 .cmdk-dt-hint {
   margin: 0 0 8px;
-  font-size: var(--cmdk-fs-meta);
+  font-size: var(--cmdk-fs-sub);
   color: var(--text-muted);
   line-height: 1.45;
 }
@@ -3811,7 +3803,7 @@ body.cmdk-open {
   margin: 2px 12px 9px 54px;
   padding: 9px 12px;
   border-radius: var(--r-sm);
-  font-size: var(--cmdk-fs-meta);
+  font-size: var(--cmdk-fs-sub);
   line-height: 1.4;
   animation: cmdkStripIn 0.18s var(--fluid-bezier) both;
 }
@@ -3910,6 +3902,23 @@ body.cmdk-open {
    line read "Dai…", 13% of "Daily automation looks stopped — last ran 7 days ago",
    which is the same as not reporting it. So the warning takes the whole first line
    and WRAPS, and the hint drops beneath. Only a warning pays the extra line. */
+/* A SHORT viewport spends its height on RESULTS. Measured at 740x400 (landscape
+   phone): a 296px panel whose chrome took 119 — 74px field + 45px hint — leaving
+   175px of results showing ONE row of seven. Advice about a keyboard goes first on a
+   device with no room for it; the foot goes with it UNLESS it carries a WARNING, which
+   earns its space at any size. Gated by §16f. */
+@media (max-height: 600px) {
+  .cmdk-foot-keys {
+    display: none;
+  }
+  .cmdk-foot:not(:has(.cmdk-sys.is-warn)) {
+    display: none;
+  }
+  .cmdk-search {
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+}
 @media (max-width: 639px) {
   .cmdk-sys.is-ok {
     display: none;
