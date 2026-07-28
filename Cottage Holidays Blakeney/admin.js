@@ -8742,6 +8742,17 @@ function renderCottagesOverview() {
 
 // ---- Inbox: a dedicated back-office screen combining enquiries, guest messages
 // and things awaiting approval (was buried as two rows under Settings). ----
+// A DROPPED REQUEST IS NOT A MISSING RECORD, and it is never a reason to move
+// the owner somewhere they didn't ask to go. Stated once so every admin entry
+// says the same thing and offers the same way out; the toast's action gives a
+// Retry whose timer pauses on hover/focus, so it survives a slow reader.
+function adminNetFail(retry) {
+    toast(
+        "Couldn't reach the server — check your connection.",
+        'error',
+        typeof retry === 'function' ? { label: 'Retry', fn: retry } : undefined,
+    );
+}
 async function openInbox() {
     if (!isAuthenticated) {
         tryAccessBackOffice();
@@ -8866,11 +8877,15 @@ async function openBookings() {
     // The Bookings page merged into the Today dashboard: land there, render
     // the workspace, and scroll to it (past the timeline) so "open bookings"
     // still means "show me the list".
-    try {
-        if (!Object.keys(dbBookings).some((k) => (dbBookings[k] || []).length)) await loadData();
-    } catch (e) {}
+    // Land FIRST, load second — see openAccounts. Awaiting the booking fetch
+    // ahead of the nav made the tap look dead for the length of the request.
     nav('view-backoffice');
     adminHistPush('view-backoffice');
+    try {
+        if (!Object.keys(dbBookings).some((k) => (dbBookings[k] || []).length)) await loadData();
+    } catch (e) {
+        adminNetFail(() => window.openBookings());
+    }
     try {
         renderCalendar();
     } catch (e) {}
@@ -9244,13 +9259,27 @@ async function openBookingHub(bookingId, quiet) {
         return;
     }
     let b = findBookingById(bookingId);
+    // A failed RELOAD and a MISSING record are different facts: collapsing them
+    // said "that booking is no longer here" about a booking that was fine, then
+    // moved the owner off the page they had just tapped.
+    let loadFailed = false;
     if (!b) {
+        // loadData() isolates each task's failure and so never rejects — a
+        // try/catch here would be dead code. It REPORTS instead.
+        let r = null;
         try {
-            await loadData();
-        } catch (e) {}
+            r = await loadData();
+        } catch (e) {
+            loadFailed = true;
+        }
+        if (r && r.ok === false) loadFailed = true;
         b = findBookingById(bookingId);
     }
     if (!b) {
+        if (loadFailed) {
+            adminNetFail(() => window.openBookingHub(bookingId, quiet));
+            return;
+        }
         toast('That booking is no longer here.', 'error');
         window.openBookings();
         return;
@@ -11239,22 +11268,26 @@ async function openAccounts() {
         tryAccessBackOffice();
         return;
     }
+    // NAVIGATE FIRST, then load: the tax-year list is a dropdown ON this page,
+    // not permission to show it. Awaiting it first meant a poor signal gave 9s
+    // of nothing then an alert, still on Today (measured). See CLAUDE.md.
+    nav('view-accounts');
+    adminHistPush('view-accounts');
     // Fetch available tax years from the backend
     let years = [];
     try {
         const res = await apiGet('accounts.php');
         years = res.years || [];
     } catch (e) {
-        glassAlert("Couldn't load accounts: " + e.message);
-        return;
+        adminNetFail(() => window.openAccounts());
     }
     if (years.length === 0) years = [taxYearStartOf(todayDashed())];
     const sel = document.getElementById('accounts-year');
-    sel.innerHTML = years
-        .map((y) => `<option value="${y}">${taxYearShort(y)}  (${taxYearLabel(y)})</option>`)
-        .join('');
-    nav('view-accounts');
-    adminHistPush('view-accounts');
+    if (sel) {
+        sel.innerHTML = years
+            .map((y) => `<option value="${y}">${taxYearShort(y)}  (${taxYearLabel(y)})</option>`)
+            .join('');
+    }
     // Ensure booking data is loaded (the owner may land here without opening the
     // back office first), then render the payments manager + income report.
     try {
@@ -18140,13 +18173,24 @@ async function openEnquiryHub(enqId) {
         return;
     }
     let e = enquiries.find((x) => x.id === enqId);
+    // Same rule as openBookingHub: a dropped request is not a deleted enquiry.
+    let loadFailed = false;
     if (!e) {
+        // See openBookingHub: loadData() reports, it does not throw.
+        let r = null;
         try {
-            await loadData();
-        } catch (err) {}
+            r = await loadData();
+        } catch (err) {
+            loadFailed = true;
+        }
+        if (r && r.ok === false) loadFailed = true;
         e = enquiries.find((x) => x.id === enqId);
     }
     if (!e) {
+        if (loadFailed) {
+            adminNetFail(() => window.openEnquiryHub(enqId));
+            return;
+        }
         toast('That enquiry is no longer here.', 'error');
         openInbox();
         return;

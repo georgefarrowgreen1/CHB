@@ -1543,6 +1543,39 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   `isOtaBlock` (excludes `source:'owner'` blocks, which aren't bookings). Gated by
   ui-test-money §6. NB `dbBlocks` is `const` in app.js — a test must MUTATE it, not
   reassign it, or the assignment throws and the case silently proves nothing.
+- **A POOR SIGNAL MUST NOT MOVE THE OWNER** (gated by `ui-test-poorsignal.js`,
+  which stalls then DROPS the data endpoints — what a dead mobile link does, not
+  a 500, which was already handled). Reported from a phone: "I click on a page
+  and if the signal is poor it reverts me to an old page and doesn't slow load
+  the new page." Two independent causes, both reproduced:
+  **(1) `loadData()` DESTROYED good data on a failed fetch** — each of its
+  bookings/enquiries/blocks tasks emptied its own store in the catch, so ONE
+  dropped request didn't merely fail to refresh, it wiped the back office's
+  memory. Everything downstream then rendered as though the business had no
+  bookings (empty Today, empty calendar), and the booking the owner had just
+  tapped genuinely wasn't there any more — which is the "reverts me to an old
+  page" they actually saw. It now KEEPS the last good copy (the `loadContent()`
+  rule) and **RETURNS `{ok, failed[]}`**. NB it isolates each task's failure so
+  one dead endpoint can't stop the others, which means it **never rejects** — a
+  `try/catch` around `await loadData()` is dead code, and callers that need to
+  tell "couldn't load" from "isn't there" must read the RETURN. (The old clear
+  was never logout hygiene: `forceAdminLogout` doesn't clear these stores and
+  never did, and nothing renders them outside owner-mode.)
+  **(2) Openers awaited the network BEFORE navigating** — `openAccounts` and
+  `openBookings` both did, so the tap looked dead for the length of the request
+  and, on a drop, `openAccounts` threw a blocking `glassAlert` and left the owner
+  on the page they were trying to leave (measured: 9s of nothing, then the
+  alert, still on Today). **Navigate first, load second**: the tax-year list is a
+  dropdown ON the Payments page, not permission to show it.
+  Consequently `openBookingHub`/`openEnquiryHub` no longer collapse "the reload
+  failed" into "the record is gone" — that told the owner a booking was deleted
+  when it was fine, then bounced them off it. A network failure says so and stays
+  put, with a Retry via `toast`'s third `action` argument (its timer pauses on
+  hover/focus, so the affordance survives a slow reader). `adminNetFail(retry)`
+  is that message stated once. NB `loadAdminBundle()` was already right — it
+  retries twice and clears `__adminBundlePromise` so the next tap re-tries — and
+  so was the stale-admin check, which explicitly refuses to log anyone out on a
+  network error ("don't log out on uncertainty"); neither needed touching.
 - **A CHASE EMAIL FOLLOWS THE GUEST'S RAIL** (`payment_rail($b)` in db.php — 'card'
   or 'bacs'). A guest who paid their deposit in cash or by transfer has no use for a
   Square link, and chasing them with one asks them to switch rails mid-booking; they
