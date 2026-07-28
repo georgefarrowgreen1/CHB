@@ -79,11 +79,20 @@ async function saveGeoManual(k) {
     } catch (e) {}
     if (status) status.textContent = geoStatusText(k);
 }
-function clearGeo(k) {
-    adminPrivateContent['geo-' + k] = '';
-    saveContent('geo-' + k, '');
-    setGeoInputs(k, null);
+async function clearGeo(k) {
     const status = document.getElementById('geo-status-' + k);
+    // AWAIT it, like saveGeo does. This used to fire and forget: on a failed
+    // write the screen said "Not set" and the mirror agreed, while the server
+    // still held the pin — the owner believed they had cleared the map location
+    // and it came back on the next load.
+    try {
+        await saveContent('geo-' + k, '');
+    } catch (e) {
+        if (status) status.textContent = "Couldn't clear it just now — check your connection.";
+        return;
+    }
+    adminPrivateContent['geo-' + k] = '';
+    setGeoInputs(k, null);
     if (status) status.textContent = 'Not set';
 }
 
@@ -7045,7 +7054,7 @@ function cmdkFields(q) {
         sub: 'Edit here · shown on the website', ftype, hint,
         kw: `${label} ${nm} ${key} text edit change website content cottage`,
         get: () => (sc[key] != null && sc[key] !== '' ? String(sc[key]) : (def || '')),
-        set: (v) => { const val = v == null ? '' : String(v); sc[key] = val; return Promise.resolve(saveContent(key, val)).then(repaint); },
+        set: (v) => { const val = v == null ? '' : String(v); sc[key] = val; return Promise.resolve(saveContent(key, val)).then(repaint).catch(() => {}); },
     });
     // Private guest text (never public) — mirrors the admin cache the screen reads.
     const priv = (nm, key, label, ftype, hint) => out.push({
@@ -7053,7 +7062,7 @@ function cmdkFields(q) {
         sub: 'Edit here · private, sent to guests', ftype, hint,
         kw: `${label} ${nm} ${key} text edit change private arrival cottage`,
         get: () => (typeof apc[key] === 'string' ? apc[key] : ''),
-        set: (v) => { const val = v == null ? '' : String(v); apc[key] = val; return Promise.resolve(saveContent(key, val)); },
+        set: (v) => { const val = v == null ? '' : String(v); apc[key] = val; return Promise.resolve(saveContent(key, val)).catch(() => {}); },
     });
     // A nightly-price number — written through updateRate (the SAME path the rates
     // screen uses, which persists to the backend and repaints prices/calendar).
@@ -7304,7 +7313,9 @@ function cmdkBriefBuild() {
     } catch (e) {}
     // The teach-loop nudge: dead-end searches from the last 7 days, one tap to fix.
     try {
-        const weekAgo = new Date(Date.now() - 7 * 864e5).toISOString().slice(0, 10);
+        // UK-anchored, not UTC: toISOString() is a day behind between 00:00 and
+        // 01:00 BST, which quietly widened this window to 8 days for that hour.
+        const weekAgo = ukShiftDays(todayDashed(), -7);
         const misses = chbMissList().filter((m) => m && (m.at || '') >= weekAgo);
         if (misses.length >= 2) {
             items.push({ type: 'answer', id: 'brief-teach', board: 'waiting', label: `${misses.length} searches found nothing this week`, sub: 'Teach the assistant — each fix takes one tap', run: () => { const el = document.getElementById('cmdk-input'); if (el) el.value = 'search misses'; cmdkSearchCore('search misses', false); } });
@@ -8894,7 +8905,8 @@ async function loadBookingEmailLogs() {
         const r = await apiPost('bookings.php', { action: 'email_logs' });
         bookingEmailLogs = r && r.logs ? r.logs : {};
     } catch (e) {
-        bookingEmailLogs = {};
+        // Keep the last good history: emptying it tells the owner NO emails have
+        // been sent to this guest, which invites sending them a second time.
     }
 }
 async function openBookings() {
@@ -10504,7 +10516,7 @@ function contentEditSave(key) {
     const el = document.getElementById('ce-' + key);
     if (!el) return;
     const val = el.value;
-    saveContent(key, val);
+    saveContent(key, val).catch(() => {}); // alerted inside; nothing further to do
     siteContent[key] = val;
     document.querySelectorAll('[data-edit-text="' + key + '"]').forEach((t) => {
         t.textContent = val;
@@ -10988,7 +11000,7 @@ function setCancelPolicy(propKey, polKey) {
     try {
         localStorage.setItem(`${propKey}-cancellation-policy`, polKey);
     } catch (e) {}
-    saveContent(`${propKey}-cancellation-policy`, polKey);
+    saveContent(`${propKey}-cancellation-policy`, polKey).catch(() => {});
     const detail = document.getElementById('cancel-detail');
     if (detail) detail.innerHTML = cancelPickerHtml(propKey);
     // If that cottage page is currently shown, update its text live.
@@ -12030,7 +12042,11 @@ async function loadDepositReturns() {
         const r = await apiPost('bookings.php', { action: 'deposit_returns' });
         damagesReturnedMap = r.returns || {};
     } catch (e) {
-        damagesReturnedMap = {};
+        // Keep the last good returns. Emptying this makes damageHeld() read
+        // returned=0, so a PARTIALLY returned deposit reappears in "Deposits to
+        // return" at its full collected figure — a phantom job at the wrong
+        // amount. (The server caps any refund at what is actually left, so no
+        // money can go out twice; the damage is a wrong number and a wasted trip.)
     }
 }
 // Refundable damage deposit ACTUALLY collected into the rental ledger.
@@ -13173,18 +13189,27 @@ async function logoutStaff() {
 
 // Save a single content value (text or image URL) to the backend store,
 // so it's shared across devices and survives a browser clear.
+// RETHROWS. It used to alert and then return normally, so it told the USER the
+// save had failed and its CALLER that everything was fine — and 14 call sites
+// wrap it in a try/catch that could therefore never fire. Every one of those
+// updates a local mirror or a status line "after a successful save", so on a
+// dropped request the screen adopted a value the server had rejected: the bank
+// details, the deposit percentage, a cleared map pin. The alert stays (it is the
+// one message the owner sees wherever the caller is); the throw is what makes
+// those handlers real. Fire-and-forget callers below opt out explicitly.
 async function saveContent(key, value) {
     try {
         await apiPost('content.php', { action: 'set', key, value });
     } catch (e) {
         glassAlert("Couldn't save that change to the server: " + e.message);
+        throw e;
     }
 }
 // Admin: open the Host profile editor and load the current values.
 function saveHostText(key, value) {
     const v = (value || '').trim();
     siteContent[key] = v;
-    saveContent(key, v);
+    saveContent(key, v).catch(() => {});
     renderHost();
     const msg = document.getElementById('host-save-msg');
     if (msg) {
@@ -13205,7 +13230,7 @@ function uploadHostPhoto() {
     });
 }
 function saveLocalContent(key, value) {
-    saveContent(key, value);
+    saveContent(key, value).catch(() => {});
     try {
         renderLocalGuide(activeFrontProperty);
     } catch (e) {}
@@ -14813,7 +14838,7 @@ function accomSaveText(k) {
     };
     ['title', 'subtitle', 'tagline', 'desc', 'location'].forEach((f) => {
         const v = g(f);
-        saveContent(k + '-' + f, v);
+        saveContent(k + '-' + f, v).catch(() => {});
         siteContent[k + '-' + f] = v;
     });
     const m = document.getElementById('accom-text-msg-' + k);
@@ -14833,7 +14858,7 @@ function accomAddAmenity(k) {
 function accomSaveAmenities(k) {
     const wrap = document.getElementById('accom-am-rows-' + k);
     const items = collectListRows(wrap, 'am');
-    saveContent('amenities-' + k, items);
+    saveContent('amenities-' + k, items).catch(() => {});
     siteContent['amenities-' + k] = items;
 }
 
@@ -16470,11 +16495,10 @@ async function tcCreateBooking(preset, btn) {
         show('No live cottage to book against.', false);
         return;
     }
-    const d = (n) => {
-        const x = new Date();
-        x.setDate(x.getDate() + n);
-        return x.toISOString().slice(0, 10);
-    };
+    // Was local setDate() formatted through toISOString() (UTC) — the two clocks
+    // disagree between 00:00 and 01:00 BST, so a demo booking made then landed a
+    // day out. One UK-anchored helper instead.
+    const d = (n) => ukShiftDays(todayDashed(), n);
     let ci, co;
     if (preset === 'midstay') {
         ci = d(-1);
@@ -17638,7 +17662,7 @@ function saveRules(propKey) {
     try {
         localStorage.setItem('rules-' + propKey, JSON.stringify(rules));
     } catch (e) {}
-    saveContent('rules-' + propKey, rules);
+    saveContent('rules-' + propKey, rules).catch(() => {});
 }
 
 // Timeline navigation: ‹ › snap to the FIRST day of the previous/next month

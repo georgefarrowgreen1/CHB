@@ -245,6 +245,22 @@ else {
     check('1 Jul -> 4 Jul = 3 nights', nb('2026-07-01', '2026-07-04') === 3);
     check('same day = 0 nights', nb('2026-07-01', '2026-07-01') === 0);
 }
+// ukShiftDays: the ONE way to move a YYYY-MM-DD by whole days. It replaces the
+// local-setDate()-through-toISOString() pattern, which mixes two clocks and is a
+// day out between 00:00 and 01:00 BST — a silent off-by-one that only shows for
+// one hour a night, i.e. never on the day you test it. Anchored at UTC NOON so
+// the DST hour cannot move the calendar date.
+const usd = get('ukShiftDays');
+if (typeof usd !== 'function') { fail('ukShiftDays is not defined'); }
+else {
+    check('shifts back a week', usd('2026-07-28', -7) === '2026-07-21');
+    check('crosses the spring DST boundary', usd('2026-03-29', 1) === '2026-03-30');
+    check('crosses the autumn DST boundary', usd('2026-10-25', 1) === '2026-10-26');
+    check('crosses a year end backwards', usd('2026-01-01', -1) === '2025-12-31');
+    check('lands on a leap day', usd('2024-02-28', 1) === '2024-02-29');
+    check('zero is a no-op', usd('2026-07-28', 0) === '2026-07-28');
+    check('garbage in comes back unchanged, not Invalid Date', usd('not-a-date', 3) === 'not-a-date');
+}
 
 console.log('\n== 6. Structural integrity (raw HTML) ==');
 // 6a. Every onclick handler references a function that exists (catches deleted/renamed fns).
