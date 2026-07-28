@@ -1630,6 +1630,19 @@ body.owner-mode .logo.ml-learning .logo-mark {
   cursor: pointer;
   transition: background 0.14s var(--fluid-bezier), color 0.14s var(--fluid-bezier);
 }
+/* The field-row PIN. It borrows the help button's chrome, but two things are its
+   own. `[hidden]` must actually hide it — the shared class is `display: flex`,
+   which out-ranks the attribute's UA default (the third time a UA default has bitten
+   this file). And its PRESSED fill is --accent-text, not --accent: pinned/unpinned
+   is a STATE carried by the glyph alone, so it is a 3:1 non-text case, and the raw
+   accent measures 2.7:1 on the light search surface. */
+.cmdk-pin-btn[hidden] {
+  display: none;
+}
+.cmdk-pin-btn[aria-pressed="true"] {
+  color: var(--accent-text);
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+}
 .cmdk-help-btn .ic {
   width: 17px;
   height: 17px;

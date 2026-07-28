@@ -56,8 +56,21 @@ const BOTTOM = 34;
             document.querySelectorAll('.modal-overlay.open, .datepicker-pop.open, #glass-dialog.open').forEach((n) => n.classList.remove('open'));
             await pause(120);
             try { await eval('(async () => {' + cs.open + '})()'); } catch (e) { return { err: String(e.message || e) }; }
-            await pause(500);
-            const el = document.querySelector(cs.panel);
+            // Sample by STATE, not on a clock (the search suite's rule): a fixed
+            // 500ms caught the waitlist panel MID-SETTLE on a loaded CI runner
+            // (top 144 vs 79 — 65px of entry travel still to run, and rects
+            // include transforms) and called a correct inset a violation. Wait
+            // until the panel's rect holds still for two consecutive samples.
+            await pause(200);
+            let el = null, key = null;
+            for (let i = 0; i < 15; i++) {
+                el = document.querySelector(cs.panel);
+                const r0 = el ? el.getBoundingClientRect() : null;
+                const k = r0 ? Math.round(r0.top) + ':' + Math.round(r0.height) : 'none';
+                if (key !== null && k === key && k !== 'none') break;
+                key = k;
+                await pause(140);
+            }
             if (!el) return { missing: true };
             const b = el.getBoundingClientRect();
             if (b.height < 10) return { hidden: true };

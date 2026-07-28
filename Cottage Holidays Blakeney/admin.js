@@ -647,6 +647,127 @@ function chbUndoList() {
     const seenLabel = new Set(mem.map((x) => x.label));
     return mem.concat(chbUndoStored().filter((e) => !seenId.has(e.id) && !seenLabel.has(e.label)).map(chbUndoRehydrate));
 }
+// ============================================================
+//  PINNED ANSWERS — the landing you compose yourself. Any QUESTION the engine
+//  answers can be pinned from the field row; a pin stores the QUERY, never the
+//  answer, and the landing recomputes it live on every open — so a pinned "who
+//  owes money" is always this morning's figure, not the one from the day it was
+//  pinned. Stored under the INTERNAL content key `search-pins` (classified in
+//  db.php, same discipline as search-undo/search-watchers) so pins follow the
+//  owner across devices. Commands never pin: their rows are identifiable by id
+//  ('cmdk-command' / 'watch-'), and a pinned command would be a WRITE offered
+//  from the landing, which is the one-tap-destructive shape the directory rules
+//  exist to prevent. Recompute is chbPinAnswer — SYNC and side-effect free by
+//  construction: compute/almanac and cmdkIntent store no conversational frame
+//  (cmdkBuildResults does that), so six pins recomputing can never hijack the
+//  pronoun context or the follow-up chain of the session around them.
+// ============================================================
+// The 0a entity-context boundary, stated ONCE and shared by cmdkIntent's 0a
+// branch and the pin guards — one definition, so the branch that answers about
+// "that record" and the guard that refuses to pin such answers can never drift
+// apart (the CHB_STAYLEN_Q discipline).
+const CHB_ANAPHOR_Q = /\b(them|their|they|he|she|him|her|this (one|guest|booking|stay|person))\b/;
+const CHB_ENTITY_TASK_Q = /\b(them|their|this (one|guest|booking|enquiry|stay|person)|refund|deposit|balance|pay|email|reply|approve|decline|other (stay|booking|enquir))\b/;
+const CHB_PIN_KEY = 'search-pins';
+const CHB_PIN_MAX = 6;
+let __cmdkPinQ = null; // the committed query the field-row pin button refers to
+let __chbPinSaveQ = Promise.resolve(); // serialises the pin saves (see chbPinStore)
+function chbPinKey(q) { return String(q || '').trim().toLowerCase(); }
+function chbPinList() {
+    const raw = (typeof siteContent === 'object' && siteContent && siteContent[CHB_PIN_KEY]) || [];
+    if (!Array.isArray(raw)) return [];
+    return raw.filter((p) => p && typeof p.q === 'string' && p.q.trim());
+}
+async function chbPinStore(list) {
+    // Mirror FIRST, save after — the opposite order to chbUndoStore, on purpose.
+    // The pin UI re-reads synchronously (the button flips aria-pressed the moment
+    // it is tapped; Unpin rebuilds the landing in the same gesture), so a mirror
+    // that waits for the network paints the OLD state back: measured, the button
+    // stored the pin and still read unpinned, and Unpin left a ghost tile. Undo
+    // mirrors after the save because a mirror wrongly claiming durability there
+    // means a reversal that silently vanishes on the next device; a pin that
+    // fails to persist merely doesn't survive the session, and the optimistic
+    // read is what the gesture needs.
+    if (typeof siteContent === 'object' && siteContent) siteContent[CHB_PIN_KEY] = list;
+    // The network half rides a chain: two quick toggles are two unserialised
+    // POSTs otherwise, and the older one landing second leaves the server holding
+    // the state the owner just left. The chain always saves the CURRENT mirror.
+    __chbPinSaveQ = __chbPinSaveQ.then(async () => {
+        try { await saveContent(CHB_PIN_KEY, chbPinList()); } catch (e) { chbSwallow(e, 'pin-store'); }
+    });
+    return __chbPinSaveQ;
+}
+function chbPinHas(q) { const k = chbPinKey(q); return chbPinList().some((p) => chbPinKey(p.q) === k); }
+function chbPinAdd(q) {
+    const t = String(q || '').trim();
+    if (!t || chbPinHas(t)) return;
+    chbPinStore([{ q: t, at: Date.now() }].concat(chbPinList()).slice(0, CHB_PIN_MAX));
+}
+function chbPinRemove(q) {
+    const k = chbPinKey(q);
+    chbPinStore(chbPinList().filter((p) => chbPinKey(p.q) !== k));
+}
+// Recompute a pinned query into its live answer row, or null. Deliberately NOT
+// cmdkBuildResults: that composer stores the conversational frame and kicks the
+// async coast merge, and a landing rebuild must do neither. The tiers here are
+// the sync ones in their pipeline order — breadth (never wrong, silent off-pack),
+// then the intent families, then the NLU model's canonical re-ask.
+function chbPinAnswer(q) {
+    const ql = chbPinKey(q);
+    if (ql.length < 3) return null;
+    // A pronoun question is context-dependent by definition — "their balance"
+    // recomputed in a future session would answer about whatever record that
+    // session happened to hold. Refused here AND never offered (cmdkPinOffer).
+    if (CHB_ANAPHOR_Q.test(ql)) return null;
+    const hero = (rows) => {
+        const h = (rows || []).find((r) => cmdkIsHeroRow(r));
+        return h && !h.cmd && h.id !== 'cmdk-command' && !/^watch-/.test(String(h.id || '')) ? h : null;
+    };
+    // Strip the AMBIENT context for the duration: opened from a hub, __cmdkEntity
+    // is that record, and a pinned generic "outstanding balance" would silently
+    // become an answer about it (cmdkIntent 0a fires on task words alone when a
+    // hub entity is loaded). A tile must mean the same thing on every landing.
+    const savedEnt = __cmdkEntity, savedCtx = __cmdkConvCtx;
+    __cmdkEntity = null; __cmdkConvCtx = null;
+    try {
+        try { const c = chbCompute(ql) || chbAlmanac(ql); if (c && cmdkIsHeroRow(c)) return c; } catch (e) {}
+        try { const h = hero(cmdkIntent(ql)); if (h) return h; } catch (e) {}
+        try { const g = chbNluClassify(ql); if (g) { const h = hero(cmdkIntent(g.canonical)); if (h) return h; } } catch (e) {}
+        return null;
+    } finally {
+        __cmdkEntity = savedEnt; __cmdkConvCtx = savedCtx;
+    }
+}
+// The field-row pin button: offered only when the committed lead row is an
+// ANSWER (the same cmdkIsHeroRow the thread uses), never for a command row and
+// never for a conversational refinement — "and last year" pinned literally would
+// recompute against whatever frame a future session happened to hold.
+function cmdkPinOffer(ql, lead) {
+    const btn = document.getElementById('cmdk-pin');
+    if (!btn) return;
+    let on = false;
+    try {
+        on = !!(ql && ql.length >= 3 && cmdkIsHeroRow(lead)
+            && !lead.cmd && lead.id !== 'cmdk-command' && !/^watch-/.test(String(lead.id || ''))
+            && !CHB_ANAPHOR_Q.test(ql)
+            && !(__cmdkEntity && CHB_ENTITY_TASK_Q.test(ql))
+            && !chbConvResolve(ql));
+    } catch (e) { on = false; }
+    btn.hidden = !on;
+    __cmdkPinQ = on ? ql : null;
+    if (!on) return;
+    const pinned = chbPinHas(ql);
+    btn.setAttribute('aria-pressed', pinned ? 'true' : 'false');
+    btn.setAttribute('aria-label', pinned ? 'Unpin this answer from your landing' : 'Pin this answer to your landing');
+    btn.title = pinned ? 'Pinned — tap to unpin' : 'Pin this answer';
+}
+function chbPinToggle() {
+    const q = __cmdkPinQ;
+    if (!q) return;
+    if (chbPinHas(q)) chbPinRemove(q); else chbPinAdd(q);
+    const lead = (__cmdkResults || []).find((r) => r && !cmdkIsNoteRow(r));
+    cmdkPinOffer(q, lead);
+}
 // Save a dated couple-rate override (a rate_seasons row) — the landing for the
 // price command and the gap offers. Splices, saves through the existing
 // validated endpoint, updates local state and repaints the public prices.
@@ -3610,7 +3731,10 @@ function cmdkIntent(q) {
     // -1) Natural-language commands — a fully-specified task ("block Jollyboat
     // next weekend", "add booking for Smith 12–15 Aug") wins over everything else
     // and opens the target pre-filled.
-    try { const cmd = cmdkCommand(q, today); if (cmd) return cmd; } catch (e) {}
+    // Tagged at the ONE call site so every current and future command branch is
+    // covered — the pin guards filter on `cmd`, and an id-literal filter missed
+    // the branches that never set id 'cmdk-command' (review finding).
+    try { const cmd = cmdkCommand(q, today); if (cmd) return cmd.map((r) => Object.assign(r, { cmd: true })); } catch (e) {}
     // Business-insight queries take priority over guest-name matching (so "which
     // cottage earns most" is never mistaken for a guest). Defined once, used by
     // the insights branch AND to suppress the named-guest handler.
@@ -3735,7 +3859,7 @@ function cmdkIntent(q) {
     //     record's own page); conversational context requires a real pronoun so
     //     a fresh generic query ("who's paid a deposit") is never hijacked.
     {
-        const anaphor = /\b(them|their|they|he|she|him|her|this (one|guest|booking|stay|person))\b/.test(q);
+        const anaphor = CHB_ANAPHOR_Q.test(q);
         let ent = __cmdkEntity || null;
         if (!ent && anaphor && __cmdkConvCtx && __cmdkConvCtx.type === 'booking' && typeof findBookingById === 'function') {
             const cb = findBookingById(__cmdkConvCtx.id);
@@ -3746,7 +3870,7 @@ function cmdkIntent(q) {
         // ("email them", "their balance") resolves to it. Requires a real pronoun
         // (anaphor), so a fresh generic query is never hijacked by stale context.
         if (!ent && anaphor) { try { ent = cmdkRecentEntity(); } catch (e) {} }
-        const trigger = __cmdkEntity ? /\b(them|their|this (one|guest|booking|enquiry|stay|person)|refund|deposit|balance|pay|email|reply|approve|decline|other (stay|booking|enquir))\b/.test(q) : anaphor;
+        const trigger = __cmdkEntity ? CHB_ENTITY_TASK_Q.test(q) : anaphor;
         if (ent && trigger) {
             // A question about the record gets a direct ANSWER row first — the
             // action list is the fallback, not the reply.
@@ -5264,6 +5388,8 @@ function cmdkHelpOpen() {
     __cmdkSel = 0;
     const el = document.getElementById('cmdk-input');
     if (el) el.value = '';
+    cmdkPinOffer('', null); // a help list is not a pinnable answer — without this
+    // the button stayed armed for the PREVIOUS query and pinned it invisibly
     const wrap = document.querySelector('#cmdk .cmdk-search');
     if (wrap) wrap.classList.remove('has-text');
     cmdkRender();
@@ -5810,6 +5936,16 @@ function cmdkSearchCore(q, allowCorrect) {
         // Clearing the field starts over: the thread belongs to a line of questions,
         // and an empty box is not part of one.
         cmdkThreadClear();
+        // …and the OLD query's machinery must die with it. This branch returns
+        // before the committed path's clearTimeout, so clearing inside the 180ms
+        // debounce left the old query's server fetch armed — its stamp still
+        // current — and its results merged INTO THE LANDING. Both halves needed:
+        // the clearTimeout kills the un-fired timer, the bumps kill anything
+        // already in flight (federated + the semantic/pricing/directory mergers).
+        clearTimeout(__cmdkServerT);
+        __cmdkServerStamp++;
+        __cmdkQueryGen++;
+        cmdkSetLoading(false);
         // Empty query → an answer-first "Your day" brief, example chips, then the
         // dock destinations. The brief + screens are the executable rows.
         __cmdkEmpty = true;
@@ -5874,7 +6010,12 @@ function cmdkSearchCore(q, allowCorrect) {
             .filter(keep)
             .filter((it) => { const k = kof(it); if (!k || seenKeys.has(k)) return false; seenKeys.add(k); return true; })
             .slice(0, 4);
-        const brief = cmdkBrief();
+        // .slice(): cmdkBrief() is memoised and returns the CACHED ARRAY ITSELF, and
+        // the control rows below are push()ed — without the copy, the first landing
+        // render polluted the cache and every empty re-render inside the 8s TTL
+        // (backspace-to-empty, the ✕ clear, Unpin's own rebuild) stacked another
+        // ctl-watch/ctl-undo copy into the same array. Found by the review pass.
+        const brief = cmdkBrief().slice();
         const allScreens = cmdkScreens();
         let screens = __cmdkScope === 'all' ? allScreens : allScreens.filter(keep);
         // Don't list a screen under "Jump to" if it's already up in "Most used".
@@ -5920,7 +6061,61 @@ function cmdkSearchCore(q, allowCorrect) {
                 }]);
             } catch (e) {}
         }
+        // PINNED — the answers the owner chose, recomputed LIVE right now. A pin
+        // that stops answering (season over, model unloaded, taught phrase gone)
+        // renders as its own question with "tap to ask again" — never a stale
+        // figure, which would be worse than no tile at all. The unpin is a plain
+        // run() quick-action (not inline): it removes the pin and rebuilds the
+        // landing in one gesture, so the tile visibly leaves.
+        let pins = [];
+        try {
+            pins = chbPinList().map((p) => {
+                const key = chbPinKey(p.q);
+                const unpin = { key: 'unpin', label: 'Unpin', icon: cmdkActIcon('x'), run: () => { chbPinRemove(p.q); cmdkSearchCore('', false); } };
+                const ans = chbPinAnswer(p.q);
+                const row = ans
+                    ? Object.assign({}, ans, { id: 'pin-' + key, run: () => cmdkRunQuery(p.q) })
+                    : { type: 'answer', id: 'pin-' + key, label: p.q, sub: 'Couldn\u2019t answer this just now \u00b7 tap to ask again', run: () => cmdkRunQuery(p.q) };
+                row.actions = (ans && ans.actions ? ans.actions.slice() : []).concat([unpin]);
+                return row;
+            });
+        } catch (e) { pins = []; }
+        // RUNNING FOR YOU — the machinery acting while nobody watches, surfaced
+        // with a handle. Watchers hydrate from the content mirror the boot fetch
+        // already carried (LOCAL read only — writing __chbWatchers here would hand
+        // the `watching` command boot-stale data and silently retire its
+        // fetch-on-first-use freshness). Both rows route to the existing commands
+        // rather than acting directly: stopping a watcher or reversing a change
+        // stays a deliberate second tap, never a landing mis-tap.
+        try {
+            let ws = __chbWatchers;
+            if (ws === null) {
+                const raw = (typeof siteContent === 'object' && siteContent) ? siteContent['search-watchers'] : null;
+                const arr = typeof raw === 'string' ? JSON.parse(raw || '[]') : raw;
+                if (Array.isArray(arr)) ws = arr;
+            }
+            (ws || []).filter((w) => w && !w.done && (w.say || w.pk)).slice(0, 2).forEach((w, i) => {
+                brief.push({
+                    type: 'answer', scope: 'bookings', board: 'control', id: 'ctl-watch-' + i,
+                    label: w.say || `Watching ${(propertyMeta[w.pk] || {}).name || w.pk}`,
+                    sub: `Tells you ${fmtDate(w.tell)} \u00b7 tap to manage`,
+                    run: () => cmdkRunQuery('watching'),
+                });
+            });
+        } catch (e) {}
+        try {
+            const undos = chbUndoList();
+            if (undos.length) {
+                brief.push({
+                    type: 'answer', scope: 'bookings', board: 'control', id: 'ctl-undo',
+                    label: `You can undo: ${undos[0].label}`,
+                    sub: undos.length > 1 ? `${undos.length - 1} more step${undos.length === 2 ? '' : 's'} behind it \u00b7 tap to review` : 'Tap to review and put it back',
+                    run: () => cmdkRunQuery('undo'),
+                });
+            }
+        } catch (e) {}
         __cmdkSuggestN = suggestions.length;
+        __cmdkPinN = pins.length;
         __cmdkFreqN = frequent.length;
         __cmdkBriefN = brief.length;
         // THE DAY LEADS. The brief used to sit BELOW "Most used", so opening search
@@ -5933,12 +6128,13 @@ function cmdkSearchCore(q, allowCorrect) {
         // id, so moving only the HTML blocks would leave arrow-key nav walking the
         // old order while the eye jumped between blocks. Same invariant the four
         // layouts obey — a layout may re-group rows but never re-index them.
-        __cmdkResults = suggestions.concat(brief).concat(frequent).concat(screens);
+        __cmdkResults = suggestions.concat(pins).concat(brief).concat(frequent).concat(screens);
         // Pre-select the FIRST row on screen, whatever it now is: a context
         // suggestion, else the day's lead fact, else your #1 most-used. It used to
         // name the most-used explicitly, which after this reorder would have parked
         // the selection ring in the middle of the panel.
-        __cmdkSel = (__cmdkSuggestN || __cmdkBriefN || __cmdkFreqN) ? 0 : -1;
+        __cmdkSel = (__cmdkSuggestN || __cmdkPinN || __cmdkBriefN || __cmdkFreqN) ? 0 : -1;
+        cmdkPinOffer('', null); // no query, nothing to pin
         cmdkSetLoading(false);
         cmdkRender();
         return;
@@ -6007,6 +6203,7 @@ function cmdkSearchCore(q, allowCorrect) {
     // results — never in the renderer, which re-runs on every selection change and
     // would stack the same answer a dozen times as you arrow down the list.
     cmdkThreadPush(ql, __cmdkResults[firstReal]);
+    cmdkPinOffer(ql, __cmdkResults[firstReal]); // an answered question offers to pin
     cmdkRender();
     // Deep index search runs server-side (emails, messages, invoices, guests,
     // reviews, activity — everything not held in the browser) and merges in when
@@ -6950,6 +7147,7 @@ async function cmdkFieldBack() {
 // matters now (today's movements, money to collect, enquiries waiting, deposits
 // to return), computed from the loaded data. Each row routes to where you act.
 let __cmdkBriefN = 0;
+let __cmdkPinN = 0; // count of pinned live answers on the empty palette
 let __cmdkFreqN = 0; // count of "Most used" rows in the empty palette
 // ---- Proactive business pulse: this month vs last, in plain English. Unions
 // paying bookings with OTA guest stays (owner maintenance blocks excluded — same
@@ -7518,6 +7716,10 @@ const CMDK_BOARDS = [
     { key: 'money', label: 'Money' },
     { key: 'waiting', label: 'Waiting on you' },
     { key: 'month', label: 'This month' },
+    // The machine room: watchers still standing, changes still reversible. Rows
+    // route to the `watching` / `undo` commands rather than acting — stopping or
+    // reversing stays a deliberate second tap, never a landing mis-tap.
+    { key: 'control', label: 'Running for you' },
 ];
 function cmdkBoardsHtml(items, offset) {
     const used = new Set();
@@ -7565,26 +7767,34 @@ function cmdkRenderInner() {
     // Empty palette → the "Your day" brief, then the dock destinations to jump to.
     if (__cmdkEmpty) {
         const S = __cmdkSuggestN || 0;
+        const P = __cmdkPinN || 0;
         const F = __cmdkFreqN || 0;
         const B = __cmdkBriefN || 0;
-        // The slice bases follow the ARRAY's order — suggestions, then the day, then
+        // The slice bases follow the ARRAY's order — suggestions, pins, the day,
         // most-used — so each block's rows keep the indices arrow-key nav uses.
         const sugHtml = __cmdkResults.slice(0, S).map((it, i) => cmdkRowHtml(it, i, i === 0)).join('');
+        // cmdkRowWithStrip, not cmdkRowHtml: a pinned answer KEEPS its inline
+        // actions (the owed answer's bulk chase rides along), and an inline action
+        // reports through the strip under its own row — rendered with cmdkRowHtml
+        // alone, acting from a pinned tile would succeed in silence. The same
+        // mistake the brief's gap watcher hit when the strip was results-loop-only.
+        const pinHtml = __cmdkResults.slice(S, S + P).map((it, i) => cmdkRowWithStrip(it, S + i, false)).join('');
         // The day's facts render as BOARDS (see cmdkBoardsHtml) rather than as more
         // grey rows — the greeting above them names the day, so the boards read as
         // "here is your day" and not as filtered search output.
-        const briefHtml = cmdkBoardsHtml(__cmdkResults.slice(S, S + B), S);
-        const freqHtml = __cmdkResults.slice(S + B, S + B + F).map((it, i) => cmdkRowHtml(it, S + B + i, !S && !B && i === 0)).join('');
-        const screenItems = __cmdkResults.slice(S + B + F);
-        const screensHtml = screenItems.map((it, i) => cmdkRowHtml(it, S + B + F + i, false)).join('');
+        const briefHtml = cmdkBoardsHtml(__cmdkResults.slice(S + P, S + P + B), S + P);
+        const freqHtml = __cmdkResults.slice(S + P + B, S + P + B + F).map((it, i) => cmdkRowHtml(it, S + P + B + i, !S && !P && !B && i === 0)).join('');
+        const screenItems = __cmdkResults.slice(S + P + B + F);
+        const screensHtml = screenItems.map((it, i) => cmdkRowHtml(it, S + P + B + F + i, false)).join('');
         const sugLabel = (typeof __cmdkSugLabel !== 'undefined' && __cmdkSugLabel) ? 'Suggested · ' + __cmdkSugLabel : 'Suggested';
         box.innerHTML =
             sb +
             (S ? `<div class="cmdk-group-label">${escapeHtml(sugLabel)}</div>${sugHtml}` : '') +
+            (P ? `<div class="cmdk-group-label">Pinned</div>${pinHtml}` : '') +
             (B ? `<div class="cmdk-group-label">${cmdkGreeting()}</div>${briefHtml}` : '') +
             (F ? `<div class="cmdk-group-label">Most used</div>${freqHtml}` : '') +
             (screenItems.length ? `<div class="cmdk-group-label">Jump to</div><div class="cmdk-jump">${screensHtml}</div>` : '') +
-            (!S && !F && !B && !screenItems.length ? cmdkNoneHtml('Nothing in ' + __cmdkScope, CMDK_WIDEN) : '');
+            (!S && !P && !F && !B && !screenItems.length ? cmdkNoneHtml('Nothing in ' + __cmdkScope, CMDK_WIDEN) : '');
         return;
     }
     if (!__cmdkResults.length) {
@@ -7721,6 +7931,7 @@ function cmdkDeepFetch(q, typo) {
     // back to the palette between the two fetches.
     cmdkDeepReset();
     __cmdkDeepPending = q;
+    cmdkPinOffer('', null); // the deep view is a list, not a pinnable answer
     cmdkRender();
     const syn = CHB_SEARCH.understand(q).synonyms;
     apiPost('search.php', { q: q, deep: 1, syn: syn, since: cmdkDeepSince() })

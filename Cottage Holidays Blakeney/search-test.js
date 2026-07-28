@@ -2199,6 +2199,59 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         vm.runInContext("apiPost = __undoOldApi; siteContent['search-undo'] = null; __chbUndo.length = 0; enquiries = []; Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);", ctx);
     } else fail('chbDuties / chbUndoList missing from the bundle');
 
+    // ---- 41. PINNED ANSWERS — the landing you compose yourself. A pin stores the
+    // QUERY, never the answer; the landing recomputes it live via chbPinAnswer,
+    // which is deliberately NOT cmdkBuildResults (that composer stores the
+    // conversational frame and kicks the async coast merge — six pins recomputing
+    // on open must do neither). Commands never pin: their rows are identifiable by
+    // id, and a pinned command would be a write offered from the landing. ----
+    if (typeof ctx.chbPinAdd === 'function' && typeof ctx.chbPinAnswer === 'function') {
+        const dFut = (n) => { const d0 = ctx.dpParse(ctx.todayDashed()); d0.setDate(d0.getDate() + n); return `${d0.getFullYear()}-${String(d0.getMonth() + 1).padStart(2, '0')}-${String(d0.getDate()).padStart(2, '0')}`; };
+        vm.runInContext(`siteContent['search-pins']=[];
+            Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);
+            dbBookings.jollyboat=[{id:81,dbId:81,name:'Pin Guest',email:'p@x.co',checkIn:'${dFut(6)}',checkOut:'${dFut(9)}',adults:2,children:0,payment:'deposit',depositPaid:100,agreedPrice:{total:460,perNight:440,nights:3,txnFee:20}}];`, ctx);
+        ctx.chbPinAdd('who owes money');
+        ctx.chbPinAdd('  WHO OWES MONEY  ');
+        check('a pin stores ONCE whatever the casing or spacing', ctx.chbPinList().length === 1, JSON.stringify(ctx.chbPinList()));
+        for (let i = 0; i < 9; i++) ctx.chbPinAdd('extra question number ' + i);
+        const capped = ctx.chbPinList();
+        check('pins cap at 6, newest kept', capped.length === 6 && /number 8/.test(capped[0].q), capped.map((p) => p.q).join(' | '));
+        ctx.chbPinRemove('Extra Question Number 8');
+        check('unpin removes exactly one, key-matched not string-matched', ctx.chbPinList().length === 5 && !ctx.chbPinList().some((p) => /number 8/.test(p.q)));
+        // The recompute: a live figure from TODAY'S data, through the same answer
+        // families the search itself uses.
+        const live = ctx.chbPinAnswer('who owes money');
+        check('a pinned question recomputes to a live ANSWER row', !!live && /£360\.00/.test(live.label), live ? live.label : 'null');
+        // Commands are excluded by id — a pinned command would be a WRITE on the landing.
+        const cmd = ctx.chbPinAnswer(`set jollyboat to £150 for ${dFut(30)} to ${dFut(33)}`);
+        check('a COMMAND never recomputes as a pin', cmd === null, cmd ? cmd.label + ' / ' + cmd.id : 'null');
+        // Frame safety: recomputing must never store a conversational frame — a
+        // pinned "revenue this year" hijacking the session's pronoun chain is the
+        // bug this construction exists to prevent.
+        vm.runInContext('__cmdkFrame = null;', ctx);
+        ctx.chbPinAnswer('what have i earned this year');
+        check('the recompute leaves the conversational frame UNTOUCHED', vm.runInContext('__cmdkFrame', ctx) === null);
+        check('a query that answers nothing recomputes to null, not a stale row', ctx.chbPinAnswer('zzz completely unanswerable nonsense') === null);
+        // Context-dependence, both halves (review findings). A pronoun question is
+        // context-dependent by DEFINITION and must refuse; and a generic question
+        // must recompute to the GLOBAL answer even while a hub entity is loaded —
+        // cmdkIntent's 0a branch fires on task words alone when __cmdkEntity is
+        // set, so without the strip a pinned "who owes money" silently became an
+        // answer about whichever record the palette was opened from.
+        check('a PRONOUN question never recomputes as a pin', ctx.chbPinAnswer('what is their balance') === null);
+        vm.runInContext(`__cmdkEntity = { type: 'booking', id: 81, name: 'Pin Guest', b: dbBookings.jollyboat[0] };`, ctx);
+        const strip = ctx.chbPinAnswer('who owes money');
+        check('the recompute STRIPS ambient hub context — the tile means the same thing on every landing',
+            !!strip && /£360\.00/.test(strip.label) && !/Pin Guest owes/.test(strip.label), strip ? strip.label : 'null');
+        check('…and puts the context back afterwards', vm.runInContext('__cmdkEntity && __cmdkEntity.id', ctx) === 81);
+        vm.runInContext('__cmdkEntity = null;', ctx);
+        // Every command row carries the `cmd` tag from the ONE call site, whatever
+        // id its branch chose — the tag is what the pin guards filter on.
+        const cmdRows = ctx.cmdkIntent(`set jollyboat to £150 for ${dFut(30)} to ${dFut(33)}`);
+        check('command rows carry the cmd tag from the single call site', Array.isArray(cmdRows) && cmdRows.length > 0 && cmdRows.every((r) => r.cmd === true), cmdRows ? cmdRows.length + ' rows' : 'null');
+        vm.runInContext(`siteContent['search-pins']=[];Object.keys(dbBookings).forEach(k=>dbBookings[k]=[]);`, ctx);
+    } else fail('chbPinAdd / chbPinAnswer missing from the bundle');
+
     // ---- Summary ----
     console.log('\n== Summary ==');
     if (failures) { console.log(`  ${failures} CHECK(S) FAILED ❌\n`); process.exit(1); }

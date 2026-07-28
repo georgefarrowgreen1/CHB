@@ -238,7 +238,12 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     return samples;
   });
   const distinct = new Set(grow).size;
-  ok(distinct >= 5, `the pop-out DROPS rather than appearing (${distinct} distinct offsets sampled)`);
+  // ≥3, not ≥5: a teleport yields at most TWO distinct offsets (the parked -10px
+  // and home) and fails the starts-above check below besides, so three proves a
+  // mid-flight frame — which is the whole claim. Five was an arbitrary margin that
+  // a janky CI runner missed on a WORKING drop (measured: 4 distinct offsets while
+  // the start/settle checks both passed — the heavier landing build eats frames).
+  ok(distinct >= 3, `the pop-out DROPS rather than appearing (${distinct} distinct offsets sampled)`);
   ok(grow[0] < -1, `it starts above its resting place (first sample translateY ${grow[0]})`);
   ok(grow[grow.length - 1] === 0, `and settles home (last ${grow[grow.length - 1]})`);
 
@@ -1151,10 +1156,21 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // sample at 100ms reported "opacity 1" for an exit that was working perfectly.
   // Poll for the mid-flight frame instead, and require it to be a real one:
   // strictly between 0 and 1, with the container still visible.
+  // …and even that can miss: any forced style flush inside the teardown starts the
+  // 0.22s transition's wall-clock while the thread is still blocked, so on a slow
+  // run the first painted frame is already PAST the fade and the poll sees nothing.
+  // Transition EVENTS are the evidence that survives that: a real exit dispatches
+  // transitionrun/transitionend for the box's opacity even when no mid-flight frame
+  // ever paints, while a genuine teleport (the exit transition deleted — the break
+  // case) dispatches neither. The mid-frame poll stays as the primary evidence.
   const closing = await page.evaluate(async () => {
     const ov = document.getElementById('cmdk');
     const box = ov.querySelector('.cmdk-box');
     const snap = () => ({ vis: getComputedStyle(ov).visibility, op: +getComputedStyle(box).opacity });
+    const ran = { run: 0, end: 0 };
+    const mark = (k) => (e) => { if (e.target === box && (e.propertyName === 'opacity' || e.propertyName === 'transform')) ran[k]++; };
+    box.addEventListener('transitionrun', mark('run'));
+    box.addEventListener('transitionend', mark('end'));
     const before = snap();
     closeCmdK();
     let mid = null;
@@ -1165,11 +1181,11 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       if (s.vis === 'hidden') break; // gone before we ever saw it fade
     }
     await new Promise((r) => setTimeout(r, 500));
-    return { before, mid, after: snap() };
+    return { before, mid, ran, after: snap() };
   });
   ok(!!closing && closing.before.vis === 'visible' && closing.before.op === 1, 'MOTION: open, the panel is up');
-  ok(!!closing && !!closing.mid && closing.mid.vis === 'visible',
-    `MOTION: …and it FADES on the way out instead of teleporting (caught mid-close at opacity ${closing && closing.mid && closing.mid.op.toFixed(2)})`);
+  ok(!!closing && (closing.mid ? closing.mid.vis === 'visible' : closing.ran.run > 0 && closing.ran.end > 0),
+    `MOTION: …and it FADES on the way out instead of teleporting (${closing && closing.mid ? `caught mid-close at opacity ${closing.mid.op.toFixed(2)}` : `transition ran (${closing && closing.ran.run} run / ${closing && closing.ran.end} end)`})`);
   ok(!!closing && closing.after.vis === 'hidden', `MOTION: …then goes properly away (${closing && closing.after.vis})`);
 
   // 17c) Reduced motion turns the aura off. The generic .cmdk-box reduced-motion
@@ -1522,7 +1538,13 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       if (url.includes('search.php')) {
         if (failNext) return route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"boom"}' });
         await new Promise((r) => setTimeout(r, slow));
-        return json({ ok: true, results: [], counts: {} });
+        // A REAL row, and one that survives the merge's SCOPE filter — this suite
+        // opens search from view-backoffice, so the snapshot scope is 'bookings'
+        // and a message-typed row is scoped away INSIDE cmdkArrangeWide before it
+        // can pollute the landing. Both vacuous shapes were hit in turn: an empty
+        // payload (merger returns before touching __cmdkResults) and an
+        // out-of-scope row (merges, then filters to nothing).
+        return json({ ok: true, results: [{ type: 'booking', id: 991, title: 'Zeb Leaktest', sub: 'Booking', date: '2026-07-01' }], counts: { booking: 1 } });
       }
       return json({ ok: true, events: [], logs: {}, results: [], threads: [], enquiries: [], reviews: [], photos: [], value: null, corpus: [], content: {} });
     });
@@ -1590,6 +1612,29 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
       'DEEPWAIT: typing over a pending deep search abandons it at once');
     ok(!!aband && !aband.settled.deep && !aband.settled.wait,
       `DEEPWAIT: …and its late response never reopens the deep view over the new query (deep=${aband && aband.settled.deep})`);
+    // Clearing INSIDE the 180ms debounce: the empty branch returns before the
+    // committed path's clearTimeout, so the old query's federated fetch stayed
+    // armed — stamp still current — and its results merged INTO THE LANDING.
+    // The fix kills the timer and bumps the stamps in the empty branch itself;
+    // this drives the exact race against the slow route.
+    const leak = await p2.evaluate(async () => {
+      try { closeCmdK(); } catch (e) {}
+      openCmdK();
+      await new Promise((r) => setTimeout(r, 300));
+      const i = document.getElementById('cmdk-input');
+      i.value = 'bob'; cmdkSearchCore('bob', false);
+      await new Promise((r) => setTimeout(r, 40)); // inside the debounce window
+      i.value = ''; cmdkSearchCore('', false);
+      await new Promise((r) => setTimeout(r, 1800)); // let any leaked fetch land
+      return {
+        empty: __cmdkEmpty === true,
+        serverRows: __cmdkResults.filter((r) => r && r.label === 'Zeb Leaktest').length,
+        loading: (document.getElementById('cmdk-progress') || {}).className || '',
+        heads: [...document.querySelectorAll('#cmdk .cmdk-group-label')].map((e) => e.textContent.trim()),
+      };
+    });
+    ok(!!leak && leak.empty && leak.serverRows === 0 && !/is-loading/.test(leak.loading),
+      `DEEPWAIT: clearing inside the debounce kills the old query's fetch — nothing merges into the landing (${leak && leak.serverRows} rows, ${leak && leak.loading})`);
     await ctx.close();
   }
 
@@ -1680,6 +1725,176 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     `CARDS: a day-card spends ${cards && cards.worstChrome}px on padding and its caption (was 44)`);
   ok(!!cards && cards.minRow >= 44, `CARDS: …with the 44px touch floor untouched (${cards && Math.round(cards.minRow)}px)`);
   await page.setViewportSize({ width: 900, height: 900 });
+
+  // ============================================================
+  // 21) THE CONTROL CENTRE — pinned live answers + the Running-for-you board.
+  //     A pin stores the QUERY and the landing recomputes it on every open, so the
+  //     decisive check here is the LIVE one: pin, mutate the data, reopen, and the
+  //     figure must MOVE. Asserting only that a tile renders would pass a broken
+  //     implementation that framed the day-one answer.
+  // ============================================================
+  const pinBtn = async () => page.evaluate(() => {
+    const b = document.getElementById('cmdk-pin');
+    // Computed display, NOT the attribute: the shared button class is
+    // `display: flex`, which out-ranks [hidden]'s UA default, so the CSS override
+    // is load-bearing and an attribute read would pass with it deleted.
+    return b ? { shown: getComputedStyle(b).display !== 'none', pressed: b.getAttribute('aria-pressed'), w: Math.round(b.getBoundingClientRect().width) } : null;
+  });
+  await page.evaluate(() => { try { closeCmdK(); } catch (e) {} siteContent['search-pins'] = []; openCmdK(); });
+  await page.waitForTimeout(500);
+  await page.evaluate(() => { const i = document.getElementById('cmdk-input'); i.value = ''; cmdkSearchCore('', false); });
+  await page.waitForTimeout(400);
+  let pb = await pinBtn();
+  ok(!!pb && !pb.shown, 'PIN: the landing offers nothing to pin');
+  await page.evaluate(() => { const i = document.getElementById('cmdk-input'); i.value = 'who owes money'; cmdkSearchCore('who owes money', false); });
+  await page.waitForTimeout(500);
+  pb = await pinBtn();
+  ok(!!pb && pb.shown && pb.pressed === 'false' && pb.w >= 24,
+    `PIN: an answered question offers the pin, unpressed, at target size (${pb && pb.w}px)`);
+  await page.evaluate(() => { const i = document.getElementById('cmdk-input'); i.value = 'bob carter'; cmdkSearchCore('bob carter', false); });
+  await page.waitForTimeout(500);
+  pb = await pinBtn();
+  ok(!!pb && !pb.shown, 'PIN: a record result is not an answer — no pin');
+  await page.evaluate(() => { const i = document.getElementById('cmdk-input'); const q = 'set jollyboat to £150 for 20-23 aug'; i.value = q; cmdkSearchCore(q, false); });
+  await page.waitForTimeout(500);
+  pb = await pinBtn();
+  ok(!!pb && !pb.shown, 'PIN: a COMMAND never offers the pin — that would be a write on the landing');
+  // Pin it, then prove the tile is LIVE.
+  await page.evaluate(() => { const i = document.getElementById('cmdk-input'); i.value = 'who owes money'; cmdkSearchCore('who owes money', false); });
+  await page.waitForTimeout(500);
+  await page.click('#cmdk-pin');
+  await page.waitForTimeout(250);
+  pb = await pinBtn();
+  ok(!!pb && pb.pressed === 'true', 'PIN: tapping it pins, and the button says so at once');
+  const tile1 = await page.evaluate(async () => {
+    const i = document.getElementById('cmdk-input'); i.value = ''; cmdkSearchCore('', false);
+    await new Promise((r) => setTimeout(r, 350));
+    const heads = [...document.querySelectorAll('#cmdk .cmdk-group-label')].map((e) => e.textContent.trim());
+    const at = __cmdkResults.findIndex((r) => r && String(r.id || '').startsWith('pin-'));
+    // The row RENDERED under the Pinned heading must BE the pin. An array/slice
+    // desync (reordering the concat without moving the slice bases) keeps the
+    // headings and the monotonic indices intact while parking the DAY'S rows under
+    // "Pinned" — the one mutation the other checks cannot see.
+    const pinHead = [...document.querySelectorAll('#cmdk .cmdk-group-label')].find((e) => e.textContent.trim() === 'Pinned');
+    let underHeading = null;
+    for (let el = pinHead && pinHead.nextElementSibling; el; el = el.nextElementSibling) {
+      if (el.classList.contains('cmdk-group-label')) break;
+      const opt = el.matches('[role="option"]') ? el : el.querySelector('[role="option"]');
+      if (opt) { underHeading = String((__cmdkResults[+opt.id.replace('cmdk-opt-', '')] || {}).id || ''); break; }
+    }
+    return { heads, label: at >= 0 ? __cmdkResults[at].label : null, underHeading };
+  });
+  ok(!!tile1 && /£400\.00/.test(tile1.label || ''), `PIN: the landing renders the pinned answer (${tile1 && tile1.label})`);
+  ok(!!tile1 && /^pin-/.test(tile1.underHeading || ''),
+    `PIN: the row under the Pinned heading IS the pin — slices and array agree (${tile1 && tile1.underHeading})`);
+  const gi2 = tile1.heads.findIndex((h) => /morning|afternoon|evening|night/i.test(h));
+  const pi2 = tile1.heads.indexOf('Pinned');
+  ok(pi2 >= 0 && gi2 > pi2, `PIN: Pinned sits between Suggested and the day (${JSON.stringify(tile1.heads)})`);
+  const tile2 = await page.evaluate(async () => {
+    dbBookings.jollyboat[0].depositPaid = 300; // the world moved on
+    const i = document.getElementById('cmdk-input'); i.value = ''; cmdkSearchCore('', false);
+    await new Promise((r) => setTimeout(r, 350));
+    const at = __cmdkResults.findIndex((r) => r && String(r.id || '').startsWith('pin-'));
+    const out = at >= 0 ? __cmdkResults[at].label : null;
+    dbBookings.jollyboat[0].depositPaid = 100;
+    return out;
+  });
+  ok(/£200\.00/.test(tile2 || ''), `PIN: …and it is LIVE — the figure moves with the data, £400 → (${tile2})`);
+  // The Running-for-you board: watchers + undo surfaced, routed to their commands.
+  const ctl = await page.evaluate(async () => {
+    siteContent['search-watchers'] = [{ id: 'w9', pk: 'jollyboat', from: '2027-08-03', to: '2027-08-06', tell: '2027-08-01', say: 'Watching Jollyboat — free nights', done: false }];
+    chbUndoPush('Price override on Jollyboat', async () => {});
+    const i = document.getElementById('cmdk-input'); i.value = ''; cmdkSearchCore('', false);
+    await new Promise((r) => setTimeout(r, 350));
+    const caps = [...document.querySelectorAll('#cmdk .cmdk-board-cap')].map((e) => e.textContent.trim());
+    const rows = [...document.querySelectorAll('#cmdk .cmdk-board .cmdk-row')].map((r) => r.textContent.replace(/\s+/g, ' ').trim());
+    const wAt = __cmdkResults.findIndex((r) => r && String(r.id || '').startsWith('ctl-watch'));
+    if (wAt >= 0) __cmdkResults[wAt].run();
+    await new Promise((r) => setTimeout(r, 350));
+    const routed = (document.getElementById('cmdk-input') || {}).value;
+    __chbUndo.length = 0; siteContent['search-watchers'] = [];
+    return { caps, watcher: rows.some((t) => /Watching Jollyboat/.test(t)), undo: rows.some((t) => /You can undo: Price override/.test(t)), routed };
+  });
+  ok(!!ctl && ctl.caps.includes('Running for you') && ctl.watcher && ctl.undo,
+    `CTL: watchers and undo surface on the Running-for-you board (${ctl && ctl.caps.join(' · ')})`);
+  ok(!!ctl && ctl.routed === 'watching',
+    `CTL: a watcher row ROUTES to the watching command — stopping stays a second, deliberate tap (${ctl && ctl.routed})`);
+  // cmdkBrief() is memoised and returns the CACHED ARRAY ITSELF — the control rows
+  // are appended to a COPY, or the first landing render pollutes the cache and
+  // every empty re-render inside its 8s TTL (backspace-to-empty, the ✕ clear,
+  // Unpin's own rebuild) stacks another ctl row. Two renders back-to-back must
+  // yield exactly one of each. (The CTL block above zeroes its state afterwards,
+  // which is exactly how the first version of this suite MASKED the bug — so this
+  // check re-seeds and renders twice on purpose.)
+  const dup = await page.evaluate(async () => {
+    // Seed the LIVE cache, not the boot mirror: the CTL block above routed through
+    // the `watching` command, whose lazy fetch left __chbWatchers = [] — and a
+    // fetched list rightly outranks the mirror (the mirror is only a boot
+    // hydration for the no-request landing). That precedence is product
+    // behaviour; this check is about duplication, not sourcing.
+    __chbWatchers = [{ id: 'w9', pk: 'jollyboat', from: '2027-08-03', to: '2027-08-06', tell: '2027-08-01', say: 'Watching Jollyboat — free nights', done: false }];
+    chbUndoPush('Price override on Jollyboat', async () => {});
+    const i = document.getElementById('cmdk-input');
+    i.value = ''; cmdkSearchCore('', false);
+    await new Promise((r) => setTimeout(r, 250));
+    i.value = ''; cmdkSearchCore('', false);
+    await new Promise((r) => setTimeout(r, 250));
+    const watch = __cmdkResults.filter((r) => r && String(r.id || '').startsWith('ctl-watch')).length;
+    const undo = __cmdkResults.filter((r) => r && String(r.id || '') === 'ctl-undo').length;
+    // …and an inline action's report STRIP must render on a pinned tile — the
+    // pin slice renders through cmdkRowWithStrip, or acting from the landing
+    // succeeds in silence (the results-loop-only regression class).
+    let strip = null;
+    const pinAt = __cmdkResults.findIndex((r) => r && String(r.id || '').startsWith('pin-'));
+    if (pinAt >= 0) {
+      __cmdkActMsg = { idx: pinAt, state: 'ok', say: 'probe strip' };
+      cmdkRender(true);
+      await new Promise((r) => setTimeout(r, 150));
+      strip = !!document.querySelector('#cmdk .cmdk-actmsg.is-ok');
+      __cmdkActMsg = null; cmdkRender(true);
+    }
+    __chbUndo.length = 0; __chbWatchers = []; siteContent['search-watchers'] = [];
+    return { watch, undo, strip };
+  });
+  ok(!!dup && dup.watch === 1 && dup.undo === 1,
+    `CTL: two landing renders in the brief's cache window yield ONE of each control row (watch ${dup && dup.watch}, undo ${dup && dup.undo})`);
+  ok(!!dup && dup.strip === true,
+    'PIN: an inline action reports through the strip on a pinned tile — acting from the landing is never silent');
+  // The help list is not a pinnable answer: tapping ? next to the pin used to
+  // leave the button armed for the PREVIOUS query — an invisible durable write.
+  const helpDisarm = await page.evaluate(async () => {
+    const i = document.getElementById('cmdk-input');
+    i.value = 'who owes money'; cmdkSearchCore('who owes money', false);
+    await new Promise((r) => setTimeout(r, 400));
+    const armed = getComputedStyle(document.getElementById('cmdk-pin')).display !== 'none';
+    cmdkHelpOpen();
+    await new Promise((r) => setTimeout(r, 250));
+    return { armed, after: getComputedStyle(document.getElementById('cmdk-pin')).display !== 'none' };
+  });
+  ok(!!helpDisarm && helpDisarm.armed && !helpDisarm.after,
+    'PIN: opening help DISARMS the pin — no invisible write against a cleared query');
+  // Unpin from the tile: one gesture, tile visibly leaves.
+  const un = await page.evaluate(async () => {
+    const i = document.getElementById('cmdk-input'); i.value = ''; cmdkSearchCore('', false);
+    await new Promise((r) => setTimeout(r, 350));
+    const at = __cmdkResults.findIndex((r) => r && String(r.id || '').startsWith('pin-'));
+    if (at < 0) return { fail: 'no pin row' };
+    __cmdkSel = at; cmdkRender();
+    await new Promise((r) => setTimeout(r, 200));
+    const qa = [...document.querySelectorAll('#cmdk .cmdk-qa-row')].find((b) => /Unpin/.test(b.textContent));
+    if (!qa) return { fail: 'no unpin action' };
+    qa.click();
+    await new Promise((r) => setTimeout(r, 300));
+    const rows = [...document.querySelectorAll('#cmdk [role="option"]')].map((e) => +(e.id || '').replace('cmdk-opt-', ''));
+    return {
+      pinsLeft: (siteContent['search-pins'] || []).length,
+      heads: [...document.querySelectorAll('#cmdk .cmdk-group-label')].map((e) => e.textContent.trim()),
+      monotonic: rows.every((n, i) => i === 0 || n > rows[i - 1]),
+    };
+  });
+  ok(!!un && !un.fail && un.pinsLeft === 0 && !un.heads.includes('Pinned'),
+    `PIN: Unpin removes the tile and its heading in one gesture (${un && (un.fail || un.heads.join(' · '))})`);
+  ok(!!un && un.monotonic, 'PIN: …and the landing indices still rise down the screen — arrows follow the eye');
 
   console.log(fails ? `\n  ${fails} SEARCH-PAGE CHECK(S) FAILED ❌` : '\n  SEARCH-PAGE SUITE PASSED ✅');
   await done(fails);

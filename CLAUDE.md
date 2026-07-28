@@ -959,6 +959,65 @@ the session copy left the stored twin on offer — safe, because the staleness c
 refuses it, but it reads as "not undone yet". Gated by search-test §40; the `undo`
 command reads `chbUndoList()` (session first, then stored), never `__chbUndo` directly.
 
+**THE LANDING IS A CONTROL CENTRE** (admin.js — pins + the "Running for you" board; gated
+by search-test §41 + ui-test-searchpage §21). Two additions to the boards landing, both
+riding the existing machinery rather than adding surfaces.
+**Pinned live answers**: `#cmdk-pin` (admin-views.html, in the field row after the ✕
+clear) arms when a COMMITTED query's lead row is a pinnable hero (`cmdkPinOffer`, called
+at the one commit site + disarmed by every non-query render path — deep fetch, help open,
+the empty branch); `chbPinToggle` (data-act) stores `{q}` under the INTERNAL content key
+**`search-pins`** (cap 6, newest kept). A pin stores the QUESTION, never the answer: the
+landing RECOMPUTES each one live via `chbPinAnswer(q)` — a side-effect-free rerun of the
+answer tiers (chbCompute/chbAlmanac → cmdkIntent → NLU canonical → cmdkIntent) — so
+"who owes me money" pinned on Tuesday shows Thursday's figure on Thursday. One that no
+longer answers renders an honest "Couldn't answer this just now" tile rather than
+vanishing. Four refusals, each break-tested: COMMANDS (every `cmdkCommand` row is tagged
+`cmd: true` at the single tier -1 call site — the guards filter on the TAG, because an
+id-literal filter missed the branches that never set `id:'cmdk-command'`); PRONOUN
+questions (`CHB_ANAPHOR_Q` — "their balance" recomputed next session answers about
+whatever record that session holds); ENTITY-CONTEXT answers (`chbPinAnswer` STRIPS
+`__cmdkEntity`/`__cmdkConvCtx` for the recompute and restores in `finally`, and
+`cmdkPinOffer` refuses while a hub entity + task words are live — cmdkIntent 0a fires on
+task words alone when an entity is loaded, so a pinned generic "outstanding balance"
+would silently become an answer about that booking); conversational-frame refinements
+(`chbConvResolve`). The 0a boundary regexes are now shared consts (`CHB_ANAPHOR_Q`,
+`CHB_ENTITY_TASK_Q`) — one definition for the branch that answers and the guard that
+refuses, the CHB_STAYLEN_Q discipline. NB `chbPinStore` is **MIRROR-FIRST** — the
+INVERSE of chbUndoStored's save-then-mirror, deliberately: the landing re-reads
+`siteContent[CHB_PIN_KEY]` synchronously on the very next render after a toggle, so the
+mirror must be true immediately; the network half rides a serialised promise chain
+(`__chbPinSaveQ`) that always saves the CURRENT mirror, so two quick toggles can't land
+out of order. (Undo's order is the durability-honesty rule — don't "fix" either into
+the other.)
+**"Running for you"** (`CMDK_BOARDS` key `control`): live watchers (from fetched
+`__chbWatchers`, else the `search-watchers` mirror read into a LOCAL — never write the
+cache from the landing, the fetched copy outranks it) and the undo count surface as
+rows that ROUTE to the `watching`/`undo` commands — surfacing is one tap, stopping a
+watcher stays a second deliberate tap.
+Two engine fixes it forced, both measured: **`cmdkBrief()` is memoised and returns the
+CACHED ARRAY BY REFERENCE**, so the landing takes `.slice()` before appending — without
+it the first render polluted the cache and every empty re-render inside the 8s TTL
+stacked duplicate control rows; and **the empty branch now kills the OLD query's
+machinery** (`clearTimeout(__cmdkServerT)` + stamp/queryGen bumps + loading off) —
+clearing the field inside the 180ms debounce left the old query's federated fetch armed,
+stamp still current, and its results merged INTO THE LANDING. The §19 gate for that one
+was vacuous TWICE before it fired: an empty stub payload (the merger returns before
+touching `__cmdkResults`) and then an out-of-scope row (`type:'message'` merges but is
+scoped away inside `cmdkArrangeWide` — the suite opens search from view-backoffice, so
+the snapshot scope is 'bookings'); the fixture is an in-scope booking row.
+Related hardening from the same pass: **test-content-keys.php scans CLIENT writes too**
+(`saveContent('literal'|CONST,` — every key must be classified in db.php or listed in
+`$JS_PUBLIC_OK` with a reason), which found `square-deposit-pct` served publicly — and
+the fix is the ALLOWLIST, not classification, because **`siteContent` boots from the
+PUBLIC content GET before auth**: a key the admin client reads at boot cannot be made
+internal without breaking that read (measured — Settings rendered blank). And
+ui-test-searchpage §17b samples the exit fade with transition EVENTS as fallback
+evidence: any forced style flush inside closeCmdK's teardown starts the 0.22s
+transition's wall-clock while the thread is blocked, so on a slow run no mid-flight
+frame ever paints and the rAF poll alone called a working exit a teleport (~1-in-4
+flake, measured); a real exit dispatches transitionrun/transitionend for the box's
+opacity even then, while a genuinely deleted transition dispatches neither.
+
 **Owner's picks** — the habit/trust/revenue layer. (1) **Teach-loop nudges**: the synced
 dead-end searches (`search-misses` in the content table) surface BOTH in the weekly digest
 email (owner-digest.php "Teach your assistant" section, last-7-days, top 5 by count) and as

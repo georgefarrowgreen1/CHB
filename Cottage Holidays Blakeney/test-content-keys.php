@@ -95,6 +95,60 @@ foreach (['owner-ping', 'mailbox-seen', 'testcentre-seeded'] as $k) {
     ck_check("regression pin: '$k' stays internal", is_internal_content_key($k));
 }
 
+echo "\n== Client-written keys (saveContent in admin.js / app.js) ==\n";
+// The scan above only sees SERVER writes — and the class it protects against
+// exists client-side too: admin.js stores operational state through content.php
+// (search-undo leaked-in-waiting until classified; search-pins is the newest).
+// Convention makes this scannable: operational keys are named as consts
+// (`const CHB_X_KEY = '…'` used in `saveContent(CHB_X_KEY, …)`), while the
+// owner's PUBLIC content is written with literal or dynamic keys. So: every
+// const-keyed write must be classified internal/private, and literal-keyed
+// writes must be classified OR on the deliberate JS_PUBLIC_OK list. Coverage
+// limit, stated: the assist-sync trio (nlu-learned / nlu-suppressed /
+// search-misses) posts content.php directly from a pair-array and is out of
+// this scanner's reach — all three are classified in db.php's membership list.
+$JS_PUBLIC_OK = [
+    'contact-phone' => "the owner's public phone number — rendered on the public site anyway",
+    'google-review-url' => 'the public Google-reviews link guests are sent to — public by its nature',
+    'host-photo' => 'the host card portrait on the public homepage — uploaded to be shown',
+    'square-deposit-pct' => 'the deposit split (%% of total) — siteContent boots from the PUBLIC fetch pre-auth, so hiding it silently resets the Settings field; guests derive it from their own payment anyway',
+    'reviews' => 'the public review list (moderation writes the same key the site serves)',
+];
+$jsFound = [];
+foreach (['admin.js', 'app.js'] as $jf) {
+    $src = (string) file_get_contents(__DIR__ . '/' . $jf);
+    // const-keyed writes, resolved through their declaration
+    if (preg_match_all('/saveContent\(\s*([A-Z][A-Z0-9_]+)\s*,/', $src, $m)) {
+        foreach (array_unique($m[1]) as $const) {
+            if (preg_match('/const\s+' . $const . "\s*=\s*'([a-z0-9-]+)'/", $src, $cm)) {
+                $jsFound[$cm[1]][] = "$jf ($const)";
+            } else {
+                ck_check("const $const in $jf resolves to a literal key (scanner must not go blind)", false);
+            }
+        }
+    }
+    // literal-keyed writes
+    if (preg_match_all("/saveContent\(\s*'([a-z0-9-]+)'\s*,/", $src, $m)) {
+        foreach (array_unique($m[1]) as $k) {
+            $jsFound[$k][] = $jf;
+        }
+    }
+}
+$constKeyed = 0;
+foreach ($jsFound as $k => $where) {
+    $isConst = (bool) preg_grep('/\(/', $where);
+    if ($isConst) {
+        $constKeyed++;
+        ck_check("client operational key '$k' is classified (" . implode(', ', $where) . ')', is_internal_content_key($k) || is_private_content_key($k));
+    } else {
+        ck_check("client literal key '$k' is classified or deliberately public", is_internal_content_key($k) || is_private_content_key($k) || isset($JS_PUBLIC_OK[$k]));
+    }
+}
+// The blindness guard: search-undo and search-pins exist today, so a scan that
+// finds fewer than two const-keyed writes has stopped seeing them.
+ck_check("the client scan still finds const-keyed operational writes ($constKeyed)", $constKeyed >= 2);
+
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";
