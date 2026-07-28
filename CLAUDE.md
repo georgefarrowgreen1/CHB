@@ -58,13 +58,23 @@ build step**); PHP backend files sit alongside it. App-style guest shell lives i
   weight change is a layout question here; and the off-ladder 550 / 650 / 800 sites,
   which had all been rendering as that one bold, are collapsed to the four steps.
   Gated by **ui-test-searchpage §16a**, which asks the FONT whether the steps differ.
-  **The search window's type scale is SEVEN named steps** (`--cmdk-fs-hero/lead/body/
-  row/sub/meta/micro` in admin.css, a phone re-declaring the TOKEN rather than the
+  **The search window's type scale is SIX named steps** (`--cmdk-fs-hero/lead/body/
+  row/sub/micro` in admin.css, a phone re-declaring the TOKEN rather than the
   rule). It had nineteen sizes, twelve within 0.02rem of a neighbour, three of which
   never rendered at all because the later ONE-ASSISTANT-LOOK block overrode them.
   §16b sweeps three render states (landing / answer / selected record — they light up
   largely disjoint rules, and scanning only one let a deliberately off-scale
   `.cmdk-hero-sub` through) and fails on any size that is not a step.
+  It was seven, and that block's comment claimed every step stood ≥1.2px from its
+  neighbour — **which was false**: three of six gaps were under it and the tightest,
+  sub against meta at 0.64px, was closer than pairs the collapse had removed for being
+  too close, on surfaces they SHARED (a hero's sub sits directly above row subs in the
+  same list). Those two are one step. The single close pair left is body against row
+  at 0.8px, tolerated because prose and a list label never appear as PEERS — and the
+  one place they did, `.cmdk-none`'s title over its own sub, was the real defect there
+  (that title now takes `--lead`, gated separately). **§16c asserts the true minimum
+  gap**, so the prose and the tokens cannot drift apart again; write a claim about the
+  numbers and gate it, or don't write it.
   **The assistant's knot carries model state in COLOUR ALONE**, so its five state
   colours are 1.4.11 non-text cases at 3:1, not decoration — see `--knot-*` and
   a11y-test §1c.
@@ -545,6 +555,20 @@ and the bump belongs at the exit SITES, never inside that helper, because `cmdkD
 calls it too with its own stamp already captured. Fixing this surfaced a latent bug:
 `cmdkSearchCore` cleared `__cmdkDeep` without bumping the stamp, so a slow deep response
 arriving after the owner had moved on **reopened the deep view over their newer query**.
+**A SHORT VIEWPORT SPENDS ITS HEIGHT ON RESULTS.** Measured at 740×400 (a landscape
+phone): the pop-out is 296px tall and its chrome took 119 of them — a 74px field plus
+a 45px keyboard-hint foot — leaving 175px of results, which showed ONE row of seven.
+Under `max-height: 600px` the hint yields (advice about a keyboard, on a device with no
+room to spare for it) and the field's padding tightens; results go to 228px. The foot
+is hidden BY CONDITION, not outright — `:not(:has(.cmdk-sys.is-warn))` — because a
+stopped automation earns its line at any size, the same judgement the 639px rule makes.
+Gated by ui-test-searchpage §16f, including that a warning still gets through.
+NB the cmdk `:hover` rules are deliberately NOT gated behind `@media (hover: hover)`
+even though touch keeps a hover applied after a tap: it was considered and measured, and
+since selection is hover PLUS the accent PLUS a 3px edge bar, a lingering tint reads as
+a stale tint rather than a false selection — and Chromium cannot reproduce iOS's sticky
+hover, so the change would have been unverifiable here for a defect that no longer
+misleads. Revisit if selection ever loses the edge bar.
 **ONE EMPTY STATE** (`cmdkNoneHtml(title, sub)` + `CMDK_WIDEN` + `CMDK_NONE_IC`) — there
 were three, written independently and reading like three different products: the scoped
 landing was a bare centred sentence with no mark, a query with no hits got mark + bold
