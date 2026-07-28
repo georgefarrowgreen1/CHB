@@ -1643,6 +1643,44 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(!!landing && landing.monotonic && landing.visual,
     `LANDING: …and the row indices still rise down the screen, so arrows follow the eye (${landing && landing.n} rows)`);
 
+  // 20b) THE DAY'S CARDS EARN THEIR HEIGHT. Measured at 390px, the boards spent
+  // 453px on five facts — 91px each — so a morning with four boards scrolled before
+  // it was read. Padding and the caption's leading came out; no type size and no tap
+  // target moved, which is what the second check holds. The money row is measured
+  // separately because it was the one that WRAPPED: front-loading the guest's name
+  // ran "…arrives today — £400.00 to collect" onto a second line (77px against a
+  // one-line row's 56), and money-first alone did not fix it — the timing had to move
+  // to the sub as well.
+  await page.setViewportSize({ width: 390, height: 844 });
+  const cards = await page.evaluate(async () => {
+    const until = async (fn, ms = 6000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 40)); } };
+    try { closeCmdK(); } catch (e) {}
+    openCmdK();
+    await until(() => !!document.querySelector('#cmdk .cmdk-board .cmdk-row'));
+    await new Promise((r) => setTimeout(r, 250));
+    const boards = [...document.querySelectorAll('#cmdk .cmdk-board')];
+    const rows = [...document.querySelectorAll('#cmdk .cmdk-board .cmdk-row')];
+    // CHROME per card — its own height less the rows it holds. That is precisely
+    // what padding and the caption cost, and unlike a per-fact average it does not
+    // move with how many rows a given day happens to have (the first version of this
+    // check used the average and read 82px in one fixture and 104 in another, which
+    // measures the fixture, not the change).
+    const chrome = boards.map((b) => {
+      const rh = [...b.querySelectorAll('.cmdk-row')].reduce((a, r) => a + r.getBoundingClientRect().height, 0);
+      return Math.round(b.getBoundingClientRect().height - rh);
+    });
+    return {
+      boards: boards.length,
+      worstChrome: chrome.length ? Math.max(...chrome) : 999,
+      minRow: rows.length ? Math.min(...rows.map((r) => r.getBoundingClientRect().height)) : 0,
+      facts: rows.length,
+    };
+  });
+  ok(!!cards && cards.boards > 0 && cards.worstChrome <= 40,
+    `CARDS: a day-card spends ${cards && cards.worstChrome}px on padding and its caption (was 44)`);
+  ok(!!cards && cards.minRow >= 44, `CARDS: …with the 44px touch floor untouched (${cards && Math.round(cards.minRow)}px)`);
+  await page.setViewportSize({ width: 900, height: 900 });
+
   console.log(fails ? `\n  ${fails} SEARCH-PAGE CHECK(S) FAILED ❌` : '\n  SEARCH-PAGE SUITE PASSED ✅');
   await done(fails);
 })();

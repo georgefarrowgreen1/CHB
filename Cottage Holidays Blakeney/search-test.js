@@ -1009,6 +1009,15 @@ if (typeof ctx.chbBusinessPulse === 'function') {
     ]);
     const pd = ctx.chbBusinessPulse();
     check('a real dip flags a nudge (down + offer)', !!pd && pd.down && pd.arrow === '↓' && /nudge|offer/i.test(pd.sub), pd ? pd.arrow + ' ' + pd.sub : 'null');
+    // A ZERO last month is a comparison too. That branch used to read "off the mark",
+    // written to mean off the STARTING line and read as wide of it — a complaint about
+    // the number it sits beside, under an up arrow. Its three siblings all say what
+    // changed against last month; this one must as well, and must never go back to a
+    // phrase that could be taken as a judgement.
+    seed([{ id: 1, name: 'A', checkIn: mm + '05', checkOut: mm + '09', agreedPrice: { total: 520 } }]);
+    const pz = ctx.chbBusinessPulse();
+    check('a month up from nothing reads as a comparison, not a verdict',
+        !!pz && /up from none last month/.test(pz.label) && !/off the mark/.test(pz.label), pz ? pz.label : 'null');
     vm.runInContext('Object.keys(dbBookings).forEach((k)=>dbBookings[k]=[]);', ctx);
 }
 
@@ -1544,8 +1553,20 @@ if (typeof ctx.cmdkBrief === 'function') {
         chbNluStore('chb-search-misses', [{ t: 'weather for changeover', n: 2, at: '${today}' }, { t: 'paint the fence', n: 1, at: '${today}' }]); CHB_NLU.misses = null;`, ctx);
     const brief = ctx.cmdkBrief();
     const lbl = (id) => { const r = brief.find((x) => x.id === id || String(x.id).startsWith(id)); return r ? `${r.label} | ${r.sub}` : '(none)'; };
-    check('brief: today’s arrival is NAMED with her check-in time', /Rita arrives today · 15:00/.test(lbl('brief-arr')), lbl('brief-arr'));
+    check('brief: today’s arrival is NAMED with her check-in time', /Rita arrives · 15:00/.test(lbl('brief-arr')), lbl('brief-arr'));
+    // …and does NOT repeat the word its board is already captioned with.
+    check('brief: …without saying “today” on a card captioned Today', !/today/i.test(lbl('brief-arr').split('|')[0]), lbl('brief-arr'));
     check('brief: arrival context carries the repeat ordinal + money to take', /2nd stay with you/.test(lbl('brief-arr')) && /£400\.00 to take/.test(lbl('brief-arr')), lbl('brief-arr'));
+    // The gap row's dates use the COMPACT range formatter its sibling rows already
+    // use — it was the only brief row still pasting two DD/MM/YYYY dates together
+    // ("03/08/2026–06/08/2026", 21 characters that wrapped the sub onto a second
+    // line at 390px). Not an exception to the one-date-format rule: fmtStayRange IS
+    // the house's compact form, and it keeps the year.
+    check('brief: the gap row dates read as a range, not two pasted dates',
+        // Both of fmtStayRange's shapes count — "3–6 Aug 2026" and, when the gap
+        // crosses a month, "31 Jul – 1 Aug 2026". The invariant is that no DD/MM/YYYY
+        // pair survives and a named month does.
+        !/\d{2}\/\d{2}\/\d{4}/.test(lbl('brief-gap')) && /\d{1,2} [A-Z][a-z]{2}\b/.test(lbl('brief-gap')), lbl('brief-gap'));
     check('brief: the SOONEST gap rides as a ready-made offer (demand-priced discount)', /Worth a look: \d free nights on Jollyboat/.test(lbl('brief-gap')) && /offer £\d+\/night \(\d+% off\).*tap to apply/.test(lbl('brief-gap')), lbl('brief-gap'));
     check('brief: the teach-loop nudge counts this week’s dead ends', /2 searches found nothing this week/.test(lbl('brief-teach')), lbl('brief-teach'));
     vm.runInContext(`chbNluStore('chb-search-misses', [{ t: 'old one', n: 1, at: '2020-01-01' }]); CHB_NLU.misses = null;`, ctx);
@@ -2092,7 +2113,12 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
               {id:72,dbId:72,name:'Later Guest',email:'l@x.co',checkIn:'${dFut(60)}',checkOut:'${dFut(64)}',adults:2,children:0,payment:'deposit',depositPaid:100,agreedPrice:{total:615,perNight:600,nights:4,txnFee:15}}];`, ctx);
         const duties = ctx.chbDuties();
         const bal = duties.filter((d) => d.kind === 'balance');
-        check('duties chase the SOON balance', bal.length === 1 && /Soon Guest/.test(bal[0].label), bal.map((d) => d.label).join(' | '));
+        check('duties chase the SOON balance', bal.length === 1 && /Soon/.test(bal[0].label), bal.map((d) => d.label).join(' | '));
+        // The MONEY leads on a card captioned Money — every other row there does, and
+        // the Today card has already told you about the arrival. The timing moved to
+        // the sub so the label stays one line at 390px.
+        check('…and the row LEADS with the figure, not the arrival', /^£[\d,]+\.\d{2} to collect from /.test(bal[0].label), bal[0].label);
+        check('…with the timing in the sub, where the dates already are', /^Arriving in \d+ days · /.test(bal[0].sub), bal[0].sub);
         check('…and leave the one 60 days out alone (the 21-day window)', !bal.some((d) => /Later Guest/.test(d.label)));
         const enqD = duties.filter((d) => d.kind === 'enquiry');
         check('an enquiry is AGED, not counted', enqD.length === 1 && /waiting 3 days/.test(enqD[0].label), enqD[0] && enqD[0].label);
@@ -2112,7 +2138,7 @@ if (typeof ctx.cmdkParseDates === 'function' && typeof ctx.cmdkIntent === 'funct
         const brief = ctx.cmdkBrief() || [];
         const bl = brief.map((r) => String(r.label));
         check('the brief carries the same aged enquiry Today does', bl.some((l) => /waiting 3 days/.test(l)), bl.join(' | ').slice(0, 120));
-        check('and the same named balance, not a total across everyone', bl.some((l) => /Soon Guest/.test(l)) && !bl.some((l) => /^£1,1/.test(l)));
+        check('and the same named balance, not a total across everyone', bl.some((l) => /to collect from Soon/.test(l)) && !bl.some((l) => /^£1,1/.test(l)), bl.join(' | ').slice(0, 120));
         const later = ctx.chbOwedLater();
         check('money beyond the window is counted separately', later.n === 1 && later.total > 400, `${later.n} · ${later.total}`);
         check('…and surfaces as a quiet "not due yet" line', bl.some((l) => /more owed, none due yet/.test(l)), bl.filter((l) => /none due yet/.test(l))[0]);

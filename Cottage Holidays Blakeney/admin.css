@@ -3455,28 +3455,29 @@ body.cmdk-open {
    weight: a board's first row is the headline fact, so its label gets figure-sized
    type, while the rows keep their 44px touch floor.
    ============================================================ */
-/* ONE COLUMN, said out loud. auto-fit/minmax(240px) was responsive-looking dead code
-   in a 520px pop-out: the content box is 478 and two tracks need 490, so it computed
-   to one track at every width this window has. Don't narrow the minimum to force two
-   — a board row leads with a figure sentence that will not survive a 234px track. */
+/* ONE COLUMN, said out loud. auto-fit/minmax(240px) was dead code in a 520px pop-out:
+   the content box is 478 and two tracks need 490. Don't narrow it to force two — a
+   board row leads with a figure sentence that won't survive a 234px track. */
 .cmdk-boards {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 10px;
-  padding: 10px 12px 4px;
+  gap: 8px;
+  padding: 8px 12px 4px;
 }
+/* Measured at 390px: 453px for five facts, 91px each. Padding and the caption's
+   leading came out; no type size and no tap target moved. §20b gates the chrome. */
 .cmdk-board {
   background: var(--glass-hover);
   border: 1px solid var(--glass-border);
   border-radius: var(--r-md);
-  padding: 12px 10px 8px;
+  padding: 9px 10px 6px;
   min-width: 0;
 }
 /* Padded like the rows it captions (10px, not 4), so heading and content share one
    left rail — measured, they sat 10px apart, which reads as a heading belonging to
    nothing in particular. */
 .cmdk-board-cap {
-  margin: 0 0 4px;
+  margin: 0 0 2px;
   padding: 0 10px;
   font-size: var(--cmdk-fs-micro);
   font-weight: 700;
