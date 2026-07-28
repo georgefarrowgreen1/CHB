@@ -238,7 +238,12 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     return samples;
   });
   const distinct = new Set(grow).size;
-  ok(distinct >= 5, `the pop-out DROPS rather than appearing (${distinct} distinct offsets sampled)`);
+  // ≥3, not ≥5: a teleport yields at most TWO distinct offsets (the parked -10px
+  // and home) and fails the starts-above check below besides, so three proves a
+  // mid-flight frame — which is the whole claim. Five was an arbitrary margin that
+  // a janky CI runner missed on a WORKING drop (measured: 4 distinct offsets while
+  // the start/settle checks both passed — the heavier landing build eats frames).
+  ok(distinct >= 3, `the pop-out DROPS rather than appearing (${distinct} distinct offsets sampled)`);
   ok(grow[0] < -1, `it starts above its resting place (first sample translateY ${grow[0]})`);
   ok(grow[grow.length - 1] === 0, `and settles home (last ${grow[grow.length - 1]})`);
 
