@@ -149,13 +149,29 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.evaluate(() => darkstarLoad()); // real darkstar.bin served by php -S
   await page.waitForTimeout(600);
   await page.evaluate(() => { document.getElementById('cmdk-input').value = ''; cmdkSearchCore('', false); });
-  st = await page.evaluate(() => ({
-    ready: document.body.classList.contains('darkstar-ready'),
-    mstate: (document.getElementById('cmdk-ml') || {}).dataset.mstate,
-    color: getComputedStyle(document.getElementById('cmdk-ml')).color,
-  }));
+  // The ready tint is read off the TOKEN, not a written-down hex: --knot-ready is
+  // retuned under light mode (the vivid violet measures 3.60:1 on the light search
+  // surface), so pinning one rgb() here asserts a theme rather than the state. A
+  // probe element resolves the token through the same colour serialisation as the
+  // knot, so the two are comparable without a colour model — and the check still
+  // fails if the state stops painting its own token.
+  st = await page.evaluate(() => {
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--knot-ready)';
+    document.body.appendChild(probe);
+    const want = getComputedStyle(probe).color;
+    probe.remove();
+    return {
+      ready: document.body.classList.contains('darkstar-ready'),
+      mstate: (document.getElementById('cmdk-ml') || {}).dataset.mstate,
+      color: getComputedStyle(document.getElementById('cmdk-ml')).color,
+      want,
+      theme: document.body.classList.contains('light-mode') ? 'light' : 'dark',
+    };
+  });
   ok(st.ready, 'body.darkstar-ready set once the model is loaded + indexed');
-  ok(st.mstate === 'ready' && st.color === 'rgb(168, 85, 247)', `logo rests on the Darkstar purple (${st.mstate}, ${st.color})`);
+  ok(st.mstate === 'ready' && st.color === st.want && /\d/.test(st.want),
+    `logo rests on the Darkstar purple (${st.mstate}, ${st.color} @${st.theme})`);
 
   // 7) cmdkBack closes the window and leaves you where you already were; ⌘K toggles.
   await page.evaluate(() => cmdkBack()); await page.waitForTimeout(300);
@@ -882,6 +898,155 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     return el ? el.textContent.trim() : '(none)';
   });
   ok(!/SQLSTATE|Fatal|\.php/.test(wired), `ERR: and the strip itself never shows them (${wired.slice(0, 70)})`);
+  await page.setViewportSize({ width: 900, height: 900 });
+
+  // ============================================================
+  // 16) THE MAKEOVER'S SECOND PASS — type and tokens.
+  // ============================================================
+
+  // 16a) WEIGHT IS REAL. Montserrat ships as a VARIABLE file, but its @font-face
+  // blocks declared single weights (300/400/500), which pins the wght axis — so
+  // every weight the app asked for above 500 matched the 500 face and got the same
+  // synthetic bold. Measured before the fix: 500/600/700/800 all set the same
+  // string to the identical 421px, which is why making the hero's figure 700
+  // against a 600 label changed 0 pixels of 25,812. This check is the one that
+  // would have caught that: it asks the FONT whether the steps differ, not the
+  // stylesheet whether they are declared.
+  const weights = await page.evaluate(() => {
+    const mk = (w) => {
+      const s = document.createElement('span');
+      s.textContent = '£290.00 Handpicked';
+      s.style.cssText = `font-family: var(--font-sans); font-size: 40px; font-weight: ${w}; white-space: nowrap; position: absolute; visibility: hidden;`;
+      document.body.appendChild(s);
+      const px = s.getBoundingClientRect().width;
+      s.remove();
+      return +px.toFixed(2);
+    };
+    return { w400: mk(400), w500: mk(500), w600: mk(600), w700: mk(700) };
+  });
+  ok(weights.w500 !== weights.w600 && weights.w600 !== weights.w700,
+    `TYPE: 500 / 600 / 700 are three real faces, not one synthetic bold (${weights.w500} → ${weights.w600} → ${weights.w700}px)`);
+  ok(weights.w400 < weights.w500 && weights.w500 < weights.w600 && weights.w600 < weights.w700,
+    'TYPE: …and they get heavier in the right order');
+
+  // 16b) ONE SCALE. The window had nineteen sizes, twelve within 0.02rem of a
+  // neighbour. Every rendered size must now be one of the seven declared steps —
+  // read off the tokens, so the check cannot drift from the scale it is checking.
+  // Sampled across THREE render states, not one: the boards landing, an answered
+  // query (hero + thread) and a selected record (quick actions + detail pane) light
+  // up largely disjoint sets of rules, so scanning any single one leaves most of the
+  // window's type unmeasured — the first draft of this check scanned only the
+  // selected-record state and a deliberately off-scale .cmdk-hero-sub sailed past it.
+  const scale = await page.evaluate(async () => {
+    const until = async (fn, ms = 6000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 40)); } };
+    const root = getComputedStyle(document.documentElement);
+    const steps = ['hero', 'lead', 'body', 'row', 'sub', 'meta', 'micro']
+      .map((k) => root.getPropertyValue(`--cmdk-fs-${k}`).trim())
+      .filter(Boolean);
+    // resolve each rem step to px through a probe, so this never hand-maths 16
+    const probe = document.createElement('span');
+    document.body.appendChild(probe);
+    const allowed = new Set(steps.map((s) => { probe.style.fontSize = s; return getComputedStyle(probe).fontSize; }));
+    probe.remove();
+    const seen = new Map();
+    const sweep = (state) => {
+      for (const el of document.querySelectorAll('#cmdk *')) {
+        const t = (el.textContent || '').trim();
+        if (!t || el.children.length) continue; // leaves only
+        // .sr-only is the visually-hidden-but-announced utility — a 1px box carrying
+        // screen-reader prose, not type on screen, so it has no size to be on scale.
+        if (el.closest('.sr-only')) continue;
+        const r = el.getBoundingClientRect();
+        if (!r.width || !r.height) continue;
+        const fs = getComputedStyle(el).fontSize;
+        if (!seen.has(fs)) seen.set(fs, `${state}: ${el.className || el.tagName} "${t.slice(0, 18)}"`);
+      }
+    };
+    try { closeCmdK(); } catch (e) {}
+    openCmdK();
+    await until(() => document.getElementById('cmdk').classList.contains('open'));
+    await until(() => !!document.querySelector('#cmdk .cmdk-board .cmdk-row, #cmdk .cmdk-row'));
+    sweep('landing');
+    const i = document.getElementById('cmdk-input');
+    i.value = 'who owes money'; cmdkSearchCore('who owes money', false);
+    await until(() => !!document.querySelector('#cmdk .cmdk-hero'));
+    sweep('answer');
+    i.value = 'bob carter'; cmdkSearchCore('bob carter', false);
+    await until(() => !!document.querySelector('#cmdk .cmdk-row'));
+    const at = await until(() => { const n = __cmdkResults.findIndex((r) => Array.isArray(r.actions) && r.actions.length); return n < 0 ? null : n; });
+    if (at !== null) { __cmdkSel = at; cmdkRender(); await new Promise((r) => setTimeout(r, 250)); }
+    sweep('record');
+    return { steps: steps.length, allowed: [...allowed], seen: seen.size, off: [...seen].filter(([fs]) => !allowed.has(fs)) };
+  });
+  ok(scale.steps === 7, `TYPE: the scale declares seven steps (${scale.steps})`);
+  if (scale.off.length) console.log('     off-scale: ' + scale.off.map(([fs, who]) => `${fs} ${who}`).join(' · '));
+  ok(scale.off.length === 0, `TYPE: every rendered size is one of them (${scale.off.length} off-scale of ${scale.seen} seen)`);
+
+  // 16c) A quick action is subordinate to the record it hangs under. `font: inherit`
+  // took the document's 16px/400, so "Email" was set larger and lighter than the
+  // guest's own name at 14.4px/600.
+  const rhythm = await page.evaluate(() => {
+    const qa = document.querySelector('#cmdk .cmdk-qa-lbl');
+    const row = document.querySelector('#cmdk .cmdk-row-label');
+    if (!qa || !row) return null;
+    const a = getComputedStyle(qa), b = getComputedStyle(row);
+    return { qa: parseFloat(a.fontSize), qaW: +a.fontWeight, row: parseFloat(b.fontSize), rowW: +b.fontWeight };
+  });
+  ok(!!rhythm && rhythm.qa <= rhythm.row && rhythm.qaW < rhythm.rowW,
+    `TYPE: a quick action never outranks its own record (${rhythm && rhythm.qa}px/${rhythm && rhythm.qaW} under ${rhythm && rhythm.row}px/${rhythm && rhythm.rowW})`);
+
+  // 16d) MODEL STATE IS THE ONLY CHANNEL, so the five states must be five colours.
+  // a11y-test §1c owns the contrast; this owns the DISTINCTNESS, and that they are
+  // painted from the knot tokens at all.
+  for (const theme of ['dark', 'light']) {
+    const knot = await page.evaluate(async (th) => {
+      document.body.classList.toggle('light-mode', th === 'light');
+      const el = document.getElementById('cmdk-ml');
+      if (!el) return null;
+      const was = el.dataset.mstate;
+      // Both the TRANSITION (0.35s) and, for `meaning`, a running ANIMATION make
+      // this a moving target: a sample taken a couple of frames after the flip reads
+      // a point on the interpolation, so two states can measure the same colour
+      // purely by timing (the first version passed once, then reported "4 of 5"
+      // every run after), and the animated state's value depends on where in a 2.8s
+      // cycle the sample lands — which also meant breaking --knot-meaning did not
+      // fail this check, because the keyframe was painting over it. Freeze both, so
+      // what is measured is each state's DECLARED identity (also what reduced motion
+      // shows); a11y-test §1c owns the animation's endpoints.
+      const prev = el.style.transition, prevA = el.style.animation;
+      el.style.transition = 'none';
+      el.style.animation = 'none';
+      const out = {};
+      for (const s of ['ready', 'understood', 'meaning', 'guess', 'learning']) {
+        el.dataset.mstate = s;
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        out[s] = getComputedStyle(el).color;
+      }
+      el.style.transition = prev; el.style.animation = prevA;
+      el.dataset.mstate = was || '';
+      document.body.classList.remove('light-mode');
+      return out;
+    }, theme);
+    const vals = knot ? Object.values(knot) : [];
+    ok(vals.length === 5 && new Set(vals).size === 5,
+      `KNOT @${theme}: five states, five distinct colours (${new Set(vals).size} of ${vals.length})`);
+  }
+
+  // 16e) A WARNING IS THE ONE THING THE FOOT MUST NOT SWALLOW. Sharing a 390px foot
+  // with the hint left "Daily automation looks stopped — last ran 7 days ago" at
+  // 37px of 287 — the line read "Dai…".
+  await page.setViewportSize({ width: 390, height: 844 });
+  const sys = await page.evaluate(async () => {
+    /** @type {any} */ (window).__cronStatusPre = { stale: true, everRan: true, ageHours: 168 };
+    chbSysLine();
+    await new Promise((r) => setTimeout(r, 200));
+    const el = document.getElementById('cmdk-sys');
+    const say = el && el.querySelector('.cmdk-sys-say');
+    if (!el || !say) return null;
+    return { warn: el.classList.contains('is-warn'), shown: say.clientWidth, needs: say.scrollWidth, text: say.textContent.trim() };
+  });
+  ok(!!sys && sys.warn, 'SYS: a stopped automation reports as a warning');
+  ok(!!sys && sys.shown >= sys.needs, `SYS: …and all of it is on screen at 390px (${sys && sys.shown} of ${sys && sys.needs}px)`);
   await page.setViewportSize({ width: 900, height: 900 });
 
   console.log(fails ? `\n  ${fails} SEARCH-PAGE CHECK(S) FAILED ❌` : '\n  SEARCH-PAGE SUITE PASSED ✅');

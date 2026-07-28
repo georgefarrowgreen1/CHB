@@ -41,6 +41,33 @@ build step**); PHP backend files sit alongside it. App-style guest shell lives i
   `body.light-mode`. Never introduce new raw hex/px/easing values for things a token
   covers. `.sr-only` is the visually-hidden-but-announced utility (status live
   regions etc.).
+  **WEIGHT IS REAL NOW — the ladder is 400 / 500 / 600 / 700 and nothing else.**
+  Both families are latin-subset VARIABLE woff2, but app.css declared one
+  `@font-face` per weight (Google's css2 output shape), and a SINGLE-VALUE
+  `font-weight` descriptor PINS a variable file's wght axis. Montserrat was declared
+  at 300/400/500, so every weight the app asked for above 500 matched the 500 face
+  and got the same synthetic bold: measured, 500 / 600 / 650 / 700 / 800 all set
+  "£290.00 Handpicked" to the identical **421px** — five declared weights, one look.
+  That is why PR #839 ("make the £290 the same size as the rest of the text",
+  re-emphasising by weight instead of size) changed **0 pixels of 25,812** and its
+  gate still passed: the gate asserted the DECLARATION, not the rendering. One
+  ranged block per family now (Montserrat `100 900`, Playfair `400 900`) and the
+  same file instances properly — 421 / 424 / 431 / 437px at 500 / 600 / 700 / 800,
+  for no extra bytes. Two consequences: real bold is ~2.4% **WIDER** than the
+  synthetic it replaces (advance widths grow where a stroke-widen did not), so a
+  weight change is a layout question here; and the off-ladder 550 / 650 / 800 sites,
+  which had all been rendering as that one bold, are collapsed to the four steps.
+  Gated by **ui-test-searchpage §16a**, which asks the FONT whether the steps differ.
+  **The search window's type scale is SEVEN named steps** (`--cmdk-fs-hero/lead/body/
+  row/sub/meta/micro` in admin.css, a phone re-declaring the TOKEN rather than the
+  rule). It had nineteen sizes, twelve within 0.02rem of a neighbour, three of which
+  never rendered at all because the later ONE-ASSISTANT-LOOK block overrode them.
+  §16b sweeps three render states (landing / answer / selected record — they light up
+  largely disjoint rules, and scanning only one let a deliberately off-scale
+  `.cmdk-hero-sub` through) and fails on any size that is not a step.
+  **The assistant's knot carries model state in COLOUR ALONE**, so its five state
+  colours are 1.4.11 non-text cases at 3:1, not decoration — see `--knot-*` and
+  a11y-test §1c.
   **`.glass-panel` is a MATERIAL, not an affordance.** Its `:hover` rule (app.css,
   inside `@media (hover: hover)`) adds `transform: translateY(-5px)` + a
   `--glass-hover` background — that is a CARD saying "I respond to you". But the same
@@ -1449,7 +1476,12 @@ deleting — both now FIXED, and they are worth keeping here as the pattern to e
   let it float with the runner image. **`perf-budget.js`** gates the gzipped size
   of every shipped asset against `size-budget.json` — raising a budget is allowed
   but must be deliberate, in the same PR, with the trade named; lower budgets when
-  you shrink an asset to lock the win in. **`check-css-conventions.js`** is the same
+  you shrink an asset to lock the win in. NB in these stylesheets the budget is
+  mostly PROSE: strip the comments and admin.css gzips to 12.9KB of its 30KB, so a
+  documentation-heavy change reads as performance rot unless you check. When a pass
+  goes over, trim the comments to the measured facts first and only then raise —
+  and hold **app.css flat regardless**, because every anonymous visitor pays for it,
+  where admin.css is owner-only and immutable-cached. **`check-css-conventions.js`** is the same
   ratchet shape for the two CSS rules above (canonical breakpoints, no raw hex where
   a token covers it) against `css-budget.json`: counts may only FALL — fix the value
   instead of raising the number, and re-baseline a cleanup with `--update`. It
@@ -1459,8 +1491,27 @@ deleting — both now FIXED, and they are worth keeping here as the pattern to e
   **`a11y-test.js`** (browser-core job, ratchets against `a11y-budget.json`) is the
   accessibility gate: §1 every text token's contrast BY ARITHMETIC against the real
   surfaces of both themes (no rendering, so no flake), **§1b the same tokens on their
-  own STATUS TINT**, §2 an accent-as-text ratchet, §3 accessible names on interactive
+  own STATUS TINT**, **§1c the assistant's model-state colours at the 3:1 non-text
+  bar**, §2 an accent-as-text ratchet, §3 accessible names on interactive
   elements, §4 minimum font size, §5 WCAG 2.2's 24×24 for standalone controls.
+  **§1c exists because the knot's colour IS the information.** There is no worded
+  pill, so `ready / understood / by-meaning / best-guess / learning` are reported by
+  hue alone — and on the LIGHT theme four of the five sat under 3:1 against the
+  search surface (understood 2.53, meaning 2.56 falling to 1.45 mid-animation,
+  learning 1.77, guess 1.76), i.e. the state was announced in ink the owner could
+  barely see, in the theme the back office actually ships in. The colours are now
+  `--knot-*` tokens in admin.css with a light retune (reusing `--ok-text` /
+  `--warn-text` where the value already existed), `guess` bakes its dimming into the
+  VALUE instead of an `opacity: 0.6` so no alpha is left for the gate to model, and
+  the two states that FADE are measured at their animation FLOOR — 0.66/0.5 put them
+  back under 3:1 for half of every cycle, so both floors are 0.72 and the learning
+  pulse gets its urgency from a glow swing instead. The gate reads admin.css and
+  resolves `var()` aliases and `hsl(var(--siri-N))` parts, so a token may keep
+  stating its hue once. ui-test-searchpage §16d owns the complementary property —
+  that the five are five DISTINCT colours — and freezes both the 0.35s transition
+  and the animation before sampling, because reading mid-interpolation made it
+  report "4 of 5" nondeterministically AND made a broken `--knot-meaning` invisible
+  to it (the keyframe was painting over the token).
   **§1b exists because §1 measured the wrong background.** Status ink almost never
   paints on a bare surface — it sits inside a `color-mix(in srgb, var(--ok) 12–20%,
   transparent)` pill or strip of its OWN colour, which is darker than the surface
