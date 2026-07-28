@@ -1160,6 +1160,360 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(!!board && Math.abs(board.capL - board.rowL) <= 1,
     `RAILS: a board's caption shares its rows' left rail (${board && board.capL} vs ${board && board.rowL})`);
 
+  // ============================================================
+  // 18) FOURTH PASS — the words and the states.
+  // ============================================================
+
+  // 18a) HELP COPY. The generated how-to's chips lost the dead "More: " prefix and
+  // their trailing parentheticals long ago; the browsable help ROWS were still
+  // building theirs the old way, so the same idea looked like two different things
+  // depending on how you asked. Read from cmdkHelp() rather than the DOM because
+  // these rows only surface for some queries — the composer is the thing that has
+  // to be right, and this way the check cannot pass by rendering nothing.
+  const helpCopy = await page.evaluate(() => {
+    const items = [];
+    for (const q of ['refund', 'block', 'invoice', 'deposit', 'price', 'photos']) {
+      try { items.push(...(cmdkHelp(q) || [])); } catch (e) {}
+    }
+    const chips = items.flatMap((i) => (i.chips || []).map((c) => String(c.label || '')));
+    const subs = items.map((i) => String(i.sub || ''));
+    return {
+      n: items.length,
+      more: chips.filter((l) => /^More:/.test(l)),
+      parenth: chips.filter((l) => /\([^)]*\)\s*$/.test(l)),
+      longSubs: subs.filter((s) => s.length > 60),
+      topicKind: items.flatMap((i) => (i.chips || [])).filter((c) => c.kind === 'topic').length,
+    };
+  });
+  ok(helpCopy.n > 0, `COPY: help rows are being built to check (${helpCopy.n})`);
+  ok(helpCopy.more.length === 0, `COPY: no help chip still says "More:" (${helpCopy.more.length})`);
+  ok(helpCopy.parenth.length === 0, `COPY: nor carries a title's trailing parenthetical (${helpCopy.parenth.length})`);
+  ok(helpCopy.topicKind > 0, `COPY: related topics are the muted "goes elsewhere" species (${helpCopy.topicKind})`);
+  ok(helpCopy.longSubs.length === 0,
+    `COPY: no help sub is a paragraph in a one-line clamp (${helpCopy.longSubs.length}${helpCopy.longSubs[0] ? ': "' + helpCopy.longSubs[0].slice(0, 40) + '…"' : ''})`);
+
+  // 18b) ONE EMPTY STATE. There were three, written independently: one bare centred
+  // sentence with no icon, one with icon + title + sub, one with title + sub and no
+  // icon — and the same "widen the scope" instruction in two wordings and two
+  // capitalisations. Drive all three states and require one shape and one sentence.
+  const empt = await page.evaluate(async () => {
+    const until = async (fn, ms = 6000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 40)); } };
+    const shape = () => {
+      const n = document.querySelector('#cmdk .cmdk-none');
+      if (!n) return null;
+      const strong = n.querySelector('strong');
+      return {
+        icon: !!n.querySelector('.cmdk-none-ic'),
+        title: strong ? strong.textContent.trim() : null,
+        sub: strong && strong.nextSibling ? String(strong.nextSibling.textContent || '').trim() : null,
+      };
+    };
+    const out = {};
+    // (1) a query with no hits, scope 'all'
+    try { closeCmdK(); } catch (e) {}
+    openCmdK();
+    const i = document.getElementById('cmdk-input');
+    i.value = 'zzzqqxnothing'; cmdkSearchCore('zzzqqxnothing', false);
+    await until(() => !!document.querySelector('#cmdk .cmdk-none'));
+    out.noResults = shape();
+    // (2) the same, SCOPED — this is the one that must share the widen sentence
+    __cmdkScope = 'bookings'; cmdkRender();
+    await new Promise((r) => setTimeout(r, 150));
+    out.scoped = shape();
+    // (3) the scoped EMPTY LANDING with nothing to show
+    __cmdkEmpty = true; __cmdkResults = []; __cmdkSuggestN = 0; __cmdkFreqN = 0; __cmdkBriefN = 0;
+    cmdkRender();
+    await new Promise((r) => setTimeout(r, 150));
+    out.landing = shape();
+    __cmdkScope = 'all';
+    return out;
+  });
+  const shapes = [empt.noResults, empt.scoped, empt.landing];
+  ok(shapes.every((s) => s && s.icon), `EMPTY: all three states carry the same mark (${shapes.filter((s) => s && s.icon).length} of 3)`);
+  ok(shapes.every((s) => s && s.title && s.sub), 'EMPTY: …and the same title + sub shape');
+  ok(!!empt.scoped && !!empt.landing && empt.scoped.sub === empt.landing.sub,
+    `EMPTY: the widen instruction is worded once ("${empt.scoped && empt.scoped.sub}")`);
+
+  // …and escaped exactly once. This has to be driven through DEEP search, because
+  // that is the only empty state whose title contains the query — and it is the one
+  // that used to escape inline, so now that cmdkNoneHtml escapes, passing it
+  // pre-escaped would print entities at the owner. `&lt;` in the HTML is CORRECT
+  // single escaping (the first version of this check flagged it as a failure); the
+  // signature of a double is `&amp;lt;`, and of none at all is a live <b> element.
+  const esc = await page.evaluate(async () => {
+    const until = async (fn, ms = 8000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 60)); } };
+    const q = '<b>zzzqqx</b>';
+    const i = document.getElementById('cmdk-input');
+    i.value = q; cmdkSearchCore(q, false);
+    await new Promise((r) => setTimeout(r, 300));
+    cmdkDeepOpen();
+    await until(() => !!__cmdkDeep);
+    await new Promise((r) => setTimeout(r, 300));
+    const n = document.querySelector('#cmdk .cmdk-none');
+    const out = n ? { text: n.textContent, html: n.innerHTML, live: n.querySelectorAll('b').length } : null;
+    try { cmdkDeepClose(); } catch (e) {}
+    return out;
+  });
+  ok(!!esc && esc.text.includes('<b>zzzqqx</b>') && !/&amp;/.test(esc.html) && esc.live === 0,
+    `EMPTY: a query with markup in it is escaped once, not twice (${esc && esc.live} live tags)`);
+
+  // 18c) THE THREAD SURVIVES A MISS. The no-results branch returns before the one
+  // that renders the thread, so a conversation two answers deep vanished the moment
+  // a query found nothing — and came back when the query was fixed.
+  const thr = await page.evaluate(async () => {
+    const until = async (fn, ms = 6000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 40)); } };
+    const put = async (q) => { const i = document.getElementById('cmdk-input'); i.value = q; cmdkSearchCore(q, false); await new Promise((r) => setTimeout(r, 500)); };
+    try { closeCmdK(); } catch (e) {}
+    openCmdK();
+    await until(() => document.getElementById('cmdk').classList.contains('open'));
+    await put('who owes money');
+    await put('how much am i owed');
+    const before = document.querySelectorAll('#cmdk .cmdk-turn').length;
+    await put('zzzqqxnothing');
+    return { before, onMiss: document.querySelectorAll('#cmdk .cmdk-turn').length, none: !!document.querySelector('#cmdk .cmdk-none') };
+  });
+  ok(!!thr && thr.before > 0, `THREAD: two answered turns put history on screen (${thr && thr.before})`);
+  ok(!!thr && thr.none && thr.onMiss === thr.before,
+    `THREAD: …and a query that finds nothing does not erase it (${thr && thr.onMiss} of ${thr && thr.before} kept)`);
+
+  // 18d) DEEP SEARCH's zero result stops offering to filter nothing — a lone
+  // "All 0" chip, 39px of control directly above the sentence saying there is
+  // nothing. The recency switch stays, because widening the window is the one
+  // useful thing left to try.
+  const dz = await page.evaluate(async () => {
+    const until = async (fn, ms = 8000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 60)); } };
+    const i = document.getElementById('cmdk-input');
+    i.value = 'zzzqqxnothing'; cmdkSearchCore('zzzqqxnothing', false);
+    await new Promise((r) => setTimeout(r, 300));
+    cmdkDeepOpen();
+    await until(() => !!__cmdkDeep);
+    await new Promise((r) => setTimeout(r, 300));
+    const blocks = [...document.querySelectorAll('#cmdk .cmdk-deep-chips')];
+    return {
+      types: blocks.filter((b) => !b.classList.contains('cmdk-deep-when')).length,
+      when: blocks.filter((b) => b.classList.contains('cmdk-deep-when')).length,
+      allZero: [...document.querySelectorAll('#cmdk .cmdk-deep-chip')].filter((c) => /^All\s*0$/.test(c.textContent.trim())).length,
+      icon: !!document.querySelector('#cmdk .cmdk-none .cmdk-none-ic'),
+    };
+  });
+  ok(!!dz && dz.types === 0 && dz.allZero === 0, `DEEP: a zero result offers no filter for nothing (${dz && dz.types} type rows, ${dz && dz.allZero} "All 0")`);
+  ok(!!dz && dz.when === 1, `DEEP: …but keeps the recency switch, which is the one thing left to try (${dz && dz.when})`);
+  ok(!!dz && dz.icon, 'DEEP: and its empty state is the shared one, mark and all');
+  await page.evaluate(() => { try { cmdkDeepClose(); } catch (e) {} });
+
+  // 18e) THE EMPTY STATE'S MARK HAS TO BE VISIBLE. It is decorative (aria-hidden),
+  // so WCAG asks nothing of it — but it is also the thing that makes an empty
+  // result look designed rather than broken, and at --accent × 0.6 it measured
+  // 1.76:1 against the light search surface: in the DOM, absent on screen. Measured
+  // by arithmetic on the COMPUTED colour and opacity against the registered surface
+  // — no pixel sampling, so no flake — and in both themes, because the light one is
+  // the theme this back office actually ships in and the only one that failed.
+  for (const theme of ['dark', 'light']) {
+    const mark = await page.evaluate(async (th) => {
+      document.body.classList.toggle('light-mode', th === 'light');
+      const i = document.getElementById('cmdk-input');
+      i.value = 'zzzqqxnothing'; cmdkSearchCore('zzzqqxnothing', false);
+      await new Promise((r) => setTimeout(r, 350));
+      const el = document.querySelector('#cmdk .cmdk-none-ic');
+      if (!el) { document.body.classList.remove('light-mode'); return null; }
+      const probe = document.createElement('span');
+      probe.style.color = 'var(--cmdk-surface)';
+      document.body.appendChild(probe);
+      const surface = getComputedStyle(probe).color;
+      probe.remove();
+      const cs = getComputedStyle(el);
+      const out = { color: cs.color, opacity: +cs.opacity, surface };
+      document.body.classList.remove('light-mode');
+      return out;
+    }, theme);
+    const rgb = (s) => (String(s).match(/[\d.]+/g) || []).slice(0, 3).map(Number);
+    const lin = (c) => { c /= 255; return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+    const lum = (c) => 0.2126 * lin(c[0]) + 0.7152 * lin(c[1]) + 0.0722 * lin(c[2]);
+    const contrast = (a, b) => { const l1 = lum(a), l2 = lum(b); return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05); };
+    let r = 0;
+    if (mark) {
+      const ink = rgb(mark.color), bg = rgb(mark.surface);
+      r = contrast(ink.map((v, i) => v * mark.opacity + bg[i] * (1 - mark.opacity)), bg);
+    }
+    ok(!!mark && r >= 3, `EMPTY @${theme}: the mark is actually visible (${r.toFixed(2)}:1 at opacity ${mark && mark.opacity})`);
+  }
+
+  // 18f) THE TOP HIT SITS ON THE LIST'S RAIL. Its icon tile was 36px against every
+  // other row's 32, which pushed its label to 67px against the list's 63 — the one
+  // row the eye lands on first, 4px out of line with the rows it heads. It keeps its
+  // four other emphasis signals; only the tile's size went.
+  // NB three sibling findings from the same audit did NOT survive measurement and
+  // are deliberately not "fixed" here: the hero's action panel and the deep-search
+  // CTA look offset but their own left EDGES are on the text rail (21 == 21) and the
+  // inset is their internal padding, which is what a panel in a list is supposed to
+  // do. Only compare things that are on the same rail to begin with.
+  const rail = await page.evaluate(async () => {
+    const until = async (fn, ms = 6000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 40)); } };
+    const i = document.getElementById('cmdk-input');
+    i.value = 'bob'; cmdkSearchCore('bob', false);
+    const th = await until(() => document.querySelector('#cmdk .cmdk-row.cmdk-tophit .cmdk-row-label'));
+    if (!th) return null;
+    const other = document.querySelector('#cmdk .cmdk-row:not(.cmdk-tophit):not(.cmdk-hero) .cmdk-row-label');
+    if (!other) return null;
+    return { top: +th.getBoundingClientRect().left.toFixed(1), row: +other.getBoundingClientRect().left.toFixed(1) };
+  });
+  ok(!!rail && Math.abs(rail.top - rail.row) <= 1,
+    `RAILS: the Top Hit's label is on the same rail as the rows it heads (${rail && rail.top} vs ${rail && rail.row})`);
+
+  // 18g) TWO RAILS, NOT FIVE. The panel EDGES stand on the answer's own text rail and
+  // every LABEL stands on the list's — which needed the hero's action gap tightened
+  // by 2px (its label sat at 65 against 63) and the deep CTA rebuilt with a row's
+  // anatomy (its label sat at 48.4, on neither). Measured as text-start positions, so
+  // a padded box and an inner span are comparable — the trap §18f's first draft hit.
+  // The hero's action tail only exists when the answer carries one (the bulk chase
+  // needs two or more owers, and this fixture has one), so the row is INJECTED the
+  // way §15's error check injects its own — the geometry under test is the CSS, not
+  // which query happens to produce a bulk action.
+  const rails = await page.evaluate(async () => {
+    const until = async (fn, ms = 8000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 50)); } };
+    const i = document.getElementById('cmdk-input');
+    i.value = 'bob'; cmdkSearchCore('bob', false);
+    await until(() => document.querySelector('#cmdk .cmdk-row'));
+    __cmdkResults = [
+      { type: 'answer', id: 'rail-a', label: 'You’re owed £955.00 across 3 guests.', sub: 'Money', run: () => {},
+        actions: [{ key: 'rail-act', label: 'Request all 3 balances', run: () => {} }] },
+      { type: 'booking', id: 'rail-b', label: 'Bob Carter', sub: 'Jollyboat', run: () => {} },
+    ];
+    __cmdkSel = 0; __cmdkEmpty = false; cmdkRender();
+    await until(() => document.querySelector('#cmdk .cmdk-row.cmdk-hero + .cmdk-qa .cmdk-qa-lbl'));
+    await new Promise((r) => setTimeout(r, 200));
+    const box = document.querySelector('#cmdk .cmdk-box');
+    if (!box) return null;
+    const bx = box.getBoundingClientRect().left;
+    // Two DIFFERENT measurements, kept apart on purpose. `text` is where a box's
+    // content starts (its own padding and border added in) and is what you compare
+    // between two pieces of TYPE; `edge` is the box's outer boundary and is what you
+    // compare between a PANEL and the type it should line up with. Conflating them
+    // is how §18f's first draft reported a correctly-aligned caption as 10px out,
+    // and how the first draft of this check called a panel sitting exactly on the
+    // rail (21) a 5px miss (21 + 4 padding + 1 border = 26).
+    const text = (sel) => {
+      const e = document.querySelector(sel);
+      if (!e) return null;
+      const c = getComputedStyle(e);
+      return +(e.getBoundingClientRect().left - bx + parseFloat(c.paddingLeft || 0) + parseFloat(c.borderLeftWidth || 0)).toFixed(1);
+    };
+    const edge = (sel) => {
+      const e = document.querySelector(sel);
+      return e ? +(e.getBoundingClientRect().left - bx).toFixed(1) : null;
+    };
+    return {
+      heroText: text('#cmdk .cmdk-hero-label'),
+      qaPanel: edge('#cmdk .cmdk-row.cmdk-hero + .cmdk-qa'),
+      qaLabel: text('#cmdk .cmdk-row.cmdk-hero + .cmdk-qa .cmdk-qa-lbl'),
+      rowLabel: text('#cmdk .cmdk-row:not(.cmdk-hero):not(.cmdk-tophit) .cmdk-row-label'),
+      ctaLabel: text('#cmdk .cmdk-deep-cta-lbl'),
+    };
+  });
+  const near = (a, b) => a != null && b != null && Math.abs(a - b) <= 1;
+  ok(!!rails && near(rails.qaPanel, rails.heroText),
+    `RAILS: the hero's action panel stands on the answer's own text rail (${rails && rails.qaPanel} vs ${rails && rails.heroText})`);
+  ok(!!rails && near(rails.qaLabel, rails.rowLabel),
+    `RAILS: …while its action's WORDS stand on the list's label rail (${rails && rails.qaLabel} vs ${rails && rails.rowLabel})`);
+  ok(!!rails && near(rails.ctaLabel, rails.rowLabel),
+    `RAILS: and "search everything" is the last ROW of the list, on that same rail (${rails && rails.ctaLabel} vs ${rails && rails.rowLabel})`);
+
+  // ============================================================
+  // 19) "SEARCH EVERYTHING" OWNS THE RESULTS AREA WHILE IT RUNS.
+  //     The 2px sweep bar above the field is real and works — but it answers, in
+  //     chrome, a question the owner asked of the RESULTS. Until this existed,
+  //     tapping the CTA left the quick palette's rows sitting there for the whole
+  //     server round trip (two, on a typo retry) with nothing in the list saying so;
+  //     a FAILED deep search cleared the bar and said nothing at all.
+  //     Needs its own page, because the suite's shared route handler answers
+  //     instantly — a pending state is only observable against a slow response, and
+  //     a failing one only against a 500.
+  // ============================================================
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const p2 = await ctx.newPage();
+    let failNext = false, slow = 1200;
+    await p2.route(/\.php/, async (route) => {
+      const url = route.request().url();
+      const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
+      if (url.includes('bookings.php') && route.request().method() !== 'POST') return json({ bookings });
+      if (url.includes('rates.php') && route.request().method() !== 'POST') return json({ properties: [
+        { prop_key: 'jollyboat', name: 'Jollyboat', slug: 'jollyboat', couple_rate: 130, extra_adult_rate: 20, child_rate: 10, transaction_pct: 0, booking_fee: 50, max_adults: 2, max_children: 0, max_total: 2, sort_order: 1 },
+      ], seasons: {}, occupancy: {} });
+      if (url.includes('search.php')) {
+        if (failNext) return route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"boom"}' });
+        await new Promise((r) => setTimeout(r, slow));
+        return json({ ok: true, results: [], counts: {} });
+      }
+      return json({ ok: true, events: [], logs: {}, results: [], threads: [], enquiries: [], reviews: [], photos: [], value: null, corpus: [], content: {} });
+    });
+    await p2.goto(`${base}/index.html`, { waitUntil: 'networkidle' });
+    await p2.evaluate(async () => { isAuthenticated = true; document.body.classList.add('owner-mode'); await window.loadAdminBundle(); });
+    await p2.evaluate(() => loadData()); await p2.waitForTimeout(500);
+    await p2.evaluate(() => nav('view-backoffice')); await p2.waitForTimeout(300);
+    await p2.evaluate(() => { try { closeCmdK(); } catch (e) {} openCmdK(); });
+    await p2.waitForTimeout(500);
+    const put = async (q, w = 700) => { await p2.evaluate((s) => { const i = document.getElementById('cmdk-input'); i.value = s; cmdkSearchCore(s, false); }, q); await p2.waitForTimeout(w); };
+
+    await put('bob');
+    const pend = await p2.evaluate(async () => {
+      cmdkDeepOpen();
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null))));
+      const w = document.querySelector('#cmdk .cmdk-none-wait');
+      return {
+        shown: !!w, role: w && w.getAttribute('role'),
+        text: w ? w.textContent.replace(/\s+/g, ' ').trim() : '',
+        frame: !!document.querySelector('#cmdk .cmdk-deep-head'),
+        stale: document.querySelectorAll('#cmdk .cmdk-row').length,
+      };
+    });
+    ok(!!pend && pend.shown, 'DEEPWAIT: the results area says it is searching, within two frames');
+    ok(!!pend && pend.role === 'status', `DEEPWAIT: …and ANNOUNCES it — the sweep bar is aria-hidden decoration (role=${pend && pend.role})`);
+    ok(!!pend && pend.frame && pend.stale === 0, `DEEPWAIT: the frame is up and the stale rows are gone (${pend && pend.stale} rows)`);
+    await p2.waitForTimeout(1600);
+    const done1 = await p2.evaluate(() => ({ wait: !!document.querySelector('#cmdk .cmdk-none-wait'), deep: !!__cmdkDeep }));
+    ok(done1.deep && !done1.wait, 'DEEPWAIT: and it hands over to the real result when that lands');
+
+    // A FAILED deep search accounts for itself, in a sentence written for a person.
+    await p2.evaluate(() => { try { cmdkDeepClose(); } catch (e) {} }); await p2.waitForTimeout(400);
+    failNext = true;
+    await put('bob');
+    const fail = await p2.evaluate(async () => {
+      cmdkDeepOpen();
+      for (let i = 0; i < 80; i++) { await new Promise((r) => setTimeout(r, 50)); if (document.querySelector('#cmdk .cmdk-none') && !document.querySelector('#cmdk .cmdk-none-wait')) break; }
+      const n = document.querySelector('#cmdk .cmdk-none');
+      return { text: n ? n.textContent.replace(/\s+/g, ' ').trim() : '', stuck: !!document.querySelector('#cmdk .cmdk-none-wait'), pending: __cmdkDeepPending };
+    });
+    failNext = false;
+    ok(!!fail && /Couldn’t search everything/.test(fail.text) && !fail.stuck,
+      `DEEPWAIT: a failed deep search says so instead of going quiet (${fail && fail.text.slice(0, 46)})`);
+    ok(!!fail && !/500|error|boom|\.php|SQLSTATE/i.test(fail.text) && fail.pending === null,
+      'DEEPWAIT: …in a sentence written for a person, and nothing is left pending');
+
+    // ABANDONING one must stick. Every exit bumps the stamp so the fetch's own
+    // handlers return early — which is exactly why the pending flag has to be
+    // cleared by the exit and not by them. The stamp bump on a fresh query was
+    // MISSING: a slow response arrived after the owner had moved on and slammed the
+    // deep view over their newer query.
+    await p2.evaluate(() => { try { cmdkDeepClose(); } catch (e) {} }); await p2.waitForTimeout(400);
+    await put('bob');
+    const aband = await p2.evaluate(async () => {
+      cmdkDeepOpen();
+      await new Promise((r) => setTimeout(r, 80));
+      const during = !!document.querySelector('#cmdk .cmdk-none-wait');
+      const i = document.getElementById('cmdk-input'); i.value = 'cara'; cmdkSearchCore('cara', false);
+      await new Promise((r) => setTimeout(r, 200));
+      const after = { wait: !!document.querySelector('#cmdk .cmdk-none-wait'), pending: __cmdkDeepPending };
+      await new Promise((r) => setTimeout(r, 1700)); // let the abandoned fetch resolve
+      return { during, after, settled: { wait: !!document.querySelector('#cmdk .cmdk-none-wait'), deep: !!__cmdkDeep } };
+    });
+    ok(!!aband && aband.during && !aband.after.wait && aband.after.pending === null,
+      'DEEPWAIT: typing over a pending deep search abandons it at once');
+    ok(!!aband && !aband.settled.deep && !aband.settled.wait,
+      `DEEPWAIT: …and its late response never reopens the deep view over the new query (deep=${aband && aband.settled.deep})`);
+    await ctx.close();
+  }
+
   console.log(fails ? `\n  ${fails} SEARCH-PAGE CHECK(S) FAILED ❌` : '\n  SEARCH-PAGE SUITE PASSED ✅');
   await done(fails);
 })();

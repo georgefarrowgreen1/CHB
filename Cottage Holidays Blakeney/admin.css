@@ -55,17 +55,11 @@
      1.6px band) — differences that small are noise, not hierarchy. Three were not
      even rendering: .cmdk-row-label, .cmdk-row-sub and .cmdk-foot each declared a
      size the later ONE-ASSISTANT-LOOK block overrode, so the file stated two
-     answers. Seven steps now, each ≥1.2px from its neighbour, named for the JOB:
-       hero  the answer, a board's lead figure — and the query field, because you
-             ask at the size you are answered
-       lead  a promoted row: top hit, figure row, the detail pane's name
-       body  prose — a generated how-to, help steps, an editable field
-       row   the list's workhorse label
-       sub   a hero's sub, a past turn, a jump destination
-       meta  chips, scope, hints, pills, the row sub, the hint foot
-       micro uppercase captions, keycaps, the system line
-     A phone re-declares the TOKEN, not the rule (479px block below), so the narrow
-     tuning never becomes a nineteenth size. Gated by ui-test-searchpage §16b. */
+     answers. Seven steps now, each ≥1.2px from its neighbour and named for the JOB it
+     does, so picking one is a question about the content and not about pixels. (hero
+     covers the query FIELD as well as the answer — you ask at the size you are
+     answered.) A phone re-declares the TOKEN, not the rule (479px block below), so
+     the narrow tuning never becomes a nineteenth size. Gated by §16b. */
   --cmdk-fs-hero: 1.15rem;
   --cmdk-fs-lead: 1.04rem;
   --cmdk-fs-body: 0.95rem;
@@ -1742,11 +1736,31 @@ body.owner-mode .logo.ml-learning .logo-mark {
   font-size: var(--cmdk-fs-row);
   line-height: 1.5;
 }
+/* --accent-text, not --accent, and 0.8 not 0.6: this 34px mark is what makes an
+   empty result look designed rather than broken, and in light mode it measured
+   1.76:1 on the search surface — in the DOM, absent on screen (the accent reaches
+   only 2.7:1 there even at full strength). The tokens are identical in :root, so
+   dark is unchanged; light now reads 3.39:1. Gated by ui-test-searchpage §18e. */
+/* The WAITING state wears the same shape as an empty one — same frame, same mark —
+   so the panel doesn't change shape when the results land. Its mark breathes, which
+   is the difference between "nothing here" and "working on it". */
+.cmdk-none-wait .cmdk-none-ic {
+  animation: cmdkWaitPulse 1.4s ease-in-out infinite;
+}
+@keyframes cmdkWaitPulse {
+  0%, 100% { opacity: 0.8; }
+  50% { opacity: 0.35; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cmdk-none-wait .cmdk-none-ic {
+    animation: none;
+  }
+}
 .cmdk-none .cmdk-none-ic {
   width: 34px;
   height: 34px;
-  color: var(--accent);
-  opacity: 0.6;
+  color: var(--accent-text);
+  opacity: 0.8;
 }
 .cmdk-none strong {
   display: block;
@@ -1954,12 +1968,21 @@ body.owner-mode .logo.ml-learning .logo-mark {
 .cmdk-deep-cta {
   display: flex;
   align-items: center;
-  gap: 10px;
   width: 100%;
   margin: 8px 0 2px;
-  padding: 12px 14px;
+  /* IT IS THE LAST ROW OF THE LIST, so it stands on the list's rail. Its label sat at
+     48.4 against every row label's 63 — on neither that rail nor the panel's (21) —
+     having its own padding, own gap and a bare 14px glyph where a row has a 32px
+     tile. Row padding + row gap + row-sized icon box: 9+10+32+12 = 63. The outline is
+     an INSET ring, not a border, for the same arithmetic. `border: none` is
+     LOAD-BEARING: this is a <button>, so dropping the border declaration handed it
+     Chromium's UA `2px outset` and put the label back at 65 (second time this file
+     has been caught by a button's UA chrome — see .cmdk-qa-row). */
+  padding: 12px 10px;
+  gap: 12px;
   background: var(--glass-hover);
-  border: 1px solid var(--glass-border);
+  border: none;
+  box-shadow: inset 0 0 0 1px var(--glass-border);
   border-radius: var(--r-md);
   color: var(--text-light);
   font-size: var(--cmdk-fs-row);
@@ -1973,6 +1996,9 @@ body.owner-mode .logo.ml-learning .logo-mark {
 }
 .cmdk-deep-cta-ic {
   display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
   color: var(--accent);
   flex: 0 0 auto;
 }
@@ -2130,9 +2156,11 @@ body.owner-mode .logo.ml-learning .logo-mark {
 .cmdk-row.cmdk-tophit.is-sel {
   box-shadow: inset 3px 0 0 var(--cmdk-sel-edge), inset 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent);
 }
+/* STANDARD size; the emphasis is the fill. At 36px it was 4px wider than every other
+   row's, pushing the Top Hit's label to 67 against the list's 63 — the row the eye
+   lands on first, alone on its own rail. Four other emphasis signals remain (larger
+   label, deeper padding, gradient ground, inset ring); size was the costly one. */
 .cmdk-row.cmdk-tophit .cmdk-row-ic {
-  width: 36px;
-  height: 36px;
   background: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 .cmdk-row.cmdk-tophit .cmdk-row-label {
@@ -3554,6 +3582,14 @@ body.cmdk-open {
    stray gap instead of an alignment. */
 .cmdk-row.cmdk-hero + .cmdk-qa {
   margin-left: 12px; /* the panel is inset by margin */
+}
+/* Two rails at once, and they were 2px apart. The panel's EDGE belongs on the hero's
+   sentence (21, which the margin above gives it); the action's WORDS belong on the
+   list's label rail, because this row has an icon column just as those do. The chain
+   landed at 65 against 63 (panel text 26 + 10 padding + 17 glyph + 12 gap) — two off
+   the gap and both hold. */
+.cmdk-row.cmdk-hero + .cmdk-qa .cmdk-qa-row {
+  gap: 10px;
 }
 .cmdk-row.cmdk-hero + .cmdk-qa + .cmdk-chips,
 .cmdk-row.cmdk-hero + .cmdk-chips {

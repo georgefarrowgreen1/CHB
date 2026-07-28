@@ -327,7 +327,19 @@ more)` REALIZES a help topic into a spoken how-to answer: it stitches the topic'
 and rides its `doIt`/`showMe` + "More:" runners-up as chips — so an explicit "how do I…"
 question GENERATES a single natural-language answer instead of a stack of topic rows. `cmdkHelp`
 returns it (in place of `cmdkHelpItem` rows) when `wantHelp` and the top topic scores ≥ 3; a
-plain keyword still returns the browsable `type:'help'` rows. **A how-to's chips are TWO species and are grouped as such.** `doIt` / `showMe` /
+plain keyword still returns the browsable `type:'help'` rows — and those rows now build the
+SAME chips this does. They didn't: `cmdkHelpItem` went on emitting `'More: ' + full title`
+for months after the generated answer had dropped both, so the same idea looked like two
+different things depending on how you happened to ask ("More: Return (or keep) a damage
+deposit" against a clean "Return or keep a damage deposit"). A help row's SUB is also no
+longer the topic's first step: `steps[0]` is sometimes an instruction ("Tap “Block dates”.")
+and sometimes a ~100-character explanation, and the row sub is a single-line clamp by design,
+so half of them were sentences cut mid-word — which reads as a bug and states no complete
+fact. `cmdkHelpSub` keeps a step short enough to work as a label (≤46 chars) and otherwise
+says what IS complete at that length: "Money · 3 steps". Gated by ui-test-searchpage §18a,
+which reads the COMPOSER rather than the DOM, since these rows only surface for some queries
+and a DOM check would pass by rendering nothing.
+**A how-to's chips are TWO species and are grouped as such.** `doIt` / `showMe` /
 "Walk me through it" act on THIS topic; the runners-up go to ANOTHER one. They were one
 undifferentiated wrap of pills — measured at 390px: 116, 126, 262px and a 44-char label
 that WRAPPED to two centred lines (58px among 29px neighbours), with 84/226/90/182px of
@@ -502,6 +514,56 @@ had been left OUT of that group and sat at 23px, 1px under WCAG), and
 `.cmdk-group-label` is 0.72rem (was 0.64rem = 10.2px). The row SUB stays
 single-line on purpose — letting every sub wrap makes the list untenable to scan,
 and the money subs already lead with the figure, so what clips is trailing context.
+**TWO RAILS, NOT FIVE** (ui-test-searchpage §18f–g). Panel EDGES stand on the answer's
+own text rail (21) and every LABEL stands on the list's (63). Getting there: the Top
+Hit's icon tile was 36px against every other row's 32, pushing its label to 67 — the
+one row the eye lands on first, alone on its own rail (it keeps four other emphasis
+signals; size was the only one that cost alignment); the hero's action label sat at 65,
+fixed by taking 2px off that row's gap so the panel edge stays on 21 AND the words land
+on 63; and "search everything" sat at 48.4, on neither, so it was rebuilt with a row's
+anatomy — row padding, row gap, a 32px icon box, and an INSET ring instead of a border
+because a 1px border puts it a pixel out. `border: none` there is load-bearing: it is a
+`<button>`, and dropping the border declaration hands it Chromium's UA `2px outset`
+(the second time this file has been caught by a button's UA chrome — see
+`.cmdk-qa-row`). **When measuring a rail, keep `edge` and `text` apart** — a box's
+outer boundary is what you compare against type, its content start is what you compare
+against other type. Conflating them made one draft call a correctly-aligned caption
+10px out and another call a panel sitting exactly on 21 a 5px miss.
+**"SEARCH EVERYTHING" OWNS THE RESULTS AREA WHILE IT RUNS** (`__cmdkDeepPending`,
+`__cmdkDeepErr`, `cmdkRenderDeepWait`, `cmdkDeepReset`; ui-test-searchpage §19). The
+2px sweep bar (`#cmdk-progress`) is real and does fire — the audit's "no loading state"
+was wrong about that — but it answers in chrome a question asked of the RESULTS: the
+quick palette's rows sat there for the whole server round trip (two, on a typo retry)
+with nothing in the list saying so, and a FAILED deep search cleared the bar and said
+nothing at all. The pending state wears the finished view's own frame so the panel does
+not change shape when results land, and carries `role="status"` because the sweep bar is
+`aria-hidden` decoration — without it the one announcement of "working on it" does not
+exist. Two rules: **clearing the flags is the EXIT's job, not the fetch's** (every exit
+bumps `__cmdkDeepStamp`, which makes the fetch's own handlers return early, so a flag
+left to them would strand "Searching everything…" forever) — hence `cmdkDeepReset()`;
+and the bump belongs at the exit SITES, never inside that helper, because `cmdkDeepFetch`
+calls it too with its own stamp already captured. Fixing this surfaced a latent bug:
+`cmdkSearchCore` cleared `__cmdkDeep` without bumping the stamp, so a slow deep response
+arriving after the owner had moved on **reopened the deep view over their newer query**.
+**ONE EMPTY STATE** (`cmdkNoneHtml(title, sub)` + `CMDK_WIDEN` + `CMDK_NONE_IC`) — there
+were three, written independently and reading like three different products: the scoped
+landing was a bare centred sentence with no mark, a query with no hits got mark + bold
+title + sub, and deep search's zero got the title and sub with no mark; the same
+"widen the scope" instruction appeared in two wordings and two capitalisations. One
+renderer now, and `CMDK_WIDEN` is that sentence stated once so it cannot drift again.
+Title and sub are **PLAIN TEXT escaped at the boundary** (the chbDuties rule) — the deep
+zero used to escape its query inline, so passing pre-escaped text through would print
+entities at the owner; §18b drives all three states and checks the query is escaped
+exactly once (`&lt;` is CORRECT there, `&amp;lt;` is the double). Deep search's zero also
+stops rendering the TYPE filter — with nothing found it was a lone "All 0" chip, 39px of
+control offering to narrow nothing down, directly above the sentence saying there was
+nothing — while KEEPING the recency switch, which is the one useful thing left to try.
+The mark itself takes **`--accent-text` at 0.8**, not `--accent` at 0.6: it measured
+1.76:1 on the light search surface, i.e. in the DOM and absent on screen. It is
+decorative (`aria-hidden`), so no WCAG rule compels this and a11y-test does not cover
+it — §18e does, by arithmetic on the computed colour against `--cmdk-surface`, because
+"the thing that makes an empty result look designed rather than broken" has to be
+visible to do that job.
 **`.cmdk-qa-row` is a `<button>` and needs the full `.cmdk-row` reset**, not just
 sizing: its UA chrome had never been removed, so it painted the browser's DEFAULT
 control — `#efefef` face, 2px black border, centred 13px system font (measured
@@ -597,7 +659,12 @@ would break arrow-key nav in total silence).
   COMMITS its results, never in the renderer (which re-runs on every selection change
   and would stack the same answer as you arrow down). A turn that merely EXTENDS the
   previous query replaces it, so per-keystroke typing is one turn and not eight.
-  Dies with the session at the same two boundaries as `__cmdkConvCtx`.
+  Dies with the session at the same two boundaries as `__cmdkConvCtx`. **It also
+  survives a MISS**: the no-results branch returns before the one that renders the
+  thread, so a conversation two answers deep vanished the moment a query found
+  nothing and reappeared when the query was fixed — `__cmdkThread` had held the turns
+  the whole time and only the screen lied. Finding nothing is not the same as never
+  having asked (ui-test-searchpage §18c).
 - **SPLIT** (`cmdkDetailHtml`) — at ≥1200px the selected booking shows BESIDE the
   results, so chasing three balances is one search instead of three. Three limits,
   each dodging a trap already in this codebase: it renders a SUMMARY from
