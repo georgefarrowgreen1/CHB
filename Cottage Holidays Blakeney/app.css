@@ -228,15 +228,14 @@ body.acct-preview-embedded {
   --safe-b: 0px;
   --safe-l: 0px;
 }
-/* NB this reaches the token-based rules only. `header` and `.container` still call
-   env() DIRECTLY (app.css ~573 / ~1583), so if iOS really does hand the device
-   insets into a same-origin iframe, those two would still inset twice. Restating
-   them without the inset term was tried and REVERTED: the override out-specifies
-   the guest shell's own `top`, which moved the header 10px→20px inside the frame
-   and made the preview stop matching what the customer actually sees — the one
-   thing this feature exists to guarantee. Fixing it properly means migrating those
-   rules to the tokens (36 raw env() sites, a separate job), not special-casing the
-   preview. */
+/* This reaches EVERY inset now: all 36 raw env() sites were migrated onto these
+   tokens, so the four above are the only env() left and zeroing them zeroes the
+   lot. `header`/`.container` used to call env() directly and inset a SECOND time
+   in here. Restating them without the inset term was tried and REVERTED — the
+   override out-specified the guest shell's own `top` (header 10px→20px), so the
+   preview stopped matching what the customer sees. Migrating the declarations
+   adds no specificity, so that trap is gone. check-css-conventions keeps rawEnv
+   at 0: a new raw env() would silently opt its rule out again. */
 
 /* ---- COASTAL FRESH (light): the guest default. Warm linen ground, white
            glass, ink-slate text, rose-gold + sea/sky secondary accents, soft
@@ -601,7 +600,7 @@ select,
 /* --- RESPONSIVE HEADER --- */
 header {
   position: fixed;
-  top: calc(20px + env(safe-area-inset-top));
+  top: calc(20px + var(--safe-t));
   left: 50%;
   transform: translateX(-50%);
   width: 90%;
@@ -1409,7 +1408,7 @@ body.light-mode ::-webkit-scrollbar-thumb {
   overflow: hidden;
   position: relative;
   margin-bottom: 0;
-  padding: calc(116px + env(safe-area-inset-top)) 0 var(--space-4); /* clear the floating header (+ notch) */
+  padding: calc(116px + var(--safe-t)) 0 var(--space-4); /* clear the floating header (+ notch) */
 }
 .hero-bg {
   position: absolute;
@@ -1601,7 +1600,7 @@ html.js-reveal .reveal.in-view {
   margin: 0 auto;
   padding: clamp(var(--space-3), 4vw, var(--space-4)) clamp(var(--space-2), 4vw, 20px) var(--space-5);
   box-sizing: border-box;
-  scroll-margin-top: calc(100px + env(safe-area-inset-top));
+  scroll-margin-top: calc(100px + var(--safe-t));
 }
 .home-availability .hero-content {
   width: 100%;
@@ -1633,7 +1632,7 @@ html.js-reveal .reveal.in-view {
   width: 100%;
   max-width: 1200px;
   margin: 0 auto;
-  padding: calc(clamp(90px, 12vw, 120px) + env(safe-area-inset-top)) clamp(16px, 4vw, 20px) var(--space-5);
+  padding: calc(clamp(90px, 12vw, 120px) + var(--safe-t)) clamp(16px, 4vw, 20px) var(--space-5);
 }
 .container.wide {
   max-width: 1500px;
@@ -1643,16 +1642,16 @@ html.js-reveal .reveal.in-view {
            floating bars clear of the notch and home indicator. */
 @supports (padding: max(0px)) {
   .container {
-    padding-left: max(clamp(16px, 4vw, 20px), env(safe-area-inset-left));
-    padding-right: max(clamp(16px, 4vw, 20px), env(safe-area-inset-right));
+    padding-left: max(clamp(16px, 4vw, 20px), var(--safe-l));
+    padding-right: max(clamp(16px, 4vw, 20px), var(--safe-r));
   }
   .hero-content {
-    padding-left: max(40px, env(safe-area-inset-left));
-    padding-right: max(40px, env(safe-area-inset-right));
+    padding-left: max(40px, var(--safe-l));
+    padding-right: max(40px, var(--safe-r));
   }
   .site-footer {
-    padding-left: env(safe-area-inset-left);
-    padding-right: env(safe-area-inset-right);
+    padding-left: var(--safe-l);
+    padding-right: var(--safe-r);
   }
 }
 .text-center {
@@ -1792,8 +1791,8 @@ a.card {
   margin: 0;
   width: 100%;
   box-sizing: border-box;
-  padding-left: max(12px, env(safe-area-inset-left));
-  padding-right: max(12px, env(safe-area-inset-right));
+  padding-left: max(12px, var(--safe-l));
+  padding-right: max(12px, var(--safe-r));
 }
 #cottages {
   grid-template-columns: 1fr;
@@ -2012,7 +2011,7 @@ a.card {
 }
 /* ---- Airbnb-style cottage page ---- */
 #view-21a {
-  padding-bottom: calc(112px + env(safe-area-inset-bottom));
+  padding-bottom: calc(112px + var(--safe-b));
 }
 .prop-h1 {
   text-align: left;
@@ -2511,8 +2510,8 @@ a.card {
   align-items: center;
   justify-content: space-between;
   gap: 16px;
-  padding: 12px max(16px, env(safe-area-inset-left)) calc(12px + env(safe-area-inset-bottom))
-    max(16px, env(safe-area-inset-right));
+  padding: 12px max(16px, var(--safe-l)) calc(12px + var(--safe-b))
+    max(16px, var(--safe-r));
   background: rgba(26, 25, 27, 0.94);
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
@@ -4364,10 +4363,10 @@ body.owner-mode .chat-widget {
            body.book-bar-open is toggled by nav(). */
 @media (max-width: 899px) {
   body.book-bar-open .chat-fab {
-    bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(96px + var(--safe-b));
   }
   body.book-bar-open .chat-widget {
-    bottom: calc(104px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(104px + var(--safe-b));
     max-height: calc(100vh - 200px);
   }
 }
@@ -7777,7 +7776,7 @@ body.light-mode .theme-switch .ts-i-sun {
            has no connection (no full-screen "you're not connected" message). */
 .offline-pill {
   position: fixed;
-  top: calc(env(safe-area-inset-top, 0px) + 70px);
+  top: calc(var(--safe-t) + 70px);
   right: 14px;
   z-index: 1400;
   width: 34px;
@@ -7948,7 +7947,7 @@ p.lead[data-edit-text] {
   header {
     padding: 12px 18px;
     width: calc(100% - 24px);
-    top: calc(10px + env(safe-area-inset-top));
+    top: calc(10px + var(--safe-t));
   }
   nav ul {
     display: none;
@@ -8158,7 +8157,7 @@ p.lead[data-edit-text] {
 @media (max-height: 480px) and (orientation: landscape) {
   .hero {
     min-height: 0;
-    padding: calc(74px + env(safe-area-inset-top)) 0 18px;
+    padding: calc(74px + var(--safe-t)) 0 18px;
   }
   .mobile-nav-overlay {
     justify-content: flex-start;
@@ -8195,12 +8194,12 @@ body.owner-mode .footer-meta {
            and needs nothing reserved at the bottom (the 110px that cleared the old
            floating dock was just a void once it moved). */
 body.owner-mode .container {
-  padding-top: calc(100px + env(safe-area-inset-top, 0px));
+  padding-top: calc(100px + var(--safe-t));
   padding-bottom: 40px;
 }
 /* Nothing floats over the footer any more. */
 body.owner-mode .site-footer {
-  padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(24px + var(--safe-b));
 }
 
 /* ----- ADMIN ICON DOCK (icons only; lives in the header — admin.css sizes
@@ -8844,7 +8843,7 @@ body.light-mode .hs-field:hover {
   opacity: 0.85;
 }
 #cottages {
-  scroll-margin-top: calc(100px + env(safe-area-inset-top));
+  scroll-margin-top: calc(100px + var(--safe-t));
 }
 .fluid-swap {
   animation: fluidFadeIn 0.5s var(--fluid-bezier);

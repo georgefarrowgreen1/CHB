@@ -191,6 +191,45 @@ const acctPayload = {
     ok(z.embedded, 'the embedded frame knows it is embedded');
     ok(z.rootT === '59px', `(the iOS simulation took — :root reads ${z.rootT})`);
     ok(/^0(px)?$/.test(z.t) && /^0(px)?$/.test(z.b), `and it neutralises them anyway (body t=${z.t} b=${z.b})`);
+    // THE POINT OF ZEROING THEM. `header` and `.container` used to call env()
+    // DIRECTLY, so the body override could not reach them and they inset a SECOND
+    // time in here — the preview stopped matching what the customer sees, which is
+    // the one thing this feature guarantees. All 36 raw sites were migrated onto
+    // the tokens; these two are the ones that mattered.
+    //
+    // The assertion has to be that the rule RESPONDS to the token, not merely that
+    // its value looks right: Chromium reports env() as 0, so "is it doubled?" would
+    // pass just as happily against a rule that ignores the token completely — the
+    // exact regression this guards. So measure each rule at inset 59 and at inset
+    // 0 in the TOP-LEVEL page: the difference must BE the inset. Then the frame,
+    // where the same rule must sit at the inset-0 value despite :root saying 59.
+    const responds = await page.evaluate(() => {
+        const px = (sel, prop) => Math.round(parseFloat(getComputedStyle(document.querySelector(sel))[prop]) || 0);
+        const set = (v) => {
+            const st = document.getElementById('safe-probe') || document.createElement('style');
+            st.id = 'safe-probe';
+            st.textContent = `:root{--safe-t:${v}px;--safe-b:${v}px;}`;
+            document.head.appendChild(st);
+        };
+        set(59);
+        const at59 = { header: px('header', 'top'), container: px('.container', 'paddingTop') };
+        set(0);
+        const at0 = { header: px('header', 'top'), container: px('.container', 'paddingTop') };
+        set(59); // leave the notch simulated for anything after this
+        return { at59, at0 };
+    });
+    ok(responds.at59.header - responds.at0.header === SAFE_T,
+        `the header READS the inset token (${responds.at0.header}px → ${responds.at59.header}px with a ${SAFE_T}px notch)`);
+    ok(responds.at59.container - responds.at0.container === SAFE_T,
+        `so does the page body (${responds.at0.container}px → ${responds.at59.container}px)`);
+    const dbl = await inFrame.evaluate(() => ({
+        headerTop: Math.round(parseFloat(getComputedStyle(document.querySelector('header')).top) || 0),
+        containerPad: Math.round(parseFloat(getComputedStyle(document.querySelector('.container')).paddingTop) || 0),
+    }));
+    ok(dbl.headerTop === responds.at0.header,
+        `…and inside the frame it does NOT inset twice (${dbl.headerTop}px, the no-notch value)`);
+    ok(dbl.containerPad === responds.at0.container,
+        `…nor does the page body (${dbl.containerPad}px, the no-notch value)`);
   } else {
     ok(false, 'the preview frame was not found for the safe-area check');
   }

@@ -2,14 +2,17 @@
   "comment": "CSS convention RATCHET baselines for check-css-conventions.js: stray media-query widths (canonical: 480/640/900/1200) and raw hex colours outside token definitions. These numbers only ever go DOWN — when a PR removes some, lower the count in the same PR. Never raise one to get green; use a token / a canonical breakpoint instead. Re-baseline after a cleanup with: node check-css-conventions.js --update",
   "app.css": {
     "breakpoints": 12,
-    "rawHex": 72
+    "rawHex": 72,
+    "rawEnv": 0
   },
   "admin.css": {
     "breakpoints": 1,
-    "rawHex": 3
+    "rawHex": 3,
+    "rawEnv": 0
   },
   "guest-app.css": {
     "breakpoints": 1,
-    "rawHex": 5
+    "rawHex": 5,
+    "rawEnv": 0
   }
 }

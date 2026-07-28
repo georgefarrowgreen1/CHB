@@ -79,6 +79,25 @@ function rawHexColours(cssRaw) {
     return out;
 }
 
+// A raw env(safe-area-inset-*) OUTSIDE the four token definitions silently opts
+// its rule out of `body.acct-preview-embedded`, which zeroes the --safe-* tokens
+// so the owner's read-only account preview doesn't inset a second time (iOS hands
+// the device insets down into a same-origin iframe). All 36 call sites were
+// migrated onto the tokens; this keeps the count at zero, because one new raw
+// env() re-opens exactly the bug the migration closed — and it would only show on
+// a real notched phone, inside a preview, which is nobody's test device.
+function rawEnvInsets(cssRaw) {
+    const css = stripComments(cssRaw);
+    const out = [];
+    css.split('\n').forEach((line, i) => {
+        if (/^\s*--safe-[trbl]\s*:/.test(line)) return; // the definitions themselves
+        for (const m of line.matchAll(/env\(\s*safe-area-inset-(top|right|bottom|left)/g)) {
+            out.push(`${i + 1}: env(safe-area-inset-${m[1]})`);
+        }
+    });
+    return out;
+}
+
 // --- run ------------------------------------------------------------------
 const found = {};
 for (const f of FILES) {
@@ -89,8 +108,14 @@ for (const f of FILES) {
         console.error(`  ✗ ${f} — not readable (${e.message})`);
         process.exit(1);
     }
-    found[f] = { breakpoints: strayBreakpoints(css), rawHex: rawHexColours(css) };
+    found[f] = { breakpoints: strayBreakpoints(css), rawHex: rawHexColours(css), rawEnv: rawEnvInsets(css) };
 }
+
+const DIMS = [
+    { key: 'breakpoints', label: 'stray media-query width', fix: 'use one of 480 / 640 / 900 / 1200 (or the complement of one)' },
+    { key: 'rawHex', label: 'raw hex colour', fix: 'use an existing :root token (or add one) — see DESIGN.md' },
+    { key: 'rawEnv', label: 'raw env(safe-area-inset)', fix: 'use var(--safe-t/r/b/l) so the account preview can zero it' },
+];
 
 if (update) {
     const next = { comment: undefined };
@@ -101,13 +126,13 @@ if (update) {
     } catch (e) {}
     next.comment =
         prev.comment ||
-        'CSS convention RATCHET baselines for check-css-conventions.js: stray media-query widths (canonical: 480/640/900/1200) and raw hex colours outside token definitions. These numbers only ever go DOWN — when a PR removes some, lower the count in the same PR. Never raise one to get green; use a token / a canonical breakpoint instead. Re-baseline after a cleanup with: node check-css-conventions.js --update';
+        'CSS convention RATCHET baselines for check-css-conventions.js: stray media-query widths (canonical: 480/640/900/1200), raw hex colours outside token definitions, and raw env(safe-area-inset-*) outside the four --safe-* definitions. These numbers only ever go DOWN — when a PR removes some, lower the count in the same PR. Never raise one to get green; use a token / a canonical breakpoint instead. Re-baseline after a cleanup with: node check-css-conventions.js --update';
     for (const f of FILES) {
-        next[f] = { breakpoints: found[f].breakpoints.length, rawHex: found[f].rawHex.length };
+        next[f] = Object.fromEntries(DIMS.map((d) => [d.key, found[f][d.key].length]));
     }
     fs.writeFileSync(BUDGET_PATH, JSON.stringify(next, null, 2) + '\n');
     console.log('css-budget.json re-baselined:');
-    for (const f of FILES) console.log(`  ${f} — ${next[f].breakpoints} stray breakpoint(s), ${next[f].rawHex} raw hex`);
+    for (const f of FILES) console.log(`  ${f} — ${next[f].breakpoints} stray breakpoint(s), ${next[f].rawHex} raw hex, ${next[f].rawEnv} raw env()`);
     process.exit(0);
 }
 
@@ -121,10 +146,6 @@ try {
 
 let failed = 0;
 const nudges = [];
-const DIMS = [
-    { key: 'breakpoints', label: 'stray media-query width', fix: 'use one of 480 / 640 / 900 / 1200 (or the complement of one)' },
-    { key: 'rawHex', label: 'raw hex colour', fix: 'use an existing :root token (or add one) — see DESIGN.md' },
-];
 
 console.log('\n== CSS conventions (ratchet) ==');
 for (const f of FILES) {
