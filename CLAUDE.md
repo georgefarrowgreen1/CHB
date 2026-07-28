@@ -1543,6 +1543,33 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   `isOtaBlock` (excludes `source:'owner'` blocks, which aren't bookings). Gated by
   ui-test-money §6. NB `dbBlocks` is `const` in app.js — a test must MUTATE it, not
   reassign it, or the assignment throws and the case silently proves nothing.
+- **THE STATUS PAGE HAS A WAY IN.** `/status` had no link anywhere in the app —
+  the one page you want when something looks wrong could only be reached by
+  typing the URL. It is now a card in Manage → System check and a footer link,
+  both REAL `href`s opening outside the SPA router: it is the page you check when
+  *this* app is misbehaving, so it must not be reached through it.
+- **THE ASSISTANT HAS NO PAGE.** `#cmdk` is delivered straight to `<body>` by the
+  `data-host="body"` template in admin-views.html. It used to be injected into an
+  empty `<main id="view-search">` shell that existed purely as a delivery address
+  — because a `.page-view` carries a transform and would trap the fixed pop-out,
+  `cmdkEnsureOverlay()` re-parented it to body immediately, leaving a page whose
+  own gate asserted it must stay EMPTY. Shell, `ADMIN_VIEWS` entry and the dead
+  `HUBS` title are gone; `ui-test-adminviews` now asserts the shell is ABSENT
+  rather than empty. `data-host` is explicit, never a fallback for a missing
+  host — a genuinely absent shell must still fail loudly.
+- **A PAGE THAT OPENS INSTANTLY MUST SAY IT IS STILL FILLING IN** (`adminLoading`)
+  — the other half of the poor-signal work below. Measured: Payments rendered 323
+  characters of static index rows with the money dashboard blank and no loading
+  word anywhere, which reads as broken. And `openArea` now opens its SECTION
+  before the two round trips, repainting after — but skips the repaint while the
+  owner is typing in that panel, because these are input-heavy screens and a
+  repaint lands on half-entered text (the bank-details rule).
+- **"HELD" IS THE LEGACY WORD.** The damages deposit is CHARGED with the first
+  payment and refunded after the stay; every guest- and owner-facing string says
+  so. Three admin strings and a CSV header still said "held" and were changed.
+  The ONE place it stays is `app.js`'s `authorized/captured/released/expired`
+  branch — the legacy Square card-HOLD flow, where "held on your card (not
+  charged)" is the truth. Check which era a string belongs to before rewording it.
 - **A POOR SIGNAL MUST NOT MOVE THE OWNER** (gated by `ui-test-poorsignal.js`,
   which stalls then DROPS the data endpoints — what a dead mobile link does, not
   a 500, which was already handled). Reported from a phone: "I click on a page

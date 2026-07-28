@@ -19,12 +19,13 @@ const { bootBrowser } = require('./ui-test-lib');
 let fails = 0;
 const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails++; };
 
-// The admin screens whose bodies moved out of index.html. `view-search` is
-// deliberately NOT here: its body is the #cmdk node, and search is a WINDOW now —
-// cmdkEnsureOverlay() re-parents that node to <body> the moment the bundle loads
-// (a .page-view has a transform, which would trap a fixed child), so the shell is
-// empty by design. The check below verifies the markup still ARRIVES, just as an
-// overlay rather than a page body.
+// The admin screens whose bodies moved out of index.html. `view-search` is not
+// here and no longer exists: its body is the #cmdk node, and search is a WINDOW —
+// a .page-view carries a transform, which would trap a fixed child, so that node
+// has to live on <body>. It is delivered there directly now (the data-host="body"
+// template), instead of being injected into a page shell that existed only to be
+// asserted permanently EMPTY. The checks below verify the markup still ARRIVES on
+// body, and that the retired shell has actually gone.
 const VIEWS = ['view-backoffice', 'view-inbox', 'view-accounts', 'view-settings', 'view-booking-hub', 'view-enquiry-hub'];
 
 const stubApi = (page, { admin }) => page.route(/\.php/, (r) => {
@@ -95,13 +96,13 @@ const newPage = async (browser, opts = {}) => {
         // the search body arrived AND became a body-level overlay
         cmdkOnBody: !!(cmdk && cmdk.parentElement === document.body),
         cmdkIsOverlay: !!(cmdk && cmdk.classList.contains('cmdk-overlay')),
-        searchShellEmpty: (() => { const v = document.getElementById('view-search'); return !v || !v.firstElementChild; })(),
+        searchShellGone: !document.getElementById('view-search'),
       };
     }, VIEWS);
     ok(o.adminLoaded, 'the admin bundle finished loading');
     ok(o.populated === VIEWS.length, `every admin shell is populated after sign-in (${o.populated}/${VIEWS.length})`);
     ok(o.cmdkOnBody && o.cmdkIsOverlay, `the search body arrived and became a body-level overlay (body=${o.cmdkOnBody}, overlay=${o.cmdkIsOverlay})`);
-    ok(o.searchShellEmpty, 'and its old page shell is left empty, as the window design intends');
+    ok(o.searchShellGone, 'and the page shell it used to be delivered through is gone, not merely empty');
     ok(o.keyNodes === 3, `the moved markup is live (${o.keyNodes}/3 key nodes)`);
     ok(views.length === 1, `admin-views.html fetched exactly once (${views.length})`);
     ok(/[?&]v=\d+/.test(views[0] || ''), `it is version-pinned (${(views[0] || '').split('/').pop()})`);

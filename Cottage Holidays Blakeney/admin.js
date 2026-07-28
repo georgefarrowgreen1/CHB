@@ -104,6 +104,13 @@ async function openSettings(section) {
     }
     nav('view-settings');
     adminHistPush('view-settings');
+    // Show the DESTINATION now, not after two round trips. A deep link
+    // (settingsOpen('payments') from search, a saved history entry) used to land
+    // on the Manage index and jump into its section seconds later on a slow
+    // link — the page moving under the owner, the same complaint as the openers
+    // above. It opens immediately and is repainted below when the data lands.
+    if (section) settingsOpen(section);
+    else settingsShowIndex();
     // Load admin-only content (arrival-*, geo-*) so the per-cottage editors and
     // the host fields have their data ready when a row is opened.
     try {
@@ -123,8 +130,16 @@ async function openSettings(section) {
     try {
         loadAdminMessages();
     } catch (e) {} // Guest messages badge
-    if (section) settingsOpen(section);
-    else settingsShowIndex();
+    // Repaint the section that opened above, now its data is in. Skipped while
+    // the owner is TYPING in it: these panels are full of inputs, and a repaint
+    // lands on whatever they've half-entered (the same way a blank re-render
+    // would wipe the bank-details field). The window is a second or two.
+    const panel = document.getElementById('settings-panel');
+    const busy = !!(panel && document.activeElement && panel.contains(document.activeElement));
+    if (!busy) {
+        if (section) { try { settingsRenderSection(section); } catch (e) {} }
+        else { try { applyAreaFilter(); } catch (e) {} }
+    }
 }
 
 // ---- Back-office MANAGE: the admin sections hub (view-settings) is ONE index
@@ -4680,12 +4695,12 @@ function cmdkIntent(q) {
             // deposit money is being held.
             try { const dh = damageHeld(x.pk, x.b); if (dh && dh.held > 0.5) { held += dh.held; depN++; } } catch (e) { chbSwallow(e, 'money-held'); }
         });
-        const facts = [outstanding > 0.5 ? `${gbp(outstanding)} to collect` : 'All balances in', held > 0.5 ? `${gbp(held)} deposits held` : null].filter(Boolean).join(' · ');
+        const facts = [outstanding > 0.5 ? `${gbp(outstanding)} to collect` : 'All balances in', held > 0.5 ? `${gbp(held)} deposits to return` : null].filter(Boolean).join(' · ');
         const head = ans('Payments', facts, () => { closeCmdK(); openAccounts(); });
         return [head].concat([
             A('mdsr-open', 'Open Payments', 'Money & reconciliation', () => { closeCmdK(); openAccounts(); }),
             owers ? A('mdsr-owe', `Who owes money · ${owers}`, `${gbp(outstanding)} outstanding`, runQ('who owes me money')) : null,
-            depN ? A('mdsr-dep', 'Deposits to return', `${gbp(held)} held`, runQ('deposits to return')) : null,
+            depN ? A('mdsr-dep', 'Deposits to return', `${gbp(held)} to hand back`, runQ('deposits to return')) : null,
             A('mdsr-rev', 'Revenue this month', 'Booked income', runQ('revenue this month')),
             A('mdsr-set', 'Payment settings', 'Square & deposit policy', toMng('payments')),
         ].filter(Boolean));
@@ -8449,7 +8464,7 @@ function cmdkSheetClose() {
     if (el) { try { el.focus(); } catch (e) {} }
     cmdkSearchCore(el ? el.value : '', true);
 }
-// Search is a dedicated PAGE (view-search): the dock's knot logo and ⌘K both
+// Search is a POP-OUT, not a page: the crown and ⌘K both
 // land here, capturing the workspace you came from (scope + record context)
 // so pronouns and "filter this workspace" still resolve. Esc / ⌘K again go
 // BACK to that workspace (cmdkBack); a result's own run() navigates wherever
@@ -8511,7 +8526,7 @@ function crownSheetBind() {
     crown.classList.add('logo-assist');
 }
 // Search is a WINDOW OVER the workspace, not a page you travel to. The node ships
-// inside the view-search template (that is how ensureAdminViews delivers it), but a
+// inside the search template, which ensureAdminViews delivers straight to <body>, but a
 // `.page-view` carries a transform, which makes it the containing block for any
 // fixed child — the same trap the cottage page's sticky bar hits. So the node is
 // re-parented to <body> once, and from then on it is an overlay.
@@ -8746,6 +8761,19 @@ function renderCottagesOverview() {
 // the owner somewhere they didn't ask to go. Stated once so every admin entry
 // says the same thing and offers the same way out; the toast's action gives a
 // Retry whose timer pauses on hover/focus, so it survives a slow reader.
+// A page that now opens INSTANTLY has a moment where its data-fed regions are
+// empty. Measured on a stalled link: Payments rendered 323 characters, all of it
+// static index rows, with the money dashboard blank and no loading word anywhere
+// on the page — which reads as broken rather than as loading. One line, replaced
+// wholesale by the real render, so there is nothing to clear up afterwards.
+function adminLoading(id, what) {
+    const el = document.getElementById(id);
+    if (!el || el.firstElementChild) return; // already has real content — leave it
+    el.innerHTML =
+        '<p class="admin-loading" role="status" style="font-size:0.85rem;color:var(--text-muted);margin:14px 0;">Loading ' +
+        escapeHtml(what || 'this') +
+        '…</p>';
+}
 function adminNetFail(retry) {
     toast(
         "Couldn't reach the server — check your connection.",
@@ -9793,7 +9821,7 @@ function renderBookingHub() {
                                 ? `<button class="btn-sm btn-edit" ${chbAttrs('sendConfirmationEmail', String(b.id))}>Send confirmation</button>
                         ${
                             b.preArrivalSent
-                                ? `<span class="bhub-sent-tag" title="Sent ${escapeHtml(String(b.preArrivalSent))}">Arrival info sent ✓</span>`
+                                ? `<span class="bhub-sent-tag">Arrival info sent ✓ <span class="bhub-mut">${escapeHtml(String(b.preArrivalSent))}</span></span>`
                                 : `<button class="btn-sm btn-edit" ${chbAttrs('sendArrivalInfo', String(b.id))}>Send arrival info</button>`
                         }
                         ${gt.paid > 0 ? `<button class="btn-sm btn-edit" ${chbAttrs('offerUpdatedConfirmationEmail', String(b.id))}>Email updated confirmation</button>` : ''}`
@@ -11273,6 +11301,7 @@ async function openAccounts() {
     // of nothing then an alert, still on Today (measured). See CLAUDE.md.
     nav('view-accounts');
     adminHistPush('view-accounts');
+    adminLoading('money-overview', 'your money');
     // Fetch available tax years from the backend
     let years = [];
     try {
@@ -11311,7 +11340,11 @@ async function openAccounts() {
     try {
         await loadExpenses();
     } catch (e) {}
-    await renderAccounts();
+    // Guarded like every sibling: this can now run before the data lands, and an
+    // unhandled reject here surfaces as a raw error toast from the facade stub.
+    try {
+        await renderAccounts();
+    } catch (e) {}
     try {
         renderMoneyOverview();
     } catch (e) {}
@@ -12084,7 +12117,7 @@ async function returnDeposit(bookingId) {
         return;
     }
     const entered = await glassPrompt(
-        `Amount to return (£). Held: ${gbp(dh.held)}. Enter less to retain some for damage:`,
+        `Amount to return (£). Collected: ${gbp(dh.held)}. Enter less to retain some for damage:`,
         String(dh.held),
     );
     if (entered === null) return;
@@ -12622,7 +12655,7 @@ function exportAccountsCSV() {
         .sort((a, b) => (a.payment_date || '').localeCompare(b.payment_date || ''));
     const esc = (v) => `"${String(v == null ? '' : v).replace(/"/g, '""')}"`;
     let csv =
-        'Date,Booking Ref,Guest,Property,Method,Rental Income (GBP),Held Deposit (GBP),Received (GBP)\n';
+        'Date,Booking Ref,Guest,Property,Method,Rental Income (GBP),Refundable Deposit (GBP),Received (GBP)\n';
     payments.forEach((r) => {
         csv +=
             [
