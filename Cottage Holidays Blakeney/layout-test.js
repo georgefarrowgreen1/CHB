@@ -267,6 +267,23 @@ async function waitForServer(url, tries = 40) {
       await walkViews(page, ADMIN_VIEWS, vp.name, vp.width);
       await page.close();
     }
+
+    // ---- /status: a STANDALONE page, so nothing above covers it. It carries
+    // its own inline CSS and is the page most likely to be pinned to a phone
+    // home screen, which makes phone width the case that matters. Visited
+    // directly (no .php stub route — the point is the real server response),
+    // and in the DEGRADED state, since there's no database here: that's the
+    // state nobody looks at and the only one with an alert badge in it.
+    for (const vp of WIDTHS) {
+      const page = await browser.newPage({ viewport: { width: vp.width, height: vp.height } });
+      page.on('pageerror', (e) => problems.push(`pageerror @status: ` + e.message));
+      await page.goto(`http://127.0.0.1:${PORT}/status.php`, { waitUntil: 'domcontentloaded' });
+      await page.waitForTimeout(400);
+      const r = await page.evaluate(MEASURE, ['.card h1', '.overall-title', '.badge', '.foot a']);
+      judge(`status @ ${vp.name} (${vp.width}px)`, r);
+      await page.screenshot({ path: path.join(SHOTS, `status-${vp.name}.png`), fullPage: true }).catch(() => {});
+      await page.close();
+    }
     await browser.close();
   } catch (e) {
     fail('harness error: ' + e.message);
