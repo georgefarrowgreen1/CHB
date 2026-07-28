@@ -644,7 +644,15 @@ layout may never re-order, re-index or swallow a row (the ui-test asserts every
 board row still carries a `cmdk-opt-<i>` id, because a container that ate an index
 would break arrow-key nav in total silence).
 - **BOARDS** (`cmdkBoardsHtml`, `CMDK_BOARDS`) — the empty landing is a dashboard,
-  not a list of links. The day's facts group into Today / Money / Waiting on you /
+  not a list of links, and **the day LEADS it**: the order is Suggested (a direct
+  answer to the record you were just on) → the day's greeting + boards → Most used →
+  Jump to. The brief used to sit BELOW Most used, so the panel opened with two
+  shortcuts above the greeting. Reorder in the ARRAY (`__cmdkResults`), never in the
+  renderer alone — the landing renders SLICES by index and every row carries its
+  `cmdk-opt-<i>` id, so moving the HTML blocks by themselves leaves arrow-key nav
+  walking the old order while the eye jumps between groups (ui-test-searchpage §20
+  checks the heading order AND that DOM order and index order rise together; the
+  second one is what catches that mistake). The day's facts group into Today / Money / Waiting on you /
   This month, each board's first row at figure size, and a board with no rows does
   not render (a quiet day collapses instead of showing four empty cards). A brief
   row **DECLARES its board** (`board:` in `cmdkBriefBuild`) rather than having the

@@ -1593,6 +1593,56 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     await ctx.close();
   }
 
+  // ============================================================
+  // 20) THE DAY LEADS THE LANDING. The brief used to sit BELOW "Most used", so the
+  //     panel that calls itself a dashboard opened with two shortcuts above the
+  //     greeting and the day's facts.
+  //     The second check is the one that matters structurally: the landing renders
+  //     SLICES of __cmdkResults by index and every row carries its `cmdk-opt-<i>`
+  //     id, so reordering the HTML blocks alone would leave arrow-key nav walking the
+  //     old order while the eye jumped between groups. DOM order and index order have
+  //     to rise together.
+  // ============================================================
+  const landing = await page.evaluate(async () => {
+    const until = async (fn, ms = 6000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 40)); } };
+    // "Most used" needs real usage, and its keys come from the live catalog — a
+    // hand-written id silently yields an empty group and a vacuous check.
+    try {
+      const items = cmdkAll('').filter((it) => it.type === 'screen' && it.id != null).slice(0, 2);
+      const m = {};
+      items.forEach((it, i) => { m[it.type + ':' + it.id] = { n: 9 - i, last: Date.now() }; });
+      localStorage.setItem('chb-cmdk-use', JSON.stringify(m));
+      __cmdkUse = null;
+    } catch (e) {}
+    try { closeCmdK(); } catch (e) {}
+    openCmdK();
+    await until(() => document.getElementById('cmdk').classList.contains('open'));
+    cmdkSearchCore('', false);
+    await until(() => document.querySelectorAll('#cmdk .cmdk-group-label').length > 1);
+    await new Promise((r) => setTimeout(r, 250));
+    const box = document.getElementById('cmdk-results');
+    const heads = [...box.querySelectorAll('.cmdk-group-label')].map((e) => e.textContent.trim());
+    const rows = [...box.querySelectorAll('[role="option"]')].map((e) => ({
+      idx: +(e.id || '').replace('cmdk-opt-', ''),
+      top: e.getBoundingClientRect().top,
+    }));
+    return {
+      heads,
+      freq: __cmdkFreqN, brief: __cmdkBriefN,
+      monotonic: rows.every((r, i) => i === 0 || r.idx > rows[i - 1].idx),
+      visual: rows.every((r, i) => i === 0 || r.top >= rows[i - 1].top),
+      n: rows.length,
+    };
+  });
+  const gi = landing ? landing.heads.findIndex((h) => /morning|afternoon|evening|night/i.test(h)) : -1;
+  const mi = landing ? landing.heads.indexOf('Most used') : -1;
+  ok(!!landing && landing.brief > 0 && landing.freq > 0,
+    `LANDING: both groups are present to order (${landing && landing.brief} day rows, ${landing && landing.freq} most-used)`);
+  ok(gi >= 0 && mi >= 0 && gi < mi,
+    `LANDING: the day's greeting leads, above "Most used" (${landing && JSON.stringify(landing.heads)})`);
+  ok(!!landing && landing.monotonic && landing.visual,
+    `LANDING: …and the row indices still rise down the screen, so arrows follow the eye (${landing && landing.n} rows)`);
+
   console.log(fails ? `\n  ${fails} SEARCH-PAGE CHECK(S) FAILED ❌` : '\n  SEARCH-PAGE SUITE PASSED ✅');
   await done(fails);
 })();

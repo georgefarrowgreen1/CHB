@@ -5923,9 +5923,22 @@ function cmdkSearchCore(q, allowCorrect) {
         __cmdkSuggestN = suggestions.length;
         __cmdkFreqN = frequent.length;
         __cmdkBriefN = brief.length;
-        __cmdkResults = suggestions.concat(frequent).concat(brief).concat(screens);
-        // Pre-select the top actionable row: a context suggestion, else your #1 most-used.
-        __cmdkSel = __cmdkSuggestN || __cmdkFreqN ? 0 : -1;
+        // THE DAY LEADS. The brief used to sit BELOW "Most used", so opening search
+        // showed two shortcuts before the greeting and the day's facts — the panel
+        // called itself a dashboard and then opened with a list of links. Order is
+        // suggestions (a direct answer to the record you were just on) → the day →
+        // your shortcuts → jump-to.
+        // Reordered HERE, in the ARRAY, and not in the renderer: the landing renders
+        // SLICES of __cmdkResults by index and every row carries its `cmdk-opt-<i>`
+        // id, so moving only the HTML blocks would leave arrow-key nav walking the
+        // old order while the eye jumped between blocks. Same invariant the four
+        // layouts obey — a layout may re-group rows but never re-index them.
+        __cmdkResults = suggestions.concat(brief).concat(frequent).concat(screens);
+        // Pre-select the FIRST row on screen, whatever it now is: a context
+        // suggestion, else the day's lead fact, else your #1 most-used. It used to
+        // name the most-used explicitly, which after this reorder would have parked
+        // the selection ring in the middle of the panel.
+        __cmdkSel = (__cmdkSuggestN || __cmdkBriefN || __cmdkFreqN) ? 0 : -1;
         cmdkSetLoading(false);
         cmdkRender();
         return;
@@ -7550,20 +7563,22 @@ function cmdkRenderInner() {
         const S = __cmdkSuggestN || 0;
         const F = __cmdkFreqN || 0;
         const B = __cmdkBriefN || 0;
+        // The slice bases follow the ARRAY's order — suggestions, then the day, then
+        // most-used — so each block's rows keep the indices arrow-key nav uses.
         const sugHtml = __cmdkResults.slice(0, S).map((it, i) => cmdkRowHtml(it, i, i === 0)).join('');
-        const freqHtml = __cmdkResults.slice(S, S + F).map((it, i) => cmdkRowHtml(it, S + i, !S && i === 0)).join('');
         // The day's facts render as BOARDS (see cmdkBoardsHtml) rather than as more
         // grey rows — the greeting above them names the day, so the boards read as
         // "here is your day" and not as filtered search output.
-        const briefHtml = cmdkBoardsHtml(__cmdkResults.slice(S + F, S + F + B), S + F);
-        const screenItems = __cmdkResults.slice(S + F + B);
-        const screensHtml = screenItems.map((it, i) => cmdkRowHtml(it, S + F + B + i, false)).join('');
+        const briefHtml = cmdkBoardsHtml(__cmdkResults.slice(S, S + B), S);
+        const freqHtml = __cmdkResults.slice(S + B, S + B + F).map((it, i) => cmdkRowHtml(it, S + B + i, !S && !B && i === 0)).join('');
+        const screenItems = __cmdkResults.slice(S + B + F);
+        const screensHtml = screenItems.map((it, i) => cmdkRowHtml(it, S + B + F + i, false)).join('');
         const sugLabel = (typeof __cmdkSugLabel !== 'undefined' && __cmdkSugLabel) ? 'Suggested · ' + __cmdkSugLabel : 'Suggested';
         box.innerHTML =
             sb +
             (S ? `<div class="cmdk-group-label">${escapeHtml(sugLabel)}</div>${sugHtml}` : '') +
-            (F ? `<div class="cmdk-group-label">Most used</div>${freqHtml}` : '') +
             (B ? `<div class="cmdk-group-label">${cmdkGreeting()}</div>${briefHtml}` : '') +
+            (F ? `<div class="cmdk-group-label">Most used</div>${freqHtml}` : '') +
             (screenItems.length ? `<div class="cmdk-group-label">Jump to</div><div class="cmdk-jump">${screensHtml}</div>` : '') +
             (!S && !F && !B && !screenItems.length ? cmdkNoneHtml('Nothing in ' + __cmdkScope, CMDK_WIDEN) : '');
         return;
