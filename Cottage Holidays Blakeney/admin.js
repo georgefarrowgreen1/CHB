@@ -5791,7 +5791,17 @@ function cmdkSearchCore(q, allowCorrect) {
     __cmdkActMsg = null; // a result strip belongs to the query that produced it
     __cmdkActSel = -1; // a fresh query starts on the row, not a stale sub-action
     const raw = (q || '').trim().toLowerCase();
-    __cmdkDeep = null; // a fresh query returns to the quick top-hits palette
+    // A fresh query returns to the quick top-hits palette — and ABANDONS any deep
+    // search still in flight. The stamp bump is the load-bearing half and it was
+    // missing: clearing __cmdkDeep alone let a slow "search everything" response
+    // arrive after you had moved on and slam the deep view over your newer query,
+    // because its own stamp still matched. (Latent until this pass gave the fetch a
+    // visible pending state to watch it happen in.) The bump belongs HERE and not
+    // inside cmdkDeepReset, because cmdkDeepFetch calls that helper too — with its
+    // own stamp already captured, so a bump in there would cancel the very fetch
+    // that was starting.
+    cmdkDeepReset();
+    __cmdkDeepStamp++;
     __cmdkWiden = false; // re-evaluate widen from scratch for this query
     // Show the clear (✕) button in place of the magnifier once there's text.
     const searchWrap = document.querySelector('#cmdk .cmdk-search');
@@ -7531,6 +7541,7 @@ function cmdkRenderInner() {
     const wantPane = !__cmdkDeep && !__cmdkEmpty && !!__cmdkResults.length && !!cmdkDetailHtml();
     if (ov) ov.classList.toggle('cmdk-wide', wantPane);
     if (__cmdkDeep) { cmdkRenderDeep(box); return; } // full "search everything" view
+    if (__cmdkDeepPending || __cmdkDeepErr) { cmdkRenderDeepWait(box); return; }
     // The scope switch sits above every state EXCEPT the empty landing, where it
     // filters nothing (see the `keep` note in cmdkSearchCore) and only claimed to.
     const sb = __cmdkEmpty ? '' : cmdkScopeBar();
@@ -7638,6 +7649,30 @@ const CMDK_DEEP_LABELS = { booking: 'Bookings', enquiry: 'Enquiries', guest: 'Gu
 const cmdkDeepLabel = (t) => CMDK_DEEP_LABELS[t] || t;
 // The recency window for deep results ('' = all time; else an ISO floor).
 let __cmdkDeepPeriod = 'all';
+// "Search everything" is a SERVER round trip over the whole history, and until this
+// existed the screen did not change while it ran: tapping the CTA left the quick
+// palette's rows sitting there with only the 2px sweep bar above the field to say
+// anything was happening — and on a typo retry ("recipt" → "receipt") that is TWO
+// round trips of the same silence. The sweep bar is real and works, but it is 2px of
+// chrome at the top of the panel answering a question the owner asked of the RESULTS
+// area. So a deep fetch now owns that area while it runs: the frame appears at once
+// (so the tap visibly landed), the body says what it is doing, and — because the
+// sweep bar is aria-hidden decoration — that line carries role="status" so it is the
+// thing a screen reader hears. `__cmdkDeepErr` is the other half: a FAILED deep
+// search used to clear the loading bar and otherwise say nothing at all, leaving the
+// stale palette and no account of itself.
+let __cmdkDeepPending = null;
+let __cmdkDeepErr = null;
+// Clearing these is NOT tidiness. Every exit bumps __cmdkDeepStamp to supersede the
+// in-flight fetch, which makes that fetch's own .then/.catch return early — so if the
+// pending flag were left to them it would never be cleared, and the next render would
+// still be showing "Searching everything…" for a search nobody is waiting on. One
+// definition, called from every path that abandons a deep search.
+function cmdkDeepReset() {
+    __cmdkDeep = null;
+    __cmdkDeepPending = null;
+    __cmdkDeepErr = null;
+}
 function cmdkDeepSince() {
     if (__cmdkDeepPeriod === 'all') return '';
     const d = new Date();
@@ -7662,6 +7697,12 @@ function cmdkDeepFetch(q, typo) {
     const stamp = ++__cmdkDeepStamp;
     __cmdkServerStamp++; // supersede any in-flight quick federated search
     cmdkSetLoading(true);
+    // Take over the results area for the duration (see __cmdkDeepPending above). A
+    // typo RETRY re-enters here, so the pending query updates rather than flickering
+    // back to the palette between the two fetches.
+    cmdkDeepReset();
+    __cmdkDeepPending = q;
+    cmdkRender();
     const syn = CHB_SEARCH.understand(q).synonyms;
     apiPost('search.php', { q: q, deep: 1, syn: syn, since: cmdkDeepSince() })
         .then((r) => {
@@ -7676,6 +7717,7 @@ function cmdkDeepFetch(q, typo) {
                 if (corr.changed) { cmdkDeepFetch(corr.text, q); return; }
             }
             cmdkSetLoading(false);
+            __cmdkDeepPending = null;
             // Highlight synonym matches too — the server matched "income" for
             // "revenue", so the marker must know both words.
             __cmdkWords = q.split(/\s+/).filter(Boolean)
@@ -7684,10 +7726,19 @@ function cmdkDeepFetch(q, typo) {
             cmdkDeepApply();
             cmdkRender();
         })
-        .catch(() => { if (stamp === __cmdkDeepStamp) { cmdkSetLoading(false); } });
+        .catch(() => {
+            if (stamp !== __cmdkDeepStamp) return;
+            cmdkSetLoading(false);
+            __cmdkDeepPending = null;
+            // Say so. No detail from the error itself reaches the screen (the
+            // chbActErrSay rule) — the owner needs to know it did not happen and
+            // that trying again is the move, not what the server said.
+            __cmdkDeepErr = q;
+            cmdkRender();
+        });
 }
 function cmdkDeepClose() {
-    __cmdkDeep = null;
+    cmdkDeepReset();
     __cmdkDeepStamp++;
     __cmdkDeepPeriod = 'all';
     const inp = document.getElementById('cmdk-input');
@@ -7744,6 +7795,26 @@ const CMDK_NONE_IC = '<svg class="cmdk-none-ic ic" viewBox="0 0 24 24" fill="non
 // follows, so a guest called O'Brien can reach this without being escaped twice.
 function cmdkNoneHtml(title, sub) {
     return `<div class="cmdk-none">${CMDK_NONE_IC}<div><strong>${escapeHtml(title)}</strong>${escapeHtml(sub)}</div></div>`;
+}
+// Deep search WHILE it runs, and when it fails. Deliberately the same frame the
+// finished view uses (back button, "Everything · “q”"), so the panel does not jump
+// shape when the results land — only the body swaps.
+function cmdkRenderDeepWait(box) {
+    const q = __cmdkDeepPending || __cmdkDeepErr || '';
+    const head = `<div class="cmdk-deep-head">
+        <button type="button" class="cmdk-ex cmdk-back" data-act="cmdkDeepClose">‹ Back</button>
+        <span class="cmdk-deep-title">Everything · “${escapeHtml(q)}”</span>
+    </div>`;
+    if (__cmdkDeepErr) {
+        box.innerHTML = head + cmdkNoneHtml('Couldn’t search everything',
+            'Something got in the way of reaching your history. Try that again.');
+        return;
+    }
+    // role=status, because the sweep bar above the field is aria-hidden decoration —
+    // without this the one announcement of "I am working on it" does not exist.
+    box.innerHTML = head + `<div class="cmdk-none cmdk-none-wait" role="status">${CMDK_NONE_IC}
+        <div><strong>Searching everything…</strong>Bookings, guests, messages, emails, payments and the log.</div>
+    </div>`;
 }
 function cmdkRenderDeep(box) {
     const d = __cmdkDeep;
@@ -8320,7 +8391,7 @@ function closeCmdK() {
     try { chbMissRecord(); } catch (e) {} // leaving on an unanswered query → file it as a dead end
     __cmdkServerStamp++; // supersede any in-flight federated search
     __cmdkQueryGen++; // …and every in-flight async merger (semantic/pricing/directory)
-    __cmdkDeep = null;
+    cmdkDeepReset();
     __cmdkDeepStamp++;
     __cmdkConvCtx = null; // the conversation ends with the search session
     cmdkThreadClear();

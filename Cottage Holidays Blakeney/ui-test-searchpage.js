@@ -1360,6 +1360,160 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(!!rail && Math.abs(rail.top - rail.row) <= 1,
     `RAILS: the Top Hit's label is on the same rail as the rows it heads (${rail && rail.top} vs ${rail && rail.row})`);
 
+  // 18g) TWO RAILS, NOT FIVE. The panel EDGES stand on the answer's own text rail and
+  // every LABEL stands on the list's — which needed the hero's action gap tightened
+  // by 2px (its label sat at 65 against 63) and the deep CTA rebuilt with a row's
+  // anatomy (its label sat at 48.4, on neither). Measured as text-start positions, so
+  // a padded box and an inner span are comparable — the trap §18f's first draft hit.
+  // The hero's action tail only exists when the answer carries one (the bulk chase
+  // needs two or more owers, and this fixture has one), so the row is INJECTED the
+  // way §15's error check injects its own — the geometry under test is the CSS, not
+  // which query happens to produce a bulk action.
+  const rails = await page.evaluate(async () => {
+    const until = async (fn, ms = 8000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 50)); } };
+    const i = document.getElementById('cmdk-input');
+    i.value = 'bob'; cmdkSearchCore('bob', false);
+    await until(() => document.querySelector('#cmdk .cmdk-row'));
+    __cmdkResults = [
+      { type: 'answer', id: 'rail-a', label: 'You’re owed £955.00 across 3 guests.', sub: 'Money', run: () => {},
+        actions: [{ key: 'rail-act', label: 'Request all 3 balances', run: () => {} }] },
+      { type: 'booking', id: 'rail-b', label: 'Bob Carter', sub: 'Jollyboat', run: () => {} },
+    ];
+    __cmdkSel = 0; __cmdkEmpty = false; cmdkRender();
+    await until(() => document.querySelector('#cmdk .cmdk-row.cmdk-hero + .cmdk-qa .cmdk-qa-lbl'));
+    await new Promise((r) => setTimeout(r, 200));
+    const box = document.querySelector('#cmdk .cmdk-box');
+    if (!box) return null;
+    const bx = box.getBoundingClientRect().left;
+    // Two DIFFERENT measurements, kept apart on purpose. `text` is where a box's
+    // content starts (its own padding and border added in) and is what you compare
+    // between two pieces of TYPE; `edge` is the box's outer boundary and is what you
+    // compare between a PANEL and the type it should line up with. Conflating them
+    // is how §18f's first draft reported a correctly-aligned caption as 10px out,
+    // and how the first draft of this check called a panel sitting exactly on the
+    // rail (21) a 5px miss (21 + 4 padding + 1 border = 26).
+    const text = (sel) => {
+      const e = document.querySelector(sel);
+      if (!e) return null;
+      const c = getComputedStyle(e);
+      return +(e.getBoundingClientRect().left - bx + parseFloat(c.paddingLeft || 0) + parseFloat(c.borderLeftWidth || 0)).toFixed(1);
+    };
+    const edge = (sel) => {
+      const e = document.querySelector(sel);
+      return e ? +(e.getBoundingClientRect().left - bx).toFixed(1) : null;
+    };
+    return {
+      heroText: text('#cmdk .cmdk-hero-label'),
+      qaPanel: edge('#cmdk .cmdk-row.cmdk-hero + .cmdk-qa'),
+      qaLabel: text('#cmdk .cmdk-row.cmdk-hero + .cmdk-qa .cmdk-qa-lbl'),
+      rowLabel: text('#cmdk .cmdk-row:not(.cmdk-hero):not(.cmdk-tophit) .cmdk-row-label'),
+      ctaLabel: text('#cmdk .cmdk-deep-cta-lbl'),
+    };
+  });
+  const near = (a, b) => a != null && b != null && Math.abs(a - b) <= 1;
+  ok(!!rails && near(rails.qaPanel, rails.heroText),
+    `RAILS: the hero's action panel stands on the answer's own text rail (${rails && rails.qaPanel} vs ${rails && rails.heroText})`);
+  ok(!!rails && near(rails.qaLabel, rails.rowLabel),
+    `RAILS: …while its action's WORDS stand on the list's label rail (${rails && rails.qaLabel} vs ${rails && rails.rowLabel})`);
+  ok(!!rails && near(rails.ctaLabel, rails.rowLabel),
+    `RAILS: and "search everything" is the last ROW of the list, on that same rail (${rails && rails.ctaLabel} vs ${rails && rails.rowLabel})`);
+
+  // ============================================================
+  // 19) "SEARCH EVERYTHING" OWNS THE RESULTS AREA WHILE IT RUNS.
+  //     The 2px sweep bar above the field is real and works — but it answers, in
+  //     chrome, a question the owner asked of the RESULTS. Until this existed,
+  //     tapping the CTA left the quick palette's rows sitting there for the whole
+  //     server round trip (two, on a typo retry) with nothing in the list saying so;
+  //     a FAILED deep search cleared the bar and said nothing at all.
+  //     Needs its own page, because the suite's shared route handler answers
+  //     instantly — a pending state is only observable against a slow response, and
+  //     a failing one only against a 500.
+  // ============================================================
+  {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+    const p2 = await ctx.newPage();
+    let failNext = false, slow = 1200;
+    await p2.route(/\.php/, async (route) => {
+      const url = route.request().url();
+      const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
+      if (url.includes('bookings.php') && route.request().method() !== 'POST') return json({ bookings });
+      if (url.includes('rates.php') && route.request().method() !== 'POST') return json({ properties: [
+        { prop_key: 'jollyboat', name: 'Jollyboat', slug: 'jollyboat', couple_rate: 130, extra_adult_rate: 20, child_rate: 10, transaction_pct: 0, booking_fee: 50, max_adults: 2, max_children: 0, max_total: 2, sort_order: 1 },
+      ], seasons: {}, occupancy: {} });
+      if (url.includes('search.php')) {
+        if (failNext) return route.fulfill({ status: 500, contentType: 'application/json', body: '{"error":"boom"}' });
+        await new Promise((r) => setTimeout(r, slow));
+        return json({ ok: true, results: [], counts: {} });
+      }
+      return json({ ok: true, events: [], logs: {}, results: [], threads: [], enquiries: [], reviews: [], photos: [], value: null, corpus: [], content: {} });
+    });
+    await p2.goto(`${base}/index.html`, { waitUntil: 'networkidle' });
+    await p2.evaluate(async () => { isAuthenticated = true; document.body.classList.add('owner-mode'); await window.loadAdminBundle(); });
+    await p2.evaluate(() => loadData()); await p2.waitForTimeout(500);
+    await p2.evaluate(() => nav('view-backoffice')); await p2.waitForTimeout(300);
+    await p2.evaluate(() => { try { closeCmdK(); } catch (e) {} openCmdK(); });
+    await p2.waitForTimeout(500);
+    const put = async (q, w = 700) => { await p2.evaluate((s) => { const i = document.getElementById('cmdk-input'); i.value = s; cmdkSearchCore(s, false); }, q); await p2.waitForTimeout(w); };
+
+    await put('bob');
+    const pend = await p2.evaluate(async () => {
+      cmdkDeepOpen();
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null))));
+      const w = document.querySelector('#cmdk .cmdk-none-wait');
+      return {
+        shown: !!w, role: w && w.getAttribute('role'),
+        text: w ? w.textContent.replace(/\s+/g, ' ').trim() : '',
+        frame: !!document.querySelector('#cmdk .cmdk-deep-head'),
+        stale: document.querySelectorAll('#cmdk .cmdk-row').length,
+      };
+    });
+    ok(!!pend && pend.shown, 'DEEPWAIT: the results area says it is searching, within two frames');
+    ok(!!pend && pend.role === 'status', `DEEPWAIT: …and ANNOUNCES it — the sweep bar is aria-hidden decoration (role=${pend && pend.role})`);
+    ok(!!pend && pend.frame && pend.stale === 0, `DEEPWAIT: the frame is up and the stale rows are gone (${pend && pend.stale} rows)`);
+    await p2.waitForTimeout(1600);
+    const done1 = await p2.evaluate(() => ({ wait: !!document.querySelector('#cmdk .cmdk-none-wait'), deep: !!__cmdkDeep }));
+    ok(done1.deep && !done1.wait, 'DEEPWAIT: and it hands over to the real result when that lands');
+
+    // A FAILED deep search accounts for itself, in a sentence written for a person.
+    await p2.evaluate(() => { try { cmdkDeepClose(); } catch (e) {} }); await p2.waitForTimeout(400);
+    failNext = true;
+    await put('bob');
+    const fail = await p2.evaluate(async () => {
+      cmdkDeepOpen();
+      for (let i = 0; i < 80; i++) { await new Promise((r) => setTimeout(r, 50)); if (document.querySelector('#cmdk .cmdk-none') && !document.querySelector('#cmdk .cmdk-none-wait')) break; }
+      const n = document.querySelector('#cmdk .cmdk-none');
+      return { text: n ? n.textContent.replace(/\s+/g, ' ').trim() : '', stuck: !!document.querySelector('#cmdk .cmdk-none-wait'), pending: __cmdkDeepPending };
+    });
+    failNext = false;
+    ok(!!fail && /Couldn’t search everything/.test(fail.text) && !fail.stuck,
+      `DEEPWAIT: a failed deep search says so instead of going quiet (${fail && fail.text.slice(0, 46)})`);
+    ok(!!fail && !/500|error|boom|\.php|SQLSTATE/i.test(fail.text) && fail.pending === null,
+      'DEEPWAIT: …in a sentence written for a person, and nothing is left pending');
+
+    // ABANDONING one must stick. Every exit bumps the stamp so the fetch's own
+    // handlers return early — which is exactly why the pending flag has to be
+    // cleared by the exit and not by them. The stamp bump on a fresh query was
+    // MISSING: a slow response arrived after the owner had moved on and slammed the
+    // deep view over their newer query.
+    await p2.evaluate(() => { try { cmdkDeepClose(); } catch (e) {} }); await p2.waitForTimeout(400);
+    await put('bob');
+    const aband = await p2.evaluate(async () => {
+      cmdkDeepOpen();
+      await new Promise((r) => setTimeout(r, 80));
+      const during = !!document.querySelector('#cmdk .cmdk-none-wait');
+      const i = document.getElementById('cmdk-input'); i.value = 'cara'; cmdkSearchCore('cara', false);
+      await new Promise((r) => setTimeout(r, 200));
+      const after = { wait: !!document.querySelector('#cmdk .cmdk-none-wait'), pending: __cmdkDeepPending };
+      await new Promise((r) => setTimeout(r, 1700)); // let the abandoned fetch resolve
+      return { during, after, settled: { wait: !!document.querySelector('#cmdk .cmdk-none-wait'), deep: !!__cmdkDeep } };
+    });
+    ok(!!aband && aband.during && !aband.after.wait && aband.after.pending === null,
+      'DEEPWAIT: typing over a pending deep search abandons it at once');
+    ok(!!aband && !aband.settled.deep && !aband.settled.wait,
+      `DEEPWAIT: …and its late response never reopens the deep view over the new query (deep=${aband && aband.settled.deep})`);
+    await ctx.close();
+  }
+
   console.log(fails ? `\n  ${fails} SEARCH-PAGE CHECK(S) FAILED ❌` : '\n  SEARCH-PAGE SUITE PASSED ✅');
   await done(fails);
 })();

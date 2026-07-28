@@ -301,6 +301,23 @@ try {
     check('CSP never wildcards cloudfront (only the pinned Square host)', !csp.includes('*.cloudfront.net'));
 } catch (e) { check('CSP script-src check ran (' + e.message + ')', false); }
 
+// 6a-ii-c. cmdkNoneHtml() ESCAPES ITS OWN ARGUMENTS, so its callers must pass RAW
+// text. This is the chbDuties rule (escape once, at the render boundary) applied to
+// the search window's one empty state, and it is worth a gate because the failure is
+// silent and ugly rather than loud: the deep-search zero used to escape its query
+// inline, so anyone reinstating that habit would print `&lt;b&gt;` at the owner
+// instead of the query they typed. A source scan, because the double-escape is
+// visible in the CALL and a rendered check can only cover the states a fixture
+// happens to reach (ui-test-searchpage §18b covers the reachable ones).
+try {
+    const adminSrc = fs.readFileSync(path.join(__dirname, 'admin.js'), 'utf8');
+    const calls = adminSrc.match(/cmdkNoneHtml\((?:[^()]|\([^()]*\))*\)/g) || [];
+    const preEscaped = calls.filter((c) => /escapeHtml\s*\(/.test(c));
+    check(`cmdkNoneHtml has callers to check (${calls.length})`, calls.length >= 3);
+    if (preEscaped.length) console.log('     ' + preEscaped.join('\n     '));
+    check(`no cmdkNoneHtml() caller pre-escapes — it escapes once, at the boundary (${preEscaped.length})`, preEscaped.length === 0);
+} catch (e) { check('cmdkNoneHtml escaping scan ran (' + e.message + ')', false); }
+
 // 6a-iii. Every data-act* value resolves to a registered chbAct() action OR a global
 // function (the window-fallback path in chbRunAct). A typo'd data-act would silently
 // do nothing in the browser — this catches it. data-view etc. are params, not actions.
