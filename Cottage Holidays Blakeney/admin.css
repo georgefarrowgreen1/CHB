@@ -1742,11 +1742,16 @@ body.owner-mode .logo.ml-learning .logo-mark {
   font-size: var(--cmdk-fs-row);
   line-height: 1.5;
 }
+/* --accent-text, not --accent, and 0.8 not 0.6: this 34px mark is what makes an
+   empty result look designed rather than broken, and in light mode it measured
+   1.76:1 on the search surface — in the DOM, absent on screen (the accent reaches
+   only 2.7:1 there even at full strength). The tokens are identical in :root, so
+   dark is unchanged; light now reads 3.39:1. Gated by ui-test-searchpage §18e. */
 .cmdk-none .cmdk-none-ic {
   width: 34px;
   height: 34px;
-  color: var(--accent);
-  opacity: 0.6;
+  color: var(--accent-text);
+  opacity: 0.8;
 }
 .cmdk-none strong {
   display: block;

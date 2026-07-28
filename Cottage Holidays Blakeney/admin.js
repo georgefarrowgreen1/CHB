@@ -5090,8 +5090,34 @@ function cmdkHelpItem(t, byId) {
     const chips = [];
     if (t.doIt) chips.push(t.doIt);
     if (t.showMe) chips.push(t.showMe);
-    (t.related || []).forEach((rid) => { if (byId[rid]) chips.push({ label: 'More: ' + byId[rid].title, q: byId[rid].title }); });
-    return { type: 'help', id: 'help-' + t.id, label: t.title, sub: (t.cat ? t.cat + ' · ' : '') + (t.steps && t.steps[0] ? t.steps[0] : 'How-to'), steps: t.steps, chips, run: (t.showMe && t.showMe.run) || (t.doIt && t.doIt.run) || (() => {}) };
+    // Related topics are the SAME chip species the generated how-to uses — the
+    // muted "goes elsewhere" kind, label run through chbChipLabel. They were still
+    // being built here with the dead "More: " prefix and the full title including
+    // its trailing parenthetical ("More: Return (or keep) a damage deposit"), so the
+    // two help surfaces disagreed about how the same idea looks. `q` keeps the FULL
+    // title, so what the chip searches for is unchanged.
+    (t.related || []).forEach((rid) => { if (byId[rid]) chips.push({ label: chbChipLabel(byId[rid].title), q: byId[rid].title, kind: 'topic' }); });
+    return { type: 'help', id: 'help-' + t.id, label: t.title, sub: cmdkHelpSub(t), steps: t.steps, chips, run: (t.showMe && t.showMe.run) || (t.doIt && t.doIt.run) || (() => {}) };
+}
+// A help row's SUB, and why it is not simply the first step. A row sub is a
+// single-line clamp by design (letting every sub wrap makes the list unscannable),
+// and a topic's steps[0] is sometimes a short instruction — "Tap “Block dates”." —
+// but sometimes a whole explanatory sentence: "The refundable damage deposit is
+// charged together with the guest's first payment (not “held”)." at ~100 characters.
+// Clipping the second kind leaves a sentence cut mid-word, which tells the owner
+// less than nothing — it looks like a bug and carries no complete fact. So a step
+// short enough to READ as a label is used as one, and anything longer is replaced
+// by the thing that IS complete at this length: how many steps the topic takes.
+const CMDK_HELP_SUB_MAX = 46;
+function cmdkHelpSub(t) {
+    const cat = t.cat ? t.cat + ' · ' : '';
+    const steps = (t.steps || []).filter(Boolean);
+    const first = String(steps[0] || '').trim();
+    if (first && first.length <= CMDK_HELP_SUB_MAX) return cat + first;
+    if (steps.length > 1) return cat + steps.length + ' steps';
+    // One long step: the title already names the topic and the generated how-to
+    // renders the sentence in full, so the sub says what kind of row this is.
+    return cat + 'How-to';
 }
 // Realize a help topic into a NATURAL-LANGUAGE how-to answer — a flowing
 // paragraph of the steps plus the one action that actually does it — instead of
@@ -7528,15 +7554,20 @@ function cmdkRenderInner() {
             (F ? `<div class="cmdk-group-label">Most used</div>${freqHtml}` : '') +
             (B ? `<div class="cmdk-group-label">${cmdkGreeting()}</div>${briefHtml}` : '') +
             (screenItems.length ? `<div class="cmdk-group-label">Jump to</div><div class="cmdk-jump">${screensHtml}</div>` : '') +
-            (!S && !F && !B && !screenItems.length ? `<div class="cmdk-none">Nothing here in ${escapeHtml(__cmdkScope)} — tap “All” to widen.</div>` : '');
+            (!S && !F && !B && !screenItems.length ? cmdkNoneHtml('Nothing in ' + __cmdkScope, CMDK_WIDEN) : '');
         return;
     }
     if (!__cmdkResults.length) {
         const scoped = __cmdkScope !== 'all';
-        box.innerHTML = sb + `<div class="cmdk-none">
-            <svg class="cmdk-none-ic ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>
-            <div><strong>No matches${scoped ? ' in ' + escapeHtml(__cmdkScope) : ''}</strong>${scoped ? 'Tap “All” above to search everywhere.' : 'Try a guest name, a screen, or a question like “who owes me money”.'}</div>
-        </div>` + cmdkDeepCta();
+        // The THREAD stays. It used to be dropped here, because this branch returns
+        // before the one that renders it — so a conversation two answers deep
+        // vanished the moment a query found nothing and came back when you fixed
+        // the query. Finding nothing is not the same as never having asked, and
+        // `__cmdkThread` still held the turns the whole time; only the screen lied.
+        box.innerHTML = sb + cmdkThreadHtml() +
+            cmdkNoneHtml('No matches' + (scoped ? ' in ' + __cmdkScope : ''),
+                scoped ? CMDK_WIDEN : 'Try a guest name, a screen, or a question like “who owes me money”.') +
+            cmdkDeepCta();
         return;
     }
     // Structure longer lists: a Top Hit, then grouped section headers. Short lists
@@ -7698,6 +7729,22 @@ function cmdkDeepApply() {
     __cmdkResults = ordered;
     __cmdkSel = ordered.length ? 0 : -1;
 }
+// ONE EMPTY STATE for the search window. There were three, written independently
+// and reading like three different products: the scoped landing said "Nothing here
+// in bookings — tap “All” to widen." as a bare centred sentence with no icon; a
+// query with no hits got an icon, a bold title and "Tap “All” above to search
+// everywhere."; deep search's zero got the bold title with no icon and a third
+// wording. Same idea, three voices, two capitalisations of the same instruction,
+// and two of the three quietly missing the mark that makes the state look
+// deliberate rather than broken. This is that state, once — and CMDK_WIDEN is the
+// widen instruction stated once, so it cannot drift again.
+const CMDK_WIDEN = 'Tap “All” above to search everywhere.';
+const CMDK_NONE_IC = '<svg class="cmdk-none-ic ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4.3-4.3"/></svg>';
+// title/sub are PLAIN TEXT and escaped here — the same boundary rule chbDuties
+// follows, so a guest called O'Brien can reach this without being escaped twice.
+function cmdkNoneHtml(title, sub) {
+    return `<div class="cmdk-none">${CMDK_NONE_IC}<div><strong>${escapeHtml(title)}</strong>${escapeHtml(sub)}</div></div>`;
+}
 function cmdkRenderDeep(box) {
     const d = __cmdkDeep;
     const total = Object.values(d.counts).reduce((a, b) => a + (b || 0), 0);
@@ -7712,18 +7759,26 @@ function cmdkRenderDeep(box) {
     if (d.typo) {
         html += `<div class="cmdk-deep-note">Nothing matched “${escapeHtml(d.typo)}” — showing results for <strong>“${escapeHtml(d.q)}”</strong></div>`;
     }
-    // Filter chips (All + each source with its total).
-    html += `<div class="cmdk-deep-chips">` +
-        `<button type="button" class="cmdk-deep-chip${d.filter === 'all' ? ' is-on' : ''}" data-act="cmdkDeepFilter" data-arg="all">All <b>${total}</b></button>` +
-        present.map((t) => `<button type="button" class="cmdk-deep-chip${d.filter === t ? ' is-on' : ''}" ${chbAttrs('cmdkDeepFilter', t)}>${escapeHtml(cmdkDeepLabel(t))} <b>${d.counts[t]}</b></button>`).join('') +
-        `</div>`;
+    // Filter chips (All + each source with its total) — but only when there is
+    // something to filter. With no matches at all this row rendered a lone "All 0"
+    // chip: a control offering to narrow nothing down, 39px of it, directly above
+    // the sentence saying there was nothing. The recency switch below DOES still
+    // belong at zero, because widening the window is the one useful thing left to
+    // try, so it is deliberately outside this guard.
+    if (total > 0) {
+        html += `<div class="cmdk-deep-chips">` +
+            `<button type="button" class="cmdk-deep-chip${d.filter === 'all' ? ' is-on' : ''}" data-act="cmdkDeepFilter" data-arg="all">All <b>${total}</b></button>` +
+            present.map((t) => `<button type="button" class="cmdk-deep-chip${d.filter === t ? ' is-on' : ''}" ${chbAttrs('cmdkDeepFilter', t)}>${escapeHtml(cmdkDeepLabel(t))} <b>${d.counts[t]}</b></button>`).join('') +
+            `</div>`;
+    }
     // Recency window (each re-queries the server so counts stay truthful).
     html += `<div class="cmdk-deep-chips cmdk-deep-when">` +
         [['all', 'All time'], ['12m', 'Last 12 months'], ['90d', 'Last 90 days']]
             .map(([p, lbl]) => `<button type="button" class="cmdk-deep-chip${__cmdkDeepPeriod === p ? ' is-on' : ''}" ${chbAttrs('cmdkDeepPeriodSet', p)}>${lbl}</button>`).join('') +
         `</div>`;
     if (!__cmdkResults.length) {
-        box.innerHTML = html + `<div class="cmdk-none"><div><strong>No matches for “${escapeHtml(d.q)}”</strong>Nothing across bookings, guests, messages, emails, payments or the log.</div></div>`;
+        box.innerHTML = html + cmdkNoneHtml('No matches for “' + d.q + '”',
+            'Nothing across bookings, guests, messages, emails, payments or the log.');
         return;
     }
     // Grouped rows (headers only in the unfiltered view). A source shown at its cap
