@@ -55,17 +55,11 @@
      1.6px band) — differences that small are noise, not hierarchy. Three were not
      even rendering: .cmdk-row-label, .cmdk-row-sub and .cmdk-foot each declared a
      size the later ONE-ASSISTANT-LOOK block overrode, so the file stated two
-     answers. Seven steps now, each ≥1.2px from its neighbour, named for the JOB:
-       hero  the answer, a board's lead figure — and the query field, because you
-             ask at the size you are answered
-       lead  a promoted row: top hit, figure row, the detail pane's name
-       body  prose — a generated how-to, help steps, an editable field
-       row   the list's workhorse label
-       sub   a hero's sub, a past turn, a jump destination
-       meta  chips, scope, hints, pills, the row sub, the hint foot
-       micro uppercase captions, keycaps, the system line
-     A phone re-declares the TOKEN, not the rule (479px block below), so the narrow
-     tuning never becomes a nineteenth size. Gated by ui-test-searchpage §16b. */
+     answers. Seven steps now, each ≥1.2px from its neighbour and named for the JOB it
+     does, so picking one is a question about the content and not about pixels. (hero
+     covers the query FIELD as well as the answer — you ask at the size you are
+     answered.) A phone re-declares the TOKEN, not the rule (479px block below), so
+     the narrow tuning never becomes a nineteenth size. Gated by §16b. */
   --cmdk-fs-hero: 1.15rem;
   --cmdk-fs-lead: 1.04rem;
   --cmdk-fs-body: 0.95rem;
@@ -2135,9 +2129,11 @@ body.owner-mode .logo.ml-learning .logo-mark {
 .cmdk-row.cmdk-tophit.is-sel {
   box-shadow: inset 3px 0 0 var(--cmdk-sel-edge), inset 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent);
 }
+/* STANDARD size; the emphasis is the fill. At 36px it was 4px wider than every other
+   row's, pushing the Top Hit's label to 67 against the list's 63 — the row the eye
+   lands on first, alone on its own rail. Four other emphasis signals remain (larger
+   label, deeper padding, gradient ground, inset ring); size was the costly one. */
 .cmdk-row.cmdk-tophit .cmdk-row-ic {
-  width: 36px;
-  height: 36px;
   background: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 .cmdk-row.cmdk-tophit .cmdk-row-label {

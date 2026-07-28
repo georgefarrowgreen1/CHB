@@ -1338,6 +1338,28 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     ok(!!mark && r >= 3, `EMPTY @${theme}: the mark is actually visible (${r.toFixed(2)}:1 at opacity ${mark && mark.opacity})`);
   }
 
+  // 18f) THE TOP HIT SITS ON THE LIST'S RAIL. Its icon tile was 36px against every
+  // other row's 32, which pushed its label to 67px against the list's 63 — the one
+  // row the eye lands on first, 4px out of line with the rows it heads. It keeps its
+  // four other emphasis signals; only the tile's size went.
+  // NB three sibling findings from the same audit did NOT survive measurement and
+  // are deliberately not "fixed" here: the hero's action panel and the deep-search
+  // CTA look offset but their own left EDGES are on the text rail (21 == 21) and the
+  // inset is their internal padding, which is what a panel in a list is supposed to
+  // do. Only compare things that are on the same rail to begin with.
+  const rail = await page.evaluate(async () => {
+    const until = async (fn, ms = 6000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 40)); } };
+    const i = document.getElementById('cmdk-input');
+    i.value = 'bob'; cmdkSearchCore('bob', false);
+    const th = await until(() => document.querySelector('#cmdk .cmdk-row.cmdk-tophit .cmdk-row-label'));
+    if (!th) return null;
+    const other = document.querySelector('#cmdk .cmdk-row:not(.cmdk-tophit):not(.cmdk-hero) .cmdk-row-label');
+    if (!other) return null;
+    return { top: +th.getBoundingClientRect().left.toFixed(1), row: +other.getBoundingClientRect().left.toFixed(1) };
+  });
+  ok(!!rail && Math.abs(rail.top - rail.row) <= 1,
+    `RAILS: the Top Hit's label is on the same rail as the rows it heads (${rail && rail.top} vs ${rail && rail.row})`);
+
   console.log(fails ? `\n  ${fails} SEARCH-PAGE CHECK(S) FAILED ❌` : '\n  SEARCH-PAGE SUITE PASSED ✅');
   await done(fails);
 })();

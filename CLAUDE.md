@@ -514,6 +514,15 @@ had been left OUT of that group and sat at 23px, 1px under WCAG), and
 `.cmdk-group-label` is 0.72rem (was 0.64rem = 10.2px). The row SUB stays
 single-line on purpose — letting every sub wrap makes the list untenable to scan,
 and the money subs already lead with the figure, so what clips is trailing context.
+**The Top Hit sits on the LIST'S RAIL.** Its icon tile was 36px against every other
+row's 32, which pushed its label to 67px against the list's 63 — the one row the eye
+lands on first, alone on its own rail. It keeps four emphasis signals (a larger label,
+deeper padding, a gradient ground, an inset accent ring); the tile's size was the fifth
+and the only one that cost alignment (ui-test-searchpage §18f). Three sibling findings
+from the same audit did NOT survive measurement and are deliberately unchanged: the
+hero's action panel and the deep-search CTA look offset, but their own left EDGES are
+on the text rail (21 == 21) and the inset is their internal padding, which is what a
+panel inside a list is for. Only compare things that are on the same rail to begin with.
 **ONE EMPTY STATE** (`cmdkNoneHtml(title, sub)` + `CMDK_WIDEN` + `CMDK_NONE_IC`) — there
 were three, written independently and reading like three different products: the scoped
 landing was a bare centred sentence with no mark, a query with no hits got mark + bold
