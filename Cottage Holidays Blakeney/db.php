@@ -672,6 +672,16 @@ function is_internal_content_key($key)
         return true; // the cached Blakeney forecast (weather-data.php) — machinery,
                      // not content; weather.php serves the data itself publicly
     }
+    if ($key === 'bacs-details') {
+        return true; // the owner's bank details for guests paying by transfer
+                     // (payment_rail). INTERNAL, not private/encrypted-at-rest, on
+                     // purpose: the value is printed verbatim into guest emails, so
+                     // it is not a secret from the people who receive it — what
+                     // matters is that it never rides the ANONYMOUS content GET.
+                     // Encrypting it would add a failure mode with a worse outcome
+                     // than the leak it guards (an unreadable value silently becomes
+                     // garbage bank details in a guest's inbox).
+    }
     if (strpos($key, 'ical-status-') === 0) {
         return true; // per-cottage feed sync health (ical-import.php) — owner-only
     }
@@ -995,6 +1005,28 @@ function square_webhook_signature_ok($url, $rawBody, $signingKey, $sig)
     return hash_equals($expected, (string) $sig);
 }
 // ---- Shared money primitives (ONE definition; every caller agrees) ----------
+// WHICH RAIL A GUEST IS ON — 'card' or 'bacs'. A guest who paid their deposit in
+// cash or by transfer has no use for a Square link, and chasing them with one is
+// asking them to switch rails mid-booking; they get bank details instead. The
+// decision is taken ONCE here so the first balance request and every reminder
+// after it can never disagree about how the same guest is asked to settle up.
+//
+// Read off bookings.payment_method, which is FREE TEXT ("Card / Bank transfer /
+// Cash …" in the Add-Booking form) except when the site writes it itself — pay.php
+// and square-webhook.php both stamp 'Square card'. So the test is a match, not an
+// equality, and anything unrecognised is treated as OFF the card rail: an owner
+// who typed "cheque" or "paypal" meant "not through the website", and offering a
+// card link there is the wrong-way error. The one case that must stay on card is
+// an EMPTY method — nothing recorded means nothing paid yet, and that guest's only
+// way to pay is the link.
+function payment_rail($b)
+{
+    $m = strtolower(trim((string) ($b['payment_method'] ?? '')));
+    if ($m === '') {
+        return 'card';
+    }
+    return preg_match('/card|square|stripe|visa|mastercard|amex|contactless|apple ?pay|google ?pay/', $m) ? 'card' : 'bacs';
+}
 // The net card money a booking has received: settled charges MINUS refunds that
 // haven't failed. This exact SQL used to live copy-pasted in reconcile_booking_
 // payment(), the refund cap, pay.php and square-webhook.php — the audit's

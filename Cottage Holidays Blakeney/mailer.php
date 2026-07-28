@@ -1703,22 +1703,76 @@ function send_magic_link_email($g, $url)
     return smtp_send($g['email'], $name, $subject, $text, $html);
 }
 
+// The owner's bank details for guests paying by transfer, as typed in
+// Manage → Payments. Empty until they fill it in — payment_cta() handles that
+// case rather than printing a blank instruction.
+function bacs_details()
+{
+    return trim((string) content_value('bacs-details'));
+}
+
+// THE "HOW TO PAY" HALF OF A MONEY EMAIL, chosen by the guest's rail
+// (payment_rail). ONE definition, shared by the request and the reminder, so the
+// first chase and every follow-up ask the same guest for money the same way — the
+// chbDuties lesson: two composers over the same facts drift, and here the drift
+// would be visible to the guest.
+//
+// $lead is the caller's sentence up to the amount ("Please pay the remaining
+// £290.00") so each email keeps its own voice; this appends only the mechanism.
+// Returns ['text' => …, 'html' => …]; the html half is pre-escaped.
+//
+// The BACS branch deliberately drops "Powered by Square" too — it is a line about
+// card handling, and leaving it under bank details reads as a contradiction.
+function payment_cta($rail, $payUrl, $bacs, $lead)
+{
+    if ($rail !== 'bacs') {
+        return [
+            'text' => $lead . " securely by card here:\n" . $payUrl,
+            'html' =>
+                email_btn($payUrl, 'Pay securely by card') .
+                email_p('Powered by Square — we never see or store your card number.', true),
+        ];
+    }
+    $bacs = trim((string) $bacs);
+    if ($bacs === '') {
+        // No details on file. Say something ACTIONABLE rather than printing an
+        // empty bank block or — worse — falling back to a card link the guest has
+        // already shown they don't use.
+        return [
+            'text' => $lead . " by bank transfer. Please reply to this email and we'll send you our bank details.",
+            'html' => email_note(
+                '<strong>Pay by bank transfer</strong><br>Please reply to this email and we&rsquo;ll send you our bank details.',
+            ),
+        ];
+    }
+    return [
+        'text' => $lead . " by bank transfer, using the details below:\n\n" . $bacs,
+        // Owner FREE TEXT going into guest-facing HTML — escape, then restore the
+        // line breaks they typed (a sort code and an account number belong on
+        // their own lines).
+        'html' => email_note('<strong>Pay by bank transfer</strong><br>' . nl2br(email_esc($bacs))),
+    ];
+}
+
 // ------------------------------------------------------------------
 //  Square payments — request + receipt emails. Both reuse smtp_send and the
 //  crown header. $b: name, email, prop_key, prop_name, check_in, check_out,
-//  kind ('deposit'|'balance'), amount, total. $payUrl: the secure pay link.
+//  kind ('deposit'|'balance'), amount, total, payment_method. $payUrl: the
+//  secure pay link.
+//
+//  The two chase emails are split into a PURE body builder + a thin sender: the
+//  builder takes everything it needs (accent, bank details) as arguments so
+//  test-payrail.php can drive the real composer with no DB and no SMTP. Testing
+//  payment_rail() alone would have passed with either call site reverted.
 // ------------------------------------------------------------------
-function send_payment_request($b, $payUrl)
+function payment_request_body($b, $payUrl, $accent, $bacs)
 {
-    if (empty($b['email'])) {
-        return ['ok' => false, 'error' => 'No guest email on file'];
-    }
-    $accent = prop_display($b['prop_key'] ?? '')['accent']; // per-cottage accent (works for owner-added cottages too)
     $money = fn($n) => '£' . number_format((float) $n, 2);
     $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
     $name = first_name($b['name'], 'Guest');
     $prop = $b['prop_name'] ?: 'your cottage';
     $what = $b['kind'] === 'balance' ? 'remaining balance' : 'deposit';
+    $rail = payment_rail($b);
 
     // When the refundable deposit rides this payment (first payment), state the true
     // amount the card will be charged today so the emailed figure matches checkout.
@@ -1726,23 +1780,24 @@ function send_payment_request($b, $payUrl)
     $chargedToday = round((float) $b['amount'] + $damages, 2);
     // Full stay total includes the refundable deposit while it's still being charged.
     $stayTotalGrand = round((float) $b['total'] + $damages, 2);
+    // "…charged to your card today" is a CARD sentence. On the bank-transfer rail
+    // nothing is charged to anything — the guest is sending the money themselves,
+    // so the same fact has to be stated as a total to send.
+    $damagesTail =
+        $rail === 'bacs'
+            ? ' (returned after checkout), so please send ' . $money($chargedToday) . ' in total.'
+            : ' (returned after checkout), so ' . $money($chargedToday) . ' will be charged to your card today.';
     $depositLineText =
         $damages > 0
-            ? "\n\nThis payment also includes a refundable security deposit of " .
-                $money($damages) .
-                ' (returned after checkout), so ' .
-                $money($chargedToday) .
-                ' will be charged to your card today.'
+            ? "\n\nThis payment also includes a refundable security deposit of " . $money($damages) . $damagesTail
             : '';
+    $cta = payment_cta($rail, $payUrl, $bacs, "To secure your stay, please pay your {$what} of " . $money($b['amount']));
 
     $subject = "Pay your {$what} — {$prop}";
     $text =
         "Hello {$name},\n\n" .
         "Thank you for booking {$prop} (" . uk_date($b['check_in']) . " to " . uk_date($b['check_out']) . ").\n\n" .
-        "To secure your stay, please pay your {$what} of " .
-        $money($b['amount']) .
-        " securely by card here:\n" .
-        $payUrl .
+        $cta['text'] .
         $depositLineText .
         "\n\n" .
         'The full stay total is ' .
@@ -1769,18 +1824,29 @@ function send_payment_request($b, $payUrl)
             ? email_p(
                 'This payment also includes a <strong>' .
                     $money($damages) .
-                    '</strong> refundable security deposit (returned after checkout), so <strong>' .
-                    $money($chargedToday) .
-                    '</strong> will be charged to your card today.',
+                    '</strong> refundable security deposit (returned after checkout), so ' .
+                    ($rail === 'bacs'
+                        ? 'please send <strong>' . $money($chargedToday) . '</strong> in total.'
+                        : '<strong>' . $money($chargedToday) . '</strong> will be charged to your card today.'),
                 true,
             )
             : '') .
-        email_btn($payUrl, 'Pay securely by card') .
-        email_p('Powered by Square — we never see or store your card number.', true) .
+        $cta['html'] .
         email_p('Any questions? Just reply to this email.<br>Cottage Holidays Blakeney', true);
     $html = email_shell('Pay your ' . $what . ' for ' . $prop, $inner, $accent);
 
-    return smtp_send($b['email'], $name, $subject, $text, $html);
+    return ['subject' => $subject, 'text' => $text, 'html' => $html];
+}
+// Thin sender: resolve what the builder can't (the cottage accent and the owner's
+// bank details both need the DB) and hand off to smtp_send.
+function send_payment_request($b, $payUrl)
+{
+    if (empty($b['email'])) {
+        return ['ok' => false, 'error' => 'No guest email on file'];
+    }
+    $accent = prop_display($b['prop_key'] ?? '')['accent']; // per-cottage accent (works for owner-added cottages too)
+    $m = payment_request_body($b, $payUrl, $accent, bacs_details());
+    return smtp_send($b['email'], first_name($b['name'], 'Guest'), $m['subject'], $m['text'], $m['html']);
 }
 
 // High-level: build the secure pay link for a booking row + kind and email the
@@ -1827,6 +1893,9 @@ function request_booking_payment($b, $kind, $reminder = false)
         'amount' => $amt['due'],
         'total' => $amt['total'],
         'damages' => $damages,
+        // Carried so the email can pick the guest's rail (payment_rail): someone
+        // who paid their deposit in cash gets bank details, not a card link.
+        'payment_method' => $b['payment_method'] ?? '',
     ];
     $res = $reminder ? send_payment_reminder($payload, $payUrl) : send_payment_request($payload, $payUrl);
     $res['amount'] = $amt['due'];
@@ -1834,29 +1903,24 @@ function request_booking_payment($b, $kind, $reminder = false)
 }
 
 // A gentler nudge for a balance that's been requested but not yet paid, sent in
-// the run-up to arrival. Same secure link; warmer copy + days-until-arrival.
-function send_payment_reminder($b, $payUrl)
+// the run-up to arrival. Same rail as the request; warmer copy + days-until-arrival.
+function payment_reminder_body($b, $payUrl, $accent, $bacs)
 {
-    if (empty($b['email'])) {
-        return ['ok' => false, 'error' => 'No guest email on file'];
-    }
-    $accent = prop_display($b['prop_key'] ?? '')['accent']; // per-cottage accent (works for owner-added cottages too)
     $money = fn($n) => '£' . number_format((float) $n, 2);
     $esc = fn($s) => htmlspecialchars((string) $s, ENT_QUOTES, 'UTF-8');
     $name = first_name($b['name'], 'Guest');
     $prop = $b['prop_name'] ?: 'your cottage';
     $days = max(0, (int) floor((strtotime($b['check_in']) - strtotime(date('Y-m-d'))) / 86400));
     $when = $days <= 1 ? 'tomorrow' : "in {$days} days";
+    $rail = payment_rail($b);
+    $cta = payment_cta($rail, $payUrl, $bacs, 'Please pay the remaining ' . $money($b['amount']));
 
     $subject = "Reminder: balance due for {$prop}";
     $text =
         "Hello {$name},\n\n" .
         "Just a friendly reminder that the balance for your stay at {$prop} is still outstanding, " .
         "and your arrival is {$when} (" . uk_date($b['check_in']) . ").\n\n" .
-        'Please pay the remaining ' .
-        $money($b['amount']) .
-        " securely by card here:\n" .
-        $payUrl .
+        $cta['text'] .
         "\n\n" .
         "If you've already paid, thank you — please ignore this. Any questions, just reply.\n\n" .
         'Cottage Holidays Blakeney';
@@ -1875,12 +1939,22 @@ function send_payment_reminder($b, $payUrl)
                 ').',
         ) .
         email_amount('Balance due', $money($b['amount'])) .
-        email_btn($payUrl, 'Pay securely by card') .
-        email_p('Already paid? Thank you — please ignore this. Powered by Square.', true) .
+        $cta['html'] .
+        email_p('Already paid? Thank you — please ignore this.', true) .
         email_p('Cottage Holidays Blakeney', true);
     $html = email_shell('Balance reminder for ' . $prop, $inner, $accent);
 
-    return smtp_send($b['email'], $name, $subject, $text, $html);
+    return ['subject' => $subject, 'text' => $text, 'html' => $html];
+}
+// Thin sender (see payment_request_body's note on the split).
+function send_payment_reminder($b, $payUrl)
+{
+    if (empty($b['email'])) {
+        return ['ok' => false, 'error' => 'No guest email on file'];
+    }
+    $accent = prop_display($b['prop_key'] ?? '')['accent']; // per-cottage accent (works for owner-added cottages too)
+    $m = payment_reminder_body($b, $payUrl, $accent, bacs_details());
+    return smtp_send($b['email'], first_name($b['name'], 'Guest'), $m['subject'], $m['text'], $m['html']);
 }
 
 // Ask the guest to place a refundable card HOLD before arrival. $b: name, email,

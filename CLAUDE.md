@@ -1543,6 +1543,42 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   `isOtaBlock` (excludes `source:'owner'` blocks, which aren't bookings). Gated by
   ui-test-money §6. NB `dbBlocks` is `const` in app.js — a test must MUTATE it, not
   reassign it, or the assignment throws and the case silently proves nothing.
+- **A CHASE EMAIL FOLLOWS THE GUEST'S RAIL** (`payment_rail($b)` in db.php — 'card'
+  or 'bacs'). A guest who paid their deposit in cash or by transfer has no use for a
+  Square link, and chasing them with one asks them to switch rails mid-booking; they
+  get bank details instead. The decision is taken ONCE, so the first balance request
+  (`send_payment_request`) and every reminder after it (`send_payment_reminder`)
+  cannot disagree about how the SAME guest is asked to settle up — applying it to
+  only one would have meant a card link in the first chase and BACS in the
+  follow-ups. Read off `bookings.payment_method`, which is FREE TEXT ("Card / Bank
+  transfer / Cash …" in the Add-Booking form) except where the site writes it
+  itself (pay.php + square-webhook.php both stamp `'Square card'`) — so the test is
+  a MATCH, not an equality, and anything unrecognised ("cheque", "paypal") is
+  treated as off the card rail, because an owner who typed it meant "not through
+  the website". The one value that must stay on card is **EMPTY**: nothing recorded
+  means nothing paid yet, and the link is that guest's only way to pay — a fresh
+  booking's deposit request is byte-for-byte unchanged. `payment_cta($rail, $payUrl,
+  $bacs, $lead)` is the one composer for the "how to pay" half of both emails; the
+  BACS branch drops "Powered by Square" (a line about card handling reads as a
+  contradiction under bank details) and rewords the refundable-deposit sentence,
+  since "…will be charged to your card today" is a CARD sentence and on the transfer
+  rail nothing is charged to anything. Bank details live in the INTERNAL content key
+  **`bacs-details`** (Manage → Payments), deliberately internal rather than
+  private/encrypted-at-rest: the value is printed verbatim into guest emails so it
+  is not a secret from its recipients, and encrypting it adds a failure mode with a
+  worse outcome than the leak it guards (an unreadable value becomes garbage bank
+  details in a guest's inbox). Empty is a legitimate state — the emails then say
+  "reply and we'll send them" rather than printing a blank block or falling back to
+  a card link the guest has already shown they don't use. The Settings field reads
+  `adminPrivateContent` FIRST (content.php `get_all`, refreshed by `openArea()`),
+  NOT `siteContent`: siteContent is filled by the BOOT content GET, which is the
+  ANONYMOUS one when the page loaded before sign-in, so an internal key would be
+  missing and the field would render blank over real saved details, one Save away
+  from wiping them. Gated by **`test-payrail.php`** (43 checks, no DB and no SMTP —
+  the two `*_body()` builders are pure and take the accent + bank details as
+  arguments precisely so the gate drives the REAL composers; testing `payment_rail`
+  alone passed with either call site reverted to a hardcoded card button, which is
+  break-tested).
 - **Square settlement sync** — a payment's processing FEE and a refund's final
   STATUS (PENDING→COMPLETED) both land a day or two after the action, pushed by the
   `square-webhook.php` events. Because that webhook can be unconfigured, the

@@ -112,6 +112,10 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-weather.php
 
+      - name: Payment rail (card payers keep the card link, cash payers get BACS)
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-payrail.php
+
       - name: Square webhook signature verification
         working-directory: "Cottage Holidays Blakeney"
         run: php test-webhook.php
