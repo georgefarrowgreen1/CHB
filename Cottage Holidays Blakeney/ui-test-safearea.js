@@ -59,17 +59,43 @@ const BOTTOM = 34;
             // Sample by STATE, not on a clock (the search suite's rule): a fixed
             // 500ms caught the waitlist panel MID-SETTLE on a loaded CI runner
             // (top 144 vs 79 — 65px of entry travel still to run, and rects
-            // include transforms) and called a correct inset a violation. Wait
-            // until the panel's rect holds still for two consecutive samples.
-            await pause(200);
-            let el = null, key = null;
-            for (let i = 0; i < 15; i++) {
+            // include transforms) and called a correct inset a violation.
+            //
+            // Two things are needed, and the first attempt at this had only a
+            // weaker form of the second. Polling for "the rect matched the last
+            // sample 140ms ago" does NOT prove settled: on a starved runner two
+            // wall-clock reads can straddle a stalled compositor and be identical
+            // because NOTHING PAINTED between them, which is the opposite of the
+            // conclusion. So:
+            //   1. await the element's own animations/transitions — `finished` is
+            //      authoritative however badly frames are being scheduled. Only
+            //      FINITE ones (an infinite decorative loop never resolves), and
+            //      capped, so a missing animation can't hang the suite.
+            //   2. then require three consecutive equal rects sampled on rAF.
+            //      rAF ties each sample to a real painted frame, so a stall means
+            //      no samples rather than falsely equal ones.
+            await pause(120);
+            let el = document.querySelector(cs.panel);
+            if (!el) return { missing: true };
+            try {
+                const anims = (el.getAnimations ? el.getAnimations({ subtree: true }) : []).filter((a) => {
+                    const t = a.effect && a.effect.getComputedTiming ? a.effect.getComputedTiming() : null;
+                    return t && t.iterations !== Infinity && t.endTime !== Infinity;
+                });
+                await Promise.race([
+                    Promise.all(anims.map((a) => a.finished.catch(() => null))),
+                    pause(2000),
+                ]);
+            } catch (e) {}
+            const frame = () => new Promise((r) => requestAnimationFrame(() => r(null)));
+            let same = 0, key = null;
+            for (let i = 0; i < 120 && same < 3; i++) {
+                await frame();
                 el = document.querySelector(cs.panel);
                 const r0 = el ? el.getBoundingClientRect() : null;
                 const k = r0 ? Math.round(r0.top) + ':' + Math.round(r0.height) : 'none';
-                if (key !== null && k === key && k !== 'none') break;
+                same = k !== 'none' && k === key ? same + 1 : 0;
                 key = k;
-                await pause(140);
             }
             if (!el) return { missing: true };
             const b = el.getBoundingClientRect();
