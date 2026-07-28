@@ -749,6 +749,16 @@
                         <p style="font-size:0.8rem;color:var(--text-muted);margin-top:10px;">These reminders are sent automatically overnight — you don't need to do anything. You can also send a payment request by hand anytime from a booking's details. (Taking card payments needs a one-time Square setup by whoever looks after your website — see the setup guide.)</p>
                     </details>
                 </div>
+                <div class="accounts-stat" style="max-width:640px;margin-top:14px;">
+                    <div class="label">Bank transfer details</div>
+                    <p style="font-size:0.85rem;color:var(--text-muted);margin:8px 0 12px;">Used when you chase a guest who paid in cash or by transfer — they get these details instead of a card link. Guests who paid by card carry on getting the card link.</p>
+                    <label class="modal-label" for="bacs-details">Account name, sort code and account number</label>
+                    <textarea class="input-glass" id="bacs-details" rows="4" placeholder="Cottage Holidays Blakeney&#10;Sort code: 00-00-00&#10;Account: 12345678"></textarea>
+                    <div style="margin-top:10px;">
+                        <button class="btn-sm btn-edit" data-act="saveBacsDetails">Save</button>
+                    </div>
+                    <p id="bacs-details-warn" style="font-size:0.82rem;color:var(--warn-text);margin:12px 0 0;display:none;">Nothing saved yet — until you add these, a cash-paying guest is asked to reply for your bank details.</p>
+                </div>
                 <div class="accounts-stat" id="sq-webhook-card" style="max-width:640px;margin-top:14px;">
                     <div class="label">Automatic payment updates</div>
                     <p id="sq-webhook-status" aria-live="polite" style="font-size:0.9rem;margin:8px 0 4px;">Checking…</p>

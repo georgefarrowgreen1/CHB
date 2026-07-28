@@ -13275,7 +13275,40 @@ function renderSquareSettings() {
         const v = parseFloat(siteContent['square-deposit-pct']);
         inp.value = v > 0 && v <= 100 ? v : 25;
     }
+    // Bank details read from adminPrivateContent FIRST, not siteContent: this is an
+    // INTERNAL key, and siteContent is populated by the boot content GET — which is
+    // the ANONYMOUS one when the page loaded before sign-in, so the key would be
+    // missing and the field would render blank over real saved details, one Save
+    // away from wiping them. openArea() always refreshes adminPrivateContent
+    // (content.php get_all) before any section renders.
+    const bacs = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('bacs-details'));
+    if (bacs) {
+        const stored = (typeof adminPrivateContent === 'object' && adminPrivateContent && adminPrivateContent['bacs-details'] !== undefined
+            ? adminPrivateContent['bacs-details']
+            : siteContent['bacs-details']) || '';
+        bacs.value = String(stored);
+        const warn = document.getElementById('bacs-details-warn');
+        if (warn) warn.style.display = String(stored).trim() ? 'none' : 'block';
+    }
     try { loadSquareWebhookStatus(); } catch (e) {}
+}
+// Save the owner's bank details for guests paying by transfer. Empty is allowed —
+// clearing them is a legitimate edit (the emails fall back to "reply and we'll
+// send them"), so this must not refuse a blank the way saveDepositPct refuses 0.
+async function saveBacsDetails() {
+    const el = /** @type {HTMLTextAreaElement|null} */ (document.getElementById('bacs-details'));
+    if (!el) return;
+    const v = String(el.value || '').trim();
+    try {
+        await saveContent('bacs-details', v);
+        siteContent['bacs-details'] = v;
+        if (typeof adminPrivateContent === 'object' && adminPrivateContent) adminPrivateContent['bacs-details'] = v;
+        const warn = document.getElementById('bacs-details-warn');
+        if (warn) warn.style.display = v ? 'none' : 'block';
+        toast(v ? 'Bank transfer details saved.' : 'Bank transfer details cleared.');
+    } catch (e) {
+        glassAlert("Couldn't save: " + e.message);
+    }
 }
 // Automatic payment updates (Square webhook): show whether it's connected. When
 // connected Square pushes settlement/refund events live, so fees + refund
@@ -19523,7 +19556,7 @@ async function mailboxDelete(uid) {
     }
 }
 
-[crownSheetToggle, accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, bulkImportReviews, changeAdminPassword, changeMonth, timelineToday, inboxFolder, initBackOffice, loadAdminMessages, loadDiagnostics, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveDepositPct, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
+[crownSheetToggle, accountsBack, accountsOpen, accountsShowIndex, activityLogSearch, addAdminPasskey, addReviewRow, afterPaymentChange, autoSyncIcalBlocks, backfillWebp, bookingHubBack, bulkImportReviews, changeAdminPassword, changeMonth, timelineToday, inboxFolder, initBackOffice, loadAdminMessages, loadDiagnostics, logoutStaff, offerUpdatedConfirmationEmail, openAccounts, openAddBooking, openArea, openBlockDates, openBookingHub, openBookings, openBookingEmail, bookingsSetFilter, bookingsSetSearch, renderBookings, openEnquiryHub, enquiryHubBack, openInbox, openSettings, openStagingSite, refreshModerationCounts, renderAccounts, renderActivityLog, renderCalendar, renderExpenses, renderInbox, renderMoneyOverview, requestPayment, renderSquareSettings, runMigrations, saveApiKey, saveContactPhone, saveContent, saveBacsDetails, saveDepositPct, saveGoogleReviewUrl, saveHostText, saveReviews, sendBroadcast, sendSampleEmails, sendTestEmail, settingsBack, settingsFilter, settingsOpen, settingsOpenAccom, settingsOpenAccomSec, settingsOpenCalendar, settingsOpenCancel, settingsSearchKey, settingsShowIndex, tryAccessBackOffice, uploadHostPhoto].forEach((f) => {
     window[f.name] = f;
 });
 try { cmdkPrefetchExperiences(); } catch (e) {} // published things-to-do → searchable
