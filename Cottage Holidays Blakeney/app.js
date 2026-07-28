@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 309;
+const ADMIN_BUNDLE_V = 310;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -6875,6 +6875,12 @@ async function loadData() {
     // payload cleanly falls back to the individual endpoint.
     const ratesTask = loadRates(ab && ab.rates && Array.isArray(ab.rates.properties) ? ab.rates : null);
 
+    // A DROPPED REQUEST MUST NOT DESTROY GOOD DATA. Each task used to empty its
+    // store in the catch, so one failed fetch on a patchy signal wiped the
+    // owner's bookings out of memory: an empty Today, and a tapped booking
+    // reported "no longer here" before bouncing them off it. Keep the last good
+    // copy and report upward — the loadContent() rule. See CLAUDE.md.
+    const failed = [];
     const bookingsTask = (async () => {
         try {
             const { bookings } =
@@ -6893,9 +6899,7 @@ async function loadData() {
                 dbBookings[row.prop_key].push(b);
             });
         } catch (e) {
-            Object.keys(dbBookings).forEach((k) => {
-                dbBookings[k] = [];
-            });
+            failed.push('bookings'); // keep whatever we already had
         }
     })();
 
@@ -6907,7 +6911,7 @@ async function loadData() {
                     : await apiGet('enquiries.php');
             enquiries = (rows || []).map(mapEnquiryFromApi);
         } catch (e) {
-            enquiries = [];
+            failed.push('enquiries'); // keep the last good list
         }
     })();
 
@@ -6933,9 +6937,7 @@ async function loadData() {
             });
             dedupeExternalBlocks();
         } catch (e) {
-            Object.keys(dbBlocks).forEach((k) => {
-                dbBlocks[k] = [];
-            });
+            failed.push('blocks'); // keep the last good OTA blocks
         }
     })();
 
@@ -6946,6 +6948,10 @@ async function loadData() {
     // block that overlaps one of our own bookings is just a mirror of it.
     // Drop those external blocks so only the real local booking shows.
     suppressBlocksUnderLocalBookings();
+    // Told, not thrown: the tasks isolate their failures, so this NEVER rejects
+    // and a try/catch around it is dead code. Callers telling "couldn't load"
+    // from "isn't there" read this.
+    return { ok: failed.length === 0, failed };
 }
 
 // True when two checkout-exclusive date ranges [in, out) overlap.
@@ -13253,7 +13259,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'payrail1';
+    const BUILD = 'poorsig1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
