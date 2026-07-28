@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 311;
+const ADMIN_BUNDLE_V = 312;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -286,7 +286,7 @@ chbAct('enterSendChat', function (el, event) {
 chbAct('saveContentToggle', function (el) {
     const on = !!el.checked;
     const stored = el.dataset.invert === '1' ? (on ? '' : '1') : (on ? '1' : '');
-    if (typeof saveContent === 'function') saveContent(el.dataset.key, stored);
+    if (typeof saveContent === 'function') Promise.resolve(saveContent(el.dataset.key, stored)).catch(() => {}); // alerted inside
 });
 // Small bespoke compound closers from the guest-account modals.
 chbAct('detailsLogout', function () {
@@ -2483,7 +2483,11 @@ async function loadExpenses() {
         const r = await apiGet('expenses.php');
         allExpenses = Array.isArray(r.expenses) ? r.expenses : [];
     } catch (e) {
-        allExpenses = [];
+        // KEEP the last good list (the loadData rule). Emptying it on a dropped
+        // request doesn't just fail to refresh — it reports the year's expenses as
+        // ZERO, and Income & tax subtracts expenses from income, so the headline
+        // net profit comes out too HIGH. A wrong number the owner might act on is
+        // worse than a stale one.
     }
 }
 let __accountsSection = null;
@@ -9452,6 +9456,17 @@ function todayDashed() {
     const t = ukNowParts();
     return `${t.y}-${String(t.m).padStart(2, '0')}-${String(t.d).padStart(2, '0')}`;
 }
+// Shift a YYYY-MM-DD by whole days and get a YYYY-MM-DD back. Anchored at UTC
+// NOON, not midnight: the arithmetic is then immune to the DST hour, and since
+// only the calendar date is read back it can never land on the wrong day. The
+// pattern this replaces — local setDate() formatted through toISOString() — mixes
+// two clocks and is a day out between 00:00 and 01:00 BST.
+function ukShiftDays(iso, days) {
+    const d = new Date(String(iso) + 'T12:00:00Z');
+    if (isNaN(d.getTime())) return String(iso);
+    d.setUTCDate(d.getUTCDate() + (Number(days) || 0));
+    return d.toISOString().slice(0, 10);
+}
 
 // ============ Custom glass date-range picker (customer booking) ============
 // ===================================================================
@@ -13278,7 +13293,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'safearea1';
+    const BUILD = 'audit1';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

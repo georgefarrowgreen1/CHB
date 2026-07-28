@@ -1578,6 +1578,38 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   The ONE place it stays is `app.js`'s `authorized/captured/released/expired`
   branch — the legacy Square card-HOLD flow, where "held on your card (not
   charged)" is the truth. Check which era a string belongs to before rewording it.
+- **A FAILED WRITE MUST NOT RETURN AS THOUGH IT WORKED.** `saveContent()` caught
+  its error, showed the owner a `glassAlert`, and then returned NORMALLY — so it
+  told the USER the save had failed and its CALLER that all was well. **14 call
+  sites wrap it in a try/catch that could therefore never fire**, and every one of
+  them updates a local mirror or a status line "after a successful save": the bank
+  details, the deposit percentage, a cleared map pin all adopted values the server
+  had rejected, and reverted on the next load. It RETHROWS now (the alert stays —
+  it is the one message the owner sees wherever the caller is), which makes those
+  14 handlers real in one edit. The 10 fire-and-forget callers opt out explicitly
+  with `.catch(() => {})` rather than being left as unhandled rejections. Gated by
+  ui-test-poorsignal §9. NB `clearGeo` was the one that surfaced it — it fired the
+  save unawaited and printed "Not set" regardless, so the owner believed they had
+  cleared a cottage's map pin when they had not.
+- **KEEPING LAST-GOOD DATA IS THE RULE, NOT THE EXCEPTION.** Auditing for
+  `loadData`'s shape found three more caches that emptied themselves in the catch,
+  and each lie is different: `loadExpenses` reported the year's expenses as ZERO,
+  and Income & tax subtracts expenses from income, so the headline **net profit
+  came out too HIGH**; `loadBookingEmailLogs` showed no emails ever sent to a
+  guest, inviting a duplicate send; `loadDepositReturns` made a PARTIALLY returned
+  damage deposit reappear in "Deposits to return" at its full collected figure (the
+  server caps the refund at what is actually left, so no money can go out twice —
+  the damage is a wrong number and a wasted trip). All keep the last good copy now.
+- **ONE WAY TO SHIFT A DATE: `ukShiftDays(iso, n)`** (app.js, beside `todayDashed`).
+  The pattern it replaces — local `setDate()` formatted through `toISOString()` —
+  mixes two clocks and lands a day early between 00:00 and 01:00 BST, i.e. it is
+  wrong for one hour a night and right whenever you test it. Anchored at UTC NOON
+  so the DST hour cannot move the calendar date. Two sites used the broken shape:
+  the teach-loop's 7-day window (silently 8 days for that hour) and the test
+  centre's demo-booking dates. Gated in smoke-test §5 across both DST transitions,
+  a leap day and a year end. NB a `new Date(iso + 'T00:00:00Z')` round trip through
+  `toISOString()` is FINE and several sites do it — the bug is only local-in,
+  UTC-out.
 - **A POOR SIGNAL MUST NOT MOVE THE OWNER** (gated by `ui-test-poorsignal.js`,
   which stalls then DROPS the data endpoints — what a dead mobile link does, not
   a 500, which was already handled). Reported from a phone: "I click on a page

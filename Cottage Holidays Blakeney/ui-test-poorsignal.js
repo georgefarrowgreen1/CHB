@@ -37,9 +37,17 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
 
     // The signal switch. When on, the data endpoints hang then drop.
     let stall = false;
+    // Widened only for the later sections: content.php and expenses.php are not
+    // part of the navigation story above, and stalling them from the start would
+    // starve the boot.
+    let stallMore = false;
     await page.route(/\.php/, async (route) => {
         const url = route.request().url();
         const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
+        if (stall && stallMore && /(expenses|content)\.php/.test(url)) {
+            await new Promise((r) => setTimeout(r, 800));
+            return route.abort('failed');
+        }
         if (stall && /(bookings|accounts|enquiries|admin-bootstrap|ical-import)\.php/.test(url)) {
             await new Promise((r) => setTimeout(r, 8000));
             return route.abort('failed');
@@ -138,6 +146,57 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     ok(good.ok === true && good.n === 1, `on a good link loadData reports ok and refills (${good.n} booking)`);
     const backOk = await page.evaluate(async () => { await window.openBookingHub(1); return (document.querySelector('.page-view.active') || {}).id; });
     ok(backOk === 'view-booking-hub' || backOk === 'view-backoffice', `…and a booking still opens normally (${backOk})`);
+
+    // ── 7. The same rule, everywhere else that caches server data ───────────
+    // Found by auditing for the loadData shape. Each of these emptied its own
+    // store in the catch, and each lie is different: expenses at zero make the
+    // net-profit headline too HIGH, an empty email log invites sending a guest
+    // the same email twice, and empty deposit-returns make a PARTIALLY returned
+    // damage deposit reappear as a full one to hand back.
+    stall = true;
+    stallMore = true;
+    const stores = await page.evaluate(async () => {
+        allExpenses = [{ id: 1, amount: 120, date: '2026-05-01', note: 'seed' }];
+        bookingEmailLogs = { 1: [{ action: 'confirmation', at: '2026-05-01' }] };
+        damagesReturnedMap = { 1: 30 };
+        await loadExpenses();
+        await loadBookingEmailLogs();
+        await loadDepositReturns();
+        return {
+            expenses: allExpenses.length,
+            logs: Object.keys(bookingEmailLogs).length,
+            returns: Number(damagesReturnedMap[1]) || 0,
+        };
+    });
+    ok(stores.expenses === 1, `a dropped expenses fetch keeps them (${stores.expenses} of 1) — zero would overstate net profit`);
+    ok(stores.logs === 1, `a dropped email-log fetch keeps the history (${stores.logs} of 1)`);
+    ok(stores.returns === 30, `a dropped deposit-returns fetch keeps them (£${stores.returns} of £30)`);
+
+    // ── 8. Clearing a map pin must not CLAIM success it hasn't got ──────────
+    const geo = await page.evaluate(async () => {
+        // The status line only exists once the cottage editor has rendered, and
+        // this suite never opens it — so create it, or the message assertion
+        // below passes by finding nothing.
+        let st = document.getElementById('geo-status-21a');
+        if (!st) { st = document.createElement('span'); st.id = 'geo-status-21a'; document.body.appendChild(st); }
+        st.textContent = 'Set';
+        adminPrivateContent['geo-21a'] = '52.9,1.0';
+        await window.clearGeo('21a');
+        return { mirror: adminPrivateContent['geo-21a'], said: st.textContent };
+    });
+    ok(geo.mirror === '52.9,1.0', `a failed clear does not wipe the local value either (${geo.mirror})`);
+    ok(/connection|couldn/i.test(geo.said) && !/^Not set$/.test(geo.said),
+        `…and it says so rather than reporting "Not set" ("${geo.said}")`);
+
+    // ── 9. The root of it: a save that FAILED must not return as though it
+    //      worked. saveContent used to alert the OWNER and tell its CALLER
+    //      nothing was wrong, which left 14 try/catch blocks unable to fire.
+    const st = await page.evaluate(async () => {
+        let threw = false;
+        try { await saveContent('geo-21a', 'x'); } catch (e) { threw = true; }
+        return threw;
+    });
+    ok(st === true, 'saveContent REPORTS a failed write to its caller, not just to the screen');
 
     console.log('');
     console.log(fails ? `  ${fails} POOR-SIGNAL CHECK(S) FAILED ❌` : '  POOR-SIGNAL SUITE PASSED ✅');
