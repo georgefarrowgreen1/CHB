@@ -1049,6 +1049,117 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(!!sys && sys.shown >= sys.needs, `SYS: …and all of it is on screen at 390px (${sys && sys.shown} of ${sys && sys.needs}px)`);
   await page.setViewportSize({ width: 900, height: 900 });
 
+  // ============================================================
+  // 17) THIRD PASS — motion and the rails.
+  // ============================================================
+
+  // 17a) THE SIRI AURA IS BACK ON. `#cmdk.cmdk-overlay .cmdk-box` blanked the whole
+  // `animation` shorthand to cancel cmdkRise (the drop replaces it) and took
+  // cmdkSiriAura with it, so the assistant's breathing glow — documented as part of
+  // its look — had rendered on no surface at all since the pop-out landed. Asserted
+  // on the PAINT (does the box-shadow actually change over a second and a half),
+  // not just on the animation-name, because a named animation whose keyframes never
+  // reach the element is exactly the failure this is here to catch.
+  const aura = await page.evaluate(async () => {
+    try { closeCmdK(); } catch (e) {}
+    openCmdK();
+    await new Promise((r) => setTimeout(r, 500));
+    const box = document.querySelector('#cmdk .cmdk-box');
+    if (!box) return null;
+    const name = getComputedStyle(box).animationName;
+    const a = getComputedStyle(box).boxShadow;
+    await new Promise((r) => setTimeout(r, 1500));
+    const b = getComputedStyle(box).boxShadow;
+    return { name, changed: a !== b };
+  });
+  ok(!!aura && /cmdkSiriAura/.test(aura.name), `MOTION: the search card carries its Siri aura (${aura && aura.name})`);
+  ok(!!aura && aura.changed, 'MOTION: …and it actually breathes — the painted shadow moves');
+
+  // 17b) CLOSING IS THE INVERSE OF OPENING. `visibility` flipped with no transition,
+  // so the box's own exit ran inside an already-invisible container: the panel
+  // teleported while the scrim went on fading for 260ms.
+  // Sampled by STATE, not on a clock: closeCmdK does a pile of synchronous teardown
+  // (miss-recording, thread clear, a re-render) that blocks the main thread for
+  // ~180ms, so the first paint of the exit lands well after any fixed delay — a
+  // sample at 100ms reported "opacity 1" for an exit that was working perfectly.
+  // Poll for the mid-flight frame instead, and require it to be a real one:
+  // strictly between 0 and 1, with the container still visible.
+  const closing = await page.evaluate(async () => {
+    const ov = document.getElementById('cmdk');
+    const box = ov.querySelector('.cmdk-box');
+    const snap = () => ({ vis: getComputedStyle(ov).visibility, op: +getComputedStyle(box).opacity });
+    const before = snap();
+    closeCmdK();
+    let mid = null;
+    for (let i = 0; i < 90 && !mid; i++) {
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+      const s = snap();
+      if (s.op < 1 && s.op > 0) mid = s;
+      if (s.vis === 'hidden') break; // gone before we ever saw it fade
+    }
+    await new Promise((r) => setTimeout(r, 500));
+    return { before, mid, after: snap() };
+  });
+  ok(!!closing && closing.before.vis === 'visible' && closing.before.op === 1, 'MOTION: open, the panel is up');
+  ok(!!closing && !!closing.mid && closing.mid.vis === 'visible',
+    `MOTION: …and it FADES on the way out instead of teleporting (caught mid-close at opacity ${closing && closing.mid && closing.mid.op.toFixed(2)})`);
+  ok(!!closing && closing.after.vis === 'hidden', `MOTION: …then goes properly away (${closing && closing.after.vis})`);
+
+  // 17c) Reduced motion turns the aura off. The generic .cmdk-box reduced-motion
+  // rule is out-specified by `#cmdk.cmdk-overlay .cmdk-box`, so it needs restating
+  // at that specificity — without which someone who asked for no motion got a
+  // permanently breathing panel.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const calm = await page.evaluate(async () => {
+    try { closeCmdK(); } catch (e) {}
+    openCmdK();
+    await new Promise((r) => setTimeout(r, 400));
+    const box = document.querySelector('#cmdk .cmdk-box');
+    return box ? getComputedStyle(box).animationName : null;
+  });
+  ok(calm === 'none', `MOTION: reduced motion stops the aura (${calm})`);
+  await page.emulateMedia({ reducedMotion: null });
+
+  // 17d) The act strip ARRIVES rather than blinking in.
+  const strip = await page.evaluate(() => {
+    const s = document.createElement('div');
+    s.className = 'cmdk-actmsg is-ok';
+    (document.querySelector('#cmdk .cmdk-results') || document.body).appendChild(s);
+    const n = getComputedStyle(s).animationName;
+    s.remove();
+    return n;
+  });
+  ok(/cmdkStripIn/.test(strip || ''), `MOTION: the act strip animates in (${strip})`);
+
+  // 17e) RAILS. The boards grid claimed to be responsive — auto-fit/minmax(240px) —
+  // inside a 478px content box, where two tracks need 490: it could never resolve to
+  // more than one column at any width the window has. And a board's caption sat 10px
+  // off the rail of the rows it captions.
+  const board = await page.evaluate(async () => {
+    const until = async (fn, ms = 6000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 40)); } };
+    try { closeCmdK(); } catch (e) {}
+    openCmdK();
+    await until(() => !!document.querySelector('#cmdk .cmdk-board .cmdk-row'));
+    const g = document.querySelector('#cmdk .cmdk-boards');
+    const cap = document.querySelector('#cmdk .cmdk-board-cap');
+    const row = document.querySelector('#cmdk .cmdk-board .cmdk-row-label');
+    if (!g || !cap || !row) return null;
+    // The caption is a PADDED block and the row label is an inner span, so their
+    // border-box lefts are not comparable — add the caption's own padding to get
+    // where its text actually starts. (Comparing the raw rects said "10px apart"
+    // for a caption that was correctly aligned, and would have said "6px apart"
+    // for the real defect: right complaint, wrong number, and green once fixed
+    // only by luck.)
+    return {
+      cols: getComputedStyle(g).gridTemplateColumns.trim().split(/\s+/).length,
+      capL: +(cap.getBoundingClientRect().left + parseFloat(getComputedStyle(cap).paddingLeft)).toFixed(1),
+      rowL: +row.getBoundingClientRect().left.toFixed(1),
+    };
+  });
+  ok(!!board && board.cols === 1, `RAILS: the boards grid is one column, and says so (${board && board.cols})`);
+  ok(!!board && Math.abs(board.capL - board.rowL) <= 1,
+    `RAILS: a board's caption shares its rows' left rail (${board && board.capL} vs ${board && board.rowL})`);
+
   console.log(fails ? `\n  ${fails} SEARCH-PAGE CHECK(S) FAILED ❌` : '\n  SEARCH-PAGE SUITE PASSED ✅');
   await done(fails);
 })();

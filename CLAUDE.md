@@ -564,7 +564,12 @@ would break arrow-key nav in total silence).
   row **DECLARES its board** (`board:` in `cmdkBriefBuild`) rather than having the
   renderer guess from its id — same principle as `scope`. Rows whose board is
   unrecognised still render as orphans: silently dropping one is the exact bug the
-  scope filter caused on this screen.
+  scope filter caused on this screen. The grid is **one column and says so**: it was
+  `repeat(auto-fit, minmax(240px, 1fr))`, responsive-looking dead code inside a 520px
+  pop-out whose content box is 478px — two 240px tracks plus the gap need 490, so it
+  computed to a single track at every width this window has, and boards only render
+  on the empty landing (which never widens). Don't narrow the minimum to force two:
+  a board row leads with a figure sentence that will not survive a 234px track.
 - **ANSWER hero** (`cmdkHeroHtml`, `cmdkHeroFigure`) — when the leading row is an
   `answer`/`figure`, it takes the top of the window at reading size and the caption
   says "Answer", not "Top hit" (which describes the ranking, not the reply). The
@@ -644,7 +649,21 @@ only while fresh AND the record still exists, so stale/deleted context never hij
 query, and a real pronoun is required so a generic query is never captured (search-test §21b).
 **Siri look**: the search card breathes `cmdkSiriAura` while the page is open, driven by the
 `--siri-1..5` hue tokens (`:root` in admin.css); box-shadow aura (overflow-safe), honours
-`prefers-reduced-motion`. **Unified interface**: RESULTS/JUMP-TO/quick-ACTIONS are rows
+`prefers-reduced-motion`. NB this was DEAD for the whole life of the pop-out:
+`#cmdk.cmdk-overlay .cmdk-box` blanked the entire `animation` shorthand to cancel
+`cmdkRise` (the drop replaces it) and took the aura with it, so a documented part of
+the assistant's look rendered on no surface at all. Name the animation that goes, never
+the shorthand — and restate the reduced-motion off-switch at the OVERLAY's specificity,
+because the generic `.cmdk-box` rule is out-specified by it. **Motion in and out are
+deliberately different, and used to be accidentally different**: `visibility` flipped
+with no transition, so the box's own exit ran inside an already-invisible container —
+the panel teleported while the scrim faded on for 260ms. The container now carries
+`transition: visibility 0s linear 0.22s` (the `.open` rule restates it without the delay
+so opening stays instant), the closed state is the quick unsprung EXIT and `.open`
+carries the slow spring ENTRY. Gated by ui-test-searchpage §17, which samples the exit
+by STATE rather than on a clock — `closeCmdK` does ~180ms of synchronous teardown before
+the first paint, so a fixed 100ms sample reports "opacity 1" for an exit that works.
+**Unified interface**: RESULTS/JUMP-TO/quick-ACTIONS are rows
 (`.cmdk-row` / `.cmdk-qa-row`, distinct destination glyphs via a registry `icon` + a row's
 `iconType`); refine/related/ask PIVOTS are pills (`.cmdk-chip`); one hover tint (`--cmdk-sel`),
 one pill spec. Suite: `ui-test-searchpage.js` (page open/toggle/back, answers, logo states,

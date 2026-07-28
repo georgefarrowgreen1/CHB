@@ -3272,12 +3272,19 @@ body.light-mode .cmdk-search input {
   padding: 0;
   /* Kept in the layout rather than display:none, because `display` cannot be
      transitioned and the pop-out has to DROP rather than appear. Hidden from
-     pointers AND from assistive tech while closed. */
+     pointers AND from assistive tech while closed.
+     …but `visibility` flipped INSTANTLY, so only the OPENING was animated: closing,
+     the box's transitions ran inside an already-invisible container, so the panel
+     teleported while the scrim went on fading for 260ms. The delayed 0s step holds
+     the container visible long enough for the box to leave; `.open` restates the
+     transition without the delay so opening stays immediate. */
   visibility: hidden;
+  transition: visibility 0s linear 0.22s;
   pointer-events: none;
 }
 #cmdk.cmdk-overlay.open {
   visibility: visible;
+  transition: visibility 0s;
 }
 #cmdk.cmdk-overlay .cmdk-box {
   pointer-events: auto;
@@ -3303,21 +3310,46 @@ body.light-mode .cmdk-search input {
   -webkit-backdrop-filter: blur(22px) saturate(1.3);
   backdrop-filter: blur(22px) saturate(1.3);
   box-shadow: var(--shadow-float, 0 24px 60px rgba(0, 0, 0, 0.45));
-  /* iOS-flavoured drop: falls a little and settles. One transform is safe here —
-     nothing else animates this element, so there is no keyframe to fight over the
-     property (the dock pill's rule). --spring, not --fluid-bezier: a small panel
-     can overshoot pleasantly, which is exactly what a full-bleed one could not. */
+  /* iOS-flavoured drop: falls a little and settles. Safe alongside the Siri aura
+     because that keyframe touches box-shadow ONLY — no property for the two to
+     fight over (the dock pill's rule). --spring, not --fluid-bezier: a small panel
+     can overshoot pleasantly, which a full-bleed one could not.
+     THIS state is the EXIT (what the box returns to when .open goes), so it is
+     quicker and unsprung — a dismissal gets out of the way rather than bouncing —
+     and .open carries the slower spring entry. Asymmetric on purpose; it used to be
+     asymmetric by accident, which is a different thing. */
   opacity: 0;
   transform: translateY(-10px) scale(0.985);
   transform-origin: top center;
   transition:
-    opacity 0.2s var(--fluid-bezier),
-    transform 0.42s var(--spring);
-  animation: none;
+    opacity 0.16s var(--fluid-bezier),
+    transform 0.2s var(--fluid-bezier);
+  /* The RISE is replaced by the drop above; the AURA is not. Blanking the whole
+     `animation` shorthand here silenced cmdkSiriAura too, so the assistant's
+     breathing Siri glow — a documented part of its look — had not rendered on any
+     surface since the pop-out landed. Name the one that goes. */
+  animation: cmdkSiriAura 6s ease-in-out infinite;
 }
 #cmdk.cmdk-overlay.open .cmdk-box {
   transform: none;
   opacity: 1;
+  transition:
+    opacity 0.2s var(--fluid-bezier),
+    transform 0.42s var(--spring);
+}
+/* Restated at the overlay's specificity: the generic reduced-motion rule for
+   .cmdk-box is out-specified by `#cmdk.cmdk-overlay .cmdk-box`, so without this the
+   aura would keep breathing for someone who asked it not to. */
+@media (prefers-reduced-motion: reduce) {
+  #cmdk.cmdk-overlay .cmdk-box {
+    animation: none;
+    transition: none;
+  }
+  /* …and with no exit to wait for, the container should not hold itself visible
+     for 220ms either. */
+  #cmdk.cmdk-overlay {
+    transition: none;
+  }
 }
 /* A darkstar hairline along the top edge — the assistant's colour, stated once
    rather than tinting the whole panel. Carried over from the sheet it replaces. */
@@ -3399,9 +3431,16 @@ body.cmdk-open {
    weight: a board's first row is the headline fact, so its label gets figure-sized
    type, while the rows keep their 44px touch floor.
    ============================================================ */
+/* ONE COLUMN, said out loud. `repeat(auto-fit, minmax(240px, 1fr))` was
+   responsive-looking dead code inside a 520px pop-out: the content box is 478px and
+   two 240px tracks plus the gap need 490, so it computed to a single track at every
+   width this window has (boards render only on the EMPTY landing, and it widens to
+   860px only for a selected record). Narrowing the minimum to force two is worse —
+   a board row leads with "You're owed £955.00 across 3 guests", which does not
+   survive a 234px track. */
 .cmdk-boards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: 1fr;
   gap: 10px;
   padding: 10px 12px 4px;
 }
@@ -3412,9 +3451,12 @@ body.cmdk-open {
   padding: 12px 10px 8px;
   min-width: 0;
 }
+/* Padded like the rows it captions (10px, not 4), so heading and content share one
+   left rail — measured, they sat 10px apart, which reads as a heading belonging to
+   nothing in particular. */
 .cmdk-board-cap {
   margin: 0 0 4px;
-  padding: 0 4px;
+  padding: 0 10px;
   font-size: var(--cmdk-fs-micro);
   font-weight: 700;
   letter-spacing: 0.11em;
@@ -3453,7 +3495,6 @@ body.cmdk-open {
 }
 @media (max-width: 479px) {
   .cmdk-boards {
-    grid-template-columns: 1fr;
     padding: 8px 10px 4px;
   }
 }
@@ -3720,6 +3761,13 @@ body.cmdk-open {
    was started. Indented to the row's label like the quick-actions panel, so it
    reads as belonging to that row and not to the list.
    ============================================================ */
+/* It ARRIVES rather than blinking into place. The strip is inserted by a re-render,
+   so it used to appear as a hard cut — the one moment in the whole window where
+   something the owner just did reports back, and it looked like a repaint artefact.
+   NB the rows below it still move the moment it lands: closing that gap means
+   animating a HEIGHT, which this codebase does not do (transform-only, for the
+   reason the dock icons stuttered), so the shift is left honest rather than smeared
+   over 200ms. This is the strip announcing itself, not the list settling. */
 .cmdk-actmsg {
   display: flex;
   align-items: center;
@@ -3729,6 +3777,22 @@ body.cmdk-open {
   border-radius: var(--r-sm);
   font-size: var(--cmdk-fs-meta);
   line-height: 1.4;
+  animation: cmdkStripIn 0.18s var(--fluid-bezier) both;
+}
+@keyframes cmdkStripIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cmdk-actmsg {
+    animation: none;
+  }
 }
 .cmdk-actmsg-ic {
   flex: 0 0 auto;
