@@ -7190,12 +7190,20 @@ function cmdkChipBack() {
 }
 // One result row (+ its quick-action bar when selected). `top` gives the Top Hit
 // its larger treatment.
+// TWO CURSORS, ONE OF THEM DEAD. Rows are `role="option"` buttons and were tabbable by
+// default — 10 of the landing's 14 focusable nodes — while every navigation key is bound
+// only to the field. So Tabbing into the list left ArrowUp/Down/Home/End/Left/Right doing
+// nothing (measured: after a real ArrowDown on a focused row, `{sel:-1, active:'cmdk-opt-0',
+// scrollTop:0}` — nothing moved), and the `.is-sel` highlight and the Tab ring could sit
+// on two different rows at once. `tabindex="-1"` hands Tab back to the field, the scopes,
+// close and help, and leaves the rows to the arrows — which is the roving-focus contract
+// the combobox + aria-activedescendant markup already describes.
 function cmdkRowHtml(it, i, top) {
     const sel = i === __cmdkSel;
     // Highlight the matched terms — but not on computed summaries (answer/figure),
     // whose text isn't a literal echo of the query.
     const hi = it.type === 'answer' || it.type === 'figure' ? (s) => escapeHtml(s || '') : cmdkHi;
-    const row = `<button type="button" id="cmdk-opt-${i}" class="cmdk-row cmdk-row-${it.type}${sel ? ' is-sel' : ''}${top ? ' cmdk-tophit' : ''}${it.wrap ? ' cmdk-row-wrap' : ''}" role="option" aria-selected="${sel}" data-idx="${i}" ${chbAttrs('cmdkExec', i)}>
+    const row = `<button type="button" tabindex="-1" id="cmdk-opt-${i}" class="cmdk-row cmdk-row-${it.type}${sel ? ' is-sel' : ''}${top ? ' cmdk-tophit' : ''}${it.wrap ? ' cmdk-row-wrap' : ''}" role="option" aria-selected="${sel}" data-idx="${i}" ${chbAttrs('cmdkExec', i)}>
                     <span class="cmdk-row-ic cmdk-${it.type}">${cmdkIcon(it.iconType || it.type)}</span>
                     <span class="cmdk-row-main"><span class="cmdk-row-label" title="${escapeHtml(String(it.label || ''))}">${hi(it.label)}</span><span class="cmdk-row-sub"${it.sub ? ` title="${escapeHtml(String(it.sub))}"` : ''}>${hi(it.sub || '')}</span></span>
                 </button>`;
@@ -7445,7 +7453,7 @@ function cmdkIsHeroRow(it) {
 }
 function cmdkHeroHtml(it, i) {
     const sel = __cmdkSel === i;
-    return `<button type="button" id="cmdk-opt-${i}" class="cmdk-row cmdk-hero cmdk-row-${it.type}${sel ? ' is-sel' : ''}" role="option" aria-selected="${sel}" data-idx="${i}" ${chbAttrs('cmdkExec', i)}>
+    return `<button type="button" tabindex="-1" id="cmdk-opt-${i}" class="cmdk-row cmdk-hero cmdk-row-${it.type}${sel ? ' is-sel' : ''}" role="option" aria-selected="${sel}" data-idx="${i}" ${chbAttrs('cmdkExec', i)}>
                 <span class="cmdk-hero-main">
                     <span class="cmdk-hero-label">${cmdkHeroFigure(it.label)}</span>
                     ${it.sub ? `<span class="cmdk-hero-sub" title="${escapeHtml(String(it.sub))}">${escapeHtml(String(it.sub))}</span>` : ''}
@@ -7484,6 +7492,18 @@ function cmdkBoardsHtml(items, offset) {
 function cmdkRenderInner() {
     const box = document.getElementById('cmdk-results');
     if (!box) return;
+    // WIDTH FIRST, above every early return. The pane and the box's width are one
+    // decision (see SPLIT below) and this used to be toggled at the point the pane
+    // renders — which three branches never reach, because __cmdkDeep, __cmdkEmpty and
+    // the no-results state all return before it. So those screens kept whatever width
+    // the last selection left behind: measured at 1440, the empty landing rendered
+    // 860px with NO pane and its boards silently reflowed to two columns, deep search
+    // 860x373 with `.cmdk-detail` null, and closing deep search stayed stuck at 860.
+    // Deciding here keeps the invariant the comment claims — one place decides the
+    // pane, the same place sizes the box — and makes it true for every branch.
+    const ov = document.getElementById('cmdk');
+    const wantPane = !__cmdkDeep && !__cmdkEmpty && !!__cmdkResults.length && !!cmdkDetailHtml();
+    if (ov) ov.classList.toggle('cmdk-wide', wantPane);
     if (__cmdkDeep) { cmdkRenderDeep(box); return; } // full "search everything" view
     // The scope switch sits above every state EXCEPT the empty landing, where it
     // filters nothing (see the `keep` note in cmdkSearchCore) and only claimed to.
@@ -7553,15 +7573,11 @@ function cmdkRenderInner() {
     parts.push(cmdkDeepCta()); // "Search everything for '…'" → the full deep view
     // SPLIT: the selected record's summary, placed in a second column by CSS at
     // >=1000px and collapsed below it. Rendered last so the list is complete first.
-    const detail = cmdkDetailHtml();
-    // The pop-out WIDENS to hold the split, and has to. The pane was designed when
-    // this was a full-bleed window with ~1000px going spare; inside a 520px pop-out
-    // the grid still fired and starved the thing it sits beside — measured at 1440px,
-    // the results list got 226px against the pane's 260px, i.e. the list was narrower
-    // than its own sidebar. The class is set here rather than with :has() so the one
-    // place that decides to render a pane is the one place that sizes the box for it.
-    const ov = document.getElementById('cmdk');
-    if (ov) ov.classList.toggle('cmdk-wide', !!detail);
+    // The pop-out WIDENS to hold the split (`cmdk-wide`, decided at the top of this
+    // function): the pane was designed when search was a full-bleed window with
+    // ~1000px going spare, and inside a 520px pop-out the grid still fired and starved
+    // the thing it sits beside — measured at 1440px, 226px of list against a 260px pane.
+    const detail = wantPane ? cmdkDetailHtml() : '';
     if (detail) {
         // The scope switch spans the whole window — it filters the SEARCH, not the
         // left column, so narrowing it into the list would misrepresent what it does.
@@ -7762,6 +7778,27 @@ function cmdkGreeting() {
 //
 // The strip is STATE plus a re-render, not a DOM poke — same as everything else
 // in this file, so it survives the next cmdkRender() instead of being wiped by it.
+// WHAT AN OWNER READS WHEN AN ACTION FAILS. This used to be `e.message` straight onto
+// the strip, and apiPost slices a failed body to 200 characters — so a 500 rendered, in
+// the search window, verbatim: "Server error 500: <br /> <b>Fatal error</b>: Uncaught
+// PDOException: SQLSTATE[HY000] [2002] Connection refused in /kunden/homepages/1/d1/
+// htdocs/db.php:88 Stack trace: #0 /watchers.php(12)". A JSON `{error:'watchers_key:
+// kind required'}` came through just as raw.
+//
+// Some throws here are DELIBERATE PROSE, though — chbBulkRun raises "Couldn't send any
+// — Dan Rowe has no email address", and replacing that with a generic line would be a
+// downgrade. So the test is whether the message LOOKS like something written for a
+// person: no markup, no stack frame, no SQLSTATE, no filesystem path, no bare
+// snake_case identifier, and short enough to be a sentence. Anything else gets a
+// sentence about the action instead, and the raw text still reaches the error reporter
+// through the normal client-capture path.
+const CHB_ERR_MACHINE = /[<>]|SQLSTATE|Stack trace|Uncaught|Exception|\bFatal\b|\/[a-z0-9_.-]+\.php|\b[a-z]+_[a-z_]+:/i;
+function chbActErrSay(e, a) {
+    const raw = (e && e.message ? String(e.message) : '').trim();
+    if (raw && raw.length <= 120 && !CHB_ERR_MACHINE.test(raw)) return raw;
+    const what = ((a && a.label) || 'do that').toLowerCase();
+    return `Couldn't ${what} — the server didn't accept it. Try again in a moment.`;
+}
 let __cmdkActMsg = null; // { idx, state: 'busy'|'ok'|'warn'|'err', say }
 async function cmdkAct(i, k) {
     const it = __cmdkResults[i];
@@ -7789,7 +7826,7 @@ async function cmdkAct(i, k) {
         if (res.reload !== false) { try { await loadData(); } catch (e) {} }
         cmdkRefreshRow(i);
     } catch (e) {
-        __cmdkActMsg = { idx: i, state: 'err', say: (e && e.message) || "That didn't work" };
+        __cmdkActMsg = { idx: i, state: 'err', say: chbActErrSay(e, a) };
         cmdkRender(true);
     }
 }
@@ -8136,6 +8173,44 @@ function cmdkEnsureOverlay() {
     }
     return o;
 }
+// ============================================================
+//  FOCUS CONTAINMENT. The pop-out covers the workspace but did not contain focus, and
+//  the workspace is still there: measured, ONE Shift+Tab from the field landed on
+//  "Save note" inside the booking hub BEHIND the scrim — off screen, unreachable
+//  (body is overflow:hidden while cmdk-open), fully activatable, wearing a focus ring
+//  nobody can see — and two Shift+Tabs plus typing put the text into that booking's
+//  notes textarea while the search field stayed empty and the pop-out stayed open.
+//  Forward Tab escaped too, onto the crown and the dock behind the scrim.
+//
+//  Tab cycles inside the box instead. Deliberately a keydown handler rather than
+//  `inert` on the rest of the page: the workspace underneath must keep rendering (the
+//  whole point of a pop-out over a page you can still see), and inert would also have
+//  to be unwound on every exit path — of which there are four.
+// ============================================================
+const CMDK_FOCUSABLE = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+function cmdkFocusables() {
+    const box = document.querySelector('#cmdk .cmdk-box');
+    if (!box) return [];
+    // Array.from, not spread: the lib config this repo type-checks against does not
+    // give NodeList an iterator, and the ratchet forbids adding an error.
+    return /** @type {HTMLElement[]} */ (Array.from(box.querySelectorAll(CMDK_FOCUSABLE))).filter((el) => {
+        if (el.hidden || el.getAttribute('aria-hidden') === 'true') return false;
+        const r = el.getBoundingClientRect();
+        return r.width > 0 && r.height > 0; // a hidden control is not a tab stop
+    });
+}
+function cmdkTrapTab(e) {
+    if (e.key !== 'Tab' || !cmdkIsOpen()) return;
+    const list = cmdkFocusables();
+    if (!list.length) return;
+    const first = list[0], last = list[list.length - 1];
+    const at = list.indexOf(/** @type {any} */ (document.activeElement));
+    // Focus already outside the box (a stray click, or a row that ran) — pull it back
+    // rather than letting Tab walk into the page.
+    if (at === -1) { e.preventDefault(); first.focus(); return; }
+    if (e.shiftKey && at === 0) { e.preventDefault(); last.focus(); return; }
+    if (!e.shiftKey && at === list.length - 1) { e.preventDefault(); first.focus(); }
+}
 function cmdkIsOpen() {
     const o = document.getElementById('cmdk');
     return !!(o && o.classList.contains('open'));
@@ -8154,6 +8229,13 @@ function openCmdK() {
     __cmdkConvCtx = null; // a fresh session — never inherit the LAST session's pronoun referent
     cmdkThreadClear(); // …and never the last session's thread
     if (o) o.classList.add('open');
+    if (o) {
+        // MODAL to assistive tech as well as to the pointer. The node keeps role=search
+        // for the field's own semantics; aria-modal is what stops a screen reader
+        // wandering into the workspace the scrim covers.
+        o.setAttribute('aria-modal', 'true');
+        document.addEventListener('keydown', cmdkTrapTab, true);
+    }
     const scrim = document.getElementById('cmdk-scrim');
     if (scrim) scrim.classList.add('open');
     document.body.classList.add('cmdk-open');
@@ -8171,6 +8253,8 @@ function closeCmdK() {
     // Hide the window. Every existing caller wants this: a result run closes then
     // navigates underneath, Back closes and stays put, nav() closes on any exit.
     if (o) o.classList.remove('open');
+    if (o) o.removeAttribute('aria-modal');
+    document.removeEventListener('keydown', cmdkTrapTab, true);
     const scrim = document.getElementById('cmdk-scrim');
     if (scrim) scrim.classList.remove('open');
     document.body.classList.remove('cmdk-open');

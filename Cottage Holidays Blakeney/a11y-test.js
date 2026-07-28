@@ -17,6 +17,9 @@
 //    §1  TOKEN contrast, by arithmetic. Text colour in this codebase comes from
 //        tokens, so if every text token clears AA against every surface of its
 //        own theme, the text passes. No rendering, no sampling, no flake.
+//    §1b The same tokens on their OWN status tint, which is where they paint.
+//    §1c The assistant's model-state colours at the 3:1 non-text bar — the state
+//        is reported by colour ALONE, so those colours are information.
 //    §2  A ratchet on accent-as-text, the specific bug §1 was added for.
 //    §3  Accessible NAMES on interactive elements — an attribute question.
 //    §4  Minimum font size.
@@ -58,11 +61,17 @@ const ratio = (a, b) => { const l1 = lum(a), l2 = lum(b); return (Math.max(l1, l
 // The real page grounds, sampled from screenshots of the running app (NOT
 // guessed): light mode is warm linen + near-white cards + a grey band in the
 // timeline header; dark mode is the near-black ground and its raised panels.
-// --cmdk-surface is in here because the search window is FULL BLEED and OPAQUE:
-// every word the owner reads while searching sits on it, and it is the one surface
-// no amount of glass-compositing guesswork applies to (it is a flat colour). It was
-// added the moment that surface existed — a new surface has to declare itself here
-// for the same reason a new text token does.
+// --cmdk-surface is in here because every word the owner reads while searching
+// sits on it — a new surface has to declare itself here for the same reason a new
+// text token does. It was registered when the search window was full-bleed and
+// OPAQUE, i.e. exactly the flat colour this arithmetic wants. The window is now a
+// 520px GLASS pop-out, so the token is a stand-in rather than the literal paint:
+// measured, the real composite is #fbf8f7 on light and ~#15161a on dark, both
+// within 1.03 of the registered value, and on light the registered one is the
+// DARKER of the two — so dark ink measured against it reads slightly worse than it
+// really is, which is the safe direction for a gate to be wrong in. What no static
+// value can model is the workspace showing through the blur; that is a real limit
+// of measuring glass by arithmetic, and the reason the value is conservative.
 const SURFACES = {
     light: { '#fdfcfa': 'card cream', '#f5f1e9': 'linen panel', '#ffffff': 'white', '#f0f0f0': 'timeline band', '#f7f4ee': 'search window' },
     dark: { '#121316': 'page ground', '#1c2e3a': 'raised panel', '#22333f': 'glass over panel', '#14181d': 'search window' },
@@ -156,6 +165,82 @@ for (const [theme, themeTokens] of [['light', light], ['dark', dark]]) {
             if (r < worst) { worst = r; worstOn = label; }
         }
         ok(worst >= 4.5, `${theme}: ${inkTok} on ${Math.round(pct * 100)}% ${fillTok} — worst ${worst.toFixed(2)}:1 on ${worstOn} (${where})`);
+    }
+}
+
+// §1c — the ASSISTANT'S STATE COLOURS, which are information and not decoration.
+// The model state (ready / understood / by-meaning / best-guess / learning) is
+// reported by the knot glyph's COLOUR ALONE — there is no worded pill, by design —
+// so each state colour is a WCAG 1.4.11 non-text case at 3:1 against the search
+// surface. Measured before this gate existed: on light, understood sat at 2.53,
+// meaning at 2.56 (1.45 mid-animation), learning 1.77 and guess 1.76, i.e. four of
+// the five states were reported in ink the owner could barely see, in the theme
+// this back office actually ships in. The tokens live in admin.css (owner-only), so
+// they are read from there — and the two states that FADE are measured at their
+// animation floor too, because a colour you can only read at the top of a 2.2s
+// cycle is not a colour you can read.
+// Values here are not all plain hex — a knot token may alias another token
+// (`var(--ok-text)`) or wrap an HSL-parts token (`hsl(var(--siri-3))`), which is
+// deliberate: the hue is stated once and the knot borrows it. So this reads WHOLE
+// declarations and resolves them, rather than the hex-only reader §1 uses.
+function tokensAny(css, selector) {
+    const i = css.indexOf(selector);
+    if (i < 0) return {};
+    const open = css.indexOf('{', i);
+    let depth = 0, end = open;
+    for (let j = open; j < css.length; j++) {
+        if (css[j] === '{') depth++;
+        else if (css[j] === '}') { depth--; if (!depth) { end = j; break; } }
+    }
+    const out = {};
+    for (const m of stripC(css.slice(open + 1, end)).matchAll(/(--[a-z0-9-]+)\s*:\s*([^;{}]+);/g)) out[m[1]] = m[2].trim();
+    return out;
+}
+const hslParts = (s) => {
+    const m = String(s).trim().match(/^([\d.]+)\s+([\d.]+)%\s+([\d.]+)%$/);
+    if (!m) return null;
+    const h = +m[1], sa = +m[2] / 100, l = +m[3] / 100;
+    const k = (n) => (n + h / 30) % 12;
+    const a = sa * Math.min(l, 1 - l);
+    const f = (n) => l - a * Math.max(-1, Math.min(k(n) - 3, Math.min(9 - k(n), 1)));
+    return [f(0), f(8), f(4)].map((v) => Math.round(v * 255));
+};
+function resolveColour(v, tables, depth = 0) {
+    if (v == null || depth > 6) return null;
+    v = String(v).trim();
+    let m = v.match(/^var\(\s*(--[a-z0-9-]+)\s*\)$/);
+    if (m) { for (const t of tables) if (t[m[1]] != null) return resolveColour(t[m[1]], tables, depth + 1); return null; }
+    m = v.match(/^hsl\(\s*var\(\s*(--[a-z0-9-]+)\s*\)\s*\)$/);
+    if (m) { for (const t of tables) if (t[m[1]] != null) return hslParts(t[m[1]]); return null; }
+    if (/^#[0-9a-fA-F]{6}$/.test(v)) return hex2rgb(v);
+    m = v.match(/^hsl\(\s*(.+?)\s*\)$/);
+    if (m) return hslParts(m[1].replace(/,/g, ' '));
+    return null;
+}
+const adminCss = fs.readFileSync(path.join(DIR, 'admin.css'), 'utf8');
+const aDark = tokensAny(adminCss, ':root');
+const aLight = { ...aDark, ...tokensAny(adminCss, 'body.light-mode') };
+const appDarkAll = tokensAny(appCss, ':root');
+const appLightAll = { ...appDarkAll, ...tokensAny(appCss, 'body.light-mode') };
+const KNOT = {
+    '--knot-ready': { label: 'ready', floor: 1 },
+    '--knot-understood': { label: 'understood (breathes)', floor: 0.72 },
+    '--knot-meaning': { label: 'by meaning', floor: 1 },
+    '--knot-meaning-a': { label: 'by meaning · teal end', floor: 1 },
+    '--knot-meaning-b': { label: 'by meaning · violet end', floor: 1 },
+    '--knot-guess': { label: 'best guess', floor: 1 },
+    '--knot-learning': { label: 'learning (pulses)', floor: 0.72 },
+};
+console.log('\n== 1c. every model-state colour clears 3:1 on the search surface (colour is the only channel) ==');
+for (const [theme, admTok, appTok] of [['light', aLight, appLightAll], ['dark', aDark, appDarkAll]]) {
+    const ground = resolveColour(admTok['--cmdk-surface'], [admTok, appTok]);
+    if (!ground) { ok(false, `${theme}: --cmdk-surface did not resolve — the gate has no ground to measure against`); continue; }
+    for (const [tok, { label, floor }] of Object.entries(KNOT)) {
+        const ink = resolveColour(admTok[tok], [admTok, appTok]);
+        if (!ink) { ok(false, `${theme}: ${tok} (${label}) did not resolve to a colour — the gate cannot see it`); continue; }
+        const faded = ink.map((c, i) => c * floor + ground[i] * (1 - floor));
+        const r = ratio(faded, ground);
+        ok(r >= 3, `${theme}: ${label} ${admTok[tok]}${floor < 1 ? ` @${floor}` : ''} — ${r.toFixed(2)}:1 on the search surface`);
     }
 }
 

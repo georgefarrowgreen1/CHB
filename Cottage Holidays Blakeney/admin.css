@@ -28,14 +28,62 @@
   --siri-3: 210 92% 62%;
   --siri-4: 168 78% 55%;
   --siri-5: 34 96% 60%;
-  /* The full-bleed search window's SOLID surface (it cannot be glass — see the
-     overlay block at the end of this file) and the one measure its content column
-     shares. A shade off the page ground, so the window still reads as a layer. */
+  /* THE KNOT'S STATE COLOURS, named once so they can be retuned once. Model state
+     is carried by COLOUR ALONE, so each is a 1.4.11 non-text case at 3:1, not
+     decoration. Dark clears it (3.76 worst); on the light search surface four of
+     five did NOT — understood 2.53, meaning 2.56 (1.45 mid-animation), learning
+     1.77, guess 1.76. Light gets deeper instances of the same hues, reusing
+     --ok-text / --warn-text. `guess` reads tentative by being dim and that dimming
+     is baked into the VALUE, not an `opacity: 0.6` — the dark value is the exact
+     composite the alpha produced, so it looks identical with no alpha left for a
+     gate to model. Gated by a11y-test §1c. */
+  --knot-ready: var(--darkstar);
+  --knot-understood: var(--ok);
+  --knot-meaning: hsl(var(--siri-3));
+  --knot-meaning-a: hsl(var(--siri-4));
+  --knot-meaning-b: hsl(var(--siri-2));
+  --knot-guess: #886e5b;
+  --knot-learning: var(--warn);
+  /* The search window's nominal surface. It was the window's literal paint when
+     the window was full-bleed and had to be opaque; the pop-out is glass again
+     (see the overlay block at the end of this file), so this is now the STAND-IN
+     that a11y-test §1/§1c measure ink against — a shade off the page ground,
+     within 1.03 of the real composite and on the conservative side of it. */
   --cmdk-surface: #14181d;
+  /* THE SEARCH WINDOW'S TYPE SCALE. It had NINETEEN sizes, twelve within 0.02rem
+     of a neighbour (1.16 beside 1.15; 1.05/1.04/1.02; 0.86 down to 0.76 inside a
+     1.6px band) — differences that small are noise, not hierarchy. Three were not
+     even rendering: .cmdk-row-label, .cmdk-row-sub and .cmdk-foot each declared a
+     size the later ONE-ASSISTANT-LOOK block overrode, so the file stated two
+     answers. Seven steps now, each ≥1.2px from its neighbour, named for the JOB:
+       hero  the answer, a board's lead figure — and the query field, because you
+             ask at the size you are answered
+       lead  a promoted row: top hit, figure row, the detail pane's name
+       body  prose — a generated how-to, help steps, an editable field
+       row   the list's workhorse label
+       sub   a hero's sub, a past turn, a jump destination
+       meta  chips, scope, hints, pills, the row sub, the hint foot
+       micro uppercase captions, keycaps, the system line
+     A phone re-declares the TOKEN, not the rule (479px block below), so the narrow
+     tuning never becomes a nineteenth size. Gated by ui-test-searchpage §16b. */
+  --cmdk-fs-hero: 1.15rem;
+  --cmdk-fs-lead: 1.04rem;
+  --cmdk-fs-body: 0.95rem;
+  --cmdk-fs-row: 0.9rem;
+  --cmdk-fs-sub: 0.8rem;
+  --cmdk-fs-meta: 0.76rem;
+  --cmdk-fs-micro: 0.7rem;
   --cmdk-measure: 720px;
 }
 body.light-mode {
   --cmdk-surface: #f7f4ee;
+  --knot-ready: #923adf; /* 4.91:1 on the search surface (was #a855f7 → 3.60) */
+  --knot-understood: var(--ok-text); /* 5.47:1 (was --ok #4caf50 → 2.53) */
+  --knot-meaning: #0861ba; /* 5.58:1 (was hsl(--siri-3) → 2.56) */
+  --knot-meaning-a: #0f7b65; /* 4.73:1 (was hsl(--siri-4) → 1.45) */
+  --knot-meaning-b: #741dd7; /* 6.60:1 (was hsl(--siri-2) → 3.51) */
+  --knot-guess: #917c6b; /* 3.61:1 (was --accent at 0.6 → 1.76) */
+  --knot-learning: var(--warn-text); /* 5.24:1 (was --warn #ffa726 → 1.77) */
 }
 /* The aura the palette card breathes while open — Siri's colours cycling around
    the edges, layered ON TOP of the card's own depth shadow. */
@@ -1406,7 +1454,7 @@ body.owner-mode header.header-condensed .logo-mark {
 .cmdk-box {
   /* Local palette tints, derived from the accent so light + dark both work. */
   --cmdk-tile: color-mix(in srgb, var(--accent) 14%, transparent);
-  --cmdk-sel: color-mix(in srgb, var(--accent) 13%, transparent);
+  --cmdk-sel: color-mix(in srgb, var(--accent) 13%, var(--glass-hover));
   --cmdk-sel-edge: color-mix(in srgb, var(--accent) 55%, transparent);
   width: 100%;
   max-width: 680px;
@@ -1470,49 +1518,55 @@ body.owner-mode header.header-condensed .logo-mark {
 }
 /* READY — quiet purple: the model is loaded and idle, its presence always shown. */
 #cmdk-ml[data-mstate="ready"] {
-  color: var(--darkstar);
+  color: var(--knot-ready);
   opacity: 1;
 }
 /* UNDERSTOOD — a paraphrase mapped to a known intent: confident green, breathing. */
 #cmdk-ml[data-mstate="understood"] {
-  color: var(--ok);
+  color: var(--knot-understood);
   opacity: 1;
   animation: chb-ms-breathe 2.2s ease-in-out infinite;
 }
 /* BY MEANING — the on-device SEMANTIC model recalled this. Its own Siri
    identity: the knot cycles teal→purple with a soft glow — instantly distinct
-   from understood's steady green. Reduced motion gets the static teal base. */
+   from understood's steady green. Reduced motion (which blanks the animation
+   below) leaves the declared --knot-meaning blue standing. */
 #cmdk-ml[data-mstate="meaning"] {
-  color: hsl(var(--siri-3));
+  color: var(--knot-meaning);
   opacity: 1;
   animation: chb-knot-siri 2.8s ease-in-out infinite;
 }
-/* BEST GUESS — only near-miss suggestions, so it reads TENTATIVE: the accent
-   knot, dimmed, no motion. */
+/* BEST GUESS — only near-miss suggestions, so it reads TENTATIVE: a dimmed knot,
+   no motion. The dimming is in the COLOUR (see --knot-guess), not an alpha. */
 #cmdk-ml[data-mstate="guess"] {
-  color: var(--accent);
-  opacity: 0.6;
+  color: var(--knot-guess);
+  opacity: 1;
 }
 /* LEARNING — absorbing a taught phrase / suppression: orange, pulsing ~2s. */
 #cmdk-ml[data-mstate="learning"] {
-  color: var(--warn);
+  color: var(--knot-learning);
   opacity: 1;
   animation: chb-ms-pulse 0.6s ease-in-out infinite;
 }
 body.owner-mode .logo.ml-learning .logo-mark {
   animation: chb-ml-learn 0.55s ease-in-out infinite;
 }
+/* A fade is a contrast cut: at the old floors the light knot fell to 2.83:1
+   (breathe, 0.66) and 2.12:1 (pulse, 0.5), so a state read as colour spent half
+   its cycle under the 3:1 floor. 0.72 is the measured floor that holds 3:1 on the
+   light surface for both; the pulse gets its urgency back from a GLOW swing, so
+   the ink stays readable while the halo moves. */
 @keyframes chb-ms-breathe {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.66; }
+  50% { opacity: 0.72; }
 }
 @keyframes chb-ms-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+  0%, 100% { opacity: 1; filter: none; }
+  50% { opacity: 0.72; filter: drop-shadow(0 0 6px currentColor); }
 }
 @keyframes chb-knot-siri {
-  0%, 100% { color: hsl(var(--siri-4)); filter: drop-shadow(0 0 5px hsl(var(--siri-4) / 0.5)); }
-  50% { color: hsl(var(--siri-2)); filter: drop-shadow(0 0 7px hsl(var(--siri-2) / 0.5)); }
+  0%, 100% { color: var(--knot-meaning-a); filter: drop-shadow(0 0 5px var(--knot-meaning-a)); }
+  50% { color: var(--knot-meaning-b); filter: drop-shadow(0 0 7px var(--knot-meaning-b)); }
 }
 @keyframes chb-ml-learn {
   0%, 100% { opacity: 1; filter: drop-shadow(0 0 6px var(--warn)); }
@@ -1562,7 +1616,6 @@ body.owner-mode .logo.ml-learning .logo-mark {
 .cmdk-clear:focus-visible {
   background: var(--glass-hover);
   color: var(--text-light);
-  outline: none;
 }
 /* The knot never hides — it IS the AI status. The ✕ clear sits on the RIGHT
    (after the input, before help) and simply appears once there's text. */
@@ -1594,7 +1647,6 @@ body.owner-mode .logo.ml-learning .logo-mark {
 .cmdk-help-btn:focus-visible {
   background: var(--glass-hover);
   color: var(--text-light);
-  outline: none;
 }
 .cmdk-search input {
   flex: 1;
@@ -1604,7 +1656,7 @@ body.owner-mode .logo.ml-learning .logo-mark {
   outline: none;
   color: var(--text-light);
   font: inherit;
-  font-size: 1.08rem;
+  font-size: var(--cmdk-fs-hero);
   font-weight: 500;
   letter-spacing: -0.01em;
 }
@@ -1654,7 +1706,6 @@ body.owner-mode .logo.ml-learning .logo-mark {
   gap: 16px;
   padding: 9px 16px;
   border-top: 1px solid var(--glass-border);
-  font-size: 0.72rem;
   color: var(--text-muted);
 }
 @media (hover: hover) and (pointer: fine) {
@@ -1676,7 +1727,7 @@ body.owner-mode .logo.ml-learning .logo-mark {
   border: 1px solid var(--glass-border);
   background: var(--glass-hover);
   color: var(--text-light);
-  font-size: 0.7rem;
+  font-size: var(--cmdk-fs-micro);
   font-weight: 600;
   line-height: 1;
 }
@@ -1688,7 +1739,7 @@ body.owner-mode .logo.ml-learning .logo-mark {
   padding: 34px 20px 30px;
   text-align: center;
   color: var(--text-muted);
-  font-size: 0.9rem;
+  font-size: var(--cmdk-fs-row);
   line-height: 1.5;
 }
 .cmdk-none .cmdk-none-ic {
@@ -1701,7 +1752,7 @@ body.owner-mode .logo.ml-learning .logo-mark {
   display: block;
   color: var(--text-light);
   font-weight: 600;
-  font-size: 0.98rem;
+  font-size: var(--cmdk-fs-body);
 }
 .cmdk-row {
   display: flex;
@@ -1720,6 +1771,13 @@ body.owner-mode .logo.ml-learning .logo-mark {
 .cmdk-row:hover {
   background: var(--glass-hover);
 }
+/* SELECTION MUST OUTRANK HOVER, and in light mode it did not. --cmdk-sel was a
+   translucent tint over the panel while hover paints --glass-hover, a 92% white:
+   measured light, rest [227,226,226] → hover [253,253,253] (+26, a loud lift) →
+   selected [223,214,209] (a 4–17 warm DARKENING), so the arrow-key cursor was the
+   quieter of the two and resting the mouse anywhere outshouted it. Mixing the tint
+   INTO the hover ground makes the ladder monotonic in both themes by construction:
+   selected is hover PLUS the accent, never an alternative to it. */
 .cmdk-row.is-sel {
   background: var(--cmdk-sel);
   box-shadow: inset 3px 0 0 var(--cmdk-sel-edge);
@@ -1773,7 +1831,6 @@ body.owner-mode .logo.ml-learning .logo-mark {
   gap: 2px;
 }
 .cmdk-row-label {
-  font-size: 0.95rem;
   font-weight: 600;
   line-height: 1.3;
   letter-spacing: -0.005em;
@@ -1786,7 +1843,6 @@ body.owner-mode .logo.ml-learning .logo-mark {
   overflow: hidden;
 }
 .cmdk-row-sub {
-  font-size: 0.8rem;
   line-height: 1.3;
   color: var(--text-muted);
   white-space: nowrap;
@@ -1827,8 +1883,8 @@ body.owner-mode .logo.ml-learning .logo-mark {
   color: var(--accent);
 }
 .cmdk-row-figure .cmdk-row-label {
-  font-weight: 800;
-  font-size: 1.05rem;
+  font-weight: 700;
+  font-size: var(--cmdk-fs-lead);
 }
 .cmdk-row-ic.cmdk-content .ic {
   color: var(--accent);
@@ -1839,7 +1895,7 @@ body.owner-mode .logo.ml-learning .logo-mark {
 .cmdk-hi {
   background: none;
   color: inherit;
-  font-weight: 800;
+  font-weight: 700;
   box-shadow: inset 0 -0.42em 0 color-mix(in srgb, var(--accent) 20%, transparent);
 }
 /* Deep-link reveal: a brief accent ring drawn around the exact record a search
@@ -1880,14 +1936,18 @@ body.owner-mode .logo.ml-learning .logo-mark {
   color: var(--accent-text);
 }
 /* Spotlight-style section headers, Top Hit + empty-state example chips. */
+/* NO `opacity` here. The 0.6 it carried was not a second way of saying "muted" but
+   a contrast cut on top of one: --text-muted is already the quiet ink, and 60% of
+   it measured 2.63:1 on the light search surface — under even the 3:1 non-text
+   floor. The board captions are the same micro-label at full strength (6.06:1), so
+   the fix is to look like them. */
 .cmdk-group-label {
   /* was 0.64rem = 10.2px */
-  font-size: 0.72rem;
+  font-size: var(--cmdk-fs-micro);
   font-weight: 700;
   letter-spacing: 0.11em;
   text-transform: uppercase;
   color: var(--text-muted);
-  opacity: 0.6;
   padding: 11px 12px 3px;
 }
 /* ---- Deep Search ("search everything": full grouped/counted results) ---- */
@@ -1902,7 +1962,7 @@ body.owner-mode .logo.ml-learning .logo-mark {
   border: 1px solid var(--glass-border);
   border-radius: var(--r-md);
   color: var(--text-light);
-  font-size: 0.9rem;
+  font-size: var(--cmdk-fs-row);
   text-align: left;
   cursor: pointer;
   transition: background 0.15s var(--fluid-bezier);
@@ -1935,7 +1995,7 @@ body.owner-mode .logo.ml-learning .logo-mark {
   margin-bottom: 8px;
 }
 .cmdk-deep-title {
-  font-weight: 650;
+  font-weight: 600;
   color: var(--text-light);
   flex: 1;
   min-width: 0;
@@ -1944,7 +2004,7 @@ body.owner-mode .logo.ml-learning .logo-mark {
   white-space: nowrap;
 }
 .cmdk-deep-total {
-  font-size: 0.72rem;
+  font-size: var(--cmdk-fs-micro);
   color: var(--text-muted);
   flex: 0 0 auto;
 }
@@ -1961,7 +2021,7 @@ body.owner-mode .logo.ml-learning .logo-mark {
 }
 /* Auto-corrected retry note ("nothing matched X - showing Y"). */
 .cmdk-deep-note {
-  font-size: 0.78rem;
+  font-size: var(--cmdk-fs-meta);
   color: var(--text-muted);
   padding: 2px 2px 8px;
 }
@@ -1970,7 +2030,7 @@ body.owner-mode .logo.ml-learning .logo-mark {
 }
 .cmdk-deep-chip {
   flex: 0 0 auto;
-  font-size: 0.76rem;
+  font-size: var(--cmdk-fs-meta);
   padding: 5px 11px;
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
@@ -2006,7 +2066,7 @@ body.owner-mode .logo.ml-learning .logo-mark {
   background: transparent;
   border: none;
   color: var(--accent-text);
-  font-size: 0.82rem;
+  font-size: var(--cmdk-fs-sub);
   font-weight: 600;
   cursor: pointer;
 }
@@ -2035,7 +2095,7 @@ body.owner-mode .logo.ml-learning .logo-mark {
 }
 .cmdk-scope {
   flex: 0 0 auto;
-  font-size: 0.78rem;
+  font-size: var(--cmdk-fs-meta);
   font-weight: 600;
   letter-spacing: 0.01em;
   color: var(--text-muted);
@@ -2076,11 +2136,11 @@ body.owner-mode .logo.ml-learning .logo-mark {
   background: color-mix(in srgb, var(--accent) 22%, transparent);
 }
 .cmdk-row.cmdk-tophit .cmdk-row-label {
-  font-size: 1.04rem;
+  font-size: var(--cmdk-fs-lead);
   font-weight: 700;
 }
 .cmdk-ex {
-  font-size: 0.82rem;
+  font-size: var(--cmdk-fs-sub);
   font-weight: 500;
   padding: 7px 13px;
   border-radius: var(--r-pill);
@@ -2107,7 +2167,7 @@ body.owner-mode .logo.ml-learning .logo-mark {
   padding: 8px 6px 6px;
 }
 .cmdk-editor-hint {
-  font-size: 0.78rem;
+  font-size: var(--cmdk-fs-meta);
   color: var(--text-muted);
   margin: 2px 2px 11px;
   line-height: 1.45;
@@ -2121,7 +2181,7 @@ body.owner-mode .logo.ml-learning .logo-mark {
   padding: 11px 13px;
   border-radius: var(--r-panel);
   font-family: var(--font-sans);
-  font-size: 0.95rem;
+  font-size: var(--cmdk-fs-body);
   line-height: 1.5;
   resize: vertical;
 }
@@ -2149,7 +2209,7 @@ body.light-mode .cmdk-editor-input {
   border-radius: var(--r-pill);
   padding: 9px 22px;
   font-weight: 600;
-  font-size: 0.9rem;
+  font-size: var(--cmdk-fs-row);
   cursor: pointer;
   transition: filter 0.14s var(--fluid-bezier);
 }
@@ -2159,7 +2219,7 @@ body.light-mode .cmdk-editor-input {
   outline: none;
 }
 .cmdk-editor-msg {
-  font-size: 0.82rem;
+  font-size: var(--cmdk-fs-sub);
   color: var(--text-muted);
 }
 .cmdk-editor-msg.is-ok {
@@ -2204,6 +2264,13 @@ body.light-mode .cmdk-editor-input {
   width: 100%;
   text-align: left;
   font: inherit;
+  /* …but not the inherited SIZE: `font: inherit` took the document's 16px/400, so
+     an action under a booking was set LARGER and LIGHTER than the guest's own name
+     above it (14.4px/600) — the subordinate thing shouting over its own record. It
+     takes the row's step one notch lighter, which only became a visible difference
+     once 500 and 600 were separate faces. */
+  font-size: var(--cmdk-fs-row);
+  font-weight: 500;
   background: none;
   border: none;
   border-radius: var(--r-md);
@@ -2235,6 +2302,18 @@ body.light-mode .cmdk-editor-input {
   width: 15px;
   height: 15px;
 }
+/* SUB-FOCUS made visible. Left/Right move a cursor through a selected row's actions
+   and chips by adding `.is-kbd` — and no stylesheet had that selector, so the marker
+   rendered NOTHING: pixel-diff of a quick-action resting vs after ArrowRight measured
+   0 changed px of 29040, and with the cursor on action 0 Enter would fire "Request all
+   3 balances" — a bulk money send — with nothing on screen saying so. It takes the
+   panel's own focus ring, because that is exactly what it is. */
+.cmdk-qa-row.is-kbd,
+.cmdk-chip.is-kbd {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 /* Refine chips under an answer head — narrow/pivot the result without retyping. */
 .cmdk-refine {
   display: flex;
@@ -2331,7 +2410,7 @@ body.light-mode .cmdk-editor-input {
 .cmdk-help-steps {
   margin: 2px 0 4px;
   padding: 0 14px 0 74px;
-  font-size: 0.84rem;
+  font-size: var(--cmdk-fs-body);
   line-height: 1.5;
   color: var(--text-muted);
 }
@@ -2344,13 +2423,13 @@ body.light-mode .cmdk-editor-input {
 .cmdk-nlg-body {
   margin: -2px 0 6px;
   padding: 0 14px 0 74px;
-  font-size: 0.86rem;
+  font-size: var(--cmdk-fs-body);
   line-height: 1.5;
   color: var(--text-muted);
   white-space: normal;
 }
 .cmdk-refine-chip {
-  font-size: 0.78rem;
+  font-size: var(--cmdk-fs-meta);
   font-weight: 600;
   letter-spacing: 0.01em;
   padding: 6px 12px;
@@ -2668,7 +2747,7 @@ body.light-mode .cmdk-editor-input {
   border: 1px solid var(--glass-border);
   background: var(--glass-hover);
   color: var(--text-light);
-  font-size: 0.78rem;
+  font-size: var(--cmdk-fs-meta);
   font-weight: 600;
   letter-spacing: 0.01em;
   padding: 6px 12px;
@@ -2718,11 +2797,16 @@ body.light-mode .cmdk-editor-input {
   width: 13px;
   height: 13px;
 }
+/* FOCUS IS NOT HOVER. These pairs used to end in `outline: none`, which killed the
+   global `button:focus-visible` ring — measured with real Tab presses, #cmdk-clear,
+   #cmdk-help and every chip computed `outline: 0px none` while #cmdk-close 16px away
+   in the same row got its 2px accent ring, and a 4px strip sampled just outside each
+   control changed by 0 of 128px. All that was left was the hover tint, the weakest
+   signal in the panel. The tint stays on hover; focus keeps the ring it inherits. */
 .cmdk-chip:hover,
 .cmdk-chip:focus-visible {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 8%, var(--glass-hover));
-  outline: none;
 }
 
 /* DARKSTAR ONLINE — the semantic model has finished loading. The logo knots
@@ -3104,12 +3188,12 @@ body.light-mode .cmdk-search input {
   padding: 8px 10px;
 }
 .cmdk-row-label {
-  font-size: 0.9rem;
+  font-size: var(--cmdk-fs-row);
   font-weight: 600;
   line-height: 1.35;
 }
 .cmdk-row-sub {
-  font-size: 0.76rem;
+  font-size: var(--cmdk-fs-meta);
   line-height: 1.35;
   color: var(--text-muted);
 }
@@ -3120,7 +3204,7 @@ body.light-mode .cmdk-search input {
    that applies to touch. --- */
 .cmdk-foot {
   border-top: 1px solid var(--glass-border);
-  font-size: 0.74rem;
+  font-size: var(--cmdk-fs-meta);
   color: var(--text-muted);
 }
 @media (hover: none), (pointer: coarse) {
@@ -3188,12 +3272,19 @@ body.light-mode .cmdk-search input {
   padding: 0;
   /* Kept in the layout rather than display:none, because `display` cannot be
      transitioned and the pop-out has to DROP rather than appear. Hidden from
-     pointers AND from assistive tech while closed. */
+     pointers AND from assistive tech while closed.
+     …but `visibility` flipped INSTANTLY, so only the OPENING was animated: closing,
+     the box's transitions ran inside an already-invisible container, so the panel
+     teleported while the scrim went on fading for 260ms. The delayed 0s step holds
+     the container visible long enough for the box to leave; `.open` restates the
+     transition without the delay so opening stays immediate. */
   visibility: hidden;
+  transition: visibility 0s linear 0.22s;
   pointer-events: none;
 }
 #cmdk.cmdk-overlay.open {
   visibility: visible;
+  transition: visibility 0s;
 }
 #cmdk.cmdk-overlay .cmdk-box {
   pointer-events: auto;
@@ -3219,21 +3310,46 @@ body.light-mode .cmdk-search input {
   -webkit-backdrop-filter: blur(22px) saturate(1.3);
   backdrop-filter: blur(22px) saturate(1.3);
   box-shadow: var(--shadow-float, 0 24px 60px rgba(0, 0, 0, 0.45));
-  /* iOS-flavoured drop: falls a little and settles. One transform is safe here —
-     nothing else animates this element, so there is no keyframe to fight over the
-     property (the dock pill's rule). --spring, not --fluid-bezier: a small panel
-     can overshoot pleasantly, which is exactly what a full-bleed one could not. */
+  /* iOS-flavoured drop: falls a little and settles. Safe alongside the Siri aura
+     because that keyframe touches box-shadow ONLY — no property for the two to
+     fight over (the dock pill's rule). --spring, not --fluid-bezier: a small panel
+     can overshoot pleasantly, which a full-bleed one could not.
+     THIS state is the EXIT (what the box returns to when .open goes), so it is
+     quicker and unsprung — a dismissal gets out of the way rather than bouncing —
+     and .open carries the slower spring entry. Asymmetric on purpose; it used to be
+     asymmetric by accident, which is a different thing. */
   opacity: 0;
   transform: translateY(-10px) scale(0.985);
   transform-origin: top center;
   transition:
-    opacity 0.2s var(--fluid-bezier),
-    transform 0.42s var(--spring);
-  animation: none;
+    opacity 0.16s var(--fluid-bezier),
+    transform 0.2s var(--fluid-bezier);
+  /* The RISE is replaced by the drop above; the AURA is not. Blanking the whole
+     `animation` shorthand here silenced cmdkSiriAura too, so the assistant's
+     breathing Siri glow — a documented part of its look — had not rendered on any
+     surface since the pop-out landed. Name the one that goes. */
+  animation: cmdkSiriAura 6s ease-in-out infinite;
 }
 #cmdk.cmdk-overlay.open .cmdk-box {
   transform: none;
   opacity: 1;
+  transition:
+    opacity 0.2s var(--fluid-bezier),
+    transform 0.42s var(--spring);
+}
+/* Restated at the overlay's specificity: the generic reduced-motion rule for
+   .cmdk-box is out-specified by `#cmdk.cmdk-overlay .cmdk-box`, so without this the
+   aura would keep breathing for someone who asked it not to. */
+@media (prefers-reduced-motion: reduce) {
+  #cmdk.cmdk-overlay .cmdk-box {
+    animation: none;
+    transition: none;
+  }
+  /* …and with no exit to wait for, the container should not hold itself visible
+     for 220ms either. */
+  #cmdk.cmdk-overlay {
+    transition: none;
+  }
 }
 /* A darkstar hairline along the top edge — the assistant's colour, stated once
    rather than tinting the whole panel. Carried over from the sheet it replaces. */
@@ -3315,9 +3431,16 @@ body.cmdk-open {
    weight: a board's first row is the headline fact, so its label gets figure-sized
    type, while the rows keep their 44px touch floor.
    ============================================================ */
+/* ONE COLUMN, said out loud. `repeat(auto-fit, minmax(240px, 1fr))` was
+   responsive-looking dead code inside a 520px pop-out: the content box is 478px and
+   two 240px tracks plus the gap need 490, so it computed to a single track at every
+   width this window has (boards render only on the EMPTY landing, and it widens to
+   860px only for a selected record). Narrowing the minimum to force two is worse —
+   a board row leads with "You're owed £955.00 across 3 guests", which does not
+   survive a 234px track. */
 .cmdk-boards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  grid-template-columns: 1fr;
   gap: 10px;
   padding: 10px 12px 4px;
 }
@@ -3328,10 +3451,13 @@ body.cmdk-open {
   padding: 12px 10px 8px;
   min-width: 0;
 }
+/* Padded like the rows it captions (10px, not 4), so heading and content share one
+   left rail — measured, they sat 10px apart, which reads as a heading belonging to
+   nothing in particular. */
 .cmdk-board-cap {
   margin: 0 0 4px;
-  padding: 0 4px;
-  font-size: 0.7rem;
+  padding: 0 10px;
+  font-size: var(--cmdk-fs-micro);
   font-weight: 700;
   letter-spacing: 0.11em;
   text-transform: uppercase;
@@ -3344,22 +3470,31 @@ body.cmdk-open {
   display: none;
 }
 .cmdk-board > .cmdk-row:first-of-type .cmdk-row-label {
-  font-size: 1.16rem;
+  font-size: var(--cmdk-fs-hero);
   line-height: 1.25;
   letter-spacing: -0.015em;
   font-variant-numeric: tabular-nums;
 }
 /* A board's rows have the board's own surface behind them, so the row's resting
    fill would double up. Hover still has to register. */
-.cmdk-board .cmdk-row {
+/* :not(.is-sel):not(:hover) is load-bearing. This reset and `.cmdk-row.is-sel` are
+   both (0,2,0), so the later board rule won and a keyboard-SELECTED board row computed
+   `rgba(0,0,0,0)` — measured identical to its neighbour in both themes, leaving only a
+   3px inset bar at 1.73:1 in light. The boards ARE the default state, so arrowing down
+   the day brief moved an invisible selection. */
+.cmdk-board .cmdk-row:not(.is-sel):not(:hover) {
   background: none;
 }
+/* A board's ground IS --glass-hover, so the ordinary row hover (also --glass-hover)
+   had nowhere to go on top of it: measured 1/255 in light, i.e. hovering a board
+   row did nothing. It has to move AWAY from the board's surface, and the accent
+   tint is the one direction with room in both themes. Same family as selection at
+   half strength (7% vs 13%) — one idea at two volumes. */
 .cmdk-board .cmdk-row:hover {
-  background: var(--glass-bg);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
 }
 @media (max-width: 479px) {
   .cmdk-boards {
-    grid-template-columns: 1fr;
     padding: 8px 10px 4px;
   }
 }
@@ -3382,7 +3517,7 @@ body.cmdk-open {
   flex: 1;
 }
 .cmdk-hero-label {
-  font-size: 1.15rem;
+  font-size: var(--cmdk-fs-hero);
   font-weight: 600;
   line-height: 1.35;
   letter-spacing: -0.012em;
@@ -3400,13 +3535,18 @@ body.cmdk-open {
   font-variant-numeric: tabular-nums;
 }
 .cmdk-hero-sub {
-  font-size: 0.82rem;
+  font-size: var(--cmdk-fs-sub);
   color: var(--text-muted);
   line-height: 1.4;
   white-space: normal;
 }
+/* A phone re-declares the TOKEN, not the rule: the hero (and with it the query
+   field, which shares the step) steps down together, and the scale stays seven
+   steps rather than growing an eighth for one viewport. */
 @media (max-width: 479px) {
-  .cmdk-hero-label { font-size: 1.06rem; }
+  :root {
+    --cmdk-fs-hero: 1.06rem;
+  }
 }
 /* The hero's tail — its bulk action and its refine chips (cmdkRowExtrasHtml, shared
    with every other row). The 54px indent that hangs a normal row's panel under its
@@ -3441,7 +3581,7 @@ body.cmdk-open {
   min-width: 0;
 }
 .cmdk-turn-q {
-  font-size: 0.72rem;
+  font-size: var(--cmdk-fs-micro);
   font-weight: 600;
   letter-spacing: 0.02em;
   color: var(--accent-text);
@@ -3450,7 +3590,7 @@ body.cmdk-open {
   text-overflow: ellipsis;
 }
 .cmdk-turn-a {
-  font-size: 0.82rem;
+  font-size: var(--cmdk-fs-sub);
   color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
@@ -3462,7 +3602,7 @@ body.cmdk-open {
    hero now sets its figure at the sentence's own size. Weight and ink still lift it
    out of the muted turn line. */
 .cmdk-turn-a .cmdk-hero-fig {
-  font-weight: 650;
+  font-weight: 600;
   color: var(--text-light);
 }
 
@@ -3510,8 +3650,8 @@ body.cmdk-open {
 }
 .cmdk-dt-name {
   margin: 0 0 4px;
-  font-size: 1.02rem;
-  font-weight: 650;
+  font-size: var(--cmdk-fs-lead);
+  font-weight: 600;
   letter-spacing: -0.012em;
   line-height: 1.25;
 }
@@ -3519,7 +3659,7 @@ body.cmdk-open {
 .cmdk-dt-intel,
 .cmdk-dt-hint {
   margin: 0 0 8px;
-  font-size: 0.78rem;
+  font-size: var(--cmdk-fs-meta);
   color: var(--text-muted);
   line-height: 1.45;
 }
@@ -3532,7 +3672,7 @@ body.cmdk-open {
 }
 .cmdk-dt-pill {
   display: inline-block;
-  font-size: 0.72rem;
+  font-size: var(--cmdk-fs-micro);
   font-weight: 600;
   padding: 4px 10px;
   border-radius: var(--r-pill);
@@ -3579,7 +3719,7 @@ body.cmdk-open {
   height: 18px;
 }
 .cmdk-jump .cmdk-row-label {
-  font-size: 0.84rem;
+  font-size: var(--cmdk-fs-sub);
   white-space: nowrap;
 }
 
@@ -3621,6 +3761,13 @@ body.cmdk-open {
    was started. Indented to the row's label like the quick-actions panel, so it
    reads as belonging to that row and not to the list.
    ============================================================ */
+/* It ARRIVES rather than blinking into place. The strip is inserted by a re-render,
+   so it used to appear as a hard cut — the one moment in the whole window where
+   something the owner just did reports back, and it looked like a repaint artefact.
+   NB the rows below it still move the moment it lands: closing that gap means
+   animating a HEIGHT, which this codebase does not do (transform-only, for the
+   reason the dock icons stuttered), so the shift is left honest rather than smeared
+   over 200ms. This is the strip announcing itself, not the list settling. */
 .cmdk-actmsg {
   display: flex;
   align-items: center;
@@ -3628,8 +3775,24 @@ body.cmdk-open {
   margin: 2px 12px 9px 54px;
   padding: 9px 12px;
   border-radius: var(--r-sm);
-  font-size: 0.78rem;
+  font-size: var(--cmdk-fs-meta);
   line-height: 1.4;
+  animation: cmdkStripIn 0.18s var(--fluid-bezier) both;
+}
+@keyframes cmdkStripIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cmdk-actmsg {
+    animation: none;
+  }
 }
 .cmdk-actmsg-ic {
   flex: 0 0 auto;
@@ -3675,7 +3838,7 @@ body.cmdk-open {
   border-radius: var(--r-pill);
   background: none;
   font: inherit;
-  font-size: 0.72rem;
+  font-size: var(--cmdk-fs-micro);
   color: var(--text-muted);
   cursor: default;
   min-width: 0;
@@ -3705,13 +3868,28 @@ body.cmdk-open {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* A phone's foot is already carrying the hint line, so "All systems normal" earns
-   no room there — but a WARNING always does. */
+/* A phone's foot already carries the hint, so "All systems normal" earns no room
+   there — but a WARNING does, and earning room has to mean more than "not
+   display:none". Sharing the 390px foot left it 37px of the 287 it needed: the
+   line read "Dai…", 13% of "Daily automation looks stopped — last ran 7 days ago",
+   which is the same as not reporting it. So the warning takes the whole first line
+   and WRAPS, and the hint drops beneath. Only a warning pays the extra line. */
 @media (max-width: 639px) {
   .cmdk-sys.is-ok {
     display: none;
   }
+  .cmdk-foot {
+    flex-wrap: wrap;
+    gap: 6px 16px;
+  }
   .cmdk-sys.is-warn {
+    order: -1;
+    flex: 1 0 100%;
     margin-left: 0;
+    text-align: left;
+  }
+  .cmdk-sys.is-warn .cmdk-sys-say {
+    white-space: normal;
+    overflow: visible;
   }
 }

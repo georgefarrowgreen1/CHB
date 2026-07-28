@@ -1,6 +1,6 @@
 {
     "comment": "RATCHET budgets for a11y-test.js, same contract as css-budget/size-budget/tsc-budget: these counts may only ever go DOWN. When a PR fixes some, lower the number in the same PR. Do NOT raise one to get green — the whole point is that accessibility rot cannot ship silently. The one exception is accentAsText, which may rise if the new site is genuinely an ICON, border or fill (--accent is correct for those; only WORDS need --accent-text) and the PR says so. Note the counts for unnamed/tinyText/smallTargets are DISTINCT view+element pairs across the six surfaces a11y-test walks, not a whole-site census — they are a regression tripwire on the screens that matter, not a completeness claim.",
-    "accentAsText": 24,
+    "accentAsText": 23,
     "unnamed": 0,
     "tinyText": 0,
     "smallTargets": 0

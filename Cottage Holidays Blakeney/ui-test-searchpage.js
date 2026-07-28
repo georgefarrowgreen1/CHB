@@ -149,13 +149,29 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   await page.evaluate(() => darkstarLoad()); // real darkstar.bin served by php -S
   await page.waitForTimeout(600);
   await page.evaluate(() => { document.getElementById('cmdk-input').value = ''; cmdkSearchCore('', false); });
-  st = await page.evaluate(() => ({
-    ready: document.body.classList.contains('darkstar-ready'),
-    mstate: (document.getElementById('cmdk-ml') || {}).dataset.mstate,
-    color: getComputedStyle(document.getElementById('cmdk-ml')).color,
-  }));
+  // The ready tint is read off the TOKEN, not a written-down hex: --knot-ready is
+  // retuned under light mode (the vivid violet measures 3.60:1 on the light search
+  // surface), so pinning one rgb() here asserts a theme rather than the state. A
+  // probe element resolves the token through the same colour serialisation as the
+  // knot, so the two are comparable without a colour model — and the check still
+  // fails if the state stops painting its own token.
+  st = await page.evaluate(() => {
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--knot-ready)';
+    document.body.appendChild(probe);
+    const want = getComputedStyle(probe).color;
+    probe.remove();
+    return {
+      ready: document.body.classList.contains('darkstar-ready'),
+      mstate: (document.getElementById('cmdk-ml') || {}).dataset.mstate,
+      color: getComputedStyle(document.getElementById('cmdk-ml')).color,
+      want,
+      theme: document.body.classList.contains('light-mode') ? 'light' : 'dark',
+    };
+  });
   ok(st.ready, 'body.darkstar-ready set once the model is loaded + indexed');
-  ok(st.mstate === 'ready' && st.color === 'rgb(168, 85, 247)', `logo rests on the Darkstar purple (${st.mstate}, ${st.color})`);
+  ok(st.mstate === 'ready' && st.color === st.want && /\d/.test(st.want),
+    `logo rests on the Darkstar purple (${st.mstate}, ${st.color} @${st.theme})`);
 
   // 7) cmdkBack closes the window and leaves you where you already were; ⌘K toggles.
   await page.evaluate(() => cmdkBack()); await page.waitForTimeout(300);
@@ -693,6 +709,456 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     ok(chips.finds.every((w) => w >= chips.avail * 0.9), `CHIPS @${vp.width}px: destinations fill their line rather than leaving a ragged edge (${chips.finds.join(', ')} of ${chips.avail}px)`);
   }
   await page.setViewportSize({ width: 900, height: 900 });
+
+  // ---- 15. PRODUCTION PASS: the things an audit measured as broken ----
+  // Each of these was found by measurement, not inspection, and each failed silently —
+  // no error, no visual hint, nothing a screenshot review would catch.
+  await page.setViewportSize({ width: 1440, height: 900 });
+
+  // 15a) `cmdk-wide` is decided ABOVE the early returns. It used to be toggled at the
+  // point the pane renders, which the landing / no-results / deep-search branches all
+  // return before — so those screens kept whatever width the last selection left:
+  // measured, the empty landing rendered 860px with NO pane and its boards reflowed to
+  // two columns, and closing deep search stayed stuck at 860.
+  const wide = await page.evaluate(async () => {
+    const until = async (fn, ms = 6000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 40)); } };
+    const box = () => Math.round(document.querySelector('#cmdk .cmdk-box').getBoundingClientRect().width);
+    const isWide = () => document.getElementById('cmdk').classList.contains('cmdk-wide');
+    const out = {};
+    try { closeCmdK(); } catch (e) {}
+    openCmdK();
+    await until(() => document.getElementById('cmdk').classList.contains('open'));
+    const i = document.getElementById('cmdk-input');
+    // Select a booking so the pane (and the wide box) are genuinely up first.
+    i.value = 'bob'; cmdkSearchCore('bob', false);
+    await until(() => __cmdkResults.some((r) => r && r.type === 'booking'));
+    __cmdkSel = __cmdkResults.findIndex((r) => r && r.type === 'booking'); cmdkRender();
+    await new Promise((r) => setTimeout(r, 250));
+    out.withPane = { w: box(), wide: isWide(), pane: !!document.querySelector('#cmdk .cmdk-detail') };
+    // …then each branch that returns early.
+    i.value = ''; cmdkSearchCore('', false);
+    await new Promise((r) => setTimeout(r, 300));
+    out.landing = { w: box(), wide: isWide(), cols: new Set([...document.querySelectorAll('#cmdk .cmdk-board')].map((b) => Math.round(b.getBoundingClientRect().top))).size };
+    i.value = 'zzzqqqxxx'; cmdkSearchCore('zzzqqqxxx', false);
+    await new Promise((r) => setTimeout(r, 300));
+    out.none = { w: box(), wide: isWide() };
+    return out;
+  });
+  ok(wide.withPane.wide && wide.withPane.pane, `WIDE: a selected record still widens the box for its pane (${wide.withPane.w}px)`);
+  ok(!wide.landing.wide, `WIDE: the empty landing is never left wide (${wide.landing.w}px, wide=${wide.landing.wide})`);
+  ok(wide.landing.w < wide.withPane.w, `WIDE: …so the landing narrows back (${wide.landing.w} < ${wide.withPane.w})`);
+  ok(!wide.none.wide, `WIDE: nor is the no-results state (${wide.none.w}px)`);
+  await page.setViewportSize({ width: 390, height: 844 });
+
+  // 15b) A keyboard-SELECTED board row must actually look selected. The board's own
+  // `background: none` reset and `.cmdk-row.is-sel` are both (0,2,0), so the later
+  // board rule won and the selection computed transparent — measured identical to the
+  // row below it in both themes, on the pop-out's DEFAULT state.
+  for (const theme of ['dark', 'light']) {
+    const board = await page.evaluate(async (th) => {
+      const until = async (fn, ms = 6000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 40)); } };
+      document.body.classList.toggle('light-mode', th === 'light');
+      try { closeCmdK(); } catch (e) {}
+      openCmdK();
+      await until(() => document.getElementById('cmdk').classList.contains('open'));
+      await until(() => !!document.querySelector('#cmdk .cmdk-board .cmdk-row'));
+      const rows = [...document.querySelectorAll('#cmdk .cmdk-board .cmdk-row')];
+      const idx = +rows[0].getAttribute('data-idx');
+      __cmdkSel = idx; cmdkRender();
+      await new Promise((r) => setTimeout(r, 200));
+      const sel = document.querySelector('#cmdk .cmdk-board .cmdk-row.is-sel');
+      return { found: !!sel, bg: sel ? getComputedStyle(sel).backgroundColor : '(none)' };
+    }, theme);
+    const transparent = /rgba\(0,\s*0,\s*0,\s*0\)|transparent/.test(board.bg);
+    ok(board.found && !transparent, `BOARD @${theme}: a selected board row has a real background (${board.bg})`);
+  }
+  await page.evaluate(() => document.body.classList.remove('light-mode'));
+
+  // 15c) Left/Right sub-focus must RENDER. The marker class was emitted with no rule
+  // anywhere — pixel-diff of a quick-action resting vs marked measured 0 changed px of
+  // 29040, while the cursor sitting on action 0 arms a bulk money send.
+  // NB read `outline-style`, NOT the width alone: `outline-width` on an unstyled element
+  // is the INITIAL `medium`, and browsers disagree about whether to report that or 0px
+  // when the style is `none` — this Chromium says 0px, CI's said 3px, and the first
+  // version of this check read the width and failed there while nothing was painted
+  // either way. `none` is the deterministic "nothing is drawn" signal, so the marker is
+  // proved by a STYLE appearing on the marked row while its unmarked sibling has none.
+  const kbd = await page.evaluate(async () => {
+    const until = async (fn, ms = 8000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v !== undefined && v !== null && v !== false && v !== -1) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 40)); } };
+    const ring = (el) => { if (!el) return null; const c = getComputedStyle(el); return { style: c.outlineStyle, width: c.outlineWidth }; };
+    try { closeCmdK(); } catch (e) {}
+    openCmdK();
+    await until(() => document.getElementById('cmdk').classList.contains('open'));
+    const i = document.getElementById('cmdk-input');
+    i.value = 'bob carter'; cmdkSearchCore('bob carter', false);
+    const at = await until(() => __cmdkResults.findIndex((r) => Array.isArray(r.actions) && r.actions.length));
+    if (at === null) return null;
+    __cmdkSel = at; __cmdkActSel = -1; cmdkRender();
+    await until(() => !!document.querySelector('#cmdk .cmdk-qa-row'));
+    const before = ring(document.querySelector('#cmdk .cmdk-qa-row'));
+    __cmdkActSel = 0; cmdkRender();
+    await new Promise((r) => setTimeout(r, 150));
+    const marked = document.querySelector('#cmdk .cmdk-qa-row.is-kbd');
+    return { before, marked: !!marked, on: ring(marked), off: ring(document.querySelector('#cmdk .cmdk-qa-row:not(.is-kbd)')) };
+  });
+  ok(!!kbd && kbd.marked, 'KBD: Left/Right marks a quick-action');
+  const kbdOn = !!kbd && !!kbd.on && kbd.on.style !== 'none' && parseFloat(kbd.on.width) >= 2;
+  const kbdOff = !!kbd && kbd.before.style === 'none' && (!kbd.off || kbd.off.style === 'none');
+  ok(kbdOn && kbdOff,
+    `KBD: …and the marker is VISIBLE — an outline appears (${kbd && kbd.before.style} → ${kbd && kbd.on && kbd.on.style} ${kbd && kbd.on && kbd.on.width})`);
+
+  // 15d) FOCUS CONTAINMENT. The workspace is still behind the scrim: one Shift+Tab from
+  // the field used to land on a "Save note" button inside the booking hub — off screen,
+  // unreachable, activatable — and typing went into that booking's notes.
+  const trap = await page.evaluate(async () => {
+    const until = async (fn, ms = 6000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 40)); } };
+    try { closeCmdK(); } catch (e) {}
+    openCmdK();
+    await until(() => document.getElementById('cmdk').classList.contains('open'));
+    await new Promise((r) => setTimeout(r, 300));
+    return { modal: document.getElementById('cmdk').getAttribute('aria-modal'),
+             rowTabbable: [...document.querySelectorAll('#cmdk .cmdk-row')].some((r) => r.tabIndex >= 0) };
+  });
+  ok(trap.modal === 'true', 'FOCUS: the open pop-out reports itself modal');
+  ok(!trap.rowTabbable, 'FOCUS: result rows are not Tab stops — arrows own the list, Tab owns the chrome');
+  const inside = await page.evaluate(() => {
+    const box = document.querySelector('#cmdk .cmdk-box');
+    return !!(document.activeElement && box.contains(document.activeElement));
+  });
+  ok(inside, 'FOCUS: focus starts inside the box');
+  for (const combo of ['Shift+Tab', 'Shift+Tab', 'Tab', 'Tab', 'Tab', 'Tab', 'Tab', 'Tab', 'Tab', 'Tab', 'Tab', 'Tab', 'Tab', 'Tab']) {
+    await page.keyboard.press(combo);
+  }
+  const contained = await page.evaluate(() => {
+    const box = document.querySelector('#cmdk .cmdk-box');
+    const a = document.activeElement;
+    return { inside: !!(a && box.contains(a)), where: a ? (a.id || a.className || a.tagName) : '(none)' };
+  });
+  ok(contained.inside, `FOCUS: 14 Tabs later it is STILL inside the pop-out (${contained.where})`);
+
+  // 15e) Focus is not hover. Three stops ended their hover rule with `outline: none`,
+  // which killed the global ring — measured 0px on clear/help/chips while #cmdk-close
+  // 16px away in the same row got its 2px accent ring.
+  const rings = await page.evaluate(async () => {
+    // The ✕ clear only EXISTS once the field has text (`has-text`), so measure with a
+    // query typed — otherwise this reads a non-rendered element and passes at 0px for
+    // the wrong reason.
+    const i = document.getElementById('cmdk-input');
+    i.value = 'bob'; cmdkSearchCore('bob', false);
+    await new Promise((r) => setTimeout(r, 300));
+    const out = {};
+    ['cmdk-clear', 'cmdk-help'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (!el) { out[id] = null; return; }
+      if (!el.getBoundingClientRect().width) { out[id] = null; return; } // not on screen
+      el.focus();
+      out[id] = getComputedStyle(el).outlineWidth;
+    });
+    const chip = document.querySelector('#cmdk .cmdk-chip');
+    if (chip) { chip.focus(); out.chip = getComputedStyle(chip).outlineWidth; }
+    return out;
+  });
+  ok(Object.values(rings).filter((v) => v !== null).length >= 3,
+    `RING: all three stops were on screen to measure (${JSON.stringify(rings)})`);
+  Object.entries(rings).forEach(([k, v]) => {
+    if (v === null || v === undefined) return;
+    ok(parseFloat(v) >= 2, `RING: ${k} shows a focus ring, not just a hover tint (${v})`);
+  });
+
+  // 15f) The error strip must not print server internals — apiPost slices a failed body
+  // to 200 chars, so a 500 sprayed a PHP fatal, SQLSTATE and the host path into the
+  // window. Deliberate prose (chbBulkRun's "…has no email address") must still pass.
+  const errs = await page.evaluate(() => {
+    const machine = 'Server error 500: <br /> <b>Fatal error</b>: Uncaught PDOException: SQLSTATE[HY000] [2002] Connection refused in /kunden/homepages/1/d1/htdocs/db.php:88';
+    const idish = 'watchers_key: kind required';
+    const prose = 'Couldn’t send any — Dan Rowe has no email address';
+    const a = { label: 'Request balance' };
+    return {
+      machine: chbActErrSay(new Error(machine), a),
+      idish: chbActErrSay(new Error(idish), a),
+      prose: chbActErrSay(new Error(prose), a),
+    };
+  });
+  ok(!/SQLSTATE|Fatal|\.php|<br/.test(errs.machine), `ERR: a PHP fatal never reaches the strip (${errs.machine.slice(0, 62)})`);
+  ok(!/watchers_key/.test(errs.idish), `ERR: nor does an internal identifier (${errs.idish.slice(0, 52)})`);
+  ok(errs.prose === 'Couldn’t send any — Dan Rowe has no email address', `ERR: but a sentence written for a person passes through (${errs.prose})`);
+  // …and the WIRING, not just the helper: drive a real failing action through cmdkAct
+  // and read what the strip actually says. Testing chbActErrSay alone would pass even
+  // if the catch went back to printing e.message.
+  const wired = await page.evaluate(async () => {
+    const until = async (fn, ms = 6000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 40)); } };
+    __cmdkResults = [{ type: 'answer', id: 'probe', label: 'probe', sub: '', run: () => {}, actions: [{
+      key: 'probe', label: 'Request balance', pending: 'Working…', run: () => {},
+      inline: async () => { throw new Error('Server error 500: <b>Fatal error</b>: Uncaught PDOException: SQLSTATE[HY000] in /htdocs/db.php:88'); },
+    }] }];
+    __cmdkSel = 0; cmdkRender();
+    await cmdkAct(0, 0);
+    await until(() => !!document.querySelector('#cmdk .cmdk-actmsg.is-err'));
+    const el = document.querySelector('#cmdk .cmdk-actmsg');
+    return el ? el.textContent.trim() : '(none)';
+  });
+  ok(!/SQLSTATE|Fatal|\.php/.test(wired), `ERR: and the strip itself never shows them (${wired.slice(0, 70)})`);
+  await page.setViewportSize({ width: 900, height: 900 });
+
+  // ============================================================
+  // 16) THE MAKEOVER'S SECOND PASS — type and tokens.
+  // ============================================================
+
+  // 16a) WEIGHT IS REAL. Montserrat ships as a VARIABLE file, but its @font-face
+  // blocks declared single weights (300/400/500), which pins the wght axis — so
+  // every weight the app asked for above 500 matched the 500 face and got the same
+  // synthetic bold. Measured before the fix: 500/600/700/800 all set the same
+  // string to the identical 421px, which is why making the hero's figure 700
+  // against a 600 label changed 0 pixels of 25,812. This check is the one that
+  // would have caught that: it asks the FONT whether the steps differ, not the
+  // stylesheet whether they are declared.
+  const weights = await page.evaluate(() => {
+    const mk = (w) => {
+      const s = document.createElement('span');
+      s.textContent = '£290.00 Handpicked';
+      s.style.cssText = `font-family: var(--font-sans); font-size: 40px; font-weight: ${w}; white-space: nowrap; position: absolute; visibility: hidden;`;
+      document.body.appendChild(s);
+      const px = s.getBoundingClientRect().width;
+      s.remove();
+      return +px.toFixed(2);
+    };
+    return { w400: mk(400), w500: mk(500), w600: mk(600), w700: mk(700) };
+  });
+  ok(weights.w500 !== weights.w600 && weights.w600 !== weights.w700,
+    `TYPE: 500 / 600 / 700 are three real faces, not one synthetic bold (${weights.w500} → ${weights.w600} → ${weights.w700}px)`);
+  ok(weights.w400 < weights.w500 && weights.w500 < weights.w600 && weights.w600 < weights.w700,
+    'TYPE: …and they get heavier in the right order');
+
+  // 16b) ONE SCALE. The window had nineteen sizes, twelve within 0.02rem of a
+  // neighbour. Every rendered size must now be one of the seven declared steps —
+  // read off the tokens, so the check cannot drift from the scale it is checking.
+  // Sampled across THREE render states, not one: the boards landing, an answered
+  // query (hero + thread) and a selected record (quick actions + detail pane) light
+  // up largely disjoint sets of rules, so scanning any single one leaves most of the
+  // window's type unmeasured — the first draft of this check scanned only the
+  // selected-record state and a deliberately off-scale .cmdk-hero-sub sailed past it.
+  const scale = await page.evaluate(async () => {
+    const until = async (fn, ms = 6000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 40)); } };
+    const root = getComputedStyle(document.documentElement);
+    const steps = ['hero', 'lead', 'body', 'row', 'sub', 'meta', 'micro']
+      .map((k) => root.getPropertyValue(`--cmdk-fs-${k}`).trim())
+      .filter(Boolean);
+    // resolve each rem step to px through a probe, so this never hand-maths 16
+    const probe = document.createElement('span');
+    document.body.appendChild(probe);
+    const allowed = new Set(steps.map((s) => { probe.style.fontSize = s; return getComputedStyle(probe).fontSize; }));
+    probe.remove();
+    const seen = new Map();
+    const sweep = (state) => {
+      for (const el of document.querySelectorAll('#cmdk *')) {
+        const t = (el.textContent || '').trim();
+        if (!t || el.children.length) continue; // leaves only
+        // .sr-only is the visually-hidden-but-announced utility — a 1px box carrying
+        // screen-reader prose, not type on screen, so it has no size to be on scale.
+        if (el.closest('.sr-only')) continue;
+        const r = el.getBoundingClientRect();
+        if (!r.width || !r.height) continue;
+        const fs = getComputedStyle(el).fontSize;
+        if (!seen.has(fs)) seen.set(fs, `${state}: ${el.className || el.tagName} "${t.slice(0, 18)}"`);
+      }
+    };
+    try { closeCmdK(); } catch (e) {}
+    openCmdK();
+    await until(() => document.getElementById('cmdk').classList.contains('open'));
+    await until(() => !!document.querySelector('#cmdk .cmdk-board .cmdk-row, #cmdk .cmdk-row'));
+    sweep('landing');
+    const i = document.getElementById('cmdk-input');
+    i.value = 'who owes money'; cmdkSearchCore('who owes money', false);
+    await until(() => !!document.querySelector('#cmdk .cmdk-hero'));
+    sweep('answer');
+    i.value = 'bob carter'; cmdkSearchCore('bob carter', false);
+    await until(() => !!document.querySelector('#cmdk .cmdk-row'));
+    const at = await until(() => { const n = __cmdkResults.findIndex((r) => Array.isArray(r.actions) && r.actions.length); return n < 0 ? null : n; });
+    if (at !== null) { __cmdkSel = at; cmdkRender(); await new Promise((r) => setTimeout(r, 250)); }
+    sweep('record');
+    return { steps: steps.length, allowed: [...allowed], seen: seen.size, off: [...seen].filter(([fs]) => !allowed.has(fs)) };
+  });
+  ok(scale.steps === 7, `TYPE: the scale declares seven steps (${scale.steps})`);
+  if (scale.off.length) console.log('     off-scale: ' + scale.off.map(([fs, who]) => `${fs} ${who}`).join(' · '));
+  ok(scale.off.length === 0, `TYPE: every rendered size is one of them (${scale.off.length} off-scale of ${scale.seen} seen)`);
+
+  // 16c) A quick action is subordinate to the record it hangs under. `font: inherit`
+  // took the document's 16px/400, so "Email" was set larger and lighter than the
+  // guest's own name at 14.4px/600.
+  const rhythm = await page.evaluate(() => {
+    const qa = document.querySelector('#cmdk .cmdk-qa-lbl');
+    const row = document.querySelector('#cmdk .cmdk-row-label');
+    if (!qa || !row) return null;
+    const a = getComputedStyle(qa), b = getComputedStyle(row);
+    return { qa: parseFloat(a.fontSize), qaW: +a.fontWeight, row: parseFloat(b.fontSize), rowW: +b.fontWeight };
+  });
+  ok(!!rhythm && rhythm.qa <= rhythm.row && rhythm.qaW < rhythm.rowW,
+    `TYPE: a quick action never outranks its own record (${rhythm && rhythm.qa}px/${rhythm && rhythm.qaW} under ${rhythm && rhythm.row}px/${rhythm && rhythm.rowW})`);
+
+  // 16d) MODEL STATE IS THE ONLY CHANNEL, so the five states must be five colours.
+  // a11y-test §1c owns the contrast; this owns the DISTINCTNESS, and that they are
+  // painted from the knot tokens at all.
+  for (const theme of ['dark', 'light']) {
+    const knot = await page.evaluate(async (th) => {
+      document.body.classList.toggle('light-mode', th === 'light');
+      const el = document.getElementById('cmdk-ml');
+      if (!el) return null;
+      const was = el.dataset.mstate;
+      // Both the TRANSITION (0.35s) and, for `meaning`, a running ANIMATION make
+      // this a moving target: a sample taken a couple of frames after the flip reads
+      // a point on the interpolation, so two states can measure the same colour
+      // purely by timing (the first version passed once, then reported "4 of 5"
+      // every run after), and the animated state's value depends on where in a 2.8s
+      // cycle the sample lands — which also meant breaking --knot-meaning did not
+      // fail this check, because the keyframe was painting over it. Freeze both, so
+      // what is measured is each state's DECLARED identity (also what reduced motion
+      // shows); a11y-test §1c owns the animation's endpoints.
+      const prev = el.style.transition, prevA = el.style.animation;
+      el.style.transition = 'none';
+      el.style.animation = 'none';
+      const out = {};
+      for (const s of ['ready', 'understood', 'meaning', 'guess', 'learning']) {
+        el.dataset.mstate = s;
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        out[s] = getComputedStyle(el).color;
+      }
+      el.style.transition = prev; el.style.animation = prevA;
+      el.dataset.mstate = was || '';
+      document.body.classList.remove('light-mode');
+      return out;
+    }, theme);
+    const vals = knot ? Object.values(knot) : [];
+    ok(vals.length === 5 && new Set(vals).size === 5,
+      `KNOT @${theme}: five states, five distinct colours (${new Set(vals).size} of ${vals.length})`);
+  }
+
+  // 16e) A WARNING IS THE ONE THING THE FOOT MUST NOT SWALLOW. Sharing a 390px foot
+  // with the hint left "Daily automation looks stopped — last ran 7 days ago" at
+  // 37px of 287 — the line read "Dai…".
+  await page.setViewportSize({ width: 390, height: 844 });
+  const sys = await page.evaluate(async () => {
+    /** @type {any} */ (window).__cronStatusPre = { stale: true, everRan: true, ageHours: 168 };
+    chbSysLine();
+    await new Promise((r) => setTimeout(r, 200));
+    const el = document.getElementById('cmdk-sys');
+    const say = el && el.querySelector('.cmdk-sys-say');
+    if (!el || !say) return null;
+    return { warn: el.classList.contains('is-warn'), shown: say.clientWidth, needs: say.scrollWidth, text: say.textContent.trim() };
+  });
+  ok(!!sys && sys.warn, 'SYS: a stopped automation reports as a warning');
+  ok(!!sys && sys.shown >= sys.needs, `SYS: …and all of it is on screen at 390px (${sys && sys.shown} of ${sys && sys.needs}px)`);
+  await page.setViewportSize({ width: 900, height: 900 });
+
+  // ============================================================
+  // 17) THIRD PASS — motion and the rails.
+  // ============================================================
+
+  // 17a) THE SIRI AURA IS BACK ON. `#cmdk.cmdk-overlay .cmdk-box` blanked the whole
+  // `animation` shorthand to cancel cmdkRise (the drop replaces it) and took
+  // cmdkSiriAura with it, so the assistant's breathing glow — documented as part of
+  // its look — had rendered on no surface at all since the pop-out landed. Asserted
+  // on the PAINT (does the box-shadow actually change over a second and a half),
+  // not just on the animation-name, because a named animation whose keyframes never
+  // reach the element is exactly the failure this is here to catch.
+  const aura = await page.evaluate(async () => {
+    try { closeCmdK(); } catch (e) {}
+    openCmdK();
+    await new Promise((r) => setTimeout(r, 500));
+    const box = document.querySelector('#cmdk .cmdk-box');
+    if (!box) return null;
+    const name = getComputedStyle(box).animationName;
+    const a = getComputedStyle(box).boxShadow;
+    await new Promise((r) => setTimeout(r, 1500));
+    const b = getComputedStyle(box).boxShadow;
+    return { name, changed: a !== b };
+  });
+  ok(!!aura && /cmdkSiriAura/.test(aura.name), `MOTION: the search card carries its Siri aura (${aura && aura.name})`);
+  ok(!!aura && aura.changed, 'MOTION: …and it actually breathes — the painted shadow moves');
+
+  // 17b) CLOSING IS THE INVERSE OF OPENING. `visibility` flipped with no transition,
+  // so the box's own exit ran inside an already-invisible container: the panel
+  // teleported while the scrim went on fading for 260ms.
+  // Sampled by STATE, not on a clock: closeCmdK does a pile of synchronous teardown
+  // (miss-recording, thread clear, a re-render) that blocks the main thread for
+  // ~180ms, so the first paint of the exit lands well after any fixed delay — a
+  // sample at 100ms reported "opacity 1" for an exit that was working perfectly.
+  // Poll for the mid-flight frame instead, and require it to be a real one:
+  // strictly between 0 and 1, with the container still visible.
+  const closing = await page.evaluate(async () => {
+    const ov = document.getElementById('cmdk');
+    const box = ov.querySelector('.cmdk-box');
+    const snap = () => ({ vis: getComputedStyle(ov).visibility, op: +getComputedStyle(box).opacity });
+    const before = snap();
+    closeCmdK();
+    let mid = null;
+    for (let i = 0; i < 90 && !mid; i++) {
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+      const s = snap();
+      if (s.op < 1 && s.op > 0) mid = s;
+      if (s.vis === 'hidden') break; // gone before we ever saw it fade
+    }
+    await new Promise((r) => setTimeout(r, 500));
+    return { before, mid, after: snap() };
+  });
+  ok(!!closing && closing.before.vis === 'visible' && closing.before.op === 1, 'MOTION: open, the panel is up');
+  ok(!!closing && !!closing.mid && closing.mid.vis === 'visible',
+    `MOTION: …and it FADES on the way out instead of teleporting (caught mid-close at opacity ${closing && closing.mid && closing.mid.op.toFixed(2)})`);
+  ok(!!closing && closing.after.vis === 'hidden', `MOTION: …then goes properly away (${closing && closing.after.vis})`);
+
+  // 17c) Reduced motion turns the aura off. The generic .cmdk-box reduced-motion
+  // rule is out-specified by `#cmdk.cmdk-overlay .cmdk-box`, so it needs restating
+  // at that specificity — without which someone who asked for no motion got a
+  // permanently breathing panel.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const calm = await page.evaluate(async () => {
+    try { closeCmdK(); } catch (e) {}
+    openCmdK();
+    await new Promise((r) => setTimeout(r, 400));
+    const box = document.querySelector('#cmdk .cmdk-box');
+    return box ? getComputedStyle(box).animationName : null;
+  });
+  ok(calm === 'none', `MOTION: reduced motion stops the aura (${calm})`);
+  await page.emulateMedia({ reducedMotion: null });
+
+  // 17d) The act strip ARRIVES rather than blinking in.
+  const strip = await page.evaluate(() => {
+    const s = document.createElement('div');
+    s.className = 'cmdk-actmsg is-ok';
+    (document.querySelector('#cmdk .cmdk-results') || document.body).appendChild(s);
+    const n = getComputedStyle(s).animationName;
+    s.remove();
+    return n;
+  });
+  ok(/cmdkStripIn/.test(strip || ''), `MOTION: the act strip animates in (${strip})`);
+
+  // 17e) RAILS. The boards grid claimed to be responsive — auto-fit/minmax(240px) —
+  // inside a 478px content box, where two tracks need 490: it could never resolve to
+  // more than one column at any width the window has. And a board's caption sat 10px
+  // off the rail of the rows it captions.
+  const board = await page.evaluate(async () => {
+    const until = async (fn, ms = 6000) => { const t0 = Date.now(); for (;;) { const v = fn(); if (v) return v; if (Date.now() - t0 > ms) return null; await new Promise((r) => setTimeout(r, 40)); } };
+    try { closeCmdK(); } catch (e) {}
+    openCmdK();
+    await until(() => !!document.querySelector('#cmdk .cmdk-board .cmdk-row'));
+    const g = document.querySelector('#cmdk .cmdk-boards');
+    const cap = document.querySelector('#cmdk .cmdk-board-cap');
+    const row = document.querySelector('#cmdk .cmdk-board .cmdk-row-label');
+    if (!g || !cap || !row) return null;
+    // The caption is a PADDED block and the row label is an inner span, so their
+    // border-box lefts are not comparable — add the caption's own padding to get
+    // where its text actually starts. (Comparing the raw rects said "10px apart"
+    // for a caption that was correctly aligned, and would have said "6px apart"
+    // for the real defect: right complaint, wrong number, and green once fixed
+    // only by luck.)
+    return {
+      cols: getComputedStyle(g).gridTemplateColumns.trim().split(/\s+/).length,
+      capL: +(cap.getBoundingClientRect().left + parseFloat(getComputedStyle(cap).paddingLeft)).toFixed(1),
+      rowL: +row.getBoundingClientRect().left.toFixed(1),
+    };
+  });
+  ok(!!board && board.cols === 1, `RAILS: the boards grid is one column, and says so (${board && board.cols})`);
+  ok(!!board && Math.abs(board.capL - board.rowL) <= 1,
+    `RAILS: a board's caption shares its rows' left rail (${board && board.capL} vs ${board && board.rowL})`);
 
   console.log(fails ? `\n  ${fails} SEARCH-PAGE CHECK(S) FAILED ❌` : '\n  SEARCH-PAGE SUITE PASSED ✅');
   await done(fails);
