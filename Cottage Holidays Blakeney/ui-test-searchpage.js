@@ -1303,12 +1303,16 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     __cmdkScope = 'bookings'; cmdkRender();
     await new Promise((r) => setTimeout(r, 150));
     out.scoped = shape();
-    // (3) the scoped EMPTY LANDING with nothing to show
+    // (3) the scoped EMPTY LANDING with nothing to show — driven off the WORKSPACE
+    // snapshot, which is what shapes that state (see __cmdkHomeScope)
+    __cmdkHomeScope = 'bookings';
     __cmdkEmpty = true; __cmdkResults = []; __cmdkSuggestN = 0; __cmdkFreqN = 0; __cmdkBriefN = 0;
     cmdkRender();
     await new Promise((r) => setTimeout(r, 150));
     out.landing = shape();
+    out.widen = CMDK_WIDEN;
     __cmdkScope = 'all';
+    __cmdkHomeScope = 'all';
     return out;
   });
   const shapes = [empt.noResults, empt.scoped, empt.landing];
@@ -1326,8 +1330,15 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   });
   ok(!!hier && hier.title - hier.sub >= 1.5,
     `EMPTY: its title is a real step above its own sub (${hier && hier.title}px over ${hier && hier.sub}px)`);
-  ok(!!empt.scoped && !!empt.landing && empt.scoped.sub === empt.landing.sub,
-    `EMPTY: the widen instruction is worded once ("${empt.scoped && empt.scoped.sub}")`);
+  // The widen instruction is worded ONCE — CMDK_WIDEN — and this asserts the state
+  // that shows it really renders that const, rather than comparing two DOM strings
+  // (which is what this used to do, and which broke the moment the two states
+  // legitimately diverged). It is also the state's own honesty check: CMDK_WIDEN
+  // says "tap All above", so it may only appear where the chip bar is on screen.
+  ok(!!empt.scoped && empt.scoped.sub === empt.widen,
+    `EMPTY: the scoped no-results state renders the one widen sentence ("${empt.scoped && empt.scoped.sub}")`);
+  ok(!!empt.landing && empt.landing.sub !== empt.widen,
+    `EMPTY: …and the LANDING doesn't, because its chip bar is hidden ("${empt.landing && empt.landing.sub}")`);
 
   // …and escaped exactly once. This has to be driven through DEEP search, because
   // that is the only empty state whose title contains the query — and it is the one
@@ -1895,6 +1906,63 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   ok(!!un && !un.fail && un.pinsLeft === 0 && !un.heads.includes('Pinned'),
     `PIN: Unpin removes the tile and its heading in one gesture (${un && (un.fail || un.heads.join(' · '))})`);
   ok(!!un && un.monotonic, 'PIN: …and the landing indices still rise down the screen — arrows follow the eye');
+
+  // 22) A TYPED QUERY SPANS EVERY CATEGORY. The workspace snapshot used to land in
+  // __cmdkScope, so opening search from Today (this suite's own workspace) pre-scoped
+  // it to "Bookings" — and cmdkArrangeWide only widens when the scope yields NOTHING,
+  // so a guest with bookings always yielded something and their emails, chats and
+  // payments were dropped in silence. Two variables now: __cmdkScope is the owner's
+  // choice, __cmdkHomeScope the snapshot, and only the landing reads the snapshot.
+  const cats = await page.evaluate(async () => {
+    try { closeCmdK(); } catch (e) {}
+    nav('view-backoffice');
+    await new Promise((r) => setTimeout(r, 120));
+    openCmdK();
+    // One row per scope domain, all matching the same query — this is what a repeat
+    // guest's name really returns once the server merge lands.
+    const mixed = [
+      { type: 'booking', id: 'sc-b', label: 'Sarah Pemberton', sub: 'Jollyboat', run: () => {} },
+      { type: 'message', id: 'sc-m', label: 'Sarah Pemberton', sub: 'chat', run: () => {} },
+      { type: 'email', id: 'sc-e', label: 'Sarah Pemberton', sub: 'email', run: () => {} },
+      { type: 'payment', id: 'sc-p', label: 'Sarah Pemberton', sub: 'payment', run: () => {} },
+      { type: 'guest', id: 'sc-g', label: 'Sarah Pemberton', sub: 'customer', run: () => {} },
+    ];
+    const kept = () => cmdkArrangeWide(mixed.slice(), 34).filter((r) => !cmdkIsNoteRow(r)).map((r) => r.type);
+    const out = { home: __cmdkHomeScope, scope: __cmdkScope, all: kept() };
+    // The old behaviour, reproduced exactly — the break-test lives in the gate.
+    __cmdkScope = cmdkDefaultScope(); __cmdkWiden = false;
+    out.oldWay = kept();
+    // An explicit chip choice must still narrow.
+    __cmdkScope = 'inbox'; __cmdkWiden = false;
+    out.chosen = kept();
+    __cmdkScope = 'all'; __cmdkWiden = false;
+    // …and the landing's Jump-to is still shaped by the WORKSPACE, which is the
+    // thing that must not regress: it is what keeps that list to a few rows
+    // (measured 124px → 271px without it). Render it under each snapshot and
+    // require the destinations to differ — a landing wired to __cmdkScope (now
+    // always 'all') would hand back the same list both times.
+    const jump = async (h) => {
+      __cmdkHomeScope = h;
+      const el = document.getElementById('cmdk-input'); el.value = ''; cmdkSearchCore('', false);
+      await new Promise((r) => setTimeout(r, 350));
+      return [...document.querySelectorAll('#cmdk .cmdk-jump [role="option"]')].map((e) => e.textContent.trim().split('\n')[0]);
+    };
+    out.jumpHome = await jump('bookings');
+    out.jumpAll = await jump('all');
+    __cmdkHomeScope = 'bookings';
+    return out;
+  });
+  ok(!!cats && cats.home === 'bookings' && cats.scope === 'all',
+    `CATS: opened from Today — the snapshot is Bookings, what you type is All (${cats && cats.home}/${cats && cats.scope})`);
+  ok(!!cats && ['booking', 'message', 'email', 'payment', 'guest'].every((t) => cats.all.includes(t)),
+    `CATS: a typed query keeps every category (${cats && cats.all.join(', ')})`);
+  ok(!!cats && cats.oldWay.length < cats.all.length && !cats.oldWay.includes('message'),
+    `CATS: …and the old workspace-scoped behaviour really did drop them (${cats && cats.oldWay.join(', ')})`);
+  ok(!!cats && cats.chosen.includes('message') && !cats.chosen.includes('booking'),
+    `CATS: an explicit chip still narrows (${cats && cats.chosen.join(', ')})`);
+  ok(!!cats && cats.jumpHome.length > 0 && cats.jumpAll.length > 0
+    && cats.jumpHome.join('|') !== cats.jumpAll.join('|'),
+    `CATS: the landing's Jump-to is still shaped by the workspace ([${cats && cats.jumpHome}] vs [${cats && cats.jumpAll}])`);
 
   console.log(fails ? `\n  ${fails} SEARCH-PAGE CHECK(S) FAILED ❌` : '\n  SEARCH-PAGE SUITE PASSED ✅');
   await done(fails);

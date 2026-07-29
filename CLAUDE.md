@@ -642,8 +642,8 @@ returns only chat answers, and the check then passes seeing NOTHING), and
 the fourth false contrast failure this codebase has produced — see a11y-test).
 `.cmdk-box` keeps max-width 680px
 (940px sheet) and every inner id, so the entire intelligence stack is unchanged. `openCmdK` snapshots the workspace you came FROM before
-navigating — `__cmdkReturnView`, `__cmdkScope = cmdkDefaultScope()`, `__cmdkEntity =
-cmdkCurrentEntity()` — so scoping and record pronouns still resolve; `closeCmdK` is STATE
+navigating — `__cmdkReturnView`, `__cmdkHomeScope = cmdkDefaultScope()`, `__cmdkEntity =
+cmdkCurrentEntity()` — so the landing's shortcuts and record pronouns still resolve; `closeCmdK` is STATE
 CLEANUP ONLY (no nav — result runs navigate themselves and call it first); `cmdkBack()` =
 cleanup + return to `__cmdkReturnView` (Esc and the ⌘K toggle both use it). The palette's
 "filter this workspace" now always uses the floating banner (`renderTodayFilterBar`) + dim
@@ -756,22 +756,35 @@ would break arrow-key nav in total silence).
   the wide box. It clears the selection before measuring now. Gated by
   ui-test-searchpage §11, each of the four layouts break-tested independently.
 
-**The empty landing's day brief is NOT scope-filtered** (the "Jump to" list still is),
+**A TYPED QUERY SPANS EVERY CATEGORY, and the workspace snapshot only shapes the
+LANDING.** They used to be one variable: `openCmdK` put `cmdkDefaultScope()` straight
+into `__cmdkScope`, so opening search from Today pre-scoped it to "Bookings" — and
+`cmdkArrangeWide` only widens when the scope yields NOTHING, so a guest with bookings
+always yielded something and their emails, chats and payments were filtered out in
+silence (no widen note, because the search hadn't failed). Two variables now:
+**`__cmdkScope`** is the OWNER'S choice — `'all'` until they tap a chip, and the chips
+still narrow exactly as before — and **`__cmdkHomeScope`** is the workspace snapshot,
+read by the empty landing ALONE. Same split in the empty states: the scoped no-results
+state renders `CMDK_WIDEN` ("tap All above") because its chip bar is on screen, while
+the LANDING's dead end may not — the bar is hidden there (`sb` is `''` while
+`__cmdkEmpty`), so it used to name a control that wasn't on screen, and now says
+"Nothing to show yet · Type a name, a screen, or a question". `cmdkScopeLabel(k)`
+is the one place a scope is put into words (the empty states printed the raw key).
+Gated by ui-test-searchpage §22 (snapshot vs choice, every category survives a typed
+query, the OLD behaviour break-tested in the gate itself, an explicit chip still
+narrows, the landing's Jump-to still differs by workspace) and §18b.
+On that landing: **the day brief is NOT filtered** (the "Jump to" list still is),
 and **the scope switch is HIDDEN on that state** so nothing on screen claims a filter
 it isn't applying — it appears the moment you type, which is when it starts meaning
 something. Removing the Jump-to filter as well was tried and BACKED OUT: it is what
 keeps that list short, and without it the landing's destinations went 124px → 271px
 even capped at three (952px uncapped). Showing the shortcuts that suit the workspace
-you came from is helpfulness, not a filter anyone needs a control for.
-`openCmdK` snapshots `cmdkDefaultScope()` from the workspace you came from, so opening
-search from Today put you in "Bookings" scope before you had asked for anything, and the
-brief was filtered to whatever matched — measured as **1 row surviving out of 4**, which
-is why the landing looked empty. The brief summarises the DAY (arrivals, money to
+you came from is helpfulness, not a filter anyone needs a control for. The brief being
+filtered was the FIRST bug of this shape — measured as **1 row surviving out of 4**,
+which is why the landing looked empty. It summarises the DAY (arrivals, money to
 collect, an enquiry waiting, the month's pace); dropping "£440 to collect" because you
-happen to be standing on the bookings screen loses the point of the panel. Consequence to
-keep in mind: the active scope chip and the brief therefore disagree by design — the
-brief's own group heading names the day ("Late tonight" / "This morning"), which is what
-stops it reading as filtered output. `cmdkHi` also needs **3 characters**, not 2: a
+happen to be standing on the bookings screen loses the point of the panel.
+`cmdkHi` also needs **3 characters**, not 2: a
 2-letter token has no word boundary to protect it and lit up inside unrelated words
 ("who owes **me** money" marked "pay·me·nt record"). It is display-only — it never scores.
 **Cross-page context memory**
