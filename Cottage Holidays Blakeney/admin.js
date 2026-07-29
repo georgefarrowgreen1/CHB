@@ -523,6 +523,40 @@ async function cmdkPricingMerge() {
     __cmdkResults = cmdkArrangeWide(__cmdkResults.concat(rows).slice(0, 34), 34);
     cmdkRender(true); // late merge — keep the reader's scroll position
 }
+// WHAT'S SAFE TO MOVE, ANSWERED IN THE WINDOW rather than linked to. Same shape as
+// cmdkPricingMerge: stamp-guarded, and silent when there is nothing it can stand
+// behind. No `safe` figure without a balance — that is the owner's to supply.
+const CHB_SWEEP_Q = /how much.{0,20}(can i (move|transfer|withdraw|take)|safe to (move|transfer|withdraw))|safe to (move|transfer|withdraw)|what can i (move|transfer|withdraw|take out)|(move|transfer|withdraw).{0,14}(money|funds|cash) out/;
+let __cmdkSweepStamp = 0;
+async function cmdkSweepMerge() {
+    const stamp = ++__cmdkSweepStamp;
+    const gen = __cmdkQueryGen;
+    let d = null;
+    try { d = await apiGet('accounts.php?year=' + encodeURIComponent(taxYearStartOf(todayDashed()))); } catch (e) { return; }
+    if (stamp !== __cmdkSweepStamp || gen !== __cmdkQueryGen) return;
+    const L = d && d.deposit_liability;
+    if (!L || L.error) return;
+    const P = L.payouts || null;
+    const disp = (L.disputes && Number(L.disputes.amount)) || 0;
+    const keep = Number(L.net || 0) + disp;
+    // Without payout data there is no honest "in the bank" figure, so the answer is
+    // the ring fence alone — the thing we DO know.
+    const inBank = P && P.known > 0 ? Number(P.inBank || 0) : null;
+    const bits = [];
+    if (inBank !== null) bits.push(`${gbp(inBank)} of recent card money is in the bank`);
+    bits.push(`keep ${gbp(keep)} back${disp > 0 ? ' (deposits plus a disputed payment)' : ' for the deposits still to return'}`);
+    const row = {
+        type: 'answer', id: 'sweep-answer', wrap: true,
+        label: bits.join(' — ') + '.',
+        sub: P && P.onWay > 0 && P.nextArrival
+            ? `${gbp(P.onWay)} more arrives ${fmtDate(P.nextArrival)} · open Move money out to enter your balance`
+            : 'Open Move money out and enter your balance for the exact figure',
+        run: () => { closeCmdK(); cmdkOpenAccounts('sweep'); },
+    };
+    if (__cmdkResults.some((x) => x && x.id === 'sweep-answer')) return;
+    __cmdkResults = cmdkArrangeWide([row].concat(__cmdkResults).slice(0, 34), 34);
+    cmdkRender(true);
+}
 // Proper English ordinal — 1st/2nd/3rd/4th…, with the 11th/12th/13th
 // exceptions (the inline 2/3 patches emitted "21th"-style labels).
 function chbOrdinal(n) {
@@ -6366,6 +6400,9 @@ function cmdkSearchCore(q, allowCorrect) {
             // A pricing-review question also pulls the server's demand-signal
             // suggestions into the palette once they land.
             if (CHB_PRICE_Q.test(ql)) { try { cmdkPricingMerge(); } catch (e) {} }
+            // "how much can I move out" is a QUESTION, so it gets an answer rather
+            // than a link to the screen that holds the answer.
+            if (CHB_SWEEP_Q.test(ql)) { try { cmdkSweepMerge(); } catch (e) {} }
             // A name-ish query (not a question) also groups the WHOLE bookings history
             // into unified customers server-side, so a PAST guest not held in the
             // browser still surfaces as one person (deduped against the in-memory ones).
@@ -11937,6 +11974,9 @@ function toggleReceiptDetail(id) {
 // here moves real money.
 let __sweepBalance = '';
 let __sweepBuffer = '';
+// Set once the owner edits the field, so a re-render never overwrites what they are
+// typing with the rolled-forward estimate.
+let __sweepBalTouched = false;
 let __sweepLiab = null; // cached: typing a balance must not re-query the server
 async function renderSweep(refetch) {
     const box = document.getElementById('sweep-body');
@@ -11960,19 +12000,31 @@ async function renderSweep(refetch) {
         return;
     }
     const gbp = (n) => '£' + Number(n || 0).toFixed(2);
+    // Starts from what the owner last stated, ROLLED FORWARD by what Square has done
+    // since (payouts_balance_estimate) — an estimate, and labelled as one.
+    const est = (L.balance && L.balance.estimate) || null;
+    if (__sweepBalance === '' && est && !__sweepBalTouched) __sweepBalance = String(est.estimate.toFixed(2));
     const bal = parseFloat(__sweepBalance);
     const buf = parseFloat(__sweepBuffer) || 0;
     const hasBal = !isNaN(bal) && __sweepBalance !== '';
-    const ring = Number(L.net || 0) + buf;
+    // Money under dispute is fenced beside the deposits — Square can pull it back,
+    // and a chargeback on a whole stay dwarfs a deposit.
+    const disp = (L.disputes && Number(L.disputes.amount)) || 0;
+    const ring = Number(L.net || 0) + disp + buf;
     const safe = hasBal ? Math.max(0, bal - ring) : null;
     const short = hasBal ? Math.max(0, ring - bal) : 0;
 
     const rows = (L.items || [])
         .map(
             (it) =>
-                `<div class="act-row" style="justify-content:space-between;gap:10px;">
-                    <span>${escapeHtml(it.name || 'Guest')}${it.prop_key && propertyMeta[it.prop_key] ? ` · ${escapeHtml(propertyMeta[it.prop_key].short)}` : ''}${it.check_out ? ` · left ${fmtDate(it.check_out)}` : ''}</span>
-                    <span style="white-space:nowrap;">${gbp(it.net)}</span>
+                `<div class="act-row" style="display:block;">
+                    <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;">
+                        <span>${escapeHtml(it.name || 'Guest')}${it.prop_key && propertyMeta[it.prop_key] ? ` · ${escapeHtml(propertyMeta[it.prop_key].short)}` : ''}${it.check_out ? ` · left ${fmtDate(it.check_out)}` : ''}</span>
+                        <span style="white-space:nowrap;">${gbp(it.net)}</span>
+                    </div>
+                    ${Number(it.awaiting || 0) > 0
+                        ? `<div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;">Already refunded — waiting for Square to take it</div>`
+                        : ''}
                 </div>`,
         )
         .join('');
@@ -12020,12 +12072,18 @@ async function renderSweep(refetch) {
     box.innerHTML =
         `<div class="accounts-stat" style="max-width:620px;">
             <div class="label">Keep in the account</div>
-            <div style="font-family:var(--font-display);font-size:1.9rem;margin:4px 0 2px;">${gbp(L.net)}</div>
+            <div style="font-family:var(--font-display);font-size:1.9rem;margin:4px 0 2px;">${gbp(ring - buf)}</div>
             <p style="font-size:0.85rem;color:var(--text-muted);margin:0;">
                 ${L.count === 0
                     ? 'No deposits are waiting to go back, so nothing has to stay behind for Square.'
                     : `${L.count} damage deposit${L.count === 1 ? '' : 's'} still to return. Square will debit ${gbp(L.gross)} and credit back ${gbp(L.feeBack)} of its fee at the same time, so ${gbp(L.net)} is what actually leaves.`}
             </p>
+            ${disp > 0
+                ? `<p style="font-size:0.85rem;color:var(--danger);margin:8px 0 0;">Plus ${gbp(disp)} under dispute — ${L.disputes.count === 1 ? 'a card payment is' : L.disputes.count + ' card payments are'} being challenged and Square may take it back. Held here until it is settled.</p>`
+                : ''}
+            ${L.disputes && L.disputes.error
+                ? `<p style="font-size:0.78rem;color:var(--text-muted);margin:8px 0 0;">Couldn't check for disputes — ${escapeHtml(String(L.disputes.error))}. Anything under dispute is NOT included above.</p>`
+                : ''}
         </div>` +
         (L.count
             ? `<div class="accounts-stat" style="max-width:620px;margin-top:14px;">
@@ -12045,6 +12103,9 @@ async function renderSweep(refetch) {
                           : 'Payouts have not been checked yet.'}
                     <button class="btn-sm btn-edit" style="margin-left:6px;" ${chbAttrs('sweepRefreshPayouts')}>Check Square now</button>
                     <br>${notBalance}
+                    ${P.fees > 0 ? `<br>Square also charged ${gbp(P.fees)} in transfer fees on these payouts — already out, not part of the figures above.` : ''}
+                    ${P.truncated ? '<br>Showing the most recent payouts only, so an older charge may be missing from this list.' : ''}
+                    ${P.failed && P.failed.count ? `<br><strong>${P.failed.count} payout${P.failed.count === 1 ? '' : 's'} FAILED (${gbp(P.failed.amount)})</strong> — that money never arrived, and it usually means the bank details need fixing.` : ''}
                </p>`
             : T && T.count
               ? `<div class="accounts-stat" style="max-width:620px;margin-top:14px;">
@@ -12060,7 +12121,9 @@ async function renderSweep(refetch) {
               : '') +
         `<div class="accounts-stat" style="max-width:620px;margin-top:14px;">
             <div class="label">How much can I move?</div>
-            <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 12px;">Type what the account holds right now. Nothing is saved — there's no bank feed, and a remembered balance would be out of date the moment it was stored.</p>
+            <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 12px;">${est
+                ? `Starting from the ${gbp(est.from)} you told me on ${fmtDate(new Date(est.at * 1000).toISOString().slice(0, 10))}${est.in > 0 ? `, plus ${gbp(est.in)} Square has paid in since` : ''}${est.out > 0 ? `, less ${gbp(est.out)} it has taken back` : ''}. That's an <strong>estimate</strong> — correct it if the account says otherwise.`
+                : `Type what the account holds right now. There's no bank feed, so this is the one figure I can't work out for you.`}</p>
             <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
                 <label style="flex:1;min-width:150px;"><span style="display:block;font-size:0.75rem;color:var(--text-muted);margin-bottom:4px;">Balance now</span>
                     <input type="number" inputmode="decimal" step="0.01" min="0" class="input-glass field-sm" id="sweep-balance" value="${escapeHtml(__sweepBalance)}" placeholder="0.00" style="margin:0;" ${chbChange('sweepSet', 'balance', CHB_VALUE)}></label>
@@ -12070,18 +12133,37 @@ async function renderSweep(refetch) {
             ${!hasBal
                 ? `<p style="font-size:0.85rem;color:var(--text-muted);margin:14px 0 0;">Enter the balance and I'll tell you what's safe to move.</p>`
                 : short > 0
-                  ? `<p style="margin:14px 0 0;color:var(--danger);font-size:0.9rem;"><strong>Don't move anything yet.</strong> The account is ${gbp(short)} short of what the deposits will take — top it up before the next refund goes out.</p>`
+                  ? `<p style="margin:14px 0 0;color:var(--danger);font-size:0.9rem;"><strong>Don't move anything yet.</strong> The account is ${gbp(short)} short of what has to leave it — top it up before the next refund goes out.</p>`
                   : `<div style="margin:14px 0 0;">
                         <div class="label">Safe to move</div>
                         <div style="font-family:var(--font-display);font-size:1.9rem;margin:4px 0 2px;color:var(--ok-text);">${gbp(safe)}</div>
-                        <p style="font-size:0.85rem;color:var(--text-muted);margin:0;">Leaves ${gbp(ring)} behind${buf > 0 ? ` (${gbp(L.net)} for deposits plus your ${gbp(buf)} cushion)` : ' for the deposits still to return'}.</p>
+                        <p style="font-size:0.85rem;color:var(--text-muted);margin:0;">Leaves ${gbp(ring)} behind — ${gbp(L.net)} for the deposits still to return${disp > 0 ? `, ${gbp(disp)} under dispute` : ''}${buf > 0 ? `, plus your ${gbp(buf)} cushion` : ''}.</p>
+                        <button class="btn-sm btn-edit" style="margin-top:10px;" ${chbAttrs('sweepRememberBalance')}>Remember this balance</button>
+                        <p style="font-size:0.78rem;color:var(--text-muted);margin:6px 0 0;">Stored with today's date so next time it can start from here and add what Square has paid in since.</p>
                      </div>`}
         </div>`;
 }
 function sweepSet(which, value) {
-    if (which === 'balance') __sweepBalance = String(value || '');
-    else __sweepBuffer = String(value || '');
+    if (which === 'balance') {
+        __sweepBalance = String(value || '');
+        __sweepBalTouched = true; // never let a re-render overwrite what they typed
+    } else __sweepBuffer = String(value || '');
     renderSweep(false); // recompute from the cached liability — no round trip
+}
+// Store the balance WITH today's date. A bare remembered figure would be stale; a
+// dated one is a starting point, and the estimate refuses to roll one older than 30
+// days forward rather than compounding drift.
+async function sweepRememberBalance() {
+    const amt = parseFloat(__sweepBalance);
+    if (isNaN(amt) || amt < 0) return;
+    try {
+        await saveContent('sweep-balance', JSON.stringify({ amount: Math.round(amt * 100) / 100, at: Math.floor(Date.now() / 1000) }));
+        toast('Balance noted', 'success');
+    } catch (e) {
+        return; // saveContent has already told them, and it rethrows on purpose
+    }
+    __sweepBalTouched = false;
+    renderSweep(); // refetch so the stored figure and the estimate agree
 }
 // The owner asking Square directly. Normally the daily cron fills the payout cache
 // so no page ever waits on Square; this is the one place a wait is fair, because
@@ -14529,6 +14611,30 @@ function chbDuties() {
             act: 'Check', go: 'data-act="navDiagnostics"',
             board: 'today', scope: 'bookings',
             run: () => { closeCmdK(); nav('view-settings'); settingsOpen('diagnostics'); },
+        });
+    }
+    // 1b) A FAILED payout or a disputed payment. Move-money-out refuses to count
+    // either as movable, but silently — and bad bank details stop every later
+    // transfer. Off the bootstrap payload, so no request of its own ($feeds).
+    const pt = /** @type {any} */ (window).__payoutTroublePre;
+    if (pt && pt.failed && pt.failed.count > 0) {
+        out.push({
+            kind: 'payout', sev: 'danger', ic: 'alert',
+            label: `Square couldn’t pay ${gbp(pt.failed.amount)} into your bank`,
+            sub: pt.failed.count === 1 ? 'The transfer failed — usually the bank details' : `${pt.failed.count} transfers failed — usually the bank details`,
+            act: 'Check', go: chbAttrs('cmdkOpenAccounts', 'sweep'),
+            board: 'money', scope: 'bookings',
+            run: () => { closeCmdK(); cmdkOpenAccounts('sweep'); },
+        });
+    }
+    if (pt && pt.disputed && pt.disputed.count > 0) {
+        out.push({
+            kind: 'dispute', sev: 'danger', ic: 'alert',
+            label: `${gbp(pt.disputed.amount)} is under dispute`,
+            sub: pt.disputed.count === 1 ? 'A card payment is being challenged — evidence may be due' : `${pt.disputed.count} card payments are being challenged`,
+            act: 'Check', go: chbAttrs('cmdkOpenAccounts', 'sweep'),
+            board: 'money', scope: 'bookings',
+            run: () => { closeCmdK(); cmdkOpenAccounts('sweep'); },
         });
     }
     // 2) Enquiries waiting for an answer — the money-makers, oldest first.

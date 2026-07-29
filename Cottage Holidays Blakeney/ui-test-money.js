@@ -435,6 +435,77 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(/Square hasn't said/.test(s1d) && /£491\.25/.test(s1d), 'unvouched money is named as unknown, not counted as movable');
   ok(/Not counted as movable/i.test(s1d), 'and the screen says so in words');
 
+  // MONEY UNDER DISPUTE is fenced beside the deposits — Square can pull it back, and
+  // a chargeback on a whole stay dwarfs a £75 deposit. Its own line, not folded in.
+  sweepStub = Object.assign({}, sweepStub, {
+    disputes: { amount: 900, count: 1, items: [{ id: 'd1', amount: 900, state: 'EVIDENCE_REQUIRED', reason: 'NO_KNOWLEDGE' }], error: null },
+  });
+  await page.evaluate(() => renderSweep());
+  await page.waitForTimeout(500);
+  const sD = await sweepText();
+  ok(/£900\.00 under dispute/.test(sD), `a disputed payment is named on the ring fence (${sD.slice(0, 60)})`);
+  ok(/£1,?047\.38/.test(sD), 'and it is ADDED to what must stay in the account (147.38 + 900)');
+  await page.fill('#sweep-balance', '2000');
+  await page.locator('#sweep-balance').press('Tab');
+  await page.waitForTimeout(400);
+  const sD2 = await sweepText();
+  ok(/£952\.62/.test(sD2), `so what is safe to move drops by the disputed amount (${sD2.slice(-120)})`);
+  // A dispute read that failed must not read as "nothing disputed".
+  sweepStub = Object.assign({}, sweepStub, { disputes: { amount: 0, count: 0, items: [], error: "the access token can't read disputes" } });
+  await page.evaluate(() => renderSweep());
+  await page.waitForTimeout(500);
+  const sD3 = await sweepText();
+  ok(/Couldn't check for disputes/.test(sD3) && /NOT included/.test(sD3), 'a failed dispute check says so rather than implying none');
+  sweepStub = Object.assign({}, sweepStub, { disputes: { amount: 0, count: 0, items: [], error: null } });
+  await page.evaluate(() => { __sweepBalance = ''; __sweepBalTouched = false; });
+
+  // AN ISSUED-BUT-UNDEBITED REFUND stays fenced, and says why — "still to return"
+  // would read as a job the owner has yet to do.
+  sweepStub = Object.assign({}, sweepStub, {
+    items: [{ outstanding: 75, awaiting: 75, gross: 75, feeBack: 1.31, net: 73.69, name: 'Anne Betts', prop_key: '21a', check_out: d(-4) }],
+    count: 1, gross: 75, feeBack: 1.31, net: 73.69,
+  });
+  await page.evaluate(() => renderSweep());
+  await page.waitForTimeout(500);
+  const sA = await sweepText();
+  ok(/Already refunded — waiting for Square to take it/.test(sA), 'a pending refund is labelled, not shown as outstanding work');
+
+  // THE BALANCE, ROLLED FORWARD. Pre-filled from what the owner last stated plus what
+  // Square has done since — and labelled an estimate, with its working shown.
+  sweepStub = Object.assign({}, sweepStub, {
+    balance: {
+      stored: { amount: 2000, at: Math.floor(Date.now() / 1000) - 3 * 86400 },
+      estimate: { from: 2000, at: Math.floor(Date.now() / 1000) - 3 * 86400, in: 604.05, inCount: 1, out: 73.92, outCount: 1, estimate: 2530.13 },
+    },
+  });
+  await page.evaluate(() => { __sweepBalance = ''; __sweepBalTouched = false; renderSweep(); });
+  await page.waitForTimeout(500);
+  const sB = await sweepText();
+  const balVal = await page.inputValue('#sweep-balance');
+  ok(balVal === '2530.13', `the field starts from the rolled-forward figure (${balVal})`);
+  ok(/estimate/.test(sB) && /£2000\.00 you told me/.test(sB), 'labelled an estimate, from the figure they stated');
+  ok(/plus £604\.05 Square has paid in since/.test(sB) && /less £73\.92 it has taken back/.test(sB), 'and it shows its working both ways');
+  ok(/Remember this balance/.test(sB), 'with a way to store the corrected figure');
+  // Typing must never be overwritten by a re-render.
+  await page.fill('#sweep-balance', '1234.56');
+  await page.locator('#sweep-balance').press('Tab');
+  await page.waitForTimeout(300);
+  await page.evaluate(() => renderSweep(false));
+  await page.waitForTimeout(300);
+  ok((await page.inputValue('#sweep-balance')) === '1234.56', 'a re-render never overwrites what the owner is typing');
+
+  // Put the two-deposit fixture back: the cases below assert against a £147.38 ring
+  // fence, and leaving this block's single-deposit shape in place broke four of them.
+  // A shared mutable stub has to be restored, not just extended.
+  sweepStub = Object.assign({}, sweepStub, {
+    gross: 150, feeBack: 2.62, net: 147.38, count: 2, balance: null,
+    items: [
+      { outstanding: 75, awaiting: 0, gross: 75, feeBack: 1.31, net: 73.69, name: 'Sarah Pemberton', prop_key: '21a', check_out: d(-4) },
+      { outstanding: 75, awaiting: 0, gross: 75, feeBack: 1.31, net: 73.69, name: 'Dan Rowe', prop_key: '21a', check_out: d(-2) },
+    ],
+  });
+  await page.evaluate(() => { __sweepBalance = ''; __sweepBuffer = ''; __sweepBalTouched = false; });
+
   // A stale cache says so instead of presenting old figures as current.
   sweepStub = Object.assign({}, sweepStub, {
     payouts: Object.assign({}, sweepStub.payouts, { error: "the access token can't read payouts" }),

@@ -115,6 +115,28 @@ swchk('…and never suggests moving money out of it', $eq($tight['safe'], 0));
 swchk('a zero balance is handled, not divided by', $eq(sweep_plan(0, 300, 0)['short'], 300));
 swchk('no liability at all → the whole balance is free', $eq(sweep_plan(500, 0, 0)['safe'], 500));
 
+// ---- A RETURN THAT HASN'T LEFT YET ---------------------------------------
+// return_deposit marks hold_status='returned' the moment the refund is ISSUED, but
+// Square debits the bank a day or two later. Dropping it out of the ring fence then
+// is the mirror of counting an un-paid-out charge as movable: refund £75, be told
+// £75 more is movable, go short on Thursday.
+$fresh = sweep_outstanding(75, 0, 75, 0);
+swchk('a refund that is issued but not settled STAYS in the ring fence', $eq($fresh['outstanding'], 75), 'got ' . $fresh['outstanding']);
+swchk('…and is flagged as already refunded, not as a job still to do', $eq($fresh['awaiting'], 75));
+$done = sweep_outstanding(75, 75, 0, 0);
+swchk('a SETTLED return leaves the ring fence', $eq($done['outstanding'], 0) && $eq($done['awaiting'], 0));
+$partly = sweep_outstanding(75, 25, 50, 0);
+swchk('a part-settled return fences only what is left', $eq($partly['outstanding'], 50) && $eq($partly['awaiting'], 50));
+// A row nobody will ever confirm must not fence money forever — the owner could
+// never clear it. Old unconfirmed returns are assumed to have landed.
+$stale = sweep_outstanding(75, 0, 0, 75);
+swchk('an old unconfirmed return is assumed landed, not fenced for ever', $eq($stale['outstanding'], 0));
+swchk('awaiting can never exceed what is outstanding',
+    $eq(sweep_outstanding(75, 50, 75, 0)['awaiting'], 25), 'got ' . sweep_outstanding(75, 50, 75, 0)['awaiting']);
+swchk('over-returning cannot make the fence negative', $eq(sweep_outstanding(75, 200, 0, 0)['outstanding'], 0));
+swchk('an untouched deposit is fenced in full, nothing awaiting',
+    $eq(sweep_outstanding(75, 0, 0, 0)['outstanding'], 75) && $eq(sweep_outstanding(75, 0, 0, 0)['awaiting'], 0));
+
 // ---- PER TRANSACTION -----------------------------------------------------
 // The same question asked of ONE settled charge: £900 rental + £75 deposit, fee
 // £17.06 → £957.94 landed, £73.69 of it is going back out, so £884.25 is movable.
@@ -202,6 +224,17 @@ if (preg_match('/SAFE TO MOVE(.*?)json_out\(/s', $acct, $m)) {
         strpos($m[1], "UPPER(r.status) NOT IN ('FAILED','REJECTED')") !== false);
     swchk('a failed query reports unknown rather than a confident zero',
         preg_match("/catch[^}]*\\\$sweep\['error'\]\s*=\s*true/s", $m[1]) === 1);
+    // The three-way split is what keeps an issued-but-undebited refund fenced.
+    // Matched on the CALL's arguments, not the bare name: the comment above the query
+    // says "see sweep_outstanding()", so a name-only check passed with the call
+    // replaced by an inline (wrong) subtraction — prose satisfying a code check.
+    swchk('the query separates settled returns from pending ones',
+        strpos($m[1], 'ret_settled') !== false && strpos($m[1], 'ret_pending') !== false && strpos($m[1], 'ret_stale') !== false
+        && strpos($m[1], "sweep_outstanding(\$r['hold_amount']") !== false);
+    swchk('a booking already marked returned is still selected while its refund is pending',
+        preg_match("/hold_status = 'returned' AND EXISTS/", $m[1]) === 1);
+    swchk("'MANUAL' counts as settled — a return booked by hand has already happened",
+        preg_match("/IN \('COMPLETED','MANUAL'\)/", $m[1]) === 1);
 } else {
     swchk('the liability block is present in accounts.php', false, 'block not found');
     $fail += 3;

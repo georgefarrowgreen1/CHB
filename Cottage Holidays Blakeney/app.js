@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 320;
+const ADMIN_BUNDLE_V = 321;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -6898,6 +6898,9 @@ async function loadData() {
     // carrying this here is what makes a stalled Airbnb sync visible before it is
     // discovered by a double booking.
     /** @type {any} */ (window).__feedStatusPre = (ab && Array.isArray(ab.feeds) ? ab.feeds : null);
+    // Failed payouts / open disputes, from that same payload — a duty (chbDuties)
+    // rather than a status line, because bad bank details stop every later transfer.
+    /** @type {any} */ (window).__payoutTroublePre = (ab && ab.payoutTrouble) || null;
 
     // Shape-check each part (not just truthiness) so a malformed combined
     // payload cleanly falls back to the individual endpoint.
@@ -13357,7 +13360,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'sweep03';
+    const BUILD = 'sweep04';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

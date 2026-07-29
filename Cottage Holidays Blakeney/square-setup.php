@@ -19,6 +19,10 @@ require_admin();
 
 // The events square-webhook.php acts on: payment status + processing fee, refund
 // status, and disputes/chargebacks (logged for the owner).
+// NB adding an event makes sq_subscription_ok() report an EXISTING install as not
+// connected until "Connect automatic payment updates" is run again — which is the
+// intended prompt, not a fault: the subscription genuinely lacks the new events.
+// setup is idempotent, so re-running only adds them.
 const SQ_WEBHOOK_EVENTS = [
     'payment.created',
     'payment.updated',
@@ -26,6 +30,12 @@ const SQ_WEBHOOK_EVENTS = [
     'refund.updated',
     'dispute.created',
     'dispute.state.changed',
+    // Payouts: what has actually reached the bank (payouts-lib.php). Without these
+    // the payout cache is only as fresh as the nightly cron, so money that landed
+    // this morning reads as still on its way until tomorrow.
+    'payout.sent',
+    'payout.paid',
+    'payout.failed',
 ];
 
 // Find OUR subscription (matching notification_url) among the merchant's, paging

@@ -422,6 +422,66 @@ it_check('the ring fence is the deposits NET of their fee share, not the gross',
     $swLiab && (float) $swLiab['net'] > 140 && (float) $swLiab['net'] < (float) $swLiab['gross'],
     'net=' . ($swLiab['net'] ?? '?') . ' gross=' . ($swLiab['gross'] ?? '?'));
 
+// (f) A REFUND THAT HASN'T LEFT THE BANK YET. return_deposit marks the booking
+// 'returned' the moment the refund is issued, but Square debits days later — so the
+// money must stay ring-fenced until the return SETTLES, or the screen offers it as
+// movable while it is still in the account. Only a real request proves the query
+// selects an already-'returned' booking on the strength of a pending refund row.
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, payment_date, hold_status, hold_amount, hold_payment_id) VALUES ('$propKey','Pending Return','pr@x.co','2026-06-01','2026-06-04',2,0,'paid',500,500,500,0,3,'2026-06-01','returned',75,'sq_pr_dep')");
+$prId = (int) $rootDb->lastInsertId();
+$rootDb->exec("INSERT INTO payments (booking_id, kind, amount, fee, status, square_payment_id, created_at) VALUES ($prId,'deposit',425,7.44,'COMPLETED','sq_pr_dep', DATE_SUB(NOW(), INTERVAL 30 DAY))");
+// Issued two days ago, Square has not confirmed it — still in the account.
+$rootDb->exec("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id, created_at) VALUES ($prId,'damages_return',75,'PENDING','sq_pr_ref', DATE_SUB(NOW(), INTERVAL 2 DAY))");
+$prLiab = $acctGet(2026)['json']['deposit_liability'] ?? null;
+$prRow = null;
+foreach (($prLiab['items'] ?? []) as $it) {
+    if ((int) ($it['booking_id'] ?? 0) === $prId) {
+        $prRow = $it;
+    }
+}
+it_check('an issued-but-unsettled refund is STILL ring-fenced', $prRow && abs((float) $prRow['outstanding'] - 75.0) < 0.02, json_encode($prRow));
+it_check('…and is flagged as already refunded, not as a job still to do', $prRow && abs((float) $prRow['awaiting'] - 75.0) < 0.02, 'awaiting=' . ($prRow['awaiting'] ?? '?'));
+// Once Square confirms it, the money has gone and the fence must release.
+$rootDb->exec("UPDATE payments SET status='COMPLETED' WHERE square_payment_id='sq_pr_ref'");
+$prLiab2 = $acctGet(2026)['json']['deposit_liability'] ?? null;
+$still = false;
+foreach (($prLiab2['items'] ?? []) as $it) {
+    if ((int) ($it['booking_id'] ?? 0) === $prId) {
+        $still = true;
+    }
+}
+it_check('a SETTLED return leaves the ring fence', !$still, 'still fenced after COMPLETED');
+// A refund nobody ever confirmed must not fence money for ever — the owner could
+// never clear it. Backdate it past the 14-day line.
+$rootDb->exec("UPDATE payments SET status='PENDING', created_at=DATE_SUB(NOW(), INTERVAL 40 DAY) WHERE square_payment_id='sq_pr_ref'");
+$prLiab3 = $acctGet(2026)['json']['deposit_liability'] ?? null;
+$stale = false;
+foreach (($prLiab3['items'] ?? []) as $it) {
+    if ((int) ($it['booking_id'] ?? 0) === $prId) {
+        $stale = true;
+    }
+}
+it_check('an old unconfirmed return is assumed landed, not fenced for ever', !$stale, 'still fenced after 40 days pending');
+// That case is really decided by the WHERE clause (an already-'returned' booking is
+// only selected while a refund is RECENTLY pending), so it leaves ret_stale untested.
+// Where the column actually bites: a booking still 'charged' carrying an old
+// unconfirmed PARTIAL return — £75 taken, £25 refunded 40 days ago and never
+// confirmed. Without ret_stale that £25 is fenced for ever.
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, payment_date, hold_status, hold_amount, hold_payment_id) VALUES ('$propKey','Stale Part Return','sp2@x.co','2026-05-01','2026-05-04',2,0,'paid',500,500,500,0,3,'2026-05-01','charged',75,'sq_sp2_dep')");
+$sp2Id = (int) $rootDb->lastInsertId();
+$rootDb->exec("INSERT INTO payments (booking_id, kind, amount, fee, status, square_payment_id, created_at) VALUES ($sp2Id,'deposit',425,7.44,'COMPLETED','sq_sp2_dep', DATE_SUB(NOW(), INTERVAL 60 DAY))");
+$rootDb->exec("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id, created_at) VALUES ($sp2Id,'damages_return',25,'PENDING','sq_sp2_ref', DATE_SUB(NOW(), INTERVAL 40 DAY))");
+$sp2Row = null;
+foreach (($acctGet(2026)['json']['deposit_liability']['items'] ?? []) as $it) {
+    if ((int) ($it['booking_id'] ?? 0) === $sp2Id) {
+        $sp2Row = $it;
+    }
+}
+it_check('an old unconfirmed PARTIAL return is treated as landed (£50 left, not £75)',
+    $sp2Row && abs((float) $sp2Row['outstanding'] - 50.0) < 0.02, json_encode($sp2Row));
+it_check('…and nothing is reported as awaiting, because nothing recent is pending',
+    $sp2Row && abs((float) $sp2Row['awaiting']) < 0.005, 'awaiting=' . ($sp2Row['awaiting'] ?? '?'));
+
 // ---- 12. set_payment on a LEGACY pre-snapshot booking (finding 10) --------
 echo "\n== 11. set_payment legacy fallback ==\n";
 // A booking with agreed_total NULL (predates the snapshot migration) but real

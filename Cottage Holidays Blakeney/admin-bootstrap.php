@@ -62,9 +62,32 @@ try {
     $feeds = [];
 }
 
+// Payout trouble, folded into the same round trip for the same reason as $feeds. A
+// FAILED payout usually means the bank details are wrong and every later transfer
+// will fail too, so it belongs in the owner's duty list — and reading the CACHE
+// costs nothing (payouts-lib never fetches from Square on a request path).
+$payoutTrouble = null;
+try {
+    require_once __DIR__ . '/payouts-lib.php';
+    $poc = payouts_cached();
+    if (is_array($poc)) {
+        $f = payouts_failed($poc['payouts'] ?? []);
+        $dsp = is_array($poc['disputes'] ?? null) ? $poc['disputes'] : null;
+        if ($f['count'] > 0 || ($dsp && ($dsp['count'] ?? 0) > 0)) {
+            $payoutTrouble = [
+                'failed' => $f,
+                'disputed' => $dsp ? ['count' => (int) $dsp['count'], 'amount' => (float) $dsp['amount']] : null,
+            ];
+        }
+    }
+} catch (\Throwable $e) {
+    $payoutTrouble = null;
+}
+
 json_out([
     'ok' => true,
     'feeds' => $feeds,
+    'payoutTrouble' => $payoutTrouble,
     'rates' => rates_public_payload(),
     'bookings' => bookings_admin_payload(),
     'enquiries' => enquiries_admin_payload(),

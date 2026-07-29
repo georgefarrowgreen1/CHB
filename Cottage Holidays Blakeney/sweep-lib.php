@@ -114,6 +114,38 @@ function sweep_totals(array $items, $rate = SWEEP_RATE_DEFAULT)
     ];
 }
 
+// HOW MUCH OF A DEPOSIT IS STILL TO LEAVE THE ACCOUNT.
+//
+// bookings.php's return_deposit marks hold_status='returned' the moment a refund is
+// ISSUED — but Square's refund starts PENDING and the bank debit lands a day or two
+// later (which is why reconcile_pending_refunds() exists at all). So "returned" does
+// NOT mean "gone", and treating it as gone dropped the money out of the ring fence
+// while it was still sitting in the account: refund £73.92, be told £73.92 more is
+// movable, then go short when Square debits it. The exact mirror of counting an
+// un-paid-out charge as movable.
+//
+// So a return only reduces the liability once it has SETTLED. Three inputs:
+//   $settled       returns Square has confirmed (COMPLETED), or booked by hand
+//   $pendingRecent returns issued but not yet confirmed
+//   $pendingStale  ditto, but old enough that they have almost certainly landed and
+//                  simply were never confirmed — assumed settled, because fencing
+//                  money forever on a row nobody will ever update is its own bug
+//                  (the owner can never clear it). accounts.php draws that line at
+//                  14 days; reconcile_pending_refunds only looks back 60.
+// Returns:
+//   outstanding  what still has to leave (the ring fence)
+//   awaiting     of that, how much is already refunded and just waiting on Square
+function sweep_outstanding($hold, $settled, $pendingRecent = 0, $pendingStale = 0)
+{
+    $hold = round(max(0, (float) $hold), 2);
+    $gone = round(max(0, (float) $settled) + max(0, (float) $pendingStale), 2);
+    $outstanding = round(max(0, $hold - $gone), 2);
+    return [
+        'outstanding' => $outstanding,
+        'awaiting' => round(min(max(0, (float) $pendingRecent), $outstanding), 2),
+    ];
+}
+
 // ONE SETTLED CHARGE → how much of what it brought in is movable.
 // The aggregate above answers "what must stay in the account"; this answers it per
 // transaction, which is how the owner reads a Square payout list: this £975 landed,
