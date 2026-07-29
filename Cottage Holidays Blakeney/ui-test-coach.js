@@ -87,6 +87,101 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   const gone = await page.evaluate(() => !document.querySelector('.coach-ov-seq') && (typeof __coachSeq === 'undefined' || __coachSeq === null));
   ok(gone, 'Escape ends the walkthrough (overlay + state cleared)');
 
+  // 8) BACKING OUT MID-WALK STOPS THE WALK, AND SAYS SO. The only liveness test
+  // used to be document.contains(), and closeModal() removes a CLASS, not the node
+  // — so a cancelled Add Booking left the guide certain its form was still open.
+  // Measured before the fix: overlay still up on Today, __coachSeq alive, tip still
+  // reading "Tap Save", ring painted 172×56 at (37,725) over a button with a zero
+  // rect (the ring was STALE — coachReposition only ran on scroll/resize).
+  const toastText = () => page.evaluate(() => [...document.querySelectorAll('#app-toasts .toast')].map((t) => t.textContent.trim()).join(' | '));
+  const clearToasts = () => page.evaluate(() => { const s = document.getElementById('app-toasts'); if (s) s.innerHTML = ''; });
+  await clearToasts();
+  await page.evaluate(() => coachWalk('add-booking'));
+  await page.waitForTimeout(800);
+  await page.evaluate(() => coachSequence(CHB_WALK['add-booking'].steps, 2)); // a MIDDLE step
+  await page.waitForTimeout(400);
+  await page.evaluate(() => closeModal()); // the owner backs out
+  await page.waitForTimeout(900); // poll is 350ms
+  const bail = await page.evaluate(() => ({
+    overlay: !!document.querySelector('.coach-ov-seq'),
+    seq: typeof __coachSeq !== 'undefined' && !!__coachSeq,
+  }));
+  ok(!bail.overlay && !bail.seq, `CANCEL: backing out mid-walk tears the walkthrough down (overlay=${bail.overlay}, state=${bail.seq})`);
+  const bailSay = await toastText();
+  ok(/stopped/i.test(bailSay) && !/all set/i.test(bailSay), `CANCEL: …and says so rather than going quiet ("${bailSay}")`);
+  ok(/start again/i.test(bailSay), 'CANCEL: …with the way back on the message');
+
+  // 9) THE LAST STEP IS THE ONE THAT USED TO LIE. It has no `until` (it is "tap
+  // Save"), so vanishing meant advance meant coachSequence(steps, steps.length)
+  // meant "You're all set" — over a form you abandoned. `done` is what tells saved
+  // from cancelled, and here nothing was saved.
+  await clearToasts();
+  await page.evaluate(() => coachWalk('add-booking'));
+  await page.waitForTimeout(800);
+  await page.evaluate(() => coachSequence(CHB_WALK['add-booking'].steps, 4)); // the Save step
+  await page.waitForTimeout(400);
+  await page.evaluate(() => closeModal());
+  await page.waitForTimeout(900);
+  const lastSay = await toastText();
+  ok(/nothing was created/i.test(lastSay) && !/all set/i.test(lastSay),
+    `DONE: abandoning at Save reports the truth, not a tick ("${lastSay}")`);
+  // …and the honest branch is only honest if the happy one still works: fake the
+  // save by moving the count past the mark, then finish the same way.
+  await clearToasts();
+  await page.evaluate(() => coachWalk('add-booking'));
+  await page.waitForTimeout(800);
+  await page.evaluate(() => {
+    coachSequence(CHB_WALK['add-booking'].steps, 4);
+    dbBookings.jollyboat.push({ id: 999, propKey: 'jollyboat', name: 'Walk Test', checkIn: '2030-01-01', checkOut: '2030-01-03' });
+  });
+  await page.waitForTimeout(400);
+  await page.evaluate(() => closeModal());
+  await page.waitForTimeout(900);
+  const okSay = await toastText();
+  ok(/booking is on today/i.test(okSay), `DONE: …and a real save is reported as one ("${okSay}")`);
+  await page.evaluate(() => { dbBookings.jollyboat = dbBookings.jollyboat.filter((b) => b.id !== 999); });
+
+  // 10) A TARGET THAT NEVER APPEARS gives up with a word. It used to bail after
+  // 30×200ms in total silence — six seconds of nothing, then gone.
+  await clearToasts();
+  await page.evaluate(() => { coachSeqStop(); coachSequence([{ sel: '#no-such-target-at-all', say: 'Never appears.' }], 0, { topic: 'add-booking' }); });
+  await page.waitForTimeout(7000); // 30 tries × 200ms
+  const lost = await page.evaluate(() => ({ overlay: !!document.querySelector('.coach-ov-seq'), seq: typeof __coachSeq !== 'undefined' && !!__coachSeq }));
+  const lostSay = await toastText();
+  ok(!lost.overlay && !lost.seq && /didn’t open|didn't open/i.test(lostSay),
+    `LOST: a target that never appears stops WITH a message ("${lostSay}")`);
+
+  // 11) START WHERE THE OWNER ALREADY IS. take-payment's step 0 `until` is "a
+  // booking hub with a pay action is open" — so from that hub the walk must begin
+  // on the button, not bounce out to Bookings and re-filter. Stub the signal the
+  // step reads rather than driving a whole hub: the point under test is coachWalk's
+  // skip pass, not the hub.
+  await clearToasts();
+  await page.evaluate(() => {
+    const b = document.createElement('button');
+    b.setAttribute('data-act', 'requestPayment');
+    b.textContent = 'Request the balance by card';
+    b.style.cssText = 'position:fixed;top:200px;left:20px;width:200px;height:40px;';
+    b.id = 'walk-stub-pay';
+    document.body.appendChild(b);
+    window.__navSpy = 0;
+    window.__origOpenBookings = openBookings;
+    openBookings = () => { window.__navSpy++; return window.__origOpenBookings(); };
+  });
+  await page.evaluate(() => coachWalk('take-payment'));
+  await page.waitForTimeout(700);
+  const already = await page.evaluate(() => ({
+    step: document.querySelector('.coach-ov-seq .coach-tip-step')?.textContent || '',
+    navigated: window.__navSpy,
+  }));
+  ok(/step 2 of 2/i.test(already.step), `HERE: already on the pay banner → the walk starts on the button (${already.step})`);
+  ok(already.navigated === 0, `HERE: …and it does NOT navigate away from where you are (${already.navigated} nav calls)`);
+  await page.evaluate(() => {
+    coachSeqStop();
+    openBookings = window.__origOpenBookings;
+    document.getElementById('walk-stub-pay')?.remove();
+  });
+
   console.log(fails ? `\n  ${fails} CHECK(S) FAILED ❌` : '\n  GUIDED WALKTHROUGH SUITE PASSED ✅');
   await done(fails);
 })();
