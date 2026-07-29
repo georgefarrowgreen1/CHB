@@ -1054,12 +1054,66 @@ function payment_rail($b)
 function booking_ledger_net($bookingId)
 {
     $s = db()->prepare(
-        "SELECT COALESCE(SUM(CASE WHEN kind IN ('deposit','balance') AND status IN ('COMPLETED','APPROVED') THEN amount ELSE 0 END),0)
-              - COALESCE(SUM(CASE WHEN kind = 'refund' AND (status IS NULL OR status NOT IN ('FAILED','REJECTED')) THEN amount ELSE 0 END),0) AS net
+        "SELECT COALESCE(SUM(CASE WHEN kind IN ('deposit','balance') AND UPPER(status) IN ('COMPLETED','APPROVED') THEN amount ELSE 0 END),0)
+              - COALESCE(SUM(CASE WHEN kind = 'refund' AND (status IS NULL OR UPPER(status) NOT IN ('FAILED','REJECTED')) THEN amount ELSE 0 END),0) AS net
            FROM payments WHERE booking_id = ?",
     );
     $s->execute([(int) $bookingId]);
     return round(max(0, (float) $s->fetchColumn()), 2);
+}
+
+// LEDGER STATUS, NORMALISED ON WRITE. Every status this app stores comes from Square
+// (uppercase) or is the literal 'MANUAL', so the ledger has always been uppercase in
+// practice — but the READERS disagreed about whether that was guaranteed: accounts.php
+// case-folds all eleven of its filters, while booking_ledger_net (the primitive every
+// paid/refund calc builds on), find_charge_for_refund and damages_returned did not. A
+// single lowercase row would therefore be counted by some money queries and not
+// others, and which ones would depend on the query rather than the fact.
+//
+// Fixed from both ends: normalised here on the way IN so it cannot happen again, and
+// the four readers case-fold so rows already stored are safe too.
+const PAYMENT_STATUSES = ['PENDING', 'COMPLETED', 'APPROVED', 'CAPTURED', 'FAILED', 'REJECTED', 'MANUAL'];
+function payment_status_norm($s)
+{
+    return strtoupper(trim((string) $s));
+}
+// Is this a status the app recognises? Used to refuse an unrecognised value rather
+// than write it over a good one — an unknown status in the ledger is worse than a
+// stale one, because every money query then has to guess what it meant.
+function payment_status_known($s)
+{
+    return in_array(payment_status_norm($s), PAYMENT_STATUSES, true);
+}
+
+// HOW MUCH THIS BOOKING HAS ALREADY PAID — one definition, because there were two.
+// `bookings.deposit_paid` is the reconciled headline figure; `booking_ledger_net()` is
+// what the card ledger actually shows. They agree once reconciliation has run, and
+// diverge in exactly the window this app already handles elsewhere: a payment landed
+// but reconcile_booking_payment / the webhook did not finish.
+//
+// The CHARGE path in pay.php always took max() of the two, so it can never take more
+// than the guest was quoted. But the EMAIL (booking_amount_due) and the pay SCREEN's
+// summary both read deposit_paid alone — so with the ledger ahead, the guest was asked
+// for more than the card would take, and at the extreme was told £220 was due and then
+// got "this booking is already paid in full". Same question, three call sites, two
+// answers. This is that answer, stated once; callers still apply their own cap.
+//
+// Falls back to the recorded figure for a booking with no id, or when the LEDGER QUERY
+// fails — which in practice means an un-migrated payments table, the same case pay.php
+// already handled inline. NB it is not a guard against an unreachable database: db()
+// exits with JSON on that, here as everywhere else, so there is nothing to catch.
+function booking_paid_so_far($b)
+{
+    $recorded = round((float) ($b['deposit_paid'] ?? 0), 2);
+    $id = (int) ($b['id'] ?? 0);
+    if ($id <= 0) {
+        return $recorded;
+    }
+    try {
+        return round(max($recorded, booking_ledger_net($id)), 2);
+    } catch (\Throwable $e) {
+        return $recorded;
+    }
 }
 
 // The payment STATUS a (total, paid) pair implies — the single invariant every

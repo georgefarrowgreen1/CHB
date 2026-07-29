@@ -30,7 +30,7 @@ function reconcile_pending_refunds($limit = 12)
         $q = db()->prepare(
             "SELECT id, square_payment_id FROM payments
              WHERE kind IN ('refund','damages_return')
-               AND (status IS NULL OR status NOT IN ('COMPLETED','FAILED','REJECTED'))
+               AND (status IS NULL OR UPPER(status) NOT IN ('COMPLETED','FAILED','REJECTED'))
                AND square_payment_id IS NOT NULL AND square_payment_id <> ''
                AND created_at >= (NOW() - INTERVAL 60 DAY)
              ORDER BY id DESC LIMIT " . (int) $limit,
@@ -46,8 +46,8 @@ function reconcile_pending_refunds($limit = 12)
             $status = $res['body']['refund']['status'] ?? '';
             // Only a recognised Square status overwrites the row — a 404/error
             // (e.g. a manually recorded refund with no Square id) leaves it as-is.
-            if (in_array($status, ['PENDING', 'COMPLETED', 'FAILED', 'REJECTED', 'APPROVED'], true)) {
-                db()->prepare('UPDATE payments SET status = ? WHERE id = ?')->execute([$status, (int) $r['id']]);
+            if (payment_status_known($status)) {
+                db()->prepare('UPDATE payments SET status = ? WHERE id = ?')->execute([payment_status_norm($status), (int) $r['id']]);
             }
         } catch (\Throwable $e) {
             // best-effort per row — never let one bad lookup break the rest

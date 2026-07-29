@@ -65,7 +65,10 @@ $total = round($total, 2);
 // Deposit policy: a global percentage in the content table (default 25%).
 $depPct = square_deposit_pct();
 $depositAmount = round($total * ($depPct / 100), 2);
-$alreadyPaid = round((float) ($b['deposit_paid'] ?? 0), 2);
+// The SAME definition the charge below uses (booking_paid_so_far) — quoting
+// deposit_paid alone asked for more than the card would take whenever the ledger
+// was ahead of the reconciled figure.
+$alreadyPaid = booking_paid_so_far($b);
 
 // Refundable damages deposit (bundled into the first payment). Use the frozen
 // snapshot; fall back to a live calc ONLY for legacy rows that have no snapshot at
@@ -223,16 +226,13 @@ if ($action === 'charge') {
     // after Square confirms, so if a prior charge succeeded at Square but the process
     // died before the bookings UPDATE, the ledger still has it — this recovers that
     // and makes the retry compute £0 due instead of charging a second time.
+    // Re-read deposit_paid UNDER THE LOCK, then take the shared paid-so-far figure —
+    // the fresh read is what stops a retry double-charging, and the shared helper is
+    // what stops this diverging from the quote the guest was shown.
     $fresh = db()->prepare('SELECT deposit_paid FROM bookings WHERE id = ?');
     $fresh->execute([$bookingId]);
     $bookingPaid = round((float) ($fresh->fetchColumn() ?: 0), 2);
-    $ledgerPaid = 0.0;
-    try {
-        $ledgerPaid = booking_ledger_net($bookingId);
-    } catch (\Throwable $e) {
-        // payments table not migrated — fall back to the bookings figure
-    }
-    $nowPaid = round(min($total, max($bookingPaid, $ledgerPaid)), 2);
+    $nowPaid = round(min($total, booking_paid_so_far(['id' => $bookingId, 'deposit_paid' => $bookingPaid])), 2);
     $amountDue =
         $kind === 'balance' ? round(max(0, $total - $nowPaid), 2) : round(max(0, $depositAmount - $nowPaid), 2);
     // Re-read the deposit state under the lock so a retry can't double-charge it.

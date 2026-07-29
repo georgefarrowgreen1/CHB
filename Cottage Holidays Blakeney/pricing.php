@@ -246,7 +246,10 @@ function booking_amount_due($b, $kind)
         }
     }
     $total = round($total, 2);
-    $alreadyPaid = round((float) ($b['deposit_paid'] ?? 0), 2);
+    // The shared definition — see booking_paid_so_far(). Reading deposit_paid alone
+    // here asked the guest for more than the card would take whenever the ledger was
+    // ahead of the reconciled figure.
+    $alreadyPaid = booking_paid_so_far($b);
     $depositAmount = round($total * (square_deposit_pct() / 100), 2);
     $due = $kind === 'balance' ? max(0, $total - $alreadyPaid) : max(0, $depositAmount - $alreadyPaid);
     return ['total' => $total, 'alreadyPaid' => $alreadyPaid, 'due' => round($due, 2)];

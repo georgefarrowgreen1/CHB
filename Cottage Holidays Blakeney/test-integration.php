@@ -482,6 +482,55 @@ it_check('an old unconfirmed PARTIAL return is treated as landed (£50 left, not
 it_check('…and nothing is reported as awaiting, because nothing recent is pending',
     $sp2Row && abs((float) $sp2Row['awaiting']) < 0.005, 'awaiting=' . ($sp2Row['awaiting'] ?? '?'));
 
+// ---- 11b. Money audit fixes (one paid-so-far, case-proof ledger, capped cancel) ----
+echo "\n== 10b. Money audit fixes ==\n";
+// (A) ONE DEFINITION OF "ALREADY PAID". The email and the pay screen read
+// bookings.deposit_paid; the charge takes max(deposit_paid, ledger_net). With the
+// ledger AHEAD — a payment recorded but reconciliation unfinished — the guest was
+// asked for more than the card would take. £400 total, £100 on the booking row,
+// £250 in the ledger: the balance due is £150, not £300.
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Ledger Ahead','la@x.co','2027-03-01','2027-03-04',2,0,'deposit',100,400,400,0,3)");
+$laId = (int) $rootDb->lastInsertId();
+$rootDb->exec("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id, created_at) VALUES ($laId,'deposit',250,'COMPLETED','sq_la_dep', NOW())");
+// The quoted figure itself is asserted in test-payrail.php: pay.php and
+// request_payment both refuse to run with Square off, which CI deliberately does, so
+// there is no Square-free endpoint that reports it. What IS provable here is the
+// case-folding, through a path that needs no Square at all.
+//
+// (C) A LOWERCASE STATUS COUNTS THE SAME AS AN UPPERCASE ONE. accounts.php always
+// case-folded; booking_ledger_net, find_charge_for_refund and damages_returned did
+// not — so one row could be counted by some money queries and not others depending on
+// the query rather than the fact. A £60 deposit with a lowercase-COMPLETED £60 return
+// is fully settled, so a second return must be refused.
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, hold_status, hold_amount) VALUES ('$propKey','Lower Case','lc@x.co','2026-05-01','2026-05-04',2,0,'paid',360,300,300,0,3,'charged',60)");
+$lcId = (int) $rootDb->lastInsertId();
+$rootDb->exec("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id, created_at) VALUES ($lcId,'damages_return',60,'completed','sq_lc_ref', NOW())");
+$lcRes = http($admin, 'POST', '/bookings.php', ['action' => 'return_deposit', 'id' => $lcId, 'amount' => 60]);
+it_check('a lowercase-status return still counts against the deposit — no double return',
+    $lcRes['code'] === 409 || (isset($lcRes['json']['error']) && stripos((string) $lcRes['json']['error'], 'settled') !== false),
+    $lcRes['raw']);
+// …and the ledger NORMALISES on write, so it cannot happen again for new rows.
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, hold_status, hold_amount) VALUES ('$propKey','Norm Case','nc@x.co','2026-06-01','2026-06-04',2,0,'paid',300,300,300,0,3,'charged',60)");
+$ncId = (int) $rootDb->lastInsertId();
+$rootDb->exec("UPDATE bookings SET check_out='2026-06-04' WHERE id=$ncId");
+$ncRet = http($admin, 'POST', '/bookings.php', ['action' => 'return_deposit', 'id' => $ncId, 'amount' => 60]);
+$ncStatus = (string) $rootDb->query("SELECT status FROM payments WHERE booking_id=$ncId AND kind='damages_return'")->fetchColumn();
+it_check('a ledger row is stored with its status UPPERCASED', $ncStatus === strtoupper($ncStatus) && $ncStatus !== '', 'got "' . $ncStatus . '"');
+
+// (D) THE CANCELLATION REFUND IS CAPPED like the per-row refund. Without it a typo was
+// only caught by Square rejecting it — which aborts the cancellation too, so the owner
+// cannot cancel at all until they guess a workable number.
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights) VALUES ('$propKey','Over Refund','or@x.co','2027-04-01','2027-04-04',2,0,'deposit',100,400,400,0,3)");
+$orId = (int) $rootDb->lastInsertId();
+$rootDb->exec("INSERT INTO payments (booking_id, kind, amount, status, square_payment_id, created_at) VALUES ($orId,'deposit',100,'COMPLETED','sq_or_dep', NOW())");
+$orRes = http($admin, 'POST', '/bookings.php', ['action' => 'cancel', 'id' => $orId, 'refund_amount' => 5000]);
+it_check('cancelling with a refund beyond what was taken is refused, with the figure',
+    $orRes['code'] === 400 && strpos((string) ($orRes['json']['error'] ?? ''), '100.00') !== false, $orRes['raw']);
+it_check('…and the booking is still there to cancel properly',
+    (int) $rootDb->query("SELECT COUNT(*) FROM bookings WHERE id=$orId")->fetchColumn() === 1);
+$orOk = http($admin, 'POST', '/bookings.php', ['action' => 'cancel', 'id' => $orId, 'refund_amount' => 0]);
+it_check('a cancellation within the cap goes through', !empty($orOk['json']['ok']), $orOk['raw']);
+
 // ---- 12. set_payment on a LEGACY pre-snapshot booking (finding 10) --------
 echo "\n== 11. set_payment legacy fallback ==\n";
 // A booking with agreed_total NULL (predates the snapshot migration) but real
