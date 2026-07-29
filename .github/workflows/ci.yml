@@ -120,6 +120,10 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-webhook.php
 
+      - name: CSP-report severity gate
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-csp-report.php
+
       - name: Request firewall (htaccess injection filter — no false positives, real coverage)
         working-directory: "Cottage Holidays Blakeney"
         run: php test-waf.php

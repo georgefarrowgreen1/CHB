@@ -16,6 +16,12 @@
 http_response_code(204); // No Content — nothing to send back to the browser
 header('Content-Type: text/plain; charset=utf-8');
 
+// Pure severity/matcher helpers (no I/O), extracted so they can be unit-tested by
+// test-csp-report.php. Guarded: a missing lib must never fatal the report sink.
+if (is_file(__DIR__ . '/csp-lib.php')) {
+    require_once __DIR__ . '/csp-lib.php';
+}
+
 // Only POST carries a report; ignore anything else quietly.
 if (($_SERVER['REQUEST_METHOD'] ?? 'GET') !== 'POST') {
     exit;
@@ -103,23 +109,38 @@ try {
     // Log those as INFO so they stay in the log for forensics but never nag "Needs
     // attention" / the weekly digest. A block pointing at an external HOST is rarer
     // and more worth the owner's awareness, so keep it a low 'warn'.
-    $lb = strtolower($blocked);
-    $isInlineOrEval = ($lb === '' || strpos($lb, 'inline') !== false || strpos($lb, 'eval') !== false || strpos($lb, 'data') === 0);
-    // Third-party SDK TELEMETRY is expected noise, not a to-do. Square's Web
-    // Payments SDK reports its own errors to Square's Sentry project; we
-    // deliberately do NOT allowlist it (blocking it costs us nothing and sending
-    // data to a third party is the thing CSP is for), so it will be reported on
-    // every pay-page visit forever. It belongs in the log for forensics at 'info',
-    // never in "Needs attention". Match on the HOST, so a lookalike domain in a
-    // path can't buy itself a downgrade.
-    $quiet = ['ingest.sentry.io', 'sentry.io'];
-    $isTelemetry = false;
-    foreach ($quiet as $q) {
-        if ($host !== '' && ($host === $q || substr($host, -(strlen($q) + 1)) === '.' . $q)) {
-            $isTelemetry = true;
+    // Severity — the whole decision lives in csp_report_severity() (csp-lib.php,
+    // unit-tested). It drops to 'info' (forensics, no "Needs attention") three
+    // classes: a blocked inline/eval (our boot script is hash-allowed, so it's an
+    // extension or a CSP-stopped XSS — auto-handled), Square's Sentry telemetry
+    // (expected noise), and — the load-bearing one — any (directive, uri) the
+    // CURRENT policy would PERMIT. A report the live policy allows can only come
+    // from a client still enforcing an OLD policy (an up-to-date browser wouldn't
+    // have blocked it), so it's a stale-client artifact from a shell that hasn't
+    // refetched yet, not a threat. The live policy is read from the same file
+    // Apache serves, so this cannot drift out of step with what is enforced. A
+    // genuine block — a host the policy still forbids — stays 'warn'.
+    $effDir = strtolower(trim(explode(' ', (string) $directive)[0]));
+    $parsed = null;
+    if (function_exists('csp_extract_policy')) {
+        foreach (['/.htaccess', '/htaccess.txt'] as $hf) {
+            $ht = @file_get_contents(__DIR__ . $hf);
+            if ($ht !== false && $ht !== '') {
+                $pol = csp_extract_policy($ht);
+                if ($pol) {
+                    $parsed = csp_parse_policy($pol);
+                    break;
+                }
+            }
         }
     }
-    $sev = ($isInlineOrEval || $isTelemetry) ? 'info' : 'warn';
+    if (function_exists('csp_report_severity')) {
+        $sev = csp_report_severity($effDir, $blocked, $parsed);
+    } else {
+        // Fallback if the lib is somehow absent: the pre-lib behaviour.
+        $lb = strtolower($blocked);
+        $sev = ($lb === '' || strpos($lb, 'inline') !== false || strpos($lb, 'eval') !== false || strpos($lb, 'data') === 0) ? 'info' : 'warn';
+    }
     $pdo->prepare(
         "INSERT INTO activity_log (actor, category, action, summary, ip, meta, severity)
          VALUES ('system', 'security', 'csp.violation', ?, ?, ?, ?)",

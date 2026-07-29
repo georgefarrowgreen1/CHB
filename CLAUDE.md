@@ -1837,6 +1837,26 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   filling "Needs attention". Keyed on the blocked HOST now (host, not full URL —
   payment SDKs put per-transaction ids in the path); the IP stays on the row for
   forensics. Known third-party SDK telemetry is logged at `info` so it never nags.
+- **A CSP REPORT THE CURRENT POLICY WOULD PERMIT IS A STALE-CLIENT ARTIFACT, NOT A
+  THREAT.** Because the CSP rides the cached shell (above), an installed PWA enforces
+  its LAST-CACHED policy until it reloads — so after a policy is widened, an
+  un-refetched client keeps blocking and REPORTING things the live policy now allows
+  (measured: `form-action → methodurl.vcas.visa.com` and `connect-src →
+  spay.samsung.com` still arriving after the fix deployed — provably from an old shell,
+  since the same batch blocked the Samsung host that the SAME commit allow-listed). An
+  up-to-date browser would never have blocked those, so it would never report them:
+  such a report can ONLY come from a stale client and is not the owner's to fix.
+  `csp-report.php` now reads the LIVE policy (from `.htaccess`, falling back to
+  `htaccess.txt`) and logs any (directive, uri) the policy PERMITS at `info` rather
+  than `warn` — so it stops nagging "Needs attention" while the fleet catches up, and
+  a genuine block (a host the policy still forbids) stays `warn`. Self-maintaining: it
+  parses the SAME policy Apache serves, so it can't drift from what's enforced. The
+  decision is a pure function (`csp_report_severity`/`csp_policy_permits` in the new
+  **`csp-lib.php`**), gated by **`test-csp-report.php`** (CI-wired, deploy-excluded):
+  drives the real live policy + the exact screenshot reports, break-tests the
+  downgrade (removing it re-nags the 3 screenshot cases) and the wildcard matcher
+  (`*.google.com` matches a subdomain, never the apex or a suffix-spoof), and proves
+  form-action has NO default-src fallback and an http (insecure) target stays `warn`.
 - **Square settlement sync** — a payment's processing FEE and a refund's final
   STATUS (PENDING→COMPLETED) both land a day or two after the action, pushed by the
   `square-webhook.php` events. Because that webhook can be unconfigured, the
