@@ -81,11 +81,11 @@ body.light-mode {
 @keyframes cmdkSiriAura {
   0%, 100% {
     box-shadow: var(--shadow-float), 0 1px 0 var(--glass-highlight) inset, 0 40px 80px -32px rgba(8, 11, 14, 0.55),
-      0 0 30px -2px hsl(var(--siri-1) / 0.55), 0 0 60px 4px hsl(var(--siri-2) / 0.38), 0 0 92px 10px hsl(var(--siri-3) / 0.22);
+      0 0 0 1px hsl(var(--siri-2) / 0.16), 0 0 22px -10px hsl(var(--siri-1) / 0.40);
   }
   50% {
     box-shadow: var(--shadow-float), 0 1px 0 var(--glass-highlight) inset, 0 40px 80px -32px rgba(8, 11, 14, 0.55),
-      0 0 30px -2px hsl(var(--siri-3) / 0.55), 0 0 60px 4px hsl(var(--siri-5) / 0.38), 0 0 92px 10px hsl(var(--siri-1) / 0.22);
+      0 0 0 1px hsl(var(--siri-4) / 0.16), 0 0 22px -10px hsl(var(--siri-3) / 0.40);
   }
 }
 .tl-bar.bar-21a {
@@ -1466,7 +1466,7 @@ body.owner-mode header.header-condensed .logo-mark {
   .cmdk-box {
     animation: none;
     box-shadow: var(--shadow-float), 0 1px 0 var(--glass-highlight) inset, 0 40px 80px -32px rgba(8, 11, 14, 0.55),
-      0 0 30px -4px hsl(var(--siri-2) / 0.34);
+      0 0 0 1px hsl(var(--siri-2) / 0.16);
   }
 }
 @keyframes cmdkRise {
@@ -1968,8 +1968,8 @@ body.owner-mode .logo.ml-learning .logo-mark {
 .cmdk-group-label {
   /* was 0.64rem = 10.2px */
   font-size: var(--cmdk-fs-micro);
-  font-weight: 700;
-  letter-spacing: 0.11em;
+  font-weight: 600;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-muted);
   padding: 11px 12px 3px;
@@ -3205,13 +3205,21 @@ body.owner-mode .logo.logo-assist {
 body.light-mode .cmdk-search input {
   background: rgba(0, 0, 0, 0.045);
 }
+/* The field is AUTOFOCUSED on every open and a text input always matches
+   :focus-visible, so `2px solid accent` at `outline-offset: 2px` ON TOP of an accent
+   border painted a permanent double halo — the loudest thing on screen. A ring that
+   HUGS the control (the macOS idiom) reads as attention, not alarm. */
 .cmdk-search input:focus {
   outline: none;
   border-color: var(--accent);
 }
 .cmdk-search input:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline: none;
+  /* Not the full accent: focused for the pop-out's whole life, a saturated pill
+     outline is decoration, not signal. Two thirds plus the ring still reads as the
+     active control. */
+  border-color: color-mix(in srgb, var(--accent) 62%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 15%, transparent);
 }
 /* The ✕ sat inside the old bare row; inside a pill it has to clear the edge. */
 .cmdk-search .cmdk-clear {
@@ -3367,6 +3375,18 @@ body.light-mode .cmdk-search input {
      surface since the pop-out landed. Name the one that goes. */
   animation: cmdkSiriAura 6s ease-in-out infinite;
 }
+/* A PHONE-WIDTH POP-OUT IS EFFECTIVELY FULL BLEED — the condition glass was
+   switched off for the first time round. Measured at 390px the box is 370 of 390,
+   so it blurs the whole workspace rather than its edge: an amber "Part paid" pill
+   two screens down smeared across the money card. Opaque here, glass from 641px.
+   --cmdk-surface is the ground a11y-test already measures words against. */
+@media (max-width: 640px) {
+  #cmdk.cmdk-overlay .cmdk-box {
+    background: var(--cmdk-surface);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
+}
 #cmdk.cmdk-overlay.open .cmdk-box {
   transform: none;
   opacity: 1;
@@ -3481,20 +3501,46 @@ body.cmdk-open {
    leading came out; no type size and no tap target moved. §20b gates the chrome. */
 .cmdk-board {
   background: var(--glass-hover);
-  border: 1px solid var(--glass-border);
-  border-radius: var(--r-md);
-  padding: 9px 10px 6px;
+  /* No border: fill + hairline border + filled rows stacked three edges in ~90px.
+     iOS groups a list with FILL alone, rows separated by hairlines. */
+  border: 0;
+  border-radius: var(--r-lg);
+  padding: 9px 0 6px;
   min-width: 0;
+  overflow: hidden; /* a full-width band at either end follows the group's radius */
+}
+/* Rows in a group are separated, not boxed. The selected row was a 16px-radius
+   tile inset 10px inside an already-filled card — a third nested box, which is why
+   the money row read as a card in a card in a panel. It spans the group and squares
+   off now, so selection reads as a HIGHLIGHTED ROW. */
+.cmdk-board .cmdk-row {
+  /* 22px = the 10px the board used to contribute + the row's own 12px, so every
+     label lands on exactly the rail it did before. */
+  padding-inline: 22px;
+  border-radius: 0;
+}
+.cmdk-board .cmdk-row + .cmdk-row {
+  box-shadow: inset 0 1px 0 var(--glass-border);
+}
+.cmdk-board .cmdk-row.is-sel + .cmdk-row,
+.cmdk-board .cmdk-row + .cmdk-row.is-sel {
+  box-shadow: none;
 }
 /* Padded like the rows it captions (10px, not 4), so heading and content share one
    left rail — measured, they sat 10px apart, which reads as a heading belonging to
    nothing in particular. */
+/* 600 and tighter tracking: four all-caps headers at 700/0.11em competed with the
+   figures they label. Size untouched — the six-step scale (§16b) owns that. */
 .cmdk-board-cap {
   margin: 0 0 2px;
-  padding: 0 10px;
+  /* 22px, matching the row's own inline padding exactly: §18f compares where the
+     caption's TEXT starts against the row LABEL, and a row's label begins at its
+     padding edge because the answer glyph is hidden inside a group. 20 put the
+     heading 2px inside its own list. */
+  padding: 0 22px;
   font-size: var(--cmdk-fs-micro);
-  font-weight: 700;
-  letter-spacing: 0.11em;
+  font-weight: 600;
+  letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--text-muted);
 }
