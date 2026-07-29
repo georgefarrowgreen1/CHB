@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 316;
+const ADMIN_BUNDLE_V = 317;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -5454,6 +5454,11 @@ window.addEventListener('DOMContentLoaded', async () => {
             console.error(e);
         } // ?unsub=… → newsletter opt-out
         try {
+            maybeHandleNotificationOpen();
+        } catch (e) {
+            console.error(e);
+        } // ?open=booking-42 → the record a tapped notification is about
+        try {
             hsRestore();
         } catch (e) {
             console.error(e);
@@ -8105,6 +8110,42 @@ async function submitNewsletter(ev) {
         show(e.message || 'Could not sign you up just now.', false);
     }
 }
+// A TAPPED NOTIFICATION LANDS ON THE RECORD IT IS ABOUT. Every owner alert used
+// to open './' — so "Payment received — £900 · Jollyboat" and "New enquiry" both
+// dropped you on the back-office root and left you to find the thing yourself,
+// which on a phone is the whole job the notification was meant to save. The
+// senders now pass ?open=<what>, mirroring the ?unsub= pattern below: read it,
+// route, then tidy the URL so a refresh doesn't repeat it.
+//
+// Routed through the FACADE STUBS (openBookingHub, openEnquiryHub, openInbox …),
+// never admin globals directly — the stub loads the bundle and delegates, which is
+// exactly the case it exists for: arriving cold from a notification.
+async function maybeHandleNotificationOpen() {
+    let target = '';
+    try {
+        target = new URLSearchParams(window.location.search).get('open') || '';
+    } catch (e) {}
+    if (!target || !isAuthenticated) return;
+    try {
+        history.replaceState(null, '', window.location.pathname);
+    } catch (e) {}
+    const m = /^([a-z]+)(?:-(\d+))?$/.exec(target);
+    if (!m) return;
+    const [, kind, idRaw] = m;
+    const id = idRaw ? parseInt(idRaw, 10) : 0;
+    try {
+        if (kind === 'booking' && id) await openBookingHub(id);
+        else if (kind === 'enquiry' && id) await openEnquiryHub(id);
+        else if (kind === 'messages' || kind === 'inbox') await openInbox();
+        else if (kind === 'today') await tryAccessBackOffice();
+        else if (kind === 'calendar') await settingsOpenCalendar();
+        else if (kind === 'diagnostics') { await openArea(); settingsOpen('diagnostics'); }
+        else if (kind === 'moderation') { await openArea(); settingsOpen('reviews'); }
+    } catch (e) {
+        /* a deleted record or a half-loaded bundle must never break the boot */
+    }
+}
+
 // One-click unsubscribe from a broadcast (?unsub=TOKEN in the email link).
 async function maybeHandleUnsubscribe() {
     const usp = new URLSearchParams(window.location.search);
@@ -12074,7 +12115,12 @@ function refreshInboxBadge() {
         today.textContent = n;
         today.style.display = n > 0 ? 'flex' : 'none';
     }
-    setAppBadgeCount(n);
+    // Pending enquiries is the FALLBACK count, used only until the back office is
+    // loaded. Once it is, admin.js sets the badge from chbDuties() — the real
+    // "needs you" number, which also counts balances to chase, deposits to return
+    // and waiting chats. Guarded on __ADMIN_LOADED (the sanctioned facade signal)
+    // rather than reaching for an admin global from here.
+    if (!(/** @type {any} */ (window).__ADMIN_LOADED)) setAppBadgeCount(n);
 }
 
 // THE HOME SCREEN ICON CARRIES THE COUNT TOO. iOS 16.4+ supports the Badging API
@@ -13311,7 +13357,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'push01';
+    const BUILD = 'push02';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;

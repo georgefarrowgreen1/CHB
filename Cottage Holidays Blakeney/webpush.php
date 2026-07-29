@@ -293,7 +293,7 @@ function send_webpush($endpoint, $payload = null, $p256dh = '', $auth = '', $opt
 // Because pushes are payload-less, we stash the latest owner notification in the
 // content table; the service worker fetches it (push.php?action=sw_notify) when a
 // ping arrives and shows it once. Best-effort throughout — never throws.
-function owner_ping_set($title, $body, $reload = false)
+function owner_ping_set($title, $body, $reload = false, $url = './', $tag = 'chb-owner')
 {
     try {
         db()
@@ -303,7 +303,7 @@ function owner_ping_set($title, $body, $reload = false)
             )
             ->execute([
                 json_encode(
-                    ['title' => (string) $title, 'body' => (string) $body, 'reload' => (bool) $reload, 'at' => time()],
+                    ['title' => (string) $title, 'body' => (string) $body, 'reload' => (bool) $reload, 'url' => (string) $url, 'tag' => (string) $tag, 'at' => time()],
                     JSON_UNESCAPED_UNICODE,
                 ),
             ]);
@@ -418,17 +418,100 @@ function ping_admin_devices($payload = null, $opts = [])
     return $sent;
 }
 // Convenience: set the owner alert text AND wake their devices.
-function alert_owner($title, $body, $reload = false)
+// ---- Owner notification preferences ----------------------------------------
+// Stored as ONE internal content key so there is nothing to migrate. Absent or
+// unparseable = everything on, which is the behaviour before this existed.
+//   { money:bool, enquiries:bool, messages:bool, system:bool,
+//     quietFrom:'HH:MM', quietTo:'HH:MM' }
+function notify_prefs()
 {
-    // The stash stays as the FALLBACK path (older subscriptions with no stored
-    // keys, and any push service that refuses the encrypted body). The payload is
-    // what makes the notification instant and correct on every device at once.
-    owner_ping_set($title, $body, $reload);
-    $payload = json_encode(
-        ['title' => (string) $title, 'body' => (string) $body, 'url' => './', 'tag' => 'chb-owner', 'reload' => (bool) $reload],
-        JSON_UNESCAPED_UNICODE,
-    );
-    return ping_admin_devices($payload, ['urgency' => 'high', 'ttl' => 86400]);
+    static $cache = null;
+    if ($cache !== null) {
+        return $cache;
+    }
+    $d = [];
+    try {
+        $s = db()->prepare("SELECT item_value FROM content WHERE item_key = 'notify-prefs'");
+        $s->execute();
+        $v = $s->fetchColumn();
+        if ($v !== false) {
+            $j = json_decode((string) $v, true);
+            if (is_array($j)) {
+                $d = $j;
+            }
+        }
+    } catch (\Throwable $e) {
+    }
+    $cache = $d + ['money' => true, 'enquiries' => true, 'messages' => true, 'system' => true, 'quietFrom' => '', 'quietTo' => ''];
+    return $cache;
+}
+
+// Should a PUSH be sent for this category right now? A muted category or a quiet
+// hour suppresses the push ONLY — the activity log and the email fallback are
+// untouched, so nothing is lost, it just doesn't buzz. 'urgent' ignores both:
+// a failing calendar sync that will double-book you is worth the interruption.
+function notify_should_push($category)
+{
+    if ($category === 'urgent') {
+        return true;
+    }
+    $p = notify_prefs();
+    if (isset($p[$category]) && !$p[$category]) {
+        return false;
+    }
+    $from = (string) ($p['quietFrom'] ?? '');
+    $to = (string) ($p['quietTo'] ?? '');
+    if ($from === '' || $to === '' || $from === $to) {
+        return true;
+    }
+    $now = (int) date('H') * 60 + (int) date('i');
+    $mins = function ($hhmm) {
+        $parts = explode(':', $hhmm);
+        return ((int) ($parts[0] ?? 0)) * 60 + ((int) ($parts[1] ?? 0));
+    };
+    $a = $mins($from);
+    $b = $mins($to);
+    // Quiet hours normally WRAP midnight (22:00 → 07:00), so the inside test is
+    // the union of the two ends, not a simple between.
+    $quiet = $a < $b ? ($now >= $a && $now < $b) : ($now >= $a || $now < $b);
+    return !$quiet;
+}
+
+// $opts: url (where a tap lands), category (money|enquiries|messages|system|urgent),
+// tag (per-record, so distinct alerts STACK instead of replacing each other),
+// reload, email (fall back to an email when no device is reachable).
+function alert_owner($title, $body, $opts = [])
+{
+    $url = (string) ($opts['url'] ?? './');
+    $category = (string) ($opts['category'] ?? 'system');
+    // ONE TAG PER RECORD. Every owner alert used to be tagged 'chb-owner', so the
+    // second notification REPLACED the first — two enquiries while you were out
+    // showed as one, and a payment could erase a message. Distinct records now get
+    // distinct tags (repeats of the SAME record still collapse, which is right).
+    $tag = 'chb-owner-' . preg_replace('/[^a-z0-9_-]+/i', '-', (string) ($opts['tag'] ?? $category));
+    $reload = !empty($opts['reload']);
+
+    owner_ping_set($title, $body, $reload, $url, $tag);
+    $sent = 0;
+    if (notify_should_push($category)) {
+        $payload = json_encode(
+            ['title' => (string) $title, 'body' => (string) $body, 'url' => $url, 'tag' => $tag, 'reload' => $reload],
+            JSON_UNESCAPED_UNICODE,
+        );
+        $sent = ping_admin_devices($payload, ['urgency' => 'high', 'ttl' => 86400]);
+    }
+    // NOBODY IS LISTENING. alert_owner has always returned the device count and
+    // only the test button ever read it — so with permission revoked, the last
+    // subscription pruned, or a replaced phone, "Payment received" went nowhere
+    // and nothing said so. Anything that asks for the email fallback now gets one.
+    if ($sent === 0 && !empty($opts['email'])) {
+        try {
+            require_once __DIR__ . '/mailer.php';
+            send_owner($title, $body . "\n\n(Sent by email because no device is currently receiving alerts — check Manage → Notifications.)");
+        } catch (\Throwable $e) {
+        }
+    }
+    return $sent;
 }
 
 // Wake every device belonging to one guest. Mirrors ping_admin_devices: dead

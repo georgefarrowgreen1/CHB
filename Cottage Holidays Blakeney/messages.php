@@ -240,7 +240,7 @@ function chat_notify_owner($name, $email, $bodyTxt, $threadId = 0)
     // Wake the owner's devices (best-effort).
     try {
         require_once __DIR__ . '/webpush.php';
-        alert_owner('New message', ($name ?: 'A visitor') . ': ' . mb_substr($bodyTxt, 0, 80));
+        alert_owner('New message', ($name ?: 'A visitor') . ': ' . mb_substr($bodyTxt, 0, 80), ['category' => 'messages', 'tag' => 'messages', 'url' => './?open=messages']);
     } catch (\Throwable $e) {
     }
 }

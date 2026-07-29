@@ -13138,6 +13138,71 @@ async function revalidateOwnerPush() {
         /* best-effort — never blocks the back office booting */
     }
 }
+// ---- What interrupts you: per-event mute + quiet hours --------------------
+// One internal content key ('notify-prefs'), read server-side by
+// notify_should_push(). Muting or a quiet hour suppresses the PUSH only — the
+// activity log and the email fallback are untouched, so nothing is lost; and
+// 'urgent' (a calendar sync that could double-book you) ignores both.
+const NOTIFY_CATS = [
+    ['money', 'Payments and money'],
+    ['enquiries', 'New enquiries'],
+    ['messages', 'Guest messages'],
+    ['system', 'Site and system notices'],
+];
+function notifyPrefs() {
+    let p = {};
+    try {
+        // adminPrivateContent FIRST: 'notify-prefs' is an INTERNAL key, so it is
+        // absent from the anonymous content GET that fills siteContent at boot —
+        // reading siteContent alone would render every toggle at its default over
+        // real saved settings, one change away from wiping them (the bacs-details
+        // rule). openArea() refreshes adminPrivateContent before this renders.
+        const raw = (typeof adminPrivateContent === 'object' && adminPrivateContent && adminPrivateContent['notify-prefs']) || siteContent['notify-prefs'];
+        p = typeof raw === 'string' ? JSON.parse(raw || '{}') : raw || {};
+    } catch (e) {
+        p = {};
+    }
+    return Object.assign({ money: true, enquiries: true, messages: true, system: true, quietFrom: '', quietTo: '' }, p || {});
+}
+function renderNotifyPrefs() {
+    const box = document.getElementById('notify-prefs-body');
+    if (!box) return;
+    const p = notifyPrefs();
+    const hours = (sel) =>
+        ['<option value="">—</option>']
+            .concat(
+                Array.from({ length: 24 }, (_, h) => {
+                    const v = String(h).padStart(2, '0') + ':00';
+                    return `<option value="${v}"${sel === v ? ' selected' : ''}>${v}</option>`;
+                }),
+            )
+            .join('');
+    box.innerHTML =
+        NOTIFY_CATS.map(
+            ([k, label]) =>
+                `<label style="display:flex;align-items:center;gap:10px;min-height:44px;">
+                    <input type="checkbox" ${p[k] ? 'checked' : ''} ${chbChange('saveNotifyPref', k, CHB_CHECKED)}>
+                    <span>${escapeHtml(label)}</span>
+                </label>`,
+        ).join('') +
+        `<div style="display:flex;align-items:center;gap:10px;margin-top:12px;flex-wrap:wrap;">
+            <span style="font-size:0.85rem;color:var(--text-muted);">Quiet hours</span>
+            <select class="input-glass field-sm" style="width:auto;margin:0;" aria-label="Quiet hours from" ${chbChange('saveNotifyPref', 'quietFrom', CHB_VALUE)}>${hours(p.quietFrom)}</select>
+            <span style="font-size:0.8rem;color:var(--text-muted);">to</span>
+            <select class="input-glass field-sm" style="width:auto;margin:0;" aria-label="Quiet hours until" ${chbChange('saveNotifyPref', 'quietTo', CHB_VALUE)}>${hours(p.quietTo)}</select>
+        </div>`;
+}
+async function saveNotifyPref(key, value) {
+    const p = notifyPrefs();
+    p[key] = key === 'quietFrom' || key === 'quietTo' ? String(value || '') : !!value;
+    try {
+        await saveContent('notify-prefs', p);
+        adminPrivateContent['notify-prefs'] = p;
+        toast('Notification settings saved.');
+    } catch (e) {
+        renderNotifyPrefs(); // the save alerted; put the control back to the truth
+    }
+}
 async function enableOwnerPush() {
     try {
         if (
@@ -13221,6 +13286,11 @@ function renderNotifySettings() {
                 </div>
             </div>
             <div class="accounts-stat" style="max-width:560px;margin-top:16px;">
+                <div class="label">What interrupts you</div>
+                <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 12px;">Turn off a kind of alert, or set quiet hours, and it stops buzzing your devices — it still lands in the activity log, and anything urgent (a calendar sync that could double-book you) always gets through.</p>
+                <div id="notify-prefs-body">${skelRows(2)}</div>
+            </div>
+            <div class="accounts-stat" style="max-width:560px;margin-top:16px;">
                 <div class="label">Email recipients</div>
                 <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 12px;">Who gets emailed about new bookings, enquiries, guest messages, payments and reviews. Add a partner or co-host and they're copied on every alert.</p>
                 <div id="notify-emails-list">${skelRows(2)}</div>
@@ -13231,6 +13301,7 @@ function renderNotifySettings() {
                 <p id="notify-email-msg" style="font-size:0.8rem;margin:8px 0 0;min-height:1em;" aria-live="polite"></p>
             </div>`;
     loadNotifyEmails();
+    renderNotifyPrefs();
 }
 // Read-only check of the zero-setup reply-by-email: does the mailbox
 // connect, and what did the newest replies do? Nothing is delivered.
@@ -14436,6 +14507,13 @@ function renderNeedsYou() {
     let items = [];
     try {
         items = needsYouItems();
+    } catch (e) {}
+    // The Home Screen badge means "things needing you", not "unread enquiries" —
+    // this is the same list the strip renders, so the number on the icon and the
+    // number of rows on Today can never disagree. app.js owns the Badging API call
+    // and only sets its enquiries-based fallback before the bundle loads.
+    try {
+        setAppBadgeCount(items.length);
     } catch (e) {}
     // The heading tells the truth about the CONTENTS: duties (enquiries,
     // balances, deposits, approvals…) "need you"; a strip that's PURE

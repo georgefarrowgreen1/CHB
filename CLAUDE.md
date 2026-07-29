@@ -1777,6 +1777,42 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   decrypted back with the RFC's user-agent private key. Break-tested — corrupting
   the HKDF salt AND swapping the two public keys in `key_info` both fail the
   round-trip, which is what makes it more than a self-consistent mirror.
+- **A TAPPED ALERT LANDS ON THE RECORD, AND ALERTS NO LONGER ERASE EACH OTHER.**
+  `alert_owner` hardcoded `url => './'` and `tag => 'chb-owner'` for every alert, so
+  "Payment received — £900" dropped you on the back-office root to go and find it
+  yourself, and the *second* notification REPLACED the first (two enquiries showed as
+  one; a payment could erase a message). It now takes an `$opts` array —
+  `url`/`category`/`tag`/`email`/`reload` — every trigger passes `./?open=booking-42`
+  etc., and the tag is per-record so distinct alerts stack while repeats of the same
+  record still collapse. `maybeHandleNotificationOpen()` (app.js) reads `?open=`,
+  routes through the **facade stubs** (never admin globals — arriving cold from a
+  notification is the case the stubs exist for) and `history.replaceState`s the URL
+  clean, mirroring `?unsub=`. The stash carries url+tag too, so the fetch fallback
+  lands in the same place. NB the enquiry call site names its id `$enqId`, not
+  `$enquiryId` — checked, because a wrong variable there is a silent `?open=enquiry-0`.
+- **NOBODY LISTENING IS NOT THE SAME AS NOTHING TO SAY.** `alert_owner` always
+  returned the device count and only the test button ever read it, so with permission
+  revoked or the last subscription pruned "Payment received" went nowhere and nothing
+  said so. `'email' => true` (payments, enquiries, a failing calendar sync) falls back
+  to `send_owner()` when zero devices were reached.
+- **WHAT INTERRUPTS YOU IS A SETTING.** `notify-prefs` (internal content key,
+  classified in db.php) carries per-category mutes + quiet hours; `notify_should_push()`
+  gates the PUSH only — the activity log and the email fallback are untouched, so
+  muting loses nothing, and `'urgent'` (a sync failure that can double-book you)
+  ignores both. Quiet hours **wrap midnight**, which the obvious between-test gets
+  wrong: 22:00–07:00 is quiet at 02:00. The settings UI reads
+  `adminPrivateContent` FIRST (the bacs-details rule — an internal key is absent from
+  the anonymous boot GET, so reading `siteContent` would render every toggle at its
+  default over real saved settings, one change from wiping them).
+- **A FOCUSED WINDOW GETS A SILENT NOTIFICATION, NOT NO NOTIFICATION.** Showing
+  nothing looks like the right answer and is not: the subscription is
+  `userVisibleOnly`, so a push that displays nothing invites the browser's own "site
+  updated in the background" notice and repeat offences can cost the permission.
+  `silent: focused` + `renotify: !focused` keeps the promise and drops the buzz.
+- **THE BADGE COUNTS DUTIES, NOT ENQUIRIES.** `refreshInboxBadge` sets the
+  enquiries-based count only while `__ADMIN_LOADED` is false; once the bundle is in,
+  `renderNeedsYou()` badges `items.length` — the same list the strip renders, so the
+  icon and Today can't disagree.
 - **iOS SPECIFICS THE BACK OFFICE NOW RESPECTS.** `navigator.setAppBadge()` puts the
   pending-enquiry count on the Home Screen icon (iOS 16.4+, installed PWAs) — the
   one surface the owner sees without unlocking into the app, and the count was

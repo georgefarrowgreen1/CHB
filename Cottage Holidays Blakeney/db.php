@@ -672,6 +672,11 @@ function is_internal_content_key($key)
         return true; // the cached Blakeney forecast (weather-data.php) — machinery,
                      // not content; weather.php serves the data itself publicly
     }
+    if ($key === 'notify-prefs') {
+        return true; // which alerts may buzz the owner's devices, and their quiet
+                     // hours. Owner-only settings, and the quiet window says when
+                     // they are asleep — never on the anonymous content GET.
+    }
     if ($key === 'bacs-details') {
         return true; // the owner's bank details for guests paying by transfer
                      // (payment_rail). INTERNAL, not private/encrypted-at-rest, on
@@ -1303,7 +1308,7 @@ function chb_maybe_alert_owner_error($summary)
             ->execute([json_encode(gmdate('c'))]);
         require_once __DIR__ . '/webpush.php';
         if (function_exists('alert_owner')) {
-            alert_owner('Site error detected', mb_substr((string) $summary, 0, 120));
+            alert_owner('Site error detected', mb_substr((string) $summary, 0, 120), ['category' => 'system', 'tag' => 'site-error', 'url' => './?open=diagnostics']);
         }
     } catch (\Throwable $e) {
     }

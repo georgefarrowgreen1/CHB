@@ -142,7 +142,7 @@ foreach (watchers_due($list, $today) as $w) {
         $say = $name . ' ' . uk_date((string) ($w['from'] ?? '')) . '–' . uk_date((string) ($w['to'] ?? '')) . ' is still free.';
     }
     $title = $kind === 'balance-unpaid' ? 'Still unpaid' : ($kind === 'month-behind' ? 'Behind last year' : 'Still unsold');
-    alert_owner($title, $say);
+    alert_owner($title, $say, ['category' => 'money', 'tag' => 'watcher', 'url' => './?open=today']);
     $sent++;
     // Mark spoken rather than deleting, so the record of what was asked survives
     // until its window passes and step 1 clears it.
