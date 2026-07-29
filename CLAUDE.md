@@ -422,9 +422,34 @@ latent bug: add-booking's cottage step read `until: value.length > 0` against a
 STATIC preselected `<select>`, so it was true before the modal opened — the walk
 auto-advanced off its own step 1 after the 1400ms grace, and the skip pass started a
 blank form at step 2 of 5. A default is not a decision; that step has no `until` now.
+**THE TIP MEASURES ITSELF.** `coachReposition` chose above-or-below with `r.bottom +
+110 < innerHeight` — a hardcoded GUESS at the tip's height, right for a short sentence
+(111px measured) and wrong by 106px for a real one (216px). At 390×844 with a target at
+y=640 that put the tip's bottom at 918, i.e. **74px past the fold with its own Next
+button off screen** and the walk unadvanceable except by Escape. It reads the tip's real
+box now (it is in the DOM before this runs), and clamps when NEITHER side fits; the tip's
+width likewise replaces a `260` that duplicated the stylesheet's `max-width` in JS.
+**THE STEP IS ANNOUNCED.** Measured: `role` / `aria-live` / `aria-label` all null on
+`.coach-tip`, and focus deliberately stays on the field — so a screen-reader user got an
+overlay nobody mentioned and five steps they never heard. The visible label + sentence
+are `aria-hidden` and the same words go to an `.sr-only` `role="status"` region written
+one frame AFTER the tip lands — separate region because `coachClear` rebuilds the overlay
+each step, and a live region that arrives WITH its text is not reliably announced (the
+payment-outcome rule). Polite, not assertive: the field beneath is where the work is.
+Tip buttons take the house 44px floor (they measured 70×30 — over WCAG 2.5.8's 24px,
+under this app's own bar, on a control tapped once per step). Reduced motion drops the
+ring's EASING and the tip's fade but keeps the ring's TRAVEL — it is the pointer, the
+same call the guest dock's pill gets — and `scrollIntoView` goes `auto`, and is skipped
+entirely when the target is already comfortably on screen. NB Chromium's reduced-motion
+emulation forces every `transition-duration` to ~1e-05s regardless of author CSS, so the
+gate asserts the `@media` RULE via CSSOM: a computed read cannot tell our rule from the
+browser's own and passes with the rule deleted. `a11y-test` gained a `walkthrough` scene
+(driven to a MIDDLE step so Back renders) — it had never seen this overlay, the same
+blind spot that let a 23px `.cmdk-qa-row` live in the search window.
 Gated by `ui-test-coach.js` (start, click-through + z-order, Next/Back, auto-advance,
-Done, Escape, plus cancel-mid-walk, the honest finish both ways, the lost target, and
-starting in place without navigating — each break-tested) and search-test §8b (every
+Done, Escape, plus cancel-mid-walk, the honest finish both ways, the lost target,
+starting in place without navigating, tip-fit at four target heights, the announcement,
+and reduced motion — each break-tested) and search-test §8b (every
 walk id is a real topic, every step has a target and a SENTENCE, every walk is
 reachable via its chip, `mark`/`done` paired). NB a step-COUNT comparison against the
 topic's prose was tried in that gate and dropped: it is not an invariant — a walk

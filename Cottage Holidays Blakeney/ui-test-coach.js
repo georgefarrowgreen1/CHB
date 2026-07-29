@@ -182,6 +182,124 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     document.getElementById('walk-stub-pay')?.remove();
   });
 
+  // 12) THE TIP NEVER PUTS ITS OWN BUTTON OFF THE SCREEN. coachReposition used to
+  // decide above-or-below with `r.bottom + 110 < innerHeight` — a hardcoded GUESS at
+  // the tip's height, right for a short sentence (measured 111px) and wrong by 106px
+  // for a real one (216px). Measured at 390×844 with a target at y=640: tip bottom
+  // 918, i.e. 74px past the fold with Next off screen and the walk unadvanceable.
+  // Driven with a FIXED target so nothing here depends on scroll position.
+  const LONG = 'After checkout, open the booking and tap Return deposit to refund it in full — or Keep for damage to retain some or all of it with a reason the guest will see.';
+  const fit = await page.evaluate(async (say) => {
+    const out = [];
+    const place = async (top, text) => {
+      document.getElementById('fit-t')?.remove();
+      coachSeqStop();
+      const b = document.createElement('button');
+      b.id = 'fit-t'; b.textContent = 'Target';
+      b.style.cssText = `position:fixed;left:40px;top:${top}px;width:180px;height:44px;z-index:10;`;
+      document.body.appendChild(b);
+      coachPaintStep(b, text, { i: 1, n: 5, onNext() {}, onBack() {}, onDone() {} });
+      await new Promise((r) => setTimeout(r, 150));
+      const tip = document.querySelector('.coach-tip').getBoundingClientRect();
+      const btn = document.querySelector('.coach-tip-btn').getBoundingClientRect();
+      return { top, tipTop: Math.round(tip.top), tipH: Math.round(tip.height), tipBottom: Math.round(tip.bottom),
+        onScreen: tip.top >= 0 && tip.bottom <= window.innerHeight && tip.left >= 0 && tip.right <= window.innerWidth,
+        btnOn: btn.top >= 0 && btn.bottom <= window.innerHeight };
+    };
+    // low + long is the case that broke; the other three are the neighbours it must
+    // not break on the way past.
+    out.push(await place(640, say));
+    out.push(await place(300, say));
+    out.push(await place(640, 'Tap Save.'));
+    out.push(await place(20, say)); // nothing fits above — must clamp, not overflow
+    coachSeqStop(); document.getElementById('fit-t')?.remove();
+    return out;
+  }, LONG);
+  ok(fit.every((f) => f.onScreen), `FIT: the tip stays on screen at every target height (${fit.map((f) => f.top + ':' + (f.onScreen ? 'ok' : f.tipBottom + '>' + 844)).join(' ')})`);
+  ok(fit.every((f) => f.btnOn), `FIT: …so its own Next button is always reachable (${fit.filter((f) => !f.btnOn).length} off screen)`);
+  ok(fit[0].tipH > 150, `FIT: (the long sentence really is a tall tip — ${fit[0].tipH}px, vs the 110 the old guess assumed)`);
+
+  // 13) THE STEP IS ANNOUNCED. Measured before: role / aria-live / aria-label all
+  // null on the tip, and focus stays on the field — so a screen-reader user got an
+  // overlay nobody told them about and five steps they never heard. The visible
+  // copy is aria-hidden and the SAME words go to an .sr-only live region, written a
+  // frame after the tip lands (a live region that arrives WITH its text is not
+  // reliably announced — the payment-outcome rule).
+  const say = await page.evaluate(async () => {
+    coachSeqStop();
+    coachWalk('add-booking');
+    await new Promise((r) => setTimeout(r, 900));
+    coachSequence(CHB_WALK['add-booking'].steps, 2);
+    await new Promise((r) => setTimeout(r, 400));
+    const tip = document.querySelector('.coach-tip');
+    const live = tip.querySelector('.sr-only');
+    const vis = tip.querySelector('.coach-tip-text');
+    const lab = tip.querySelector('.coach-tip-step');
+    const cs = live ? getComputedStyle(live) : null;
+    return {
+      group: tip.getAttribute('role'), groupName: tip.getAttribute('aria-label'),
+      live: live ? live.getAttribute('aria-live') : null, liveRole: live ? live.getAttribute('role') : null,
+      text: live ? live.textContent.trim() : '',
+      hidden: vis.getAttribute('aria-hidden') === 'true' && lab.getAttribute('aria-hidden') === 'true',
+      invisible: cs ? (parseFloat(cs.width) <= 1 || cs.clipPath !== 'none' || cs.position === 'absolute') : false,
+    };
+  });
+  ok(say.liveRole === 'status' && say.live === 'polite', `SAY: the step lands in a polite live region (role=${say.liveRole}, live=${say.live})`);
+  ok(/^Step 3 of 5\. .*name/i.test(say.text), `SAY: …carrying the step AND its sentence ("${say.text.slice(0, 48)}…")`);
+  ok(say.hidden, 'SAY: …and the visible copy is aria-hidden, so it is not read twice');
+  ok(say.invisible, 'SAY: …while the announced copy is visually hidden (.sr-only), not a second bubble');
+  ok(say.group === 'group' && !!say.groupName, `SAY: the tip itself is a named group (${say.group}/${say.groupName})`);
+
+  // 14) REDUCED MOTION drops the EASING, never the travel — the ring IS the pointer,
+  // so a ring that stops moving stops telling you where to look. Same call as the
+  // guest dock's selection pill.
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const rm = await page.evaluate(async () => {
+    coachSeqStop();
+    document.getElementById('rm-t')?.remove();
+    const a = document.createElement('button');
+    a.id = 'rm-t'; a.textContent = 'T';
+    a.style.cssText = 'position:fixed;left:40px;top:200px;width:180px;height:44px;z-index:10;';
+    document.body.appendChild(a);
+    coachPaintStep(a, 'First.', { i: 0, n: 2, onNext() {}, onBack() {}, onDone() {} });
+    await new Promise((r) => setTimeout(r, 150));
+    const ring = document.querySelector('.coach-ring');
+    const anim = getComputedStyle(document.querySelector('.coach-tip')).animationName;
+    const before = Math.round(ring.getBoundingClientRect().top);
+    // Move the target, then let ITS OWN transition land before repositioning — a
+    // bare <button> here inherits a transition on `top`, so calling coachReposition
+    // in the same tick measured the old rect and reported a ring that never moved
+    // (which is what the first version of this check did).
+    a.style.top = '520px';
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    await new Promise((r) => setTimeout(r, 120));
+    coachReposition();
+    await new Promise((r) => setTimeout(r, 80));
+    const after = Math.round(ring.getBoundingClientRect().top);
+    // The DECLARATION, deliberately: Chromium's reduced-motion emulation forces
+    // every transition-duration to ~1e-05s regardless of author CSS, so a computed
+    // read cannot tell our rule from the browser's own override and would pass with
+    // the rule deleted. Real Safari/iOS honours the author rule instead, so the rule
+    // is what has to exist. Break-tested by removing the @media block.
+    let ruleFound = false;
+    for (const sheet of document.styleSheets) {
+      let rules; try { rules = sheet.cssRules; } catch (e) { continue; }
+      for (const r of rules || []) {
+        if (r.type === CSSRule.MEDIA_RULE && /prefers-reduced-motion/.test(r.conditionText || '')) {
+          for (const inner of r.cssRules || []) {
+            if (/\.coach-ring/.test(inner.selectorText || '') && /none/.test(inner.style.transition || inner.style.transitionProperty || '')) ruleFound = true;
+          }
+        }
+      }
+    }
+    coachSeqStop(); document.getElementById('rm-t')?.remove();
+    return { anim, before, after, ruleFound };
+  });
+  ok(rm.ruleFound, 'MOTION: reduced motion drops the ring\'s easing (a real @media rule, not the emulator\'s)');
+  ok(rm.anim === 'none', `MOTION: …and the tip's entrance fade (${rm.anim})`);
+  ok(Math.abs(rm.after - rm.before) > 250, `MOTION: …but the ring still TRAVELS — it is the pointer (${rm.before} → ${rm.after})`);
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+
   console.log(fails ? `\n  ${fails} CHECK(S) FAILED ❌` : '\n  GUIDED WALKTHROUGH SUITE PASSED ✅');
   await done(fails);
 })();

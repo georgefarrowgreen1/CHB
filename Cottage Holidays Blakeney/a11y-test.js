@@ -372,6 +372,13 @@ const stub = (page) => page.route(/\.php/, (r) => {
         ['search-results', "(async()=>{const i=document.getElementById('cmdk-input');i.value='who owes me';cmdkSearch('who owes me');await new Promise(r=>setTimeout(r,700));})()"],
         ['search-record', "(async()=>{const i=document.getElementById('cmdk-input');i.value='debbie';cmdkSearch('debbie');await new Promise(r=>setTimeout(r,700));})()"],
         ['search-closed', "(async()=>{cmdkBack();await new Promise(r=>setTimeout(r,400));})()"],
+        // The GUIDED WALKTHROUGH overlay, which this gate had never seen — the same
+        // blind spot that let a 23px quick-action row live in the search window.
+        // Its Next/Back measured 70×30, over the 24px bar but under the house's own
+        // 44px floor, on a control tapped once per step. Driven to a MIDDLE step so
+        // Back is rendered too (step 1 renders a spacer <span> in its place).
+        ['walkthrough', "(async()=>{coachWalk('add-booking');await new Promise(r=>setTimeout(r,900));coachSequence(CHB_WALK['add-booking'].steps,2);await new Promise(r=>setTimeout(r,400));})()"],
+        ['walkthrough-off', "(async()=>{coachSeqStop();closeModal();await new Promise(r=>setTimeout(r,300));})()"],
     ];
     const totals = { unnamed: new Set(), tiny: new Set(), small: new Set() };
     for (const [key, open] of VIEWS) {
