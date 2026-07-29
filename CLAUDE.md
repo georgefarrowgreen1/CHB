@@ -1814,10 +1814,21 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   policy (curl-confirmed at the domain) and the owner's phone kept reporting
   `CSP blocked form-action → methodurl.vcas.visa.com` from the old one. `bump.js`
   already bumps CACHE on every run, so RUNNING it is the fix; **check-versions.js now
-  fails a PR that changes the `Content-Security-Policy` string without bumping
-  CACHE** (break-tested by replaying the real base..head of that PR, which fails, and
-  the previous PR, which doesn't mention CSP). The same trap applies to any other
-  security header set in htaccess.txt.
+  fails a PR that changes ANY `Header set` directive without bumping CACHE**
+  (break-tested by replaying the real base..head of that PR, which fails, and two
+  earlier PRs, which pass). Every response header travels the same way, so the rule
+  is not CSP-specific. **And what needs a bump is DERIVED, not listed**: the rule
+  used to read a hand-written `['app.js','app.css','guest-app.js','guest-app.css',
+  'index.html']`, which is a list somebody has to remember to extend — the same
+  shape of defect as the CSP not being in any list at all. It now parses sw.js's own
+  `CORE` array, so a new precached asset is covered the day it is added (the derived
+  list is 9 assets and already includes `logo.svg`, `manifest.json` and the icons,
+  none of which the hand-written array covered). A vacuity guard fails the run if
+  `CORE` ever stops parsing, so the rule cannot silently cover nothing. NB the
+  RUNTIME half of this was already right and needed no change: `startVersionWatch` /
+  `startGuestVersionWatch` poll `version.php` and reload when `BUILD` differs, and a
+  new CACHE name makes the SW refetch the shell — that machinery simply had nothing
+  to detect, because the PR changed no version at all.
 - **A CSP-REPORT DE-DUPE KEY MUST NOT CONTAIN THE REPORTER'S IP.** `csp-report.php`
   caps one log per (directive, ip) per hour — and on mobile that limit never fired,
   because a phone rotates its IPv6 address every few minutes (RFC 4941 privacy

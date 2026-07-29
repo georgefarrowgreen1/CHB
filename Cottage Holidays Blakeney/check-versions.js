@@ -51,7 +51,11 @@ try {
 const grab = (src, re) => (src.match(re) || [])[1] || null;
 const fails = [];
 const ok = [];
-const rule = (name, cond, detail) => (cond ? ok : fails).push(`${name}${detail ? ' — ' + detail : ''}`);
+// `detail` is the DIAGNOSIS — what went wrong and how to fix it — so it belongs on
+// a failure only. It used to print on both, which made every passing line read like
+// a complaint ("✓ app.js changed → its ?v= bumped — still ?v=566 (run: node bump.js)"
+// says the opposite of what happened).
+const rule = (name, cond, detail) => (cond ? ok.push(name) : fails.push(`${name}${detail ? ' — ' + detail : ''}`));
 
 const baseHtml = at(base, 'index.html');
 const headHtml = at(head, 'index.html');
@@ -77,26 +81,51 @@ if (changed.has('admin.js') || changed.has('admin-views.html')) {
 if (changed.has('admin.css')) {
     rule('admin.css changed → ADMIN_CSS_V bumped', grab(baseApp, /const ADMIN_CSS_V = (\d+);/) !== grab(headApp, /const ADMIN_CSS_V = (\d+);/), 'ADMIN_CSS_V (top of app.js) is unchanged');
 }
-if (['app.js', 'app.css', 'guest-app.js', 'guest-app.css', 'index.html'].some(f => changed.has(f))) {
-    rule('core asset changed → sw.js CACHE bumped', grab(at(base, 'sw.js'), /const CACHE = 'chb-cache-v(\d+)';/) !== grab(at(head, 'sw.js'), /const CACHE = 'chb-cache-v(\d+)';/), 'CACHE (sw.js) is unchanged');
+// ---- WHAT NEEDS A CACHE BUMP IS DERIVED, NOT LISTED ----------------------------
+// This used to be a hand-written array — ['app.js','app.css','guest-app.js',
+// 'guest-app.css','index.html'] — and a hand-written array is a list somebody has
+// to remember to update. That is the defect that shipped a broken 3-D Secure fix:
+// the CSP is not a file in any list, so nothing demanded a bump, and installed PWAs
+// went on enforcing the old policy while the server served the new one. Both rules
+// below now read their inputs from the source of truth, so a new precached asset or
+// a new security header is covered the day it is written.
+const cacheV = (sha) => grab(at(sha, 'sw.js'), /const CACHE = 'chb-cache-v(\d+)';/);
+const cacheBumped = cacheV(base) !== cacheV(head);
+
+// (1) THE PRECACHE LIST IS sw.js's OWN `CORE`. Anything in it is stored in the
+// Cache API and served to installed clients until CACHE changes — so if one of
+// those files changed in this PR, CACHE must change too. Derived from CORE rather
+// than restated, which is what makes a future addition to CORE self-covering.
+const coreRaw = grab(at(head, 'sw.js'), /const CORE = \[([^\]]*)\]/);
+const coreFiles = [...new Set((coreRaw || '').split(',')
+    .map((s) => s.trim().replace(/^['"]|['"]$/g, '').replace(/\?v=\d+$/, '').replace(/^\.\//, ''))
+    .filter((f) => f && f !== '' && /\.[a-z0-9]+$/i.test(f)))];
+// A guard, in the a11y-test §1b spirit: if the parse ever stops finding entries
+// (someone reformats CORE across lines), this rule would silently cover NOTHING.
+// Fail loudly instead of passing vacuously.
+rule(`sw.js CORE parsed for the precache rule (${coreFiles.length} assets)`, coreFiles.length >= 5,
+    'const CORE did not parse — the derived cache rule would cover NOTHING and pass in silence');
+const coreChanged = coreFiles.filter((f) => changed.has(f));
+if (coreChanged.length) {
+    rule(`precached asset changed (${coreChanged.join(', ')}) → sw.js CACHE bumped`, cacheBumped, 'CACHE (sw.js) is unchanged');
 }
-// THE CSP IS A CACHED ASSET, because it is a RESPONSE HEADER ON index.html and the
-// Cache API stores headers with the body. sw.js precaches index.html and serves it
-// on any navigation the network doesn't answer — so an installed PWA keeps applying
-// the CSP that was current when its shell was last cached, however many deploys ago.
-// Measured: PR #861 widened form-action for 3-D Secure and changed no cached asset,
-// so nothing bumped; the live server sent the new policy (curl-confirmed) while the
-// owner's phone went on enforcing the old one and kept reporting
-// "CSP blocked form-action → methodurl.vcas.visa.com". A CSP edit therefore has to
-// invalidate the shell exactly like an app.js edit does.
+
+// (2) RESPONSE HEADERS RIDE ON THE CACHED SHELL. The Cache API stores headers with
+// the body, and sw.js serves the precached index.html on any navigation the network
+// does not answer — so a header set in htaccess.txt reaches installed clients only
+// when the shell is refetched. Measured: PR #861 widened form-action for 3-D Secure,
+// changed no file in any list, and nothing bumped; the live server sent the new
+// policy (curl-confirmed at the domain) while the owner's phone kept reporting
+// "CSP blocked form-action → methodurl.vcas.visa.com" from the old one.
+// Deliberately EVERY `Header set` directive, not just the CSP: X-Frame-Options,
+// Referrer-Policy, HSTS and the rest travel the same way, and the failure mode is
+// silent. Over-triggering costs one version bump; under-triggering cost a live
+// payment defect.
 if (changed.has('htaccess.txt')) {
-    const cspOf = (src) => grab(src, /Content-Security-Policy "([^"]*)"/);
-    const b = cspOf(at(base, 'htaccess.txt'));
-    const h = cspOf(at(head, 'htaccess.txt'));
-    if (b !== h) {
-        rule('CSP changed → sw.js CACHE bumped (the header rides on the cached shell)',
-            grab(at(base, 'sw.js'), /const CACHE = 'chb-cache-v(\d+)';/) !== grab(at(head, 'sw.js'), /const CACHE = 'chb-cache-v(\d+)';/),
-            'CACHE (sw.js) is unchanged — installed PWAs would keep enforcing the OLD policy');
+    const hdrs = (src) => (src.match(/Header\s+(?:always\s+)?set\s+[^\n]*/g) || []).map((s) => s.trim()).join('\n');
+    if (hdrs(at(base, 'htaccess.txt')) !== hdrs(at(head, 'htaccess.txt'))) {
+        rule('response header changed → sw.js CACHE bumped (headers ride on the cached shell)', cacheBumped,
+            'CACHE (sw.js) is unchanged — installed PWAs would keep applying the OLD headers');
     }
 }
 
