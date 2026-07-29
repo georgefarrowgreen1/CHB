@@ -1808,6 +1808,12 @@ body.owner-mode .logo.ml-learning .logo-mark {
   background: var(--cmdk-sel);
   box-shadow: inset 3px 0 0 var(--cmdk-sel-edge);
 }
+/* No tile behind the glyph: a filled lozenge under every icon put a second shape
+   in each row, so the list read as tiles rather than lines. The 32px BOX stays —
+   it is what puts every label on the 63px rail §18f measures. Colour moves to
+   --accent-text because the TILE was carrying the contrast: bare --accent is
+   2.70:1 on the light surface, under the 3:1 non-text bar; --accent-text is 4.93
+   (same value in dark, 8.25 either way). */
 .cmdk-row-ic {
   width: 32px;
   height: 32px;
@@ -1816,8 +1822,8 @@ body.owner-mode .logo.ml-learning .logo-mark {
   align-items: center;
   justify-content: center;
   border-radius: var(--r-md);
-  background: var(--cmdk-tile);
-  color: var(--accent);
+  background: none;
+  color: var(--accent-text);
   transition: transform 0.14s var(--spring, var(--fluid-bezier));
 }
 .cmdk-row.is-sel .cmdk-row-ic {
@@ -1834,18 +1840,19 @@ body.owner-mode .logo.ml-learning .logo-mark {
   color: var(--sky, var(--accent));
 }
 /* Navigation ("Jump to") tiles read neutral so entities/answers keep the accent. */
+/* No tile. --text-muted stands on the pop-out surface unaided (5.4:1 light). */
 .cmdk-row-ic.cmdk-screen {
-  background: var(--glass-hover);
+  background: none;
 }
 .cmdk-row-ic.cmdk-screen .ic {
   color: var(--text-muted);
 }
 /* Smart-answer row (the summary that leads an operational query result). */
 .cmdk-row-ic.cmdk-answer {
-  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  background: none;
 }
 .cmdk-row-ic.cmdk-answer .ic {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .cmdk-row-answer .cmdk-row-label {
   font-weight: 700;
@@ -1903,10 +1910,10 @@ body.owner-mode .logo.ml-learning .logo-mark {
 }
 /* Business-insight figure card — the big number leads. */
 .cmdk-row-ic.cmdk-figure {
-  background: color-mix(in srgb, var(--accent) 20%, transparent);
+  background: none;
 }
 .cmdk-row-ic.cmdk-figure .ic {
-  color: var(--accent);
+  color: var(--accent-text);
 }
 .cmdk-row-figure .cmdk-row-label {
   font-weight: 700;
@@ -2171,7 +2178,7 @@ body.owner-mode .logo.ml-learning .logo-mark {
    lands on first, alone on its own rail. Four other emphasis signals remain (larger
    label, deeper padding, gradient ground, inset ring); size was the costly one. */
 .cmdk-row.cmdk-tophit .cmdk-row-ic {
-  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  background: none;
 }
 .cmdk-row.cmdk-tophit .cmdk-row-label {
   font-size: var(--cmdk-fs-lead);
@@ -3522,9 +3529,17 @@ body.cmdk-open {
 .cmdk-board .cmdk-row + .cmdk-row {
   box-shadow: inset 0 1px 0 var(--glass-border);
 }
-.cmdk-board .cmdk-row.is-sel + .cmdk-row,
-.cmdk-board .cmdk-row + .cmdk-row.is-sel {
-  box-shadow: none;
+@media (hover: none) and (pointer: coarse) {
+  #cmdk .cmdk-row.is-sel {
+    background: none;
+    box-shadow: none;
+  }
+  #cmdk .cmdk-board .cmdk-row.is-sel + .cmdk-row {
+    box-shadow: inset 0 1px 0 var(--glass-border);
+  }
+  #cmdk .cmdk-row.is-sel .cmdk-row-ic {
+    transform: none;
+  }
 }
 /* Padded like the rows it captions (10px, not 4), so heading and content share one
    left rail — measured, they sat 10px apart, which reads as a heading belonging to
