@@ -170,14 +170,14 @@ function insert_payment_row($bookingId, $sqId, $kind, $amount, $status, $gName, 
                 'INSERT IGNORE INTO payments (booking_id, square_payment_id, kind, amount, status, guest_name, prop_key, note, created_at)
                        VALUES (?,?,?,?,?,?,?,?,NOW())',
             )
-            ->execute([$bookingId, $sqId, $kind, $amount, $status, $gName, $gProp, $note !== '' ? $note : null]);
+            ->execute([$bookingId, $sqId, $kind, $amount, payment_status_norm($status), $gName, $gProp, $note !== '' ? $note : null]);
     } catch (\Throwable $e) {
         try {
             db()
                 ->prepare(
                     'INSERT IGNORE INTO payments (booking_id, square_payment_id, kind, amount, status, created_at) VALUES (?,?,?,?,?,NOW())',
                 )
-                ->execute([$bookingId, $sqId, $kind, $amount, $status]);
+                ->execute([$bookingId, $sqId, $kind, $amount, payment_status_norm($status)]);
         } catch (\Throwable $e2) {
             // A money movement that the ledger could not record must never be
             // silent — the owner reconciles from this ledger.
@@ -197,7 +197,7 @@ function find_charge_for_refund($bookingId, $need)
 {
     try {
         $s = db()->prepare("SELECT square_payment_id, amount FROM payments
-            WHERE booking_id = ? AND kind IN ('deposit','balance') AND status IN ('COMPLETED','APPROVED')
+            WHERE booking_id = ? AND kind IN ('deposit','balance') AND UPPER(status) IN ('COMPLETED','APPROVED')
             ORDER BY amount DESC");
         $s->execute([$bookingId]);
         foreach ($s->fetchAll() as $r) {
@@ -334,7 +334,7 @@ function damages_returned($bookingId)
 {
     try {
         $s = db()->prepare(
-            "SELECT COALESCE(SUM(amount),0) FROM payments WHERE booking_id = ? AND kind = 'damages_return' AND (status IS NULL OR status NOT IN ('FAILED','REJECTED'))",
+            "SELECT COALESCE(SUM(amount),0) FROM payments WHERE booking_id = ? AND kind = 'damages_return' AND (status IS NULL OR UPPER(status) NOT IN ('FAILED','REJECTED'))",
         );
         $s->execute([$bookingId]);
         return round((float) $s->fetchColumn(), 2);
@@ -1589,6 +1589,22 @@ if ($action === 'cancel') {
             : 0.0;
     $refundedByCard = 0.0;
     $depositRefunded = 0.0; // refundable damage deposit auto-returned below (reported back)
+    // CAP IT, exactly as the per-row 'refund' action does. This is a free-typed figure
+    // on the one screen where a typo is most likely, and without the cap the only thing
+    // stopping an over-refund was Square rejecting it — which then aborts the
+    // cancellation too, so the owner cannot cancel at all until they guess a workable
+    // number. Same rule, same sentence.
+    if ($refundAmount > 0) {
+        $cancelCap = null;
+        try {
+            $cancelCap = booking_ledger_net($id);
+        } catch (\Throwable $e) {
+            $cancelCap = null; // ledger unreadable — leave it to Square, as before
+        }
+        if ($cancelCap !== null && $refundAmount > $cancelCap + 0.001) {
+            json_out(['error' => 'Only £' . number_format($cancelCap, 2) . ' is still refundable on this booking.'], 400);
+        }
+    }
     if ($refundAmount > 0 && square_enabled()) {
         $charge = find_charge_for_refund($id, $refundAmount);
         if ($charge) {

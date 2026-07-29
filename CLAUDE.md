@@ -1660,6 +1660,58 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   a return in the following tax year leaves a phantom negative in that year. A returned
   deposit was never income and must not move profit at all. Gated by
   test-integration §14 (7 checks; three of them fail against the old query).
+- **ONE DEFINITION OF "ALREADY PAID"** (`booking_paid_so_far`, db.php; gated by
+  test-payrail). There were two. `bookings.deposit_paid` is the reconciled headline
+  figure and `booking_ledger_net()` is what the card ledger shows; they agree once
+  reconciliation has run and diverge in the window this app already handles elsewhere
+  (a payment landed, reconcile/webhook unfinished). The CHARGE in pay.php always took
+  `max()` of the two — so it can never take more than the guest was quoted — but the
+  EMAIL (`booking_amount_due`) and the pay SCREEN's summary both read `deposit_paid`
+  alone. With the ledger ahead, the guest was asked for MORE than the card would take,
+  and at the extreme was told £220 was due and then got "already paid in full". Same
+  question, three call sites, two answers. NB the helper's catch covers a failing
+  ledger QUERY (an un-migrated payments table), NOT an unreachable database — `db()`
+  EXITS with JSON on that, so there is nothing to catch; the first version of this
+  comment claimed otherwise and writing the test is what caught it.
+- **THE LEDGER'S STATUS IS CASE-PROOF AT BOTH ENDS** (`payment_status_norm` /
+  `payment_status_known`, gated by test-payrail + test-integration §10b). Everything
+  stored comes from Square (uppercase) or is the literal `'MANUAL'`, so the column has
+  always been uppercase in practice — but the READERS disagreed about whether that was
+  guaranteed. accounts.php case-folds all eleven of its filters; `booking_ledger_net`
+  (the primitive every paid/refund calc builds on), `find_charge_for_refund`,
+  `damages_returned` and the reconciler did not. One lowercase row would therefore be
+  counted by some money queries and not others, and which ones would depend on the
+  query rather than the fact. Fixed from both ends: normalised on WRITE so it cannot
+  recur, and the four readers case-fold so rows already stored are safe.
+  **And the REFUND webhook branch validates before it overwrites.** It wrote
+  `$refund['status'] ?? ''` straight in, so an event whose refund object carried no
+  status blanked a good one on a money row — while the payment branch guards on
+  `$status !== ''` and the reconciler uses an explicit whitelist. Three paths, three
+  rules; this was the unguarded one. (Its blast radius was limited because
+  `reconcile_pending_refunds` re-polls a non-terminal row and repairs it, but a blanked
+  charge stops `booking_ledger_net` counting it, i.e. the booking reads unpaid.)
+- **THE CANCELLATION REFUND IS CAPPED** like the per-row one (gated by test-payrail +
+  test-integration §10b). The `refund` action capped by `booking_ledger_net`; `cancel`
+  took a free-typed figure with no cap, on the one screen where a typo is most likely.
+  Without it the only thing stopping an over-refund was Square rejecting it — which
+  aborts the cancellation too, so the owner could not cancel at all until they guessed
+  a workable number. Same rule, same sentence. An unreadable ledger still leaves it to
+  Square rather than blocking a cancellation.
+  NB two of these gates were vacuous first: one matched `sweep_outstanding` in a
+  COMMENT, and one checked the cancel cap was COMPUTED while `if (false)` left it
+  computed and ignored. Assert the enforcement, not the ingredient.
+- **VERIFIED CORRECT in the same audit** (recorded so the next one can skip them):
+  every pound→pence conversion is `(int) round(x * 100)`; charge and refund
+  idempotency keys are deterministic and include the refunded-so-far sum, so a retry
+  collapses at Square while a genuine second refund does not; no endpoint takes a money
+  amount from the client except the owner's own refund figures, which are capped;
+  `damages_returned` counts PENDING returns (the double-return guard) while the sweep's
+  own query counts only SETTLED ones (has the money left?) — two different questions,
+  two queries, both right; `keep_deposit` and `return_deposit` re-read under
+  `book_lock`; `price_round2` documents its bit-identical parity with JS
+  `Math.round(x*100)/100`; expenses reject a non-positive amount; the pay-in-full kind
+  upgrade happens BEFORE the summary, so quote and charge agree; and `hold_status='kept'`
+  correctly leaves the sweep's ring fence.
 - **What "Net profit" on Payments → Income & tax actually COVERS**, and why the
   screen says so out loud. `accounts.php` selects `WHERE b.deposit_paid > 0`, i.e.
   money recorded through THIS site, so two things sit outside the figure and neither

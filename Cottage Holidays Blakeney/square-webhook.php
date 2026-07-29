@@ -36,11 +36,18 @@ $type = $event['type'] ?? '';
 // Refund/damages-return rows store the Square refund id as square_payment_id.
 if (strpos($type, 'refund.') === 0) {
     $refund = $event['data']['object']['refund'] ?? null;
-    if ($refund && !empty($refund['id'])) {
+    // Only a RECOGNISED status overwrites the row — the same rule
+    // reconcile_pending_refunds() applies. This branch used to write
+    // `$refund['status'] ?? ''` straight in, so an event whose refund object carried
+    // no status blanked a good one on a money row: booking_ledger_net stops counting
+    // a blanked charge (the booking reads unpaid) and the sweep screen treats a
+    // blanked return as still pending. The payment branch below already guards on
+    // `$status !== ''`; three paths, three rules, and this was the unguarded one.
+    if ($refund && !empty($refund['id']) && payment_status_known($refund['status'] ?? '')) {
         try {
             db()
                 ->prepare('UPDATE payments SET status = ? WHERE square_payment_id = ?')
-                ->execute([(string) ($refund['status'] ?? ''), (string) $refund['id']]);
+                ->execute([payment_status_norm($refund['status']), (string) $refund['id']]);
         } catch (\Throwable $e) {
         }
     }
@@ -120,11 +127,11 @@ try {
         try {
             db()
                 ->prepare('UPDATE payments SET status = ?, fee = COALESCE(?, fee) WHERE square_payment_id = ?')
-                ->execute([$status, $fee, $sqId]);
+                ->execute([payment_status_norm($status), $fee, $sqId]);
         } catch (\Throwable $eFee) {
             db()
                 ->prepare('UPDATE payments SET status = ? WHERE square_payment_id = ?')
-                ->execute([$status, $sqId]);
+                ->execute([payment_status_norm($status), $sqId]);
         }
     }
 } catch (\Throwable $e) {

@@ -169,6 +169,95 @@ chk('enquiry-actions.php uses the shared rule (one definition, not two)',
     strpos($enq, 'booking_payment_kind($bk)') !== false
         && strpos($enq, '$daysToCheckIn < payment_balance_days()') === false);
 
+// ---- MONEY AUDIT: one definition of "already paid" -------------------------
+// booking_paid_so_far() is max(bookings.deposit_paid, the card ledger). The CHARGE
+// always took the max; the EMAIL and the pay SCREEN read deposit_paid alone, so with
+// the ledger ahead of the reconciled figure the guest was asked for MORE than the card
+// would take — and at the extreme was told £220 was due and then got "already paid in
+// full". Three call sites, two answers. The arithmetic is one max(); what is worth
+// gating is that all three sites ask the shared question.
+echo "\n== Money audit: one paid-so-far definition ==\n";
+chk('booking_paid_so_far exists and is the shared answer', function_exists('booking_paid_so_far'));
+// Its FALLBACKS are the testable part without a database: a booking with no id, and a
+// DB error, must both fall back to the recorded figure — a guest asked for slightly too
+// much is recoverable, a guest asked for nothing is not.
+chk('with no booking id it falls back to the recorded figure',
+    abs(booking_paid_so_far(['deposit_paid' => 120.5]) - 120.5) < 0.005);
+chk('an absent deposit_paid reads as zero, not as an error', booking_paid_so_far([]) === 0.0);
+// The ledger-query fallback is NOT exercised here on purpose: db() exits with JSON on
+// an unreachable database rather than throwing, so calling it with an id in this
+// DB-less suite would kill the run rather than take the catch. (Writing that check is
+// how the overstated comment on the helper — "falls back on a DB error" — was caught;
+// the catch really covers a failing QUERY, i.e. an un-migrated payments table.) What is
+// checkable without a database is that the guard is there and returns the recorded
+// figure rather than propagating.
+$dbSrc = (string) file_get_contents(__DIR__ . '/db.php');
+chk('a failing ledger query falls back to the recorded figure rather than propagating',
+    preg_match('/function booking_paid_so_far.*?try \{.*?booking_ledger_net\(\$id\).*?catch.*?return \$recorded;/s', $dbSrc) === 1);
+
+$payS = (string) file_get_contents(__DIR__ . '/pay.php');
+$priceS = (string) file_get_contents(__DIR__ . '/pricing.php');
+chk('the pay screen QUOTES the shared figure', strpos($payS, '$alreadyPaid = booking_paid_so_far($b);') !== false);
+chk('the CHARGE uses it too, on a deposit_paid re-read under the lock',
+    strpos($payS, "booking_paid_so_far(['id' => \$bookingId, 'deposit_paid' => \$bookingPaid])") !== false);
+chk('the EMAIL uses it (booking_amount_due)', strpos($priceS, '$alreadyPaid = booking_paid_so_far($b);') !== false);
+chk('…and none of the three reads deposit_paid alone for this any more',
+    strpos($payS, "\$alreadyPaid = round((float) (\$b['deposit_paid']") === false
+    && strpos($priceS, "\$alreadyPaid = round((float) (\$b['deposit_paid']") === false);
+
+// ---- MONEY AUDIT: ledger status is case-proof, both ends ------------------
+echo "\n== Money audit: ledger status normalisation ==\n";
+chk('a status is normalised on the way in', payment_status_norm(' completed ') === 'COMPLETED');
+chk('a recognised status is accepted whatever its case', payment_status_known('pending') && payment_status_known('MANUAL'));
+chk('an unrecognised status is refused, not written over a good one',
+    !payment_status_known('') && !payment_status_known('weird') && !payment_status_known(null));
+$dbS = (string) file_get_contents(__DIR__ . '/db.php');
+$bkS = (string) file_get_contents(__DIR__ . '/bookings.php');
+$rcS = (string) file_get_contents(__DIR__ . '/payments-reconcile.php');
+$whS = (string) file_get_contents(__DIR__ . '/square-webhook.php');
+// The four readers accounts.php had already case-folded and these had not, so one row
+// could be counted by some money queries and not others.
+chk('booking_ledger_net case-folds (the primitive every paid/refund calc builds on)',
+    preg_match("/UPPER\(status\) IN \('COMPLETED','APPROVED'\)/", $dbS) === 1
+    && preg_match("/UPPER\(status\) NOT IN \('FAILED','REJECTED'\)/", $dbS) === 1);
+chk('find_charge_for_refund case-folds',
+    preg_match("/kind IN \('deposit','balance'\) AND UPPER\(status\) IN \('COMPLETED','APPROVED'\)/", $bkS) === 1);
+chk('damages_returned case-folds — the double-return guard',
+    preg_match("/kind = 'damages_return' AND \(status IS NULL OR UPPER\(status\) NOT IN \('FAILED','REJECTED'\)\)/", $bkS) === 1);
+chk('the reconciler case-folds when picking rows to re-poll',
+    preg_match("/UPPER\(status\) NOT IN \('COMPLETED','FAILED','REJECTED'\)/", $rcS) === 1);
+// And every writer normalises, so it cannot recur for new rows.
+chk('the ledger insert normalises', substr_count($bkS, 'payment_status_norm($status)') >= 2);
+chk('the reconciler normalises and validates', strpos($rcS, 'payment_status_known($status)') !== false && strpos($rcS, 'payment_status_norm($status)') !== false);
+chk('the webhook normalises both of its writes', substr_count($whS, 'payment_status_norm($status)') >= 2);
+// THE REFUND BRANCH was the unguarded one: it wrote `$refund['status'] ?? ''` straight
+// in, so an event carrying no status blanked a good one on a money row.
+chk('the REFUND webhook branch validates before overwriting a status',
+    strpos($whS, "payment_status_known(\$refund['status'] ?? '')") !== false
+    && strpos($whS, "payment_status_norm(\$refund['status'])") !== false);
+chk('…and no longer writes an unvalidated value',
+    strpos($whS, "->execute([(string) (\$refund['status'] ?? ''), (string) \$refund['id']])") === false);
+
+// ---- MONEY AUDIT: the cancellation refund is capped ----------------------
+echo "\n== Money audit: capped cancellation refund ==\n";
+// The per-row 'refund' action capped by booking_ledger_net; cancel took a free-typed
+// figure with no cap, so a typo was only caught by Square rejecting it — which aborts
+// the cancellation too, leaving the owner unable to cancel at all.
+if (preg_match("/if \(\\\$action === 'cancel'\)(.*?)\\\$emailResult = null;/s", $bkS, $cm)) {
+    // Matched on the ENFORCEMENT, not just the computation: checking that
+    // booking_ledger_net is called passed with the comparison replaced by if(false),
+    // i.e. a cap that is worked out and then ignored.
+    chk('cancel caps the refund by what is still refundable',
+        strpos($cm[1], 'booking_ledger_net($id)') !== false
+        && preg_match('/\$cancelCap !== null && \$refundAmount > \$cancelCap \+ 0\.001/', $cm[1]) === 1);
+    chk('…and says the figure, in the same words as the per-row refund',
+        strpos($cm[1], 'is still refundable on this booking.') !== false);
+    chk('an unreadable ledger still leaves it to Square rather than blocking a cancel',
+        strpos($cm[1], '$cancelCap = null; // ledger unreadable') !== false);
+} else {
+    chk('the cancel block is present in bookings.php', false);
+}
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail PAY-RAIL CHECK(S) FAILED \u{274C}\n";
