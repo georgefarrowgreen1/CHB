@@ -1725,6 +1725,46 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   (`payments.amount` is rental-only while its fee covers both), because reading
   `amount` as the gross biased the learned rate HIGH on exactly the charges that
   carry deposits.
+  **HAS IT ACTUALLY REACHED THE BANK?** (**`payouts-lib.php`**, gated by
+  **`test-payouts.php`** + ui-test-money §7.) sweep-lib works out how much of a
+  charge is the owner's; it cannot know WHEN it arrives. Square settles a charge and
+  pays out a day or two LATER, so the first version of this screen listed a charge
+  taken the SAME DAY as £604.05 movable — money that was still with Square. Square's
+  **Payouts API** answers it exactly (`GET /v2/payouts` → status `SENT`/`PAID`/
+  `FAILED` + `arrival_date`; `GET /v2/payouts/{id}/payout-entries` → one line per
+  activity with the REAL `fee_amount_money` and `type_charge_details.payment_id`).
+  Scope `PAYOUTS_READ`, which the app's Developer-Dashboard access token already
+  carries (scopes are not granted per authorisation as with OAuth) — and if it does
+  not, the 403 is NAMED ("the access token can't read payouts") rather than showing
+  an empty screen. Two things are taken from it and only two: **landed vs on its
+  way**, and the **actual fee** per charge, which replaces the observed-rate
+  estimate — `payouts_apply` runs BEFORE `sweep_txn_totals` or Square's figure is
+  decoration (gated). A wider reading of the entries (refunds, disputes,
+  adjustments) was deliberately left out: our own ledger already tracks deposit
+  returns and a second source for the same fact is a way to double-count it. NB the
+  CHARGE-type filter is load-bearing, not defensive — an `ADJUSTMENT` entry can
+  carry `type_charge_details` too, and arriving after the charge it would overwrite
+  the real fee (break-tested; the first version of that check was vacuous because
+  the fixture had no such entry).
+  **UNKNOWN IS ITS OWN ANSWER.** `payouts_landed` returns true/false/**null** —
+  an unrecognised status, a missing or malformed `arrival_date`, a charge absent
+  from the payout data. Null money is reported as its own figure ("Square hasn't
+  said · not counted as movable") rather than rounded into movable (which invites
+  moving it) or into on-its-way (which invents a date). A FAILED payout lands in
+  the same bucket for the same reason: it is not arriving, so saying it is due
+  would be a lie. `arrival_date` on the day itself counts as landed.
+  **NOTHING WAITS ON SQUARE.** The fetch is the daily cron (`self-repair.php` §0b,
+  only when `payouts_stale`) plus an explicit "Check Square now" — accounts.php may
+  only READ the cache (gated), because a page that blocks on a payment API is the
+  poor-signal bug again. Cached under the INTERNAL content key **`square-payouts`**;
+  a failed refresh KEEPS the last good copy and records why, so the screen says
+  "payout data may be out of date — …" instead of showing no payouts as though
+  nothing had settled. With no cache at all (Square off, or before the first cron)
+  the flat list still renders with the caveat stated. The "these are payments, not
+  your balance" sentence is one const used by BOTH branches — it was dropped from
+  the split view in the first draft and ui-test-money caught it, but only after the
+  check was re-aimed: it had been reading the fallback branch, where the sentence
+  still was.
 - **THE STATUS PAGE HAS A WAY IN.** `/status` had no link anywhere in the app —
   the one page you want when something looks wrong could only be reached by
   typing the URL. It is now a card in Manage → System check and a footer link,

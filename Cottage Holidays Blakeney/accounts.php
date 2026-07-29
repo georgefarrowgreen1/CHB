@@ -406,6 +406,9 @@ try {
             'deposit' => $carried ? (float) ($r['hold_amount'] ?? 0) : 0.0,
             'returned' => $carried ? (float) $r['returned'] : 0.0,
             'fee' => $r['fee'] === null ? null : (float) $r['fee'],
+            // Consumed by payouts_apply() and stripped there — it is machinery, so
+            // it never reaches the client.
+            'square_payment_id' => (string) ($r['square_payment_id'] ?? ''),
             'txn_id' => (int) $r['id'],
             'booking_id' => (int) $r['booking_id'],
             'name' => (string) ($r['name'] ?? ''),
@@ -413,7 +416,20 @@ try {
             'paid_on' => (string) ($r['paid_on'] ?? ''),
         ];
     }
+    // WHERE THE MONEY ACTUALLY IS. Square settles a charge, then pays out to the
+    // bank a day or two later, so a charge taken this morning is not spendable yet.
+    // payouts-lib.php reads that from Square's Payouts API (cached; the fetch is a
+    // cron job, never this request) and hands back the REAL fee per charge, so the
+    // sweep arithmetic runs on Square's own figure rather than an observed rate.
+    require_once __DIR__ . '/payouts-lib.php';
+    $poCache = payouts_cached();
+    $poMap = is_array($poCache) ? ($poCache['charges'] ?? []) : [];
+    $txns = payouts_apply($txns, is_array($poMap) ? $poMap : []);
     $sweep['transactions'] = sweep_txn_totals($txns, $rate);
+    $sweep['payouts'] = payouts_split_totals($sweep['transactions']['items']);
+    $sweep['payouts']['checked'] = is_array($poCache) ? (int) ($poCache['checked'] ?? 0) : 0;
+    $sweep['payouts']['error'] = is_array($poCache) ? ($poCache['error'] ?? null) : null;
+    $sweep['payouts']['known'] = is_array($poMap) ? count($poMap) : 0;
 } catch (\Throwable $e) {
     // Never let this break Income & tax — an empty liability is reported as
     // 'unknown' by the client rather than as a confident £0.

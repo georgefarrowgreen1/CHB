@@ -11977,28 +11977,45 @@ async function renderSweep(refetch) {
         )
         .join('');
 
-    // PER TRANSACTION. The aggregate above says what must stay in the account; this
-    // says it charge by charge, the way a Square payout list reads. A charge that
-    // carried a deposit names what is held back from it; every other charge is
-    // movable in full, less Square's fee. The movable TOTAL is of these payments,
-    // NOT of the account — older money, expenses and payouts are not in it, which
-    // is why the balance field below stays the authoritative answer.
+    // PER TRANSACTION, SPLIT BY WHERE THE MONEY ACTUALLY IS — Square settles a
+    // charge and pays out a day or two LATER, so only the "In the bank" group may
+    // count as movable, and what Square hasn't vouched for is its own group rather
+    // than rounded into either. payouts-lib.php owns that reasoning.
     const T = L.transactions || null;
-    const txRows = ((T && T.items) || [])
-        .map((it) => {
-            const who = escapeHtml(it.name || 'Guest') + (it.prop_key && propertyMeta[it.prop_key] ? ` · ${escapeHtml(propertyMeta[it.prop_key].short)}` : '');
-            const held = Number(it.ringFence || 0);
-            return `<div class="act-row" style="display:block;">
-                <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;">
-                    <span>${who}${it.paid_on ? ` · ${fmtDate(it.paid_on)}` : ''}</span>
-                    <span style="white-space:nowrap;font-weight:600;${held > 0 ? '' : `color:var(--ok-text);`}">${gbp(it.movable)}</span>
+    const P = L.payouts || null;
+    const txRow = (it) => {
+        const who = escapeHtml(it.name || 'Guest') + (it.prop_key && propertyMeta[it.prop_key] ? ` · ${escapeHtml(propertyMeta[it.prop_key].short)}` : '');
+        const held = Number(it.ringFence || 0);
+        return `<div class="act-row" style="display:block;">
+            <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;">
+                <span>${who}${it.paid_on ? ` · ${fmtDate(it.paid_on)}` : ''}</span>
+                <span style="white-space:nowrap;font-weight:600;${held > 0 ? '' : `color:var(--ok-text);`}">${gbp(it.movable)}</span>
+            </div>
+            <div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;">
+                ${gbp(it.settled)} settled${held > 0 ? ` · ${gbp(held)} held back for the deposit` : ' · nothing held back'}${it.landed === false && it.arrival ? ` · due ${fmtDate(it.arrival)}` : ''}${it.fee_actual ? '' : ' · fee estimated'}
+            </div>
+        </div>`;
+    };
+    const txGroup = (rows, label, total, note) =>
+        !rows || !rows.length
+            ? ''
+            : `<div class="accounts-stat" style="max-width:620px;margin-top:14px;">
+                <div class="label">${label}</div>
+                ${note ? `<p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 10px;">${note}</p>` : '<div style="height:6px;"></div>'}
+                <div>${rows.map(txRow).join('')}</div>
+                <div class="act-row" style="justify-content:space-between;gap:10px;border-top:1px solid var(--glass-border);margin-top:6px;">
+                    <span><strong>${rows.length} payment${rows.length === 1 ? '' : 's'}</strong></span>
+                    <span style="white-space:nowrap;font-family:var(--font-display);font-size:1.15rem;">${gbp(total)}</span>
                 </div>
-                <div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;">
-                    ${gbp(it.settled)} settled${held > 0 ? ` · ${gbp(held)} held back for the deposit` : ' · nothing held back'}
-                </div>
-            </div>`;
-        })
-        .join('');
+               </div>`;
+    // Fallback for an install with no payout data at all (Square off, or the cron
+    // hasn't run yet): show the flat list rather than nothing, and say the freshness
+    // is unknown. Better a stated caveat than a hidden one.
+    const txFlat = ((T && T.items) || []).map(txRow).join('');
+    // The caveat that holds in EVERY branch, stated once so the two cannot drift:
+    // even with payouts known, these are the recent payments and not the balance.
+    const notBalance =
+        'This is what those payments brought in — not the account balance, which also holds older money and whatever you\'ve already moved or spent.';
 
     box.innerHTML =
         `<div class="accounts-stat" style="max-width:620px;">
@@ -12016,18 +12033,31 @@ async function renderSweep(refetch) {
                 <div style="margin-top:6px;">${rows}</div>
                </div>`
             : '') +
-        (T && T.count
-            ? `<div class="accounts-stat" style="max-width:620px;margin-top:14px;">
+        (T && T.count && P
+            ? txGroup(P.items.inBank, 'In the bank — movable', P.inBank, "Square has paid these out. Each charge after its fee, less any damage deposit that's going back out of it.") +
+              txGroup(P.items.onWay, 'On its way — not yet', P.onWay, 'Square has taken these but has not paid them out yet, so the money is not in the account.') +
+              txGroup(P.items.unknown, "Square hasn't said", P.unknown, "These charges aren't in the payout data yet, so there's no telling whether they've landed. Not counted as movable.") +
+              `<p style="font-size:0.78rem;color:var(--text-muted);margin:10px 0 0;max-width:620px;">
+                    ${P.error
+                        ? `Payout data may be out of date — ${escapeHtml(String(P.error))}.`
+                        : P.checked
+                          ? `Payouts checked ${fmtDate(new Date(P.checked * 1000).toISOString().slice(0, 10))}.`
+                          : 'Payouts have not been checked yet.'}
+                    <button class="btn-sm btn-edit" style="margin-left:6px;" ${chbAttrs('sweepRefreshPayouts')}>Check Square now</button>
+                    <br>${notBalance}
+               </p>`
+            : T && T.count
+              ? `<div class="accounts-stat" style="max-width:620px;margin-top:14px;">
                 <div class="label">Movable, payment by payment</div>
                 <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 10px;">Each charge after Square's fee, less any damage deposit that's going back out of it.</p>
-                <div>${txRows}</div>
+                <div>${txFlat}</div>
                 <div class="act-row" style="justify-content:space-between;gap:10px;border-top:1px solid var(--glass-border);margin-top:6px;">
                     <span><strong>Movable from these ${T.count} payment${T.count === 1 ? '' : 's'}</strong></span>
                     <span style="white-space:nowrap;font-family:var(--font-display);font-size:1.15rem;">${gbp(T.movable)}</span>
                 </div>
-                <p style="font-size:0.78rem;color:var(--text-muted);margin:8px 0 0;">Recent charges, plus any older one still holding a deposit. This is what those payments brought in — not the account balance, which also holds older money and whatever you've already moved or spent.</p>
+                <p style="font-size:0.78rem;color:var(--text-muted);margin:8px 0 0;">No payout data yet, so this counts every charge whether Square has paid it out or not — some of it may not be in the account. ${notBalance} <button class="btn-sm btn-edit" ${chbAttrs('sweepRefreshPayouts')}>Check Square now</button></p>
                </div>`
-            : '') +
+              : '') +
         `<div class="accounts-stat" style="max-width:620px;margin-top:14px;">
             <div class="label">How much can I move?</div>
             <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 12px;">Type what the account holds right now. Nothing is saved — there's no bank feed, and a remembered balance would be out of date the moment it was stored.</p>
@@ -12052,6 +12082,23 @@ function sweepSet(which, value) {
     if (which === 'balance') __sweepBalance = String(value || '');
     else __sweepBuffer = String(value || '');
     renderSweep(false); // recompute from the cached liability — no round trip
+}
+// The owner asking Square directly. Normally the daily cron fills the payout cache
+// so no page ever waits on Square; this is the one place a wait is fair, because
+// they chose it. A refusal (a token without PAYOUTS_READ is the predictable one)
+// comes back as a plain sentence and is shown as-is — never a status code.
+async function sweepRefreshPayouts() {
+    try {
+        const r = await apiPost('square-setup.php', { action: 'payouts_refresh' });
+        if (r && r.error) {
+            toast(String(r.error), 'error');
+        } else {
+            toast('Payouts up to date', 'success');
+        }
+    } catch (e) {
+        toast('Couldn\'t reach Square — check your connection.', 'error');
+    }
+    renderSweep(); // refetch: the liability figures move with the new payout data
 }
 
 function renderExpenses() {
