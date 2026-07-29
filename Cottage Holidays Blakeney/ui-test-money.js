@@ -384,6 +384,68 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(/nothing held back/.test(s1b), 'a charge carrying no deposit says so, rather than looking identical');
   ok(/£982\.50/.test(s1b) && /Movable from these 2 payments/.test(s1b), 'the movable total is stated for the set');
   ok(/not the account balance/i.test(s1b), 'and it does not claim to be the account balance');
+  // With no payout data at all (Square off, or the cron has not run) the flat list
+  // is the fallback — and it must SAY that it counts money Square may not have paid
+  // out yet, rather than implying every penny is in the bank.
+  ok(/No payout data yet/.test(s1b) && /Check Square now/.test(s1b), 'without payout data it states the caveat and offers to check');
+
+  // WHERE THE MONEY ACTUALLY IS. Square settles a charge and pays out a day or two
+  // later, so a charge taken this morning is not spendable. Only the in-the-bank
+  // group may count towards movable — this is the case the first version got wrong.
+  sweepStub = Object.assign({}, sweepStub, {
+    payouts: {
+      inBank: 294.75, onWay: 687.75, unknown: 0, nextArrival: d(2),
+      counts: { inBank: 1, onWay: 1, unknown: 0 },
+      checked: Math.floor(Date.now() / 1000), error: null, known: 2,
+      items: {
+        inBank: [{ txn_id: 11, name: 'Sarah Pemberton', prop_key: '21a', paid_on: d(-12), settled: 368.44, ringFence: 73.69, movable: 294.75, landed: true, arrival: d(-10), fee_actual: true }],
+        onWay: [{ txn_id: 12, name: 'Sarah Pemberton', prop_key: '21a', paid_on: d(0), settled: 687.75, ringFence: 0, movable: 687.75, landed: false, arrival: d(2), fee_actual: true }],
+        unknown: [],
+      },
+    },
+  });
+  await page.evaluate(() => renderSweep());
+  await page.waitForTimeout(500);
+  const s1c = await sweepText();
+  ok(/In the bank — movable/.test(s1c) && /£294\.75/.test(s1c), `the landed group leads with what is really movable (${s1c.slice(0, 50)})`);
+  // The discriminating check: £982.50 is landed + on-its-way added together, which
+  // is the figure the first version showed. In the split view it must appear
+  // NOWHERE — asserting only that £294.75 is present passes just as happily when
+  // the group total is the combined one, because the ROW still says £294.75.
+  ok(!/£982\.50/.test(s1c), 'the combined total is not presented anywhere as movable');
+  ok(/not the account balance/i.test(s1c), 'the split view keeps the not-the-balance caveat too');
+  ok(/On its way — not yet/.test(s1c) && /£687\.75/.test(s1c), 'money Square has taken but not paid out is its own group');
+  ok(!/Movable from these/.test(s1c), 'the old undifferentiated total is gone — it counted un-paid-out money');
+  ok(new RegExp('due ' + d(2).split('-').reverse().join('/')).test(s1c), `an unpaid charge says when it is due (${d(2)})`);
+  ok(/Payouts checked/.test(s1c), 'the screen says how fresh the payout data is');
+
+  // Money Square has said nothing about must be its OWN figure — rounding it into
+  // "movable" invites moving it, and rounding it into "on its way" invents a date.
+  sweepStub = Object.assign({}, sweepStub, {
+    payouts: Object.assign({}, sweepStub.payouts, {
+      unknown: 491.25, counts: { inBank: 1, onWay: 1, unknown: 1 },
+      items: Object.assign({}, sweepStub.payouts.items, {
+        unknown: [{ txn_id: 13, name: 'Richard Berry', prop_key: 'jollyboat', paid_on: d(-40), settled: 500, ringFence: 0, movable: 491.25, landed: null, arrival: '' }],
+      }),
+    }),
+  });
+  await page.evaluate(() => renderSweep());
+  await page.waitForTimeout(500);
+  const s1d = await sweepText();
+  ok(/Square hasn't said/.test(s1d) && /£491\.25/.test(s1d), 'unvouched money is named as unknown, not counted as movable');
+  ok(/Not counted as movable/i.test(s1d), 'and the screen says so in words');
+
+  // A stale cache says so instead of presenting old figures as current.
+  sweepStub = Object.assign({}, sweepStub, {
+    payouts: Object.assign({}, sweepStub.payouts, { error: "the access token can't read payouts" }),
+  });
+  await page.evaluate(() => renderSweep());
+  await page.waitForTimeout(500);
+  const s1e = await sweepText();
+  ok(/may be out of date/.test(s1e) && /can't read payouts/.test(s1e), 'a payout-fetch failure is reported in the owner\'s own words');
+  sweepStub = Object.assign({}, sweepStub, { payouts: null });
+  await page.evaluate(() => renderSweep());
+  await page.waitForTimeout(400);
 
   // Typing the balance must answer WITHOUT another round trip — the liability is
   // cached, so a keystroke can't cost a request.

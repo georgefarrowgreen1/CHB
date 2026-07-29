@@ -173,4 +173,18 @@ if ($action === 'setup') {
     ]);
 }
 
+// ---- Refresh the payout cache on demand ----
+// Payouts are pulled by the daily cron (self-repair.php) so no page ever waits on
+// Square. This is the owner asking explicitly — the one place a wait is fair,
+// because they chose it and the button says what it is doing.
+if ($action === 'payouts_refresh') {
+    require_once __DIR__ . '/payouts-lib.php';
+    $r = payouts_refresh();
+    if (empty($r['ok'])) {
+        // A plain sentence, not a status code: this reaches the owner's screen.
+        json_out(['error' => $r['reason'] ?: 'Couldn\'t reach Square just now.'], 200);
+    }
+    json_out(['ok' => true, 'payouts' => $r['payouts'], 'charges' => $r['charges'], 'checked' => time()]);
+}
+
 json_out(['error' => 'Unknown action'], 400);

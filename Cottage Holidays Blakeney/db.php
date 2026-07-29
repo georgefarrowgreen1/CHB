@@ -668,6 +668,11 @@ function is_internal_content_key($key)
         return true; // the owner's reversible changes (chbUndoPush) — their own
                      // history, naming cottages and rates; never public
     }
+    if ($key === 'square-payouts') {
+        return true; // the cached Square payout ledger (payouts-lib.php) — what has
+                     // reached the owner's bank and when. Machinery, and it names
+                     // real money movements; never on the public content GET.
+    }
     if ($key === 'weather-cache') {
         return true; // the cached Blakeney forecast (weather-data.php) — machinery,
                      // not content; weather.php serves the data itself publicly

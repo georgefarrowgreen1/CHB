@@ -53,6 +53,19 @@ try {
 } catch (\Throwable $e) {
 }
 
+// ---- 0b. Square payout cache ------------------------------------------------
+// What has actually reached the bank, for Move-money-out. Pulled HERE rather than
+// on the Income & tax request so no page ever waits on Square (the poor-signal
+// rule); the owner can also refresh it by hand. Keeps the last good copy on
+// failure, so a bad night reads as "last checked yesterday", not as no payouts.
+try {
+    require_once __DIR__ . '/payouts-lib.php';
+    if (payouts_stale(payouts_cached(), time())) {
+        payouts_refresh();
+    }
+} catch (\Throwable $e) {
+}
+
 // ---- 1. Dead gallery references -------------------------------------------
 // 'images-<prop>' content keys hold JSON arrays of image URLs; locally-uploaded
 // ones are relative 'uploads/<file>'. If the file is gone (manual FTP cleanup,
