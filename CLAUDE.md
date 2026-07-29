@@ -473,6 +473,18 @@ caption's inline padding must equal the ROW's (22px), because §18f compares whe
 the caption's text starts against the row LABEL, and a row's label begins at its
 padding edge once the answer glyph is hidden inside a group — 20px put the heading
 2px inside its own list.
+**NO KEYBOARD CURSOR ON A TOUCH DEVICE, AND NO TILE BEHIND AN ICON.** The landing
+preselects row 0 so arrow keys have somewhere to start; on a phone there are no
+arrow keys, so it painted one row as chosen before the owner had chosen anything.
+Suppressed under `(hover: none) and (pointer: coarse)` — desktop keeps it, because
+arrowing the list is a real feature with its own gates, and those run with a fine
+pointer so none of them moved. The icon TILES are gone too (`.cmdk-row-ic` and the
+screen / answer / figure / tophit variants): a filled lozenge under every glyph put
+a second shape in each row. Keep the 32px BOX — it is what puts every label on the
+63px rail §18f measures. NB the tile was carrying the icon's CONTRAST: bare
+`--accent` is 2.70:1 on the light pop-out surface, under the 3:1 non-text bar, so
+the glyphs moved to `--accent-text` (4.93:1; identical in dark). That took the
+a11y `accentAsText` ratchet 23 → 19.
 **The field's focus ring HUGS.** It is autofocused for the pop-out's whole life and
 a text input always matches `:focus-visible`, so `2px solid accent` at
 `outline-offset: 2px` over an accent border was permanent decoration and the
