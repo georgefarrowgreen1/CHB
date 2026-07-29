@@ -24,7 +24,7 @@ if ($action === 'key') {
 // generic). Guest device -> the check-in message. No session -> safe default.
 if ($action === 'sw_notify') {
     if (!empty($_SESSION['admin_id'])) {
-        $p = owner_ping_take();
+        $p = owner_ping_read();
         if ($p) {
             json_out([
                 'title' => $p['title'] ?: 'Cottage Holidays Blakeney',
@@ -44,7 +44,7 @@ if ($action === 'sw_notify') {
     // Logged-in guest: a pending contextual ping (e.g. a payment update) wins;
     // otherwise fall back to a generic notification.
     if (!empty($_SESSION['guest_id'])) {
-        $gp = guest_ping_take((int) $_SESSION['guest_id']);
+        $gp = guest_ping_read((int) $_SESSION['guest_id']);
         if ($gp) {
             json_out([
                 'title' => $gp['title'] ?: 'Cottage Holidays Blakeney',

@@ -1752,6 +1752,44 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   retries twice and clears `__adminBundlePromise` so the next tap re-tries — and
   so was the stale-admin check, which explicitly refuses to log anyone out on a
   network error ("don't log out on uncertainty"); neither needed touching.
+- **PUSH CARRIES ITS OWN MESSAGE NOW, AND EVERY DEVICE GETS IT.** Two bugs in one
+  design. (1) **First device wins**: `alert_owner()` wakes EVERY admin device, and
+  `owner_ping_take()` DELETED the stash on read — so the first device to fetch
+  consumed the message and every other one fell through to "You have a new
+  notification". An owner with an iPhone *and* an iPad got the real text on exactly
+  one, at random. `owner_ping_read()` / `guest_ping_read()` never delete; freshness
+  does the job instead (a ping older than 5 min is ignored, which also stops a push
+  delivered days late from picking up an unrelated current message). (2) **The text
+  needed a network round trip and a live admin session at the moment the
+  notification fired** — `sw.js` fetched `push.php?action=sw_notify`, which requires
+  `$_SESSION['admin_id']`; on poor signal or an expired session the owner got the
+  generic line, and iOS gives a service worker only a short budget to show
+  something. Pushes now carry an **encrypted payload** (RFC 8291 aes128gcm,
+  `wp_encrypt_payload` — pure openssl + `hash_hkdf`, no Composer), so the message is
+  already in hand. The stash stays as the FALLBACK for subscriptions stored before
+  `p256dh`/`auth` were captured, and `send_webpush` **retries payload-less on
+  400/413**, so a push service that dislikes the body degrades to exactly the old
+  behaviour rather than dropping the alert. TTL is per-message (was a flat 28 days —
+  wrong for anything time-sensitive) and `Urgency: high` is sent, because Apple
+  batches low-urgency pushes. Gated by **test-webpush.php** (31 checks, CI-wired,
+  deploy-excluded): RFC 8291 §5's worked example encrypted with a pinned salt +
+  application-server key, framing asserted against the RFC's own values, then
+  decrypted back with the RFC's user-agent private key. Break-tested — corrupting
+  the HKDF salt AND swapping the two public keys in `key_info` both fail the
+  round-trip, which is what makes it more than a self-consistent mirror.
+- **iOS SPECIFICS THE BACK OFFICE NOW RESPECTS.** `navigator.setAppBadge()` puts the
+  pending-enquiry count on the Home Screen icon (iOS 16.4+, installed PWAs) — the
+  one surface the owner sees without unlocking into the app, and the count was
+  already computed for three in-app pips, so `refreshInboxBadge()` just calls
+  `setAppBadgeCount()`. Owner-only, or a guest would see a stray red dot. **iOS only
+  allows web push from an installed app**: enabling it in a Safari tab silently
+  never works, so `enableOwnerPush()` detects `isAppleTouchDevice() &&
+  !isStandalonePwa()` and says to Add to Home Screen instead of failing quietly (NB
+  iPadOS 13+ reports itself as a Mac — the touch-point count is what catches an
+  iPad, and `navigator.standalone` needs a cast, being absent from the DOM typings).
+  And **a push subscription is not forever** — iOS drops it when the PWA is removed
+  and re-added, leaving permission granted and nothing arriving; `revalidateOwnerPush()`
+  re-checks on admin boot and silently re-subscribes. It never prompts.
 - **A BOOKING INSIDE THE BALANCE WINDOW IS ASKED TO PAY IN FULL.** `PAYMENT_BALANCE_DAYS`
   (30) is the deposit-then-balance schedule, and `payment_balance_days()`'s own comment
   always said "full-amount-upfront if a booking is approved inside the window" — but

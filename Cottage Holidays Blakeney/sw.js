@@ -14,14 +14,14 @@
 //  show (push.php?action=sw_notify) and relays release reloads to open pages.
 //  Keep this file in the SAME folder as index.html.
 // ============================================================
-const CACHE = 'chb-cache-v618';
+const CACHE = 'chb-cache-v619';
 // admin.js is deliberately NOT precached — it's the owner-only bundle, fetched on
 // demand by loadAdminBundle() (app.js); the fetch handler below also bypasses it
 // entirely (network-only) so a new back office is never a reload behind.
 // Icons are precached BOTH bare (in-page <img>/notification icons) and with the
 // ?v=3 pins the <link rel=icon> tags actually request — cache.match keys include
 // the query string, so a bare entry never satisfies a pinned request.
-const CORE = ['./', 'index.html', 'logo.svg', 'logo.svg?v=3', 'favicon.png', 'favicon.png?v=3', 'apple-touch-icon.png', 'apple-touch-icon.png?v=3', 'manifest.json', 'app.css?v=220', 'app.js?v=567', 'guest-app.css?v=39', 'guest-app.js?v=22'];
+const CORE = ['./', 'index.html', 'logo.svg', 'logo.svg?v=3', 'favicon.png', 'favicon.png?v=3', 'apple-touch-icon.png', 'apple-touch-icon.png?v=3', 'manifest.json', 'app.css?v=220', 'app.js?v=568', 'guest-app.css?v=39', 'guest-app.js?v=22'];
 // uploads/ images live in their own size-capped bucket so galleries stay fast and
 // available offline WITHOUT growing the main cache without bound (every image ever
 // viewed used to accumulate forever in CACHE).
@@ -193,14 +193,39 @@ self.addEventListener('push', (event) => {
     event.waitUntil((async () => {
         let n = { title: 'Cottage Holidays Blakeney', body: 'You have a new notification — tap to open.', tag: 'chb-guest', url: './' };
         let reload = false;
+        // THE PAYLOAD FIRST. Pushes now carry the message encrypted (RFC 8291), so
+        // the text is already here — no network, no session, nothing to race. The
+        // fetch below was the only source, which meant the notification's wording
+        // depended on a round trip landing in time on whatever signal the phone had,
+        // and on the admin session still being valid; when either failed the owner
+        // got the generic line. It stays as the fallback for subscriptions stored
+        // before the keys were captured, and for any push service that refuses an
+        // encrypted body.
+        let fromPayload = false;
         try {
-            const r = await fetch('push.php?action=sw_notify', { credentials: 'include', cache: 'no-store' });
-            if (r.ok) {
-                const d = await r.json();
-                if (d && d.title) n = { title: d.title, body: d.body || '', tag: d.tag || 'chb', url: d.url || './' };
-                reload = !!(d && d.reload);
+            // PushEvent isn't in the plain Event typing (same reason waitUntil/
+            // request are cast-free elsewhere here) — read it once through a cast
+            // rather than adding to this file's type debt.
+            const pd = /** @type {any} */ (event).data;
+            if (pd) {
+                const d = pd.json();
+                if (d && d.title) {
+                    n = { title: d.title, body: d.body || '', tag: d.tag || 'chb', url: d.url || './' };
+                    reload = !!d.reload;
+                    fromPayload = true;
+                }
             }
         } catch (e) {}
+        if (!fromPayload) {
+            try {
+                const r = await fetch('push.php?action=sw_notify', { credentials: 'include', cache: 'no-store' });
+                if (r.ok) {
+                    const d = await r.json();
+                    if (d && d.title) n = { title: d.title, body: d.body || '', tag: d.tag || 'chb', url: d.url || './' };
+                    reload = !!(d && d.reload);
+                }
+            } catch (e) {}
+        }
         // On a new release, ask any open pages to refresh to the new build.
         if (reload) {
             try {
