@@ -453,7 +453,32 @@ state, and every existing caller wanted that (a result run closes then navigates
 the overlay's own class via a DOM check (app.js may not reach admin globals) so ANY navigation
 while it is open still files the dead-end miss and supersedes in-flight searches. `body.cmdk-open`
 locks the page scroll and `.cmdk-results` scrolls inside the box with `overscroll-behavior:
-contain`, so the workspace behind never scrolls with it. **Glass is RIGHT again at this size, and that is the inverse of the rule it replaces.**
+contain`, so the workspace behind never scrolls with it. **BUT NOT ON A PHONE.** At 390px the box measures 370 of 390 — it is
+effectively full bleed again, so it blurs the whole workspace rather than its edge
+and an amber "Part paid" pill two screens down smeared across the money card.
+Below 641px the panel is OPAQUE (`--cmdk-surface`, the ground a11y-test already
+measures words against) with the blur off; glass returns from 641px, where the
+pop-out really is a small card on a visible desktop. Same rule as the original
+full-bleed decision, applied at the width where the condition recurs.
+**The Siri aura is a RIM, not a cloud.** It was three stacked glows out to 92px
+blur / 10px spread, which painted a purple haze well beyond the panel and read as
+an artifact rather than a material. One hairline ring plus a 22px tight glow, hue
+still cycling, so ui-test-searchpage §17's "the painted shadow moves" holds.
+**A group is a FILL, not a card.** `.cmdk-board` carried a fill AND a hairline
+border AND filled rows inside it — three edges in ~90px, so the money row read as
+a card inside a card inside the panel. The border is gone, the group pads its
+CHILDREN rather than itself (so rows span it edge to edge), rows square off and
+are separated by hairlines, and the selected row is a full-width band. NB the
+caption's inline padding must equal the ROW's (22px), because §18f compares where
+the caption's text starts against the row LABEL, and a row's label begins at its
+padding edge once the answer glyph is hidden inside a group — 20px put the heading
+2px inside its own list.
+**The field's focus ring HUGS.** It is autofocused for the pop-out's whole life and
+a text input always matches `:focus-visible`, so `2px solid accent` at
+`outline-offset: 2px` over an accent border was permanent decoration and the
+loudest thing on screen. A 62%-accent border plus a 2px tinted ring reads as the
+active control without shouting.
+**Glass is RIGHT again at this size, and that is the inverse of the rule it replaces.**
 As a full-bleed panel it had to be OPAQUE (`--cmdk-surface`) with its content in one
 centred column (`--cmdk-measure`), because 78% white over a 24px blur reads as depth at
 680px — only the workspace's EDGE blurs through — while at screen size the whole back
