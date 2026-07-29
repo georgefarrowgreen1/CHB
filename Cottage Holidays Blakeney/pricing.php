@@ -174,6 +174,42 @@ function payment_balance_days()
 {
     return defined('PAYMENT_BALANCE_DAYS') && (int) PAYMENT_BALANCE_DAYS > 0 ? (int) PAYMENT_BALANCE_DAYS : 30;
 }
+// Is this booking INSIDE the balance window (check-in closer than the window, or
+// already begun)? Inside it the FULL amount is due, so a deposit makes no sense:
+// the balance would fall due immediately after, and the guest would be asked to
+// pay twice in a few days.
+//
+// ONE DEFINITION, because it was previously inline in exactly one of the places
+// that needed it. enquiry-actions.php computed it on approval and asked for the
+// full amount correctly; bookings.php's request_payment did NOT — it took `kind`
+// from the client, defaulting to 'deposit', so a booking made inside the window
+// and paid from the booking hub emailed "Pay your deposit — £X" (25%) even though
+// the hub's own banner beside the button read "Nothing received yet — £Y due" with
+// the FULL figure. Same expression as enquiry-actions used, kept identical so the
+// two paths cannot answer differently.
+function booking_within_balance_window($b)
+{
+    if (empty($b['check_in'])) {
+        return false;
+    }
+    $days = (int) floor((strtotime($b['check_in']) - strtotime(date('Y-m-d'))) / 86400);
+    return $days < payment_balance_days();
+}
+
+// What a booking should ACTUALLY be asked for, whatever was requested. Inside the
+// balance window this is always 'balance' (pay in full). 'hold' is the legacy
+// card-authorisation flow and is passed through untouched.
+function booking_payment_kind($b, $requested = 'deposit')
+{
+    if ($requested === 'hold') {
+        return 'hold';
+    }
+    if (booking_within_balance_window($b)) {
+        return 'balance';
+    }
+    return $requested === 'balance' ? 'balance' : 'deposit';
+}
+
 // Global deposit policy (percentage of the total). Owner-editable in Settings
 // (content key 'square-deposit-pct'); defaults to 25%.
 function square_deposit_pct()

@@ -41,6 +41,12 @@ $b = (function ($id) {
 if (!$b) {
     json_out(['error' => 'Booking not found.'], 404);
 }
+// The amount was already server-derived; the KIND now is too. Inside the balance
+// window the full amount is due, so a 'deposit' request — from an older emailed
+// link, or a hand-edited one — is upgraded rather than honoured. Only ever
+// UPWARDS, and never for the legacy 'hold' flow. Without this, a link sent while
+// check-in was still far off would still take 25% if opened days before arrival.
+$kind = booking_payment_kind($b, $kind);
 
 // Effective total = manual override if set, else the locked agreed total
 // (fall back to a live calc only for legacy rows missing the snapshot).

@@ -332,9 +332,12 @@ function enquiry_approve($id, $priceOverride = null)
             $nb->execute([(int) $bookingId]);
             $bk = $nb->fetch();
             if ($bk) {
-                $daysToCheckIn = (int) floor((strtotime($bk['check_in']) - strtotime(date('Y-m-d'))) / 86400);
-                $withinWindow = $daysToCheckIn < payment_balance_days();
-                $kind = $withinWindow ? 'balance' : 'deposit';
+                // booking_within_balance_window() (pricing.php) IS this calculation,
+                // lifted out so bookings.php's request_payment applies the identical
+                // rule — it used to trust the client's `kind` and email a deposit
+                // request for a booking whose full amount was already due.
+                $withinWindow = booking_within_balance_window($bk);
+                $kind = booking_payment_kind($bk);
                 $paymentRequest = request_booking_payment($bk, $kind);
                 if (!empty($paymentRequest['ok'])) {
                     // Visible in the per-booking email log.

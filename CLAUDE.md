@@ -1752,6 +1752,27 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   retries twice and clears `__adminBundlePromise` so the next tap re-tries — and
   so was the stale-admin check, which explicitly refuses to log anyone out on a
   network error ("don't log out on uncertainty"); neither needed touching.
+- **A BOOKING INSIDE THE BALANCE WINDOW IS ASKED TO PAY IN FULL.** `PAYMENT_BALANCE_DAYS`
+  (30) is the deposit-then-balance schedule, and `payment_balance_days()`'s own comment
+  always said "full-amount-upfront if a booking is approved inside the window" — but
+  only ONE of the paths that ask for money implemented it. `enquiry-actions.php` did it
+  on approval; **`bookings.php`'s `request_payment` took `kind` from the CLIENT and
+  defaulted to `'deposit'`**, so a booking made close to arrival and chased from the
+  booking hub emailed *"Pay your deposit — £X"* for 25%, while the banner the owner had
+  just tapped read *"Nothing received yet — £Y due"* with the FULL figure. The guest
+  then gets chased for the rest days later. `booking_within_balance_window($b)` /
+  `booking_payment_kind($b, $requested)` (pricing.php) are that rule stated ONCE;
+  enquiry-actions.php now calls them instead of its inline copy, `bookings.php` derives
+  the kind rather than trusting the caller (and stamps `balance_requested_at` so
+  payments-due.php can't double-ask), and **`pay.php` upgrades the kind too** — the
+  amount was always server-derived, and now the kind is, so an older emailed deposit
+  link opened inside the window charges the full amount rather than 25%. Only ever
+  upgrades, never downgrades; the legacy `'hold'` flow passes through untouched, and
+  outside the window a deposit is still a deposit (asserted, so the fix can't become
+  "always charge everything"). The boundary is `< payment_balance_days()`, gated from
+  both sides. Gated by **test-payrail.php** (13 new checks: window behaviour, both
+  boundary sides, hold passthrough, missing check-in, plus a WIRING scan of all three
+  endpoints — each break-tested, including restoring the client-trusting line).
 - **A CHASE EMAIL FOLLOWS THE GUEST'S RAIL** (`payment_rail($b)` in db.php — 'card'
   or 'bacs'). A guest who paid their deposit in cash or by transfer has no use for a
   Square link, and chasing them with one asks them to switch rails mid-booking; they
