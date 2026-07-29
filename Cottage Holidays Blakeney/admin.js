@@ -135,10 +135,15 @@ async function openSettings(section) {
     } catch (e) {}
     try {
         refreshInboxBadge();
-    } catch (e) {} // Enquiries badge
+    } catch (e) {} // Enquiries badge (and the Home Screen app badge)
     try {
         loadAdminMessages();
     } catch (e) {} // Guest messages badge
+    // Self-heal a push subscription iOS has quietly dropped. Fire-and-forget: it
+    // never prompts and must not delay the back office.
+    try {
+        revalidateOwnerPush();
+    } catch (e) {}
     // Repaint the section that opened above, now its data is in. Skipped while
     // the owner is TYPING in it: these panels are full of inputs, and a repaint
     // lands on whatever they've half-entered (the same way a blank re-render
@@ -13090,6 +13095,49 @@ async function deleteAdminPasskey(id) {
     }
 }
 // ---- Owner (admin) push alerts: enable per device + test ----
+// iOS reports an installed PWA through navigator.standalone; everything else uses
+// the display-mode media query. Both, because Safari does not implement the query
+// for standalone reliably.
+function isStandalonePwa() {
+    try {
+        // navigator.standalone is iOS-only and absent from the DOM typings.
+        if (/** @type {any} */ (window.navigator).standalone === true) return true;
+        return !!(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+    } catch (e) {
+        return false;
+    }
+}
+function isAppleTouchDevice() {
+    try {
+        const ua = navigator.userAgent || '';
+        // iPadOS 13+ reports itself as a Mac, so the touch-point check is what
+        // actually catches an iPad.
+        return /iPhone|iPod|iPad/.test(ua) || (/Macintosh/.test(ua) && (navigator.maxTouchPoints || 0) > 1);
+    } catch (e) {
+        return false;
+    }
+}
+// A PUSH SUBSCRIPTION IS NOT FOREVER. iOS drops it when the PWA is removed and
+// re-added, and can expire it after a long idle spell — leaving permission granted,
+// the settings screen saying notifications are on, and nothing ever arriving.
+// Re-check on boot and silently re-subscribe, so it self-heals instead of going
+// quiet. Never prompts: if permission isn't already granted this does nothing.
+async function revalidateOwnerPush() {
+    try {
+        if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) return;
+        if (Notification.permission !== 'granted') return;
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (!reg || !reg.pushManager) return;
+        let sub = await reg.pushManager.getSubscription();
+        if (sub) return; // still good
+        const key = await getVapidKey();
+        if (!key) return;
+        sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlB64ToUint8(key) });
+        await apiPost('push.php', { action: 'subscribe_admin', subscription: sub.toJSON() });
+    } catch (e) {
+        /* best-effort — never blocks the back office booting */
+    }
+}
 async function enableOwnerPush() {
     try {
         if (
@@ -13098,6 +13146,17 @@ async function enableOwnerPush() {
             !('Notification' in window)
         ) {
             glassAlert('This device or browser doesn’t support notifications.');
+            return;
+        }
+        // iOS ONLY ALLOWS WEB PUSH FROM AN INSTALLED APP. In a Safari tab the
+        // permission prompt either never appears or the subscription silently never
+        // works — and nothing here said so, so the owner would tap Enable, see
+        // nothing, and conclude notifications were broken. Say what to do instead.
+        if (isAppleTouchDevice() && !isStandalonePwa()) {
+            glassAlert(
+                'On iPhone and iPad, notifications only work once this site is added to your Home Screen.\n\n' +
+                    'Tap the Share button in Safari, choose “Add to Home Screen”, then open it from there and turn notifications on again.',
+            );
             return;
         }
         const perm = await Notification.requestPermission();

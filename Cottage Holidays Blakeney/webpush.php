@@ -120,9 +120,108 @@ function wp_endpoint_allowed($endpoint)
     return false;
 }
 
-// Send a payload-less push to one endpoint.
+// ---- Payload encryption (RFC 8291, aes128gcm) ------------------------------
+// Pushes used to carry NO body, so sw.js had to fetch the text from
+// push.php?action=sw_notify before it could show anything — a network round trip
+// and a live admin session at the exact moment the notification fires. On a phone
+// with poor signal that yields the generic "You have a new notification", and on
+// iOS the service worker has only a short budget to show something. Encrypting the
+// body removes the round trip entirely.
+//
+// Pure openssl + hash_hkdf: ECDH P-256 to a shared secret, HKDF to a content key
+// and nonce, AES-128-GCM over the padded plaintext, then the aes128gcm framing
+// (salt ‖ rs ‖ idlen ‖ app-server public key ‖ ciphertext).
+//
+// $salt/$asPem are injectable ONLY so the tests can pin the RFC's example inputs
+// and get a deterministic body; production always uses fresh random values.
+function wp_raw_to_pem_pubkey($raw65)
+{
+    if (strlen($raw65) !== 65 || $raw65[0] !== "\x04") {
+        return false;
+    }
+    // SubjectPublicKeyInfo for an uncompressed prime256v1 point — fixed prefix.
+    $der = hex2bin('3059301306072a8648ce3d020106082a8648ce3d030107034200') . $raw65;
+    return "-----BEGIN PUBLIC KEY-----\n" . chunk_split(base64_encode($der), 64, "\n") . "-----END PUBLIC KEY-----\n";
+}
+
+function wp_ec_raw_public($keyResource)
+{
+    $d = openssl_pkey_get_details($keyResource);
+    if (!$d || empty($d['ec']['x']) || empty($d['ec']['y'])) {
+        return false;
+    }
+    return "\x04" . str_pad($d['ec']['x'], 32, "\x00", STR_PAD_LEFT) . str_pad($d['ec']['y'], 32, "\x00", STR_PAD_LEFT);
+}
+
+// Returns the aes128gcm body, or null if anything is missing/unsupported (the
+// caller then sends payload-less, which is exactly the old behaviour).
+function wp_encrypt_payload($p256dhB64u, $authB64u, $plaintext, $salt = null, $asPem = null)
+{
+    if (!function_exists('hash_hkdf') || !function_exists('openssl_pkey_derive')) {
+        return null;
+    }
+    $ua = wp_b64url_decode($p256dhB64u);
+    $authSecret = wp_b64url_decode($authB64u);
+    if (strlen($ua) !== 65 || strlen($authSecret) < 16) {
+        return null;
+    }
+    $uaPem = wp_raw_to_pem_pubkey($ua);
+    if ($uaPem === false) {
+        return null;
+    }
+    $peer = openssl_pkey_get_public($uaPem);
+    if (!$peer) {
+        return null;
+    }
+    $as = $asPem !== null
+        ? openssl_pkey_get_private($asPem)
+        : openssl_pkey_new(['curve_name' => 'prime256v1', 'private_key_type' => OPENSSL_KEYTYPE_EC]);
+    if (!$as) {
+        return null;
+    }
+    $asPub = wp_ec_raw_public($as);
+    if ($asPub === false) {
+        return null;
+    }
+    $shared = openssl_pkey_derive($peer, $as, 32);
+    if ($shared === false || $shared === '') {
+        return null;
+    }
+    if ($salt === null) {
+        $salt = random_bytes(16);
+    }
+    // PRK: the auth secret is the HKDF salt here, and the info binds BOTH public
+    // keys (receiver first, then sender) so the key can't be reused elsewhere.
+    $keyInfo = "WebPush: info\x00" . $ua . $asPub;
+    $prk = hash_hkdf('sha256', $shared, 32, $keyInfo, $authSecret);
+    $cek = hash_hkdf('sha256', $prk, 16, "Content-Encoding: aes128gcm\x00", $salt);
+    $nonce = hash_hkdf('sha256', $prk, 12, "Content-Encoding: nonce\x00", $salt);
+    // 0x02 is the last-record delimiter; there is exactly one record.
+    $tag = '';
+    $ct = openssl_encrypt($plaintext . "\x02", 'aes-128-gcm', $cek, OPENSSL_RAW_DATA, $nonce, $tag);
+    if ($ct === false) {
+        return null;
+    }
+    $rs = 4096;
+    return $salt . pack('N', $rs) . chr(strlen($asPub)) . $asPub . $ct . $tag;
+}
+
+function wp_b64url_decode($s)
+{
+    $s = strtr((string) $s, '-_', '+/');
+    $pad = strlen($s) % 4;
+    if ($pad) {
+        $s .= str_repeat('=', 4 - $pad);
+    }
+    $d = base64_decode($s, true);
+    return $d === false ? '' : $d;
+}
+
+// Send a push to one endpoint, with an ENCRYPTED body when the subscription's keys
+// allow it and payload-less otherwise (older rows stored before the keys were
+// captured). $opts: ttl (seconds), urgency ('very-low'|'low'|'normal'|'high').
 // Returns ['ok'=>bool, 'status'=>int]; status 404/410 means the subscription is dead.
-function send_webpush($endpoint)
+function send_webpush($endpoint, $payload = null, $p256dh = '', $auth = '', $opts = [])
 {
     if (!wp_vapid_configured()) {
         return ['ok' => false, 'status' => 0, 'error' => 'vapid_not_configured'];
@@ -139,21 +238,54 @@ function send_webpush($endpoint)
         return ['ok' => false, 'status' => 0, 'error' => 'jwt_failed'];
     }
 
-    $ch = curl_init($endpoint);
-    curl_setopt_array($ch, [
-        CURLOPT_POST => true,
-        CURLOPT_POSTFIELDS => '',
-        CURLOPT_HTTPHEADER => [
-            'Authorization: vapid t=' . $jwt . ', k=' . VAPID_PUBLIC_KEY,
-            'TTL: 2419200',
-            'Content-Length: 0',
-        ],
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT => 10,
-    ]);
-    curl_exec($ch);
-    $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    curl_close($ch);
+    // TTL is per-message now. It was a flat 28 days, which is wrong for anything
+    // time-sensitive: a phone that was off could be handed a week-old "£900 paid"
+    // long after it mattered. Urgency:high asks the push service not to sit on it
+    // (Apple in particular batches low-urgency pushes to save battery).
+    $ttl = isset($opts['ttl']) ? max(0, (int) $opts['ttl']) : 86400;
+    $urgency = isset($opts['urgency']) ? (string) $opts['urgency'] : 'high';
+
+    $body = '';
+    $extra = [];
+    if ($payload !== null && $payload !== '' && $p256dh !== '' && $auth !== '') {
+        $enc = wp_encrypt_payload($p256dh, $auth, $payload);
+        if ($enc !== null) {
+            $body = $enc;
+            $extra = ['Content-Encoding: aes128gcm', 'Content-Type: application/octet-stream'];
+        }
+    }
+
+    $post = function ($body, $extra) use ($endpoint, $jwt, $ttl, $urgency) {
+        $ch = curl_init($endpoint);
+        curl_setopt_array($ch, [
+            CURLOPT_POST => true,
+            CURLOPT_POSTFIELDS => $body,
+            CURLOPT_HTTPHEADER => array_merge(
+                [
+                    'Authorization: vapid t=' . $jwt . ', k=' . VAPID_PUBLIC_KEY,
+                    'TTL: ' . $ttl,
+                    'Urgency: ' . $urgency,
+                    'Content-Length: ' . strlen($body),
+                ],
+                $extra,
+            ),
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 10,
+        ]);
+        curl_exec($ch);
+        $status = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        return $status;
+    };
+
+    $status = $post($body, $extra);
+    // SAFE ROLLOUT: if a push service refuses the encrypted body (400 malformed,
+    // 413 too large), fall straight back to the payload-less push — which is
+    // exactly the behaviour that worked before. The service worker still has its
+    // fetch fallback, so the owner is never worse off than they were.
+    if ($body !== '' && in_array($status, [400, 413], true)) {
+        $status = $post('', []);
+    }
     return ['ok' => $status >= 200 && $status < 300, 'status' => $status];
 }
 
@@ -178,7 +310,17 @@ function owner_ping_set($title, $body, $reload = false)
     } catch (\Throwable $e) {
     }
 }
-function owner_ping_take()
+// READ, never TAKE. This used to DELETE the row, and alert_owner() wakes EVERY
+// admin device — so the first device to fetch consumed the message and every other
+// one fell through to the generic "You have a new notification". An owner with an
+// iPhone and an iPad got the real text on exactly one of them, at random.
+//
+// Nothing consumes it now; freshness does the job instead. A ping is only written
+// immediately before a push, so any device woken by that push finds it. One older
+// than $maxAge is ignored, which also fixes the other half: a push delivered days
+// late (phone off, TTL was 28 days) used to pick up whatever the CURRENT message
+// happened to be and show it as if it were the reason for the alert.
+function owner_ping_read($maxAge = 300)
 {
     try {
         $s = db()->prepare("SELECT item_value FROM content WHERE item_key = 'owner-ping'");
@@ -187,9 +329,15 @@ function owner_ping_take()
         if ($v === false) {
             return null;
         }
-        db()->prepare("DELETE FROM content WHERE item_key = 'owner-ping'")->execute();
         $d = json_decode((string) $v, true);
-        return is_array($d) ? $d : null;
+        if (!is_array($d)) {
+            return null;
+        }
+        $at = (int) ($d['at'] ?? 0);
+        if ($maxAge > 0 && $at > 0 && time() - $at > $maxAge) {
+            return null; // stale — an old push, not this message
+        }
+        return $d;
     } catch (\Throwable $e) {
         return null;
     }
@@ -216,7 +364,9 @@ function guest_ping_set($guestId, $title, $body, $url = './')
     } catch (\Throwable $e) {
     }
 }
-function guest_ping_take($guestId)
+// READ, never TAKE — the guest half of the same bug owner_ping_read fixes: a guest
+// with a phone and a tablet had the message consumed by whichever woke first.
+function guest_ping_read($guestId, $maxAge = 300)
 {
     try {
         $k = 'guest-ping-' . (int) $guestId;
@@ -226,30 +376,34 @@ function guest_ping_take($guestId)
         if ($v === false) {
             return null;
         }
-        db()
-            ->prepare('DELETE FROM content WHERE item_key = ?')
-            ->execute([$k]);
         $d = json_decode((string) $v, true);
-        return is_array($d) ? $d : null;
+        if (!is_array($d)) {
+            return null;
+        }
+        $at = (int) ($d['at'] ?? 0);
+        if ($maxAge > 0 && $at > 0 && time() - $at > $maxAge) {
+            return null;
+        }
+        return $d;
     } catch (\Throwable $e) {
         return null;
     }
 }
 
 // Wake every admin device. Dead subscriptions (404/410) are pruned. Returns count.
-function ping_admin_devices()
+function ping_admin_devices($payload = null, $opts = [])
 {
     if (!wp_vapid_configured()) {
         return 0;
     }
     try {
-        $rows = db()->query("SELECT id, endpoint FROM push_subscriptions WHERE role = 'admin'")->fetchAll();
+        $rows = db()->query("SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE role = 'admin'")->fetchAll();
     } catch (\Throwable $e) {
         return 0;
     }
     $sent = 0;
     foreach ($rows as $sub) {
-        $r = send_webpush($sub['endpoint']);
+        $r = send_webpush($sub['endpoint'], $payload, (string) ($sub['p256dh'] ?? ''), (string) ($sub['auth'] ?? ''), $opts);
         if (!empty($r['ok'])) {
             $sent++;
         } elseif (in_array($r['status'] ?? 0, [404, 410], true)) {
@@ -266,19 +420,26 @@ function ping_admin_devices()
 // Convenience: set the owner alert text AND wake their devices.
 function alert_owner($title, $body, $reload = false)
 {
+    // The stash stays as the FALLBACK path (older subscriptions with no stored
+    // keys, and any push service that refuses the encrypted body). The payload is
+    // what makes the notification instant and correct on every device at once.
     owner_ping_set($title, $body, $reload);
-    return ping_admin_devices();
+    $payload = json_encode(
+        ['title' => (string) $title, 'body' => (string) $body, 'url' => './', 'tag' => 'chb-owner', 'reload' => (bool) $reload],
+        JSON_UNESCAPED_UNICODE,
+    );
+    return ping_admin_devices($payload, ['urgency' => 'high', 'ttl' => 86400]);
 }
 
 // Wake every device belonging to one guest. Mirrors ping_admin_devices: dead
 // subscriptions (404/410) are pruned. Returns the number woken. Best-effort.
-function ping_guest_devices($guestId)
+function ping_guest_devices($guestId, $payload = null, $opts = [])
 {
     if (!wp_vapid_configured()) {
         return 0;
     }
     try {
-        $q = db()->prepare('SELECT id, endpoint FROM push_subscriptions WHERE guest_id = ?');
+        $q = db()->prepare('SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE guest_id = ?');
         $q->execute([(int) $guestId]);
         $rows = $q->fetchAll();
     } catch (\Throwable $e) {
@@ -286,7 +447,7 @@ function ping_guest_devices($guestId)
     }
     $sent = 0;
     foreach ($rows as $sub) {
-        $r = send_webpush($sub['endpoint']);
+        $r = send_webpush($sub['endpoint'], $payload, (string) ($sub['p256dh'] ?? ''), (string) ($sub['auth'] ?? ''), $opts);
         if (!empty($r['ok'])) {
             $sent++;
         } elseif (in_array($r['status'] ?? 0, [404, 410], true)) {
@@ -304,8 +465,14 @@ function ping_guest_devices($guestId)
 // push.php?action=sw_notify) AND wake their devices. Mirrors alert_owner.
 function notify_guest($guestId, $title, $body, $url = './')
 {
+    // Same shape as alert_owner: payload first, stash as the fallback. A guest with
+    // a phone AND a tablet hit the identical first-device-wins bug.
     guest_ping_set($guestId, $title, $body, $url);
-    return ping_guest_devices($guestId);
+    $payload = json_encode(
+        ['title' => (string) $title, 'body' => (string) $body, 'url' => (string) $url, 'tag' => 'chb-guest'],
+        JSON_UNESCAPED_UNICODE,
+    );
+    return ping_guest_devices($guestId, $payload, ['urgency' => 'high', 'ttl' => 86400]);
 }
 
 // Resolve a guest id from an email so booking/payment flows that only know the

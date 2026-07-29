@@ -7,7 +7,7 @@
 // the window properties when the bundle loads. Deploy checklist: bump ADMIN_V
 // whenever admin.js changes (it is the ?v= cache-buster).
 // ============================================================
-const ADMIN_BUNDLE_V = 315;
+const ADMIN_BUNDLE_V = 316;
 // admin.css is the owner-only stylesheet, split out of app.css so guests never
 // download it. Injected here (not a static <link>) and version-stamped on its
 // own — bump when admin.css changes. Kept OUT of the sw.js CORE precache.
@@ -12074,6 +12074,24 @@ function refreshInboxBadge() {
         today.textContent = n;
         today.style.display = n > 0 ? 'flex' : 'none';
     }
+    setAppBadgeCount(n);
+}
+
+// THE HOME SCREEN ICON CARRIES THE COUNT TOO. iOS 16.4+ supports the Badging API
+// for an installed PWA, which is the one notification surface the owner sees
+// without unlocking into the app — and this count was already computed for three
+// in-app pips, so it costs nothing to put it where it is actually useful. Owner
+// only: a guest has no pending-enquiry count and would just see a stray red dot.
+// Unsupported browsers (and Safari in a tab) simply don't have the method.
+function setAppBadgeCount(n) {
+    try {
+        if (!document.body.classList.contains('owner-mode')) return;
+        if (n > 0) {
+            if (navigator.setAppBadge) navigator.setAppBadge(n).catch(() => {});
+        } else if (navigator.clearAppBadge) {
+            navigator.clearAppBadge().catch(() => {});
+        }
+    } catch (e) {}
 }
 
 function escapeHtml(str) {
@@ -13293,7 +13311,7 @@ async function submitExperienceSuggestion() {
 // the file short, the footer keeps showing "—" instead of this number.
 // Bump the value whenever a new version is shipped.
 (function () {
-    const BUILD = 'csp001';
+    const BUILD = 'push01';
     window.__BUILD = BUILD; // exposed so the version watcher can detect new releases
     const el = document.getElementById('build-stamp');
     if (el) el.textContent = BUILD;
