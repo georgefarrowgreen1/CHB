@@ -16,6 +16,15 @@
 //    - ADMIN_BUNDLE_V (app.js facade)          +1 when admin.js changed
 //    - ADMIN_CSS_V    (app.js facade)          +1 when admin.css changed
 //
+//  RUN THIS FOR A CSP EDIT TOO, even though htaccess.txt is not a "cached asset".
+//  The CSP is a response HEADER on index.html, and the Cache API stores headers
+//  with the body — so sw.js's precached shell carries whatever policy was live
+//  when it was cached, and an installed PWA goes on enforcing it. Measured: a
+//  form-action fix for 3-D Secure shipped without a bump, the server sent the new
+//  policy, and the owner's phone kept enforcing the old one. CACHE is bumped on
+//  every run of this script, so running it IS the fix; check-versions.js now fails
+//  a PR that edits the CSP without one.
+//
 //  After running: re-run `node smoke-test.js` (it guards the chain's
 //  consistency) — bump.js reminds you. CI's check-versions.js enforces the
 //  same rules on every PR, so a forgotten bump fails fast, not in production.

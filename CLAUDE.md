@@ -1805,6 +1805,19 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   reports its own errors to Square's Sentry, which is deliberately NOT allowlisted
   (blocking it costs nothing; CSP exists to stop exactly that). Gated in smoke-test
   §6a-ii-b, which asserts the frame-src/form-action pair together.
+- **THE CSP IS A CACHED ASSET — A CSP EDIT NEEDS A CACHE BUMP.** It is a response
+  HEADER on index.html, and the Cache API stores headers with the body. `sw.js`
+  precaches `index.html` and serves it on any navigation the network doesn't answer,
+  so an installed PWA goes on enforcing whatever policy was live when its shell was
+  last cached — however many deploys ago. Measured: the form-action fix above shipped
+  with "no cached asset changed, so no bump", the live server was serving the new
+  policy (curl-confirmed at the domain) and the owner's phone kept reporting
+  `CSP blocked form-action → methodurl.vcas.visa.com` from the old one. `bump.js`
+  already bumps CACHE on every run, so RUNNING it is the fix; **check-versions.js now
+  fails a PR that changes the `Content-Security-Policy` string without bumping
+  CACHE** (break-tested by replaying the real base..head of that PR, which fails, and
+  the previous PR, which doesn't mention CSP). The same trap applies to any other
+  security header set in htaccess.txt.
 - **A CSP-REPORT DE-DUPE KEY MUST NOT CONTAIN THE REPORTER'S IP.** `csp-report.php`
   caps one log per (directive, ip) per hour — and on mobile that limit never fired,
   because a phone rotates its IPv6 address every few minutes (RFC 4941 privacy

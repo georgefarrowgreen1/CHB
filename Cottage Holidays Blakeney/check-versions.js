@@ -80,6 +80,25 @@ if (changed.has('admin.css')) {
 if (['app.js', 'app.css', 'guest-app.js', 'guest-app.css', 'index.html'].some(f => changed.has(f))) {
     rule('core asset changed → sw.js CACHE bumped', grab(at(base, 'sw.js'), /const CACHE = 'chb-cache-v(\d+)';/) !== grab(at(head, 'sw.js'), /const CACHE = 'chb-cache-v(\d+)';/), 'CACHE (sw.js) is unchanged');
 }
+// THE CSP IS A CACHED ASSET, because it is a RESPONSE HEADER ON index.html and the
+// Cache API stores headers with the body. sw.js precaches index.html and serves it
+// on any navigation the network doesn't answer — so an installed PWA keeps applying
+// the CSP that was current when its shell was last cached, however many deploys ago.
+// Measured: PR #861 widened form-action for 3-D Secure and changed no cached asset,
+// so nothing bumped; the live server sent the new policy (curl-confirmed) while the
+// owner's phone went on enforcing the old one and kept reporting
+// "CSP blocked form-action → methodurl.vcas.visa.com". A CSP edit therefore has to
+// invalidate the shell exactly like an app.js edit does.
+if (changed.has('htaccess.txt')) {
+    const cspOf = (src) => grab(src, /Content-Security-Policy "([^"]*)"/);
+    const b = cspOf(at(base, 'htaccess.txt'));
+    const h = cspOf(at(head, 'htaccess.txt'));
+    if (b !== h) {
+        rule('CSP changed → sw.js CACHE bumped (the header rides on the cached shell)',
+            grab(at(base, 'sw.js'), /const CACHE = 'chb-cache-v(\d+)';/) !== grab(at(head, 'sw.js'), /const CACHE = 'chb-cache-v(\d+)';/),
+            'CACHE (sw.js) is unchanged — installed PWAs would keep enforcing the OLD policy');
+    }
+}
 
 ok.forEach(m => console.log('  ✓ ' + m));
 fails.forEach(m => console.log('  ✗ ' + m));
