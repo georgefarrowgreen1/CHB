@@ -136,5 +136,27 @@ ok(csp_policy_permits($wild, 'connect-src', 'https://pay.google.com/x') === true
 ok(csp_policy_permits($wild, 'connect-src', 'https://google.com/x') === false, "'*.google.com' does NOT match the bare apex");
 ok(csp_policy_permits($wild, 'connect-src', 'https://evilgoogle.com/x') === false, "'*.google.com' does NOT match a suffix-spoof host");
 
+// ---- DEPLOYMENT OBSERVABILITY. version.php?csp=1 must report what the deployed
+// code actually resolves and decides — the thing whose absence made two inert CSP
+// fixes indistinguishable from working ones. Drive the real endpoint.
+// In a SUBPROCESS, not an include: version.php sends headers and exits, which
+// would abort this run (it did — the suite silently stopped mid-way and printed no
+// summary, which is exactly the kind of quiet skip these gates exist to prevent).
+$probeRaw = (string) shell_exec(
+    escapeshellarg(PHP_BINARY) . ' -r ' . escapeshellarg('$_GET["csp"]=1; include "version.php";')
+    . ' 2>/dev/null'
+);
+$probe = json_decode(trim($probeRaw), true);
+ok(is_array($probe) && isset($probe['csp']), 'version.php?csp=1 returns a csp block');
+ok(($probe['csp']['lib'] ?? false) === true, 'it reports csp-lib.php is present');
+ok(($probe['csp']['source'] ?? '') === 'csp-policy.php',
+    'it names the policy SOURCE it actually used (' . ($probe['csp']['source'] ?? '?') . ')');
+ok(($probe['csp']['probe']['3ds'] ?? '') === 'info' && ($probe['csp']['probe']['samsung'] ?? '') === 'info',
+    'it reports how THIS deploy would grade the two nagging reports (info)');
+ok(($probe['csp']['probe']['evil'] ?? '') === 'warn',
+    '…and that a genuine block would still be warn');
+ok(!str_contains(strtolower($probeRaw), 'password') && !str_contains($probeRaw, 'DB_'),
+    'the diagnostic leaks no configuration');
+
 echo $fails ? "\n  $fails CSP-REPORT CHECK(S) FAILED \xE2\x9D\x8C\n" : "\n  CSP-REPORT SUITE PASSED \xE2\x9C\x85\n";
 exit($fails ? 1 : 0);
