@@ -210,6 +210,54 @@ if (Array.isArray(help)) {
     const hset = new Set(hids);
     const badRel = help.flatMap((t) => (t.related || []).filter((r) => !hset.has(r)));
     check('every "related" id resolves to a real topic', badRel.length === 0, 'unknown: ' + badRel.join(', '));
+
+    // ---- 8b. A WALKTHROUGH AND ITS TOPIC ARE WRITTEN TWICE. The prose a how-to
+    // reads out (topic.steps[], full sentences) and the places the walk actually
+    // points (CHB_WALK[id].steps, sel + say) are independent structures with
+    // nothing holding them together — so a topic can gain a step, or be renamed,
+    // and its walk goes on describing the old task in silence. These four keep
+    // them honest without forcing them to be the same object (they can't be: one
+    // is prose, one is selectors).
+    // A top-level `const` is a lexical binding, not a property of the context —
+    // reading it as ctx.CHB_WALK returns undefined and the whole block below would
+    // skip in silence (it did, first run).
+    const walk = vm.runInContext('typeof CHB_WALK === "object" ? CHB_WALK : null', ctx);
+    check('CHB_WALK is defined', !!walk && typeof walk === 'object', typeof walk);
+    if (walk && typeof walk === 'object') {
+        const wids = Object.keys(walk);
+        check('every walkthrough id is a real help topic', wids.every((id) => hset.has(id)),
+            'unknown: ' + wids.filter((id) => !hset.has(id)).join(', '));
+        const badStep = wids.filter((id) => {
+            const s = walk[id].steps;
+            return !Array.isArray(s) || !s.length || !s.every((x) => x && x.sel && typeof x.say === 'string' && x.say.trim());
+        });
+        check('every walkthrough step has a target and something to say', badStep.length === 0, 'bad: ' + badStep.join(', '));
+        // The `say` is READ, in a tip bubble, as the sentence you'd have been told.
+        // A bare fragment reads as a label and breaks the voice the how-to sets.
+        const badSay = wids.flatMap((id) => (walk[id].steps || []).filter((x) => x && typeof x.say === 'string' && !/[.!?]$/.test(x.say.trim())).map((x) => id + ': ' + x.say));
+        check('every walkthrough sentence is a sentence', badSay.length === 0, badSay.join(' | '));
+        // NB a step-COUNT comparison was tried here and dropped: it isn't an
+        // invariant. A walk legitimately splits one prose step into fields
+        // (add-booking's "choose the cottage and the dates" is two spotlights) and
+        // legitimately collapses three into one dialog (block-dates is a single
+        // glassForm). Measured: 5-vs-3 and 1-vs-3, both correct. What IS invariant
+        // is the WIRING — a walk nobody can start is the same defect as the Sent
+        // list with no button. chbNlgHowTo prepends the chip on CHB_WALK[t.id], so
+        // a renamed topic silently strips the only way in; this drives the real
+        // composer for every flow rather than trusting the id list above.
+        const noChip = wids.filter((id) => {
+            const t = help.find((x) => x.id === id);
+            if (!t) return true;
+            let a = null; try { a = ctx.chbNlgHowTo(t, []); } catch (e) { return true; }
+            return !a || !(a.chips || []).some((c) => c && /walk me through/i.test(c.label || ''));
+        });
+        check('every walkthrough is reachable — its topic offers "Walk me through it"', noChip.length === 0,
+            'unreachable: ' + noChip.join(', '));
+        // A flow that declares one half of the outcome check but not the other
+        // silently never checks: `done` is only ever called with a `mark`.
+        const halfDone = wids.filter((id) => (typeof walk[id].mark === 'function') !== (typeof walk[id].done === 'function'));
+        check('mark and done are declared together or not at all', halfDone.length === 0, 'half: ' + halfDone.join(', '));
+    }
 }
 // An explicit "how do I…" with a decisive winner GENERATES a natural-language
 // how-to: ONE answer row whose flowing paragraph (nlgBody) realizes the steps,

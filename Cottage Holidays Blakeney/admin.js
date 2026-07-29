@@ -5493,42 +5493,97 @@ function coachBlockDates() { coachTo(() => tryAccessBackOffice(), 'button[data-a
 // ===================================================================
 const coachVal = (s) => { const el = document.querySelector(s); return el ? String(el.value || '').trim() : ''; };
 const coachHas = (s) => { try { return !!document.querySelector(s); } catch (e) { return false; } };
-let __coachSeq = null; // { steps, i, poll, appearT, wasDone, at }
+// Is a step's target actually ON SCREEN? `document.contains` was the whole test and
+// is the wrong one: closeModal() removes a CLASS, not the node, so a cancelled Add
+// Booking left the walk certain its form was open — measured, overlay still up on
+// Today saying "Tap Save" over a zero-rect button. `getClientRects()` is empty under
+// a display:none ancestor, which is what .modal-overlay becomes without .open.
+// Deliberately NOT `offsetParent` (the obvious-looking test): it is null for any
+// position:fixed element, and walkthroughs point inside fixed overlays — that
+// version judged live buttons dead (ui-test-coach §11).
+const coachEl = (s) => { try { return typeof s.sel === 'function' ? s.sel() : document.querySelector(s.sel); } catch (e) { return null; } };
+const coachAlive = (el) => !!el && document.contains(el) && el.getClientRects().length > 0 && el.getBoundingClientRect().width > 0;
+const coachSat = (s) => { try { return typeof s.until === 'function' && !!s.until(); } catch (e) { return false; } };
+let __coachSeq = null; // { steps, i, ctx, poll, appearT, wasDone, at }
 function coachSeqStop() {
     if (__coachSeq) { if (__coachSeq.poll) clearInterval(__coachSeq.poll); if (__coachSeq.appearT) clearTimeout(__coachSeq.appearT); }
     __coachSeq = null;
     coachClear();
 }
-function coachSequence(steps, i) {
+// Stopping because something went WRONG says so and offers the way back — a walk
+// that gives up in silence is the failed-save defect again: the machine knows and
+// the owner doesn't. The retry restarts the FLOW, hence the topic id on __coachSeq.
+function coachSeqAbort(msg, ctx) {
+    const topic = ctx && ctx.topic;
+    coachSeqStop();
+    try {
+        if (typeof toast === 'function') {
+            // NB toast's action is { label, fn } — `run` is silently ignored (it
+            // tests `typeof action.fn === 'function'`), which renders no button at all.
+            toast(msg, 'error', topic && CHB_WALK[topic] ? { label: 'Start again', fn: () => coachWalk(topic) } : undefined);
+        }
+    } catch (e) {}
+}
+// Reaching the END is not FINISHING. The last step is "tap Save" and has no `until`,
+// so this used to toast "You're all set" whether you saved or backed out. `done(mark)`
+// asks whether the thing actually happened; `mark` is snapshotted by coachWalk BEFORE
+// start runs (coachSequence re-enters per step and would re-read it each time).
+function coachSeqFinish(ctx) {
+    coachSeqStop();
+    const w = ctx && ctx.topic ? CHB_WALK[ctx.topic] : null;
+    let v = null;
+    if (w && typeof w.done === 'function') { try { v = w.done(ctx.mark); } catch (e) { v = null; } }
+    try {
+        if (typeof toast === 'function') {
+            if (!v) toast('You’re all set');
+            else toast(v.ok ? v.say : v.miss, v.ok ? undefined : 'error');
+        }
+    } catch (e) {}
+}
+function coachSequence(steps, i, ctx) {
     if (!Array.isArray(steps) || !steps.length) return;
     i = Math.max(0, i || 0);
+    ctx = ctx || (__coachSeq && __coachSeq.ctx) || {};
     if (__coachSeq) { if (__coachSeq.poll) clearInterval(__coachSeq.poll); if (__coachSeq.appearT) clearTimeout(__coachSeq.appearT); }
-    if (i >= steps.length) { coachSeqStop(); try { if (typeof toast === 'function') toast('You’re all set'); } catch (e) {} return; }
+    if (i >= steps.length) { coachSeqFinish(ctx); return; }
     const step = steps[i];
-    __coachSeq = { steps, i, poll: null, appearT: null, wasDone: false, at: 0 };
+    __coachSeq = { steps, i, ctx, poll: null, appearT: null, wasDone: false, at: 0 };
     let tries = 0;
     const paint = () => {
         if (!__coachSeq || __coachSeq.steps !== steps || __coachSeq.i !== i) return; // superseded
-        const el = typeof step.sel === 'function' ? step.sel() : document.querySelector(step.sel);
+        const el = coachEl(step);
         if (!el) {
-            if (++tries > 30) { coachSeqStop(); return; } // target never appeared — bail cleanly
+            // Six seconds of a target that never appears — it used to vanish wordlessly.
+            if (++tries > 30) { coachSeqAbort('That step didn’t open — stopping here.', ctx); return; }
             __coachSeq.appearT = setTimeout(paint, 200);
             return;
         }
         coachPaintStep(el, step.say, { i, n: steps.length,
-            onNext: () => coachSequence(steps, i + 1),
-            onBack: () => coachSequence(steps, i - 1),
-            onDone: () => coachSequence(steps, steps.length) });
-        __coachSeq.wasDone = typeof step.until === 'function' ? (() => { try { return !!step.until(); } catch (e) { return false; } })() : false;
+            onNext: () => coachSequence(steps, i + 1, ctx),
+            onBack: () => coachSequence(steps, i - 1, ctx),
+            onDone: () => coachSequence(steps, steps.length, ctx) });
+        __coachSeq.wasDone = coachSat(step);
         __coachSeq.at = Date.now();
         __coachSeq.poll = setInterval(() => {
             if (!__coachSeq) return;
-            // Target completed / closed (modal shut, action taken) → move on (or finish).
-            if (__coachTarget && !document.contains(__coachTarget)) { coachSequence(steps, i + 1); return; }
+            // Repositioned on the TICK, not only on scroll/resize: it used to keep
+            // painting the last rect it measured, so a departed target left a full-size
+            // ring over nothing (measured 172×56 at 37,725 with the button gone).
+            coachReposition();
+            // The target left the screen. What that MEANS depends on the step:
+            //   `until` now true → you did it and the surface closed → advance
+            //   last step        → only `done` tells saved from cancelled
+            //   otherwise        → you backed out; say so, don't claim success
+            if (!coachAlive(__coachTarget)) {
+                if (coachSat(step)) { coachSequence(steps, i + 1, ctx); return; }
+                if (i >= steps.length - 1) { coachSeqFinish(ctx); return; }
+                coachSeqAbort('Stopped — that screen closed.', ctx);
+                return;
+            }
             if (typeof step.until === 'function') {
-                let done = false; try { done = !!step.until(); } catch (e) {}
+                const done = coachSat(step);
                 // A pre-satisfied step still shows for a beat before it advances.
-                if (done && (!__coachSeq.wasDone || Date.now() - __coachSeq.at > 1400)) coachSequence(steps, i + 1);
+                if (done && (!__coachSeq.wasDone || Date.now() - __coachSeq.at > 1400)) coachSequence(steps, i + 1, ctx);
             }
         }, 350);
     };
@@ -5567,17 +5622,36 @@ function coachPaintStep(el, text, ctx) {
     window.addEventListener('scroll', coachReposition, true);
     window.addEventListener('resize', coachReposition);
 }
+// Counters for the `done` checks — saveModal awaits loadData() BEFORE closeModal(),
+// so by the time the 350ms poll sees the surface go, the count is already current.
+const coachBookingN = () => { try { return Object.keys(dbBookings || {}).reduce((n, k) => n + ((dbBookings[k] || []).length), 0); } catch (e) { return 0; } };
+const coachBlockN = () => { try { return Object.keys(dbBlocks || {}).reduce((n, k) => n + ((dbBlocks[k] || []).length), 0); } catch (e) { return 0; } };
 // The four flows (the ones that walk cleanly). Each `start` opens the surface; the
-// steps spotlight it through to the finish. `until` is the auto-advance signal.
+// steps spotlight it through to the finish. `until` is the auto-advance signal, and
+// `mark`/`done` are how a flow FINISHES rather than merely ends (see coachSeqFinish).
+// A flow that cannot observe its own outcome cheaply declares neither and keeps the
+// neutral sign-off — take-payment ends in an email, and a shaky check telling someone
+// who did save that they didn't is worse than no check. Gated pairwise by search-test.
 const CHB_WALK = {
-    'add-booking': { start: () => openAddBooking(), steps: [
-        { sel: '#modal-property', say: 'Choose which cottage this booking is for.', until: () => coachVal('#modal-property').length > 0 },
+    'add-booking': {
+        mark: () => coachBookingN(),
+        done: (m) => ({ ok: coachBookingN() > m, say: 'Saved — the booking is on Today.', miss: 'Stopped before saving — nothing was created.' }),
+        start: () => openAddBooking(), steps: [
+        // No `until`: the cottage select is static index.html markup that opens
+        // PRESELECTED, so "it has a value" was true before the modal even opened —
+        // an unfalsifiable signal, which auto-advanced off step 1 after the 1400ms
+        // grace and made coachWalk's skip pass start a blank form at step 2 of 5.
+        // A default is not a decision; this step waits for Next.
+        { sel: '#modal-property', say: 'Choose which cottage this booking is for.' },
         { sel: '#modal-date-trigger', say: 'Tap here to pick the check-in and check-out dates.', until: () => coachVal('#modal-checkin') !== '' && coachVal('#modal-checkout') !== '' },
         { sel: '#modal-name', say: 'Type the guest’s name — past guests suggest as you type.', until: () => coachVal('#modal-name').length > 1 },
         { sel: '#modal-email', say: 'Add their email so booking emails reach them.', until: () => /@/.test(coachVal('#modal-email')) },
         { sel: '#modal-save-btn', say: 'Tap Save — you can take payment straight after.' },
     ] },
-    'block-dates': { start: () => openBlockDates(), steps: [
+    'block-dates': {
+        mark: () => coachBlockN(),
+        done: (m) => ({ ok: coachBlockN() > m, say: 'Blocked — those nights are closed off.', miss: 'Stopped before blocking — the dates are still open.' }),
+        start: () => openBlockDates(), steps: [
         { sel: '#glass-dialog-fields', say: 'Pick the cottage and the first & last nights to close off, then tap Block.' },
     ] },
     'take-payment': { start: () => { Promise.resolve(openBookings()).then(() => { try { bookingsSetFilter('needspay'); } catch (e) {} }); }, steps: [
@@ -5589,13 +5663,28 @@ const CHB_WALK = {
         { sel: '[data-act="returnDeposit"]', say: 'Tap Return deposit to refund in full — or Keep (damage) to retain some.' },
     ] },
 };
-function coachWalk(topicId) {
+// START WHERE THE OWNER ALREADY IS. `start` used to run unconditionally, so asking
+// "how do I take a payment" with the pay banner already in front of you bounced you
+// out to Bookings and re-filtered — the guide undoing your progress before it spoke.
+// Skip any leading step whose `until` is already true, then navigate only if the step
+// we landed on isn't on screen. (take-payment step 0's `until` IS "a hub with a pay
+// action is open", so that flow now starts on the button.)
+function coachWalk(topicId, from) {
     const w = CHB_WALK[topicId];
     if (!w) return;
     coachSeqStop();
     closeCmdK();
-    try { if (w.start) w.start(); } catch (e) {}
-    setTimeout(() => coachSequence(w.steps, 0), 400);
+    let at = Math.max(0, from || 0);
+    while (at < w.steps.length - 1 && coachSat(w.steps[at])) at++;
+    const here = coachAlive(coachEl(w.steps[at]));
+    // BEFORE start runs, then passed down: a mark taken inside coachSequence would be
+    // re-read per step, always equal the current count, and `done` could never fail.
+    let mark = null;
+    try { mark = typeof w.mark === 'function' ? w.mark() : null; } catch (e) { mark = null; }
+    if (!here) { try { if (w.start) w.start(); } catch (e) {} }
+    const ctx = { topic: topicId, mark };
+    if (here) coachSequence(w.steps, at, ctx);
+    else setTimeout(() => coachSequence(w.steps, at, ctx), 400);
 }
 // ============================================================
 //  CONVERSATIONAL FRAME — search remembers what the last metric answer was

@@ -385,17 +385,51 @@ describes it). Where the single-step `coachMark`/`coachTo` ("Show me where") poi
 button and stops, `coachSequence(steps, i)` chains coach-marks INTO the task: each step
 spotlights its target (`coachPaintStep`, reusing the ring + `coachReposition`) with the
 sentence you'd have read, shows "Step N of M" + Next/Back, and AUTO-ADVANCES the instant the
-step's `until` signal fires (you picked the cottage / typed the name / set the dates). It waits
-for each target to appear (30×200ms), ends when the target vanishes or the last step's Done, and
-Escape stops it (`coachSeqStop`). The sequence overlay (`.coach-ov-seq`) is click-THROUGH
+step's `until` signal fires (you typed the name / set the dates). It waits for each target to
+appear (30×200ms), and Escape stops it (`coachSeqStop`). The sequence overlay (`.coach-ov-seq`) is click-THROUGH
 (`pointer-events:none`, only the tip interactive) and sits ABOVE modals (`z-index:7000`) so it
 can spotlight fields INSIDE the Add-Booking box. Crucially SAFE: it only points and waits — it
 never submits or edits (you tap Save). Flows in `CHB_WALK`: `add-booking` (5-step field-by-field
 on the shared `#modal-*` ids), `block-dates` (the `#glass-dialog-fields` step), `take-payment` +
 `refund-deposit` (cross-navigation — open a `.bk-row`, then the hub's `[data-act="requestPayment"]`
-/ `[data-act="returnDeposit"]`, advancing on presence). `coachWalk(topicId)` launches; `chbNlgHowTo`
-prepends a **"Walk me through it"** chip for any topic with a `CHB_WALK[id]`. Gated by
-`ui-test-coach.js` (start, click-through + z-order, Next/Back, auto-advance, Done, Escape).
+/ `[data-act="returnDeposit"]`, advancing on presence). `coachWalk(topicId, from)` launches; `chbNlgHowTo`
+prepends a **"Walk me through it"** chip for any topic with a `CHB_WALK[id]`.
+**A WALK THAT LOSES ITS TARGET STOPS, AND SAYS SO.** `document.contains` was the only
+liveness test, and `closeModal()` removes a CLASS not the node — so a cancelled Add
+Booking left the guide certain its form was open: measured, overlay still up on Today
+reading "Tap Save", `__coachSeq` alive, ring painted 172×56 at (37,725) over a
+zero-rect button (the ring was STALE — `coachReposition` only ran on scroll/resize, so
+it is now called on the 350ms poll tick too). `coachAlive` is `getClientRects().length
+> 0` + a non-zero rect — deliberately NOT `offsetParent`, the obvious-looking test,
+which is null for any `position: fixed` element and so judged live buttons inside
+fixed overlays dead. What a vanished target MEANS is now per-step: `until` true →
+you did it, advance; last step → only `done` can tell saved from cancelled;
+otherwise → you backed out, `coachSeqAbort` says so and offers "Start again" (NB
+`toast`'s third arg is `{label, fn}` — a `run` key renders no button at all). The
+30×200ms give-up aborts with a sentence instead of vanishing.
+**REACHING THE END IS NOT FINISHING.** The last step is always "tap Save" and has no
+`until`, so the walk used to toast "You're all set" whether you saved or backed out.
+A flow may declare `mark`/`done` — snapshotted in `coachWalk` BEFORE `start` runs
+(inside `coachSequence` it would be re-read per step and could never fail) — and gets
+to say "Saved — the booking is on Today" or "Stopped before saving — nothing was
+created". A flow that cannot observe its outcome cheaply declares NEITHER and keeps
+the neutral sign-off (take-payment ends in an email); search-test gates them as a pair.
+**IT STARTS WHERE THE OWNER ALREADY IS.** `start` used to run unconditionally, so
+asking "how do I take a payment" with the pay banner in front of you bounced you to
+Bookings and re-filtered. `coachWalk` skips leading steps whose `until` is already
+true, then navigates only if the step it landed on isn't on screen. That exposed a
+latent bug: add-booking's cottage step read `until: value.length > 0` against a
+STATIC preselected `<select>`, so it was true before the modal opened — the walk
+auto-advanced off its own step 1 after the 1400ms grace, and the skip pass started a
+blank form at step 2 of 5. A default is not a decision; that step has no `until` now.
+Gated by `ui-test-coach.js` (start, click-through + z-order, Next/Back, auto-advance,
+Done, Escape, plus cancel-mid-walk, the honest finish both ways, the lost target, and
+starting in place without navigating — each break-tested) and search-test §8b (every
+walk id is a real topic, every step has a target and a SENTENCE, every walk is
+reachable via its chip, `mark`/`done` paired). NB a step-COUNT comparison against the
+topic's prose was tried in that gate and dropped: it is not an invariant — a walk
+legitimately splits one prose step into fields (add-booking 5 vs 3) and legitimately
+collapses three into one dialog (block-dates 1 vs 3).
 
 **The CROWN is the assistant** (admin.js `crownSheetToggle`/`crownSheetOpen`/`crownSheetClose`,
 styled in admin.css) — the dock's separate Search knot is GONE.
