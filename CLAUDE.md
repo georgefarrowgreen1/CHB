@@ -1788,6 +1788,31 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   arguments precisely so the gate drives the REAL composers; testing `payment_rail`
   alone passed with either call site reverted to a hardcoded card button, which is
   break-tested).
+- **3-D SECURE NEEDS `frame-src` AND `form-action`, AND THEY MOVE TOGETHER.** 3DS
+  step one is the *method URL* device fingerprint: Square's SDK opens a hidden
+  iframe in OUR document and POSTs a form to the issuer's ACS. A script-created
+  iframe inherits the parent policy, so both directives apply. `frame-src` was
+  widened to `https:` when pinning issuer domains broke SCA live
+  (`CARD_DECLINED_VERIFICATION_REQUIRED`) — but `form-action` stayed `'self'`, so
+  the frame loaded and the POST inside it was blocked. Observed in the owner's
+  activity log as `CSP blocked form-action → https://methodurl.vcas.visa.com/…`.
+  The issuer then scores the payment with NO device data, which is what turns a
+  frictionless auth into a challenge or a decline — the same failure the frame-src
+  note records, half-fixed. ACS hosts differ per issuer and are not enumerable, so
+  `https:` is the only workable value for both; the trade is small here because
+  script-src carries no `unsafe-inline`. Square's SDK also probes
+  `spay.samsung.com` (Samsung Pay) — allowlisted, it is a readiness check — and
+  reports its own errors to Square's Sentry, which is deliberately NOT allowlisted
+  (blocking it costs nothing; CSP exists to stop exactly that). Gated in smoke-test
+  §6a-ii-b, which asserts the frame-src/form-action pair together.
+- **A CSP-REPORT DE-DUPE KEY MUST NOT CONTAIN THE REPORTER'S IP.** `csp-report.php`
+  caps one log per (directive, ip) per hour — and on mobile that limit never fired,
+  because a phone rotates its IPv6 address every few minutes (RFC 4941 privacy
+  extensions). Measured live: the same `connect-src → spay.samsung.com` block
+  logged twice inside three minutes from two addresses on ONE device on ONE page,
+  filling "Needs attention". Keyed on the blocked HOST now (host, not full URL —
+  payment SDKs put per-transaction ids in the path); the IP stays on the row for
+  forensics. Known third-party SDK telemetry is logged at `info` so it never nags.
 - **Square settlement sync** — a payment's processing FEE and a refund's final
   STATUS (PENDING→COMPLETED) both land a day or two after the action, pushed by the
   `square-webhook.php` events. Because that webhook can be unconfigured, the

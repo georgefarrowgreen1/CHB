@@ -315,6 +315,35 @@ try {
     const fontSrc = (csp.match(/font-src[^;]*/) || [''])[0];
     check("CSP font-src allows Square's font CDN (d1g145x70srn7h.cloudfront.net)", fontSrc.includes('https://d1g145x70srn7h.cloudfront.net'));
     check('CSP never wildcards cloudfront (only the pinned Square host)', !csp.includes('*.cloudfront.net'));
+    // 3-D SECURE NEEDS frame-src AND form-action, AND THEY MOVE TOGETHER. Step one
+    // of 3DS is the "method URL" device fingerprint: the SDK opens a hidden iframe
+    // in our document and POSTs a form to the issuer's ACS (seen live:
+    // methodurl.vcas.visa.com). frame-src https: was widened for the iframe;
+    // form-action stayed 'self', so the frame loaded and the POST inside it was
+    // blocked — the issuer then scores the payment with no device data, which is
+    // what turns a frictionless auth into a challenge or a decline. ACS hosts vary
+    // per issuer and cannot be enumerated, so both have to be https:.
+    const frameSrc = (csp.match(/frame-src[^;]*/) || [''])[0];
+    const formAction = (csp.match(/form-action[^;]*/) || [''])[0];
+    check('CSP frame-src allows the 3-D Secure issuer iframes (https:)', /(^|\s)https:(\s|$)/.test(frameSrc));
+    check('CSP form-action allows the 3-D Secure device-fingerprint POST (https:)', /(^|\s)https:(\s|$)/.test(formAction));
+    check("CSP form-action still pins 'self' as well", formAction.includes("'self'"));
+    // Square's SDK probes for Samsung Pay; without this every pay-page visit fires
+    // a connect-src report.
+    const connectSrc = (csp.match(/connect-src[^;]*/) || [''])[0];
+    check("CSP connect-src allows Square's Samsung Pay probe", connectSrc.includes('https://spay.samsung.com'));
+    check('CSP never wildcards google (pay/apex/www only, no bare *)', !/\shttps:\/\/\*\.com/.test(connectSrc));
+    // The CSP-report de-dupe key must NOT contain the reporter's IP. A phone on
+    // mobile data rotates its IPv6 address every few minutes, so an IP-keyed
+    // signature never matches and the hourly limit never fires — measured live as
+    // the same spay.samsung.com block logged twice in three minutes from one
+    // device. Keyed on the blocked HOST instead. Source scan because CI has no
+    // Apache, no browser and no DB to drive the real path.
+    const cspRep = fs.readFileSync(path.join(path.dirname(HTML_PATH), 'csp-report.php'), 'utf8');
+    const sigLine = (cspRep.match(/\$sig = [^;]*;/) || [''])[0];
+    check('csp-report de-dupes on the blocked host, not the reporter IP (' + sigLine.trim() + ')',
+        sigLine.includes('$host') && !sigLine.includes('$ip'));
+    check('csp-report still records the IP on the row for forensics', /VALUES \('system', 'security'[\s\S]{0,200}\$ip/.test(cspRep) || /execute\(\[[^\]]*\$ip/.test(cspRep));
 } catch (e) { check('CSP script-src check ran (' + e.message + ')', false); }
 
 // 6a-ii-c. cmdkNoneHtml() ESCAPES ITS OWN ARGUMENTS, so its callers must pass RAW
