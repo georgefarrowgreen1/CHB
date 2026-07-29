@@ -175,6 +175,13 @@ async function waitForServer(url, tries = 40) {
             { outstanding: 75, gross: 75, feeBack: 1.31, net: 73.69, name: 'Sarah Pemberton', prop_key: '21a', check_out: '2026-07-20' },
             { outstanding: 75, gross: 75, feeBack: 1.31, net: 73.69, name: 'Dan Rowe', prop_key: 'jollyboat', check_out: '2026-07-22' },
           ],
+          transactions: {
+            settled: 1056.19, ringFence: 73.69, movable: 982.50, count: 2,
+            items: [
+              { txn_id: 11, rental: 300, deposit: 75, returned: 0, fee: 6.56, gross: 375, settled: 368.44, alreadyOut: 0, ringFence: 73.69, movable: 294.75, name: 'Sarah Pemberton', prop_key: '21a', paid_on: '2026-07-17' },
+              { txn_id: 12, rental: 700, deposit: 0, returned: 0, fee: 12.25, gross: 700, settled: 687.75, alreadyOut: 0, ringFence: 0, movable: 687.75, name: 'Sarah Pemberton', prop_key: '21a', paid_on: '2026-07-24' },
+            ],
+          },
         },
       });
       if (url.includes('ical-import.php')) return json(icalList);

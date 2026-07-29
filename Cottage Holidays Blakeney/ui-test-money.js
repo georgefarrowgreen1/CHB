@@ -361,6 +361,30 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
   ok(/Sarah Pemberton/.test(s1) && /Dan Rowe/.test(s1), 'the deposits it is holding back for are named');
   ok(/Enter the balance/.test(s1) && !/Leaves £/.test(s1), 'with no balance typed it does not invent a safe figure');
 
+  // PER TRANSACTION: the movable figure for each charge, and the total. The
+  // arithmetic is test-sweep's; what this proves is that the per-charge figure and
+  // the total reach the screen, and that a charge carrying no deposit says so
+  // rather than silently showing the same number as one that does.
+  sweepStub = {
+    gross: 150, feeBack: 2.62, net: 147.38, count: 2, rate: 0.0175,
+    items: (sweepStub.items || []),
+    transactions: {
+      settled: 1056.19, ringFence: 73.69, movable: 982.50, count: 2,
+      items: [
+        { txn_id: 11, rental: 300, deposit: 75, returned: 0, fee: 6.56, gross: 375, settled: 368.44, alreadyOut: 0, ringFence: 73.69, movable: 294.75, name: 'Sarah Pemberton', prop_key: '21a', paid_on: d(-12) },
+        { txn_id: 12, rental: 700, deposit: 0, returned: 0, fee: 12.25, gross: 700, settled: 687.75, alreadyOut: 0, ringFence: 0, movable: 687.75, name: 'Sarah Pemberton', prop_key: '21a', paid_on: d(-5) },
+      ],
+    },
+  };
+  await page.evaluate(() => renderSweep());
+  await page.waitForTimeout(500);
+  const s1b = await sweepText();
+  ok(/£294\.75/.test(s1b) && /£687\.75/.test(s1b), `each charge reports its own movable figure (${s1b.slice(0, 60)})`);
+  ok(/£368\.44 settled/.test(s1b) && /£73\.69 held back/.test(s1b), 'a charge carrying a deposit shows what settled and what is held back');
+  ok(/nothing held back/.test(s1b), 'a charge carrying no deposit says so, rather than looking identical');
+  ok(/£982\.50/.test(s1b) && /Movable from these 2 payments/.test(s1b), 'the movable total is stated for the set');
+  ok(/not the account balance/i.test(s1b), 'and it does not claim to be the account balance');
+
   // Typing the balance must answer WITHOUT another round trip — the liability is
   // cached, so a keystroke can't cost a request.
   const getsBefore = acctGets;

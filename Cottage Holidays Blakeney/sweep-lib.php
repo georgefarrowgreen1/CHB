@@ -114,6 +114,76 @@ function sweep_totals(array $items, $rate = SWEEP_RATE_DEFAULT)
     ];
 }
 
+// ONE SETTLED CHARGE → how much of what it brought in is movable.
+// The aggregate above answers "what must stay in the account"; this answers it per
+// transaction, which is how the owner reads a Square payout list: this £975 landed,
+// £73.69 of it is going back out, so £899.03 is mine to move.
+//
+//   $rentalPart      the charge's rental portion (payments.amount — rental only)
+//   $depositCharged  the refundable deposit that rode THIS charge (0 if none did)
+//   $depositReturned how much of it has already gone back
+//   $chargeFee       Square's fee for the whole charge (null → estimate from $rate)
+//
+//   gross      what the guest was charged
+//   fee        Square's cut
+//   settled    what actually reached the bank
+//   alreadyOut the deposit money that has already left again
+//   ringFence  the deposit's net still to leave
+//   movable    settled - alreadyOut - ringFence
+//
+// The identity worth knowing (and asserted in test-sweep.php): movable always
+// equals the RENTAL portion net of its own share of the fee, because every penny
+// of the deposit either has left or is going to. So a transaction carrying no
+// deposit is movable in full, less its fee — no special case needed.
+function sweep_txn($rentalPart, $depositCharged, $depositReturned, $chargeFee, $rate = SWEEP_RATE_DEFAULT)
+{
+    $rentalPart = round(max(0, (float) $rentalPart), 2);
+    $charged = round(max(0, (float) $depositCharged), 2);
+    $returned = round(min($charged, max(0, (float) $depositReturned)), 2);
+    $gross = round($rentalPart + $charged, 2);
+    $fee = $chargeFee === null || (float) $chargeFee < 0
+        ? round($gross * (float) $rate, 2)
+        : round(min($gross, max(0, (float) $chargeFee)), 2);
+    $outstanding = round($charged - $returned, 2);
+    // Both halves are apportioned against the TRUE gross, so the fee splits
+    // exactly between what has gone and what is still to go.
+    $outNet = round($returned - sweep_fee_share($returned, $gross - $returned, $fee, $rate), 2);
+    $ring = round($outstanding - sweep_fee_share($outstanding, $gross - $outstanding, $fee, $rate), 2);
+    $settled = round(max(0, $gross - $fee), 2);
+    return [
+        'gross' => $gross,
+        'fee' => $fee,
+        'settled' => $settled,
+        'alreadyOut' => max(0.0, $outNet),
+        'ringFence' => max(0.0, $ring),
+        'movable' => round(max(0, $settled - max(0.0, $outNet) - max(0.0, $ring)), 2),
+    ];
+}
+
+// Sum a list of transactions. $items are ['rental','deposit','returned','fee'] (+
+// any display keys, carried through untouched).
+function sweep_txn_totals(array $items, $rate = SWEEP_RATE_DEFAULT)
+{
+    $settled = 0.0;
+    $ring = 0.0;
+    $movable = 0.0;
+    $out = [];
+    foreach ($items as $it) {
+        $t = sweep_txn($it['rental'] ?? 0, $it['deposit'] ?? 0, $it['returned'] ?? 0, $it['fee'] ?? null, $rate);
+        $settled += $t['settled'];
+        $ring += $t['ringFence'];
+        $movable += $t['movable'];
+        $out[] = array_merge($it, $t);
+    }
+    return [
+        'settled' => round($settled, 2),
+        'ringFence' => round($ring, 2),
+        'movable' => round($movable, 2),
+        'count' => count($out),
+        'items' => $out,
+    ];
+}
+
 // The answer to the actual question. $balance is what the account holds right now
 // (the owner types it — no bank feed), $net the ring-fenced deposit liability,
 // $buffer a cushion the owner chooses for the unpredictable (a chargeback, a

@@ -347,6 +347,13 @@ const stub = (page) => page.route(/\.php/, (r) => {
         years: [], deposit_liability: {
             gross: 150, feeBack: 2.62, net: 147.38, count: 2, rate: 0.0175,
             items: [{ outstanding: 75, gross: 75, feeBack: 1.31, net: 73.69, name: 'Sarah Pemberton', prop_key: '21a', check_out: '2026-07-20' }],
+            transactions: {
+              settled: 1056.19, ringFence: 73.69, movable: 982.50, count: 2,
+              items: [
+                { txn_id: 11, rental: 300, deposit: 75, returned: 0, fee: 6.56, gross: 375, settled: 368.44, alreadyOut: 0, ringFence: 73.69, movable: 294.75, name: 'Sarah Pemberton', prop_key: '21a', paid_on: '2026-07-17' },
+                { txn_id: 12, rental: 700, deposit: 0, returned: 0, fee: 12.25, gross: 700, settled: 687.75, alreadyOut: 0, ringFence: 0, movable: 687.75, name: 'Sarah Pemberton', prop_key: '21a', paid_on: '2026-07-24' },
+              ],
+            },
         },
     });
     return json({ ok: true, bookings: [], enquiries: [], threads: [], reviews: [], photos: [], experiences: [], content: {}, blocks: [], ranges: [], mine: {}, value: null, properties: [] });

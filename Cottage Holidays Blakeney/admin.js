@@ -11977,6 +11977,29 @@ async function renderSweep(refetch) {
         )
         .join('');
 
+    // PER TRANSACTION. The aggregate above says what must stay in the account; this
+    // says it charge by charge, the way a Square payout list reads. A charge that
+    // carried a deposit names what is held back from it; every other charge is
+    // movable in full, less Square's fee. The movable TOTAL is of these payments,
+    // NOT of the account — older money, expenses and payouts are not in it, which
+    // is why the balance field below stays the authoritative answer.
+    const T = L.transactions || null;
+    const txRows = ((T && T.items) || [])
+        .map((it) => {
+            const who = escapeHtml(it.name || 'Guest') + (it.prop_key && propertyMeta[it.prop_key] ? ` · ${escapeHtml(propertyMeta[it.prop_key].short)}` : '');
+            const held = Number(it.ringFence || 0);
+            return `<div class="act-row" style="display:block;">
+                <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;">
+                    <span>${who}${it.paid_on ? ` · ${fmtDate(it.paid_on)}` : ''}</span>
+                    <span style="white-space:nowrap;font-weight:600;${held > 0 ? '' : `color:var(--ok-text);`}">${gbp(it.movable)}</span>
+                </div>
+                <div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;">
+                    ${gbp(it.settled)} settled${held > 0 ? ` · ${gbp(held)} held back for the deposit` : ' · nothing held back'}
+                </div>
+            </div>`;
+        })
+        .join('');
+
     box.innerHTML =
         `<div class="accounts-stat" style="max-width:620px;">
             <div class="label">Keep in the account</div>
@@ -11991,6 +12014,18 @@ async function renderSweep(refetch) {
             ? `<div class="accounts-stat" style="max-width:620px;margin-top:14px;">
                 <div class="label">Deposits still to return</div>
                 <div style="margin-top:6px;">${rows}</div>
+               </div>`
+            : '') +
+        (T && T.count
+            ? `<div class="accounts-stat" style="max-width:620px;margin-top:14px;">
+                <div class="label">Movable, payment by payment</div>
+                <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 10px;">Each charge after Square's fee, less any damage deposit that's going back out of it.</p>
+                <div>${txRows}</div>
+                <div class="act-row" style="justify-content:space-between;gap:10px;border-top:1px solid var(--glass-border);margin-top:6px;">
+                    <span><strong>Movable from these ${T.count} payment${T.count === 1 ? '' : 's'}</strong></span>
+                    <span style="white-space:nowrap;font-family:var(--font-display);font-size:1.15rem;">${gbp(T.movable)}</span>
+                </div>
+                <p style="font-size:0.78rem;color:var(--text-muted);margin:8px 0 0;">Recent charges, plus any older one still holding a deposit. This is what those payments brought in — not the account balance, which also holds older money and whatever you've already moved or spent.</p>
                </div>`
             : '') +
         `<div class="accounts-stat" style="max-width:620px;margin-top:14px;">

@@ -115,6 +115,65 @@ swchk('…and never suggests moving money out of it', $eq($tight['safe'], 0));
 swchk('a zero balance is handled, not divided by', $eq(sweep_plan(0, 300, 0)['short'], 300));
 swchk('no liability at all → the whole balance is free', $eq(sweep_plan(500, 0, 0)['safe'], 500));
 
+// ---- PER TRANSACTION -----------------------------------------------------
+// The same question asked of ONE settled charge: £900 rental + £75 deposit, fee
+// £17.06 → £957.94 landed, £73.69 of it is going back out, so £884.25 is movable.
+$tx = sweep_txn(900, 75, 0, 17.06);
+swchk('a charge reports what actually settled', $eq($tx['settled'], 957.94), 'got ' . $tx['settled']);
+swchk('…what is held back for its deposit', $eq($tx['ringFence'], 73.69), 'got ' . $tx['ringFence']);
+swchk('…and what is movable, deposit excluded', $eq($tx['movable'], 884.25), 'got ' . $tx['movable']);
+// THE IDENTITY: movable is the RENTAL net of its own fee share, because every
+// penny of the deposit either has left or is going to. Nothing else can be true.
+swchk('movable == rental net of its share of the fee (the identity)',
+    $eq($tx['movable'], 900 - 17.06 * (900 / 975)), 'got ' . $tx['movable']);
+swchk('settled = movable + already-out + ring fence (the books balance)',
+    $eq($tx['settled'], $tx['movable'] + $tx['alreadyOut'] + $tx['ringFence']));
+
+// A charge with NO deposit riding it — a later balance payment — is movable in
+// full, less its fee. This is the case that must NOT re-hold a deposit already
+// held against the guest's first payment.
+$plain = sweep_txn(400, 0, 0, 7.00);
+swchk('a charge carrying no deposit is movable in full, less the fee',
+    $eq($plain['movable'], 393) && $eq($plain['ringFence'], 0));
+
+// ALREADY RETURNED: that money has left the bank, so it is neither movable nor
+// still ring-fenced — counting it as either would be wrong in both directions.
+$done = sweep_txn(900, 75, 75, 17.06);
+swchk('a fully-returned deposit holds nothing back', $eq($done['ringFence'], 0));
+swchk('…and the money it took is not offered as movable',
+    $eq($done['movable'], 884.25) && $eq($done['alreadyOut'], 73.69), 'movable ' . $done['movable']);
+$half = sweep_txn(900, 75, 25, 17.06);
+swchk('a part-returned deposit holds back only the rest',
+    $eq($half['ringFence'], 49.13) && $eq($half['alreadyOut'], 24.56), 'ring ' . $half['ringFence']);
+swchk('…and movable is unchanged by WHEN the deposit leaves', $eq($half['movable'], 884.25));
+
+// Unsettled fee, and the guards.
+$pend = sweep_txn(900, 75, 0, null, 0.0175);
+swchk('an unsettled charge estimates its fee before reporting movable',
+    $pend['movable'] > 870 && $pend['movable'] < 900, 'got ' . $pend['movable']);
+swchk('a fee bigger than the charge cannot make movable negative',
+    sweep_txn(100, 0, 0, 5000)['movable'] === 0.0);
+// A `returned` bigger than the deposit should be impossible (the server caps a
+// refund at what is left), so the clamp is defensive — and what it defends is
+// MOVABLE, not the ring fence: unclamped, £500 "already out" against a £75 deposit
+// eats £425 of the rental and reports £466.69 movable instead of £884.25. Asserting
+// the ring fence here proves nothing, since a negative outstanding floors at 0 either
+// way — which is how the first version of this check passed with the clamp deleted.
+swchk('a returned amount beyond the deposit cannot eat the rental',
+    $eq(sweep_txn(900, 75, 500, 17.06)['movable'], 884.25), 'got ' . sweep_txn(900, 75, 500, 17.06)['movable']);
+
+$tt = sweep_txn_totals([
+    ['rental' => 900, 'deposit' => 75, 'returned' => 0, 'fee' => 17.06, 'name' => 'Sarah'],
+    ['rental' => 400, 'deposit' => 0, 'returned' => 0, 'fee' => 7.00, 'name' => 'Dan balance'],
+], 0.0175);
+swchk('transaction totals count every charge', $tt['count'] === 2);
+swchk('the movable total is the sum of the movable parts', $eq($tt['movable'], 884.25 + 393), 'got ' . $tt['movable']);
+swchk('the ring fence total only counts charges carrying a deposit', $eq($tt['ringFence'], 73.69));
+swchk('settled total = movable + ring fence when nothing has gone back yet',
+    $eq($tt['settled'], $tt['movable'] + $tt['ringFence']));
+swchk('transaction display fields are carried through',
+    ($tt['items'][1]['name'] ?? '') === 'Dan balance');
+
 // ---- WIRING ---------------------------------------------------------------
 // The arithmetic above passes just as happily when nothing calls it. These read
 // the real call sites, because the previous version of this feature could have
@@ -147,6 +206,30 @@ if (preg_match('/SAFE TO MOVE(.*?)json_out\(/s', $acct, $m)) {
     swchk('the liability block is present in accounts.php', false, 'block not found');
     $fail += 3;
 }
+
+// The per-transaction half. Its two real hazards are both in the query.
+if (preg_match('/PER TRANSACTION(.*?)\} catch/s', $acct, $mt)) {
+    swchk('the per-transaction list uses the shared library too',
+        strpos($mt[1], 'sweep_txn_totals(') !== false
+        && preg_match("/\\\$sweep\['transactions'\]\s*=/", $mt[1]) === 1);
+    // A deposit rides the guest's FIRST payment. Without this match, a later
+    // balance payment on the same booking would hold the same deposit back twice.
+    swchk('a deposit is matched to the charge that CARRIED it',
+        strpos($mt[1], 'hold_payment_id') !== false
+        && strpos($mt[1], 'square_payment_id') !== false);
+    // An old charge with money still to go back is exactly what must not fall off
+    // the end of a recency window.
+    swchk('an older charge still holding a deposit is not dropped by the date window',
+        preg_match('/created_at >= DATE_SUB.*?OR \(b\.hold_status IN/s', $mt[1]) === 1);
+    swchk('only settled charges are counted', strpos($mt[1], "UPPER(p.status) IN ('COMPLETED','APPROVED','CAPTURED')") !== false);
+} else {
+    swchk('the per-transaction block is present in accounts.php', false, 'block not found');
+    $fail += 3;
+}
+swchk('the screen shows the movable figure per payment and a total',
+    strpos($adm, 'L.transactions') !== false
+    && preg_match('/gbp\(it\.movable\)/', $adm) === 1
+    && preg_match('/gbp\(T\.movable\)/', $adm) === 1);
 
 swchk('the screen exists and is reachable from the Payments index',
     strpos($adm, 'function renderSweep(') !== false

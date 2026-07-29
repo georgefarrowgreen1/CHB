@@ -1134,6 +1134,19 @@ transition's wall-clock while the thread is blocked, so on a slow run no mid-fli
 frame ever paints and the rAF poll alone called a working exit a teleport (~1-in-4
 flake, measured); a real exit dispatches transitionrun/transitionend for the box's
 opacity even then, while a genuinely deleted transition dispatches neither.
+**§17a's sibling flake, and the better answer: SEEK the animation, don't race it.**
+The Siri-aura check read `box-shadow` twice 1.5s apart and asserted it had moved —
+which flaked green-then-red on CI, because `cmdkSiriAura`'s `0%, 100%` is a PLATEAU
+and `ease-in-out` is slow at both ends, so two samples can land in the same slow
+zone and round to the same string (and any re-render that restarts the animation
+between them makes that likely rather than unlucky). It now sets an INLINE negative
+`animation-delay` — `0s` for the 0% keyframe, `-3s` for the 50% one at the halfway
+point of the 6s cycle — and reads both a millisecond apart: no clock, no frames.
+Inline wins over the stylesheet's `animation` shorthand, which is what makes the
+seek stick. Still fails for the reason it was written (break-tested both ways): a
+blanked animation seeks nowhere, and keyframes that never move the shadow leave the
+NAME check passing while the PAINT check fails, which is exactly the bug it guards.
+General rule for a keyframe assertion: sample by PHASE, never by wall clock.
 
 **Owner's picks** — the habit/trust/revenue layer. (1) **Teach-loop nudges**: the synced
 dead-end searches (`search-misses` in the content table) surface BOTH in the weekly digest
@@ -1689,6 +1702,29 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   no request (gated). NB the returns subquery is case-folded (`UPPER(r.status)`)
   like the file's other two ledger queries: a lowercase `'failed'` counting as
   already returned would understate the ring fence, the expensive direction.
+  **PER TRANSACTION** (`sweep_txn`/`sweep_txn_totals`, `deposit_liability.transactions`)
+  — the same question asked of each settled charge, because that is how a Square
+  payout list reads: this £975 landed, £73.69 of it is going back out, so the rest is
+  the owner's. The identity that makes it simple, asserted in the gate: **movable is
+  always the RENTAL portion net of its own share of the fee**, since every penny of
+  the deposit either has left already (`alreadyOut`) or is still to (`ringFence`) — so
+  a charge carrying no deposit needs no special case, it is just movable in full less
+  the fee. The one hazard is the LINKAGE: a deposit rides the guest's FIRST payment
+  (`bookings.hold_payment_id` = `payments.square_payment_id`), so a later balance
+  payment on the same booking must hold NOTHING back or the same £75 is ring-fenced
+  twice. That is runtime PHP a static scan cannot see — **test-integration §10(e) is
+  where it is really gated** (break-tested: forcing `$carried = true` fails it), and
+  the query's window is `recent OR still holding a deposit`, because an old charge
+  with money still to go back is exactly what must not fall off the end. The movable
+  TOTAL is of those payments and says so on screen — it is NOT the account balance,
+  which also holds older money and whatever has already been moved or spent, so the
+  typed-balance answer stays the authoritative one. Note the deposits list and the
+  transactions list overlap but are not redundant: a deposit whose carrying charge
+  predates the ledger has no `payments` row and appears only in the former.
+  The observed rate now adds any deposit that rode a charge BACK into its gross
+  (`payments.amount` is rental-only while its fee covers both), because reading
+  `amount` as the gross biased the learned rate HIGH on exactly the charges that
+  carry deposits.
 - **THE STATUS PAGE HAS A WAY IN.** `/status` had no link anywhere in the app —
   the one page you want when something looks wrong could only be reached by
   typing the URL. It is now a card in Manage → System check and a footer link,
