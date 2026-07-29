@@ -5454,16 +5454,35 @@ function coachReposition() {
     if (!ov || !__coachTarget) return;
     const r = __coachTarget.getBoundingClientRect();
     const pad = 6;
-    const ring = ov.querySelector('.coach-ring');
+    const ring = /** @type {HTMLElement} */ (ov.querySelector('.coach-ring'));
     ring.style.left = (r.left - pad) + 'px';
     ring.style.top = (r.top - pad) + 'px';
     ring.style.width = (r.width + pad * 2) + 'px';
     ring.style.height = (r.height + pad * 2) + 'px';
-    const tip = ov.querySelector('.coach-tip');
-    const below = r.bottom + 110 < window.innerHeight;
-    tip.style.left = Math.max(10, Math.min(window.innerWidth - 260, r.left - pad)) + 'px';
-    tip.style.top = (below ? r.bottom + pad + 12 : r.top - pad - 12) + 'px';
-    tip.style.transform = below ? 'none' : 'translateY(-100%)';
+    const tip = /** @type {HTMLElement} */ (ov.querySelector('.coach-tip'));
+    // MEASURE the tip; never guess its height. This was `r.bottom + 110 <
+    // innerHeight`, a hardcoded estimate that is right for a short sentence (111px
+    // measured) and wrong by 106px for a real one (216px) — so a target in the lower
+    // third of a 390×844 phone put the tip's bottom at 918, i.e. 74px past the fold
+    // with the Next button off screen and the walk unadvanceable. The tip is already
+    // in the DOM when this runs, so its real box is one call away; its width replaces
+    // the 260 magic number that duplicated the stylesheet's max-width in JS.
+    const t = tip.getBoundingClientRect();
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    const gap = pad + 12;
+    // Prefer below, flip above when it doesn't fit, and if NEITHER fits (a tall tip
+    // on a short screen) keep it on screen rather than off the nearest edge.
+    const below = r.bottom + gap + t.height <= vh;
+    const above = r.top - gap - t.height >= 0;
+    tip.style.left = Math.max(10, Math.min(vw - t.width - 10, r.left - pad)) + 'px';
+    if (below || !above) {
+        tip.style.transform = 'none';
+        tip.style.top = (below ? r.bottom + gap : Math.max(10, Math.min(vh - t.height - 10, r.bottom + gap))) + 'px';
+    } else {
+        tip.style.transform = 'translateY(-100%)';
+        tip.style.top = (r.top - gap) + 'px';
+    }
 }
 function coachClear() {
     const ov = document.getElementById('coach-ov');
@@ -5592,9 +5611,16 @@ function coachSequence(steps, i, ctx) {
 // The ring + a Step N of M bubble with Next/Back. Reuses coachReposition/coachClear;
 // the overlay is click-THROUGH (CSS .coach-ov-seq) so you can actually use the field
 // beneath, and sits above modals so it can spotlight fields inside the Add-Booking box.
+const coachStill = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch (e) { return false; } };
 function coachPaintStep(el, text, ctx) {
     coachClear();
-    try { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); } catch (e) {}
+    // Don't scroll a target that is already comfortably on screen — tapping Next
+    // between two visible fields used to slide the page under the owner's hand for
+    // no reason. And the scroll is only smooth when motion is welcome.
+    try {
+        const b = el.getBoundingClientRect();
+        if (b.top < 80 || b.bottom > window.innerHeight - 80) el.scrollIntoView({ block: 'center', behavior: coachStill() ? 'auto' : 'smooth' });
+    } catch (e) {}
     const ov = document.createElement('div');
     ov.id = 'coach-ov';
     ov.className = 'coach-ov coach-ov-seq';
@@ -5602,10 +5628,22 @@ function coachPaintStep(el, text, ctx) {
     ring.className = 'coach-ring';
     const tip = document.createElement('div');
     tip.className = 'coach-tip';
+    tip.setAttribute('role', 'group');
+    tip.setAttribute('aria-label', 'Guided walkthrough');
     const isLast = ctx.i >= ctx.n - 1;
+    // The step label + sentence are aria-hidden and the SAME words go into an
+    // .sr-only live region instead, written a frame after the tip lands. Measured
+    // before this: role/aria-live/aria-label all null on the tip and focus left on
+    // the field, so a screen-reader user got an overlay they were never told about
+    // and five steps of instructions they never heard. It has to be a separate
+    // region because coachClear removes the whole overlay each step — a live region
+    // that arrives WITH its text is not reliably announced (the same rule the
+    // payment outcome panels needed). Polite, not assertive: the field underneath is
+    // where the owner is actually working.
     tip.innerHTML =
-        `<div class="coach-tip-step">Step ${ctx.i + 1} of ${ctx.n}</div>` +
-        `<div class="coach-tip-text">${escapeHtml(text)}</div>` +
+        `<div class="coach-tip-step" aria-hidden="true">Step ${ctx.i + 1} of ${ctx.n}</div>` +
+        `<div class="coach-tip-text" aria-hidden="true">${escapeHtml(text)}</div>` +
+        '<div class="sr-only" role="status" aria-live="polite"></div>' +
         `<div class="coach-tip-actions">` +
         (ctx.i > 0 ? '<button type="button" class="coach-tip-back">Back</button>' : '<span></span>') +
         `<button type="button" class="coach-tip-btn">${isLast ? 'Done' : 'Next'}</button>` +
@@ -5613,6 +5651,8 @@ function coachPaintStep(el, text, ctx) {
     ov.appendChild(ring);
     ov.appendChild(tip);
     document.body.appendChild(ov);
+    const say = tip.querySelector('.sr-only');
+    requestAnimationFrame(() => { if (say.isConnected) say.textContent = `Step ${ctx.i + 1} of ${ctx.n}. ${text}`; });
     const back = tip.querySelector('.coach-tip-back');
     if (back) back.addEventListener('click', ctx.onBack);
     tip.querySelector('.coach-tip-btn').addEventListener('click', isLast ? ctx.onDone : ctx.onNext);

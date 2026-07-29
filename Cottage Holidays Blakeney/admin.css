@@ -2400,12 +2400,16 @@ body.light-mode .cmdk-editor-input {
   line-height: 1.45;
   margin-bottom: 10px;
 }
+/* 44px, like every other row and action in this app. These measured 70×30 — clear
+   of WCAG 2.5.8's 24px, but under the house floor, on a control the owner taps five
+   times in a row while least sure of themselves. */
 .coach-tip-btn {
   background: var(--accent);
   color: var(--accent-ink);
   border: none;
   border-radius: var(--r-pill);
-  padding: 7px 18px;
+  min-height: 44px;
+  padding: 7px 20px;
   font-weight: 600;
   font-size: 0.85rem;
   cursor: pointer;
@@ -2445,11 +2449,24 @@ body.light-mode .cmdk-editor-input {
   color: rgba(244, 245, 247, 0.7);
   font-size: 0.85rem;
   font-weight: 600;
-  padding: 7px 4px;
+  min-height: 44px;
+  padding: 7px 10px;
   cursor: pointer;
 }
 .coach-tip-back:hover {
   color: #fff;
+}
+/* The ring's MOVEMENT is the pointer — it is what tells you where to look — so
+   reduced motion drops the EASING and keeps the travel, the same call the guest
+   dock's selection pill gets. The tip's entrance fade is decoration and goes.
+   (coachPaintStep makes the matching scrollIntoView 'auto' rather than 'smooth'.) */
+@media (prefers-reduced-motion: reduce) {
+  .coach-ring {
+    transition: none;
+  }
+  .coach-tip {
+    animation: none;
+  }
 }
 /* Help topic: numbered steps under the selected how-to answer. */
 .cmdk-help-steps {
