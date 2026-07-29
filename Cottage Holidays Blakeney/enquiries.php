@@ -326,7 +326,7 @@ if ($action === 'submit') {
     if (!$isAdminEdit) {
         try {
             require_once __DIR__ . '/webpush.php';
-            alert_owner('New enquiry', trim(($name ?: 'Someone') . ' · ' . $checkIn . '–' . $checkOut));
+            alert_owner('New enquiry', trim(($name ?: 'Someone') . ' · ' . $checkIn . '–' . $checkOut), ['category' => 'enquiries', 'email' => true, 'tag' => 'enquiry-' . (int) $enqId, 'url' => './?open=enquiry-' . (int) $enqId]);
         } catch (\Throwable $e) {
         }
     }

@@ -29,8 +29,10 @@ if ($action === 'sw_notify') {
             json_out([
                 'title' => $p['title'] ?: 'Cottage Holidays Blakeney',
                 'body' => $p['body'] ?? '',
-                'url' => './',
-                'tag' => 'chb-owner',
+                // The stash carries the deep link + per-record tag too, so the
+                // FETCH fallback lands exactly where the payload would have.
+                'url' => $p['url'] ?? './',
+                'tag' => $p['tag'] ?? 'chb-owner',
                 'reload' => !empty($p['reload']),
             ]);
         }
@@ -104,7 +106,7 @@ if ($action === 'subscribe_admin' || $action === 'test_admin' || $action === 'un
     if (!wp_vapid_configured()) {
         json_out(['error' => 'VAPID keys not set in config.php yet'], 400);
     }
-    $sent = alert_owner('Test alert', 'Owner push is working 🎉');
+    $sent = alert_owner('Test alert', 'Owner push is working 🎉', ['category' => 'urgent', 'tag' => 'test']);
     json_out(['ok' => true, 'sent' => $sent]);
 }
 

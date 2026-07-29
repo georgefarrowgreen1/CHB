@@ -142,7 +142,7 @@ if ($action === 'suggest') {
     // Best-effort heads-up to the owner: push to their devices + email.
     try {
         require_once __DIR__ . '/webpush.php';
-        alert_owner('New experience suggestion', ($guest['name'] ?: 'A guest') . ': ' . mb_substr($title, 0, 80));
+        alert_owner('New experience suggestion', ($guest['name'] ?: 'A guest') . ': ' . mb_substr($title, 0, 80), ['category' => 'system', 'tag' => 'experiences', 'url' => './?open=moderation']);
     } catch (\Throwable $e) {
     }
     if (defined('MAIL_ENABLED') && MAIL_ENABLED && defined('OWNER_NOTIFY_EMAIL') && OWNER_NOTIFY_EMAIL !== '') {

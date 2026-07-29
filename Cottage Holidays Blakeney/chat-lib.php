@@ -344,7 +344,7 @@ if (!function_exists('chat_guest_reply')) {
         try {
             require_once __DIR__ . '/webpush.php';
             if (function_exists('alert_owner')) {
-                alert_owner('New message', mb_substr($bodyTxt, 0, 80));
+                alert_owner('New message', mb_substr($bodyTxt, 0, 80), ['category' => 'messages', 'tag' => 'messages', 'url' => './?open=messages']);
             }
         } catch (\Throwable $e) {
         }

@@ -187,7 +187,7 @@ if ($action === 'authorize') {
     book_unlock($b['prop_key']);
     try {
         require_once __DIR__ . '/webpush.php';
-        alert_owner('Damage hold placed', '£' . number_format($holdAmount, 2) . ' held · ' . $propName);
+        alert_owner('Damage hold placed', '£' . number_format($holdAmount, 2) . ' held · ' . $propName, ['category' => 'money', 'tag' => 'booking-' . (int) $bookingId, 'url' => './?open=booking-' . (int) $bookingId]);
     } catch (\Throwable $e) {
     }
     log_activity(
@@ -419,7 +419,7 @@ if ($action === 'charge') {
         // Wake the owner's devices (best-effort).
         try {
             require_once __DIR__ . '/webpush.php';
-            alert_owner('Payment received', '£' . number_format($amountDue, 2) . ' · ' . $propName);
+            alert_owner('Payment received', '£' . number_format($amountDue, 2) . ' · ' . $propName, ['category' => 'money', 'email' => true, 'tag' => 'booking-' . (int) $bookingId, 'url' => './?open=booking-' . (int) $bookingId]);
         } catch (\Throwable $e) {
         }
         // And confirm to the guest on their own device (best-effort, no-op if none).

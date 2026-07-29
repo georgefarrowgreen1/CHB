@@ -131,7 +131,7 @@ wpchk('Urgency is sent (Apple batches low-urgency pushes)', strpos($src, "'Urgen
 wpchk('TTL is per-message, not a flat 28 days', strpos($src, 'TTL: 2419200') === false);
 wpchk('the admin fan-out reads the subscription keys',
     strpos($src, "SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE role = 'admin'") !== false);
-wpchk('alert_owner sends a payload', strpos($src, 'return ping_admin_devices($payload,') !== false);
+wpchk('alert_owner sends a payload', strpos($src, '$sent = ping_admin_devices($payload,') !== false);
 
 // ---- The stash is READ, not TAKEN (the multi-device bug) --------------------
 wpchk('owner_ping_read exists and owner_ping_take is gone',
@@ -151,6 +151,84 @@ wpchk('sw.js reads the push payload before falling back to the fetch',
     preg_match('/\(event\)\.data|event\.data/', $sw) === 1 && strpos($sw, 'if (!fromPayload)') !== false);
 wpchk('…and still keeps the fetch fallback for keyless subscriptions',
     strpos($sw, "push.php?action=sw_notify") !== false);
+
+// ---- QUIET HOURS + PER-EVENT MUTE ------------------------------------------
+// notify_should_push() decides whether a category may BUZZ. Muting never loses
+// anything — the log and the email fallback are untouched — and 'urgent' ignores
+// both, because a failing calendar sync can double-book the owner.
+// Quiet hours normally WRAP midnight, which is the case a naive between-test gets
+// wrong, so both shapes are driven here.
+wpchk('notify_should_push exists', function_exists('notify_should_push'));
+wpchk('urgent is never suppressed', notify_should_push('urgent') === true);
+// The wrap logic, asserted directly on the same expression the function uses, so a
+// change to it here fails loudly rather than silently muting the owner all day.
+$wrapQuiet = function ($from, $to, $now) {
+    $m = function ($hhmm) { $p = explode(':', $hhmm); return ((int) $p[0]) * 60 + ((int) ($p[1] ?? 0)); };
+    $a = $m($from); $b = $m($to); $n = $m($now);
+    return $a < $b ? ($n >= $a && $n < $b) : ($n >= $a || $n < $b);
+};
+wpchk('22:00–07:00 is quiet at 02:00 (wraps midnight)', $wrapQuiet('22:00', '07:00', '02:00') === true);
+wpchk('22:00–07:00 is quiet at 23:30', $wrapQuiet('22:00', '07:00', '23:30') === true);
+wpchk('22:00–07:00 is NOT quiet at 12:00', $wrapQuiet('22:00', '07:00', '12:00') === false);
+wpchk('22:00–07:00 is NOT quiet at 07:00 (end is exclusive)', $wrapQuiet('22:00', '07:00', '07:00') === false);
+wpchk('09:00–17:00 (no wrap) is quiet at 12:00', $wrapQuiet('09:00', '17:00', '12:00') === true);
+wpchk('09:00–17:00 is NOT quiet at 08:00', $wrapQuiet('09:00', '17:00', '08:00') === false);
+
+// ---- DEEP LINKS + PER-RECORD TAGS ------------------------------------------
+// Every owner alert used to open './' and share the tag 'chb-owner', so the second
+// notification REPLACED the first and neither took you to the record.
+wpchk('alert_owner takes an options array (url/category/tag/email)',
+    strpos($src, 'function alert_owner($title, $body, $opts = [])') !== false);
+wpchk('the tag is per-record, not one shared owner tag',
+    strpos($src, "'chb-owner-' . preg_replace(") !== false);
+wpchk('the stash carries the deep link + tag for the fetch fallback',
+    strpos($src, 'function owner_ping_set($title, $body, $reload = false, $url = ') !== false
+        && strpos($src, '$tag = ') !== false);
+wpchk('a category can suppress the push', strpos($src, 'if (notify_should_push($category))') !== false);
+wpchk('no device reached + email requested → send_owner fallback',
+    strpos($src, '$sent === 0 && !empty($opts[\'email\'])') !== false);
+
+$callers = [
+    'enquiries.php' => 'open=enquiry-',
+    'pay.php' => 'open=booking-',
+    'messages.php' => 'open=messages',
+    'chat-lib.php' => 'open=messages',
+    'ical-import.php' => 'open=calendar',
+];
+foreach ($callers as $f => $needle) {
+    $c = (string) @file_get_contents(__DIR__ . '/' . $f);
+    wpchk("$f deep-links its alert ($needle)", strpos($c, $needle) !== false);
+}
+$icalSrc = (string) file_get_contents(__DIR__ . '/ical-import.php');
+wpchk('a failing calendar sync is urgent (ignores mute + quiet hours)',
+    strpos($icalSrc, "'category' => 'urgent'") !== false);
+$paySrc = (string) file_get_contents(__DIR__ . '/pay.php');
+wpchk('a received payment asks for the email fallback', strpos($paySrc, "'email' => true") !== false);
+
+// ---- CLIENT: router, focus-silence, badge ----------------------------------
+$appSrc = (string) file_get_contents(__DIR__ . '/app.js');
+wpchk('app.js routes ?open= to the record', strpos($appSrc, 'maybeHandleNotificationOpen') !== false
+    && strpos($appSrc, "get('open')") !== false);
+wpchk('…and tidies the URL so a refresh does not repeat it',
+    preg_match('/maybeHandleNotificationOpen[\s\S]{0,900}history\.replaceState/', $appSrc) === 1);
+wpchk('the badge defers to the back office once loaded',
+    preg_match('/__ADMIN_LOADED[^\n]{0,40}setAppBadgeCount\(n\)/', $appSrc) === 1);
+$admSrc = (string) file_get_contents(__DIR__ . '/admin.js');
+wpchk('the back office badges the DUTIES count, not just enquiries',
+    preg_match('/renderNeedsYou[\s\S]{0,700}setAppBadgeCount\(items\.length\)/', $admSrc) === 1);
+wpchk('there is a per-event + quiet-hours settings surface',
+    strpos($admSrc, 'renderNotifyPrefs') !== false && strpos($admSrc, 'saveNotifyPref') !== false);
+wpchk('notify-prefs is read from adminPrivateContent first (internal key)',
+    strpos($admSrc, "adminPrivateContent['notify-prefs']") !== false);
+$dbSrc = (string) file_get_contents(__DIR__ . '/db.php');
+wpchk('notify-prefs is classified internal', strpos($dbSrc, "\$key === 'notify-prefs'") !== false);
+// SILENT, not suppressed: userVisibleOnly means a push that shows nothing invites
+// the browser's own "site updated in the background" notice and can cost the
+// permission. Focus lowers the interruption, it does not skip the notification.
+wpchk('a focused window makes the notification silent, not absent',
+    strpos($sw, 'silent: focused') !== false && strpos($sw, 'renotify: !focused') !== false);
+wpchk('…and it still calls showNotification unconditionally',
+    substr_count($sw, 'self.registration.showNotification(') === 1);
 
 echo "\n== Summary ==\n";
 if ($fail) {
