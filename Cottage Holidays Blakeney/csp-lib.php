@@ -88,6 +88,28 @@ function csp_extract_policy(string $htaccess): ?string
 // Returns the parsed directive map, or null if no policy could be resolved (in
 // which case csp_report_severity leaves everything at 'warn' — failing SAFE, since
 // over-reporting is recoverable and under-reporting hides a real block).
+// Which source csp_live_policy() would actually use, by name — for deployment
+// observability (version.php?csp=1). Exists because twice now a CSP fix was
+// believed deployed and was inert, and the only way to tell was to guess. Keep the
+// order identical to csp_live_policy() below.
+function csp_policy_source(string $dir): string
+{
+    $gen = $dir . '/csp-policy.php';
+    if (is_file($gen)) {
+        $pol = @include $gen;
+        if (is_string($pol) && $pol !== '') {
+            return 'csp-policy.php';
+        }
+    }
+    foreach (['/.htaccess', '/htaccess.txt'] as $f) {
+        $raw = @file_get_contents($dir . $f);
+        if ($raw !== false && $raw !== '' && csp_extract_policy($raw)) {
+            return ltrim($f, '/');
+        }
+    }
+    return 'none';
+}
+
 function csp_live_policy(string $dir): ?array
 {
     $gen = $dir . '/csp-policy.php';
