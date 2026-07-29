@@ -5977,43 +5977,29 @@ function cmdkSearchCore(q, allowCorrect) {
         const mlOff = document.getElementById('cmdk');
         if (mlOff) mlOff.classList.remove('ml-active'); // no query → the model isn't answering
         chbSetModelStatus(document.getElementById('cmdk-ml'), ''); // → quiet "AI ready" when loaded
-        // The scope switch narrows the empty landing's "Jump to" list — but NOT the
-        // day brief. That distinction is load-bearing and was wrong: openCmdK
-        // snapshots cmdkDefaultScope() from whatever workspace you came from, so
-        // opening search from Today put you in "Bookings" scope before you had asked
-        // for anything, and the brief was filtered down to whatever happened to match
-        // — measured as 1 row surviving out of 4, which is why the landing looked
-        // empty. The brief is a summary OF THE DAY: arrivals, money to collect, an
-        // enquiry waiting, the month's pace. Dropping "£440 to collect" because you
-        // are standing on the bookings screen is not narrowing, it is losing the
-        // point of the panel. Scope still narrows what you TYPE, and still narrows
-        // Jump to.
-        // …and it no longer narrows Jump to either. With nothing typed there is no
-        // search to scope, so a chip sitting lit on "Bookings" was describing a
-        // filter that the panel below it was already ignoring for the brief — and
-        // quietly applying to five dock destinations, which is not worth the
-        // contradiction. The scope switch is hidden on this state (cmdkRenderInner)
-        // and appears the moment you type, which is when it starts meaning anything.
-        // The SNAPSHOT is untouched: openCmdK still records the workspace's scope, so
-        // the first thing you type is still pre-scoped to where you came from.
-        // Jump to STAYS scoped, and the chip above it does not. Removing the filter
-        // as well was tried and backed out: it is what keeps this list short, and
-        // without it the landing's destinations went 124px → 271px even capped at
-        // three (952px uncapped). Showing the shortcuts that suit the workspace you
-        // came from is good behaviour, not a filter anyone needs a control for —
-        // what was wrong is that a lit "Bookings" chip sat above a day brief it was
-        // deliberately NOT filtering. So the chip goes and the helpfulness stays.
-        const keep = (it) => __cmdkScope === 'all' || it.scope === __cmdkScope;
+        // THE WORKSPACE SNAPSHOT SHAPES THIS STATE AND NOTHING ELSE. `home` picks
+        // the shortcuts that suit the screen you opened search from — it does NOT
+        // touch the day brief (a summary of arrivals, money to collect, an enquiry
+        // waiting, the month's pace: dropping "£440 to collect" because you happen
+        // to be standing on the bookings screen loses the point of the panel —
+        // measured, 1 row survived out of 4), and it does NOT touch what you type
+        // (see __cmdkHomeScope). Jump to alone is filtered, and the scope chip is
+        // hidden on this state so nothing on screen claims a filter it isn't
+        // applying. Removing the Jump-to filter as well was tried and backed out:
+        // it is what keeps the list short, and without it the landing's
+        // destinations went 124px → 271px even capped at three (952px uncapped).
+        const home = __cmdkHomeScope;
+        const keep = (it) => home === 'all' || it.scope === home;
         // Entity-aware: viewing a booking/enquiry hub → lead with its next-best
         // actions. Otherwise fall back to PAGE-context suggestions (the cottage
         // you're editing, the Payments/Inbox folder, the calendar month in view).
         // Only in the unscoped "All" view.
         let suggestions = [];
         __cmdkSugLabel = '';
-        if (__cmdkScope === 'all' && __cmdkEntity) {
+        if (home === 'all' && __cmdkEntity) {
             suggestions = cmdkEntityActions(__cmdkEntity).map((a, i) => ({ type: 'action', id: 'sug-' + i, label: a.label, sub: 'For ' + (__cmdkEntity.name || 'this'), run: a.run }));
             __cmdkSugLabel = __cmdkEntity.name || 'this';
-        } else if (__cmdkScope === 'all') {
+        } else if (home === 'all') {
             // Cross-page pickup: not on its hub, but you were reading a record moments
             // ago — offer to continue with it from wherever you are now, before the
             // generic page suggestions. Ages out with the memory (CMDK_RECENT_MS).
@@ -6041,13 +6027,13 @@ function cmdkSearchCore(q, allowCorrect) {
         // ctl-watch/ctl-undo copy into the same array. Found by the review pass.
         const brief = cmdkBrief().slice();
         const allScreens = cmdkScreens();
-        let screens = __cmdkScope === 'all' ? allScreens : allScreens.filter(keep);
+        let screens = home === 'all' ? allScreens : allScreens.filter(keep);
         // Don't list a screen under "Jump to" if it's already up in "Most used".
         screens = screens.filter((it) => { const k = kof(it); return !(k && seenKeys.has(k)); });
-        if (__cmdkScope === 'all') screens = screens.slice(0, 3);
+        if (home === 'all') screens = screens.slice(0, 3);
         // Discoverability: the model answers questions — show three (rotating
         // daily) as tappable chips so the capability is impossible to miss.
-        if (__cmdkScope === 'all') {
+        if (home === 'all') {
             try {
                 const cans = CHB_NLU.corpus.map((c) => c.canonical);
                 const day = Math.floor(Date.now() / 864e5);
@@ -7338,11 +7324,22 @@ function cmdkSection(type) {
     return { key: 'more', label: 'More results', order: 3 };
 }
 // ---- Search scopes: narrow results to the part of the business you're in.
-// The palette opens pre-scoped to your current workspace (Today→Bookings,
-// Inbox→Inbox, Payments→Money); "All" clears it. Scoping only ever filters
-// ENTITY rows — actions, screens, answers and help are always shown, so you can
-// never lose your way back to a destination.
+// Scoping only ever filters ENTITY rows — actions, screens, answers and help are
+// always shown, so you can never lose your way back to a destination.
+//
+// A TYPED QUERY SPANS EVERY CATEGORY. The workspace snapshot used to land in
+// __cmdkScope itself, so opening search from Today pre-scoped it to "Bookings"
+// and searching a guest's name returned their stays while their emails, chats and
+// payments were filtered out — silently, because cmdkArrangeWide only widens when
+// the scope yields NOTHING, and a guest with bookings always yields something.
+// The two jobs are now two variables: __cmdkScope is the OWNER'S choice (chips
+// only, 'all' until they tap one) and __cmdkHomeScope is the workspace snapshot,
+// which serves the empty landing's "Jump to" list alone — the one place the
+// snapshot still earns its keep (see the landing branch of cmdkSearchCore: it is
+// what keeps that list to a few destinations, and the scope chip is hidden there,
+// so nothing on screen claims a filter it isn't applying).
 let __cmdkScope = 'all';
+let __cmdkHomeScope = 'all';
 // Auto-widen latch: set for one query when a scoped search found nothing but
 // "All" would — makes cmdkInScope pass everything so the widened rows survive the
 // async server-search merge (which re-runs cmdkArrange while __cmdkScope is still
@@ -7350,6 +7347,12 @@ let __cmdkScope = 'all';
 let __cmdkWiden = false;
 const CMDK_SCOPES = [['all', 'All'], ['bookings', 'Bookings'], ['inbox', 'Inbox'], ['money', 'Money'], ['guests', 'Guests']];
 const CMDK_SCOPE_OF = { booking: 'bookings', enquiry: 'bookings', external: 'bookings', message: 'inbox', email: 'inbox', payment: 'money', expense: 'money', figure: 'money', guest: 'guests', review: 'guests', subscriber: 'guests', waitlist: 'guests' };
+// A scope's own words ("Bookings", not "bookings") — for the empty states, which
+// print the scope back at the owner and had been printing the raw key.
+function cmdkScopeLabel(k) {
+    const row = CMDK_SCOPES.find(([s]) => s === k);
+    return row ? row[1] : String(k || '');
+}
 // Pure (state-free) scope test: does a result TYPE belong in a given scope?
 // Non-entity rows (action/screen/answer/help/field/sheet/content) have no domain
 // and are always kept, so navigation is never scoped away.
@@ -7435,7 +7438,7 @@ function cmdkArrangeWide(rows, cap) {
         __cmdkWiden = true;
         const wide = cmdkArrange(rows);
         if (wide.some((it) => it && !cmdkIsNoteRow(it))) {
-            const label = (CMDK_SCOPES.find(([k]) => k === __cmdkScope) || [null, __cmdkScope])[1];
+            const label = cmdkScopeLabel(__cmdkScope);
             out = [{ type: 'answer', id: 'cmdk-widen', label: `No matches in ${label} — showing all`, sub: 'Tap to search everywhere', run: () => cmdkSetScope('all') }].concat(wide);
         } else {
             __cmdkWiden = false; // genuinely nothing anywhere — keep the scope + real empty state
@@ -7820,7 +7823,17 @@ function cmdkRenderInner() {
             (B ? `<div class="cmdk-group-label">${cmdkGreeting()}</div>${briefHtml}` : '') +
             (F ? `<div class="cmdk-group-label">Most used</div>${freqHtml}` : '') +
             (screenItems.length ? `<div class="cmdk-group-label">Jump to</div><div class="cmdk-jump">${screensHtml}</div>` : '') +
-            (!S && !P && !F && !B && !screenItems.length ? cmdkNoneHtml('Nothing in ' + __cmdkScope, CMDK_WIDEN) : '');
+            // The landing's own dead end. It used to print the raw scope key
+            // ("Nothing in bookings") and hand out CMDK_WIDEN — "Tap “All” above to
+            // search everywhere" — pointing at a control that is HIDDEN on this
+            // state (sb is '' while __cmdkEmpty), so the one instruction offered
+            // named a chip that wasn't on screen. It says the true thing instead:
+            // nothing here YET, and typing is what fills it. Same renderer, same
+            // shape as the other two empty states; only the sentence differs,
+            // because only here is the widen chip absent.
+            (!S && !P && !F && !B && !screenItems.length
+                ? cmdkNoneHtml('Nothing to show yet', 'Type a name, a screen, or a question — search covers everything.')
+                : '');
         return;
     }
     if (!__cmdkResults.length) {
@@ -7831,7 +7844,7 @@ function cmdkRenderInner() {
         // the query. Finding nothing is not the same as never having asked, and
         // `__cmdkThread` still held the turns the whole time; only the screen lied.
         box.innerHTML = sb + cmdkThreadHtml() +
-            cmdkNoneHtml('No matches' + (scoped ? ' in ' + __cmdkScope : ''),
+            cmdkNoneHtml('No matches' + (scoped ? ' in ' + cmdkScopeLabel(__cmdkScope) : ''),
                 scoped ? CMDK_WIDEN : 'Try a guest name, a screen, or a question like “who owes me money”.') +
             cmdkDeepCta();
         return;
@@ -8606,7 +8619,8 @@ function openCmdK() {
     // Scope + record context come from the workspace UNDER the overlay, and it
     // stays there — so these read the same as they always did.
     if (av) __cmdkReturnView = av.id;
-    __cmdkScope = cmdkDefaultScope(); // open pre-scoped to the workspace you came from
+    __cmdkScope = 'all'; // what you TYPE searches everything until you say otherwise
+    __cmdkHomeScope = cmdkDefaultScope(); // …the workspace only shapes the landing's shortcuts
     __cmdkEntity = cmdkCurrentEntity(); // and aware of the record you were viewing
     __cmdkConvCtx = null; // a fresh session — never inherit the LAST session's pronoun referent
     cmdkThreadClear(); // …and never the last session's thread
