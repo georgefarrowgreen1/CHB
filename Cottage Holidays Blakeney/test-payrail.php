@@ -12,6 +12,7 @@
 //  Run:  php test-payrail.php
 // ============================================================
 require_once __DIR__ . '/db.php'; // payment_rail
+require_once __DIR__ . '/pricing.php'; // booking_payment_kind + the balance window
 require_once __DIR__ . '/mailer.php'; // payment_cta + the two body builders
 
 $pass = 0;
@@ -120,6 +121,53 @@ chk('markup in the details is escaped, not rendered', strpos($evil['html'], '<sc
 chk('an ampersand is escaped exactly once', strpos($evil['html'], 'Acme &amp; Co') !== false && strpos($evil['html'], '&amp;amp;') === false);
 chk('the line breaks the owner typed survive as <br>', strpos($evil['html'], '<br') !== false);
 chk('the plain-text half keeps them raw', strpos($evil['text'], "\nSort: 00-00-00") !== false);
+
+// ============================================================
+//  A BOOKING INSIDE THE BALANCE WINDOW IS ASKED TO PAY IN FULL.
+//  Booking made close to arrival → the whole amount is already due, so a deposit
+//  request is wrong twice over: the guest is asked for 25% and then chased for the
+//  rest days later. enquiry-actions.php got this right on approval; bookings.php's
+//  request_payment took `kind` from the CLIENT and defaulted to 'deposit', so the
+//  booking hub emailed "Pay your deposit — £X" while its own banner beside the
+//  button read "Nothing received yet — £Y due" with the full figure.
+//  Dates are DERIVED, never written down (the search-test clock lesson).
+// ============================================================
+$win = payment_balance_days();
+$at = fn($days) => ['check_in' => date('Y-m-d', strtotime(($days >= 0 ? '+' : '-') . abs($days) . ' days'))];
+
+chk("the balance window is a positive number of days ({$win})", $win > 0);
+// Inside the window: whatever is asked for, the answer is pay-in-full.
+chk('booked inside the window → asking for a deposit yields BALANCE', booking_payment_kind($at($win - 5), 'deposit') === 'balance');
+chk('…and the default (no kind given) is BALANCE too', booking_payment_kind($at($win - 5)) === 'balance');
+chk('arriving today → BALANCE', booking_payment_kind($at(0), 'deposit') === 'balance');
+chk('already started → BALANCE', booking_payment_kind($at(-5), 'deposit') === 'balance');
+// Outside it: unchanged — a deposit is still correct, and this is what stops the
+// fix becoming "always charge everything".
+chk('booked well outside the window → a deposit stays a DEPOSIT', booking_payment_kind($at($win + 30), 'deposit') === 'deposit');
+chk('…and an explicit balance request is still honoured', booking_payment_kind($at($win + 30), 'balance') === 'balance');
+// The boundary, asserted from BOTH sides so it can't drift by a day.
+chk("one day inside the boundary (+" . ($win - 1) . ") → BALANCE", booking_payment_kind($at($win - 1), 'deposit') === 'balance');
+chk("exactly on the boundary (+{$win}) → DEPOSIT", booking_payment_kind($at($win), 'deposit') === 'deposit');
+// The legacy card-authorisation flow is not a deposit and must pass through.
+chk("the legacy 'hold' flow is untouched", booking_payment_kind($at(1), 'hold') === 'hold');
+// A booking with no check-in date must not be forced into pay-in-full.
+chk('a booking with no check-in date keeps the requested kind', booking_payment_kind(['check_in' => null], 'deposit') === 'deposit');
+
+// WIRING — the rule is worthless if a call site still decides for itself. These
+// endpoints need a DB to execute, so assert the source routes through the helper;
+// break-tested by restoring the client-trusting line.
+$bk = (string) file_get_contents(__DIR__ . '/bookings.php');
+chk('bookings.php derives the kind from the window, not the client',
+    strpos($bk, 'booking_payment_kind($b, $asked)') !== false);
+chk('…and no longer takes the request kind as final',
+    strpos($bk, "\$kind = (\$in['kind'] ?? 'deposit') === 'balance'") === false);
+$pay = (string) file_get_contents(__DIR__ . '/pay.php');
+chk('pay.php upgrades the kind before pricing the charge',
+    strpos($pay, 'booking_payment_kind($b, $kind)') !== false);
+$enq = (string) file_get_contents(__DIR__ . '/enquiry-actions.php');
+chk('enquiry-actions.php uses the shared rule (one definition, not two)',
+    strpos($enq, 'booking_payment_kind($bk)') !== false
+        && strpos($enq, '$daysToCheckIn < payment_balance_days()') === false);
 
 echo "\n== Summary ==\n";
 if ($fail) {

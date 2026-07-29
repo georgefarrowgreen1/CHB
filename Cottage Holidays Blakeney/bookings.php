@@ -1100,7 +1100,7 @@ if ($action === 'request_payment') {
         json_out(['error' => 'Square payments are not switched on yet (see config.php / Manage).'], 400);
     }
     $id = (int) ($in['id'] ?? 0);
-    $kind = ($in['kind'] ?? 'deposit') === 'balance' ? 'balance' : 'deposit';
+    $asked = ($in['kind'] ?? 'deposit') === 'balance' ? 'balance' : 'deposit';
     $b = booking_by_id($id);
     if (!$b) {
         json_out(['error' => 'Booking not found'], 404);
@@ -1108,12 +1108,28 @@ if ($action === 'request_payment') {
     if (empty($b['email'])) {
         json_out(['error' => 'This booking has no guest email on file.'], 400);
     }
+    // THE WINDOW DECIDES, NOT THE CALLER. `kind` arrived from the client and
+    // defaulted to 'deposit', so a booking made inside the balance window was
+    // emailed "Pay your deposit — £X" for 25% when the whole amount was already
+    // due — while the banner the owner tapped read "Nothing received yet — £Y
+    // due" with the full figure. Same rule enquiry-actions.php applies on
+    // approval; the amount was always server-derived, and now the KIND is too.
+    $kind = booking_payment_kind($b, $asked);
 
     require_once __DIR__ . '/mailer.php';
     $res = request_booking_payment($b, $kind);
     if (!empty($res['ok'])) {
         log_activity('payment', 'payment.request', ucfirst($kind) . ' payment request emailed — ' . ($b['name'] ?? ''), ['prop_key' => $b['prop_key'] ?? '', 'entity' => 'booking', 'entity_id' => (string) $id]);
-        json_out(['ok' => true, 'amount' => $res['amount']]);
+        // Asked for everything now → record it, so payments-due.php's scheduled
+        // balance chase never asks a second time (the same bookkeeping the
+        // approval path does).
+        if ($kind === 'balance') {
+            try {
+                db()->prepare('UPDATE bookings SET balance_requested_at = NOW() WHERE id = ?')->execute([$id]);
+            } catch (\Throwable $e) {
+            }
+        }
+        json_out(['ok' => true, 'amount' => $res['amount'], 'kind' => $kind]);
     }
     json_out(['error' => $res['error'] ?? 'Email failed to send'], 200);
 }
