@@ -379,6 +379,49 @@ $rootDb->exec("INSERT INTO payments (booking_id, kind, amount, status, square_pa
 $kept = (float) ($acctGet(2025)['json']['kept_deposits'] ?? -1);
 it_check('kept damages nets off the return (£250 − £150 = £100)', abs($kept - 100.0) < 0.005, 'kept=' . $kept);
 
+// (e) SAFE TO MOVE, per transaction. The arithmetic is unit-tested in
+// test-sweep.php; what only a real request can prove is the LINKAGE — a deposit
+// rides the guest's FIRST payment (bookings.hold_payment_id), so the later balance
+// payment on the same booking must hold NOTHING back. Get that wrong and the same
+// £75 is ring-fenced twice, which a static scan of the query cannot see.
+$swIn = date('Y-m-d', strtotime('-10 days'));
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, payment_date, hold_status, hold_amount, hold_payment_id) VALUES ('$propKey','Sweep Guest','sw@x.co','$swIn','$swIn',2,0,'paid',1000,1000,1000,0,3,'$swIn','charged',75,'sq_sw_dep')");
+$swId = (int) $rootDb->lastInsertId();
+// £300 rental + the £75 deposit on ONE charge, fee £6.56 → £368.44 settled,
+// £73.69 held back, £294.75 movable (the rental net of its own share of the fee).
+$rootDb->exec("INSERT INTO payments (booking_id, kind, amount, fee, status, square_payment_id, created_at) VALUES ($swId,'deposit',300,6.56,'COMPLETED','sq_sw_dep', DATE_SUB(NOW(), INTERVAL 12 DAY))");
+$swDepTxn = (int) $rootDb->lastInsertId();
+// The later balance: no deposit rode it, so all of it is movable less its fee.
+$rootDb->exec("INSERT INTO payments (booking_id, kind, amount, fee, status, square_payment_id, created_at) VALUES ($swId,'balance',700,12.25,'COMPLETED','sq_sw_bal', DATE_SUB(NOW(), INTERVAL 5 DAY))");
+$swBalTxn = (int) $rootDb->lastInsertId();
+// An OLD charge still holding a deposit — it must not fall off the 90-day window,
+// because money still to go back is the whole point of the list.
+$rootDb->exec("INSERT INTO bookings (prop_key, name, email, check_in, check_out, adults, children, payment, deposit_paid, agreed_total, agreed_nightly, agreed_txn_fee, agreed_nights, payment_date, hold_status, hold_amount, hold_payment_id) VALUES ('$propKey','Old Deposit','od@x.co','2025-04-01','2025-04-04',2,0,'paid',400,400,400,0,3,'2025-04-01','charged',75,'sq_od_dep')");
+$odId = (int) $rootDb->lastInsertId();
+$rootDb->exec("INSERT INTO payments (booking_id, kind, amount, fee, status, square_payment_id, created_at) VALUES ($odId,'deposit',400,8.31,'COMPLETED','sq_od_dep', DATE_SUB(NOW(), INTERVAL 200 DAY))");
+$odTxn = (int) $rootDb->lastInsertId();
+
+$swRep = $acctGet(2026)['json'];
+$swLiab = $swRep['deposit_liability'] ?? null;
+$swTxns = $swLiab['transactions']['items'] ?? [];
+$byTxn = [];
+foreach ($swTxns as $t) {
+    $byTxn[(int) ($t['txn_id'] ?? 0)] = $t;
+}
+it_check('deposit_liability rides the accounts payload (no extra endpoint)', is_array($swLiab) && empty($swLiab['error']), json_encode(array_slice((array) $swLiab, 0, 3)));
+$dep = $byTxn[$swDepTxn] ?? null;
+it_check('the charge that CARRIED the deposit holds £73.69 back', $dep && abs((float) $dep['ringFence'] - 73.69) < 0.02, json_encode($dep));
+it_check('…and reports £294.75 movable — the rental net of its own fee share', $dep && abs((float) $dep['movable'] - 294.75) < 0.02, 'movable=' . ($dep['movable'] ?? '?'));
+$bal = $byTxn[$swBalTxn] ?? null;
+it_check('the LATER balance payment holds nothing back (the deposit is not double-counted)', $bal && abs((float) $bal['ringFence']) < 0.005, json_encode($bal));
+it_check('…so it is movable in full, less its fee (£687.75)', $bal && abs((float) $bal['movable'] - 687.75) < 0.02, 'movable=' . ($bal['movable'] ?? '?'));
+it_check('an old charge still holding a deposit is still listed', isset($byTxn[$odTxn]), 'txn ids: ' . implode(',', array_keys($byTxn)));
+// The aggregate the "keep in the account" figure comes from: two outstanding £75
+// deposits, so the ring fence is their NET, never the gross £150.
+it_check('the ring fence is the deposits NET of their fee share, not the gross',
+    $swLiab && (float) $swLiab['net'] > 140 && (float) $swLiab['net'] < (float) $swLiab['gross'],
+    'net=' . ($swLiab['net'] ?? '?') . ' gross=' . ($swLiab['gross'] ?? '?'));
+
 // ---- 12. set_payment on a LEGACY pre-snapshot booking (finding 10) --------
 echo "\n== 11. set_payment legacy fallback ==\n";
 // A booking with agreed_total NULL (predates the snapshot migration) but real

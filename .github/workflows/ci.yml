@@ -128,6 +128,10 @@ jobs:
         working-directory: "Cottage Holidays Blakeney"
         run: php test-webpush.php
 
+      - name: Safe-to-move arithmetic (deposit clawback vs bank balance)
+        working-directory: "Cottage Holidays Blakeney"
+        run: php test-sweep.php
+
       - name: Request firewall (htaccess injection filter — no false positives, real coverage)
         working-directory: "Cottage Holidays Blakeney"
         run: php test-waf.php

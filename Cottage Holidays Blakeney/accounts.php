@@ -306,9 +306,124 @@ $feesTotal = array_sum(array_map(fn($r) => (float) $r['f'], $feesInYear));
 $keptInYear = array_values(array_filter($keptDays, fn($r) => tax_year_start($r['d']) === $requested));
 $keptTotal = array_sum(array_map(fn($r) => (float) $r['a'], $keptInYear));
 
+// ---- SAFE TO MOVE: the deposits Square will claw back ----------------------
+// Independent of the tax year (held_deposits above is year-filtered, which is the
+// wrong basis for "what is still owed back"): every deposit currently outstanding,
+// whenever it was taken, is money the bank account will lose again.
+//
+// Joined to the charge the deposit RODE so its share of the fee can be worked out
+// (see sweep-lib.php — the ledger row's amount is rental-only while its fee covers
+// rental + deposit). LEFT JOIN because a legacy card-hold deposit, or one whose
+// charge predates the ledger, still has to be counted; sweep_row() then estimates
+// from the observed rate rather than dropping it.
+require_once __DIR__ . '/sweep-lib.php';
+$sweep = ['gross' => 0.0, 'feeBack' => 0.0, 'net' => 0.0, 'count' => 0, 'items' => [], 'rate' => SWEEP_RATE_DEFAULT];
+try {
+    // The rate the account really pays, learned from settled charges. The gross
+    // has to have any deposit that rode the charge ADDED BACK — payments.amount is
+    // rental-only while its fee covers both, so reading amount as the gross biases
+    // the learned rate HIGH on exactly the charges that carry deposits. Included
+    // for 'returned'/'kept' deposits too: the charge did contain the deposit even
+    // if the money has since gone back, and this is history, not a liability.
+    $rateRows = db()
+        ->query("SELECT p.amount + CASE
+                            WHEN b.hold_payment_id = p.square_payment_id
+                             AND b.hold_status IN ('charged','captured','returned','kept')
+                            THEN COALESCE(b.hold_amount, 0) ELSE 0 END AS gross,
+                        p.fee
+                   FROM payments p
+                   LEFT JOIN bookings b ON b.id = p.booking_id
+                  WHERE p.kind IN ('deposit','balance')
+                    AND UPPER(p.status) IN ('COMPLETED','APPROVED','CAPTURED')
+                  ORDER BY p.id DESC LIMIT 200")
+        ->fetchAll();
+    $rate = sweep_observed_rate(array_map(fn($r) => ['gross' => (float) $r['gross'], 'fee' => $r['fee'] === null ? null : (float) $r['fee']], $rateRows));
+
+    $liab = db()
+        ->query("SELECT b.id, b.name, b.prop_key, b.check_out, b.hold_amount, b.hold_status,
+                        p.amount AS charge_rental, p.fee AS charge_fee,
+                        COALESCE((SELECT SUM(r.amount) FROM payments r
+                                  WHERE r.booking_id = b.id AND r.kind = 'damages_return'
+                                    AND (r.status IS NULL OR UPPER(r.status) NOT IN ('FAILED','REJECTED'))), 0) AS returned
+                   FROM bookings b
+                   LEFT JOIN payments p ON p.square_payment_id = b.hold_payment_id
+                  WHERE b.hold_status IN ('charged','captured')
+                    AND COALESCE(b.hold_amount, 0) > 0
+                  ORDER BY b.check_out ASC")
+        ->fetchAll();
+    $items = [];
+    foreach ($liab as $r) {
+        $outstanding = round(max(0, (float) $r['hold_amount'] - (float) $r['returned']), 2);
+        if ($outstanding <= 0) {
+            continue;
+        }
+        $items[] = [
+            'outstanding' => $outstanding,
+            'rental' => (float) ($r['charge_rental'] ?? 0),
+            'fee' => $r['charge_fee'] === null ? null : (float) $r['charge_fee'],
+            'booking_id' => (int) $r['id'],
+            'name' => (string) ($r['name'] ?? ''),
+            'prop_key' => (string) ($r['prop_key'] ?? ''),
+            'check_out' => (string) ($r['check_out'] ?? ''),
+        ];
+    }
+    $sweep = sweep_totals($items, $rate);
+
+    // PER TRANSACTION: the same question asked of each settled charge, because
+    // that is how a Square payout list reads — this £975 landed, £73.69 of it is
+    // going back out, so the rest is mine to move. A charge is matched to the
+    // deposit it CARRIED via bookings.hold_payment_id (pay.php bundles the deposit
+    // with the guest's FIRST payment), so a later balance payment on the same
+    // booking is movable in full rather than double-counting the same deposit.
+    //
+    // Recent charges plus, whenever they were taken, any still holding a deposit —
+    // an old charge with money still to go back is exactly what must not fall off
+    // the end of the list.
+    $txnRows = db()
+        ->query("SELECT p.id, p.amount AS rental, p.fee, DATE(p.created_at) AS paid_on,
+                        p.square_payment_id,
+                        b.id AS booking_id, b.name, b.prop_key,
+                        b.hold_amount, b.hold_status, b.hold_payment_id,
+                        COALESCE((SELECT SUM(r.amount) FROM payments r
+                                  WHERE r.booking_id = b.id AND r.kind = 'damages_return'
+                                    AND (r.status IS NULL OR UPPER(r.status) NOT IN ('FAILED','REJECTED'))), 0) AS returned
+                   FROM payments p
+                   JOIN bookings b ON b.id = p.booking_id
+                  WHERE p.kind IN ('deposit','balance')
+                    AND UPPER(p.status) IN ('COMPLETED','APPROVED','CAPTURED')
+                    AND (p.created_at >= DATE_SUB(CURDATE(), INTERVAL 90 DAY)
+                         OR (b.hold_status IN ('charged','captured') AND COALESCE(b.hold_amount, 0) > 0))
+                  ORDER BY p.created_at DESC, p.id DESC
+                  LIMIT 60")
+        ->fetchAll();
+    $txns = [];
+    foreach ($txnRows as $r) {
+        $carried = (string) ($r['hold_payment_id'] ?? '') !== ''
+            && (string) $r['hold_payment_id'] === (string) $r['square_payment_id']
+            && in_array((string) $r['hold_status'], ['charged', 'captured'], true);
+        $txns[] = [
+            'rental' => (float) $r['rental'],
+            'deposit' => $carried ? (float) ($r['hold_amount'] ?? 0) : 0.0,
+            'returned' => $carried ? (float) $r['returned'] : 0.0,
+            'fee' => $r['fee'] === null ? null : (float) $r['fee'],
+            'txn_id' => (int) $r['id'],
+            'booking_id' => (int) $r['booking_id'],
+            'name' => (string) ($r['name'] ?? ''),
+            'prop_key' => (string) ($r['prop_key'] ?? ''),
+            'paid_on' => (string) ($r['paid_on'] ?? ''),
+        ];
+    }
+    $sweep['transactions'] = sweep_txn_totals($txns, $rate);
+} catch (\Throwable $e) {
+    // Never let this break Income & tax — an empty liability is reported as
+    // 'unknown' by the client rather than as a confident £0.
+    $sweep['error'] = true;
+}
+
 json_out([
     'year' => $requested,
     'years' => $yearList,
+    'deposit_liability' => $sweep,
     'total' => round($incomeTotal, 2), // rental income only (gross of card fees)
     'held_deposits' => round($heldTotal, 2), // refundable, held — NOT income
     'card_fees' => round($feesTotal, 2), // kept by Square — auto-deducted cost

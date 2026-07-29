@@ -375,6 +375,7 @@ function cmdkActions(q) {
         A('fixsafe', 'Fix safe issues', 'Auto-repair harmless state drift', 'fix repair safe issues self repair drift problems clean tidy resolve maintenance', /(fix|repair|resolve|clean up|tidy).{0,12}(safe|issue|problem|drift|error|thing)|self.?repair/, () => { closeCmdK(); if (typeof runSelfRepair === 'function') runSelfRepair(); }),
         A('filterboard', `Filter the ${{ 'view-inbox': 'Inbox', 'view-accounts': 'Payments' }[typeof cmdkActiveWorkspace === 'function' ? cmdkActiveWorkspace() : ''] || 'Today'} board`, 'Dim everything on this screen that doesn’t match', 'filter today inbox payments board dim narrow highlight only show find on screen calendar timeline bookings enquiries emails expenses', /filter.{0,10}(today|inbox|payment|board|screen|calendar|timeline|booking|enquir|email|expense)|(dim|narrow|only ?show).{0,10}(board|today|inbox|payment|match)/, () => { const el = document.getElementById('cmdk-input'); const term = ((el ? el.value : '') || '').toLowerCase().replace(/\b(filter|the|today|inbox|payments?|board|screen|calendar|timeline|bookings?|enquir(y|ies)|emails?|expenses?|for|by|only|show|dim|narrow)\b/g, '').replace(/\s+/g, ' ').trim(); applyTodayFilter(term); }),
         A('income', 'Income & tax', 'Totals, VAT position & the accountant CSV', 'income tax vat revenue takings earnings accounts total figures accountant year', /\b(income|tax|vat|revenues?|takings|earnings|accounts?|figures)\b.{0,10}(total|report|year|summary|view|show)?|\bview\b.{0,8}\b(income|accounts|tax)\b/, () => cmdkOpenAccounts('income')),
+        A('sweep', 'Move money out', 'What you can transfer without leaving the account short', 'move money out transfer withdraw sweep safe balance take out bank account how much can i deposits owed back clawback', /(move|transfer|withdraw|take|sweep|pull).{0,14}(money|funds|cash|out|across|over)|how much.{0,16}(can i|safe|move|transfer|withdraw|take out)|safe to (move|transfer|withdraw|take)|(leave|keep).{0,12}in the account/, () => cmdkOpenAccounts('sweep')),
         A('recentpay', 'Recent payments', 'The latest money in', 'recent payments latest money in received takings feed transactions', /(recent|latest|last).{0,10}(payment|money|takings|transaction)|money in/, () => cmdkOpenAccounts('recent')),
         A('pricingcoach', 'Pricing coach', 'Rate suggestions & demand signals', 'pricing coach rate suggestion demand advice optimise revenue yield recommend', /(pricing|rate).{0,10}(coach|advice|suggestion|help|recommend|optimi)|coach/, () => cmdkOpenAccounts('pricingcoach')),
         A('theme',
@@ -11517,6 +11518,7 @@ const ACCOUNTS_TITLES = {
     recent: 'Recent payments',
     income: 'Income & tax',
     expenses: 'Expenses',
+    sweep: 'Move money out',
     pricingcoach: 'Pricing coach',
 };
 function expensesForYear(startYear) {
@@ -11563,6 +11565,8 @@ function accountsOpen(section) {
             renderAccounts();
         } else if (section === 'expenses') {
             renderExpenses();
+        } else if (section === 'sweep') {
+            renderSweep();
         } else if (section === 'pricingcoach') {
             renderPricingCoach();
         }
@@ -11924,6 +11928,132 @@ function toggleReceiptDetail(id) {
         el.style.display = 'none';
     }
 }
+// ---- MOVE MONEY OUT -------------------------------------------------------
+// Some of the Square account's balance is not the owner's to move: a damage
+// deposit gets direct-debited back out later. sweep-lib.php owns the arithmetic
+// and the reasoning; this only formats accounts.php's deposit_liability.
+// The BALANCE is typed in and deliberately NOT stored: there is no bank feed, and
+// a remembered balance would be stale the moment it was saved — a wrong number
+// here moves real money.
+let __sweepBalance = '';
+let __sweepBuffer = '';
+let __sweepLiab = null; // cached: typing a balance must not re-query the server
+async function renderSweep(refetch) {
+    const box = document.getElementById('sweep-body');
+    if (!box) return;
+    if (refetch !== false) __sweepLiab = null;
+    if (!__sweepLiab) {
+        box.innerHTML = `<p style="font-size:0.85rem;color:var(--text-muted);">Working out what Square will claw back…</p>`;
+        try {
+            const rep = await apiGet('accounts.php?year=' + encodeURIComponent(taxYearStartOf(todayDashed())));
+            __sweepLiab = rep.deposit_liability || { error: true };
+        } catch (e) {
+            box.innerHTML = `<div class="accounts-empty">Couldn't load: ${escapeHtml(e.message)}</div>`;
+            return;
+        }
+    }
+    const L = __sweepLiab;
+    if (!L || L.error) {
+        // An empty liability is NOT the same as "nothing owed" — say so rather than
+        // showing a confident £0 that could be a failed query.
+        box.innerHTML = `<div class="accounts-empty">Couldn't work out the deposits still owed back, so there's no safe figure to give you. Try again in a moment.</div>`;
+        return;
+    }
+    const gbp = (n) => '£' + Number(n || 0).toFixed(2);
+    const bal = parseFloat(__sweepBalance);
+    const buf = parseFloat(__sweepBuffer) || 0;
+    const hasBal = !isNaN(bal) && __sweepBalance !== '';
+    const ring = Number(L.net || 0) + buf;
+    const safe = hasBal ? Math.max(0, bal - ring) : null;
+    const short = hasBal ? Math.max(0, ring - bal) : 0;
+
+    const rows = (L.items || [])
+        .map(
+            (it) =>
+                `<div class="act-row" style="justify-content:space-between;gap:10px;">
+                    <span>${escapeHtml(it.name || 'Guest')}${it.prop_key && propertyMeta[it.prop_key] ? ` · ${escapeHtml(propertyMeta[it.prop_key].short)}` : ''}${it.check_out ? ` · left ${fmtDate(it.check_out)}` : ''}</span>
+                    <span style="white-space:nowrap;">${gbp(it.net)}</span>
+                </div>`,
+        )
+        .join('');
+
+    // PER TRANSACTION. The aggregate above says what must stay in the account; this
+    // says it charge by charge, the way a Square payout list reads. A charge that
+    // carried a deposit names what is held back from it; every other charge is
+    // movable in full, less Square's fee. The movable TOTAL is of these payments,
+    // NOT of the account — older money, expenses and payouts are not in it, which
+    // is why the balance field below stays the authoritative answer.
+    const T = L.transactions || null;
+    const txRows = ((T && T.items) || [])
+        .map((it) => {
+            const who = escapeHtml(it.name || 'Guest') + (it.prop_key && propertyMeta[it.prop_key] ? ` · ${escapeHtml(propertyMeta[it.prop_key].short)}` : '');
+            const held = Number(it.ringFence || 0);
+            return `<div class="act-row" style="display:block;">
+                <div style="display:flex;justify-content:space-between;gap:10px;align-items:baseline;">
+                    <span>${who}${it.paid_on ? ` · ${fmtDate(it.paid_on)}` : ''}</span>
+                    <span style="white-space:nowrap;font-weight:600;${held > 0 ? '' : `color:var(--ok-text);`}">${gbp(it.movable)}</span>
+                </div>
+                <div style="font-size:0.78rem;color:var(--text-muted);margin-top:2px;">
+                    ${gbp(it.settled)} settled${held > 0 ? ` · ${gbp(held)} held back for the deposit` : ' · nothing held back'}
+                </div>
+            </div>`;
+        })
+        .join('');
+
+    box.innerHTML =
+        `<div class="accounts-stat" style="max-width:620px;">
+            <div class="label">Keep in the account</div>
+            <div style="font-family:var(--font-display);font-size:1.9rem;margin:4px 0 2px;">${gbp(L.net)}</div>
+            <p style="font-size:0.85rem;color:var(--text-muted);margin:0;">
+                ${L.count === 0
+                    ? 'No deposits are waiting to go back, so nothing has to stay behind for Square.'
+                    : `${L.count} damage deposit${L.count === 1 ? '' : 's'} still to return. Square will debit ${gbp(L.gross)} and credit back ${gbp(L.feeBack)} of its fee at the same time, so ${gbp(L.net)} is what actually leaves.`}
+            </p>
+        </div>` +
+        (L.count
+            ? `<div class="accounts-stat" style="max-width:620px;margin-top:14px;">
+                <div class="label">Deposits still to return</div>
+                <div style="margin-top:6px;">${rows}</div>
+               </div>`
+            : '') +
+        (T && T.count
+            ? `<div class="accounts-stat" style="max-width:620px;margin-top:14px;">
+                <div class="label">Movable, payment by payment</div>
+                <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 10px;">Each charge after Square's fee, less any damage deposit that's going back out of it.</p>
+                <div>${txRows}</div>
+                <div class="act-row" style="justify-content:space-between;gap:10px;border-top:1px solid var(--glass-border);margin-top:6px;">
+                    <span><strong>Movable from these ${T.count} payment${T.count === 1 ? '' : 's'}</strong></span>
+                    <span style="white-space:nowrap;font-family:var(--font-display);font-size:1.15rem;">${gbp(T.movable)}</span>
+                </div>
+                <p style="font-size:0.78rem;color:var(--text-muted);margin:8px 0 0;">Recent charges, plus any older one still holding a deposit. This is what those payments brought in — not the account balance, which also holds older money and whatever you've already moved or spent.</p>
+               </div>`
+            : '') +
+        `<div class="accounts-stat" style="max-width:620px;margin-top:14px;">
+            <div class="label">How much can I move?</div>
+            <p style="font-size:0.85rem;color:var(--text-muted);margin:6px 0 12px;">Type what the account holds right now. Nothing is saved — there's no bank feed, and a remembered balance would be out of date the moment it was stored.</p>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;">
+                <label style="flex:1;min-width:150px;"><span style="display:block;font-size:0.75rem;color:var(--text-muted);margin-bottom:4px;">Balance now</span>
+                    <input type="number" inputmode="decimal" step="0.01" min="0" class="input-glass field-sm" id="sweep-balance" value="${escapeHtml(__sweepBalance)}" placeholder="0.00" style="margin:0;" ${chbChange('sweepSet', 'balance', CHB_VALUE)}></label>
+                <label style="flex:1;min-width:150px;"><span style="display:block;font-size:0.75rem;color:var(--text-muted);margin-bottom:4px;">Extra cushion (optional)</span>
+                    <input type="number" inputmode="decimal" step="0.01" min="0" class="input-glass field-sm" id="sweep-buffer" value="${escapeHtml(__sweepBuffer)}" placeholder="0.00" style="margin:0;" ${chbChange('sweepSet', 'buffer', CHB_VALUE)}></label>
+            </div>
+            ${!hasBal
+                ? `<p style="font-size:0.85rem;color:var(--text-muted);margin:14px 0 0;">Enter the balance and I'll tell you what's safe to move.</p>`
+                : short > 0
+                  ? `<p style="margin:14px 0 0;color:var(--danger);font-size:0.9rem;"><strong>Don't move anything yet.</strong> The account is ${gbp(short)} short of what the deposits will take — top it up before the next refund goes out.</p>`
+                  : `<div style="margin:14px 0 0;">
+                        <div class="label">Safe to move</div>
+                        <div style="font-family:var(--font-display);font-size:1.9rem;margin:4px 0 2px;color:var(--ok-text);">${gbp(safe)}</div>
+                        <p style="font-size:0.85rem;color:var(--text-muted);margin:0;">Leaves ${gbp(ring)} behind${buf > 0 ? ` (${gbp(L.net)} for deposits plus your ${gbp(buf)} cushion)` : ' for the deposits still to return'}.</p>
+                     </div>`}
+        </div>`;
+}
+function sweepSet(which, value) {
+    if (which === 'balance') __sweepBalance = String(value || '');
+    else __sweepBuffer = String(value || '');
+    renderSweep(false); // recompute from the cached liability — no round trip
+}
+
 function renderExpenses() {
     const wrap = document.getElementById('expenses-body');
     if (!wrap) return;

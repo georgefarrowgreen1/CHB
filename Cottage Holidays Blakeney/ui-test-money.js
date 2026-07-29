@@ -34,6 +34,11 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     mk(3, { name: 'Left Deposit', email: 'left@gmail.com', check_in: d(-6), check_out: d(-3), payment: 'paid', deposit_paid: 540, payment_method: 'Card', payment_date: d(-30), hold_status: 'charged', hold_amount: 100 }),
   ];
   const posts = [];
+  // §7 drives the "Move money out" screen off the SAME accounts.php payload the
+  // income screen uses, so the stub carries deposit_liability only when a case
+  // wants it — absent is the failed-query state, which must not read as £0.
+  let sweepStub = null;
+  let acctGets = 0;
   await page.route(/\.php/, (route) => {
     const url = route.request().url();
     const json = (o) => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(o) });
@@ -54,9 +59,11 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     }
     if (url.includes('bookings.php')) return json({ bookings: rows });
     if (url.includes('accounts.php')) {
+      acctGets++;
       // Year report: £656.20 received, £9.80 of Square fees (kept by the
       // processor, so deducted from profit), one Q2 card payment.
       if (/[?&]year=\d/.test(url)) return json({
+        ...(sweepStub ? { deposit_liability: sweepStub } : {}),
         year: 2026, years: [2026, 2025], total: 656.20, held_deposits: 0,
         card_fees: 9.80, fee_days: [{ date: '2026-07-15', fee: 9.80 }],
         kept_deposits: 50.00, kept_days: [{ date: '2026-08-15', amount: 50.00 }],
@@ -317,6 +324,101 @@ const d = (n) => { const t = new Date(); const x = new Date(t.getFullYear(), t.g
     return { hasOta: /booking platform/i.test(t) };
   });
   ok(!scope3.hasOta, 'an owner block is not a platform booking, so no such caveat');
+
+  // ---- 7. Move money out: what's safe to transfer off the Square account ----
+  // The arithmetic is gated by test-sweep.php; this is the half a unit test can't
+  // see — that the figure reaches the screen, that a typed balance turns into an
+  // answer, and that a failed liability query says so rather than showing a
+  // confident £0 (which would invite the owner to move money they don't have).
+  console.log('7. move money out');
+  const sweepText = async () => (await page.evaluate(() => (document.getElementById('sweep-body') || {}).textContent || '')).replace(/\s+/g, ' ');
+
+  sweepStub = null;
+  // openAccounts() NAVIGATES; accountsOpen() alone only swaps the panel, and the
+  // earlier sections left view-accounts hidden — textContent still reads out of a
+  // hidden view, so a fill() would be the first thing to notice.
+  await page.evaluate(() => openAccounts());
+  await page.waitForTimeout(600);
+  await page.evaluate(() => accountsOpen('sweep'));
+  await page.waitForTimeout(500);
+  const s0 = await sweepText();
+  ok(/Couldn't work out/i.test(s0) && !/£0\.00/.test(s0), 'a failed liability reads as unknown, never a confident £0');
+
+  // Two outstanding deposits: £150 debited, £2.62 of fee credited back with them,
+  // so £147.38 is the cash that really leaves and has to stay behind.
+  sweepStub = {
+    gross: 150, feeBack: 2.62, net: 147.38, count: 2, rate: 0.0175,
+    items: [
+      { outstanding: 75, gross: 75, feeBack: 1.31, net: 73.69, name: 'Sarah Pemberton', prop_key: '21a', check_out: d(-4) },
+      { outstanding: 75, gross: 75, feeBack: 1.31, net: 73.69, name: 'Dan Rowe', prop_key: '21a', check_out: d(-2) },
+    ],
+  };
+  await page.evaluate(() => renderSweep());
+  await page.waitForTimeout(500);
+  const s1 = await sweepText();
+  ok(/Keep in the account/i.test(s1) && /£147\.38/.test(s1), `the ring fence is the NET figure (${s1.slice(0, 90)})`);
+  ok(/£150\.00/.test(s1) && /£2\.62/.test(s1), 'and the gross debit + fee credit are both shown, so the number can be checked');
+  ok(/Sarah Pemberton/.test(s1) && /Dan Rowe/.test(s1), 'the deposits it is holding back for are named');
+  ok(/Enter the balance/.test(s1) && !/Leaves £/.test(s1), 'with no balance typed it does not invent a safe figure');
+
+  // PER TRANSACTION: the movable figure for each charge, and the total. The
+  // arithmetic is test-sweep's; what this proves is that the per-charge figure and
+  // the total reach the screen, and that a charge carrying no deposit says so
+  // rather than silently showing the same number as one that does.
+  sweepStub = {
+    gross: 150, feeBack: 2.62, net: 147.38, count: 2, rate: 0.0175,
+    items: (sweepStub.items || []),
+    transactions: {
+      settled: 1056.19, ringFence: 73.69, movable: 982.50, count: 2,
+      items: [
+        { txn_id: 11, rental: 300, deposit: 75, returned: 0, fee: 6.56, gross: 375, settled: 368.44, alreadyOut: 0, ringFence: 73.69, movable: 294.75, name: 'Sarah Pemberton', prop_key: '21a', paid_on: d(-12) },
+        { txn_id: 12, rental: 700, deposit: 0, returned: 0, fee: 12.25, gross: 700, settled: 687.75, alreadyOut: 0, ringFence: 0, movable: 687.75, name: 'Sarah Pemberton', prop_key: '21a', paid_on: d(-5) },
+      ],
+    },
+  };
+  await page.evaluate(() => renderSweep());
+  await page.waitForTimeout(500);
+  const s1b = await sweepText();
+  ok(/£294\.75/.test(s1b) && /£687\.75/.test(s1b), `each charge reports its own movable figure (${s1b.slice(0, 60)})`);
+  ok(/£368\.44 settled/.test(s1b) && /£73\.69 held back/.test(s1b), 'a charge carrying a deposit shows what settled and what is held back');
+  ok(/nothing held back/.test(s1b), 'a charge carrying no deposit says so, rather than looking identical');
+  ok(/£982\.50/.test(s1b) && /Movable from these 2 payments/.test(s1b), 'the movable total is stated for the set');
+  ok(/not the account balance/i.test(s1b), 'and it does not claim to be the account balance');
+
+  // Typing the balance must answer WITHOUT another round trip — the liability is
+  // cached, so a keystroke can't cost a request.
+  const getsBefore = acctGets;
+  await page.fill('#sweep-balance', '2000');
+  await page.locator('#sweep-balance').press('Tab');
+  await page.waitForTimeout(400);
+  const s2 = await sweepText();
+  ok(/Safe to move/.test(s2) && /£1,?852\.62/.test(s2) && /Leaves £147\.38 behind/.test(s2), `£2000 balance − £147.38 = £1852.62 safe (${s2.slice(-140)})`);
+  ok(acctGets === getsBefore, `typing the balance costs no request (${acctGets - getsBefore})`);
+
+  await page.fill('#sweep-buffer', '250');
+  await page.locator('#sweep-buffer').press('Tab');
+  await page.waitForTimeout(400);
+  const s3 = await sweepText();
+  ok(/£1,?602\.62/.test(s3), 'a chosen cushion comes off what is safe to move');
+  ok(/£250\.00/.test(s3), 'and the cushion is stated in the "leaves behind" sentence');
+
+  // Already below the ring fence: the actionable number is the SHORTFALL, and
+  // "safe to move £0" must not appear beside it.
+  await page.fill('#sweep-buffer', '0');
+  await page.locator('#sweep-buffer').press('Tab');
+  await page.fill('#sweep-balance', '100');
+  await page.locator('#sweep-balance').press('Tab');
+  await page.waitForTimeout(400);
+  const s4 = await sweepText();
+  ok(/£47\.38 short/i.test(s4), `an account below the ring fence reports the shortfall (${s4.slice(-120)})`);
+  ok(!/Safe to move/.test(s4) && !/Leaves £/.test(s4), 'and never offers a figure to move out of it');
+
+  // Nothing outstanding is a real, calm state — not an error.
+  sweepStub = { gross: 0, feeBack: 0, net: 0, count: 0, rate: 0.0175, items: [] };
+  await page.evaluate(() => renderSweep());
+  await page.waitForTimeout(500);
+  const s5 = await sweepText();
+  ok(/nothing has to stay behind/i.test(s5) && !/Couldn't work out/i.test(s5), 'no deposits outstanding says so plainly');
 
   console.log(fails ? `MONEY CHECK FAILED ❌ (${fails})` : 'MONEY CHECK PASSED ✅');
   await done(fails);

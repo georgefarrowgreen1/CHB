@@ -1129,9 +1129,19 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   // `animation` shorthand to cancel cmdkRise (the drop replaces it) and took
   // cmdkSiriAura with it, so the assistant's breathing glow — documented as part of
   // its look — had rendered on no surface at all since the pop-out landed. Asserted
-  // on the PAINT (does the box-shadow actually change over a second and a half),
-  // not just on the animation-name, because a named animation whose keyframes never
-  // reach the element is exactly the failure this is here to catch.
+  // on the PAINT (does the box-shadow the keyframes name actually reach the
+  // element), not just on the animation-name, because a named animation whose
+  // keyframes never land is exactly the failure this is here to catch.
+  //
+  // It SEEKS the animation rather than racing it. Sampling twice 1.5s apart is
+  // what this did first, and it flaked on CI: `0%, 100%` is a plateau and
+  // ease-in-out is slow at both ends, so two samples can land in the same slow
+  // zone and round to the same string — and any re-render that restarts the
+  // animation between them makes that likely rather than unlucky. A NEGATIVE
+  // animation-delay (inline, so it out-ranks the stylesheet's shorthand) jumps
+  // straight to a phase: 0s is the 0% keyframe, -3s is the 50% one, read a
+  // millisecond apart, no clock involved. A blanked animation seeks nowhere, so
+  // the check still fails for the reason it was written.
   const aura = await page.evaluate(async () => {
     try { closeCmdK(); } catch (e) {}
     openCmdK();
@@ -1139,10 +1149,12 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
     const box = document.querySelector('#cmdk .cmdk-box');
     if (!box) return null;
     const name = getComputedStyle(box).animationName;
+    box.style.animationDelay = '0s';
     const a = getComputedStyle(box).boxShadow;
-    await new Promise((r) => setTimeout(r, 1500));
+    box.style.animationDelay = '-3s'; // half of the 6s cycle — the other keyframe
     const b = getComputedStyle(box).boxShadow;
-    return { name, changed: a !== b };
+    box.style.animationDelay = '';
+    return { name, changed: a !== b, a, b };
   });
   ok(!!aura && /cmdkSiriAura/.test(aura.name), `MOTION: the search card carries its Siri aura (${aura && aura.name})`);
   ok(!!aura && aura.changed, 'MOTION: …and it actually breathes — the painted shadow moves');

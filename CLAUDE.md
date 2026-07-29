@@ -1134,6 +1134,19 @@ transition's wall-clock while the thread is blocked, so on a slow run no mid-fli
 frame ever paints and the rAF poll alone called a working exit a teleport (~1-in-4
 flake, measured); a real exit dispatches transitionrun/transitionend for the box's
 opacity even then, while a genuinely deleted transition dispatches neither.
+**§17a's sibling flake, and the better answer: SEEK the animation, don't race it.**
+The Siri-aura check read `box-shadow` twice 1.5s apart and asserted it had moved —
+which flaked green-then-red on CI, because `cmdkSiriAura`'s `0%, 100%` is a PLATEAU
+and `ease-in-out` is slow at both ends, so two samples can land in the same slow
+zone and round to the same string (and any re-render that restarts the animation
+between them makes that likely rather than unlucky). It now sets an INLINE negative
+`animation-delay` — `0s` for the 0% keyframe, `-3s` for the 50% one at the halfway
+point of the 6s cycle — and reads both a millisecond apart: no clock, no frames.
+Inline wins over the stylesheet's `animation` shorthand, which is what makes the
+seek stick. Still fails for the reason it was written (break-tested both ways): a
+blanked animation seeks nowhere, and keyframes that never move the shadow leave the
+NAME check passing while the PAINT check fails, which is exactly the bug it guards.
+General rule for a keyframe assertion: sample by PHASE, never by wall clock.
 
 **Owner's picks** — the habit/trust/revenue layer. (1) **Teach-loop nudges**: the synced
 dead-end searches (`search-misses` in the content table) surface BOTH in the weekly digest
@@ -1660,6 +1673,58 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   `isOtaBlock` (excludes `source:'owner'` blocks, which aren't bookings). Gated by
   ui-test-money §6. NB `dbBlocks` is `const` in app.js — a test must MUTATE it, not
   reassign it, or the assignment throws and the case silently proves nothing.
+- **HOW MUCH OF THE SQUARE BALANCE IS ACTUALLY THE OWNER'S** (Payments → "Move
+  money out", `asec-sweep`/`renderSweep`; arithmetic in **`sweep-lib.php`**, gated by
+  **`test-sweep.php`** + ui-test-money §7 + a11y/layout scenes). Square settles into
+  one bank account and LATER direct-debits it again when a damage deposit is
+  refunded, crediting back the fee on that portion at the same time — so the cash
+  that LEAVES on a refund is the same net figure that ARRIVED for that deposit, and
+  the ring fence is **deposit − its share of the fee**. Ring-fence the gross and
+  money sits idle; ring-fence nothing and the account goes short.
+  **WHY A FEE SHARE AND NOT THE FEE.** pay.php charges rental + deposit as ONE
+  Square payment but records the RENTAL only in `payments.amount` (the deposit
+  lives on `hold_*`), so the stored `fee` belongs to a bigger gross than the row it
+  sits on. Measured on the canonical case — £900 + £75 charged together, £17.06 fee
+  — the deposit's share is £1.31 and £73.69 really leaves; using the fee as-is
+  ring-fences £57.94 and leaves the account **£15.75 short per deposit**. The rate
+  is OBSERVED from the last 200 settled charges (clamped 0.5–5%, default 1.75%) so
+  it follows a Square rate change with no edit, and an unsettled charge (`fee` NULL
+  for a day or two) is estimated from it rather than assumed fee-free.
+  Four judgements worth keeping: the liability is deliberately **NOT tax-year
+  filtered** (unlike `held_deposits` right above it in accounts.php — "what is
+  still owed back" has no year), it rides the payload Income & tax already fetches
+  so the screen costs no extra round trip, a failed query sets `error` and the
+  screen says **"couldn't work out"** rather than a confident £0 that would invite
+  moving money that isn't there, and an account already below the ring fence
+  reports the **SHORTFALL** instead of "safe to move: £0". The BALANCE is typed in
+  and deliberately never stored — there is no bank feed and a remembered balance is
+  stale the moment it is saved — but the liability IS cached, so a keystroke costs
+  no request (gated). NB the returns subquery is case-folded (`UPPER(r.status)`)
+  like the file's other two ledger queries: a lowercase `'failed'` counting as
+  already returned would understate the ring fence, the expensive direction.
+  **PER TRANSACTION** (`sweep_txn`/`sweep_txn_totals`, `deposit_liability.transactions`)
+  — the same question asked of each settled charge, because that is how a Square
+  payout list reads: this £975 landed, £73.69 of it is going back out, so the rest is
+  the owner's. The identity that makes it simple, asserted in the gate: **movable is
+  always the RENTAL portion net of its own share of the fee**, since every penny of
+  the deposit either has left already (`alreadyOut`) or is still to (`ringFence`) — so
+  a charge carrying no deposit needs no special case, it is just movable in full less
+  the fee. The one hazard is the LINKAGE: a deposit rides the guest's FIRST payment
+  (`bookings.hold_payment_id` = `payments.square_payment_id`), so a later balance
+  payment on the same booking must hold NOTHING back or the same £75 is ring-fenced
+  twice. That is runtime PHP a static scan cannot see — **test-integration §10(e) is
+  where it is really gated** (break-tested: forcing `$carried = true` fails it), and
+  the query's window is `recent OR still holding a deposit`, because an old charge
+  with money still to go back is exactly what must not fall off the end. The movable
+  TOTAL is of those payments and says so on screen — it is NOT the account balance,
+  which also holds older money and whatever has already been moved or spent, so the
+  typed-balance answer stays the authoritative one. Note the deposits list and the
+  transactions list overlap but are not redundant: a deposit whose carrying charge
+  predates the ledger has no `payments` row and appears only in the former.
+  The observed rate now adds any deposit that rode a charge BACK into its gross
+  (`payments.amount` is rental-only while its fee covers both), because reading
+  `amount` as the gross biased the learned rate HIGH on exactly the charges that
+  carry deposits.
 - **THE STATUS PAGE HAS A WAY IN.** `/status` had no link anywhere in the app —
   the one page you want when something looks wrong could only be reached by
   typing the URL. It is now a card in Manage → System check and a footer link,
