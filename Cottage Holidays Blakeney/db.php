@@ -668,6 +668,11 @@ function is_internal_content_key($key)
         return true; // the owner's reversible changes (chbUndoPush) — their own
                      // history, naming cottages and rates; never public
     }
+    if ($key === 'sweep-balance') {
+        return true; // what the owner's bank account held, and when they said so
+                     // (payouts_balance_estimate rolls it forward). Their money;
+                     // never on the anonymous content GET.
+    }
     if ($key === 'square-payouts') {
         return true; // the cached Square payout ledger (payouts-lib.php) — what has
                      // reached the owner's bank and when. Machinery, and it names

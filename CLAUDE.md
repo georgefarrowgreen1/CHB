@@ -1725,6 +1725,58 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   (`payments.amount` is rental-only while its fee covers both), because reading
   `amount` as the gross biased the learned rate HIGH on exactly the charges that
   carry deposits.
+  **THE SAME BUG ON THE WAY OUT, AND ITS FIX** (`sweep_outstanding`, gated by
+  test-sweep + test-integration §10(f)). `return_deposit` marks `hold_status='returned'`
+  the moment a refund is ISSUED — but Square's refund starts PENDING and the bank debit
+  lands a day or two later, which is why `reconcile_pending_refunds()` exists. So
+  "returned" does NOT mean "gone", and the liability query dropped the money out of the
+  ring fence while it was still in the account: refund £73.92, be told £73.92 more is
+  movable, go short on Thursday. A return now only reduces the liability once it has
+  SETTLED (`COMPLETED`, or `MANUAL` — booked by hand is settled by definition); a
+  NULL/unrecognised status counts as PENDING, because unknown must not be promoted to
+  gone on a money screen. The one thing that must not happen is fencing money FOR EVER
+  on a row nobody will confirm — the owner could never clear it — so a pending return
+  older than 14 days is assumed landed (`ret_stale`). NB where that column actually
+  bites is a booking still `charged` with an old unconfirmed PARTIAL return: for an
+  already-`returned` booking the WHERE clause decides it, which is why the first
+  integration break-test for it did not fire and a second fixture was added.
+  **UNKNOWN IS ITS OWN ANSWER.** `payouts_landed` returns true/false/**null** — an
+  unrecognised status, a missing or malformed `arrival_date`, a charge absent from the
+  payout data. Null money gets its own figure ("Square hasn't said · not counted as
+  movable") rather than being rounded into movable (which invites moving it) or into
+  on-its-way (which invents a date). A FAILED payout sits there too — and separately
+  becomes a **DUTY**, because bad bank details stop every later transfer; it and the
+  disputed total ride `admin-bootstrap.php`'s payload (the `$feeds` precedent), so
+  neither costs a request of its own.
+  **MONEY UNDER DISPUTE IS FENCED** beside the deposits (`payouts_disputes_open`, open
+  states only: WON kept the money, LOST/ACCEPTED already took it, so fencing either
+  holds the same money back twice). A dispute read that FAILS says so and states that
+  nothing disputed is included — never reading as "none".
+  **LIVE, NOT NIGHTLY.** `payout.sent`/`payout.paid`/`payout.failed` (and `dispute.*`)
+  webhooks refresh the cache, plus the daily cron and an explicit "Check Square now".
+  NB adding those events makes an EXISTING install report as not-connected until
+  "Connect automatic payment updates" is re-run — the intended prompt, since the
+  subscription genuinely lacks them.
+  **THE BALANCE IS DATED, NOT REMEMBERED.** There is no bank feed, so a bare stored
+  figure would be stale — but "£2,000 on Tuesday" plus what Square has paid in and
+  taken back since is a RUNNING figure with its basis stated
+  (`payouts_balance_estimate`; internal key **`sweep-balance`**, written through the
+  ordinary content save, so no new endpoint). It refuses to roll a balance older than
+  30 days forward, counts only movements strictly AFTER the stated instant, never
+  counts a FAILED payout as arrived, and is always labelled an ESTIMATE with a
+  correct-it field. `__sweepBalTouched` stops a re-render overwriting what the owner is
+  mid-way through typing.
+  Also: **`payouts_money()` refuses a non-GBP amount** rather than mixing currencies (a
+  foreign fee reads as unknown, not wrong); payout-level transfer fees (instant
+  deposits) are reported, never apportioned per charge; the 90-day/30-payout caps are
+  declared on screen (the no-silent-caps rule); and search ANSWERS "how much can I move
+  out" in the window (`CHB_SWEEP_Q` → `cmdkSweepMerge`, stamp-guarded like
+  `cmdkPricingMerge`) instead of linking to the screen that holds the answer.
+  **`payouts_refresh()` IS DRIVEN FOR REAL IN CI** — test-payouts stubs `square_api`,
+  `square_enabled`, `content_value` and `content_set_scalar` BEFORE the require, so the
+  code that EXTRACTS Square's response shape is exercised with no network. That was the
+  one untested part, and its failure mode is silent: wrong nesting → empty map → every
+  row reads "Square hasn't said", which looks like a legitimate state.
   **HAS IT ACTUALLY REACHED THE BANK?** (**`payouts-lib.php`**, gated by
   **`test-payouts.php`** + ui-test-money §7.) sweep-lib works out how much of a
   charge is the owner's; it cannot know WHEN it arrives. Square settles a charge and

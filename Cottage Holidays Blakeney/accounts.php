@@ -339,26 +339,48 @@ try {
         ->fetchAll();
     $rate = sweep_observed_rate(array_map(fn($r) => ['gross' => (float) $r['gross'], 'fee' => $r['fee'] === null ? null : (float) $r['fee']], $rateRows));
 
+    // A return only reduces the liability once it has SETTLED — see sweep_outstanding().
+    // 'MANUAL' is a return booked by hand (cash/transfer), which is settled by
+    // definition. A NULL/unrecognised status counts as PENDING, i.e. still fenced:
+    // unknown must not be promoted to gone on a money screen. The 14-day line stops
+    // a row nobody will ever confirm from fencing money forever.
     $liab = db()
         ->query("SELECT b.id, b.name, b.prop_key, b.check_out, b.hold_amount, b.hold_status,
-                        p.amount AS charge_rental, p.fee AS charge_fee,
+                        p.amount AS charge_rental, p.fee AS charge_fee, p.square_payment_id,
                         COALESCE((SELECT SUM(r.amount) FROM payments r
                                   WHERE r.booking_id = b.id AND r.kind = 'damages_return'
-                                    AND (r.status IS NULL OR UPPER(r.status) NOT IN ('FAILED','REJECTED'))), 0) AS returned
+                                    AND UPPER(COALESCE(r.status,'')) IN ('COMPLETED','MANUAL')), 0) AS ret_settled,
+                        COALESCE((SELECT SUM(r.amount) FROM payments r
+                                  WHERE r.booking_id = b.id AND r.kind = 'damages_return'
+                                    AND UPPER(COALESCE(r.status,'')) NOT IN ('COMPLETED','MANUAL','FAILED','REJECTED')
+                                    AND r.created_at >= DATE_SUB(NOW(), INTERVAL 14 DAY)), 0) AS ret_pending,
+                        COALESCE((SELECT SUM(r.amount) FROM payments r
+                                  WHERE r.booking_id = b.id AND r.kind = 'damages_return'
+                                    AND UPPER(COALESCE(r.status,'')) NOT IN ('COMPLETED','MANUAL','FAILED','REJECTED')
+                                    AND r.created_at < DATE_SUB(NOW(), INTERVAL 14 DAY)), 0) AS ret_stale
                    FROM bookings b
                    LEFT JOIN payments p ON p.square_payment_id = b.hold_payment_id
-                  WHERE b.hold_status IN ('charged','captured')
-                    AND COALESCE(b.hold_amount, 0) > 0
+                  WHERE COALESCE(b.hold_amount, 0) > 0
+                    AND (b.hold_status IN ('charged','captured')
+                         OR (b.hold_status = 'returned' AND EXISTS (
+                                 SELECT 1 FROM payments r2
+                                  WHERE r2.booking_id = b.id AND r2.kind = 'damages_return'
+                                    AND UPPER(COALESCE(r2.status,'')) NOT IN ('COMPLETED','MANUAL','FAILED','REJECTED')
+                                    AND r2.created_at >= DATE_SUB(NOW(), INTERVAL 14 DAY))))
                   ORDER BY b.check_out ASC")
         ->fetchAll();
     $items = [];
     foreach ($liab as $r) {
-        $outstanding = round(max(0, (float) $r['hold_amount'] - (float) $r['returned']), 2);
+        $split = sweep_outstanding($r['hold_amount'], $r['ret_settled'], $r['ret_pending'], $r['ret_stale']);
+        $outstanding = $split['outstanding'];
         if ($outstanding <= 0) {
             continue;
         }
         $items[] = [
             'outstanding' => $outstanding,
+            // Already refunded, just not debited yet — the screen says so, because
+            // "still to return" would read as a job the owner still has to do.
+            'awaiting' => $split['awaiting'],
             'rental' => (float) ($r['charge_rental'] ?? 0),
             'fee' => $r['charge_fee'] === null ? null : (float) $r['charge_fee'],
             'booking_id' => (int) $r['id'],
@@ -430,6 +452,31 @@ try {
     $sweep['payouts']['checked'] = is_array($poCache) ? (int) ($poCache['checked'] ?? 0) : 0;
     $sweep['payouts']['error'] = is_array($poCache) ? ($poCache['error'] ?? null) : null;
     $sweep['payouts']['known'] = is_array($poMap) ? count($poMap) : 0;
+    $sweep['payouts']['fees'] = is_array($poCache) ? (float) ($poCache['payoutFees'] ?? 0) : 0.0;
+    $sweep['payouts']['truncated'] = is_array($poCache) ? !empty($poCache['truncated']) : false;
+    $sweep['payouts']['failed'] = payouts_failed(is_array($poCache) ? ($poCache['payouts'] ?? []) : []);
+    // Money Square may pull back. Its own figure beside the deposits, never folded in.
+    $sweep['disputes'] = is_array($poCache) && is_array($poCache['disputes'] ?? null)
+        ? $poCache['disputes']
+        : ['amount' => 0.0, 'count' => 0, 'items' => [], 'error' => null];
+    // The balance the owner last stated, rolled forward by what Square has done
+    // since. An ESTIMATE, and the screen says so — never presented as fact.
+    $stored = null;
+    try {
+        $rawBal = content_value(SWEEP_BALANCE_KEY);
+        $decoded = is_string($rawBal) && $rawBal !== '' ? json_decode($rawBal, true) : null;
+        $stored = is_array($decoded) ? $decoded : null;
+    } catch (\Throwable $e) {
+    }
+    $sweep['balance'] = [
+        'stored' => $stored,
+        'estimate' => payouts_balance_estimate(
+            $stored,
+            is_array($poCache) ? ($poCache['payouts'] ?? []) : [],
+            is_array($poCache) ? ($poCache['refunds'] ?? []) : [],
+            time(),
+        ),
+    ];
 } catch (\Throwable $e) {
     // Never let this break Income & tax — an empty liability is reported as
     // 'unknown' by the client rather than as a confident £0.

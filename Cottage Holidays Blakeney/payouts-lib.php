@@ -36,8 +36,29 @@ const PAYOUTS_CACHE_KEY = 'square-payouts';
 const PAYOUTS_LOOKBACK_DAYS = 60; // enough to cover anything the sweep screen lists
 const PAYOUTS_MAX = 30; // bounds the per-payout entry calls (one a day, so ~31 total)
 const PAYOUTS_TTL = 21600; // 6h — how old a cache has to be before a refresh is due
+// The balance the owner last stated, WITH its date. Written by the client through the
+// ordinary content save (no new endpoint), classified internal in db.php.
+const SWEEP_BALANCE_KEY = 'sweep-balance';
 
 // ---- PURE: what the payout data MEANS --------------------------------------
+
+// Square Money → pounds, or NULL when it is not this account's currency.
+// Deliberately strict: mixing a EUR amount into a sterling total silently reports a
+// wrong figure, and "unknown" is a state this file already handles honestly
+// everywhere else. Absent currency is accepted (older payloads) — only a currency
+// that is present and DIFFERENT is refused.
+const PAYOUTS_CURRENCY = 'GBP';
+function payouts_money($m, $currency = PAYOUTS_CURRENCY)
+{
+    if (!is_array($m) || !isset($m['amount'])) {
+        return null;
+    }
+    $cur = strtoupper((string) ($m['currency'] ?? ''));
+    if ($cur !== '' && $cur !== strtoupper((string) $currency)) {
+        return null;
+    }
+    return round((int) $m['amount'] / 100, 2); // Square money is in minor units
+}
 
 // Is this payout's money in the bank?
 //   PAID                              → yes
@@ -93,14 +114,16 @@ function payouts_charge_map(array $payouts, array $entriesByPayout, $todayIso)
             if ($payment === '') {
                 continue;
             }
-            $fee = $e['fee_amount_money']['amount'] ?? null;
+            // abs() because Square reports a fee as a deduction and the sign
+            // convention is not worth depending on. A non-GBP amount reads as null
+            // (no fee known) rather than as a wrong number.
+            $fee = payouts_money($e['fee_amount_money'] ?? null);
             $map[$payment] = [
                 'payout_id' => $pid,
                 'status' => $status,
                 'arrival' => $arrival,
                 'landed' => $landed,
-                // Square money is in MINOR units (pence).
-                'fee' => $fee === null ? null : round(abs((int) $fee) / 100, 2),
+                'fee' => $fee === null ? null : round(abs($fee), 2),
             ];
         }
     }
@@ -174,6 +197,111 @@ function payouts_split_totals(array $items)
     ];
 }
 
+// MONEY UNDER DISPUTE. A chargeback on a £900 stay dwarfs a £75 deposit, and Square
+// can pull it back — so it belongs in the ring fence, as its OWN figure rather than
+// folded into the deposits (whether Square has already withheld it depends on the
+// dispute's stage, and the owner needs to see which it is).
+//
+// Only OPEN states count. WON leaves the money; LOST and ACCEPTED mean it has gone
+// already, so fencing it would hold back money twice. INQUIRY_CLOSED is over.
+// Fencing an open dispute is the conservative reading either way: if Square has
+// already taken it the balance is lower and the owner simply keeps more, which is
+// the failure worth having on this screen.
+const PAYOUTS_DISPUTE_OPEN = ['EVIDENCE_REQUIRED', 'PROCESSING', 'INQUIRY_EVIDENCE_REQUIRED', 'INQUIRY_PROCESSING'];
+function payouts_disputes_open(array $disputes)
+{
+    $total = 0.0;
+    $items = [];
+    foreach ($disputes as $d) {
+        $state = strtoupper((string) ($d['state'] ?? ''));
+        if (!in_array($state, PAYOUTS_DISPUTE_OPEN, true)) {
+            continue;
+        }
+        $amt = payouts_money($d['amount_money'] ?? null);
+        if ($amt === null || $amt <= 0) {
+            continue; // an amount we cannot read is not a figure we will fence
+        }
+        $total += $amt;
+        $items[] = [
+            'id' => (string) ($d['id'] ?? ($d['dispute_id'] ?? '')),
+            'amount' => round($amt, 2),
+            'state' => $state,
+            'reason' => (string) ($d['reason'] ?? ''),
+            'due_at' => (string) ($d['due_at'] ?? ''),
+        ];
+    }
+    return ['amount' => round($total, 2), 'count' => count($items), 'items' => $items];
+}
+
+// THE BALANCE, ROLLED FORWARD. The owner types what the account holds; there is no
+// bank feed, so a bare remembered figure would be stale. A DATED one is not: given
+// "£2,000 on Tuesday" we can add what Square has paid in since and subtract what it
+// has debited since, and show the result as an estimate WITH its basis.
+//
+// $stored is ['amount'=>float,'at'=>ts]. Only movements strictly AFTER $stored['at']
+// count, so the figure the owner typed is never adjusted by something already in it.
+// Returns null when there is nothing to roll forward from — the field then starts
+// empty rather than pre-filled with a guess.
+function payouts_balance_estimate($stored, array $payouts, array $refunds, $nowTs, $maxAgeDays = 30)
+{
+    if (!is_array($stored) || !isset($stored['amount'], $stored['at'])) {
+        return null;
+    }
+    $at = (int) $stored['at'];
+    if ($at <= 0 || (int) $nowTs - $at > $maxAgeDays * 86400) {
+        return null; // too old to roll forward honestly — ask again
+    }
+    $in = 0.0;
+    $inCount = 0;
+    foreach ($payouts as $p) {
+        $ts = (int) ($p['landed_at'] ?? 0);
+        $amt = (float) ($p['amount'] ?? 0);
+        // Only money that has ARRIVED, and only after the stated balance.
+        if ($ts > $at && $amt > 0 && strtoupper((string) ($p['status'] ?? '')) !== 'FAILED') {
+            $in += $amt;
+            $inCount++;
+        }
+    }
+    $out = 0.0;
+    $outCount = 0;
+    foreach ($refunds as $r) {
+        $ts = (int) ($r['at'] ?? 0);
+        $amt = (float) ($r['amount'] ?? 0);
+        if ($ts > $at && $amt > 0) {
+            $out += $amt;
+            $outCount++;
+        }
+    }
+    return [
+        'from' => round((float) $stored['amount'], 2),
+        'at' => $at,
+        'in' => round($in, 2),
+        'inCount' => $inCount,
+        'out' => round($out, 2),
+        'outCount' => $outCount,
+        'estimate' => round((float) $stored['amount'] + $in - $out, 2),
+    ];
+}
+
+// A FAILED payout is a PROBLEM, not merely money that isn't movable — it usually
+// means the bank details are wrong, and every later payout will fail the same way.
+// Excluding it from the movable total (which payouts_split_totals does) is correct
+// but silent, so it is also handed to the owner's duty list.
+function payouts_failed(array $payouts)
+{
+    $out = [];
+    $total = 0.0;
+    foreach ($payouts as $p) {
+        if (strtoupper((string) ($p['status'] ?? '')) !== 'FAILED') {
+            continue;
+        }
+        $amt = (float) ($p['amount'] ?? 0);
+        $total += abs($amt);
+        $out[] = ['id' => (string) ($p['id'] ?? ''), 'amount' => round(abs($amt), 2), 'arrival' => (string) ($p['arrival_date'] ?? '')];
+    }
+    return ['count' => count($out), 'amount' => round($total, 2), 'items' => $out];
+}
+
 // Is the cache old enough to be worth a refresh? An absent//unreadable cache
 // always is. Pure so the cron's decision is testable without a clock.
 function payouts_stale($cache, $now, $ttl = PAYOUTS_TTL)
@@ -239,30 +367,86 @@ if (!function_exists('payouts_cached')) {
         if ((int) $res['status'] < 200 || (int) $res['status'] >= 300) {
             return $fail('Square didn\'t answer (' . (int) $res['status'] . ')');
         }
+        $raw = $res['body']['payouts'] ?? [];
         $payouts = [];
-        foreach (($res['body']['payouts'] ?? []) as $p) {
+        $today = gmdate('Y-m-d');
+        $fees = 0.0;
+        foreach ($raw as $p) {
             if (!is_array($p) || (string) ($p['id'] ?? '') === '') {
                 continue;
+            }
+            $landed = payouts_landed($p, $today);
+            // A payout-level fee (an instant deposit, say) is Square's cut of the
+            // TRANSFER, not of any one charge, so it cannot be apportioned per
+            // payment. Reported as its own figure rather than silently reallocated.
+            foreach (($p['payout_fee'] ?? []) as $pf) {
+                $f = payouts_money($pf['amount_money'] ?? null);
+                if ($f !== null) {
+                    $fees += abs($f);
+                }
             }
             $payouts[] = [
                 'id' => (string) $p['id'],
                 'status' => strtoupper((string) ($p['status'] ?? '')),
                 'arrival_date' => (string) ($p['arrival_date'] ?? ''),
-                'amount' => isset($p['amount_money']['amount']) ? round((int) $p['amount_money']['amount'] / 100, 2) : null,
+                'amount' => payouts_money($p['amount_money'] ?? null),
+                // When it reached the bank, for the rolled-forward balance. Only set
+                // once it actually has; noon UTC so a timezone cannot move the day.
+                'landed_at' => $landed === true && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string) ($p['arrival_date'] ?? ''))
+                    ? strtotime($p['arrival_date'] . ' 12:00:00 UTC')
+                    : 0,
             ];
             if (count($payouts) >= PAYOUTS_MAX) {
                 break;
             }
         }
+        // NO SILENT CAPS: if the window or the cap dropped payouts, the screen says
+        // so rather than reading as full coverage.
+        $truncated = count($raw) > count($payouts) || !empty($res['body']['cursor']);
+
         $entries = [];
+        $refunds = [];
         foreach ($payouts as $p) {
             $r = square_api('GET', '/v2/payouts/' . rawurlencode($p['id']) . '/payout-entries?limit=100');
             if ((int) $r['status'] < 200 || (int) $r['status'] >= 300) {
                 continue; // one unreadable payout must not lose the other twenty-nine
             }
-            $entries[$p['id']] = $r['body']['payout_entries'] ?? [];
+            $list = $r['body']['payout_entries'] ?? [];
+            $entries[$p['id']] = $list;
+            // Refund lines are collected ONLY to roll the balance forward (money that
+            // has left since a stated figure). They are deliberately NOT used to
+            // compute the deposit liability — our own ledger owns that, and a second
+            // source for the same fact is a way to double-count it.
+            foreach ($list as $e) {
+                if (strtoupper((string) ($e['type'] ?? '')) !== 'REFUND') {
+                    continue;
+                }
+                $net = payouts_money($e['net_amount_money'] ?? null);
+                if ($net === null || $p['landed_at'] <= 0) {
+                    continue;
+                }
+                $refunds[] = [
+                    'amount' => round(abs($net), 2),
+                    'at' => (int) $p['landed_at'],
+                    'refund_id' => (string) ($e['type_refund_details']['refund_id'] ?? ''),
+                ];
+            }
         }
-        $map = payouts_charge_map($payouts, $entries, gmdate('Y-m-d'));
+        $map = payouts_charge_map($payouts, $entries, $today);
+
+        // Open disputes: money Square may pull back. A failure here must not lose the
+        // payout data we already have, so it degrades to "unknown" on its own.
+        $disputes = ['amount' => 0.0, 'count' => 0, 'items' => [], 'error' => null];
+        $dr = square_api('GET', '/v2/disputes');
+        if ((int) $dr['status'] >= 200 && (int) $dr['status'] < 300) {
+            $disputes = payouts_disputes_open($dr['body']['disputes'] ?? []);
+            $disputes['error'] = null;
+        } else {
+            $disputes['error'] = (int) $dr['status'] === 403
+                ? "the access token can't read disputes"
+                : 'Square didn\'t answer (' . (int) $dr['status'] . ')';
+        }
+
         $now = time();
         try {
             content_set_scalar(PAYOUTS_CACHE_KEY, json_encode([
@@ -271,6 +455,10 @@ if (!function_exists('payouts_cached')) {
                 'error' => null,
                 'payouts' => $payouts,
                 'charges' => $map,
+                'refunds' => array_slice($refunds, 0, 200),
+                'disputes' => $disputes,
+                'payoutFees' => round($fees, 2),
+                'truncated' => $truncated,
             ]));
         } catch (\Throwable $e) {
             return ['ok' => false, 'reason' => 'Couldn\'t store the payout data', 'payouts' => count($payouts), 'charges' => count($map)];

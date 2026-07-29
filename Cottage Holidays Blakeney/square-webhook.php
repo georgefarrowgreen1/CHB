@@ -47,6 +47,20 @@ if (strpos($type, 'refund.') === 0) {
     json_out(['ok' => true]);
 }
 
+// Payouts: Square has sent, paid or failed a transfer to the bank. That changes
+// which money is actually movable, so refresh the cache the Move-money-out screen
+// reads. Cheap (it is the same daily pull) and it is the only way the screen sees a
+// payout the same day it lands. A failure here is not the webhook's problem to
+// report — the screen already says how fresh its data is.
+if (strpos($type, 'payout.') === 0) {
+    try {
+        require_once __DIR__ . '/payouts-lib.php';
+        payouts_refresh();
+    } catch (\Throwable $e) {
+    }
+    json_out(['ok' => true]);
+}
+
 // Disputes / chargebacks: a guest's bank has pulled a payment back. This needs
 // the owner's attention (evidence deadline, lost funds), so log it prominently.
 if (strpos($type, 'dispute.') === 0) {
@@ -59,6 +73,13 @@ if (strpos($type, 'dispute.') === 0) {
             'entity_id' => (string) ($d['id'] ?? ''),
             'meta' => ['detail' => 'state: ' . ($d['state'] ?? '')],
         ]);
+    }
+    // A dispute also changes how much money is safe to move (payouts-lib fences an
+    // open one), so bring that cache up to date rather than waiting for the cron.
+    try {
+        require_once __DIR__ . '/payouts-lib.php';
+        payouts_refresh();
+    } catch (\Throwable $e) {
     }
     json_out(['ok' => true]);
 }

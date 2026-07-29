@@ -171,6 +171,30 @@ const ok = (b, m) => { console.log(`  ${b ? '✓' : '✗'} ${m}`); if (!b) fails
   }));
   ok(w2.word === 'Needs you' && w2.count === '1' && !w2.opp, `a real duty shows on the strip — badge counts DUTIES only (${w2.word} ${w2.count})`);
 
+  // ---- 6. payout trouble reaches the strip -------------------------------
+  // Move-money-out correctly refuses to count a FAILED payout or a disputed payment
+  // as movable, but SILENTLY — and bad bank details stop every later transfer. Both
+  // ride the bootstrap payload (window.__payoutTroublePre) and become duties.
+  console.log('6. failed payouts and disputes are duties');
+  const trouble = await page.evaluate(() => {
+    enquiries = []; __nyChats = 0; __nyMod = {}; __nyCronQuiet = false;
+    window.__payoutTroublePre = { failed: { count: 1, amount: 604.05, items: [{ id: 'po1', amount: 604.05 }] }, disputed: { count: 1, amount: 900 } };
+    renderNeedsYou();
+    const t = (document.getElementById('needs-you-list') || {}).textContent || '';
+    return { txt: t.replace(/\s+/g, ' '), count: (document.getElementById('needs-you-count') || {}).textContent };
+  });
+  ok(/couldn.{0,3}t pay £604\.05 into your bank/i.test(trouble.txt), `a failed payout is a duty (${trouble.txt.slice(0, 90)})`);
+  ok(/bank details/i.test(trouble.txt), '…and names the likely cause, which is what makes it actionable');
+  ok(/£900\.00 is under dispute/.test(trouble.txt), 'a disputed payment is a duty too');
+  ok(trouble.count === '2', `both are counted in the badge (${trouble.count})`);
+  // A healthy account must not invent either of them.
+  const clean = await page.evaluate(() => {
+    window.__payoutTroublePre = null;
+    renderNeedsYou();
+    return ((document.getElementById('needs-you-list') || {}).textContent || '').replace(/\s+/g, ' ');
+  });
+  ok(!/into your bank/i.test(clean) && !/under dispute/i.test(clean), 'a healthy account shows neither');
+
   console.log(fails ? `NEEDS-YOU TEST FAILED ❌ (${fails})` : 'NEEDS-YOU TEST PASSED ✅');
   await done(fails);
 })().catch((e) => { console.error('FAILED:', e.message); process.exit(1); });
