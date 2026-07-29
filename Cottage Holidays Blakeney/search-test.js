@@ -135,8 +135,29 @@ check('action ids are unique', new Set(actIds).size === actIds.length, 'dupes: '
 const parityActs = ['act-expense', 'act-csv', 'act-syncnow', 'act-fixsafe'];
 check('parity actions present (add expense / export CSV / sync now / fix safe)', parityActs.every((id) => actIds.includes(id)), 'missing: ' + parityActs.filter((id) => !actIds.includes(id)).join(', '));
 // Coverage: Payments sub-tabs reachable directly from search.
-const covActs = ['act-income', 'act-recentpay', 'act-pricingcoach'];
-check('Payments sub-tab actions present (income / recent / pricing coach)', covActs.every((id) => actIds.includes(id)), 'missing: ' + covActs.filter((id) => !actIds.includes(id)).join(', '));
+const covActs = ['act-income', 'act-recentpay', 'act-pricingcoach', 'act-sweep'];
+check('Payments sub-tab actions present (income / recent / pricing coach / move money out)', covActs.every((id) => actIds.includes(id)), 'missing: ' + covActs.filter((id) => !actIds.includes(id)).join(', '));
+// Every cmdkOpenAccounts() route must name a section the Payments switch renders,
+// or the action lands on a blank page (the toManage() rule, one screen over).
+const acctTitles = new Set(
+    [...((adminScript.match(/ACCOUNTS_TITLES\s*=\s*\{([\s\S]*?)\n\};/) || [null, ''])[1].matchAll(/^\s*([a-z0-9-]+)\s*:/gm) || [])].map((m) => m[1]),
+);
+check('ACCOUNTS_TITLES is defined with ids', acctTitles.size > 0);
+const litAcct = [...new Set([...adminScript.matchAll(/cmdkOpenAccounts\('([a-z0-9-]+)'\)/g)].map((m) => m[1]))];
+check('every cmdkOpenAccounts() route targets a titled Payments section', litAcct.every((s) => acctTitles.has(s)), 'unknown: ' + litAcct.filter((s) => !acctTitles.has(s)).join(', '));
+// The phrasings an owner would actually use for "what can I take out of here".
+const sweepAct = actions.find((a) => a.id === 'act-sweep');
+if (sweepAct) {
+    const sweepQs = ['how much can i move out', 'safe to transfer', 'move money to another account', 'how much can i withdraw', 'how much should i leave in the account'];
+    const miss = sweepQs.filter((q) => !sweepAct.re.test(q));
+    check('the move-money action answers the natural phrasings', miss.length === 0, 'missed: ' + miss.join(' | '));
+    // …and does not swallow unrelated money questions that other families own.
+    const notSweep = ['who owes me money', 'revenue this year', 'refund the deposit', 'how much for 15-18 aug'];
+    const grabbed = notSweep.filter((q) => sweepAct.re.test(q));
+    check('…without swallowing other money queries', grabbed.length === 0, 'grabbed: ' + grabbed.join(' | '));
+} else {
+    check('the move-money action is registered', false);
+}
 
 // ---- 5. No search route points at an unregistered / non-existent section ----
 // The per-cottage editors live in ACCOM_SECTIONS (rendered dynamically, no

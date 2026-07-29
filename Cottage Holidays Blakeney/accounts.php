@@ -306,9 +306,66 @@ $feesTotal = array_sum(array_map(fn($r) => (float) $r['f'], $feesInYear));
 $keptInYear = array_values(array_filter($keptDays, fn($r) => tax_year_start($r['d']) === $requested));
 $keptTotal = array_sum(array_map(fn($r) => (float) $r['a'], $keptInYear));
 
+// ---- SAFE TO MOVE: the deposits Square will claw back ----------------------
+// Independent of the tax year (held_deposits above is year-filtered, which is the
+// wrong basis for "what is still owed back"): every deposit currently outstanding,
+// whenever it was taken, is money the bank account will lose again.
+//
+// Joined to the charge the deposit RODE so its share of the fee can be worked out
+// (see sweep-lib.php — the ledger row's amount is rental-only while its fee covers
+// rental + deposit). LEFT JOIN because a legacy card-hold deposit, or one whose
+// charge predates the ledger, still has to be counted; sweep_row() then estimates
+// from the observed rate rather than dropping it.
+require_once __DIR__ . '/sweep-lib.php';
+$sweep = ['gross' => 0.0, 'feeBack' => 0.0, 'net' => 0.0, 'count' => 0, 'items' => [], 'rate' => SWEEP_RATE_DEFAULT];
+try {
+    // The rate the account really pays, learned from settled charges.
+    $rateRows = db()
+        ->query("SELECT amount AS gross, fee FROM payments
+                 WHERE kind IN ('deposit','balance') AND status IN ('COMPLETED','APPROVED')
+                 ORDER BY id DESC LIMIT 200")
+        ->fetchAll();
+    $rate = sweep_observed_rate(array_map(fn($r) => ['gross' => (float) $r['gross'], 'fee' => $r['fee'] === null ? null : (float) $r['fee']], $rateRows));
+
+    $liab = db()
+        ->query("SELECT b.id, b.name, b.prop_key, b.check_out, b.hold_amount, b.hold_status,
+                        p.amount AS charge_rental, p.fee AS charge_fee,
+                        COALESCE((SELECT SUM(r.amount) FROM payments r
+                                  WHERE r.booking_id = b.id AND r.kind = 'damages_return'
+                                    AND (r.status IS NULL OR UPPER(r.status) NOT IN ('FAILED','REJECTED'))), 0) AS returned
+                   FROM bookings b
+                   LEFT JOIN payments p ON p.square_payment_id = b.hold_payment_id
+                  WHERE b.hold_status IN ('charged','captured')
+                    AND COALESCE(b.hold_amount, 0) > 0
+                  ORDER BY b.check_out ASC")
+        ->fetchAll();
+    $items = [];
+    foreach ($liab as $r) {
+        $outstanding = round(max(0, (float) $r['hold_amount'] - (float) $r['returned']), 2);
+        if ($outstanding <= 0) {
+            continue;
+        }
+        $items[] = [
+            'outstanding' => $outstanding,
+            'rental' => (float) ($r['charge_rental'] ?? 0),
+            'fee' => $r['charge_fee'] === null ? null : (float) $r['charge_fee'],
+            'booking_id' => (int) $r['id'],
+            'name' => (string) ($r['name'] ?? ''),
+            'prop_key' => (string) ($r['prop_key'] ?? ''),
+            'check_out' => (string) ($r['check_out'] ?? ''),
+        ];
+    }
+    $sweep = sweep_totals($items, $rate);
+} catch (\Throwable $e) {
+    // Never let this break Income & tax — an empty liability is reported as
+    // 'unknown' by the client rather than as a confident £0.
+    $sweep['error'] = true;
+}
+
 json_out([
     'year' => $requested,
     'years' => $yearList,
+    'deposit_liability' => $sweep,
     'total' => round($incomeTotal, 2), // rental income only (gross of card fees)
     'held_deposits' => round($heldTotal, 2), // refundable, held — NOT income
     'card_fees' => round($feesTotal, 2), // kept by Square — auto-deducted cost

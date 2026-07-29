@@ -213,6 +213,10 @@
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h16"/><rect x="6" y="11" width="3" height="6" rx="0.5"/><rect x="10.5" y="7" width="3" height="10" rx="0.5"/><rect x="15" y="13" width="3" height="4" rx="0.5"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Income &amp; tax</span><span class="settings-row-sub">Profit, quarterly totals &amp; downloads for your accountant</span></span><span class="settings-row-chev">›</span>
                 </button>
+                <button class="settings-row" data-act="accountsOpen" data-arg="sweep">
+                    <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 7h13a4 4 0 0 1 0 8H7"/><path d="M10 18l-3-3 3-3"/><circle cx="19" cy="19" r="2.5"/></svg></span>
+                    <span class="settings-row-main"><span class="settings-row-label">Move money out</span><span class="settings-row-sub">How much you can transfer without leaving the account short</span></span><span class="settings-row-chev">›</span>
+                </button>
                 <button class="settings-row" data-act="accountsOpen" data-arg="expenses">
                     <span class="settings-row-ic"><svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16v13H4z"/><path d="M4 7l2-3h12l2 3"/><path d="M9 12h6"/></svg></span>
                     <span class="settings-row-main"><span class="settings-row-label">Expenses</span><span class="settings-row-sub">Receipts, categories &amp; recurring costs</span></span><span class="settings-row-chev">›</span>
@@ -250,6 +254,11 @@
                 </div>
                 <div id="accounts-content"><!-- JS injects the net profit headline + income/expenses/net lines + CSV export here --></div>
                 <div id="money-forecast" style="margin-top:34px;"><!-- income forecast by month (renders its own heading) --></div>
+            </div>
+
+            <!-- Move money out (deposit liability vs bank balance) -->
+            <div class="accounts-sec" id="asec-sweep" style="display:none;">
+                <div id="sweep-body"><p style="font-size:0.85rem;color:var(--text-muted);">Loading…</p></div>
             </div>
 
             <!-- Expenses manager -->

@@ -156,6 +156,7 @@ $REGISTRY = [
     'chat-lib.php' => ['lib', [], 'chat thread helpers'],
     'config.php' => ['lib', [], 'constants only'],
     'csp-lib.php' => ['lib', [], 'pure CSP severity/matcher for csp-report.php (no I/O, no entry)'],
+    'sweep-lib.php' => ['lib', [], 'pure safe-to-move arithmetic for accounts.php (no I/O, no entry)'],
     'csp-policy.php' => ['lib', [], 'generated: returns the live CSP string for csp-report.php (no entry)'],
     'customers-lib.php' => ['lib', [], 'customers_group()/customers_key() shared client/server rule'],
     'db.php' => ['lib', [], 'the bootstrap every endpoint includes (defines the auth helpers themselves)'],

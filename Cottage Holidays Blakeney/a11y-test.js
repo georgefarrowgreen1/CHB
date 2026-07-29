@@ -340,6 +340,15 @@ const stub = (page) => page.route(/\.php/, (r) => {
         return json({ bookings: [
             { id: 502, prop_key: '21a', name: 'Debbie McGoldrick', email: 'd@x.co', check_in: '2026-09-09', check_out: '2026-09-12', check_in_time: '15:00', check_out_time: '10:00', adults: 2, children: 0, payment: 'deposit', deposit_paid: 200, agreed_total: 540, agreed_nightly: 520, agreed_txn_fee: 20, agreed_nights: 3 },
         ] });
+    // A real deposit liability, so the "Move money out" screen renders its two
+    // number fields rather than the failed-query sentence (which has no controls
+    // for §3/§5 to look at).
+    if (url.includes('accounts.php')) return json({
+        years: [], deposit_liability: {
+            gross: 150, feeBack: 2.62, net: 147.38, count: 2, rate: 0.0175,
+            items: [{ outstanding: 75, gross: 75, feeBack: 1.31, net: 73.69, name: 'Sarah Pemberton', prop_key: '21a', check_out: '2026-07-20' }],
+        },
+    });
     return json({ ok: true, bookings: [], enquiries: [], threads: [], reviews: [], photos: [], experiences: [], content: {}, blocks: [], ranges: [], mine: {}, value: null, properties: [] });
 });
 
@@ -363,6 +372,10 @@ const stub = (page) => page.route(/\.php/, (r) => {
         ['admin-today', "(async()=>{closeEnquireModal();isAuthenticated=true;document.body.classList.add('owner-mode');await loadAdminBundle();await initBackOffice();})()"],
         ['admin-rates', "(async()=>{await openArea('cottages');settingsOpen('seasongrid');})()"],
         ['admin-health', "(async()=>{await openArea('settings');settingsOpen('diagnostics');})()"],
+        // The money-out screen: two number inputs whose only accessible name comes
+        // from the <span> inside their wrapping <label>, on the one screen in the
+        // app where a mistyped figure moves real money.
+        ['admin-money-out', "(async()=>{await openAccounts();accountsOpen('sweep');await new Promise(r=>setTimeout(r,600));sweepSet('balance','2000');await new Promise(r=>setTimeout(r,300));})()"],
         // The SEARCH WINDOW, open and answering. It is the owner's primary
         // interface now — the crown is the only route in — and it was absent from
         // this gate entirely, which is how a 23px quick-action row and 10.2px group

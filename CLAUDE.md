@@ -1660,6 +1660,35 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   `isOtaBlock` (excludes `source:'owner'` blocks, which aren't bookings). Gated by
   ui-test-money §6. NB `dbBlocks` is `const` in app.js — a test must MUTATE it, not
   reassign it, or the assignment throws and the case silently proves nothing.
+- **HOW MUCH OF THE SQUARE BALANCE IS ACTUALLY THE OWNER'S** (Payments → "Move
+  money out", `asec-sweep`/`renderSweep`; arithmetic in **`sweep-lib.php`**, gated by
+  **`test-sweep.php`** + ui-test-money §7 + a11y/layout scenes). Square settles into
+  one bank account and LATER direct-debits it again when a damage deposit is
+  refunded, crediting back the fee on that portion at the same time — so the cash
+  that LEAVES on a refund is the same net figure that ARRIVED for that deposit, and
+  the ring fence is **deposit − its share of the fee**. Ring-fence the gross and
+  money sits idle; ring-fence nothing and the account goes short.
+  **WHY A FEE SHARE AND NOT THE FEE.** pay.php charges rental + deposit as ONE
+  Square payment but records the RENTAL only in `payments.amount` (the deposit
+  lives on `hold_*`), so the stored `fee` belongs to a bigger gross than the row it
+  sits on. Measured on the canonical case — £900 + £75 charged together, £17.06 fee
+  — the deposit's share is £1.31 and £73.69 really leaves; using the fee as-is
+  ring-fences £57.94 and leaves the account **£15.75 short per deposit**. The rate
+  is OBSERVED from the last 200 settled charges (clamped 0.5–5%, default 1.75%) so
+  it follows a Square rate change with no edit, and an unsettled charge (`fee` NULL
+  for a day or two) is estimated from it rather than assumed fee-free.
+  Four judgements worth keeping: the liability is deliberately **NOT tax-year
+  filtered** (unlike `held_deposits` right above it in accounts.php — "what is
+  still owed back" has no year), it rides the payload Income & tax already fetches
+  so the screen costs no extra round trip, a failed query sets `error` and the
+  screen says **"couldn't work out"** rather than a confident £0 that would invite
+  moving money that isn't there, and an account already below the ring fence
+  reports the **SHORTFALL** instead of "safe to move: £0". The BALANCE is typed in
+  and deliberately never stored — there is no bank feed and a remembered balance is
+  stale the moment it is saved — but the liability IS cached, so a keystroke costs
+  no request (gated). NB the returns subquery is case-folded (`UPPER(r.status)`)
+  like the file's other two ledger queries: a lowercase `'failed'` counting as
+  already returned would understate the ring fence, the expensive direction.
 - **THE STATUS PAGE HAS A WAY IN.** `/status` had no link anywhere in the app —
   the one page you want when something looks wrong could only be reached by
   typing the URL. It is now a card in Manage → System check and a footer link,

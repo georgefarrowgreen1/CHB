@@ -165,7 +165,18 @@ async function waitForServer(url, tries = 40) {
       if (url.includes('experiences.php')) return json({ experiences });
       if (url.includes('bookings.php')) return json({ bookings });
       if (url.includes('enquiries.php')) return json({ enquiries });
-      if (url.includes('accounts.php')) return json({ years: [] });
+      // A real liability so the "Move money out" screen renders its figures + the
+      // two number fields (iOS gives date/number inputs an intrinsic minimum width,
+      // which is exactly the class of overflow this gate exists to catch).
+      if (url.includes('accounts.php')) return json({
+        years: [], deposit_liability: {
+          gross: 150, feeBack: 2.62, net: 147.38, count: 2, rate: 0.0175,
+          items: [
+            { outstanding: 75, gross: 75, feeBack: 1.31, net: 73.69, name: 'Sarah Pemberton', prop_key: '21a', check_out: '2026-07-20' },
+            { outstanding: 75, gross: 75, feeBack: 1.31, net: 73.69, name: 'Dan Rowe', prop_key: 'jollyboat', check_out: '2026-07-22' },
+          ],
+        },
+      });
       if (url.includes('ical-import.php')) return json(icalList);
       if (url.includes('diagnostics.php')) return json({ ok: true, summary: { ok: 12, warn: 1, fail: 0 }, checks: [], mail_ready: true });
       if (url.includes('my-bookings.php')) return json({ bookings: [midStay], enquiries: [], completed_stays: 0 });
@@ -252,6 +263,7 @@ async function waitForServer(url, tries = 40) {
       { key: 'admin-inbox', open: "(async () => { await openInbox(); inboxFolder('enquiries'); })()", mustSee: ['#inbox-folders', '#inbox-list'] },
       { key: 'admin-money', open: '(async () => { await openAccounts(); })()', mustSee: ['#accounts-index'] },
       { key: 'admin-money-payments', open: "(async () => { await openAccounts(); accountsOpen('payments'); })()", mustSee: ['#money-panel'] },
+      { key: 'admin-money-sweep', open: "(async () => { await openAccounts(); accountsOpen('sweep'); await new Promise(r => setTimeout(r, 500)); if (window.sweepSet) sweepSet('balance', '2000'); await new Promise(r => setTimeout(r, 250)); })()", mustSee: ['#sweep-balance', '#sweep-buffer'] },
       { key: 'admin-money', open: '(async () => { await openAccounts(); })()', mustSee: ['#money-overview'] },
       { key: 'admin-manage', open: "(async () => { await openArea('manage'); })()", mustSee: ['#settings-index'] },
       { key: 'admin-accom', open: "(async () => { await openArea('cottages'); settingsOpen('accom'); })()", mustSee: ['#sec-accom'] },
