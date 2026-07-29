@@ -120,20 +120,10 @@ try {
     // refetched yet, not a threat. The live policy is read from the same file
     // Apache serves, so this cannot drift out of step with what is enforced. A
     // genuine block — a host the policy still forbids — stays 'warn'.
+    // Chrome has historically sent the FULL directive ("form-action 'self'") in
+    // violated-directive, so take the name only.
     $effDir = strtolower(trim(explode(' ', (string) $directive)[0]));
-    $parsed = null;
-    if (function_exists('csp_extract_policy')) {
-        foreach (['/.htaccess', '/htaccess.txt'] as $hf) {
-            $ht = @file_get_contents(__DIR__ . $hf);
-            if ($ht !== false && $ht !== '') {
-                $pol = csp_extract_policy($ht);
-                if ($pol) {
-                    $parsed = csp_parse_policy($pol);
-                    break;
-                }
-            }
-        }
-    }
+    $parsed = function_exists('csp_live_policy') ? csp_live_policy(__DIR__) : null;
     if (function_exists('csp_report_severity')) {
         $sev = csp_report_severity($effDir, $blocked, $parsed);
     } else {

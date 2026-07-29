@@ -9,6 +9,32 @@
 
 require_once __DIR__ . '/csp-lib.php';
 
+// --update regenerates csp-policy.php from htaccess.txt (the parity check below
+// tells you to run it). Kept HERE rather than in a separate script so the
+// generator and the assertion that uses it can never disagree.
+$GEN = __DIR__ . '/csp-policy.php';
+$htRaw = (string) @file_get_contents(__DIR__ . '/htaccess.txt');
+$livePolicy = $htRaw === '' ? null : csp_extract_policy($htRaw);
+if (in_array('--update', $argv ?? [], true)) {
+    if (!$livePolicy) {
+        fwrite(STDERR, "cannot extract the CSP from htaccess.txt\n");
+        exit(1);
+    }
+    file_put_contents($GEN, "<?php\n"
+        . "// AUTO-GENERATED from htaccess.txt — do NOT edit by hand.\n"
+        . "// Regenerate:  php test-csp-report.php --update\n"
+        . "//\n"
+        . "// csp-report.php needs the live policy to tell a genuine block from a\n"
+        . "// stale-client straggler, and reading it from the filesystem at request\n"
+        . "// time does not work in production: deploy.yml renames htaccess.txt to\n"
+        . "// .htaccess, so only a dotfile remains and PHP may not be permitted to\n"
+        . "// read it. An include always works. Parity with htaccess.txt is gated by\n"
+        . "// test-csp-report.php, so this file cannot drift from the real header.\n"
+        . 'return ' . var_export($livePolicy, true) . ";\n");
+    echo "regenerated csp-policy.php\n";
+    exit(0);
+}
+
 $fails = 0;
 function ok($cond, $msg)
 {
@@ -22,11 +48,41 @@ function ok($cond, $msg)
 // The policy under test is the one actually shipped — read from htaccess.txt, the
 // same source Apache serves — so this test cannot pass against a policy the site
 // does not enforce. (csp-report.php reads .htaccess live; the string is identical.)
-$ht = file_get_contents(__DIR__ . '/htaccess.txt');
-$polStr = $ht === false ? null : csp_extract_policy($ht);
+$polStr = $livePolicy;
 ok(is_string($polStr) && $polStr !== '', 'the live CSP is extracted from htaccess.txt');
 $P = $polStr ? csp_parse_policy($polStr) : [];
 ok(isset($P['form-action']) && isset($P['connect-src']), 'policy parses into directives (form-action, connect-src present)');
+
+// ---- The GENERATED policy must equal the real header, or the downgrade would be
+// judging reports against a policy the site no longer serves.
+$gen = is_file($GEN) ? include $GEN : null;
+ok(is_string($gen) && $gen !== '', 'csp-policy.php exists and returns a string (run: php test-csp-report.php --update)');
+ok($gen === $polStr, 'csp-policy.php matches the CSP in htaccess.txt (run: php test-csp-report.php --update)');
+
+// ---- RESOLUTION MUST SURVIVE THE PRODUCTION FILESYSTEM. This is the check whose
+// absence let the first version ship broken: it read '.htaccess' with
+// 'htaccess.txt' as a fallback, and deploy.yml RENAMES htaccess.txt to .htaccess —
+// so live, the fallback is a 404 and the only source is a dotfile PHP may not be
+// allowed to read. Recreate that layout in a temp dir: ONLY csp-policy.php, no
+// htaccess of any kind. If resolution depends on reading a file that isn't there,
+// this fails.
+$tmp = sys_get_temp_dir() . '/chb-csp-' . getmypid();
+@mkdir($tmp, 0777, true);
+@copy($GEN, $tmp . '/csp-policy.php');
+$prod = csp_live_policy($tmp);
+ok(is_array($prod) && isset($prod['form-action']),
+    'policy resolves with NO htaccess present at all (the real production layout)');
+ok(is_array($prod) && csp_report_severity('form-action', 'https://methodurl.vcas.visa.com/x', $prod) === 'info',
+    "…and the 3-D Secure straggler downgrades under that layout \xE2\x86\x92 info");
+// …and with NOTHING at all it must fail SAFE (warn), never silently permit.
+$empty = sys_get_temp_dir() . '/chb-csp-empty-' . getmypid();
+@mkdir($empty, 0777, true);
+ok(csp_live_policy($empty) === null, 'no policy source at all → null (never a permissive empty policy)');
+ok(csp_report_severity('form-action', 'https://methodurl.vcas.visa.com/x', null) === 'warn',
+    'a null policy fails SAFE — reports stay warn rather than being silently hidden');
+@unlink($tmp . '/csp-policy.php');
+@rmdir($tmp);
+@rmdir($empty);
 
 // ---- The two reports from the screenshot: both are things the CURRENT policy
 // permits, so both can only be stale-client artifacts → 'info', not 'warn'. If

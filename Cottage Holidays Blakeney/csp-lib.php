@@ -68,6 +68,47 @@ function csp_extract_policy(string $htaccess): ?string
     return null;
 }
 
+// The live policy, for csp-report.php. Order matters and is the point:
+//
+//   1. csp-policy.php — a GENERATED php file that simply `return`s the string.
+//      This is the reliable source in production and the reason this helper
+//      exists. The first version of the stale-client downgrade read the policy
+//      from the filesystem at request time — '.htaccess' with 'htaccess.txt' as a
+//      fallback — and it silently never worked live: deploy.yml RENAMES
+//      htaccess.txt to .htaccess, so the fallback is a 404 on the host (verified),
+//      leaving one source, a dotfile PHP may not be permitted to read. When the
+//      read failed the parsed policy was null, the downgrade was skipped, and
+//      every report kept logging at 'warn' — the fix looked deployed and did
+//      nothing. An `include` is executed rather than read, and csp-lib.php itself
+//      proves includes work, so this cannot fail the same way.
+//   2. '.htaccess' — kept only as a belt-and-braces fallback for a host where the
+//      generated file is somehow missing.
+//   3. 'htaccess.txt' — dev/CI only, where the un-renamed file is what exists.
+//
+// Returns the parsed directive map, or null if no policy could be resolved (in
+// which case csp_report_severity leaves everything at 'warn' — failing SAFE, since
+// over-reporting is recoverable and under-reporting hides a real block).
+function csp_live_policy(string $dir): ?array
+{
+    $gen = $dir . '/csp-policy.php';
+    if (is_file($gen)) {
+        $pol = @include $gen;
+        if (is_string($pol) && $pol !== '') {
+            return csp_parse_policy($pol);
+        }
+    }
+    foreach (['/.htaccess', '/htaccess.txt'] as $f) {
+        $raw = @file_get_contents($dir . $f);
+        if ($raw !== false && $raw !== '') {
+            $pol = csp_extract_policy($raw);
+            if ($pol) {
+                return csp_parse_policy($pol);
+            }
+        }
+    }
+    return null;
+}
+
 // Does ONE source token permit a URI with this (scheme, host)?
 //  - scheme-source ('https:', 'blob:', 'data:') → scheme must equal it
 //  - host-source ('https://spay.samsung.com', 'https://*.google.com') → scheme
