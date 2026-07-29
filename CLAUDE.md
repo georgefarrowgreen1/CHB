@@ -1857,6 +1857,23 @@ lives as JSON in the `content` table (`welcome-<prop>`, `faqs-<prop>`, etc.).
   downgrade (removing it re-nags the 3 screenshot cases) and the wildcard matcher
   (`*.google.com` matches a subdomain, never the apex or a suffix-spoof), and proves
   form-action has NO default-src fallback and an http (insecure) target stays `warn`.
+  **The policy comes from a GENERATED `csp-policy.php` (an `include`), never a
+  filesystem read.** The first version read `.htaccess` with `htaccess.txt` as a
+  fallback and silently never worked live: deploy.yml RENAMES htaccess.txt to
+  .htaccess, so the fallback is a **404 on the host** (verified by curl), leaving one
+  source — a dotfile PHP may not be permitted to read. When that read failed
+  `$parsed` was null, the downgrade was skipped, and every report kept logging
+  `warn`: the fix was deployed and did nothing, and the only visible symptom was the
+  owner still being nagged. An include is EXECUTED rather than read, and csp-lib.php
+  proves includes work. `php test-csp-report.php --update` regenerates it; the gate
+  asserts parity with htaccess.txt so it cannot drift from the real header, and — the
+  check whose absence let this ship — resolves the policy in a temp dir containing
+  ONLY the generated file, i.e. the real production layout with no htaccess at all.
+  Break-tested: restoring the filesystem-only lookup fails that check. A policy that
+  cannot be resolved returns null and everything stays `warn` — failing SAFE, since
+  over-reporting is recoverable and under-reporting hides a real block. **The general
+  lesson: a fallback chain is only real if some link exists in PRODUCTION — test the
+  deployed filesystem layout, not the repo's.**
 - **Square settlement sync** — a payment's processing FEE and a refund's final
   STATUS (PENDING→COMPLETED) both land a day or two after the action, pushed by the
   `square-webhook.php` events. Because that webhook can be unconfigured, the
