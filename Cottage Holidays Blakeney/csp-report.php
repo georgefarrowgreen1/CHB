@@ -66,9 +66,21 @@ try {
     );
     $fwd = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '';
     $ip = mb_substr($fwd !== '' ? trim(explode(',', $fwd)[0]) : ($_SERVER['REMOTE_ADDR'] ?? ''), 0, 60);
-    // De-dupe: at most one CSP-violation log per (directive, ip) per hour, so a
-    // noisy page (or a scanner) can't flood the activity log.
-    $sig = mb_substr($directive . '|' . $ip, 0, 180);
+    // De-dupe on (directive, blocked HOST) — NOT on the IP, which was the bug.
+    // A phone on mobile data rotates its IPv6 address every few minutes (RFC 4941
+    // privacy extensions), so an IP-keyed signature never matched and the hourly
+    // limit never fired: observed live, the same "connect-src -> spay.samsung.com"
+    // block logged twice within three minutes from 2a00:…:c2f8:a5cc:379:f1e6 and
+    // 2a00:…:5606:6d48:ddfd:e89…, on one device, on one page. What the owner needs
+    // to know is WHAT is being blocked; who tripped it is forensics, and the row
+    // still carries the IP for that. Host, not full URL, because 3-D Secure and
+    // payment SDKs put per-transaction ids in the path.
+    $host = '';
+    if ($blocked !== '') {
+        $h = parse_url($blocked, PHP_URL_HOST);
+        $host = is_string($h) && $h !== '' ? $h : mb_substr($blocked, 0, 60);
+    }
+    $sig = mb_substr($directive . '|' . $host, 0, 180);
     $recent = $pdo->prepare(
         "SELECT 1 FROM activity_log WHERE action = 'csp.violation' AND summary LIKE ? AND created_at > (NOW() - INTERVAL 1 HOUR) LIMIT 1",
     );
@@ -93,7 +105,21 @@ try {
     // and more worth the owner's awareness, so keep it a low 'warn'.
     $lb = strtolower($blocked);
     $isInlineOrEval = ($lb === '' || strpos($lb, 'inline') !== false || strpos($lb, 'eval') !== false || strpos($lb, 'data') === 0);
-    $sev = $isInlineOrEval ? 'info' : 'warn';
+    // Third-party SDK TELEMETRY is expected noise, not a to-do. Square's Web
+    // Payments SDK reports its own errors to Square's Sentry project; we
+    // deliberately do NOT allowlist it (blocking it costs us nothing and sending
+    // data to a third party is the thing CSP is for), so it will be reported on
+    // every pay-page visit forever. It belongs in the log for forensics at 'info',
+    // never in "Needs attention". Match on the HOST, so a lookalike domain in a
+    // path can't buy itself a downgrade.
+    $quiet = ['ingest.sentry.io', 'sentry.io'];
+    $isTelemetry = false;
+    foreach ($quiet as $q) {
+        if ($host !== '' && ($host === $q || substr($host, -(strlen($q) + 1)) === '.' . $q)) {
+            $isTelemetry = true;
+        }
+    }
+    $sev = ($isInlineOrEval || $isTelemetry) ? 'info' : 'warn';
     $pdo->prepare(
         "INSERT INTO activity_log (actor, category, action, summary, ip, meta, severity)
          VALUES ('system', 'security', 'csp.violation', ?, ?, ?, ?)",
