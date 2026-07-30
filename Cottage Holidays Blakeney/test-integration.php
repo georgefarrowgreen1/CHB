@@ -684,6 +684,137 @@ $k25 = $keptOf(2025);
 $k26 = $keptOf(2026);
 it_check('net kept sits in the capture year, not the return year', abs($k25 - 150.0) < 0.005 && abs($k26) < 0.005, "2025=$k25 2026=$k26");
 
+// ---- 15. THE CALENDAR CANNOT BE DOUBLE-BOOKED -----------------------------
+// The one guarantee this business cannot trade away, and until now the one with
+// no test at all: every clash guard lived in code nothing exercised. The client
+// picker is only the friendly layer — it can be bypassed by a stale tab, a
+// second device, a slow network, or simply a bug like the ones fixed this week —
+// so what matters is what the ENDPOINTS do. Driven here against a real database.
+//
+// Both directions are gated, because they cost the same money: a clash that gets
+// through is a double booking, and a "clash" that is really a legal turnover is a
+// booking refused for no reason. The turnover cases (e, f) are the second kind and
+// are exactly what an off-by-one in the overlap test would break.
+echo "\n== 15. The calendar cannot be double-booked ==\n";
+$dd = fn($n) => date('Y-m-d', strtotime("+$n days"));
+$bookingsOn = function ($from, $to) use ($rootDb, $propKey) {
+    $q = $rootDb->prepare('SELECT COUNT(*) c FROM bookings WHERE prop_key = ? AND check_in < ? AND check_out > ?');
+    $q->execute([$propKey, $to, $from]);
+    return (int) $q->fetch(PDO::FETCH_ASSOC)['c'];
+};
+$addBooking = function ($ci, $co, $name, $extra = []) use (&$admin, $propKey) {
+    return http($admin, 'POST', '/bookings.php', array_merge([
+        'action' => 'add', 'prop_key' => $propKey, 'name' => $name, 'email' => '',
+        'phone' => '', 'check_in' => $ci, 'check_out' => $co,
+        'adults' => 2, 'children' => 0, 'payment' => 'unpaid',
+    ], $extra));
+};
+// The occupied stay everything below is measured against: nights 300-304.
+$r = $addBooking($dd(300), $dd(305), 'Base Stay');
+it_check('a booking on free dates is created', $r['code'] === 200 && !empty($r['json']['id']), $r['raw']);
+$baseId = (int) ($r['json']['id'] ?? 0);
+
+// (a-d) Every shape of overlap is refused, AND writes nothing. A clash response
+// that still created the row would be the worst failure available here.
+foreach ([
+    ['overlapping the end', $dd(302), $dd(307)],
+    ['sitting inside it', $dd(301), $dd(302)],
+    ['swallowing it whole', $dd(298), $dd(310)],
+    ['exactly the same dates', $dd(300), $dd(305)],
+    ['overlapping the start', $dd(297), $dd(301)],
+] as [$label, $ci, $co]) {
+    $before = $bookingsOn($ci, $co);
+    $r = $addBooking($ci, $co, 'Clash ' . $label);
+    $flagged = $r['code'] === 200 && !empty($r['json']['clash']);
+    $after = $bookingsOn($ci, $co);
+    it_check("a booking $label is refused", $flagged, $r['raw']);
+    it_check("…and nothing is written for it", $after === $before, "before=$before after=$after");
+}
+
+// (e-f) A TURNOVER IS NOT A CLASH. Arriving on the day someone leaves, and
+// leaving on the day someone arrives, both take nothing from anyone — refusing
+// them loses real back-to-back bookings, which is the same money as a double
+// booking, just quieter.
+$r = $addBooking($dd(305), $dd(308), 'Arrives On Checkout Day');
+it_check('arriving on another guest\'s checkout day is allowed', $r['code'] === 200 && !empty($r['json']['id']) && empty($r['json']['clash']), $r['raw']);
+$turnA = (int) ($r['json']['id'] ?? 0);
+$r = $addBooking($dd(296), $dd(300), 'Leaves On Arrival Day');
+it_check('leaving on another guest\'s arrival day is allowed', $r['code'] === 200 && !empty($r['json']['id']) && empty($r['json']['clash']), $r['raw']);
+$turnB = (int) ($r['json']['id'] ?? 0);
+
+// (g) The owner may still overlap ON PURPOSE — but only by saying so. This is
+// the ONLY route through, which is what makes the guard meaningful.
+$r = $addBooking($dd(301), $dd(303), 'Deliberate Overlap', ['override_clash' => true]);
+$overlapId = (int) ($r['json']['id'] ?? 0);
+it_check('an explicit override_clash still lets the owner overlap deliberately', $r['code'] === 200 && $overlapId > 0, $r['raw']);
+$rootDb->exec('DELETE FROM bookings WHERE id = ' . $overlapId);
+
+// (h) EDITING is the other way to create an overlap, and it must be guarded the
+// same — including the trap that a booking always "overlaps" itself.
+$upd = fn($id, $ci, $co, $extra = []) => http($admin, 'POST', '/bookings.php', array_merge([
+    'action' => 'update', 'id' => $id, 'prop_key' => $propKey, 'name' => 'Base Stay',
+    'email' => '', 'phone' => '', 'check_in' => $ci, 'check_out' => $co,
+    'adults' => 2, 'children' => 0,
+], $extra));
+$r = $upd($turnA, $dd(302), $dd(308));
+it_check('moving a booking onto occupied dates is refused', $r['code'] === 200 && !empty($r['json']['clash']), $r['raw']);
+$r = $upd($baseId, $dd(300), $dd(304));
+it_check('shortening a booking within its OWN dates is not a self-clash', $r['code'] === 200 && empty($r['json']['clash']), $r['raw']);
+$r = $upd($baseId, $dd(300), $dd(305)); // put it back
+
+// (i) The GUEST side. An enquiry for taken dates never reaches the owner.
+$r = http($guest, 'POST', '/enquiries.php', [
+    'action' => 'submit', 'prop_key' => $propKey, 'name' => 'Late Enquirer',
+    'check_in' => $dd(301), 'check_out' => $dd(304), 'adults' => 2, 'children' => 0,
+    'email' => 'late@example.com', 'phone' => '07700900124', 'message' => 'Any chance?',
+    'address' => '1 Test Lane', 'postcode' => 'NR25 7NQ', 'terms_accepted' => 1,
+]);
+it_check('a public enquiry for occupied dates is refused', empty($r['json']['ok']), $r['raw']);
+
+// (j) THE RACE THAT ACTUALLY HAPPENS: the enquiry was legitimate when it was
+// made, and the dates were taken while it sat in the inbox. Approval is the
+// moment a booking is created, so approval is where it has to be re-checked.
+$r = http($guest, 'POST', '/enquiries.php', [
+    'action' => 'submit', 'prop_key' => $propKey, 'name' => 'Overtaken Enquirer',
+    'check_in' => $dd(400), 'check_out' => $dd(404), 'adults' => 2, 'children' => 0,
+    'email' => 'overtaken@example.com', 'phone' => '07700900125', 'message' => 'Please',
+    'address' => '1 Test Lane', 'postcode' => 'NR25 7NQ', 'terms_accepted' => 1,
+]);
+it_check('…the enquiry is accepted while the dates are free', !empty($r['json']['ok']), $r['raw']);
+$r = http($admin, 'GET', '/enquiries.php');
+$row = array_values(array_filter($r['json']['enquiries'] ?? [], fn($e) => ($e['name'] ?? '') === 'Overtaken Enquirer'));
+$raceEnqId = (int) ($row[0]['id'] ?? 0);
+$addBooking($dd(401), $dd(403), 'Got There First'); // taken in the meantime
+$before = $bookingsOn($dd(400), $dd(404));
+$r = http($admin, 'POST', '/enquiries.php', ['action' => 'approve', 'id' => $raceEnqId]);
+$madeBooking = !empty($r['json']['booking_id']);
+it_check('approving an enquiry whose dates were taken since is refused', !$madeBooking, $r['raw']);
+it_check('…and no second booking is created for it', $bookingsOn($dd(400), $dd(404)) === $before, 'before=' . $before);
+
+// (k) An IMPORTED platform stay (Airbnb/Vrbo) blocks the calendar exactly like
+// one of ours — the whole point of the sync is that it stops a double booking.
+try {
+    $rootDb->prepare('INSERT INTO ical_blocks (prop_key, source, check_in, check_out, uid) VALUES (?,?,?,?,?)')
+        ->execute([$propKey, 'airbnb', $dd(500), $dd(504), 'it-clash-1']);
+    $r = $addBooking($dd(501), $dd(506), 'Over An Airbnb Stay');
+    it_check('a booking over an imported platform stay is refused', $r['code'] === 200 && !empty($r['json']['clash']), $r['raw']);
+    it_check('…and the refusal names the platform', stripos((string) ($r['json']['message'] ?? ''), 'airbnb') !== false, (string) ($r['json']['message'] ?? ''));
+} catch (\Throwable $e) {
+    it_check('ical_blocks fixture inserts', false, $e->getMessage());
+}
+
+// (l) MISSED BOOKINGS, the other direction. A cancellation must hand the dates
+// back — to the clash guard AND to the public calendar the guest actually reads.
+$pub = http($guest, 'GET', '/availability.php?prop=' . urlencode($propKey));
+$has = fn($rs, $s) => (bool) array_filter($rs, fn($x) => ($x['start'] ?? '') === $s);
+it_check('availability.php publishes the occupied stay', $has($pub['json']['ranges'] ?? [], $dd(300)), substr($pub['raw'], 0, 200));
+$r = http($admin, 'POST', '/bookings.php', ['action' => 'cancel', 'id' => $baseId, 'reason' => 'integration test']);
+it_check('cancelling succeeds', $r['code'] === 200 && !empty($r['json']['ok']), $r['raw']);
+$pub = http($guest, 'GET', '/availability.php?prop=' . urlencode($propKey));
+it_check('…and the dates stop being published as blocked', !$has($pub['json']['ranges'] ?? [], $dd(300)), substr($pub['raw'], 0, 200));
+$r = $addBooking($dd(300), $dd(305), 'Rebooked After Cancel');
+it_check('…so the freed dates can be booked again, with no clash', $r['code'] === 200 && !empty($r['json']['id']) && empty($r['json']['clash']), $r['raw']);
+
 echo "\n== Summary ==\n";
 if ($fail) {
     echo "  $fail CHECK(S) FAILED \xE2\x9D\x8C\n\n";
